@@ -491,6 +491,29 @@ fdb_t *get_fdb(const char *dbname)
     return fdb;
 }
 
+static void init_fdb(fdb_t * fdb, const char * dbname, enum mach_class class, int local, int class_override)
+{
+    fdb->dbname = strdup(dbname);
+    fdb->class = class;
+    fdb->class_override = class_override;
+    /*
+       default remote version we expect
+
+       code will backout on initial connection
+     */
+    fdb->server_version = gbl_fdb_default_ver;
+    fdb->dbname_len = strlen(dbname);
+    fdb->users = 1;
+    fdb->local = local;
+    fdb->h_ents_rootp = hash_init_i4(0);
+    fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
+    fdb->h_tbls_name = hash_init_strptr(0);
+    Pthread_rwlock_init(&fdb->h_rwlock, NULL);
+    Pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
+    Pthread_mutex_init(&fdb->dbcon_mtx, NULL);
+    Pthread_mutex_init(&(fdb->users_mtx), NULL);
+}
+
 /**
  * Adds a new foreign db to the local cache
  * If it already exists, created is set to 0
@@ -517,28 +540,11 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
     fdb = calloc(1, sizeof(*fdb));
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "%s: OOM %zu bytes!\n", __func__, sizeof(*fdb));
+        *created = 0;
         goto done;
     }
 
-    fdb->dbname = strdup(dbname);
-    fdb->class = class;
-    fdb->class_override = class_override;
-    /*
-       default remote version we expect
-
-       code will backout on initial connection
-     */
-    fdb->server_version = gbl_fdb_default_ver;
-    fdb->dbname_len = strlen(dbname);
-    fdb->users = 1;
-    fdb->local = local;
-    fdb->h_ents_rootp = hash_init_i4(0);
-    fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
-    fdb->h_tbls_name = hash_init_strptr(0);
-    Pthread_rwlock_init(&fdb->h_rwlock, NULL);
-    Pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
-    Pthread_mutex_init(&fdb->dbcon_mtx, NULL);
-    Pthread_mutex_init(&fdb->users_mtx, NULL);
+    init_fdb(fdb, dbname, class, local, class_override);
 
     /* this should be safe to call even though the fdb is not booked in the fdb
      * array */
@@ -573,6 +579,13 @@ done:
     /* returns NULL if error or fdb with fdb->users incremented */
 }
 
+void destroy_local_fdb(fdb_t *fdb)
+{
+    if (fdb)
+        __free_fdb(fdb);
+
+}
+
 /**
  * Try to destroy the session;
  * only done when connecting to unexisting dbs
@@ -598,6 +611,11 @@ static void destroy_fdb(fdb_t *fdb)
     }
 
     Pthread_rwlock_unlock(&fdbs.arr_lock);
+}
+
+int is_local(const fdb_t *fdb)
+{
+    return fdb->local;
 }
 
 /**************  TABLE OPERATIONS ***************/
@@ -1305,6 +1323,29 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
     }
 
     return SQLITE_ERROR; /* speak sqlite */
+}
+
+int create_local_fdb(const char *fdb_name, fdb_t **fdb) {
+    int local, lvl_override;
+    local = lvl_override = 0;
+
+    const enum mach_class lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
+    if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
+        logmsg(LOGMSG_ERROR, "%s: Could not find usable fdb class\n", __func__);
+        const int rc = (lvl == CLASS_UNKNOWN)
+                        ? FDB_ERR_CLASS_UNKNOWN
+                        : FDB_ERR_CLASS_DENIED;
+        return rc;
+    }
+
+    *fdb = calloc(1, sizeof(fdb_t));
+    if (!fdb) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
+        return FDB_ERR_MALLOC;
+    }
+    init_fdb(*fdb, fdb_name, lvl, local, lvl_override);
+
+    return 0;
 }
 
 /**
@@ -3762,8 +3803,8 @@ const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
  * Get dbname, tablename, and so on
  *
  */
-const char *fdb_dbname_name(fdb_t *fdb) { return fdb->dbname; }
-const char *fdb_dbname_class_routing(fdb_t *fdb)
+const char *fdb_dbname_name(const fdb_t * const fdb) { return fdb->dbname; }
+const char *fdb_dbname_class_routing(const fdb_t * const fdb)
 {
     if (fdb->local)
         /*
@@ -5371,6 +5412,40 @@ int fdb_get_remote_version(const char *dbname, const char *table,
 done:
     cdb2_close(db);
     sqlite3_free(sql);
+
+    return rc;
+}
+
+int fdb_get_server_semver(const fdb_t * const fdb, const char ** version)
+{
+    cdb2_hndl_tp * hndl = NULL;
+
+    int rc = cdb2_open(&hndl, fdb_dbname_name(fdb), is_local(fdb) ? "local" : fdb_dbname_class_routing(fdb), 0);
+    if (rc) {
+        return FDB_ERR_GENERIC;
+    }
+
+    rc = cdb2_run_statement(hndl, "select comdb2_semver()");
+    if (rc) {
+        rc = (rc == CDB2ERR_CONNECT_ERROR) ? FDB_ERR_CONNECT : FDB_ERR_GENERIC;
+        goto done;
+    }
+
+    rc = cdb2_next_record(hndl); 
+    if (rc != CDB2_OK) {
+        rc = (rc == CDB2ERR_CONNECT_ERROR) ? FDB_ERR_CONNECT : FDB_ERR_GENERIC;
+        goto done;
+    }
+
+    assert(cdb2_column_type(hndl, 0) == CDB2_CSTRING);
+    *version = strdup((const char *)cdb2_column_value(hndl, 0));
+    if (!(*version)) {
+        rc = ENOMEM;
+        goto done;
+    }
+
+done:
+    cdb2_close(hndl);
 
     return rc;
 }

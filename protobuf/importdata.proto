@@ -1,0 +1,30 @@
+syntax = "proto2";
+
+message BlobFiles {
+    repeated string files=1;
+}
+
+message ImportData {
+    required uint64 data_genid=1;
+    repeated uint64 index_genids=2;
+    repeated uint64 blob_genids=3;
+    required string table_name=4;
+    required string data_dir=5;
+    required uint32 csc2_crc32=6;
+    required int32 checksums=7;
+    required int32 odh=8;
+    required int32 compress=9;
+    required int32 compress_blobs=10;
+    required int32 dtastripe=11;
+    required int32 blobstripe=12;
+    repeated string data_files=13;
+    repeated string index_files=14;
+    repeated BlobFiles blob_files=15;
+    repeated string csc2=16;
+    required int32 data_pgsz=17;
+    required int32 index_pgsz=18;
+    required int32 blob_pgsz=19;
+    required int32 ipu=20;
+    required int32 isc=21;
+    required int32 dc_odh=22;
+}

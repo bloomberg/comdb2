@@ -234,7 +234,7 @@ int comdb2SystblInit(
     rc = systblStacks(db);
   if (rc == SQLITE_OK)
     rc = systblStringRefsInit(db);
-#ifdef INCLUDE_DEBUG_ONLY_SYSTABLES
+#ifdef COMDB2_TEST
   if (rc == SQLITE_OK)
     rc = systblTranCommitInit(db);
 #endif
