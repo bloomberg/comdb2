@@ -535,12 +535,12 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
                     p_blkstate->p_buf_req_start,iq->comdbg_flags) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
     req_hdr.opcode = OP_FWD_BLOCK;
+    if (iq->comdbg_flags & COMDBG_FLAG_FROM_LE) {
+        req_hdr.opcode = OP_FWD_BLOCK_LE;
+    }
     if (req_hdr_put(&req_hdr, iq->p_buf_out_start,
                     p_blkstate->p_buf_req_start) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
-     if (iq->comdbg_flags & COMDBG_FLAG_FROM_LE) {
-         req_hdr.opcode = OP_FWD_BLOCK_LE;
-     }
 
 
     fwd.source_node = 0;
