@@ -247,3 +247,12 @@ function kill_restart_tertiary_node
 }
 
 
+function wait_for_cluster
+{
+    for node in ${CLUSTER} ; do
+        until cdb2sql --host ${node} ${CDB2_OPTIONS} ${DBNAME} default "select 1";
+        do
+            :
+        done
+    done
+}
