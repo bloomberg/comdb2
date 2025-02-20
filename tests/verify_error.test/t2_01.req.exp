@@ -30,7 +30,7 @@ done
 1 [truncate test2]
 done
 1 [commit]
-[commit] failed with rc 2 find old record failed unable to update record rc = 4
+[commit] failed with rc 2 find old record failed unable to update record
 done
 1 [select * from test1]
 (i=1, j=4)
@@ -51,7 +51,7 @@ done
 (rows updated=1)
 done
 1 [commit]
-[commit] failed with rc 2 find old record failed unable to update record rc = 4
+[commit] failed with rc 2 find old record failed unable to update record
 done
 1 [select * from test1]
 (i=1, j=4)
