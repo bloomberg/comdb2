@@ -1136,7 +1136,7 @@ done:
     return rc;
 }
 
-static enum mach_class get_fdb_class(const char **p_dbname, int *local,
+enum mach_class get_fdb_class(const char **p_dbname, int *local,
                                      int *lvl_override)
 {
     const char *dbname = *p_dbname;

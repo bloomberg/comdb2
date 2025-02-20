@@ -232,6 +232,14 @@ temp(A) ::= TEMP.  {A = 1;}
 temp(A) ::= .      {A = 0;}
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
+%type create_partitions {int}
+create_partitions(C) ::= . {C = 0;}
+create_partitions(C) ::= CREATEPARTITIONS. {C = 1;}
+
+%type create_tables {int}
+create_tables(C) ::= . {C = 0;}
+create_tables(C) ::= CREATETABLES. {C = 1;}
+
 create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F) partitioned merge. {
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
@@ -249,6 +257,9 @@ partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
 }
 partition_options ::= MANUAL RETENTION INTEGER(R). {
     comdb2CreateManualPartition(pParse, &R, 0);
+}
+partition_options ::= LP idlist(A) RP PARTITIONS LP idlist(B) RP create_partitions(P) create_tables(T). {
+    comdb2CreateHashPartition(pParse, A, B, P, T);
 }
 merge ::= .
 merge ::= merge_with.
@@ -378,11 +389,11 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
-  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DETERMINISTIC DISABLE 
-  DISTRIBUTION DRYRUN ENABLE EXCLUSIVE_ANALYZE EXEC EXECUTE FORCE FUNCTION GENID48 GET 
-  GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MANUAL MERGE NONE
+  CREATEPARTITIONS CREATETABLES DATA DATABLOB DATACOPY DBPAD DEFERRABLE DETERMINISTIC DISABLE 
+  DISTRIBUTION DRYRUN DROPPARTITIONS DROPTABLES ENABLE EXCLUSIVE_ANALYZE EXEC EXECUTE FORCE 
+  FUNCTION GENID48 GET GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MANUAL MERGE NONE
   ODH OFF OP OPTION OPTIONS
-  PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
+  PAGEORDER PARTITIONED PARTITIONS PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   TESTDEFAULT THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
@@ -691,13 +702,29 @@ resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
 ////////////////////////// The DROP TABLE /////////////////////////////////////
 //
 cmd ::= drop_table.
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+drop_table ::= dryrun DROP TABLE ifexists(E) fullname(X) drop_partitions(P) drop_tables(T). {
+  sqlite3DropTable(pParse, X, 0, E, P, T);
+}
+%endif
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 drop_table ::= dryrun DROP TABLE ifexists(E) fullname(X). {
   sqlite3DropTable(pParse, X, 0, E);
 }
+%endif
+
 
 %type ifexists {int}
 ifexists(A) ::= IF EXISTS.   {A = 1;}
 ifexists(A) ::= .            {A = 0;}
+
+%type drop_partitions {int}
+drop_partitions(D) ::= .               {D=0;}
+drop_partitions(D) ::= DROPPARTITIONS. {D=1;}
+
+%type drop_tables {int}
+drop_tables(D) ::= .               {D=0;}
+drop_tables(D) ::= DROPTABLES.     {D=1;}
 
 ///////////////////// The CREATE VIEW statement /////////////////////////////
 //
@@ -707,7 +734,12 @@ cmd ::= dryrun createkw(X) temp(T) VIEW ifnotexists(E) nm(Y) dbnm(Z) eidlist_opt
   sqlite3CreateView(pParse, &X, &Y, &Z, C, S, T, E);
 }
 cmd ::= dryrun DROP VIEW ifexists(E) fullname(X). {
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3DropTable(pParse, X, 1, E, 0, 0);
+%endif
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3DropTable(pParse, X, 1, E);
+%endif
 }
 %endif  SQLITE_OMIT_VIEW
 

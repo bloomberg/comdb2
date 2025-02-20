@@ -23,6 +23,7 @@
 (tablename='comdb2_files', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_fingerprints', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_functions', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_hashpartitions', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_index_usage', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_keycomponents', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_keys', username='mohit', READ='Y', WRITE='Y', DDL='Y')

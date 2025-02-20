@@ -52,7 +52,7 @@ int  comdb2SqlSchemaChange(OpFunc *);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
 void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
 void comdb2AlterTableCSC2(Parse *, Token *, Token *, int, Token *);
-void comdb2DropTable(Parse *, SrcList *);
+void comdb2DropTable(Parse *, SrcList *, int, int);
 void comdb2AlterTableStart(Parse *, Token *, Token *);
 void comdb2AlterTableEnd(Parse *);
 void comdb2AlterColumnStart(Parse *, Token *);
@@ -126,6 +126,7 @@ void comdb2DropPartition(Parse* p, Token* name);
 void comdb2CreateTimePartition(Parse* p, Token* period, Token* retention,
                                Token* start);
 void comdb2CreateManualPartition(Parse* p, Token* retention, Token* start);
+void comdb2CreateHashPartition(Parse* p, IdList *, IdList *, int, int);
 void comdb2SaveMergeTable(Parse* p, Token* name, Token* database, int alter);
 
 void comdb2analyze(Parse*, int opt, Token*, Token*, int, int);

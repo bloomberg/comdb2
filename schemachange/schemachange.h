@@ -23,7 +23,7 @@
 #include <locks.h>
 #include <list.h>
 #include <bdb_schemachange.h>
-
+#include "hash_partition.h"
 /* To be forward declared one accessors methods are added */
 
 /* A schema change plan. */
@@ -68,6 +68,7 @@ enum comdb2_partition_type {
     PARTITION_ADD_MANUAL = 21,
     PARTITION_ADD_COL_RANGE = 40,
     PARTITION_ADD_COL_HASH = 60,
+    PARTITION_REMOVE_COL_HASH = 80,
 };
 
 struct comdb2_partition {
@@ -83,6 +84,15 @@ struct comdb2_partition {
             char tablename[MAXTABLELEN];
             int version;
         } mergetable;
+        struct hash {
+            char viewname[MAXTABLELEN];
+            uint32_t num_partitions;
+            uint32_t num_columns; // in partitoning key
+            char columns[MAXCOLUMNS][MAXCOLNAME];
+            uint32_t keys[MAXPARTITIONS];
+            char partitions[MAXPARTITIONS][MAXPARTITIONLEN];
+            char *createQuery;
+        } hash;
     } u;
 };
 
@@ -253,6 +263,7 @@ struct schema_change_type {
     struct dbtable *db;
     struct dbtable *newdb;
     struct timepart_view *newpartition;
+    hash_view_t *newhashpartition;
     struct scplan plan; /**** TODO This is an abomination, i know. Yet still
                            much better than on the stack where I found it.
                              At least this datastructure lives as much as the

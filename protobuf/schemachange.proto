@@ -47,4 +47,10 @@ message CDB2_Schemachange {
   optional uint64 tpstart = 44;
   optional string tpmergetable = 45;
   optional int32 tpmergeversion = 46;
+  optional string hashviewname = 47;
+  optional uint32 hashnumpartitions = 48;
+  optional uint32 hashnumcolumns = 49;
+  repeated string hashcolumns = 50;
+  repeated string hashpartitions = 52;
+  optional string hashcreatequery = 53;
 }

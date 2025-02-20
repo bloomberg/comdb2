@@ -30,7 +30,7 @@
 #include "comdb2Int.h"
 #include "pragma.h"
 #include "logmsg.h"
-
+#include "hash_partition.h"
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
@@ -693,6 +693,13 @@ Table *sqlite3LocateTable(
   }
 
   p = sqlite3FindTable(db, zName, zDbase);
+  /* I have to do a second lookup here for generic sharding : 
+   * zDbase is being set to "main" for inserts/deletes/updates from triggers"
+   * which results in the alias for the remote table not being found 
+   * AAR: TODO -> figure out the actual cause of the problem*/
+  /*if ( p==0 ) {
+      p = sqlite3FindTable(db, zName, NULL);
+  }*/
   if( p==0 ){
 #ifndef SQLITE_OMIT_VIRTUALTABLE
     /* If zName is the not the name of a table in the schema created using
@@ -2777,7 +2784,9 @@ void sqlite3CreateView(
   Token *pName = 0;
   int iDb;
   sqlite3 *db = pParse->db;
-
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  char *tableName = NULL;
+#endif
   if(comdb2IsDryrun(pParse)){
     sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
     goto create_view_fail;
@@ -2792,7 +2801,19 @@ void sqlite3CreateView(
   sqlite3TwoPartName(pParse, pName1, pName2, &pName);
   iDb = sqlite3SchemaToIndex(db, p->pSchema);
   sqlite3FixInit(&sFix, pParse, iDb, "view", pName);
-  if( sqlite3FixSelect(&sFix, pSelect) ) goto create_view_fail;
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  tableName = (char *)malloc(pName->n+1);
+  strncpy(tableName, pName->z, pName->n);
+  tableName[pName->n]='\0';
+  if (!is_hash_partition(tableName) && sqlite3FixSelect(&sFix, pSelect)) {
+#else
+  if( sqlite3FixSelect(&sFix, pSelect) ) { 
+#endif
+      goto create_view_fail;
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+      free(tableName);
+#endif
+  }
 
   /* Make a copy of the entire SELECT statement that defines the view.
   ** This will force all the Expr.token.z values to be dynamically
@@ -3220,7 +3241,11 @@ void sqlite3CodeDropTable(Parse *pParse, Table *pTab, int iDb, int isView){
 ** This routine is called to do the work of a DROP TABLE statement.
 ** pName is the name of the table to be dropped.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr, int dropPartitions, int dropTables){
+#else
 void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
+#endif
   Table *pTab;
   Vdbe *v;
   sqlite3 *db = pParse->db;
@@ -3313,7 +3338,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   }
   if( !isView && pTab->pSelect ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if (timepart_allow_drop(pTab->zName)) {
+    if (timepart_allow_drop(pTab->zName) && !is_hash_partition(pTab->zName)) {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ErrorMsg(pParse, "use DROP VIEW to delete view %s", pTab->zName);
     goto exit_drop_table;
@@ -3345,7 +3370,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Comdb2 can only drop one table at a time");
       }else{
-        comdb2DropTable(pParse, pName);
+        comdb2DropTable(pParse, pName, dropPartitions, dropTables);
       }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
