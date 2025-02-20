@@ -725,6 +725,7 @@
 (name='physrep_revconn_check_interval', description='Physrep recheck revconn interval.  (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_shuffle_host_list', description='Shuffle the host list returned by register_replicant() before connecting to the hosts. (Default: OFF)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_source_dbname', description='Physical replication source cluster dbname.', type='STRING', value=NULL, read_only='Y')
+(name='physrep_source_dbnum', description='Physical replication source cluster db number.', type='INTEGER', value='0', read_only='Y')
 (name='physrep_source_host', description='List of physical replication source cluster hosts.', type='STRING', value=NULL, read_only='Y')
 (name='physrep_update_registry_interval', description='Physrep update-registry interval. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='plannedsc', description='Use planned schema change by default', type='BOOLEAN', value='ON', read_only='N')

@@ -496,6 +496,7 @@ extern int gbl_physrep_max_rollback;
 
 /* source-name / host is from lrl */
 extern char *gbl_physrep_source_dbname;
+extern int gbl_physrep_source_dbnum;
 extern char *gbl_physrep_source_host;
 
 /* meta-name / host is from lrl */
