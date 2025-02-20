@@ -5116,12 +5116,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			p->rep_lock_time_us += d;
 		}
 
-		if (ret != 0) {
-			line = __LINE__;
-			goto err;
-		}
-
-
 		if (commit_lsn_map) {
 			if ((ret = __txn_commit_map_add(dbenv, 
 					utxnid, rctl->lsn)), ret != 0) {
