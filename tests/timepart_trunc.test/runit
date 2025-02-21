@@ -658,6 +658,12 @@ if (( $? == 0 )) ; then
    exit 1
 fi
 
+header 21 "Test table_version for a partition name for a create table partitioned case"
+$cmdt "select table_version('t')" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to select table version"
+   exit 1
+fi
 
 
 # we need to scrub dbname from alpha
