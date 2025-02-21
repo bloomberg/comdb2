@@ -109,6 +109,8 @@
 #include <translistener.h>
 #include <sqlwriter.h>
 
+#include "views.h"
+
 int gbl_delay_sql_lock_release_sec = 5;
 
 unsigned long long get_id(bdb_state_type *);
@@ -12200,6 +12202,14 @@ unsigned long long comdb2_table_version(const char *tablename)
 
     db = get_dbtable_by_name(tablename);
     if (!db) {
+        /* is this a partition name? */
+        unsigned long long partition_ver;
+        char *shardname = timepart_shard_name(tablename, 0, 0, &partition_ver);
+        if (shardname) {
+            free(shardname);
+            return partition_ver;
+        }
+
         ctrace("table unknown \"%s\"\n", tablename);
         return -1;
     }
