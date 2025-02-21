@@ -42,7 +42,7 @@
 #include <lockmacros.h>
 #include <fsnapf.h>
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <bb_daemon.h>
 
 #include "cdb2sockpool.h"

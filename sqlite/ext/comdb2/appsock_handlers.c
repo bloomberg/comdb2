@@ -31,7 +31,7 @@ typedef struct sbuf2 SBUF2;
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "comdb2_appsock.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 
 extern hash_t *gbl_appsock_hash;
 

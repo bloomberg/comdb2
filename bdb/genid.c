@@ -49,7 +49,7 @@
 #include <build/db.h>
 #include <epochlib.h>
 #include <ctrace.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <list.h>
 
 #include <net.h>

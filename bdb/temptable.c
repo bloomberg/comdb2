@@ -31,7 +31,7 @@
 #include <sbuf2.h>
 #include "bdb_int.h"
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <sys/time.h>
 
 #ifdef _LINUX_SOURCE

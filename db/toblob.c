@@ -49,7 +49,7 @@
 #include <pthread.h>
 
 #include <epochlib.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <comdb2.h>
 
 #include <list.h>

@@ -22,7 +22,7 @@
 
 #include <stdio.h>
 #include <pthread.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <poll.h>
 #include "comdb2.h"
 #include "osqlblkseq.h"

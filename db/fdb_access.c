@@ -19,7 +19,7 @@
  *
  */
 
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "list.h"
 
 #include "comdb2.h"

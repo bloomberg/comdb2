@@ -56,7 +56,7 @@
 #include <net.h>
 #include <net_appsock.h>
 #include <net_int.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <portmuxapi.h>
 #include <ssl_bend.h>
 #include <ssl_evbuffer.h>

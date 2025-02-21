@@ -23,7 +23,7 @@
 #include <stdint.h>
 
 #include "list.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 
 #include "lrucache.h"
 #include <mem_uncategorized.h>

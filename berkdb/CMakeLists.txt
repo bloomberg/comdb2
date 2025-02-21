@@ -290,8 +290,7 @@ elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL 
 endif()
 
 if (COMDB2_BBCMAKE)
-  target_link_libraries(db PUBLIC lz4 openssl)
-  comdb2_bb_target(db)
+  comdb2_lib_target(db)
 endif()
 
 option(PAGELIST_DEBUG "Enable debug logic for pagelist dumping and loading" OFF)

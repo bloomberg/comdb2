@@ -224,24 +224,23 @@ add_definitions(
 add_executable(comdb2 ${src})
 add_dependencies(comdb2 mem proto sqlite db bdb)
 target_link_libraries(comdb2 PRIVATE
-  ${PLUGIN_LIBRARIES}
-  schemachange
   bdb
-  util
-  crc32c
   comdb2rle
+  crc32c
   csc2
   cson
   db
   dfpal
+  dlmalloc
   lua
   mem
-  dlmalloc
   net
+  schemachange
   sockpool
   sqlite
-  util
   tz
+  util
+  ${PLUGIN_LIBRARIES}
   ${LibArchive_LIBRARIES}
   ${LZ4_LIBRARY}
   ${RDKAFKA_LIBRARY}
@@ -254,8 +253,8 @@ target_link_libraries(comdb2 PRIVATE
 )
 
 if (COMDB2_BBCMAKE)
-  target_link_libraries(comdb2 PRIVATE opencdb2api uuid event_core_static event_pthreads_static)
-  comdb2_bb_target(comdb2)
+  target_link_libraries(comdb2 PRIVATE opencdb2api)
+  comdb2_bin_target(comdb2)
 else()
   target_link_libraries(comdb2 PRIVATE cdb2api m ${CMAKE_DL_LIBS})
 endif()

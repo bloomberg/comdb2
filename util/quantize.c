@@ -203,7 +203,7 @@ int quantize_dump(struct quantize *q, FILE *ff)
     return 0;
 }
 
-#include <plhash.h>
+#include <plhash_glue.h>
 
 struct qobj {
     int numvals;

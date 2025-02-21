@@ -49,7 +49,7 @@
 #include <rtcpu.h>
 #include <list.h>
 #include <segstr.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <memory_sync.h>
 
 #include <epochlib.h>

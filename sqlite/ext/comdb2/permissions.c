@@ -24,7 +24,7 @@
 #include <comdb2systblInt.h>
 #include <ezsystables.h>
 #include "sql.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "timepart_systable.h"
 #include "sqliteInt.h"
 

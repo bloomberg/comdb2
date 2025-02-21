@@ -16,7 +16,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <bdb/bdb_int.h>
 
 #include "comdb2.h"

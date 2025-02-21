@@ -2,7 +2,7 @@
 #include <sqlquery.pb-c.h>
 #include <pthread.h>
 #include <epochlib.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <stdlib.h>
 #include <string.h>
 #include <locks.h>

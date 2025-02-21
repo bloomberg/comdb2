@@ -42,7 +42,7 @@
 #include <netinet/in.h>
 #include "util.h"
 #include "tohex.h"
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "tag.h"
 #include "types.h"
 #include "comdb2.h"

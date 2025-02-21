@@ -42,7 +42,7 @@
 #include <util.h>
 #include <f2cstr.h>
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
 #include <unistd.h>

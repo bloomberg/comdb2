@@ -41,7 +41,7 @@
 
 
 #include "bdb_int.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "endian_core.h"
 #include "comdb2.h"
 

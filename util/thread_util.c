@@ -25,7 +25,7 @@
 
 #include <walkback.h>
 
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "list.h"
 #include "mem_util.h"
 #include "mem_override.h"

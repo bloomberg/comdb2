@@ -22,7 +22,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <ctrace.h>
 #include "comdb2.h"
 #include "osqlcheckboard.h"

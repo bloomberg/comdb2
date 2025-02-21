@@ -44,7 +44,7 @@
 #include <strings.h>
 #include <unistd.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <list.h>
 #include <pool.h>
 #include <passfd.h>
