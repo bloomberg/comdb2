@@ -44,18 +44,13 @@ enum {
     FILES_COLUMN_CHUNK_SIZE,
 };
 
-enum {
-    FILES_FILE_PATTERN_FLAG = 1,
-    FILES_CHUNK_SIZE_FLAG = 2,
-};
-
-enum {
+typedef enum file_type {
     FILES_TYPE_UNKNOWN,
     FILES_TYPE_CHECKPOINT,
     FILES_TYPE_BERKDB,
     FILES_TYPE_LOGFILE, /* Always keep LOGFILE in the end for them to sort
                            higher */
-};
+} file_type_t;
 
 typedef struct db_chunk {
     uint8_t *buffer;
@@ -80,8 +75,6 @@ typedef struct {
     size_t nfiles;
     off_t content_offset;
     size_t content_size;
-    size_t chunk_size;
-    char *file_pattern;
 } systbl_files_cursor;
 
 int files_util_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor);
@@ -92,5 +85,4 @@ int files_util_eof(sqlite3_vtab_cursor *cur);
 int files_util_best_index(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo);
 int files_util_filter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
                        const char *idxStr, int argc, sqlite3_value **argv);
-
 #endif

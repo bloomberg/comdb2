@@ -967,7 +967,7 @@ static int hash_default_strcmp(const void *a, const void *b,
     return strcmp(a, b);
 }
 
-static unsigned int hash_default_strlen(const unsigned char *key,
+unsigned int hash_default_strlen(const unsigned char *key,
                                         int len __attribute_unused__)
 {
     unsigned hash;

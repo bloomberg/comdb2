@@ -13,6 +13,11 @@ err() {
   echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
 }
 
+error() {
+	err "Failed at line $1"
+	exit 1
+}
+
 # assert result value in $1 is the same as expected value in $2, optional comment in $3
 # assertres (result, expected, comment)
 assertres ()
