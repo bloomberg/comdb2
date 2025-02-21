@@ -28,7 +28,7 @@ include_directories(
 
 add_plugin(logdelete STATIC logdelete.c)
 if (COMDB2_BBCMAKE)
-  comdb2_bb_target(logdelete)
+  comdb2_lib_target(logdelete)
 endif()
 
 add_dependencies(logdelete proto)

@@ -27,7 +27,7 @@
 #include "comdb2.h"
 #include "comdb2_trn_intrl.h"
 #include "timer.h"
-#include <plhash.h>
+#include <plhash_glue.h>
 
 static int check_trn_purge(void *trnarg, void *purgebuf)
 {

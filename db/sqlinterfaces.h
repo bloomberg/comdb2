@@ -26,7 +26,7 @@
 #include <stddef.h>
 #include <pthread.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <segstr.h>
 
 #include <list.h>

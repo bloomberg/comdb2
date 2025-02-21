@@ -51,7 +51,7 @@
 
 #include <cdb2api.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <list.h>
 #include <ctrace.h>
 #include <epochlib.h>

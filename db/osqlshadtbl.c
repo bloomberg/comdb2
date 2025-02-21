@@ -23,7 +23,7 @@
 #include "bdb_osqlcur.h"
 #include <assert.h>
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <bpfunc.h>
 #include <compile_time_assert.h>
 

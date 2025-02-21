@@ -4224,7 +4224,7 @@ logical_record_file_affinity(int rectype)
 
 int gbl_processor_thd_poll;
 
-#include <plhash.h>
+#include <plhash_glue.h>
 
 struct fuid_integer {
 	u_int8_t fuid[DB_FILE_ID_LEN];

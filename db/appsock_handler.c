@@ -27,7 +27,7 @@
 #include "comdb2.h"
 #include "comdb2_plugin.h"
 #include "comdb2_appsock.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "comdb2_atomic.h"
 #include "perf.h"
 

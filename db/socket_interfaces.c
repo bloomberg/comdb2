@@ -24,7 +24,7 @@
 #include <pthread.h>
 #include <epochlib.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <segstr.h>
 
 #include <list.h>

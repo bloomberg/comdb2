@@ -50,7 +50,7 @@
 #include <alloca.h>
 #include <poll.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "debug_switches.h"
 
 #include "util.h"

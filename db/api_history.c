@@ -17,7 +17,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <sys_wrap.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <pthread.h>
 #include <string.h>
 

@@ -26,7 +26,7 @@
 
 #include <list.h>
 #include <pool.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <dlmalloc.h>
 #include <thdpool.h>
 #include <mem_berkdb.h>

@@ -16,7 +16,7 @@
 
 #include <segstr.h>
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <fsnapf.h>
 
 #include <net.h>

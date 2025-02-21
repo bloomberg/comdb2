@@ -17,7 +17,7 @@
 #ifndef INCLUDED_LRUCACHE_H
 #define INCLUDED_LRUCACHE_H
 
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "list.h"
 
 struct lrucache {

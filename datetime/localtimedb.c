@@ -2172,7 +2172,7 @@ static void db_settzname(void)
     }
 }
 
-#include <plhash.h>
+#include <plhash_glue.h>
 
 #define NAME_KEY_MAX 40
 

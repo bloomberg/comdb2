@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <alloca.h>
 
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "intern_strings.h"
 
 #include "mem_util.h"

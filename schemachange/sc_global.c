@@ -25,7 +25,7 @@
 #include "comdb2_atomic.h"
 #include <assert.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t fastinit_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;

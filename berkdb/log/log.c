@@ -27,7 +27,7 @@ static const char revid[] = "$Id: log.c,v 11.133 2003/09/13 19:20:37 bostic Exp 
 #include "dbinc/txn.h"
 #include <logmsg.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 
 static int	__log_init __P((DB_ENV *, DB_LOG *));
 static int	__log_recover __P((DB_LOG *));

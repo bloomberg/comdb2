@@ -5,3 +5,4 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/dlmalloc
 )
+target_link_libraries(mem dlmalloc)

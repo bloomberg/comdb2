@@ -20,7 +20,7 @@
 #include <comdb2systblInt.h>
 #include <ezsystables.h>
 #include "sql.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "tohex.h"
 
 struct fingerprint_track_systbl {

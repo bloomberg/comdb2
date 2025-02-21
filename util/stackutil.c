@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stddef.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <stddef.h>

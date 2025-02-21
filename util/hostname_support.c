@@ -39,7 +39,7 @@ static int get_hostname_by_addr(struct sockaddr_in *addr, char *host, socklen_t 
 #include <pthread.h>
 #include <intern_strings.h>
 #include <sys_wrap.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 
 static hash_t *hs;
 static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
