@@ -1,0 +1,10 @@
+logmsg level debug
+extended_sql_debug_trace on
+on cause_random_blkseq_replays
+do reql events n
+do reql events detailed on
+debug.osql_random_restart on
+osql_verify_retry_max 0
+enable_osql_logging
+extended_sql_debug_trace 1
+dump_blkseq 1
