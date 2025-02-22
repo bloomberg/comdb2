@@ -94,6 +94,25 @@ void free_schema_change_type(struct schema_change_type *s)
     Pthread_cond_destroy(&s->condStart);
     Pthread_mutex_destroy(&s->mtxStart);
 
+    /*if (s->partition.type == PARTITION_ADD_COL_HASH) {
+        char *str = s->partition.u.hash.viewname;
+        if (str) free(str);
+        for(int i=0;i<s->partition.u.hash.num_columns;i++){
+            str = s->partition.u.hash.columns[i];
+            if (str) free(str);
+        }
+        if (s->partition.u.hash.columns) {
+            free(s->partition.u.hash.columns);
+        }
+        for(int i=0;i<s->partition.u.hash.num_partitions;i++){
+            str = s->partition.u.hash.partitions[i];
+            if (str) free(str);
+        }
+        if (s->partition.u.hash.partitions) {
+            free(s->partition.u.hash.partitions);
+        }
+    }*/
+
     if (s->sb && s->must_close_sb) {
         close_appsock(s->sb);
         s->sb = NULL;
@@ -101,6 +120,7 @@ void free_schema_change_type(struct schema_change_type *s)
     if (!s->onstack) {
         free(s);
     }
+
 }
 
 static size_t dests_field_packed_size(struct schema_change_type *s)
@@ -1072,6 +1092,7 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
             s->partition.u.hash.columns[i] = (char *)malloc(sizeof(char) * len + 1);
             p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.columns[i], len,
                                               p_buf, p_buf_end);
+            s->partition.u.hash.columns[i][len]='\0';
             logmsg(LOGMSG_USER, "GOT COLUMN AS %s \n", s->partition.u.hash.columns[i]);
         }
         p_buf =
@@ -1083,6 +1104,7 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
             s->partition.u.hash.partitions[i] = (char *)malloc(sizeof(char) * len + 1);
             p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.partitions[i], len, p_buf,
                                               p_buf_end);
+            s->partition.u.hash.partitions[i][len]='\0';
             logmsg(LOGMSG_USER, "GOT PARTITION AS %s \n", s->partition.u.hash.partitions[i]);
         }
         break;

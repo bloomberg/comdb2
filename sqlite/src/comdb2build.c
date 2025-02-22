@@ -53,6 +53,7 @@ int createRemotePartitions(struct comdb2_partition *partition);
 int createLocalAliases(struct comdb2_partition *partition);
 void deleteRemoteTables(const char *, char **, int startIdx);
 void deleteRemotePartitions(const char *, char **, int startIdx);
+void free_comdb2_partition(struct comdb2_partition *partition);
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
@@ -599,6 +600,8 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
         f->errorMsg = "Transactional DDL Error: Overlapping Tables";
     else if (f->rc)
         f->errorMsg = "Transactional DDL Error: Internal Errors";
+
+    free_comdb2_partition(&(s->partition));
     return f->rc;
 }
 
@@ -7794,6 +7797,39 @@ static int comdb2GetHashPartitionParams(Parse* pParse, IdList *pColumn, IdList *
     return 0;
 }
 
+void free_comdb2_partition(struct comdb2_partition *partition) {
+    if (!partition) return;
+    switch (partition->type) {
+        case PARTITION_ADD_COL_HASH: {
+                if (partition->u.hash.viewname) {
+                    free(partition->u.hash.viewname);
+                }
+                if (partition->u.hash.columns) {
+                    for(int i=0;i<partition->u.hash.num_columns;i++){
+                        if (partition->u.hash.columns[i]) {
+                            free(partition->u.hash.columns[i]);
+                        }
+                    }
+                    free(partition->u.hash.columns);
+                }
+                if (partition->u.hash.partitions) {
+                    for(int i=0;i<partition->u.hash.num_partitions;i++){
+                        if (partition->u.hash.partitions[i]) {
+                            free(partition->u.hash.partitions[i]);
+                        }
+                    }
+                    free(partition->u.hash.partitions);
+                }
+
+                if (partition->u.hash.createQuery) {
+                    free(partition->u.hash.createQuery);
+                }
+              break;
+              }
+        default:
+              break;
+    }
+}
 struct comdb2_partition *_get_comdb2_hash_partition(Parse *pParse, IdList *pColumn, IdList *pPartitions,  int remove) {
     struct comdb2_partition *partition;
     partition = _get_partition(pParse, 0);
@@ -7865,7 +7901,7 @@ void comdb2CreateHashPartition(Parse *pParse, IdList *pColumn, IdList *pPartitio
     GET_CLNT;
     if (clnt && clnt->sql) {
         logmsg(LOGMSG_USER, "The sql query is %s\n", clnt->sql);
-        partition->u.hash.createQuery = clnt->sql;
+        partition->u.hash.createQuery = strdup(clnt->sql);
     } else {
         if (!clnt) {
             logmsg(LOGMSG_USER, "The client object is not available\n");

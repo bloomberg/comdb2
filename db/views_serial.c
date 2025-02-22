@@ -2065,6 +2065,25 @@ hash_view_t *hash_deserialize_view(const char *view_str, struct errstat *err)
     }
 
     view = create_hash_view(viewname, tablename, num_keys, keynames, num_partitions, dbnames, err);
+
+    if (dbnames) {
+        for(int i=0;i<num_partitions;i++){
+            if (dbnames[i]) {
+                free(dbnames[i]);
+            }
+        }
+        free(dbnames);
+    }
+
+
+    if (keynames) {
+        for(int i=0;i<num_keys;i++){
+            if (keynames[i]) {
+                free(keynames[i]);
+            }
+        }
+        free(keynames);
+    }
     if (rootVal) {
         cson_value_free(rootVal);
     }
