@@ -85,12 +85,11 @@ struct comdb2_partition {
             int version;
         } mergetable;
         struct hash {
-            char viewname[MAXTABLELEN];
+            char *viewname;
             uint32_t num_partitions;
             uint32_t num_columns; // in partitoning key
-            char columns[MAXCOLUMNS][MAXCOLNAME];
-            uint32_t keys[MAXPARTITIONS];
-            char partitions[MAXPARTITIONS][MAXPARTITIONLEN];
+            char **columns; // columns in partitioning key
+            char **partitions;
             char *createQuery;
         } hash;
     } u;

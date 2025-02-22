@@ -1989,6 +1989,7 @@ hash_view_t *hash_deserialize_view(const char *view_str, struct errstat *err)
     const char *err_str;
     int num_partitions = 0, num_keys = 0;
     int rc;
+    char **keynames = NULL, **dbnames = NULL;
 
     /* parse string */
     rc = cson_parse_string(&rootVal, view_str, strlen(view_str));
@@ -2028,14 +2029,14 @@ hash_view_t *hash_deserialize_view(const char *view_str, struct errstat *err)
         goto error;
     }
 
-    char keynames[MAXCOLUMNS][MAXCOLNAME];
+    keynames = (char **)malloc(sizeof(char*) * num_keys);
     for (int i = 0; i < num_keys; i++) {
         arrVal = cson_array_get(keys_arr, i);
         if (!cson_value_is_string(arrVal)) {
             err_str = "INVALID CSON. Array element is not a string";
             goto error;
         }
-        strcpy(keynames[i], cson_value_get_cstr(arrVal));
+        keynames[i] = strdup(cson_value_get_cstr(arrVal));
     }
 
     /* NUMPARTITIONS */
@@ -2052,15 +2053,15 @@ hash_view_t *hash_deserialize_view(const char *view_str, struct errstat *err)
         goto error;
     }
 
-    char dbnames[MAXPARTITIONS][MAXPARTITIONLEN];
 
+    dbnames = (char **)malloc(sizeof(char*) * num_partitions);
     for (int i = 0; i < num_partitions; i++) {
         arrVal = cson_array_get(partitions, i);
         if (!cson_value_is_string(arrVal)) {
             err_str = "INVALID CSON. Array element is not a string";
             goto error;
         }
-        strcpy(dbnames[i], cson_value_get_cstr(arrVal));
+        dbnames[i] = strdup(cson_value_get_cstr(arrVal));
     }
 
     view = create_hash_view(viewname, tablename, num_keys, keynames, num_partitions, dbnames, err);

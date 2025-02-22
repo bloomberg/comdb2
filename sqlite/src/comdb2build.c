@@ -5069,7 +5069,7 @@ void comdb2CreateTableEnd(
 
     if (ctx->partition && ctx->partition->type == PARTITION_ADD_COL_HASH) {
         char tmp_str[MAXTABLELEN] = {0};
-        strcpy(ctx->partition->u.hash.viewname, ctx->tablename); 
+        ctx->partition->u.hash.viewname = strdup(ctx->tablename); 
         strcpy(tmp_str , "hash_");
         strcpy(tmp_str + 5, ctx->tablename);
         strcpy(sc->tablename, tmp_str);
@@ -7748,8 +7748,8 @@ void create_default_consumer_sp(Parse *p, char *spname)
 
 }
 static int comdb2GetHashPartitionParams(Parse* pParse, IdList *pColumn, IdList *pPartitions,
-                                       char cols[][MAXCOLNAME], uint32_t *oNumPartitions, uint32_t *oNumColumns,
-                                       char partitions[][MAXPARTITIONLEN])
+                                       char ***cols, uint32_t *oNumPartitions, uint32_t *oNumColumns,
+                                       char ***partitions)
 {
     int column_exists = 0;
     struct comdb2_column *cur_col;
@@ -7764,6 +7764,7 @@ static int comdb2GetHashPartitionParams(Parse* pParse, IdList *pColumn, IdList *
 
     /* Copy the sharding key names after asserting their existence in the table*/
     *oNumColumns = pColumn->nId;
+    *cols = (char **)malloc(sizeof(char *) * pColumn->nId);
     int i;
     for (i=0; i <pColumn->nId;i++) {
         column_exists = 0;
@@ -7780,16 +7781,64 @@ static int comdb2GetHashPartitionParams(Parse* pParse, IdList *pColumn, IdList *
             return -1;
         } else {
             // column exists, copy it
-            strncpy0(cols[i], pColumn->a[i].zName, strlen(pColumn->a[i].zName) + 1);
+            *cols[i] = strdup(pColumn->a[i].zName);
         }
     }
 
     /*Copy the table partition names*/
     *oNumPartitions = pPartitions->nId;
+    *partitions = (char **)malloc(sizeof(char *) * pPartitions->nId);
     for(i=0;i<pPartitions->nId;i++) {
-        strncpy0(partitions[i], pPartitions->a[i].zName, strlen(pPartitions->a[i].zName)+1);
+        *partitions[i] = strdup(pPartitions->a[i].zName);
     }
     return 0;
+}
+
+struct comdb2_partition *_get_comdb2_hash_partition(Parse *pParse, IdList *pColumn, IdList *pPartitions,  int remove) {
+    struct comdb2_partition *partition;
+    partition = _get_partition(pParse, 0);
+    partition->type = PARTITION_ADD_COL_HASH;
+    int column_exists = 0;
+    struct comdb2_column *cur_col;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return NULL;
+    }
+
+    assert(pColumn!=0 && pColumn->nId>0);
+
+    /* Copy the sharding key names after asserting their existence in the table*/
+    partition->u.hash.num_columns = pColumn->nId;
+    partition->u.hash.columns = (char **)malloc(sizeof(char *) * pColumn->nId);
+    int i;
+    for (i=0; i <pColumn->nId;i++) {
+        column_exists = 0;
+        LISTC_FOR_EACH(&ctx->schema->column_list, cur_col, lnk)
+        {
+            if ((strcasecmp(pColumn->a[i].zName, cur_col->name) == 0)) {
+                column_exists = 1;
+                break;
+            }
+        }
+        if (column_exists==0) {
+            setError(pParse, SQLITE_MISUSE, comdb2_asprintf("Column %s does not exist",
+                    pColumn->a[i].zName));
+            return NULL;
+        } else {
+            // column exists, copy it
+            partition->u.hash.columns[i] = strdup(pColumn->a[i].zName);
+        }
+    }
+
+    /*Copy the table partition names*/
+    partition->u.hash.num_partitions = pPartitions->nId;
+    partition->u.hash.partitions = (char **)malloc(sizeof(char *) * pPartitions->nId);
+    for(i=0;i<pPartitions->nId;i++) {
+        partition->u.hash.partitions[i] = strdup(pPartitions->a[i].zName);
+    }
+    return partition;
 }
 
 void comdb2CreateHashPartition(Parse *pParse, IdList *pColumn, IdList *pPartitions, int createPartitions, int createTables)
@@ -7800,19 +7849,18 @@ void comdb2CreateHashPartition(Parse *pParse, IdList *pColumn, IdList *pPartitio
         return;
     }
 
-    partition = _get_partition(pParse, 0);
+    partition = _get_comdb2_hash_partition(pParse,pColumn,pPartitions, 0);
     if (!partition)
         return;
 
-    partition->type = PARTITION_ADD_COL_HASH;
-    if (comdb2GetHashPartitionParams(pParse, pColumn, pPartitions,
-                                    partition->u.hash.columns,
+    /*if (comdb2GetHashPartitionParams(pParse, pColumn, pPartitions,
+                                    &partition->u.hash.columns,
                                     (uint32_t*)&partition->u.hash.num_partitions,
                                     (uint32_t*)&partition->u.hash.num_columns,
-                                    partition->u.hash.partitions)) {
+                                    &partition->u.hash.partitions)) {
         free_ddl_context(pParse);
         return;
-    }
+    }*/
 
     GET_CLNT;
     if (clnt && clnt->sql) {

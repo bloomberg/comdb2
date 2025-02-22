@@ -134,13 +134,15 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
                sizeof(p->u.mergetable.version);
 	case PARTITION_ADD_COL_HASH:
         for (int i = 0; i < p->u.hash.num_partitions; i++) {
-            shardNamesSize += sizeof(p->u.hash.partitions[i]);
+            logmsg(LOGMSG_USER, "length of %s is %ld\n", p->u.hash.partitions[i], strlen(p->u.hash.partitions[i]));
+            shardNamesSize += sizeof(size_t) + strlen(p->u.hash.partitions[i]);
         }
 
         for (int i = 0; i < p->u.hash.num_columns; i++) {
-            columnNamesSize += sizeof(p->u.hash.columns[i]);
+            logmsg(LOGMSG_USER, "length of %s is %ld\n", p->u.hash.columns[i], strlen(p->u.hash.columns[i]));
+            columnNamesSize += sizeof(size_t) + strlen(p->u.hash.columns[i]);
         }
-        return sizeof(p->type) + sizeof(p->u.hash.viewname) + sizeof(p->u.hash.num_partitions) + 
+        return sizeof(p->type) + sizeof(size_t) + strlen(p->u.hash.viewname) + sizeof(p->u.hash.num_partitions) + 
             sizeof(p->u.hash.num_columns) + shardNamesSize + columnNamesSize;
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
@@ -450,15 +452,17 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
             break;
         }
         case PARTITION_ADD_COL_HASH: {
-            strncpy(s->partition.u.hash.viewname,sc->hashviewname, sizeof(s->partition.u.hash.viewname));
+            s->partition.u.hash.viewname = strdup(sc->hashviewname);
             s->partition.u.hash.num_partitions = sc->hashnumpartitions;
             s->partition.u.hash.num_columns = sc->hashnumcolumns;
+            s->partition.u.hash.partitions = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_partitions);
+            s->partition.u.hash.columns = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_columns);
             for (int i=0;i < sc->n_hashcolumns; i++) {
-                strncpy(s->partition.u.hash.columns[i], sc->hashcolumns[i], sizeof(s->partition.u.hash.columns[i]));
+                s->partition.u.hash.columns[i] = strdup(sc->hashcolumns[i]);
             }
 
             for(int i=0; i<sc->n_hashpartitions;i++) {
-                strncpy(s->partition.u.hash.partitions[i], sc->hashpartitions[i], sizeof(s->partition.u.hash.partitions[i]));
+                s->partition.u.hash.partitions[i] = strdup(sc->hashpartitions[i]);
             }
             s->partition.u.hash.createQuery = strdup(sc->hashcreatequery);
             break;
@@ -487,7 +491,7 @@ void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, v
 
 void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
 {
-
+    size_t len = 0;
     if (p_buf >= p_buf_end) return NULL;
 
     p_buf = buf_put(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
@@ -614,16 +618,22 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
         break;
     }
 	case PARTITION_ADD_COL_HASH: {
-        p_buf = buf_no_net_put(s->partition.u.hash.viewname, sizeof(s->partition.u.hash.viewname), p_buf, p_buf_end);
+        len = strlen(s->partition.u.hash.viewname);
+        p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
+        p_buf = buf_no_net_put(s->partition.u.hash.viewname, strlen(s->partition.u.hash.viewname), p_buf, p_buf_end);
         p_buf = buf_put(&s->partition.u.hash.num_columns, sizeof(s->partition.u.hash.num_columns), p_buf, p_buf_end);
         for (int i = 0; i < s->partition.u.hash.num_columns; i++) {
+            len = strlen(s->partition.u.hash.columns[i]);
+            p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
             p_buf =
-                buf_no_net_put(s->partition.u.hash.columns[i], sizeof(s->partition.u.hash.columns[i]), p_buf, p_buf_end);
+                buf_no_net_put(s->partition.u.hash.columns[i], strlen(s->partition.u.hash.columns[i]), p_buf, p_buf_end);
         }
         p_buf = buf_put(&s->partition.u.hash.num_partitions, sizeof(s->partition.u.hash.num_partitions), p_buf, p_buf_end);
         for (int i = 0; i < s->partition.u.hash.num_partitions; i++) {
+            len = strlen(s->partition.u.hash.partitions[i]);
+            p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
             p_buf =
-                buf_no_net_put(s->partition.u.hash.partitions[i], sizeof(s->partition.u.hash.partitions[i]), p_buf, p_buf_end);
+                buf_no_net_put(s->partition.u.hash.partitions[i], strlen(s->partition.u.hash.partitions[i]), p_buf, p_buf_end);
         }
         break;
     }
@@ -877,7 +887,7 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
 void *buf_get_schemachange_v2(struct schema_change_type *s,
                               void *p_buf, void *p_buf_end)
 {
-
+    size_t len = 0;
     if (p_buf >= p_buf_end) return NULL;
 
     p_buf = (uint8_t *)buf_get(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
@@ -1046,19 +1056,34 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         break;
     }
     case PARTITION_ADD_COL_HASH: {
-        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.viewname, sizeof(s->partition.u.hash.viewname), p_buf,
+        p_buf = (uint8_t *)buf_get(&len, sizeof(len), p_buf, p_buf_end);
+        logmsg(LOGMSG_USER, "GOT LEN AS %ld for viewname\n", len);
+        s->partition.u.hash.viewname = (char *)malloc(sizeof(char) * len + 1);
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.viewname, len, p_buf,
                                           p_buf_end);
+            logmsg(LOGMSG_USER, "GOT VIEWNAME AS %s \n", s->partition.u.hash.viewname);
+            s->partition.u.hash.viewname[len]='\0';
         p_buf = (uint8_t *)buf_get(&s->partition.u.hash.num_columns, sizeof(s->partition.u.hash.num_columns), p_buf,
                                    p_buf_end);
+        s->partition.u.hash.columns = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_columns);
         for (int i = 0; i < s->partition.u.hash.num_columns; i++) {
-            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.columns[i], sizeof(s->partition.u.hash.columns[i]),
+            p_buf = (uint8_t *)buf_get(&len, sizeof(len), p_buf, p_buf_end);
+            logmsg(LOGMSG_USER, "GOT LEN AS %ld for column %d\n", len, i);
+            s->partition.u.hash.columns[i] = (char *)malloc(sizeof(char) * len + 1);
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.columns[i], len,
                                               p_buf, p_buf_end);
+            logmsg(LOGMSG_USER, "GOT COLUMN AS %s \n", s->partition.u.hash.columns[i]);
         }
         p_buf =
             (uint8_t *)buf_get(&s->partition.u.hash.num_partitions, sizeof(s->partition.u.hash.num_partitions), p_buf, p_buf_end);
+        s->partition.u.hash.partitions = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_partitions);
         for (int i = 0; i < s->partition.u.hash.num_partitions; i++) {
-            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.partitions[i], sizeof(s->partition.u.hash.partitions[i]), p_buf,
+            p_buf = (uint8_t *)buf_get(&len, sizeof(len), p_buf, p_buf_end);
+            logmsg(LOGMSG_USER, "GOT LEN AS %ld for partition %d\n", len, i);
+            s->partition.u.hash.partitions[i] = (char *)malloc(sizeof(char) * len + 1);
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.partitions[i], len, p_buf,
                                               p_buf_end);
+            logmsg(LOGMSG_USER, "GOT PARTITION AS %s \n", s->partition.u.hash.partitions[i]);
         }
         break;
     }

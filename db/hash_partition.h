@@ -15,8 +15,8 @@ typedef struct systable_hashpartitions {
 } systable_hashpartition_t;
 
 hash_view_t *create_hash_view(const char *viewname, const char *tablename, uint32_t num_columns,
-                            char columns[][MAXCOLNAME], uint32_t num_partitions,
-                            char partitions[][MAXPARTITIONLEN], struct errstat *err);
+                            char **columns, uint32_t num_partitions,
+                            char **partitions, struct errstat *err);
 int hash_create_inmem_view(hash_view_t *);
 int hash_destroy_inmem_view(hash_view_t *);
 const char *hash_view_get_viewname(struct hash_view *view);

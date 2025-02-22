@@ -838,11 +838,19 @@ static uint8_t *osqlcomm_schemachange_rpl_type_put(osql_rpl_t *hd, struct schema
 static uint8_t *osqlcomm_packed_schemachange_uuid_rpl_type_put(osql_uuid_rpl_t *hd, void *packed_sc, size_t sc_len,
                                                                uint8_t *p_buf, uint8_t *p_buf_end)
 {
+
+    logmsg(LOGMSG_USER, "sc_len: %ld, p_buf_end - p_buf : %ld\n", sc_len, p_buf_end - p_buf); 
     if (p_buf_end < p_buf || OSQLCOMM_UUID_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_put(hd, p_buf, p_buf_end);
+    if (!p_buf) {
+        logmsg(LOGMSG_USER, "osqlcomm_uuid_rpl_type_put returned NULL\n");
+    }
     p_buf = buf_no_net_put(packed_sc, sc_len, p_buf, p_buf_end);
+    if (!p_buf) {
+        logmsg(LOGMSG_USER, "buf_no_net_put returned NULL\n");
+    }
 
     return p_buf;
 }
@@ -852,6 +860,7 @@ static uint8_t *osqlcomm_schemachange_uuid_rpl_type_put(osql_uuid_rpl_t *hd, str
 {
     size_t sc_len = schemachange_packed_size(sc);
 
+    logmsg(LOGMSG_USER, "sc_len: %ld, p_buf_end - p_buf : %ld\n", sc_len, p_buf_end - p_buf); 
     if (p_buf_end < p_buf || OSQLCOMM_UUID_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
         return NULL;
 

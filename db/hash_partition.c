@@ -82,8 +82,8 @@ static void free_hash_view(hash_view_t *mView)
 }
 
 hash_view_t *create_hash_view(const char *viewname, const char *tablename, uint32_t num_columns,
-                            char columns[][MAXCOLNAME], uint32_t num_partitions,
-                            char partitions[][MAXPARTITIONLEN], struct errstat *err)
+                            char **columns, uint32_t num_partitions,
+                            char **partitions, struct errstat *err)
 {
     hash_view_t *mView;
 
@@ -94,6 +94,7 @@ hash_view_t *create_hash_view(const char *viewname, const char *tablename, uint3
         goto oom;
     }
 
+    logmsg(LOGMSG_USER, "CREATING A VIEW WITH NAME %s\n", viewname);
     mView->viewname = strdup(viewname);
     if (!mView->viewname) {
         logmsg(LOGMSG_ERROR, "%s: Failed to allocate view name string %s\n", __func__, viewname);
@@ -113,6 +114,7 @@ hash_view_t *create_hash_view(const char *viewname, const char *tablename, uint3
     }
 
     for (int i = 0; i < mView->num_keys; i++) {
+        logmsg(LOGMSG_USER, "ADDING COLUMN %s\n", columns[i]);
         mView->keynames[i] = strdup(columns[i]);
         if (!mView->keynames[i]) {
             logmsg(LOGMSG_ERROR, "%s: Failed to allocate key name string %s\n", __func__, columns[i]);
@@ -123,6 +125,7 @@ hash_view_t *create_hash_view(const char *viewname, const char *tablename, uint3
 
     mView->partitions = (char **)calloc(1, sizeof(char *) * num_partitions);
     for (int i = 0; i < num_partitions; i++) {
+        logmsg(LOGMSG_USER, "ADDING PARTITION %s\n", partitions[i]);
         mView->partitions[i] = strdup(partitions[i]);
         if (!mView->partitions[i]) {
             goto oom;
@@ -323,7 +326,7 @@ int hash_partition_llmeta_write(void *tran, hash_view_t *view, struct errstat *e
         goto done;
     }
 
-    logmsg(LOGMSG_USER, "%s\n", view_str);
+    logmsg(LOGMSG_USER, "WRITING THE VIEWS STRING : %s TO LLMETA\n", view_str);
     /* save the view */
     rc = hash_views_write_view(tran, view->viewname, view_str, 0);
     if (rc != VIEW_NOERR) {
