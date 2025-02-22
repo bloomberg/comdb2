@@ -367,6 +367,16 @@ extern char *gbl_kafka_brokers;
 extern int gbl_noleader_retry_duration_ms;
 extern int gbl_noleader_retry_poll_ms;
 
+extern int gbl_pgmv_verbose;
+extern int gbl_pgmv_unsafe_db_resize;
+extern int gbl_pgmv_max_num_pages_swapped_per_txn;
+extern int gbl_pgmv_only_process_pages_in_bufferpool;
+extern int gbl_pgmv_thr;
+extern int gbl_pgmv_thr_run_interval_ms;
+extern int gbl_pgmv_thr_overflow_run_interval_ms;
+extern int gbl_pgmv_thr_pause;
+extern int gbl_memp_fput_abort_on_double_return;
+
 /* util/ctrace.c */
 extern int nlogs;
 extern unsigned long long rollat;
