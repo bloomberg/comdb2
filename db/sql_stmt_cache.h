@@ -22,7 +22,7 @@
 */
 
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 
 #define MAX_HASH_SQL_LENGTH 8192
 #define HINT_LEN 127

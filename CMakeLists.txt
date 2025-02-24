@@ -46,9 +46,10 @@ endif()
 
 if(COMDB2_BBCMAKE)
   include(${COMDB2_BBCMAKE})
-  add_definitions(-DCOMDB2_BBCMAKE)
 else()
-configure_file(bbinc/plhash.in bbinc/plhash.h COPYONLY)
+  configure_file(bbinc/plhash.in bbinc/plhash.h COPYONLY)
+endif()
+
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake)
 find_package(LZ4 REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -74,8 +75,6 @@ if(WITH_QKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_QKAFKA)
 endif()
-
-endif(COMDB2_BBCMAKE)
 
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 

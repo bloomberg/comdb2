@@ -34,7 +34,7 @@ include_directories(
 set(NEWSQL_SRCS newsql.c newsql_sbuf.c newsql_evbuffer.c)
 add_plugin(newsql STATIC "${NEWSQL_SRCS}")
 add_dependencies(newsql sqlite) # Wait for parse.h
+target_link_libraries(newsql PUBLIC net)
 if (COMDB2_BBCMAKE)
-  target_link_libraries(newsql PUBLIC protobuf-c)
-  comdb2_bb_target(newsql)
+  comdb2_lib_target(newsql)
 endif()
