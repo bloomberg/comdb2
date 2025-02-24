@@ -7,5 +7,5 @@ include_directories(
 )
 
 if (COMDB2_BBCMAKE)
-  comdb2_bb_target(sockpool)
+  comdb2_lib_target(sockpool)
 endif()

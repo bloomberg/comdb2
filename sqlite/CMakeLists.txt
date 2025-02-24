@@ -230,11 +230,9 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
-add_dependencies(sqlite mem proto bdb)
 
+add_dependencies(sqlite mem proto bdb)
+target_link_libraries(sqlite PRIVATE cdb2archive)
 if (COMDB2_BBCMAKE)
-  target_link_libraries(sqlite PRIVATE cdb2archive protobuf-c uuid)
-  configure_bb_target(sqlite V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
-else()
-  target_link_libraries(sqlite PRIVATE cdb2archive)
+  comdb2_lib_target(sqlite)
 endif()

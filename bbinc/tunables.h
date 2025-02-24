@@ -17,7 +17,7 @@
 #ifndef _TUNABLES_H
 #define _TUNABLES_H
 
-#include "plhash.h"
+#include <plhash_glue.h>
 
 typedef enum {
     /*
