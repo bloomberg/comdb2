@@ -1012,6 +1012,11 @@ struct sqlclntstate {
     char *coordinator_tier;
     char *coordinator_master;
 
+    hash_t *authz_read_tables;
+    hash_t *authz_write_tables;
+
+    int allow_make_request;
+
     // coordinator participant information
     LISTC_T(struct participant) participants;
 

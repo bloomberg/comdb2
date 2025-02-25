@@ -83,6 +83,8 @@ static int check_user_password(struct sqlclntstate *clnt)
             (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
             !clnt->admin && !clnt->current_user.bypass_auth) {
         clnt->authdata = get_authdata(clnt);
+        if (clnt->allow_make_request)
+            return 0;
         if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux)
             return reject_anon_id(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
@@ -106,6 +108,7 @@ static int check_user_password(struct sqlclntstate *clnt)
                            errstr,
                            CDB2ERR_ACCESS);
          } else {
+             clnt->allow_make_request = 1;
              ATOMIC_ADD64(gbl_num_auth_allowed, 1);
          }
          return rc;
@@ -223,6 +226,10 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
                                                   : pCur->db->tablename;
 
+    if (clnt->authz_write_tables && table_name && hash_find_readonly(clnt->authz_write_tables, table_name)) {
+        return 0;
+    }
+
     if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite && !clnt->current_user.bypass_auth) {
         if ((authdata = get_authdata(clnt)) != NULL)
@@ -272,6 +279,9 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     }
     ATOMIC_ADD64(gbl_num_auth_allowed, 1);
     pCur->permissions |= ACCESS_WRITE;
+    if (clnt->authz_write_tables && table_name) {
+        hash_add(clnt->authz_write_tables, strdup(table_name));
+    }
     return 0;
 }
 
@@ -297,6 +307,9 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
     else if (rscName)
         table_name = rscName;
 
+    if (clnt->authz_read_tables && table_name && hash_find_readonly(clnt->authz_read_tables, table_name)) {
+        return 0;
+    }
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
@@ -347,6 +360,9 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
     if (pCur)
         pCur->permissions |= ACCESS_READ;
     ATOMIC_ADD64(gbl_num_auth_allowed, 1);
+    if (clnt->authz_read_tables && table_name) {
+        hash_add(clnt->authz_read_tables, strdup(table_name));
+    }
     return 0;
 }
 
