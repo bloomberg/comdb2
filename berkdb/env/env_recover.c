@@ -1529,7 +1529,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	} else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE|DB_RECOVERY_CKP)) != 0)
 		goto err;
 
-
 	/* Close all the db files that are open. */
 	if ((ret = __dbreg_close_files(dbenv)) != 0)
 		goto err;
@@ -2131,8 +2130,9 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 
 	DB_LSN recoverable_lsn;
 	ZERO_LSN(recoverable_lsn);
-	for (ret = __log_c_get(logc, &last_lsn, &data, DB_LAST), lsn =
-		last_lsn; ret == 0;
+	int done = 0;
+	for (ret = __log_c_get(logc, &last_lsn, &data, DB_LAST), lsn=last_lsn;
+		ret == 0 && !done;
 		ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
@@ -2164,6 +2164,10 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				recoverable_lsn = lsn;
 				logmsg(LOGMSG_DEBUG, "set gbl_recoverable_lsn as [%d][%d]\n",
 					lsn.file, lsn.offset);
+			}
+
+			if (bdb_recovery_timestamp_fulfills_log_age_requirement(ckp_args->timestamp)) {
+				done = 1;
 			}
 
 			break;

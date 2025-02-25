@@ -216,8 +216,15 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp, int 
     return 0;
 }
 
-static int bdb_checkpoint_list_ok_to_delete_log(int min_keep_logs_age,
-                                                int filenum)
+int bdb_recovery_timestamp_fulfills_log_age_requirement(int32_t recovery_timestamp)
+{
+    const bdb_state_type *bdb_state = thedb->bdb_env;
+
+    return (time(NULL) - recovery_timestamp) >= bdb_state->attr->min_keep_logs_age;
+}
+
+static int bdb_need_log_to_fulfill_log_age_requirement(int min_keep_logs_age,
+                                                       int filenum)
 {
     struct checkpoint_list *ckp = NULL;
     if (!ckp_lst_ready)
@@ -226,17 +233,13 @@ static int bdb_checkpoint_list_ok_to_delete_log(int min_keep_logs_age,
     LISTC_FOR_EACH(&ckp_lst, ckp, lnk)
     {
         /* find the first checkpoint which references a file that's larger than
-         * the deleted logfile */
+         * the logfile that we're considering deleting */
         if (ckp->ckp_lsn.file > filenum) {
-            /* the furthest point we can recover to is less than what we
-             * guaranteed the users*/
-            if (time(NULL) - ckp->timestamp < min_keep_logs_age) {
-                Pthread_mutex_unlock(&ckp_lst_mtx);
-                return 0;
-            } else {
-                Pthread_mutex_unlock(&ckp_lst_mtx);
-                return 1;
-            }
+            const int ckp_in_newer_logfile_can_be_oldest_ckp = bdb_recovery_timestamp_fulfills_log_age_requirement(ckp->timestamp);
+            const int need_logfile = !ckp_in_newer_logfile_can_be_oldest_ckp;
+
+            Pthread_mutex_unlock(&ckp_lst_mtx);
+            return need_logfile;
         }
     }
     Pthread_mutex_unlock(&ckp_lst_mtx);
@@ -324,7 +327,8 @@ void bdb_checkpoint_list_get_ckplsn_before_lsn(DB_LSN lsn, DB_LSN *lsnout)
     }
     Pthread_mutex_unlock(&ckp_lst_mtx);
 
-    /* huh?? not found? BUG BUG */
+    logmsg(LOGMSG_ERROR, "%s: Failed to find checkpoint LSN before %"PRIu32":%"PRIu32".\n",
+        __func__, lsn.file, lsn.offset);
     abort();
 }
 
@@ -3884,22 +3888,19 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
                 }
             }
 
-            if (gbl_new_snapisol_asof || gbl_modsnap_asof) {
-                /* check if we still can maintain snapshot that begin as of
-                 * min_keep_logs_age seconds ago */
-                if (!bdb_checkpoint_list_ok_to_delete_log(
+            if ((gbl_new_snapisol_asof || gbl_modsnap_asof)
+                && bdb_need_log_to_fulfill_log_age_requirement(
                         bdb_state->attr->min_keep_logs_age, filenum)) {
-                    Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
-                    if (bdb_state->attr->debug_log_deletion)
-                        logmsg(LOGMSG_USER, "not ok to delete log, log file needed "
-                                        "to recover to at least %ds ago\n",
-                                bdb_state->attr->min_keep_logs_age);
-                    if (ctrace_info)
-                        ctrace("not ok to delete log, log file needed to "
-                               "recover to at least %ds ago\n",
-                               bdb_state->attr->min_keep_logs_age);
-                    break;
-                }
+                Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
+                if (bdb_state->attr->debug_log_deletion)
+                    logmsg(LOGMSG_USER, "not ok to delete log, log file needed "
+                                    "to recover to at least %ds ago\n",
+                            bdb_state->attr->min_keep_logs_age);
+                if (ctrace_info)
+                    ctrace("not ok to delete log, log file needed to "
+                           "recover to at least %ds ago\n",
+                           bdb_state->attr->min_keep_logs_age);
+                break;
             }
 
             /* If we made it this far, we're willing to delete this file
