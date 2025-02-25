@@ -20,6 +20,8 @@
 struct bdb_state_tag;
 extern struct bdb_state_tag *gbl_bdb_state;
 
+int bdb_recovery_timestamp_fulfills_log_age_requirement(int32_t timestamp);
+
 /* Acquire the write lock.  If the current thread already holds the bdb read
  * lock then it is upgraded to a write lock.  If it already holds the write
  * lock then we just increase our reference count. */
