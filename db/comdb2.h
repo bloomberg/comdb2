@@ -1621,6 +1621,7 @@ extern int gbl_identity_cache_max;
 extern int gbl_authorization_cache_max;
 extern int gbl_authorization_cache_ageout;
 extern int gbl_authentication_cache_ageout;
+extern int gbl_cache_authz_perms;
 extern int gbl_iam_verbosity;
 extern char* gbl_foreign_metadb;
 extern char* gbl_foreign_metadb_class;

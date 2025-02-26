@@ -231,6 +231,7 @@ int gbl_identity_cache_max = 500;
 int gbl_authorization_cache_max = 2000;
 int gbl_authorization_cache_ageout = 600;
 int gbl_authentication_cache_ageout = 3000;
+int gbl_cache_authz_perms = 1;
 int gbl_iam_verbosity = 0;
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
