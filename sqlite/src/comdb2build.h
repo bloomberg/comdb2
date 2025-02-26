@@ -114,6 +114,7 @@ void comdb2Truncate(Parse*, Token*, Token*);
 void comdb2SchemachangeControl(Parse*, int, Token*, Token *);
 
 void comdb2bulkimport(Parse*, Token*, Token*, Token*, Token*);
+void comdb2Replace(Parse*, Token*, Token*, Token*);
 
 void comdb2CreateProcedure(Parse*, Token*, Token*, Token*);
 void comdb2DefaultProcedure(Parse*, Token*, Token*, int);

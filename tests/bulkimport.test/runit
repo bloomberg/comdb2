@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source fixtures.sh
+source constants.sh
+source util.sh
+
+MISMATCHED_CONFIG_TEST=0
+
+function test_flip_flop_import() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=foo
+		query_src_db "create table $src_tbl(i longlong default nextsequence)" && \
+		query_src_db "insert into $src_tbl default values" && \
+		query_dst_db "create table $dst_tbl(i longlong default nextsequence)" > /dev/null
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" && \
+		query_dst_db "insert into $dst_tbl default values" && \
+		query_src_db "replace table $src_tbl with LOCAL_$DST_DBNAME.$dst_tbl" && \
+		query_src_db "insert into $src_tbl default values" && \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" && \
+		> /dev/null
+
+		# Then
+		(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
+	)
+}
+
+function test_import_many_tables_over_table() {
+	(
+		# Given
+		local src_tbl_1=foo src_tbl_2=bar src_tbl_3=baz dst_tbl=foo
+		query_src_db "create table $src_tbl_1(i int unique)" && \
+		query_src_db "create table $src_tbl_2(i int unique)" && \
+		query_src_db "create table $src_tbl_3(i int unique)" && \
+		query_dst_db "create table $dst_tbl(i int unique)" && \
+		query_src_db "insert into $src_tbl_1 values(1)" && \
+		query_src_db "insert into $src_tbl_2 values(2)" && \
+		query_src_db "insert into $src_tbl_3 values(3)" \
+		> /dev/null
+		trap "query_src_db 'drop table $src_tbl_1';\
+			query_src_db 'drop table $src_tbl_2';\
+			query_src_db 'drop table $src_tbl_3';\
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_1" && \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_2" && \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_3" \
+		> /dev/null
+
+		# Then
+		(( rc == 0 )) && verify_eq $src_tbl_3 $dst_tbl
+	)
+}
+
+function test_multiple_imports_at_once() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=foo n_simultaneous_imports=8 pids=() rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		for i in $(seq $n_simultaneous_imports); do
+			query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
+			pids[${i}]=$!
+		done
+
+		for pid in ${pids[@]}; do
+			wait $pid || rc=1
+		done
+
+		# Then
+		(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
+	)
+}
+
+function test_mutual_simultaneous_import() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=foo n_mutual_imports=8 pids=() rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		for i in $(seq 1 2 $n_mutual_imports); do
+			query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
+			pids[${i}]=$!
+
+			query_src_db "replace table $src_tbl with LOCAL_$DST_DBNAME.$dst_tbl" >/dev/null &
+			pids[$((i+1))]=$!
+		done
+
+		for pid in ${pids[@]}; do
+			wait $pid || rc=1
+		done
+
+		# Then
+			# We can't assert equality of the tables:
+			# If the imports from src and dst are perfectly synchronized then the 
+			# tables will not be the same.
+			# Just make sure that the imports succeeded.
+		(( rc == 0 )) 
+	)
+}
+
+function test_heavy_traffic_import() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=foo n_insert_threads=7 src_pids=() dst_pids=() rc=0
+		query_src_db "create table $src_tbl(i longlong default nextsequence)" && \
+		query_src_db "create table save_$src_tbl(i longlong default nextsequence)" && \
+		query_src_db "insert into $src_tbl default values" && \
+		query_dst_db "create table $dst_tbl(i longlong default nextsequence)" > /dev/null
+		trap "query_src_db 'drop table $src_tbl'; query_src_db 'drop table save_$src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		for i in $(seq $n_insert_threads); do
+			query_in_loop query_src_db "insert into $src_tbl default values" .1 > /dev/null &
+			src_pids[${i}]=$!
+
+			query_in_loop query_dst_db "insert into $dst_tbl default values" .1 > /dev/null &
+			dst_pids[${i}]=$!
+		done
+
+		sleep 1
+
+		query_src_db "insert into save_$src_tbl select * from $src_tbl"
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
+
+		# Then
+		rc=$?
+
+		for pid in ${src_pids[@]} ${dst_pids[@]};
+		do
+			if ! ps -p $pid > /dev/null;
+			then
+				# PID failed
+				rc=1
+				break
+			fi
+			kill -9 $pid &> /dev/null
+		done
+
+		(( rc == 0 )) && verify_lt save_$src_tbl $dst_tbl
+	)
+}
+
+function test_import_when_dst_table_has_rev_constraints() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl_1=bar dst_tbl_2=baz rc=0
+		query_src_db "create table $src_tbl(i int unique)"
+		query_dst_db "create table $dst_tbl_1(i int unique)"
+		query_dst_db "create table $dst_tbl_2(i int, foreign key(i) references $dst_tbl_1(i))"
+		trap "query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl_2';
+			query_dst_db 'drop table $dst_tbl_1';" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl_1 with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
+
+		# Then
+		(( $? != 0 ))
+	)
+}
+
+function test_import_table_with_fk_constraints() {
+	(
+		# Given
+		local src_tbl_1=foo src_tbl_2=bar dst_tbl=baz rc=0
+		query_src_db "create table $src_tbl_1(i int unique)"
+		query_src_db "create table $src_tbl_2(i int, foreign key(i) references $src_tbl_1(i))"
+		query_dst_db "create table $dst_tbl(i int unique)"
+		trap "query_src_db 'drop table $src_tbl_2';
+			query_src_db 'drop table $src_tbl_1';
+			query_dst_db 'drop table $dst_tbl';" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_2" >/dev/null
+
+		# Then
+		(( $? != 0 ))
+	)
+}
+
+function test_multiple_imports_in_transaction() {
+	(
+		# Given
+		local src_tbl_1=foo src_tbl_2=bar dst_tbl_1=baz dst_tbl_2=corge rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl_1 $dst_tbl_1 > /dev/null
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl_2 $dst_tbl_2 > /dev/null
+		trap "query_src_db 'drop table $src_tbl_1';
+			query_src_db 'drop table $src_tbl_2';
+			query_dst_db 'drop table $dst_tbl_1';
+			query_dst_db 'drop table $dst_tbl_2'" EXIT
+
+		# When
+query_dst_db - >/dev/null <<EOF
+begin
+replace table $dst_tbl_1 with LOCAL_$SRC_DBNAME.$src_tbl_1
+replace table $dst_tbl_2 with LOCAL_$SRC_DBNAME.$src_tbl_2
+commit
+EOF
+		# Then
+		(( $? == 0 )) && verify_eq $src_tbl_1 $dst_tbl_1 && verify_eq $src_tbl_2 $dst_tbl_2
+	)
+}
+
+function test_unsupported_version() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+
+		set_src_semver "8.0.0"
+
+		trap "set_src_semver '8.1.0';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl"
+
+		# Then
+		(( $? != 0 ))
+	)
+}
+
+function run_basic_test() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=foo
+		$1 $src_tbl $dst_tbl > /dev/null
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
+
+		# Then
+		rc=$?
+
+		if (( MISMATCHED_CONFIG_TEST == 1 )); then
+			rc=$(( ! $rc )) # Databases with mismatched configs should fail every import.
+		else
+			(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
+			rc=$?
+		fi
+
+		return $rc
+	)
+}
+
+
+function test_basic() {
+	for fixture in $FIXTURES;
+	do
+		run_basic_test $fixture
+		rc=$?
+
+		if (( rc != 0 ));
+		then
+			echo_err "Failed $FUNCNAME with $fixture"
+			return $rc
+		fi
+	done
+}
+
+if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
+	 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
+	MISMATCHED_CONFIG_TEST=1
+	TESTS="test_basic"
+else
+	TESTS=$(compgen -A function | grep -oh "test_\w*")
+fi
+
+function main() {
+	set_src_semver "8.1.0"
+	set_dst_semver "8.1.0"
+
+	for testcase in $TESTS;
+	do
+		$testcase
+		failexit $? "Failed $testcase"
+		echo_err "Passed $testcase"
+	done
+}
+
+main

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+should_fail=0
+
+echo "------ Running test_compare_semver ------"
+if ${TESTSBUILDDIR}/test_compare_semver; then
+    echo "------ Passed ------"
+else
+    should_fail=1
+    echo "xxxxxx Failed xxxxxx"
+fi
+
+echo "------ Running test_str_util ------"
+if ${TESTSBUILDDIR}/test_str_util; then
+    echo "------ Passed ------"
+else
+    should_fail=1
+    echo "xxxxxx Failed xxxxxx"
+fi
+
+exit ${should_fail}

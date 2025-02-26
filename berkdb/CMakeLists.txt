@@ -48,8 +48,10 @@ set(BERK_C
   db/db_open.c
   db/db_overflow.c
   db/db_ovfl_vrfy.c
+  db/db_pgbless.c
   db/db_pgcompact.c
   db/db_pgdump.c
+  db/db_pgutil.c
   db/db_pr.c
   db/db_rec.c
   db/db_snaprec.c
