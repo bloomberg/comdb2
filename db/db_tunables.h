@@ -2358,6 +2358,9 @@ REGISTER_TUNABLE("sqlite_use_temptable_for_rowset",
 REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
                  TUNABLE_INTEGER, &gbl_identity_cache_max, READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("authentication_cache_ageout", "Max age of authentication cache (Default: 3000 seconds)",
+                 TUNABLE_INTEGER, &gbl_authentication_cache_ageout, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("max_authorization_cache", "Max cache size of authorized identities (Default: 2000)",
                  TUNABLE_INTEGER, &gbl_authorization_cache_max, READONLY, NULL, NULL, NULL, NULL);
 
