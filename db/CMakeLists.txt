@@ -36,6 +36,7 @@ set(src
   glue.c
   handle_buf.c
   history.c
+  import.c
   indices.c
   localrep.c
   lrucache.c
@@ -110,6 +111,7 @@ set(src
   osqluprec.c
   macc_glue.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
+  ${PROJECT_BINARY_DIR}/protobuf/importdata.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
@@ -178,6 +180,11 @@ set_source_files_properties(${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c PROPERT
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_uncategorized.h @ONLY)
+set_source_files_properties(
+  ${PROJECT_BINARY_DIR}/protobuf/importdata.pb-c.c
+  ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
+  PROPERTIES GENERATED TRUE
+)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}

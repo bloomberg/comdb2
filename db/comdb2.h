@@ -1597,7 +1597,11 @@ extern int64_t gbl_num_auth_denied;
 
 extern const char *const gbl_db_git_version_sha;
 extern const char gbl_db_version[];
+#ifdef COMDB2_TEST
+extern const char * gbl_db_semver; /* To support changing the semver in tests */
+#else
 extern const char gbl_db_semver[];
+#endif
 extern const char gbl_db_codename[];
 extern const char gbl_db_buildtype[];
 extern int gbl_sc_del_unused_files_threshold_ms;

@@ -28,6 +28,7 @@ add_library(bdb
   file.c
   fstdump.c
   genid.c
+  import.c
   info.c
   lite.c
   ll.c

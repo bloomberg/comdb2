@@ -42,6 +42,9 @@
 #include "macc_glue.h"
 #include "disttxn.h"
 
+extern int gbl_import_mode;
+extern char *gbl_import_src;
+extern char *gbl_import_table;
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
 extern int gbl_exit;
@@ -89,6 +92,10 @@ static struct option long_options[] = {
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
     {"tool", required_argument, NULL, 't'},
+    {"import", no_argument, &gbl_import_mode, 1},
+    {"tables", required_argument, NULL, 0},
+    {"src", required_argument, NULL, 0},
+    {"my-tier", required_argument, NULL, 0},
     {NULL, 0, NULL, 0}};
 // clang-format on
 
@@ -256,6 +263,9 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             logmsg(LOGMSG_WARN, "Invalid tool option, %s\n", optarg);
             exit(1);
             break;
+        case 17: /* tables */ gbl_import_table = optarg; break;
+        case 18: /* src */ gbl_import_src = optarg; break;
+        case 19: /* tier */ gbl_machine_class = optarg; break;
         }
     }
     // clang-format on
