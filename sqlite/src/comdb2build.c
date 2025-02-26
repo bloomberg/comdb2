@@ -28,6 +28,7 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
 #include "alias.h"
+#include "dohsql.h"
 
 #define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
 
@@ -39,13 +40,20 @@ extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
-
+extern int gbl_create_remote_tables;
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 int gbl_view_feature = 1;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
 extern void *comdb2_get_ddl_context(char *name);
+int createRemoteTables(struct comdb2_partition *partition);
+int createRemotePartitions(struct comdb2_partition *partition);
+int createLocalAliases(struct comdb2_partition *partition);
+void deleteRemoteTables(const char *, char **, int startIdx);
+void deleteRemotePartitions(const char *, char **, int startIdx);
+void free_comdb2_partition(struct comdb2_partition *partition);
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
@@ -186,21 +194,25 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     if (authenticateSC(dst, pParse))
         goto cleanup;
 
+    logmsg(LOGMSG_USER, "DST IS %s\n", dst);
     char *firstshard = timepart_shard_name(dst, 0, 0, NULL);
     if(!firstshard) {
         struct dbtable *db = get_dbtable_by_name(dst);
-
+        hash_view_t *hash_view = NULL;
+        hash_get_inmem_view(dst, &hash_view);
         if (table_exists) {
             *table_exists = (db) ? 1 : 0;
         }
 
-        if (db == NULL && (error_flag == ERROR_ON_TBL_NOT_FOUND)) {
+        if ((db == NULL && hash_view == NULL) && (error_flag == ERROR_ON_TBL_NOT_FOUND)) {
+            logmsg(LOGMSG_ERROR, "COULDN'T FIND VIEW\n");
             rc = setError(pParse, SQLITE_ERROR, "Table not found");
             goto cleanup;
-        }
+        } 
+
 
         struct dbview *view = get_view_by_name(dst);
-        if ((db != NULL || view != NULL) &&
+        if ((db != NULL || view != NULL || hash_view != NULL) &&
             (error_flag == ERROR_ON_TBL_FOUND)) {
             rc = setError(pParse, SQLITE_ERROR, "Table already exists");
             goto cleanup;
@@ -588,6 +600,8 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
         f->errorMsg = "Transactional DDL Error: Overlapping Tables";
     else if (f->rc)
         f->errorMsg = "Transactional DDL Error: Internal Errors";
+
+    free_comdb2_partition(&(s->partition));
     return f->rc;
 }
 
@@ -834,10 +848,11 @@ out:
     free_schema_change_type(sc);
 }
 
-void comdb2DropTable(Parse *pParse, SrcList *pName)
+void comdb2DropTable(Parse *pParse, SrcList *pName, int dropPartitions, int dropTables)
 {
     char *partition_first_shard = NULL;
-
+    hash_view_t *hashView = NULL;
+    char *viewName = NULL;
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -867,6 +882,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->same_schema = 1;
     sc->kind = SC_DROPTABLE;
     sc->nothrevent = 1;
+    hash_get_inmem_view(sc->tablename, &hashView);
     if(comdb2IsDryrun(pParse)){
         if(comdb2SCIsDryRunnable(sc)){
             sc->dryrun = 1;
@@ -879,6 +895,23 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     if (partition_first_shard)
         sc->partition.type = PARTITION_REMOVE;
 
+    if (hashView) {
+        sc->partition.type = PARTITION_REMOVE_COL_HASH; 
+        strncpy0(sc->tablename, hash_view_get_tablename(hashView), MAXTABLELEN);
+        logmsg(LOGMSG_USER, "SC->TABLENAME is %s\n", sc->tablename);
+        /* delete remote tables here */
+        if (dropTables) {
+            unlock_schema_lk();
+            deleteRemoteTables(hash_view_get_viewname(hashView), hash_view_get_partitions(hashView), hash_view_get_num_partitions(hashView) - 1);
+            rdlock_schema_lk();
+        }
+
+        if (dropPartitions) {
+            unlock_schema_lk();
+            deleteRemotePartitions(hash_view_get_viewname(hashView), hash_view_get_partitions(hashView), hash_view_get_num_partitions(hashView) - 1);
+            rdlock_schema_lk();
+        }
+    }
     tran_type *tran = curtran_gettran();
     int rc = get_csc2_file_tran(partition_first_shard ? partition_first_shard :
                                 sc->tablename, -1 , &sc->newcsc2, NULL, tran);
@@ -890,6 +923,12 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
+
+    /* We've validated schema file */
+    if (hashView) {
+        strncpy0(sc->tablename, hash_view_get_viewname(hashView), MAXTABLELEN);
+    }
+    logmsg(LOGMSG_USER, "%s DROPPING TABLE %s. partition type : %d\n", __func__, sc->tablename, sc->partition.type);
     if(sc->dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
                             (vdbeFuncArgFree)  &free_schema_change_type);
@@ -897,6 +936,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                         (vdbeFuncArgFree)&free_schema_change_type);
     free(partition_first_shard);
+    free(viewName);
     return;
 
 out:
@@ -5030,7 +5070,15 @@ void comdb2CreateTableEnd(
     if (sc == 0)
         goto oom;
 
-    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
+    if (ctx->partition && ctx->partition->type == PARTITION_ADD_COL_HASH) {
+        char tmp_str[MAXTABLELEN] = {0};
+        ctx->partition->u.hash.viewname = strdup(ctx->tablename); 
+        strcpy(tmp_str , "hash_");
+        strcpy(tmp_str + 5, ctx->tablename);
+        strcpy(sc->tablename, tmp_str);
+    } else {
+        memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
+    }
 
     sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;
@@ -7701,4 +7749,183 @@ void create_default_consumer_sp(Parse *p, char *spname)
     strcpy(sc->fname, version);
     comdb2prepareNoRows(v, p, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
 
+}
+static int comdb2GetHashPartitionParams(Parse* pParse, IdList *pColumn, IdList *pPartitions,
+                                       char ***cols, uint32_t *oNumPartitions, uint32_t *oNumColumns,
+                                       char ***partitions)
+{
+    int column_exists = 0;
+    struct comdb2_column *cur_col;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return -1;
+    }
+
+    assert(pColumn!=0 && pColumn->nId>0);
+
+    /* Copy the sharding key names after asserting their existence in the table*/
+    *oNumColumns = pColumn->nId;
+    *cols = (char **)malloc(sizeof(char *) * pColumn->nId);
+    int i;
+    for (i=0; i <pColumn->nId;i++) {
+        column_exists = 0;
+        LISTC_FOR_EACH(&ctx->schema->column_list, cur_col, lnk)
+        {
+            if ((strcasecmp(pColumn->a[i].zName, cur_col->name) == 0)) {
+                column_exists = 1;
+                break;
+            }
+        }
+        if (column_exists==0) {
+            setError(pParse, SQLITE_MISUSE, comdb2_asprintf("Column %s does not exist",
+                    pColumn->a[i].zName));
+            return -1;
+        } else {
+            // column exists, copy it
+            *cols[i] = strdup(pColumn->a[i].zName);
+        }
+    }
+
+    /*Copy the table partition names*/
+    *oNumPartitions = pPartitions->nId;
+    *partitions = (char **)malloc(sizeof(char *) * pPartitions->nId);
+    for(i=0;i<pPartitions->nId;i++) {
+        *partitions[i] = strdup(pPartitions->a[i].zName);
+    }
+    return 0;
+}
+
+void free_comdb2_partition(struct comdb2_partition *partition) {
+    if (!partition) return;
+    switch (partition->type) {
+        case PARTITION_ADD_COL_HASH: {
+                if (partition->u.hash.viewname) {
+                    free(partition->u.hash.viewname);
+                }
+                if (partition->u.hash.columns) {
+                    for(int i=0;i<partition->u.hash.num_columns;i++){
+                        if (partition->u.hash.columns[i]) {
+                            free(partition->u.hash.columns[i]);
+                        }
+                    }
+                    free(partition->u.hash.columns);
+                }
+                if (partition->u.hash.partitions) {
+                    for(int i=0;i<partition->u.hash.num_partitions;i++){
+                        if (partition->u.hash.partitions[i]) {
+                            free(partition->u.hash.partitions[i]);
+                        }
+                    }
+                    free(partition->u.hash.partitions);
+                }
+
+                if (partition->u.hash.createQuery) {
+                    free(partition->u.hash.createQuery);
+                }
+              break;
+              }
+        default:
+              break;
+    }
+}
+struct comdb2_partition *_get_comdb2_hash_partition(Parse *pParse, IdList *pColumn, IdList *pPartitions,  int remove) {
+    struct comdb2_partition *partition;
+    partition = _get_partition(pParse, 0);
+    partition->type = PARTITION_ADD_COL_HASH;
+    int column_exists = 0;
+    struct comdb2_column *cur_col;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return NULL;
+    }
+
+    assert(pColumn!=0 && pColumn->nId>0);
+
+    /* Copy the sharding key names after asserting their existence in the table*/
+    partition->u.hash.num_columns = pColumn->nId;
+    partition->u.hash.columns = (char **)malloc(sizeof(char *) * pColumn->nId);
+    int i;
+    for (i=0; i <pColumn->nId;i++) {
+        column_exists = 0;
+        LISTC_FOR_EACH(&ctx->schema->column_list, cur_col, lnk)
+        {
+            if ((strcasecmp(pColumn->a[i].zName, cur_col->name) == 0)) {
+                column_exists = 1;
+                break;
+            }
+        }
+        if (column_exists==0) {
+            setError(pParse, SQLITE_MISUSE, comdb2_asprintf("Column %s does not exist",
+                    pColumn->a[i].zName));
+            return NULL;
+        } else {
+            // column exists, copy it
+            partition->u.hash.columns[i] = strdup(pColumn->a[i].zName);
+        }
+    }
+
+    /*Copy the table partition names*/
+    partition->u.hash.num_partitions = pPartitions->nId;
+    partition->u.hash.partitions = (char **)malloc(sizeof(char *) * pPartitions->nId);
+    for(i=0;i<pPartitions->nId;i++) {
+        partition->u.hash.partitions[i] = strdup(pPartitions->a[i].zName);
+    }
+    return partition;
+}
+
+void comdb2CreateHashPartition(Parse *pParse, IdList *pColumn, IdList *pPartitions, int createPartitions, int createTables)
+{
+    struct comdb2_partition *partition;
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_comdb2_hash_partition(pParse,pColumn,pPartitions, 0);
+    if (!partition)
+        return;
+
+    /*if (comdb2GetHashPartitionParams(pParse, pColumn, pPartitions,
+                                    &partition->u.hash.columns,
+                                    (uint32_t*)&partition->u.hash.num_partitions,
+                                    (uint32_t*)&partition->u.hash.num_columns,
+                                    &partition->u.hash.partitions)) {
+        free_ddl_context(pParse);
+        return;
+    }*/
+
+    GET_CLNT;
+    if (clnt && clnt->sql) {
+        logmsg(LOGMSG_USER, "The sql query is %s\n", clnt->sql);
+        partition->u.hash.createQuery = strdup(clnt->sql);
+    } else {
+        if (!clnt) {
+            logmsg(LOGMSG_USER, "The client object is not available\n");
+            abort();
+        }
+    }
+    /* release schema lock here
+     * On a standalone db, the following create systems will deadlock on this
+     */
+    unlock_schema_lk();
+    if (createTables) {
+        logmsg(LOGMSG_USER, "CREATING REMOTE TABLES +++++++++++++++\n");
+        if (createRemoteTables(partition)) {
+            free_ddl_context(pParse);
+            setError(pParse, SQLITE_ABORT, "Failed to create remote tables"); 
+        }
+    }
+
+    if (createPartitions){
+        logmsg(LOGMSG_USER, "CREATING REMOTE PARTITIONS +++++++++++++++\n");
+        if (createRemotePartitions(partition)) {
+            free_ddl_context(pParse);
+            setError(pParse, SQLITE_ABORT, "Failed to create remote partitions"); 
+        }
+    }
+    rdlock_schema_lk();
 }

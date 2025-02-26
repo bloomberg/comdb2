@@ -81,11 +81,11 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=223)
+(KEYWORDS_COUNT=228)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
 (RESERVED_KW=66)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=157)
+(NONRESERVED_KW=162)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
@@ -181,6 +181,8 @@
 (name='CONVERTSLEEP', reserved='N')
 (name='COUNTER', reserved='N')
 (name='COVERAGE', reserved='N')
+(name='CREATEPARTITIONS', reserved='N')
+(name='CREATETABLES', reserved='N')
 (name='CRLE', reserved='N')
 (name='CURRENT', reserved='N')
 (name='CURRENT_DATE', reserved='N')
@@ -200,6 +202,8 @@
 (name='DISABLE', reserved='N')
 (name='DISTRIBUTION', reserved='N')
 (name='DO', reserved='N')
+(name='DROPPARTITIONS', reserved='N')
+(name='DROPTABLES', reserved='N')
 (name='DRYRUN', reserved='N')
 (name='EACH', reserved='N')
 (name='ENABLE', reserved='N')
@@ -251,6 +255,7 @@
 (name='PAGEORDER', reserved='N')
 (name='PARTITION', reserved='N')
 (name='PARTITIONED', reserved='N')
+(name='PARTITIONS', reserved='N')
 (name='PASSWORD', reserved='N')
 (name='PAUSE', reserved='N')
 (name='PENDING', reserved='N')
@@ -380,6 +385,7 @@
 (name='comdb2_files')
 (name='comdb2_fingerprints')
 (name='comdb2_functions')
+(name='comdb2_hashpartitions')
 (name='comdb2_index_usage')
 (name='comdb2_keycomponents')
 (name='comdb2_keys')

@@ -4220,7 +4220,11 @@ void sqlite3CreateView(Parse*,Token*,Token*,Token*,ExprList*,Select*,int,int);
   int sqlite3DbMaskAllZero(yDbMask);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3DropTable(Parse*, SrcList*, int, int, int, int);
+#else
 void sqlite3DropTable(Parse*, SrcList*, int, int);
+#endif
 void sqlite3CodeDropTable(Parse*, Table*, int, int);
 void sqlite3DeleteTable(sqlite3*, Table*);
 void sqlite3FreeIndex(sqlite3*, Index*);

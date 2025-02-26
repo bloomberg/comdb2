@@ -139,6 +139,15 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
             return SC_INTERNAL_ERROR;
         }
+    } else if (s->partition.type == PARTITION_REMOVE_COL_HASH && s->publish) {
+        struct errstat err = {0};
+        assert(s->newshard != NULL);
+        rc = hash_partition_llmeta_erase(tran, s->newhashpartition, &err);
+        if (rc) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            logmsg(LOGMSG_USER, "Failed to remove partition llmeta. rc: %d. err: %s\n", err.errval, err.errstr);
+            return SC_INTERNAL_ERROR;
+        }
     }
 
     live_sc_off(db);

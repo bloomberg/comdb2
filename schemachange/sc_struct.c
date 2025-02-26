@@ -94,6 +94,25 @@ void free_schema_change_type(struct schema_change_type *s)
     Pthread_cond_destroy(&s->condStart);
     Pthread_mutex_destroy(&s->mtxStart);
 
+    /*if (s->partition.type == PARTITION_ADD_COL_HASH) {
+        char *str = s->partition.u.hash.viewname;
+        if (str) free(str);
+        for(int i=0;i<s->partition.u.hash.num_columns;i++){
+            str = s->partition.u.hash.columns[i];
+            if (str) free(str);
+        }
+        if (s->partition.u.hash.columns) {
+            free(s->partition.u.hash.columns);
+        }
+        for(int i=0;i<s->partition.u.hash.num_partitions;i++){
+            str = s->partition.u.hash.partitions[i];
+            if (str) free(str);
+        }
+        if (s->partition.u.hash.partitions) {
+            free(s->partition.u.hash.partitions);
+        }
+    }*/
+
     if (s->sb && s->must_close_sb) {
         close_appsock(s->sb);
         s->sb = NULL;
@@ -101,6 +120,7 @@ void free_schema_change_type(struct schema_change_type *s)
     if (!s->onstack) {
         free(s);
     }
+
 }
 
 static size_t dests_field_packed_size(struct schema_change_type *s)
@@ -118,9 +138,12 @@ static size_t dests_field_packed_size(struct schema_change_type *s)
 
 static size_t _partition_packed_size(struct comdb2_partition *p)
 {
+    size_t shardNamesSize = 0;
+    size_t columnNamesSize = 0;
     switch (p->type) {
     case PARTITION_NONE:
     case PARTITION_REMOVE:
+    case PARTITION_REMOVE_COL_HASH:
         return sizeof(p->type);
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL:
@@ -129,6 +152,18 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_MERGE:
         return sizeof(p->type) + sizeof(p->u.mergetable.tablename) +
                sizeof(p->u.mergetable.version);
+	case PARTITION_ADD_COL_HASH:
+        for (int i = 0; i < p->u.hash.num_partitions; i++) {
+            logmsg(LOGMSG_USER, "length of %s is %ld\n", p->u.hash.partitions[i], strlen(p->u.hash.partitions[i]));
+            shardNamesSize += sizeof(size_t) + strlen(p->u.hash.partitions[i]);
+        }
+
+        for (int i = 0; i < p->u.hash.num_columns; i++) {
+            logmsg(LOGMSG_USER, "length of %s is %ld\n", p->u.hash.columns[i], strlen(p->u.hash.columns[i]));
+            columnNamesSize += sizeof(size_t) + strlen(p->u.hash.columns[i]);
+        }
+        return sizeof(p->type) + sizeof(size_t) + strlen(p->u.hash.viewname) + sizeof(p->u.hash.num_partitions) + 
+            sizeof(p->u.hash.num_columns) + shardNamesSize + columnNamesSize;
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
         abort();
@@ -257,21 +292,49 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     sc.qdb_file_ver = s->qdb_file_ver;
     sc.partition_type = s->partition.type;
     switch (s->partition.type) {
-    case PARTITION_ADD_TIMED:
-    case PARTITION_ADD_MANUAL: {
-        sc.has_tpperiod = 1;
-        sc.has_tpretention = 1;
-        sc.has_tpstart = 1;
-        sc.tpperiod = s->partition.u.tpt.period;
-        sc.tpretention = s->partition.u.tpt.retention;
-        sc.tpstart = s->partition.u.tpt.start;
-        break;
-    }
-    case PARTITION_MERGE: {
-        sc.has_tpmergeversion = 1;
-        sc.tpmergetable = s->partition.u.mergetable.tablename;
-        sc.tpmergeversion = s->partition.u.mergetable.version;
-    }
+        case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_MANUAL: {
+            sc.has_tpperiod = 1;
+            sc.has_tpretention = 1;
+            sc.has_tpstart = 1;
+            sc.tpperiod = s->partition.u.tpt.period;
+            sc.tpretention = s->partition.u.tpt.retention;
+            sc.tpstart = s->partition.u.tpt.start;
+            break;
+        }
+        case PARTITION_MERGE: {
+            sc.has_tpmergeversion = 1;
+            sc.tpmergetable = s->partition.u.mergetable.tablename;
+            sc.tpmergeversion = s->partition.u.mergetable.version;
+            break;
+        }
+        case PARTITION_ADD_COL_HASH: {
+           sc.has_hashnumpartitions = 1;
+           sc.has_hashnumcolumns = 1;
+           sc.hashviewname = s->partition.u.hash.viewname;
+           sc.hashnumpartitions = s->partition.u.hash.num_partitions;
+           sc.n_hashpartitions = s->partition.u.hash.num_partitions;
+           sc.hashnumcolumns = s->partition.u.hash.num_columns;
+           sc.n_hashcolumns = s->partition.u.hash.num_columns;
+           sc.hashcolumns = malloc(sizeof(char *) * s->partition.u.hash.num_columns);
+           if (!sc.hashcolumns) {
+               logmsg(LOGMSG_ERROR, "%s:%d, malloc failed\n", __func__, __LINE__);
+               return -1;
+           }
+           for (int i=0;i<s->partition.u.hash.num_columns;i++) {
+               sc.hashcolumns[i] = s->partition.u.hash.columns[i];
+           }
+           sc.hashpartitions = malloc(sizeof(char *) * s->partition.u.hash.num_partitions);
+           if (!sc.hashpartitions) {
+               logmsg(LOGMSG_ERROR, "%s:%d, malloc failed\n", __func__, __LINE__);
+               return -1;
+           }
+           for (int i=0;i<s->partition.u.hash.num_partitions;i++) {
+               sc.hashpartitions[i] = s->partition.u.hash.partitions[i];
+           }
+           sc.hashcreatequery = s->partition.u.hash.createQuery;
+           break;
+        }
     }
     /* if (sc_version > 3) {
      *    sc.has_optional = 1;
@@ -395,18 +458,35 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
     s->qdb_file_ver = sc->qdb_file_ver;
     s->partition.type = sc->partition_type;
     switch (sc->partition_type) {
-    case PARTITION_ADD_TIMED:
-    case PARTITION_ADD_MANUAL: {
-        s->partition.u.tpt.period = sc->tpperiod;
-        s->partition.u.tpt.retention = sc->tpretention;
-        s->partition.u.tpt.start = sc->tpstart;
-        break;
-    }
-    case PARTITION_MERGE: {
-        strncpy(s->partition.u.mergetable.tablename, sc->tpmergetable, sizeof(s->partition.u.mergetable.tablename));
-        s->partition.u.mergetable.tablename[sizeof(s->partition.u.mergetable.tablename) - 1] = '\0';
-        s->partition.u.mergetable.version = sc->tpmergeversion;
-    }
+        case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_MANUAL: {
+            s->partition.u.tpt.period = sc->tpperiod;
+            s->partition.u.tpt.retention = sc->tpretention;
+            s->partition.u.tpt.start = sc->tpstart;
+            break;
+        }
+        case PARTITION_MERGE: {
+            strncpy(s->partition.u.mergetable.tablename, sc->tpmergetable, sizeof(s->partition.u.mergetable.tablename));
+            s->partition.u.mergetable.tablename[sizeof(s->partition.u.mergetable.tablename) - 1] = '\0';
+            s->partition.u.mergetable.version = sc->tpmergeversion;
+            break;
+        }
+        case PARTITION_ADD_COL_HASH: {
+            s->partition.u.hash.viewname = strdup(sc->hashviewname);
+            s->partition.u.hash.num_partitions = sc->hashnumpartitions;
+            s->partition.u.hash.num_columns = sc->hashnumcolumns;
+            s->partition.u.hash.partitions = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_partitions);
+            s->partition.u.hash.columns = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_columns);
+            for (int i=0;i < sc->n_hashcolumns; i++) {
+                s->partition.u.hash.columns[i] = strdup(sc->hashcolumns[i]);
+            }
+
+            for(int i=0; i<sc->n_hashpartitions;i++) {
+                s->partition.u.hash.partitions[i] = strdup(sc->hashpartitions[i]);
+            }
+            s->partition.u.hash.createQuery = strdup(sc->hashcreatequery);
+            break;
+        }
     }
 
     return 0;
@@ -431,7 +511,7 @@ void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, v
 
 void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
 {
-
+    size_t len = 0;
     if (p_buf >= p_buf_end) return NULL;
 
     p_buf = buf_put(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
@@ -555,6 +635,26 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
                         sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
         p_buf = buf_put(&s->partition.u.mergetable.version,
                         sizeof(s->partition.u.mergetable.version), p_buf, p_buf_end);
+        break;
+    }
+	case PARTITION_ADD_COL_HASH: {
+        len = strlen(s->partition.u.hash.viewname);
+        p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
+        p_buf = buf_no_net_put(s->partition.u.hash.viewname, strlen(s->partition.u.hash.viewname), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.hash.num_columns, sizeof(s->partition.u.hash.num_columns), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.hash.num_columns; i++) {
+            len = strlen(s->partition.u.hash.columns[i]);
+            p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
+            p_buf =
+                buf_no_net_put(s->partition.u.hash.columns[i], strlen(s->partition.u.hash.columns[i]), p_buf, p_buf_end);
+        }
+        p_buf = buf_put(&s->partition.u.hash.num_partitions, sizeof(s->partition.u.hash.num_partitions), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.hash.num_partitions; i++) {
+            len = strlen(s->partition.u.hash.partitions[i]);
+            p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
+            p_buf =
+                buf_no_net_put(s->partition.u.hash.partitions[i], strlen(s->partition.u.hash.partitions[i]), p_buf, p_buf_end);
+        }
         break;
     }
     }
@@ -807,7 +907,7 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
 void *buf_get_schemachange_v2(struct schema_change_type *s,
                               void *p_buf, void *p_buf_end)
 {
-
+    size_t len = 0;
     if (p_buf >= p_buf_end) return NULL;
 
     p_buf = (uint8_t *)buf_get(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
@@ -973,6 +1073,40 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
                                           sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
         p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version, sizeof(s->partition.u.mergetable.version), p_buf,
                                    p_buf_end);
+        break;
+    }
+    case PARTITION_ADD_COL_HASH: {
+        p_buf = (uint8_t *)buf_get(&len, sizeof(len), p_buf, p_buf_end);
+        logmsg(LOGMSG_USER, "GOT LEN AS %ld for viewname\n", len);
+        s->partition.u.hash.viewname = (char *)malloc(sizeof(char) * len + 1);
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.viewname, len, p_buf,
+                                          p_buf_end);
+            logmsg(LOGMSG_USER, "GOT VIEWNAME AS %s \n", s->partition.u.hash.viewname);
+            s->partition.u.hash.viewname[len]='\0';
+        p_buf = (uint8_t *)buf_get(&s->partition.u.hash.num_columns, sizeof(s->partition.u.hash.num_columns), p_buf,
+                                   p_buf_end);
+        s->partition.u.hash.columns = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_columns);
+        for (int i = 0; i < s->partition.u.hash.num_columns; i++) {
+            p_buf = (uint8_t *)buf_get(&len, sizeof(len), p_buf, p_buf_end);
+            logmsg(LOGMSG_USER, "GOT LEN AS %ld for column %d\n", len, i);
+            s->partition.u.hash.columns[i] = (char *)malloc(sizeof(char) * len + 1);
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.columns[i], len,
+                                              p_buf, p_buf_end);
+            s->partition.u.hash.columns[i][len]='\0';
+            logmsg(LOGMSG_USER, "GOT COLUMN AS %s \n", s->partition.u.hash.columns[i]);
+        }
+        p_buf =
+            (uint8_t *)buf_get(&s->partition.u.hash.num_partitions, sizeof(s->partition.u.hash.num_partitions), p_buf, p_buf_end);
+        s->partition.u.hash.partitions = (char **)malloc(sizeof(char *) * s->partition.u.hash.num_partitions);
+        for (int i = 0; i < s->partition.u.hash.num_partitions; i++) {
+            p_buf = (uint8_t *)buf_get(&len, sizeof(len), p_buf, p_buf_end);
+            logmsg(LOGMSG_USER, "GOT LEN AS %ld for partition %d\n", len, i);
+            s->partition.u.hash.partitions[i] = (char *)malloc(sizeof(char) * len + 1);
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.partitions[i], len, p_buf,
+                                              p_buf_end);
+            s->partition.u.hash.partitions[i][len]='\0';
+            logmsg(LOGMSG_USER, "GOT PARTITION AS %s \n", s->partition.u.hash.partitions[i]);
+        }
         break;
     }
     }

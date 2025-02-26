@@ -838,11 +838,19 @@ static uint8_t *osqlcomm_schemachange_rpl_type_put(osql_rpl_t *hd, struct schema
 static uint8_t *osqlcomm_packed_schemachange_uuid_rpl_type_put(osql_uuid_rpl_t *hd, void *packed_sc, size_t sc_len,
                                                                uint8_t *p_buf, uint8_t *p_buf_end)
 {
+
+    logmsg(LOGMSG_USER, "sc_len: %ld, p_buf_end - p_buf : %ld\n", sc_len, p_buf_end - p_buf); 
     if (p_buf_end < p_buf || OSQLCOMM_UUID_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_put(hd, p_buf, p_buf_end);
+    if (!p_buf) {
+        logmsg(LOGMSG_USER, "osqlcomm_uuid_rpl_type_put returned NULL\n");
+    }
     p_buf = buf_no_net_put(packed_sc, sc_len, p_buf, p_buf_end);
+    if (!p_buf) {
+        logmsg(LOGMSG_USER, "buf_no_net_put returned NULL\n");
+    }
 
     return p_buf;
 }
@@ -852,6 +860,7 @@ static uint8_t *osqlcomm_schemachange_uuid_rpl_type_put(osql_uuid_rpl_t *hd, str
 {
     size_t sc_len = schemachange_packed_size(sc);
 
+    logmsg(LOGMSG_USER, "sc_len: %ld, p_buf_end - p_buf : %ld\n", sc_len, p_buf_end - p_buf); 
     if (p_buf_end < p_buf || OSQLCOMM_UUID_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
         return NULL;
 
@@ -6525,6 +6534,39 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
 
+static int _process_single_table_sc_hash_partitioning(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+    struct errstat err = {0};
+    hash_view_t *view = NULL;
+    assert(sc->partition.type == PARTITION_ADD_COL_HASH || sc->partition.type == PARTITION_REMOVE_COL_HASH);
+
+    if (sc->partition.type == PARTITION_ADD_COL_HASH) {
+        /* create a hash based partition */
+        sc->newhashpartition = create_hash_view(sc->partition.u.hash.viewname, sc->tablename, sc->partition.u.hash.num_columns,
+                                       sc->partition.u.hash.columns, sc->partition.u.hash.num_partitions, sc->partition.u.hash.partitions, &err);
+        if (!sc->newhashpartition) {
+            logmsg(LOGMSG_ERROR, "Failed to create new Mod partition rc %d \"%s\"\n", err.errval, err.errstr);
+            sc_errf(sc, "Failed to create new Mod partition rc %d \"%s\"", err.errval, err.errstr);
+            rc = ERR_SC;
+            return rc;
+        }
+        view = sc->newhashpartition;
+    } else {
+        /* If it's a DROP then copy base table name */
+        /* Also, grab a pointer to the in-mem view structure */
+        hash_get_inmem_view(sc->tablename, &view);
+        sc->newhashpartition = view;
+        strncpy(sc->tablename, hash_view_get_tablename(view), sizeof(sc->tablename));
+    }
+    /* set publish and unpublish callbacks to create/destroy inmem views */
+    sc->publish = partition_publish;
+    sc->unpublish = partition_unpublish;
+
+    return _process_single_table_sc(iq);
+}
+
 static int _process_single_table_sc_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
@@ -6787,6 +6829,8 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
             rc = _process_single_table_sc(iq);
         } else if (sc->partition.type == PARTITION_MERGE) {
             rc = _process_single_table_sc_merge(iq);
+        } else if (sc->partition.type == PARTITION_ADD_COL_HASH || sc->partition.type == PARTITION_REMOVE_COL_HASH) {
+            rc = _process_single_table_sc_hash_partitioning(iq);
         } else {
             rc = _process_single_table_sc_partitioning(iq);
         }

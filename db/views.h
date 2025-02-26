@@ -12,6 +12,7 @@
 #include <sqlite3.h>
 #include "errstat.h"
 #include "cron.h"
+#include "hash_partition.h"
 
 enum view_type { VIEW_TIME_PARTITION };
 
@@ -61,6 +62,10 @@ enum view_partition_errors {
     VIEW_ERR_CREATE = -11 /* error with pthread create */
     ,
     VIEW_ERR_ALL_SHARDS = -12 /* last shard was processed */
+    ,
+    VIEW_ERR_NOTFOUND = -13 /* Could not find a view */
+    , 
+    VIEW_ERR_VALUE = -14 /* Error while setting a value */
 };
 
 typedef struct timepart_view timepart_view_t;
@@ -507,5 +512,9 @@ int logical_partition_next_rollout(const char *name);
  *  return the view matching the name, if any;
  */
 timepart_view_t *timepart_reaquire_view(const char *partname);
-
+int hash_serialize_view(hash_view_t *view, int *len, char **out);
+hash_view_t *hash_deserialize_view(const char *view_str, struct errstat *err);
+int hash_views_write_view(void *tran, const char *viewname, const char *str, int override);
+int hash_views_read_view(void *tran, const char *name, char **pstr);
+int hash_views_sqlite_update(hash_t *views, sqlite3 *db, struct errstat *err);
 #endif

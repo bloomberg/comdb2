@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/hrtime.sh
+
+shards=""
+SHARDS_LIST="$DBNAME $TERTIARY_DBNAME $SECONDARY_DBNAME"
+numshards=3
+# permissive maxtime because im killing my hardware
+export maxtime=300000
+export stopfile=./stopfile.txt
+
+export debug=1
+
+[[ $debug == "1" ]] && set -x
+
+export comdb2db_hosts="${SENARY_DBNAME}:1234"
+export COMDB2DB_DBNAME=${SENARY_DBNAME}
+export COMDB2DB_OPTIONS=${SENARY_CDB2_OPTIONS}
+export LOGDIR=$TESTDIR/logs
+export LONGINSERTTIME=10000
+
+export LONGUPDATETIME=30000
+export FAIL_ON_LONG_INSERT=1
+export UPDATE_SCOPE=5
+export DELETE_SCOPE=5
+
+#export DEBUGTRACE="--debugtrace"
+export DEBUGTRACE=""
+export FIGLET=$(which figlet)
+export keepup_on_failure=0
+
+function update_all_tunables
+{
+    # Update tunables
+    if [[ -z ${CLUSTER} ]]; then
+        $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+        $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+        $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+    else
+        for mach in ${CLUSTER}; do
+            $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+            $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+            $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+        done
+    fi
+}
+function create_comdb2db
+{
+    # Create comdb2db tables
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "create table if not exists clusters {`cat clusters.csc2`}" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "create table if not exists machines {`cat machines.csc2`}" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "create table if not exists databases {`cat databases.csc2`}" >/dev/null 2>&1
+
+    # Populate databases
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${DBNAME}', 1234) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${SECONDARY_DBNAME}', 1235) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${TERTIARY_DBNAME}', 1236) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${QUATERNARY_DBNAME}', 1237) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${QUINARY_DBNAME}', 1237) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${SENARY_DBNAME}', 1238) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${COMDB2DB_DBNAME}', 1239) on conflict do nothing" >/dev/null 2>&1
+
+    # Populate clusters
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${SECONDARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${TERTIARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${QUATERNARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${QUINARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${SENARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${COMDB2DB_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+
+    # Populate machines
+    if [[ -z ${CLUSTER} ]]; then
+        $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into machines(name, cluster, room) values ('localhost', 'KABOOM', 'NY') on conflict do nothing" >/dev/null 2>&1
+        comdb2db_hosts="${comdb2db_hosts}:localhost"
+    else
+        let nnodes=0
+        for mach in ${CLUSTER} ; do
+            $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into machines(name, cluster, room) values('${mach}', 'KABOOM', 'NY') on conflict do nothing" >/dev/null 2>&1
+            comdb2db_hosts="${comdb2db_hosts}:${mach}"
+            let nnodes=nnodes+1
+        done
+    fi
+    echo "Refreshing all tunables"
+    update_all_tunables
+}
+
+function setup {
+	create_comdb2db
+}
+function stop_all_databases
+{
+    for node in $CLUSTER ; do
+         kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${SENARY_DBNAME}.${node}.pid)
+    done
+}
+
+function fail_exit()
+{
+    echo "Failed $@" | tee ${DBNAME}.fail_exit # runtestcase script looks for this file
+    touch $stopfile
+    if [[ $keepup_on_failure == 0 ]]; then
+        stop_all_databases
+        exit -1
+    fi
+}
+
+function setup_testcase {
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE IF EXISTS test DROPPARTITIONS DROPTABLES"
+}
+
+function verify_metadata {
+	#for shard in $SHARDS_LIST; do
+		count=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "SELECT count(*) from comdb2_hashpartitions")
+		if [[ $count != $numshards ]]; then
+			fail_exit "verify_metadata failed on $shard. Expected $numshards shards but got $count shards"
+		fi
+		count=$($CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "SELECT count(*) from comdb2_hashpartitions")
+		if [[ $count != $numshards ]]; then
+			fail_exit "verify_metadata failed on $shard. Expected $numshards shards but got $count shards"
+		fi
+		count=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "SELECT count(*) from comdb2_hashpartitions")
+		if [[ $count != $numshards ]]; then
+			fail_exit "verify_metadata failed on $shard. Expected $numshards shards but got $count shards"
+		fi
+	#done	
+}
+
+function verify_remote_tables {
+	#for shard in $SHARDS_LIST; do
+		count=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "SELECT count(*) from comdb2_tables where tablename='t'")
+		if [[ $count != 1 ]]; then
+			fail_exit "verify_remote_tables failed on $shard. Expected 1 table but found $count shards"
+		fi
+		count=$($CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "SELECT count(*) from comdb2_tables where tablename='t'")
+		if [[ $count != 1 ]]; then
+			fail_exit "verify_remote_tables failed on $shard. Expected 1 table but found $count shards"
+		fi
+		count=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "SELECT count(*) from comdb2_tables where tablename='t'")
+		if [[ $count != 1 ]]; then
+			fail_exit "verify_remote_tables failed on $shard. Expected 1 table but found $count shards"
+		fi
+	#done	
+
+}
+
+function partition_only_test {
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE IF NOT EXISTS test(a int) PARTITIONED BY (a) PARTITIONS(${shards}) CREATEPARTITIONS CREATETABLES"
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE IF EXISTS test DROPPARTITIONS"
+	verify_remote_tables
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE IF NOT EXISTS test(a int) PARTITIONED BY (a) PARTITIONS(${shards}) CREATEPARTITIONS"
+	verify_metadata
+}
+
+function partition_with_remote_tables_test {
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE IF NOT EXISTS test(a int) PARTITIONED BY (a) PARTITIONS(${shards}) CREATEPARTITIONS CREATETABLES"
+	verify_metadata
+	verify_remote_tables
+}
+
+function partition_name_already_exists_table {
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE test(a int)"
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE test(a int) PARTITIONED BY (a) PARTITIONS(${shards}) CREATEPARTITIONS CREATETABLES"
+	if [[ $? == 0 ]]; then
+		fail_exit "partition_name_already_exists_table failed. Partition creation succeeded even when table with same name already exists."
+	fi
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE IF EXISTS test"
+}
+
+function partition_name_already_exists_partition {
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE test(a int) PARTITIONED BY (a) PARTITIONS(${shards}) CREATEPARTITIONS CREATETABLES"
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE test(a int) PARTITIONED BY (a) PARTITIONS(${shards}) CREATEPARTITIONS CREATETABLES"
+	if [[ $? == 0 ]]; then
+		fail_exit "partition_name_already_exists_partition failed. Partition creation succeeded even when partitioned table with same name already exists."
+	fi
+	$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE IF EXISTS test DROPPARTITIONS DROPTABLES"
+}
+
+function run_test {
+	testcase="testing only partition creation"
+	setup_testcase  
+	partition_only_test
+
+	testcase="testing partition and remote table creation"
+	setup_testcase
+	partition_with_remote_tables_test
+
+	testcase="testing partition creation with name collision with existing table"
+	setup_testcase
+	partition_name_already_exists_table
+
+	testcase="testing partition creation with name collision with existing partition"
+	setup_testcase
+	partition_name_already_exists_partition
+}
+
+rm $stopfile >/dev/null 2>&1 
+
+
+#$TERTIARY_DBNAME $QUATERNARY_DBNAME $QUINARY_DBNAME"
+for shard in $SHARDS_LIST; do
+	shards+=" '${shard}.t',"
+done
+
+# remove the last ','
+shards=`echo $shards | sed 's/.$//'`
+echo $shards
+echo $COMDB2DB_DBNAME 
+
+setup
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM COMDB2_TABLES"
+$CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "SELECT * FROM COMDB2_TABLES"
+$CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "SELECT * FROM COMDB2_TABLES"
+run_test
+stop_all_databases
+
+if [[ -f $stopfile ]]; then
+    echo "Testcase failed"
+    exit -1
+fi
+
+echo "Success"   
