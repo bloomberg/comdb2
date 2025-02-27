@@ -1063,10 +1063,14 @@ static int slow_replicants_count(unsigned int *count) {
 
     *count = 0;
 
+    /* tables are already indexed on dbname+host */
     sprintf(query,
-            "select count(*) from comdb2_physreps where cast(NOW() as "
-            "integer) - cast(last_keepalive as integer) >= %d",
-            gbl_physrep_hung_replicant_threshold);
+            "SELECT COUNT(*) FROM comdb2_physreps p JOIN comdb2_physrep_connections c "
+            "ON p.dbname = c.dbname "
+            "AND p.host = c.host "
+            "WHERE source_dbname = '%s' "
+            "AND now() - last_keepalive >= %d",
+            gbl_dbname, gbl_physrep_hung_replicant_threshold);
 
     cdb2_hndl_tp *repl_metadb;
     if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
