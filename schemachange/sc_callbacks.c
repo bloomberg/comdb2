@@ -31,7 +31,7 @@
 #include "sc_struct.h"
 #include "sc_rename_table.h"
 #include "alias.h"
-
+#include "gen_shard.h"
 extern void free_cached_idx(uint8_t **cached_idx);
 
 static int reload_rename_table(tran_type *tran, const char *name,
@@ -783,22 +783,23 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
         exit(1);
     }
 
-    if (arg) {
-        int partition_extract_dbnames(char *, char **, const char *);
-        rc = partition_extract_dbnames(arg, db->dbnames, __func__);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failure to extract dbnames rc %d\n", __func__, rc);
-            exit(1);
-        }
-    }
-
     add_dbtable_to_thedb_dbs(db);
 
     /* this is used by testgenshard, creating a partition name alias for the actual shard */
     char *sqlalias = NULL;
     rc = bdb_get_table_sqlalias_tran(db->tablename, tran, &sqlalias);
-    if (sqlalias)
+    if (sqlalias){
         hash_sqlalias_db(db, sqlalias);
+    }
+
+    /* 'dbnames' is passed as a string arg while finalizing an add of a generic sharded table */
+    if (arg && strcmp(arg, "dbnames") == 0 && db->sqlaliasname) {
+        rc = gen_shard_update_inmem_db(tran, db, db->sqlaliasname);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
+        }
+    }
+
 
     _master_recs(tran, tablename, type);
 

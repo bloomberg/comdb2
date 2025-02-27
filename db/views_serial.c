@@ -59,7 +59,7 @@
 
 static char *_concat(char *str, int *len, const char *fmt, ...);
 
-static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
+const char *cson_extract_str(cson_object *cson_obj, const char *param,
                                      struct errstat *err);
 static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
                                                          struct errstat *err);
@@ -414,7 +414,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
     cson_obj = cson_value_get_object(cson);
 
     /* check type */
-    type = _cson_extract_str(cson_obj, "TYPE", err);
+    type = cson_extract_str(cson_obj, "TYPE", err);
     if (!type) {
         goto error;
     }
@@ -543,7 +543,7 @@ static int _views_do_partition_destroy(void *tran, timepart_views_t *views,
 
     cson_obj = cson_value_get_object(cson);
 
-    viewname = _cson_extract_str(cson_obj, "NAME", err);
+    viewname = cson_extract_str(cson_obj, "NAME", err);
     if (!viewname) {
         goto error;
     }
@@ -959,14 +959,14 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
     }
     cson_obj = cson_value_get_object(cson_cmd);
 
-    op = _cson_extract_str(cson_obj, "COMMAND", err);
+    op = cson_extract_str(cson_obj, "COMMAND", err);
     if (!op) {
         goto error;
     }
 
     if (!strcasecmp(op, "CREATE")) {
         /* Time partition inherits shard0's permissions. */
-        const char *shard0 = _cson_extract_str(cson_obj, "SHARD0NAME", err);
+        const char *shard0 = cson_extract_str(cson_obj, "SHARD0NAME", err);
         if (!shard0) {
             rc = err->errval;
             goto error;
@@ -1202,7 +1202,7 @@ char *normalize_string(const char *str)
     return out;
 }
 
-static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
+const char *cson_extract_str(cson_object *cson_obj, const char *param,
                                      struct errstat *err)
 {
     cson_value *param_val;
@@ -1237,7 +1237,7 @@ static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
     return ret_str;
 }
 
-static int _cson_extract_int(cson_object *cson_obj, const char *param,
+int cson_extract_int(cson_object *cson_obj, const char *param,
                              struct errstat *err)
 {
     cson_value *param_val;
@@ -1276,7 +1276,7 @@ static int _cson_extract_int(cson_object *cson_obj, const char *param,
     return ret_int;
 }
 
-static cson_array *_cson_extract_array(cson_object *cson_obj, const char *param,
+cson_array *cson_extract_array(cson_object *cson_obj, const char *param,
                                        struct errstat *err)
 {
     cson_value *param_val;
@@ -1375,14 +1375,14 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
     }
 
     /* NAME */
-    tmp_str = _cson_extract_str(obj, "NAME", err);
+    tmp_str = cson_extract_str(obj, "NAME", err);
     if (!tmp_str) {
         goto error;
     }
     name = tmp_str;
 
     /* PERIOD */
-    tmp_str = _cson_extract_str(obj, "PERIOD", err);
+    tmp_str = cson_extract_str(obj, "PERIOD", err);
     if (!tmp_str) {
         goto error;
     }
@@ -1393,7 +1393,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
     }
 
     /* RETENTION */
-    retention = _cson_extract_int(obj, "RETENTION", err);
+    retention = cson_extract_int(obj, "RETENTION", err);
     if (retention < 0) {
         goto error;
     }
@@ -1402,7 +1402,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
     /* check for starttime */
     starttime = _cson_extract_start_string(obj, tmp_str, period, err);
 
-    tmp_str = _cson_extract_str(obj, "SOURCE_ID", err);
+    tmp_str = cson_extract_str(obj, "SOURCE_ID", err);
     if(!tmp_str)
         comdb2uuid_clear(source_id);
     else if (uuid_parse(tmp_str, source_id)) {
@@ -1410,7 +1410,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
         goto error;
         }
 
-        tmp_str = _cson_extract_str(obj, "ROLLOUT", err);
+        tmp_str = cson_extract_str(obj, "ROLLOUT", err);
         if (tmp_str) {
             if (strncasecmp(tmp_str, "truncate", sizeof("truncate") + 1)) {
                 errs = "Wrong ROLLOUT value";
@@ -1431,7 +1431,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
             goto error;
 
         /* TABLES */
-        tbl_arr = _cson_extract_array(obj, "TABLES", err);
+        tbl_arr = cson_extract_array(obj, "TABLES", err);
         if (!tbl_arr) {
             /* initial creation doesn't require a table section */
             bzero(err, sizeof(*err));
@@ -1458,7 +1458,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
         }
 
         /* TBLNAME */
-        tmp_str = _cson_extract_str(obj_arr, "TABLENAME", err);
+        tmp_str = cson_extract_str(obj_arr, "TABLENAME", err);
         if (!tmp_str) {
             goto error;
         }
@@ -1468,7 +1468,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
         }
 
         /* LOW */
-        view->shards[j].low = _cson_extract_int(obj_arr, "LOW", err);
+        view->shards[j].low = cson_extract_int(obj_arr, "LOW", err);
         if (view->rolltype == TIMEPART_ROLLOUT_ADDDROP &&
             (j == view->nshards - 1) && view->shards[j].low != INT_MIN) {
             errstat_set_rcstrf(
@@ -1479,7 +1479,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
         }
 
         /* HIGH */
-        view->shards[j].high = _cson_extract_int(obj_arr, "HIGH", err);
+        view->shards[j].high = cson_extract_int(obj_arr, "HIGH", err);
         if (view->rolltype == TIMEPART_ROLLOUT_ADDDROP && (j == 0) &&
             view->shards[j].high != INT_MAX) {
             errstat_set_rcstrf(
@@ -1492,7 +1492,7 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
 
 look_for_shard0:
     /* SHARD0NAME */
-    tmp_str = _cson_extract_str(obj, "SHARD0NAME", err);
+    tmp_str = cson_extract_str(obj, "SHARD0NAME", err);
     if (!tmp_str) {
         if (view->nshards != 1) {
             /* this catches cases when both TABLES and SHARD0NAME are missing!

@@ -85,15 +85,27 @@ void free_schema_change_type(struct schema_change_type *s)
     if (!s)
         return;
 
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-    if (s->partition.type == PARTITION_ADD_TESTGENSHARD && s->partition.u.testgenshard.dbnames) {
-        int i;
-        for (i = 0; i < 4; i++) {
-            free(s->partition.u.testgenshard.dbnames[i]);
+    if (s->partition.type == PARTITION_ADD_GENSHARD ) {
+        if (s->partition.u.genshard.dbnames) {
+            for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
+                free(s->partition.u.genshard.dbnames[i]);
+            }
+            free(s->partition.u.genshard.dbnames);
         }
-        free(s->partition.u.testgenshard.dbnames);
+        if (s->partition.u.genshard.columns) {
+            for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
+                free(s->partition.u.genshard.columns[i]);
+            }
+            free(s->partition.u.genshard.columns);
+        }
+
+        if (s->partition.u.genshard.shardnames) {
+            for (int i=0;i<s->partition.u.genshard.numdbs;i++) {
+                free(s->partition.u.genshard.shardnames[i]);
+            }
+            free(s->partition.u.genshard.shardnames);
+        }
     }
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
 
     free(s->newcsc2);
     free(s->sc_convert_done);
@@ -140,17 +152,24 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_MERGE:
         return sizeof(p->type) + sizeof(p->u.mergetable.tablename) +
                sizeof(p->u.mergetable.version);
-    case PARTITION_ADD_TESTGENSHARD: {
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        int sz = sizeof(p->type) + sizeof(p->u.testgenshard.tablename);
-        int i;
-        for (i = 0; i < 4; i++) {
-            sz += strlen(p->u.testgenshard.dbnames[i]) + 1;
+    case PARTITION_ADD_GENSHARD: {
+        int sz = sizeof(p->type) + sizeof(p->u.genshard.tablename);
+
+        sz += sizeof(p->u.genshard.numdbs);
+        for (int i = 0; i < p->u.genshard.numdbs; i++) {
+            sz += strlen(p->u.genshard.dbnames[i]) + 1;
+        }
+
+        sz += sizeof(p->u.genshard.numcols);
+        for (int i = 0; i < p->u.genshard.numcols; i++) {
+            sz += strlen(p->u.genshard.columns[i]) + 1;
+        }
+        for (int i = 0; i < p->u.genshard.numdbs; i++) {
+            sz += strlen(p->u.genshard.shardnames[i]) + 1;
         }
         return sz;
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
     }
-    case PARTITION_REM_TESTGENSHARD:
+    case PARTITION_REM_GENSHARD:
         return sizeof(p->type);
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
@@ -294,7 +313,43 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
         sc.has_tpmergeversion = 1;
         sc.tpmergetable = s->partition.u.mergetable.tablename;
         sc.tpmergeversion = s->partition.u.mergetable.version;
+        break;
     }
+    case PARTITION_ADD_GENSHARD: {
+         sc.genshardtablename = s->partition.u.genshard.tablename;
+         sc.has_genshardnumdbs = 1;
+         sc.genshardnumdbs = s->partition.u.genshard.numdbs;
+         sc.has_genshardnumcols = 1;
+         sc.genshardnumcols = s->partition.u.genshard.numcols;
+         sc.n_gensharddbnames = s->partition.u.genshard.numdbs;
+         sc.n_genshardcolumns = s->partition.u.genshard.numcols;
+         sc.n_genshardshardnames = s->partition.u.genshard.numdbs;
+         sc.gensharddbnames = malloc(sizeof(char*) * sc.genshardnumdbs);
+         if (!sc.gensharddbnames) {
+             logmsg(LOGMSG_ERROR, "%s:%d oom\n", __func__, __LINE__);
+             return -1;
+         }
+         for(int i=0;i<sc.genshardnumdbs;i++) {
+             sc.gensharddbnames[i] = s->partition.u.genshard.dbnames[i];
+         }
+         sc.genshardcolumns = malloc(sizeof(char*) * sc.genshardnumcols);
+         if (!sc.genshardcolumns) {
+             logmsg(LOGMSG_ERROR, "%s:%d oom\n", __func__, __LINE__);
+             return -1;
+         }
+         for(int i=0;i<sc.genshardnumcols;i++) {
+             sc.genshardcolumns[i] = s->partition.u.genshard.columns[i];
+         }
+         sc.genshardshardnames = malloc(sizeof(char*) * sc.genshardnumdbs);
+         if (!sc.genshardshardnames) {
+             logmsg(LOGMSG_ERROR, "%s:%d oom\n", __func__, __LINE__);
+             return -1;
+         }
+         for(int i=0;i<sc.genshardnumdbs;i++) {
+             sc.genshardshardnames[i] = s->partition.u.genshard.shardnames[i];
+         }
+         break;
+     }
     }
     /* if (sc_version > 3) {
      *    sc.has_optional = 1;
@@ -429,9 +484,27 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
         strncpy(s->partition.u.mergetable.tablename, sc->tpmergetable, sizeof(s->partition.u.mergetable.tablename));
         s->partition.u.mergetable.tablename[sizeof(s->partition.u.mergetable.tablename) - 1] = '\0';
         s->partition.u.mergetable.version = sc->tpmergeversion;
+        break;
+    }
+    case PARTITION_ADD_GENSHARD: {
+         strncpy(s->partition.u.genshard.tablename,sc->genshardtablename, sizeof(s->partition.u.genshard.tablename));
+         s->partition.u.genshard.numdbs = sc->genshardnumdbs;
+         s->partition.u.genshard.dbnames = (char **)malloc(sizeof(char *) * s->partition.u.genshard.numdbs);
+         for(int i=0;i<s->partition.u.genshard.numdbs;i++){
+             s->partition.u.genshard.dbnames[i] = strdup(sc->gensharddbnames[i]);
+         }
+         s->partition.u.genshard.numcols = sc->genshardnumcols;
+         s->partition.u.genshard.columns = (char **)malloc(sizeof(char *) * s->partition.u.genshard.numcols);
+         for(int i=0;i<s->partition.u.genshard.numcols;i++){
+             s->partition.u.genshard.columns[i] = strdup(sc->genshardcolumns[i]);
+         }
+         s->partition.u.genshard.shardnames = (char **)malloc(sizeof(char *) * s->partition.u.genshard.numdbs);
+         for(int i=0;i<s->partition.u.genshard.numdbs;i++){
+             s->partition.u.genshard.shardnames[i] = strdup(sc->genshardshardnames[i]);
+         }
+         break;
     }
     }
-
     return 0;
 }
 
@@ -454,7 +527,6 @@ void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, v
 
 void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
 {
-
     if (p_buf >= p_buf_end) return NULL;
 
     p_buf = buf_put(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
@@ -580,21 +652,30 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
                         sizeof(s->partition.u.mergetable.version), p_buf, p_buf_end);
         break;
     }
-    case PARTITION_ADD_TESTGENSHARD: {
-        p_buf = buf_no_net_put(s->partition.u.testgenshard.tablename,
-                        sizeof(s->partition.u.testgenshard.tablename), p_buf, p_buf_end);
-        int i;
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        for (i = 0; i < 4; i++) {
-            p_buf = buf_no_net_put(s->partition.u.testgenshard.dbnames[i],
-                    strlen(s->partition.u.testgenshard.dbnames[i]) + 1, p_buf, p_buf_end);
+    case PARTITION_ADD_GENSHARD: {
+        p_buf = buf_no_net_put(s->partition.u.genshard.tablename,
+                        sizeof(s->partition.u.genshard.tablename), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.genshard.numdbs,
+                        sizeof(s->partition.u.genshard.numdbs), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
+            p_buf = buf_no_net_put(s->partition.u.genshard.dbnames[i],
+                    strlen(s->partition.u.genshard.dbnames[i]) + 1, p_buf, p_buf_end);
         }
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        p_buf = buf_put(&s->partition.u.genshard.numcols,
+                        sizeof(s->partition.u.genshard.numcols), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
+            p_buf = buf_no_net_put(s->partition.u.genshard.columns[i],
+                    strlen(s->partition.u.genshard.columns[i]) + 1, p_buf, p_buf_end);
+        }
+        for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
+            p_buf = buf_no_net_put(s->partition.u.genshard.shardnames[i],
+                    strlen(s->partition.u.genshard.shardnames[i]) + 1, p_buf, p_buf_end);
+        }
+        break;
     }
-    case PARTITION_REM_TESTGENSHARD: {
+    case PARTITION_REM_GENSHARD: {
     }
     }
-
     return p_buf;
 }
 
@@ -1011,20 +1092,32 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
                                    p_buf_end);
         break;
     }
-    case PARTITION_ADD_TESTGENSHARD: {
-        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.testgenshard.tablename,
-                                          sizeof(s->partition.u.testgenshard.tablename),
+    case PARTITION_ADD_GENSHARD: {
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.genshard.tablename,
+                                          sizeof(s->partition.u.genshard.tablename),
                                           p_buf, p_buf_end);
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        int i;
-        s->partition.u.testgenshard.dbnames = malloc(4 * sizeof(char*));
-        for (i = 0; i < 4; i++) {
-            s->partition.u.testgenshard.dbnames[i] = strdup(p_buf);
-            p_buf += strlen(s->partition.u.testgenshard.dbnames[i]) + 1;
+        p_buf = (uint8_t *)buf_get(&s->partition.u.genshard.numdbs, sizeof(s->partition.u.genshard.numdbs), p_buf,
+                                   p_buf_end);
+        s->partition.u.genshard.dbnames = malloc(s->partition.u.genshard.numdbs * sizeof(char*));
+        for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
+            s->partition.u.genshard.dbnames[i] = strdup(p_buf);
+            p_buf += strlen(s->partition.u.genshard.dbnames[i]) + 1;
         }
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        p_buf = (uint8_t *)buf_get(&s->partition.u.genshard.numcols, sizeof(s->partition.u.genshard.numcols), p_buf,
+                                   p_buf_end);
+        s->partition.u.genshard.columns = malloc(s->partition.u.genshard.numcols * sizeof(char*));
+        for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
+            s->partition.u.genshard.columns[i] = strdup(p_buf);
+            p_buf += strlen(s->partition.u.genshard.columns[i]) + 1;
+        }
+        s->partition.u.genshard.shardnames = malloc(s->partition.u.genshard.numdbs * sizeof(char*));
+        for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
+            s->partition.u.genshard.shardnames[i] = strdup(p_buf);
+            p_buf += strlen(s->partition.u.genshard.shardnames[i]) + 1;
+        }
+        break;
     }
-    case PARTITION_REM_TESTGENSHARD: {
+    case PARTITION_REM_GENSHARD: {
     }
     }
 

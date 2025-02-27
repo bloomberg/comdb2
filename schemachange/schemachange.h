@@ -68,10 +68,10 @@ enum comdb2_partition_type {
     PARTITION_ADD_MANUAL = 21,
     PARTITION_ADD_COL_RANGE = 40,
     PARTITION_ADD_COL_HASH = 60,
-    PARTITION_ADD_TESTGENSHARD_COORD = 70,
-    PARTITION_ADD_TESTGENSHARD = 71,
-    PARTITION_REM_TESTGENSHARD_COORD = 72,
-    PARTITION_REM_TESTGENSHARD = 73,
+    PARTITION_ADD_GENSHARD_COORD = 70,
+    PARTITION_ADD_GENSHARD = 71,
+    PARTITION_REM_GENSHARD_COORD = 72,
+    PARTITION_REM_GENSHARD = 73,
 };
 
 struct comdb2_partition {
@@ -87,11 +87,14 @@ struct comdb2_partition {
             char tablename[MAXTABLELEN];
             int version;
         } mergetable;
-        struct genshard {
+        struct genericshard {
             char tablename[MAXTABLELEN];
-            /* this is for testing, hardcoded to 4 servers */
+            uint32_t numdbs;
             char **dbnames;
-        } testgenshard;
+            uint32_t numcols;
+            char **columns;
+            char **shardnames;
+        } genshard;
     } u;
 };
 

@@ -28,6 +28,7 @@
 (candidate='CHECK')
 (candidate='COLLATE')
 (candidate='COLUMN')
+(candidate='COLUMNS')
 (candidate='COMMIT')
 (candidate='COMMITSLEEP')
 (candidate='CONFLICT')
