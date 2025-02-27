@@ -146,7 +146,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "str_util.h" /* QUOTE */
 #include "machcache.h"
 #include "importdata.pb-c.h"
-
+#include "gen_shard.h"
 #define tokdup strndup
 
 char * gbl_file_copier = "scp";
@@ -2409,6 +2409,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
             break;
         }
 
+        /* A shard of a partitioned table has the partition name as an alias.
+         * Read the sharded table metadata. 
+         */
+        if (tbl->sqlaliasname) {
+            rc = gen_shard_update_inmem_db(tran, tbl, tbl->sqlaliasname);
+            if (rc) {
+                logmsg(LOGMSG_USER, "NOT UPDATING SHARD METADATA FOR TABLE %s\n", tbl->tablename);
+            }
+        }
         /* We only want to load older schema versions for ODH databases.  ODH
          * information is stored in the meta table (not the llmeta table), so
          * it's not loaded yet.

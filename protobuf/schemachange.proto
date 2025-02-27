@@ -47,4 +47,10 @@ message CDB2_Schemachange {
   optional uint64 tpstart = 44;
   optional string tpmergetable = 45;
   optional int32 tpmergeversion = 46;
+  optional string genshardtablename = 47;
+  optional int32 genshardnumdbs = 48;
+  optional int32 genshardnumcols = 49;
+  repeated string gensharddbnames = 50;
+  repeated string genshardcolumns = 51;
+  repeated string genshardshardnames = 52;
 }

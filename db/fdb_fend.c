@@ -6281,8 +6281,9 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
 }
 
 
-static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int nshards,
-                             char **dbnames, char **shardnames, char **sqls, enum ast_type type) 
+static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint32_t nshards,
+                             char **dbnames, uint32_t numcols, char **columns, char **shardnames,
+                             char **sqls, enum ast_type type) 
 {
     struct errstat err = {0};
     int i;
@@ -6306,7 +6307,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int n
     for(i = 0; i < nshards; i++) {
         if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname))) {
             pushes[i] = fdb_push_connector_create(dbnames[i], type == AST_TYPE_CREATE ?
-                                                  shardnames[i] : sc->partition.u.testgenshard.tablename,
+                                                  shardnames[i] : sc->partition.u.genshard.tablename,
                                                   myclass, local, 1, type);
             if (!pushes[i]) {
                 logmsg(LOGMSG_ERROR, "%s malloc shard push %d\n", __func__, i);
@@ -6323,24 +6324,68 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int n
         goto setup_error;
     }
 
-    const char *str[2];
-    int strl[2];
-    char *extra_set[2];
+    const char *str[6];
+    int strl[6];
+    char *extra_set[6];
+
+    char numdbs_str[3];
+    char numcols_str[3];
+    snprintf(numdbs_str, 3, "%d", nshards);
+    snprintf(numcols_str, 3, "%d", numcols);
 
     str[0] = "SET PARTITION NAME ";
     strl[0] = strlen(str[0]) + strlen(sc->tablename) + 1;
-    str[1] = "SET PARTITION DBS ";
-    strl[1] = strlen(str[1]) + 1;
+
+    str[1] = "SET PARTITION NUMDBS ";
+    strl[1] = strlen(str[1]) + strlen(numdbs_str) + 1;
+
+    str[2] = "SET PARTITION DBS ";
+    strl[2] = strlen(str[2]) + 1;
     for (i = 0; i < nshards; i++)
-        strl[1] += strlen(dbnames[i]) + 1;
+        strl[2] += strlen(dbnames[i]) + 1;
+
+    str[3] = "SET PARTITION NUMCOLS ";
+    strl[3] = strlen(str[3]) + strlen(numcols_str) + 1;
+
+    str[4] = "SET PARTITION COLS ";
+    strl[4] = strlen(str[4]) + 1;
+    for (i = 0; i < numcols; i++)
+        strl[4] += strlen(columns[i]) + 1;
+
+    str[5] = "SET PARTITION SHARDS ";
+    strl[5] = strlen(str[5]) + 1;
+    for (i = 0; i < nshards; i++)
+        strl[5] += strlen(shardnames[i]) + 1;
 
     extra_set[0] = alloca(strl[0]);
     extra_set[1] = alloca(strl[1]);
+    extra_set[2] = alloca(strl[2]);
+    extra_set[3] = alloca(strl[3]);
+    extra_set[4] = alloca(strl[4]);
+    extra_set[5] = alloca(strl[5]);
 
+    /* SET PARTITION NAME <tblname>*/
     snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->tablename);
-    int pos = snprintf(extra_set[1], strl[1], "%s", str[1]);
+
+    /* SET PARTITION NUMDBS <numdbs>*/
+    snprintf(extra_set[1], strl[1], "%s%s", str[1], numdbs_str);
+
+    /* SET PARTITION DBS <numdbs>*/
+    int pos = snprintf(extra_set[2], strl[2], "%s", str[2]);
     for (i = 0; i < nshards; i++)
-        pos += snprintf(&extra_set[1][pos], strl[1] - pos, "%s ", dbnames[i]);
+        pos += snprintf(&extra_set[2][pos], strl[2] - pos, "%s ", dbnames[i]);
+
+    /* SET PARTITION NUMCOLS <numcols>*/
+    snprintf(extra_set[3], strl[3], "%s%s", str[3], numcols_str);
+    /* SET PARTITION COLS <cols>*/
+    pos = snprintf(extra_set[4], strl[4], "%s", str[4]);
+    for (i = 0; i < numcols; i++)
+        pos += snprintf(&extra_set[4][pos], strl[4] - pos, "%s", columns[i]);
+
+    /* SET PARTITION SHARDS <shards>*/
+    pos = snprintf(extra_set[5], strl[5], "%s", str[5]);
+    for (i = 0; i < nshards; i++)
+        pos += snprintf(&extra_set[5][pos], strl[5] - pos, "%s ", shardnames[i]);
 
     /* start the transaction */
     for(i = 0; i < nshards; i++) {
@@ -6350,14 +6395,12 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int n
         do {
             if (!pushes[i]) {
                 /* this server */
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-                snprintf(sc->partition.u.testgenshard.tablename, sizeof(sc->tablename), "%s", sc->tablename);
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+                snprintf(sc->partition.u.genshard.tablename, sizeof(sc->tablename), "%s", sc->tablename);
                 snprintf(sc->tablename, sizeof(sc->tablename), "%s", shardnames[i]);
                 rc = osql_schemachange_logic(sc, 0);
             } else {
                 /* remote */
-                rc = handle_fdb_push_write(clnt, &err, 2, (const char **)&extra_set);
+                rc = handle_fdb_push_write(clnt, &err, 6, (const char **)&extra_set);
             }
         } while (0);
         clnt->sql = sql;
@@ -6409,29 +6452,28 @@ setup_error:
  * Run a distributed schema change to create a test generic sharding
  */
 int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames)
+                              char **dbnames, uint32_t numcols, char **columns, char **shardnames)
 {
     char **sqls = (char**)alloca(nshards * sizeof(char*));
     int i;
 
-    /* sc will be replicated for each shard, set the type here to testgenshard SHARD creation */
-    assert(sc->partition.type == PARTITION_ADD_TESTGENSHARD_COORD);
-    sc->partition.type = PARTITION_ADD_TESTGENSHARD;
+    /* sc will be replicated for each shard, set the type here to genshard SHARD creation */
+    assert(sc->partition.type == PARTITION_ADD_GENSHARD_COORD);
+    sc->partition.type = PARTITION_ADD_GENSHARD;
 
     bzero(sqls, nshards * sizeof(char*));
     /* create create sql statements */
     for(i = 0; i < nshards; i++) {
-        int len = sc->newcsc2_len + strlen(shardnames[i]) + 64;
+        int len = strlen(sc->newcsc2) + strlen(shardnames[i]) + 64;
         sqls[i] = malloc(len);
         if (!sqls[i]) {
             logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
             goto setup_error;
         }
-        /* snprintf(sqls[i], len, "create table %s_%s.\'%s\' {%s}", dbnames[i], shardnames[i], sc->newcsc2); */
         snprintf(sqls[i], len, "create table \'%s\' {%s}", shardnames[i], sc->newcsc2);
     }
 
-    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, sqls, AST_TYPE_CREATE);
+    return _running_dist_ddl(sc, errmsg, nshards, dbnames, numcols, columns, shardnames, sqls, AST_TYPE_CREATE);
 
 setup_error:
     for (i = 0; i < nshards && sqls[i]; i++) {
@@ -6443,15 +6485,17 @@ setup_error:
 /**
  * Run a distributed schema change to remove a test generic sharding
  */
-int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames)
+int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
 {
+    dbtable *tbl = get_dbtable_by_name(sc->tablename);
+    assert(tbl);
+    uint32_t nshards = tbl->numdbs;
     char **sqls = (char**)alloca(nshards * sizeof(char*));
     int i;
 
-    /* sc will be replicated for each shard, set the type here to testgenshard SHARD creation */
-    assert(sc->partition.type == PARTITION_REM_TESTGENSHARD_COORD);
-    sc->partition.type = PARTITION_REM_TESTGENSHARD;
+    /* sc will be replicated for each shard, set the type here to genshard SHARD creation */
+    assert(sc->partition.type == PARTITION_REM_GENSHARD_COORD);
+    sc->partition.type = PARTITION_REM_GENSHARD;
 
     bzero(sqls, nshards * sizeof(char*));
     /* create create sql statements */
@@ -6459,23 +6503,20 @@ int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int 
         /* NOTE: since we use an sqlalias at this point, use the partition name not the shard name
          * int len = strlen(shardnames[i]) + 64;
          */
-        int len = strlen(sc->partition.u.testgenshard.tablename) + 64;
+        int len = strlen(sc->partition.u.genshard.tablename) + 64;
 
         sqls[i] = malloc(len);
         if (!sqls[i]) {
             logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
             goto setup_error;
         }
-        snprintf(sqls[i], len, "drop table \'%s\'", sc->partition.u.testgenshard.tablename);
+        snprintf(sqls[i], len, "drop table \'%s\'", sc->partition.u.genshard.tablename);
     }
 
-    dbtable *tbl = get_dbtable_by_name(sc->tablename);
-    assert(tbl);
 
     /* this is not passed through syntax, it is retrieved from dbtable object */
-    dbnames = tbl->dbnames;
 
-    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, sqls, AST_TYPE_DROP);
+    return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, 0, NULL, tbl->shardnames, sqls, AST_TYPE_DROP);
 
 setup_error:
     for (i = 0; i < nshards && sqls[i]; i++) {

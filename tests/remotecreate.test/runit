@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
-
+set -x
 # Remote cursor moves testcase for comdb2
 ################################################################################
 
@@ -17,6 +17,10 @@ for required in $vars; do
     fi
 done
 
+shards=""
+SHARDS_LIST="$DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME"
+numshards=4
+
 S0_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default"
 S0_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
 S1_SQLT="cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} ${SECONDARY_DBNAME} default"
@@ -28,97 +32,120 @@ S3_SQL="cdb2sql ${QUATERNARY_CDB2_OPTIONS} ${QUATERNARY_DBNAME} default"
 
 OUT=log.txt
 
+export stopfile=./stopfile.txt
+
 rm ${OUT}
 
-function check()
+function fail_exit()
 {
-    shouldbe=$1
-
-    set -x 
-    $S0_SQLT "select * from comdb2_tables order by 1" >> $OUT
-    if (( $? != 0 )); then
-        echo "FAILURE to select from shard 0"
-        exit 1
-    fi
-    $S1_SQLT "select * from comdb2_tables order by 1" >> $OUT
-    if (( $? != 0 )); then
-        echo "FAILURE to select from shard 0"
-        exit 1
-    fi
-    $S2_SQLT "select * from comdb2_tables order by 1" >> $OUT
-    if (( $? != 0 )); then
-        echo "FAILURE to select from shard 0"
-        exit 1
-    fi
-    $S3_SQLT "select * from comdb2_tables order by 1" >> $OUT
-    if (( $? != 0 )); then
-        echo "FAILURE to select from shard 0"
-        exit 1
-    fi
-
-    if (( $shouldbe == 1 )) ; then
-        $S0_SQLT "select * from t2" >> $OUT
-        if (( $? != 0 )); then
-            echo "FAILURE to select from t2"
-            exit 1
-        fi
-        $S1_SQLT "select * from t2" >> $OUT
-        if (( $? != 0 )); then
-            echo "FAILURE to select from t2"
-            exit 1
-        fi
-        $S2_SQLT "select * from t2" >> $OUT
-        if (( $? != 0 )); then
-            echo "FAILURE to select from t2"
-            exit 1
-        fi
-        $S3_SQLT "select * from t2" >> $OUT
-        if (( $? != 0 )); then
-            echo "FAILURE to select from t2"
-            exit 1
-        fi
-    fi
+    echo "Failed $@" | tee ${DBNAME}.fail_exit # runtestcase script looks for this file
+    touch $stopfile
 }
 
-#run tests
-echo "Starting tests"
+function setup_testcase {
+	$S0_SQL "DROP TABLE IF EXISTS t"
+}
 
-check 0
+function verify_table {
+	tbl=$1
+	$S0_SQLT "SELECT * from ${tbl}"
+	if (( $? != 0 )); then
+		fail_exit "verify_table failed. Could not select from ${tbl} on ${DBNAME}"
+	fi
+	$S1_SQLT "SELECT * from ${tbl}"
+	if (( $? != 0 )); then
+		fail_exit "verify_table failed. Could not select from ${tbl} on ${SECONDARY_DBNAME}"
+	fi
+	$S2_SQLT "SELECT * from ${tbl}"
+	if (( $? != 0 )); then
+		fail_exit "verify_table failed. Could not select from ${tbl} on ${TERNARY_DBNAME}"
+	fi
+	$S2_SQLT "SELECT * from ${tbl}"
+	if (( $? != 0 )); then
+		fail_exit "verify_table failed. Could not select from ${tbl} on ${QUATERNARY_DBNAME}"
+	fi
+}
+function verify_llmeta {
+	expected=$1
+	result=$($S0_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
+	if [ "$entry" != "$expected" ]; then
+		fail_exit "verify_llmeta failed on $DBNAME. Expected $expected but got $entry"
+	fi
+	result=$($S1_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
+	if [ "$entry" != "$expected" ]; then
+		fail_exit "verify_llmeta failed on ${SECONDARY_DBNAME}. Expected $expected but got $entry"
+	fi
+	result=$($S2_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
+	if [ "$entry" != "$expected" ]; then
+		fail_exit "verify_llmeta failed on ${TERNARY_DBNAME}. Expected $expected but got $entry"
+	fi
+	result=$($S3_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
+	if [ "$entry" != "$expected" ]; then
+		fail_exit "verify_llmeta failed on ${QUATERNARY_DBNAME}. Expected $expected but got $entry"
+	fi
+}
 
-echo $S0_SQL "create table t2 (a int) partitioned by testgenshard(${DBNAME}, ${SECONDARY_DBNAME}, ${TERTIARY_DBNAME}, ${QUATERNARY_DBNAME})" 
-$S0_SQL "create table t2 (a int) partitioned by testgenshard(${DBNAME}, ${SECONDARY_DBNAME}, ${TERTIARY_DBNAME}, ${QUATERNARY_DBNAME})" >> $OUT
-if (( $? != 0 )) ; then
-    echo "FAILURE to create partition"
-    exit 1
+function test_creation_nonkey {
+	$S0_SQL "create table t(a int , b int) partitioned by columns(a) on (${shards})"
+	if (( $? == 0 )); then
+		fail_exit "test_creation succeeded. Should have failed creating a sharded table with a non-key sharding key"
+	fi
+}
+
+function test_deletion {
+	$S0_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+	if (( $? != 0 )); then
+		fail_exit "test_creation failed. Could not create table"
+	fi
+	verify_table "t"
+	$S0_SQL "drop table t"
+	verify_llmeta ''
+}
+
+function test_creation {
+	$S0_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+	if (( $? != 0 )); then
+		fail_exit "test_creation failed. Could not create table"
+	fi
+	verify_table "t"
+	expected="\"{\"t\":\"{\\\"TABLENAME\\\":\\\"t\\\",\\\"NUMDBS\\\":4,\\\"DBNAMES\\\":[\\\"${DBNAME}\\\",\\\"${SECONDARY_DBNAME}\\\",\\\"${TERTIARY_DBNAME}\\\",\\\"${QUATERNARY_DBNAME}\\\"],\\\"NUMCOLS\\\":1,\\\"COLUMNS\\\":[\\\"a\\\"],\\\"SHARDNAMES\\\":[\\\"\$1_t\\\",\\\"\$2_t\\\",\\\"\$3_t\\\",\\\"\$4_t\\\"]}\"}\""
+	verify_llmeta $expected
+}
+
+function run_test {
+	testcase="testing creation"
+	setup_testcase  
+	test_creation
+
+	testcase="testing deletion"
+	setup_testcase  
+	test_deletion
+
+	testcase="testing creation with non-key sharding key"
+	setup_testcase
+	test_creation_nonkey
+}
+
+rm $stopfile >/dev/null 2>&1 
+
+
+for shard in $SHARDS_LIST; do
+	shards+=" ${shard},"
+done
+
+# remove the last ','
+shards=`echo $shards | sed 's/.$//'`
+echo $shards
+
+run_test
+
+if [[ -f $stopfile ]]; then
+    echo "Testcase failed"
+    exit -1
 fi
 
-check 1
-
-echo $S0_SQL "drop table t2"
-$S0_SQL "drop table t2"
-if (( $? != 0 )) ; then
-    echo "FAILURE to drop partition"
-    exit 1
-fi
-
-check 0
-
-testcase_output=$(cat $OUT)
-expected_output=$(cat ${OUT}.exp)
-
-# verify 
-if [[ "$testcase_output" != "$expected_output" ]]; then
-
-    echo "  ^^^^^^^^^^^^"
-    echo "The above testcase (${testcase}) has failed!!!"
-    echo " "
-    echo "Use 'diff <expected-output> <my-output>' to see why:"
-    echo "> diff ${PWD}/{${OUT}.exp,${OUT}}"
-    echo " "
-    diff ${OUT}.exp ${OUT}
-    echo " "
-    exit 1
-
-fi  
-
-echo "SUCCESS"
+echo "Success"

@@ -1831,16 +1831,28 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         /* this is a distributed create for a partition, creating individual shard here, info passed from
          * SET OPTIONS through clnt struct
          */
-        /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        sc->partition.type = PARTITION_ADD_TESTGENSHARD;
-        snprintf(sc->partition.u.testgenshard.tablename, sizeof(sc->partition.u.testgenshard.tablename),
-                 "%s", clnt->remsql_set.tablename);
-        sc->partition.u.testgenshard.dbnames = malloc(sizeof(char*) * 4);
-        int i;
-        for (i = 0; i < 4; i++) {
-            sc->partition.u.testgenshard.dbnames[i] = strdup(clnt->remsql_set.dbnames[i]);
+        if (sc->kind == SC_ADDTABLE) { 
+            sc->partition.type = PARTITION_ADD_GENSHARD;
+        } else {
+            sc->partition.type = PARTITION_REM_GENSHARD;
         }
-        /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename),
+                 "%s", clnt->remsql_set.tablename);
+        sc->partition.u.genshard.numdbs = clnt->remsql_set.numdbs;
+        sc->partition.u.genshard.dbnames = malloc(sizeof(char*) * clnt->remsql_set.numdbs);
+        for (int i = 0; i < clnt->remsql_set.numdbs; i++) {
+            sc->partition.u.genshard.dbnames[i] = strdup(clnt->remsql_set.dbnames[i]);
+        }
+
+        sc->partition.u.genshard.numcols = clnt->remsql_set.numcols;
+        sc->partition.u.genshard.columns = malloc(sizeof(char*) * clnt->remsql_set.numcols);
+        for(int i=0;i<clnt->remsql_set.numcols;i++) {
+            sc->partition.u.genshard.columns[i] = strdup(clnt->remsql_set.columns[i]);
+        }
+        sc->partition.u.genshard.shardnames = malloc(sizeof(char*) * clnt->remsql_set.numdbs);
+        for (int i = 0; i < clnt->remsql_set.numdbs; i++) {
+            sc->partition.u.genshard.shardnames[i] = strdup(clnt->remsql_set.shardnames[i]);
+        }
     }
 
     if (clnt->ddl_tables) {
