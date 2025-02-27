@@ -24,6 +24,7 @@
 #include "sc_global.h"
 #include "sc_callbacks.h"
 #include "views.h"
+#include "gen_shard.h"
 
 static int delete_table(struct dbtable *db, tran_type *tran)
 {
@@ -125,6 +126,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
+
     /* if this is a shard, remove the llmeta partition entry */
     if (s->partition.type == PARTITION_REMOVE && s->publish) {
         if (!db->timepartition_name) {
@@ -137,6 +139,13 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         rc = partition_llmeta_delete(tran, s->timepartition_name, &err);
         if (rc) {
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            return SC_INTERNAL_ERROR;
+        }
+    } else if (s->partition.type == PARTITION_REM_GENSHARD) {
+        struct errstat err = {0};
+        rc = gen_shard_llmeta_remove(tran, db->sqlaliasname, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to remove llmeta entry for sharded table %s\n", s->tablename);
             return SC_INTERNAL_ERROR;
         }
     }

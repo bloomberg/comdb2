@@ -790,10 +790,12 @@ typedef struct dbtable {
     /* name of the timepartition, if this is a shard */
     const char *timepartition_name;
 
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */    
-    /* testgenshard stub */
-    char *dbnames[4];
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */    
+    /* generic sharding metadata */
+    uint32_t numdbs;
+    char **dbnames;
+    uint32_t numcols;
+    char **columns;
+    char **shardnames;
 } dbtable;
 
 struct dbview {
@@ -1919,7 +1921,7 @@ extern int gbl_dohsql_pool_thr_slack;
 extern int gbl_dohsql_sc_max_threads;
 extern int gbl_sockbplog;
 extern int gbl_sockbplog_sockpool;
-
+extern int gbl_gen_shard_verbose;
 extern int gbl_logical_live_sc;
 
 extern int gbl_test_io_errors;

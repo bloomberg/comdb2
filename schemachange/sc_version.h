@@ -18,6 +18,6 @@
 #define INCLUDE_SC_VERSION_H
 
 #define SC_MIN_VERSION 3
-#define SC_VERSION 3
+#define SC_VERSION 4
 
 #endif

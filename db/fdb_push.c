@@ -398,7 +398,6 @@ static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl,
         free(dts);
         return -1;
     }
-
     rc = cdb2_run_statement(hndl, clnt->sql);
     free(dts);
 
