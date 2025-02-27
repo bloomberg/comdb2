@@ -699,6 +699,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     listc_init(&sess->participants, offsetof(struct participant, linkv));
     sess->impl->clients = 1;
+    sess->is_qconsume_only = -1; /* unknown */
     /* defaults to net */
     init_bplog_net(&sess->target);
 
