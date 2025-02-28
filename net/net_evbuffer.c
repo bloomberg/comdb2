@@ -3900,5 +3900,6 @@ void do_revconn_evbuffer(int fd, short what, void *data)
     struct sockaddr_in addr;
     socklen_t laddr = sizeof(addr);
     getsockname(fd, (struct sockaddr *)&addr, &laddr);
-    do_appsock_evbuffer(buf, &addr, fd, 1, 0, NULL);
+    int badrte = 0;
+    do_appsock_evbuffer(buf, &addr, fd, 1, 0, &badrte);
 }
