@@ -1150,6 +1150,10 @@ clipper_usage:
            logmsg(LOGMSG_USER, "pageorder trace disabled\n");
         }
     } else if (tokcmp(tok, ltok, "delfiles") == 0) {
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_ERROR, "delfiles is invalid for physical replicants\n");
+            return -1;
+        }
         char table[MAXTABLELEN];
         int rc;
         int bdberr;
