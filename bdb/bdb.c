@@ -521,18 +521,10 @@ static int bdb_get_first_data_length_dbp(bdb_state_type *bdb_state, DB *dbp,
     /* Open a cursor on this data file. */
     rc = dbp->cursor(dbp, NULL, &dbcp, 0);
     if (rc != 0) {
-        switch (rc) {
-        case DB_REP_HANDLE_DEAD:
-            *bdberr = BDBERR_DEADLOCK;
-            break;
-
-        default:
-            logmsg(LOGMSG_ERROR, 
-                    "bdb_get_first_data_length_dbp: cursor open failed %d %s\n",
-                    rc, db_strerror(rc));
-            *bdberr = BDBERR_MISC;
-            break;
-        }
+        logmsg(LOGMSG_ERROR, 
+                "bdb_get_first_data_length_dbp: cursor open failed %d %s\n",
+                rc, db_strerror(rc));
+        *bdberr = BDBERR_MISC;
         return -1;
     }
 
@@ -551,7 +543,6 @@ static int bdb_get_first_data_length_dbp(bdb_state_type *bdb_state, DB *dbp,
         if (rc != 0) {
             switch (rc) {
             case DB_LOCK_DEADLOCK:
-            case DB_REP_HANDLE_DEAD:
                 *bdberr = BDBERR_DEADLOCK;
                 break;
 
