@@ -1058,7 +1058,7 @@ void physrep_update_low_file_num(int *lowfilenum, int *local_lowfilenum) {
 }
 
 static int slow_replicants_count(unsigned int *count) {
-    char query[200];
+    char query[400];
     int rc = 0;
 
     *count = 0;
