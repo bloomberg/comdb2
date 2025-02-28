@@ -1313,6 +1313,93 @@ function verify_generation
     fi
 }
 
+# Verify that physreps do not abort when given a delfiles directive
+function physrep_delfiles
+{
+    local dbname=""
+    local node=""
+    local cnt=""
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table fortrunc(a int)"
+    j=0
+    while [[ "$j" -lt "10" ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate fortrunc"
+        let j=j+1
+    done
+
+    # Verify that each physrep has this table
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER ; do
+            dbname="${REPL_DBNAME_PREFIX}_${node}"
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            while [[ "$cnt" -ne "1" ]]; do
+                sleep 1
+                cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            done
+        done
+    else
+        node=$(hostname)
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+        while [[ "$cnt" -ne "1" ]]; do
+            sleep 1
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+        done
+fi
+
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER ; do
+            dbname="${REPL_DBNAME_PREFIX}_${node}"
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('delfiles fortrunc')"
+        done
+    else
+        node=$(hostname)
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('delfiles fortrunc')"
+    fi
+
+    # verify that we can still query each physrep
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER ; do
+            dbname="${REPL_DBNAME_PREFIX}_${node}"
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select 1" >/dev/null 2>&1
+            if [[ $? -ne 0 ]]; then
+                cleanFailExit "Failed querying $dbname on $node"
+            fi
+        done
+    else
+        node=$(hostname)
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select 1" >/dev/null 2>&1
+        if [[ $? -ne 0 ]]; then
+            cleanFailExit "Failed querying $dbname on $node"
+        fi
+    fi
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table fortrunc"
+    # Block until physreps drop fortrunc
+    if [[ -n "$CLUSTER" ]]; then
+
+        for node in $CLUSTER ; do
+            dbname="${REPL_DBNAME_PREFIX}_${node}"
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            while [[ "$cnt" -ne "0" ]]; do
+                sleep 1
+                cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            done
+        done
+
+    else
+        node=$(hostname)
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+        while [[ "$cnt" -ne "0" ]]; do
+            sleep 1
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+        done
+    fi
+}
+
 # Call register-replicant directly- look at the list of machines returned .. 
 # Update the metadb info on the returned nodes to put them out of range, and
 # verify that they are not returned the next time
@@ -1502,6 +1589,11 @@ function run_tests
     testcase="verify_generation"
     testcase_preamble $testcase
     verify_generation
+    testcase_finish $testcase
+
+    testcase="physrep_delfiles"
+    testcase_preamble $testcase
+    physrep_delfiles
     testcase_finish $testcase
 
     testcase="phys_rep_nomatch"
