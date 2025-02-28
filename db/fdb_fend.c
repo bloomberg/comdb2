@@ -6207,13 +6207,14 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
 
 
 static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int nshards,
-                             char **dbnames, char **shardnames, char **tiers,
-                             char **sqls, enum ast_type type) 
+                             char **dbnames, char **shardnames, char **sqls, enum ast_type type) 
 {
     struct errstat err = {0};
     int i;
     fdb_push_connector_t **pushes;
     int rc;
+    int local = gbl_fdb_resolve_local;
+    enum mach_class myclass = get_my_mach_class();
 
     sqlclntstate *clnt = get_sql_clnt();
     if(!clnt) {
@@ -6229,12 +6230,9 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int n
     /* create create sql statements */
     for(i = 0; i < nshards; i++) {
         if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname))) {
-            int local = (strncasecmp(tiers[i], "local", 6) == 0) ||
-                        (strncasecmp(tiers[i], gbl_myhostname, strlen(gbl_myhostname)) + 1);
             pushes[i] = fdb_push_connector_create(dbnames[i], type == AST_TYPE_CREATE ?
                                                   shardnames[i] : sc->partition.u.testgenshard.tablename,
-                                                  get_mach_class(tiers[i]), local, 1,
-                                                  type);
+                                                  myclass, local, 1, type);
             if (!pushes[i]) {
                 logmsg(LOGMSG_ERROR, "%s malloc shard push %d\n", __func__, i);
                 goto setup_error;
@@ -6336,7 +6334,7 @@ setup_error:
  * Run a distributed schema change to create a test generic sharding
  */
 int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames, char **tiers)
+                              char **dbnames, char **shardnames)
 {
     char **sqls = (char**)alloca(nshards * sizeof(char*));
     int i;
@@ -6354,11 +6352,11 @@ int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int 
             logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
             goto setup_error;
         }
-        /* snprintf(sqls[i], len, "create table %s_%s.\'%s\' {%s}", tiers[i], dbnames[i], shardnames[i], sc->newcsc2); */
+        /* snprintf(sqls[i], len, "create table %s_%s.\'%s\' {%s}", dbnames[i], shardnames[i], sc->newcsc2); */
         snprintf(sqls[i], len, "create table \'%s\' {%s}", shardnames[i], sc->newcsc2);
     }
 
-    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, tiers, sqls, AST_TYPE_CREATE);
+    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, sqls, AST_TYPE_CREATE);
 
 setup_error:
     for (i = 0; i < nshards && sqls[i]; i++) {
@@ -6371,7 +6369,7 @@ setup_error:
  * Run a distributed schema change to remove a test generic sharding
  */
 int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames, char **tiers)
+                              char **dbnames, char **shardnames)
 {
     char **sqls = (char**)alloca(nshards * sizeof(char*));
     int i;
@@ -6402,7 +6400,7 @@ int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int 
     /* this is not passed through syntax, it is retrieved from dbtable object */
     dbnames = tbl->dbnames;
 
-    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, tiers, sqls, AST_TYPE_DROP);
+    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, sqls, AST_TYPE_DROP);
 
 setup_error:
     for (i = 0; i < nshards && sqls[i]; i++) {

@@ -589,17 +589,16 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
     #define NSHARDS 4
     int nshards = NSHARDS;
     char *shardnames[NSHARDS] = {"$0_t", "$1_t", "$2_t", "$3_t"};
-    char *tiers[NSHARDS] = {"LOCAL", "LOCAL", "LOCAL", "LOCAL"};
     /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
 
     /* if this is a generic sharding scheme, pass this to upper layer */
     if (s->partition.type == PARTITION_ADD_TESTGENSHARD_COORD) {
         /* running on coordinator replicant */
-        f->rc = osql_test_create_genshard(s, &f->errorMsg, nshards, dbnames, shardnames, tiers);
+        f->rc = osql_test_create_genshard(s, &f->errorMsg, nshards, dbnames, shardnames);
         return f->rc;
     } else if (s->partition.type == PARTITION_REM_TESTGENSHARD_COORD) {
         /* dbnames are NULL here, not passed though syntax */
-        f->rc = osql_test_remove_genshard(s, &f->errorMsg, nshards, dbnames, shardnames, tiers);
+        f->rc = osql_test_remove_genshard(s, &f->errorMsg, nshards, dbnames, shardnames);
         return f->rc;
     }
 

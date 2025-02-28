@@ -1675,9 +1675,9 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
 void wait_for_transactions(void);
 
 int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames, char **tiers);
+                              char **dbnames, char **shardnames);
 int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames, char **tiers);
+                              char **dbnames, char **shardnames);
 
 struct sp_tmptbl {
     pthread_mutex_t lk;
