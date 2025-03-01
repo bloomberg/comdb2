@@ -110,6 +110,7 @@ static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 static int connect_to_master = 0;
 static int cdb2_master = 0;
+static int allow_incoherent = 0;
 
 static int now_ms(void)
 {
@@ -170,25 +171,25 @@ static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
     "\n"
     "Options:\n"
-    " -c, --cdb2cfg FL    Set the config file to FL\n"
-    "     --coltype       Prefix column output with associated type\n"
-    "     --cost          Log the cost of query in db trace files\n"
-    "     --debugtrace    Set debug trace flag on api handle\n"
-    " -d, --delim str     Set string used to separate two sql statements read "
+    " -c, --cdb2cfg FL        Set the config file to FL\n"
+    "     --coltype           Prefix column output with associated type\n"
+    "     --cost              Log the cost of query in db trace files\n"
+    "     --debugtrace        Set debug trace flag on api handle\n"
+    " -d, --delim str         Set string used to separate two sql statements read "
     "from a file or input stream\n"
-    " -f, --file FL       Read queries from the specified file FL\n"
-    " -h, --help          Help on usage \n"
-    " -n, --host HOST     Host to connect to and run query.\n"
-    " -p, --precision #   Set precision for floation point outputs\n"
-    " -s, --script        Script mode (less verbose output)\n"
-    "     --showeffects   Show the effects of query at the end\n"
-    "     --strblobs      Display blobs as strings\n"
-    "     --tabs          Set column separator to tabs rather than commas\n"
-    "     --tabular       Display result in tabular format\n"
-    " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
+    " -f, --file FL           Read queries from the specified file FL\n"
+    " -h, --help              Help on usage \n"
+    " -n, --host HOST         Host to connect to and run query.\n"
+    " -p, --precision #       Set precision for floation point outputs\n"
+    " -s, --script            Script mode (less verbose output)\n"
+    "     --showeffects       Show the effects of query at the end\n"
+    "     --strblobs          Display blobs as strings\n"
+    "     --tabs              Set column separator to tabs rather than commas\n"
+    "     --tabular           Display result in tabular format\n"
+    " -t, --type TYPE         Type of database or tier ('dev' or 'prod',"
     " default 'local')\n"
-    " -v, --verbose       Verbose debug output, implies --debugtrace"
-    "\n"
+    " -v, --verbose           Verbose debug output, implies --debugtrace\n"
+    " -i, --allow-incoherent  Allow SQL to run on an incoherent node\n"
     "Examples: \n"
     " * Querying db with name mydb on local server \n"
     "     cdb2sql mydb 'select 1'\n"
@@ -333,6 +334,9 @@ static char *db_generator(const int state, const char *sql)
 
         if (isadmin)
             flags |= CDB2_ADMIN;
+
+        if (allow_incoherent)
+            flags |= CDB2_ALLOW_INCOHERENT;
 
         rc = cdb2_open(&cdb2h_2, dbname, type, flags);
         if (rc) {
@@ -1504,6 +1508,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
         if (isadmin)
             flags |= CDB2_ADMIN;
 
+        if (allow_incoherent)
+            flags |= CDB2_ALLOW_INCOHERENT;
+
         rc = cdb2_open(&cdb2h, dbname, type, flags);
 
         cdb2_push_context(cdb2h, "cdb2sql");
@@ -2046,6 +2053,7 @@ int main(int argc, char *argv[])
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
         {"connect-to-master", no_argument, NULL, 'm'},
+        {"allow-incoherent", no_argument, NULL, 'i'},
         {0, 0, 0, 0}};
 
     while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mM", long_options, &opt_indx)) != -1) {
@@ -2097,6 +2105,9 @@ int main(int argc, char *argv[])
             break;
         case 'M':
             cdb2_master = 1;
+            break;
+        case 'i':
+            allow_incoherent = 1;
             break;
         case '?':
             cdb2sql_usage(EXIT_FAILURE);
