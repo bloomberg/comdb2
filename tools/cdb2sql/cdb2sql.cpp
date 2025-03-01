@@ -50,6 +50,7 @@ static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
 static char *delimstr = (char *)"\n";
+bool delimiter_specified = false;
 
 // For performance
 static int delim_len = 1;
@@ -2085,6 +2086,7 @@ int main(int argc, char *argv[])
         case 'd':
             delimstr = optarg;
             delim_len = strlen(delimstr);
+            delimiter_specified = true;
             break;
         case 't':
             dbtype = optarg;
@@ -2165,14 +2167,37 @@ int main(int argc, char *argv[])
         types = process_typed_statement_args(ntypes, &argv[optind]);
     if (sql && *sql != '-') {
         scriptmode = 1;
-        process_line(sql, ntypes, types, 0, 0);
+        bool done = false;
+        char *next;
+
+        while (!done) {
+            if (delimiter_specified) {
+                next = strstr(sql, delimstr);
+                if (next == NULL) {
+                    done = true;
+                } else {
+                    *next = 0;
+                    next += strlen(delimstr);
+                }
+            } else {
+                done = true;
+            }
+
+            process_line(sql, ntypes, types, 0, 0);
+            verbose_print("process_line error=%d\n", error);
+
+            if (report_costs != NULL)
+                (*report_costs)();
+
+            if (error != 0)
+                return EXIT_FAILURE;
+
+            sql = next;
+        }
+
         if (cdb2h) {
             cdb2_close(cdb2h);
         }
-        verbose_print("process_line error=%d\n", error);
-
-        if (report_costs != NULL)
-            (*report_costs)();
 
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
