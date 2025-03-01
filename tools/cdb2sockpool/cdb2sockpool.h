@@ -20,7 +20,7 @@
 #ifndef INC__SQLPROXY_H
 #define INC__SQLPROXY_H
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <pool.h>
 
 #define BOOL_SETTING(var, dfl, descr) SETTING_MACRO(var, dfl, descr, BOOL)
