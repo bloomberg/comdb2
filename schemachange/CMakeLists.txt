@@ -59,6 +59,7 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
 )
 add_dependencies(schemachange mem proto bdb)
+target_link_libraries(schemachange PUBLIC bdb)
 if (COMDB2_BBCMAKE)
-  comdb2_bb_target(schemachange)
+  comdb2_lib_target(schemachange)
 endif()

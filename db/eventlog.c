@@ -34,7 +34,7 @@
 #include "eventlog.h"
 #include "util.h"
 #include "tohex.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "logmsg.h"
 #include "thread_stats.h"
 #include "dbinc/locker_info.h"

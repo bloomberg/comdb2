@@ -28,7 +28,7 @@
 #include <poll.h>
 
 #include <sbuf2.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <list.h>
 #include <queue.h>
 #include <epochlib.h>
