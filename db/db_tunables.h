@@ -1947,6 +1947,8 @@ REGISTER_TUNABLE("physrep_source_dbname", "Physical replication source cluster d
                  &gbl_physrep_source_dbname, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_source_host", "List of physical replication source cluster hosts.", TUNABLE_STRING,
                  &gbl_physrep_source_host, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_source_dbnum", "Physical replication source cluster db number.", TUNABLE_INTEGER,
+                 &gbl_physrep_source_dbnum, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOOLEAN, &gbl_physrep_ignore_queues,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
