@@ -44,7 +44,7 @@ constraints
 [CREATE TABLE t1(i INT, CHECK (i > (SELECT MAX(i))))] failed with rc 240 malformed database schema (t1) - subqueries prohibited in CHECK constraints
 (test='4. Test for updates')
 (rows inserted=1)
-[UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3DCCE6D2' unable to update record rc = 320
+[UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3DCCE6D2' unable to update record
 (i=1)
 (test='5. Test for some obscure expressions')
 [INSERT INTO t1 VALUES(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_50FF6780' unable to add record rc = 320
