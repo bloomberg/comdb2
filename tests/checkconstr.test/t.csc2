@@ -1,0 +1,20 @@
+schema 
+{
+        int a
+        vutf8 config[10]
+}
+
+keys 
+{
+        "a" = a
+}
+
+constraints
+{
+    check "JSON_CHECK" = { where JSON_VALID(config) }
+}
+
+
+
+
+
