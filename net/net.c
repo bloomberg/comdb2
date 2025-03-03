@@ -2608,6 +2608,7 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
     watchlist_node_type *watchlist_node;
     int new_fd = sbuf2fileno(sb);
     char paddr[64];
+    extern struct in_addr gbl_myaddr;
 
     int admin = 0;
     APPSOCKFP *rtn = NULL;
@@ -2615,7 +2616,8 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
     if (firstbyte == '@') {
         findpeer(new_fd, paddr, sizeof(paddr));
         if (!gbl_forbid_remote_admin ||
-            (cliaddr->sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
+            (cliaddr->sin_addr.s_addr == htonl(INADDR_LOOPBACK)) ||
+            (cliaddr->sin_addr.s_addr == gbl_myaddr.s_addr)) {
             admin = 1;
         } else {
             logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n",
