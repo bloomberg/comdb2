@@ -214,10 +214,13 @@ int stmt_cache_add_new_entry(stmt_cache_t *stmt_cache, const char *sql,
         stmt_cache_delete_last_entry(stmt_cache, list);
     }
 
-    stmt_cache_entry_t *entry = sqlite3_malloc(sizeof(stmt_cache_entry_t));
+    stmt_cache_entry_t *entry = sqlite3MallocZero(sizeof(stmt_cache_entry_t));
     strncpy(entry->sql, sql, MAX_HASH_SQL_LENGTH - 1);
     entry->stmt = stmt;
 
+    /* In newsql, this function is a nop, leaving stmt_data and stmt_data_sz
+     * uninitialized from malloc. We change the malloc to malloczero to ensure
+     * they will not be misused by fastsql+hint */
     query_data_func(clnt, &entry->stmt_data, &entry->stmt_data_sz,
                     QUERY_STMT_DATA, QUERY_DATA_GET);
     /* Take ownership of stmt data */
