@@ -1,0 +1,1 @@
+Test check constraints, more specifically, test that blobs are collected and used during sc validation.

@@ -484,7 +484,7 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
     /* map old blobs to new blobs */
     if (!data->s->force_rebuild && !data->s->use_old_blobs_on_rebuild &&
         ((gbl_partial_indexes && data->to->ix_partial) || data->to->ix_expr ||
-         !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs)) {
+         !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs || data->to->n_check_constraints)) {
         if (!leakcheck)
             bzero(data->wrblb, sizeof(data->wrblb));
         for (int ii = 0; ii < data->to->numblobs; ii++) {
@@ -881,7 +881,7 @@ static int convert_record(struct convert_record_data *data)
     if (data->from->numblobs != 0 &&
         ((gbl_partial_indexes && data->to->ix_partial) || data->to->ix_expr ||
          !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs ||
-         data->s->force_rebuild || data->s->use_old_blobs_on_rebuild)) {
+         data->s->force_rebuild || data->s->use_old_blobs_on_rebuild || data->to->n_check_constraints)) {
         int bdberr;
         free_blob_status_data(&data->blb);
         bdb_fetch_args_t args = {0};
