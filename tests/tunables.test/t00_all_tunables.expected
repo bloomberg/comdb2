@@ -64,6 +64,7 @@
 (name='archive_on_init', description='Archive files with database extensions in the database directory at the time of init. (Default: ON)', type='BOOLEAN', value='ON', read_only='Y')
 (name='asof_thread_drain_limit', description='How many entries at maximum should the BEGIN TRANSACTION AS OF thread drain per run.', type='INTEGER', value='0', read_only='N')
 (name='asof_thread_poll_interval_ms', description='For how long should the BEGIN TRANSACTION AS OF thread sleep after draining its work queue.', type='INTEGER', value='500', read_only='N')
+(name='authentication_cache_ageout', description='Max age of authentication cache (Default: 900 seconds)', type='INTEGER', value='900', read_only='N')
 (name='authorization_cache_ageout', description='Max age of authorization cache (Default: 600 seconds)', type='INTEGER', value='600', read_only='N')
 (name='autoanalyze', description='Set to enable auto-analyze.', type='BOOLEAN', value='OFF', read_only='N')
 (name='autodeadlockdetect', description='When enabled, deadlock detection will run on every lock conflict. When disabled, it'll run periodically (every DEADLOCKDETECTMS ms).', type='BOOLEAN', value='ON', read_only='N')
