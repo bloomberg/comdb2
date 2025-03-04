@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+SQLT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default"
+SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
+
+
+$SQL "insert into t values (1, '{""hey"": 1}')"
+$SQL - <<EOF
+insert into t values (2, '{"cats":123,"cats2":"woah","more cats": 1234, "so much cat": 4321 ,"why cat": 1,"all you need is a cat":0}')
+EOF
+
+$SQL "alter table t {`cat t2.csc2`}"
+if (( $? != 0 )) ; then
+    echo "Failure to alter"
+    exit 1
+fi
+
+echo "Testcase passed."
+exit 0
