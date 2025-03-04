@@ -121,7 +121,8 @@ void *auto_analyze_table(void *arg)
     int percent = bdb_attr_get(thedb->bdb_attr, 
                                BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
 
-    if ((rc = analyze_table(tblname, sb, percent, 0, 1)) == 0) {
+    rc = analyze_table(tblname, sb, percent, 0, 1);
+    if (!rc) {
         reset_aa_counter(tblname);
     } else {
         logmsg(LOGMSG_ERROR, "%s: analyze_table %s failed rc:%d\n", __func__,
