@@ -22,7 +22,7 @@
 
 #include "str_util.h" /* QUOTE */
 #include "util.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 
 #include "mem_util.h"
 #include "mem_override.h"

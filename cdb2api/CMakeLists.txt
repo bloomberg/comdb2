@@ -16,6 +16,7 @@ set_source_files_properties(
 )
 
 include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_BINARY_DIR}/protobuf
@@ -23,22 +24,16 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
 )
 
-if (EXTRA_PLUGINS)
-  include(${EXTRA_PLUGINS}/cdb2api/CMakeLists.txt)
-endif()
-
 # common obj files for .so/.dylib and .a
 add_definitions(-DDISABLE_HOSTADDR_CACHE)
 add_definitions(-DSBUF2_SERVER=0)
 
 if (COMDB2_BBCMAKE)
+  include(${EXTRA_PLUGINS}/cdb2api/cdb2api.cmake)
   add_library(opencdb2api STATIC ${src})
-  add_dependencies(opencdb2api  proto)
-  target_link_libraries(opencdb2api PUBLIC protobuf-c)
-  if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
-    target_link_libraries(opencdb2api PUBLIC libunwind)
-  endif()
-  comdb2_bb_target(opencdb2api)
+  add_dependencies(opencdb2api proto)
+  target_link_libraries(opencdb2api PUBLIC cdb2api)
+  comdb2_lib_target(opencdb2api)
 else()
 
 add_library(cdb2api STATIC ${src})

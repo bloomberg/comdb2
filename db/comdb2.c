@@ -86,7 +86,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "tag.h"
 #include "types.h"
 #include "timer.h"
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "verify.h"
 #include "ssl_bend.h"
 #include "switches.h"

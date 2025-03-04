@@ -15,7 +15,7 @@
  */
 
 #include <pthread.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <string.h>
 #include <sys_wrap.h>
 #include <cdb2api.h>

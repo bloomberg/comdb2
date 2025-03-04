@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <pool.h>
 #include "lockmacros.h"
 #include "repl_wait.h"

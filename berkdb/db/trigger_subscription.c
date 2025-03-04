@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "dbinc/trigger_subscription.h"
 #include <sys_wrap.h>
 

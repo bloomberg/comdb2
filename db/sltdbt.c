@@ -34,7 +34,7 @@
 #include "osqlblkseq.h"
 #include "logmsg.h"
 #include "reqlog.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
 #include "sc_util.h"
