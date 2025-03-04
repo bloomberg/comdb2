@@ -489,6 +489,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_NO_TEMPTABLES             214 /* temporary tables disallowed */
 #define SQLITE_NO_TABLESCANS             215 /* table scans disallowed */
 #define SQLITE_ANALYZE_ALREADY_RUNNING   216 /* analyze is already running on some table */
+#define SQLITE_MISSING_SEMI              217 /* statement not terminated with semicolon */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* end-of-error-codes */
 
@@ -3751,6 +3752,7 @@ SQLITE_API int sqlite3_limit(sqlite3*, int id, int newVal);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_PREPARE_ONLY                    0x08
 #define SQLITE_PREPARE_SRCLIST_ONLY            0x10
+#define SQLITE_PREPARE_REQUIRE_SEMI            0x20
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

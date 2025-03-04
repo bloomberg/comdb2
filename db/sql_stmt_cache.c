@@ -454,6 +454,8 @@ int stmt_cache_get(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
         param_count(clnt) == 0)
         return 0;
+    if (clnt->multiline)
+        return 0;
     if (extract_sqlcache_hint(rec->sql, rec->cache_hint, HINT_LEN)) {
         rec->status = CACHE_HAS_HINT;
         if (stmt_cache_find_and_remove_entry(thd->stmt_cache, rec->cache_hint, &rec->stmt_entry) == 0) {
