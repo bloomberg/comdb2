@@ -2365,9 +2365,6 @@ REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identitie
 REGISTER_TUNABLE("max_authorization_cache", "Max cache size of authorized identities (Default: 2000)",
                  TUNABLE_INTEGER, &gbl_authorization_cache_max, READONLY, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("authz_cache", "Enable per query caching of authorized tables.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_cache_authz_perms, 0, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("authorization_cache_ageout", "Max age of authorization cache (Default: 600 seconds)",
                  TUNABLE_INTEGER, &gbl_authorization_cache_ageout, 0, NULL, NULL, NULL, NULL);
 

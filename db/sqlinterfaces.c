@@ -4388,12 +4388,6 @@ check_version:
         thd->stmt_cache = stmt_cache_new(NULL);
     }
 
-    if (clnt->authz_read_tables)
-        hash_clear(clnt->authz_read_tables);
-
-    if (clnt->authz_write_tables)
-        hash_clear(clnt->authz_write_tables);
-
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
         if (!got_views_lock && !clnt->verify_dbstore) {
@@ -5380,14 +5374,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
         clnt->modsnap_registration = NULL;
     }
-    if (clnt->authz_read_tables) {
-        hash_free(clnt->authz_read_tables);
-        clnt->authz_read_tables = NULL;
-    }
-    if (clnt->authz_write_tables) {
-        hash_free(clnt->authz_write_tables);
-        clnt->authz_write_tables = NULL;
-    }
 }
 
 int gbl_unexpected_last_type_warn = 1;
@@ -5407,10 +5393,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         Pthread_mutex_init(&clnt->sql_lk, NULL);
         TAILQ_INIT(&clnt->session_tbls);
         listc_init(&clnt->participants, offsetof(struct participant, linkv));
-        if (gbl_cache_authz_perms) {
-            clnt->authz_read_tables = hash_init_str(0);
-            clnt->authz_write_tables = hash_init_str(0);
-        }
     } else {
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
