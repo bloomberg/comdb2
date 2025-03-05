@@ -27,5 +27,5 @@ include_directories(
 
 add_plugin(repopnewlrl STATIC repopnewlrl.c)
 if (COMDB2_BBCMAKE)
-  comdb2_bb_target(repopnewlrl)
+  comdb2_lib_target(repopnewlrl)
 endif()
