@@ -226,6 +226,7 @@ debug_temp_tables|  off |Debug temp tables
 dflt_livesc|  on |Use live schema change by default
 dflt_plansc|  on |Use planned schema change by default
 disable_blob_check|  off |return immediately in check_blob_buffers
+disable_sql_table_replacement|  off |Disable SQL table replacement
 disable_etc_services_lookup|  off |When on, disables using /etc/services first to resolve ports
 disable_exit_on_thread_error | off | don't exit on thread errors
 disable_new_si_overhead|  off |return immediately in several new snapisol functions

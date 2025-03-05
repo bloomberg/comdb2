@@ -188,6 +188,10 @@ REGISTER_TUNABLE("dir",
                  "Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)",
                  TUNABLE_STRING, &db->basedir, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("disable_sql_table_replacement",
+                 "Disables SQL table replacement",
+                 TUNABLE_BOOLEAN, &gbl_disable_sql_table_replacement,
+                 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_cache_internal_nodes",
                  "Disables 'enable_cache_internal_nodes'. B-tree leaf nodes "
                  "are treated same as internal nodes.",

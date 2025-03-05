@@ -42,6 +42,7 @@ extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
 
 int gbl_view_feature = 1;
+int gbl_disable_sql_table_replacement = 0;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -1673,6 +1674,11 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
 
 void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 {
+    if (gbl_disable_sql_table_replacement) {
+        setError(pParse, SQLITE_MISUSE, "sql table replacement is disabled");
+        return;
+    }
+
     char * srcdb = NULL;
     char * src_tablename = NULL;
     char * const dst_tablename = (char *)malloc(MAXTABLELEN);
