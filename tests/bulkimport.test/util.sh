@@ -36,21 +36,21 @@ function query_dst_db() {
 	query_dst_db_opts "$1"
 }
 
-function set_src_semver() {
-	local semver=$1 nodes
+function set_src_tunable() {
+	local tunable=$1 nodes
 	if [[ -z "$CLUSTER" ]]; then nodes=$HOSTNAME; else nodes=$CLUSTER; fi
 
 	for node in $nodes; do
-		cdb2sql --host ${node} ${CDB2_OPTIONS} $SRC_DBNAME "exec procedure sys.cmd.send('semver ${semver}')"
+		cdb2sql --host ${node} ${CDB2_OPTIONS} $SRC_DBNAME "exec procedure sys.cmd.send('${tunable}')"
 	done
 }
 
-function set_dst_semver() {
-	local semver=$1 nodes
+function set_dst_tunable() {
+	local tunable=$1 nodes
 	if [[ -z "$CLUSTER" ]]; then nodes=$HOSTNAME; else nodes=$CLUSTER; fi
 
 	for node in $nodes; do
-		cdb2sql --host ${node} ${SECONDARY_CDB2_OPTIONS} $DST_DBNAME "exec procedure sys.cmd.send('semver ${semver}')"
+		cdb2sql --host ${node} ${SECONDARY_CDB2_OPTIONS} $DST_DBNAME "exec procedure sys.cmd.send('${tunable}')"
 	done
 }
 

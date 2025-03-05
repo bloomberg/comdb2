@@ -459,6 +459,7 @@ static char *legacy_options[] = {
     "recovery_ckp 0",
     "sc_protobuf 0",
     "sc_current_version 3",
+    "disable_sql_table_replacement 1",
 };
 // clang-format on
 

@@ -218,9 +218,28 @@ function test_unsupported_version() {
 		local src_tbl=foo dst_tbl=bar rc=0
 		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
 
-		set_src_semver "8.0.0"
+		set_src_tunable "semver 8.0.0"
 
-		trap "set_src_semver '8.1.0';
+		trap "set_src_tunable 'semver 8.1.0';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl"
+
+		# Then
+		(( $? != 0 ))
+	)
+}
+
+function test_tunable() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		set_dst_tunable "disable_sql_table_replacement 1"
+
+		trap "set_dst_tunable 'disable_sql_table_replacement 0';
 			query_src_db 'drop table $src_tbl';
 			query_dst_db 'drop table $dst_tbl'" EXIT
 
@@ -256,7 +275,6 @@ function run_basic_test() {
 	)
 }
 
-
 function test_basic() {
 	for fixture in $FIXTURES;
 	do
@@ -280,8 +298,8 @@ else
 fi
 
 function main() {
-	set_src_semver "8.1.0"
-	set_dst_semver "8.1.0"
+	set_src_tunable "semver 8.1.0"
+	set_dst_tunable "semver 8.1.0"
 
 	for testcase in $TESTS;
 	do

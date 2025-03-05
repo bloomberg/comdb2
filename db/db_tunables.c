@@ -57,6 +57,7 @@ extern int gbl_crc32c;
 extern int gbl_decom;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;
+extern int gbl_disable_sql_table_replacement;
 extern int gbl_stack_at_lock_get;
 extern int gbl_stack_at_page_read;
 extern int gbl_stack_at_page_write;
