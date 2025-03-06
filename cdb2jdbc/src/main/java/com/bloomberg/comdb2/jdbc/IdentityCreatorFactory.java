@@ -1,4 +1,4 @@
-/* Copyright 2023 Bloomberg Finance L.P.
+/* Copyright 2025 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@
    limitations under the License. */
 package com.bloomberg.comdb2.jdbc;
 
-import com.bloomberg.comdb2.jdbc.Cdb2Query.*;
-
-/* per connection identity creator */
-public interface IdentityCreator {
-    Cdb2IdentityBlob create();
+/* identity creator factory */
+public interface IdentityCreatorFactory {
+    IdentityCreator build(String spec);
 }
