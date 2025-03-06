@@ -3692,14 +3692,12 @@ int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
     return write_response(clnt, RESPONSE_ROW, &arg, postpone);
 }
 
-/* will do a tiny cleanup of clnt */
 void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
-    clnt->isselect = sqlite3_stmt_readonly(stmt);
     /* TODO: we can be more precise and retry things at a later LSN so long as
      * nothing has overwritten the original readsets */
-    if (clnt->isselect || is_with_statement(clnt->sql)) {
+    if (sqlite3_stmt_readonly(stmt) || is_with_statement(clnt->sql)) {
         set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     }
     if (clnt->in_client_trans) {
@@ -3711,12 +3709,6 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     gettimeofday(&clnt->last_sql_recover_time, NULL);
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
-
-#ifdef DEBUG
-    if (gbl_debug_sql_opcodes) {
-        fprintf(stderr, "%s () sql: '%s'\n", __func__, v->zSql);
-    }
-#endif
 }
 
 static int rc_sqlite_to_client(struct sqlthdstate *thd,
@@ -3838,6 +3830,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     sqlite3_stmt *stmt = rec->stmt;
     Vdbe *v = (Vdbe *)stmt;
 
+    clnt->isselect = sqlite3_stmt_readonly(stmt);
     run_stmt_setup(clnt, stmt);
     if ((gbl_typessql || clnt->typessql) && clnt->isselect && !dohsql_is_parallel_shard() && !clnt->fdb_push &&
         !v->hasVTables && !v->hasScalarFunc)
@@ -4477,6 +4470,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd, struct sqlclntstate *
     }
 
     bind_verify_indexes_query(stmt, clnt->schema_mems);
+    clnt->isselect = sqlite3_stmt_readonly(stmt);
     run_stmt_setup(clnt, stmt);
     if ((clnt->step_rc = rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
