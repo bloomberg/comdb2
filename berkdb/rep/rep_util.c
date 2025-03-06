@@ -222,9 +222,14 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 		 */
 		memcpy(&rectype, dbtp->data, sizeof(rectype));
 		normalize_rectype(&rectype);
-		if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen
-			|| rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery ||
-			rectype == DB___txn_dist_commit || rectype == DB___txn_regop_rowlocks)
+		if (rectype == DB___txn_regop ||
+            rectype == DB___txn_regop_gen ||
+            rectype == DB___txn_regop_gen_endianize ||
+            rectype == DB___txn_ckp ||
+            rectype == DB___txn_ckp_recovery ||
+			rectype == DB___txn_dist_commit ||
+            rectype == DB___txn_regop_rowlocks ||
+            rectype == DB___txn_regop_rowlocks_endianize)
 			F_SET(&cntrl, DB_LOG_PERM);
 	}
 

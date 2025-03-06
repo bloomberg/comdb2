@@ -3706,8 +3706,10 @@ void bdb_durable_lsn_for_single_node(void *in_bdb_state)
         switch (rectype) {
         case DB___txn_regop:
         case DB___txn_regop_gen:
+        case DB___txn_regop_gen_endianize:
         case DB___txn_dist_commit:
         case DB___txn_regop_rowlocks:
+        case DB___txn_regop_rowlocks_endianize:
             found_lsn = lsn;
             goto done;
             break;

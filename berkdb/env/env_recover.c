@@ -858,7 +858,9 @@ full_recovery_check(DB_ENV *dbenv, DB_LSN *max_lsn)
 		if (IS_ZERO_LSN(first))
 			first = lsn;
 		if (type == DB___txn_regop || type == DB___txn_regop_gen ||
-			type == DB___txn_dist_commit || type == DB___txn_regop_rowlocks) {
+			type == DB___txn_regop_gen_endianize ||
+			type == DB___txn_dist_commit || type == DB___txn_regop_rowlocks ||
+			type == DB___txn_regop_rowlocks_endianize) {
 			cpy = lsn;
 			ret =
 				__rep_collect_txn(dbenv, &cpy, &lc, &ignore, NULL);
@@ -2171,6 +2173,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 			}
 
 			break;
+		case DB___txn_regop_gen_endianize:
 		case DB___txn_regop_gen:
 			if ((ret =
 				__txn_regop_gen_read(dbenv, data.data,
@@ -2198,6 +2201,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 			}
 			break;
 		case DB___txn_regop_rowlocks:
+		case DB___txn_regop_rowlocks_endianize:
 			if ((ret =
 				__txn_regop_rowlocks_read(dbenv, data.data,
 					&txn_rl_args)) != 0) {
@@ -2344,6 +2348,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 			}
 
 			break;
+		case DB___txn_regop_gen_endianize:
 		case DB___txn_regop_gen:
 			if ((ret =
 				__txn_regop_gen_read(dbenv, data.data,
@@ -2403,7 +2408,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 
 			LOGCOPY_32(&rectype, data.data);
 			normalize_rectype(&rectype);
-			assert(rectype == DB___txn_dist_prepare);
+			assert(rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize);
 
 			if ((ret = 
 				__txn_dist_prepare_read(dbenv, data.data, &txn_prep_args)) != 0) {
@@ -2452,6 +2457,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 		 }
 		 break;
 		case DB___txn_regop_rowlocks:
+		case DB___txn_regop_rowlocks_endianize:
 			if ((ret =
 				__txn_regop_rowlocks_read(dbenv, data.data,
 					&txn_rl_args)) != 0) {

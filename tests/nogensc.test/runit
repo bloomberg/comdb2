@@ -5,7 +5,7 @@ export debug=1
 
 $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
 
-g=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select generation from comdb2_transaction_logs where rectype=2015")
+g=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select generation from comdb2_transaction_logs where rectype=2015 or rectype=2150")
 
 if [[ "$DBNAME" == *"usegen"* ]]; then
     if [[ "$g" == "NULL" ]]; then

@@ -805,14 +805,14 @@ __txn_regop_log_commit(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
 
 int
 
-__txn_regop_gen_log(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
+__txn_regop_gen_log(DB_ENV *dbenv, u_int32_t rectype, DB_TXN *txnid, DB_LSN *ret_lsnp,
 	u_int64_t * ret_contextp, u_int32_t flags, u_int32_t opcode,
 	u_int32_t generation, u_int64_t timestamp, const DBT *locks, void *usr_ptr);
 
 
 int
 
-__txn_regop_rowlocks_log(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
+__txn_regop_rowlocks_log(DB_ENV *dbenv, u_int32_t rectype, DB_TXN *txnid, DB_LSN *ret_lsnp,
 	u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
 	u_int64_t ltranid, DB_LSN *begin_lsn, DB_LSN *last_commit_lsn,
 	u_int64_t timestamp, u_int32_t lflags, u_int32_t generation,
@@ -1034,6 +1034,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
 
 extern int gbl_fullrecovery;
+int gbl_endianize_locklist = 1;
 
 /*
  * __txn_commit --
@@ -1072,6 +1073,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	uint32_t gen;
 	u_int64_t context = 0;
 	int ret, t_ret, elect_highest_committed_gen, commit_lsn_map;
+	int endianize_locklist = gbl_endianize_locklist;
 
 	dbenv = txnp->mgrp->dbenv;
 	commit_lsn_map = get_commit_lsn_map_switch_value();
@@ -1203,6 +1205,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				Pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
 
 			if (LOCKING_ON(dbenv)) {
+				u_int32_t flags = endianize_locklist ? DB_LOCK_ENDIANIZE : 0;
 				request.op = is_prepare ? DB_LOCK_PREPARE : DB_LOCK_PUT_READ;
 				if (IS_REP_MASTER(dbenv) &&
 					!IS_ZERO_LSN(txnp->last_lsn)) {
@@ -1210,7 +1213,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					request.obj = &list_dbt;
 				}
 				ret = __lock_vec(dbenv,
-					txnp->txnid, 0, &request, 1, NULL);
+					txnp->txnid, flags, &request, 1, NULL);
 
 				assert(ret == 0);
 			}
@@ -1287,8 +1290,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						}
 					} else {
 						logmsg(LOGMSG_USER, "%s emitting regop-rowlocks record with generation %u\n", __func__, gen);
+                        u_int32_t rectype = endianize_locklist ? 
+                            DB___txn_regop_rowlocks_endianize :
+                            DB___txn_regop_rowlocks;
 						ret =
-							__txn_regop_rowlocks_log(dbenv,
+							__txn_regop_rowlocks_log(dbenv, rectype,
 									txnp, lsn_out, &context, lflags,
 									TXN_COMMIT, ltranid, begin_lsn,
 									last_commit_lsn, timestamp,
@@ -1342,8 +1348,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
 						u_int64_t genid = get_commit_context(NULL, 0);
+                        u_int32_t rectype = endianize_locklist ?
+                            DB___txn_dist_prepare_endianize :
+                            DB___txn_dist_prepare;
 
-						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
+						ret = __txn_dist_prepare_log(dbenv, rectype, txnp, &txnp->last_lsn, lflags,
 							gen, &tp->begin_lsn, &dist_txnid, genid, ltranflags,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
@@ -1387,8 +1396,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								logmsg(LOGMSG_FATAL, "%s writing multiple commits for same txn?\n", __func__);
 								abort();
 							}
+							u_int32_t rectype = endianize_locklist ? 
+								DB___txn_regop_gen_endianize :
+								DB___txn_regop_gen;
 							ret =
-								__txn_regop_gen_log(dbenv,
+								__txn_regop_gen_log(dbenv, rectype,
 										txnp, &txnp->last_lsn,
 										&context, lflags,
 										TXN_COMMIT, gen, timestamp,

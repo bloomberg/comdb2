@@ -1011,6 +1011,13 @@ REGISTER_TUNABLE("reallearly",
                  "of a committed transaction yet. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_reallyearly, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("endianize_locklist", "Endianize locklist before writing to txnlog.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_endianize_locklist, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_lock_get_list_copy_compare",
+                 "Compare the lock-list against original after lock-get-list.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_lock_get_list_copy_compare, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("reject_osql_mismatch", "(Default: on)", TUNABLE_BOOLEAN,
                  &gbl_reject_osql_mismatch, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);

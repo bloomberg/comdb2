@@ -137,4 +137,8 @@ typedef struct __txn_ckp_recovery_args {
 	u_int64_t	max_utxnid;
 } __txn_ckp_recovery_args;
 
+#define DB___txn_regop_rowlocks_endianize 150
+#define DB___txn_regop_gen_endianize 151
+#define DB___txn_dist_prepare_endianize 152
+
 #endif
