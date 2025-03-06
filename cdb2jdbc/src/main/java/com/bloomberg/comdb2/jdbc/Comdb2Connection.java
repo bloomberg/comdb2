@@ -296,7 +296,7 @@ public class Comdb2Connection implements Connection {
         hndl.setClearAck(clearAck);
     }
 
-    public void setUseIdentity(boolean useIdentity) {
+    public void setUseIdentity(String useIdentity) {
         hndl.hasUseIdentity = true;
         hndl.setUseIdentity(useIdentity);
     }
