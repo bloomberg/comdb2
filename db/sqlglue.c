@@ -3867,18 +3867,16 @@ int sqlite3BtreeLast(BtCursor *pCur, int *pRes)
     return rc;
 }
 
-/* print error and goto done if client has readonly set
- * but sql is writing to normal (non-tmp) btrees */
-#define CHECK_CLNT_READONLY_BUT_SQL_IS_WRITING(clnt, pCur)                                                \
-    do {                                                                                                  \
-        if (clnt->is_readonly &&                                                                          \
-            (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&                           \
-            (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {                                                   \
-            errstat_set_strf(&clnt->osql.xerr, "connection/database in read-only mode");                  \
-            rc = SQLITE_READONLY;                                                                         \
-            goto done;                                                                                    \
-        }                                                                                                 \
-    } while(0);
+static int check_readonly(BtCursor *pCur)
+{
+    struct sqlclntstate *clnt = pCur->clnt;
+    if (!clnt->is_readonly) return 0;
+    if (pCur->cursor_class == CURSORCLASS_TEMPTABLE) return 0;
+    //if (pCur->rootpage == RTPAGE_SQLITE_MASTER) return 0;
+    if (sqlite3_stmt_readonly((sqlite3_stmt *)pCur->vdbe)) return 0;
+    errstat_set_strf(&clnt->osql.xerr, "connection/database in read-only mode");
+    return SQLITE_READONLY;
+}
 
 /*
  ** Delete the entry that the cursor is pointing to.  The cursor
@@ -3899,7 +3897,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         pCur->nwrite++;
     }
 
-    CHECK_CLNT_READONLY_BUT_SQL_IS_WRITING(clnt, pCur);
+    if ((rc = check_readonly(pCur)) != 0) goto done;
 
     /* if this is part of an analyze skip the delete - we'll do
      * the entire update part in one shot later when the analyze is done */
@@ -7583,8 +7581,7 @@ static int lk_tmptbl_cursor_find(bdb_state_type *bdb_state,
                                  BtCursor *btcursor)
 {
     Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
-    int rc = tmptbl_cursor_find(bdb_state, cur, key, keylen, unpacked, bdberr,
-                                btcursor);
+    int rc = tmptbl_cursor_find(bdb_state, cur, key, keylen, unpacked, bdberr, btcursor);
     Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
@@ -8498,7 +8495,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         return rc;
     }
 
-    if (gbl_expressions_indexes && !clnt->isselect && cur->db->ix_expr) {
+    if (gbl_expressions_indexes && !sqlite3_stmt_readonly((sqlite3_stmt *)cur->vdbe) && cur->db->ix_expr) {
         if (!clnt->idxInsert)
             clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
         if (!clnt->idxDelete)
@@ -8998,7 +8995,7 @@ int sqlite3BtreeInsert(
 
     assert(0 == pCur->is_sampled_idx);
 
-    CHECK_CLNT_READONLY_BUT_SQL_IS_WRITING(clnt, pCur);
+    if ((rc = check_readonly(pCur)) != 0) goto done;
 
     if (unlikely(pCur->cursor_class == CURSORCLASS_STAT24)) {
         rc = make_stat_record(thd, pCur, pData, nData, pblobs);

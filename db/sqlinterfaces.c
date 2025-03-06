@@ -3901,7 +3901,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             return rc;
         }
 
-        if (clnt->isselect == 1) {
+        if (clnt->isselect) {
             clnt->effects.num_selected++;
             clnt->log_effects.num_selected++;
             clnt->nrows++;
