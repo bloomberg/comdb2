@@ -74,6 +74,7 @@ enum cdb2_errors {
     CDB2ERR_DBCREATE_FAILED = -18,
 
     CDB2ERR_THREADPOOL_INTERNAL = -20, /* some error in threadpool code */
+    CDB2ERR_READONLY = -21,
     CDB2ERR_ANALYZE_ALREADY_RUNNING = -22,
     // don't add -23 since this code is being used in sqlresponse.proto
 
@@ -100,7 +101,6 @@ enum cdb2_errors {
 
     CDB2ERR_SCHEMACHANGE = 240,
     CDB2ERR_DUPLICATE = 299,
-    CDB2ERR_READONLY = 305,
     CDB2ERR_NOTSERIAL = 230,
     CDB2ERR_TZNAME_FAIL = 401,
     CDB2ERR_CHANGENODE = 402,

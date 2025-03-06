@@ -6396,6 +6396,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
 
     case SQLITE_ACCESS:
+    case SQLITE_READONLY:
         *errstr = errstat_get_str(&clnt->osql.xerr);
         if (!*errstr || (*errstr)[0] == 0) {
             *errstr = sqlite3_errmsg(sqldb);
@@ -6570,6 +6571,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
 
 int sqlserver2sqlclient_error(int rc)
 {
+    /* TODO: This mapping should be in newsql plugin */
     switch (rc) {
     case SQLITE_DEADLOCK:
     case SQLITE_BUSY:
@@ -6587,6 +6589,8 @@ int sqlserver2sqlclient_error(int rc)
         return SQLHERR_ROLLBACK_TOOOLD;
     case SQLITE_TRAN_NOLOG:
         return SQLHERR_ROLLBACK_NOLOG;
+    case SQLITE_READONLY:
+        return CDB2ERR_READONLY;
     case SQLITE_ACCESS:
         return CDB2ERR_ACCESS;
     case ERR_TRAN_TOO_BIG:

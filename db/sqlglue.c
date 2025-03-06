@@ -3875,7 +3875,7 @@ int sqlite3BtreeLast(BtCursor *pCur, int *pRes)
             (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&                           \
             (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {                                                   \
             errstat_set_strf(&clnt->osql.xerr, "connection/database in read-only mode");                  \
-            rc = SQLITE_ACCESS;                                                                           \
+            rc = SQLITE_READONLY;                                                                         \
             goto done;                                                                                    \
         }                                                                                                 \
     } while(0);
