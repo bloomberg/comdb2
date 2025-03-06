@@ -59,6 +59,7 @@ int cdb2_print_version_check __P((const char *));
 int open_rep_db __P((DB_ENV *, DB **, DBC **));
 extern int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 extern char printlog_endline;
+extern int gbl_is_physical_replicant;
 
 extern pthread_key_t comdb2_open_key;
 
@@ -110,7 +111,7 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	dtabsize = 0;
 	dtab = NULL;
-	while ((ch = getopt(argc, argv, "h:s:gNP:rVl:")) != EOF)
+	while ((ch = getopt(argc, argv, "h:s:gNP:rVl:p")) != EOF)
 		switch (ch) {
 		case 'h':
 			ret = chdir(optarg);
@@ -173,6 +174,9 @@ int tool_cdb2_printlog_main(argc, argv)
 			}
 			break;
 		}
+		case 'p':
+			gbl_is_physical_replicant = 1;
+			break;
 		case '?':
 		default:
 			return (cdb2_printlog_usage());
@@ -386,6 +390,7 @@ cdb2_printlog_usage()
 	fprintf(stderr,
 	    "   -l range            - Set range (i.e. 2, or 3-5).\n");
 	fprintf(stderr, "   -s file:offset      - Set start lsn.\n");
+	fprintf(stderr, "   -p                  - Sun physrep endian logic.\n");
 
 	return (EXIT_FAILURE);
 }

@@ -497,6 +497,8 @@ do { \
 #define LOCK_GET_LIST_PRINTLOCK 0x0020
 #define LOCK_GET_LIST_PAGELOGS  0x0040
 #define LOCK_GET_LIST_PREPARE   0x0080
+#define LOCK_GET_LIST_ENDIANIZE 0x0100
+#define LOCK_GET_LIST_FORCEFLIP 0x0200
 
 int add_to_lock_partition(DB_ENV *, DB_LOCKTAB *, int partition, int num, struct __db_lock []);
 

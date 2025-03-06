@@ -460,6 +460,7 @@ static char *legacy_options[] = {
     "sc_protobuf 0",
     "sc_current_version 3",
     "disable_sql_table_replacement 1",
+    "endianize_locklist 0"
 };
 // clang-format on
 

@@ -123,6 +123,8 @@ dump_log_event_counts(void)
 		DB___qam_mvptr, DB___qam_del, DB___qam_add, DB___qam_delext,
 			DB___txn_regop, DB___txn_dist_prepare, DB___txn_dist_abort,
 		DB___txn_regop_gen, DB___txn_regop_rowlocks, DB___txn_dist_commit,
+			DB___txn_regop_gen_endianize, DB___txn_regop_rowlocks_endianize,
+		DB___txn_dist_prepare_endianize,
 			DB___txn_ckp, DB___txn_ckp_recovery, DB___txn_child,
 		DB___txn_xa_regop, DB___txn_recycle
 	};
@@ -146,6 +148,8 @@ dump_log_event_counts(void)
 		"DB___qam_mvptr", "DB___qam_del", "DB___qam_add", "DB___qam_delext",
 			"DB___txn_regop", "DB___txn_dist_prepare", "DB___txn_dist_abort",
 		"DB___txn_regop_gen", "DB___txn_regop_rowlocks", "DB___txn_dist_commit",
+			"DB___txn_regop_gen_endianize", "DB___txn_regop_rowlocks_endianize",
+		"DB___txn_dist_prepare_endianize",
 			"DB___txn_ckp", "DB___txn_ckp_recovery", "DB___txn_child",
 		"DB___txn_xa_regop", "DB___txn_recycle"
 	};
@@ -251,14 +255,20 @@ optostr(int op)
 		return "DB___txn_regop";
 	case DB___txn_regop_gen:
 		return "DB___txn_regop_gen";
+	case DB___txn_regop_gen_endianize:
+		return "DB___txn_regop_gen_endianize";
 	case DB___txn_regop_rowlocks:
 		return "DB___txn_regop_rowlocks";
+	case DB___txn_regop_rowlocks_endianize:
+		return "DB___txn_regop_rowlocks_endianize";
 	case DB___txn_dist_commit:
 		return "DB___txn_dist_commit";
 	case DB___txn_dist_abort:
 		return "DB___txn_dist_abort";
 	case DB___txn_dist_prepare:
 		return "DB___txn_dist_prepare";
+	case DB___txn_dist_prepare_endianize:
+		return "DB___txn_dist_prepare_endianize";
 	case DB___txn_ckp:
 		return "DB___txn_ckp";
 	case DB___txn_ckp_recovery:
@@ -382,10 +392,13 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
+	case DB___txn_regop_gen_endianize:
 	case DB___txn_dist_prepare:
+	case DB___txn_dist_prepare_endianize:
 	case DB___txn_dist_commit:
 	case DB___txn_dist_abort:
 	case DB___txn_regop_rowlocks:
+	case DB___txn_regop_rowlocks_endianize:
 	case DB___txn_ckp:
 	case DB___txn_ckp_recovery:
 	case DB___txn_child:
@@ -500,9 +513,11 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		switch (rectype) {
 		case DB___txn_regop:
 		case DB___txn_regop_gen:
+		case DB___txn_regop_gen_endianize:
 		case DB___txn_dist_commit:
 		case DB___txn_dist_abort:
 		case DB___txn_regop_rowlocks:
+		case DB___txn_regop_rowlocks_endianize:
 		case DB___txn_child:
 			/* need to capture all transactions, as I am collecting
 			 * committed transactions */
@@ -582,9 +597,11 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		switch (rectype) {
 		case DB___txn_regop:
 		case DB___txn_regop_gen:
+		case DB___txn_regop_gen_endianize:
 		case DB___txn_dist_commit:
 		case DB___txn_dist_abort:
 		case DB___txn_regop_rowlocks:
+		case DB___txn_regop_rowlocks_endianize:
 		case DB___txn_recycle:
 		case DB___txn_ckp:
 		case DB___txn_ckp_recovery:
@@ -622,7 +639,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 					/* Dist-prepared transactions can be committed in a later generation.  
 					 * If its a committed dist-prepare then this has rolled forward: add
 					 * the txnid txnlist as committed. */
-					if (rectype == DB___txn_dist_prepare) {
+					if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
 						redo = DB_TXN_DIST_ADD_TXNLIST;
 					} else {
 						ret = __db_txnlist_update(dbenv, info, txnid,

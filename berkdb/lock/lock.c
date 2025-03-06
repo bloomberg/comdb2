@@ -100,7 +100,7 @@ static int __lock_trade __P((DB_ENV *, DB_LOCK *, u_int32_t, u_int32_t));
 static int __lock_sort_cmp __P((const void *, const void *));
 static int __locklsn_sort_cmp __P((const void *, const void *));
 static int __rowlock_sort_cmp __P((const void *, const void *));
-static int __lock_fix_list __P((DB_ENV *, DBT *, u_int32_t, u_int8_t));
+static int __lock_fix_list __P((DB_ENV *, DBT *, u_int32_t, u_int8_t, int));
 
 static const char __db_lock_err[] = "Lock table is out of available %s";
 static const char __db_lock_invalid[] = "%s: Lock is no longer valid";
@@ -1404,6 +1404,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	u_int32_t partition;
 	u_int32_t run_dd;
 	int i, ret, rc, upgrade, writes, prepare, has_pglk_lsn = 0;
+	int endianize = LF_ISSET(DB_LOCK_ENDIANIZE);
+	LF_CLR(DB_LOCK_ENDIANIZE);
 
 	/* Check if locks have been globally turned off. */
 	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
@@ -1747,8 +1749,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				(void)countwl;
 				(void)nwritelatches;
 				if ((ret = __lock_fix_list(dbenv,
-					    objlist, nwrites,
-					    has_pglk_lsn)) != 0)
+						objlist, nwrites,
+						has_pglk_lsn, endianize)) != 0)
 					goto up_done;
 			}
 			switch (list[i].op) {
@@ -5287,6 +5289,17 @@ typedef struct __db_lock_idxlock DB_LOCK_IDXLOCK;
 						    sizeof(DB_LSN); 	\
 				} while (0)
 
+#define PUT_LSN_ENDIANIZE(dp, lsn)   do {  \
+					memcpy(dp,			\
+						lsn, sizeof(DB_LSN));   \
+					if(LOG_SWAPPED()) {		  \
+						M_32_SWAP(((DB_LSN *)dp)->file);	\
+						M_32_SWAP(((DB_LSN *)dp)->offset); \
+					}   \
+					dp = (u_int8_t *)dp +		\
+							sizeof(DB_LSN); 	\
+				} while (0)
+
 #define COPY_OBJ(dp, obj)	do {					\
 					memcpy(dp,			\
 					    (obj)->data, (obj)->size);  \
@@ -5294,6 +5307,19 @@ typedef struct __db_lock_idxlock DB_LOCK_IDXLOCK;
 					     ALIGN((obj)->size,		\
 					    sizeof(u_int32_t)); 	\
 				} while (0)
+
+#define COPY_OBJ_ENDIANIZE(dp, obj)  do {	   \
+					memcpy(dp,			\
+						(obj)->data, (obj)->size);  \
+					if (LOG_SWAPPED()) {		   \
+						DB_LOCK_ILOCK *eilock = (DB_LOCK_ILOCK *)dp; \
+						M_32_SWAP(eilock->pgno);		 \
+						M_32_SWAP(eilock->type);		 \
+					}   \
+					dp = (u_int8_t *)dp +		\
+						 ALIGN((obj)->size,		\
+						sizeof(u_int32_t)); 	\
+				} while(0)
 
 #define GET_NKEYS(dp, nkeys)	do {					\
 					(nkeys) = *(u_int32_t *) dp;	\
@@ -5360,6 +5386,22 @@ typedef struct __db_lock_idxlock DB_LOCK_IDXLOCK;
 						    sizeof(DB_LSN); 	\
 				} while (0)
 
+#define GET_LSN_ENDIANIZE(dp, lsn)	do {					\
+					memcpy(lsn, dp, sizeof(DB_LSN));  \
+					if(LOG_SWAPPED()) {		  \
+						M_32_SWAP(((DB_LSN *)lsn)->file);	\
+						M_32_SWAP(((DB_LSN *)lsn)->offset); \
+					}   \
+					dp = (u_int8_t *)dp + sizeof(DB_LSN); 	\
+				} while (0)
+
+#define GET_LSN_FORCEFLIP(dp, lsn)	do {					\
+					memcpy(lsn, dp, sizeof(DB_LSN));  \
+					M_32_SWAP(((DB_LSN *)lsn)->file);	\
+					M_32_SWAP(((DB_LSN *)lsn)->offset); \
+					dp = (u_int8_t *)dp + sizeof(DB_LSN); 	\
+				} while (0)
+
 #define GET_GENID(dp, genid)	do {					\
 					u_int8_t *g = (u_int8_t *) &genid; \
 					memcpy(g, dp, sizeof(u_int64_t)); \
@@ -5372,11 +5414,12 @@ extern int gbl_new_snapisol_logging;
 #define MAX_LOCK_COUNT	0xffffffff
 
 static int
-__lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
+__lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn, endianize)
 	DB_ENV *dbenv;
 	DBT *list_dbt;
 	u_int32_t nlocks;
 	u_int8_t has_pglk_lsn;
+	int endianize;
 {
 	DBT *obj_dbt = NULL;
 	struct __db_lockobj_lsn *obj_lsn = NULL;
@@ -5445,7 +5488,11 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 		PUT_COUNT(dp, 1);
 		PUT_PCOUNT(dp, 0);
 		PUT_SIZE(dp, obj->size);
-		COPY_OBJ(dp, obj);
+		if (endianize && obj->size == sizeof(DB_LOCK_ILOCK)) {
+			COPY_OBJ_ENDIANIZE(dp, obj);
+		} else {
+			COPY_OBJ(dp, obj);
+		}
 		if (has_pglk_lsn) {
 			if (gbl_new_snapisol_logging)
 				PUT_LSNCOUNT(dp, obj_lsn->nlsns);
@@ -5460,8 +5507,13 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 					assert(log_compare(&lsnp->llsn,
 						&next_lsnp->llsn) >= 0);
 #endif
-				if (gbl_new_snapisol_logging)
-					PUT_LSN(dp, &(lsnp->llsn));
+				if (gbl_new_snapisol_logging) {
+					if (endianize) {
+						PUT_LSN_ENDIANIZE(dp, &(lsnp->llsn));
+					} else {
+						PUT_LSN(dp, &(lsnp->llsn));
+					}
+				}
 				SH_LIST_REMOVE(lsnp, lsn_links, __db_lock_lsn);
 				__deallocate_db_lock_lsn(dbenv, lsnp);
 			}
@@ -5660,7 +5712,11 @@ not_ilock:
 					    __LINE__);
 					abort();
 				}
-				COPY_OBJ(dp, &obj_lsn[i]);
+				if (endianize && obj_lsn[i].size == sizeof(DB_LOCK_ILOCK)) {
+					COPY_OBJ_ENDIANIZE(dp, &obj_lsn[i]);
+				} else {
+					COPY_OBJ(dp, &obj_lsn[i]);
+				}
 
 				if (gbl_new_snapisol_logging) {
 					if (dp + sizeof(u_int16_t) >
@@ -5691,7 +5747,11 @@ not_ilock:
 							    __LINE__);
 							abort();
 						}
-						PUT_LSN(dp, &(lsnp->llsn));
+						if (endianize) {
+							PUT_LSN_ENDIANIZE(dp, &(lsnp->llsn));
+						} else {
+							PUT_LSN(dp, &(lsnp->llsn));
+						}
 					} SH_LIST_REMOVE(lsnp, lsn_links,
 					    __db_lock_lsn);
 					__deallocate_db_lock_lsn(dbenv, lsnp);
@@ -5759,8 +5819,11 @@ not_ilock:
 								    __LINE__);
 								abort();
 							}
-							PUT_LSN(dp,
-							    &(lsnp->llsn));
+							if (endianize) {
+								PUT_LSN_ENDIANIZE(dp, &(lsnp->llsn));
+							} else {
+								PUT_LSN(dp, &(lsnp->llsn));
+							}
 						}
 						SH_LIST_REMOVE(lsnp, lsn_links,
 						    __db_lock_lsn);
@@ -5788,10 +5851,14 @@ not_ilock:
 				PUT_SIZE(dp, obj_dbt[i].size);
 
 				if (dp + obj_dbt[i].size > (uint8_t *)endptr) {
-                    logmsg(LOGMSG_FATAL, "__lock_fix_list about to overrun (COPY_OBJ)\n");
+					logmsg(LOGMSG_FATAL, "__lock_fix_list about to overrun (COPY_OBJ)\n");
 					abort();
 				}
-				COPY_OBJ(dp, &obj_dbt[i]);
+				if (endianize && obj_dbt[i].size == sizeof(DB_LOCK_ILOCK)) {
+					COPY_OBJ_ENDIANIZE(dp, &obj_dbt[i]);
+				} else {
+					COPY_OBJ(dp, &obj_dbt[i]);
+				}
 				/*
 				 * fprintf( stderr, "%d %d %d\n", 
 				 * pthread_self(), obj_dbt[i].ulen, obj_dbt[i].size);
@@ -6004,6 +6071,9 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 	if (list->size == 0)
 		return (0);
 
+	int endianize = LF_ISSET(LOCK_GET_LIST_ENDIANIZE);
+	int forceflip = LF_ISSET(LOCK_GET_LIST_FORCEFLIP);
+
 	ret = 0;
 	dp = list->data;
 	*keycnt = 0;
@@ -6041,6 +6111,17 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 		if (nlocks == 1 && npgno == 0)
 			flags |= DB_LOCK_ONELOCK;
 		lock = (DB_LOCK_ILOCK *)dp;
+		if (size == sizeof(struct __db_ilock)) {
+			if (endianize) {
+				if (LOG_SWAPPED()) {
+					M_32_SWAP(lock->pgno);
+					M_32_SWAP(lock->type);
+				}
+			} else if (forceflip) {
+				M_32_SWAP(lock->pgno);
+				M_32_SWAP(lock->type);
+			}
+		}
 		save_pgno = lock->pgno;
 		obj_dbt.data = dp;
 		obj_dbt.size = size;
@@ -6057,6 +6138,18 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 						sh_locker, lflags, &obj_dbt,
 						lock_mode, 0, &ret_lock)) != 0) {
 					lock->pgno = save_pgno;
+					/* Restore lock-buffer */
+					if (size == sizeof(struct __db_ilock)) {
+						if (endianize) {
+							if (LOG_SWAPPED()) {
+								M_32_SWAP(lock->pgno);
+								M_32_SWAP(lock->type);
+							} 
+						} else if (forceflip) {
+							M_32_SWAP(lock->pgno);
+							M_32_SWAP(lock->type);
+						}
+					}
 					goto err;
 				}
 				if (get_lock && LF_ISSET(LOCK_GET_LIST_PREPARE) && obj_dbt.size == 
@@ -6145,7 +6238,13 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 				}
 			}
 			for (j = 0; j < nlsns; j++) {
-				GET_LSN(dp, &llsn);
+				if (endianize) {
+					GET_LSN_ENDIANIZE(dp, &llsn);
+				} else if (forceflip) {
+					GET_LSN_FORCEFLIP(dp, &llsn);
+				} else {
+					GET_LSN(dp, &llsn);
+				}
 				if (keyidx >= nkeys) {
 					logmsg(LOGMSG_FATAL, "%s:%d keyidx = %d, nkeys = %d\n",
 						__func__, __LINE__, keyidx, nkeys);
@@ -6174,6 +6273,17 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 				GET_PGNO(dp, lock->pgno);
 		} while (npgno-- != 0);
 		lock->pgno = save_pgno;
+		if (size == sizeof(struct __db_ilock)) {
+			if (endianize) {
+				if (LOG_SWAPPED()) {
+					M_32_SWAP(lock->pgno);
+					M_32_SWAP(lock->type);
+				} 
+			} else if (forceflip) {
+				M_32_SWAP(lock->pgno);
+				M_32_SWAP(lock->type);
+			}
+		}
 	}
 
 err:
@@ -6186,7 +6296,7 @@ err:
 
 static int
 __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
-    pglogs, keycnt, fp)
+	pglogs, keycnt, fp)
 	DB_ENV *dbenv;
 	u_int32_t locker, flags;
 	db_lockmode_t lock_mode;
@@ -6210,7 +6320,9 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	int ret;
 	void *dp;
 	int locked_region = 0;
-
+	int endianize = LF_ISSET(LOCK_GET_LIST_ENDIANIZE);
+	int forceflip = LF_ISSET(LOCK_GET_LIST_FORCEFLIP);
+	
 	if (list->size == 0)
 		return (0);
 
@@ -6260,6 +6372,18 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			if (nlocks == 1 && npgno == 0)
 				flags |= DB_LOCK_ONELOCK;
 			lock = (DB_LOCK_ILOCK *)dp;
+			if (size == sizeof(struct __db_ilock)) {
+				if (endianize) {
+					if (LOG_SWAPPED()) {
+						M_32_SWAP(lock->pgno);
+						M_32_SWAP(lock->type);
+					}
+				} else if (forceflip) {
+					M_32_SWAP(lock->pgno);
+					M_32_SWAP(lock->type);
+				}
+			}
+
 			save_pgno = lock->pgno;
 			obj_dbt.data = dp;
 			obj_dbt.size = size;
@@ -6287,6 +6411,17 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 							lock_mode, 0,
 							&ret_lock)) != 0) {
 						lock->pgno = save_pgno;
+						if (size == sizeof(struct __db_ilock)) {
+							if (endianize) {
+								if (LOG_SWAPPED()) {
+									M_32_SWAP(lock->pgno);
+									M_32_SWAP(lock->type);
+								}
+							} else if (forceflip) {
+								M_32_SWAP(lock->pgno);
+								M_32_SWAP(lock->type);
+							}
+						}
 						goto err;
 					}
 					if (LF_ISSET(LOCK_GET_LIST_PREPARE) && obj_dbt.size == 
@@ -6377,6 +6512,17 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 					GET_PGNO(dp, lock->pgno);
 			} while (npgno-- != 0);
 			lock->pgno = save_pgno;
+			if (size == sizeof(struct __db_ilock)) {
+				if (endianize) {
+					if (LOG_SWAPPED()) {
+						M_32_SWAP(lock->pgno);
+						M_32_SWAP(lock->type);
+					}
+				} else if (forceflip) {
+					M_32_SWAP(lock->pgno);
+					M_32_SWAP(lock->type);
+				}
+			}
 		}
 	} else {
 		ret = __lock_list_parse_pglogs_int(

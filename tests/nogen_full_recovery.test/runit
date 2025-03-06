@@ -11,6 +11,7 @@ export debug=1
 
 # Create-time will be generation 2
 # txn_regop_gen (with generation) records               : rectype 2016
+# txn_regop_gen_endianize (with generation) records     : rectype 2151
 # a checkpoint (create-time)                            : rectype 2011
 #
 # Copy-time will be generation 2 / different rectypes
@@ -19,6 +20,7 @@ export debug=1
 #
 # Run-time will be generation 3
 # some number of txn_regop_gen records                  : rectype 2016
+# some number of txn_regop_gen_endianize records        : rectype 2151
 # a ckp-record                                          : rectype 2011
 #
 function verify_create_recovery_records
@@ -38,12 +40,12 @@ function verify_create_recovery_records
     typeset run_chkpnt=0
     typeset run_generation=-1
 
-    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select lsn, rectype, generation from comdb2_transaction_logs where rectype = 2016 or rectype = 2011 or rectype = 2010 or rectype = 2020" | while read lsn rectype generation ; do
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select lsn, rectype, generation from comdb2_transaction_logs where rectype = 2016 or rectype = 2151 or rectype = 2011 or rectype = 2010 or rectype = 2020" | while read lsn rectype generation ; do
 
         # Create phase - expect 2016 and 2011
         if [[ "$done_create" == 0 ]]; then
 
-            if [[ "$rectype" != "2016" && "$rectype" != "2011" ]]; then
+            if [[ "$rectype" != "2016" && "$rectype" != "2011" && "$rectype" != "2151" ]]; then
 
                 if [[ "$create_commit" == 0 || "$create_chkpnt" == 0 ]]; then
 
@@ -67,7 +69,7 @@ function verify_create_recovery_records
 
             else
 
-                if [[ "$rectype" == "2016" ]]; then
+                if [[ "$rectype" == "2016" || "$rectype" == "2151" ]]; then
                     let create_commit=create_commit+1
                 fi
 
@@ -100,7 +102,7 @@ function verify_create_recovery_records
                     echo "Counted $copy_commit commits and $copy_chkpnt checkpoints"
 
                     export done_copy=1
-                    if [[ "$rectype" == "2016" ]]; then
+                    if [[ "$rectype" == "2016" || "$rectype" == "2151" ]]; then
                         let run_commit=run_commit+1
                     fi
 
@@ -141,7 +143,7 @@ function verify_create_recovery_records
                 echo "Invalid rectype $rectype for run phase"
                 failexit "Invalid rectype in run phase"
             fi
-            if [[ "$rectype" == "2016" ]]; then
+            if [[ "$rectype" == "2016" || "$rectype" == "2151" ]]; then
                 let run_commit=run_commit+1
             fi
             if [[ "$rectype" == "2011" ]]; then

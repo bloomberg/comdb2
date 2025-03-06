@@ -142,18 +142,20 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 int gbl_commit_delay_trace = 0;
 
 static inline int is_commit_record(int rectype) {
-    switch(rectype) {
-        /* regop regop_gen regop_rowlocks */
-        case (DB___txn_regop): 
-        case (DB___txn_regop_gen):
-        case (DB___txn_dist_commit):
-        case (DB___txn_regop_rowlocks):
-            return 1;
-            break;
-        default:
-            return 0;
-            break;
-    }
+	switch(rectype) {
+		/* regop regop_gen regop_rowlocks */
+		case (DB___txn_regop): 
+		case (DB___txn_regop_gen):
+		case (DB___txn_regop_gen_endianize):
+		case (DB___txn_dist_commit):
+		case (DB___txn_regop_rowlocks):
+		case (DB___txn_regop_rowlocks_endianize):
+			return 1;
+			break;
+		default:
+			return 0;
+			break;
+	}
 }
  
 static int
@@ -726,10 +728,15 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 		unsigned long long ltid = 0, *ltranid = &ltid;
 		int pushlog = 1;
 
-		assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
-				rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit);
+		assert( rectype == DB___txn_regop || 
+				rectype == DB___txn_regop_gen ||
+				rectype == DB___txn_regop_rowlocks ||
+				rectype == DB___txn_dist_commit ||
+				rectype == DB___txn_regop_gen_endianize ||
+				rectype == DB___txn_regop_rowlocks_endianize);
 
-		if (rectype == DB___txn_regop_rowlocks)
+		if (rectype == DB___txn_regop_rowlocks ||
+			rectype == DB___txn_regop_rowlocks_endianize)
 		{
 			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+LTRANID(8)+begin_lsn(8)+last_commit_lsn(8)+context(8)+timestamp(8)+lflags(4)+GENERATION(4) */
 			ltranid = (unsigned long long *)(&pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4]);
@@ -737,7 +744,8 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 			pushlog = (flags & DB_LOG_LOGICAL_COMMIT);
 		}
 
-		if (rectype == DB___txn_regop_gen)
+		if (rectype == DB___txn_regop_gen ||
+			rectype == DB___txn_regop_gen_endianize)
 		{
 			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+GENERATION(4) */
 			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4] );

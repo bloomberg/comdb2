@@ -803,7 +803,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 
 	LOGCOPY_32(&type, dbt.data);
 	normalize_rectype(&type);
-	assert(type == DB___txn_dist_prepare);
+	assert(type == DB___txn_dist_prepare || type == DB___txn_dist_prepare_endianize);
 
 	if ((ret = __txn_dist_prepare_read(dbenv, dbt.data, &prepare)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s error %d unpacking prepare record at %d:%d\n",
@@ -842,6 +842,10 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 
 	/* Acquire locks/pglogs from prepare record */
 	u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PREPARE);
+
+	if (type == DB___txn_dist_prepare_endianize) {
+		flags |= LOCK_GET_LIST_ENDIANIZE;
+	}
 
 	if ((ret = __lock_get_list(dbenv, txnp->txnid, flags, DB_LOCK_WRITE, &prepare->locks,
 		&p->prepare_lsn, &p->pglogs, &p->keycnt, stdout)) != 0) {
