@@ -77,6 +77,7 @@ enum CDB2_ErrorCode {
     DUPLICATE               = 299;
     TZNAME_FAIL             = 401;
     CHANGENODE              = 402;
+    INCOMPLETE              = 452;
     UNKNOWN                 = 300;
 }
 
@@ -186,4 +187,5 @@ message CDB2_SQLRESPONSE {
     optional int32 foreign_policy_flag = 18;
 
     optional CDB2_DISTTXNRESPONSE disttxnresponse = 19;
+    optional int32 sql_tail_offset = 20;
 }
