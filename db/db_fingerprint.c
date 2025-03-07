@@ -210,8 +210,9 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct strin
     if (calc_query_plan) {
         query_plan_ref = form_query_plan(stmt);
         calc_fingerprint(query_plan_ref ? string_ref_cstr(query_plan_ref) : NULL, &temp, plan_fingerprint);
-        if (gbl_sample_queries && param_count(clnt) > 0) {
+        if (gbl_sample_queries && query_plan_ref && param_count(clnt) > 0) {
             // only get params string if we need it
+            // don't add to comdb2_sample_queries if NULL plan (don't need to get params then)
             // check if fingerprint + plan fingerprint combo already exists
             int need_params = 0;
             unsigned char key[2 * FINGERPRINTSZ];

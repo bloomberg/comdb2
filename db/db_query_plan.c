@@ -117,8 +117,8 @@ void add_query_plan(int64_t cost, int64_t nrows, struct fingerprint_track *t, st
         }
     }
 
-    // add to queries sample
-    if (gbl_sample_queries)
+    // add to queries sample if there exists a plan
+    if (gbl_sample_queries && q->plan_ref)
         add_query_to_samples_queries(t->fingerprint, q->plan_fingerprint, zSql_ref, q->plan_ref, params);
 
     // compare query plans
