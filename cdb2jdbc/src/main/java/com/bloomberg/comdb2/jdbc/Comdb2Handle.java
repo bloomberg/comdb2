@@ -98,7 +98,8 @@ public class Comdb2Handle extends AbstractConnection {
     private boolean skipDrain = false;
     private boolean clearAckOnClose = true;
     boolean hasUseIdentity;
-    boolean useIdentity = true;
+    String useIdentity = null;
+    IdentityCreator ic = null;
 
     private boolean isRead;
     private String lastSql;
@@ -408,7 +409,7 @@ public class Comdb2Handle extends AbstractConnection {
         this.clearAckOnClose = val;
     }
 
-    public void setUseIdentity(boolean val){
+    public void setUseIdentity(String val){
         this.useIdentity = val;
     }
 
@@ -684,7 +685,7 @@ public class Comdb2Handle extends AbstractConnection {
         Cdb2Query query = new Cdb2Query();
         Cdb2SqlQuery sqlQuery = new Cdb2SqlQuery();
         query.cdb2SqlQuery = sqlQuery;
-        IdentityCreator ic;
+        IdentityCreatorFactory icf;
         Cdb2IdentityBlob idblob;
 
         if (!sentClientInfo) {
@@ -696,9 +697,10 @@ public class Comdb2Handle extends AbstractConnection {
             sentClientInfo = true;
         }
 
-        if (useIdentity && (ic = Driver.getIdentityCreator()) != null) {
+        if (ic == null && (icf = Driver.getIdentityCreatorFactory()) != null)
+            ic = icf.build(useIdentity);
+        if (ic != null)
             sqlQuery.identity = ic.create();
-        }
 
         sqlQuery.dbName = myDbName;
         sqlQuery.sqlQuery = sql;

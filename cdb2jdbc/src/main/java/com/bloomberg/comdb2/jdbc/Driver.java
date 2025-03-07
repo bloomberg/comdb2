@@ -27,7 +27,7 @@ public class Driver implements java.sql.Driver {
     public static final String PREFIX = "jdbc:comdb2:";
     protected HashMap<String, Option> options = new HashMap<String, Option>();
     private static HealthChecker healthChecker;
-    private static IdentityCreator identityCreator;
+    private static IdentityCreatorFactory identityCreatorFactory;
 
     public Driver() throws SQLException {
         populateOptions();
@@ -126,7 +126,7 @@ public class Driver implements java.sql.Driver {
             options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
             options.put("skip_rs_drain", new BooleanOption("skip_rs_drain", "SkipResultSetDrain"));
             options.put("clear_ack", new BooleanOption("clear_ack", "ClearAck"));
-            options.put("use_identity", new BooleanOption("use_identity", "UseIdentity"));
+            options.put("use_identity", new StringOption("use_identity", "UseIdentity"));
             options.put("use_txn_for_batch", new BooleanOption("use_txn_for_batch", "UseTxnForBatch"));
         } catch (Throwable e) {
             throw new SQLException(e);
@@ -344,12 +344,12 @@ public class Driver implements java.sql.Driver {
         return healthChecker;
     }
 
-    public static void setIdentityCreator(IdentityCreator ic) {
-        identityCreator = ic;
+    public static void setIdentityCreatorFactory(IdentityCreatorFactory icf) {
+        identityCreatorFactory = icf;
     }
 
-    public static IdentityCreator getIdentityCreator() {
-        return identityCreator;
+    public static IdentityCreatorFactory getIdentityCreatorFactory() {
+        return identityCreatorFactory;
     }
 }
 /* vim: set sw=4 ts=4 et: */
