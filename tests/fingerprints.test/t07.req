@@ -8,9 +8,9 @@ select * from t2 where a < 40; // use worse query plan
 select * from comdb2_query_plans where fingerprint='f57a9e3c17f13606af3630d8ebb27f3f';
 select * from comdb2_query_plans where fingerprint='bb1b8ba88d815c2bac18af4618bae9dc'; // check NULL plan
 @bind CDB2_INTEGER test 1; // test params
-select "test", @test;
+select a, @test from t2 where a = 1;
 select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='f57a9e3c17f13606af3630d8ebb27f3f' order by fingerprint + plan_fingerprint;
-select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='bb1b8ba88d815c2bac18af4618bae9dc' order by fingerprint + plan_fingerprint;
-select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='ff590219c73ee93717a6aef16ee0dbe9' order by fingerprint + plan_fingerprint;
-select "test", 2; // make sure only earliest fingerprint + plan_fingerprint combo in samples table (this should not show up)
-select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='ff590219c73ee93717a6aef16ee0dbe9' order by fingerprint + plan_fingerprint;
+select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='bb1b8ba88d815c2bac18af4618bae9dc' order by fingerprint + plan_fingerprint; // NULL plan should not show up
+select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='0c725849afac1771d141eb55e60a9038' order by fingerprint + plan_fingerprint;
+select a, 2 from t2 where a = 1; // make sure only earliest fingerprint + plan_fingerprint combo in samples table (this should not show up)
+select fingerprint, plan_fingerprint, query, query_plan, params from comdb2_sample_queries where fingerprint='0c725849afac1771d141eb55e60a9038' order by fingerprint + plan_fingerprint;
