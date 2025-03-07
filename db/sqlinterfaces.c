@@ -1877,6 +1877,26 @@ void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
     hash_free(h);
 }
 
+void reset_authz_hash(struct sqlclntstate *clnt, int free) {
+    if (clnt->authz_read_tables) {
+        hash_for(clnt->authz_read_tables, free_it, NULL);
+        hash_clear(clnt->authz_read_tables);
+        if (free) {
+            hash_free(clnt->authz_read_tables);
+            clnt->authz_read_tables = NULL;
+        }
+    }
+
+    if (clnt->authz_write_tables) {
+        hash_for(clnt->authz_write_tables, free_it, NULL);
+        hash_clear(clnt->authz_write_tables);
+        if (free) {
+            hash_free(clnt->authz_write_tables);
+            clnt->authz_write_tables = NULL;
+        }
+    }
+}
+
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
 extern int gbl_forbid_incoherent_writes;
@@ -5307,6 +5327,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     clnt->dml_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
     clnt->ddl_contexts = NULL;
+    reset_authz_hash(clnt, 1);
 
     Pthread_mutex_destroy(&clnt->wait_mutex);
     Pthread_cond_destroy(&clnt->wait_cond);
@@ -5334,6 +5355,10 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         Pthread_mutex_init(&clnt->sql_tick_lk, NULL);
         Pthread_mutex_init(&clnt->sql_lk, NULL);
         TAILQ_INIT(&clnt->session_tbls);
+        if (gbl_cache_authz_perms && gbl_uses_externalauth) {
+            clnt->authz_read_tables = hash_init_str(0);
+            clnt->authz_write_tables = hash_init_str(0);
+        }
     } else {
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
@@ -5347,7 +5372,10 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
            if (gbl_unexpected_last_type_abort)
                abort();
        }
+       reset_authz_hash(clnt, 0);
     }
+
+    clnt->allow_make_request = 0;
 
     clnt->pPool = NULL; /* REDUNDANT? */
 

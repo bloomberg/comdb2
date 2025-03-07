@@ -960,6 +960,11 @@ struct sqlclntstate {
     int lastresptype;
     char *externalAuthUser;
 
+    hash_t *authz_read_tables;
+    hash_t *authz_write_tables;
+
+    int allow_make_request;
+
     unsigned verify_dbstore : 1;
 };
 
