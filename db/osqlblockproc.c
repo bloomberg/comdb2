@@ -1619,3 +1619,9 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     }
     return 0;
 }
+
+
+const char *osql_last_usedb_tablename(osql_sess_t *sess)
+{
+    return (sess->tran != NULL) ? sess->tran->tablename : NULL;
+}

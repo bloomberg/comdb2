@@ -3703,6 +3703,12 @@ clipper_usage:
             thdpool_process_message(gbl_verify_thdpool, line, lline, st);
         else
             logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
+    } else if (tokcmp(tok, ltok, "handle_buf_read") == 0) {
+        thdpool_process_message(gbl_handle_buf_read_thdpool, line, lline, st);
+    } else if (tokcmp(tok, ltok, "handle_buf_write") == 0) {
+        thdpool_process_message(gbl_handle_buf_write_thdpool, line, lline, st);
+    } else if (tokcmp(tok, ltok, "handle_buf_queue") == 0) {
+        thdpool_process_message(gbl_handle_buf_queue_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "disttxn") == 0) {
         char dist_txnid[128] = {0};
         int found = 0;

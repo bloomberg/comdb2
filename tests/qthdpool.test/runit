@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+set -e
+
+dbnm=$1
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default - >output.actual 2>&1 <<EOF
+DROP TABLE IF EXISTS t
+DROP TABLE IF EXISTS audit
+CREATE TABLE t (i INTEGER)\$\$
+CREATE PROCEDURE watcher {
+local function main()
+    local c = db:consumer()
+    local row = c:get()
+	db:emit(row.new.i)
+    c:consume()
+end}\$\$
+CREATE TABLE audit (i INTEGER, d DATETIME)\$\$
+CREATE PROCEDURE auditor {
+local function main()
+    local c = db:consumer()
+    db:begin()
+    local row = c:get()
+	db:exec("insert into audit values(" .. row.new.i .. ", now())")
+    c:consume()
+    db:commit()
+end}\$\$
+CREATE LUA CONSUMER auditor ON (TABLE t FOR INSERT)
+CREATE LUA CONSUMER watcher ON (TABLE t FOR INSERT)
+INSERT INTO t VALUES (1), (2), (3)
+EOF
+
+# the sp consumes and inserts a record in the same transaction. Verify that it's handled by the writer pool
+cdb2sql --tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('handle_buf_queue stat')" >qbefore
+cdb2sql ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE auditor()" # consume 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE auditor()" # consume 2
+cdb2sql ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE auditor()" # consume 3
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT 't', i FROM t" >>actual
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT 'audit', i FROM audit" >>actual
+cdb2sql --tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('handle_buf_queue stat')" >qafter
+diff qbefore qafter
+
+# the sp only consumes. Verify that it's handled by the queue pool
+cdb2sql --tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('handle_buf_write stat')" >wbefore
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE watcher()" >>actual # consume 1
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE watcher()" >>actual # consume 2
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE watcher()" >>actual # consume 3
+cdb2sql --tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('handle_buf_write stat')" >wafter
+diff wbefore wafter
+
+# We consumed 3 items off the queue. Verify that.
+cdb2sql --tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('handle_buf_queue stat')" | grep "Work items done immediate : 3"
+diff actual expected
