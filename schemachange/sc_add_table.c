@@ -26,7 +26,7 @@
 #include "sc_csc2.h"
 #include "views.h"
 #include "macc_glue.h"
-
+#include "gen_shard.h"
 extern int gbl_is_physical_replicant;
 
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
@@ -367,23 +367,42 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
             return SC_INTERNAL_ERROR;
         }
-    } else if (s->partition.type == PARTITION_ADD_TESTGENSHARD) {
-        /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    } else if (s->partition.type == PARTITION_ADD_GENSHARD) {
         /* NOTE: for the purpose of this test stub, we create an sql alias; the actual
          * sharding will have a view created here 
          */
-        hash_sqlalias_db(db, s->partition.u.testgenshard.tablename);
+        hash_sqlalias_db(db, s->partition.u.genshard.tablename);
         rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
         if (rc) {
             hash_sqlalias_db(db, NULL);
-            logmsg(LOGMSG_ERROR, "Failed to alias testgenshard table");
+            logmsg(LOGMSG_ERROR, "Failed to alias genshard table");
             return -1;
         }
-        int i;
-        for (i = 0; i < 4; i++) {
-            db->dbnames[i] = strdup(s->partition.u.testgenshard.dbnames[i]);
+        db->numdbs = s->partition.u.genshard.numdbs;
+        db->dbnames = (char **)malloc(sizeof(char*) * db->numdbs);
+        for (int i = 0; i < db->numdbs; i++) {
+            db->dbnames[i] = strdup(s->partition.u.genshard.dbnames[i]);
         }
-        /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+
+        db->numcols = s->partition.u.genshard.numcols;
+        db->columns = (char **)malloc(sizeof(char*) * db->numcols);
+        for (int i = 0; i < db->numcols; i++) {
+            db->columns[i] = strdup(s->partition.u.genshard.columns[i]);
+        }
+
+        db->shardnames = (char **)malloc(sizeof(char*) * db->numdbs);
+        for (int i = 0; i < db->numdbs; i++) {
+            db->shardnames[i] = strdup(s->partition.u.genshard.shardnames[i]);
+        }
+        /*write to llmeta*/
+        struct errstat err = {0};
+        if (gen_shard_llmeta_add(tran, s->partition.u.genshard.tablename, s->partition.u.genshard.numdbs, 
+                    s->partition.u.genshard.dbnames, s->partition.u.genshard.numcols, s->partition.u.genshard.columns,
+                    s->partition.u.genshard.shardnames, &err)) {
+            sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
+            hash_sqlalias_db(db, NULL);
+            return -1;
+        }
     }
 
     sc_printf(s, "Schema change ok\n");

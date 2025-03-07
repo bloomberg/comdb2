@@ -656,9 +656,11 @@ struct remsql_set {
     uuid_t uuid;
     char *srcdbname;
     struct errstat xerr;
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-    char *dbnames[4];
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    uint32_t numdbs;
+    char **dbnames;
+    int32_t numcols;
+    char **columns;
+    char **shardnames;
 };
 
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
@@ -1677,9 +1679,8 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
 void wait_for_transactions(void);
 
 int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames);
-int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
-                              char **dbnames, char **shardnames);
+                              char **dbnames, uint32_t numcols, char **columns, char **shardnames);
+int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg);
 
 struct sp_tmptbl {
     pthread_mutex_t lk;

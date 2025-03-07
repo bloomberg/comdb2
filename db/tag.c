@@ -6155,21 +6155,24 @@ void freedb_int(dbtable *db, dbtable *replace)
     int dbs_idx;
     char *sqlaliasname = db->sqlaliasname;
     const char *timepartition_name = db->timepartition_name;
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-    char *dbnames[4];
-    for (i = 0; i < 4; i++)
+    char **dbnames = alloca(sizeof(char*) * db->numdbs);
+    for (i = 0; i < db->numdbs; i++)
         dbnames[i] = db->dbnames[i];
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+
+    char **columns = alloca(sizeof(char*) * db->numcols);
+    for (i=0; i < db->numcols; i++)
+        columns[i] = db->columns[i];
 
     dbs_idx = db->dbs_idx;
 
     if (!replace) {
         free(sqlaliasname);
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        for (i = 0; i < 4; i++) {
+        for (i = 0; i < db->numdbs; i++) {
             free(dbnames[i]);
         }
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        for (i = 0; i < db->numcols; i++) {
+            free(columns[i]);
+        }
     }
     free(db->lrlfname);
     free(db->tablename);
@@ -6239,10 +6242,10 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        for (i = 0; i < 4; i++)
+        for (i = 0; i < db->numdbs; i++)
             db->dbnames[i] = dbnames[i];
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        for (i = 0; i < db->numcols; i++)
+            db->columns[i] = columns[i];
     }
 }
 

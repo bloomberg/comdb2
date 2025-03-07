@@ -40,7 +40,7 @@ extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
-
+extern int gbl_gen_shard_verbose;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 
@@ -581,26 +581,65 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     return f->rc;
 }
 
+static char** genShardGetShardNames(char *tablename, uint32_t nshards) {
+    int rc = 0;
+    if (!tablename) {
+        return NULL;
+    }
+    size_t shardSize = 3 + strlen(tablename) + 1;
+    char **result = (char **)malloc(sizeof(char *) * nshards);
+    for(int i=0;i<nshards;i++) {
+        result[i] = malloc(sizeof(char) * shardSize);
+        rc = snprintf(result[i] , shardSize, "$%d_%s", i+1, tablename);
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d oom\n", __func__, __LINE__);
+            goto oom;
+        }
+    }
+    return result;
+oom:
+    if (result) {
+        for(int i=0; i<nshards; i++) {
+            if (result[i]) {
+                free(result[i]);
+            }
+        }
+        free(result);
+    }
+    return result;
+}
 
 static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
 {
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
 
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-    char **dbnames = s->partition.u.testgenshard.dbnames;
-    #define NSHARDS 4
-    int nshards = NSHARDS;
-    char *shardnames[NSHARDS] = {"$0_t", "$1_t", "$2_t", "$3_t"};
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-
+    char **dbnames = NULL, **shardnames = NULL, **columns = NULL;
+    uint32_t nshards = 0, numcols = 0;
     /* if this is a generic sharding scheme, pass this to upper layer */
-    if (s->partition.type == PARTITION_ADD_TESTGENSHARD_COORD) {
+    if (s->partition.type == PARTITION_ADD_GENSHARD_COORD) {
         /* running on coordinator replicant */
-        f->rc = osql_test_create_genshard(s, &f->errorMsg, nshards, dbnames, shardnames);
+        dbnames = s->partition.u.genshard.dbnames;
+        nshards = s->partition.u.genshard.numdbs;
+        columns = s->partition.u.genshard.columns;
+        numcols = s->partition.u.genshard.numcols;
+        s->partition.u.genshard.shardnames = shardnames = genShardGetShardNames(s->tablename, nshards);
+        if (!shardnames) {
+            f->errorMsg = "Transaction DDL Error: OOM\n";
+            f->rc = SQLITE_ABORT;
+            return f->rc;
+        }
+        f->rc = osql_test_create_genshard(s, &f->errorMsg, nshards, dbnames, numcols, columns, shardnames);
         return f->rc;
-    } else if (s->partition.type == PARTITION_REM_TESTGENSHARD_COORD) {
+    } else if (s->partition.type == PARTITION_REM_GENSHARD_COORD) {
         /* dbnames are NULL here, not passed though syntax */
-        f->rc = osql_test_remove_genshard(s, &f->errorMsg, nshards, dbnames, shardnames);
+        struct dbtable *db = get_dbtable_by_name(s->tablename);
+        if (!db) {
+            logmsg(LOGMSG_ERROR, "Couldn't find table %s\n", s->tablename);
+            f->errorMsg = "DDL Error: Table not found\n";
+            f->rc = SQLITE_ABORT; 
+            return f->rc;
+        }
+        f->rc = osql_test_remove_genshard(s, &f->errorMsg);
         return f->rc;
     }
 
@@ -914,9 +953,9 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
             struct sql_thread *thd = pthread_getspecific(query_info_key);
             assert(thd && thd->clnt);
             sc->partition.type = thd->clnt->remsql_set.is_remsql == IS_REMCREATE ?
-                PARTITION_REM_TESTGENSHARD : PARTITION_REM_TESTGENSHARD_COORD ;
-            snprintf(sc->partition.u.testgenshard.tablename,
-                     sizeof(sc->partition.u.testgenshard.tablename), "%s", tbl->sqlaliasname);
+                PARTITION_REM_GENSHARD : PARTITION_REM_GENSHARD_COORD ;
+            snprintf(sc->partition.u.genshard.tablename,
+                     sizeof(sc->partition.u.genshard.tablename), "%s", tbl->sqlaliasname);
         }
     }
 
@@ -3338,19 +3377,25 @@ static void free_ddl_context(Parse *pParse)
     ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0)
         return;
-    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
     /* NOTE: dbnames are only set here if we failed to pass them properly
      * to a schema change; the type should be xxx_COORD
      */
-    if (ctx->partition && ctx->partition->type == PARTITION_ADD_TESTGENSHARD_COORD &&
-        ctx->partition->u.testgenshard.dbnames) {
-        int i;
-        for(i=0; i<4; i++) {
-            free(ctx->partition->u.testgenshard.dbnames[i]);
+    if (ctx->partition && ctx->partition->type == PARTITION_ADD_GENSHARD_COORD) {
+        if (ctx->partition->u.genshard.dbnames) {
+            int i;
+            for(i=0; i<ctx->partition->u.genshard.numdbs; i++) {
+                free(ctx->partition->u.genshard.dbnames[i]);
+            }
+            free(ctx->partition->u.genshard.dbnames);
         }
-        free(ctx->partition->u.testgenshard.dbnames);
+        if (ctx->partition->u.genshard.columns) {
+            int i;
+            for(i=0; i<ctx->partition->u.genshard.numcols; i++) {
+                free(ctx->partition->u.genshard.columns[i]);
+            }
+            free(ctx->partition->u.genshard.columns);
+        }
     }
-    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
     free(ctx->partition_first_shardname);
     free(ctx->partition);
     
@@ -5167,11 +5212,10 @@ void comdb2CreateTableEnd(
 
     if (ctx->partition) {
         sc->partition = *ctx->partition;
-        /* pass the allocated dbnames to sc */
-        /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
-        if (ctx->partition->type == PARTITION_ADD_TESTGENSHARD_COORD) {
-            ctx->partition->u.testgenshard.dbnames =  NULL;
-        /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        if (ctx->partition->type == PARTITION_ADD_GENSHARD_COORD) {
+            /*we've passed the relevant info to sc. set the pointers to NULL*/
+            ctx->partition->u.genshard.dbnames =  NULL;
+            ctx->partition->u.genshard.columns = NULL;
         }
     }
 
@@ -7764,36 +7808,75 @@ void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
     partition->u.tpt.start = tmp;
 }
 
+
+int comdb2VerifyGenShardKeyExists(Parse *pParse, IdList *cols) {
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    int shardKeyIdx = 0;
+    struct comdb2_key *cur_key = NULL;
+    struct comdb2_index_part *key_comp = NULL;
+    LISTC_FOR_EACH(&ctx->schema->key_list, cur_key, lnk) {
+        shardKeyIdx = 0;
+        LISTC_FOR_EACH(&cur_key->idx_col_list, key_comp, lnk) {
+            if (gbl_gen_shard_verbose) {
+                logmsg(LOGMSG_USER, "Comparing %s and %s\n", key_comp->column->name, cols->a[shardKeyIdx].zName);
+            }
+            if (strcmp(key_comp->column->name, cols->a[shardKeyIdx].zName)){
+                if (gbl_gen_shard_verbose) {
+                    logmsg(LOGMSG_USER, "COULDN'T FIND column %s in key %s\n", cols->a[shardKeyIdx].zName, cur_key->name);
+                }
+                break;
+            }
+            shardKeyIdx++;
+        }
+        if (shardKeyIdx == cols->nId) {
+            if (gbl_gen_shard_verbose) {
+                logmsg(LOGMSG_USER, "key %s is the sharding key\n", cur_key->name);
+            }
+            return 1;
+        }
+    }
+    logmsg(LOGMSG_ERROR, "SHARDING KEY DOES NOT EXIST\n");
+    return 0;
+}
 /**
  * Create a test generic sharding partition for server testing purposes
  *
  */
-void comdb2CreateTestGenShard(Parse* pParse, IdList *dbs)
+void comdb2CreateGenShard(Parse* pParse, IdList *cols, IdList *dbs)
 {
     struct comdb2_partition *partition;
-
     partition = _get_partition(pParse, 0);
     if (!partition)
         return;
 
-    partition->type = PARTITION_ADD_TESTGENSHARD_COORD;
-
-    if (dbs->nId != 4) {
-        setError(pParse, SQLITE_ABORT, "Need 4 dbs for shards");
+    if (!comdb2VerifyGenShardKeyExists(pParse, cols)) {
+        setError(pParse, SQLITE_ABORT, "Could not find the specified sharding key");
         return;
     }
 
-    partition->u.testgenshard.dbnames = calloc(dbs->nId, sizeof(char*));
-    if (!partition->u.testgenshard.dbnames) {
+    partition->type = PARTITION_ADD_GENSHARD_COORD;
+
+    partition->u.genshard.numcols = cols->nId;
+    partition->u.genshard.columns = calloc(cols->nId, sizeof(char*));
+    if (!partition->u.genshard.columns) {
+        setError(pParse, SQLITE_ABORT, "OOM partition columns");
+        return;
+    }
+
+    for (int i=0;i<cols->nId; i++) {
+        partition->u.genshard.columns[i] = strdup(cols->a[i].zName);
+    }
+    partition->u.genshard.numdbs = dbs->nId;
+    partition->u.genshard.dbnames = calloc(dbs->nId, sizeof(char*));
+    if (!partition->u.genshard.dbnames) {
         setError(pParse, SQLITE_ABORT, "OOM partition dbnames");
         return;
     }
-
-    int i;
-    for (i = 0; i < dbs->nId; i++) {
-        partition->u.testgenshard.dbnames[i] = strdup(dbs->a[i].zName);
+    for (int i=0;i<dbs->nId; i++) {
+        partition->u.genshard.dbnames[i] = strdup(dbs->a[i].zName);
     }
 }
+
 
 
 /*

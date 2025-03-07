@@ -34,6 +34,7 @@ set(src
   fdb_fend_cache.c
   fdb_push.c
   glue.c
+  gen_shard.c
   handle_buf.c
   history.c
   import.c
