@@ -3093,6 +3093,8 @@ static void drop_temp_tables(SP sp)
     char drop_sql[128];
     struct sqlclntstate *clnt = sp->clnt;
     clnt->skip_peer_chk = 1;
+    int ro = clnt->is_readonly;
+    clnt->is_readonly = 0;
     LIST_FOREACH(tbl, &sp->tmptbls, entries) {
         int rc;
         char n1[MAXTABLELEN], n2[MAXTABLELEN];
@@ -3115,6 +3117,7 @@ static void drop_temp_tables(SP sp)
             logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
         }
     }
+    clnt->is_readonly = ro;
     clnt->skip_peer_chk = 0;
     if (expire) {
         sp->thd->dbopen_gen = -1;
