@@ -186,7 +186,7 @@
   "Given an error string, identifies whether the error is safely retriable."
   [e]
   (or (re-find #"not serializable" e)
-      (re-find #"unable to update record rc = 4" e)
+      (re-find #"unable to update record" e)
       (re-find #"selectv constraints" e)
       (re-find #"Maximum number of retries done." e)))
 
