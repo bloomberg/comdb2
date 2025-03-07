@@ -52,12 +52,14 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   endif()
 endif()
 
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
 if(COMDB2_BBCMAKE)
   include(${COMDB2_BBCMAKE})
-  add_definitions(-DCOMDB2_BBCMAKE)
 else()
-configure_file(bbinc/plhash.in bbinc/plhash.h COPYONLY)
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake)
+  configure_file(bbinc/plhash.in bbinc/plhash.h COPYONLY)
+endif()
+
 find_package(LZ4 REQUIRED)
 find_package(OpenSSL REQUIRED)
 set(PROTOBUF_C_MIN_VERSION 1.1.0)
@@ -82,8 +84,6 @@ if(WITH_QKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_QKAFKA)
 endif()
-
-endif(COMDB2_BBCMAKE)
 
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 

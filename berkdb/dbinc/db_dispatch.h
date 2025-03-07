@@ -38,7 +38,7 @@
 #ifndef _DB_DISPATCH_H_
 #define	_DB_DISPATCH_H_
 
-#include <plhash.h>
+#include <plhash_glue.h>
 /*
  * Declarations and typedefs for the list of transaction IDs used during
  * recovery.  This is a generic list used to pass along whatever information

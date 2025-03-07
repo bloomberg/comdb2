@@ -21,7 +21,7 @@
 #include "ezsystables.h"
 #include "sql.h"
 #include "string_ref.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "tohex.h"
 
 extern hash_t *gbl_sample_queries_hash;

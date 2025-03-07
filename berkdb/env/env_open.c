@@ -24,7 +24,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include <unistd.h>
 #include <limits.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "db_int.h"
 #include "dbinc/crypto.h"
 #include "dbinc/db_page.h"

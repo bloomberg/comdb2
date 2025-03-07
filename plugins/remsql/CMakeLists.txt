@@ -36,6 +36,5 @@ set(SOURCES remsql.c fdb_comm.c)
 add_plugin(remsql STATIC "${SOURCES}")
 add_dependencies(remsql sqlite) # Wait for parse.h
 if (COMDB2_BBCMAKE)
-  target_link_libraries(remsql PUBLIC protobuf-c)
-  comdb2_bb_target(remsql)
+  comdb2_lib_target(remsql)
 endif()

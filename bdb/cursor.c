@@ -90,7 +90,7 @@ as long as there was a successful move in the past
 #include "bdb_osqltrn.h"
 #include <dlfcn.h>
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "logmsg.h"
 #include "util.h"
 #include "tohex.h"
