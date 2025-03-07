@@ -1,0 +1,17 @@
+[CREATE TABLE t15(a INTEGER ENCODING 'ascii')] failed with rc -3 unknown charset
+[CREATE TABLE t15(a INTEGER ENCODING 'utf8')] failed with rc -3 invalid column type to use character encoding
+[CREATE TABLE t15(a TEXT ENCODING 'utf8')] failed with rc -3 invalid column type to use character encoding
+(csc2='schema
+	{
+		cstring a[11] null = yes 
+	}
+constraints
+	{
+		check "$CONSTRAINT_CHAR_ENC_a" = {where utf8_validate(a)=0}
+	}
+')
+[INSERT INTO t15 VALUES (CAST(x'616263FF616263' AS TEXT))] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_CHAR_ENC_a' unable to add record rc = 320
+(COUNT(*)=0)
+(rows inserted=1)
+(COUNT(*)=1)
+[ALTER TABLE t15 ALTER COLUMN a ENCODING 'utf8'] failed with rc 240 Record violates check constraints rrn xx genid xx
