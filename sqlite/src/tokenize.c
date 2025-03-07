@@ -811,16 +811,50 @@ static int isLeftOperand(int tokenType){
 }
 
 /*
-** This function should return non-zero if the specified token type is
-** a keyword that requires the next token to be a table identifier.
+** This function should return non-zero if the next string token is
+** expected to be an identifier
 */
-static int requiresTableId(int tokenType){
-  switch( tokenType ){
-    case TK_FROM:
-    case TK_JOIN:
+static int expectsStringIdentifier(int currType, int prevType, int prevResult){
+  switch( currType ){
+    case TK_ADD:
+    case TK_ANALYZE:
+    case TK_COLLATE:
+    case TK_COLUMN:
+    case TK_CONSTRAINT:
+    case TK_DETACH:
+    case TK_DROP:
+    case TK_EXISTS:
+    case TK_INDEX:
     case TK_INTO:
+    case TK_JOIN:
+    case TK_OF:
+    case TK_OVER:
+    case TK_PRAGMA:
+    case TK_RECURSIVE:
+    case TK_REFERENCES:
+    case TK_REINDEX:
+    case TK_RELEASE:
+    case TK_RENAME:
+    case TK_SAVEPOINT:
+    case TK_SET:
+    case TK_TABLE:
+    case TK_TO:
+    case TK_TRIGGER:
     case TK_UPDATE:
-    case TK_TABLE:    return 1;
+    case TK_USING:
+    case TK_VACUUM:
+    case TK_VIEW:
+    case TK_WINDOW:
+    case TK_WITH:     return 1;
+    case TK_COMMA:    return prevResult;
+    case TK_DATABASE: return prevType==TK_DETACH;
+    case TK_BY:       return prevType==TK_INDEXED;
+    case TK_FROM:     return prevType!=TK_DISTINCT;
+    case TK_ABORT:
+    case TK_FAIL:
+    case TK_IGNORE:
+    case TK_REPLACE:
+    case TK_ROLLBACK: return prevType==TK_OR;
     default:          return 0;
   }
 }
@@ -842,7 +876,7 @@ char *sqlite3Normalize_alternate(
   int nParenAtIN;    /* Value of nParent at start of RHS of IN operator */
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
-  int useStrId = 0;  /* Treat string token as identifier */
+  int isStrId = 0;   /* Treat string token as identifier */
 
   db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
   tokenType = -1;
@@ -903,7 +937,7 @@ char *sqlite3Normalize_alternate(
           if( zId==0 ) break;
           sqlite3Dequote(zId);
           int maybeStrLiteral = zSql[i] == '\'' || ( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) );
-          if ( maybeStrLiteral && !useStrId ){
+          if ( maybeStrLiteral && !isStrId ){
             sqlite3_str_append(pStr, "?", 1);
             sqlite3DbFree(db, zId);
             break;
@@ -943,7 +977,7 @@ char *sqlite3Normalize_alternate(
         /* fall through */
       }
       default: {
-        useStrId = requiresTableId(tokenType);
+        isStrId = expectsStringIdentifier(tokenType, prevType, isStrId);
         if( sqlite3IsIdChar(zSql[i]) ) addSpaceSeparator(pStr);
         j = pStr->nChar;
         sqlite3_str_append(pStr, zSql+i, n);
