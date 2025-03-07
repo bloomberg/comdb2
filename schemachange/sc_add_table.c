@@ -111,7 +111,7 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->timepartition_name = timepartition_name;
 
     if ((iq == NULL || iq->tranddl <= 1) &&
-        verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
+        verify_constraints_from_dbtable(newdb, /* is_updated */ 0, s) != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
         rc = -1;
         goto err;
@@ -249,7 +249,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "failed to lock comdb2_tables (%s:%d)\n", __func__, __LINE__);
         return -1;
     }
-    if (iq && iq->tranddl > 1 && verify_constraints_exist(db, NULL, NULL, s) != 0) {
+    if (iq && iq->tranddl > 1 && verify_constraints_from_dbtable(db, /* is_updated */ 0, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
         return -1;
     }
