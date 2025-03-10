@@ -6543,7 +6543,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
     return;
 }
 
-static void drop_constraint(Parse *pParse, Token *pName, int type)
+static void drop_constraint(Parse *pParse, Token *pName, int type, int hush)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -6570,7 +6570,7 @@ static void drop_constraint(Parse *pParse, Token *pName, int type)
     if (cons) {
         /* Mark it as dropped. */
         cons->flags |= CONS_DELETED;
-    } else {
+    } else if (!hush) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Constraint '%s' not found.", name);
         goto cleanup;
@@ -6591,7 +6591,7 @@ void comdb2DropForeignKey(Parse *pParse, /* Parser context */
                           Token *pName   /* Foreign key name */
 )
 {
-    drop_constraint(pParse, pName, CONS_FKEY);
+    drop_constraint(pParse, pName, CONS_FKEY, 0);
     return;
 }
 
@@ -6599,7 +6599,7 @@ void comdb2DropConstraint(Parse *pParse, /* Parser context */
                           Token *pName   /* Foreign key name */
 )
 {
-    drop_constraint(pParse, pName, CONS_ALL);
+    drop_constraint(pParse, pName, CONS_ALL, 0);
     return;
 }
 
@@ -7858,4 +7858,66 @@ void create_default_consumer_sp(Parse *p, char *spname)
     strcpy(sc->fname, version);
     comdb2prepareNoRows(v, p, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
 
+}
+
+void comdb2ChangeCharacterSet(Parse *pParse, Token *t, int alter)
+{
+    struct comdb2_ddl_context *ctx;
+    struct comdb2_column *column;
+    sqlite3 *db = pParse->db;
+
+    char *charset = NULL;
+    char expr[MAXCOLNAME + sizeof("utf8_validate()=0")];
+    char constraint_name[MAXCOLNAME + sizeof("$" GEN_CONS_PREFIX "_CHAR_ENC_")];
+    int nw;
+
+    Token colToken;
+    Token funcToken;
+    ExprList *arg;
+    Expr *func;
+    Expr *zero;
+    Expr *equality;
+
+    if (t != NULL) {
+        charset = sqlite3NameFromToken(db, t);
+        if (charset == NULL)
+            return;
+
+        /* so far only utf8 is supported */
+        if (strcasecmp(charset, "utf8") != 0 && strcasecmp(charset, "utf-8") != 0) {
+            setError(pParse, SQLITE_MISUSE, "unknown charset");
+            goto out;
+        }
+    }
+
+    ctx = pParse->comdb2_ddl_ctx;
+    if (alter)
+        column = ctx->alter_column;
+    else
+        column = (struct comdb2_column *)LISTC_BOT(&ctx->schema->column_list);
+
+    if (column->type != SQL_TYPE_CSTRING && column->type != SQL_TYPE_VARCHAR && column->type != SQL_TYPE_CHAR) {
+        setError(pParse, SQLITE_MISUSE, "invalid column type to use character encoding");
+        goto out;
+    }
+
+    snprintf(constraint_name, sizeof(constraint_name), "$" GEN_CONS_PREFIX "_CHAR_ENC_%s", column->name);
+    sqlite3TokenInit(&pParse->constraintName, constraint_name);
+
+    if (t == NULL) {
+        drop_constraint(pParse, &pParse->constraintName, CONS_CHECK, 1);
+    } else {
+        sqlite3TokenInit(&colToken, column->name);
+        sqlite3TokenInit(&funcToken, "utf8_validate");
+
+        arg = sqlite3ExprListAppend(pParse, NULL, sqlite3ExprAlloc(db, TK_ID, &colToken, 0));
+        func = sqlite3ExprFunction(pParse, arg, &funcToken, 0);
+        zero = sqlite3ExprAlloc(db, TK_INTEGER, &sqlite3IntTokens[0], 0);
+
+        equality = sqlite3PExpr(pParse, TK_EQ, func, zero);
+        nw = snprintf(expr, sizeof(expr), "utf8_validate(%s)=0", column->name);
+        comdb2AddCheckConstraint(pParse, equality, expr, expr + nw + 1);
+    }
+out:
+    sqlite3DbFree(db, charset);
 }

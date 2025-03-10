@@ -545,6 +545,8 @@ ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
                                  {sqlite3AddPrimaryKey(pParse,0,R,I,Z);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
+ccons ::= ENCODING STRING(H). {comdb2ChangeCharacterSet(pParse,&H,0);}
+ccons ::= ENCODING NONE. {comdb2ChangeCharacterSet(pParse,NULL,0);}
 ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0, 0);
@@ -2052,6 +2054,12 @@ alter_table_alter_column_cmd ::= SET NOT NULL. {
 }
 alter_table_alter_column_cmd ::= DROP NOT NULL. {
   comdb2AlterColumnDropNotNull(pParse);
+}
+alter_table_alter_column_cmd ::= ENCODING STRING(H). {
+  comdb2ChangeCharacterSet(pParse,&H,1);
+}
+alter_table_alter_column_cmd ::= ENCODING NONE. {
+  comdb2ChangeCharacterSet(pParse,NULL,1);
 }
 alter_table_alter_column ::= alter_table_alter_column_start
                              alter_table_alter_column_cmd. {

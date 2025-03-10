@@ -3695,6 +3695,21 @@ TYPES_INLINE int CLIENT_BLOB_to_CLIENT_PSTR2(
     return -1;
 }
 
+static int utf8_validate_permitting_trailing_zeros(const char *u, int max)
+{
+    int valid_len;
+
+    if (utf8_validate(u, max, &valid_len) != 0)
+        return -1;
+
+    /* utf8_validate() stops at the 1st NUL character. We want to permit trailing zeros */
+    for (; valid_len < max - 1; ++valid_len) {
+        if (u[valid_len] != '\0')
+            return -1;
+    }
+    return 0;
+}
+
 /**
  * Finds out where the input vutf8 string is stored and then determines where it
  * should be copied and copies it. Doesn't deal with NULLs.
@@ -3717,7 +3732,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
                                       blob_buffer_t *inblob,
                                       blob_buffer_t *outblob, int *outdtsz)
 {
-    int valid_len;
     if (out_len > 0)
         memset(out, 0, out_len);
 
@@ -3742,10 +3756,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             /* validate input blob */
             assert(inblob->length == len);
 
-            if (utf8_validate(inblob->data, inblob->length, &valid_len) ||
-                valid_len != len - 1) {
+            if (utf8_validate_permitting_trailing_zeros(inblob->data, inblob->length))
                 return -1;
-            }
 
             memcpy(outblob, inblob, sizeof(blob_buffer_t));
             bzero(inblob, sizeof(blob_buffer_t));
@@ -3767,8 +3779,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
 
         /* if the string isn't empty, validate the string and make sure its
          * length matches len (minus 1 for the NUL byte) */
-        if (len > 0 &&
-            (utf8_validate(in, len, &valid_len) || valid_len != len - 1))
+        if (len > 0 && utf8_validate_permitting_trailing_zeros(in, len))
             return -1;
 
         memcpy(out, in, len);
@@ -3785,7 +3796,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
      * fit in the out buffer, then the string needs to be copied from the in
      * buffer to a new out blob */
     else if (len <= in_len) {
-        int valid_len;
 
         if (outblob) {
             if (len > gbl_blob_sz_thresh_bytes)
@@ -3800,8 +3810,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
 
             /* if the string isn't empty, validate the string and make sure its
              * length matches len (minus 1 for the NUL byte) */
-            if (len > 0 &&
-                (utf8_validate(in, len, &valid_len) || valid_len != len - 1))
+            if (len > 0 && utf8_validate_permitting_trailing_zeros(in, len))
                 return -1;
 
             memcpy(outblob->data, in, len);
@@ -3821,8 +3830,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
      * blob to the out buffer */
     else /* len <= out_len */
     {
-        int valid_len;
-
         /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
         if (inblob && inblob->length != OSQL_BLOB_FILLER_LENGTH) {
             if (!inblob->exists || !inblob->data) {
@@ -3832,8 +3839,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
 
             /* if the string isn't empty, validate the string and make sure its
              * length matches len (minus 1 for the NUL byte) */
-            if (len > 0 && (utf8_validate(inblob->data, len, &valid_len) ||
-                            valid_len != len - 1))
+            if (len > 0 && utf8_validate_permitting_trailing_zeros(inblob->data, len))
                 return -1;
 
             memcpy(out, inblob->data, len);
