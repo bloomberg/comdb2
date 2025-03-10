@@ -90,6 +90,15 @@ void watchdog_cancel_alarm(void)
 
 int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
+static void watchdogauth(void) {
+    struct sqlclntstate clnt;
+    start_internal_sql_clnt(&clnt);
+    clnt.admin = 0;
+    clnt.current_user.bypass_auth = 0;
+    check_user_password(&clnt);
+    end_internal_sql_clnt(&clnt);
+}
+
 static void watchdogsql(void)
 {
     struct sqlclntstate clnt;
@@ -131,6 +140,7 @@ static void *watchdog_thread(void *arg)
 
     int test_io_time = 0;
     int test_sql_time = 0;
+    int test_auth_time = 0;
     while (!db_is_exiting()) {
         gbl_epoch_time = comdb2_time_epoch();
 
@@ -297,6 +307,11 @@ static void *watchdog_thread(void *arg)
             if (check_sql_time && ((gbl_epoch_time - test_sql_time) > check_sql_time)) {
                 watchdogsql();
                 test_sql_time = gbl_epoch_time;
+            }
+            int check_auth_time = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TEST_AUTH_TIME);
+            if (check_auth_time && ((gbl_epoch_time - test_auth_time) > check_auth_time)) {
+                watchdogauth();
+                test_auth_time = gbl_epoch_time;
             }
 
             /* if nothing was bad, update the timestamp */
