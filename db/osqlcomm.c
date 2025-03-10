@@ -7141,7 +7141,7 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
         );
 
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: dbq_consume rc:%d\n", __func__, rc);
+            if (rc != RC_INTERNAL_RETRY) logmsg(LOGMSG_ERROR, "%s: dbq_consume rc:%d\n", __func__, rc);
             return rc;
         }
         break;
