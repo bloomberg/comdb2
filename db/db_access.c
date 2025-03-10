@@ -74,7 +74,7 @@ void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt) {
 /* If user password does not match this function
  * will write error response and return a non 0 rc
  */
-static int check_user_password(struct sqlclntstate *clnt)
+int check_user_password(struct sqlclntstate *clnt)
 {
     int password_rc = 0;
     int valid_user;
