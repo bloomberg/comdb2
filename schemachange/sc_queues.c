@@ -103,14 +103,14 @@ int do_alter_queues_int(struct schema_change_type *sc)
     return rc;
 }
 
+void handle_buf_set_queue_thdpool_maxthds(int nthds);
 void static add_to_qdbs(struct dbtable *db)
 {
-    thedb->qdbs =
-        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
+    thedb->qdbs = realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
     thedb->qdbs[thedb->num_qdbs++] = db;
-
     /* Add queue to the hash. */
     hash_add(thedb->qdb_hash, db);
+    handle_buf_set_queue_thdpool_maxthds(thedb->num_qdbs);
 }
 
 int static remove_from_qdbs(struct dbtable *db)

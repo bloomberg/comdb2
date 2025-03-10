@@ -342,6 +342,9 @@
 (name='max_views', description='Maximum number of views', value=1024)
 [SELECT * FROM comdb2_limits ORDER BY name] rc 0
 (name='appsockpool')
+(name='handle_buf_queue')
+(name='handle_buf_read')
+(name='handle_buf_write')
 (name='loadcache')
 (name='memptrickle')
 (name='osqlpfaultpool')
