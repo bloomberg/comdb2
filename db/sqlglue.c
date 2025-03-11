@@ -774,6 +774,86 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
     }
 }
 
+static int free_queryhash(void *obj, void *arg)
+{
+    struct query_path_component *qh = (struct query_path_component *)obj;
+    free(qh);
+    return 0;
+}
+
+void clear_query_hash(hash_t *h, int destroy)
+{
+    if (h == NULL)
+        return;
+    hash_for(h, free_queryhash, NULL);
+    hash_clear(h);
+    if (destroy)
+        hash_free(h);
+}
+
+static void addSorterCost(const VdbeSorter *pSorter, hash_t *h, void *l)
+{
+    struct query_path_component fnd = {{0}}, *qc;
+
+    if (h == NULL)
+        return;
+
+    if (NULL == (qc = hash_find(h, &fnd))) {
+        qc = calloc(sizeof(struct query_path_component), 1);
+        hash_add(h, qc);
+        listc_abl(l, qc);
+    }
+
+    qc->nfind += pSorter->nfind;
+    qc->nnext += pSorter->nmove;
+    /* note: we record writes in record routines on the master */
+    qc->nwrite += pSorter->nwrite;
+}
+
+static void addCursorCost(BtCursor *pCur, hash_t *h, void *l)
+{
+    struct query_path_component fnd = {{0}}, *qc = NULL;
+    if (h == NULL)
+        return;
+    if (pCur->cursor_class == CURSORCLASS_SQLITEMASTER || (pCur->db && is_sqlite_stat(pCur->db->tablename)))
+        return;
+    if (pCur->bt && pCur->bt->is_remote) {
+        if (!pCur->fdbc)
+            return;
+        strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
+        strncpy0(fnd.lcl_tbl_name, pCur->fdbc->tblname(pCur), sizeof(fnd.lcl_tbl_name));
+    } else if (pCur->db) {
+        strncpy0(fnd.lcl_tbl_name, pCur->db->tablename, sizeof(fnd.lcl_tbl_name));
+    }
+    fnd.ix = pCur->ixnum;
+
+    if ((qc = hash_find(h, &fnd)) == NULL) {
+        qc = calloc(sizeof(struct query_path_component), 1);
+        if (pCur->bt && pCur->bt->is_remote) {
+            strncpy0(qc->rmt_db, pCur->fdbc->dbname(pCur), sizeof(qc->rmt_db));
+            strncpy0(qc->lcl_tbl_name, pCur->fdbc->tblname(pCur), sizeof(qc->lcl_tbl_name));
+        } else if (pCur->db) {
+            strncpy0(qc->lcl_tbl_name, pCur->db->tablename, sizeof(qc->lcl_tbl_name));
+        }
+        qc->ix = pCur->ixnum;
+        hash_add(h, qc);
+        listc_abl(l, qc);
+    }
+
+    if (qc) {
+        qc->nfind += pCur->nfind;
+        qc->nnext += pCur->nmove;
+        /* note: we record writes in record routines on the master */
+        qc->nwrite += pCur->nwrite;
+        qc->nblobs += pCur->nblobs;
+    }
+}
+
+hash_t *create_query_hash()
+{
+    return hash_init_user(query_path_component_hash, query_path_component_cmp, 0, 0);
+}
+
 struct sql_thread *start_sql_thread(void)
 {
     struct sql_thread *thd = calloc(1, sizeof(struct sql_thread));
@@ -782,8 +862,7 @@ struct sql_thread *start_sql_thread(void)
         return NULL;
     }
     listc_init(&thd->query_stats, offsetof(struct query_path_component, lnk));
-    thd->query_hash = hash_init_user(query_path_component_hash,
-                                     query_path_component_cmp, 0, 0);
+    thd->query_hash = create_query_hash();
     Pthread_mutex_init(&thd->lk, NULL);
     Pthread_setspecific(query_info_key, thd);
     Pthread_mutex_lock(&gbl_sql_lock);
@@ -793,13 +872,6 @@ struct sql_thread *start_sql_thread(void)
     thd->crtshard = 0;
 
     return thd;
-}
-
-static int free_queryhash(void *obj, void *arg)
-{
-    struct query_path_component *qh = (struct query_path_component *)obj;
-    free(qh);
-    return 0;
 }
 
 /* sql thread pool relies on this being safe to call even if we didn't
@@ -817,12 +889,8 @@ void done_sql_thread(void)
             free(thd->buf);
             thd->buf = NULL;
         }
-        if (thd->query_hash) {
-            hash_for(thd->query_hash, free_queryhash, NULL);
-            hash_clear(thd->query_hash);
-            hash_free(thd->query_hash);
-            thd->query_hash = 0;
-        }
+        clear_query_hash(thd->query_hash, 1);
+        clear_query_hash(thd->query_hash_subrequest, 1);
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
         free(thd);
     }
@@ -6536,18 +6604,8 @@ void addVdbeSorterCost(const VdbeSorter *pSorter)
     if (thd == NULL)
         return;
 
-    struct query_path_component fnd = {{0}}, *qc;
-
-    if (NULL == (qc = hash_find(thd->query_hash, &fnd))) {
-        qc = calloc(sizeof(struct query_path_component), 1);
-        hash_add(thd->query_hash, qc);
-        listc_abl(&thd->query_stats, qc);
-    }
-
-    qc->nfind += pSorter->nfind;
-    qc->nnext += pSorter->nmove;
-    /* note: we record writes in record routines on the master */
-    qc->nwrite += pSorter->nwrite;
+    addSorterCost(pSorter, thd->query_hash, &thd->query_stats);
+    addSorterCost(pSorter, thd->query_hash_subrequest, &thd->query_stats_subrequest);
 }
 
 /*
@@ -6618,50 +6676,11 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
     }
 
-    if (thd && thd->query_hash) {
-        if (pCur->cursor_class == CURSORCLASS_SQLITEMASTER ||
-            (pCur->db && is_sqlite_stat(pCur->db->tablename))) {
-            goto skip;
-        }
-        struct query_path_component fnd = {{0}}, *qc = NULL;
-        if (pCur->bt && pCur->bt->is_remote) {
-            if (!pCur->fdbc)
-                goto skip; /* failed during cursor creation */
-            strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
-            strncpy0(fnd.lcl_tbl_name, pCur->fdbc->tblname(pCur),
-                     sizeof(fnd.lcl_tbl_name));
-        } else if (pCur->db) {
-            strncpy0(fnd.lcl_tbl_name, pCur->db->tablename,
-                     sizeof(fnd.lcl_tbl_name));
-        }
-        fnd.ix = pCur->ixnum;
-
-        if ((qc = hash_find(thd->query_hash, &fnd)) == NULL) {
-            qc = calloc(sizeof(struct query_path_component), 1);
-            if (pCur->bt && pCur->bt->is_remote) {
-                strncpy0(qc->rmt_db, pCur->fdbc->dbname(pCur),
-                         sizeof(qc->rmt_db));
-                strncpy0(qc->lcl_tbl_name, pCur->fdbc->tblname(pCur),
-                         sizeof(qc->lcl_tbl_name));
-            } else if (pCur->db) {
-                strncpy0(qc->lcl_tbl_name, pCur->db->tablename,
-                         sizeof(qc->lcl_tbl_name));
-            }
-            qc->ix = pCur->ixnum;
-            hash_add(thd->query_hash, qc);
-            listc_abl(&thd->query_stats, qc);
-        }
-
-        if (qc) {
-            qc->nfind += pCur->nfind;
-            qc->nnext += pCur->nmove;
-            /* note: we record writes in record routines on the master */
-            qc->nwrite += pCur->nwrite;
-            qc->nblobs += pCur->nblobs;
-        }
+    if (thd) {
+        addCursorCost(pCur, thd->query_hash, &thd->query_stats);
+        addCursorCost(pCur, thd->query_hash_subrequest, &thd->query_stats_subrequest);
     }
 
-skip:
     cursorid = pCur->cursorid;
     if (pCur->bt && pCur->bt->is_remote &&
         pCur->rootpage != RTPAGE_SQLITE_MASTER) /* sqlite_master is local */
