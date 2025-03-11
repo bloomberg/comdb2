@@ -1,0 +1,15 @@
+(rows inserted=1000)
+(version='1')
+(i=1)
+(i=2)
+(i=3)
+(i=4)
+(i=5)
+(i=6)
+(i=7)
+(i=8)
+(i=9)
+(i=10)
+(comdb2_prevquerycost()='Cost: 20.00 NRows: 10
+    index 0 on table t17 finds 1 next/prev 10
+')

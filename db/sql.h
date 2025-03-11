@@ -1243,7 +1243,7 @@ struct sql_hist {
     int64_t txnid;
     struct conninfo conn;
 };
-
+typedef LISTC_T(struct query_path_component) query_path_component_tp;
 struct sql_thread {
     LINKC_T(struct sql_thread) lnk;
     pthread_mutex_t lk;
@@ -1257,8 +1257,11 @@ struct sql_thread {
     int bufsz;
     uint32_t id;
     char *buf;
-    LISTC_T(struct query_path_component) query_stats;
+    int in_subrequest;
+    query_path_component_tp query_stats;
     hash_t *query_hash;
+    query_path_component_tp query_stats_subrequest;
+    hash_t *query_hash_subrequest;
     double cost;
     struct sqlclntstate *clnt;
     /* custom error message to send to client */
