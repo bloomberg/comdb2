@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+# Make sure we talk to the same host
+
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()"`
+
+if [ "$mach" = "" ]; then
+   echo could not retrieve hostname >&2
+   exit 1
+fi
+
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null <<EOF
+DROP TABLE IF EXISTS t
+CREATE TABLE t (i INTEGER UNIQUE)\$\$
+INSERT INTO t (i) SELECT value FROM generate_series(1, 1000)
+CREATE PROCEDURE sp {
+local function main()
+    db:exec("SELECT i FROM t WHERE i > 0 AND i <= 10"):emit();
+    db:exec("SELECT i FROM t WHERE i > 10 AND i <= 20"):emit();
+end }\$\$
+EXEC PROCEDURE sp()
+EOF
+
+# Redirect longreqs to standard out
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longreqfile <stdout>')" >/dev/null
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')" >/dev/null
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sp()" >/dev/null
+
+if [ -n "$CLUSTER" ] ; then
+    logfile="$TESTDIR/logs/$dbnm.$mach.db"
+else
+    logfile="$TESTDIR/logs/$dbnm.db"
+fi
+
+# give time for .db file to flush
+sleep 1
+
+# ensure we see individual plans from these 2 queries
+cnt=`grep -c 'index 0 on table t finds 1 next/prev 10' $logfile`
+echo $cnt
+if [ $cnt -ne 2 ]; then
+    echo 'missing cursor stats???' >&2
+    exit 1
+fi
+grep 'sp_sql=SELECT i FROM t WHERE i > 0 AND i <= 10' $logfile
+grep 'sp_sql=SELECT i FROM t WHERE i > 10 AND i <= 20' $logfile
+
+# ensure we have a total plan of the sp
+grep 'index 0 on table t finds 2 next/prev 20' $logfile
+grep 'rowcount=20, cost=40' $logfile
+
+exit 0

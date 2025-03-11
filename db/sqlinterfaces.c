@@ -1068,9 +1068,10 @@ int sqlite3_close_serial(sqlite3 **ppDb)
    Interestingly, the "nblobs" field was incremented (in sqlglue.c)
    but not used by this formula (nor was it used anywhere else).
 */
+int is_stored_proc(struct sqlclntstate *clnt);
 double query_cost(struct sql_thread *thd)
 {
-    return thd->cost;
+    return is_stored_proc(thd->clnt) ? thd->clnt->spcost.cost : thd->cost;
 }
 
 void save_thd_cost_and_reset(
@@ -1284,7 +1285,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     double cost;
     int64_t time;
     int64_t prepTime;
-    int64_t rows;
+    int64_t rows = clnt->nrows;
     int is_lua;
 
     if (1 || clnt->query_stats == NULL) {
@@ -1327,7 +1328,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (clnt->saved_rc)
         reqlog_set_error(logger, clnt->saved_errstr, clnt->saved_rc);
 
-    reqlog_set_rows(logger, clnt->nrows);
+    reqlog_set_rows(logger, rows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
     if (clnt->osql.sock_started == 0)
         comdb2uuid_clear(clnt->osql.uuid);
@@ -3787,12 +3788,8 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
     return irc;
 }
 
-static int post_sqlite_processing(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt,
-                                  struct sql_state *rec, int postponed_write,
-                                  uint64_t row_id)
+static void post_query_get_cost(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    test_no_btcursors(thd);
     if (clnt->client_understands_query_stats) {
         record_query_cost(thd->sqlthd, clnt);
         write_response(clnt, RESPONSE_COST, 0, 0);
@@ -3803,6 +3800,12 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         }
         clnt->prev_cost_string = get_query_cost_as_string(thd->sqlthd, clnt);
     }
+}
+
+static int post_sqlite_processing(struct sqlthdstate *thd, struct sqlclntstate *clnt, struct sql_state *rec,
+                                  int postponed_write, uint64_t row_id)
+{
+    test_no_btcursors(thd);
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
     if (rc != 0) {
@@ -3940,6 +3943,7 @@ postprocessing:
     if (rc == SQLITE_DONE || rc == SQLITE_OK) /* good rcodes */
         rc = 0;
     /* closing: error codes, postponed write result and so on*/
+    post_query_get_cost(thd, clnt);
     t_rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
     if (t_rc != 0 && rc == 0)
         rc = t_rc;
@@ -4046,6 +4050,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
         // procedure
         calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql, clnt->work.aFingerprint);
     }
+    post_query_get_cost(thd, clnt);
     sqlite_done(thd, clnt, &rec, 0);
 }
 
@@ -5760,6 +5765,7 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
     struct query_path_component *c;
     int max_components;
     int sz;
+    query_path_component_tp *listp;
 
     if (clnt->query_stats) {
         free(clnt->query_stats);
@@ -5769,7 +5775,8 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
     if (!thd)
         return -1;
 
-    max_components = listc_size(&thd->query_stats);
+    listp = thd->in_subrequest ? &thd->query_stats_subrequest : &thd->query_stats;
+    max_components = listc_size(listp);
     sz = offsetof(struct client_query_stats, path_stats) +
          sizeof(struct client_query_path_component) * max_components;
     query_info = calloc(1, sz);
@@ -5789,7 +5796,7 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
     memset(query_info->reserved, 0xff, sizeof(query_info->reserved));
 
     i = 0;
-    LISTC_FOR_EACH(&thd->query_stats, c, lnk)
+    LISTC_FOR_EACH(listp, c, lnk)
     {
         if (i >= max_components) {
             free(clnt->query_stats);
@@ -5899,7 +5906,16 @@ static char *get_query_cost_as_string(struct sql_thread *thd,
     strbuf *out = strbuf_new();
     struct client_query_stats *st = clnt->query_stats;
 
-    strbuf_appendf(out, "Cost: %.2lf NRows: %d\n", st->cost, clnt->nrows);
+    double cost;
+    int nrows;
+    if (is_stored_proc(thd->clnt)) {
+        cost = clnt->spcost.cost;
+        nrows = clnt->spcost.rows;
+    } else {
+        cost = st->cost;
+        nrows = clnt->nrows;
+    }
+    strbuf_appendf(out, "Cost: %.2lf NRows: %d\n", cost, nrows);
     for (int ii = 0; ii < st->n_components; ii++) {
         strbuf_append(out, "    ");
         if (st->path_stats[ii].table[0] == '\0') {
