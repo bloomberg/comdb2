@@ -88,6 +88,7 @@ public class DatabaseDiscovery {
 
                 String[] tokens = line.split(":\\s*|=\\s*|,\\s*|\\s+");
 
+                /* db destinations can be as few as 2 words, eg "mydb mydb" */
                 if (tokens.length < 2)
                     continue;
 
@@ -107,7 +108,27 @@ public class DatabaseDiscovery {
                         hndl.myDbHosts.add(tokens[i]);
                         hndl.myDbPorts.add(hndl.overriddenPort);
                     }
-                } else if (tokens[0].equalsIgnoreCase("comdb2_feature")) {
+                } else if (tokens[0].equalsIgnoreCase(hndl.comdb2dbName)) {
+                    /**
+                     * Gets dbnumber and hosts of comdb2db.
+                     */
+                    ret = true;
+                    int i = 1;
+                    try {
+                        hndl.comdb2dbDbNum = Integer.parseInt(tokens[i]);
+                        ++i;
+                    } catch (NumberFormatException e) {
+                        hndl.comdb2dbDbNum = -1;
+                    }
+                    for (; i != tokens.length; ++i)
+                        hndl.comdb2dbHosts.add(tokens[i]);
+                }
+
+                /* everything else needs at least 3 words, eg, "comdb2_config default_type dev" */
+                if (tokens.length < 3)
+                    continue;
+
+                if (tokens[0].equalsIgnoreCase("comdb2_feature")) {
                     if (tokens[1].equalsIgnoreCase("iam_identity_v6")
                             && !hndl.hasUseIdentity)
                         hndl.useIdentity = String.valueOf(value_on_off(tokens[2]));
@@ -161,17 +182,8 @@ public class DatabaseDiscovery {
                             && !hndl.hasAllowPmuxRoute) {
                         hndl.pmuxrte = value_on_off(tokens[2]);
                     }
-                } else if (tokens[0].equalsIgnoreCase(hndl.comdb2dbName)) {
-                    /**
-                     * Gets dbnumber and hosts of comdb2db.
-                     */
-                    ret = true;
-                    hndl.comdb2dbDbNum = Integer.parseInt(tokens[1]);
-                    for (int i = 2; i != tokens.length; ++i)
-                        hndl.comdb2dbHosts.add(tokens[i]);
                 }
             }
-
         } catch (IOException e) {
             ret = false;
         } finally {
