@@ -213,6 +213,25 @@ public class DatabaseDiscoveryTest {
         }
     }
 
+    @Test
+    public void testShortDbline() throws IOException, SQLException {
+        LogManager.getLogManager().reset();
+
+        String db = System.getProperty("cdb2jdbc.test.database");
+        String cluster = System.getProperty("cdb2jdbc.test.cluster");
+
+        String fname = "/tmp/comdb2db.jdbc.mvn.test.cfg." + System.currentTimeMillis();
+        BufferedWriter writer = new BufferedWriter(new FileWriter(fname));
+        writer.write("comdb2db localhost");
+        writer.newLine();
+        writer.write("comdb3db localhost");
+        writer.newLine();
+        writer.close();
+        System.setProperty("comdb2db.cfg", fname);
+        Connection conn = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s", cluster, db));
+        conn.close();
+    }
+
     @After public void tearDown() throws SQLException{
         String db = System.getProperty("cdb2jdbc.test.database");
         String cluster = System.getProperty("cdb2jdbc.test.cluster");
