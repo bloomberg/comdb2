@@ -111,7 +111,7 @@ static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 static int connect_to_master = 0;
 static int cdb2_master = 0;
-int multiline = 0;
+int allow_multiline_stmts = 0;
 
 static int now_ms(void)
 {
@@ -593,7 +593,7 @@ static char *read_line(const char *prompt)
             line = NULL;
         }
         if ((line = readline(prompt)) != NULL && line[0] != 0 &&
-            !skip_history(line) && !multiline)
+            !skip_history(line) && !allow_multiline_stmts)
             add_history(line);
         return line;
     }
@@ -1629,13 +1629,13 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
     }
 
     if (rc == CDB2ERR_INCOMPLETE) {
-        assert(multiline);
+        assert(allow_multiline_stmts);
         return rc;
     }
 
     if (rc != CDB2_OK) {
         const char *err = cdb2_errstr(cdb2h);
-        if (multiline) {
+        if (allow_multiline_stmts) {
             char *tailstr;
             int tailoff;
             int prc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
@@ -1772,7 +1772,7 @@ static int run_raw_statement(const char * const sql, int ntypes, int *types,
 
     if (rc != 0 && rc != CDB2ERR_INCOMPLETE) {
         error++;
-    } else if (!multiline && (!scriptmode) && !(printmode & DISP_NONE)) {
+    } else if (!allow_multiline_stmts && (!scriptmode) && !(printmode & DISP_NONE)) {
         printf("[%s] rc %d\n", sql, rc);
         if (time_mode) {
             printf("  prep time  %d ms\n", start_time_ms);
@@ -2067,7 +2067,13 @@ public:
         run_raw_statement("set multiline on", 0, NULL, 0, 0);
     }
 
-    void process_input()
+    void process_input(const char * const input)
+    {
+        process_line(input);
+        handle_trailing_sql();
+    }
+
+    void process_multiline_input()
     {
         const char * prompt = main_prompt;
         for(const char * line; (line = read_line(prompt)) != NULL;) {
@@ -2225,7 +2231,7 @@ class DdlBlockInputProcessor {
 public:
     DdlBlockInputProcessor() {}
 
-    void process_input()
+    void process_multiline_input()
     {
         int should_quit = 0;
         for(char * line;
@@ -2261,6 +2267,19 @@ private:
         return 0;
     }
 };
+
+static void process_sql_given_in_argv(char * const sql, const int ntypes, int * const types)
+{
+    scriptmode = 1;
+
+    if (allow_multiline_stmts) {
+        BlockInputProcessor().process_input(sql);
+    } else {
+        // Interpret string as a single sql statement
+        preprocess_and_run_statement(sql, ntypes, types, 0, 0);
+        verbose_print("preprocess_and_run_statement error=%d\n", error);
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -2358,7 +2377,7 @@ int main(int argc, char *argv[])
             connect_to_master = 1;
             break;
         case 'l':
-            multiline = 1;
+            allow_multiline_stmts = 1;
             break;
         case 'M':
             cdb2_master = 1;
@@ -2428,17 +2447,13 @@ int main(int argc, char *argv[])
     ntypes = argc - optind;
     if (ntypes > 0)
         types = process_typed_statement_args(ntypes, &argv[optind]);
-    if (sql && *sql != '-') {
-        scriptmode = 1;
-        preprocess_and_run_statement(sql, ntypes, types, 0, 0);
-        if (cdb2h) {
-            cdb2_close(cdb2h);
-        }
-        verbose_print("preprocess_and_run_statement error=%d\n", error);
 
-        if (report_costs != NULL)
-            (*report_costs)();
+    const int sql_given_in_argv = sql && *sql != '-';
+    if (sql_given_in_argv) {
+        process_sql_given_in_argv(sql, ntypes, types); 
 
+        if (cdb2h) { cdb2_close(cdb2h); }
+        if (report_costs != NULL) { (*report_costs)(); }
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
@@ -2448,7 +2463,7 @@ int main(int argc, char *argv[])
                     strerror(errno));
             return EXIT_FAILURE;
         }
-    } else if (sql == NULL || *sql != '-') {
+    } else if (!sql) {
         cdb2sql_usage(EXIT_FAILURE);
     }
 
@@ -2465,12 +2480,10 @@ int main(int argc, char *argv[])
         sigaction(SIGINT, &sact, NULL);
     }
 
-    if (multiline) {
-        BlockInputProcessor p;
-        p.process_input();
+    if (allow_multiline_stmts) {
+        BlockInputProcessor().process_multiline_input();
     } else {
-        DdlBlockInputProcessor p;
-        p.process_input();
+        DdlBlockInputProcessor().process_multiline_input();
     }
 
     if (istty)

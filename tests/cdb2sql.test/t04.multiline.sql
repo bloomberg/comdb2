@@ -1,4 +1,3 @@
--- test a longer multi-line statement
 select
 '
 hello
