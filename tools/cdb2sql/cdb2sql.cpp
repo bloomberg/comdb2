@@ -2058,22 +2058,9 @@ static void int_handler(int signum)
     send_cancel_cnonce(cdb2_cnonce(cdb2h));
 }
 
-class InputProcessor {
-public:
-    InputProcessor() {}
-    virtual void process_input() = 0;
-
-    InputProcessor(const InputProcessor&) = delete;
-    InputProcessor(InputProcessor&&) = delete;
-    InputProcessor& operator=(const InputProcessor&) = delete;
-    InputProcessor& operator=(InputProcessor&&) = delete;
-
-};
-
 // Processes all statements as delimited blocks.
 // TODO: Put in its own file
-class BlockInputProcessor : public InputProcessor
-{
+class BlockInputProcessor {
 public:
     BlockInputProcessor() : _sql(Sql()), _processed_incomplete_stmt(false)
     {
@@ -2234,7 +2221,7 @@ private:
 
 // Processes ddl statements as '$$' delimited blocks
 // and all other statements as single lines.
-class DdlBlockInputProcessor : public InputProcessor {
+class DdlBlockInputProcessor {
 public:
     DdlBlockInputProcessor() {}
 
@@ -2478,11 +2465,13 @@ int main(int argc, char *argv[])
         sigaction(SIGINT, &sact, NULL);
     }
 
-    InputProcessor * processor = multiline
-        ? (InputProcessor *) new BlockInputProcessor()
-        : (InputProcessor *) new DdlBlockInputProcessor();
-    processor->process_input();
-    delete processor;
+    if (multiline) {
+        BlockInputProcessor p;
+        p.process_input();
+    } else {
+        DdlBlockInputProcessor p;
+        p.process_input();
+    }
 
     if (istty)
         save_readline_history();
