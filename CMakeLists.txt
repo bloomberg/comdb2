@@ -73,17 +73,6 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(Unwind REQUIRED)
 endif()
 
-option(WITH_RDKAFKA "Turn ON to compile with Kafka Publish" OFF)
-if(WITH_RDKAFKA)
-  find_package(RdKafka REQUIRED)
-  add_definitions(-DWITH_RDKAFKA)
-endif()
-
-option(WITH_QKAFKA "Turn ON to allow queue-adds published to Kafka" OFF)
-if(WITH_QKAFKA)
-  find_package(RdKafka REQUIRED)
-  add_definitions(-DWITH_QKAFKA)
-endif()
 
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 
