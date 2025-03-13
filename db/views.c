@@ -3435,6 +3435,34 @@ done:
     return ret;
 }
 
+/**
+ * Return ROLLOUT_LEG_FULL for legacy full
+ * Return ROLLOUT_LEG_PART for legacy partial
+ * Return ROLLOUT_TRUNC if truncate rollout
+ * Return ROLLOUT_INVALID if not existing
+ *
+ */
+int timepart_rollout(const char *partname)
+{
+    int rc = ROLLOUT_INVALID;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    timepart_view_t *view = _get_view(thedb->timepart_views, partname);
+    if (!view) {
+        goto done;
+    } 
+
+    if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
+        rc = ROLLOUT_TRUNC;
+    } else {
+        rc = view->nshards < view->retention ? ROLLOUT_LEG_PART: ROLLOUT_LEG_FULL;
+    }
+
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    return rc;
+}
+
 #include "views_systable.c"
 
 #include "views_serial.c"
