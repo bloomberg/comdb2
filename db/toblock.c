@@ -2852,6 +2852,14 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
     }
 }
 
+#define LOG_LEGACY_REQUEST() \
+    do { \
+        if (!have_legacy_requests) { \
+            log_legacy_request(iq, NULL); \
+            have_legacy_requests = 1; \
+        } \
+    } while(0)
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
     int rowlocks = gbl_rowlocks;
@@ -2887,6 +2895,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
     struct longblock_req_hdr lhdr;
     struct block_req hdr;
     int is_mixed_sqldyn = 0;
+    int have_legacy_requests = 0;
     bdb_state_type *bdb_state = thedb->bdb_env;
 
 #if DEBUG_DID_REPLAY
@@ -3284,6 +3293,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             const uint8_t *p_buf_tag_name_end;
             uint8_t *p_buf_data;
             const uint8_t *p_buf_data_end;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             have_keyless_requests = 1;
@@ -3351,6 +3361,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             const uint8_t *p_buf_tag_name_end;
             const uint8_t *p_buf_data;
             const uint8_t *p_buf_data_end;
+            LOG_LEGACY_REQUEST();
 
             have_keyless_requests = 1;
 
@@ -3460,6 +3471,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 
             const uint8_t *p_buf_tag_name;
             const uint8_t *p_buf_tag_name_end;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_adddta_get(
@@ -3514,6 +3526,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 
         case BLOCK2_ADDKEY: {
             struct packedreq_addkey addkey;
+            LOG_LEGACY_REQUEST();
             ++delayed;
 
             if (!(iq->p_buf_in = packedreq_addkey_get(
@@ -3534,6 +3547,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 
         case BLOCK2_DELKL: {
             struct packedreq_delkl delkl;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_delkl_get(
@@ -3574,6 +3588,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 
         case BLOCK2_DELDTA: {
             struct packedreq_delete delete;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_delete_get(
@@ -3611,6 +3626,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
          * prescan loop, if you change it here please change it there */
         case BLOCK2_DELKEY: {
             struct packedreq_delkey delkey;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_delkey_get(
@@ -3683,6 +3699,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             const uint8_t *p_buf_tag_name_end;
             const uint8_t *p_buf_data;
             const uint8_t *p_buf_data_end;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_updrrnkl_get(
@@ -3744,6 +3761,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             const uint8_t *p_buf_data_v_end;
             const uint8_t *p_buf_tag_name;
             const uint8_t *p_buf_tag_name_end;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_updrrn_get(
@@ -3830,6 +3848,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             const uint8_t *p_buf_tag_name_end;
             const uint8_t *p_buf_data;
             const uint8_t *p_buf_data_end;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in =
@@ -3915,6 +3934,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         case BLOCK_SECAFPRI: {
             struct packedreq_addsec addsec;
             int ixnum;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_addsec_get(
@@ -3939,6 +3959,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             struct packedreq_del delsc;
             const char *p_keydat;
             char key[MAXKEYLEN];
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_del_get(
@@ -3988,6 +4009,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             struct packedreq_delsec delsec;
             int ixnum;
             int ixkeylen;
+            LOG_LEGACY_REQUEST();
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_delsec_get(
@@ -4028,6 +4050,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             const uint8_t *p_buf_vdta;
             const uint8_t *p_buf_vdta_end;
             int comdbg_flags = iq->comdbg_flags;
+            LOG_LEGACY_REQUEST();
             GETFUNC
 
             ++delayed;
@@ -4398,6 +4421,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         }
 
         case BLOCK2_TRAN: {
+            LOG_LEGACY_REQUEST();
             /* handled in loop/switch above */
             break;
         }
@@ -4408,6 +4432,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             int dtalen;
             int failop, failnum;
             struct packedreq_delolder delolder;
+            LOG_LEGACY_REQUEST();
 
             if (iq && iq->usedb && iq->usedb->odh) {
                 reqprintf(iq, "ERROR - OPCODE BLOCK2_DELOLDER FOR ODH TABLE");
@@ -4551,6 +4576,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 
         case BLOCK2_MODNUM: {
             struct packedreq_set_modnum modnum;
+            LOG_LEGACY_REQUEST();
 
             if (!(iq->p_buf_in = packedreq_set_modnum_get(
                       &modnum, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
@@ -4572,6 +4598,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
              * sure that was the case */
 
             struct packedreq_scsmsk scsmsk;
+            LOG_LEGACY_REQUEST();
 
             if (!(iq->p_buf_in = packedreq_scsmsk_get(
                       &scsmsk, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
@@ -4586,6 +4613,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 
         case BLOCK2_DBGLOG_COOKIE: {
             struct packedreq_dbglog_cookie cookie;
+            LOG_LEGACY_REQUEST();
 
             if (!(iq->p_buf_in = packedreq_dbglog_cookie_get(
                       &cookie, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
@@ -4692,6 +4720,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         case BLOCK2_UPTBL: {
             struct packedreq_uptbl uptbl;
             int dtasz;
+            LOG_LEGACY_REQUEST();
 
             if (!(iq->p_buf_in = packedreq_uptbl_get(
                       &uptbl, iq->p_buf_in, p_blkstate->p_buf_next_start))) {

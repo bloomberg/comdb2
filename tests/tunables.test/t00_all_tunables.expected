@@ -457,6 +457,7 @@
 (name='lclpooledbufs', description='', type='INTEGER', value='32', read_only='Y')
 (name='lease_renew_interval', description='How often we renew leases.', type='INTEGER', value='200', read_only='N')
 (name='leasebase_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='legacy_verbose', description='Log all legacy (opcode+old sql) requests (default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='libevent_rte_only', description='Prevent listening on TCP socket. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='lightweight_rename', description='Replaces the ondisk file rename with an aliasing at llmeta level', type='BOOLEAN', value='OFF', read_only='N')
 (name='little_endian_btrees', description='Enabling this sets byte ordering for pages to little endian.', type='BOOLEAN', value='ON', read_only='N')

@@ -142,6 +142,7 @@ struct comdb2_metrics_store {
     int64_t fastsql_set_datetime_precision;
     int64_t fastsql_sslconn;
     int64_t fastsql_execute_stop;
+    int64_t legacy_requests;
 };
 
 static struct comdb2_metrics_store stats;
@@ -362,6 +363,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.fastsql_sslconn, NULL},
     {"fastsql_execute_stop", "Number of fastsql 'execute stop' requests", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_execute_stop, NULL},
+    {"legacy_requests", "Number of non-cdb2api requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.legacy_requests, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -714,6 +717,7 @@ int refresh_metrics(void)
     stats.nsslpartialhandshakes = gbl_ssl_num_partial_handshakes;
     stats.auth_allowed = gbl_num_auth_allowed;
     stats.auth_denied = gbl_num_auth_denied;
+    stats.legacy_requests = gbl_legacy_requests;
     curtran_puttran(trans);
 
     update_fastsql_metrics();

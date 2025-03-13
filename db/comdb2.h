@@ -3727,6 +3727,8 @@ extern int gbl_server_admin_mode;
 extern int gbl_epoch_time;
 extern int gbl_watchdog_disable_at_start;
 
+extern int64_t gbl_legacy_requests;
+
 void csc2_free_all(void);
 
 int fdb_default_ver_set(int val);
@@ -3751,5 +3753,6 @@ static inline char *skipws(char *str)
 void get_disable_skipscan_all();
 
 void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt);
+void log_legacy_request(struct ireq *iq, struct sqlclntstate *clnt);
 
 #endif /* !INCLUDED_COMDB2_H */
