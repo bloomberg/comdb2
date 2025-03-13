@@ -19,6 +19,7 @@ RUN apt-get update && \
     liblz4-tool \
     libprotobuf-c1 \
     libprotobuf-c-dev \
+    librdkafka-dev \
     libreadline-dev \
     libsqlite3-0 \
     libsqlite3-dev \
