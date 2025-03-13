@@ -1534,34 +1534,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         logmsg(LOGMSG_USER, "Adding qdump-trigger for %s -> %s max-queue %d\n", bdbq, outfile, maxsz);
         register_dump_qtrigger(bdbq, queuehndl, outfile, maxsz);
 
-#ifdef WITH_QKAFKA
-    } else if (tokcmp(tok, ltok, "qkafka") == 0) {
-        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "qkafka <qname> <topic> <maxsz>\n");
-            return -1;
-        }
-        char *queue = alloca(ltok + 1);
-        tokcpy(tok, ltok, queue);
-        char *bdbq = alloca(ltok + 4);
-        sprintf(bdbq, "%s%s", Q_TAG, queue);
-
-        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected kafka topic\n");
-            return -1;
-        }
-
-        char *topic = alloca(ltok + 1);
-        tokcpy(tok, ltok, topic);
-
-        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected max queue-size\n");
-            return -1;
-        }
-        int maxsz = toknum(tok, ltok);
-
-        logmsg(LOGMSG_USER, "Adding qkafka trigger for %s -> %s maxsz %d\n", bdbq, topic, maxsz);
-        register_queue_kafka(bdbq, topic, queuehndl, maxsz);
-#endif
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         /* 'replicate_from <dbname> <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
         tok = segtok(line, len, &st, &ltok);
