@@ -55,7 +55,7 @@ extern __thread DB_LSN commit_lsn;
 	}								   \
 	if (argp->type > 3000 || (argp->type > 1000 && argp->type < 2000)) { \
 		ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, argp->ufid_fileid, &log_trigger, lsnp); \
-		if ((ret == 0 || ret == DB_DELETED || ret == DB_IGNORED) && log_trigger != NULL && dbenv->rep_log_trigger_cb) { \
+		if ((ret == 0 || ret == DB_DELETED || ret == DB_IGNORED) && op == DB_TXN_APPLY && log_trigger != NULL && dbenv->rep_log_trigger_cb) { \
 			char *fname = NULL; \
 			__ufid_to_fname(dbenv, &fname, argp->ufid_fileid); \
 			dbenv->rep_log_trigger_cb(log_trigger, lsnp, &commit_lsn, fname, argp->type, argp); \
@@ -116,7 +116,7 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 		ret = __dbreg_id_to_db(dbenv, argp->txnid,		\
 			&file_dbp, argp->fileid, inc_count, lsnp, 0);	\
 	} 								\
-	if ((ret == 0 || ret == DB_IGNORED || ret == DB_DELETED ) && log_trigger != NULL && dbenv->rep_log_trigger_cb) { \
+	if ((ret == 0 || ret == DB_IGNORED || ret == DB_DELETED ) && op == DB_TXN_APPLY && log_trigger != NULL && dbenv->rep_log_trigger_cb) { \
 		char *fname = NULL; \
 		__ufid_to_fname(dbenv, &fname, argp->ufid_fileid); \
 		dbenv->rep_log_trigger_cb(log_trigger, lsnp, &commit_lsn, fname, argp->type, argp); \
