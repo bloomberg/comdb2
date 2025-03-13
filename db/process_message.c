@@ -1927,6 +1927,7 @@ clipper_usage:
             logmsg(LOGMSG_USER, "version: %s\n", gbl_db_version);
             logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_codename);
             logmsg(LOGMSG_USER, "semver: %s\n", gbl_db_semver);
+            logmsg(LOGMSG_USER, "lagacy requests: %"PRId64"\n", gbl_legacy_requests);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
         } else if (tokcmp(tok, ltok, "cursors") == 0) {

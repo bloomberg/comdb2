@@ -111,6 +111,7 @@ set(src
   machclass.c
   osqluprec.c
   macc_glue.c
+  legacy.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/importdata.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
