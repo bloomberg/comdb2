@@ -8,20 +8,28 @@ if [[ -z $dbname ]] ; then
 fi
 
 run_test() {
-    local test_input_file_name=$1 output_file_extension=$2 extra_cdb2sql_opts=$3
+    local -r input_file_for_test=$1
+    local -r output_file_extension=$2
+    local -r extra_cdb2sql_opts=$3
+    local -r pass_sql_via_file=$4
 
     local test_name
-    test_name=$(echo ${test_input_file_name} | cut -d "." -f 1)
+    test_name=$(echo ${input_file_for_test} | cut -d "." -f 1)
 
-    local exp_output_file_name=${test_name}${output_file_extension}.expected
-    local output_file_name=${test_name}${output_file_extension}.output
+    local -r exp_output_file_name=${test_name}${output_file_extension}.expected
+    local -r output_file_name=${test_name}${output_file_extension}.output
 
-    local cmd="cdb2sql -s -f ${test_input_file_name} ${CDB2_OPTIONS} ${extra_cdb2sql_opts} ${dbname} default "
-    echo ${cmd} "> ${output_file_name}"
-    ${cmd} > ${output_file_name} 2>&1
+    local cmd
+    if (( pass_sql_via_file )); then
+        cmd="cdb2sql -s -f ${input_file_for_test} ${CDB2_OPTIONS} ${extra_cdb2sql_opts} ${dbname} default"
+    else
+        cmd="cdb2sql ${CDB2_OPTIONS} ${extra_cdb2sql_opts} ${dbname} default \"$(cat ${input_file_for_test})\""
+    fi
+    echo "${cmd}" "> ${output_file_name}"
+    eval "${cmd}" > ${output_file_name} 2>&1
 
     cmd="diff ${exp_output_file_name} ${output_file_name}"
-    ${cmd} > /dev/null
+    eval "${cmd}" > /dev/null
 
     if [[  $? -eq 0 ]]; then
         echo "passed ${test_name}"
@@ -34,20 +42,37 @@ run_test() {
     fi
 }
 
+run_tests() {
+    local -r file_extension_for_test=$1
+    local -r extra_cdb2sql_opts_for_test=$2
+    local -r pass_sql_via_file=$3
+
+    local test_input_file
+    for test_input_file in $(find . -name "t[0-9][0-9]${file_extension_for_test}.sql" -exec basename {} \;) ; do
+        run_test "${test_input_file}" "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
+    done
+
+}
+
 main() {
-    local test_input_file_name
+    local file_extension_for_test=""
+    local extra_cdb2sql_opts_for_test=""
+    local pass_sql_via_file=1
+    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
-    for test_input_file_name in `find . -name 't[0-9][0-9].sql' -exec basename {} \;` ; do
-        run_test "${test_input_file_name}"
-    done
+    file_extension_for_test=".tab"
+    extra_cdb2sql_opts_for_test="-tabular"
+    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
-    for test_input_file_name in `find . -name 't[0-9][0-9].tab.sql' -exec basename {} \;` ; do
-        run_test "${test_input_file_name}" ".tab" "-tabular"
-    done
+    file_extension_for_test=".multiline-fileonly"
+    extra_cdb2sql_opts_for_test="-l"
+    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
-    for test_input_file_name in `find . -name 't[0-9][0-9].multiline.sql' -exec basename {} \;` ; do
-        run_test "${test_input_file_name}" ".multiline" "-l"
-    done
+    file_extension_for_test=".multiline"
+    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
+
+    pass_sql_via_file=0
+    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 }
 
 main
