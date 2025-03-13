@@ -508,4 +508,20 @@ int logical_partition_next_rollout(const char *name);
  */
 timepart_view_t *timepart_reaquire_view(const char *partname);
 
+enum {
+    ROLLOUT_INVALID = -1,
+    ROLLOUT_TRUNC = 0,
+    ROLLOUT_LEG_PART = 1,
+    ROLLOUT_LEG_FULL = 2
+};
+
+/**
+ * Return ROLLOUT_LEG_FULL for legacy full
+ * Return ROLLOUT_LEG_PART for legacy partial
+ * Return ROLLOUT_TRUNC if truncate rollout
+ * Return ROLLOUT_INVALID if not existing
+ *
+ */
+int timepart_rollout(const char *partname);
+
 #endif

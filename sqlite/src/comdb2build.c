@@ -2871,6 +2871,15 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto clean_arg;
 
+    int rc = timepart_rollout(tp_retention->timepartname);
+    if (rc == ROLLOUT_INVALID) {
+        setError(pParse, SQLITE_ERROR, "Partition does not exist");
+        goto clean_arg;
+    } else if (rc == ROLLOUT_TRUNC) {
+        setError(pParse, SQLITE_ERROR, "Use alter to change partition config");
+        goto clean_arg;
+    }
+
     tp_retention->newvalue = retention;
 
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
