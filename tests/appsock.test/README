@@ -1,0 +1,5 @@
+This test tests the appsock exhausted code, which attempts to retry on different nodes various times before erroring.
+Previously when receiving an appsock exhausted error, cdb2api would not retry on a different node which could accommodate the connection.
+This test only queries one node from the cluster and just checks that a connect error is received now instead of an appsock error.
+
+We cannot test this using CDB2_RANDOM on a cluster and see if there exists a node that hasn't reaced the maximum number of connections since the old code could also get to the maximum number of connections on each node by connecting to a random node each time. Would need to use CDB2_RANDOMROOM and have a cluster with nodes in different rooms.
