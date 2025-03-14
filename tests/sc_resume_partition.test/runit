@@ -21,6 +21,32 @@ restart_cluster() {
 	wait_for_cluster
 }
 
+test_alter_resume() {
+	# Given
+	local master
+	master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
+
+	cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "create table t(a int, b int)"
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "insert into t values(1, 1)"
+
+	# When
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t drop column a" &
+	local -r waitpid=$!
+	sleep 1
+	restart_cluster &> /dev/null
+
+	# Then
+	if wait ${waitpid};
+	then
+		echo "FAIL: Merge succeeded before cluster bounced. Test is buggy."
+		return 1
+	fi
+
+	# Cleanup
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "drop table t"
+}
+
 test_partition_merge_resume() {
 	# Given
 	local -r num_shards=$1
@@ -43,7 +69,18 @@ test_partition_merge_resume() {
 	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
 	local -r waitpid=$!
 	sleep 1
+
+	local -r elapsed_time_before_restart=${SECONDS}
 	restart_cluster &> /dev/null
+	local -r elapsed_time_after_restart=${SECONDS}
+
+	local -r expected_max_restart_duration=30
+	local -r restart_duration=$((elapsed_time_after_restart - elapsed_time_before_restart))
+	if (( restart_duration > expected_max_restart_duration ));
+	then
+		echo "FAIL: Restart took ${restart_duration} seconds. This is larger than expected upper bound ${expected_max_restart_duration}"
+		return 1
+	fi
 
 	# Then
 	if wait ${waitpid};
@@ -73,8 +110,14 @@ test_partition_merge_resume() {
 }
 
 main() {
-	local -r num_shards=10
-	test_partition_merge_resume ${num_shards}
+	# test_alter_resume
+
+	local num_shards=10 records_per_shard=1
+	test_partition_merge_resume ${num_shards} ${records_per_shard}
+
+	# Stress test
+	num_shards=100 records_per_shard=100000
+	# test_partition_merge_resume ${num_shards} ${records_per_shard}
 }
 
 main

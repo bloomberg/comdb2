@@ -630,8 +630,10 @@ static int convert_record(struct convert_record_data *data)
     int no_wait_rowlock = 0;
     int64_t estimate = 0;
 
+    printf("hello\n");
+
     if (debug_switch_convert_record_sleep())
-        sleep(5);
+        sleep(1000);
 
     if (data->s->sc_thd_failed) {
         if (!data->s->retry_bad_genids)

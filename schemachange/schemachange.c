@@ -42,8 +42,87 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
-/* If this is successful, it increments */
-int start_schema_change_tran(struct ireq *iq, tran_type *trans)
+static int launch_schema_change(struct ireq *iq, tran_type *trans)
+{
+    struct schema_change_type *s = iq->sc;
+    int rc = 0;
+
+    sc_arg_t *arg = malloc(sizeof(sc_arg_t));
+    arg->trans = trans;
+    arg->iq = iq;
+    arg->sc = iq->sc;
+
+    /*
+    ** if s->kind == SC_PARTIALUPRECS, we're going radio silent from this point
+    *forward
+    ** in order to produce minimal spew
+    */
+    if (s->nothrevent) {
+        if (s->kind != SC_PARTIALUPRECS)
+            logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        rc = do_schema_change_tran(arg);
+    } else {
+        int max_threads =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
+        Pthread_mutex_lock(&sc_async_mtx);
+        while (!s->must_resume && !s->resume && max_threads > 0 &&
+               sc_async_threads >= max_threads) {
+            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
+            Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
+        }
+        sc_async_threads++;
+        Pthread_mutex_unlock(&sc_async_mtx);
+
+        if (s->kind != SC_PARTIALUPRECS)
+            logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
+        pthread_t tid;
+
+        if (s->kind == SC_ALTERTABLE_PENDING ||
+            s->preempted == SC_ACTION_RESUME) {
+            free(arg);
+            arg = NULL;
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_locked, s);
+        } else {
+            Pthread_mutex_lock(&s->mtxStart);
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_tran_thd,
+                                arg);
+            if (rc == 0) {
+                while (!s->started) {
+                    Pthread_cond_wait(&s->condStart, &s->mtxStart);
+                }
+            }
+            Pthread_mutex_unlock(&s->mtxStart);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "start_schema_change:pthread_create rc %d %s\n", rc,
+                   strerror(errno));
+
+            Pthread_mutex_lock(&sc_async_mtx);
+            sc_async_threads--;
+            Pthread_mutex_unlock(&sc_async_mtx);
+
+            if (arg)
+                free(arg);
+            if (!s->is_osql) {
+                sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
+                               time(NULL), __func__, __LINE__);
+                free_schema_change_type(s);
+            }
+            rc = SC_ASYNC_FAILED;
+        }
+    }
+    /* SC_COMMIT_PENDING is SC_OK for the upper layers */
+    if (rc == SC_COMMIT_PENDING) {
+        rc = s->sc_rc = SC_OK;
+    }
+
+    return rc;
+}
+
+static int prepare_schema_change(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int maxcancelretry = 10;
@@ -305,10 +384,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
     iq->sc_seed = seed;
 
-    sc_arg_t *arg = malloc(sizeof(sc_arg_t));
-    arg->trans = trans;
-    arg->iq = iq;
-    arg->sc = iq->sc;
     s->started = 0;
 
     if (s->resume && s->resume != SC_OSQL_RESUME && IS_ALTERTABLE(s)) {
@@ -319,73 +394,28 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
         ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
-    /*
-    ** if s->kind == SC_PARTIALUPRECS, we're going radio silent from this point
-    *forward
-    ** in order to produce minimal spew
-    */
-    if (s->nothrevent) {
-        if (s->kind != SC_PARTIALUPRECS)
-            logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
-        rc = do_schema_change_tran(arg);
-    } else {
-        int max_threads =
-            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
-        Pthread_mutex_lock(&sc_async_mtx);
-        while (!s->must_resume && !s->resume && max_threads > 0 &&
-               sc_async_threads >= max_threads) {
-            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
-            Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
-        }
-        sc_async_threads++;
-        Pthread_mutex_unlock(&sc_async_mtx);
 
-        if (s->kind != SC_PARTIALUPRECS)
-            logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
-        pthread_t tid;
+    return rc;
+}
 
-        if (s->kind == SC_ALTERTABLE_PENDING ||
-            s->preempted == SC_ACTION_RESUME) {
-            free(arg);
-            arg = NULL;
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_locked, s);
-        } else {
-            Pthread_mutex_lock(&s->mtxStart);
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran_thd,
-                                arg);
-            if (rc == 0) {
-                while (!s->started) {
-                    Pthread_cond_wait(&s->condStart, &s->mtxStart);
-                }
-            }
-            Pthread_mutex_unlock(&s->mtxStart);
-        }
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "start_schema_change:pthread_create rc %d %s\n", rc,
-                   strerror(errno));
-
-            Pthread_mutex_lock(&sc_async_mtx);
-            sc_async_threads--;
-            Pthread_mutex_unlock(&sc_async_mtx);
-
-            if (arg)
-                free(arg);
-            if (!s->is_osql) {
-                sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
-                               time(NULL), __func__, __LINE__);
-                free_schema_change_type(s);
-            }
-            rc = SC_ASYNC_FAILED;
-        }
-    }
-    /* SC_COMMIT_PENDING is SC_OK for the upper layers */
-    if (rc == SC_COMMIT_PENDING) {
-        rc = s->sc_rc = SC_OK;
+/* If this is successful, it increments */
+int start_schema_change_tran(struct ireq *iq, tran_type *trans)
+{
+    int rc = prepare_schema_change(iq, trans);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d Failed to prepare schema change. rc(%d)\n",
+            __func__, __LINE__, rc);
+        goto err;
     }
 
+    rc = launch_schema_change(iq, trans);
+    if (rc) {
+        logmsg(LOGMSG_INFO, "%s:%d Failed to complete schema change. rc(%d)\n",
+            __func__, __LINE__, rc);
+        goto err;
+    }
+
+err:
     return rc;
 }
 

@@ -1602,6 +1602,8 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
      * NOTE: schema changes will be queued in iq->sc_pending
      *
      */
+
+    printf("%s: About to run scs\n", __func__);
     rc = bplog_schemachange_run(iq, scl->uuid, &scs);
     if (rc) {
         free(iq);

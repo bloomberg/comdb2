@@ -6335,7 +6335,40 @@ static int _process_single_table_sc(struct ireq *iq)
     return rc;
 }
 
-static int start_schema_change_tran_wrapper_merge(const char *tblname,
+static int launch_schema_change_wrapper_merge(const char *tblname,
+                                                  timepart_view_t **pview,
+                                                  timepart_sc_arg_t *arg)
+{
+    // TODO check for off by one
+    const size_t shard_rev_index = (*pview->nshards-1) - arg->index;
+
+    for (size_t i=0; i<shard_rev_index; ++i) {
+        sc = sc->sc_next;
+    }
+
+    /**
+     * if view is provided, this is part of a shard walk;
+     * release views lock here since sc can take awhile
+     *
+     */
+    if (arg->lockless)
+        views_unlock();
+
+    const int rc = launch_schema_change();
+
+    if (arg->lockless) {
+        *pview = timepart_reaquire_view(arg->part_name);
+        if (!pview) {
+            logmsg(LOGMSG_ERROR, "%s view %s dropped while processing\n",
+                   __func__, arg->part_name);
+            return VIEW_ERR_SC;
+        }
+    }
+
+    return rc;
+}
+
+static int prepare_schema_change_wrapper_merge(const char *tblname,
                                                   timepart_view_t **pview,
                                                   timepart_sc_arg_t *arg)
 {
@@ -6371,7 +6404,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     if (arg->lockless)
         views_unlock();
 
-    rc = start_schema_change_tran(iq, NULL);
+    rc = prepare_schema_change(iq, NULL);
 
     /* link the alter */
     iq->sc->sc_next = iq->sc_pending;
@@ -6512,7 +6545,9 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         return VIEW_ERR_MALLOC;
     arg.lockless = 1;   
     /* note: we have already set nothrevent depending on the number of shards */
-    rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
+
+    rc = timepart_foreach_shard(prepare_schema_change_wrapper_merge, &arg);
+    rc = timepart_foreach_shard(launch_schema_change_wrapper_merge, &arg);
     free(arg.part_name);
 
     if (first_shard->sqlaliasname) {
