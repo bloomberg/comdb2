@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <assert.h>
 #include <string.h>
 #include <strings.h>

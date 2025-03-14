@@ -34,7 +34,7 @@
 #include <poll.h>
 #include <str0.h>
 #include <epochlib.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <assert.h>
 #include <unistd.h>
 #include <uuid/uuid.h>

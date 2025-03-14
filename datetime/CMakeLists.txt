@@ -16,5 +16,5 @@ include_directories(
 )
 add_dependencies(tz mem)
 if (COMDB2_BBCMAKE)
-  comdb2_bb_target(tz)
+  comdb2_lib_target(tz)
 endif()

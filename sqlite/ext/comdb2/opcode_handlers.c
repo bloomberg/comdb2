@@ -32,7 +32,7 @@ struct ireq;
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "comdb2_opcode.h"
-#include "plhash.h"
+#include <plhash_glue.h>
 
 extern hash_t *gbl_opcode_hash;
 

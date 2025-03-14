@@ -30,7 +30,7 @@
 
 #include <object_pool.h>
 #include <list.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <thread_util.h>
 
 #include "bdb_cursor.h"
