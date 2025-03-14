@@ -1289,10 +1289,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							abort();
 						}
 					} else {
-						logmsg(LOGMSG_USER, "%s emitting regop-rowlocks record with generation %u\n", __func__, gen);
-                        u_int32_t rectype = endianize_locklist ? 
-                            DB___txn_regop_rowlocks_endianize :
-                            DB___txn_regop_rowlocks;
+						u_int32_t rectype = endianize_locklist ? 
+							DB___txn_regop_rowlocks_endianize :
+							DB___txn_regop_rowlocks;
 						ret =
 							__txn_regop_rowlocks_log(dbenv, rectype,
 									txnp, lsn_out, &context, lflags,
