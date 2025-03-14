@@ -1131,3 +1131,5 @@ Test block alter of a constraint target table
 TEST 21
 Test table_version for a partition name for a create table partitioned case
 0
+TEST 22
+Test put retention block for truncate partitions
