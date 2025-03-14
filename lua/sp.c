@@ -2276,11 +2276,16 @@ static void lua_begin_step(struct sqlclntstate *clnt, SP sp,
 {
     int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
+    struct reqlogger *logger;
 
     if ((sp != NULL) && (pVdbe != NULL)) {
         save_thd_cost_and_reset(sp->thd, pVdbe);
         pVdbe->luaStartTime = time;
         pVdbe->luaRows = 0;
+
+        logger = sp->thd->logger;
+        reqlog_begin_subrequest(logger);
+        reqlog_logf(logger, REQL_INFO, "sp_sql=%s", sqlite3_sql(pStmt));
     }
 }
 
@@ -2298,6 +2303,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
                          sqlite3_stmt *pStmt)
 {
     Vdbe *pVdbe = (Vdbe*)pStmt;
+    struct reqlogger *logger;
 
     /* Check whether fingerprint has already been computed. */
     if ((pVdbe == NULL) || (pVdbe->fingerprint_added == 1)) {
@@ -2306,6 +2312,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
 
     if (sp != NULL) {
         const char *zNormSql = sqlite3_normalized_sql(pStmt);
+        logger = sp->thd->logger;
 
         if (zNormSql != NULL) {
             double cost = 0.0;
@@ -2332,8 +2339,14 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
             clnt->spcost.rows += pVdbe->luaRows;
 
             pVdbe->fingerprint_added = 1;
+
+            reqlog_set_path(logger, sp->clnt->query_stats);
+            reqlog_set_cost(logger, cost);
+            reqlog_set_rows(logger, pVdbe->luaRows);
         }
 
+        reqlog_end_subrequest(sp->thd->logger, sp->rc, __func__, __LINE__);
+        reqlog_set_sql(logger, clnt->sql_ref);
         restore_thd_cost_and_reset(sp->thd, pVdbe);
     }
 }
@@ -3116,6 +3129,7 @@ static void drop_temp_tables(SP sp)
             expire = 1;
             logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
         }
+        reqlog_end_subrequest(sp->thd->logger, rc, __func__, __LINE__);
     }
     clnt->is_readonly = ro;
     clnt->skip_peer_chk = 0;

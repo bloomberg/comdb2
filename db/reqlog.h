@@ -69,6 +69,8 @@ void reqlog_set_sql(struct reqlogger *logger, struct string_ref *sr);
 void reqlog_set_startprcs(struct reqlogger *logger, uint64_t start);
 uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
+void reqlog_begin_subrequest(struct reqlogger *logger);
+void reqlog_end_subrequest(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
 /* this is meant to be called by only 1 thread, will need locking if
  * more than one threads were to be involved */
