@@ -5023,6 +5023,13 @@ read_record:
         goto retry_queries;
     }
 
+    if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__APPSOCK_LIMIT) {
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
+        hndl->sb = NULL;
+        // retry all shouldn't matter here. Can only happen at beginning of transaction on begin?
+        goto retry_queries;
+    }
+
     if (is_begin) {
         debugprint("setting in_trans to 1\n");
         hndl->in_trans = 1;
