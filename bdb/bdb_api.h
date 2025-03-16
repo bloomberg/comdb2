@@ -2496,3 +2496,6 @@ int bdb_keylen(bdb_state_type *bdb_state, int ixnum);
 
 void llmeta_collect_tablename_alias(void);
 #endif
+int bdb_set_genshard(tran_type *, const char *, char *, int *);
+int bdb_get_genshard(tran_type *, const char *, char **, int *, int *);
+int bdb_get_genshard_names(tran_type *t, char **names, int *num);
