@@ -1958,7 +1958,10 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 {
     int field;
     char namebuf[128];
-    char *tablename = tbl->sqlaliasname ? tbl->sqlaliasname : tbl->tablename;
+    /* Don't expose tbls with genshardnames (which are stored as sqlaliasnames in comdb2 land)
+     * We want to create views in sqlite with the genshardname -> adding it to sqlite_master here
+     * will create a conflict */
+    char *tablename = tbl->sqlaliasname ? (tbl->genshard_name ? tbl->tablename : tbl->sqlaliasname) : tbl->tablename;
 
     struct schema *schema = tbl->schema;
     if (schema == NULL) {

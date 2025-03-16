@@ -78,22 +78,22 @@ function verify_table {
 }
 function verify_llmeta {
 	expected=$1
-	result=$($S0_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	result=$($S0_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "LLMETA_GEN_SHARD")
 	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
 	if [ "$entry" != "$expected" ]; then
 		fail_exit "verify_llmeta failed on $DBNAME. Expected $expected but got $entry"
 	fi
-	result=$($S1_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	result=$($S1_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "LLMETA_GEN_SHARD")
 	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
 	if [ "$entry" != "$expected" ]; then
 		fail_exit "verify_llmeta failed on ${SECONDARY_DBNAME}. Expected $expected but got $entry"
 	fi
-	result=$($S2_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	result=$($S2_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "LLMETA_GEN_SHARD")
 	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
 	if [ "$entry" != "$expected" ]; then
 		fail_exit "verify_llmeta failed on ${TERNARY_DBNAME}. Expected $expected but got $entry"
 	fi
-	result=$($S3_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+	result=$($S3_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "LLMETA_GEN_SHARD")
 	entry=`echo $result | cut -d ' ' -f 3 | cut -d '=' -f 2`
 	if [ "$entry" != "$expected" ]; then
 		fail_exit "verify_llmeta failed on ${QUATERNARY_DBNAME}. Expected $expected but got $entry"

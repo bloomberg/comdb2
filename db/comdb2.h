@@ -799,6 +799,7 @@ typedef struct dbtable {
     const char *timepartition_name;
 
     /* generic sharding metadata */
+    char *genshard_name;
     uint32_t numdbs;
     char **dbnames;
     uint32_t numcols;

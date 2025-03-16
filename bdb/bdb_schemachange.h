@@ -53,6 +53,8 @@ typedef enum scdone {
     alias_table,             // 24
     alias,                   // 25
     default_cons,            // 26
+    genshard_add,            // 27
+    genshard_drop            // 28
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
