@@ -179,6 +179,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS_V2 = 56,
     LLMETA_SCHEMACHANGE_LIST = 57,            /* list of all sc-s in a uuid txh */
     LLMETA_SCHEMACHANGE_STATUS_PROTOBUF = 58, /* Indicate protobuf sc */
+    LLMETA_GEN_SHARD = 59, 
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -7354,6 +7355,15 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         if (osql_scl_print((uint8_t*)p_buf_key, p_buf_end_key, (uint8_t*)p_buf_data, p_buf_end_data))
             logmsg(LOGMSG_USER, "    failed to deserialize object\n");
         } break;
+    case LLMETA_GEN_SHARD: {
+        char tblname[LLMETA_TBLLEN + 1];
+        buf_no_net_get(&(tblname), sizeof(tblname), p_buf_key + sizeof(int),
+                       p_buf_end_key);
+
+        logmsg(LOGMSG_USER,
+               "LLMETA_GEN_SHARD table=\"%s\" value=\"%s\"\n",
+               tblname, (char *)data);
+        } break;
     default:
          logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
          break;
@@ -11372,3 +11382,257 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
     }
     return NULL;
 }
+
+int bdb_set_genshard(tran_type *input_tran, const char *table, char *str, int *bdberr) {
+    uint32_t key_type, retries = 0;
+    int rc=0;
+    char key[LLMETA_IXLEN] = {0};
+    tran_type *tran;
+    const uint8_t *p_gen_shard_key = NULL;
+    const uint8_t *p_gen_shard_key_end = NULL;
+
+    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
+    key_type = LLMETA_GEN_SHARD;
+    p_gen_shard_key = (uint8_t *)key;
+    p_gen_shard_key_end = p_gen_shard_key + sizeof(int) + LLMETA_TBLLEN;
+
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
+                        "open, you must run bdb_llmeta_open\n",
+                __func__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    /* put key type */
+    if (!(p_gen_shard_key =
+              buf_put(&key_type, sizeof(key_type), (uint8_t *)p_gen_shard_key,
+                      p_gen_shard_key_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
+                        "endianess\n",
+                __func__, __LINE__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    /* put tablename of generic shard */
+    if (!(p_gen_shard_key = 
+            buf_put(table, strlen(table) , (uint8_t *)p_gen_shard_key, p_gen_shard_key_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
+                        "endianess\n",
+                __func__, __LINE__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
+        return -1;
+    }
+    /*if the user didn't give us a transaction, create our own*/
+    if (!input_tran) {
+        tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!tran) {
+            if (*bdberr == BDBERR_DEADLOCK) {
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
+                goto retry;
+            }
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get "
+                            "transaction\n",
+                    __func__);
+            goto cleanup;
+        }
+    } else {
+        tran = input_tran;
+    }
+
+    /* write the shard string */
+    rc = bdb_lite_add(llmeta_bdb_state, tran, str,
+                      strlen(str) + 1, key, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR)
+        goto backout;
+
+    /*commit if we created our own transaction*/
+    if (!input_tran) {
+        rc = bdb_tran_commit(llmeta_bdb_state, tran, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR)
+            goto cleanup;
+    }
+
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+
+backout:
+    /*if we created the transaction*/
+    if (!input_tran) {
+        /*kill the transaction*/
+        rc = bdb_tran_abort(llmeta_bdb_state, tran, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with "
+                            "bdberr %d\n",
+                    __func__, *bdberr);
+            return -1;
+        }
+        if (*bdberr == BDBERR_DEADLOCK) {
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
+            goto retry;
+        }
+
+        logmsg(LOGMSG_ERROR, "%s:%d failed with bdberr %d\n", __func__,__LINE__, *bdberr);
+    }
+cleanup:
+    return -1;
+}
+
+int bdb_clear_genshard(tran_type *input_tran, const char *table, int *bdberr) {
+    uint32_t key_type, retries = 0;
+    int rc=0;
+    char key[LLMETA_IXLEN] = {0};
+    tran_type *tran;
+    const uint8_t *p_gen_shard_key = NULL;
+    const uint8_t *p_gen_shard_key_end = NULL;
+
+    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
+    key_type = LLMETA_GEN_SHARD;
+    p_gen_shard_key = (uint8_t *)key;
+    p_gen_shard_key_end = p_gen_shard_key + sizeof(int) + LLMETA_TBLLEN;
+
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
+                        "open, you must run bdb_llmeta_open\n",
+                __func__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    /* put key type */
+    if (!(p_gen_shard_key =
+              buf_put(&key_type, sizeof(key_type), (uint8_t *)p_gen_shard_key,
+                      p_gen_shard_key_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
+                        "endianess\n",
+                __func__, __LINE__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    /* put tablename of generic shard */
+    if (!(p_gen_shard_key = 
+            buf_put(table, strlen(table) , (uint8_t *)p_gen_shard_key, p_gen_shard_key_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
+                        "endianess\n",
+                __func__, __LINE__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
+        return -1;
+    }
+    /*if the user didn't give us a transaction, create our own*/
+    if (!input_tran) {
+        tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!tran) {
+            if (*bdberr == BDBERR_DEADLOCK) {
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
+                goto retry;
+            }
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get "
+                            "transaction\n",
+                    __func__);
+            goto cleanup;
+        }
+    } else {
+        tran = input_tran;
+    }
+
+    /* write the shard string */
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR && *bdberr != BDBERR_DEL_DTA)
+        goto backout;
+
+    /*commit if we created our own transaction*/
+    if (!input_tran) {
+        rc = bdb_tran_commit(llmeta_bdb_state, tran, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR)
+            goto cleanup;
+    }
+
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+
+backout:
+    /*if we created the transaction*/
+    if (!input_tran) {
+        /*kill the transaction*/
+        rc = bdb_tran_abort(llmeta_bdb_state, tran, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with "
+                            "bdberr %d\n",
+                    __func__, *bdberr);
+            return -1;
+        }
+        if (*bdberr == BDBERR_DEADLOCK) {
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
+            goto retry;
+        }
+
+        logmsg(LOGMSG_ERROR, "%s:%d failed with bdberr %d\n", __func__,__LINE__, *bdberr);
+    }
+cleanup:
+    return -1;
+}
+
+int bdb_get_genshard(tran_type *tran, const char *table, char **str, int *size, int *bdberr) {
+    uint32_t key_type;
+    char key[LLMETA_IXLEN] = {0};
+    const uint8_t *p_gen_shard_key = NULL;
+    const uint8_t *p_gen_shard_key_end = NULL;
+
+    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
+    key_type = LLMETA_GEN_SHARD;
+    p_gen_shard_key = (uint8_t *)key;
+    p_gen_shard_key_end = p_gen_shard_key + sizeof(int) + LLMETA_TBLLEN;
+
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
+                        "open, you must run bdb_llmeta_open\n",
+                __func__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    /* put key type */
+    if (!(p_gen_shard_key =
+              buf_put(&key_type, sizeof(key_type), (uint8_t *)p_gen_shard_key,
+                      p_gen_shard_key_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
+                        "endianess\n",
+                __func__, __LINE__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    /* put tablename of generic shard */
+    if (!(p_gen_shard_key = 
+            buf_put(table, strlen(table) , (uint8_t *)p_gen_shard_key, p_gen_shard_key_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
+                        "endianess\n",
+                __func__, __LINE__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+    return bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, key, (void **)str, size, bdberr);
+}
+
