@@ -92,14 +92,20 @@ err:
 	return -1;
 }
 
-int gen_shard_llmeta_write_serialized_str(tran_type *tran, const char *tablename, const char *str) {
-	int rc;
-	if (str){
+int gen_shard_llmeta_write_serialized_str(tran_type *tran, const char *tablename, char *str) {
+	int rc = 0, bdberr = 0;
+	/*if (str){
 		rc = bdb_set_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename, str);
 	} else {
-		/* this is a partition drop */
+		 this is a partition drop 
 		rc = bdb_clear_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename);
-	}
+	}*/
+
+    if (str) {
+        rc = bdb_set_genshard(tran, tablename, str, &bdberr);
+    } else {
+        rc = bdb_clear_genshard(tran, tablename, &bdberr);
+    }
 
 	if (rc) {
 		logmsg(LOGMSG_ERROR, "FAILED TO WRITE SHARD STRING TO LLMETA. RC: %d\n", rc);
@@ -143,13 +149,18 @@ done:
 
 int gen_shard_llmeta_read(void *tran, const char *name, char **pstr)
 {
-    int rc;
+    int rc, bdberr = 0, size = 0;
 
     *pstr = NULL;
 
-    rc = bdb_get_table_parameter_tran(LLMETA_GENERIC_SHARD, name, pstr, tran);
+    /*rc = bdb_get_table_parameter_tran(LLMETA_GENERIC_SHARD, name, pstr, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "bdb_get_table_parameter_tran failed with err: %d\n", rc);
+    }*/
+
+    rc = bdb_get_genshard(tran, name, pstr, &size, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "bdb_get_genshard failed with err: %d\n", rc);
     }
     return rc;
 }
