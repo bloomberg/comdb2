@@ -11636,3 +11636,33 @@ int bdb_get_genshard(tran_type *tran, const char *table, char **str, int *size, 
     return bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, key, (void **)str, size, bdberr);
 }
 
+struct llmeta_gen_shard_key {
+    int file_type;
+    char tablename[LLMETA_TBLLEN];
+};
+
+/* Fetch all generic shard names */
+int bdb_get_genshard_names(tran_type *t, char **names, int *num)
+{
+    union {
+        struct llmeta_gen_shard_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } * *shards;
+    int rc, n, bdberr;
+    llmetakey_t k;
+
+    k = htonl(LLMETA_GEN_SHARD);
+    rc = kv_get_keys(t, &k, sizeof(k), (void ***)&shards, &n, &bdberr);
+    if (rc || (n == 0)) {
+        *num = 0;
+        return rc;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        names[i] = strdup(shards[i]->key.tablename);
+        free(shards[i]);
+    }
+    free(shards);
+    *num = n;
+    return rc;
+}
