@@ -472,7 +472,9 @@ static int forward_longblock_to_master(struct ireq *iq,
                     p_blkstate->p_buf_req_start) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
 
-    fwd.source_node = 0;
+    fwd.flags = 0;
+    if (iq->errstrused)
+        fwd.flags |= BLKF_ERRSTAT;
     /* write it and make sure we wrote the same length */
     if (p_blkstate->p_buf_req_start != iq->p_buf_out ||
         !(iq->p_buf_out = longblock_fwd_pre_hdr_put(&fwd, iq->p_buf_out,
@@ -484,10 +486,10 @@ static int forward_longblock_to_master(struct ireq *iq,
     /*have a valid master to pass this off to. */
     if (iq->debug)
         reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%zu\n",
-                  getorigin(iq), mstr, iq->origdb->dbnum, req_len);
-    if (iq->is_socketrequest) {
-        if (iq->sb == NULL) {
+                "%zu\n", getorigin(iq), mstr, iq->origdb->dbnum, req_len);
+    if (iq->is_socketrequest || iq->ipc_sndbak) {
+        if (iq->sb == NULL && iq->is_socketrequest) {
+            // what case is this?
             return ERR_INCOHERENT;
         } else {
             rc = offload_comm_send_blockreq(mstr, iq->request_data,
@@ -529,24 +531,32 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
         return ERR_NOMASTER;
     }
 
-    /*modify request to indicate forwarded and send off to remote */
 
+    /*modify request to indicate forwarded and send off to remote */
     if (req_hdr_get(&req_hdr, iq->p_buf_out_start,
                     p_blkstate->p_buf_req_start,iq->comdbg_flags) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
     req_hdr.opcode = OP_FWD_BLOCK;
+    if (iq->comdbg_flags & COMDBG_FLAG_FROM_LE) {
+        req_hdr.opcode = OP_FWD_BLOCK_LE;
+    }
+    req_hdr.luxref = iq->luxref;
     if (req_hdr_put(&req_hdr, iq->p_buf_out_start,
                     p_blkstate->p_buf_req_start) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
-     if (iq->comdbg_flags & COMDBG_FLAG_FROM_LE) {
-         req_hdr.opcode = OP_FWD_BLOCK_LE;
-     }
 
-
-    fwd.source_node = 0;
+    // source node isn't used - so reuse it for flags, which we otherwse don't have
+    // in a forwarded request
+    fwd.flags = 0;
     fwd.offset =
         block_state_offset_from_ptr(p_blkstate, p_blkstate->p_buf_req_end);
     fwd.num_reqs = p_blkstate->numreq;
+
+    // if the original request had BLKF_ERRSTAT set, set it in the forwarded
+    // request as well.
+    if (iq->errstrused)
+        fwd.flags |= BLKF_ERRSTAT;
+
     /* write it and make sure we wrote the same length */
     if (p_blkstate->p_buf_req_start != iq->p_buf_out ||
         (iq->p_buf_out = block_fwd_put(&fwd, iq->p_buf_out,
@@ -561,7 +571,6 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
         } else {
             rc = offload_comm_send_blockreq(mstr, iq->request_data,
                                             iq->p_buf_out_start, req_len);
-            // HERE 
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
@@ -639,7 +648,7 @@ static int block_state_set_end(struct ireq *iq, block_state_t *p_blkstate,
 
     if (p_buf < iq->p_buf_in || p_buf > iq->p_buf_in_end) {
         if (iq->debug)
-            reqprintf(iq, "OFFSET OUT OF RANGE %d", offset);
+            reqprintf(iq, "%s OFFSET OUT OF RANGE %d", __func__, offset);
         reqerrstr(iq, COMDB2_BLK_RC_NB_REQS, "OFFSET OUT OF RANGE %d", offset);
         return ERR_BADREQ;
     }
@@ -684,7 +693,7 @@ int block_state_set_next(struct ireq *iq, block_state_t *p_blkstate, int offset)
 
     if (p_buf < iq->p_buf_in || p_buf > p_blkstate->p_buf_req_end) {
         if (iq->debug)
-            reqprintf(iq, "OFFSET OUT OF RANGE %d", offset);
+            reqprintf(iq, "%s OFFSET OUT OF RANGE %d", __func__, offset);
         reqerrstr(iq, COMDB2_BLK_RC_NB_REQS, "OFFSET OUT OF RANGE %d", offset);
         return ERR_BADREQ;
     }
@@ -1290,6 +1299,7 @@ static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
         return ERR_BADREQ;
     }
 
+    iq->errstrused = fwd.flags & BLKF_ERRSTAT;
     p_blkstate->source_host = NULL;
 
     return RC_OK;
@@ -1946,12 +1956,12 @@ static int toblock_req_int(struct ireq *iq, block_state_t *p_blkstate)
  * @return 0 on success; !0 otherwise
  * @see toblock()
  */
-static int toblock_fwd_int(struct ireq *iq, block_state_t *p_blkstate)
+static int toblock_fwd_int(struct ireq *iq, block_state_t *p_blkstate, int comdbg_flags)
 {
     int rc;
     struct block_fwd fwd;
 
-    if (!(iq->p_buf_in = block_fwd_get(&fwd, iq->p_buf_in, iq->p_buf_in_end))) {
+    if (!(iq->p_buf_in = block_fwd_get(&fwd, iq->p_buf_in, iq->p_buf_in_end, comdbg_flags))) {
         if (iq->debug)
             reqprintf(iq, "BAD BLOCK FWD");
         return ERR_BADREQ;
@@ -1963,7 +1973,7 @@ static int toblock_fwd_int(struct ireq *iq, block_state_t *p_blkstate)
         iq->comdbg_flags = COMDBG_FLAG_FROM_LE | OP_FWD_BLOCK;
     }
 
-
+    iq->errstrused = fwd.flags & BLKF_ERRSTAT;
     if ((rc = block_state_set_end(iq, p_blkstate, fwd.offset)))
         return rc;
 
@@ -2047,7 +2057,7 @@ int toblock(struct ireq *iq)
 
     case OP_FWD_BLOCK: /*forwarded block op*/
     case OP_FWD_BLOCK_LE:
-        rc = toblock_fwd_int(iq, &blkstate);
+        rc = toblock_fwd_int(iq, &blkstate, iq->comdbg_flags);
         break;
 
     default:
@@ -2940,7 +2950,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
     if (iq->opcode == OP_LONGBLOCK || iq->opcode == OP_FWD_LBLOCK)
         iq->p_buf_in =
             longblock_req_hdr_get(&lhdr, iq->p_buf_in, iq->p_buf_in_end) + 4;
-    else if (iq->opcode == OP_BLOCK || iq->opcode == OP_FWD_BLOCK)
+    else if (iq->opcode == OP_BLOCK || iq->opcode == OP_FWD_BLOCK || iq->opcode == OP_FWD_BLOCK_LE)
         iq->p_buf_in = block_req_get(&hdr, iq->p_buf_in, iq->p_buf_in_end, iq->comdbg_flags);
 
     /* backup everything we've read already (ie the header) */
@@ -2949,7 +2959,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                                iq->opcode == OP_FWD_LBLOCK))
         return ERR_INTERNAL;
 
-    if (iq->opcode == OP_FWD_BLOCK || iq->opcode == OP_FWD_LBLOCK) {
+    if (iq->opcode == OP_FWD_BLOCK || iq->opcode == OP_FWD_LBLOCK || iq->opcode == OP_FWD_BLOCK_LE) {
         /* this was forwarded from a replicant */
         source_host = p_blkstate->source_host;
     } else {
@@ -3287,6 +3297,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         }
 
         switch (hdr.opcode) {
+        case BLOCK2_RNGDELKL:
+            // need to mark this as keyless to have the right response length
+            have_keyless_requests++;
+            goto unknown_request;
+            break;
+
         case BLOCK2_UPDBYKEY: {
             struct packedreq_updbykey updbykey;
             const uint8_t *p_buf_tag_name;
@@ -4757,7 +4773,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         }
 
         default:
-
+unknown_request:
             /*unknown operation */
             if (iq->debug)
                 reqprintf(iq, "BAD OPCODE %d", hdr.opcode);

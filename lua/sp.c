@@ -7223,20 +7223,14 @@ static int exec_comdb2_legacy(struct sqlthdstate *thd, struct sqlclntstate *clnt
         char buf[64*1024];
     } rsp;
 
-    // TODO: check size
-    // TODO: why copy?
     memcpy(rsp.buf, b.data, b.length);
-    // logmsg(LOGMSG_WARN, "-> %p %d\n", rsp.buf, b.length);
     do_comdb2_legacy(rsp.buf, b.length, clnt, luxref, flags, &rsp.outlen, &rsp.rc);
-    // logic from sndbak - keep it compatible
+    int flip = endianness_mismatch(clnt);
+    if (flip)
+        rsp.rc = flibc_intflip(rsp.rc);
     char *fb = (char *)rsp.buf;
-    int *bp = (int *)rsp.buf;
-    bp[1] = htonl(rsp.rc);
     fb[0] = 0xfd;
 
-    // logmsg(LOGMSG_WARN, "rsp: len %d rc %d\n", rsp.outlen, rsp.rc);
-    // fsnapf(stdout, rsp.buf, rsp.outlen);
-    rsp.outlen += 8;
     write_response(clnt, RESPONSE_RAW_PAYLOAD, &rsp, 0);
 
     return 0;

@@ -72,7 +72,7 @@ BB_COMPILE_TIME_ASSERT(longblock_req_pre_hdr_size,
                            LONGBLOCK_REQ_PRE_HDR_LEN);
 
 struct longblock_fwd_pre_hdr {
-    int source_node;
+    int flags;
 };
 enum { LONGBLOCK_FWD_PRE_HDR_LEN = 4 };
 BB_COMPILE_TIME_ASSERT(longblock_fwd_pre_hdr_size,
@@ -120,7 +120,7 @@ BB_COMPILE_TIME_ASSERT(block_req_size,
                        sizeof(struct block_req) == BLOCK_REQ_LEN);
 
 struct block_fwd {
-    int source_node;
+    int flags;
     int offset;
     int num_reqs;
     /*more packed reqs... */
@@ -820,8 +820,11 @@ const uint8_t *block_req_get(struct block_req *p_block_req,
 
 uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
                        const uint8_t *p_buf_end, int comdbg_flags);
+
+
 const uint8_t *block_fwd_get(struct block_fwd *p_block_fwd,
-                             const uint8_t *p_buf, const uint8_t *p_buf_end);
+                             const uint8_t *p_buf, const uint8_t *p_buf_end,
+                             int comdbg_flags);
 
 uint8_t *block_nested_put(const struct block_nested *p_block_nested,
                           uint8_t *p_buf, const uint8_t *p_buf_end);
