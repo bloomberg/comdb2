@@ -1693,5 +1693,6 @@ struct sp_tmptbl {
     uint64_t rowid;
 };
 void set_tmptbl(struct sp_tmptbl *);
+int endianness_mismatch(struct sqlclntstate *clnt);
 
 #endif /* _SQL_H_ */

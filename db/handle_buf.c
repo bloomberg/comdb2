@@ -871,6 +871,13 @@ static int reterr_withfree(struct ireq *iq, int rc)
     }
 }
 
+/* The actual buffer we allocate here is MAX_BUFFER_SIZE.  The request
+ * can be shorter than the reply, and pack_tail code will refuse to
+ * add error information to the response, though there's plenty of room.
+ * None of the logic to figure this out belongs in this code, but this
+ * is where we determine how big the request is. Make sure we define the
+ * request as at least EXTRA_RESPONSE_ROOM bytes. */
+#define EXTRA_RESPONSE_ROOM 1024
 int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
                              const uint8_t *p_buf_end, int debug,
                              char *frommach, unsigned long long rqid)
@@ -878,6 +885,8 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
     int length = p_buf_end - p_buf;
     uint8_t *p_bigbuf = get_bigbuf();
     memcpy(p_bigbuf, p_buf, length);
+    if (length < EXTRA_RESPONSE_ROOM)
+        length = EXTRA_RESPONSE_ROOM;
     int rc = handle_buf_main(dbenv, NULL, p_bigbuf, p_bigbuf + length, debug,
                              frommach, 0, NULL, NULL, REQ_SOCKREQUEST, NULL, 0,
                              rqid, NULL);
@@ -985,6 +994,8 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         iq->sb = sb;
         iq->is_fromsocket = 1;
         iq->is_socketrequest = (qtype == REQ_SOCKREQUEST) ? 1 : 0;
+        if (hdr.luxref)
+            luxref = hdr.luxref;
     } else {
         iq->sb = NULL;
     }

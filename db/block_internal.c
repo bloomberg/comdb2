@@ -65,8 +65,8 @@ uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
         return NULL;
     PUTFUNC
 
-    p_buf = putfunc(&(p_block_fwd->source_node),
-                    sizeof(p_block_fwd->source_node), p_buf, p_buf_end);
+    p_buf = putfunc(&(p_block_fwd->flags),
+                    sizeof(p_block_fwd->flags), p_buf, p_buf_end);
     p_buf = putfunc(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
                     p_buf_end);
     p_buf = putfunc(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
@@ -76,16 +76,17 @@ uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
 }
 
 const uint8_t *block_fwd_get(struct block_fwd *p_block_fwd,
-                             const uint8_t *p_buf, const uint8_t *p_buf_end)
+                             const uint8_t *p_buf, const uint8_t *p_buf_end, int comdbg_flags)
 {
     if (p_buf_end < p_buf || BLOCK_FWD_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_block_fwd->source_node),
-                    sizeof(p_block_fwd->source_node), p_buf, p_buf_end);
-    p_buf = buf_get(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
+    p_buf = getfunc(&(p_block_fwd->flags),
+                    sizeof(p_block_fwd->flags), p_buf, p_buf_end);
+    p_buf = getfunc(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
+    p_buf = getfunc(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
                     p_buf, p_buf_end);
 
     return p_buf;
@@ -269,8 +270,8 @@ uint8_t *longblock_fwd_pre_hdr_put(
         return NULL;
 
     p_buf =
-        buf_put(&(p_longblock_fwd_pre_hdr->source_node),
-                sizeof(p_longblock_fwd_pre_hdr->source_node), p_buf, p_buf_end);
+        buf_put(&(p_longblock_fwd_pre_hdr->flags),
+                sizeof(p_longblock_fwd_pre_hdr->flags), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -283,8 +284,8 @@ longblock_fwd_pre_hdr_get(struct longblock_fwd_pre_hdr *p_longblock_fwd_pre_hdr,
         return NULL;
 
     p_buf =
-        buf_get(&(p_longblock_fwd_pre_hdr->source_node),
-                sizeof(p_longblock_fwd_pre_hdr->source_node), p_buf, p_buf_end);
+        buf_get(&(p_longblock_fwd_pre_hdr->flags),
+                sizeof(p_longblock_fwd_pre_hdr->flags), p_buf, p_buf_end);
 
     return p_buf;
 }

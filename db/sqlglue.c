@@ -13422,7 +13422,7 @@ int comdb2_is_field_indexable(const char *table_name, int fld_idx) {
 
 static void legacy_sndbak(struct ireq *iq, int rc, int len) {
     struct buf_lock_t *p_slock = iq->request_data;
-    p_slock->len = len - 8;
+    p_slock->len = len;
     p_slock->rc = rc;
     signal_buflock(p_slock);
 }
