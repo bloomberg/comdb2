@@ -94,7 +94,8 @@ static void watchdogauth(void) {
     start_internal_sql_clnt(&clnt);
     clnt.admin = 0;
     clnt.current_user.bypass_auth = 0;
-    check_user_password(&clnt);
+    if (gbl_uses_externalauth)
+        check_user_password(&clnt);
     end_internal_sql_clnt(&clnt);
 }
 
