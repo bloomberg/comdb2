@@ -820,8 +820,11 @@ const uint8_t *block_req_get(struct block_req *p_block_req,
 
 uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
                        const uint8_t *p_buf_end, int comdbg_flags);
+
+
 const uint8_t *block_fwd_get(struct block_fwd *p_block_fwd,
-                             const uint8_t *p_buf, const uint8_t *p_buf_end);
+                             const uint8_t *p_buf, const uint8_t *p_buf_end,
+                             int comdbg_flags);
 
 uint8_t *block_nested_put(const struct block_nested *p_block_nested,
                           uint8_t *p_buf, const uint8_t *p_buf_end);
