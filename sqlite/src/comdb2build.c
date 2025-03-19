@@ -942,7 +942,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         /* Check if this is a distributed drop */
         struct dbtable *tbl = get_dbtable_by_name(sc->tablename);
 
-        if (tbl && tbl->sqlaliasname && tbl->dbnames[0]) {
+        if (tbl && tbl->genshard_name) {
             /* dropping a generic partition */
             /* NOTE: there are two was to get here:
              * - initial drop table that is actually a partition (coordinator)
@@ -955,7 +955,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
             sc->partition.type = thd->clnt->remsql_set.is_remsql == IS_REMCREATE ?
                 PARTITION_REM_GENSHARD : PARTITION_REM_GENSHARD_COORD ;
             snprintf(sc->partition.u.genshard.tablename,
-                     sizeof(sc->partition.u.genshard.tablename), "%s", tbl->sqlaliasname);
+                     sizeof(sc->partition.u.genshard.tablename), "%s", tbl->genshard_name);
         }
     }
 

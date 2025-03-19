@@ -327,7 +327,13 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     /* if this is generic sharding sc, make sure finalize also updates shard specific metadata and in-mem structures*/
     if (s->partition.type == PARTITION_ADD_GENSHARD || s->partition.type == PARTITION_REM_GENSHARD) {
         assert(tran!=NULL);
-        rc = bdb_llog_scdone_tran(bdb_state, gen_shard, tran, s->partition.u.genshard.tablename, strlen(s->partition.u.genshard.tablename) + 1, bdberr);
+        char *shardname = s->partition.u.genshard.tablename;
+        oldlen = strlen(s->tablename) + 1;
+        newlen = strlen(shardname) + 1;
+        mashup = alloca(oldlen + newlen);
+        memcpy(mashup, s->tablename, oldlen);
+        memcpy(mashup + oldlen, shardname, newlen);
+        rc = bdb_llog_scdone_tran(bdb_state, gen_shard, tran, mashup, oldlen+newlen, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_llog_scdone failed for genshard %s. rc: %d, bdberr: %d\n", s->partition.u.genshard.tablename, rc, *bdberr);
         }

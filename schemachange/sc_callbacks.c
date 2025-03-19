@@ -786,11 +786,11 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
     add_dbtable_to_thedb_dbs(db);
 
     /* this is used by testgenshard, creating a partition name alias for the actual shard */
-    char *sqlalias = NULL;
+    /*char *sqlalias = NULL;
     rc = bdb_get_table_sqlalias_tran(db->tablename, tran, &sqlalias);
     if (sqlalias){
         hash_sqlalias_db(db, sqlalias);
-    }
+    }*/
 
     /* 'dbnames' is passed as a string arg while finalizing an add of a generic sharded table */
     /*if (arg && strcmp(arg, "dbnames") == 0 && db->sqlaliasname) {
@@ -1278,16 +1278,21 @@ static int scdone_gen_shard(const char tablename[] , void *arg, scdone_t type)
     int rc = 0;
     int bdberr = 0;
     struct dbtable *db = get_dbtable_by_name(tablename);
+    assert(arg!=NULL);
+    const char *genshard_name = (char *)arg;
+    logmsg(LOGMSG_USER, "%s: SHARDNAME IS %s\n", __func__, genshard_name);
     tran = _tran(&lid, &bdberr, __func__, __LINE__);
     if (!tran)
         return bdberr;
     
     logmsg(LOGMSG_USER, "++++++ %s : calling update gen_shard_update_inmem_db\n", __func__);
-    rc = gen_shard_update_inmem_db(tran, db, db->sqlaliasname);
+    rc = gen_shard_update_inmem_db(tran, db, genshard_name);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
     }
     _untran(tran, lid);
+    /* create the view now */
+
     return rc;
 }
 /* keep this in sync with enum scdone */
