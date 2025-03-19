@@ -70,8 +70,7 @@ static char *comdb2dbname = NULL;
 void class_machs_init()
 {
     class_machs_hash = hash_init_user((hashfunc_t *)class_machs_hash_func, (cmpfunc_t *)class_machs_cmp, 0, 0);
-    cdb2_get_comdb2db(&comdb2dbname);
-    comdb2dbclass = (strcmp(comdb2dbname, "comdb3db") == 0) ? "dev" : "prod";
+    cdb2_get_comdb2db(&comdb2dbname, &comdb2dbclass);
 }
 
 int gbl_class_machs_refresh = 300;
