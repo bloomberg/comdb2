@@ -1,7 +1,39 @@
-add_custom_command(OUTPUT syssp.c
-                   COMMAND ${CMAKE_COMMAND} -DCURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DCURRENT_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/configure_syssp_c.cmake.in
-                   DEPENDS lib/
-                   COMMENT "Configuring lua/syssp.c")
+SET(SYSSP_LIST
+  # Name -> lua script file path
+  #
+  # Hint: Make sure that the stored procedure name is not longer that 31
+  # characters (MAX_SPNAME-1 (31)), i.e. not be longer that the below
+  # line. If it is, you'll get a "bad procedure name" error.
+  #-------------------------------|
+  "sys.physrep.get_reverse_hosts   -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_get_reverse_hosts.lua"
+  "sys.physrep.get_revhosts_v2     -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_get_revhosts_v2.lua"
+  "sys.physrep.keepalive           -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_keepalive.lua"
+  "sys.physrep.keepalive_v2        -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_keepalive_v2.lua"
+  "sys.physrep.register_replicant  -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_register_replicant.lua"
+  "sys.physrep.reset_nodes         -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_reset_nodes.lua"
+  "sys.physrep.should_wait_for_con -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_should_wait_for_con.lua"
+  "sys.physrep.shouldwait_v2       -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_shouldwait_v2.lua"
+  "sys.physrep.topology            -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_topology.lua"
+  "sys.physrep.update_registry     -> ${CMAKE_CURRENT_SOURCE_DIR}/lib/physrep_update_registry.lua"
+)
+
+foreach(SYSSP IN LISTS SYSSP_LIST)
+    if (SYSSP MATCHES "^(.*)->(.*)$")
+        string(STRIP ${CMAKE_MATCH_1} SYSSP_NAME)
+        string(STRIP ${CMAKE_MATCH_2} SYSSP_PATH)
+
+        file(READ ${SYSSP_PATH} FILE_CONTENT)
+
+        string(REGEX REPLACE "(\")" "\\\\\\1" FILE_CONTENT ${FILE_CONTENT})
+        string(REPLACE "\n" "\\n" FILE_CONTENT ${FILE_CONTENT})
+
+        set(CMAKE_SYSSP_LIST ${CMAKE_SYSSP_LIST}{\"${SYSSP_NAME}\",\"${FILE_CONTENT}\",\"${SYSSP_NAME}\"},\n)
+    else()
+        message(FATAL_ERROR "Invalid system stored procedure entry: ${SYSSP}")
+    endif()
+endforeach()
+
+configure_file(syssp.c.in syssp.c @ONLY)
 
 add_library(lua
   lapi.c
@@ -36,7 +68,7 @@ add_library(lua
   lvm.c
   lzio.c
   sp.c
-  ${CMAKE_BINARY_DIR}/lua/syssp.c
+  ${CMAKE_CURRENT_BINARY_DIR}/syssp.c
 )
 
 set(module lua)
@@ -87,7 +119,6 @@ if(WITH_RDKAFKA)
 endif()
 )
 if (COMDB2_BBCMAKE)
-  target_link_libraries(lua PUBLIC protobuf-c openssl)
-  comdb2_bb_target(lua)
+  comdb2_lib_target(lua)
 endif()
 add_dependencies(lua mem proto sqlite)

@@ -244,8 +244,8 @@ target_link_libraries(comdb2 PRIVATE
 )
 
 if (COMDB2_BBCMAKE)
-  target_link_libraries(comdb2 PRIVATE opencdb2api uuid event_core_static event_pthreads_static)
-  comdb2_bb_target(comdb2)
+  target_link_libraries(comdb2 PRIVATE opencdb2api)
+  comdb2_bin_target(comdb2)
 else()
   target_link_libraries(comdb2 PRIVATE cdb2api m ${CMAKE_DL_LIBS})
 endif()
