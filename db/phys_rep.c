@@ -78,6 +78,7 @@ unsigned int gbl_deferred_phys_update;
 
 char *gbl_physrep_source_dbname;
 int gbl_physrep_source_dbnum;
+int gbl_query_comdb2db_for_absent_physrep_source_dbnum = 1;
 char *gbl_physrep_source_host;
 char *gbl_physrep_metadb_name;
 char *gbl_physrep_metadb_host;
@@ -290,8 +291,7 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     static char *comdb2dbname = NULL;
 
     if (!comdb2dbname) {
-        cdb2_get_comdb2db(&comdb2dbname);
-        comdb2dbclass = (strcmp(comdb2dbname, "comdb3db") == 0) ? "dev" : "prod";
+        cdb2_get_comdb2db(&comdb2dbname, &comdb2dbclass);
     }
 
     *rc = cdb2_open(&comdb2db, comdb2dbname, comdb2dbclass, 0);

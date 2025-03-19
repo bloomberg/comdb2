@@ -1665,12 +1665,13 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     return 0;
 }
 
-int cdb2_get_comdb2db(char **comdb2dbname)
+int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
 {
     if (!strlen(cdb2_comdb2dbname)) {
         read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0);
     }
     (*comdb2dbname) = strdup(cdb2_comdb2dbname);
+    (*comdb2dbclass) = strdup((strcmp(cdb2_comdb2dbname, "comdb3db") == 0) ? "dev" : "prod");
     return 0;
 }
 
