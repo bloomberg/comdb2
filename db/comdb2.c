@@ -208,7 +208,7 @@ static void *purge_old_files_thread(void *arg);
 static int lrllinecmp(char *lrlline, char *cmpto);
 static void ttrap(struct timer_parm *parm);
 int clear_temp_tables(void);
-int gen_shard_deserialize_shard(uint32_t *numdbs, char ***dbnames, uint32_t *numcols, char ***columns, char ***shardnames, char *serializedStr);
+int gen_shard_deserialize_shard(char **genshard_name, uint32_t *numdbs, char ***dbnames, uint32_t *numcols, char ***columns, char ***shardnames, char *serializedStr);
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
@@ -250,7 +250,7 @@ int gbl_watchdog_watch_threshold = 60;
 int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
 int gbl_reject_osql_mismatch = 1;
-int gbl_abort_on_clear_inuse_rqid = 1;
+int gbl_abort_on_clear_inuse_rqid = 0;
 int gbl_archive_on_init = 1;
 
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
@@ -2299,7 +2299,7 @@ int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
     int bdberr = 0;
     /* allow as many generic sharded tables as regular tables (?) */
     char *tablenames[MAX_NUM_TABLES];
-    char *shard_info = NULL;
+    char *shard_info = NULL, *genshard_name = NULL;
     char **dbnames = NULL, **columns = NULL, **shardnames = NULL;
     int table_count = 0, size = 0;
     uint32_t numdbs=0, numcols=0;
@@ -2322,7 +2322,7 @@ int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
             goto err;
         }
 
-        if (gen_shard_deserialize_shard(&numdbs, &dbnames, &numcols, &columns, &shardnames, shard_info)) {
+        if (gen_shard_deserialize_shard(&genshard_name, &numdbs, &dbnames, &numcols, &columns, &shardnames, shard_info)) {
             logmsg(LOGMSG_ERROR, "Failed to deserialize llmeta str for generic shard %s\n", tablenames[i]);
         }
 
@@ -2330,6 +2330,7 @@ int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
             db = get_dbtable_by_name(shardnames[i]);
             if (db) {
                 /*update the table object*/
+                db->genshard_name = genshard_name;
                 db->numdbs = numdbs;
                 db->dbnames = dbnames;
                 db->numcols = numcols;
