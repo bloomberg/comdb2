@@ -76,16 +76,17 @@ uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
 }
 
 const uint8_t *block_fwd_get(struct block_fwd *p_block_fwd,
-                             const uint8_t *p_buf, const uint8_t *p_buf_end)
+                             const uint8_t *p_buf, const uint8_t *p_buf_end, int comdbg_flags)
 {
     if (p_buf_end < p_buf || BLOCK_FWD_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_block_fwd->source_node),
+    p_buf = getfunc(&(p_block_fwd->source_node),
                     sizeof(p_block_fwd->source_node), p_buf, p_buf_end);
-    p_buf = buf_get(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
+    p_buf = getfunc(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
+    p_buf = getfunc(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
                     p_buf, p_buf_end);
 
     return p_buf;
