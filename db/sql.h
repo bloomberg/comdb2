@@ -673,6 +673,20 @@ void clear_session_tbls(struct sqlclntstate *);
 void clear_participants(struct sqlclntstate *);
 int add_participant(struct sqlclntstate *, const char *dbname, const char *tier);
 
+struct features {
+    unsigned have_ssl : 1;
+    unsigned have_sqlite_fmt : 1;
+    unsigned allow_master_exec : 1;
+    unsigned allow_master_dbinfo : 1;
+    unsigned queue_me : 1;
+    unsigned allow_incoherent : 1;
+    unsigned skip_intrans_results : 1;
+    unsigned flat_col_vals : 1;
+    unsigned request_fp : 1;
+    unsigned require_fastsql : 1;
+    unsigned can_redirect_fdb : 1;
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
     struct thdpool *pPool;     /* When null, the default SQL thread pool is
@@ -1036,6 +1050,8 @@ struct sqlclntstate {
     unsigned verify_dbstore : 1;
     unsigned multiline : 1;
     int tail_offset;
+
+    struct features features;
 };
 typedef struct sqlclntstate sqlclntstate;
 

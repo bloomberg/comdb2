@@ -1412,12 +1412,8 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
        send_intrans_response by setting INTRANSRESULTS to ON. */
     if (appdata->send_intrans_response != -1 && sqlquery->n_features > 0 &&
         gbl_disable_skip_rows == 0) {
-        for (int ii = 0; ii < sqlquery->n_features; ii++) {
-            if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
-                sqlquery->features[ii])
-                continue;
+        if (clnt->features.skip_intrans_results)
             appdata->send_intrans_response = 0;
-        }
     }
 
     if (clnt->is_hasql_retry) {
@@ -2271,15 +2267,10 @@ int newsql_heartbeat(struct sqlclntstate *clnt)
 
 static int do_query_on_master_check(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
-    int allow_master_exec = 0;
-    int allow_master_dbinfo = 0;
-    for (int ii = 0; ii < sql_query->n_features; ii++) {
-        switch (sql_query->features[ii]) {
-        case CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC: allow_master_exec = 1; break;
-        case CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO: allow_master_dbinfo = 1; break;
-        case CDB2_CLIENT_FEATURES__ALLOW_QUEUING: clnt->queue_me = 1; break;
-        }
-    }
+    int allow_master_exec = clnt->features.allow_master_exec;
+    int allow_master_dbinfo = clnt->features.allow_master_dbinfo;
+    clnt->queue_me = clnt->features.queue_me;
+
     if (thedb->nsiblings == 1 || thedb->rep_sync == REP_SYNC_NONE || clnt->plugin.local_check(clnt)) {
         return 0;
     }
@@ -2312,22 +2303,16 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     appdata->protocol_version = NEWSQL_PROTOCOL_ORIGINAL;
-    for (int ii = 0; ii < sql_query->n_features; ++ii) {
-        switch(sql_query->features[ii]) {
-        case CDB2_CLIENT_FEATURES__FLAT_COL_VALS:
-            clnt->flat_col_vals = 1;
-            break;
-        case CDB2_CLIENT_FEATURES__REQUEST_FP:
-            clnt->request_fp = 1;
-            break;
-        case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL:
-            appdata->protocol_version = NEWSQL_PROTOCOL_COMPAT;
-            break;
-        case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB:
-            clnt->can_redirect_fdb = 1;
-            break;
-        }
-    }
+
+    if (clnt->features.flat_col_vals)
+        clnt->flat_col_vals = 1;
+    if (clnt->features.request_fp)
+        clnt->request_fp = 1;
+    if (clnt->features.require_fastsql)
+        appdata->protocol_version = NEWSQL_PROTOCOL_COMPAT;
+    if (clnt->features.can_redirect_fdb)
+        clnt->can_redirect_fdb = 1;
+
     if (sql_query->client_info) {
         newsql_set_client_info(clnt, sql_query, 1);
     } else {
@@ -2357,7 +2342,6 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     clnt->sql = sql_query->sql_query;
     Pthread_mutex_unlock(&clnt->sql_lk);
     clnt->added_to_hist = 0;
-    int allow_incoherent = 0;
 
     free_original_normalized_sql(clnt);
 
@@ -2375,10 +2359,6 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
 
     if (clnt->tzname[0] == 0 && sql_query->tzname) {
         strncpy0(clnt->tzname, sql_query->tzname, sizeof(clnt->tzname));
-    }
-    for (size_t i = 0; i < sql_query->n_features; i++) {
-        if (sql_query->features[i] == CDB2_CLIENT_FEATURES__ALLOW_INCOHERENT)
-            allow_incoherent = 1;
     }
     if (sql_query->dbname && thedb->envname && strcasecmp(sql_query->dbname, thedb->envname)) {
         CDB2SQLQUERY__Cinfo *info = sql_query->client_info;
@@ -2441,7 +2421,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD64(gbl_nnewsql_ssl, 1);
 
     /* coherent  _or_ in middle of transaction */
-    if ((!incoh_reject(clnt->admin, thedb->bdb_env) || allow_incoherent) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
+    if ((!incoh_reject(clnt->admin, thedb->bdb_env) || clnt->features.allow_incoherent) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         return NEWSQL_SUCCESS;
     }
     if (gbl_incoherent_clnt_wait > 0) {
