@@ -51,7 +51,7 @@ static const char revid[] = "$Id: db_dispatch.c,v 11.145 2003/09/10 20:31:18 ube
 #include <stdio.h>
 #endif
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"

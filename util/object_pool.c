@@ -25,7 +25,7 @@
 #include <string.h>
 #include <pthread.h>
 
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "object_pool.h"
 #include "logmsg.h"
 #include "sys_wrap.h"

@@ -112,7 +112,6 @@ include_directories(
   ${PROTOBUF-C_INCLUDE_DIR}
 )
 if (COMDB2_BBCMAKE)
-  target_link_libraries(bdb PUBLIC db lz4)
-  configure_bb_target(bdb V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_lib_target(bdb)
 endif()
 add_dependencies(bdb db mem proto)

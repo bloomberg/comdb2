@@ -34,7 +34,7 @@
 #include "machclass.h"
 #include "logmsg.h"
 #include "sys_wrap.h"
-#include <plhash.h>
+#include <plhash_glue.h>
 
 static int machine_is_up_default(const char *host, int *isdrtest);
 static int machine_status_init(void);

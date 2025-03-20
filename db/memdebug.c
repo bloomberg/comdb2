@@ -27,7 +27,7 @@
 #include <alloca.h>
 #include <strings.h>
 
-#include <plhash.h>
+#include <plhash_glue.h>
 #include <list.h>
 #include <walkback.h>
 #include <lockmacros.h>
