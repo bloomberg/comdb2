@@ -4104,6 +4104,11 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                 logmsg(LOGMSG_ERROR, "meta database not available\n");
             }
         }
+
+        /* disable these queuedb tunables that require singlemeta */
+        gbl_init_with_queue_odh = 0;
+        gbl_init_with_queue_compr = 0;
+        gbl_init_with_queue_persistent_seq = 0;
     }
 
     /* now that meta is open, get the blobstripe conversion genids for each
