@@ -31,6 +31,8 @@ enum CDB2ClientFeatures {
     REQUIRE_FASTSQL        = 10;
     /* To tell the server that the client can redirect an fdb query */
     CAN_REDIRECT_FDB       = 11;
+    /* Useful for utilities - allow queries on incoherent nodes. */
+    ALLOW_INCOHERENT       = 12;
 }
 
 message CDB2_FLAG {

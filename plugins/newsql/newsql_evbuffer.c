@@ -554,19 +554,35 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
     Pthread_mutex_unlock(&dispatch_lk);
 }
 
+static void process_features(struct newsql_appdata_evbuffer *appdata) {
+    struct sqlclntstate *clnt = &appdata->clnt;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery = appdata->query->sqlquery;
+
+    memset(&clnt->features, 0, sizeof(clnt->features));
+    for (int i = 0; i < sqlquery->n_features; ++i) {
+        switch (sqlquery->features[i]) {
+        case CDB2_CLIENT_FEATURES__SSL: clnt->features.have_ssl = 1; break;
+        case CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT: clnt->features.have_sqlite_fmt = 1; break;
+        case CDB2_CLIENT_FEATURES__ALLOW_INCOHERENT: clnt->features.allow_incoherent = 1; break;
+        case CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS: clnt->features.skip_intrans_results = 1; break;
+        case CDB2_CLIENT_FEATURES__FLAT_COL_VALS: clnt->features.flat_col_vals = 1; break;
+        case CDB2_CLIENT_FEATURES__REQUEST_FP: clnt->features.request_fp = 1; break;
+        case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL: clnt->features.require_fastsql = 1;
+        case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB: clnt->features.can_redirect_fdb = 1; break;
+        }
+    }
+}
+
 static void process_query(struct newsql_appdata_evbuffer *appdata)
 {
     struct sqlclntstate *clnt = &appdata->clnt;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery = appdata->query->sqlquery;
+
+    process_features(appdata);
+
     if (!sqlquery) goto err;
-    int have_ssl = 0;
-    int have_sqlite_fmt = 0;
-    for (int i = 0; i < sqlquery->n_features; ++i) {
-        switch (sqlquery->features[i]) {
-        case CDB2_CLIENT_FEATURES__SSL: have_ssl = 1; break;
-        case CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT: have_sqlite_fmt = 1; break;
-        }
-    }
+    int have_ssl = clnt->features.have_ssl;
+    int have_sqlite_fmt = clnt->features.have_sqlite_fmt;
     clnt->sqlite_row_format = have_sqlite_fmt;
     ++clnt->sqltick;
 
