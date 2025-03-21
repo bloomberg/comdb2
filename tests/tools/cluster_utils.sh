@@ -246,4 +246,9 @@ function kill_restart_tertiary_node
     waitmach $node $TERTIARY_DBNAME
 }
 
-
+function wait_for_cluster
+{
+    for node in ${CLUSTER} ; do
+        waitmach ${node}
+    done
+}
