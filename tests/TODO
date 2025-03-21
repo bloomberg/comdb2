@@ -77,6 +77,7 @@ netloss.test              -- does not pass most of the time; requires kernel 4.x
 overflowblobs.test        -- timesout
 register_linearizable.test
 repeated_downgrades.test  -- we get lost writes from the downgrades
+incremental_backup_load.test -- times out on rr- we have other tests
 rootpagememleak.test
 rowlocks_blkseq.test
 sc_async_constraints.test

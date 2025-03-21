@@ -428,6 +428,7 @@ struct txn_properties;
 					 * is holding a pagelock */
 #define	DB_LOCK_ONELOCK		0x100   /* lockerid will acquire only this
 					 * lock */
+#define DB_LOCK_ENDIANIZE   0x200   /* Endianize lock-list correctly */
 
 /* Flag values for lock_id_flags(). */
 #define DB_LOCK_ID_LOWPRI   0x001	/* Choose this as a deadlock victim */

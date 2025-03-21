@@ -512,7 +512,8 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
         logmsg(LOGMSG_DEBUG, "No data, so can't get rectype!\n");
     }
 
-    if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000)) {
+    if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
+       rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
         return get_timestamp_from_regop_gen_record(data);
     }
 
@@ -524,7 +525,8 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
         return get_timestamp_from_dist_abort_record(data);
     }
 
-    if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000)) {
+    if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
+        rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
         return get_timestamp_from_regop_rowlocks_record(data);
     }
 
@@ -617,7 +619,7 @@ static int tranlogColumn(
 
         normalize_rectype(&rectype);
 
-        if (rectype == DB___txn_regop_gen){
+        if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize){
             generation = get_generation_from_regop_gen_record(pCur->data.data);
         }
 
@@ -629,7 +631,7 @@ static int tranlogColumn(
             generation = get_generation_from_dist_abort_record(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop_rowlocks) {
+        if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
             generation = get_generation_from_regop_rowlocks_record(pCur->data.data);
         }
 
@@ -662,7 +664,8 @@ static int tranlogColumn(
         if (pCur->data.data)
             LOGCOPY_32(&rectype, pCur->data.data); 
 
-        if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000)) {
+        if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
+            rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
             timestamp = get_timestamp_from_regop_gen_record(pCur->data.data);
         }
 
@@ -674,7 +677,8 @@ static int tranlogColumn(
             timestamp = get_timestamp_from_dist_abort_record(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000)) {
+        if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
+            rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
             timestamp = get_timestamp_from_regop_rowlocks_record(pCur->data.data);
         }
 

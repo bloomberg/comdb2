@@ -3,11 +3,12 @@
 export debug=1
 [[ $debug == 1 ]] && set -x
 
-export DBNAME=$1
+#export DBNAME=$1
 
 if [[ -n "$COMDB2AR_EXE_OVERRIDE" ]]; then
     COMDB2AR_EXE=${COMDB2AR_EXE_OVERRIDE}
 fi
+echo "COMDB2AR_EXE is $COMDB2AR_EXE"
 
 LOCTMPDIR=$TMPDIR/$DBNAME
 mkdir $LOCTMPDIR
@@ -46,7 +47,7 @@ function deletelogs
     [[ $debug == 1 ]] && set -x
     if [[ -n "${CLUSTER}" ]]; then
         for node in ${CLUSTER} ; do 
-            ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('deletelogs')\"" < /dev/null
+            ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('deletelogs')"
         done
     else
         ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('deletelogs')"
@@ -59,11 +60,11 @@ function force_checkpoint {
   ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "insert into load (id, name, data) values(1, 'xxx', x'1234')"
 
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
-      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('pushnext')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('pushnext')"
       for node in ${CLUSTER} ; do 
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('flush')\"" < /dev/null
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('bdb logstat')\"" < /dev/null
+          ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('flush')"
+          ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb logstat')"
       done
   else
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('pushnext')"
@@ -74,8 +75,8 @@ function force_checkpoint {
   sleep 10
   if [[ -n "${CLUSTER}" ]]; then
       for node in ${CLUSTER} ; do 
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('flush')\"" < /dev/null
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('bdb logstat')\"" < /dev/null
+          ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('flush')"
+          ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb logstat')"
       done
   else
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('flush')"

@@ -721,7 +721,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 if (rc == 0) {
                     LOGCOPY_32(&rectype, logdta.data);
                     normalize_rectype(&rectype);
-                    if (rectype == DB___txn_dist_prepare) {
+                    if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
                         rc = __txn_dist_prepare_read(bdb_state->dbenv, logdta.data, &prepare);
                         if (rc) {
                             logmsg(LOGMSG_ERROR, "at " PR_LSN " __txn_dist_prepare_read rc %d\n", PARM_LSN(bslsn), rc);
@@ -731,7 +731,8 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                     }
                 }
             } else if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
-                       rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit) {
+                       rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit ||
+                       rectype == DB___txn_regop_rowlocks_endianize || rectype == DB___txn_regop_gen_endianize) {
                 /* Skip past rectype & txnid */
                 bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
                 LOGCOPY_TOLSN(&bslsn, bp);
@@ -739,7 +740,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 if (rc == 0) {
                     LOGCOPY_32(&rectype, logdta.data);
                     normalize_rectype(&rectype);
-                    if (rectype == DB___txn_dist_prepare) {
+                    if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
                         bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
                         LOGCOPY_TOLSN(&bslsn, bp);
                         rc = logc->get(logc, &bslsn, &logdta, DB_SET);
