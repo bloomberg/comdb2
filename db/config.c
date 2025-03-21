@@ -445,7 +445,8 @@ static char *legacy_options[] = {
     "utxnid_log off",
     "commit_lsn_map off",
     "retrieve_gen_from_ckp 0",
-    "recovery_ckp 0"
+    "recovery_ckp 0",
+    "endianize_locklist 0"
 };
 // clang-format on
 

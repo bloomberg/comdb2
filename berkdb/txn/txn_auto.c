@@ -43,6 +43,7 @@
 
 extern int gbl_snapisol;
 extern int gbl_utxnid_log;
+extern int gbl_is_physical_replicant;
 
 /*
  * PUBLIC: int __txn_regop_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
@@ -477,7 +478,11 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_LSN ignored;
 	int pglogs;
 	u_int32_t keycnt;
-	__lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, 
+	u_int32_t flags = LOCK_GET_LIST_PRINTLOCK;
+	if (gbl_is_physical_replicant && !LOG_SWAPPED()) {
+		flags |= LOCK_GET_LIST_FORCEFLIP;
+	}
+	__lock_get_list(dbenv, 0, flags, DB_LOCK_WRITE, 
 			&argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	(void)printf("\n");
 	if(argp->locks.size >= 8)
@@ -2120,16 +2125,17 @@ __txn_recycle_read(dbenv, recbuf, argpp)
 //#define PRINTLOG_SANITY 0
 
 /*
- * PUBLIC: int __txn_regop_rowlocks_log __P((DB_ENV *, DB_TXN *,
+ * PUBLIC: int __txn_regop_rowlocks_log __P((DB_ENV *, u_int32_t, DB_TXN *,
  * PUBLIC:	 DB_LSN *, u_int32_t, u_int32_t, u_int64_t, DB_LSN *, DB_LSN *,
  * PUBLIC:	 u_int64_t, u_int64_t, u_int32_t, u_int32_t, const DBT *,
  * PUBLIC:	 const DBT *));
  */
 int
-__txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
+__txn_regop_rowlocks_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 	opcode, ltranid, begin_lsn, last_commit_lsn, timestamp,
 	lflags, generation, locks, rowlocks, usr_ptr)
 	DB_ENV *dbenv;
+	u_int32_t inrectype;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int64_t *ret_contextp;
@@ -2161,7 +2167,7 @@ __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	fprintf(stderr,"__txn_regop_rowlocks_log: begin\n");
 #endif
 
-	rectype = DB___txn_regop_rowlocks;
+	rectype = inrectype;
 	if (utxnid_log) {
 		rectype += 2000;
 	}
@@ -2507,7 +2513,8 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_regop_rowlocks + 2000) {
+	if (argp->type == DB___txn_regop_rowlocks + 2000 ||
+		argp->type == DB___txn_regop_rowlocks_endianize + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
@@ -2585,16 +2592,24 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 
 	if ((ret = __txn_regop_rowlocks_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
+
+	u_int32_t type = argp->type & ~DB_debug_FLAG;
+    if (type > 2000) {
+        type -= 2000;
+    }
+	const char *prrec = type == DB___txn_regop_rowlocks ? "__txn_regop_rowlocks" : "__txn_regop_rowlocks_endianize";
+
 	(void)printf(
-	    "[%lu][%lu]__txn_regop_rowlocks%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
-	    (u_long)lsnp->file,
-	    (u_long)lsnp->offset,
-	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
-	    (u_long)argp->type,
-	    (u_long)argp->txnid->txnid,
-	    (u_long)argp->prev_lsn.file,
-	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+		(u_long)lsnp->file,
+		(u_long)lsnp->offset,
+		prrec,
+		(argp->type & DB_debug_FLAG) ? "_debug" : "",
+		(u_long)argp->type,
+		(u_long)argp->txnid->txnid,
+		(u_long)argp->prev_lsn.file,
+		(u_long)argp->prev_lsn.offset,
+		argp->txnid->utxnid);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tltranid: %"PRIx64"\n", argp->ltranid);
@@ -2642,7 +2657,13 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_LSN ignored;
 	int pglogs;
 	u_int32_t keycnt;
-	__lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
+	u_int32_t flags = LOCK_GET_LIST_PRINTLOCK;
+	if (type == DB___txn_regop_rowlocks_endianize) {
+		flags |= LOCK_GET_LIST_ENDIANIZE;
+	} else if (gbl_is_physical_replicant && !LOG_SWAPPED()) {
+		flags |= LOCK_GET_LIST_FORCEFLIP;
+	}
+	__lock_get_list(dbenv, 0, flags, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	fflush(stdout);
 	if (argp->rowlocks.size > 0) {
 		(void)printf("\trowlocks: \n");
@@ -2670,14 +2691,15 @@ __txn_regop_rowlocks_read(dbenv, recbuf, argpp)
 }
 
 /*
- * PUBLIC: int __txn_regop_gen_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
+ * PUBLIC: int __txn_regop_gen_log __P((DB_ENV *, u_int32_t, DB_TXN *, DB_LSN *,
  * PUBLIC:	 u_int32_t, u_int32_t, u_int32_t, u_int64_t, u_int64_t,
  * PUBLIC:	 const DBT *));
  */
 int
-__txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
+__txn_regop_gen_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 	opcode, generation, timestamp, locks, usr_ptr)
 	DB_ENV *dbenv;
+	u_int32_t inrectype;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int64_t *ret_contextp;
@@ -2704,7 +2726,7 @@ __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	fprintf(stderr,"__txn_regop_gen_log: begin\n");
 #endif
 
-	rectype = DB___txn_regop_gen;
+	rectype = inrectype;
 	if (utxnid_log) {
 		rectype += 2000;
 	}
@@ -2985,7 +3007,8 @@ __txn_regop_gen_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_regop_gen + 2000) {
+	if (argp->type == DB___txn_regop_gen + 2000 ||
+		argp->type == DB___txn_regop_gen_endianize + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid,  bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
@@ -3039,16 +3062,25 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 
 	if ((ret = __txn_regop_gen_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
+
+	u_int32_t type = argp->type & ~DB_debug_FLAG;
+    if (type > 2000) {
+        type -= 2000;
+    }
+	const char *prrec = type == DB___txn_regop_gen ? "__txn_regop_gen" :
+				"__txn_regop_gen_endianize";
+
 	(void)printf(
-	    "[%lu][%lu]__txn_regop_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
-	    (u_long)lsnp->file,
-	    (u_long)lsnp->offset,
-	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
-	    (u_long)argp->type,
-	    (u_long)argp->txnid->txnid,
-	    (u_long)argp->prev_lsn.file,
-	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+		(u_long)lsnp->file,
+		(u_long)lsnp->offset,
+		prrec,
+		(argp->type & DB_debug_FLAG) ? "_debug" : "",
+		(u_long)argp->type,
+		(u_long)argp->txnid->txnid,
+		(u_long)argp->prev_lsn.file,
+		(u_long)argp->prev_lsn.offset,
+		argp->txnid->utxnid);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tgeneration: %u\n", argp->generation);
@@ -3080,7 +3112,14 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_LSN ignored;
 	int pglogs;
 	u_int32_t keycnt;
-	__lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
+	u_int32_t flags = LOCK_GET_LIST_PRINTLOCK;
+	if (type == DB___txn_regop_gen_endianize) {
+		flags |= LOCK_GET_LIST_ENDIANIZE;
+	} else if (gbl_is_physical_replicant && !LOG_SWAPPED()) {
+		flags |= LOCK_GET_LIST_FORCEFLIP;
+	}
+
+	__lock_get_list(dbenv, 0, flags, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 
 	//fsnapf(stdout, argp->locks.data, argp->locks.size);
 	fflush(stdout);
@@ -3104,14 +3143,15 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
 }
 
 /*
- * PUBLIC: int __txn_dist_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
+ * PUBLIC: int __txn_dist_prepare_log __P((DB_ENV *, u_int32_t, DB_TXN *, DB_LSN *,
  * PUBLIC:	 u_int32_t, u_int32_t, u_int32_t, DB_LSN *, const DBT *, u_int64_t, u_int32_t, u_int32_t, 
  * PUBLIC:	 const DBT *, const DBT *));
  */
 int
-__txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, generation, begin_lsn, dist_txnid,
+__txn_dist_prepare_log(dbenv, inrectype, txnid, ret_lsnp, flags, generation, begin_lsn, dist_txnid,
 		genid, lflags, coordinator_gen, coordinator_name, coordinator_tier, blkseq_key, locks)
 	DB_ENV *dbenv;
+	u_int32_t inrectype;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int32_t flags;
@@ -3143,7 +3183,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, generation, begin_lsn, dis
 	fprintf(stderr,"__txn_dist_prepare_log: begin\n");
 #endif
 
-	rectype = DB___txn_dist_prepare;
+	rectype = inrectype;
 	if (utxnid_log) {
 		rectype += 2000;
 	}
@@ -3499,7 +3539,8 @@ __txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-    if (argp->type == DB___txn_dist_prepare + 2000) {
+	if (argp->type == DB___txn_dist_prepare + 2000 ||
+		argp->type == DB___txn_dist_prepare_endianize + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
     } else {
@@ -3592,10 +3633,19 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 
 	if ((ret = __txn_dist_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
+
+	u_int32_t type = (argp->type & ~DB_debug_FLAG);
+	if (type > 2000) {
+		type -= 2000;
+	}
+	const char *prrec = type == DB___txn_dist_prepare ? "__txn_dist_prepare" :
+				"__txn_dist_prepare_endianize";
+
 	(void)printf(
-		"[%lu][%lu]__txn_dist_prepare%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
+		prrec,
 		(argp->type & DB_debug_FLAG) ? "_debug" : "",
 		(u_long)argp->type,
 		(u_long)argp->txnid->txnid,
@@ -3649,7 +3699,14 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_LSN ignored;
 	int pglogs;
 	u_int32_t keycnt;
-	__lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
+	u_int32_t flags = LOCK_GET_LIST_PRINTLOCK;
+	if (type == DB___txn_dist_prepare_endianize) {
+		flags |= LOCK_GET_LIST_ENDIANIZE;
+	} else if (gbl_is_physical_replicant && !LOG_SWAPPED()) {
+		flags |= LOCK_GET_LIST_FORCEFLIP;
+	}
+
+	__lock_get_list(dbenv, 0, flags, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 
 	(void)printf("\n");
 	fflush(stdout);
@@ -4486,10 +4543,19 @@ __txn_init_print(dbenv, dtabp, dtabsizep)
 		__txn_regop_rowlocks_print, DB___txn_regop_rowlocks)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_rowlocks_print, DB___txn_regop_rowlocks_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_regop_gen_print, DB___txn_regop_gen)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_gen_print, DB___txn_regop_gen_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_prepare_print, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_dist_prepare_print, DB___txn_dist_prepare_endianize)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_commit_print, DB___txn_dist_commit)) != 0)
@@ -4536,10 +4602,19 @@ __txn_init_getpgnos(dbenv, dtabp, dtabsizep)
 		__txn_regop_rowlocks_getpgnos, DB___txn_regop_rowlocks)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_rowlocks_getpgnos, DB___txn_regop_rowlocks_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_regop_gen_getpgnos, DB___txn_regop_gen)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_gen_getpgnos, DB___txn_regop_gen_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_prepare_getpgnos, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_dist_prepare_getpgnos, DB___txn_dist_prepare_endianize)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_abort_getpgnos, DB___txn_dist_abort)) != 0)
@@ -4588,10 +4663,19 @@ __txn_init_getallpgnos(dbenv, dtabp, dtabsizep)
 		__txn_regop_rowlocks_getallpgnos, DB___txn_regop_rowlocks)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_rowlocks_getallpgnos, DB___txn_regop_rowlocks_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_regop_gen_getallpgnos, DB___txn_regop_gen)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_gen_getallpgnos, DB___txn_regop_gen_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_prepare_getallpgnos, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_dist_prepare_getallpgnos, DB___txn_dist_prepare_endianize)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_abort_getallpgnos, DB___txn_dist_abort)) != 0)
@@ -4638,10 +4722,19 @@ __txn_init_recover(dbenv, dtabp, dtabsizep)
 		__txn_regop_rowlocks_recover, DB___txn_regop_rowlocks)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_rowlocks_recover, DB___txn_regop_rowlocks_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_regop_gen_recover, DB___txn_regop_gen)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_regop_gen_recover, DB___txn_regop_gen_endianize)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_prepare_recover, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_dist_prepare_recover, DB___txn_dist_prepare_endianize)) != 0)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_commit_recover, DB___txn_dist_commit)) != 0)

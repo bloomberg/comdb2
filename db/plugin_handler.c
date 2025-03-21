@@ -343,6 +343,10 @@ int run_init_plugins(int phase)
                     if (initer->pre_recovery)
                         rc = initer->pre_recovery();
                     break;
+                case COMDB2_PLUGIN_INITIALIZER_LRL:
+                    if (initer->post_lrl)
+                        rc = initer->post_lrl();
+                    break;
                 case COMDB2_PLUGIN_INITIALIZER_POST:
                     if (initer->post_recovery)
                         rc = initer->post_recovery();

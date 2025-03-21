@@ -499,10 +499,10 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		}
 	}
 
+	normalize_rectype(&argp->type);
 	if (ret == 0) {
 		if (argp->context)
-			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
-				DB___txn_regop_gen);
+			set_commit_context(argp->context, &(argp->generation), lsnp, argp, argp->type);
 		*lsnp = argp->prev_lsn;
 	}
 
@@ -860,9 +860,10 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	}
 
 	if (ret == 0) {
+		normalize_rectype(&argp->type);
 		if (argp->context)
 			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
-				DB___txn_regop_rowlocks);
+				argp->type);
 		*lsnp = argp->prev_lsn;
 	}
 

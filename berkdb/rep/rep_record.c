@@ -154,11 +154,19 @@ int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 
 static inline int wait_for_running_transactions(DB_ENV *dbenv);
 
-#define	IS_SIMPLE(R)	((R) != DB___txn_regop && (R) != DB___txn_xa_regop && \
-	(R) != DB___txn_regop_rowlocks && (R) != DB___txn_regop_gen && \
-	(R) != DB___txn_dist_commit && (R) != DB___txn_ckp && \
-    (R) != DB___txn_ckp_recovery && (R) != DB___dbreg_register && \
-    (R) != DB___txn_dist_prepare && (R) != DB___txn_dist_abort)
+#define	IS_SIMPLE(R)	((R) != DB___txn_regop && \
+	(R) != DB___txn_xa_regop && \
+	(R) != DB___txn_regop_rowlocks && \
+	(R) != DB___txn_regop_rowlocks_endianize && \
+	(R) != DB___txn_regop_gen && \
+	(R) != DB___txn_regop_gen_endianize && \
+	(R) != DB___txn_dist_commit && \
+	(R) != DB___txn_ckp && \
+	(R) != DB___txn_ckp_recovery && \
+	(R) != DB___dbreg_register && \
+	(R) != DB___txn_dist_prepare && \
+	(R) != DB___txn_dist_prepare_endianize && \
+	(R) != DB___txn_dist_abort)
 
 int gbl_rep_process_msg_print_rc;
 
@@ -444,9 +452,11 @@ matchable_log_type(DB_ENV *dbenv, int rectype)
 	if (gbl_only_match_commit_records) {
 		ret = ((!dbenv->attr.elect_highest_committed_gen && rectype == DB___txn_regop) ||
 				rectype == DB___txn_regop_gen ||
+				rectype == DB___txn_regop_gen_endianize ||
 				rectype == DB___txn_dist_commit ||
 				rectype == DB___txn_dist_abort ||
 				rectype == DB___txn_regop_rowlocks ||
+				rectype == DB___txn_regop_rowlocks_endianize ||
 				(gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
 		switch (rectype) {
@@ -2923,8 +2933,10 @@ static inline int is_commit(int rectype)
 {
 	switch(rectype) {
 		case DB___txn_regop_rowlocks:
+		case DB___txn_regop_rowlocks_endianize:
 		case DB___txn_regop:
 		case DB___txn_regop_gen:
+		case DB___txn_regop_gen_endianize:
 		case DB___txn_dist_commit:
 			return 1;
 		default:
@@ -3684,6 +3696,7 @@ gap_check:		max_lsn_dbtp = NULL;
 	 */
 	switch (rectype) {
 	case DB___txn_dist_prepare:
+	case DB___txn_dist_prepare_endianize:
 		if ((ret = __txn_dist_prepare_read(dbenv, rec->data, &dist_prepare_args)) != 0) {
 			goto err;
 		}
@@ -3768,8 +3781,10 @@ gap_check:		max_lsn_dbtp = NULL;
 		__memp_sync_out_of_band(dbenv, &rp->lsn);
 		break;
 	case DB___txn_regop_rowlocks:
+	case DB___txn_regop_rowlocks_endianize:
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
+	case DB___txn_regop_gen_endianize:
 	case DB___txn_dist_commit:
 		if (gbl_dumptxn_at_commit)
 			dumptxn(dbenv, &rp->lsn);
@@ -4684,7 +4699,7 @@ static unsigned long long getlock_poll_count = 0;
 int gbl_rep_lock_time_ms = 0;
 int gbl_collect_before_locking = 1;
 
-static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u_int32_t *lflags)
+static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u_int32_t *lflags, int *endianize)
 {
 	int ret;
 	u_int32_t rectype;
@@ -4705,10 +4720,13 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 	}
 	LOGCOPY_32(&rectype, mylog.data);
 	normalize_rectype(&rectype);
-	if (rectype != DB___txn_dist_prepare) {
+	if (rectype != DB___txn_dist_prepare && rectype != DB___txn_dist_prepare_endianize) {
 		logmsg(LOGMSG_ERROR, "Previous record is not prepare: %u\n", rectype);
 		__log_flush(dbenv, NULL);
 		abort();
+	}
+	if (rectype == DB___txn_dist_prepare_endianize) {
+		*endianize = 1;
 	}
 	if ((ret = __txn_dist_prepare_read(dbenv, mylog.data, &argpp)) != 0) {
 		logmsg(LOGMSG_ERROR, "Error reading prepare txn, %d\n", ret);
@@ -4735,6 +4753,8 @@ done:
 	}
 	return 0;
 }
+
+int gbl_debug_lock_get_list_copy_compare = 0;
 
 /*
  * __rep_process_txn --
@@ -4789,6 +4809,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	int get_locks_and_ack = 1;
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
+	int endianize = 0;
 
 	logmsg(LOGMSG_DEBUG, "%s processing [%d:%d]\n", __func__, maxlsn.file,
 			maxlsn.offset);
@@ -4822,9 +4843,13 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	normalize_rectype(&rectype);
 	memset(&lc, 0, sizeof(lc));
 
-	if (rectype == DB___txn_regop_rowlocks) {
+	if (rectype == DB___txn_regop_rowlocks ||
+		rectype == DB___txn_regop_rowlocks_endianize) {
 
 		int dontlock = 0;
+		if (rectype == DB___txn_regop_rowlocks_endianize) {
+			endianize = 1;
+		}
 
 		if ((ret =
 			__txn_regop_rowlocks_read(dbenv, rec->data,
@@ -4923,7 +4948,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return ret;
 		}
-	} else if (rectype == DB___txn_regop_gen) {
+	} else if (rectype == DB___txn_regop_gen ||
+			   rectype == DB___txn_regop_gen_endianize) {
+		if (rectype == DB___txn_regop_gen_endianize) {
+			endianize = 1;
+		}
 		/*
 		 * We're the end of a transaction.  Make sure this is
 		 * really a commit and not an abort!
@@ -4966,7 +4995,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		prev_lsn = txn_dist_commit_args->prev_lsn;
 
 		/* Locks for dist-commit are in the previous record */
-		if ((ret = retrieve_locks_from_prepare(dbenv, &prev_lsn, &lock_dbt_mem, &lflags)) != 0) {
+		if ((ret = retrieve_locks_from_prepare(dbenv, &prev_lsn, &lock_dbt_mem, &lflags, &endianize)) != 0) {
 			abort();
 		}
 		lock_dbt = &lock_dbt_mem;
@@ -5072,12 +5101,36 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
+			if (endianize) {
+				flags |= LOCK_GET_LIST_ENDIANIZE;
+			}
+			if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
+				flags |= LOCK_GET_LIST_FORCEFLIP;
+			}
+
+			/* Safeguard lock-get-list on a tunable */
+			DBT lock_dbt_copy = {0};
+			int copy_compare = gbl_debug_lock_get_list_copy_compare;
+			if (copy_compare) {
+				lock_dbt_copy.data = malloc(lock_dbt->size);
+				lock_dbt_copy.size = lock_dbt->size;
+				memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
+			}
 			assert(gbl_rep_lock_time_ms == 0);
 			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list_context(dbenv, lockid, flags,
-				DB_LOCK_WRITE, lock_dbt, &context, &(rctl->lsn),
-				&pglogs, &keycnt);
+				DB_LOCK_WRITE, copy_compare ? &lock_dbt_copy : lock_dbt,
+				&context, &(rctl->lsn), &pglogs, &keycnt);
+
+			if (copy_compare) {
+				if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
+					logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
+					abort();
+				}
+				free(lock_dbt_copy.data);
+			}
+
 			assert(gbl_rep_lock_time_ms != 0);
 			gbl_rep_lock_time_ms = 0;
 			if (ret != 0) {
@@ -5093,6 +5146,13 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
+			if (endianize) {
+				flags |= LOCK_GET_LIST_ENDIANIZE;
+			}
+			if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
+				flags |= LOCK_GET_LIST_FORCEFLIP;
+			}
+
 			assert(gbl_rep_lock_time_ms == 0);
 			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
@@ -5354,9 +5414,11 @@ err1:
 
 	if (rectype == DB___txn_regop)
 		__os_free(dbenv, txn_args);
-	else if (rectype == DB___txn_regop_gen)
+	else if (rectype == DB___txn_regop_gen ||
+		rectype == DB___txn_regop_gen_endianize)
 		__os_free(dbenv, txn_gen_args);
-	else if (rectype == DB___txn_regop_rowlocks)
+	else if (rectype == DB___txn_regop_rowlocks ||
+		rectype == DB___txn_regop_rowlocks_endianize)
 		__os_free(dbenv, txn_rl_args);
 	else if (rectype == DB___txn_dist_commit)
 		__os_free(dbenv, txn_dist_commit_args);
@@ -5618,6 +5680,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	u_int32_t keycnt = 0;
 	int get_schema_lk = 0, got_schema_lk = 0;
 	int dontlock = 0;
+	int endianize = 0;
 
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
@@ -5707,7 +5770,12 @@ bad_resize:	;
 	 */
 	LOGCOPY_32(&rectype, rec->data);
 	normalize_rectype(&rectype);
-	if (rectype == DB___txn_regop_rowlocks) {
+	if (rectype == DB___txn_regop_rowlocks ||
+		rectype == DB___txn_regop_rowlocks_endianize) {
+
+		if (rectype == DB___txn_regop_rowlocks_endianize) {
+			endianize = 1;
+		}
 		if ((ret =
 			__txn_regop_rowlocks_read(dbenv, rec->data,
 				&txn_rl_args)) != 0)
@@ -5806,7 +5874,11 @@ bad_resize:	;
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return ret;
 		}
-	} else if (rectype == DB___txn_regop_gen) {
+	} else if (rectype == DB___txn_regop_gen ||
+			 rectype == DB___txn_regop_gen_endianize) {
+		if (rectype == DB___txn_regop_gen_endianize) {
+			endianize = 1;
+		}
 		/*
 		 * We're the end of a transaction.  Make sure this is
 		 * really a commit and not an abort!
@@ -5855,7 +5927,7 @@ bad_resize:	;
 		u_int32_t lflags = 0;
 
 		/* Locks for dist-commit are in the previous record */
-		if ((ret = retrieve_locks_from_prepare(dbenv, &prev_lsn, &lock_dbt_mem, &lflags)) != 0) {
+		if ((ret = retrieve_locks_from_prepare(dbenv, &prev_lsn, &lock_dbt_mem, &lflags, &endianize)) != 0) {
 			abort();
 		}
 		lock_dbt = &lock_dbt_mem;
@@ -5959,11 +6031,34 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
+		if (endianize) {
+			flags |= LOCK_GET_LIST_ENDIANIZE;
+		}
+		if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
+			flags |= LOCK_GET_LIST_FORCEFLIP;
+		}
+
+		/* Safeguard lock-get-list on a tunable */
+		DBT lock_dbt_copy = {0};
+		int copy_compare = gbl_debug_lock_get_list_copy_compare;
+		if (copy_compare) {
+			lock_dbt_copy.data = malloc(lock_dbt->size);
+			lock_dbt_copy.size = lock_dbt->size;
+			memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
+		}
+
 		assert(gbl_rep_lock_time_ms == 0);
 		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
-			lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt);
+			copy_compare ? &lock_dbt_copy : lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt);
+		if (copy_compare) {
+			if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
+				logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
+				abort();
+			}
+			free(lock_dbt_copy.data);
+		}
 		assert(gbl_rep_lock_time_ms != 0);
 		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
@@ -5977,11 +6072,35 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
+		if (endianize) {
+			flags |= LOCK_GET_LIST_ENDIANIZE;
+		}
+		if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
+			flags |= LOCK_GET_LIST_FORCEFLIP;
+		}
+
+		/* Safeguard lock-get-list on a tunable */
+		DBT lock_dbt_copy = {0};
+		int copy_compare = gbl_debug_lock_get_list_copy_compare;
+		if (copy_compare) {
+			lock_dbt_copy.data = malloc(lock_dbt->size);
+			lock_dbt_copy.size = lock_dbt->size;
+			memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
+		}
+
 		assert(gbl_rep_lock_time_ms == 0);
 		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
-			lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+			copy_compare ? &lock_dbt_copy : lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+		if (copy_compare) {
+			if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
+				logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
+				abort();
+			}
+			free(lock_dbt_copy.data);
+		}
+
 		assert(gbl_rep_lock_time_ms != 0);
 		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
@@ -6237,14 +6356,16 @@ err:
 		rp->lockid = lockid;
 	if (rectype == DB___txn_regop && txn_args)
 		__os_free(dbenv, txn_args);
-	if (rectype == DB___txn_regop_gen && txn_gen_args)
+	if ((rectype == DB___txn_regop_gen ||
+		 rectype == DB___txn_regop_gen_endianize) && txn_gen_args)
 		__os_free(dbenv, txn_gen_args);
 	if (rectype == DB___txn_dist_commit && txn_dist_commit_args) {
 		if (got_schema_lk)
 			unlock_schema_lk();
 		__os_free(dbenv, txn_dist_commit_args);
 	}
-	else if (rectype == DB___txn_regop_rowlocks && txn_rl_args)
+	else if ((rectype == DB___txn_regop_rowlocks ||
+			  rectype == DB___txn_regop_rowlocks_endianize) && txn_rl_args)
 		__os_free(dbenv, txn_rl_args);
 	else
 		__os_free(dbenv, prep_args);
@@ -7004,20 +7125,45 @@ __rep_cmp_vote2(dbenv, rep, eid, egen)
 int gbl_online_recovery_maxlocks = 0;
 
 static int
-recovery_getlocks(dbenv, lockid, lock_dbt, lsn)
+recovery_getlocks(dbenv, lockid, lock_dbt, lsn, endianize)
 	DB_ENV *dbenv;
 	u_int32_t lockid;
 	DBT *lock_dbt;
 	DB_LSN lsn;
+	int endianize;
 {
 	int ret;
 	int t_ret;
 	void *pglogs = NULL;
 	unsigned long long context;
 	u_int32_t keycnt;
+	u_int32_t flags = LOCK_GET_LIST_GETLOCK;
 
-	ret = __lock_get_list_context(dbenv, lockid, LOCK_GET_LIST_GETLOCK,
-			DB_LOCK_WRITE, lock_dbt, &context, &lsn, &pglogs, &keycnt);
+	DBT lock_dbt_copy = {0};
+	int copy_compare = gbl_debug_lock_get_list_copy_compare;
+	if (copy_compare) {
+		lock_dbt_copy.data = malloc(lock_dbt->size);
+		lock_dbt_copy.size = lock_dbt->size;
+		memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
+	}
+
+	if (endianize) {
+		flags |= LOCK_GET_LIST_ENDIANIZE;
+	}
+	if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
+		flags |= LOCK_GET_LIST_FORCEFLIP;
+	}
+
+	ret = __lock_get_list_context(dbenv, lockid, flags,
+			DB_LOCK_WRITE, copy_compare ? &lock_dbt_copy : lock_dbt, &context, &lsn, &pglogs, &keycnt);
+	if (copy_compare) {
+		if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
+			logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
+			abort();
+		}
+		free(lock_dbt_copy.data);
+	}
+ 
 	if (pglogs)
 		__os_free(dbenv, pglogs);
 
@@ -7076,6 +7222,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	__txn_dist_commit_args *txndist;
 	__txn_dist_prepare_args *txnprep;
 	__txn_regop_rowlocks_args *txnrlrec;
+	int endianize = 0;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -7158,7 +7305,11 @@ restart:
 		lockcnt = 0;
 		LOGCOPY_32(&rectype, mylog.data);
 		normalize_rectype(&rectype);
-		if (rectype == DB___txn_regop_rowlocks) {
+		if (rectype == DB___txn_regop_rowlocks ||
+			rectype == DB___txn_regop_rowlocks_endianize) {
+			if (rectype == DB___txn_regop_rowlocks_endianize) {
+				endianize = 1;
+			}
 			if ((ret =
 				__txn_regop_rowlocks_read(dbenv, mylog.data,
 					&txnrlrec)) != 0)
@@ -7171,7 +7322,7 @@ restart:
 				schema_lk_count++;
 
 			if (online) {
-				ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn);
+				ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn, endianize);
 			}
 
 			__os_free(dbenv, txnrlrec);
@@ -7207,13 +7358,17 @@ restart:
 			}
 			LOGCOPY_32(&rectype, mylog.data);
 			normalize_rectype(&rectype);
-			assert(rectype == DB___txn_dist_prepare);
+			assert(rectype == DB___txn_dist_prepare ||
+                   rectype == DB___txn_dist_prepare_endianize);
+			if (rectype == DB___txn_dist_prepare_endianize) {
+				endianize = 1;
+			}
 			if ((ret = 
 				__txn_dist_prepare_read(dbenv, mylog.data, &txnprep)) != 0)
 					goto err;
 
 			if (online) {
-				ret = recovery_getlocks(dbenv, lockid, &txnprep->locks, lsn);
+				ret = recovery_getlocks(dbenv, lockid, &txnprep->locks, lsn, endianize);
 			}
 
 			__os_free(dbenv, txndist);
@@ -7229,7 +7384,11 @@ restart:
 			if (ret)
 				goto err;
 		}
-		if (rectype == DB___txn_regop_gen) {
+		if (rectype == DB___txn_regop_gen ||
+			rectype == DB___txn_regop_gen_endianize) {
+			if (rectype == DB___txn_regop_gen_endianize) {
+				endianize = 1;
+			}
 			if ((ret =
 				__txn_regop_gen_read(dbenv, mylog.data,
 					&txngenrec)) != 0)
@@ -7238,7 +7397,7 @@ restart:
 				undo = 1;
 			}
 			if (online)
-				ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
+				ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn, endianize);
 
 			__os_free(dbenv, txngenrec);
 
@@ -7262,7 +7421,7 @@ restart:
 				undo = 1;
 			}
 			if (online)
-				ret = recovery_getlocks(dbenv, lockid, &txnrec->locks, lsn);
+				ret = recovery_getlocks(dbenv, lockid, &txnrec->locks, lsn, 0);
 
 			__os_free(dbenv, txnrec);
 
@@ -7415,6 +7574,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 			LOGCOPY_32(&rectype, mylog.data);
 			normalize_rectype(&rectype);
 			switch (rectype) {
+			case DB___txn_regop_rowlocks_endianize:
 			case DB___txn_regop_rowlocks: {
 				if ((ret = __txn_regop_rowlocks_read(dbenv, mylog.data,
 													 &txn_rl_args)) != 0) {
@@ -7479,6 +7639,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 
 			break;
 
+			case DB___txn_regop_gen_endianize:
 			case DB___txn_regop_gen: {
 				if ((ret = __txn_regop_gen_read(dbenv, mylog.data,
 												&txn_gen_args)) != 0) {
@@ -7592,7 +7753,8 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					goto err;
 				}
 				LOGCOPY_32(&rectype, mylog.data);
-				if (rectype != DB___txn_dist_prepare) {
+				if (rectype != DB___txn_dist_prepare &&
+					rectype != DB___txn_dist_prepare_endianize) {
 					logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, prev-log not a PREPARE\n",
 							__FILE__, __LINE__, lsn.file, lsn.offset);
 
@@ -7835,7 +7997,8 @@ get_lsn_context_from_timestamp(dbenv, timestamp, ret_lsn, ret_context)
 			txn_args = NULL;
 		}
 
-		if (rectype == DB___txn_regop_gen) {
+		if (rectype == DB___txn_regop_gen ||
+			rectype == DB___txn_regop_gen_endianize) {
 			if ((rc =
 				__txn_regop_gen_read(dbenv, logdta.data,
 					&txn_gen_args)) != 0)
@@ -7881,7 +8044,8 @@ get_lsn_context_from_timestamp(dbenv, timestamp, ret_lsn, ret_context)
 			txn_dist_commit_args = NULL;
 		}
 
-		else if (rectype == DB___txn_regop_rowlocks) {
+		else if (rectype == DB___txn_regop_rowlocks ||
+				 rectype == DB___txn_regop_rowlocks_endianize) {
 			if ((rc =
 				__txn_regop_rowlocks_read(dbenv, logdta.data,
 					&txn_rl_args)) != 0)
@@ -7956,8 +8120,12 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 
 	LOGCOPY_32(&rectype, logdta.data);
 	normalize_rectype(&rectype);
-	while (rectype != DB___txn_regop && rectype != DB___txn_regop_gen && 
-			rectype != DB___txn_dist_commit && rectype != DB___txn_regop_rowlocks) {
+	while ( rectype != DB___txn_regop &&
+			rectype != DB___txn_regop_gen && 
+			rectype != DB___txn_regop_gen_endianize && 
+			rectype != DB___txn_dist_commit &&
+			rectype != DB___txn_regop_rowlocks &&
+			rectype != DB___txn_regop_rowlocks_endianize) {
 		if ((rc = logc->get(logc, &lsn, &logdta, DB_PREV)) != 0) {
 			logmsg(LOGMSG_ERROR, "%s:%d failed find log on prev, rc %d\n",
 					__func__, __LINE__, rc);
@@ -7972,8 +8140,12 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 		normalize_rectype(&rectype);
 	}
 
-	assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
-		rectype == DB___txn_dist_commit || rectype == DB___txn_regop_rowlocks);
+	assert(rectype == DB___txn_regop ||
+		   rectype == DB___txn_regop_gen ||
+		   rectype == DB___txn_regop_gen_endianize ||
+		   rectype == DB___txn_dist_commit ||
+		   rectype == DB___txn_regop_rowlocks ||
+		   rectype == DB___txn_regop_rowlocks_endianize);
 	if (rectype == DB___txn_regop) {
 		if ((rc = __txn_regop_read(dbenv, logdta.data, &txn_args)) != 0)
 			goto err;
@@ -7985,7 +8157,8 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 		__os_free(dbenv, txn_args);
 		__log_c_close(logc);
 		return 0;
-	} else if (rectype == DB___txn_regop_gen) {
+	} else if (rectype == DB___txn_regop_gen ||
+			   rectype == DB___txn_regop_gen_endianize) {
 		if ((rc =
 			__txn_regop_gen_read(dbenv, logdta.data,
 				&txn_gen_args)) != 0)
@@ -8011,7 +8184,8 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 		__os_free(dbenv, txn_dist_commit_args);
 		__log_c_close(logc);
 		return 0;
-	} else if (rectype == DB___txn_regop_rowlocks) {
+	} else if (rectype == DB___txn_regop_rowlocks ||
+			   rectype == DB___txn_regop_rowlocks_endianize) {
 		if ((rc =
 			__txn_regop_rowlocks_read(dbenv, logdta.data,
 				&txn_rl_args)) != 0)

@@ -110,6 +110,8 @@ extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
 extern int gbl_reallyearly;
+extern int gbl_endianize_locklist;
+extern int gbl_debug_lock_get_list_copy_compare;
 extern int gbl_rep_mon_threshold;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;

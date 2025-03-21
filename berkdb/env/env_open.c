@@ -522,6 +522,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 							}
 							break;
 						case (DB___txn_regop_gen):
+						case (DB___txn_regop_gen_endianize):
 							if ((ret = __txn_regop_gen_read(dbenv, data.data, 
 											&regopgen))!=0)
 								goto err;
@@ -550,6 +551,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 
 
 						case (DB___txn_regop_rowlocks):
+						case (DB___txn_regop_rowlocks_endianize):
 							if ((ret = __txn_regop_rowlocks_read(dbenv, 
 											data.data, &regoprowlocks)) != 0)
 								goto err;

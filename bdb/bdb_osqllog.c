@@ -2324,20 +2324,24 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
     tran_type *ltrans = NULL;
     int rc = 0;
 
-    if (!gbl_new_snapisol)
+    if (!gbl_new_snapisol) {
         return;
+    }
 
     if (rectype != DB___txn_regop && rectype != DB___txn_regop_rowlocks && rectype != DB___txn_regop_gen &&
-        rectype != DB___txn_dist_commit && rectype != DB___txn_dist_prepare)
+        rectype != DB___txn_dist_commit && rectype != DB___txn_dist_prepare &&
+        rectype != DB___txn_regop_gen_endianize && rectype != DB___txn_regop_rowlocks_endianize &&
+        rectype != DB___txn_dist_prepare_endianize) {
         return;
+    }
 
     if (rectype == DB___txn_regop)
         argp = (__txn_regop_args *)args;
-    else if (rectype == DB___txn_regop_gen)
+    else if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize)
         arggenp = (__txn_regop_gen_args *)args;
     else if (rectype == DB___txn_dist_commit)
         argdistp = (__txn_dist_commit_args *)args;
-    else if (rectype == DB___txn_dist_prepare)
+    else if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize)
         argprepp = (__txn_dist_prepare_args *)args;
     else
         argrlp = (__txn_regop_rowlocks_args *)args;
@@ -2372,7 +2376,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
             goto done;
     }
 
-    if (rectype == DB___txn_regop_gen) {
+    if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize) {
         lsn = arggenp->prev_lsn;
         if (lsn.file == 0 || lsn.offset == 0)
             goto done;
@@ -2403,7 +2407,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
         /* rectype -> prepare & handle below */
         rectype = LOGCOPY_32(&rectype, logdta.data);
         normalize_rectype(&rectype);
-        assert(rectype == DB___txn_dist_prepare);
+        assert(rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize);
 
         rc = __txn_dist_prepare_read(bdb_state->dbenv, logdta.data, &argprepp);
         if (rc)
@@ -2412,7 +2416,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
         freeme = argprepp;
     }
 
-    if (rectype == DB___txn_dist_prepare) {
+    if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
         lsn = argprepp->prev_lsn;
         if (lsn.file == 0 || lsn.offset == 0)
             goto done;
@@ -2428,7 +2432,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
             goto done;
     }
 
-    if (rectype == DB___txn_regop_rowlocks) {
+    if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
         lsn = argrlp->prev_lsn;
         ltranid = argrlp->ltranid;
     }
@@ -4404,8 +4408,10 @@ int is_commit(u_int32_t rectype)
     switch (rectype) {
     case DB___txn_regop:
     case DB___txn_regop_gen:
+    case DB___txn_regop_gen_endianize:
     case DB___txn_dist_commit:
     case DB___txn_regop_rowlocks:
+    case DB___txn_regop_rowlocks_endianize:
         return 1;
     default:
         return 0;
@@ -4453,7 +4459,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
         }
         LOGCOPY_32(&rectype, logdta.data);
         normalize_rectype(&rectype);
-        assert(rectype == DB___txn_dist_prepare);
+        assert(rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize);
         if ((rc = __txn_dist_prepare_read(dbenv, logdta.data, &txn_prepare_args)) != 0) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d dist_prepare read returns %d for "
@@ -4490,6 +4496,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
         break;
 
     case DB___txn_regop_gen:
+    case DB___txn_regop_gen_endianize:
         if ((rc = __txn_regop_gen_read(dbenv, data->data, &txn_gen_args)) !=
             0) {
             logmsg(LOGMSG_ERROR,
@@ -4512,6 +4519,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
         break;
 
     case DB___txn_regop_rowlocks:
+    case DB___txn_regop_rowlocks_endianize:
         if ((rc = __txn_regop_rowlocks_read(dbenv, data->data, &txn_rl_args)) !=
             0) {
             logmsg(LOGMSG_ERROR,
