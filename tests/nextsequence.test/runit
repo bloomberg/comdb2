@@ -462,6 +462,29 @@ function verify_and_fix_corruption
     echo "$x"
 }
 
+function insert_with_idx_and_dummy_expr
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table seqwithidxanddummyexpr {$(cat seqwithidxanddummyexpr.csc2)}\$\$
+EOF
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqwithidxanddummyexpr(a) values(1)"
+    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to insert"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqwithidxanddummyexpr values(2, 2)"
+    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to insert"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqwithidxanddummyexpr values(NULL, NULL)"
+    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to insert"
+
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b from seqwithidxanddummyexpr order by b")
+    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to select"
+    exp=$'(b=NULL)\n(b=1)\n(b=2)'
+    [[ $out != $exp ]] && failexit "Got $out, Expected $exp"
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('seqwithidxanddummyexpr')"
+    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr should have passed verify"
+}
+
 function run_test
 {
     set_output_files
@@ -491,6 +514,8 @@ function run_test
     else
         lrl_sequence
     fi
+
+    insert_with_idx_and_dummy_expr
 }
 
 run_test

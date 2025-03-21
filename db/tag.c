@@ -2896,6 +2896,7 @@ int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
 
 int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen)
 {
+    // also may need to add case to create_key_from_ireq
     tran_type *tran = (tran_type *)intrans;
     char *crec = record;
     int rc = 0, bdberr = 0;
@@ -6517,6 +6518,22 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
         memcpy(outbuf, iq->idxDelete[ixnum], db->ix_keylen[ixnum]);
     else
         memcpy(outbuf, iq->idxInsert[ixnum], db->ix_keylen[ixnum]);
+
+    // autoinc value is not set on replicant, set it now
+    struct schema *idx_schema = get_schema(db, ixnum);
+    struct schema *schema = get_schema(db, -1);
+    for (int nfield = 0; nfield < idx_schema->nmembers; nfield++) {
+        const struct field *idx_field = &idx_schema->member[nfield];
+        // TODO: expression idx
+        if (idx_field->isExpr)
+            continue;
+        if (!(idx_field->in_default_type == SERVER_SEQUENCE && stype_is_resolve_master(outbuf + idx_field->offset)))
+            continue;
+        // grab actual autoinc value from the record
+        const struct field *field = &schema->member[idx_field->idx];
+        assert(idx_field->len == field->len);
+        memcpy(outbuf + idx_field->offset, inbuf + field->offset, idx_field->len);
+    }
 
     if (db->ix_datacopy[ixnum]) {
         assert(db->ix_collattr[ixnum] == 0);
