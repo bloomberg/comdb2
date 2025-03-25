@@ -20,6 +20,7 @@
 #include <strings.h>
 #include <lua.h>
 #include <comdb2.h>
+#include <sys/uio.h>
 
 extern int gbl_spstrictassignments;
 
@@ -133,17 +134,12 @@ typedef struct {
 
 typedef struct {
     DBTYPES_COMMON;
-    char* val;
+    struct iovec iov;
 } lua_cstring_t;
 
 typedef struct {
-    int length;
-    void *data;
-} blob_t;
-
-typedef struct {
     DBTYPES_COMMON;
-    blob_t val;
+    struct iovec iov;
 } lua_blob_t;
 
 #define init_new_t(n, DBTYPE) \
@@ -167,8 +163,7 @@ typedef union {
     decQuad dq;
     datetime_t dt;
     intv_t iv;
-    char *cs;
-    blob_t bl;
+    struct iovec iov;
 } all_types_t;
 
 #endif

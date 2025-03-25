@@ -85,8 +85,8 @@ struct stored_proc {
 
 #define getsp(x) ((SP)lua_getsp(x))
 
-void luabb_toblob(Lua, int index, blob_t *);
-const char *luabb_tostring(Lua, int index);
+void luabb_toblob(Lua, int index, struct iovec *);
+void luabb_tostring(Lua, int index, struct iovec *);
 void luabb_todatetime(Lua, int index, datetime_t *);
 void luabb_tointeger(Lua, int index, long long *);
 void luabb_tointervalds(Lua, int index, intv_t *);
@@ -99,13 +99,13 @@ int luabb_toreal_noerr(Lua, int index, double *);
 int luabb_todatetime_noerr(Lua, int index, datetime_t *);
 int luabb_tointervalym_noerr(Lua, int index, intv_t *);
 int luabb_tointervalds_noerr(Lua, int index, intv_t *);
-int luabb_toblob_noerr(Lua, int index, blob_t *);
-const char *luabb_tostring_noerr(Lua, int);
+int luabb_toblob_noerr(Lua, int index, struct iovec *);
+int luabb_tostring_noerr(Lua, int, struct iovec *);
 
-void luabb_pushblob(Lua, const blob_t *);
-void luabb_pushblob_dl(Lua, const blob_t *); //dl -> dup-less
+void luabb_pushblob(Lua, const struct iovec *);
+void luabb_pushblob_dl(Lua, const struct iovec *); //dl -> dup-less
 void luabb_pushcstring(Lua, const char *);
-void luabb_pushcstring_dl(Lua, const char *); //dl -> dup-less
+void luabb_pushcstring_dl(Lua, struct iovec *); //dl -> dup-less
 void luabb_pushcstringlen(Lua, const char *, int len); //don't call strlen
 void luabb_pushdatetime(Lua, const datetime_t *);
 void luabb_pushdecimal(Lua, const decQuad *);
