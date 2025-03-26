@@ -26,8 +26,7 @@ include_directories(
 )
 
 add_plugin(repopnewlrl STATIC repopnewlrl.c)
+add_dependencies(repopnewlrl proto)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(repopnewlrl)
 endif()
-
-add_dependencies(repopnewlrl proto)
