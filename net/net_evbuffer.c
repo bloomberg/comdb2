@@ -976,6 +976,7 @@ static void disable_ssl(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct event_info *e = data;
+    hputs("here\n");
     if (e->ssl_data) {
         ssl_data_free(e->ssl_data);
         e->ssl_data = NULL;
@@ -988,6 +989,7 @@ static void disable_ssl(int dummyfd, short what, void *data)
 static void disable_write(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     Pthread_mutex_lock(&e->wr_lk);
     do_disable_write(e);
     if (e->fd != -1) {
@@ -1016,6 +1018,7 @@ static void do_disable_read(struct event_info *e)
 static void disable_read(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     Pthread_mutex_lock(&e->rd_lk);
     do_disable_read(e);
     Pthread_mutex_unlock(&e->rd_lk);
@@ -1038,6 +1041,7 @@ static void do_disable_heartbeats(struct event_info *e)
 static void disable_heartbeats(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     do_disable_heartbeats(e);
     evtimer_once(rd_base, disable_read, e);
 }
@@ -1045,6 +1049,7 @@ static void disable_heartbeats(int dummyfd, short what, void *data)
 static void do_host_close(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     if (netinfo_ptr->hostdown_rtn) { /* net_hostdown_rtn or net_osql_nodedwn */
         netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host_interned);
@@ -1057,9 +1062,9 @@ static void do_host_close(int dummyfd, short what, void *data)
 static void do_close(struct event_info *e, event_callback_fn func, const char *funcname)
 {
     check_base_thd();
+    hputs("here\n");
     if (e->after_close) {
-        hprintf("CLOSE ALREADY IN PROGRESS - REPLACE CALLBACK WITH:%s\n", funcname);
-        e->after_close = func;
+        hputs("CLOSE ALREADY IN PROGRESS\n");
         return;
     }
     hprintf("CLOSE CONNECTION AND CALL:%s\n", funcname);
@@ -1080,6 +1085,7 @@ static void do_reconnect(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct event_info *e = data;
+    hputs("here\n");
     if (skip_connect(e)) {
         return;
     }
@@ -1090,6 +1096,7 @@ static void do_reconnect(int dummyfd, short what, void *data)
     struct timeval t = reconnect_time(e->distress_count);
     hprintf("RECONNECT IN %lds.%ldus\n", t.tv_sec, (long int)t.tv_usec);
     e->connect_ev = event_new(base, -1, EV_TIMEOUT, pmux_connect, e);
+    hputs("here\n");
     event_add(e->connect_ev, &t);
 }
 
@@ -1100,8 +1107,12 @@ static void reconnect(int fd, short what, void *data)
     if (gbl_exit) {
         return;
     }
-    hputs("CLOSE AND RECONNECT\n");
-    DO_CLOSE(e, do_reconnect);
+    if (e->host_connected) {
+        hputs("HAVE NEW CONNECTION - SKIP RECONNECT\n");
+    } else {
+        hputs("CLOSE AND RECONNECT\n");
+        DO_CLOSE(e, do_reconnect);
+    }
 }
 
 static void check_rd_full(struct event_info *e)
@@ -1970,6 +1981,7 @@ static void finish_host_setup(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct event_info *e = data;
+    hputs("here\n");
     struct host_connected_info *i = e->host_connected;
     e->host_connected = NULL;
     int connect_msg = i->connect_msg;
@@ -2004,6 +2016,7 @@ static void finish_host_setup(int dummyfd, short what, void *data)
 static void enable_heartbeats(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     check_timer_thd();
     if (e->hb_send_ev || e->hb_check_ev) {
         abort();
@@ -2021,6 +2034,7 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
 static void enable_read(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     check_rd_thd();
     e->rd_full = 0;
     e->need = e->wirehdr_len;
@@ -2037,6 +2051,7 @@ static void enable_read(int dummyfd, short what, void *data)
 static void enable_write(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
+    hputs("here\n");
     struct host_connected_info *i = e->host_connected;
     check_wr_thd();
     Pthread_mutex_lock(&e->wr_lk);
@@ -2067,6 +2082,7 @@ static void do_open(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct event_info *e = data;
+    hputs("here\n");
     struct host_connected_info *i = e->host_connected;
     hprintf("ENABLE CONNECTION fd:%d\n", i->fd);
     host_node_open(e->host_node_ptr, i->fd);
@@ -2092,6 +2108,12 @@ static void host_connected(struct event_info *e, int fd, int connect_msg, struct
     } else {
         hprintf("PROCESS CONNECTION fd:%d\n", fd);
         e->host_connected = i;
+        if (e->connect_ev) {
+            if (e->fd != -1) abort();
+            hputs("CLEAR PENDING RECONNECT\n");
+            event_del(e->connect_ev);
+            e->connect_ev = NULL;
+        }
         DO_CLOSE(e, do_open);
     }
 }
@@ -2424,6 +2446,7 @@ static void pmux_connect(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct event_info *e = data;
+    hputs("here\n");
     if (e->connect_ev) {
         event_del(e->connect_ev);
         e->connect_ev = NULL;
