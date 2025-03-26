@@ -8,4 +8,5 @@ int gen_shard_update_sqlite(sqlite3 *db, struct errstat *err);
 int gen_shard_delete_view(struct dbtable *tbl, sqlite3 *db, struct errstat *err);
 int gen_shard_add_view(struct dbtable *tbl, sqlite3 *db, struct errstat *err); 
 int is_gen_shard(const char *tablename);
+int gen_shard_clear_inmem_db(void *tran, struct dbtable *db);
 #endif

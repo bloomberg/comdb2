@@ -2337,6 +2337,7 @@ int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
                 db->numcols = numcols;
                 db->columns = columns;
                 db->shardnames = shardnames;
+                hash_sqlalias_db(db, genshard_name);
             } else {
                 logmsg(LOGMSG_ERROR, "FAILED TO UPDATE GENERIC SHARDING METADATA FOR TABLE %s\n", tablenames[i]);
             }
@@ -4302,12 +4303,6 @@ static int init(int argc, char **argv)
             return -1;
         }
 
-        if (llmeta_load_genshards(thedb, NULL)) {
-            logmsg(LOGMSG_FATAL, "could not load generic shards from the low level meta "
-                            "table\n");
-            unlock_schema_lk();
-            return -1;
-        }
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
@@ -4448,6 +4443,13 @@ static int init(int argc, char **argv)
     load_auto_analyze_counters(); /* on starting, need to load counters */
     if (gbl_create_mode && verify_deferred_dbstore_clientfuncs() != 0) {
         logmsg(LOGMSG_FATAL, "invalid client function for dbstore\n");
+        return -1;
+    }
+
+    if (llmeta_load_genshards(thedb, NULL)) {
+        logmsg(LOGMSG_FATAL, "could not load generic shards from the low level meta "
+                        "table\n");
+        unlock_schema_lk();
         return -1;
     }
     unlock_schema_lk();

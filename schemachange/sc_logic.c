@@ -317,6 +317,22 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
             memcpy(mashup + oldlen, dst, newlen); /* new */
         }
     }
+
+    if (s->partition.type == PARTITION_REM_GENSHARD) {
+        assert(tran!=NULL);
+        char *shardname = s->partition.u.genshard.tablename;
+        oldlen = strlen(s->tablename) + 1;
+        newlen = strlen(shardname) + 1;
+        mashup = alloca(oldlen + newlen);
+        memcpy(mashup, s->tablename, oldlen);
+        memcpy(mashup + oldlen, shardname, newlen);
+        rc = bdb_llog_scdone_tran(bdb_state, genshard_drop, tran, mashup, oldlen+newlen, bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "bdb_llog_scdone failed for genshard %s. rc: %d, bdberr: %d\n", s->partition.u.genshard.tablename, rc, *bdberr);
+        }
+        return rc;
+    }
+
     if (!tran)
         rc = bdb_llog_scdone(bdb_state, s->done_type, mashup, oldlen + newlen,
                              1, bdberr);
@@ -325,7 +341,7 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
                                   oldlen + newlen, bdberr);
 
     /* if this is generic sharding sc, make sure finalize also updates shard specific metadata and in-mem structures*/
-    if (s->partition.type == PARTITION_ADD_GENSHARD || s->partition.type == PARTITION_REM_GENSHARD) {
+    if (s->partition.type == PARTITION_ADD_GENSHARD) {
         assert(tran!=NULL);
         char *shardname = s->partition.u.genshard.tablename;
         oldlen = strlen(s->tablename) + 1;
@@ -333,7 +349,7 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
         mashup = alloca(oldlen + newlen);
         memcpy(mashup, s->tablename, oldlen);
         memcpy(mashup + oldlen, shardname, newlen);
-        rc = bdb_llog_scdone_tran(bdb_state, gen_shard, tran, mashup, oldlen+newlen, bdberr);
+        rc = bdb_llog_scdone_tran(bdb_state, genshard_add, tran, mashup, oldlen+newlen, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_llog_scdone failed for genshard %s. rc: %d, bdberr: %d\n", s->partition.u.genshard.tablename, rc, *bdberr);
         }

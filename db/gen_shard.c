@@ -269,7 +269,7 @@ int gen_shard_deserialize_shard(char **genshard_name, uint32_t *numdbs, char ***
         }
         shards[i] = strdup(cson_value_get_cstr(arrVal));
     }
-    *genshard_name = tablename;
+    *genshard_name = strdup(tablename);
     *numdbs = num_dbs;
     *dbnames = dbs;
     *numcols = num_cols;
@@ -310,6 +310,41 @@ error:
     }
     return -1;
 
+}
+
+int gen_shard_clear_inmem_db(void *tran, struct dbtable *db) {
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "dbtable object can't be NULL here!\n");
+        return -1;
+    }
+
+    if (db->genshard_name) {
+        free(db->genshard_name);
+        db->genshard_name = NULL;
+    }
+
+    for(int i=0;i<db->numdbs;i++) {
+        if (db->dbnames[i]) {
+            free(db->dbnames[i]);
+        }
+        if (db->shardnames[i]) {
+            free(db->shardnames[i]);
+        }
+    }
+
+    db->numdbs = 0;
+    db->dbnames = NULL;
+    db->shardnames = NULL;
+
+    for(int i=0;i<db->numcols;i++){
+        if (db->columns[i]) {
+            free(db->columns[i]);
+        }
+    }
+
+    db->numcols = 0;
+    db->columns = NULL;
+    return 0;
 }
 
 int gen_shard_update_inmem_db(void *tran, struct dbtable *db, const char *name) {
@@ -462,6 +497,7 @@ int gen_shard_update_sqlite(sqlite3 *db, struct errstat *err)
     for (int tbl_idx = 0; tbl_idx < thedb->num_dbs; ++tbl_idx) {
         struct dbtable *tbl = thedb->dbs[tbl_idx];
         if (tbl->genshard_name) {
+            logmsg(LOGMSG_USER, "TRYING ADD VIEW FOR TABLE %s PART OF GENSHARD %s\n", tbl->tablename, tbl->genshard_name);
             /* this table is a component shard of a genshard table*/
             tab = sqlite3FindTableCheckOnly(db, tbl->genshard_name, NULL);
             if (tab) {

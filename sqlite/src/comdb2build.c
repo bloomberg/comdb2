@@ -956,6 +956,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
                 PARTITION_REM_GENSHARD : PARTITION_REM_GENSHARD_COORD ;
             snprintf(sc->partition.u.genshard.tablename,
                      sizeof(sc->partition.u.genshard.tablename), "%s", tbl->genshard_name);
+            logmsg(LOGMSG_USER, "%s genshard table name is %s\n", __func__, sc->partition.u.genshard.tablename);
         }
     }
 

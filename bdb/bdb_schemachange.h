@@ -52,7 +52,8 @@ typedef enum scdone {
     del_queue_file,          // 23
     alias_table,             // 24
     alias,                   // 25
-    gen_shard                // 26
+    genshard_add,            // 26
+    genshard_drop            // 27
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \

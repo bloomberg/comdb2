@@ -3324,7 +3324,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   }
   if( !isView && pTab->pSelect ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if (timepart_allow_drop(pTab->zName)) {
+    if (timepart_allow_drop(pTab->zName) && !is_gen_shard(pTab->zName)) {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ErrorMsg(pParse, "use DROP VIEW to delete view %s", pTab->zName);
     goto exit_drop_table;

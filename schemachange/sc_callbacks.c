@@ -1271,7 +1271,7 @@ static int scdone_alias(const char tablename[], void *arg, scdone_t type)
     return 0;
 }
 
-static int scdone_gen_shard(const char tablename[] , void *arg, scdone_t type) 
+static int scdone_genshard_add(const char tablename[] , void *arg, scdone_t type) 
 {
     tran_type *tran = NULL;
     uint32_t lid = 0;
@@ -1290,11 +1290,42 @@ static int scdone_gen_shard(const char tablename[] , void *arg, scdone_t type)
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
     }
+    hash_sqlalias_db(db, db->genshard_name);
     _untran(tran, lid);
     /* create the view now */
 
     return rc;
 }
+
+
+static int scdone_genshard_drop(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran = NULL;
+    uint32_t lid = 0;
+    int rc = 0;
+    int bdberr = 0;
+    struct dbtable *db = get_dbtable_by_name(tablename);
+    assert(arg!=NULL);
+    const char *genshard_name = (char *)arg;
+    logmsg(LOGMSG_USER, "%s: SHARDNAME IS %s\n", __func__, genshard_name);
+    logmsg(LOGMSG_USER, "%s: TABLENAME IS %s\n", __func__, tablename);
+    logmsg(LOGMSG_USER, "%s: db->tablename IS %s\n", __func__, db->tablename);
+    logmsg(LOGMSG_USER, "%s: db->genshard_name IS %s\n", __func__, db->genshard_name);
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+    
+    logmsg(LOGMSG_USER, "++++++ %s : calling update gen_shard_update_inmem_db\n", __func__);
+    rc = gen_shard_clear_inmem_db(tran, db);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
+    }
+    /* clear the alias */
+    hash_sqlalias_db(db, db->tablename);
+    _untran(tran, lid);
+    return rc;
+}
+
 /* keep this in sync with enum scdone */
 int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_alter,         &scdone_addandfastinit, /* fastinit AND add (doh) */
@@ -1306,7 +1337,7 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
     &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
     &scdone_queue_file,    &scdone_rename_table,   &scdone_alias,
-    &scdone_gen_shard};
+    &scdone_genshard_add,  &scdone_genshard_drop};
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,

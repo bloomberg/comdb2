@@ -1929,6 +1929,11 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     char namebuf[128];
     char *tablename = tbl->sqlaliasname ? tbl->sqlaliasname : tbl->tablename;
 
+    if (tbl->sqlaliasname && tbl->genshard_name) {
+        logmsg(LOGMSG_USER, "NOT LOADING SHARD %s again!\n", tbl->tablename);
+        return 0;
+    }
+
     struct schema *schema = tbl->schema;
     if (schema == NULL) {
         logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tablename);
