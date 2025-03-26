@@ -111,7 +111,8 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
+add_dependencies(bdb db mem proto)
+target_link_libraries(bdb PUBLIC db)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(bdb)
 endif()
-add_dependencies(bdb db mem proto)

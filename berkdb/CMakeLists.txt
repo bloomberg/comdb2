@@ -291,10 +291,6 @@ elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL 
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-const-variable")
 endif()
 
-if (COMDB2_BBCMAKE)
-  comdb2_lib_target(db)
-endif()
-
 option(PAGELIST_DEBUG "Enable debug logic for pagelist dumping and loading" OFF)
 mark_as_advanced(PAGELIST_DEBUG)
 if(PAGELIST_DEBUG)
@@ -311,3 +307,7 @@ endif()
 
 add_definitions(-DSTDC_HEADERS)
 add_dependencies(db mem)
+
+if (COMDB2_BBCMAKE)
+  comdb2_lib_target(db)
+endif()

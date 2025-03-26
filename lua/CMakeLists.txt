@@ -118,7 +118,7 @@ if(WITH_RDKAFKA)
   ${RDKAFKA_INCLUDE_DIR}
 endif()
 )
+add_dependencies(lua mem proto sqlite)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(lua)
 endif()
-add_dependencies(lua mem proto sqlite)
