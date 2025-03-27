@@ -42,7 +42,7 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
-static int launch_schema_change(struct ireq *iq, tran_type *trans)
+int launch_schema_change(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int rc = 0;
@@ -122,7 +122,7 @@ static int launch_schema_change(struct ireq *iq, tran_type *trans)
     return rc;
 }
 
-static int prepare_schema_change(struct ireq *iq, tran_type *trans)
+int prepare_schema_change(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int maxcancelretry = 10;

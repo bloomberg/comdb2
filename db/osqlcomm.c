@@ -82,6 +82,9 @@ int gbl_partition_sc_reorder = 1;
 
 extern int db_is_exiting();
 
+extern int prepare_schema_change(struct ireq *iq, tran_type *trans);
+extern int launch_schema_change(struct ireq *iq, tran_type *trans);
+
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen);
 
@@ -6339,22 +6342,23 @@ static int launch_schema_change_wrapper_merge(const char *tblname,
                                                   timepart_view_t **pview,
                                                   timepart_sc_arg_t *arg)
 {
-    // TODO check for off by one
-    const size_t shard_rev_index = (*pview->nshards-1) - arg->index;
+    struct ireq *iq = arg->s->iq;
+    iq->sc = iq->sc_pending;
 
-    for (size_t i=0; i<shard_rev_index; ++i) {
-        sc = sc->sc_next;
+    struct schema_change_type *sc_last = iq->sc;
+    while (sc_last->sc_next) {
+        sc_last = sc_last->sc_next;
     }
 
-    /**
-     * if view is provided, this is part of a shard walk;
-     * release views lock here since sc can take awhile
-     *
-     */
     if (arg->lockless)
         views_unlock();
 
-    const int rc = launch_schema_change();
+    const int rc = launch_schema_change(iq, NULL);
+
+    iq->sc_pending = iq->sc->sc_next;
+    iq->sc->sc_next = NULL;
+    sc_last->sc_next = iq->sc;
+    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
 
     if (arg->lockless) {
         *pview = timepart_reaquire_view(arg->part_name);
@@ -6393,6 +6397,7 @@ static int prepare_schema_change_wrapper_merge(const char *tblname,
     alter_sc->force_rebuild = 1; /* we are moving rows here */
     /* alter only in parallel mode for live */
     alter_sc->scanmode = SCAN_PARALLEL;
+    // alter_sc->resume = arg->s->resume;
     /* link the sc */
     iq->sc = alter_sc;
 
@@ -6406,11 +6411,10 @@ static int prepare_schema_change_wrapper_merge(const char *tblname,
 
     rc = prepare_schema_change(iq, NULL);
 
-    /* link the alter */
     iq->sc->sc_next = iq->sc_pending;
     iq->sc_pending = iq->sc;
-    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
 
+    /* link the alter */
     if (arg->lockless) {
         *pview = timepart_reaquire_view(arg->part_name);
         if (!pview) {
@@ -6463,7 +6467,9 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     sc->usedbtablevers = sc->partition.u.mergetable.version;
     enum comdb2_partition_type old_part_type = sc->partition.type;
     sc->partition.type = PARTITION_MERGE;
-    rc = start_schema_change_tran_wrapper_merge(
+    rc = prepare_schema_change_wrapper_merge(
+            sc->partition.u.mergetable.tablename, NULL, &arg);
+    rc = launch_schema_change_wrapper_merge(
             sc->partition.u.mergetable.tablename, NULL, &arg);
     sc->partition.type = old_part_type;
 
