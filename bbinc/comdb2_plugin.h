@@ -17,6 +17,7 @@
 #ifndef __INCLUDED_COMDB2_PLUGIN_H
 #define __INCLUDED_COMDB2_PLUGIN_H
 
+// clang-format off
 enum comdb2_plugin_type {
     COMDB2_PLUGIN_APPSOCK,
     COMDB2_PLUGIN_OPCODE,
@@ -29,8 +30,10 @@ enum comdb2_plugin_type {
 
 enum {
     COMDB2_PLUGIN_INITIALIZER_PRE,
-    COMDB2_PLUGIN_INITIALIZER_POST
+    COMDB2_PLUGIN_INITIALIZER_POST,
+    COMDB2_PLUGIN_INITIALIZER_LRL
 };
+// clang-format on
 
 enum comdb2_plugin_flag {
     /* Flag to indicate whether the plugin is static. */

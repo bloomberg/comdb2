@@ -2702,6 +2702,8 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         exit(1);
     }
 
+    run_init_plugins(COMDB2_PLUGIN_INITIALIZER_LRL);
+
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
     if (!dbenv->basedir) {

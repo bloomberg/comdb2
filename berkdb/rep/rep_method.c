@@ -1139,9 +1139,15 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 	int vote_on_ckp = (gbl_recovery_ckp || gbl_reproduce_ckp_bug) && gbl_match_on_ckp;
 	int regop_cnt = 0;
 
-	while (ret == 0 && rectype != DB___txn_regop_gen && rectype !=
-			DB___txn_regop_rowlocks && rectype != DB___txn_dist_commit &&
-			rectype != DB___txn_dist_prepare && (rectype != DB___txn_ckp || !vote_on_ckp)) {
+	while (ret == 0 &&
+			rectype != DB___txn_regop_gen &&
+			rectype != DB___txn_regop_rowlocks &&
+			rectype != DB___txn_dist_commit &&
+			rectype != DB___txn_dist_prepare &&
+			rectype != DB___txn_regop_gen_endianize &&
+			rectype != DB___txn_regop_rowlocks_endianize &&
+			rectype != DB___txn_dist_prepare_endianize &&
+			(rectype != DB___txn_ckp || !vote_on_ckp)) {
 
 		if (rectype == DB___txn_regop && !vote_on_ckp) {
 			regop_cnt++;
@@ -1177,7 +1183,7 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_free(dbenv, txn_ckp_args);
-	} else if (rectype == DB___txn_regop_gen) {
+	} else if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize) {
 		__txn_regop_gen_args *txn_gen_args = NULL;
 		if ((ret = __txn_regop_gen_read(dbenv, rec.data,
 						&txn_gen_args)) != 0)
@@ -1191,7 +1197,8 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_free(dbenv, txn_gen_args);
-	} else if (rectype == DB___txn_dist_prepare) {
+	} else if (rectype == DB___txn_dist_prepare ||
+			rectype == DB___txn_dist_prepare_endianize) {
 		__txn_dist_prepare_args *txn_dist_prepare_args = NULL;
 		if ((ret = __txn_dist_prepare_read(dbenv, rec.data,
 						&txn_dist_prepare_args)) != 0)
@@ -1203,7 +1210,8 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 			__rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_free(dbenv, txn_dist_prepare_args);
-	} else if (rectype == DB___txn_regop_rowlocks) {
+	} else if (rectype == DB___txn_regop_rowlocks ||
+			rectype == DB___txn_regop_rowlocks_endianize) {
 		__txn_regop_rowlocks_args *txn_rl_args = NULL;
 		if ((ret = __txn_regop_rowlocks_read(dbenv, rec.data,
 						&txn_rl_args)) != 0)
