@@ -1053,16 +1053,14 @@ static void do_host_close(int dummyfd, short what, void *data)
     evtimer_once(timer_base, disable_heartbeats, e);
 }
 
-#define DO_CLOSE(e, func) do_close(e, func, #func)
-static void do_close(struct event_info *e, event_callback_fn func, const char *funcname)
+static void do_close(struct event_info *e, event_callback_fn func)
 {
     check_base_thd();
     if (e->after_close) {
-        hprintf("CLOSE ALREADY IN PROGRESS - REPLACE CALLBACK WITH:%s\n", funcname);
-        e->after_close = func;
+        hputs("ALREADY CLOSING\n");
         return;
     }
-    hprintf("CLOSE CONNECTION AND CALL:%s\n", funcname);
+    hputs("CLOSE CONNECTION\n");
     e->after_close = func;
     evtimer_once(base, do_host_close, e);
 }
@@ -1101,7 +1099,7 @@ static void reconnect(int fd, short what, void *data)
         return;
     }
     hputs("CLOSE AND RECONNECT\n");
-    DO_CLOSE(e, do_reconnect);
+    do_close(e, do_reconnect);
 }
 
 static void check_rd_full(struct event_info *e)
@@ -1974,7 +1972,7 @@ static void finish_host_setup(int dummyfd, short what, void *data)
         e->host_connected = e->host_connected_pending;
         e->host_connected_pending = NULL;
         hprintf("WORKING ON PENDING CONNECTION fd:%d\n", e->host_connected->fd);
-        DO_CLOSE(e, do_open);
+        do_close(e, do_open);
     } else if (connect_msg) {
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
         if (gbl_pb_connectmsg) {
@@ -2088,7 +2086,7 @@ static void host_connected(struct event_info *e, int fd, int connect_msg, struct
     } else {
         hprintf("PROCESS CONNECTION fd:%d\n", fd);
         e->host_connected = i;
-        DO_CLOSE(e, do_open);
+        do_close(e, do_open);
     }
 }
 
@@ -3593,7 +3591,7 @@ void decom(char *host)
         if (e->decomissioned) continue;
         net_decom_node(e->net_info->netinfo_ptr, e->host);
         set_decom(e);
-        DO_CLOSE(e, send_decom_all);
+        do_close(e, send_decom_all);
     }
 }
 
