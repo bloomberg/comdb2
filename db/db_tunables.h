@@ -2514,4 +2514,9 @@ REGISTER_TUNABLE("genshard_verbose",
                  TUNABLE_BOOLEAN, &gbl_gen_shard_verbose, 0, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("legacy_verbose", "Log all legacy (opcode+old sql) requests (default: off)", TUNABLE_BOOLEAN, &gbl_legacy_requests_verbose, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("iam_dbname",
+                 "override dbname for IAM",
+                 TUNABLE_STRING, &gbl_iam_dbname, READEARLY | READONLY, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
