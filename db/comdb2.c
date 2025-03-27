@@ -472,6 +472,7 @@ int gbl_osql_verify_ext_chk = 1;
 
 int gbl_test_badwrite_intvl = 0;
 int gbl_test_blob_race = 0;
+int gbl_test_resolve_hostname_failure = 0;
 int gbl_skip_ratio_trace = 0;
 
 int gbl_throttle_sql_overload_dump_sec = 5;
