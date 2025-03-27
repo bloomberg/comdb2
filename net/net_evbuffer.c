@@ -342,7 +342,6 @@ struct event_info {
     host_node_type *host_node_ptr;
     struct host_connected_info *host_connected;
     struct host_connected_info *host_connected_pending;
-    event_callback_fn after_close;
     LIST_ENTRY(event_info) host_list_entry;
     LIST_ENTRY(event_info) net_list_entry;
     int fd;
@@ -953,6 +952,11 @@ static void update_net_info(struct net_info *n, int fd, int port)
     n->netinfo_ptr->myport = port;
 }
 
+struct disable_info {
+    struct event_info *e;
+    event_callback_fn func;
+};
+
 static void do_disable_write(struct event_info *e)
 {
     check_wr_thd();
@@ -975,19 +979,20 @@ static void do_disable_write(struct event_info *e)
 static void disable_ssl(int dummyfd, short what, void *data)
 {
     check_base_thd();
-    struct event_info *e = data;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     if (e->ssl_data) {
         ssl_data_free(e->ssl_data);
         e->ssl_data = NULL;
     }
-    event_callback_fn func = e->after_close;
-    e->after_close = NULL;
-    if (func) func(-1, 0, e); /* -> do_reconnect, do_open */
+    d->func(-1, 0, e); /* -> do_reconnect, do_open */
+    free(d);
 }
 
 static void disable_write(int dummyfd, short what, void *data)
 {
-    struct event_info *e = data;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     Pthread_mutex_lock(&e->wr_lk);
     do_disable_write(e);
     if (e->fd != -1) {
@@ -996,7 +1001,7 @@ static void disable_write(int dummyfd, short what, void *data)
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
-    evtimer_once(base, disable_ssl, e);
+    evtimer_once(base, disable_ssl, d);
 }
 
 static void do_disable_read(struct event_info *e)
@@ -1015,11 +1020,12 @@ static void do_disable_read(struct event_info *e)
 
 static void disable_read(int dummyfd, short what, void *data)
 {
-    struct event_info *e = data;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     Pthread_mutex_lock(&e->rd_lk);
     do_disable_read(e);
     Pthread_mutex_unlock(&e->rd_lk);
-    evtimer_once(wr_base, disable_write, e);
+    evtimer_once(wr_base, disable_write, d);
 }
 
 static void do_disable_heartbeats(struct event_info *e)
@@ -1037,32 +1043,31 @@ static void do_disable_heartbeats(struct event_info *e)
 
 static void disable_heartbeats(int dummyfd, short what, void *data)
 {
-    struct event_info *e = data;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     do_disable_heartbeats(e);
-    evtimer_once(rd_base, disable_read, e);
+    evtimer_once(rd_base, disable_read, d);
 }
 
 static void do_host_close(int dummyfd, short what, void *data)
 {
-    struct event_info *e = data;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     if (netinfo_ptr->hostdown_rtn) { /* net_hostdown_rtn or net_osql_nodedwn */
         netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host_interned);
     }
     host_node_close(e->host_node_ptr);
-    evtimer_once(timer_base, disable_heartbeats, e);
+    evtimer_once(timer_base, disable_heartbeats, d);
 }
 
 static void do_close(struct event_info *e, event_callback_fn func)
 {
-    check_base_thd();
-    if (e->after_close) {
-        hputs("ALREADY CLOSING\n");
-        return;
-    }
-    hputs("CLOSE CONNECTION\n");
-    e->after_close = func;
-    evtimer_once(base, do_host_close, e);
+    if (e->fd != -1) hputs("CLOSE CONNECTION\n");
+    struct disable_info *i = malloc(sizeof(struct disable_info));
+    i->e = e;
+    i->func = func;
+    evtimer_once(base, do_host_close, i);
 }
 
 static int skip_connect(struct event_info *e)
@@ -1091,10 +1096,8 @@ static void do_reconnect(int dummyfd, short what, void *data)
     event_add(e->connect_ev, &t);
 }
 
-static void reconnect(int fd, short what, void *data)
+static void reconnect(struct event_info *e)
 {
-    check_base_thd();
-    struct event_info *e = data;
     if (gbl_exit) {
         return;
     }
@@ -1153,7 +1156,7 @@ static void writecb(int fd, short what, void *data)
                 Pthread_mutex_lock(&e->wr_lk);
                 do_disable_write(e);
                 Pthread_mutex_unlock(&e->wr_lk);
-                evtimer_once(base, reconnect, e);
+                reconnect(e);
             }
             return;
         }
@@ -1346,7 +1349,7 @@ static void heartbeat_check(int dummyfd, short what, void *data)
     if (diff >= netinfo_ptr->heartbeat_check_time) {
         hprintf("no data in %d seconds\n", diff);
         do_disable_heartbeats(e);
-        evtimer_once(base, reconnect, e);
+        reconnect(e);
     }
 }
 
@@ -1705,8 +1708,7 @@ static void *rd_worker(void *data)
         Pthread_mutex_lock(&e->rd_lk);
         if (rc) {
             if (gen == e->readv_gen) {
-                hprintf("stale read gen:%d readv_gen:%d\n", gen, e->readv_gen);
-                evtimer_once(base, reconnect, e);
+                reconnect(e);
             }
             while (!net_stop && e->readv_gen == gen) {
                 hputs("waiting for new connection\n");
@@ -1905,11 +1907,8 @@ static void readcb(int fd, short what, void *data)
 {
     struct event_info *e = data;
     check_rd_thd();
+    if (fd != e->fd) abort();
     Pthread_mutex_lock(&e->rd_lk);
-    if (fd != e->fd) {
-        hprintf("bad fd:%d\n", fd);
-        abort();
-    }
     /*
     ** evbuffer_set_max_read() is not released yet..
     ** Writing my own readv wrapper; Observed max read of 4K with:
@@ -1922,8 +1921,7 @@ static void readcb(int fd, short what, void *data)
         Pthread_cond_signal(&e->rd_cond); // -> rd_worker()
     } else {
         do_disable_read(e);
-        hprintf("bad read rc:%zd\n", n);
-        evtimer_once(base, reconnect, e);
+        reconnect(e);
     }
     Pthread_mutex_unlock(&e->rd_lk);
 }
@@ -1947,8 +1945,7 @@ static void write_hello_evbuffer(struct event_info *e)
 static void net_connect_ssl_error(void *data)
 {
     struct event_info *e = data;
-    hputs("call reconnect\n");
-    evtimer_once(base, reconnect, e);
+    reconnect(e);
 }
 
 static void net_connect_ssl_success(void *data)
