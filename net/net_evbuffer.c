@@ -1577,7 +1577,7 @@ static int process_decom_nodenum(struct event_info *e)
     uint32_t n;
     memcpy(&n, e->rd_buf, sizeof(n));
     n = htonl(n);
-    dispatch_decom(hostname(n));
+    decom(hostname(n));
     message_done(e);
     return 0;
 }
@@ -1591,14 +1591,10 @@ static int process_decom_hostname(struct event_info *e)
         e->need = htonl(n);
         return 0;
     }
-    if (e->need > HOSTNAME_LEN) {
-        hprintf("bad hostname len:%zu\n", e->need);
-    } else {
-        char host[e->need + 1];
-        memcpy(host, e->rd_buf, e->need);
-        host[e->need] = 0;
-        dispatch_decom(intern(host));
-    }
+    char host[e->need + 1];
+    memcpy(host, e->rd_buf, e->need);
+    host[e->need] = 0;
+    decom(host);
     message_done(e);
     return 0;
 }
@@ -3564,23 +3560,6 @@ static void do_increase_net_buf(void *data)
     }
 }
 
-static void decom(int fd, short what, void *data)
-{
-    char *host = data;
-    struct host_info *h;
-    if (!host || net_stop || strcmp(host, gbl_myhostname) == 0 ||
-        (h = host_info_find(host)) == NULL) {
-        return;
-    }
-    struct event_info *e;
-    LIST_FOREACH(e, &h->event_list, host_list_entry) {
-        if (e->decomissioned) continue;
-        net_decom_node(e->net_info->netinfo_ptr, e->host);
-        set_decom(e);
-        DO_CLOSE(e, send_decom_all);
-    }
-}
-
 /********************/
 /* PUBLIC INTERFACE */
 /********************/
@@ -3597,9 +3576,25 @@ void add_host(host_node_type *host_node_ptr)
     evtimer_once(base, do_add_host, host_node_ptr);
 }
 
-void dispatch_decom(char *host)
+void decom(char *host)
 {
-    evtimer_once(base, decom, host);
+    if (net_stop) {
+        return;
+    }
+    if (strcmp(host, gbl_myhostname) == 0) {
+        return;
+    }
+    struct host_info *h = host_info_find(host);
+    if (h == NULL) {
+        return;
+    }
+    struct event_info *e;
+    LIST_FOREACH(e, &h->event_list, host_list_entry) {
+        if (e->decomissioned) continue;
+        net_decom_node(e->net_info->netinfo_ptr, e->host);
+        set_decom(e);
+        DO_CLOSE(e, send_decom_all);
+    }
 }
 
 void stop_event_net(void)
