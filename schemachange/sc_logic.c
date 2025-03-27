@@ -63,12 +63,12 @@ static enum thrtype prepare_sc_thread(struct schema_change_type *s)
             thread_started("schema change");
             oldtype = thrman_get_type(thr_self);
             thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
-        } else
+        } else {
             thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
-        if (!s->nothrevent) {
-            backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-            logmsg(LOGMSG_INFO, "Preparing schema change read write thread\n");
         }
+
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+        logmsg(LOGMSG_INFO, "Preparing schema change read write thread\n");
     }
     return oldtype;
 }

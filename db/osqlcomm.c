@@ -6337,6 +6337,17 @@ static int _process_single_table_sc(struct ireq *iq)
     }
     return rc;
 }
+static void print_pending_scs(const struct schema_change_type * sc_pending)
+{
+    printf("-----%s-----\n", __func__);
+    printf("    %s\n", sc_pending->tablename);
+    while (sc_pending->sc_next) {
+        sc_pending = sc_pending->sc_next;
+        printf("    %s\n", sc_pending->tablename);
+    }
+    printf("----------\n");
+}
+
 
 static int launch_schema_change_wrapper_merge(const char *tblname,
                                                   timepart_view_t **pview,
@@ -6345,19 +6356,24 @@ static int launch_schema_change_wrapper_merge(const char *tblname,
     struct ireq *iq = arg->s->iq;
     iq->sc = iq->sc_pending;
 
-    struct schema_change_type *sc_last = iq->sc;
-    while (sc_last->sc_next) {
-        sc_last = sc_last->sc_next;
-    }
+    printf("running %s for %s\n", __func__, iq->sc->tablename);
+    print_pending_scs(iq->sc_pending);
 
     if (arg->lockless)
         views_unlock();
 
     const int rc = launch_schema_change(iq, NULL);
 
+    printf("done with %s\n", iq->sc->tablename);
     iq->sc_pending = iq->sc->sc_next;
+
+    struct schema_change_type *sc_last = iq->sc;
+    while (sc_last->sc_next) {
+        sc_last = sc_last->sc_next;
+    }
     iq->sc->sc_next = NULL;
     sc_last->sc_next = iq->sc;
+
     iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
 
     if (arg->lockless) {
@@ -6390,6 +6406,7 @@ static int prepare_schema_change_wrapper_merge(const char *tblname,
 
     /* new target */
     strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
+    printf("%s for %s\n", __func__, alter_sc->tablename);
     /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
     alter_sc->kind = SC_ALTERTABLE;
     /* use the created file as target */
@@ -6476,11 +6493,33 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     return rc;
 }
 
+static int launch_merge_schema_change_for_shards(timepart_sc_arg_t * const arg)
+{
+    comdb2_name_thread(__func__);
+    thread_started("launch merge thread");
+    struct thr_handle *thr_self = thrman_self();
+
+    if (thr_self) {
+        thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
+    } else {
+        thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
+    }
+
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    const int rc = timepart_foreach_shard(launch_schema_change_wrapper_merge, arg);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+
+    free(arg->part_name);
+    free(arg);
+
+    return rc;
+}
+
 static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    timepart_sc_arg_t arg = {0};
+    timepart_sc_arg_t * arg = (timepart_sc_arg_t *) malloc(sizeof(timepart_sc_arg_t));
 
     assert(sc->kind == SC_ALTERTABLE);
 
@@ -6535,26 +6574,42 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
-        arg.check_extra_shard = 1;
+        arg->check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
-        arg.start = 1;
+        arg->start = 1;
         /* since this is a partition drop, we do not need to set/reset arg.pos here */
     }
 
     /* at this point we have created the future btree, launch an alter
      * for each of the shards of the partition
      */
-    arg.s = sc;
-    arg.s->iq = iq;
-    arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
-    if (!arg.part_name)
-        return VIEW_ERR_MALLOC;
-    arg.lockless = 1;   
-    /* note: we have already set nothrevent depending on the number of shards */
+    // After we spawn the thread to do the schema changes, the first shard's sc may be freed
+    // -- so clone it here.
+    struct schema_change_type *sc_clone = clone_schemachange_type(sc);
+    sc_clone->resume = sc->resume;
+    sc_clone->newdb = sc->newdb;
+    sc_clone->iq = iq;
 
-    rc = timepart_foreach_shard(prepare_schema_change_wrapper_merge, &arg);
-    rc = timepart_foreach_shard(launch_schema_change_wrapper_merge, &arg);
-    free(arg.part_name);
+    arg->s = sc_clone;
+    arg->part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    if (!arg->part_name)
+        return VIEW_ERR_MALLOC;
+    arg->lockless = 1;   
+
+    rc = timepart_foreach_shard(prepare_schema_change_wrapper_merge, arg);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to prepare shard schema changes\n", __func__);
+        return ERR_SC;
+    }
+    print_pending_scs(iq->sc_pending);
+
+    if (sc->resume) {
+        pthread_t tid;
+        pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *)) launch_merge_schema_change_for_shards, arg);
+    } else {
+        rc = timepart_foreach_shard(launch_schema_change_wrapper_merge, arg);
+        // TODO: take sc from back of sc_pending list and put at front of list.
+    }
 
     if (first_shard->sqlaliasname) {
         sc->partition.type = PARTITION_REMOVE; /* first shard is the collapsed table */
