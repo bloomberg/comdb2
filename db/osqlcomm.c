@@ -6337,17 +6337,6 @@ static int _process_single_table_sc(struct ireq *iq)
     }
     return rc;
 }
-static void print_pending_scs(const struct schema_change_type * sc_pending)
-{
-    printf("-----%s-----\n", __func__);
-    printf("    %s\n", sc_pending->tablename);
-    while (sc_pending->sc_next) {
-        sc_pending = sc_pending->sc_next;
-        printf("    %s\n", sc_pending->tablename);
-    }
-    printf("----------\n");
-}
-
 
 static int launch_schema_change_wrapper_merge(const char *tblname,
                                                   timepart_view_t **pview,
@@ -6356,15 +6345,11 @@ static int launch_schema_change_wrapper_merge(const char *tblname,
     struct ireq *iq = arg->s->iq;
     iq->sc = iq->sc_pending;
 
-    printf("running %s for %s\n", __func__, iq->sc->tablename);
-    print_pending_scs(iq->sc_pending);
-
     if (arg->lockless)
         views_unlock();
 
     const int rc = launch_schema_change(iq, NULL);
 
-    printf("done with %s\n", iq->sc->tablename);
     iq->sc_pending = iq->sc->sc_next;
 
     struct schema_change_type *sc_last = iq->sc;
@@ -6583,14 +6568,13 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     /* at this point we have created the future btree, launch an alter
      * for each of the shards of the partition
      */
-    // After we spawn the thread to do the schema changes, the first shard's sc may be freed
-    // -- so clone it here.
-    struct schema_change_type *sc_clone = clone_schemachange_type(sc);
-    sc_clone->resume = sc->resume;
-    sc_clone->newdb = sc->newdb;
-    sc_clone->iq = iq;
+    sc->iq = iq;
 
-    arg->s = sc_clone;
+    // We need to pass this sc into `timepart_foreach_shard` (rather than a clone of it)
+    // because `timepart_foreach_shard` sets `timepartition_name`, which needs
+    // to be set when the sc is getting finalized.
+    arg->s = sc; 
+
     arg->part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
     if (!arg->part_name)
         return VIEW_ERR_MALLOC;
@@ -6601,16 +6585,20 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         logmsg(LOGMSG_ERROR, "%s: Failed to prepare shard schema changes\n", __func__);
         return ERR_SC;
     }
-    print_pending_scs(iq->sc_pending);
 
     if (sc->resume) {
+        // After we spawn the thread to do the schema changes, the first shard's sc may be freed
+        // -- so clone it here.
+        struct schema_change_type *sc_clone = clone_schemachange_type(sc);
+        sc_clone->resume = sc->resume;
+        sc_clone->newdb = sc->newdb;
+        sc_clone->iq = iq;
+        arg->s = sc_clone;
         pthread_t tid;
         pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *)) launch_merge_schema_change_for_shards, arg);
     } else {
         rc = timepart_foreach_shard(launch_schema_change_wrapper_merge, arg);
         iq->sc = iq->sc_pending;
-        print_pending_scs(iq->sc_pending);
-        printf("sc %p iq sc %p. timepart name %s\n", sc, iq->sc, iq->sc->timepartition_name);
     }
 
     if (first_shard->sqlaliasname) {
