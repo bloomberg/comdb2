@@ -290,6 +290,35 @@ static inline int replication_only_error_code(int rc)
     return 0;
 }
 
+int llog_scdone_genshard(bdb_state_type *bdb_state, int genshard_scdone_type, 
+                        char *genshard_name, struct schema_change_type *s, 
+                         tran_type *tran, int *bdberr)
+{
+    int rc = 0;
+    char *mashup = NULL;
+    int oldlen = 0;
+    int newlen = 0;
+    mashup = s->tablename;
+    oldlen = strlen(s->tablename) + 1;
+    logmsg(LOGMSG_USER, "CALLING LLOG_SCDONE_GENSHARD WITH GENSHARD_NAME %s\n",genshard_name); 
+    if (s->partition.type == PARTITION_ADD_GENSHARD) {
+        newlen = strlen(genshard_name) + 1;
+        mashup = alloca(oldlen + newlen);
+        memcpy(mashup, s->tablename, oldlen); /* old */
+        memcpy(mashup + oldlen, genshard_name, newlen); /* new */
+    }
+    if (tran) {
+        rc = bdb_llog_scdone_tran(bdb_state, genshard_scdone_type, tran, mashup, oldlen+newlen, bdberr);
+    } else {
+        rc = bdb_llog_scdone(bdb_state, genshard_scdone_type, mashup, oldlen + newlen, 1, bdberr);
+    }
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "bdb_llog_scdone failed for genshard %s. rc: %d, bdberr: %d\n", s->partition.u.genshard.tablename, rc, *bdberr);
+    }
+
+    return rc;
+}
+
 int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
                                struct schema_change_type *s, tran_type *tran,
                                int *bdberr)
@@ -315,14 +344,9 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
             mashup = alloca(oldlen + newlen);
             memcpy(mashup, s->tablename, oldlen); /* old */
             memcpy(mashup + oldlen, dst, newlen); /* new */
-        } else if (s->done_type == add && s->partition.type == PARTITION_ADD_GENSHARD) {
-            char *key = "dbnames";
-            newlen = strlen(key) + 1;
-            mashup = alloca(oldlen + newlen);
-            memcpy(mashup, s->tablename, oldlen);
-            memcpy(mashup + oldlen, key, newlen);
         }
     }
+
     if (!tran)
         rc = bdb_llog_scdone(bdb_state, s->done_type, mashup, oldlen + newlen,
                              1, bdberr);
@@ -382,13 +406,29 @@ static int do_finalize(ddl_t func, struct ireq *iq,
                    "Forcing replication error table %s '%s' for tran %p\n",
                    bdb_get_scdone_str(s->done_type), s->tablename, tran);
         }
-
+        if (s->done_type == drop && s->partition.type == PARTITION_REM_GENSHARD) {
+            rc = llog_scdone_genshard(thedb->bdb_env, genshard_drop, s->partition.u.genshard.tablename, s, tran, &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                sc_errf(s, "Failed to send scdone genshard_drop. rc=%d, bdberr=%s\n", rc, bdberr);
+                rc = -1;
+                goto abort;
+            }
+        }
         rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             rc = -1;
             goto abort;
         } else {
+
+            if (s->done_type == add && s->partition.type == PARTITION_ADD_GENSHARD) {
+                rc = llog_scdone_genshard(thedb->bdb_env, genshard_add, s->partition.u.genshard.tablename, s, tran, &bdberr);
+                if (rc || bdberr != BDBERR_NOERROR) {
+                    sc_errf(s, "Failed to send scdone genshard_add. rc=%d, bdberr=%s\n", rc, bdberr);
+                    rc = -1;
+                    goto abort;
+                }
+            }
             if (s->keep_locked) {
                 rc = trans_commit(iq, tran, gbl_myhostname);
             } else {
@@ -411,10 +451,26 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         sc_del_unused_files(s->db);
     } else {
         int bdberr = 0;
+        if (s->done_type == drop && s->partition.type == PARTITION_REM_GENSHARD) {
+            rc = llog_scdone_genshard(thedb->bdb_env, genshard_drop,s->partition.u.genshard.tablename, s, tran, &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                sc_errf(s, "Failed to send scdone genshard_drop. rc=%d, bdberr=%s\n", rc, bdberr);
+                rc = -1;
+                goto abort;
+            }
+        }
         rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
+        }
+        if (s->done_type == add && s->partition.type == PARTITION_ADD_GENSHARD) {
+            rc = llog_scdone_genshard(thedb->bdb_env, genshard_add,s->partition.u.genshard.tablename, s, tran, &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                sc_errf(s, "Failed to send scdone genshard_add. rc=%d, bdberr=%s\n", rc, bdberr);
+                rc = -1;
+                goto abort;
+            }
         }
     }
     return rc;
@@ -454,7 +510,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr = 0;
-
+    struct dbtable *db = NULL;
     if (s->resume == SC_OSQL_RESUME) {
         return s->sc_rc;
     }
@@ -531,6 +587,12 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         if (!rc && !s->is_osql) {
             create_sqlmaster_records(tran);
             create_sqlite_master();
+            db = get_dbtable_by_name(s->tablename);
+            if (s->partition.type == PARTITION_ADD_GENSHARD) {
+                hash_sqlalias_db(db, db->genshard_name);
+            } else if (s->partition.type == PARTITION_REM_GENSHARD) {
+                hash_sqlalias_db(db, db->tablename);
+            }
         }
         if (local_lock)
             unlock_schema_lk();

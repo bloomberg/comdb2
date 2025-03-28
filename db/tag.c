@@ -6154,6 +6154,7 @@ void freedb_int(dbtable *db, dbtable *replace)
     int i;
     int dbs_idx;
     char *sqlaliasname = db->sqlaliasname;
+    char *genshard_name = db->genshard_name;
     const char *timepartition_name = db->timepartition_name;
     char **dbnames = alloca(sizeof(char*) * db->numdbs);
     for (i = 0; i < db->numdbs; i++)
@@ -6167,6 +6168,7 @@ void freedb_int(dbtable *db, dbtable *replace)
 
     if (!replace) {
         free(sqlaliasname);
+        free(genshard_name);
         for (i = 0; i < db->numdbs; i++) {
             free(dbnames[i]);
         }
@@ -6242,6 +6244,7 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
+        db->genshard_name = genshard_name;
         for (i = 0; i < db->numdbs; i++)
             db->dbnames[i] = dbnames[i];
         for (i = 0; i < db->numcols; i++)
