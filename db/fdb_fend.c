@@ -6262,6 +6262,12 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
         return NULL;
 
     int rc = fdb_get_remote_version(fdb->dbname, tblname, fdb->class, local, &remote_version, &err);
+
+    if (sqlite3UnlockTable(dbname, tblname)) {
+        logmsg(LOGMSG_ERROR, "%s:%d Failed to unlock table %s on db %s\n!!",
+                                __func__, __LINE__, tblname, dbname); 
+    }
+
     switch (rc) {
         case FDB_NOERR:
             logmsg(LOGMSG_ERROR, "Table %s already exists, ver %llu\n", tblname, remote_version);
