@@ -6519,7 +6519,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    timepart_sc_arg_t * arg = (timepart_sc_arg_t *) malloc(sizeof(timepart_sc_arg_t));
+    timepart_sc_arg_t * arg = (timepart_sc_arg_t *) calloc(1, sizeof(timepart_sc_arg_t));
 
     assert(sc->kind == SC_ALTERTABLE);
 
@@ -6608,7 +6608,9 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *)) launch_merge_schema_change_for_shards, arg);
     } else {
         rc = timepart_foreach_shard(launch_schema_change_wrapper_merge, arg);
-        // TODO: take sc from back of sc_pending list and put at front of list.
+        iq->sc = iq->sc_pending;
+        print_pending_scs(iq->sc_pending);
+        printf("sc %p iq sc %p. timepart name %s\n", sc, iq->sc, iq->sc->timepartition_name);
     }
 
     if (first_shard->sqlaliasname) {
