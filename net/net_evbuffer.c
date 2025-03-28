@@ -342,6 +342,7 @@ struct event_info {
     host_node_type *host_node_ptr;
     struct host_connected_info *host_connected;
     struct host_connected_info *host_connected_pending;
+    event_callback_fn after_close;
     LIST_ENTRY(event_info) host_list_entry;
     LIST_ENTRY(event_info) net_list_entry;
     int fd;
@@ -952,11 +953,6 @@ static void update_net_info(struct net_info *n, int fd, int port)
     n->netinfo_ptr->myport = port;
 }
 
-struct disable_info {
-    struct event_info *e;
-    event_callback_fn func;
-};
-
 static void do_disable_write(struct event_info *e)
 {
     check_wr_thd();
@@ -979,20 +975,19 @@ static void do_disable_write(struct event_info *e)
 static void disable_ssl(int dummyfd, short what, void *data)
 {
     check_base_thd();
-    struct disable_info *d = data;
-    struct event_info *e = d->e;
+    struct event_info *e = data;
     if (e->ssl_data) {
         ssl_data_free(e->ssl_data);
         e->ssl_data = NULL;
     }
-    d->func(-1, 0, e); /* -> do_reconnect, do_open */
-    free(d);
+    event_callback_fn func = e->after_close;
+    e->after_close = NULL;
+    if (func) func(-1, 0, e); /* -> do_reconnect, do_open */
 }
 
 static void disable_write(int dummyfd, short what, void *data)
 {
-    struct disable_info *d = data;
-    struct event_info *e = d->e;
+    struct event_info *e = data;
     Pthread_mutex_lock(&e->wr_lk);
     do_disable_write(e);
     if (e->fd != -1) {
@@ -1001,7 +996,7 @@ static void disable_write(int dummyfd, short what, void *data)
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
-    evtimer_once(base, disable_ssl, d);
+    evtimer_once(base, disable_ssl, e);
 }
 
 static void do_disable_read(struct event_info *e)
@@ -1020,12 +1015,11 @@ static void do_disable_read(struct event_info *e)
 
 static void disable_read(int dummyfd, short what, void *data)
 {
-    struct disable_info *d = data;
-    struct event_info *e = d->e;
+    struct event_info *e = data;
     Pthread_mutex_lock(&e->rd_lk);
     do_disable_read(e);
     Pthread_mutex_unlock(&e->rd_lk);
-    evtimer_once(wr_base, disable_write, d);
+    evtimer_once(wr_base, disable_write, e);
 }
 
 static void do_disable_heartbeats(struct event_info *e)
@@ -1043,31 +1037,34 @@ static void do_disable_heartbeats(struct event_info *e)
 
 static void disable_heartbeats(int dummyfd, short what, void *data)
 {
-    struct disable_info *d = data;
-    struct event_info *e = d->e;
+    struct event_info *e = data;
     do_disable_heartbeats(e);
-    evtimer_once(rd_base, disable_read, d);
+    evtimer_once(rd_base, disable_read, e);
 }
 
 static void do_host_close(int dummyfd, short what, void *data)
 {
-    struct disable_info *d = data;
-    struct event_info *e = d->e;
+    struct event_info *e = data;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     if (netinfo_ptr->hostdown_rtn) { /* net_hostdown_rtn or net_osql_nodedwn */
         netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host_interned);
     }
     host_node_close(e->host_node_ptr);
-    evtimer_once(timer_base, disable_heartbeats, d);
+    evtimer_once(timer_base, disable_heartbeats, e);
 }
 
-static void do_close(struct event_info *e, event_callback_fn func)
+#define DO_CLOSE(e, func) do_close(e, func, #func)
+static void do_close(struct event_info *e, event_callback_fn func, const char *funcname)
 {
-    if (e->fd != -1) hputs("CLOSE CONNECTION\n");
-    struct disable_info *i = malloc(sizeof(struct disable_info));
-    i->e = e;
-    i->func = func;
-    evtimer_once(base, do_host_close, i);
+    check_base_thd();
+    if (e->after_close) {
+        hprintf("CLOSE ALREADY IN PROGRESS - REPLACE CALLBACK WITH:%s\n", funcname);
+        e->after_close = func;
+        return;
+    }
+    hprintf("CLOSE CONNECTION AND CALL:%s\n", funcname);
+    e->after_close = func;
+    evtimer_once(base, do_host_close, e);
 }
 
 static int skip_connect(struct event_info *e)
@@ -1096,13 +1093,15 @@ static void do_reconnect(int dummyfd, short what, void *data)
     event_add(e->connect_ev, &t);
 }
 
-static void reconnect(struct event_info *e)
+static void reconnect(int fd, short what, void *data)
 {
+    check_base_thd();
+    struct event_info *e = data;
     if (gbl_exit) {
         return;
     }
     hputs("CLOSE AND RECONNECT\n");
-    do_close(e, do_reconnect);
+    DO_CLOSE(e, do_reconnect);
 }
 
 static void check_rd_full(struct event_info *e)
@@ -1156,7 +1155,7 @@ static void writecb(int fd, short what, void *data)
                 Pthread_mutex_lock(&e->wr_lk);
                 do_disable_write(e);
                 Pthread_mutex_unlock(&e->wr_lk);
-                reconnect(e);
+                evtimer_once(base, reconnect, e);
             }
             return;
         }
@@ -1349,7 +1348,7 @@ static void heartbeat_check(int dummyfd, short what, void *data)
     if (diff >= netinfo_ptr->heartbeat_check_time) {
         hprintf("no data in %d seconds\n", diff);
         do_disable_heartbeats(e);
-        reconnect(e);
+        evtimer_once(base, reconnect, e);
     }
 }
 
@@ -1578,7 +1577,7 @@ static int process_decom_nodenum(struct event_info *e)
     uint32_t n;
     memcpy(&n, e->rd_buf, sizeof(n));
     n = htonl(n);
-    decom(hostname(n));
+    dispatch_decom(hostname(n));
     message_done(e);
     return 0;
 }
@@ -1592,10 +1591,14 @@ static int process_decom_hostname(struct event_info *e)
         e->need = htonl(n);
         return 0;
     }
-    char host[e->need + 1];
-    memcpy(host, e->rd_buf, e->need);
-    host[e->need] = 0;
-    decom(host);
+    if (e->need > HOSTNAME_LEN) {
+        hprintf("bad hostname len:%zu\n", e->need);
+    } else {
+        char host[e->need + 1];
+        memcpy(host, e->rd_buf, e->need);
+        host[e->need] = 0;
+        dispatch_decom(intern(host));
+    }
     message_done(e);
     return 0;
 }
@@ -1708,7 +1711,8 @@ static void *rd_worker(void *data)
         Pthread_mutex_lock(&e->rd_lk);
         if (rc) {
             if (gen == e->readv_gen) {
-                reconnect(e);
+                hprintf("stale read gen:%d readv_gen:%d\n", gen, e->readv_gen);
+                evtimer_once(base, reconnect, e);
             }
             while (!net_stop && e->readv_gen == gen) {
                 hputs("waiting for new connection\n");
@@ -1907,8 +1911,11 @@ static void readcb(int fd, short what, void *data)
 {
     struct event_info *e = data;
     check_rd_thd();
-    if (fd != e->fd) abort();
     Pthread_mutex_lock(&e->rd_lk);
+    if (fd != e->fd) {
+        hprintf("bad fd:%d\n", fd);
+        abort();
+    }
     /*
     ** evbuffer_set_max_read() is not released yet..
     ** Writing my own readv wrapper; Observed max read of 4K with:
@@ -1921,7 +1928,8 @@ static void readcb(int fd, short what, void *data)
         Pthread_cond_signal(&e->rd_cond); // -> rd_worker()
     } else {
         do_disable_read(e);
-        reconnect(e);
+        hprintf("bad read rc:%zd\n", n);
+        evtimer_once(base, reconnect, e);
     }
     Pthread_mutex_unlock(&e->rd_lk);
 }
@@ -1945,7 +1953,8 @@ static void write_hello_evbuffer(struct event_info *e)
 static void net_connect_ssl_error(void *data)
 {
     struct event_info *e = data;
-    reconnect(e);
+    hputs("call reconnect\n");
+    evtimer_once(base, reconnect, e);
 }
 
 static void net_connect_ssl_success(void *data)
@@ -1969,7 +1978,7 @@ static void finish_host_setup(int dummyfd, short what, void *data)
         e->host_connected = e->host_connected_pending;
         e->host_connected_pending = NULL;
         hprintf("WORKING ON PENDING CONNECTION fd:%d\n", e->host_connected->fd);
-        do_close(e, do_open);
+        DO_CLOSE(e, do_open);
     } else if (connect_msg) {
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
         if (gbl_pb_connectmsg) {
@@ -2083,7 +2092,7 @@ static void host_connected(struct event_info *e, int fd, int connect_msg, struct
     } else {
         hprintf("PROCESS CONNECTION fd:%d\n", fd);
         e->host_connected = i;
-        do_close(e, do_open);
+        DO_CLOSE(e, do_open);
     }
 }
 
@@ -3555,6 +3564,23 @@ static void do_increase_net_buf(void *data)
     }
 }
 
+static void decom(int fd, short what, void *data)
+{
+    char *host = data;
+    struct host_info *h;
+    if (!host || net_stop || strcmp(host, gbl_myhostname) == 0 ||
+        (h = host_info_find(host)) == NULL) {
+        return;
+    }
+    struct event_info *e;
+    LIST_FOREACH(e, &h->event_list, host_list_entry) {
+        if (e->decomissioned) continue;
+        net_decom_node(e->net_info->netinfo_ptr, e->host);
+        set_decom(e);
+        DO_CLOSE(e, send_decom_all);
+    }
+}
+
 /********************/
 /* PUBLIC INTERFACE */
 /********************/
@@ -3571,25 +3597,9 @@ void add_host(host_node_type *host_node_ptr)
     evtimer_once(base, do_add_host, host_node_ptr);
 }
 
-void decom(char *host)
+void dispatch_decom(char *host)
 {
-    if (net_stop) {
-        return;
-    }
-    if (strcmp(host, gbl_myhostname) == 0) {
-        return;
-    }
-    struct host_info *h = host_info_find(host);
-    if (h == NULL) {
-        return;
-    }
-    struct event_info *e;
-    LIST_FOREACH(e, &h->event_list, host_list_entry) {
-        if (e->decomissioned) continue;
-        net_decom_node(e->net_info->netinfo_ptr, e->host);
-        set_decom(e);
-        do_close(e, send_decom_all);
-    }
+    evtimer_once(base, decom, host);
 }
 
 void stop_event_net(void)
