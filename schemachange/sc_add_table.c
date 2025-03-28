@@ -371,8 +371,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         /* NOTE: for the purpose of this test stub, we create an sql alias; the actual
          * sharding will have a view created here 
          */
-        /*hash_sqlalias_db(db, s->partition.u.genshard.tablename);
-        rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
+        // hash_sqlalias_db(db, s->partition.u.genshard.tablename);
+        /*rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
         if (rc) {
             hash_sqlalias_db(db, NULL);
             logmsg(LOGMSG_ERROR, "Failed to alias genshard table");
@@ -402,6 +402,10 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                     s->partition.u.genshard.shardnames, &err)) {
             sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
             /*hash_sqlalias_db(db, NULL);*/
+            if (db->genshard_name) {
+                free(db->genshard_name);
+                db->genshard_name = NULL;
+            }
             return -1;
         }
     }

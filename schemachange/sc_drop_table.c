@@ -148,6 +148,8 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
             logmsg(LOGMSG_ERROR, "Failed to remove llmeta entry for sharded table %s\n", s->tablename);
             return SC_INTERNAL_ERROR;
         }
+        /* remove the alias name */
+        hash_sqlalias_db(db, db->tablename);
     }
 
     live_sc_off(db);
