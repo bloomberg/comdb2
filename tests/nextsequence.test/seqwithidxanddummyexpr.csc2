@@ -1,0 +1,10 @@
+schema
+{
+   int a null=yes
+   int b dbstore=nextsequence null=yes
+}
+keys
+{
+   "b" = b
+   dup "expr" = (int)"1 + 1"
+}
