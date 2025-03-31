@@ -1729,6 +1729,11 @@ int bdb_llmeta_get_schema_versions(tran_type *t, schema_version_row **data, int 
 int bdb_del_schema_change_history(tran_type *t, const char *tablename,
                                   uint64_t seed);
 
+/* llmeta entry for comdb2_oplog seqno */
+int bdb_get_seqno(tran_type *t, int64_t *seqno);
+int bdb_set_seqno(tran_type *t, int64_t seqno);
+int bdb_del_seqno(tran_type *t);
+
 typedef struct {
     uint64_t genid;
     unsigned int file;
