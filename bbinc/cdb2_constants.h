@@ -37,7 +37,7 @@
 #define MAX_SPVERSION_LEN 80
 #define MAXTABLELEN 32
 #define MAXTAGLEN 64
-#define REPMAX 32
+#define REPMAX 64
 /* Maximum buffer length for generated key name. */
 #define MAXGENKEYLEN 25
 /* Maximum buffer length for generated constraint name. */
