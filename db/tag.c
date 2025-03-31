@@ -6522,17 +6522,33 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
     // autoinc value is not set on replicant, set it now
     struct schema *idx_schema = get_schema(db, ixnum);
     struct schema *schema = get_schema(db, -1);
+    int rec_srt_off = gbl_sort_nulls_correctly ? 0 : 1;
+    char temp[9];
+    char *check_for_resolve_master;
     for (int nfield = 0; nfield < idx_schema->nmembers; nfield++) {
         const struct field *idx_field = &idx_schema->member[nfield];
         // TODO: expression idx
         if (idx_field->isExpr)
             continue;
-        if (!(idx_field->in_default_type == SERVER_SEQUENCE && stype_is_resolve_master(outbuf + idx_field->offset)))
+        if (idx_field->in_default_type != SERVER_SEQUENCE)
+            continue;
+
+        if (idx_field->flags & INDEX_DESCEND) { // need to undo to check for resolve master bit
+            assert(idx_field->len <= sizeof(temp));
+            memcpy(temp, outbuf + idx_field->offset, idx_field->len);
+            xorbuf(temp + rec_srt_off, idx_field->len - rec_srt_off);
+            check_for_resolve_master = temp;
+        } else
+            check_for_resolve_master = outbuf + idx_field->offset;
+
+        if (!stype_is_resolve_master(check_for_resolve_master))
             continue;
         // grab actual autoinc value from the record
         const struct field *field = &schema->member[idx_field->idx];
         assert(idx_field->len == field->len);
         memcpy(outbuf + idx_field->offset, inbuf + field->offset, idx_field->len);
+        if (idx_field->flags & INDEX_DESCEND)
+            xorbuf((outbuf + idx_field->offset) + rec_srt_off, idx_field->len - rec_srt_off);
     }
 
     if (db->ix_datacopy[ixnum]) {
