@@ -2476,6 +2476,11 @@ static int accept_host(struct accept_info *a)
     int port = a->from_port;
     char *host = a->from_host_interned;
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
+    host_node_type *host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
+    if (!host_node_ptr) {
+        host_node_ptr = add_to_netinfo_ll(netinfo_ptr, host, port);
+        if (!host_node_ptr) return -1;
+    }
     struct net_info *n = net_info_find(netinfo_ptr->service);
     if (n == NULL) {
         n = net_info_new(netinfo_ptr);
@@ -2487,11 +2492,6 @@ static int accept_host(struct accept_info *a)
     struct event_info *e = event_info_find(n, h);
     if (e == NULL) {
         e = event_info_new(n, h);
-    }
-    host_node_type *host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
-    if (!host_node_ptr) {
-        host_node_ptr = add_to_netinfo_ll(netinfo_ptr, host, port);
-        if (!host_node_ptr) return -1;
     }
     host_node_ptr->addr = a->ss.sin_addr;
     update_host_node_ptr(host_node_ptr, e);
