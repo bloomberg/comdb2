@@ -887,23 +887,23 @@ function insert_with_idx_and_dummy_expr
 {
     disable_strict_mode
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
-create table seqwithidxanddummyexpr {$(cat seqwithidxanddummyexpr.csc2)}\$\$
+create table $1 {$(cat $1.csc2)}\$\$
 EOF
 
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqwithidxanddummyexpr(a) values(1)"
-    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to insert"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqwithidxanddummyexpr values(2, 2)"
-    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to insert"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqwithidxanddummyexpr values(NULL, NULL)"
-    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to insert"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $1(a) values(1)"
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $1 values(2, 2)"
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $1 values(NULL, NULL)"
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
 
-    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b from seqwithidxanddummyexpr order by b")
-    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr table should have been allowed to select"
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b from $1 order by b")
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to select"
     exp=$'(b=NULL)\n(b=1)\n(b=2)'
     [[ $out != $exp ]] && failexit "Got $out, Expected $exp"
 
-    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('seqwithidxanddummyexpr')"
-    [[ $? != 0 ]] && failexit "seqwithidxanddummyexpr should have passed verify"
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('$1')"
+    [[ $? != 0 ]] && failexit "$1 should have passed verify"
 }
 
 function run_test
@@ -1016,7 +1016,8 @@ function run_test
         lrl_sequence
     fi
 
-    insert_with_idx_and_dummy_expr
+    insert_with_idx_and_dummy_expr seqwithidxanddummyexpr
+    insert_with_idx_and_dummy_expr seqwithdescidxanddummyexpr
 }
 
 run_test
