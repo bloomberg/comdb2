@@ -484,6 +484,10 @@ static void do_init_once(void)
     if (cdb2db_dbnum_override) {
         COMDB2DB_NUM_OVERRIDE = atoi(cdb2db_dbnum_override);
     }
+    char *min_retries = getenv("COMDB2_CONFIG_MIN_RETRIES");
+    if (min_retries) {
+        MIN_RETRIES = atoi(min_retries);
+    }
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0

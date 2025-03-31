@@ -33,7 +33,7 @@ test_partition_merge_resume() {
 	cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values (1)"
 
 	# When
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
+	COMDB2_CONFIG_MIN_RETRIES=1 cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
 	waitpid=$!
 	sleep 1
 	restart_cluster &> /dev/null
