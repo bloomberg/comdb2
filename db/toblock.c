@@ -2725,7 +2725,7 @@ static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
         memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
     } else {
         long long seqno;
-        rc = get_next_seqno(trans, &seqno);
+        rc = get_next_seqno(trans, NULL, &seqno);
         if (rc == 0)
             p_blkstate->seqno = seqno;
     }
@@ -4842,7 +4842,7 @@ unknown_request:
             if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") &&
                 !gbl_replicate_local_concurrent) {
                 long long seqno;
-                rc = get_next_seqno(trans, &seqno);
+                rc = get_next_seqno(trans, iq->sc_tran, &seqno);
                 if (rc) {
                     if (rc != RC_INTERNAL_RETRY)
                         logmsg(LOGMSG_ERROR,
@@ -5017,7 +5017,7 @@ unknown_request:
             long long seqno;
             struct ireq aiq;
 
-            rc = get_next_seqno(trans, &seqno);
+            rc = get_next_seqno(trans, NULL, &seqno);
             if (rc)
                 GOTOBACKOUT;
 
@@ -6490,7 +6490,7 @@ static int keyless_range_delete_post_delete(void *record, size_t record_len,
     return 0;
 }
 
-int get_next_seqno(void *tran, long long *seqno)
+int get_next_seqno(void *tran, void *sc_tran, long long *seqno)
 {
     /* key is a long long + int + descriptor bytes for each */
     char fndkey[14];
@@ -6498,6 +6498,7 @@ int get_next_seqno(void *tran, long long *seqno)
     int fndlen;
     int outnull, outsz;
     struct ireq iq;
+    int64_t stored_seqno = 0;
 
     init_fake_ireq(thedb, &iq);
 
@@ -6517,9 +6518,10 @@ int get_next_seqno(void *tran, long long *seqno)
                                 &fndlen);
     if (rc)
         return rc;
-    if (fndlen == 0)
-        *seqno = 1;
-    else {
+    if (fndlen == 0) {
+        bdb_get_seqno(sc_tran ? sc_tran : tran, &stored_seqno);
+        *seqno = stored_seqno;
+    } else {
         long long next_seqno = 0;
 
         /* convert to client format value so we can use it. Call the Routine
@@ -6540,4 +6542,3 @@ int get_next_seqno(void *tran, long long *seqno)
     }
     return 0;
 }
-

@@ -6845,6 +6845,8 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion, int
     return 0;
 }
 
+int gbl_comdb2_oplog_preserve_seqno = 1;
+
 /**
  * Handle the finalize part of a chain of schema changes
  *
@@ -6875,6 +6877,15 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
         if (iq->sc->db)
             iq->usedb = iq->sc->db;
         assert(iq->sc->nothrevent);
+
+        if (gbl_comdb2_oplog_preserve_seqno &&
+            IS_FASTINIT(iq->sc) &&
+            gbl_replicate_local &&
+            strcasecmp(iq->usedb->tablename, "comdb2_oplog") == 0) {
+            long long seqno;
+            if (get_next_seqno(trans, iq->sc_tran, &seqno) == 0)
+                bdb_set_seqno(iq->sc_tran, seqno);
+        }
 
         rc = finalize_schema_change(iq, iq->sc_tran);
         iq->usedb = NULL;
