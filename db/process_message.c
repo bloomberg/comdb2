@@ -5446,6 +5446,8 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "do_not_use_modsnap_for_snapshot") == 0) {
         gbl_use_modsnap_for_snapshot = 0;
+    } else if (tokcmp(tok, ltok, "del_llmeta_comdb2_seqno") == 0) {
+        bdb_del_seqno(NULL);
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;

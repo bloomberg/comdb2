@@ -828,7 +828,7 @@ again:
         goto done;
     }
 
-    rc = get_next_seqno(trans, &seqno);
+    rc = get_next_seqno(trans, NULL, &seqno);
     if (rc) {
         if (rc != RC_INTERNAL_RETRY) {
             printf("get_next_seqno unexpected rc %d\n", rc);

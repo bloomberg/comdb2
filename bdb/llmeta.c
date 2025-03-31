@@ -179,6 +179,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS_V2 = 56,
     LLMETA_SCHEMACHANGE_LIST = 57,            /* list of all sc-s in a uuid txh */
     LLMETA_SCHEMACHANGE_STATUS_PROTOBUF = 58, /* Indicate protobuf sc */
+    LLMETA_MAX_SEQNO = 59,
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -7354,6 +7355,9 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         if (osql_scl_print((uint8_t*)p_buf_key, p_buf_end_key, (uint8_t*)p_buf_data, p_buf_end_data))
             logmsg(LOGMSG_USER, "    failed to deserialize object\n");
         } break;
+    case LLMETA_MAX_SEQNO:
+        logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %ld\n", flibc_ntohll(*(int64_t *)p_buf_data));
+        break;
     default:
          logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
          break;
@@ -11371,4 +11375,49 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
         break;
     }
     return NULL;
+}
+
+typedef union llmeta_seqno_key {
+    int file_type;
+    uint8_t buf[LLMETA_IXLEN];
+} llmeta_seqno_key;
+
+int bdb_get_seqno(tran_type *t, int64_t *seqno)
+{
+    llmeta_seqno_key k = {0};
+    k.file_type = htonl(LLMETA_MAX_SEQNO);
+    int64_t **v;
+    int n;
+    int rc;
+    int bdberr;
+
+    rc = kv_get(t, &k, sizeof(llmeta_seqno_key), (void ***)&v, &n, &bdberr);
+    if (rc == 0)
+       *seqno = n ? (flibc_ntohll(*v[0]) + 1) : 1;
+    else
+        logmsg(LOGMSG_WARN, "%s: kv_get rc %d bdberr %d\n", __func__, rc, bdberr);
+    return rc;
+}
+
+int bdb_set_seqno(tran_type *t, int64_t seqno)
+{
+    int rc, bdberr;
+    llmeta_seqno_key k = {0};
+    k.file_type = htonl(LLMETA_MAX_SEQNO);
+    seqno = flibc_htonll(seqno);
+    rc = kv_put(t, &k, &seqno, sizeof(int64_t), &bdberr);
+    if (rc != 0)
+        logmsg(LOGMSG_WARN, "%s: kv_put rc %d bdberr %d\n", __func__, rc, bdberr);
+    return rc;
+}
+
+int bdb_del_seqno(tran_type *t)
+{
+    int rc, bdberr;
+    llmeta_seqno_key k = {0};
+    k.file_type = htonl(LLMETA_MAX_SEQNO);
+    rc = kv_del(t, &k, &bdberr);
+    if (rc != 0)
+        logmsg(LOGMSG_WARN, "%s: kv_del rc %d bdberr %d\n", __func__, rc, bdberr);
+    return rc;
 }
