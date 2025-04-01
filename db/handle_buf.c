@@ -1127,6 +1127,12 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 
         if (doinline) {
             thd_req_inline(iq);
+            LOCK(&lock)
+            {
+                pool_relablk(p_reqs, iq);
+            }
+            UNLOCK(&lock);
+
             return 0;
         }
 
