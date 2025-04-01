@@ -89,7 +89,6 @@
 
 #include <genid.h>
 #include <strbuf.h>
-#include <thread_malloc.h>
 #include "fdb_fend.h"
 #include "fdb_access.h"
 #include "bdb_osqlcur.h"
@@ -2297,7 +2296,6 @@ static int do_syntax_check(struct dbtable *tbl)
                : 0;
 }
 
-#define INDEXES_THREAD_MEMORY 1048576
 /* Force an update on sqlite_master to perform a syntax check for
  * partial index and CHECK constraint expressions.
  * Also, used to resolve scalar functions used by the dbtable
@@ -2319,7 +2317,6 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
     }
 
     sql_mem_init(NULL);
-    thread_memcreate(INDEXES_THREAD_MEMORY);
 
     rc = create_sqlmaster_record(db, NULL);
     if (rc) {
@@ -2405,8 +2402,6 @@ int resolve_sfuncs_for_db(struct dbenv* thedb)
     struct sqlthdstate thd = {0};
     int got_curtran = 0;
     const char * sql = "select 1 from sqlite_master limit 1";
-
-    thread_memcreate(INDEXES_THREAD_MEMORY);
 
     start_internal_sql_clnt(&clnt);
     clnt.sql = (char *)sql;
@@ -11830,15 +11825,10 @@ static int printf_logmsg_wrap(const char *fmt, ...) {
 
 void stat4dump(int more, char *table, int istrace)
 {
-#ifndef PER_THREAD_MALLOC
-    void *thread_oldm;
-#endif
+#   ifdef PER_THREAD_MALLOC
     void *sql_oldm;
-    int rc;
-    sqlite3 *db = NULL;
-
-    thread_memcreate_with_save(128 * 1024, &thread_oldm);
     sql_mem_init_with_save(NULL, &sql_oldm);
+#   endif
 
     struct sql_thread *old_thd = pthread_getspecific(query_info_key);
     struct sql_thread *thd = start_sql_thread();
@@ -11851,6 +11841,8 @@ void stat4dump(int more, char *table, int istrace)
 
     get_copy_rootpages(thd);
     sql_get_query_id(thd);
+    int rc;
+    sqlite3 *db = NULL;
     if ((rc = get_curtran(thedb->bdb_env, &clnt)) != 0) {
         goto out;
     }
@@ -11963,7 +11955,6 @@ out:
     done_sql_thread();
     Pthread_setspecific(query_info_key, old_thd);
     sql_mem_shutdown_and_restore(NULL, &sql_oldm);
-    thread_memdestroy_and_restore(&thread_oldm);
 }
 
 int gbl_debug_stat4dump_loop = 0;

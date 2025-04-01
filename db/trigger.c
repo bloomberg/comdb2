@@ -16,7 +16,6 @@
 #include <sp.h>
 #include <locks.h>
 #include <bdb_queue.h>
-#include <thread_malloc.h>
 #include <net_types.h>
 #include <trigger.h>
 #include <compat.h>

@@ -340,11 +340,6 @@ REGISTER_TUNABLE("disable_seekscan_optimization", "Disables SEEKSCAN optimizatio
                  &gbl_disable_seekscan_optimization, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_skip_rows", NULL, TUNABLE_BOOLEAN, &gbl_disable_skip_rows, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("disable_sql_dlmalloc",
-                 "If set, will use default system malloc for SQL state "
-                 "machines. By default, each thread running SQL gets a "
-                 "dedicated memory pool. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_disable_sql_dlmalloc, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_tagged_api", "Disables 'enable_tagged_api'",
                  TUNABLE_BOOLEAN, &gbl_disable_tagged_api, NOARG, NULL, NULL,
                  NULL, NULL);

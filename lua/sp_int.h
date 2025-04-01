@@ -39,7 +39,9 @@ typedef struct dbconsumer_t dbconsumer_t;
 struct stored_proc {
     Lua lua;
     int lua_version;
+#   ifdef PER_THREAD_MALLOC
     comdb2ma mspace;
+#   endif
     char spname[MAX_SPNAME];
     struct spversion_t spversion;
     char *src;

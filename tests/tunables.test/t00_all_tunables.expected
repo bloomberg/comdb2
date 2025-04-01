@@ -250,7 +250,6 @@
 (name='disable_selectvonly_tran_nop', description='Disable verifying rows selected via SELECTV if there's no other action done by the same transaction.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_server_sockpool', description='Don't get connections to other databases from sockpool.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_skip_rows', description='', type='BOOLEAN', value='OFF', read_only='Y')
-(name='disable_sql_dlmalloc', description='If set, will use default system malloc for SQL state machines. By default, each thread running SQL gets a dedicated memory pool. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_sql_table_replacement', description='Disables SQL table replacement', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_stable_for_ipu', description='For inplace update tables, disable stable find-next cursors', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_tagged_api', description='Disables 'enable_tagged_api'', type='BOOLEAN', value='ON', read_only='N')

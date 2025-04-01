@@ -65,7 +65,6 @@ extern int gbl_stack_at_lock_handle;
 extern int gbl_stack_at_write_lock;
 extern int gbl_stack_at_lock_gen_increment;
 extern int gbl_disable_skip_rows;
-extern int gbl_disable_sql_dlmalloc;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_enable_cache_internal_nodes;
 extern int gbl_partial_indexes;

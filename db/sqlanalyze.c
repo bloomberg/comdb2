@@ -28,7 +28,6 @@
 #include "sql.h"
 #include <sqliteInt.h>
 #include "block_internal.h"
-#include <thread_malloc.h>
 #include <autoanalyze.h>
 #include <bdb_schemachange.h>
 #include <sqlstat1.h>
@@ -39,11 +38,6 @@
 #include "str0.h"
 #include "sc_util.h"
 #include "debug_switches.h"
-
-/* amount of thread-memory initialized for this thread */
-#ifndef PER_THREAD_MALLOC
-static int analyze_thread_memory = 1048576;
-#endif
 
 extern void reset_aa_counter(char *tblname);
 
@@ -900,7 +894,6 @@ static void *table_thread(void *arg)
     stat4dump(1, td->table, 1); /* dump stats in trc file */
 
     sql_mem_init(NULL);
-    thread_memcreate(analyze_thread_memory);
 
     /* update state */
     td->table_state = TABLE_RUNNING;
@@ -932,7 +925,6 @@ static void *table_thread(void *arg)
     Pthread_mutex_unlock(&table_thd_mutex);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
-    thread_memdestroy();
     sql_mem_shutdown(NULL);
 
     return NULL;

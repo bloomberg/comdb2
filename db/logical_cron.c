@@ -18,7 +18,6 @@
 #include "views.h"
 #include "locks.h"
 #include "logical_cron.h"
-#include "thread_malloc.h"
 
 typedef struct logical_state {
     long long clock;
@@ -105,8 +104,6 @@ static char *logical_cron_describe(sched_if_t *impl)
     return strdup(msg);
 }
 
-#define LOGICAL_CRON_THREAD_MEMORY 1048576
-
 static void *logical_cron_kickoff(struct cron_event *event, struct errstat *err)
 {
     sched_if_t *schedif = event->schedif;
@@ -117,7 +114,6 @@ static void *logical_cron_kickoff(struct cron_event *event, struct errstat *err)
     logmsg(LOGMSG_INFO, "Starting logical cron %s\n", (char *)event->arg1);
 
     sql_mem_init(NULL);
-    thread_memcreate(LOGICAL_CRON_THREAD_MEMORY);
 
     /* logical cron runs sql against cron_logical_cron */
     thd = start_sql_thread();

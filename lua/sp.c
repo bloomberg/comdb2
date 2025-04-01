@@ -50,7 +50,6 @@
 #include <net_types.h>
 #include <locks.h>
 #include <trigger.h>
-#include <thread_malloc.h>
 #include <uuid/uuid.h>
 
 #include <lua.h>
@@ -1002,6 +1001,7 @@ int to_positive_index(Lua L, int idx)
     return idx;
 }
 
+#ifdef PER_THREAD_MALLOC
 static void *lua_mem_init()
 {
     /* We used to start with 1MB - this isn't quite necessary
@@ -1017,6 +1017,7 @@ static void *lua_mem_init()
     }
     return mspace;
 }
+#endif
 
 static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 {
@@ -3194,9 +3195,13 @@ static void close_sp_int(SP sp, int freesp)
     if (!sp) return;
     reset_sp(sp);
     if (sp->lua) lua_close(sp->lua);
+#   ifdef PER_THREAD_MALLOC
     comdb2ma mspace = sp->mspace;
     free_spversion(sp);
     comdb2ma_destroy(mspace);
+#   else
+    free_spversion(sp);
+#   endif
     free(sp);
 }
 
@@ -5295,10 +5300,12 @@ static void *lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 
 static int create_sp_int(SP sp, char **err)
 {
-    Lua lua;
-
+#   ifdef PER_THREAD_MALLOC
     sp->mspace = lua_mem_init();
-    lua = lua_newstate(lua_alloc, sp->mspace);
+    Lua lua = lua_newstate(lua_alloc, sp->mspace);
+#   else
+    Lua lua = luaL_newstate();
+#   endif
 
     lua_setsp(lua, sp);
     luaL_openlibs(lua);
@@ -7492,7 +7499,6 @@ void *exec_trigger(char *spname)
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
 
-    thread_memcreate(128 * 1024);
     struct sqlthdstate thd = {0};
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
@@ -7514,7 +7520,6 @@ void *exec_trigger(char *spname)
     end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
-    thread_memdestroy();
     return NULL;
 }
 
