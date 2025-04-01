@@ -569,6 +569,9 @@ static void process_features(struct newsql_appdata_evbuffer *appdata) {
         case CDB2_CLIENT_FEATURES__REQUEST_FP: clnt->features.request_fp = 1; break;
         case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL: clnt->features.require_fastsql = 1;
         case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB: clnt->features.can_redirect_fdb = 1; break;
+        case CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC: clnt->features.allow_master_exec = 1; break;
+        case CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO: clnt->features.allow_master_dbinfo = 1; break;
+        case CDB2_CLIENT_FEATURES__ALLOW_QUEUING: clnt->features.queue_me = 1; break;
         }
     }
 }
