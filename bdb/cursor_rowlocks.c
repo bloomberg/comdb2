@@ -62,7 +62,6 @@
 #include "cursor_ll.h"
 #include "bdb_osqlcur.h"
 #include "bdb_osqllog.h"
-#include <thread_malloc.h>
 #include "locks.h"
 #include "tohex.h"
 
@@ -2707,7 +2706,7 @@ int bdb_berkdb_rowlocks_close(bdb_berkdb_t *berkdb, int *bdberr)
     }
 
     /* Release cursor */
-    thread_free(berkdb);
+    free(berkdb);
 
     return 0;
 }

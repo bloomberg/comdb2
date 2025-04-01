@@ -1362,11 +1362,17 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 int replicant_is_able_to_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
-void sql_dlmalloc_init(void);
+#ifdef PER_THREAD_MALLOC
 int sql_mem_init(void *);
 int sql_mem_init_with_save(void *, void **);
 void sql_mem_shutdown(void *);
 void sql_mem_shutdown_and_restore(void *, void **);
+#else
+#define sql_mem_init(...)
+#define sql_mem_init_with_save(...)
+#define sql_mem_shutdown(...)
+#define sql_mem_shutdown_and_restore(...)
+#endif
 
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
 int sqlite3_close_serial(sqlite3 **);

@@ -51,7 +51,6 @@ set(src
   switches.c
   tcputil.c
   thdpool.c
-  thread_malloc.c
   thread_util.c
   time_accounting.c
   time_epoch.c

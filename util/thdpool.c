@@ -40,7 +40,6 @@
 #include "mem_override.h"
 #include "thdpool.h"
 #include "thread_util.h"
-#include "thread_malloc.h"
 #include "sys_wrap.h"
 #include "debug_switches.h"
 #include "logmsg.h"
@@ -707,9 +706,8 @@ static void *thdpool_thd(void *voidarg)
     }
 
     init_fn = pool->init_fn;
-    if (init_fn)
-        init_fn(pool, thddata);
-    thread_memcreate(pool->mem_sz);
+    if (init_fn) init_fn(pool, thddata);
+
     struct workitem work = {0};
 
     while (1) {
@@ -866,8 +864,6 @@ thread_exit:
         delt_fn(pool, thddata);
 
     Pthread_cond_destroy(&thd->cond);
-
-    thread_memdestroy();
 
     free(thd);
 

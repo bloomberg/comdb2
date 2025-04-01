@@ -28,7 +28,6 @@
 #include "sql.h"
 #include <sqliteInt.h>
 #include <vdbeInt.h>
-#include <thread_malloc.h>
 #include <flibc.h>
 
 #include "sqloffload.h"

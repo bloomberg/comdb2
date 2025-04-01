@@ -181,7 +181,6 @@ extern int gbl_time_fdb;  /* dump timestamps for remote sql */
 extern int gbl_print_syntax_err;
 extern int gbl_max_sqlcache;
 extern int gbl_track_sqlengine_states;
-extern int gbl_disable_sql_dlmalloc;
 extern struct ruleset *gbl_ruleset;
 extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_sql_no_timeouts_on_release_locks;
@@ -652,6 +651,7 @@ static pthread_mutex_t lru_evbuffers_mtx = PTHREAD_MUTEX_INITIALIZER;
 static TAILQ_HEAD(lru_evbuffers, sqlclntstate) lru_evbuffers = TAILQ_HEAD_INITIALIZER(lru_evbuffers);
 static TAILQ_HEAD(sql_evbuffers, sqlclntstate) sql_evbuffers = TAILQ_HEAD_INITIALIZER(sql_evbuffers);
 
+#ifdef PER_THREAD_MALLOC
 static __thread comdb2ma sql_mspace = NULL;
 static void sql_mem_create()
 {
@@ -723,12 +723,9 @@ static int sql_mem_size(void *mem) { return comdb2_malloc_usable_size(mem); }
 
 static int sql_mem_roundup(int i) { return i; }
 
-void sql_dlmalloc_init(void)
+static void sql_dlmalloc_init(void)
 {
     sqlite3_mem_methods m;
-    if (gbl_disable_sql_dlmalloc) {
-        return;
-    }
     m.xMalloc = sql_mem_malloc;
     m.xFree = sql_mem_free;
     m.xRealloc = sql_mem_realloc;
@@ -739,15 +736,16 @@ void sql_dlmalloc_init(void)
     m.pAppData = NULL;
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
+#endif
 
 /* Called once from comdb2. Do all static intialization here */
 void sqlinit(void)
 {
     Pthread_mutex_init(&gbl_sql_lock, NULL);
+#   ifdef PER_THREAD_MALLOC
     sql_dlmalloc_init();
-    /* initialize global structures in sqlite */
-    if (sqlite3_initialize())
-        abort();
+#   endif
+    if (sqlite3_initialize()) abort();
 }
 
 static char *vtable_lockname(sqlite3 *db, const char *vtable, int *is_system_table)

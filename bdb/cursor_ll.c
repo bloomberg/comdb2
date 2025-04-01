@@ -83,8 +83,6 @@
 #include <strings.h>
 #include <assert.h>
 
-#include <thread_malloc.h>
-
 #include <build/db.h>
 
 #include "bdb_cursor.h"
@@ -229,7 +227,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
 
     *bdberr = 0;
 
-    pberkdb = (bdb_berkdb_t *)thread_malloc(sizeof(bdb_berkdb_t));
+    pberkdb = (bdb_berkdb_t *)malloc(sizeof(bdb_berkdb_t));
     if (!pberkdb) {
         *bdberr = BDBERR_MALLOC;
         return NULL;
@@ -237,10 +235,10 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
     memset(pberkdb, 0, sizeof(bdb_berkdb_t));
 
     berkdb = pberkdb->impl =
-        (bdb_berkdb_impl_t *)thread_malloc(sizeof(bdb_berkdb_impl_t));
+        (bdb_berkdb_impl_t *)malloc(sizeof(bdb_berkdb_impl_t));
     if (!berkdb) {
         *bdberr = BDBERR_MALLOC;
-        thread_free(pberkdb);
+        free(pberkdb);
         return NULL;
     }
     memset(berkdb, 0, sizeof(bdb_berkdb_impl_t));
@@ -250,7 +248,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
     if (type == BERKDB_REAL) {
         DBT *dbt = &berkdb->u.rl.data;
 
-        dbt->data = thread_malloc(maxdata + maxkey);
+        dbt->data = malloc(maxdata + maxkey);
         if (!dbt->data) {
             *bdberr = BDBERR_MALLOC;
             return NULL;
@@ -273,14 +271,14 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
             dbth->ulen = MAXRECSZ;
 
             /* Maximum record size. */
-            berkdb->u.rl.odh_tmp = thread_malloc(MAXRECSZ);
+            berkdb->u.rl.odh_tmp = malloc(MAXRECSZ);
             if (!berkdb->u.rl.odh_tmp) {
                 *bdberr = BDBERR_MALLOC;
                 logmsg(LOGMSG_ERROR, "%s:%d malloc error %d\n", __FILE__, __LINE__,
                         MAXRECSZ);
-                thread_free(berkdb->u.rl.data.data);
-                thread_free(berkdb);
-                thread_free(pberkdb);
+                free(berkdb->u.rl.data.data);
+                free(berkdb);
+                free(pberkdb);
                 return NULL;
             }
             berkdb->u.rl.use_odh = 1;
@@ -293,9 +291,9 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                         __func__, cur->idx, bdb_state->numix);
                 cheap_stack_trace();
                 *bdberr = BDBERR_BADARGS;
-                thread_free(berkdb->u.rl.data.data);
-                thread_free(berkdb);
-                thread_free(pberkdb);
+                free(berkdb->u.rl.data.data);
+                free(berkdb);
+                free(pberkdb);
                 return NULL;
             }
             /* Indexes do not use odh. */
@@ -307,10 +305,10 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
         if (!db) {
             *bdberr = BDBERR_BADARGS;
             if (berkdb->u.rl.use_odh)
-                thread_free(berkdb->u.rl.odh_tmp);
-            thread_free(berkdb->u.rl.data.data);
-            thread_free(berkdb);
-            thread_free(pberkdb);
+                free(berkdb->u.rl.odh_tmp);
+            free(berkdb->u.rl.data.data);
+            free(berkdb);
+            free(pberkdb);
             return NULL;
         }
 
@@ -330,10 +328,10 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                         cursortype(cur->type), cur->idx, cur->curtran,
                         bdb_get_lid_from_cursortran(cur->curtran));
             if (berkdb->u.rl.use_odh)
-                thread_free(berkdb->u.rl.odh_tmp);
-            thread_free(berkdb->u.rl.data.data);
-            thread_free(berkdb);
-            thread_free(pberkdb);
+                free(berkdb->u.rl.odh_tmp);
+            free(berkdb->u.rl.data.data);
+            free(berkdb);
+            free(pberkdb);
             return NULL;
         }
 
@@ -370,8 +368,8 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                         __func__, cur->idx, bdb_state->numix);
                 cheap_stack_trace();
                 *bdberr = BDBERR_BADARGS;
-                thread_free(berkdb);
-                thread_free(pberkdb);
+                free(berkdb);
+                free(pberkdb);
                 return NULL;
             }
             db = cur->state->dbp_ix[cur->idx];
@@ -391,10 +389,10 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                         cursortype(cur->type), cur->idx, cur->curtran,
                         bdb_get_lid_from_cursortran(cur->curtran));
             if (berkdb->u.rl.use_odh)
-                thread_free(berkdb->u.rl.odh_tmp);
-            thread_free(berkdb->u.rl.data.data);
-            thread_free(berkdb);
-            thread_free(pberkdb);
+                free(berkdb->u.rl.odh_tmp);
+            free(berkdb->u.rl.data.data);
+            free(berkdb);
+            free(pberkdb);
             return NULL;
         }
 
@@ -448,8 +446,8 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
         if (*bdberr) {
             if (*bdberr == BDBERR_TRANTOOCOMPLEX ||
                 *bdberr == BDBERR_TRAN_CANCELLED || *bdberr == BDBERR_NO_LOG) {
-                thread_free(berkdb);
-                thread_free(pberkdb);
+                free(berkdb);
+                free(pberkdb);
                 return NULL;
             } else
                 logmsg(LOGMSG_ERROR, "%s failure to backfill shadow %d\n", __func__,
@@ -464,21 +462,21 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
         if (!berkdb->u.sd.cur) {
             /* normal case in which the shadow was not present and
                there is no backfill for it */
-            thread_free(berkdb);
-            thread_free(pberkdb);
+            free(berkdb);
+            free(pberkdb);
             return NULL;
         }
 
         /* Need odh logic for shadow-tables. */
         if (cur->type == BDBC_DT) {
             berkdb->u.sd.use_odh = 1;
-            berkdb->u.sd.odh_tmp = thread_malloc(MAXRECSZ);
+            berkdb->u.sd.odh_tmp = malloc(MAXRECSZ);
             if (!berkdb->u.sd.odh_tmp) {
                 *bdberr = BDBERR_MALLOC;
                 logmsg(LOGMSG_ERROR, "%s:%d malloc error %d\n", __FILE__, __LINE__,
                         MAXRECSZ);
-                thread_free(berkdb);
-                thread_free(pberkdb);
+                free(berkdb);
+                free(pberkdb);
                 return NULL;
             }
         }
@@ -635,11 +633,11 @@ static int bdb_berkdb_close_real(bdb_berkdb_t *pberkdb, int *bdberr)
     int rc;
 
     if (bt->use_odh)
-        thread_free(bt->odh_tmp);
+        free(bt->odh_tmp);
     if (bt->bulk.data)
-        thread_free(bt->bulk.data);
+        free(bt->bulk.data);
     if (bt->data.data)
-        thread_free(bt->data.data);
+        free(bt->data.data);
 
     /* db->dbc = NULL if bdbcursor was invalidated */
     if (bt->dbc) {
@@ -666,8 +664,8 @@ static int bdb_berkdb_close_real(bdb_berkdb_t *pberkdb, int *bdberr)
                     bdb_get_lid_from_cursortran(berkdb->cur->curtran));
     }
 
-    thread_free(berkdb);
-    thread_free(pberkdb);
+    free(berkdb);
+    free(pberkdb);
 
     return 0;
 }
@@ -789,7 +787,7 @@ int bdb_berkdb_next_real(bdb_berkdb_t *pberkdb, int *bdberr)
         bt->use_bulk = 1;
         bt->bulkptr = NULL;
         if (!bt->bulk.data) {
-            bt->bulk.data = thread_malloc(bt->bulk.ulen);
+            bt->bulk.data = malloc(bt->bulk.ulen);
         }
         if (!bt->bulk.data) {
             logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, bt->bulk.ulen);
@@ -877,13 +875,13 @@ static int bdb_berkdb_close_shad(bdb_berkdb_t *pberkdb, int *bdberr)
     int rc = 0;
 
     if (bt->use_odh)
-        thread_free(bt->odh_tmp);
+        free(bt->odh_tmp);
 
     rc = bdb_temp_table_close_cursor(berkdb->cur->state, berkdb->u.sd.cur,
                                      bdberr);
 
-    thread_free(berkdb);
-    thread_free(pberkdb);
+    free(berkdb);
+    free(pberkdb);
 
     return rc;
 }
