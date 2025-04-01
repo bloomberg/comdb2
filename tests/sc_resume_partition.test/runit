@@ -24,6 +24,15 @@ restart_cluster() {
 	wait_for_cluster
 }
 
+timepart_does_not_exist() {
+	local timepart
+	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select * from comdb2_timepartitions where name='t'")
+	if [[ -n ${timepart} ]];
+	then
+		return 1
+	fi
+}
+
 test_partition_merge_resume() {
 	# Given
 	local -r num_shards=$1
@@ -55,11 +64,9 @@ test_partition_merge_resume() {
 		return 1
 	fi
 
-	local timepart
-	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select * from comdb2_timepartitions where name='t'")
-	if [[ -n ${timepart} ]];
+	if ! retry_in_loop 20 1 timepart_does_not_exist;
 	then
-		echo "FAIL: Found time partition that should not exist"
+		echo "FAIL: Time partition was not deleted"
 		return 1
 	fi
 

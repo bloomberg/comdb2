@@ -1305,6 +1305,11 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
     iq->sc_pending = NULL;
 
     while (sc != NULL) {
+        Pthread_mutex_lock(&sc->mtxStart);
+        while (!sc->started) {
+            Pthread_cond_wait(&sc->condStart, &sc->mtxStart);
+        }
+        Pthread_mutex_unlock(&sc->mtxStart);
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
         iq->sc = sc->sc_next;
