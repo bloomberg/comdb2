@@ -2843,8 +2843,18 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* berkdb stats */
     bdb_reset_thread_stats();
 
-    if (clnt->rawnodestats)
+    if (clnt->rawnodestats) {
         clnt->rawnodestats->sql_queries++;
+        const char *api = clnt->plugin.api_type(clnt);
+        if (strcmp(api, "comdb2api") == 0)
+            clnt->rawnodestats->sql_queries_comdb2api++;
+        else if (clnt->features.require_fastsql) {
+            clnt->rawnodestats->sql_queries_converted++;
+            log_legacy_request(NULL, clnt);
+        }
+        else
+            clnt->rawnodestats->sql_queries_cdb2api++;
+    }
 
     /* sql thread stats */
     thd->sqlthd->startms = comdb2_time_epochms();
