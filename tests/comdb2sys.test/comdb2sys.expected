@@ -328,7 +328,7 @@
 (name='max_key_length', description='Maximum key length', value=512)
 (name='max_key_name_length', description='Maximum key name length', value=53)
 (name='max_networks', description='Maximum number of networks', value=2)
-(name='max_nodes', description='Maximum number of nodes', value=32)
+(name='max_nodes', description='Maximum number of nodes', value=64)
 (name='max_operation_name_length', description='Maximum length of a custom operation name', value=32)
 (name='max_pattern_length', description='Maximum length of the pattern in a LIKE or GLOB operator', value=50000)
 (name='max_plugins', description='Maximum number of plugins', value=100)
