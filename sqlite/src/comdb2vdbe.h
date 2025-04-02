@@ -6,8 +6,6 @@
 
 typedef struct OpFuncSetup OpFuncSetup;
 
-int initOpFunc(OpFunc* o, size_t len);
-int initOpFuncDefault(OpFunc* o);
 void freeOpFunc(OpFunc* o);
 int moreRecords(OpFunc* opf);
 char* nextString(OpFunc* opf, Mem* mem);
