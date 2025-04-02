@@ -2,8 +2,7 @@
 #include "vdbeInt.h"
 #include "vdbe.h"
 
-
-inline int initOpFunc(OpFunc* o, size_t len)
+static int initOpFunc(OpFunc* o, size_t len)
 {
     assert( o != NULL );
     
@@ -17,41 +16,31 @@ inline int initOpFunc(OpFunc* o, size_t len)
     return o->buf == NULL;
 }
 
-inline int initOpFuncDefault(OpFunc* o)
+static int initOpFuncDefault(OpFunc* o)
 {
     return initOpFunc(o, DEFAULT_OPFUNC_BUFLEN);
 }
 
-static inline int resize_buf(OpFunc* o, int size)
+static int resize_buf(OpFunc *o, int size)
 {
-   char* old_buf = o->buf;
-   int write_offset = o->writeNext - old_buf;
-   int read_offset = o->readNext - old_buf;
-
-   int newsize = o->end - old_buf;
-
-   for (; newsize < size; newsize *= 2);
-
-   char *newbuf = realloc(old_buf, newsize);
-   
-   if (!newbuf)
-       return -1;
-
-   o->buf = newbuf;
-
-   if (o->buf != old_buf)
-   {
-        o->writeNext = o->buf + write_offset;
-        o->readNext = o->buf + read_offset;
-   }
-
-   o->end = o->buf + newsize;
-   o->len = newsize; 
-   return 0;
+    char *old_buf = o->buf;
+    ptrdiff_t write_offset = o->writeNext - old_buf;
+    ptrdiff_t read_offset = o->readNext - old_buf;
+    ptrdiff_t newsize = o->end - old_buf;
+    while (newsize < size) newsize *= 2;
+    char *newbuf = realloc(old_buf, newsize);
+    if (!newbuf) return -1;
+    if (o->buf != newbuf) {
+        o->writeNext = newbuf + write_offset;
+        o->readNext = newbuf + read_offset;
+        o->buf = newbuf;
+    }
+    o->end = o->buf + newsize;
+    o->len = newsize;
+    return 0;
 }
 
-
-inline void freeOpFunc(OpFunc* func)
+void freeOpFunc(OpFunc* func)
 {
     if (!func)
         return;
@@ -67,7 +56,7 @@ inline void freeOpFunc(OpFunc* func)
 
 }
 
-static inline void shallowFreeOpFuncSetup(OpFuncSetup* stp)
+static void shallowFreeOpFuncSetup(OpFuncSetup* stp)
 {
     free(stp);
 }
@@ -77,7 +66,7 @@ static const char* OPFUNC_NOROWS_COLNAMES[] = {0};
 static int   OPFUNC_NOROWS_COLTYPES[] = {0};
 static size_t   OPFUNC_NOROWS_BUFSIZE = 0;
 
-static inline OpFuncSetup* getNoRowsSetup()
+static OpFuncSetup* getNoRowsSetup()
 {
     OpFuncSetup* stp = malloc(sizeof(OpFuncSetup));
 

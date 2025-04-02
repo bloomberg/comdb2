@@ -606,7 +606,7 @@ oom:
         }
         free(result);
     }
-    return result;
+    return NULL;
 }
 
 static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
