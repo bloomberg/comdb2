@@ -788,6 +788,10 @@ two options:
   1. U - sets the precision to microseconds.  Datetime values are returned with 
      [cdb2_client_datetimeus_t](datatypes.html#datetime-types) type.
 
+### SET EXPERT
+
+Suggest recommended indexes for the query
+
 ### SET USER
 
 Sets the username for the current connection.  Must be set if authentication is enabled (see [```PUT```](#put).  
@@ -848,6 +852,14 @@ default setting is 1.
 
 Configures row-buffering. The default is `ON`, where a server writes a row into a buffer and does not flush the buffer
 immediately. When off, a server flushes on every single row and hence it may reduce latency.
+
+### SET SPTRACE
+
+Runs stored procedure in verbose mode, printing each executed line and db:trace(...) in client console
+
+### SET SPDEBUG
+
+Runs stored procedure in debug mode
 
 ### SET SSL_MODE
 
