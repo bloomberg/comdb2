@@ -75,3 +75,6 @@ init_with_compr_blobs none
 
 memptricklepercent 69
 cache 1 gb
+
+# No need to pstack after SIGSTOP
+pstack_self 0
