@@ -49,7 +49,28 @@ function timepart_stats
     gorun "select * from comdb2_logical_cron"
 }
 
+test_max_retention() {
+    local -r MAX_RETENTION=1204
+    local errstr
+
+    errstr=$(cdb2sql ${CDB2_OPTIONS} $dbnm \
+        default "create table test_max_retention(a int) partitioned by manual retention $((MAX_RETENTION+1)) start 1" 2>&1 >/dev/null)
+    if (( $? == 0 )); then
+       echo "FAILURE expected to fail creating an invalid partitioned table but succeeded"
+       exit 1
+    fi
+
+    # Make sure that we did not get 'internal blah blah' error.
+    if ! grep -i "invalid manual retention" <<< "${errstr}";
+    then
+        echo "FAILURE error string was not expected: '${errstr}'"
+        exit 1
+    fi
+}
+
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+test_max_retention
 
 echo "Creating partition 1 and 2"
 echo "Creating partition 1 and 2" >> $output
