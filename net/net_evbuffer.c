@@ -2322,6 +2322,7 @@ static void pmux_rte(struct connect_info *c)
 {
     check_base_thd();
     struct event_info *e = c->e;
+    hputs("RTE req\n");
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
     evbuffer_add_printf(c->buf, "rte %s/%s/%s\n",
                         netinfo_ptr->app, netinfo_ptr->service,
@@ -2354,6 +2355,7 @@ static void pmux_get_readcb(int fd, short what, void *data)
     int good = 0;
     int port = -1;
     sscanf(res, "%d", &port);
+    hprintf("GOT PORT:%d\n", port);
     if (port > 0 && port <= USHRT_MAX) {
         char expected[len + 1];
         snprintf(expected, sizeof(expected), "%d %s/%s/%s", port,
@@ -2368,12 +2370,10 @@ static void pmux_get_readcb(int fd, short what, void *data)
         return;
     }
     update_event_port(e, port);
-    /*
     if (gbl_pmux_route_enabled) {
         pmux_rte(c);
         return;
     }
-    */
     c->fd = -1;
     shutdown_close(fd);
     comdb2_connect(c, port);
@@ -2405,6 +2405,7 @@ static void pmux_get(struct connect_info *c)
 {
     check_base_thd();
     struct event_info *e = c->e;
+    hputs("GET req\n");
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
     evbuffer_add_printf(c->buf, "get /echo %s/%s/%s\n", netinfo_ptr->app,
                         netinfo_ptr->service, netinfo_ptr->instance);
@@ -2464,14 +2465,12 @@ static void pmux_connect(int dummyfd, short what, void *data)
         return;
     }
     hprintf("CONNECTING fd:%d\n", c->fd);
-    /*
+    /* Need to discover port for udp_send */
     if (gbl_pmux_route_enabled && e->port != 0) {
         pmux_rte(c);
     } else {
         pmux_get(c);
     }
-    */
-    pmux_get(c);
 }
 
 static struct timeval ms_to_timeval(int ms)
