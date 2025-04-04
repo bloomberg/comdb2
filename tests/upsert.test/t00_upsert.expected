@@ -133,7 +133,7 @@
 [INSERT INTO t1 VALUES(11)] failed with rc 299 add key constraint duplicate key '$KEY_877B2989' on table 't1' index 0
 (rows inserted=1)
 (i=11)
-[INSERT INTO t1 VALUES(11) ON CONFLICT(i) DO UPDATE SET i = 1] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_A91B9811' unable to update record rc = 320
+[INSERT INTO t1 VALUES(11) ON CONFLICT(i) DO UPDATE SET i = 1] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_A91B9811' unable to update record
 (i=11)
 (rows inserted=0)
 (i=12)
