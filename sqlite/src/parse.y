@@ -1066,10 +1066,8 @@ on_opt(N) ::= .     [OR]   {N = 0;}
 //
 %type indexed_opt {Token}
 indexed_opt(A) ::= .                 {A.z=0; A.n=0;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 indexed_opt(A) ::= INDEXED BY nm(X). {A = X;}
 indexed_opt(A) ::= NOT INDEXED.      {A.z=0; A.n=1;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 %type using_opt {IdList*}
 %destructor using_opt {sqlite3IdListDelete(pParse->db, $$);}
@@ -1657,6 +1655,10 @@ paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 ///////////////////////////// The CREATE INDEX command ///////////////////////
 //
 %ifdef SQLITE_BUILDING_FOR_COMDB2
+%type ixalias {Token}
+ixalias ::= .
+ixalias(A) ::= ALIAS nm(I). { A = I; }
+
 %type pdl {ExprList*}
 %destructor pdl {sqlite3ExprListDelete(pParse->db, $$);}
 pdl(A) ::= pdl(A) COMMA nm(Y). {
@@ -1672,20 +1674,21 @@ with_inc(A) ::= . {A = 0;}
 %type with_opt2 {int}
 with_opt2(A) ::= ALL. {A = 1;}
 with_opt2(A) ::= . {A = 2;} // partial datacopy
-cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D) ixalias(A) 
         ON nm(Y) LP sortlist(Z) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2CreateIndex(pParse, &X, &D,
                     sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
                      &S, W, BW, AW, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF,
-                     O, 0, T);
+                     O, 0, T, &A);
 }
 // datacopy with include syntax
-cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D) ixalias(A) 
         ON nm(Y) LP sortlist(Z) RP INCLUDE with_opt2(O) with_inc(P) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2CreateIndex(pParse, &X, &D,
                     sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
                      &S, W, BW, AW, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF,
-                     O, P, T);
+                     O, P, T, &A);
+
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
