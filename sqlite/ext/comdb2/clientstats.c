@@ -56,7 +56,10 @@ enum {
     COLUMN_SQL_STEPS,
     COLUMN_SQL_ROWS,
     COLUMN_SVC_TIME,
-    COLUMN_IS_SSL
+    COLUMN_IS_SSL,
+    COLUMN_CDB2API,
+    COLUMN_COMDB2API,
+    COLUMN_CONVERTEDAPI
 };
 
 static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
@@ -72,7 +75,8 @@ static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
             "\"upds\" INTEGER, \"dels\" INTEGER, \"bsql\" INTEGER, \"recom\" "
             "INTEGER, \"snapisol\" INTEGER, \"serial\" INTEGER, "
             "\"sql_queries\" INTEGER, \"sql_steps\" INTEGER, \"sql_rows\" "
-            "INTEGER, \"svc_time\" DOUBLE, \"is_ssl\" INTEGER)");
+            "INTEGER, \"svc_time\" DOUBLE, \"is_ssl\" INTEGER, "
+            "\"sql_cdb2api\" INTEGER, \"sql_comdb2api\" INTEGER, \"sql_convertedapi\" INTEGER)");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -221,6 +225,16 @@ static int systblClientStatsColumn(sqlite3_vtab_cursor *cur,
     case COLUMN_IS_SSL:
         sqlite3_result_int(ctx, summaries[ii].is_ssl);
         break;
+    case COLUMN_CDB2API:
+        sqlite3_result_int(ctx, summaries[ii].sql_queries_cdb2api);
+        break;
+    case COLUMN_COMDB2API:
+        sqlite3_result_int(ctx, summaries[ii].sql_queries_comdb2api);
+        break;
+    case COLUMN_CONVERTEDAPI:
+        sqlite3_result_int(ctx, summaries[ii].sql_queries_converted);
+        break;
+
     default: assert(0);
     };
 
