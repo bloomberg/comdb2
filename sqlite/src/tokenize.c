@@ -835,13 +835,14 @@ static int isLeftOperand(int tokenType){
 ** This function should return non-zero if the specified token type is
 ** a keyword that requires the next token to be a table identifier.
 */
-static int requiresTableId(int tokenType){
+static int requiresTableId(int tokenType, int useStrId){
   switch( tokenType ){
     case TK_FROM:
     case TK_JOIN:
     case TK_INTO:
     case TK_UPDATE:
     case TK_TABLE:    return 1;
+    case TK_SPACE:    return useStrId;
     default:          return 0;
   }
 }
@@ -964,7 +965,6 @@ char *sqlite3Normalize_alternate(
         /* fall through */
       }
       default: {
-        useStrId = requiresTableId(tokenType);
         if( sqlite3IsIdChar(zSql[i]) ) addSpaceSeparator(pStr);
         j = pStr->nChar;
         sqlite3_str_append(pStr, zSql+i, n);
@@ -975,6 +975,7 @@ char *sqlite3Normalize_alternate(
         break;
       }
     }
+    useStrId = requiresTableId(tokenType, useStrId);
   }
   if( tokenType!=TK_SEMI ) sqlite3_str_append(pStr, ";", 1);
   return sqlite3_str_finish(pStr);
