@@ -18,11 +18,4 @@ int logqueue_trigger_get(void *qfile, DBT *key, DBT *data, int timeoutms);
 void register_dump_qtrigger(const char *filename, bdb_state_type *(*gethndl)(const char *q), const char *outfile,
                             int maxsz);
 
-#ifdef WITH_QKAFKA
-
-int register_queue_kafka(const char *filename, const char *kafka_topic, bdb_state_type *(*gethndl)(const char *q),
-                         int maxsz);
-
-#endif
-
 #endif

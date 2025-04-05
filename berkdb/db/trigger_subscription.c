@@ -4,9 +4,6 @@
 #include "dbinc/trigger_subscription.h"
 #include <sys_wrap.h>
 
-#include <mem_berkdb.h>
-#include <mem_override.h>
-
 /*
  * Maintain mapping of qdb name and its signaling mechanism.
  * This needs a simple hash table (name -> pthread_cond_t).
