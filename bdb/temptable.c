@@ -1588,7 +1588,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
     *last = 0;
 
     /* See comments in bdb_temp_table_close(). */
-    if ((tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) &&
+    if ((tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) && tbl->dbenv_temp &&
         (tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
                                     DB_STAT_CLEAR)) == 0) {
         bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
