@@ -978,15 +978,58 @@ static int verify_sc_resumed_for_shard(const char *shardname,
 static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
+    int rc = 0;
 
-    /* all shards resumed, including the next shard if any */
+    /* corner case, shard merging: all shard schema changes need
+     * to share the same destination table newdb;
+     * at this point we will block resuming a shard merging, give
+     * the complexity of the changes involved
+     */
+    struct schema_change_type *sc =  tpt_sc->s;
+    while (sc) {
+        if (sc->partition.type == PARTITION_MERGE) {
+            break;
+        }
+        sc = sc->sc_next;
+    }
+    if (sc) {
+        /* merge operation, resume not supported */
+        logmsg(LOGMSG_ERROR, "%s partition merging detected %s, aborting\n", __func__,
+               tpt_sc->s->tablename);
+        sc = tpt_sc->s;
+        while (sc) {
+            mark_schemachange_over(sc->tablename);
+            struct dbtable *tbl = get_dbtable_by_name(sc->tablename);
+            if (tbl) {
+                sc_del_unused_files(tbl);
+            }
+            sc->sc_rc = SC_ABORTED;
+            sc = sc->sc_next;
+        }
+        return 0;
+    }
+
+    /* we need to start all the shards already in progress */
+    sc = tpt_sc->s;
+    while (sc) {
+        rc = start_schema_change(sc);
+        if (rc != SC_OK && rc != SC_ASYNC) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to resume schema change for table '%s' rc %d\n",
+                   __func__, sc->tablename, rc);
+            sc->sc_rc = SC_ABORTED;
+            return -1;
+        }
+        sc = sc->sc_next;
+    }
+
+    /* are all shards resumed, including the next shard if any */
     if (tpt_sc->nshards > timepart_get_num_shards(tpt_sc->viewname))
         return 0;
 
+    /* start new sc for shards that were not resumed */
     timepart_sc_arg_t sc_arg = {0};
     sc_arg.s = tpt_sc->s;
-    sc_arg.part_name = tpt_sc->viewname;
-    /* start new sc for shards that were not resumed */
     sc_arg.check_extra_shard = 1;
     sc_arg.lockless = 1;
     timepart_foreach_shard(verify_sc_resumed_for_shard, &sc_arg);
@@ -1254,19 +1297,7 @@ int resume_schema_change(void)
 
             MEMORY_SYNC;
 
-            /* start the schema change back up */
-            rc = start_schema_change(s);
-            if (rc != SC_OK) {
-                logmsg(
-                    LOGMSG_ERROR,
-                    "%s: failed to resume schema change for table '%s' rc %d\n",
-                    __func__, s->tablename, rc);
-                /* start_schema_change will free if this fails */
-                /*
-                free_schema_change_type(s);
-                */
-                continue;
-            } else if (s->timepartition_name) {
+            if (s->timepartition_name) {
                 struct timepart_sc_resuming *tpt_sc = NULL;
                 tpt_sc = hash_find(tpt_sc_hash, &s->timepartition_name);
                 if (tpt_sc == NULL) {
@@ -1287,9 +1318,23 @@ int resume_schema_change(void)
                     tpt_sc->s = s;
                     tpt_sc->nshards++;
                 }
-            } else if (s->finalize == 0 && s->kind != SC_ALTERTABLE_PENDING) {
-                s->sc_next = sc_resuming;
-                sc_resuming = s;
+            } else {
+                /* start the schema change back up */
+                rc = start_schema_change(s);
+                if (rc != SC_OK) {
+                    logmsg(
+                            LOGMSG_ERROR,
+                            "%s: failed to resume schema change for table '%s' rc %d\n",
+                            __func__, s->tablename, rc);
+                    /* start_schema_change will free if this fails */
+                    /*
+                       free_schema_change_type(s);
+                       */
+                    continue;
+                } else if (s->finalize == 0 && s->kind != SC_ALTERTABLE_PENDING) {
+                    s->sc_next = sc_resuming;
+                    sc_resuming = s;
+                }
             }
         }
     }
