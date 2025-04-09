@@ -257,7 +257,7 @@ static int luabb_tointeger_int(Lua lua, int idx, long long *val)
     switch (luabb_dbtype(lua, idx)) {
 
     case DBTYPES_CSTRING:
-        s = ((lua_cstring_t *)lua_topointer(lua, idx))->iov.iov_base;
+        s = ((lua_cstring_t *)lua_topointer(lua, idx))->val;
         goto str;
 
     case LUA_TSTRING:
@@ -348,7 +348,7 @@ static int luabb_toreal_int(Lua lua, int idx, double *ret)
         s = lua_tostring(lua, idx);
         goto str;
     case DBTYPES_CSTRING:
-        s = ((lua_cstring_t *)lua_topointer(lua, idx))->iov.iov_base;
+        s = ((lua_cstring_t *)lua_topointer(lua, idx))->val;
     str:
         errno = 0;
         *ret = strtod(s, &e);
@@ -395,9 +395,9 @@ int luabb_toreal_noerr(Lua L, int idx, double *ret)
 static int luabb_tointervalym_int(Lua lua, int idx, intv_t *ret)
 {
     int rc = 0;
+    const char *c;
     double d;
     long long i;
-    struct iovec iov;
     int64_t tmp = 0, tmp2 = 0;
     int type = 0;
     ret->type = INTV_YM_TYPE;
@@ -421,8 +421,8 @@ static int luabb_tointervalym_int(Lua lua, int idx, intv_t *ret)
     case LUA_TSTRING:
     case DBTYPES_CSTRING:
         type = INTV_YM_TYPE;
-        luabb_tostring(lua, idx, &iov);
-        rc = str_to_interval(iov.iov_base, iov.iov_len, &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
+        c = luabb_tostring(lua, idx);
+        rc = str_to_interval(c, strlen(c), &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
           &ret->sign);
         if (type == 0 || type == 2) // 'years-months' or 'number'
              break;
@@ -461,9 +461,9 @@ int luabb_tointervalym_noerr(Lua L, int idx, intv_t *ret)
 static int luabb_tointervalds_int(Lua lua, int idx, intv_t *ret)
 {
     int rc = 0;
+    const char *c;
     double d;
     long long i;
-    struct iovec iov;
     int64_t tmp = 0, tmp2 = 0;
     int type;
     switch(luabb_dbtype(lua, idx)) {
@@ -484,8 +484,8 @@ static int luabb_tointervalds_int(Lua lua, int idx, intv_t *ret)
     case LUA_TSTRING:
     case DBTYPES_CSTRING:
         type = INTV_DS_TYPE;
-        luabb_tostring(lua, idx, &iov);
-        rc = str_to_interval(iov.iov_base, iov.iov_len, &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
+        c = luabb_tostring(lua, idx);
+        rc = str_to_interval(c, strlen(c), &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
           &ret->sign);
         if (type == 1) { // days hr:mn:sec.msec
             ret->type = ret->u.ds.prec == DTTZ_PREC_MSEC ? INTV_DS_TYPE : INTV_DSUS_TYPE;
@@ -525,31 +525,32 @@ int luabb_tointervalds_noerr(Lua L, int idx, intv_t *ret)
     return -1;
 }
 
-static int luabb_tostring_int(Lua L, int idx, struct iovec *iov, int fatal)
+static const char *luabb_tostring_int(Lua L, int idx, int fatal)
 {
     idx = to_positive_index(L, idx);
+    const char *ret = NULL;
     dbtypes_enum dbtype = luabb_dbtype(L, idx);
     if (dbtype > DBTYPES_MINTYPE && dbtype < DBTYPES_MAXTYPE) {
         if (dbtypes_tostring[dbtype]) {
             lua_pushvalue(L, idx);
             dbtypes_tostring[dbtype](L);
-            iov->iov_base = (void *)lua_tolstring(L, -1, &iov->iov_len);
+            ret = lua_tostring(L, -1);
             lua_pop(L, 2);
-            return 0;
+            return ret;
         }
     } else if (lua_isnumber(L, idx)) {
             lua_pushvalue(L, idx);
-            iov->iov_base = (void *)lua_tolstring(L, -1, &iov->iov_len);
+            ret = lua_tostring(L, -1);
             lua_pop(L, 1);
-            return 0;
+            return ret;
     } else if (lua_isstring(L, idx)) {
             lua_pushvalue(L, idx);
-            iov->iov_base = (void *)lua_tolstring(L, -1, &iov->iov_len);
+            ret = lua_tostring(L, -1);
             lua_pop(L, 1);
-            return 0;
+            return ret;
     }
     luabb_type_err_int(L, "string", idx, fatal);
-    return -1;
+    return NULL;
 }
 
 /*
@@ -557,44 +558,48 @@ static int luabb_tostring_int(Lua L, int idx, struct iovec *iov, int fatal)
 ** DON'T CALL INTO ANY lua_* FUNCTIONS WITH IT.
 ** A GC-RUN CAN TRASH RETURNED MEMORY.
 */
-void luabb_tostring(Lua L, int idx, struct iovec *iov)
+const char *luabb_tostring(Lua L, int idx)
 {
-    luabb_tostring_int(L, idx, iov, 1);
+    return luabb_tostring_int(L, idx, 1);
 }
 
-int luabb_tostring_noerr(Lua L, int idx, struct iovec *iov)
+const char *luabb_tostring_noerr(Lua L, int idx)
 {
-    return luabb_tostring_int(L, idx, iov, 0);
+    return luabb_tostring_int(L, idx, 0);
 }
 
-static int luabb_toblob_int(Lua lua, int idx, struct iovec *ret)
+static int luabb_toblob_int(Lua lua, int idx, blob_t *ret)
 {
+    const char *c;
+    size_t s;
     int type = luabb_type(lua, idx);
     if (type == DBTYPES_LSTRING) {
-        ret->iov_base = strdup(lua_tolstring (lua, idx, &ret->iov_len));
+        c = lua_tostring(lua, idx);
+str:    s = strlen(c);
+        ret->data = strdup(c);
+        ret->length = s;
         return 0;
     } else if (type == DBTYPES_CSTRING) {
-        lua_cstring_t *c = lua_touserdata(lua, idx);
-        ret->iov_base = strdup(c->iov.iov_base);
-        ret->iov_len = c->iov.iov_len;
-        return 0;
+        c = ((lua_cstring_t*)lua_touserdata(lua, idx))->val;
+        goto str;
     } else if (type == DBTYPES_BLOB) {
         const lua_blob_t *blob = lua_topointer(lua, idx);
-        *ret = blob->iov;
+        *ret = blob->val;
         return 0;
     }
     return -1;
 }
 
-void luabb_toblob(Lua L, int idx, struct iovec *ret)
+void luabb_toblob(Lua L, int idx, blob_t *ret)
 {
     if (luabb_toblob_int(L, idx, ret))
         luabb_type_err(L, dbtypes.blob, idx);
 }
 
-int luabb_toblob_noerr(Lua L, int idx, struct iovec *ret)
+int luabb_toblob_noerr(Lua L, int idx, blob_t *ret)
 {
-    if (luabb_toblob_int(L, idx, ret) == 0) return 0;
+    if (luabb_toblob_int(L, idx, ret) == 0)
+        return 0;
     luabb_type_err_non_fatal(L, dbtypes.blob, idx);
     return -1;
 }
@@ -719,7 +724,7 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
     int64_t i;
     dttz_t dt;
     time_t temp_t;
-    struct iovec iov;
+    const char *str;
     cdb2_client_datetime_t cdtms;
     cdb2_client_datetimeus_t cdtus;
 
@@ -729,8 +734,8 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
 
     switch (luabb_dbtype(lua, idx)) {
     case LUA_TSTRING:
-        iov.iov_base = (void *)lua_tolstring(lua, idx, &iov.iov_len);
-        if (str_to_dttz(iov.iov_base, iov.iov_len, tzname, &dt, precision) != 0)
+        str = lua_tostring(lua, idx);
+        if (str_to_dttz(str, strlen(str), tzname, &dt, precision) != 0)
             goto err;
         break;
     case LUA_TNUMBER:
@@ -759,8 +764,8 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
         *ret = ((lua_datetime_t *)lua_topointer(lua, idx))->val;
         return 0;
     case DBTYPES_CSTRING:
-        iov = ((lua_cstring_t*)lua_topointer(lua, idx))->iov;
-        if (str_to_dttz(iov.iov_base, iov.iov_len, tzname, &dt, precision) != 0)
+        str = ((lua_cstring_t*)lua_topointer(lua, idx))->val;
+        if (str_to_dttz(str, strlen(str), tzname, &dt, precision) != 0)
             goto err;
         break;
     case DBTYPES_REAL:
@@ -818,7 +823,7 @@ void luabb_todecimal(lua_State *lua, int idx, decQuad *val)
         sval = lua_tostring(lua, idx);
         break;
     case DBTYPES_CSTRING:
-        sval = ((lua_cstring_t *)lua_topointer(lua, idx))->iov.iov_base;
+        sval = ((lua_cstring_t *)lua_topointer(lua, idx))->val;
         break;
     case DBTYPES_INTEGER:
         ival = ((lua_int_t *) lua_topointer(lua, idx))->val;
@@ -1388,8 +1393,7 @@ static int l_mod(Lua lua)
 int l_cstring_new(lua_State *lua) {
     lua_cstring_t *s;
     new_lua_t(s, lua_cstring_t, DBTYPES_CSTRING);
-    s->iov.iov_base = NULL;
-    s->iov.iov_len = 0;
+    s->val = NULL;
     return 1;
 }
 
@@ -1399,21 +1403,21 @@ int l_cstring_tostring(lua_State *lua) {
     if (s->is_null)
       lua_pushstring(lua, null_str);
     else   
-      lua_pushlstring(lua, s->iov.iov_base, s->iov.iov_len);
+      lua_pushstring(lua, s->val);
     return 1;
 }
 
 int l_cstring_free(Lua lua)
 {
     lua_cstring_t *s = lua_touserdata(lua, 1);
-    free(s->iov.iov_base);
+    free(s->val);
     return 0;
 }
 
 int l_cstring_length(lua_State *lua) {
     const lua_cstring_t *s;
     s = (const lua_cstring_t*) lua_topointer(lua, 1);
-    lua_pushnumber(lua, utf8_bytelen(s->iov.iov_base, s->iov.iov_len));
+    lua_pushnumber(lua, utf8_bytelen(s->val, strlen(s->val)));
     return 1;
 }
 
@@ -1422,7 +1426,7 @@ static void getstr(Lua lua, const char **s, int i)
     *s = NULL;
     dbtypes_enum t = luabb_dbtype(lua, i);
     if (t == DBTYPES_CSTRING)
-        *s = (((const lua_cstring_t *)lua_topointer(lua, i))->iov.iov_base);
+        *s = (((const lua_cstring_t *)lua_topointer(lua, i))->val);
     else if (lua_isstring(lua, i))
         *s = lua_tostring(lua, i);
 }
@@ -1518,8 +1522,8 @@ static void init_cstring(Lua L)
 int l_blob_new(lua_State *lua) {
     lua_blob_t *d;
     new_lua_t(d, lua_blob_t, DBTYPES_BLOB);
-    d->iov.iov_base = NULL;
-    d->iov.iov_len = 0;
+    d->val.length = 0;
+    d->val.data = NULL;
     return 1;
 }
 
@@ -1906,8 +1910,8 @@ static int clone_blob(Lua lua)
     lua_blob_t *clone;
     new_lua_t(clone, lua_blob_t, DBTYPES_BLOB);
     *clone = *blob;
-    clone->iov.iov_base = malloc(blob->iov.iov_len);
-    memcpy(clone->iov.iov_base, blob->iov.iov_base, blob->iov.iov_len);
+    clone->val.data = malloc(blob->val.length);
+    memcpy(clone->val.data, blob->val.data, blob->val.length);
     return 1;
 }
 
@@ -1928,9 +1932,9 @@ static int l_blob_index(Lua L)
         luaL_error(L, "bad blob index");
     }
     --i;
-    if (i < 0 || i >= b->iov.iov_len) luaL_error(L, "blob index out of range");
+    if (i < 0 || i >= b->val.length) luaL_error(L, "blob index out of range");
 
-    struct iovec byte = {.iov_len = 1, .iov_base = ((uint8_t *)b->iov.iov_base) + i};
+    blob_t byte = {.length = 1, .data = ((uint8_t *)b->val.data) + i};
     luabb_pushblob(L, &byte);
     return 1;
 }
@@ -1950,10 +1954,10 @@ static int l_blob_newindex(Lua L)
     else
         luaL_error(L, "bad blob index");
     --i;
-    if (i < 0 || i >= b1->iov.iov_len) luaL_error(L, "blob index out of range");
+    if (i < 0 || i >= b1->val.length) luaL_error(L, "blob index out of range");
 
-    luaL_argcheck(L, b3->iov.iov_len == 1, 3, "assigning more than one byte");
-    *((uint8_t *)b1->iov.iov_base + i) = *(uint8_t *)b3->iov.iov_base;
+    luaL_argcheck(L, b3->val.length == 1, 3, "assigning more than one byte");
+    *((uint8_t *)b1->val.data + i) = *(uint8_t *)b3->val.data;
     return 0;
 }
 
@@ -1965,9 +1969,9 @@ static int l_blob_tostring_int(Lua lua, int idx)
     if (blob->is_null)
         lua_pushstring(lua, null_str);
     else {
-      int len = blob->iov.iov_len * 2;
+      int len = blob->val.length * 2;
       char *hexified = malloc(len + 1);
-      util_tohex(hexified, blob->iov.iov_base, blob->iov.iov_len);
+      util_tohex(hexified, blob->val.data, blob->val.length);
       lua_pushlstring(lua, hexified, len);
       free(hexified);
     }
@@ -1987,13 +1991,13 @@ static int l_blob_eq(Lua L)
     nullchk(L, 1);
     nullchk(L, 2);
 
-    struct iovec *b1 = &((lua_blob_t *)lua_touserdata(L, 1))->iov;
-    struct iovec *b2 = &((lua_blob_t *)lua_touserdata(L, 2))->iov;
+    blob_t *b1 = &((lua_blob_t *)lua_touserdata(L, 1))->val;
+    blob_t *b2 = &((lua_blob_t *)lua_touserdata(L, 2))->val;
 
-    if (b1->iov_len != b2->iov_len) {
+    if (b1->length != b2->length) {
         lua_pushboolean(L, 0);
     } else {
-        lua_pushboolean(L, memcmp(b1->iov_base, b2->iov_base, b1->iov_len) == 0 ? 1 : 0);
+        lua_pushboolean(L, memcmp(b1->data, b2->data, b1->length) == 0 ? 1 : 0);
     }
     return 1;
 }
@@ -2006,17 +2010,17 @@ static int l_blob_lt(Lua L)
     nullchk(L, 1);
     nullchk(L, 2);
 
-    struct iovec *b1 = &((lua_blob_t *)lua_touserdata(L, 1))->iov;
-    struct iovec *b2 = &((lua_blob_t *)lua_touserdata(L, 2))->iov;
+    blob_t *b1 = &((lua_blob_t *)lua_touserdata(L, 1))->val;
+    blob_t *b2 = &((lua_blob_t *)lua_touserdata(L, 2))->val;
 
-    size_t n = b1->iov_len < b2->iov_len ? b1->iov_len : b2->iov_len;
-    int c = memcmp(b1->iov_base, b2->iov_base, n);
+    size_t n = b1->length < b2->length ? b1->length : b2->length;
+    int c = memcmp(b1->data, b2->data, n);
     if (c < 0) {
         lua_pushboolean(L, 1);
     } else if (c > 0) {
         lua_pushboolean(L, 0);
     } else {
-        lua_pushboolean(L, b1->iov_len < b2->iov_len);
+        lua_pushboolean(L, b1->length < b2->length);
     }
     return 1;
 }
@@ -2029,17 +2033,17 @@ static int l_blob_le(Lua L)
     nullchk(L, 1);
     nullchk(L, 2);
 
-    struct iovec *b1 = &((lua_blob_t *)lua_touserdata(L, 1))->iov;
-    struct iovec *b2 = &((lua_blob_t *)lua_touserdata(L, 2))->iov;
+    blob_t *b1 = &((lua_blob_t *)lua_touserdata(L, 1))->val;
+    blob_t *b2 = &((lua_blob_t *)lua_touserdata(L, 2))->val;
 
-    size_t n = b1->iov_len < b2->iov_len ? b1->iov_len : b2->iov_len;
-    int c = memcmp(b1->iov_base, b2->iov_base, n);
+    size_t n = b1->length < b2->length ? b1->length : b2->length;
+    int c = memcmp(b1->data, b2->data, n);
     if (c < 0) {
         lua_pushboolean(L, 1);
     } else if (c > 0) {
         lua_pushboolean(L, 0);
     } else {
-        lua_pushboolean(L, b1->iov_len <= b2->iov_len);
+        lua_pushboolean(L, b1->length <= b2->length);
     }
     return 1;
 }
@@ -2047,7 +2051,7 @@ static int l_blob_le(Lua L)
 static int l_blob_free(Lua lua)
 {
     const lua_blob_t *b = lua_topointer(lua, 1);
-    free(b->iov.iov_base);
+    free(b->val.data);
     return 0;
 }
 
@@ -2058,7 +2062,7 @@ static int l_blob_length(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.blob);
     blob = lua_topointer(lua, 1);
 
-    lua_pushnumber(lua, blob->iov.iov_len);
+    lua_pushnumber(lua, blob->val.length);
 
     return 1;
 }
@@ -2105,44 +2109,46 @@ void luabb_pushdecimal(lua_State *lua, const decQuad *val)
     i->val = *val;
 }
 
-void luabb_pushcstring(lua_State *lua, const char* cstrval)
-{
-    luabb_pushcstringlen(lua, cstrval, strlen(cstrval));
+void luabb_pushcstring(lua_State *lua, const char* cstrval) {
+    l_cstring_new(lua);
+    lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
+    s->val = strdup(cstrval);
 }
 
 void luabb_pushcstringlen(lua_State *lua, const char* cstrval, int len)
 {
     l_cstring_new(lua);
     lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
-    s->iov.iov_base = strndup(cstrval, len);
-    s->iov.iov_len = len;
+    s->val = malloc(len + 1);
+    memcpy(s->val, cstrval, len);
+    s->val[len] = '\0';
 }
 
 // dl -> str'dup'-less
-void luabb_pushcstring_dl(lua_State *lua, struct iovec *iov)
+void luabb_pushcstring_dl(lua_State *lua, const char* cstrval)
 {
     l_cstring_new(lua);
     lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
-    s->iov = *iov;
+    s->val = (char *)cstrval;
 }
 
-void luabb_pushblob(lua_State *lua, const struct iovec *val)
+void luabb_pushblob(lua_State *lua, const blob_t *val)
 {
     lua_blob_t *i;
     l_blob_new(lua);
     i = (lua_blob_t*) lua_topointer(lua, -1);
-    i->iov = *val;
-    i->iov.iov_base = malloc(val->iov_len);
-    memcpy(i->iov.iov_base, val->iov_base, val->iov_len);
+    i->val.length = val->length;
+    i->val.data = malloc(val->length);
+    memcpy(i->val.data, val->data, val->length);
 }
 
 // dl -> str'dup'-less
-void luabb_pushblob_dl(lua_State *lua, const struct iovec *val)
+void luabb_pushblob_dl(lua_State *lua, const blob_t *val)
 {
     lua_blob_t *i;
     l_blob_new(lua);
     i = (lua_blob_t*) lua_topointer(lua, -1);
-    i->iov = *val;
+    i->val = *val;
 }
 
 void luabb_pushreal(lua_State *lua, double dval) {
@@ -2233,10 +2239,10 @@ char *luabb_newblob(Lua lua, int len, void **blob)
     l_blob_new(lua);
     *blob = b = (void *) lua_topointer(lua, -1);
     lua_pop(lua, 1);
-    b->iov.iov_base = malloc(len);
-    memset(b->iov.iov_base, 0xff, len);
-    b->iov.iov_len = len;
-    return (char *)b->iov.iov_base;
+    b->val.data = malloc(len);
+    memset(b->val.data, 0xff, len);
+    b->val.length = len;
+    return (char *)b->val.data;
 }
 
 static int l_typed_assignment(lua_State *lua)
@@ -2287,14 +2293,8 @@ int l_column_cast(Lua L)
 
 static int l_concat(Lua lua)
 {
-    struct iovec v;
-
-    luabb_tostring(lua, 1, &v);
-    char *s1 = strdup(v.iov_base);
-
-    luabb_tostring(lua, 2, &v);
-    char *s2 = strdup(v.iov_base);
-
+    char *s1 = strdup(luabb_tostring(lua, 1));
+    char *s2 = strdup(luabb_tostring(lua, 2));
     lua_pushfstring(lua, "%s%s", s1, s2);
     free(s1);
     free(s2);

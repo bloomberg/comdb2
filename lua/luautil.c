@@ -149,9 +149,7 @@ void luabb_dumpcstack_(Lua lua)
                 logmsg(LOGMSG_USER, "invalid type\n");
             } else {
                 if (dbtypes_tostring[t]) {
-                    struct iovec iov;
-                    luabb_tostring(lua, i, &iov);
-                    logmsg(LOGMSG_USER, "%s: %s\n", dbtypes_str[t], (char *)iov.iov_base);
+                    logmsg(LOGMSG_USER, "%s: %s\n", dbtypes_str[t], luabb_tostring(lua, i));
                 } else {
                     logmsg(LOGMSG_USER, "%s\n", dbtypes_str[t]);
                 }
@@ -353,9 +351,9 @@ void luabb_typeconvert_int(Lua l, int pos, dbtypes_enum to, const char *to_str)
         luabb_pushinteger(l, u.in);
         break;
     case DBTYPES_CSTRING:
-        luabb_tostring(l, pos, &u.iov);
-        u.iov.iov_base = strdup(u.iov.iov_base);
-        luabb_pushcstring_dl(l, &u.iov);
+        u.cs = strdup(luabb_tostring(l, pos));
+        luabb_pushcstring(l, u.cs);
+        free(u.cs);
         break;
     case DBTYPES_REAL:
         luabb_toreal(l, pos, &u.rl);
@@ -370,8 +368,8 @@ void luabb_typeconvert_int(Lua l, int pos, dbtypes_enum to, const char *to_str)
         luabb_pushdecimal(l, &u.dq);
         break;
     case DBTYPES_BLOB:
-        luabb_toblob(l, pos, &u.iov);
-        luabb_pushblob(l, &u.iov);
+        luabb_toblob(l, pos, &u.bl);
+        luabb_pushblob(l, &u.bl);
         break;
     case DBTYPES_INTERVALYM:
         luabb_tointervalym(l, pos, &u.iv);
@@ -423,11 +421,11 @@ HashType luabb_hashinfo(void *udata, double *d, const char **c, size_t *l)
     case DBTYPES_BLOB:
         if (c != NULL && l != NULL) {
             if (t->dbtype == DBTYPES_CSTRING) {
-                *c = ((lua_cstring_t *)t)->iov.iov_base;
-                *l = ((lua_cstring_t *)t)->iov.iov_len;
+                *c = ((lua_cstring_t *)t)->val;
+                *l = strlen(*c);
             } else {
-                *c = ((lua_blob_t *)t)->iov.iov_base;
-                *l = ((lua_blob_t *)t)->iov.iov_len;
+                *c = ((lua_blob_t *)t)->val.data;
+                *l = ((lua_blob_t *)t)->val.length;
             }
         }
         return String;
@@ -457,17 +455,16 @@ static int numeq(lua_dbtypes_t *b1, TValue *t2, int *eq)
 
 static int streq(lua_cstring_t *b1, TValue *t2, int *eq)
 {
-    const struct iovec *v1 = &b1->iov, *v2;
-    const char *s1 = v1->iov_base, *s2 = NULL;
+    const char *s1, *s2 = NULL;
     lua_cstring_t *b2;
+    s1 = b1->val;
     switch (ttype(t2)) {
     case LUA_TSTRING:
         s2 = svalue(t2);
         break;
     case LUA_TUSERDATA:
         b2 = (lua_cstring_t *)luabb_todbpointer(t2);
-        v2 = &b2->iov;
-        s2 = v2->iov_base;
+        s2 = b2->val;
     }
     if (s1 == NULL ||  s2 == NULL)
         return 1;
@@ -481,13 +478,13 @@ static int sameq(lua_dbtypes_t *t1, lua_dbtypes_t *t2, int *eq)
         return 1;
     if (t1->dbtype != t2->dbtype)
         return 1;
-    struct iovec *b1, *b2;
+    blob_t b1, b2;
     switch (t1->dbtype) {
     case DBTYPES_BLOB:
-        b1 = &((lua_blob_t *)t1)->iov;
-        b2 = &((lua_blob_t *)t2)->iov;
-        if (b1->iov_len == b2->iov_len)
-            *eq = !memcmp(b1->iov_base, b2->iov_base, b1->iov_len);
+        b1 = ((lua_blob_t *)t1)->val;
+        b2 = ((lua_blob_t *)t2)->val;
+        if (b1.length == b2.length)
+            *eq = !memcmp(b1.data, b2.data, b1.length);
         else
             *eq = 0;
         return 0;
@@ -585,12 +582,13 @@ int luabb_iscstring(Lua l, int idx)
 }
 
 /* assumes luabb_iscstring is true */
-void luabb_tocstring(Lua l, int idx, struct iovec *iov)
+const char *luabb_tocstring(Lua l, int idx)
 {
     const TValue *o = index2adr(l, idx);
     lua_dbtypes_t *bb = luabb_todbpointer(o);
     if (bb->dbtype != DBTYPES_CSTRING) abort();
-    *iov = ((lua_cstring_t *)bb)->iov;
+    lua_cstring_t *ptr = (lua_cstring_t *)bb;
+    return ptr->val;
 }
 
 /* out should be appropriately sized */

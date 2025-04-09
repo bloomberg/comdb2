@@ -17,7 +17,6 @@
 #ifndef LUAGLUE_H
 #define LUAGLUE_H
 
-struct iovec;
 struct lua_State;
 struct lua_TValue;
 
@@ -40,7 +39,7 @@ int luabb_dbtype_from_tvalue(struct lua_TValue *);
 int luabb_isnumber(struct lua_State *, int idx);
 double luabb_tonumber(struct lua_State *, int idx);
 int luabb_iscstring(struct lua_State *, int idx);
-void luabb_tocstring(struct lua_State *, int idx, struct iovec *);
+const char *luabb_tocstring(struct lua_State *, int idx);
 int luabb_isnull(struct lua_State *, int idx);
 void luabb_tointeger(struct lua_State *, int idx, long long *val);
 

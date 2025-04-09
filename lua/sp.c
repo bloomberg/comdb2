@@ -614,33 +614,39 @@ void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
     SP sp = arg->sp;
     Lua L = sp->lua;
     int idx = col_to_idx(arg->ncols, col);
+    char *c;
+    blob_t b;
     lua_cstring_t *cs;
-    struct iovec iov;
     switch (type) {
     case SQLITE_TEXT:
         switch (luabb_type(L, idx)) {
         case DBTYPES_LNUMBER:
         case DBTYPES_LSTRING:
-            return (void *)lua_tolstring(L, idx, len);
+            c = (char *)lua_tolstring(L, idx, len);
+            break;
         case DBTYPES_CSTRING:
             cs = lua_touserdata(L, idx);
-            *len = cs->iov.iov_len;
-            return cs->iov.iov_base;
+            c = cs->val;
+            *len = strlen(c);
+            break;
         default:
-            if (luabb_tostring_noerr(L, idx, &iov)) return NULL;
-            *len = iov.iov_len;
-            luabb_pushcstringlen(L, iov.iov_base, iov.iov_len);
+            c = (char *)luabb_tostring_noerr(L, idx);
+            if (!c) break;
+            c = strdup(c);
+            *len = strlen(c);
+            luabb_pushcstring_dl(L, c);
             lua_replace(L, idx);
-            return iov.iov_base;
         }
+        return c;
     case SQLITE_BLOB:
-        if (luabb_toblob_noerr(L, idx, &iov)) return NULL;
+        if (luabb_toblob_noerr(L, idx, &b))
+            break;
         if (luabb_type(L, idx) != DBTYPES_BLOB) {
-            luabb_pushblob_dl(L, &iov);
+            luabb_pushblob_dl(L, &b);
             lua_replace(L, idx);
         }
-        *len = iov.iov_len;
-        return iov.iov_base;
+        *len = b.length;
+        return b.data;
     }
     return NULL;
 }
@@ -767,12 +773,10 @@ static void dbconsumer_getargs(Lua L, dbconsumer_t *consumer)
     luaL_checktype(L, -1, LUA_TTABLE);
     lua_pushnil(L);
     while (lua_next(L, -2)) {
-        struct iovec v;
         const char *key;
         int type = luabb_type(L, -2);
         if (type == DBTYPES_LSTRING || type == DBTYPES_CSTRING) {
-            luabb_tostring(L, -2, &v);
-            key = v.iov_base;
+            key = luabb_tostring(L, -2);
             if (strcasecmp(key, "with_tid") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
                     consumer->push_tid = lua_toboolean(L, -1);
@@ -1398,9 +1402,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             break;
         }
         case SQLITE_BLOB: {
-            struct iovec blob;
-            blob.iov_len = column_bytes(clnt, stmt, col);
-            blob.iov_base = (char *)column_blob(clnt, stmt, col);
+            blob_t blob;
+            blob.length = column_bytes(clnt, stmt, col);
+            blob.data = (char *)column_blob(clnt, stmt, col);
             luabb_pushblob(lua, &blob);
             break;
         }
@@ -2102,10 +2106,8 @@ static int luabb_carray_bind_string(Lua L, int lua_idx, sqlite3_stmt *stmt, int 
     int count = lua_objlen(L, lua_idx);
     const char *strings[count];
     for (int i = 1; i <= count; ++i) {
-        struct iovec v;
         lua_rawgeti(L, lua_idx, i);
-        luabb_tostring(L, -1, &v);
-        strings[i - 1] = v.iov_base;
+        strings[i - 1] = luabb_tostring(L, -1);
         lua_pop(L, 1);
     }
     return sqlite3_carray_bind(stmt, sql_idx, strings, count, CARRAY_TEXT, SQLITE_TRANSIENT);
@@ -2120,10 +2122,10 @@ static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sq
     }blobs [count];
     for (int i = 1; i <= count; ++i) {
         lua_rawgeti(L, lua_idx, i);
-        struct iovec b;
+        blob_t b;
         luabb_toblob(L, -1, &b);
-        blobs[i - 1].len = b.iov_len;
-        blobs[i - 1].data = b.iov_base;
+        blobs[i - 1].len = b.length;
+        blobs[i - 1].data = b.data;
         lua_pop(L, 1);
     }
     return sqlite3_carray_bind(stmt, sql_idx, blobs, count, CARRAY_BLOB, SQLITE_TRANSIENT);
@@ -2158,10 +2160,11 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
         return luaL_error(lua, "bad argument to 'bind'");
     }
     dttz_t dt;
+    const char *c;
     const void *p = NULL;
+    blob_t *b;
     intv_t *i;
     datetime_t *d;
-    struct iovec v;
     int type;
     if ((type = luabb_dbtype(lua, value)) > DBTYPES_MINTYPE) {
         if (luabb_isnull(lua, value)) {
@@ -2172,8 +2175,8 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     switch (type) {
     case DBTYPES_LNIL: return sqlite3_bind_null(stmt, position);
     case DBTYPES_LSTRING:
-        v.iov_base = (void *) lua_tolstring(lua, value, &v.iov_len);
-        return sqlite3_bind_text(stmt, position, v.iov_base, v.iov_len, NULL);
+        c = lua_tostring(lua, value);
+        return sqlite3_bind_text(stmt, position, c, strlen(c), NULL);
     case DBTYPES_LNUMBER:
         return sqlite3_bind_double(stmt, position, lua_tonumber(lua, value));
     case DBTYPES_INTEGER:
@@ -2181,11 +2184,11 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     case DBTYPES_REAL:
         return sqlite3_bind_double(stmt, position, ((lua_real_t *)p)->val);
     case DBTYPES_CSTRING:
-        v = ((lua_cstring_t *)p)->iov;
-        return sqlite3_bind_text(stmt, position, v.iov_base, v.iov_len, NULL);
+        c = ((lua_cstring_t *)p)->val;
+        return sqlite3_bind_text(stmt, position, c, strlen(c), NULL);
     case DBTYPES_BLOB:
-        v = ((lua_blob_t *)p)->iov;
-        return sqlite3_bind_blob(stmt, position, v.iov_base, v.iov_len, NULL);
+        b = &((lua_blob_t *)p)->val;
+        return sqlite3_bind_blob(stmt, position, b->data, b->length, NULL);
     case DBTYPES_DATETIME:
         d = &((lua_datetime_t *)p)->val;
         datetime_t_to_dttz(d, &dt);
@@ -2919,17 +2922,17 @@ static void copy_comdb2_type(lua_State *lua1, lua_State *lua2, int index,
     } else if (luabb_istype(lua1, index, DBTYPES_CSTRING)) {
         copy_type(dbtypes.cstring, lua_cstring_t);
         if (f1->is_null) {
-            f2->iov.iov_base = NULL;
+            f2->val = NULL;
         } else {
-            f2->iov.iov_base= strndup(f1->iov.iov_base, f1->iov.iov_len);
+            f2->val = strdup(f1->val);
         }
     } else if (luabb_istype(lua1, index, DBTYPES_BLOB)) {
         copy_type(dbtypes.blob, lua_blob_t);
         if (f1->is_null) {
-            f2->iov.iov_base = NULL;
+            f2->val.data = NULL;
         } else {
-            f2->iov.iov_base = malloc(f1->iov.iov_len);
-            memcpy(f2->iov.iov_base, f1->iov.iov_base, f1->iov.iov_len);
+            f2->val.data = malloc(f1->val.length);
+            memcpy(f2->val.data, f1->val.data, f1->val.length);
         }
     } else if (luabb_istype(lua1, index, DBTYPES_DBTABLE)) {
         if (!allow_tmptbl)
@@ -3631,23 +3634,17 @@ int db_csvcopy(Lua lua)
     }
 
     if (lua_gettop(lua) >= 2 && !lua_isnil(lua, 2) && !luabb_isnull(lua, 2)) {
-       struct iovec v;
-       luabb_tostring(lua, 2, &v);
-       tablename = v.iov_base;
+       tablename = luabb_tostring(lua, 2);
     } else {
         return luaL_error(lua, "Table name not specified");
     }
 
     if (lua_gettop(lua) >= 3 && !lua_isnil(lua, 3) && !luabb_isnull(lua, 3)) {
-       struct iovec v;
-       luabb_tostring(lua, 3, &v);
-       cSeparator = v.iov_base;
+       cSeparator = luabb_tostring(lua, 3);
     }
 
     if (lua_gettop(lua) >= 4 && !lua_isnil(lua, 4) && !luabb_isnull(lua, 4)) {
-       struct iovec v;
-       luabb_tostring(lua, 4, &v);
-       header = v.iov_base;
+       header = luabb_tostring(lua, 4);
     }
 
     fp = fopen(fname, "r");
@@ -3829,9 +3826,7 @@ static int db_prepare(Lua L)
 {
     SP sp = getsp(L);
     luaL_checkudata(L, 1, dbtypes.db);
-    struct iovec v;
-    luabb_tostring(L, 2, &v);
-    const char *sql = v.iov_base;
+    const char *sql = luabb_tostring(L, 2);
     lua_settop(L, 0);
     if (sql == NULL) {
         luabb_error(L, sp, "bad argument to 'prepare'");
@@ -4074,7 +4069,6 @@ static int cson_to_table_annotated(Lua, cson_value *, int);
 static int db_json_to_table(Lua lua)
 {
     int rc;
-    struct iovec v;
     if (lua_gettop(lua) < 2) {
         return luaL_error(lua, "bad arguments to 'json_to_table'");
     }
@@ -4085,8 +4079,7 @@ static int db_json_to_table(Lua lua)
         lua_pushnil(lua);
         int processed = 0;
         while (lua_next(lua, -2)) {
-            luabb_tostring(lua, -2, &v);
-            const char *key = v.iov_base;
+            const char *key = luabb_tostring(lua, -2);
             if (strcmp(key, "type_annotate") == 0) {
                 if (luabb_type(lua, -1) == DBTYPES_LBOOLEAN) {
                     annotate = lua_toboolean(lua, -2);
@@ -4101,9 +4094,9 @@ static int db_json_to_table(Lua lua)
         }
         lua_pop(lua, 1);
     }
-    luabb_tostring(lua, 2, &v);
+    const char *json = luabb_tostring(lua, 2);
     cson_value *cson = NULL;
-    if ((rc = cson_parse_string(&cson, v.iov_base, v.iov_len)) != 0) {
+    if ((rc = cson_parse_string(&cson, json, strlen(json))) != 0) {
         luaL_error(lua, "Parsing JSON rc:%d err:%s", rc, cson_rc_string(rc));
     }
     lua_newtable(lua);
@@ -4135,16 +4128,13 @@ typedef struct {
 
 static int process_json_conv(Lua L, json_conv *conv)
 {
-    struct iovec v;
     const char *key, *value;
     switch (luabb_type(L, -2)) {
     case DBTYPES_LSTRING:
     case DBTYPES_CSTRING:
-        luabb_tostring(L, -2, &v);
-        key = v.iov_base;
+        key = luabb_tostring(L, -2);
         if (strcmp(key, "invalid_utf8") == 0) {
-            luabb_tostring(L, -1, &v);
-            value = v.iov_base;
+            value = luabb_tostring(L, -1);
             if (value == NULL) {
                 return -1;
             } else if (strcmp(value, "fail") == 0) {
@@ -4537,13 +4527,14 @@ static int db_setnull(Lua lua)
     switch (t->dbtype) {
     case DBTYPES_CSTRING:
         c = (lua_cstring_t *)t;
-        free(c->iov.iov_base);
-        memset(&c->iov, 0, sizeof(c->iov));
+        free(c->val);
+        c->val = NULL;
         break;
     case DBTYPES_BLOB:
         b = (lua_blob_t *)t;
-        free(b->iov.iov_base);
-        memset(&b->iov, 0, sizeof(b->iov));
+        free(b->val.data);
+        b->val.data = NULL;
+        b->val.length = 0;
         break;
     default: return luaL_error(lua, "bad argument to 'setnull'");
     }
@@ -4609,9 +4600,7 @@ static int db_now(Lua lua)
     if (nargs <= 1)
         precision = sp->clnt->dtprec;
     else {
-        struct iovec v;
-        luabb_tostring(lua, 2, &v);
-        z = v.iov_base;
+        z = luabb_tostring(lua, 2);
         if (z != NULL) {
             DTTZ_TEXT_TO_PREC(
                 z, precision, 0,
@@ -4762,9 +4751,7 @@ static int db_guid(Lua lua)
     const char *str = luaL_optstring(lua, 2, NULL);
     uuid_t guid;
     if (str) {
-        struct iovec v;
-        luabb_tostring(lua, 2, &v);
-        const char *z = v.iov_base;
+        const char *z = luabb_tostring(lua, 2);
         if(uuid_parse(z, guid) != 0)
             return luaL_error(lua, "Can not convert string %s to guid", z);
     } else {
@@ -4773,7 +4760,7 @@ static int db_guid(Lua lua)
 
     uint8_t *b = malloc(sizeof(guid));
     memcpy(b, guid, sizeof(guid));
-    struct iovec x = {.iov_base = b, .iov_len = sizeof(uuid_t)};
+    blob_t x = {.data = b, .length = sizeof(uuid_t)};
     luabb_pushblob_dl(lua, &x);
     return 1;
 }
@@ -4789,9 +4776,9 @@ static int db_guid_str(Lua lua)
     if (nargs == 1)
         uuid_generate(guid);
     else {
-        struct iovec x = {0};
+        blob_t x = {0};
         luabb_toblob(lua, 2, &x);
-        memcpy(guid, x.iov_base, sizeof(guid));
+        memcpy(guid, x.data, sizeof(guid));
     }
 
     char guid_str[GUID_STR_LENGTH];
@@ -4964,9 +4951,7 @@ static int db_ctrace(Lua L)
     lua_remove(L, 1);
     if (lua_gettop(L) != 1) return 0;
     luaL_checktype(L, 1, LUA_TSTRING);
-    struct iovec v;
-    luabb_tostring(L, 1, &v);
-    ctrace("%s\n", (char *)v.iov_base);
+    ctrace("%s\n", luabb_tostring(L, 1));
     return 0;
 }
 
@@ -5457,13 +5442,12 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         luabb_pushcstring(L, cson_value_get_cstr(v));
     } else if (strcmp(type, "hexstring") == 0) {
         if (!cson_value_is_string(v)) return -1;
-        struct iovec s;
-        s.iov_base = cson_value_get_cstr(v);
-        s.iov_len = strlen(s.iov_base);
-        if (s.iov_len % 2 != 0) return -1;
-        uint8_t *b = malloc(s.iov_len / 2);
-        luabb_fromhex(b, s.iov_base, s.iov_len);
-        luabb_pushcstring_dl(L, &s);
+        const char *s = cson_value_get_cstr(v);
+        size_t l = strlen(s);
+        if (l % 2 != 0) return -1;
+        uint8_t *b = malloc(l / 2);
+        luabb_fromhex(b, (uint8_t *)s, l);
+        luabb_pushcstring_dl(L, s);
     } else if (strcmp(type, "integer") == 0) {
         if (!cson_value_is_integer(v)) return -1;
         int64_t i = cson_value_get_integer(v);
@@ -5491,7 +5475,7 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         size_t l = strlen(s);
         uint8_t *b = malloc(l / 2);
         luabb_fromhex(b, (uint8_t *)s, l);
-        struct iovec x = {.iov_base = b, .iov_len = l / 2};
+        blob_t x = {.data = b, .length = l / 2};
         luabb_pushblob_dl(L, &x);
     } else if (strcmp(type, "datetime") == 0) {
         if (!cson_value_is_string(v)) return -1;
@@ -5595,10 +5579,8 @@ static cson_value *table_to_cson_object(Lua L, int lvl, json_conv *conv)
         }
         lua_pop(L, 1); // remove value
 
-        struct iovec v;
         lua_pushvalue(L, -1);                    // push copy of key
-        luabb_tostring(L, -1, &v);               // conv key to str
-        const char *key = v.iov_base;
+        const char *key = luabb_tostring(L, -1); // conv key to str
         cson_object_set(o, key, val);
         lua_pop(L, 1); // pop copy of key (now a string)
     }
@@ -5727,9 +5709,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
     }
     if (tostr) {
         char *hexstr = NULL;
-        struct iovec vec;
-        luabb_tostring(L, -1, &vec);
-        const char *s = vec.iov_base;
+        const char *s = luabb_tostring(L, -1);
         if (tostr == 1) {
             if (utf8_validate(s, -1, &utf8_len) != 0) {
                 if (conv->flag & CONV_FLAG_UTF8_FATAL) {
@@ -5746,7 +5726,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
                 } else if (conv->flag & CONV_FLAG_UTF8_HEX) {
                     conv->error = "invalid utf-8 cstring in 'table_to_json'";
                     conv->reason |= CONV_REASON_UTF8_HEX;
-                    size_t slen = vec.iov_len + 1; // include terminating null
+                    size_t slen = strlen(s) + 1; // include terminating null
                     size_t hexlen = slen * 2;
                     hexstr = malloc(hexlen + 1);
                     util_tohex(hexstr, s, slen);
@@ -5756,7 +5736,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
                 }
             }
         } else {
-            utf8_len = vec.iov_len;
+            utf8_len = strlen(s);
         }
         v = cson_value_new_string(s, utf8_len);
         free(hexstr);
@@ -5891,7 +5871,7 @@ static int push_blob_array(Lua L, struct param_data *p)
     } *bs = p->u.p;
     lua_newtable(L);
     for (int i = 0; i < p->arraylen; ++i) {
-        struct iovec b = {.iov_len = bs[i].len, .iov_base = bs[i].data};
+        blob_t b = {.length = bs[i].len, .data = bs[i].data};
         luabb_pushblob(L, &b);
         lua_rawseti(L, -2, i + 1);
     }
@@ -5979,7 +5959,7 @@ static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
     case CLIENT_VUTF8: luabb_pushcstringlen(L, p.u.p, p.len); break;
     case CLIENT_BYTEARRAY:
     case CLIENT_BLOB: {
-        struct iovec b = {.iov_len = p.len, .iov_base = p.u.p};
+        blob_t b = {.length = p.len, .data = p.u.p};
         luabb_pushblob(L, &b);
         break;
     }
@@ -6029,7 +6009,8 @@ typedef struct {
     union {
         int64_t i; // int arg or position of bound param
         double d;
-        struct iovec v;
+        char *c;
+        blob_t b;
     } u;
 } sparg_t;
 
@@ -6104,13 +6085,14 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
         quoted = 1;
         if (a[1] != '@') {
             arg->type = arg_str;
-            arg->u.v.iov_base = ++a; // lose the quotes
+            // lose the quotes
+            arg->u.c = ++a;
             --b;
             b[0] = '\0';
-            arg->u.v.iov_len = b - a;
             break;
         } else {
-            ++a; // lose the quotes
+            // lose the quotes
+            ++a;
             --b;
             b[0] = '\0';
             // fall through
@@ -6121,18 +6103,13 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
         if (param_count(clnt) == 0) {
             if (quoted) {
                 arg->type = arg_str;
-                arg->u.v.iov_base = --a;
-                arg->u.v.iov_len = b - a;
+                arg->u.c = --a;
             } else {
                 goto err;
             }
         }
         if (param_index(clnt, a, &arg->u.i) != 0) {
             goto err;
-        }
-        if (quoted) {
-            static int count = 0;
-            if (++count < 10) logmsg(LOGMSG_WARN, "obsolete bound-params sql:%s\n", clnt->sql);
         }
         break;
     case 'x':
@@ -6142,13 +6119,13 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
         if (*a != '\'' && *b != '\'') goto err;
         ++a;
         --b; // lose the quotes
-        arg->u.v.iov_len= b - a + 1;
-        if (arg->u.v.iov_len % 2 != 0) goto err;
-        arg->u.v.iov_len /= 2;
-        arg->u.v.iov_base = arg->u.v.iov_len < sizeof(arg->buf)
+        arg->u.b.length = b - a + 1;
+        if (arg->u.b.length % 2 != 0) goto err;
+        arg->u.b.length /= 2;
+        arg->u.b.data = arg->u.b.length < sizeof(arg->buf)
                             ? arg->buf
-                            : (arg->mbuf = malloc(arg->u.v.iov_len));
-        if (parseblob(a, arg->u.v.iov_len * 2, arg->u.v.iov_base) != 0) goto err;
+                            : (arg->mbuf = malloc(arg->u.b.length));
+        if (parseblob(a, arg->u.b.length * 2, arg->u.b.data) != 0) goto err;
         break;
     case 't':
     case 'T':
@@ -6472,8 +6449,8 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
         case arg_null: luabb_pushnull(lua, DBTYPES_CSTRING); break;
         case arg_int: lua_pushnumber(lua, arg.u.i); break;
         case arg_real: lua_pushnumber(lua, arg.u.d); break;
-        case arg_str: lua_pushlstring(lua, arg.u.v.iov_base, arg.u.v.iov_len); break;
-        case arg_blob: luabb_pushblob(lua, &arg.u.v); break;
+        case arg_str: lua_pushstring(lua, arg.u.c); break;
+        case arg_blob: luabb_pushblob(lua, &arg.u.b); break;
         case arg_bool: lua_pushboolean(lua, arg.u.i); break;
         case arg_param: rc = push_param(lua, clnt, arg.u.i); break;
         default: rc = 99; break;
@@ -6507,9 +6484,7 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
 
     if ((rc = lua_pcall(lua, argcnt, LUA_MULTRET, 0)) != 0) {
         if (lua_gettop(lua) > 0 && !lua_isnil(lua, -1)) {
-            struct iovec v;
-            luabb_tostring(lua, -1, &v);
-            *err = strdup(v.iov_base);
+            *err = strdup(luabb_tostring(lua, -1));
         } else {
             *err = strdup("");
         }
@@ -6617,9 +6592,9 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
     case SP_FIELD_BYTEARRAY:
         copy(szstr, int32_t, payload, ntohl);
         new_lua_t(blob, lua_blob_t, DBTYPES_BLOB);
-        blob->iov.iov_len = szstr;
-        blob->iov.iov_base = malloc(szstr);
-        memcpy(blob->iov.iov_base, payload, szstr);
+        blob->val.length = szstr;
+        blob->val.data = malloc(szstr);
+        memcpy(blob->val.data, payload, szstr);
         payload += szstr;
         break;
     case SP_FIELD_DATETIME:
@@ -6769,7 +6744,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
     lua_pushstring(L, tbl);
     lua_setfield(L, -2, "name");
 
-    struct iovec id = {.iov_len = sizeof(genid_t), .iov_base = &q->genid};
+    blob_t id = {.length = sizeof(genid_t), .data = &q->genid};
     luabb_pushblob(L, &id);
     lua_setfield(L, -2, "id");
 
@@ -6900,7 +6875,6 @@ static int flush_sp(SP sp, char **err)
 
 static int emit_result(Lua L, long long *sprc, char **err)
 {
-    struct iovec v;
     const char *retstr = NULL;
     dbtable_t *rettab = NULL;
     long long retnum = 0;
@@ -6908,7 +6882,7 @@ static int emit_result(Lua L, long long *sprc, char **err)
     for (int i = 1; i <= retargs; ++i) {
         switch (luabb_dbtype(L, i)) {
         case DBTYPES_LSTRING:
-        case DBTYPES_CSTRING: luabb_tostring(L, i, &v); retstr = v.iov_base; break;
+        case DBTYPES_CSTRING: retstr = luabb_tostring(L, i); break;
         case DBTYPES_LNUMBER:
         case DBTYPES_INTEGER: luabb_tointeger(L, i, &retnum); break;
         case DBTYPES_DBTABLE: rettab = lua_touserdata(L, i); break;
@@ -6990,16 +6964,16 @@ static int lua_to_sqlite(Lua L, sqlite3_context *context)
         break;
     case LUA_TSTRING:
     case DBTYPES_CSTRING:
-        luabb_tostring(L, 1, &t.iov);
-        sqlite3_result_text(context, t.iov.iov_base, t.iov.iov_len, SQLITE_TRANSIENT);
+        sqlite3_result_text(context, luabb_tostring(L, 1), -1,
+                            SQLITE_TRANSIENT);
         break;
     case DBTYPES_INTEGER:
         luabb_tointeger(L, 1, &t.in);
         sqlite3_result_int64(context, t.in);
         break;
     case DBTYPES_BLOB:
-        luabb_toblob(L, 1, &t.iov);
-        sqlite3_result_blob(context, t.iov.iov_base, t.iov.iov_len, SQLITE_TRANSIENT);
+        luabb_toblob(L, 1, &t.bl);
+        sqlite3_result_blob(context, t.bl.data, t.bl.length, SQLITE_TRANSIENT);
         break;
     case DBTYPES_DATETIME:
         luabb_todatetime(L, 1, &t.dt);
@@ -7027,7 +7001,7 @@ static int lua_to_sqlite(Lua L, sqlite3_context *context)
 
 static int sqlite_to_lua(Lua L, const char *tz, int argc, sqlite3_value **argv)
 {
-    struct iovec b;
+    blob_t b;
     datetime_t d;
     const dttz_t *dt;
     const intv_t *tv;
@@ -7041,13 +7015,13 @@ static int sqlite_to_lua(Lua L, const char *tz, int argc, sqlite3_value **argv)
             luabb_pushreal(L, sqlite3_value_double(argv[i]));
             break;
         case SQLITE_BLOB:
-            b.iov_base = (void *)sqlite3_value_blob(argv[i]);
-            b.iov_len = sqlite3_value_bytes(argv[i]);
+            b.data = (void *)sqlite3_value_blob(argv[i]);
+            b.length = sqlite3_value_bytes(argv[i]);
             luabb_pushblob(L, &b);
             break;
         case SQLITE_NULL: lua_pushnil(L); break;
         case SQLITE_TEXT:
-            luabb_pushcstringlen(L, (char *)sqlite3_value_text(argv[i]), sqlite3_value_bytes(argv[i]));
+            luabb_pushcstring(L, (char *)sqlite3_value_text(argv[i]));
             break;
         case SQLITE_DATETIME:
         case SQLITE_DATETIMEUS:
@@ -7099,9 +7073,7 @@ static int run_func(struct sqlclntstate *clnt, int argcnt, char **err, int final
     }
     if (rc) {
         if (lua_gettop(L) > 0 && !lua_isnil(L, -1)) {
-            struct iovec v;
-            luabb_tostring(L, -1, &v);
-            *err = strdup(v.iov_base);
+            *err = strdup(luabb_tostring(L, -1));
         } else {
             *err = strdup("UDF failed");
         }
@@ -7193,6 +7165,7 @@ static int push_args_and_run_sp(struct sqlclntstate *clnt, const char *arg_str, 
 
 struct legacy_response {
     int64_t rc;
+    blob_t result;
 };
 
 
@@ -7232,10 +7205,12 @@ static int exec_comdb2_legacy(struct sqlthdstate *thd, struct sqlclntstate *clnt
                 case CLIENT_PSTR:
                 case CLIENT_PSTR2:
                 case CLIENT_VUTF8:
+                    arg[i].u.c = (char*) p.u.p;
+                    break;
                 case CLIENT_BLOB:
                 case CLIENT_BYTEARRAY:
-                    arg[i].u.v.iov_base = p.u.p;
-                    arg[i].u.v.iov_len = p.len;
+                    arg[i].u.b.data = (char*) p.u.p;
+                    arg[i].u.b.length = p.len;
                     break;
             }
         }
@@ -7245,7 +7220,7 @@ static int exec_comdb2_legacy(struct sqlthdstate *thd, struct sqlclntstate *clnt
         }
     }
 
-    struct iovec b = arg[0].u.v;
+    blob_t b = arg[0].u.b;
     int luxref = arg[1].u.i;
     int flags = arg[2].u.i;
 
@@ -7255,8 +7230,8 @@ static int exec_comdb2_legacy(struct sqlthdstate *thd, struct sqlclntstate *clnt
         char buf[64*1024];
     } rsp;
 
-    memcpy(rsp.buf, b.iov_base, b.iov_len);
-    do_comdb2_legacy(rsp.buf, b.iov_len, clnt, luxref, flags, &rsp.outlen, &rsp.rc);
+    memcpy(rsp.buf, b.data, b.length);
+    do_comdb2_legacy(rsp.buf, b.length, clnt, luxref, flags, &rsp.outlen, &rsp.rc);
     int flip = endianness_mismatch(clnt);
     if (flip)
         rsp.rc = flibc_intflip(rsp.rc);
