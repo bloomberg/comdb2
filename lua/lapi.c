@@ -9,7 +9,6 @@
 #include <math.h>
 #include <stdarg.h>
 #include <string.h>
-#include <sys/uio.h>
 
 #define lapi_c
 #define LUA_CORE
@@ -347,10 +346,9 @@ LUA_API const char *lua_tolstring (lua_State *L, int idx, size_t *len) {
   if (!ttisstring(o)) {
     /* COMDB2 MODIFICATION */
     if (luabb_iscstring(L, idx)) {
-        struct iovec vec;
-        luabb_tocstring(L, idx, &vec);
-        if (len) *len = vec.iov_len;
-        return vec.iov_base;
+        const char *s = luabb_tocstring(L, idx);
+        if (len) *len = strlen(s);
+        return s;
     }
     lua_lock(L);  /* `luaV_tostring' may create a new string */
     if (!luaV_tostring(L, o)) {  /* conversion failed? */
