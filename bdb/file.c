@@ -134,6 +134,7 @@ extern int get_commit_lsn_map_switch_value();
 extern int is_db_roomsync();
 extern int get_schema_change_in_progress(const char *func, int line);
 
+int gbl_debug_downgrade_during_sc_deadlock = 0;
 int gbl_debug_children_lock = 0;
 int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
@@ -5393,6 +5394,9 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     }
 
     if (op != UPGRADE) {
+        if (gbl_debug_downgrade_during_sc_deadlock) {
+            sleep(10);
+        }
         wait_for_sc_to_stop("downgrade", __func__, __LINE__);
         bdb_set_read_only(bdb_state);
     }

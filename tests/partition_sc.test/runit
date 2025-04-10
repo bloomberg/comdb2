@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+set -ex
+
+send_signal_to_node() {
+	local -r signal=$1 node=$2
+	echo "sending $signal to $node"
+
+	if [[ "${node}" == "$(hostname)" ]];
+	then
+		cat "${TMPDIR}"/"${DBNAME}"."${node}".pid | xargs kill -"${signal}"
+	else
+		ssh "${node}" "cat "${TMPDIR}"/"${DBNAME}".pid | xargs kill -"${signal}""
+	fi
+}
+
+main() {
+	if [ -z "${CLUSTER}" ]; then
+		return 0
+	fi
+
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default "create table t(i int)"
+
+	local old_master
+	old_master=$(cdb2sql --tabs ${CDB2_OPTIONS} "${DBNAME}" default "select host from comdb2_cluster where is_master='Y'")
+	readonly old_master
+
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default "exec procedure sys.cmd.send('downgrade')" &
+	sleep 2
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default "create default lua consumer t_cons on (table t for insert and update and delete)" &
+	sleep 2
+
+	# Stop master while SC and downgrade are running so that someone else gets elected
+	send_signal_to_node "SIGSTOP" "${old_master}"
+
+	sleep 20 # Let cluster run election
+
+	# Start old master. Bug is that it won't be able to finish its downgrade because its seqno
+	# is behind the rest of the cluster.
+	send_signal_to_node "SIGCONT" "${old_master}"
+
+	sleep 70 # Give time for old master to hit timeout waiting for sc to finish and abort
+
+	# We're testing that the downgrading node doesn't abort. Should be available at finish when bug is fixed.
+}
+
+main

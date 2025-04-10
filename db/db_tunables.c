@@ -74,6 +74,7 @@ extern int gbl_logmsg_epochms;
 extern int gbl_2pc;
 char *gbl_allowed_coordinators;
 extern int gbl_all_waitdie;
+extern int gbl_debug_downgrade_during_sc_deadlock;
 extern int gbl_debug_disable_waitdie_deadlock_detection;
 extern int gbl_coordinator_sync_on_commit;
 extern int gbl_coordinator_wait_propagate;

@@ -1943,6 +1943,10 @@ REGISTER_TUNABLE("forbid_incoherent_writes",
                  "transaction start.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_downgrade_during_sc_deadlock",
+                 "Cause downgrading node to wait for sc to finish.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_downgrade_during_sc_deadlock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_downgrade_cluster_at_open",
                  "Sleep on open to allow testsuite to downgrade master.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_downgrade_cluster_at_open, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);

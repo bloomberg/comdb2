@@ -388,7 +388,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * 4) send scdone, like any other sc
      */
     struct dbtable *db = NULL;
-    tran_type *tran = NULL, *ltran = NULL;
+    tran_type *tran = NULL;
     int rc = 0;
     int bdberr = 0;
     struct ireq iq;
@@ -400,15 +400,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     init_fake_ireq(thedb, &iq);
     iq.usedb = &thedb->static_table;
 
-    rc = trans_start_logical_sc(&iq, &ltran);
-    if (rc) {
-        sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
-                    rc, sc->tablename);
-        sbuf2printf(sb, "FAILED\n");
-        goto done;
-    }
-    bdb_ltran_get_schema_lock(ltran);
-    rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
+    rc = trans_start_sc(&iq, NULL, &tran);
     if (rc != 0 || tran == NULL) {
         sbuf2printf(sb, "!Error %d creating physical transaction for %s.\n",
                     rc, sc->tablename);
@@ -630,9 +622,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
         goto done;
     }
-    rc = trans_commit(&iq, ltran, gbl_myhostname);
+
+    rc = trans_commit(&iq, tran, gbl_myhostname);
     tran = NULL;
-    ltran = NULL;
     if (rc || bdberr != BDBERR_NOERROR) {
         sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
         goto done;
@@ -647,8 +639,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
 done:
-    if (ltran) bdb_tran_abort(thedb->bdb_env, ltran, &bdberr);
-    else if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);

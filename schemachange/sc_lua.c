@@ -520,8 +520,6 @@ static int do_add_sp_int(struct schema_change_type *sc, struct ireq *iq)
     }
     if (rc == 0) {
         ++gbl_lua_version;
-        int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
         if (iq) {
             if (sc->fname[0] == 0) {
                 sprintf(sc->fname, "%d", version);
@@ -543,10 +541,6 @@ static int do_del_sp_int(struct schema_change_type *sc, struct ireq *iq)
     } else {
         rc = del_sp(sc);
     }
-    if (rc == 0) {
-        int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
-    }
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
     return rc;
@@ -558,10 +552,6 @@ static int do_default_sp_int(struct schema_change_type *sc, struct ireq *iq)
         rc = default_versioned_sp(sc, iq);
     } else {
         rc = default_sp(sc);
-    }
-    if (rc == 0) {
-        int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
     }
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
