@@ -2228,6 +2228,25 @@ getcmd ::= ANALYZE THRESHOLD nm(Y) dbnm(Z). {
 
 ///////////////////////////////////// PUT /////////////////////////////////////
 
+cmd ::= PUT TUNABLE nm(N) dbnm(M) opteq tunable_value(V). {
+    comdb2putTunable(pParse, &N, &M, &V);
+}
+
+opteq ::= .
+opteq ::= EQ .
+
+tunable_value ::= INTEGER.
+tunable_value(V) ::= MINUS number(N). {
+    Token t;
+    char *z = sqlite3DbMallocRawNN(pParse->db, N.n+1);
+    t.z = z;
+    t.n = N.n+1;
+    memcpy(z+1, N.z, N.n);
+    z[0] = '-';
+    V = t;
+}
+tunable_value ::= STRING.
+
 cmd ::= PUT putcmd. {
     comdb2WriteTransaction(pParse);
 }
@@ -2329,24 +2348,6 @@ putcmd ::= SCHEMACHANGE CONVERTSLEEP INTEGER(F). {
     if (!readIntFromToken(&F, &tmp))
         tmp = 0;
     comdb2schemachangeConvertsleep(pParse, tmp);
-}
-
-tunable_value ::= INTEGER.
-tunable_value(V) ::= MINUS number(N). {
-    Token t;
-    char *z = sqlite3DbMallocRawNN(pParse->db, N.n+1);
-    t.z = z;
-    t.n = N.n+1;
-    memcpy(z+1, N.z, N.n);
-    z[0] = '-';
-    V = t;
-}
-tunable_value ::= STRING.
-
-opteq ::= .
-opteq ::= EQ .
-putcmd ::= TUNABLE nm(N) dbnm(M) opteq tunable_value(V). {
-    comdb2putTunable(pParse, &N, &M, &V);
 }
 
 /////////////////////////////////// REBUILD ///////////////////////////////////

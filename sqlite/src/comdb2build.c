@@ -3075,8 +3075,8 @@ void comdb2WriteTransaction(Parse *pParse)
 
     struct sqlclntstate *clnt = get_sql_clnt();
     if (clnt && clnt->is_readonly) {
-      setError(pParse, SQLITE_READONLY, "connection/database in read-only mode");
-      return;
+        setError(pParse, SQLITE_READONLY, "connection/database in read-only mode");
+        return;
     }
 
     pParse->write = 1;
@@ -7152,6 +7152,12 @@ void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
+
+    struct sqlclntstate *clnt = get_sql_clnt();
+    if (clnt && clnt->is_readonly) {
+        setError(pParse, SQLITE_READONLY, "connection/database in read-only mode");
+        return;
+    }
 
     char t_name[160];
     char *t_name1;
