@@ -593,16 +593,6 @@ Display information about time partitions.
 Display information about foreign tables (tables in other databases) that have been referenced by this database.  Has
 several subcommands.  `'fdb help` will show further usage information.
 
-### netpoll
-
-Sets the amount of time the database will block waiting for a new connection to identify itself.  Takes a single
-integer argument.  The default is 100ms.  Connections that don't manage it in that time are dropped (client
-connections will try again on another node).
-
-### osqlnetpoll
-
-Like [netpoll](#netpoll), but for the the [SQL network](config_files.html#networks).
-
 ### ioalarm
 
 Sets the alarm threshold, in ms, for IO.  Page reads and writes that go over this threshold are logged to the database 

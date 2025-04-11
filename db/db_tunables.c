@@ -167,7 +167,6 @@ extern int gbl_update_delete_limit;
 extern int gbl_updategenids;
 extern int gbl_use_modsnap_for_snapshot;
 extern snap_impl_enum gbl_snap_impl;
-extern int gbl_use_appsock_as_sqlthread;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
 extern int portmux_port;

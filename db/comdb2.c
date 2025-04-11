@@ -333,8 +333,6 @@ const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
 int gbl_local_mode = 0;                /* local mode, no siblings */
 int gbl_fullrecovery = 0;              /* backend full-recovery mode*/
 int gbl_maxretries = 500;              /* thats a lotta retries */
-int gbl_maxblobretries =
-    0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
 int gbl_decom = 0;
 int gbl_loghist = 0;
@@ -343,9 +341,7 @@ int gbl_repdebug = -1;
 int gbl_elect_time_secs = 0;
 char *gbl_pmblock = NULL;
 int gbl_rtcpu_debug = 0;
-int gbl_longblk_trans_purge_interval =
-    30; /* initially, set this to 30 seconds */
-int gbl_sqlflush_freq = 0;
+int gbl_longblk_trans_purge_interval = 30; /* initially, set this to 30 seconds */
 int gbl_sbuftimeout = 0;
 int gbl_conv_flush_freq = 100; /* this is currently ignored */
 pthread_attr_t gbl_pthread_attr;
@@ -467,7 +463,6 @@ int gbl_modsnap_asof = 0;
 const snap_impl_enum gbl_snap_fallback_impl = SNAP_IMPL_MODSNAP;
 const snap_impl_enum gbl_snap_backup_fallback_impl = SNAP_IMPL_MODSNAP;
 snap_impl_enum gbl_snap_impl = SNAP_IMPL_MODSNAP;
-int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
 int gbl_test_commit_lsn_map = 0;
@@ -489,13 +484,8 @@ int gbl_temptable_pool_capacity = 8192;
 /* cdb2 features */
 int gbl_disable_skip_rows = 0;
 
-#if 0
-u_int gbl_blk_pq_shmkey = 0;
-#endif
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
-
-int gbl_rrenablecountchanges = 0;
 
 int gbl_debug_log_twophase = 0;
 int gbl_debug_log_twophase_transactions = 0;
