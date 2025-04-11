@@ -30,6 +30,7 @@
 #include "comdb2Int.h"
 #include "pragma.h"
 #include "logmsg.h"
+#include "gen_shard.h"
 
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
@@ -765,6 +766,7 @@ Table *sqlite3LocateTableItem(
   }else{
     zDb = p->zDatabase;
   }
+  logmsg(LOGMSG_USER, "FOUND zDb as %s\n", zDb);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( gbl_allow_user_schema ){
     char tblName[MAXTABLELEN];
@@ -2792,7 +2794,16 @@ void sqlite3CreateView(
   sqlite3TwoPartName(pParse, pName1, pName2, &pName);
   iDb = sqlite3SchemaToIndex(db, p->pSchema);
   sqlite3FixInit(&sFix, pParse, iDb, "view", pName);
-  if( sqlite3FixSelect(&sFix, pSelect) ) goto create_view_fail;
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  char *tablename = (char *)alloca(pName->n+1);
+  strncpy(tablename, pName->z, pName->n);
+  tablename[pName->n]='\0';
+  if( !is_gen_shard(tablename) && sqlite3FixSelect(&sFix, pSelect) ) { 
+#else
+  if ( sqlite3FixSelect(&sFix, pSelect) ) {
+#endif
+      goto create_view_fail;
+  }
 
   /* Make a copy of the entire SELECT statement that defines the view.
   ** This will force all the Expr.token.z values to be dynamically
@@ -3313,7 +3324,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   }
   if( !isView && pTab->pSelect ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if (timepart_allow_drop(pTab->zName)) {
+    if ( !is_gen_shard(pTab->zName) && timepart_allow_drop(pTab->zName)) {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ErrorMsg(pParse, "use DROP VIEW to delete view %s", pTab->zName);
     goto exit_drop_table;
