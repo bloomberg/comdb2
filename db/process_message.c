@@ -160,8 +160,6 @@ static const char *HELP_MAIN[] = {
     "netdon         - net direct writes (non-queued) on!",
     "netdof         - net direct writes (non-queued) off!",
     "netdbg #       - net library trace level (0-off)",
-    "netpoll #      - net library accept-poll ms",
-    "osqlnetpoll #  - osql net library accept-poll ms",
     "sqlpool        - on/off/stat/mark #/ # of threads.  fast sql pool thread "
     "control",
     "scon/scof      - request report",
@@ -3133,20 +3131,6 @@ clipper_usage:
         } else {
             fastcount(dbname);
         }
-    } else if (tokcmp(tok, ltok, "sqlflush") == 0) {
-        int freq;
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-           logmsg(LOGMSG_USER, "Currently flushing every %d records\n", gbl_sqlflush_freq);
-            return -1;
-        }
-        freq = toknum(tok, ltok);
-        if (gbl_sqlflush_freq < 0) {
-            logmsg(LOGMSG_ERROR, "Invalid flush frequency\n");
-            return -1;
-        }
-        gbl_sqlflush_freq = freq;
-        logmsg(LOGMSG_USER, "SQL flush frequency: %d\n", gbl_sqlflush_freq);
     } else if (tokcmp(tok, ltok, "sbuftimeout") == 0) {
         int tmout;
         tok = segtok(line, lline, &st, &ltok);
@@ -4083,23 +4067,7 @@ clipper_usage:
         }
         gbl_maxretries = n;
         logmsg(LOGMSG_USER, "Set max retries to %d\n", gbl_maxretries);
-    } else if (tokcmp(tok, ltok, "maxblobretries") == 0) {
-        int n;
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_USER, "maxblobretries: %d\n", gbl_maxblobretries);
-            return 0;
-        }
-        n = toknum(tok, ltok);
-        if (n < 2) {
-            logmsg(LOGMSG_ERROR, "Invalid setting for maxblobretries\n");
-            return 0;
-        }
-        gbl_maxblobretries = n;
-        logmsg(LOGMSG_USER, "Set max blob retries to %d\n", gbl_maxblobretries);
-    }
-
-    else if (tokcmp(tok, ltok, "deadlock") == 0) {
+    } else if (tokcmp(tok, ltok, "deadlock") == 0) {
 
         unsigned long long rep_retry = 0;
         unsigned long long msgs_processed = 0;

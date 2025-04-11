@@ -89,7 +89,6 @@ repchecksum
 sqlflush
 typeof
 dbinforesponse
-osqlnetpoll
 intervaldsus
 longreqs
 msec
@@ -691,7 +690,6 @@ dbrow
 keycompr
 rollat
 permissioning
-netpoll
 BREAKTIME
 usec
 VLOG

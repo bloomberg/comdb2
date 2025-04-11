@@ -39,7 +39,6 @@
 #endif
 
 extern struct dbenv *thedb; /* handles 1 db for now */
-extern int gbl_use_appsock_as_sqlthread;
 
 struct appsock_thd_state {
     struct thr_handle *thr_self;
@@ -228,14 +227,12 @@ static void appsock_thd_start(struct thdpool *pool, void *thddata)
 {
     struct appsock_thd_state *state = thddata;
     state->thr_self = thrman_register(THRTYPE_APPSOCK_POOL);
-    if (!gbl_use_appsock_as_sqlthread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 }
 
 static void appsock_thd_end(struct thdpool *pool, void *thddata)
 {
-    if (!gbl_use_appsock_as_sqlthread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 }
 
 static void appsock_work(struct thdpool *pool, void *work, void *thddata)

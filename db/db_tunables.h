@@ -750,8 +750,6 @@ REGISTER_TUNABLE("master_swing_sock_restart_sleep",
                  "For testing: sleep in osql_sock_restart when master swings",
                  TUNABLE_INTEGER, &gbl_master_swing_sock_restart_sleep,
                  READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("maxblobretries", NULL, TUNABLE_INTEGER, &gbl_maxblobretries,
-                 READONLY, NULL, maxretries_verify, NULL, NULL);
 REGISTER_TUNABLE("maxblockops", NULL, TUNABLE_INTEGER, &gbl_maxblockops,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("maxcolumns",
@@ -764,25 +762,25 @@ REGISTER_TUNABLE("maxcontextskips", NULL, TUNABLE_INTEGER, &gbl_maxcontextskips,
 REGISTER_TUNABLE("maxosqltransfer",
                  "Maximum number of record modifications allowed per "
                  "transaction. (Default: 50000)",
-                 TUNABLE_INTEGER, &g_osql_max_trans, READONLY, NULL, NULL, NULL,
+                 TUNABLE_INTEGER, &g_osql_max_trans, NOZERO, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("max_incoherent_nodes", NULL, TUNABLE_INTEGER,
                  &gbl_max_incoherent_nodes, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_lua_instructions",
                  "Maximum lua opcodes to execute before we assume the stored "
                  "procedure is looping and kill it. (Default: 10000)",
-                 TUNABLE_INTEGER, &gbl_max_lua_instructions, READONLY, NULL,
+                 TUNABLE_INTEGER, &gbl_max_lua_instructions, 0, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("max_num_compact_pages_per_txn", NULL, TUNABLE_INTEGER,
                  &gbl_max_num_compact_pages_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("maxq",
                  "Maximum queue depth for write requests. (Default: 192)",
-                 TUNABLE_INTEGER, &gbl_maxqueue, READONLY, NULL, NULL,
+                 TUNABLE_INTEGER, &gbl_maxqueue, 0, NULL, NULL,
                  maxq_update, NULL);
 REGISTER_TUNABLE("maxretries", "Maximum number of times a "
                                "transactions will be retried on a "
                                "deadlock. (Default: 500)",
-                 TUNABLE_INTEGER, &gbl_maxretries, READONLY, NULL,
+                 TUNABLE_INTEGER, &gbl_maxretries, 0, NULL,
                  maxretries_verify, NULL, NULL);
 REGISTER_TUNABLE(
     "max_sqlcache_hints",
@@ -794,11 +792,11 @@ REGISTER_TUNABLE("max_sqlcache_per_thread",
                  TUNABLE_INTEGER, &gbl_max_sqlcache, READONLY, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("maxt", NULL, TUNABLE_INTEGER, &gbl_maxthreads,
-                 READONLY | NOZERO, NULL, NULL, maxt_update, NULL);
+                 NOZERO, NULL, NULL, maxt_update, NULL);
 REGISTER_TUNABLE(
     "maxwt",
     "Maximum number of threads processing write requests. (Default: 8)",
-    TUNABLE_INTEGER, &gbl_maxwthreads, READONLY, NULL, NULL, NULL, NULL);
+    TUNABLE_INTEGER, &gbl_maxwthreads, NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_query_fingerprints",
                  "Maximum number of queries to be placed into the fingerprint "
                  "hash (Default: 1000)",
@@ -1072,9 +1070,6 @@ REGISTER_TUNABLE("round_robin_stripes",
                  "default is to keep stripe affinity by writer. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_round_robin_stripes, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("rr_enable_count_changes", NULL, TUNABLE_BOOLEAN,
-                 &gbl_rrenablecountchanges, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("sbuftimeout", NULL, TUNABLE_INTEGER, &gbl_sbuftimeout,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_del_unused_files_threshold", NULL, TUNABLE_INTEGER,
@@ -1118,11 +1113,6 @@ REGISTER_TUNABLE("version_spfile", NULL, TUNABLE_STRING, &gbl_user_vers_spfile_n
 REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
                  &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
                  NULL);
-REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
-                             "stream to client every specified "
-                             "number of records. (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_sqlflush_freq, READONLY, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("sqlreadahead", NULL, TUNABLE_INTEGER, &gbl_sqlreadahead,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlreadaheadthresh", NULL, TUNABLE_INTEGER,
@@ -1130,21 +1120,21 @@ REGISTER_TUNABLE("sqlreadaheadthresh", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("sqlsortermem", "Maximum amount of memory to be "
                                  "allocated to the sqlite sorter. "
                                  "(Default: 314572800)",
-                 TUNABLE_INTEGER, &gbl_sqlite_sorter_mem, READONLY, NULL, NULL,
+                 TUNABLE_INTEGER, &gbl_sqlite_sorter_mem, 0, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("sql_stat4_scan", "Possibly adjust the cost of a full table "
                                    "scan based on STAT4 data.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_sqlite_stat4_scan, READONLY | INTERNAL |
                  EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlsortermult", NULL, TUNABLE_INTEGER, &gbl_sqlite_sortermult,
-                 READONLY, NULL, NULL, NULL, NULL);
+                 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlsorterpenalty",
                  "Sets the sorter penalty for query planner to prefer plans without explicit sort (Default: 5)",
-                 TUNABLE_INTEGER, &gbl_sqlite_sorterpenalty, READONLY, NULL, NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_sqlite_sorterpenalty, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_time_threshold",
                  "Sets the threshold time in ms after which queries are "
                  "reported as running a long time. (Default: 5000 ms)",
-                 TUNABLE_INTEGER, &gbl_sql_time_threshold, READONLY, NULL, NULL,
+                 TUNABLE_INTEGER, &gbl_sql_time_threshold, 0, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("sql_tranlevel_default",
                  "Sets the default SQL transaction level for the database.",
@@ -1198,7 +1188,7 @@ REGISTER_TUNABLE("db_lock_maxid_override", "Override berkley lock_maxid for "
                  "testing. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_db_lock_maxid_override, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("udp", NULL, TUNABLE_BOOLEAN, &gbl_udp, READONLY | NOARG, NULL,
+REGISTER_TUNABLE("udp", NULL, TUNABLE_BOOLEAN, &gbl_udp, NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("unnatural_types", "Same as 'surprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -1217,9 +1207,6 @@ REGISTER_TUNABLE("update_shadows_interval",
 REGISTER_TUNABLE("upd_null_cstr_return_conv_err", NULL, TUNABLE_INTEGER,
                  &gbl_upd_null_cstr_return_conv_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("use_appsock_as_sqlthread", NULL, TUNABLE_INTEGER,
-                 &gbl_use_appsock_as_sqlthread, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("use_live_schema_change", NULL, TUNABLE_INTEGER,
                  &gbl_default_livesc, READONLY | NOARG, NULL, NULL, NULL, NULL);
 /*
@@ -1255,7 +1242,7 @@ REGISTER_TUNABLE("use_planned_schema_change",
 REGISTER_TUNABLE("watchthreshold",
                  "Panic if node has been unhealthy (unresponsive, out of resources, etc.) for more "
                  "than this many seconds. The default value is 60.",
-                 TUNABLE_INTEGER, &gbl_watchdog_watch_threshold, READONLY | NOZERO, NULL, NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_watchdog_watch_threshold, NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_nlogs",
                  "When rolling trace files, keep this many. The older files "
                  "will have incrementing number suffixes (.1, .2, etc.). "
@@ -2048,6 +2035,10 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
                  "  (Default: 2147483647)",
                  TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_req_threshold",
+                 "Sets the threshold time in ms after which requests are reported as running a long time. (Default: 2000 ms)",
+                 TUNABLE_INTEGER, &gbl_long_request_ms, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("cache_flush_interval",
                  "Save bufferpool once every this many seconds.  "

@@ -21,8 +21,6 @@
 #include <util.h>
 #include "comdb2_query_preparer.h"
 
-extern int gbl_use_appsock_as_sqlthread;
-
 extern void rcache_init(size_t, size_t);
 extern void rcache_destroy(void);
 
@@ -44,9 +42,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
 
     sql_mem_init(NULL);
 
-    if (!gbl_use_appsock_as_sqlthread)
-        thd->thr_self = thrman_register(type);
-
+    thd->thr_self = thrman_register(type);
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
     thd->sqldbx = NULL;

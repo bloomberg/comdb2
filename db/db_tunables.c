@@ -167,7 +167,6 @@ extern int gbl_update_delete_limit;
 extern int gbl_updategenids;
 extern int gbl_use_modsnap_for_snapshot;
 extern snap_impl_enum gbl_snap_impl;
-extern int gbl_use_appsock_as_sqlthread;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
 extern int portmux_port;
@@ -571,6 +570,7 @@ extern int gbl_sc_status_max_rows;
 extern int gbl_rep_process_pstack_time;
 extern int gbl_sql_recover_time;
 extern int gbl_legacy_requests_verbose;
+extern int gbl_long_request_ms;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
