@@ -1713,7 +1713,6 @@ extern pthread_mutex_t
     gbl_sc_lock; /* used by schema change to protect globals */
 extern int gbl_blob_maxage;
 extern int gbl_blob_lose_debug;
-extern int gbl_sqlflush_freq;
 extern unsigned gbl_max_blob_cache_bytes;
 extern int gbl_blob_vb;
 extern long n_qtrap;
