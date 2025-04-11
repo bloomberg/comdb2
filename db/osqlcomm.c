@@ -7552,8 +7552,9 @@ done_delete:
 
         if (rc != 0) {
             if (rc != RC_INTERNAL_RETRY) {
-                errstat_cat_strf(&iq->errstat,
-                                 " unable to update record rc = %d", rc);
+                errstat_cat_strf(&iq->errstat," unable to update record");
+                logmsg(LOGMSG_ERROR, "%s:%d Failed to update record. Internal error code is %d\n",
+                    __func__, __LINE__, rc);
             }
             if (gbl_enable_osql_logging)
                 logmsg(LOGMSG_DEBUG,

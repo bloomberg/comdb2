@@ -2201,7 +2201,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     if (clnt->early_retry == EARLY_ERR_VERIFY) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
                         errstat_cat_str(&(clnt->osql.xerr),
-                                        "unable to update record rc = 4");
+                                        "unable to update record");
                     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
                         clnt->osql.xerr.errval = ERR_CONSTR;
                         errstat_cat_str(&(clnt->osql.xerr),
