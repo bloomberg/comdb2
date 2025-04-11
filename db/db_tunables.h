@@ -2038,6 +2038,10 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
                  TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("long_req_threshold",
+                 "Sets the threshold time in ms after which requests are reported as running a long time. (Default: 2000 ms)",
+                 TUNABLE_INTEGER, &gbl_long_request_ms, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("cache_flush_interval",
                  "Save bufferpool once every this many seconds.  "
                  "(Default: 30)",

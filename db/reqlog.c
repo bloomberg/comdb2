@@ -80,7 +80,7 @@
 /* The normal case is for there to be no rules, just a long request threshold
  * which takes some default action on long requests.  If you want anything
  * different then you add rules and you have to lock around the list. */
-static int long_request_ms = 2000;
+int gbl_long_request_ms = 2000;
 static struct output *long_request_out = NULL;
 static pthread_mutex_t rules_mutex;
 static LISTC_T(struct logrule) rules;
@@ -797,9 +797,9 @@ void reqlog_process_message(char *line, int st, int lline)
         reqlog_init_off = 1;
     } else if (tokcmp(tok, ltok, "longrequest") == 0) {
         tok = segtok(line, lline, &st, &ltok);
-        long_request_ms = toknum(tok, ltok);
+        gbl_long_request_ms = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Long request threshold now %d msec\n",
-               long_request_ms);
+               gbl_long_request_ms);
     } else if (tokcmp(tok, ltok, "longsqlrequest") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         gbl_sql_time_threshold = toknum(tok, ltok);
@@ -970,7 +970,7 @@ void reqlog_stat(void)
     struct logrule *rule;
     struct output *out;
     logmsg(LOGMSG_USER, "Long request threshold : %d msec (%dmsec  for SQL)\n",
-           long_request_ms, gbl_sql_time_threshold);
+           gbl_long_request_ms, gbl_sql_time_threshold);
     logmsg(LOGMSG_USER, "Long request log file  : %s\n",
            long_request_out->filename);
     logmsg(LOGMSG_USER, "diffstat threshold     : %d s\n", diffstat_thresh);
@@ -2190,7 +2190,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     if (logger->opcode == OP_SQL && !logger->iq) {
         long_request_thresh = gbl_sql_time_threshold;
     } else {
-        long_request_thresh = long_request_ms;
+        long_request_thresh = gbl_long_request_ms;
     }
 
     if (logger->durationus >= M2U(long_request_thresh)) {

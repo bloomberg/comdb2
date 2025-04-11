@@ -571,6 +571,7 @@ extern int gbl_sc_status_max_rows;
 extern int gbl_rep_process_pstack_time;
 extern int gbl_sql_recover_time;
 extern int gbl_legacy_requests_verbose;
+extern int gbl_long_request_ms;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
