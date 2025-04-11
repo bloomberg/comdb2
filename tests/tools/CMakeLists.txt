@@ -25,6 +25,7 @@ macro(add_exe exe)
 endmacro()
 
 add_exe(api_events api_events.c)
+add_exe(appsock appsock.c)
 add_exe(blob blob.c)
 add_exe(bound bound.cpp)
 add_exe(breakloop breakloop.c nemesis.c testutil.c)
