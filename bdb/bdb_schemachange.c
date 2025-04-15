@@ -53,6 +53,7 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+extern int gbl_debug_downgrade_during_sc_deadlock;
 extern int sc_ready(void);
 extern int gbl_debug_systable_locks;
 extern int32_t gbl_rep_lockid;
@@ -279,6 +280,9 @@ retry:
         return -1;
     }
     uint64_t transize;
+    if (gbl_debug_downgrade_during_sc_deadlock) {
+        sleep(10);
+    }
     seqnum_type seqnum;
     rc = bdb_tran_commit_with_seqnum_size(bdb_state, ltran, &seqnum,
                                           &transize, bdberr);
