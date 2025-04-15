@@ -1758,6 +1758,7 @@ struct __db {
 	int  (*set_pagesize) __P((DB *, u_int32_t));
 	int  (*set_paniccall) __P((DB *, void (*)(DB_ENV *, int)));
 	int  (*stat) __P((DB *, void *, u_int32_t));
+	int  (*size) __P((DB *, off_t *));
 	int  (*sync) __P((DB *, u_int32_t));
 	int  (*upgrade) __P((DB *, const char *, u_int32_t));
 	int  (*verify) __P((DB *,

@@ -460,6 +460,7 @@ extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_internal_sql_stmt_caching;
 extern int gbl_longreq_log_freq_sec;
 extern int gbl_disable_seekscan_optimization;
+extern int gbl_temptable_recreate_size;
 extern int gbl_pgcomp_dryrun;
 extern int gbl_pgcomp_dbg_stdout;
 extern int gbl_pgcomp_dbg_ctrace;

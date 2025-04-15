@@ -272,6 +272,7 @@ __db_init(dbp, flags)
 	dbp->set_pagesize = __db_set_pagesize;
 	dbp->set_paniccall = __db_set_paniccall;
 	dbp->stat = __db_stat_pp;
+    dbp->size = __db_size_pp;
 	dbp->sync = __db_sync_pp;
 	dbp->upgrade = __db_upgrade_pp;
 	dbp->verify = __db_verify_pp;

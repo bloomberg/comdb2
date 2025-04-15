@@ -1391,12 +1391,15 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     return bdb_temp_table_reset_cursors(bdb_state, tbl, bdberr);
 }
 
+int gbl_temptable_recreate_size = 1048576;
+
 int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
                             int *bdberr)
 {
     if (tbl == NULL)
         return 0;
     int rc = 0;
+    off_t sz;
     unsigned long long int ii = 0;
     arr_elem_t *elem;
 
@@ -1428,7 +1431,8 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
         break;
 
     case TEMP_TABLE_TYPE_BTREE:
-        if (tbl->num_mem_entries < 100)
+        rc = tbl->tmpdb->size(tbl->tmpdb, &sz);
+        if (tbl->num_mem_entries < 100 && (rc == 0 && sz < gbl_temptable_recreate_size))
             rc = bdb_temp_table_truncate_temp_db(bdb_state, tbl, bdberr);
         else
             rc = bdb_temp_table_init_temp_db(bdb_state, tbl, bdberr);

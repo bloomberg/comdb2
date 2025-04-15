@@ -346,6 +346,8 @@ REGISTER_TUNABLE("disable_tagged_api", "Disables 'enable_tagged_api'",
 REGISTER_TUNABLE("disable_tagged_api_writes", "Disables tag api writes",
                  TUNABLE_BOOLEAN, &gbl_disable_tagged_api_writes, NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("temptable_recreate_size", "Sets temptable re-create size threshold.  (Default: 1048576).",
+                 TUNABLE_INTEGER, &gbl_temptable_recreate_size, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_temptable_pool", "Sets 'temptable_limit' to 0.",
                  TUNABLE_BOOLEAN, &gbl_temptable_pool_capacity,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);

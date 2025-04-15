@@ -1001,6 +1001,7 @@
 (name='temptable_cachesz', description='Cache size for temporary tables. Temp tables do not share the database's main buffer pool.', type='INTEGER', value='262144', read_only='N')
 (name='temptable_limit', description='Set the maximum number of temporary tables the database can create. (Default: 8192)', type='INTEGER', value='8192', read_only='Y')
 (name='temptable_mem_threshold', description='If in-memory temp tables contain more than this many entries, spill them to disk.', type='INTEGER', value='512', read_only='N')
+(name='temptable_recreate_size', description='Sets temptable re-create size threshold.  (Default: 1048576).', type='INTEGER', value='1048576', read_only='N')
 (name='test_auth_time', description='Check auth in watchdog this often', type='INTEGER', value='60', read_only='N')
 (name='test_blkseq_replay', description='Test blkseq replay codepath (for debugging only)', type='BOOLEAN', value='OFF', read_only='N')
 (name='test_blob_race', description='', type='INTEGER', value='0', read_only='Y')
