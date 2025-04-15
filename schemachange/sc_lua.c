@@ -6,10 +6,15 @@
 #include "comdb2.h"
 #include "schemachange.h"
 #include "sc_lua.h"
+#include "sc_queues.h"
 #include "sqlglue.h"
 #include "translistener.h"
+#include "bdb_int.h"
 
 #include "logmsg.h"
+
+int gbl_fail_to_create_default_cons = 0;
+int gbl_create_default_consumer_atomically = 1;
 
 struct sp_file_t {
     char name[128]; // MAX_SPNAME
@@ -319,7 +324,7 @@ static int show_versioned_sp_src(struct schema_change_type *sc)
     free(src);
     return 0;
 }
-static int add_versioned_sp(struct schema_change_type *sc)
+static int add_versioned_sp(struct schema_change_type *sc, tran_type *tran)
 {
     int rc, bdberr;
     char *spname = sc->tablename;
@@ -329,7 +334,6 @@ static int add_versioned_sp(struct schema_change_type *sc)
     bdb_get_default_versioned_sp(spname, &default_ver_str);
     free(default_ver_str);
 
-    tran_type *tran = sc->tran;
     rc = bdb_add_versioned_sp(tran, spname, version, sc->newcsc2);
     if (default_ver_num <= 0 && default_ver_str == NULL) {
         // first version - set it default as well
@@ -337,10 +341,10 @@ static int add_versioned_sp(struct schema_change_type *sc)
     }
     return rc;
 }
-static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
+static int chk_versioned_sp_tran(char *name, char *version, struct ireq *iq, tran_type *tran)
 {
     char *src = NULL;
-    int rc = bdb_get_versioned_sp(name, version, &src);
+    int rc = bdb_get_versioned_sp_tran(tran, name, version, &src);
     if (rc != 0) {
         if (iq) {
             errstat_cat_strf(&iq->errstat, "no such procedure %s:%s", name,
@@ -350,6 +354,10 @@ static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
     free(src);
     return rc;
 }
+static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
+{
+    return chk_versioned_sp_tran(name, version, iq, NULL);
+}
 static int del_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     int rc;
@@ -357,12 +365,12 @@ static int del_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
         return rc;
     return bdb_del_versioned_sp(sc->tablename, sc->fname);
 }
-static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
+static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq, tran_type *tran)
 {
     int rc;
-    if ((rc = chk_versioned_sp(sc->tablename, sc->fname, iq)) != 0)
+    if ((rc = chk_versioned_sp_tran(sc->tablename, sc->fname, iq, tran)) != 0)
         return rc;
-    return bdb_set_default_versioned_sp(sc->tran, sc->tablename, sc->fname);
+    return bdb_set_default_versioned_sp(tran, sc->tablename, sc->fname);
 }
 
 // ----------------
@@ -441,18 +449,18 @@ static int show_sp_src(struct schema_change_type *sc)
 // ---------------------------
 // ADD/DEL/DEFAULT REGULAR SPs
 // ---------------------------
-static int add_sp(struct schema_change_type *sc, int *version)
+static int add_sp(struct schema_change_type *sc, int *version, tran_type *tran)
 {
     SBUF2 *sb = sc->sb;
     char *schemabuf = sc->newcsc2;
     int rc, bdberr;
-    if ((rc = bdb_set_sp_lua_source(NULL, NULL, sc->tablename, schemabuf,
+    if ((rc = bdb_set_sp_lua_source(NULL, tran, sc->tablename, schemabuf,
                                     strlen(schemabuf) + 1, 0, &bdberr)) != 0) {
         sbuf2printf(sb, "!Unable to add lua source. \n");
         sbuf2printf(sb, "FAILED\n");
         return rc;
     }
-    bdb_get_lua_highest(NULL, sc->tablename, version, INT_MAX, &bdberr);
+    bdb_get_lua_highest(tran, sc->tablename, version, INT_MAX, &bdberr);
     sbuf2printf(sb, "!Added stored procedure: %s \t version %d.\n",
                 sc->tablename, *version);
     sbuf2printf(sb, "SUCCESS\n");
@@ -480,7 +488,7 @@ fail:
     sbuf2printf(sb, "FAILED\n");
     return -1;
 }
-static int default_sp(struct schema_change_type *sc)
+static int default_sp(struct schema_change_type *sc, tran_type *tran)
 {
     SBUF2 *sb = sc->sb;
     if (sc->newcsc2 == NULL) {
@@ -495,7 +503,7 @@ static int default_sp(struct schema_change_type *sc)
         goto fail;
     }
     int bdberr;
-    if (bdb_set_sp_lua_default(NULL, NULL, sc->tablename, version, &bdberr)) {
+    if (bdb_set_sp_lua_default(NULL, tran, sc->tablename, version, &bdberr)) {
         sbuf2printf(sb, "!version not found number %d\n", version);
         goto fail;
     }
@@ -510,18 +518,20 @@ fail:
 // ---------------------------------------------------
 // Decide whether to call regular or versioned or both
 // ---------------------------------------------------
-static int do_add_sp_int(struct schema_change_type *sc, struct ireq *iq)
+static int do_add_sp_int(struct schema_change_type *sc, struct ireq *iq, tran_type *tran)
 {
     int rc, version;
     if (sc->fname[0] != 0) {
-        rc = add_versioned_sp(sc);
+        rc = add_versioned_sp(sc, tran);
     } else {
-        rc = add_sp(sc, &version);
+        rc = add_sp(sc, &version, tran);
     }
     if (rc == 0) {
         ++gbl_lua_version;
-        int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+        if (sc->kind != SC_DEFAULTCONS) {
+            int bdberr;
+            bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+        }
         if (iq) {
             if (sc->fname[0] == 0) {
                 sprintf(sc->fname, "%d", version);
@@ -551,15 +561,15 @@ static int do_del_sp_int(struct schema_change_type *sc, struct ireq *iq)
     sc->newcsc2 = NULL;
     return rc;
 }
-static int do_default_sp_int(struct schema_change_type *sc, struct ireq *iq)
+static int do_default_sp_int(struct schema_change_type *sc, struct ireq *iq, tran_type *tran)
 {
     int rc;
     if (sc->fname[0] != 0) {
-        rc = default_versioned_sp(sc, iq);
+        rc = default_versioned_sp(sc, iq, tran);
     } else {
-        rc = default_sp(sc);
+        rc = default_sp(sc, tran);
     }
-    if (rc == 0) {
+    if (rc == 0 && sc->kind != SC_DEFAULTCONS) {
         int bdberr;
         bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
     }
@@ -608,13 +618,19 @@ int do_show_sp(struct schema_change_type *sc, struct ireq *unused)
     sbuf2printf(sb, "SUCCESS\n");
     return 0;
 }
+
+int do_add_sp_tran(struct schema_change_type *sc, struct ireq *iq, tran_type *tran, int lock_schema_lk)
+{
+    if (lock_schema_lk) { wrlock_schema_lk(); }
+    int rc = do_add_sp_int(sc, iq, tran);
+    ++gbl_lua_version;
+    if (lock_schema_lk) { unlock_schema_lk(); }
+    return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
+}
+
 int do_add_sp(struct schema_change_type *sc, struct ireq *iq)
 {
-    wrlock_schema_lk();
-    int rc = do_add_sp_int(sc, iq);
-    ++gbl_lua_version;
-    unlock_schema_lk();
-    return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
+    return do_add_sp_tran(sc, iq, NULL, /* lock_schema_lk */ 1);
 }
 
 int finalize_add_sp(struct schema_change_type *sc)
@@ -649,16 +665,82 @@ int finalize_del_sp(struct schema_change_type *sc)
     return 0;
 }
 
+int do_default_sp_tran(struct schema_change_type *sc, struct ireq *iq, tran_type *tran, int lock_schema_lk)
+{
+    if (lock_schema_lk) { wrlock_schema_lk(); }
+    int rc = do_default_sp_int(sc, iq, tran);
+    ++gbl_lua_version;
+    if (lock_schema_lk) { unlock_schema_lk(); }
+    return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
+}
+
 int do_default_sp(struct schema_change_type *sc, struct ireq *iq)
 {
+    return do_default_sp_tran(sc, iq, NULL, /* lock_schema_lk */ 1);
+}
+
+int do_default_cons(struct schema_change_type *sc, struct ireq *iq)
+{
     wrlock_schema_lk();
-    int rc = do_default_sp_int(sc, iq);
-    ++gbl_lua_version;
+    javasp_splock_wrlock();
+    
+    tran_type *ltran = NULL;
+    int rc = trans_start_logical_sc(iq, &ltran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to start logical transaction\n", __func__);
+        goto done;
+    }
+
+    bdb_ltran_get_schema_lock(ltran);
+
+    tran_type *tran = NULL;
+    rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
+    if (rc != 0 || tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to start physical transaction\n", __func__);
+        goto done;
+    }
+
+    rc = do_add_sp_tran(sc, iq, tran, /* lock_schema_lk */ 0);
+    if (rc && rc != SC_COMMIT_PENDING) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to add procedure. rc %d\n", __func__, rc);
+        goto done;
+    }
+    rc = do_default_sp_tran(sc, iq, tran, /* lock_schema_lk */ 0);
+    if (rc && rc != SC_COMMIT_PENDING) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to make procedure default\n", __func__);
+        goto done;
+    }
+
+    if (gbl_fail_to_create_default_cons) {
+        rc = SC_ABORTED;
+        goto done;
+    }
+
+    // This will commit/abort our transaction:
+    rc = perform_trigger_update_tran(sc, iq, ltran, /* lock_schema_and_sp_lk */ 0);
+    ltran = NULL;
+    tran = NULL;
+    if (rc && rc != SC_COMMIT_PENDING) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to create queue\n", __func__);
+        goto done;
+    }
+
+done:
+    if (ltran) { trans_abort(iq, ltran); }
+    else if (tran) { trans_abort(iq, tran); }
+
     unlock_schema_lk();
+    javasp_splock_unlock();
+
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
 }
 
 int finalize_default_sp(struct schema_change_type *sc)
+{
+    return 0;
+}
+
+int finalize_default_cons(struct schema_change_type *sc)
 {
     return 0;
 }
