@@ -13,6 +13,8 @@ static const char revid[] = "$Id: db_iface.c,v 11.106 2003/10/02 02:57:46 margo 
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <string.h>
 #endif
@@ -1898,6 +1900,63 @@ err:		return (__db_ferr(dbenv, "DB->put", 0));
 	}
 
 	return (0);
+}
+
+/*
+ * __db_size_pp --
+ *	DB->stat pre/post processing.
+ *
+ * PUBLIC: int __db_size_pp __P((DB *, off_t *));
+ */
+int
+__db_size_pp(dbp, size)
+	DB *dbp;
+	off_t *size;
+{
+	DB_ENV *dbenv;
+	int handle_check, ret;
+
+	dbenv = dbp->dbenv;
+	PANIC_CHECK(dbenv);
+	DB_ILLEGAL_BEFORE_OPEN(dbp, "DB->start");
+	handle_check = IS_REPLICATED(dbenv, dbp);
+	if (handle_check && (ret = __db_rep_enter(dbp, 1, 0)) != 0)
+		return (ret);
+
+	ret = __db_size(dbp, size);
+
+	if (handle_check)
+		__db_rep_exit(dbenv);
+
+	return ret;
+}
+
+
+/* Simple routine to retrieve only size */
+/*
+ * __db_size --
+ *	DB->size.
+ *
+ * PUBLIC: int __db_size __P((DB *, off_t *));
+ */
+int
+__db_size(dbp, size)
+	DB *dbp;
+	off_t *size;
+{
+	DB_MPOOLFILE *mpf;
+	mpf = dbp->mpf;
+
+	int rc = -1;
+	if (mpf->fhp != NULL) {
+		struct stat st;
+		if ((rc = fstat(mpf->fhp->fd, &st)) == 0) {
+			*size = st.st_size;
+		} else {
+			rc = errno;
+		}
+	}
+	return rc;
 }
 
 /*

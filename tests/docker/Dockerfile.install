@@ -27,6 +27,7 @@ RUN apt-get update && \
     libuuid1 \
     libz1 \
     libz-dev \
+    lsof \
     make \
     ncurses-dev \
     netcat-openbsd \
