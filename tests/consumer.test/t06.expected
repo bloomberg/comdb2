@@ -1,0 +1,5 @@
+(out='Tunable 'fail_to_create_default_cons' set to ON')
+[create default lua consumer t_cons on (table t for insert and update and delete)] failed with rc 240 comdb2 default consumer 1.1
+(out='Tunable 'fail_to_create_default_cons' set to OFF')
+(count(*)=0)
+(count(*)=1)

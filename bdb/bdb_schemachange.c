@@ -76,16 +76,18 @@ static const char *const bdb_scdone_type_names[] = {
     "llmeta_queue_add",        // 12
     "llmeta_queue_alter",      // 13
     "llmeta_queue_drop",       // 14
-    "genid48_enable",          // 15
-    "genid48_disable",         // 16
-    "lua_sfunc",               // 17
-    "lua_afunc",               // 18
-    "rename_table",            // 19
-    "change_stripe",           // 20
-    "user_view",               // 21
-    "add_queue_file",          // 22
-    "del_queue_file",          // 23
-    "alias_table"              // 24
+    "default_cons",            // 15
+    "genid48_enable",          // 16
+    "genid48_disable",         // 17
+    "lua_sfunc",               // 18
+    "lua_afunc",               // 19
+    "rename_table",            // 20
+    "change_stripe",           // 21
+    "user_view",               // 22
+    "add_queue_file",          // 23
+    "del_queue_file",          // 24
+    "alias_table",             // 25
+    "alias",                   // 26
 };
 
 const char *bdb_get_scdone_str(scdone_t type)

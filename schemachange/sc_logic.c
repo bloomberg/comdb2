@@ -626,6 +626,7 @@ struct {
     {0, 0, NULL, NULL, do_del_sp, finalize_del_sp},
     {0, 0, NULL, NULL, do_default_sp, finalize_default_sp},
     {0, 0, NULL, NULL, do_show_sp, NULL},
+    {0, 0, NULL, NULL, do_default_cons, finalize_default_cons},
     {0, 0, NULL, NULL, perform_trigger_update, finalize_trigger},
     {0, 0, NULL, NULL, perform_trigger_update, finalize_trigger},
     {0, 0, NULL, NULL, do_lua_sfunc, finalize_lua_sfunc},

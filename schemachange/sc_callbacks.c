@@ -520,7 +520,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
         if (bdb_list_unused_files_tran(
-                db->handle, tran, &bdberr, 
+                db->handle, tran, &bdberr,
                 "schemachange") || bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
     } else {
@@ -1148,6 +1148,12 @@ static int scdone_llmeta_queue(const char table[], void *arg, scdone_t type)
     return rc;
 }
 
+static int scdone_default_cons(const char table[], void *arg, scdone_t type)
+{
+    ++gbl_lua_version;
+    return scdone_llmeta_queue(table, arg, llmeta_queue_add);
+}
+
 static int scdone_genid48(const char tablename[], void *arg, scdone_t type)
 {
     switch (type) {
@@ -1277,10 +1283,11 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_luareload,     &scdone_sc_analyze,     &scdone_bthash,
     &scdone_rowlocks,      &scdone_rowlocks,       &scdone_rowlocks,
     &scdone_views,         &scdone_llmeta_queue,   &scdone_llmeta_queue,
-    &scdone_llmeta_queue,  &scdone_genid48,        &scdone_genid48,
-    &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
-    &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
-    &scdone_queue_file,    &scdone_rename_table,   &scdone_alias};
+    &scdone_llmeta_queue,  &scdone_default_cons,   &scdone_genid48,
+    &scdone_genid48,       &scdone_lua_sfunc,      &scdone_lua_afunc,
+    &scdone_rename_table,  &scdone_change_stripe,  &scdone_user_view,
+    &scdone_queue_file,    &scdone_queue_file,     &scdone_rename_table,
+    &scdone_alias};
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
