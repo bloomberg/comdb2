@@ -24,6 +24,10 @@
   at multiple places.
 */
 
+REGISTER_TUNABLE("abort_during_downgrade_if_scs_dont_stop", "Abort if scs don't stop within 60 seconds"
+                 "after starting a downgrade (default OFF)", TUNABLE_BOOLEAN,
+                 &gbl_abort_during_downgrade_if_scs_dont_stop, 0, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("abort_on_in_use_rqid", NULL, TUNABLE_BOOLEAN,
                  &gbl_abort_on_clear_inuse_rqid, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
