@@ -377,9 +377,10 @@ static inline void set_empty_queue_options(struct schema_change_type *s)
 extern int get_physical_transaction(bdb_state_type *bdb_state,
         tran_type *logical_tran, tran_type **outtran, int force_commit);
 
-static int perform_trigger_update_int(struct schema_change_type *sc)
+static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *in_ltran)
 {
-    char *config = sc->newcsc2;
+    char *config = sc->newcsc2_for_default_cons_q ? sc->newcsc2_for_default_cons_q : sc->newcsc2;
+    char * tablename = sc->newcsc2_for_default_cons_q ? sc->tablename_for_default_cons_q : sc->tablename;
 
     /* we are on on master
      * 1) write config/destinations to llmeta
@@ -388,25 +389,31 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * 4) send scdone, like any other sc
      */
     struct dbtable *db = NULL;
-    tran_type *tran = NULL, *ltran = NULL;
+    tran_type *ltran = in_ltran, *tran = NULL;
     int rc = 0;
     int bdberr = 0;
     struct ireq iq;
-    scdone_t scdone_type = llmeta_queue_add;
+    scdone_t scdone_type = sc->kind == SC_DEFAULTCONS ? default_cons : llmeta_queue_add;
     SBUF2 *sb = sc->sb;
+
+    const int should_add_trigger = sc->kind == SC_ADD_TRIGGER ||
+                                  sc->kind == SC_DEFAULTCONS;
 
     set_empty_queue_options(sc);
 
     init_fake_ireq(thedb, &iq);
     iq.usedb = &thedb->static_table;
 
-    rc = trans_start_logical_sc(&iq, &ltran);
-    if (rc) {
-        sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
-                    rc, sc->tablename);
-        sbuf2printf(sb, "FAILED\n");
-        goto done;
+    if (!ltran) {
+        rc = trans_start_logical_sc(&iq, &ltran);
+        if (rc) {
+            sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
+                        rc, sc->tablename);
+            sbuf2printf(sb, "FAILED\n");
+            goto done;
+        }
     }
+
     bdb_ltran_get_schema_lock(ltran);
     rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
     if (rc != 0 || tran == NULL) {
@@ -418,45 +425,45 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
     rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
     if (rc != 0) {
-        sbuf2printf(sb, "!Error %d getting tablelock for comdb2_queues.\n", rc, sc->tablename);
+        sbuf2printf(sb, "!Error %d getting tablelock for comdb2_queues.\n", rc, tablename);
         sbuf2printf(sb, "FAILED\n");
         goto done;
     }
 
-    rc = bdb_lock_tablename_write(thedb->bdb_env, sc->tablename, tran);
+    rc = bdb_lock_tablename_write(thedb->bdb_env, tablename, tran);
     if (rc) {
         sbuf2printf(sb, "!Error %d getting tablelock for %s.\n", rc,
-                    sc->tablename);
+                    tablename);
         sbuf2printf(sb, "FAILED\n");
         goto done;
     }
 
-    db = get_dbtable_by_name(sc->tablename);
+    db = get_dbtable_by_name(tablename);
     if (db) {
         sbuf2printf(sb, "!Trigger name %s clashes with existing table.\n",
-                    sc->tablename);
+                    tablename);
         sbuf2printf(sb, "FAILED\n");
         goto done;
     }
-    db = getqueuebyname(sc->tablename);
+    db = getqueuebyname(tablename);
 
     /* dropping/altering a queue that doesn't exist? */
     if ((sc->kind == SC_DEL_TRIGGER) && db == NULL) {
-        sbuf2printf(sb, "!Trigger %s doesn't exist.\n", sc->tablename);
+        sbuf2printf(sb, "!Trigger %s doesn't exist.\n", tablename);
         sbuf2printf(sb, "FAILED\n");
         rc = -1;
         goto done;
     }
     /* adding a queue that already exists? */
-    else if (sc->kind == SC_ADD_TRIGGER && db != NULL) {
-        sbuf2printf(sb, "!Trigger %s already exists.\n", sc->tablename);
+    else if (should_add_trigger && db != NULL) {
+        sbuf2printf(sb, "!Trigger %s already exists.\n", tablename);
         sbuf2printf(sb, "FAILED\n");
         rc = -1;
         goto done;
     }
-    if (sc->kind == SC_ADD_TRIGGER) {
-        if (javasp_exists(sc->tablename)) {
-            sbuf2printf(sb, "!Procedure %s already exists.\n", sc->tablename);
+    if (should_add_trigger) {
+        if (javasp_exists(tablename)) {
+            sbuf2printf(sb, "!Procedure %s already exists.\n", tablename);
             sbuf2printf(sb, "FAILED\n");
             rc = -1;
             goto done;
@@ -475,7 +482,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     /* For adding, there's no queue and no consumer/procedure, etc., so create
      * those first. For other methods, we need to manage the existing consumer
      * first. */
-    if (sc->kind == SC_ADD_TRIGGER) {
+    if (should_add_trigger) {
         char **dests = calloc(sc->dests.count, sizeof(char *));
         if (dests == NULL) {
             sbuf2printf(sb, "!Can't allocate memory for destination list\n");
@@ -496,16 +503,16 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
+        rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, tablename, config,
                                   sc->dests.count, dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n", __func__, rc);
             goto done;
         }
 
-        scdone_type = llmeta_queue_add;
+        scdone_type = sc->kind == SC_DEFAULTCONS ? default_cons : llmeta_queue_add;
 
-        db = newqdb(thedb, sc->tablename, 65536, 65536, 1);
+        db = newqdb(thedb, tablename, 65536, 65536, 1);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: newqdb returned NULL\n", __func__);
             goto done;
@@ -548,7 +555,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress, sc->persistent_seq);
 
         /* create a procedure (needs to go away, badly) */
-        rc = javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
+        rc = javasp_do_procedure_op(JAVASP_OP_LOAD, tablename, NULL, config);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n", __func__, rc);
             sbuf2printf(sb, "!Can't load procedure - check config/destinations?\n");
@@ -569,9 +576,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        logmsg(LOGMSG_USER, "Adding %s:%s\n", qtype(db), pretty_qname(sc->tablename));
+        logmsg(LOGMSG_USER, "Adding %s:%s\n", qtype(db), pretty_qname(tablename));
     } else if (sc->kind == SC_DEL_TRIGGER) {
-        logmsg(LOGMSG_USER, "Dropping %s:%s\n", qtype(db), pretty_qname(sc->tablename));
+        logmsg(LOGMSG_USER, "Dropping %s:%s\n", qtype(db), pretty_qname(tablename));
         scdone_type = llmeta_queue_drop;
         /* stop */
         dbqueuedb_stop_consumers(db);
@@ -624,10 +631,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
     }
 
-    rc = bdb_llog_scdone_tran(thedb->bdb_env, scdone_type, tran, sc->tablename,
-                              strlen(sc->tablename) + 1, &bdberr);
+    rc = bdb_llog_scdone_tran(thedb->bdb_env, scdone_type, tran, tablename,
+                            strlen(tablename) + 1, &bdberr);
     if (rc) {
-        sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
+        sbuf2printf(sb, "!Failed to write scdone , rc=%d\n", rc);
         goto done;
     }
     rc = trans_commit(&iq, ltran, gbl_myhostname);
@@ -638,11 +645,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         goto done;
     }
 
-    if (sc->kind == SC_ADD_TRIGGER && db && rc == 0) {
+    if (should_add_trigger && db && rc == 0) {
         add_to_qdbs(db);
     }
 
-    if (sc->kind == SC_ADD_TRIGGER) {
+    if (should_add_trigger) {
         dbqueuedb_admin(thedb);
     }
 
@@ -662,14 +669,23 @@ done:
     // depending on where it is being executed from.
 }
 
+int perform_trigger_update_tran(struct schema_change_type *sc, struct ireq *unused, tran_type *ltran, int lock_schema_and_sp_lk)
+{
+    if (lock_schema_and_sp_lk) {
+        wrlock_schema_lk();
+        javasp_splock_wrlock();
+    }
+    int rc = perform_trigger_update_int(sc, ltran);
+    if (lock_schema_and_sp_lk) {
+        javasp_splock_unlock();
+        unlock_schema_lk();
+    }
+    return rc;
+}
+
 int perform_trigger_update(struct schema_change_type *sc, struct ireq *unused)
 {
-    wrlock_schema_lk();
-    javasp_splock_wrlock();
-    int rc = perform_trigger_update_int(sc);
-    javasp_splock_unlock();
-    unlock_schema_lk();
-    return rc;
+    return perform_trigger_update_tran(sc, unused, NULL, /* lock_schema_and_sp_lk */ 1);
 }
 
 // TODO -- what should this do? maybe log_scdone should be here

@@ -136,6 +136,7 @@ enum schema_change_kind {
     SC_DROPTABLE_INDEX = 28,
     SC_REBUILDTABLE_INDEX = 29,
     SC_BULK_IMPORT = 30,
+    SC_DEFAULTCONS = 31, 
     SC_LAST /* End marker */
 };
 
@@ -315,6 +316,11 @@ struct schema_change_type {
     unsigned long long import_dst_data_genid;
     unsigned long long import_dst_index_genids[MAXINDEX];
     unsigned long long import_dst_blob_genids[MAXBLOBS];
+
+    char tablename_for_default_cons_q[MAXTABLELEN];
+    size_t tablename_for_default_cons_q_len;
+    char * newcsc2_for_default_cons_q;
+    size_t newcsc2_for_default_cons_q_len;
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
