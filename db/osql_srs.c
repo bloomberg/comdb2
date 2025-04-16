@@ -177,6 +177,11 @@ int srs_tran_del_last_query(struct sqlclntstate *clnt)
     return 0;
 }
 
+static inline int srs_tran_do_not_retry(struct sqlclntstate *clnt)
+{
+    return (clnt->verifyretry_off || clnt->isselect || clnt->dbtran.trans_has_sp || clnt->has_recording);
+}
+
 /**
  * Add a new query to the transaction
  *
@@ -186,10 +191,8 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = NULL;
 
-    if (clnt->verifyretry_off || clnt->isselect || clnt->dbtran.trans_has_sp ||
-        clnt->has_recording) {
+    if (srs_tran_do_not_retry(clnt))
         return 0;
-    }
 
     /* don't grow session when the transaction is simply repeated */
     if (osql->replay != OSQL_RETRY_NONE) {
@@ -231,6 +234,14 @@ int srs_tran_empty(struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = NULL, *tmp = NULL;
+
+    if (!srs_tran_do_not_retry(clnt)) {
+        Pthread_mutex_lock(&clnt->sql_lk);
+        /* clnt->sql points into a buffer in clnt->appdata->query.
+         * ensure that it's set to NULL before we free the memory */
+        clnt->sql = NULL;
+        Pthread_mutex_unlock(&clnt->sql_lk);
+    }
 
     LISTC_FOR_EACH_SAFE(&osql->history->lst, item, tmp, lnk)
     {
