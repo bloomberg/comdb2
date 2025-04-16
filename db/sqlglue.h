@@ -65,6 +65,6 @@ int resolve_sfuncs_for_db(struct dbenv* thedb);
 
 void start_stat4dump_thread(void);
 
-int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info, struct bias_info *bias_info);
+int mem_to_ondisk(void *outbuf, const struct field *f, struct mem_info *info, struct bias_info *bias_info);
 
 #endif

@@ -3318,12 +3318,9 @@ int describe_update_columns(const struct ireq *iq, const struct schema *chk, int
     return 0;
 }
 
-int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc,
-                             const char *inbuf, char *outbuf,
-                             blob_buffer_t *blobs, size_t maxblobs,
-                             struct field *f,
-                             struct convert_failure *fail_reason,
-                             const char *tzname);
+int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc, const char *inbuf, char *outbuf,
+                             blob_buffer_t *blobs, size_t maxblobs, const struct field *f,
+                             struct convert_failure *fail_reason, const char *tzname);
 static int stag_to_stag_field(const struct dbtable *tbl, const char *inbuf,
                               char *outbuf, int flags,
                               struct convert_failure *fail_reason,
@@ -5303,6 +5300,7 @@ struct schema *clone_schema_index(struct schema *from, const char *tag,
             goto err;
         memcpy(sc->datacopy, from->datacopy, datacopy_nmembers * sizeof(int));
     }
+    sc->has_nextseq = from->has_nextseq;
     return sc;
 
 err:
@@ -6713,9 +6711,12 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
     char *check_for_resolve_master;
     for (int nfield = 0; nfield < idx_schema->nmembers; nfield++) {
         const struct field *idx_field = &idx_schema->member[nfield];
-        // TODO: expression idx
+        /* Expression fields that reference an autoinc column have already been
+         * re-evaluated against the completed record by
+         * fixup_ireq_index_expressions(), so the key we were handed is good. */
         if (idx_field->isExpr)
             continue;
+
         if (idx_field->in_default_type != SERVER_SEQUENCE)
             continue;
 

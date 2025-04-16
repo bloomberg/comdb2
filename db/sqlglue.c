@@ -1122,8 +1122,7 @@ int convert_sql_failure_reason_str(const struct convert_failure *reason,
     return 0;
 }
 
-int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
-                  bias_info *bias_info)
+int mem_to_ondisk(void *outbuf, const struct field *f, struct mem_info *info, bias_info *bias_info)
 {
     Mem *m = info->m;
     struct schema *s = info->s;
@@ -12978,9 +12977,8 @@ done:
     return dirty_keys;
 }
 
-static inline void build_indexes_expressions_query(strbuf *sql,
-                                                   struct schema *sc,
-                                                   char *tblname, char *expr)
+static inline void build_indexes_expressions_query(strbuf *sql, const struct schema *sc, const char *tblname,
+                                                   const char *expr)
 {
     int i;
     strbuf_clear(sql);
@@ -13022,11 +13020,9 @@ char *indexes_expressions_unescape(char *expr)
     return new_expr;
 }
 
-int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc,
-                             const char *inbuf, char *outbuf, blob_buffer_t *blobs,
-                             size_t maxblobs, struct field *f,
-                             struct convert_failure *fail_reason,
-                             const char *tzname)
+int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc, const char *inbuf, char *outbuf,
+                             blob_buffer_t *blobs, size_t maxblobs, const struct field *f,
+                             struct convert_failure *fail_reason, const char *tzname)
 {
     Mem *m = NULL;
     Mem mout = {{0}};

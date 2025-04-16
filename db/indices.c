@@ -326,6 +326,56 @@ static inline void append_genid_to_key(dtikey_t *ditk, int ixkeylen)
     memcpy(&ditk->ixkey[ixkeylen], &ditk->genid, sizeof(ditk->genid));
 }
 
+int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc, const char *inbuf, char *outbuf,
+                             blob_buffer_t *blobs, size_t maxblobs, const struct field *f,
+                             struct convert_failure *fail_reason, const char *tzname);
+
+/* The value of an autoincrement column is only assigned here on the master (see
+ * set_master_columns()).  The replicant that formed the index keys for this
+ * record therefore evaluated every index expression against a NULL placeholder
+ * instead of the real sequence value, so any expression referencing such a
+ * column produced the wrong key.
+ *
+ * Now that "od_dta" holds the completed record, re-evaluate the expression
+ * fields of the keys the replicant sent us.  Doing it here, before the keys are
+ * consumed (and before they are stashed away for delayed key adds), means every
+ * later create_key_from_ireq() caller sees a correct key without needing the
+ * blobs, which are not available in all of those places. */
+int fixup_ireq_index_expressions(struct ireq *iq, void *od_dta, blob_buffer_t *blobs, size_t maxblobs,
+                                 unsigned long long ins_keys)
+{
+    struct dbtable *db = iq->usedb;
+    struct schema *schema = get_schema(db, -1);
+
+    if (!iq->idxInsert || !db->ix_expr || !schema || !schema->has_nextseq)
+        return 0;
+
+    if (blobs == NULL)
+        maxblobs = 0;
+
+    for (int ixnum = 0; ixnum < db->nix; ixnum++) {
+        if (iq->idxInsert[ixnum] == NULL)
+            continue;
+        if (gbl_partial_indexes && db->ix_partial && !(ins_keys & (1ULL << ixnum)))
+            continue;
+
+        struct schema *idx_schema = get_schema(db, ixnum);
+        for (int nfield = 0; nfield < idx_schema->nmembers; nfield++) {
+            const struct field *idx_field = &idx_schema->member[nfield];
+            if (!idx_field->isExpr)
+                continue;
+            if (indexes_expressions_data(db, schema, od_dta, (char *)iq->idxInsert[ixnum], blobs, maxblobs, idx_field,
+                                         NULL, iq->tzname)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: table %s ix %d failed to evaluate expression "
+                       "\"%s\"\n",
+                       __func__, db->tablename, ixnum, idx_field->name);
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
 
 #define REC_ERROR_LOG(fmt, ...) do {            \
     EVENTLOG_DEBUG (            \
