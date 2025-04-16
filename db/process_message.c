@@ -5185,6 +5185,11 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "panic") == 0) {
         bdb_panic(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "test_abort_rwlock") == 0) {
+        pthread_rwlock_t testlk = PTHREAD_RWLOCK_INITIALIZER;
+        logmsg(LOGMSG_USER, "Unlocking a rwlock which isn't held\n");
+        Pthread_rwlock_unlock(&testlk);
+        logmsg(LOGMSG_USER, "Test failed: the process should have aborted\n");
     } else if (tokcmp(tok, ltok, "debug_logreq") == 0) {
         int file, offset;
         tok = segtok(line, lline, &st, &ltok);
