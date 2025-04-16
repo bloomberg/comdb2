@@ -35,8 +35,8 @@ main() {
 
 	sleep 20 # Let cluster run election
 
-	# Start old master. Bug is that it won't be able to finish its downgrade because its seqno
-	# is behind the rest of the cluster.
+	# Start old master. Bug is that it won't be able to finish its downgrade because it will
+	# loop waiting for rest of cluster to ack its commit
 	send_signal_to_node "SIGCONT" "${old_master}"
 
 	sleep 30 # Give time for old master to hit timeout waiting for sc to finish
