@@ -74,6 +74,7 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
+    int has_nextseq; /* if the schema contains autoinc columns. Only valid for table schema */
 #if defined STACK_TAG_SCHEMA
     int frames;
     void *buf[MAX_TAG_STACK_FRAMES];

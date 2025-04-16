@@ -906,6 +906,69 @@ EOF
     [[ $? != 0 ]] && failexit "$1 should have passed verify"
 }
 
+# The sequence value is only assigned on the master, so an index expression
+# that references the autoinc column is evaluated against a NULL on the
+# replicant that forms the keys.  The master has to redo those expressions or
+# the index ends up holding NULL instead of the sequence value.
+function insert_with_expr_idx_on_seq
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table $1 {$(cat $1.csc2)}\$\$
+EOF
+
+    for x in 1 2 3 ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $1(a) values($x)"
+        [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
+    done
+
+    # project the expression itself so the value is served out of the index key
+    # instead of being re-read from the data btree
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b + 100 as e from $1 where b + 100 > 0 order by b + 100")
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to select"
+    exp=$'(e=101)\n(e=102)\n(e=103)'
+    [[ $out != $exp ]] && failexit "Got $out, Expected $exp"
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('$1')"
+    [[ $? != 0 ]] && failexit "$1 should have passed verify"
+}
+
+# Same, but the table has a foreign key so the keys are added by
+# delayed_key_adds(), and the expressions read a blob column.
+function insert_with_blob_expr_idx_on_seq
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table seqexprparent {$(cat seqexprparent.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into seqexprparent select * from generate_series(1,3)"
+    [[ $? != 0 ]] && failexit "seqexprparent table should have been allowed to insert"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table $1 {$(cat $1.csc2)}\$\$
+EOF
+
+    # a payload that is too big to be held inline, so the expression can only
+    # be evaluated if the blob is available
+    pad=$(printf 'y%.0s' {1..5000})
+    for x in 1 2 3 ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default \
+            "insert into $1(a, data) values($x, '{\"n\": \"name$x\", \"k\": ${x}0, \"pad\": \"$pad\"}')" > /dev/null
+        [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
+    done
+
+    # expression over both the sequence and the blob, read out of the index key
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b * 1000 + json_extract(data, '\$.k') as e from $1 where b * 1000 + json_extract(data, '\$.k') > 0 order by b * 1000 + json_extract(data, '\$.k')")
+    exp=$'(e=1010)\n(e=2020)\n(e=3030)'
+    [[ $out != $exp ]] && failexit "Got $out, Expected $exp"
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('$1')"
+    [[ $? != 0 ]] && failexit "$1 should have passed verify"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table $1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table seqexprparent"
+}
+
 function run_test
 {
     if [[ "$DBNAME" == *"nextsequencenullsorthighgenerated"* ]]; then
@@ -1018,6 +1081,10 @@ function run_test
 
     insert_with_idx_and_dummy_expr seqwithidxanddummyexpr
     insert_with_idx_and_dummy_expr seqwithdescidxanddummyexpr
+
+    insert_with_expr_idx_on_seq seqwithexpridx
+    insert_with_expr_idx_on_seq seqwithdescexpridx
+    insert_with_blob_expr_idx_on_seq seqwithblobexpridx
 }
 
 run_test

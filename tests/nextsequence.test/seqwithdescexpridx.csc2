@@ -1,0 +1,10 @@
+schema
+{
+   int a null=yes
+   longlong b dbstore=nextsequence null=yes
+}
+keys
+{
+   "b" = <DESCEND>b
+   dup "expr" = <DESCEND>(longlong)"b + 100"
+}
