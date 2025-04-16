@@ -232,6 +232,12 @@ int srs_tran_empty(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = NULL, *tmp = NULL;
 
+    Pthread_mutex_lock(&clnt->sql_lk);
+    /* clnt->sql points into a buffer in clnt->appdata->query.
+     * ensure it's set to NULL before we free the memory */
+    clnt->sql = NULL;
+    Pthread_mutex_unlock(&clnt->sql_lk);
+
     LISTC_FOR_EACH_SAFE(&osql->history->lst, item, tmp, lnk)
     {
         listc_rfl(&osql->history->lst, item);
