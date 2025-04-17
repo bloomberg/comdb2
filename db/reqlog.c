@@ -2834,6 +2834,9 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
         summaries[ii].ref = nodestats->ref;
         summaries[ii].is_ssl = nodestats->is_ssl;
 
+        summaries[ii].sql_queries_cdb2api = snap.sql_queries_cdb2api;
+        summaries[ii].sql_queries_comdb2api = snap.sql_queries_comdb2api;
+        summaries[ii].sql_queries_converted = snap.sql_queries_converted;
         summaries[ii].sql_queries = snap.sql_queries;
         summaries[ii].sql_steps = snap.sql_steps;
         summaries[ii].sql_rows = snap.sql_rows;
@@ -3042,7 +3045,7 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
             prefix, "node");
     logmsgf(LOGMSG_USER, fh,
             "%s%5s |   finds rngexts  writes   other |    adds    upds    dels "
-            "blk/sql   recom snapisl  serial | queries   steps    rows\n",
+            "blk/sql   recom snapisl  serial | queries   steps    rows  newapi  oldapi old2new\n",
             prefix, "");
 
     summaries = get_nodestats_summary(&max_clients, disp_rates);
@@ -3056,14 +3059,17 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
                 inet_ntoa(summaries[ii].addr), summaries[ii].ref);
         logmsgf(LOGMSG_USER, fh,
                 "%s%5d | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | %7u "
-                "%7u %7u\n",
+                "%7u %7u %7u %7u %7u\n",
                 prefix, summaries[ii].node, summaries[ii].finds,
                 summaries[ii].rngexts, summaries[ii].writes,
                 summaries[ii].other_fstsnds, summaries[ii].adds,
                 summaries[ii].upds, summaries[ii].dels, summaries[ii].bsql,
                 summaries[ii].recom, summaries[ii].snapisol,
                 summaries[ii].serial, summaries[ii].sql_queries,
-                summaries[ii].sql_steps, summaries[ii].sql_rows);
+                summaries[ii].sql_steps, summaries[ii].sql_rows,
+                summaries[ii].sql_queries_cdb2api, 
+                summaries[ii].sql_queries_comdb2api,
+                summaries[ii].sql_queries_converted);
     }
 
     for (ii = 0; ii < max_clients; ii++) {
