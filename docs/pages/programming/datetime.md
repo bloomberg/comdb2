@@ -275,7 +275,7 @@ Examples:
 * ```SELECT CAST("2001-01-02" AS datetime) + CAST("10" AS day) ```: generates "2001-01-12" datetime.
 * ```SELECT CAST("2001-12-31T23:59:59.999" AS datetime) + CAST(0.001 AS seconds)```: generates "2002-01-01" datetime.
 
-# Time Decomposition/SQL Functions
+### SQL Functions
 
 * ```now()``` - provides a datetime value equal with the timestamp value for the moment when this function is evaluated
     *   `now()` or `now('ms')` produces millisecond-precision datetime
@@ -286,7 +286,7 @@ Examples:
 * ```hour(timestamp)``` -retrieves the hour from a datetime value
 * ```minute(timestamp)``` -retrieves the minutes from a datetime value
 * ```second(timestamp)``` -retrieves the seconds from a datetime value
-* ```days(timestamp, 'w')``` -retrieves the number of days as a function of type:
+* ```days(timestamp, 'type')``` -retrieves the number of days as a function of type:
     *   if ```type```=='w',  since the beginning of the week
     *   if ```type```=='m',  since the beginning of the month
     *   if ```type```=='y',  since the beginning of the year
