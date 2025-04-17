@@ -1558,6 +1558,16 @@ REGISTER_TUNABLE("test_commit_lsn_map", "Maintain a map of transaction commit LS
                  NOARG | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("incoherent_slow_inactive_timeout", "Periodically reset slow-nodes to incoherent.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_incoherent_slow_inactive_timeout, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("max_incoherent_slow", "Sets maximum number of incoherent-slow nodes.  (Default: 3)", TUNABLE_INTEGER,
+                 &gbl_max_incoherent_slow, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dynamic_max_incoherent_slow", "Calculate max incoherent-slow nodes dynamically.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_dynamic_max_incoherent_slow, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "dynamic_max_incoherent_percent",
+    "Percentage of sanctioned nodes dynamic incoherent-slow will allow to be incoherent-slow.  (Default: 40)",
+    TUNABLE_INTEGER, &gbl_dynamic_max_incoherent_percent, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than this.  (Default: 60000000)", TUNABLE_INTEGER,
