@@ -114,25 +114,26 @@ enum schema_change_kind {
     SC_DELSP = 8,
     SC_DEFAULTSP = 9,
     SC_SHOWSP = 10,
-    SC_ADD_TRIGGER = 11,
-    SC_DEL_TRIGGER = 12,
-    SC_ADD_SFUNC = 13,
-    SC_DEL_SFUNC = 14,
-    SC_ADD_AFUNC = 15,
-    SC_DEL_AFUNC = 16,
-    SC_FULLUPRECS = 17,
-    SC_PARTIALUPRECS = 18,
-    SC_DROPTABLE = 19,
-    SC_TRUNCATETABLE = 20,
-    SC_ADDTABLE = 21,
-    SC_RENAMETABLE = 22,
-    SC_ALIASTABLE = 23,
-    SC_ALTERTABLE = 24,
-    SC_ALTERTABLE_PENDING = 25,
-    SC_REBUILDTABLE = 26,
-    SC_ALTERTABLE_INDEX = 27,
-    SC_DROPTABLE_INDEX = 28,
-    SC_REBUILDTABLE_INDEX = 29,
+    SC_DEFAULTCONS = 11,
+    SC_ADD_TRIGGER = 12,
+    SC_DEL_TRIGGER = 13,
+    SC_ADD_SFUNC = 14,
+    SC_DEL_SFUNC = 15,
+    SC_ADD_AFUNC = 16,
+    SC_DEL_AFUNC = 17,
+    SC_FULLUPRECS = 18,
+    SC_PARTIALUPRECS = 19,
+    SC_DROPTABLE = 20,
+    SC_TRUNCATETABLE = 21,
+    SC_ADDTABLE = 22,
+    SC_RENAMETABLE = 23,
+    SC_ALIASTABLE = 24,
+    SC_ALTERTABLE = 25,
+    SC_ALTERTABLE_PENDING = 26,
+    SC_REBUILDTABLE = 27,
+    SC_ALTERTABLE_INDEX = 28,
+    SC_DROPTABLE_INDEX = 29,
+    SC_REBUILDTABLE_INDEX = 30,
     SC_LAST /* End marker */
 };
 
@@ -303,6 +304,11 @@ struct schema_change_type {
     int (*publish)(tran_type *, struct schema_change_type *);
     void (*unpublish)(struct schema_change_type *);
     uint32_t sc_version;
+
+    char tablename_for_default_cons_q[MAXTABLELEN];
+    size_t tablename_for_default_cons_q_len;
+    char * newcsc2_for_default_cons_q;
+    size_t newcsc2_for_default_cons_q_len;
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);

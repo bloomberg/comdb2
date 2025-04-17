@@ -68,6 +68,7 @@ extern int gbl_disable_skip_rows;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_enable_cache_internal_nodes;
 extern int gbl_partial_indexes;
+extern int gbl_fail_to_create_default_cons;
 extern int gbl_force_writesql;
 extern int gbl_logmsg_epochms;
 

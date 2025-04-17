@@ -223,24 +223,23 @@ void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2T
     char method[64];
     sprintf(method, "dest:%s:%s", consumer ? "dynlua" : "lua", spname);
 
-    // trigger add table:qname dest:method
-    struct schema_change_type *sc = new_schemachange_type();
-    sc->kind = SC_ADD_TRIGGER;
-    sc->persistent_seq = seq;
-    strcpy(sc->tablename, qname);
-    struct dest *d = malloc(sizeof(struct dest));
-    d->dest = strdup(method);
-    listc_abl(&sc->dests, d);
-    sc->newcsc2 = strbuf_disown(s);
-    strbuf_free(s);
-    Vdbe *v = sqlite3GetVdbe(parse);
 
     if (consumer == COMDB2_DEFAULT_CONSUMER) {
-        create_default_consumer_sp(parse, spname);
-        comdb2prepareNoRows(v, parse, 0, sc, comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
+        create_default_consumer_sp(parse, spname, qname, strbuf_disown(s), seq, method);
     } else {
+        // trigger add table:qname dest:method
+        struct schema_change_type *sc = new_schemachange_type();
+        sc->kind = SC_ADD_TRIGGER;
+        sc->persistent_seq = seq;
+        strcpy(sc->tablename, qname);
+        struct dest *d = malloc(sizeof(struct dest));
+        d->dest = strdup(method);
+        listc_abl(&sc->dests, d);
+        sc->newcsc2 = strbuf_disown(s);
+        Vdbe *v = sqlite3GetVdbe(parse);
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
     }
+    strbuf_free(s);
     return;
 }
 

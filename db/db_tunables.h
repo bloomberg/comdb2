@@ -1900,6 +1900,11 @@ REGISTER_TUNABLE("logdelete_lock_trace",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("fail_to_create_default_cons",
+                 "Fail in the middle of creating a default consumer to test that it happens atomically.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_fail_to_create_default_cons,
+                 INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_log_at_checkpoint",
                  "Replicants flush the log at checkpoint records.  "
                  "(Default: on)",
