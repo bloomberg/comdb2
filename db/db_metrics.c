@@ -107,6 +107,9 @@ struct comdb2_metrics_store {
     int64_t auth_allowed;
     int64_t auth_denied;
     double watchdog_time;
+    int64_t distributed_commits;
+    int64_t not_durable_commits;
+    int64_t incoherent_slow_skips;
 
     int64_t page_reads;
     int64_t page_writes;
@@ -299,6 +302,12 @@ comdb2_metric gbl_metrics[] = {
      &stats.auth_denied, NULL},
     {"watchdog_time", "Number of seconds for a successful watchdog test run", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.watchdog_time, NULL},
+    {"distributed_commits", "Number of distributed commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.distributed_commits, NULL},
+    {"not_durable_commits", "Number of not durable commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.not_durable_commits, NULL},
+    {"disabled_incoherent_slows", "Disabled incoherent-slow count", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.incoherent_slow_skips, NULL},
     {"page_reads", "Total page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_reads,
      NULL},
     {"page_writes", "Total page writes", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_writes,
@@ -363,8 +372,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.fastsql_sslconn, NULL},
     {"fastsql_execute_stop", "Number of fastsql 'execute stop' requests", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_execute_stop, NULL},
-    {"legacy_requests", "Number of non-cdb2api requests", STATISTIC_INTEGER,
-     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.legacy_requests, NULL},
+    {"legacy_requests", "Number of non-cdb2api requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.legacy_requests, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -405,6 +414,11 @@ int64_t gbl_fastsql_osql_max_trans;
 int64_t gbl_fastsql_set_datetime_precision;
 int64_t gbl_fastsql_sslconn;
 int64_t gbl_fastsql_execute_stop;
+
+extern int64_t gbl_distributed_commit_count;
+extern int64_t gbl_not_durable_commit_count;
+extern int64_t gbl_incoherent_slow_skips;
+;
 
 static void update_fastsql_metrics() {
     stats.fastsql_execute_inline_params = gbl_fastsql_execute_inline_params;
@@ -630,6 +644,9 @@ int refresh_metrics(void)
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     stats.watchdog_time = time_metric_average(thedb->watchdog_time);
+    stats.distributed_commits = gbl_distributed_commit_count;
+    stats.not_durable_commits = gbl_not_durable_commit_count;
+    stats.incoherent_slow_skips = gbl_incoherent_slow_skips;
     struct global_stats gstats = {0};
 
     global_request_stats(&gstats);
