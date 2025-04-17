@@ -189,7 +189,7 @@ if(UFID_HASH_DEBUG)
   add_definitions(-DUFID_HASH_DEBUG)
 endif()
 
-option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
+option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" OFF)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
 else()
