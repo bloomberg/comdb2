@@ -972,6 +972,9 @@ __dbenv_close(dbenv, rep_check)
 	/* Release DB list */
 	__os_free(dbenv, dbenv->dbs);
 
+	/* Release fidhash */
+	clear_fid_hash(dbenv);
+
 	/* Release lc_cache */
 	__lc_cache_destroy(dbenv);
 
