@@ -621,6 +621,21 @@ done:	/*
 
 int gbl_instrument_dblist = 0;
 
+/*
+* COMDB2 MODIFICATION
+*/
+static int get_dblist_max_fileid(dbenv)
+	DB_ENV *dbenv;
+{
+	DB *ldbp;
+	int max_fileid=0;
+	/* Highest fileid is always at the list HEAD */
+	ldbp = LIST_FIRST(&dbenv->dblist);
+	if (ldbp)
+		max_fileid = ldbp->adj_fileid;
+	return max_fileid;
+}
+
 int get_dblist_count(dbenv, dbp, op, func, line)
 	DB_ENV *dbenv;
 	DB *dbp;
@@ -682,6 +697,7 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	int bef, aft;
 	int ret;
 	int i;
+	int maxdb;
 
 	dbenv = dbp->dbenv;
 
@@ -795,11 +811,13 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	 * together in the list.
 	 */
 	if (ldbp == NULL) {
-		dbp->adj_fileid = dbenv->maxdb + 1;
+		/* COMDB2 MODIFICATION. Account for deleted fileids */
+		maxdb = get_dblist_max_fileid(dbenv);
+		dbp->adj_fileid = maxdb + 1;
 		dbenv->dbs =
 			realloc(dbenv->dbs,
 					sizeof(listc_t) * (dbp->adj_fileid + 1));
-		for (i = dbenv->maxdb + 1 ; i <= dbp->adj_fileid; i++) {
+		for (i = maxdb + 1 ; i <= dbp->adj_fileid; i++) {
 			listc_init(&dbenv->dbs[i], offsetof(DB, adjlnk));
 		}
 		dbenv->maxdb = dbp->adj_fileid;
