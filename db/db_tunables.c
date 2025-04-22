@@ -553,8 +553,9 @@ extern int gbl_pstack_self;
 /* For fdb connections using cdb2api */
 extern char *gbl_cdb2api_policy_override;
 
-extern int gbl_timer_pstack_interval;
 extern int gbl_timer_warn_interval;
+extern int gbl_timer_pstack_threshold;
+extern int gbl_timer_pstack_interval;
 
 int gbl_incoherent_clnt_wait = 10;
 int gbl_new_leader_duration = 3;
