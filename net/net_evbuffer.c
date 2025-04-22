@@ -471,8 +471,9 @@ static void *do_pstack(void *arg)
 
 #define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
 int gbl_timer_warn_interval = 1500; //msec. To disable check, set to 0.
-int gbl_timer_pstack_interval =  5 * 60; //sec. To disable pstack, but keep monitoring, set to 0.
-extern struct timeval last_timer_pstack;
+int gbl_timer_pstack_threshold =  5000; //msec.
+int gbl_timer_pstack_interval =  30 * 60; //sec. To disable pstack, but keep monitoring, set to 0.
+extern struct timeval last_pstack_time;
 static struct timeval last_timer_check;
 void check_timers(void)
 {
@@ -490,28 +491,28 @@ void check_timers(void)
     ms = timeval_to_ms(diff);
     if (ms >= gbl_timer_warn_interval) {
         logmsg(LOGMSG_WARN, "DELAYED TIMER CHECK:%dms\n", ms);
-        need_pstack = 1;
+        if (ms > gbl_timer_pstack_threshold) need_pstack = 1;
     }
 
     timersub(&now, &timer_tick, &diff);
     ms = timeval_to_ms(diff);
     if (ms >= gbl_timer_warn_interval) {
         logmsg(LOGMSG_WARN, "LONG TIMER TICK:%dms\n", ms);
-        need_pstack = 1;
+        if (ms > gbl_timer_pstack_threshold) need_pstack = 1;
     }
 
     timersub(&now, &fdb_tick, &diff);
     ms = timeval_to_ms(diff);
     if (ms >= gbl_timer_warn_interval) {
         logmsg(LOGMSG_WARN, "LONG FDB TICK:%dms\n", ms);
-        need_pstack = 1;
+        if (ms > gbl_timer_pstack_threshold) need_pstack = 1;
     }
 
     timersub(&now, &dist_tick, &diff);
     ms = timeval_to_ms(diff);
     if (ms >= gbl_timer_warn_interval) {
         logmsg(LOGMSG_WARN, "LONG DIST TICK:%dms\n", ms);
-        need_pstack = 1;
+        if (ms > gbl_timer_pstack_threshold) need_pstack = 1;
     }
 
     int thds = dedicated_appsock ? NUM_APPSOCK_RD : 0;
@@ -519,13 +520,13 @@ void check_timers(void)
         timersub(&now, &appsock_tick[i], &diff);
         ms = timeval_to_ms(diff);
         if (ms < gbl_timer_warn_interval) continue;
-        logmsg(LOGMSG_WARN, "LONG APPSOCK TICK:%dms %p\n", ms, (void*) appsock_thd[i]);
-        need_pstack = 1;
+        logmsg(LOGMSG_WARN, "LONG APPSOCK TICK:%dms id:%d thd:%p\n", ms, i, (void*) appsock_thd[i]);
+        if (ms > gbl_timer_pstack_threshold) need_pstack = 1;
     }
 
     last_timer_check = now;
     if (!need_pstack) return;
-    timersub(&now, &last_timer_pstack, &diff);
+    timersub(&now, &last_pstack_time, &diff);
     if (gbl_timer_pstack_interval == 0 || diff.tv_sec < gbl_timer_pstack_interval) return;
     logmsg(LOGMSG_WARN, "%s: Last pstack:%lds. Generating pstack\n", __func__, diff.tv_sec);
     pthread_t t;
