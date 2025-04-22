@@ -410,6 +410,7 @@ struct net_dispatch_info {
     const char *who;
     struct event_base *base;
     struct timeval *tick;
+    int priority;
 };
 
 struct user_msg_info {
@@ -536,15 +537,16 @@ static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
     struct net_dispatch_info *n = arg;
-    comdb2_name_thread(n->who);
-
-    current_base = n->base;
-    struct event *ev = event_new(n->base, -1, EV_PERSIST, event_tick, n);
-    struct timeval one = {1, 0};
-
     ENABLE_PER_THREAD_MALLOC(n->who);
 
+    comdb2_name_thread(n->who);
+    current_base = n->base;
+
+    struct event *ev = event_new(n->base, -1, EV_PERSIST, event_tick, n);
+    struct timeval one = {1, 0};
+    if (n->priority) event_priority_set(ev, 0);
     event_add(ev, &one);
+
     if (start_callback) {
         start_callback(start_stop_callback_data);
     }
@@ -572,6 +574,7 @@ static void init_base_priority(pthread_t *t, struct event_base **bb, const char 
     info->who = who;
     info->base = *bb;
     info->tick = tick;
+    info->priority = priority;
     Pthread_create(t, NULL, net_dispatch, info);
     Pthread_detach(*t);
 }
@@ -3426,7 +3429,8 @@ static void setup_bases(void)
             gettimeofday(&appsock_tick[i], NULL);
             char thdname[16];
             snprintf(thdname, sizeof(thdname), "appsock:%d", i);
-            init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 2, &appsock_tick[i]);
+            //priorities: 0 => timer-tick;  1 => free-connection;  2 => process-connection
+            init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 3, &appsock_tick[i]);
         }
     } else {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
