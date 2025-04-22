@@ -14,14 +14,16 @@ function count_stats
 function setup_table {
 ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "DROP TABLE IF EXISTS t15"
 #create partitioned table
-${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "CREATE TABLE t15(a int primary key) PARTITIONED BY MANUAL RETENTION 2 START 1"
-#rollout 
-${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "PUT COUNTER t15 INCREMENT"
-#insert records
-${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO t15 SELECT * FROM generate_series(0,49999)"
-${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "PUT COUNTER t15 SET 1"
-#insert more records -> after this both partitions should have records
-${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO t15 SELECT * FROM generate_series(50000, 99999)"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "CREATE TABLE t15(a int primary key) PARTITIONED BY MANUAL RETENTION 2"
+
+local shard1_name
+shard1_name=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} ${DBNAME} default "select min(shardname) from comdb2_timepartshards where name='t15'")
+local shard2_name
+shard2_name=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} ${DBNAME} default "select max(shardname) from comdb2_timepartshards where name='t15'")
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO \"${shard1_name}\" SELECT * FROM generate_series(0,49999)"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO \"${shard2_name}\" SELECT * FROM generate_series(50000, 99999)"
+#after this both partitions should have records
 }
 
 
