@@ -419,12 +419,25 @@ $cmd "select * from t14 order by 1" >> $OUT
 
 timepart_stats 0
 
-echo $cmd "ALTER TABLE t14 PARTITIONED BY NONE"
-$cmd "ALTER TABLE t14 PARTITIONED BY NONE"
-if (( $? != 0 )) ; then
-   echo "FAILURE to remote partitioning for t14"
+$cmdm "exec procedure sys.cmd.send('convert_record_sleep 1')"
+
+echo $cmd "ALTER TABLE t14 PARTITIONED BY NONE &"
+$cmd "ALTER TABLE t14 PARTITIONED BY NONE" &
+waitpid=$!
+
+sleep 1
+
+if $cmd "ALTER TABLE t14 PARTITIONED BY NONE"; then
+   echo "FAILURE to block concurrent schema change"
    exit 1
 fi
+
+if ! wait $waitpid; then
+   echo "FAILURE to remove partitioning for t14"
+   exit 1
+fi
+
+$cmdm "exec procedure sys.cmd.send('convert_record_sleep 0')"
 
 echo $cmd "select * from t14 order by 1"
 echo $cmd "select * from t14 order by 1" >> $OUT

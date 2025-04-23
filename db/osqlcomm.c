@@ -5977,14 +5977,16 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         sc->kind = SC_ADDTABLE;
 
         rc = start_schema_change_tran(iq, NULL);
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
+
         if (rc != SC_COMMIT_PENDING) {
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
+
         arg.indx = -1; /* see timepart_foreach_shardname NOTE */
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
     } else {
         /*
          * use the fast shard as the destination, after first altering it
@@ -5995,13 +5997,15 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
 
         rc = start_schema_change_tran(iq, NULL);
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
         if (rc != SC_COMMIT_PENDING) {
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
+
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+
         arg.check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
         arg.indx = 0;                                               /* see timepart_foreach_shardname NOTE */
