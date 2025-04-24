@@ -9,3 +9,12 @@ slowrep_incoherent_factor 50
 # disable dynamic and max incoherent slow by default
 max_incoherent_slow -1
 dynamic_incoherent_slow 0
+
+# will be enabled in the test
+block_until_applied_quorum 0
+
+# Enable wait-for-seqnum trace
+on wait_for_seqnum_trace
+
+# Enable set-coherent-state trace
+on set_coherent_state_trace

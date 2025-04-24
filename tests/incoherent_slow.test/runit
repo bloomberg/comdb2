@@ -15,17 +15,63 @@ function create_table
 function slow_replication
 {
     typeset node=$1
-    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_maxms 2000"
-    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_minms 2000"
+    typeset ms=${2:-2000}
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_maxms $ms"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_minms $ms"
     $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_freq 1"
+}
+
+function set_short_replication_timeouts
+{
+    typeset minms=${1:-1}
+    typeset maxms=${2:-10}
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr REPTIMEOUT_MINMS $minms')"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr REPTIMEOUT_MAXMS $maxms')"
+}
+
+function set_normal_replication_timeouts
+{
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr REPTIMEOUT_MINMS 10000')"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr REPTIMEOUT_MAXMS 300000')"
 }
 
 function restore_replication
 {
     typeset node=$1
     $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_maxms 0"
-    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_minms 0"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_minms 10000"
     $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_freq 0"
+}
+
+function enable_reptrace
+{
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb reptrcy')"
+    done
+}
+
+function disable_reptrace
+{
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb reptrcan')"
+    done
+}
+
+function slow_replication_all
+{
+    typeset ms=${1:-2000}
+    for node in $CLUSTER ; do
+        slow_replication $node $ms
+    done
+}
+
+function restore_replication_all
+{
+    for node in $CLUSTER ; do
+        restore_replication $node
+    done
 }
 
 function restore_replication_all
@@ -68,6 +114,18 @@ function disable_inactive_timeout
     $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable incoherent_slow_inactive_timeout 0"
 }
 
+function enable_block_until_applied_quorum
+{
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable block_until_applied_quorum 1"
+}
+
+function disable_block_until_applied_quorum
+{
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable block_until_applied_quorum 0"
+}
+
 function choose_replicant
 {
     typeset master=$(get_master)
@@ -94,13 +152,6 @@ function enable_dynamic_incoherent_slow
 {
     typeset node=$(get_master)
     $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable dynamic_max_incoherent_slow 1"
-}
-
-function disable_max_incoherent_slow
-{
-    typeset node=$(get_master)
-    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable max_incoherent_slow -1"
-    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable dynamic_max_incoherent_slow 0"
 }
 
 function set_max_incoherent_slow_to_zero
@@ -207,9 +258,7 @@ function test_max_incoherent_slow
 
     cnt=$(echo "$x" | egrep -c "INCOHERENT_SLOW")
 
-    for x in $CLUSTER ; do
-        restore_replication $x
-    done
+    restore_replication_all
 
     if [[ "$cnt" -ne "$max" ]]; then
         failexit "Number of incoherent-slow nodes $cnt is not equal to $max"
@@ -236,13 +285,7 @@ function test_max_incoherent_slow
         failexit "Replicant became incoherent-slow inexplicably??"
     fi
 
-    #restore_replication_all
-
     echo "Testing dynamic incoherent-slow, max incoherent slow should be $max"
-
-    #rep=$(choose_replicant)
-    #echo "Enable slow replication for $rep"
-    #slow_replication $rep
 
     echo "Inserting 30 records"
     j=0
@@ -257,9 +300,7 @@ function test_max_incoherent_slow
 
     cnt=$(echo "$x" | egrep -c "INCOHERENT_SLOW")
 
-    for x in $CLUSTER ; do
-        restore_replication $x
-    done
+    restore_replication_all
 
     if [[ "$cnt" -ne "$max" ]]; then
         failexit "Number of incoherent-slow nodes $cnt is not equal to $max"
@@ -275,7 +316,7 @@ function test_max_incoherent_slow
     set_inactive_timeout 1
 
     echo "Restore replication"
-    restore_replication $rep
+    restore_replication_all
 
     echo "Verify that we return to 'coherent'"
     j=0
@@ -292,6 +333,100 @@ function test_max_incoherent_slow
             slow=0
         fi
     done
+}
+
+function test_block_until_applied_quorum
+{
+    typeset master=$(get_master)
+    typeset replicants=$(get_replicants)
+    typeset cluster_count=$(count_cluster)
+    typeset quorum=$(( ( cluster_count / 2 ) + 1 ))
+    #typeset rep_quorum=$(( quorum - 1 ))
+
+    echo "Enable reptrace"
+    enable_reptrace
+
+    echo "Disable the inactive timeout"
+    disable_inactive_timeout
+
+    echo "Enabling block_until_applied_quorum"
+    enable_block_until_applied_quorum
+
+    echo "Disabling normal replication codepath"
+    set_short_replication_timeouts
+
+    echo "Enabling replicant latency of 2 seconds on enough replicants to prevent a quorum"
+    j=0
+    for node in $replicants ; do
+        let j=j+1
+        echo "Slowing replication for $node"
+        slow_replication $node 2000
+    done
+
+    echo "Inserting 10 records (this should take 20 seconds)"
+    j=0
+    while [[ $j -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+        let j=j+1
+    done
+
+    echo "Search for bdb_block_until_applied_quorum to verify the master blocked"
+    egrep "bdb_block_until_applied_quorum" ${TESTDIR}/logs/${DBNAME}.${master}.db
+    r=$?
+    if [[ "$r" != "0" ]]; then
+        echo "Master did not execute block-until-applied-quorum codepath"
+        failexit "Master did not execute block-until-applied-quorum codepath"
+    fi
+
+    echo "Increasing replicant latency to 5 seconds"
+    j=0
+    for node in $replicants ; do
+        let j=j+1
+        echo "Slowing replication for $node"
+        slow_replication $node 5000
+    done
+
+    echo "Insert a record, but downgrade the master while it is waiting to apply"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)" &
+    sqlpid=$!
+
+    sleep 2
+    echo "Downgrade the master"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('downgrade')"
+
+    echo "Waiting for sqlpid to finish"
+    wait
+
+    echo "Search for bdb_block_until_applied_quorum, lock-desired case"
+    egrep "bdb_block_until_applied_quorum.*lock_desired=1" ${TESTDIR}/logs/${DBNAME}.${master}.db 
+    if [[ "$r" != "0" ]]; then
+        echo "Master did not execute lock-desired codepath"
+        failexit "Master did not execute lock-desired codepath"
+    fi
+
+    echo "Reseting tunables"
+    enable_inactive_timeout
+    disable_block_until_applied_quorum
+    set_normal_replication_timeouts
+    restore_replication_all
+
+    echo "Verify cluster is reachable"
+    j=0
+    could_not_reach=1
+    while [[ "$j" -lt 60 && "$could_not_reach" -ne 0 ]]; do
+        let j=j+1
+        could_not_reach=0
+        for node in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1"
+            if [[ $? != 0 ]]; then
+                echo "Could not reach $node"
+                could_not_reach=1
+            fi
+        done
+        [[ "$could_not_reach" == "1" ]] && sleep 1
+    done
+
+    echo "Success"
 }
 
 function test_inactive_timeout
@@ -444,13 +579,19 @@ function test_inactive_timeout
 
 function run_test
 {
-    #disable_max_incoherent_slow
     test_inactive_timeout
     test_max_incoherent_slow
+    test_block_until_applied_quorum
 }
 
 if [[ -z "$CLUSTER" ]]; then 
     echo "This test requires a cluster"
+    exit -1
+fi
+
+export n=0 ; for x in $CLUSTER ; do let n=n+1 ; done
+if [[ "$n" -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
     exit -1
 fi
 
