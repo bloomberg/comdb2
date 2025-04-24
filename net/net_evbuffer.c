@@ -166,7 +166,7 @@ static pthread_t dist_thd;
 static struct event_base *dist_base;
 static struct timeval dist_tick;
 
-#define NUM_APPSOCK_RD 4
+#define NUM_APPSOCK_RD 8
 static pthread_t appsock_thd[NUM_APPSOCK_RD];
 static struct event_base *appsock_base[NUM_APPSOCK_RD];
 static struct timeval appsock_tick[NUM_APPSOCK_RD];
