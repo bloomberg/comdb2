@@ -4291,9 +4291,12 @@ check_version:
         get_copy_rootpages_nolock(thd->sqlthd);
         if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
+                const int latched_clnt_is_readonly = clnt->is_readonly;
+                clnt->is_readonly = 0;
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
                                          &xerr, 0);
+                clnt->is_readonly = latched_clnt_is_readonly;
                 if (rc != VIEW_NOERR) {
                     logmsg(LOGMSG_FATAL,
                            "failed to create views rc=%d errstr=\"%s\"\n",
