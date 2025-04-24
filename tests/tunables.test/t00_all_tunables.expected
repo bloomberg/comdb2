@@ -80,6 +80,7 @@
 (name='blob_mem_mb', description='Blob allocator: Sets the max memory limit to allow for blob values (in MB). (Default: 0)', type='INTEGER', value='-1', read_only='Y')
 (name='blobmem_sz_thresh_kb', description='Sets the threshold (in KB) above which blobs are allocated by the blob allocator. (Default: 0)', type='INTEGER', value='-1', read_only='Y')
 (name='blobstripe', description='', type='BOOLEAN', value='ON', read_only='Y')
+(name='block_until_applied_quorum', description='Block in distributed commit until a quorum of replicants have applied.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='blocking_latches', description='Block on latch rather than deadlock', type='BOOLEAN', value='OFF', read_only='N')
 (name='blocking_physrep', description='Physical replicant blocks on select. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='broadcast_check_rmtpol', description='Check rmtpol before sending triggers', type='BOOLEAN', value='ON', read_only='N')
