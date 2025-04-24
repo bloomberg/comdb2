@@ -829,32 +829,23 @@ struct accept_info {
     char *dbname;
     struct ssl_data *ssl_data;
     char *origin;
-    TAILQ_ENTRY(accept_info) entry;
 };
 
-static int pending_connections; /* accepted but didn't receive first-byte */
-static int max_pending_connections = 1024;
-static TAILQ_HEAD(, accept_info) accept_list = TAILQ_HEAD_INITIALIZER(accept_list);
+static int pending_connections; /* accepted, but not processed first-byte */
+static int pending_appsock_connections; /* dispatched to appsock-reader, but not processed yet */
+
 static void do_read(int, short, void *);
 static void accept_info_free(struct accept_info *);
 
-static int close_oldest_pending_connection(void)
-{
-    struct accept_info *a = TAILQ_FIRST(&accept_list);
-    if (!a) {
-        return -1;
-    }
-    accept_info_free(a);
-    logmsg(LOGMSG_USER, "%s closed oldest pending connection [outstanding:%d]\n", __func__, pending_connections);
-    return 0;
-}
-
-static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure,
+static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure,
                                            int badrte)
 {
     check_base_thd();
-    if (pending_connections > max_pending_connections) {
-        close_oldest_pending_connection();
+    int total, pending = pending_connections + ATOMIC_LOAD32(pending_appsock_connections);
+    if ((total = check_appsock_limit(pending)) != 0) {
+        logmsg(LOGMSG_USER, "%s too many connections:%d\n", __func__, total);
+        shutdown_close(fd);
+        return;
     }
     ++pending_connections;
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
@@ -865,14 +856,11 @@ static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct soc
     a->badrte = badrte;
     a->ev = event_new(base, fd, EV_READ, do_read, a);
     event_add(a->ev, NULL);
-    TAILQ_INSERT_TAIL(&accept_list, a, entry);
-    return a;
 }
 
 static void accept_info_free(struct accept_info *a)
 {
     check_base_thd();
-    TAILQ_REMOVE(&accept_list, a, entry);
     --pending_connections;
     if (a->ev) {
         event_free(a->ev);
@@ -2865,6 +2853,12 @@ static void rd_connect_msg_len(int fd, short what, void *data)
     }
 }
 
+void free_appsock_handler_arg(struct appsock_handler_arg *arg)
+{
+    ATOMIC_ADD32(pending_appsock_connections, -1);
+    free(arg);
+}
+
 static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure,
                                int *pbadrte)
 {
@@ -2909,6 +2903,8 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     static int appsock_counter = 0;
     arg->base = appsock_base[appsock_counter++];
     if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
+
+    ATOMIC_ADD32(pending_appsock_connections, 1);
     evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
     return 0;
 }
@@ -2976,14 +2972,10 @@ static void accept_error_cb(struct evconnlistener *listener, void *data)
 {
     check_base_thd();
     int err = EVUTIL_SOCKET_ERROR();
-    if (err == EMFILE && close_oldest_pending_connection() == 0) {
-        return;
-    }
-    logmsg(LOGMSG_FATAL,
-           "%s err:%d [%s] [outstanding fds:%d] [appsock fds:%d]\n",
-           __func__, err, evutil_socket_error_to_string(err),
-           pending_connections, ATOMIC_LOAD32(active_appsock_conns));
-    abort();
+    logmsg(LOGMSG_ERROR, "%s err:%d [%s] [outstanding fds:%d] [pending-appsock fds:%d] [appsock fds:%d]\n",
+           __func__, err, evutil_socket_error_to_string(err), pending_connections,
+           pending_appsock_connections, active_appsock_conns);
+    if (err == EMFILE) abort();
 }
 
 static void reopen_unix(int fd, struct net_info *n)
@@ -3049,7 +3041,7 @@ static int recvfd(int pmux_fd, int *secure)
     m = tmp = CMSG_FIRSTHDR(&msg);
     if (!m) {
         logmsg(LOGMSG_ERROR, "%s:CMSG_FIRSTHDR NULL msghdr\n", __func__);
-        return -2;
+        return -1;
     }
     if (CMSG_NXTHDR(&msg, tmp) != NULL) {
         logmsg(LOGMSG_ERROR, "%s:CMSG_NXTHDR unexpected msghdr\n", __func__);
@@ -3077,10 +3069,10 @@ static void do_recvfd(int pmux_fd, short what, void *data)
     struct net_info *n = data;
     int secure;
     int newfd = recvfd(pmux_fd, &secure);
-    switch (newfd) {
-    case 0: return;
-    case -1: reopen_unix(pmux_fd, n); return;
-    case -2: close_oldest_pending_connection(); return;
+    if (newfd == 0) return;
+    if (newfd < 0) {
+        reopen_unix(pmux_fd, n);
+        return;
     }
     make_server_socket(newfd);
     ssize_t rc = write(newfd, "0\n", 2);
@@ -3453,7 +3445,7 @@ static void setup_bases(void)
         init_base(&single.rdthd, &single.rdbase, "read");
     }
 
-    logmsg(LOGMSG_USER, "Libevent %s with backend method %s\n", event_get_version(), event_base_get_method(base));
+    logmsg(LOGMSG_USER, "Libevent:%s method:%s\n", event_get_version(), event_base_get_method(base));
 }
 
 static void init_event_net(netinfo_type *netinfo_ptr)

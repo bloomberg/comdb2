@@ -109,6 +109,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     struct sqlclntstate *clnt = &appdata->clnt;
     int fd = appdata->fd;
 
+    rem_lru_evbuffer(clnt);
     rem_sql_evbuffer(clnt);
     rem_appsock_connection_evbuffer(clnt);
     if (appdata->dispatch) {
@@ -162,7 +163,6 @@ struct event *std_priority_event_new(struct event_base *base, evutil_socket_t fd
 
 static void newsql_cleanup(struct newsql_appdata_evbuffer *appdata)
 {
-    rem_lru_evbuffer(&appdata->clnt);
     appdata->cleanup_ev = high_priority_event_new(appdata->base, -1, 0, free_newsql_appdata_evbuffer, appdata);
     event_active(appdata->cleanup_ev, 0, 0);
 }
@@ -939,7 +939,8 @@ static void *newsql_destroy_stmt_evbuffer(struct sqlclntstate *clnt, void *arg)
 static int newsql_close_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    return shutdown(appdata->fd, SHUT_RDWR);
+    newsql_cleanup(appdata);
+    return 0;
 }
 
 struct debug_cmd {
@@ -1166,7 +1167,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);
-        free(arg);
+        free_appsock_handler_arg(arg);
         return;
     }
 
@@ -1201,6 +1202,8 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
         .pack_hb = newsql_pack_hb,
         .timer_base = appdata->base,
     };
+    free_appsock_handler_arg(arg);
+    arg = NULL;
     appdata->writer = sqlwriter_new(&sqlwriter_arg);
     disable_ssl_evbuffer(appdata);
     add_sql_evbuffer(clnt);
@@ -1211,7 +1214,6 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     } else {
         rd_hdr(-1, 0, appdata);
     }
-    free(arg);
 }
 
 static pthread_t gethostname_thd;
