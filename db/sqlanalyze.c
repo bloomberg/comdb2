@@ -404,6 +404,8 @@ static int cleanup_sampled_indicies(struct sqlclntstate *client)
 {
     int i;
 
+    if (!clnt->sampled_idx_tbl) { return 0; }
+
     /* delete sampled temptables */
     for (i = 0; i < client->n_cmp_idx; i++) {
         sampled_idx_t *s_ix = &client->sampled_idx_tbl[i];
