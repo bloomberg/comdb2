@@ -6818,11 +6818,20 @@ int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
     return 0;
 }
 
+int check_appsock_limit(int pending)
+{
+    int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+    int current = pending + ATOMIC_LOAD32(active_appsock_conns);
+    if (current <= max) return 0;
+    if (close_lru_evbuffer(NULL) == 0) {
+        return 0;
+    }
+    return current;
+}
+
 void rem_appsock_connection_evbuffer(struct sqlclntstate *clnt)
 {
-    if (clnt->admin) {
-        return;
-    }
+    if (clnt->admin) return;
     ATOMIC_ADD32(active_appsock_conns, -1);
 }
 

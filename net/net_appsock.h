@@ -27,6 +27,8 @@ struct appsock_handler_arg {
     TAILQ_ENTRY(appsock_handler_arg) entry;
 };
 
+void free_appsock_handler_arg(struct appsock_handler_arg *);
+
 int add_appsock_handler(const char *, event_callback_fn);
 int maxquerytime_cb(struct sqlclntstate *);
 void make_server_socket(int fd);
@@ -39,6 +41,8 @@ void run_on_base(struct event_base *, run_on_base_fn, void *);
 
 extern int32_t active_appsock_conns;
 extern int64_t gbl_denied_appsock_connection_count;
+
+int check_appsock_limit(int pending);
 
 #undef SKIP_CHECK_THD
 #ifdef SKIP_CHECK_THD
