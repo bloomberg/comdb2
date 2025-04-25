@@ -6754,6 +6754,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         Pthread_mutex_lock(&thd->lk);
         if (pCur->on_list)
             listc_rfl(&pCur->bt->cursors, pCur);
+        thd->bt = NULL;
         Pthread_mutex_unlock(&thd->lk);
     }
 
