@@ -2072,6 +2072,7 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             break;
         case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL:
             appdata->protocol_version = NEWSQL_PROTOCOL_COMPAT;
+            clnt->require_fastsql = 1;
             break;
         case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB:
             clnt->can_redirect_fdb = 1;
