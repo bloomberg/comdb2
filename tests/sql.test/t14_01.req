@@ -1,0 +1,1 @@
+SELECT COUNT(*) FROM (SELECT * FROM (SELECT randomblob(15000), value FROM generate_series(1, 50000) LIMIT -1) ORDER BY random() LIMIT 10000) -- this query would run out of space in temptable bufferpool
