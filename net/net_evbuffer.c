@@ -841,12 +841,6 @@ static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr,
                                            int badrte)
 {
     check_base_thd();
-    int total, pending = pending_connections + ATOMIC_LOAD32(pending_appsock_connections);
-    if ((total = check_appsock_limit(pending)) != 0) {
-        logmsg(LOGMSG_USER, "%s too many connections:%d\n", __func__, total);
-        shutdown_close(fd);
-        return;
-    }
     ++pending_connections;
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
@@ -2922,10 +2916,17 @@ static void do_read(int fd, short what, void *data)
     }
     uint8_t first_byte;
     evbuffer_copyout(buf, &first_byte, 1);
-    if (first_byte == 0) {
+    if (first_byte == 0) { /* replication or offloadsql */
         evbuffer_drain(buf, 1);
         a->buf = buf;
         rd_connect_msg_len(fd, 0, a);
+        return;
+    }
+    /* appsock */
+    int total, pending = pending_connections + ATOMIC_LOAD32(pending_appsock_connections);
+    if ((total = check_appsock_limit(pending)) != 0) {
+        logmsg(LOGMSG_USER, "%s too many connections:%d\n", __func__, total);
+        accept_info_free(a);
         return;
     }
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
