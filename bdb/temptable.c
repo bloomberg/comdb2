@@ -585,9 +585,9 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     tbl->cachesz = bdb_state->attr->temptable_cachesz;
 
-    /* 512k minimim cache */
-    if (tbl->cachesz < 524288)
-        tbl->cachesz = 524288;
+    /* 1MiB minimim cache */
+    if (tbl->cachesz < 1048576)
+        tbl->cachesz = 1048576;
 
     if (gbl_temptable_pool_capacity == 0) {
         Pthread_mutex_lock(&parent->temp_list_lock);
