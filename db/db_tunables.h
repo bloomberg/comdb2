@@ -489,6 +489,11 @@ REGISTER_TUNABLE("enable_snapshot_isolation",
                  "the database. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_snapisol, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("enable_serial_isolation",
+                 "Enable to allow SERIALIZABLE level transactions to run against "
+                 "the database. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_serializable, READONLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("set_snapshot_impl",
                  "Changes the default snapshot implementation "
                  "*without enabling snapshot* (default 'modsnap')",
