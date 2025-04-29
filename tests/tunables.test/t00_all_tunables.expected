@@ -290,6 +290,7 @@
 (name='dont_superset_foreign_keys', description='Disables 'superset_foreign_keys'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='downgrade_on_seqnum_gen_mismatch', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='downgrade_penalty', description='Prevent upgrades for at least this many ms after a downgrade.', type='INTEGER', value='10000', read_only='N')
+(name='driver_ulimit', description='Memory limit for comdb2 driver to set (a value of 0 indicates that the comdb2 process was not started by comdb2 driver.', type='INT64', value='0', read_only='Y')
 (name='dtastripe', description='', type='INTEGER', value='8', read_only='Y')
 (name='dump_after_byteswap', description='dump page after byteswap', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_blkseq', description='Dump all blkseq inserts and replays', type='BOOLEAN', value='OFF', read_only='N')

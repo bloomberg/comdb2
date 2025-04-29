@@ -185,6 +185,7 @@ void myctrace(const char *c) { ctrace("%s", c); }
 void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
+extern int set_driver_ulimit();
 extern int bdb_gbl_asof_modsnap_init(bdb_state_type *);
 extern int bulk_import_tmpdb_write_import_data(char *import_table);
 extern int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name);
@@ -5905,6 +5906,13 @@ int main(int argc, char **argv)
         } else {
             logmsg(LOGMSG_USER, "authentication enabled, DBA user not created\n");
         }
+    }
+
+    rc = set_driver_ulimit();
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d Failed to set driver ulimit\n",
+            __FILE__, __LINE__);
+        exit(1);
     }
 
     logmsg(LOGMSG_USER, "hostname:%s  cname:%s\n", gbl_myhostname, gbl_mycname);

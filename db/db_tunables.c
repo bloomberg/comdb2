@@ -582,11 +582,15 @@ extern int gbl_long_request_ms;
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
 
+int64_t gbl_driver_ulimit = 0;
+
 int gbl_test_tunable_nozero = 1;
 int gbl_test_tunable_int_limit = INT_MAX;
 int gbl_test_tunable_int_signed_limit = INT_MAX;
 int64_t gbl_test_tunable_int64_limit = INT64_MAX;
 int64_t gbl_test_tunable_int64_signed_limit = INT64_MAX;
+
+int parse_int64(const char *value, int64_t *num);
 
 /*
   =========================================================
@@ -1307,6 +1311,22 @@ static void tunable_tolower(char *str)
     while (*tmp) {
         *tmp = tolower(*tmp);
         tmp++;
+    }
+}
+
+int set_driver_ulimit()
+{
+    const char * const ulimit = getenv("COMDB2_DRIVER_ULIMIT");
+    if (ulimit) {
+        const int rc = parse_int64(ulimit, &gbl_driver_ulimit);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d Failed to set driver ulimit to %s\n",
+                __FILE__, __LINE__, ulimit);
+        }
+        return rc;
+    } else {
+        gbl_driver_ulimit = 0;
+        return 0;
     }
 }
 
