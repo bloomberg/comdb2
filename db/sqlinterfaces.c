@@ -198,6 +198,8 @@ int gbl_thdpool_queue_only = 0;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 
+int gbl_eventlog_fullhintsql = 1;
+
 comdb2_query_preparer_t *query_preparer_plugin;
 int gbl_sql_recover_time = 10;
 int gbl_debug_recover_deadlock_evbuffer = 0;
@@ -1256,10 +1258,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     LISTC_T(struct sql_hist) lst;
     listc_init(&lst, offsetof(struct sql_hist, lnk));
 
-    if (!clnt->sql_ref && clnt->sql) {
-        // incomming from dohast will not have sql_ref set
-        clnt->sql_ref = create_string_ref(clnt->sql);
-    }
+    assert(clnt->sql_ref);
+
     struct sql_hist *h = calloc(1, sizeof(struct sql_hist));
     h->sql_ref = get_ref(clnt->sql_ref);
     h->cost.cost = query_cost(thd);
@@ -3993,6 +3993,11 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (clnt->typessql_state)
         typessql_end(clnt);
 
+    if ((rec->status & CACHE_HAS_HINT) && rec->sql != clnt->sql && gbl_eventlog_fullhintsql) { 
+        clnt->hint_sql_ref = create_string_ref(rec->sql);
+        reqlog_set_sql(thd->logger, clnt->hint_sql_ref);
+    }
+
     sql_statement_done(thd->sqlthd, thd->logger, clnt, stmt, outrc);
 
     free_client_adj_col_names(clnt);
@@ -4013,6 +4018,8 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
        the next read in sqlite master will find them and try to use them
      */
     clearClientSideRow(clnt);
+
+    put_ref(&clnt->hint_sql_ref);
 }
 
 static void handle_stored_proc(struct sqlthdstate *thd,

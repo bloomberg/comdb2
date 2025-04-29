@@ -366,6 +366,7 @@ extern int gbl_sequence_feature;
 extern int gbl_reproduce_sequence_corruption;
 extern int gbl_permissive_sequence_sc;
 extern int gbl_view_feature;
+extern int gbl_eventlog_fullhintsql;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;

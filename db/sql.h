@@ -726,6 +726,7 @@ struct sqlclntstate {
     pthread_mutex_t sql_lk;
     char *sql;
     struct string_ref *sql_ref;
+    struct string_ref *hint_sql_ref;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];

@@ -349,6 +349,7 @@
 (name='epochms_repts', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='erroff', description='Disables 'erron'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='erron', description='', type='BOOLEAN', value='ON', read_only='Y')
+(name='eventlog_fullhintsql', description='Log full sql statement in the event log for hint abbreviated sql. (Default : on)', type='BOOLEAN', value='ON', read_only='N')
 (name='eventlog_nkeep', description='Keep this many eventlog files (Default: 2)', type='INTEGER', value='0', read_only='N')
 (name='exclusive_blockop_qconsume', description='Enables serialization of blockops and queue consumes. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='exit_on_internal_failure', description='', type='BOOLEAN', value='ON', read_only='Y')
