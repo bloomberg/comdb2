@@ -532,6 +532,7 @@ int gbl_malloc_regions = 1;
 int gbl_rowlocks = 0;
 int gbl_disable_tagged_api = 1;
 int gbl_disable_tagged_api_writes = 1;
+int gbl_serializable = 0; // Just for bookkeeping
 int gbl_snapisol = 0;
 int gbl_new_snapisol = 0;
 int gbl_new_snapisol_asof = 0;
