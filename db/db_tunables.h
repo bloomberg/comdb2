@@ -171,6 +171,11 @@ REGISTER_TUNABLE(
 REGISTER_TUNABLE("deadlock_policy_override", NULL, TUNABLE_INTEGER,
                  &gbl_deadlock_policy_override, READONLY, NULL, NULL,
                  deadlock_policy_override_update, NULL);
+REGISTER_TUNABLE(
+    "driver_ulimit",
+    "Memory limit for comdb2 driver to set (a value of 0 indicates that the comdb2 "
+    "process was not started by comdb2 driver.",
+    TUNABLE_INT64, &gbl_driver_ulimit, READONLY, NULL, NULL, NULL, NULL);
 /*
 REGISTER_TUNABLE("decimal_rounding", NULL, TUNABLE_INTEGER,
                  &gbl_decimal_rounding, READONLY, NULL, NULL, NULL, NULL);
