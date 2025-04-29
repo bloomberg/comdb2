@@ -576,6 +576,9 @@ REGISTER_TUNABLE("fullrecovery",
                  "recovery from the beginning of "
                  "available logs. (Default : off)",
                  TUNABLE_BOOLEAN, &gbl_fullrecovery, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("eventlog_fullhintsql",
+                 "Log full sql statement in the event log for hint abbreviated sql. (Default : on)",
+                 TUNABLE_BOOLEAN, &gbl_eventlog_fullhintsql, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("gbl_exit_on_pthread_create_fail",
                  "If set, database will exit if thread pools aren't able to "
                  "create threads. (Default: 1)",
