@@ -872,7 +872,7 @@ REGISTER_TUNABLE("no_round_robin_stripes", "Disables 'round_robin_stripes'",
                  TUNABLE_BOOLEAN, &gbl_round_robin_stripes,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("no_sc_inco_chk", NULL, TUNABLE_BOOLEAN, &gbl_sc_inco_chk,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("no_static_tag_blob_fix", NULL, TUNABLE_BOOLEAN,
                  &gbl_force_notnull_static_tag_blobs,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
