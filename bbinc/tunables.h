@@ -68,6 +68,9 @@ typedef enum {
       (non READONLY) tunables via process_command().
     */
     DYNAMIC = 1 << 10,
+
+    /* Use int64 to store value */
+    INT64 = 1 << 11,
 } comdb2_tunable_flag;
 
 /*

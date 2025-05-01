@@ -1165,6 +1165,14 @@ REGISTER_TUNABLE("temptable_limit",
                  "create. (Default: 8192)",
                  TUNABLE_INTEGER, &gbl_temptable_pool_capacity, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("test_tunable_int_limit", NULL, TUNABLE_INTEGER, &gbl_test_tunable_int_limit,
+                 0 , NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_tunable_int_signed_limit", NULL, TUNABLE_INTEGER, &gbl_test_tunable_int_signed_limit,
+                 SIGNED, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_tunable_int64_limit", NULL, TUNABLE_INTEGER, &gbl_test_tunable_int64_limit,
+                 INT64, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_tunable_int64_signed_limit", NULL, TUNABLE_INTEGER, &gbl_test_tunable_int64_signed_limit,
+                 INT64 | SIGNED, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("test_blob_race", NULL, TUNABLE_INTEGER, &gbl_test_blob_race,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("test_scindex_deadlock",
