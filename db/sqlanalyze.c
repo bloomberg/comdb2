@@ -201,24 +201,33 @@ static int check_stat1_and_flag(SBUF2 *sb)
 
 void cleanup_stats(SBUF2 *sb)
 {
+    if (!get_dbtable_by_name("sqlite_stat1")) return;
+    char *final = "rollback";
+    char *stat1_clean =
+        "delete from sqlite_stat1 where tbl not in"
+        "("
+            "select name from sqlite_master where type='table' group by name "
+            "union "
+            "select 'cdb2.'||name||'.sav' from sqlite_master where type='table' group by name"
+        ")";
+    char *stat4_clean =
+        "delete from sqlite_stat4 where tbl not in"
+        "("
+            "select name from sqlite_master where type='table' group by name "
+            "union "
+            "select 'cdb2.'||name||'.sav' from sqlite_master where type='table' group by name"
+        ")";
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-
-    if (get_dbtable_by_name("sqlite_stat1")) {
-        run_internal_sql_clnt(&clnt,
-                              "delete from sqlite_stat1 where idx is null");
-        run_internal_sql_clnt(&clnt, "delete from sqlite_stat1 where idx not "
-                                     "in (select name from sqlite_master where "
-                                     "type='index')");
+    if (run_internal_sql_clnt(&clnt, "begin") != 0) goto end;
+    if (run_internal_sql_clnt(&clnt, "delete from sqlite_stat1 where idx is null") != 0) goto end;
+    if (run_internal_sql_clnt(&clnt, stat1_clean) != 0) goto end;
+    if (get_dbtable_by_name("sqlite_stat4")) {
+        if (run_internal_sql_clnt(&clnt, stat4_clean) != 0) goto end;
     }
-
-    if (get_dbtable_by_name("sqlite_stat4"))
-        run_internal_sql_clnt(&clnt, "delete from sqlite_stat4 where idx not "
-                                     "in (select name from sqlite_master where "
-                                     "type='index' UNION select "
-                                     "'cdb2.'||name||'.sav' from sqlite_master "
-                                     "where type='index')");
-
+    final = "commit";
+end:
+    run_internal_sql_clnt(&clnt, final);
     end_internal_sql_clnt(&clnt);
 }
 
@@ -644,56 +653,6 @@ static void get_saved_scale(char *table, int *scale)
     }
 }
 
-int delete_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
-               int stat_tbl, const char *table)
-{
-    char *sql = NULL;
-    int more = 1;
-    int rc = 0;
-    sql = sqlite3_mprintf(
-            "delete from sqlite_stat%d where tbl='cdb2.%q.sav'", 
-            stat_tbl, table);
-    assert(sql != NULL);
-#ifdef DEBUG
-    printf("query '%s'\n", sql);
-#endif
-    if ( (rc = run_sql_part_trans( sqldb, client, sql, &more)) != 0) {
-        logmsg(LOGMSG_ERROR, "delete sav failed");
-        sqlite3_free(sql); sql = NULL;
-        return rc;
-    }
-#ifdef DEBUG
-    printf("deleted %d from tbl='cdb2.%s.sav'\n", more, table);
-#endif
-    sqlite3_free(sql); sql = NULL;
-    return 0;
-}
-
-
-int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
-               int stat_tbl, const char *table)
-{
-    char *sql = NULL;
-    int more = 1;
-    int rc = 0;
-    sql = sqlite3_mprintf(
-            "update sqlite_stat%d set tbl='cdb2.%q.sav' where tbl='%q'", 
-            stat_tbl, table, table);
-#ifdef DEBUG
-    printf("query '%s'\n", sql);
-#endif
-    if ( (rc = run_sql_part_trans( sqldb, client, sql, &more)) != 0) {
-        logmsg(LOGMSG_ERROR, "update sav failed");
-        sqlite3_free(sql); sql = NULL;
-        return rc;
-    }
-#ifdef DEBUG
-    printf("updated %d from tbl='cdb2.%s.sav'\n", more, table);
-#endif
-    sqlite3_free(sql); sql = NULL;
-    return 0;
-}
-
 static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self)
 {
     char zErrTab[256] = {0};
@@ -715,6 +674,7 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
 
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
+    clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.osql_max_trans = 0; // allow large transactions
     int sampled_table = 0;
 
@@ -797,10 +757,44 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
     sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
     assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
-    if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
+    if (rc) {
+        snprintf(zErrTab, sizeof(zErrTab), "failed:%s", sql);
+        sqlite3_free(sql); sql = NULL;
+        goto error;
+    }
     sqlite3_free(sql); sql = NULL;
 
-    clnt.is_analyze = 0;
+    for (int i = 0; i < tbl->nsqlix; ++i) {
+        struct schema *ix = tbl->ixschema[i];
+        char namebuf[128];
+        snprintf(namebuf, sizeof(namebuf), "%s_ix_%d", tbl->tablename, i);
+        if (strcmp(ix->sqlitetag, namebuf) == 0) {
+            form_new_style_name(namebuf, sizeof(namebuf), ix, ix->csctag, tbl->tablename);
+            logmsg(LOGMSG_USER, "%s: have idx:%s  cloning into:%s\n", __func__, ix->sqlitetag, namebuf);
+            sql = sqlite3_mprintf("INSERT INTO sqlite_stat1(tbl, idx, stat) "
+                                  "SELECT tbl, '%q', stat FROM sqlite_stat1 "
+                                  "WHERE tbl='%q' AND idx='%q'",
+                                  namebuf, tbl->tablename, ix->sqlitetag);
+            rc = run_internal_sql_clnt(&clnt, sql);
+            if (rc) {
+                snprintf(zErrTab, sizeof(zErrTab), "failed:%s", sql);
+                sqlite3_free(sql); sql = NULL;
+                goto error;
+            }
+            if (!get_dbtable_by_name("sqlite_stat4")) continue;
+            sql = sqlite3_mprintf("INSERT INTO sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample) "
+                                  "SELECT tbl, '%q', neq, nlt, ndlt, sample FROM sqlite_stat4 "
+                                  "WHERE tbl='%q' AND idx='%q'",
+                                  namebuf, tbl->tablename, ix->sqlitetag);
+            rc = run_internal_sql_clnt(&clnt, sql);
+            if (rc) {
+                snprintf(zErrTab, sizeof(zErrTab), "failed:%s", sql);
+                sqlite3_free(sql); sql = NULL;
+                goto error;
+            }
+        }
+    }
+
     if (rc)
         goto error;
 
@@ -816,6 +810,7 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
         osql_unregister_sqlthr(&clnt);
         snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
     }
+    ATOMIC_ADD32(gbl_analyze_gen, 1);
 
 cleanup:
     if (rc) { // send error to client
