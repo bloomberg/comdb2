@@ -11790,6 +11790,40 @@ void curtran_puttran(tran_type *tran)
     bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 }
 
+tran_type *get_read_only_tran()
+{
+    // Get curtran if we can because it is more efficient.
+    // If we can't, then just get a normal transaction.
+
+    tran_type * tran = curtran_gettran();
+    if (tran) { return tran; }
+
+    int bdberr = 0;
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin failed bdberr(%d)\n", __func__, bdberr);
+    }
+    return tran;
+}
+
+int put_read_only_tran(tran_type * const tran)
+{
+    // Aborts the transaction: Since the transaction is read-only,
+    // we don't need to create a commit record.
+
+    if (tran->is_curtran) {
+        curtran_puttran(tran);
+        return 0;
+    }
+
+    int bdberr;
+    const int rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_tran_abort failed rc(%d) bdberr(%d)\n", __func__, rc, bdberr);
+    }
+    return rc;
+}
+
 void clone_temp_table(sqlite3_stmt *stmt, struct temptable *tbl)
 {
     int rc;
