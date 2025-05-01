@@ -581,6 +581,11 @@ extern int gbl_long_request_ms;
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
 
+int gbl_test_tunable_int_limit = INT_MAX;
+int gbl_test_tunable_int_signed_limit = INT_MAX;
+int64_t gbl_test_tunable_int64_limit = INT64_MAX;
+int64_t gbl_test_tunable_int64_signed_limit = INT64_MAX;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
@@ -1461,6 +1466,45 @@ int register_db_tunables(struct dbenv *db)
 }
 
 /*
+  Parse the given buffer for an int64 and store it at the specified
+  location.
+
+  @return
+    0           Success
+    1           Failure
+*/
+int parse_int64(const char *value, int64_t *num)
+{
+    char *endptr;
+
+    errno = 0;
+
+    *num = strtoll(value, &endptr, 10);
+
+    if (errno != 0) {
+        logmsg(LOGMSG_DEBUG, "%s: Invalid value '%s'.\n", __func__, value);
+        return 1;
+    }
+
+    if (value == endptr) {
+        logmsg(LOGMSG_DEBUG, "%s: No value supplied.\n", __func__);
+        return 1;
+    }
+
+    if (*endptr != '\0') {
+        logmsg(LOGMSG_DEBUG, "%s: Couldn't fully parse the number.\n", __func__);
+        return 1;
+    }
+
+    if (*num > INT64_MAX || *num < INT64_MIN) {
+        logmsg(LOGMSG_DEBUG, "%s: Value '%s' not in range\n", __func__, value);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
   Parse the given buffer for an integer and store it at the specified
   location.
 
@@ -1470,60 +1514,17 @@ int register_db_tunables(struct dbenv *db)
 */
 int parse_int(const char *value, int *num)
 {
-    char *endptr;
-
-    errno = 0;
-
-    *num = strtol(value, &endptr, 10);
-
-    if (errno != 0) {
-        logmsg(LOGMSG_DEBUG, "parse_int(): Invalid value '%s'.\n", value);
+    int64_t parsed_int64;
+    if (parse_int64(value, &parsed_int64)) {
         return 1;
     }
 
-    if (value == endptr) {
-        logmsg(LOGMSG_DEBUG, "parse_int(): No value supplied.\n");
+    if (parsed_int64 > INT_MAX || parsed_int64 < INT_MIN) {
+        logmsg(LOGMSG_DEBUG, "%s: Value '%s' not in range\n", __func__, value);
         return 1;
     }
 
-    if (*endptr != '\0') {
-        logmsg(LOGMSG_DEBUG, "parse_int(): Couldn't fully parse the number.\n");
-        return 1;
-    }
-
-    return 0;
-}
-
-/*
-  Parse the given buffer for an unsigned integer and store it at the specified
-  location.
-
-  @return
-    0           Success
-    1           Failure
-*/
-int parse_uint(const char *value, int32_t *num)
-{
-    char *endptr;
-
-    errno = 0;
-
-    *num = strtoul(value, &endptr, 10);
-
-    if (errno != 0) {
-        logmsg(LOGMSG_DEBUG, "parse_uint(): Invalid value '%s'.\n", value);
-        return 1;
-    }
-
-    if (value == endptr) {
-        logmsg(LOGMSG_DEBUG, "parse_uint(): No value supplied.\n");
-        return 1;
-    }
-
-    if (*endptr != '\0') {
-        logmsg(LOGMSG_DEBUG, "parse_uint(): Couldn't fully parse the number.\n");
-        return 1;
-    }
+    *num = parsed_int64;
 
     return 0;
 }
@@ -1545,18 +1546,18 @@ int parse_double(const char *value, double *num)
     *num = strtod(value, &endptr);
 
     if (errno != 0) {
-        logmsg(LOGMSG_DEBUG, "parse_float(): Invalid value '%s'.\n", value);
+        logmsg(LOGMSG_DEBUG, "%s: Invalid value '%s'.\n", __func__, value);
         return 1;
     }
 
     if (value == endptr) {
-        logmsg(LOGMSG_DEBUG, "parse_float(): No value supplied.\n");
+        logmsg(LOGMSG_DEBUG, "%s: No value supplied.\n", __func__);
         return 1;
     }
 
     if (*endptr != '\0') {
         logmsg(LOGMSG_DEBUG,
-               "parse_float(): Couldn't fully parse the number.\n");
+               "%s: Couldn't fully parse the number.\n", __func__);
         return 1;
     }
 
@@ -1626,6 +1627,68 @@ static int parse_bool(const char *value, int *num)
         return TUNABLE_ERR_INTERNAL;                                           \
     }
 
+static int is_unsigned_tunable_int_range_ok(const comdb2_tunable * const t, const int64_t * const num)
+{
+    if (num < 0) {
+        return 0;
+    } else if ((t->flags & NOZERO) && (*num == 0)) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+static int is_signed_tunable_int_range_ok(const comdb2_tunable * const t, const int64_t * const num)
+{
+    if ((t->flags & NOZERO) && (*num <= 0)) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+static int parse_tunable_integer_value(const comdb2_tunable * const t,
+    char buf[MAX_TUNABLE_VALUE_SIZE], int64_t * const num)
+{
+    if ((!(t->flags & SIGNED)) && (buf[0] == '-')) {
+        logmsg(LOGMSG_ERROR, "Invalid negative value for '%s'.\n", t->name);
+        return TUNABLE_ERR_INVALID_VALUE;
+    }
+
+    const int ret = t->flags & INT64
+        ? parse_int64(buf, num)
+        : parse_int(buf, (int *) num);
+
+    if (ret) {
+        logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+        return TUNABLE_ERR_INVALID_VALUE;
+    }
+
+    const int is_tunable_range_ok = (t->flags & SIGNED
+        ? is_signed_tunable_int_range_ok(t, num)
+        : is_unsigned_tunable_int_range_ok(t, num));
+
+    if (!is_tunable_range_ok) {
+        logmsg(LOGMSG_ERROR,
+               "Bad range for '%s'.\n",
+               t->name);
+        return TUNABLE_ERR_INVALID_VALUE;
+    }
+
+    return 0;
+}
+
+void set_tunable_integer_value(const comdb2_tunable * const t, const int64_t num)
+{
+    if (t->flags & INT64) {
+        *(int64_t *)t->var = num;
+    } else {
+        *(int *)t->var = (int) num;
+    }
+
+    logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %" PRId64 "\n", t->name, num);
+}
+
 /*
   Update the tunable.
 
@@ -1646,41 +1709,14 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
 
     switch (t->type) {
     case TUNABLE_INTEGER: {
-        int num;
+        int64_t num;
 
         if ((t->flags & EMPTY) == 0) {
             PARSE_TOKEN;
-
-            /*
-              Verify the validity of the specified argument. We perform this
-              check for all INTEGER types.
-            */
-            if (t->flags & SIGNED) {
-                if ((ret = parse_int(buf, &num))) {
-                    logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-                    return TUNABLE_ERR_INVALID_VALUE;
-                }
-                if (((t->flags & NOZERO) != 0) && (num <= 0)) {
-                    logmsg(LOGMSG_ERROR,
-                           "Invalid argument for '%s' (should be > 0).\n",
-                           t->name);
-                    return TUNABLE_ERR_INVALID_VALUE;
-                }
-            } else {
-                if (buf[0] == '-') {
-                    logmsg(LOGMSG_ERROR, "Invalid negative value for '%s'.\n", t->name);
-                    return TUNABLE_ERR_INVALID_VALUE;
-                }
-                if ((ret = parse_uint(buf, &num))) {
-                    logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-                    return TUNABLE_ERR_INVALID_VALUE;
-                }
-                if (((t->flags & NOZERO) != 0) && (num == 0)) {
-                    logmsg(LOGMSG_ERROR,
-                           "Invalid argument for '%s' (should be > 0).\n",
-                           t->name);
-                    return TUNABLE_ERR_INVALID_VALUE;
-                }
+            ret = parse_tunable_integer_value(t, buf, &num);
+            if (ret) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to parse tunable\n", __func__);
+                return ret;
             }
         } else {
             num = 1;
@@ -1697,13 +1733,9 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
         if (t->update) {
             DO_UPDATE(t, &num);
         } else {
-            *(int *)t->var = num;
+            set_tunable_integer_value(t, num);
         }
 
-        if (t->flags & SIGNED)
-            logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %d\n", t->name, num);
-        else
-            logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %u\n", t->name, num);
         break;
     }
     case TUNABLE_DOUBLE: {
