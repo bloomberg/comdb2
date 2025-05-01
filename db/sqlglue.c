@@ -1586,13 +1586,6 @@ static int stat1_find(char *namebuf, struct schema *schema, struct dbtable *db,
     return 0;
 }
 
-static int using_old_style_name(char *namebuf, int len, struct schema *schema,
-                                struct dbtable *db, int ixnum, void *trans)
-{
-    snprintf(namebuf, len, "%s_ix_%d", db->tablename, ixnum);
-    return stat1_find(namebuf, schema, db, ixnum, trans);
-}
-
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname)
 {
@@ -1645,35 +1638,18 @@ done:
 ** advertise its name as tablename_ix_ixnum or the new style
 ** $csctag_hash to SQLite (new style has preceeding $).
 **
-** To start using the new style names, simply
-** (1) fastinit sqlite_stat1
-** (2) bounce the db and
-** (3) run analyze
-**
 ** The index name to be adv. to sqlite is returned in namebuf.
 ** A valid name is always returned.
-**
-** Return value:
-** <0: Error (stat1 not found?)
-**  0: No stats for this index.
-**  1: Found stat with old style names.
-**  2: Found stat with new style names.
 */
-int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
+void sql_index_name_trans(char *namebuf, int len, struct schema *schema,
                          struct dbtable *db, int ixnum, void *trans)
 {
-    int rc;
-    rc = using_old_style_name(namebuf, len, schema, db, ixnum, trans);
-    if (rc > 0) {
-        /* found old style entry; keep using it */
-        return rc;
-    }
-
     form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
-    rc = stat1_find(namebuf, schema, db, ixnum, trans);
-    if (rc > 0)
-        return 2;
-    return rc;
+    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
+    snprintf(namebuf, len, "%s_ix_%d", db->tablename, ixnum);
+    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
+    /* no stats - use new names */
+    form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
 }
 
 /*
