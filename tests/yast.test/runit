@@ -1,7 +1,28 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+DB=$1
+if [ -z "$DB" ];
+then
+    PROG=`basename $0`
+    echo "Usage: $PROG <dbname> [test]"
+    exit 1
+fi
+
+if [[ -z $TESTSROOTDIR ]]; then
+    TESTSROOTDIR=$(dirname $(pwd))
+fi
 . $TESTSROOTDIR/testutils
+
+if [[ -z $BUILDDIR ]]; then
+    BUILDDIR=$(dirname $TESTSROOTDIR)/build
+fi
+TCLCDB2="$BUILDDIR/tcl"
+
+if [[ -z $TMPDIR ]]; then
+    TMPDIR="/tmp"
+fi
+FILEPATH="$TMPDIR/files/$DB"
 
 function echo_color
 {
@@ -43,22 +64,12 @@ function echo_color_bold
     echo_color "$1" "$2" "BOLD"
 }
 
-DB=$1
-if [ -z "$DB" ];
-then
-    PROG=`basename $0`
-    echo "Usage: $PROG <dbname>"
-    exit 1
-fi
-
 FILE=$2
 if [ -z "$FILE" ];
 then
     FILE="*.test"
 fi
 
-FILEPATH="$TMPDIR/files/$DBNAME"
-TCLCDB2="$BUILDDIR/tcl"
 mkdir -p $FILEPATH
 echo "Yet Another SQL Test (yast) for Comdb2"
 echo "I am using $TCLCDB2"
