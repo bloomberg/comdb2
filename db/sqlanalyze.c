@@ -39,7 +39,9 @@
 #include "sc_util.h"
 #include "debug_switches.h"
 
-extern void reset_aa_counter(char *tblname);
+extern int gbl_is_physical_replicant;
+
+void reset_aa_counter(char *tblname);
 
 /* global is-running flag */
 uint32_t analyze_running_flag = 0;
@@ -209,11 +211,6 @@ void cleanup_stats(SBUF2 *sb)
                                      "in (select name from sqlite_master where "
                                      "type='index')");
     }
-
-    if (get_dbtable_by_name("sqlite_stat2"))
-        run_internal_sql_clnt(&clnt, "delete from sqlite_stat2 where idx not "
-                                     "in (select name from sqlite_master where "
-                                     "type='index')");
 
     if (get_dbtable_by_name("sqlite_stat4"))
         run_internal_sql_clnt(&clnt, "delete from sqlite_stat4 where idx not "
@@ -697,16 +694,10 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
     return 0;
 }
 
-static int analyze_table_int(table_descriptor_t *td,
-                             struct thr_handle *thr_self)
+static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self)
 {
     char zErrTab[256] = {0};
 
-#ifdef DEBUG
-    printf("analyze_table_int() table '%s': scale %d\n", td->table, td->scale);
-#endif
-
-    /* make sure we can find this table */
     struct dbtable *tbl = get_dbtable_by_name(td->table);
     if (!tbl) {
         sbuf2printf(td->sb, "?Cannot find table '%s'\n", td->table);
@@ -717,8 +708,7 @@ static int analyze_table_int(table_descriptor_t *td,
         get_saved_scale(td->table, &td->scale);
 
     if (td->scale == 0) {
-        sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n",
-                    td->table);
+        sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n", td->table);
         logmsg(LOGMSG_INFO, "coverage for table '%s' is 0, skipping analyze\n", td->table);
         return TABLE_SKIPPED;
     }
@@ -728,7 +718,7 @@ static int analyze_table_int(table_descriptor_t *td,
     clnt.osql_max_trans = 0; // allow large transactions
     int sampled_table = 0;
 
-    clnt.current_user        = td->current_user;
+    clnt.current_user = td->current_user;
     if (td->appdata != NULL)
         clnt.appdata = td->appdata;
     if (td->get_authdata != NULL)
@@ -743,8 +733,7 @@ static int analyze_table_int(table_descriptor_t *td,
     }
 
     char *sql = NULL;
-    sql = sqlite3_mprintf(
-             "delete from sqlite_stat1 where tbl='cdb2.%q.sav'", td->table);
+    sql = sqlite3_mprintf("delete from sqlite_stat1 where tbl='cdb2.%q.sav'", td->table);
     assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
     if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
@@ -753,9 +742,7 @@ static int analyze_table_int(table_descriptor_t *td,
     if (rc)
         goto error;
 
-    sql = sqlite3_mprintf(
-             "update sqlite_stat1 set tbl='cdb2.%q.sav' where tbl='%q'",
-             td->table, td->table);
+    sql = sqlite3_mprintf("update sqlite_stat1 set tbl='cdb2.%q.sav' where tbl='%q'", td->table, td->table);
     assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
     if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
@@ -763,33 +750,9 @@ static int analyze_table_int(table_descriptor_t *td,
 
     if (rc)
         goto error;
-
-    if (get_dbtable_by_name("sqlite_stat2")) {
-        sql = sqlite3_mprintf(
-                 "delete from sqlite_stat2 where tbl='cdb2.%q.sav'", td->table);
-        assert(sql != NULL);
-        rc = run_internal_sql_clnt(&clnt, sql);
-        if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-        sqlite3_free(sql); sql = NULL;
-
-        if (rc)
-            goto error;
-
-        sql = sqlite3_mprintf(
-                 "update sqlite_stat2 set tbl='cdb2.%q.sav' where tbl='%q'",
-                 td->table, td->table);
-        assert(sql != NULL);
-        rc = run_internal_sql_clnt(&clnt, sql);
-        if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-        sqlite3_free(sql); sql = NULL;
-
-        if (rc)
-            goto error;
-    }
 
     if (get_dbtable_by_name("sqlite_stat4")) {
-        sql = sqlite3_mprintf(
-                 "delete from sqlite_stat4 where tbl='cdb2.%q.sav'", td->table);
+        sql = sqlite3_mprintf("delete from sqlite_stat4 where tbl='cdb2.%q.sav'", td->table);
         assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
         if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
@@ -798,9 +761,7 @@ static int analyze_table_int(table_descriptor_t *td,
         if (rc)
             goto error;
 
-        sql = sqlite3_mprintf(
-                 "update sqlite_stat4 set tbl='cdb2.%q.sav' where tbl='%q'",
-                 td->table, td->table);
+        sql = sqlite3_mprintf("update sqlite_stat4 set tbl='cdb2.%q.sav' where tbl='%q'", td->table, td->table);
         assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
         if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
@@ -1065,11 +1026,7 @@ int get_analyze_abort_requested()
     return analyze_abort_requested;
 }
 
-extern int gbl_is_physical_replicant;
-
-/* analyze 'table' */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
-                  int bypass_auth)
+int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta, int bypass_auth)
 {
     if (gbl_is_physical_replicant) {
         logmsg(LOGMSG_ERROR, "%s: Analyze invalid on physical replicant\n", __func__);
@@ -1080,9 +1037,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
         return -1;
 
     if (get_schema_change_in_progress(__func__, __LINE__)) {
-        logmsg(LOGMSG_ERROR, 
-                "%s: Aborting Analyze because schema_change_in_progress\n",
-                __func__);
+        logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because schema_change_in_progress\n", __func__);
         return -1;
     }
 
@@ -1090,15 +1045,13 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
         return SQLITE_ANALYZE_ALREADY_RUNNING;
 
     table_descriptor_t td = {0};
-    /* initialize table sync structure */
     td.table_state = TABLE_STARTUP;
     td.sb = sb;
     td.scale = scale;
     td.override_llmeta = override_llmeta;
     struct dbtable *dbtable = get_dbtable_by_name(table);
     if (dbtable && dbtable->sqlaliasname)
-        strncpy0(td.table, dbtable->sqlaliasname,
-                sizeof(td.table));
+        strncpy0(td.table, dbtable->sqlaliasname, sizeof(td.table));
     else
         strncpy0(td.table, table, sizeof(td.table));
 
@@ -1120,8 +1073,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
     int rc = dispatch_table_thread(&td);
 
     if (0 != rc) {
-       logmsg(LOGMSG_ERROR, "Analyze: Couldn't start table-thread for table '%s' rc=%d\n",
-               table, rc);
+       logmsg(LOGMSG_ERROR, "Analyze: Couldn't start table-thread for table '%s' rc=%d\n", table, rc);
         logmsg(LOGMSG_ERROR, "Analyze FAILED\n");
         analyze_running_flag = 0;
         return -1;
@@ -1136,9 +1088,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
         sbuf2printf(sb, "FAILED\n");
 
     sbuf2flush(sb);
-    /* no-longer running */
     analyze_running_flag = 0;
-
     return rc;
 }
 
@@ -1371,12 +1321,6 @@ static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
     if (rc)
         goto error;
 
-    if (get_dbtable_by_name("sqlite_stat2")) {
-        rc = backout_stats_frm_tbl(clnt, table, 2);
-        if (rc)
-            goto error;
-    }
-
     if (get_dbtable_by_name("sqlite_stat4")) {
         rc = backout_stats_frm_tbl(clnt, table, 4);
         if (rc)
@@ -1441,16 +1385,6 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
     assert(sql != NULL);
     run_internal_sql(sql);
     sqlite3_free(sql); sql = NULL;
-
-    if (get_dbtable_by_name("sqlite_stat2")) {
-        sql = sqlite3_mprintf("INSERT INTO sqlite_stat2 select tbl, '%q' "
-                              "as idx, sampleno, sample FROM sqlite_stat2 "
-                              "WHERE tbl='%q' and idx='%q' \n",
-                 newname, tbl, oldname);
-        assert(sql != NULL);
-        run_internal_sql(sql);
-        sqlite3_free(sql); sql = NULL;
-    }
 
     if (get_dbtable_by_name("sqlite_stat4")) {
         sql = sqlite3_mprintf("INSERT INTO sqlite_stat4 select tbl, '%q' "
