@@ -1095,6 +1095,11 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     return 0;
 }
 
+void osql_save_updstat(osqlstate_t *osql)
+{
+    osql->has_updstat = 1;
+}
+
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                      int nData, int flags)
 {
@@ -1577,6 +1582,9 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
         }
         if (rc)
             return -1;
+    }
+    if (osql->has_updstat) {
+        osql_send_updstat(osql);
     }
 
     return rc;
@@ -2411,6 +2419,7 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
         /* don't reset timestamp yet */
     }
 
+    osql->has_updstat = 0;
     osql->dirty = 0;
     osql_destroy_verify_temptbl(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);

@@ -215,6 +215,7 @@ typedef struct osqlstate {
 
     /* set to 1 if we have already called osql_sock_start in socksql mode */
     unsigned sock_started : 1;
+    unsigned has_updstat : 1;
 } osqlstate_t;
 
 enum ctrl_sqleng {

@@ -219,6 +219,7 @@ void cleanup_stats(SBUF2 *sb)
         ")";
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
+    clnt.dbtran.mode = TRANLEVEL_RECOM;
     if (run_internal_sql_clnt(&clnt, "begin") != 0) goto end;
     if (run_internal_sql_clnt(&clnt, "delete from sqlite_stat1 where idx is null") != 0) goto end;
     if (run_internal_sql_clnt(&clnt, stat1_clean) != 0) goto end;
@@ -751,12 +752,12 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
         }
     }
 
-    clnt.is_analyze = 1;
-
     /* run analyze as sql query */
     sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
     assert(sql != NULL);
+    clnt.is_analyze = 1;
     rc = run_internal_sql_clnt(&clnt, sql);
+    clnt.is_analyze = 0;
     if (rc) {
         snprintf(zErrTab, sizeof(zErrTab), "failed:%s", sql);
         sqlite3_free(sql); sql = NULL;
@@ -810,7 +811,6 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
         osql_unregister_sqlthr(&clnt);
         snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
     }
-    ATOMIC_ADD32(gbl_analyze_gen, 1);
 
 cleanup:
     if (rc) { // send error to client

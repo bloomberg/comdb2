@@ -9002,7 +9002,7 @@ int sqlite3BtreeInsert(
 
     /* send opcode to reload stats at commit */
     if (clnt->is_analyze && pCur->db && is_stat1(pCur->db->tablename))
-        rc = osql_updstat(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), 0);
+        rc = osql_updstat(pCur);
 
     if (pCur->bt->is_temporary) {
         /* data: nKey is 'rrn', pData is record, nData is size of record

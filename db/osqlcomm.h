@@ -212,9 +212,7 @@ int osql_send_recordgenid(osql_target_t *target, unsigned long long rqid,
  * Update stats
  *
  */
-int osql_send_updstat(osql_target_t *target, unsigned long long rqid,
-                      uuid_t uuid, unsigned long long seq, char *pData,
-                      int nData, int nStat, int type);
+int osql_send_updstat(osqlstate_t *);
 
 /**
  * Sends the result of block processor transaction commit
