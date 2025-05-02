@@ -171,8 +171,7 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
  *
  */
 
-int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                 int nData, int nStat);
+int osql_updstat(struct BtCursor *);
 
 
 /**

@@ -85,6 +85,9 @@ void *osql_open_shadtbl_addtbl(struct BtCursor *pCur);
 void *osql_get_shadtbl_updtbl(struct BtCursor *pCur);
 void *osql_get_shadtbl_skpcur(struct BtCursor *pCur);
 
+struct osqlstate;
+void osql_save_updstat(struct osqlstate *);
+
 int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd);
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                      int nData, int flags);

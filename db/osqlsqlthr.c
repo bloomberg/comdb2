@@ -77,8 +77,6 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
 static int osql_send_recordgenid_logic(struct BtCursor *pCur,
                                        struct sql_thread *thd,
                                        unsigned long long genid, int nettype);
-int osql_send_updstat_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                            char *pData, int nData, int nStat, int nettype);
 static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
                                   int nettype);
 static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype);
@@ -524,11 +522,23 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
  *
  */
 
-inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
-                        char *pData, int nData, int nStat)
+int osql_updstat(struct BtCursor *pCur)
 {
-    return osql_send_updstat_logic(pCur, thd, pData, nData, nStat,
-                                   NET_OSQL_SOCK_RPL);
+    int rc, restarted;
+    struct sqlclntstate *clnt = pCur->clnt;
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        START_SOCKSQL;
+        do {
+            rc = osql_send_updstat(&clnt->osql);
+            RESTART_SOCKSQL;
+        } while (restarted);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: rc:%d\n", __func__, rc);
+            return rc;
+        }
+    }
+    osql_save_updstat(&clnt->osql);
+    return 0;
 }
 
 /**
@@ -1373,27 +1383,6 @@ static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
 {
     return osql_send_usedb_logic_int(pCur->db->tablename, thd->clnt,
                                      nettype);
-}
-
-inline int osql_send_updstat_logic(struct BtCursor *pCur,
-                                   struct sql_thread *thd, char *pData,
-                                   int nData, int nStat, int nettype)
-{
-    struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &clnt->osql;
-    int rc = 0;
-    int restarted;
-
-    START_SOCKSQL;
-    do {
-        rc = osql_send_updstat(&osql->target, osql->rqid, osql->uuid,
-                               pCur->genid, pData, nData, nStat, nettype);
-        RESTART_SOCKSQL;
-    } while (restarted);
-    osql->replicant_numops++;
-    DEBUG_PRINT_NUMOPS();
-
-    return rc;
 }
 
 /**
