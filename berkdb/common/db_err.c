@@ -270,8 +270,6 @@ db_strerror(error)
 		return ("DB_PAGE_NOTFOUND: Requested page not found");
 	case DB_REP_DUPMASTER:
 		return ("DB_REP_DUPMASTER: A second master site appeared");
-	case DB_REP_HANDLE_DEAD:
-		return ("DB_REP_HANDLE_DEAD: Handle is no longer valid.");
 	case DB_REP_HOLDELECTION:
 		return ("DB_REP_HOLDELECTION: Need to hold an election");
 	case DB_REP_ISPERM:
