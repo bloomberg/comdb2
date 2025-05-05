@@ -60,43 +60,43 @@ function test_import_many_tables_over_table() {
 function test_multiple_imports_at_once() {
 	(
 		# Given
-		local src_tbl=foo dst_tbl=foo n_simultaneous_imports=8 pids=() rc=0
+		local src_tbl=foo dst_tbl=foo rc=0
 		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		for i in $(seq $n_simultaneous_imports); do
-			query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
-			pids[${i}]=$!
-		done
-
-		for pid in ${pids[@]}; do
-			wait $pid || rc=1
-		done
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
+		local -r pid=$!
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
+		rc_second_import=$?
+		wait $pid
+		rc_first_import=$?
 
 		# Then
-		(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
+			# The import that starts first should fail and the other should succeed.
+		(( (rc_first_import+rc_second_import) > 0 )) \
+			&& (( (rc_first_import*rc_second_import == 0) )) \
+			&& verify_eq $src_tbl $dst_tbl
 	)
 }
 
 function test_mutual_simultaneous_import() {
 	(
 		# Given
-		local src_tbl=foo dst_tbl=foo n_mutual_imports=8 pids=() rc=0
+		local src_tbl=foo dst_tbl=foo n_mutual_imports=8 rc=0
 		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
 		for i in $(seq 1 2 $n_mutual_imports); do
 			query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
-			pids[${i}]=$!
+			local pid_dst=$!
 
 			query_src_db "replace table $src_tbl with LOCAL_$DST_DBNAME.$dst_tbl" >/dev/null &
-			pids[$((i+1))]=$!
-		done
+			local pid_src=$!
 
-		for pid in ${pids[@]}; do
-			wait $pid || rc=1
+			wait $pid_dst || rc=1
+			wait $pid_src || rc=1
 		done
 
 		# Then
@@ -189,6 +189,35 @@ function test_import_table_with_fk_constraints() {
 	)
 }
 
+function test_multiple_imports_in_failed_transaction() {
+	(
+		# Given
+		local src_tbl_1=foo src_tbl_2=bar src_tbl_3=baz dst_tbl_1=corge dst_tbl_2=qux rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl_1 $dst_tbl_1 > /dev/null
+		query_src_db "create table $src_tbl_2(i int unique)"
+		query_src_db "insert into $src_tbl_2 values(1)"
+		query_src_db "create table $src_tbl_3(i int, foreign key(i) references $src_tbl_2(i))"
+		query_dst_db "create table $dst_tbl_2(i int unique)"
+		trap "query_src_db 'drop table $src_tbl_1';
+			query_src_db 'drop table $src_tbl_3';
+			query_src_db 'drop table $src_tbl_2';
+			query_dst_db 'drop table $dst_tbl_1';
+			query_dst_db 'drop table $dst_tbl_2'" EXIT
+
+		# When
+query_dst_db - >/dev/null <<EOF
+begin
+replace table $dst_tbl_1 with LOCAL_$SRC_DBNAME.$src_tbl_1
+replace table $dst_tbl_2 with LOCAL_$SRC_DBNAME.$src_tbl_3
+commit
+EOF
+		# Then
+			# Txn should fail because second import runs against constrained table.
+			# The first import should be rolled back
+		(( $? != 0 )) && ! verify_eq $src_tbl_1 $dst_tbl_1 && ! verify_eq $src_tbl_2 $dst_tbl_3
+	)
+}
+
 function test_multiple_imports_in_transaction() {
 	(
 		# Given
@@ -232,7 +261,26 @@ function test_unsupported_version() {
 	)
 }
 
-function test_tunable() {
+function test_protobuf_tunable() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		set_dst_tunable "sc_protobuf 0"
+
+		trap "set_dst_tunable 'sc_protobuf 1';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl"
+
+		# Then
+		(( $? != 0 ))
+	)
+}
+
+function test_feature_tunable() {
 	(
 		# Given
 		local src_tbl=foo dst_tbl=bar rc=0
@@ -248,6 +296,33 @@ function test_tunable() {
 
 		# Then
 		(( $? != 0 ))
+	)
+}
+
+function test_resume_is_blocked() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		set_dst_tunable "debug_sleep_during_bulk_import 1"
+
+		trap "set_dst_tunable 'debug_sleep_during_bulk_import 0';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		COMDB2_CONFIG_MIN_RETRIES=1 query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" &
+		waitpid=$!
+		sleep 1
+		restart_dst_db &> /dev/null
+		if wait ${waitpid};
+		then
+			echo "FAIL: Import succeeded before cluster bounced. Test is buggy."
+			return 1
+		fi
+
+		# Then
+		! verify_eq $src_tbl $dst_tbl
 	)
 }
 
@@ -289,19 +364,25 @@ function test_basic() {
 	done
 }
 
-if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
-	 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
-	MISMATCHED_CONFIG_TEST=1
-	TESTS="test_basic"
-else
-	TESTS=$(compgen -A function | grep -oh "test_\w*")
-fi
-
 function main() {
+	if [ -z "$CLUSTER" ] ; then # test if CLUSTER is blank (not set) and exit when so
+		echo "Test requires a cluster"
+		return 1
+	fi
+
+	local tests
+	if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
+		 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
+		MISMATCHED_CONFIG_TEST=1
+		tests="test_basic"
+	else
+		tests=$(compgen -A function | grep -oh "test_\w*")
+	fi
+
 	set_src_tunable "semver 8.1.0"
 	set_dst_tunable "semver 8.1.0"
 
-	for testcase in $TESTS;
+	for testcase in $tests;
 	do
 		$testcase
 		failexit $? "Failed $testcase"

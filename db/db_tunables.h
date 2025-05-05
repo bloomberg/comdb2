@@ -300,6 +300,9 @@ REGISTER_TUNABLE("debug_exit_coordinator_after_commit", "Coordinator exits after
 REGISTER_TUNABLE("debug_sleep_coordinator_before_commit", "Coordinator sleeps before committing.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_sleep_coordinator_before_commit, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug_sleep_during_bulk_import", "Sleep during bulk import (default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_sleep_during_bulk_import, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("debug_coordinator_dispatch_failure", "Fake failed dispatch in coordinator.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_coordinator_dispatch_failure, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

@@ -14,6 +14,8 @@
    limitations under the License.
  */
 
+#include <pb_alloc.h>
+
 #include "schemachange.h"
 #include "sc_struct.h"
 #include "logmsg.h"
@@ -21,6 +23,7 @@
 #include "sc_schema.h"
 #include "macc_glue.h"
 #include "schemachange.pb-c.h"
+#include "importdata.pb-c.h"
 #include "str0.h"
 #include "sc_version.h"
 
@@ -109,6 +112,10 @@ void free_schema_change_type(struct schema_change_type *s)
 
     free(s->newcsc2);
     free(s->sc_convert_done);
+    if (s->import_src_table_data) {
+        import_data__free_unpacked(s->import_src_table_data, &pb_alloc);
+        s->import_src_table_data = NULL;
+    }
 
     free_dests(s);
     Pthread_mutex_destroy(&s->mtx);
@@ -279,6 +286,9 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     sc.rebuild_index = s->rebuild_index;
     sc.index_to_rebuild = s->index_to_rebuild;
     sc.source_node = s->source_node;
+
+    sc.import_src_tablename = s->import_src_tablename;
+    sc.import_src_dbname = s->import_src_dbname;
 
     sc.dests = malloc(sizeof(char *) * s->dests.count);
     if (!sc.dests) {
@@ -472,6 +482,14 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
     s->usedbtablevers = sc->usedtablevers;
     s->qdb_file_ver = sc->qdb_file_ver;
     s->partition.type = sc->partition_type;
+    if (sc->import_src_tablename) {
+        strncpy(s->import_src_tablename, sc->import_src_tablename, sizeof(s->import_src_tablename));
+        s->import_src_tablename_len = strlen(s->import_src_tablename) + 1;
+    }
+    if (sc->import_src_dbname) {
+        strncpy(s->import_src_dbname, sc->import_src_dbname, sizeof(s->import_src_dbname));
+        s->import_src_dbname_len = strlen(s->import_src_dbname) + 1;
+    }
     switch (sc->partition_type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL: {

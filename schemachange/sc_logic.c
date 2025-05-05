@@ -36,6 +36,7 @@
 #include "sc_drop_table.h"
 #include "sc_rename_table.h"
 #include "sc_view.h"
+#include "sc_import.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 #include "sc_callbacks.h"
@@ -645,6 +646,7 @@ struct {
     {1, alter, do_alter_table, finalize_alter_table, NULL, NULL},
     {1, alter, do_alter_table, finalize_alter_table, NULL, NULL},
     {1, alter, do_alter_table, finalize_alter_table, NULL, NULL},
+    {1, bulkimport, do_import, finalize_import, NULL, NULL},
 };
 
 static int do_schema_change_tran_int(sc_arg_t *arg)
@@ -1239,7 +1241,11 @@ int resume_schema_change(void)
 
             free(packed_sc_data);
 
-            if (scabort) {
+            if (scabort || s->kind == SC_BULK_IMPORT) {
+                logmsg(LOGMSG_WARN, scabort
+                    ? "%s: Cancelling resume of schema change.\n"
+                    : "%s: Cancelling resume of schema change because it is a bulk import.\n",
+                    __func__);
                 rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
                                               NULL, 0, &bdberr);
                 if (rc)

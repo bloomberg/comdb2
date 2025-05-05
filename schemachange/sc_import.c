@@ -40,6 +40,7 @@
 #include "fdb_fend.h"
 #include "bdb_api.h"
 #include "bdb_schemachange.h"
+#include "schemachange.h"
 #include "comdb2.h"
 #include "comdb2_appsock.h"
 #include "crc32c.h"
@@ -51,6 +52,7 @@
 #include "str0.h"
 #include "version_util.h"
 #include "str_util.h"
+#include "sc_import.h"
 
 #define BULK_IMPORT_MIN_SUPPORTED_VERSION "8.1.0"
 
@@ -77,6 +79,7 @@ extern int get_txndir_args(char *txndir, size_t sz_txndir, const char *dbdir, co
 extern tran_type *curtran_gettran(void);
 extern void curtran_puttran(tran_type *tran);
 
+int gbl_debug_sleep_during_bulk_import = 0;
 extern int gbl_import_mode;
 extern char *gbl_import_table;
 extern char *gbl_file_copier;
@@ -455,7 +458,9 @@ void clear_bulk_import_data(ImportData *p_data) {
 /**
  * Grabs all the bulk import data for a local table
  */
-static enum comdb2_import_op bulk_import_data_load(const char *table_name, ImportData *p_data) {
+static enum comdb2_import_op bulk_import_data_load(const char *table_name,
+                                                   ImportData *p_data,
+                                                   tran_type * const tran) {
     unsigned i, j;
     int bdberr;
     struct dbtable *db;
@@ -494,8 +499,8 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     }
 
     /* get table's schema from the meta table and calculate it's crc32 */
-    if (get_csc2_file(table_name, -1 /*highest csc2_version*/,
-                      &p_csc2_text, NULL /*csc2len*/)) {
+    if (get_csc2_file_tran(table_name, -1 /*highest csc2_version*/,
+                      &p_csc2_text, NULL /*csc2len*/, tran)) {
         __import_logmsg(LOGMSG_ERROR,
                "could not get schema for table: %s\n",
                table_name);
@@ -511,9 +516,9 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     p_data->checksums = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHECKSUMS);
 
     /* get odh options from the meta table */
-    if ((get_db_odh(db, &p_data->odh) ||
-        (p_data->odh && (get_db_compress(db, &p_data->compress) ||
-                         get_db_compress_blobs(db, &p_data->compress_blobs))))
+    if ((get_db_odh_tran(db, &p_data->odh, tran) ||
+        (p_data->odh && (get_db_compress_tran(db, &p_data->compress, tran) ||
+                         get_db_compress_blobs_tran(db, &p_data->compress_blobs, tran))))
         && gbl_import_mode) {
         __import_logmsg(LOGMSG_ERROR,
                "failed to fetch odh flags for table: %s\n",
@@ -527,7 +532,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     p_data->blobstripe = gbl_blobstripe;
 
     /* get data file's current version from meta table */
-    if (bdb_get_file_version_data(db->handle, NULL /*tran*/, 0 /*dtanum*/,
+    if (bdb_get_file_version_data(db->handle, tran, 0 /*dtanum*/,
                                   (unsigned long long *)&p_data->data_genid,
                                   &bdberr) ||
         bdberr != BDBERR_NOERROR) {
@@ -541,19 +546,19 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     /* get page sizes from meta table */
 
     //  * Don't know if this is necessary.
-    if (bdb_get_pagesize_data(db->handle, NULL, &pgsz, &bdberr) == 0 &&
+    if (bdb_get_pagesize_data(db->handle, tran, &pgsz, &bdberr) == 0 &&
         bdberr == 0) {
         p_data->data_pgsz = pgsz;
     } else {
         p_data->data_pgsz = -1;
     }
-    if (bdb_get_pagesize_index(db->handle, NULL, &pgsz, &bdberr) == 0 &&
+    if (bdb_get_pagesize_index(db->handle, tran, &pgsz, &bdberr) == 0 &&
         bdberr == 0) {
         p_data->index_pgsz = pgsz;
     } else {
         p_data->index_pgsz = -1;
     }
-    if (bdb_get_pagesize_blob(db->handle, NULL, &pgsz, &bdberr) == 0 &&
+    if (bdb_get_pagesize_blob(db->handle, tran, &pgsz, &bdberr) == 0 &&
         bdberr == 0) {
         p_data->blob_pgsz = pgsz;
     } else {
@@ -563,7 +568,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     /* get ipu/isc options from meta table */
     // Only an error if the source db doesn't have them
 
-    if (get_db_inplace_updates(db, &p_data->ipu) && gbl_import_mode) {
+    if (get_db_inplace_updates_tran(db, &p_data->ipu, tran) && gbl_import_mode) {
         __import_logmsg(
             LOGMSG_ERROR,
             "Failed to get inplace update option for table %s\n",
@@ -571,7 +576,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         rc = COMDB2_IMPORT_TMPDB_RC_NO_IPU_OPTION;
         goto err;
     }
-    if (get_db_instant_schema_change(db, &p_data->isc) && gbl_import_mode) {
+    if (get_db_instant_schema_change_tran(db, &p_data->isc, tran) && gbl_import_mode) {
         __import_logmsg(LOGMSG_ERROR,
                "Failed to get instant schema change option for "
                "table %s\n",
@@ -579,7 +584,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         rc = COMDB2_IMPORT_TMPDB_RC_NO_ISC_OPTION;
         goto err;
     }
-    if (get_db_datacopy_odh(db, &p_data->dc_odh) && gbl_import_mode) {
+    if (get_db_datacopy_odh_tran(db, &p_data->dc_odh, tran) && gbl_import_mode) {
         __import_logmsg(LOGMSG_ERROR,
                "Failed to get datacopy odh option for table %s\n",
                table_name);
@@ -611,8 +616,8 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         }
     }
 
-    t = curtran_gettran();
-    int version = get_csc2_version_tran(table_name, t);
+    if (!tran) { t = curtran_gettran(); }
+    int version = get_csc2_version_tran(table_name, tran ? tran : t);
     if (version == -1) {
         __import_logmsg(LOGMSG_ERROR,
                "Could not find csc2 version for table %s\n",
@@ -631,11 +636,13 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
 
     for (int vers = 1; vers <= version; vers++) {
         get_csc2_file_tran(table_name, vers, &p_data->csc2[vers - 1],
-                           &len, t);
+                           &len, tran ? tran : t);
     }
 
-    curtran_puttran(t);
-    t = NULL;
+    if (t) {
+        curtran_puttran(t);
+        t = NULL;
+    }
 
     /* get num indicies/blobs */
     p_data->n_index_genids = db->nix;
@@ -668,7 +675,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     for (i = 0; i < p_data->n_index_genids; ++i) {
         /* get index file's current version from meta table */
         if (bdb_get_file_version_index(
-                db->handle, NULL /*tran*/, i /*ixnum*/,
+                db->handle, tran, i /*ixnum*/,
                 (unsigned long long *)&p_data->index_genids[i], &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             __import_logmsg(LOGMSG_ERROR,
@@ -723,7 +730,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     for (i = 0; i < p_data->n_blob_genids; ++i) {
         /* get blob file's current version from meta table */
         if (bdb_get_file_version_data(
-                db->handle, NULL /*tran*/, i + 1 /*dtanum*/,
+                db->handle, tran, i + 1 /*dtanum*/,
                 (unsigned long long *)&p_data->blob_genids[i], &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             __import_logmsg(LOGMSG_ERROR,
@@ -780,7 +787,8 @@ err:
 static enum comdb2_import_op 
 bulk_import_data_validate(const char *dst_table_name,
                           const int src_dtastripe,
-                          const int src_blobstripe) {
+                          const int src_blobstripe,
+                          tran_type * const tran) {
     if (thedb->master != gbl_myhostname) {
         __import_logmsg(LOGMSG_ERROR, "I'm not the master\n");
         return COMDB2_IMPORT_RC_INTERNAL;
@@ -794,7 +802,7 @@ bulk_import_data_validate(const char *dst_table_name,
     }
 
     unsigned long long genid;
-    if (get_blobstripe_genid(db, &genid) == 0) {
+    if (get_blobstripe_genid_tran(db, &genid, tran) == 0) {
         __import_logmsg(LOGMSG_ERROR,
                 "Destination db has a blobstripe genid\n");
         return COMDB2_IMPORT_RC_BLOBSTRIPE_GENID;
@@ -919,7 +927,7 @@ static enum comdb2_import_op bulk_import_perform_initial_validation(const char *
     const int src_blobstripe = value_on_off((const char *)cdb2_column_value(hndl, 1));
 
     rdlock_schema_lk();
-    rc = bulk_import_data_validate(dst_table_name, src_dtastripe, src_blobstripe);
+    rc = bulk_import_data_validate(dst_table_name, src_dtastripe, src_blobstripe, NULL);
     unlock_schema_lk();
     if (rc) {
         __import_logmsg(LOGMSG_ERROR,
@@ -1047,65 +1055,33 @@ static enum comdb2_import_op bulk_import_generate_filenames(
  * Executes a schema change that makes the import target table point 
  * to the imported btree files.
  */
-static enum comdb2_import_op bulkimport_switch_files(struct dbtable *db,
+static enum comdb2_import_op bulkimport_switch_files(struct schema_change_type *sc,
+                                   struct dbtable *db,
                                    const ImportData *p_foreign_data,
                                    unsigned long long dst_data_genid,
                                    unsigned long long *dst_index_genids,
                                    unsigned long long *dst_blob_genids,
-                                   ImportData *local_data) {
-    int i, outrc, bdberr;
-    int retries = 0;
-    tran_type *tran = NULL;
+                                   ImportData *local_data, tran_type *tran) {
+    int i, bdberr;
     struct ireq iq;
 
     init_fake_ireq(thedb, &iq);
     iq.usedb = db;
 
     /* stop the db */
-    void *lock_table_tran = bdb_tran_begin_logical(db->handle, 0, &bdberr);
-    assert(lock_table_tran);
-    bdb_lock_table_write(db->handle, lock_table_tran);
+    bdb_lock_table_write(db->handle, tran);
 
     /* close the table */
     if (bdb_close_only(db->handle, &bdberr)) {
         __import_logmsg(LOGMSG_ERROR,
                "failed to close table: %s bdberr: %d\n",
                p_foreign_data->table_name, bdberr);
-        bdb_tran_abort(thedb->bdb_env, lock_table_tran, &bdberr);
-        return COMDB2_IMPORT_RC_INTERNAL;
+        goto err;
     }
 
+    sc->already_finalized = 1;
 
-    /* from here on use goto backout not return */
-    llmeta_dump_mapping_table(thedb, db->tablename, 1);
-
-retry_bulk_update:
-    if (++retries >= gbl_maxretries) {
-        __import_logmsg(LOGMSG_ERROR, "giving up after %d retries\n",
-               retries);
-
-        outrc = COMDB2_IMPORT_RC_INTERNAL;
-        goto backout;
-    }
-
-    if (tran) /* if this is a retry and not the first pass */
-    {
-        trans_abort(&iq, tran);
-        tran = NULL;
-
-        __import_logmsg(LOGMSG_ERROR,
-               "bulk update failed for table: %s attempting "
-               "retry\n",
-               p_foreign_data->table_name);
-    }
-
-    if (trans_start(&iq, NULL /*parent_trans*/, &tran)) {
-        __import_logmsg(LOGMSG_ERROR,
-               "failed starting bulk update transaction for "
-               "table: %s\n",
-               p_foreign_data->table_name);
-        goto retry_bulk_update;
-    }
+    llmeta_dump_mapping_table_tran(tran, thedb, db->tablename, 1);
 
     /* update version for main data files */
     if (bdb_new_file_version_data(db->handle, tran, 0 /*dtanum*/,
@@ -1115,7 +1091,7 @@ retry_bulk_update:
                "failed updating version for table: %s main data "
                "files\n",
                p_foreign_data->table_name);
-        goto retry_bulk_update;
+        goto err;
     }
 
     /* for each index, update version */
@@ -1129,7 +1105,7 @@ retry_bulk_update:
                    "files new version: %llx\n",
                    p_foreign_data->table_name, i,
                    (long long unsigned int)p_foreign_data->index_genids[i]);
-            goto retry_bulk_update;
+            goto err;
         }
     }
 
@@ -1144,7 +1120,7 @@ retry_bulk_update:
                    "files new version: %llx\n",
                    p_foreign_data->table_name, i,
                    (long long unsigned int)p_foreign_data->blob_genids[i]);
-            goto retry_bulk_update;
+            goto err;
         }
     }
 
@@ -1152,7 +1128,7 @@ retry_bulk_update:
         __import_logmsg(LOGMSG_ERROR,
                "failed to upsert table version bdberr %d\n",
                bdberr);
-        goto retry_bulk_update;
+        goto err;
     }
 
     bdb_reset_csc2_version(tran, db->tablename, db->schema_version, 1);
@@ -1178,91 +1154,15 @@ retry_bulk_update:
                               &bdberr);
     }
 
-    /* commit new versions */
-    if (trans_commit_adaptive(&iq, tran, gbl_myhostname)) {
-        __import_logmsg(LOGMSG_ERROR,
-               "failed bulk update commit for table: %s\n",
-               p_foreign_data->table_name);
-        goto retry_bulk_update;
-    }
-
-    if (reload_after_bulkimport(db, NULL)) {
-        /* There is no good way to rollback here. The new schema's were
-         * committed but we couldn't reload them (parse error?). Lets just
-         * abort here and hope we can do this after bounce */
+    if (reload_after_bulkimport(db, tran)) {
         __import_logmsg(LOGMSG_ERROR, "failed reopening table: %s\n",
                local_data->table_name);
-        clean_exit();
+        goto err;
     }
-    bdb_tran_abort(thedb->bdb_env, lock_table_tran, &bdberr);
-    llmeta_dump_mapping_table(thedb, db->tablename, 1 /*err*/);
-    sc_del_unused_files(db);
-    int rc = bdb_llog_scdone(thedb->bdb_env, bulkimport, db->tablename,
-                             strlen(db->tablename) + 1, 1, &bdberr);
-    if (rc || bdberr != BDBERR_NOERROR) {
-        /* TODO: there is no way out as llmeta was committed already */
-        __import_logmsg(LOGMSG_ERROR,
-               "failed to send logical log scdone for table: %s "
-               "bdberr: %d\n",
-               p_foreign_data->table_name, bdberr);
-    }
+
     return COMDB2_IMPORT_RC_SUCCESS;
-
-backout:
-    llmeta_dump_mapping_table(thedb, db->tablename, 1 /*err*/);
-
-    /* free the old bdb handle */
-    if (bdb_free(db->handle, &bdberr) || bdberr != BDBERR_NOERROR) {
-        __import_logmsg(LOGMSG_ERROR,
-               "failed freeing old db for table: %s bdberr %d\n",
-               p_foreign_data->table_name, bdberr);
-        clean_exit();
-    }
-
-    /* open the table again, we use bdb_open_more() not bdb_open_again() because
-     * the underlying files changed */
-    if (!(db->handle = bdb_open_more(
-              local_data->table_name, thedb->basedir, 0, db->nix,
-              (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-              db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
-              db->ix_nullsallowed, db->numblobs + 1 /*main dta*/,
-              thedb->bdb_env, &bdberr)) ||
-        bdberr != BDBERR_NOERROR) {
-        __import_logmsg(LOGMSG_ERROR,
-               "failed reopening table: %s, bdberr %d\n",
-               local_data->table_name, bdberr);
-        clean_exit();
-    }
-
-    bdb_tran_abort(thedb->bdb_env, lock_table_tran, &bdberr);
-
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        /* delete files we don't need now */
-        if (bdb_list_unused_files(db->handle, &bdberr, "bulkimport") ||
-            bdberr != BDBERR_NOERROR)
-            __import_logmsg(
-                LOGMSG_ERROR,
-                "errors deleting files for table: %s bdberr: %d\n",
-                local_data->table_name, bdberr);
-    } else {
-        /* delete files we don't need now */
-        if (bdb_del_unused_files(db->handle, &bdberr) ||
-            bdberr != BDBERR_NOERROR)
-            __import_logmsg(
-                LOGMSG_ERROR,
-                "errors deleting files for table: %s bdberr: %d\n",
-                local_data->table_name, bdberr);
-    }
-
-    /* if we were successful */
-    if (!outrc) {
-        __import_logmsg(
-            LOGMSG_INFO,
-            "import successful for table: %s\n",
-            local_data->table_name);
-    }
-
-    return outrc;
+err:
+    return COMDB2_IMPORT_RC_INTERNAL;
 }
 
 /*
@@ -1275,7 +1175,8 @@ backout:
  * dst_tablename:  Name of local table into which the data 
  *                 is to be imported.
  */
-static enum comdb2_import_op bulk_import_complete(ImportData *p_foreign_data,
+static enum comdb2_import_op bulk_import_complete(struct schema_change_type *sc,
+                           ImportData *p_foreign_data,
                            const char *dst_tablename) {
     int offset, num_files, nsiblings, loaded_import_data, have_schema_lk;
     ImportData local_data = IMPORT_DATA__INIT;
@@ -1290,7 +1191,7 @@ static enum comdb2_import_op bulk_import_complete(ImportData *p_foreign_data,
     rdlock_schema_lk();
     have_schema_lk = 1;
 
-    int rc = bulk_import_data_validate(dst_tablename, p_foreign_data->dtastripe, p_foreign_data->blobstripe);
+    int rc = bulk_import_data_validate(dst_tablename, p_foreign_data->dtastripe, p_foreign_data->blobstripe, NULL);
     if (rc) {
         // keep the rc
         __import_logmsg(LOGMSG_ERROR, "Failed to validate import with rc %d\n",
@@ -1298,7 +1199,7 @@ static enum comdb2_import_op bulk_import_complete(ImportData *p_foreign_data,
         goto err;
     }
 
-    rc = bulk_import_data_load(dst_tablename, &local_data);
+    rc = bulk_import_data_load(dst_tablename, &local_data, NULL);
     if (rc) {
         __import_logmsg(LOGMSG_ERROR, "failed getting local data\n");
         rc = COMDB2_IMPORT_RC_INTERNAL;
@@ -1306,19 +1207,17 @@ static enum comdb2_import_op bulk_import_complete(ImportData *p_foreign_data,
     }
     loaded_import_data = 1;
 
-    const unsigned long long dst_data_genid = bdb_get_cmp_context(thedb->bdb_env);
+    sc->import_dst_data_genid = bdb_get_cmp_context(thedb->bdb_env);
 
-    unsigned long long dst_index_genids[MAXINDEX];
     for (int i = 0; i < p_foreign_data->n_index_genids; ++i)
-        dst_index_genids[i] = bdb_get_cmp_context(thedb->bdb_env);
+        sc->import_dst_index_genids[i] = bdb_get_cmp_context(thedb->bdb_env);
 
-    unsigned long long dst_blob_genids[MAXBLOBS];
     for (int i = 0; i < p_foreign_data->n_blob_genids; ++i)
-        dst_blob_genids[i] = bdb_get_cmp_context(thedb->bdb_env);
+        sc->import_dst_blob_genids[i] = bdb_get_cmp_context(thedb->bdb_env);
 
     rc = bulk_import_generate_filenames(&local_data, p_foreign_data,
-                                   dst_data_genid, dst_index_genids, dst_blob_genids,
-                                   &src_files, &dst_files, &num_files);
+                                   sc->import_dst_data_genid, sc->import_dst_index_genids,
+                                   sc->import_dst_blob_genids, &src_files, &dst_files, &num_files);
     if (rc) {
         __import_logmsg(LOGMSG_ERROR, "Failed to generate filenames with rc %d\n",
                               rc);
@@ -1365,43 +1264,6 @@ static enum comdb2_import_op bulk_import_complete(ImportData *p_foreign_data,
             }
         }
     }
-
-    // This is where everything actually happens. We need the schema lock in write mode.
-    wrlock_schema_lk();
-    have_schema_lk = 1;
-
-    // Need to redo validation: blobstripe genid could change live
-    rc = bulk_import_data_validate(dst_tablename, p_foreign_data->dtastripe, p_foreign_data->blobstripe);
-    if (rc) {
-        // keep the rc
-        __import_logmsg(LOGMSG_ERROR, "Failed to validate import with rc %d\n",
-                              rc);
-        goto err;
-    }
-
-    struct dbtable * const db = get_dbtable_by_name(dst_tablename);
-    if (!db) {
-        __import_logmsg(LOGMSG_ERROR, "no such table: %s\n",
-               dst_tablename);
-        // This is an internal error: We just passed validation while holding
-        // the schema lock, so the table should exist.
-        rc = COMDB2_IMPORT_RC_INTERNAL;
-        goto err;
-    }
-
-    rc = bulk_import_data_load(dst_tablename, &local_data);
-    if (rc) {
-        __import_logmsg(LOGMSG_ERROR, "failed getting local data\n");
-        rc = COMDB2_IMPORT_RC_INTERNAL;
-        goto err;
-    }
-    loaded_import_data = 1;
-
-    // Any error here is an internal error
-    rc =
-        bulkimport_switch_files(db, p_foreign_data, dst_data_genid,
-                                dst_index_genids, dst_blob_genids, &local_data)
-        ? COMDB2_IMPORT_RC_INTERNAL : 0;
 
 err:
     if (have_schema_lk) {
@@ -1948,13 +1810,15 @@ static enum comdb2_import_op get_import_rcode_from_tmpdb_rcode(const int rc) {
     }
 }
 
-enum comdb2_import_op bulk_import_do_import(const char *srcdb, 
-                          const char *src_tablename,
-                          const char *dst_tablename) {
+int do_import(struct ireq *iq, struct schema_change_type *sc, tran_type *tran)
+{
+    const char * const src_tablename = sc->import_src_tablename;
+    const char * const srcdb = sc->import_src_dbname;
+    const char * const dst_tablename = sc->tablename;
+
     char *tmp_db_dir = NULL;
     char *command = NULL;
     char *exe = NULL;
-    ImportData *import_data = NULL;
 
     pthread_mutex_lock(&import_id_mutex);
     const uint64_t import_id = gbl_import_id++;
@@ -2005,13 +1869,13 @@ enum comdb2_import_op bulk_import_do_import(const char *srcdb,
         goto err;
     }
     
-    rc = bulk_import_data_unpack_from_file(&import_data, import_id);
+    rc = bulk_import_data_unpack_from_file(&sc->import_src_table_data, import_id);
     if (rc != 0) {
         assert(rc == COMDB2_IMPORT_RC_INTERNAL);
         __import_logmsg(LOGMSG_ERROR, "Failed to unpack import data\n");
         goto err;
     }
-    rc = bulk_import_complete(import_data, dst_tablename);
+    rc = bulk_import_complete(sc, sc->import_src_table_data, dst_tablename);
     if (rc != 0) {
         __import_logmsg(LOGMSG_ERROR, "Failed to complete import.\n");
         goto err;
@@ -2026,19 +1890,88 @@ err:
         free(exe);
     }
 
-    if (import_data) {
-        import_data__free_unpacked(import_data, &pb_alloc);
+    if (rc && sc->import_src_table_data) {
+        import_data__free_unpacked(sc->import_src_table_data, &pb_alloc);
+        sc->import_src_table_data = NULL;
     }
 
     if (tmp_db_dir) {
         const int t_rc = bulk_import_cleanup_import_db(tmp_db_dir);
         if (t_rc != 0) {
-            // Don't error here: We've finished the import successfully.
-            // Emit a warning because subsequent imports will fail if the import dir already exists
-            __import_logmsg(LOGMSG_WARN, "Cleaning up import db failed with rc %d\n", t_rc);
+            // Don't error here: We've can still finish the import successfully.
+            __import_logmsg(LOGMSG_WARN, "Cleaning up import db failed with rc %d. "
+                "Future imports may fail if this doesn't get cleaned up.\n", t_rc);
         }
     }
-    
+
+    if (rc) {
+        errstat_set_rcstrf(&iq->errstat, rc, bulk_import_get_err_str(rc));
+    }
+    return rc;
+}
+
+int finalize_import(struct ireq *iq, struct schema_change_type *sc, tran_type *tran)
+{
+    if (!tran) {
+        __import_logmsg(LOGMSG_FATAL, "Expected tran to be non-null. Aborting\n");
+        abort();
+    }
+
+    const char * const dst_tablename = sc->tablename;
+    unsigned long long dst_data_genid = sc->import_dst_data_genid;
+    unsigned long long * const dst_index_genids = sc->import_dst_index_genids;
+    unsigned long long * const dst_blob_genids = sc->import_dst_blob_genids;
+    const ImportData * const p_foreign_data = sc->import_src_table_data;
+    int loaded_import_data = 0;
+
+    ImportData local_data = IMPORT_DATA__INIT;
+
+    // This is where everything actually happens. We need the schema lock in write mode.
+
+    // Need to redo validation: blobstripe genid could change live
+    int rc = bulk_import_data_validate(dst_tablename, p_foreign_data->dtastripe, p_foreign_data->blobstripe, tran);
+    if (rc) {
+        // keep the rc
+        __import_logmsg(LOGMSG_ERROR, "Failed to validate import with rc %d\n",
+                              rc);
+        goto err;
+    }
+
+    struct dbtable * const db = get_dbtable_by_name(dst_tablename);
+    if (!db) {
+        __import_logmsg(LOGMSG_ERROR, "no such table: %s\n",
+               dst_tablename);
+        // This is an internal error: We just passed validation while holding
+        // the schema lock, so the table should exist.
+        rc = COMDB2_IMPORT_RC_INTERNAL;
+        goto err;
+    }
+
+    rc = bulk_import_data_load(dst_tablename, &local_data, tran);
+    if (rc) {
+        __import_logmsg(LOGMSG_ERROR, "failed getting local data\n");
+        rc = COMDB2_IMPORT_RC_INTERNAL;
+        goto err;
+    }
+    loaded_import_data = 1;
+
+    if (gbl_debug_sleep_during_bulk_import) { sleep(5); }
+
+    rc = bulkimport_switch_files(sc, db, p_foreign_data, dst_data_genid,
+                                dst_index_genids, dst_blob_genids, &local_data, tran);
+
+err:
+    if (loaded_import_data) {
+        clear_bulk_import_data(&local_data);
+    }
+
+    import_data__free_unpacked(sc->import_src_table_data, &pb_alloc);
+    sc->import_src_table_data = NULL;
+
+    if (rc) {
+        errstat_set_rcstrf(&iq->errstat, rc, bulk_import_get_err_str(rc));
+    }
+
     return rc;
 }
 
@@ -2075,7 +2008,7 @@ enum comdb2_import_tmpdb_op bulk_import_tmpdb_write_import_data(const char *impo
         goto err;
     }
 
-    rc = bulk_import_data_load(import_table, &import_data);
+    rc = bulk_import_data_load(import_table, &import_data, NULL);
     if (rc != 0) {
         __import_logmsg(LOGMSG_FATAL, "Failed to load import data\n");
         rc = (rc == COMDB2_IMPORT_RC_INTERNAL) ? COMDB2_IMPORT_TMPDB_RC_INTERNAL : rc;

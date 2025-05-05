@@ -53,4 +53,6 @@ message CDB2_Schemachange {
   repeated string gensharddbnames = 50;
   repeated string genshardcolumns = 51;
   repeated string genshardshardnames = 52;
+  optional string import_src_tablename = 53;
+  optional string import_src_dbname = 54;
 }

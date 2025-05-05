@@ -23,7 +23,6 @@ enum {
     BPFUNC_GENID48_ENABLE = 11,
     BPFUNC_SET_SKIPSCAN = 12,
     BPFUNC_DELETE_FROM_SC_HISTORY = 13,
-    BPFUNC_BULK_IMPORT = 14,
 };
 
 typedef int (*bpfunc_prot)(void *tran, bpfunc_t *arg, struct errstat *err);

@@ -41,6 +41,7 @@ extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
 extern int gbl_gen_shard_verbose;
+extern int gbl_sc_protobuf;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 
@@ -1729,19 +1730,17 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
         return;
     }
 
+    if (!gbl_sc_protobuf) {
+        setError(pParse, SQLITE_MISUSE,
+            "sc_protobuf lrl option required for sql table replacement");
+        return;
+    }
+
     char * srcdb = NULL;
     char * src_tablename = NULL;
     char * const dst_tablename = (char *)malloc(MAXTABLELEN);
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    if (!arg) goto err;
-    bpfunc_arg__init(arg);
-
-    BpfuncBulkImport *aimport = (BpfuncBulkImport*) malloc(sizeof(BpfuncBulkImport));
-    if (!aimport) goto err;
-    bpfunc_bulk_import__init(aimport);
 
     if (chkAndCopyTableTokens(pParse, dst_tablename, nm, 0,
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)) {
@@ -1756,21 +1755,18 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
         goto err;
     }
 
-    aimport->srcdb = srcdb;
-    aimport->src_tablename = src_tablename;
-    aimport->dst_tablename = dst_tablename;
+    struct schema_change_type * const sc = new_schemachange_type();
+    sc->kind = SC_BULK_IMPORT;
+    sc->nothrevent = 1;
+    strncpy(sc->tablename, dst_tablename, sizeof(sc->tablename));
+    strncpy(sc->import_src_tablename, src_tablename, sizeof(sc->import_src_tablename));
+    strncpy(sc->import_src_dbname, srcdb, sizeof(sc->import_src_dbname));
 
-    arg->bimp = aimport;
-    arg->type = BPFUNC_BULK_IMPORT;
-
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
-                        (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
 
     return;
 err:
-    if (arg) {
-        free_bpfunc_arg(arg);
-    }
     if (srcdb) {
         free(srcdb);
     }

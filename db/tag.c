@@ -6425,28 +6425,6 @@ err:
     return 1;
 }
 
-int reload_after_bulkimport(dbtable *db, tran_type *tran)
-{
-    clear_existing_schemas(db);
-    if (load_new_ondisk(db, NULL)) {
-        logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
-        return 1;
-    }
-    if (load_csc2_versions(db, NULL)) {
-        logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
-        return 1;
-    }
-    if (create_datacopy_array(db)) {
-        logmsg(LOGMSG_ERROR, "Failed to create datacopy array for %s\n", db->tablename);
-        return 1;
-    }
-    db->tableversion = table_version_select(db, NULL);
-    update_dbstore(db);
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    return 0;
-}
-
 #include <bdb_int.h>
 
 int reload_db_tran(dbtable *db, tran_type *tran)
@@ -6465,6 +6443,19 @@ int reload_db_tran(dbtable *db, tran_type *tran)
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    return 0;
+}
+
+int reload_after_bulkimport(dbtable *db, tran_type *tran)
+{
+    if (reload_db_tran(db, tran)) {
+        logmsg(LOGMSG_ERROR, "%s: reload_db_tran failed for %s\n", __func__, db->tablename);
+        return 1;
+    }
+    if (create_datacopy_array(db)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to create datacopy array for %s\n", __func__, db->tablename);
+        return 1;
+    }
     return 0;
 }
 
