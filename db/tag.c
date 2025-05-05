@@ -6428,11 +6428,11 @@ err:
 int reload_after_bulkimport(dbtable *db, tran_type *tran)
 {
     clear_existing_schemas(db);
-    if (load_new_ondisk(db, NULL)) {
+    if (load_new_ondisk(db, tran)) {
         logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
         return 1;
     }
-    if (load_csc2_versions(db, NULL)) {
+    if (load_csc2_versions(db, tran)) {
         logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
         return 1;
     }
@@ -6440,7 +6440,7 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "Failed to create datacopy array for %s\n", db->tablename);
         return 1;
     }
-    db->tableversion = table_version_select(db, NULL);
+    db->tableversion = table_version_select(db, tran);
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
