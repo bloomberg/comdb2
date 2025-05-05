@@ -1,4 +1,4 @@
-export SECONDARY_DB_PREFIX=dstdb
+export SECONDARY_DB_PREFIX=srcdb
 
 ifeq ($(TESTSROOTDIR),)
   include ../testcase.mk
