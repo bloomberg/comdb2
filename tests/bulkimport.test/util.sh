@@ -1,4 +1,20 @@
 source constants.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+function restart_dst_db() {
+	# Don't want db to come back up so fast that api can retry instead of failing
+	local -r restart_delay_secs=10
+
+	set +e
+
+	for node in ${CLUSTER} ; do
+		kill_restart_node ${node} ${restart_delay_secs} &
+	done
+	sleep 2
+	wait_for_cluster
+
+	set -e
+}
 
 function echo_err() {
 	printf "%s\n" "$*" >&2;
@@ -18,14 +34,14 @@ function query_src_db_opts() {
 	query=$1
 	opts=$2
 
-	cdb2sql ${CDB2_OPTIONS} ${opts} $SRC_DBNAME default "$query"
+	cdb2sql ${SRC_CDB2_OPTIONS} ${opts} $SRC_DBNAME default "$query"
 }
 
 function query_dst_db_opts() {
 	query=$1
 	opts=$2
 
-	cdb2sql ${SECONDARY_CDB2_OPTIONS} ${opts} $DST_DBNAME default "$query"
+	cdb2sql ${DST_CDB2_OPTIONS} ${opts} $DST_DBNAME default "$query"
 }
 
 function query_src_db() {
@@ -41,7 +57,7 @@ function set_src_tunable() {
 	if [[ -z "$CLUSTER" ]]; then nodes=$HOSTNAME; else nodes=$CLUSTER; fi
 
 	for node in $nodes; do
-		cdb2sql --host ${node} ${CDB2_OPTIONS} $SRC_DBNAME "exec procedure sys.cmd.send('${tunable}')"
+		cdb2sql --host ${node} ${SRC_CDB2_OPTIONS} $SRC_DBNAME "exec procedure sys.cmd.send('${tunable}')"
 	done
 }
 
@@ -50,7 +66,7 @@ function set_dst_tunable() {
 	if [[ -z "$CLUSTER" ]]; then nodes=$HOSTNAME; else nodes=$CLUSTER; fi
 
 	for node in $nodes; do
-		cdb2sql --host ${node} ${SECONDARY_CDB2_OPTIONS} $DST_DBNAME "exec procedure sys.cmd.send('${tunable}')"
+		cdb2sql --host ${node} ${DST_CDB2_OPTIONS} $DST_DBNAME "exec procedure sys.cmd.send('${tunable}')"
 	done
 }
 
@@ -96,9 +112,9 @@ function check_dst_node_has_all_src_schemas() {
 	local src_table=$1 dst_table=$2 hostname=$3 rc=0 cmp_command
 	cmp_command=$(get_cmp_command 0)
 
-	cdb2sql ${CDB2_OPTIONS} -tabs $SRC_DBNAME default \
+	cdb2sql ${SRC_CDB2_OPTIONS} -tabs $SRC_DBNAME default \
 		"select version, csc2 from comdb2_schemaversions where tablename='$src_table'" > src_schemas
-	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+	cdb2sql ${DST_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
 		"select version, csc2 from comdb2_schemaversions where tablename='$dst_table'" > dst_schemas
 
 	missing_schemas=$($cmp_command <(sort src_schemas) <(sort dst_schemas))
@@ -121,9 +137,9 @@ function check_dst_node_has_all_src_records() {
 	local src_table=$1 dst_table=$2 hostname=$3 op=$4 rc=0 cmp_command
 	cmp_command=$(get_cmp_command $op)
 
-	cdb2sql ${CDB2_OPTIONS} -tabs $SRC_DBNAME default \
+	cdb2sql ${SRC_CDB2_OPTIONS} -tabs $SRC_DBNAME default \
 		"select * from $src_table" > src_records
-	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+	cdb2sql ${DST_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
 		"select * from $dst_table" > dst_records
 	
 	missing_records=$($cmp_command <(sort src_records) <(sort dst_records))

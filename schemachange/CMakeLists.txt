@@ -16,8 +16,10 @@ add_library(schemachange
   sc_struct.c
   sc_util.c
   sc_view.c
+  sc_import.c
   schemachange.c
   ${PROJECT_BINARY_DIR}/protobuf/schemachange.pb-c.c
+  ${PROJECT_BINARY_DIR}/protobuf/importdata.pb-c.c
 )
 
 set(module schemachange)
@@ -26,6 +28,7 @@ configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_schemachange.h @ONLY)
 
 set_source_files_properties(
     ${PROJECT_BINARY_DIR}/protobuf/schemachange.pb-c.c
+    ${PROJECT_BINARY_DIR}/protobuf/importdata.pb-c.c
     PROPERTIES GENERATED TRUE
 )
 
@@ -47,6 +50,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
+  ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/berkdb
@@ -54,7 +58,9 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/build/berkdb
   ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
-  ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_SOURCE_DIR}/lua
+  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_BINARY_DIR}/sqlite
   ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )

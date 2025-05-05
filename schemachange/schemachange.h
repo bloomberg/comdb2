@@ -24,6 +24,8 @@
 #include <list.h>
 #include <bdb_schemachange.h>
 
+#include "importdata.pb-c.h"
+
 /* To be forward declared one accessors methods are added */
 
 /* A schema change plan. */
@@ -133,6 +135,7 @@ enum schema_change_kind {
     SC_ALTERTABLE_INDEX = 27,
     SC_DROPTABLE_INDEX = 28,
     SC_REBUILDTABLE_INDEX = 29,
+    SC_BULK_IMPORT = 30,
     SC_LAST /* End marker */
 };
 
@@ -303,6 +306,15 @@ struct schema_change_type {
     int (*publish)(tran_type *, struct schema_change_type *);
     void (*unpublish)(struct schema_change_type *);
     uint32_t sc_version;
+
+    char import_src_tablename[MAXTABLELEN];
+    size_t import_src_tablename_len;
+    char import_src_dbname[MAX_DBNAME_LENGTH];
+    size_t import_src_dbname_len;
+    ImportData * import_src_table_data;
+    unsigned long long import_dst_data_genid;
+    unsigned long long import_dst_index_genids[MAXINDEX];
+    unsigned long long import_dst_blob_genids[MAXBLOBS];
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
