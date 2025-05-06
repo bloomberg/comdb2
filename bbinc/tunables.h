@@ -68,9 +68,6 @@ typedef enum {
       (non READONLY) tunables via process_command().
     */
     DYNAMIC = 1 << 10,
-
-    /* Use int64 to store value */
-    INT64 = 1 << 11,
 } comdb2_tunable_flag;
 
 /*
@@ -78,9 +75,17 @@ typedef enum {
 
   * TUNABLE_INTEGER
     The tunables of this type, by default, allow all numbers >= 0.
+    The max value that can be stored is given by INT_MAX.
     NOZERO bit can be set to allow all values > 0. The range can be
     extended by setting SIGNED bit to allow positive as well as
-    negative values.
+    negative values down to INT_MIN.
+
+  * TUNABLE_INT64
+    The tunables of this type, by default, allow all numbers >= 0.
+    The max value that can be stored is given by INT64_MAX.
+    NOZERO bit can be set to allow all values > 0. The range can be
+    extended by setting SIGNED bit to allow positive as well as
+    negative values down to INT64_MIN.
 
   * TUNABLE_DOUBLE
     The tunable, by default, accepts all real numbers >= 0. Like,
@@ -99,6 +104,7 @@ typedef enum {
 */
 typedef enum {
     TUNABLE_INTEGER,
+    TUNABLE_INT64,
     TUNABLE_DOUBLE,
     TUNABLE_BOOLEAN,
     TUNABLE_STRING,

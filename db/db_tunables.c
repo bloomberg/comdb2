@@ -581,6 +581,7 @@ extern int gbl_long_request_ms;
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
 
+int gbl_test_tunable_nozero = 1;
 int gbl_test_tunable_int_limit = INT_MAX;
 int gbl_test_tunable_int_signed_limit = INT_MAX;
 int64_t gbl_test_tunable_int64_limit = INT64_MAX;
@@ -1447,6 +1448,7 @@ const char *tunable_type(comdb2_tunable_type type)
 {
     switch (type) {
     case TUNABLE_INTEGER: return "INTEGER";
+    case TUNABLE_INT64: return "INT64";
     case TUNABLE_DOUBLE: return "DOUBLE";
     case TUNABLE_BOOLEAN: return "BOOLEAN";
     case TUNABLE_STRING: return "STRING";
@@ -1479,7 +1481,7 @@ int parse_int64(const char *value, int64_t *num)
 
     errno = 0;
 
-    *num = strtoll(value, &endptr, 10);
+    long long parsed_longlong = strtoll(value, &endptr, 10);
 
     if (errno != 0) {
         logmsg(LOGMSG_DEBUG, "%s: Invalid value '%s'.\n", __func__, value);
@@ -1496,10 +1498,12 @@ int parse_int64(const char *value, int64_t *num)
         return 1;
     }
 
-    if (*num > INT64_MAX || *num < INT64_MIN) {
+    if (parsed_longlong > INT64_MAX || parsed_longlong < INT64_MIN) {
         logmsg(LOGMSG_DEBUG, "%s: Value '%s' not in range\n", __func__, value);
         return 1;
     }
+
+    *num = parsed_longlong;
 
     return 0;
 }
@@ -1627,27 +1631,27 @@ static int parse_bool(const char *value, int *num)
         return TUNABLE_ERR_INTERNAL;                                           \
     }
 
-static int is_unsigned_tunable_int_range_ok(const comdb2_tunable * const t, const int64_t * const num)
+static int is_unsigned_tunable_int_range_ok(const comdb2_tunable * const t, const int64_t num)
 {
     if (num < 0) {
         return 0;
-    } else if ((t->flags & NOZERO) && (*num == 0)) {
+    } else if ((t->flags & NOZERO) && (num == 0)) {
         return 0;
     } else {
         return 1;
     }
 }
 
-static int is_signed_tunable_int_range_ok(const comdb2_tunable * const t, const int64_t * const num)
+static int is_signed_tunable_int_range_ok(const comdb2_tunable * const t, const int64_t num)
 {
-    if ((t->flags & NOZERO) && (*num <= 0)) {
+    if ((t->flags & NOZERO) && (num <= 0)) {
         return 0;
     } else {
         return 1;
     }
 }
 
-static int parse_tunable_integer_value(const comdb2_tunable * const t,
+static int parse_tunable_int64_value(const comdb2_tunable * const t,
     char buf[MAX_TUNABLE_VALUE_SIZE], int64_t * const num)
 {
     if ((!(t->flags & SIGNED)) && (buf[0] == '-')) {
@@ -1655,18 +1659,15 @@ static int parse_tunable_integer_value(const comdb2_tunable * const t,
         return TUNABLE_ERR_INVALID_VALUE;
     }
 
-    const int ret = t->flags & INT64
-        ? parse_int64(buf, num)
-        : parse_int(buf, (int *) num);
-
+    const int ret = parse_int64(buf, num);
     if (ret) {
         logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
         return TUNABLE_ERR_INVALID_VALUE;
     }
 
     const int is_tunable_range_ok = (t->flags & SIGNED
-        ? is_signed_tunable_int_range_ok(t, num)
-        : is_unsigned_tunable_int_range_ok(t, num));
+        ? is_signed_tunable_int_range_ok(t, *num)
+        : is_unsigned_tunable_int_range_ok(t, *num));
 
     if (!is_tunable_range_ok) {
         logmsg(LOGMSG_ERROR,
@@ -1678,15 +1679,32 @@ static int parse_tunable_integer_value(const comdb2_tunable * const t,
     return 0;
 }
 
-void set_tunable_integer_value(const comdb2_tunable * const t, const int64_t num)
+static int parse_tunable_int_value(const comdb2_tunable * const t,
+    char buf[MAX_TUNABLE_VALUE_SIZE], int * const num)
 {
-    if (t->flags & INT64) {
-        *(int64_t *)t->var = num;
-    } else {
-        *(int *)t->var = (int) num;
+    if ((!(t->flags & SIGNED)) && (buf[0] == '-')) {
+        logmsg(LOGMSG_ERROR, "Invalid negative value for '%s'.\n", t->name);
+        return TUNABLE_ERR_INVALID_VALUE;
     }
 
-    logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %" PRId64 "\n", t->name, num);
+    const int ret = parse_int(buf, num);
+    if (ret) {
+        logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+        return TUNABLE_ERR_INVALID_VALUE;
+    }
+
+    const int is_tunable_range_ok = (t->flags & SIGNED
+        ? is_signed_tunable_int_range_ok(t, *num)
+        : is_unsigned_tunable_int_range_ok(t, *num));
+
+    if (!is_tunable_range_ok) {
+        logmsg(LOGMSG_ERROR,
+               "Bad range for '%s'.\n",
+               t->name);
+        return TUNABLE_ERR_INVALID_VALUE;
+    }
+
+    return 0;
 }
 
 /*
@@ -1709,11 +1727,11 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
 
     switch (t->type) {
     case TUNABLE_INTEGER: {
-        int64_t num;
+        int num;
 
         if ((t->flags & EMPTY) == 0) {
             PARSE_TOKEN;
-            ret = parse_tunable_integer_value(t, buf, &num);
+            ret = parse_tunable_int_value(t, buf, &num);
             if (ret) {
                 logmsg(LOGMSG_ERROR, "%s: Failed to parse tunable\n", __func__);
                 return ret;
@@ -1727,15 +1745,45 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
             num = (num != 0) ? 0 : 1;
         }
 
-        /* Perform additional checking if defined. */
         DO_VERIFY(t, &num);
 
         if (t->update) {
             DO_UPDATE(t, &num);
         } else {
-            set_tunable_integer_value(t, num);
+            *(int *)t->var = num;
         }
 
+        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %d\n", t->name, num);
+        break;
+    }
+    case TUNABLE_INT64: {
+        int64_t num;
+
+        if ((t->flags & EMPTY) == 0) {
+            PARSE_TOKEN;
+            ret = parse_tunable_int64_value(t, buf, &num);
+            if (ret) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to parse tunable\n", __func__);
+                return ret;
+            }
+        } else {
+            num = 1;
+        }
+
+        /* Inverse the value, if needed. */
+        if ((t->flags & INVERSE_VALUE) != 0) {
+            num = (num != 0) ? 0 : 1;
+        }
+
+        DO_VERIFY(t, &num);
+
+        if (t->update) {
+            DO_UPDATE(t, &num);
+        } else {
+            *(int64_t *)t->var = num;
+        }
+
+        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %" PRId64 "\n", t->name, num);
         break;
     }
     case TUNABLE_DOUBLE: {
@@ -1941,9 +1989,11 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
           No argument specified. Check if NOARG flag is
           set for the tunable, in which case its ok.
         */
-        if (((t->flags & NOARG) != 0) &&
-            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN) ||
-             (t->type == TUNABLE_ENUM))) {
+        if (((t->flags & NOARG) != 0)
+            && ((t->type == TUNABLE_INTEGER)
+             || (t->type == TUNABLE_INT64)
+             || (t->type == TUNABLE_BOOLEAN)
+             || (t->type == TUNABLE_ENUM))) {
             /* Empty the buffer */
             buf[0] = '\0';
             /*

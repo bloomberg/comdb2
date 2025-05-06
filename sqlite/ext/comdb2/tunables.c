@@ -177,18 +177,19 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         break;
     case TUNABLES_COLUMN_VALUE:
         switch (tunable->type) {
+        case TUNABLE_INT64: {
+            char buffer[64];
+            const int64_t val = (tunable->value) ? *(int64_t *)tunable->value(tunable)
+                                   : *(int64_t *)tunable->var;
+            sqlite3_snprintf(sizeof(buffer), buffer, "%" PRId64 "", val);
+            sqlite3_result_text(ctx, strdup(buffer), -1, free);
+            break;
+        }
         case TUNABLE_INTEGER: {
             char buffer[64];
-
-            if (tunable->flags & INT64) {
-                const int64_t val = (tunable->value) ? *(int64_t *)tunable->value(tunable)
-                                       : *(int64_t *)tunable->var;
-                sqlite3_snprintf(sizeof(buffer), buffer, "%" PRId64 "", val);
-            } else {
-                const int val = (tunable->value) ? *(int *)tunable->value(tunable)
-                                       : *(int *)tunable->var;
-                sqlite3_snprintf(sizeof(buffer), buffer, "%d", val);
-            }
+            const int val = (tunable->value) ? *(int *)tunable->value(tunable)
+                                   : *(int *)tunable->var;
+            sqlite3_snprintf(sizeof(buffer), buffer, "%d", val);
             sqlite3_result_text(ctx, strdup(buffer), -1, free);
             break;
         }
