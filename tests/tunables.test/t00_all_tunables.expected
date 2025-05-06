@@ -504,6 +504,7 @@
 (name='logdeletelowfilenum', description='Set the lowest deleteable log file number.', type='INTEGER', value='-1', read_only='N')
 (name='logfiledelta', description='Treat LSN differences less than this as 'close enough' for the purpose of determining if a new node is in sync.', type='INTEGER', value='4096', read_only='N')
 (name='logfilesize', description='Attempt to keep each log file around this size.', type='INTEGER', value='41943040', read_only='N')
+(name='logged_newfile', description='Log new-files in the transaction log. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='loghist', description='', type='INTEGER', value='0', read_only='Y')
 (name='loghist_verbose', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='logical_live_sc', description='Enables online schema change with logical redo. (Default: OFF)', type='BOOLEAN', value='OFF', read_only='N')

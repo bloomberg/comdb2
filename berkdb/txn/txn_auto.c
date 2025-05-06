@@ -4478,6 +4478,187 @@ __txn_dist_commit_read(dbenv, recbuf, argpp)
 }
 
 /*
+ * PUBLIC: int __newfile_log __P((DB_ENV *, DB_LSN *ret_lsnp, int32_t nextfile, u_int32_t flags));
+ */
+int
+__newfile_log(dbenv, ret_lsnp, nextfile, flags)
+	DB_ENV *dbenv;
+	DB_LSN *ret_lsnp;
+	int32_t nextfile;
+	u_int32_t flags;
+{
+
+	DBT logrec;
+	int ret;
+	u_int npad;
+	u_int32_t rectype;
+	u_int8_t *bp;
+
+#ifdef __txn_DEBUG
+	fprintf(stderr,"__newfile_log: begin\n");
+#endif
+
+	rectype = DB___newfile;
+	npad = 0;
+
+	if (LF_ISSET(DB_LOG_NOT_DURABLE))
+		return 0;
+
+	logrec.size = sizeof(rectype) + sizeof(nextfile);
+
+	if (CRYPTO_ON(dbenv)) {
+		npad =
+			((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
+		logrec.size += npad;
+	}
+
+	logrec.data = alloca(logrec.size);
+	if (npad > 0)
+		memset((u_int8_t *)logrec.data + logrec.size - npad, 0, npad);
+
+	bp = logrec.data;
+
+	LOGCOPY_32(bp, &rectype);
+	bp += sizeof(rectype);
+
+	LOGCOPY_32(bp, &nextfile);
+	bp += sizeof(rectype);
+
+	ret = __log_put(dbenv,
+		ret_lsnp, (DBT *)&logrec, flags | DB_LOG_NOCOPY);
+
+	return (ret);
+}
+
+#ifdef HAVE_REPLICATION
+/* 
+ * PUBLIC: int __newfile_getpgnos __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC:   db_recops, void *));
+ */
+int
+__newfile_getpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	int ret;
+	COMPQUIET(rec, NULL);
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	t = (TXN_RECS *)summary;
+
+	if ((ret = __rep_check_alloc(dbenv, t, 1)) != 0)
+		return (ret);
+
+	t->array[t->npages].flags = LSN_PAGE_NOLOCK;
+	t->array[t->npages].lsn = *lsnp;
+	t->array[t->npages].fid = DB_LOGFILEID_INVALID;
+	memset(&t->array[t->npages].pgdesc, 0,
+		sizeof(t->array[t->npages].pgdesc));
+
+	t->npages++;
+
+	return (0);
+}
+#endif /* HAVE_REPLICATION */
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __newfile_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:   DB_LSN *, db_recops, void *));
+ */
+
+int
+__newfile_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	int ret = 0;
+	COMPQUIET(notused1, DB_TXN_ABORT);
+	return (ret);
+}
+#endif /* HAVE_REPLICATION */
+
+/*
+ * PUBLIC: int __newfile_read_int __P((DB_ENV *, void *,
+ * PUBLIC:	  int do_pgswp, __newfile_args **));
+ */
+static int
+__newfile_read_int(dbenv, recbuf, do_pgswp, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	int do_pgswp;
+	__newfile_args **argpp;
+{
+	__newfile_args *argp;
+	u_int32_t uinttmp;
+	u_int8_t *bp;
+	int ret;
+
+	if ((ret = __os_malloc(dbenv,
+		sizeof(__newfile_args), &argp)) != 0)
+		return (ret);
+
+	bp = recbuf;
+	LOGCOPY_32(&argp->type, bp);
+	bp += sizeof(argp->type);
+
+	LOGCOPY_32(&uinttmp, bp);
+	argp->nextfile = uinttmp;
+	bp += sizeof(uinttmp);
+
+	*argpp = argp;
+	return (0);
+}
+
+int
+__newfile_print(dbenv, dbtp, lsnp, notused2, notused3)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops notused2;
+	void *notused3;
+{
+	__newfile_args *argp;
+	int ret;
+
+	notused2 = DB_TXN_ABORT;
+	notused3 = NULL;
+
+	if ((ret = __newfile_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+		return (ret);
+
+	(void)printf(
+			"[%lu][%lu]__newfile: rec: %lu nextfile %lu\n",
+			(u_long)lsnp->file,
+			(u_long)lsnp->offset,
+			(u_long)argp->type,
+			(u_long)argp->nextfile);
+
+	(void)printf("\n");
+	fflush(stdout);
+	__os_free(dbenv, argp);
+
+	return (0);
+}
+
+int
+__newfile_read(dbenv, recbuf, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	__newfile_args **argpp;
+{
+	return __newfile_read_int (dbenv, recbuf, 1, argpp);
+}
+
+
+/*
  * PUBLIC: int __txn_init_print __P((DB_ENV *, int (***)(DB_ENV *,
  * PUBLIC:	 DBT *, DB_LSN *, db_recops, void *), size_t *));
  */
@@ -4530,6 +4711,9 @@ __txn_init_print(dbenv, dtabp, dtabsizep)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_ckp_print, DB___txn_ckp_recovery)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__newfile_print, DB___newfile)) != 0)
 		return (ret);
 
 	return (0);
@@ -4589,6 +4773,9 @@ __txn_init_getpgnos(dbenv, dtabp, dtabsizep)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_ckp_getpgnos, DB___txn_ckp_recovery)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__newfile_getpgnos, DB___newfile)) != 0)
 		return (ret);
 
 	return (0);
@@ -4651,6 +4838,9 @@ __txn_init_getallpgnos(dbenv, dtabp, dtabsizep)
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_ckp_getallpgnos, DB___txn_ckp_recovery)) != 0)
 		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__newfile_getallpgnos, DB___newfile)) != 0)
+		return (ret);
 
 	return (0);
 }
@@ -4709,6 +4899,9 @@ __txn_init_recover(dbenv, dtabp, dtabsizep)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_ckp_recover, DB___txn_ckp_recovery)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__newfile_recover, DB___newfile)) != 0)
 		return (ret);
 	return (0);
 }
