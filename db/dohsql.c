@@ -1074,6 +1074,7 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     free(conn->params);
     free(clnt->sql);
     clnt->sql = NULL;
+    free(clnt->authdata);
     clnt->authdata = NULL;
     clnt->argv0 = NULL;
     cleanup_clnt(clnt);
