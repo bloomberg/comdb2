@@ -597,6 +597,7 @@ struct __db_lockreq {
 #define	DB_LOG_REP_ACK		0x100   /* Send an ACK */
 #define	DB_LOG_DONT_INFLATE	0x200   /* Prevent recursive inflates */
 #define	DB_LOG_LOGICAL_COMMIT	0x400 /* This contains a logical commit */
+#define DB_LOG_NONEW		0x800 /* Don't create a new log file */
 
 #define	DB_REG_HAVE_FQLOCK	0x001   /* We already have fqlock */
 
