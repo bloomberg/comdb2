@@ -94,9 +94,12 @@ static void watchdogauth(void) {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.admin = 0;
+    clnt.argv0 = "auth_watchdog";
+    clnt.conninfo.pid = getpid();
     clnt.current_user.bypass_auth = 0;
     if(gbl_uses_externalauth)
         check_user_password(&clnt);
+    clnt.argv0 = NULL;
     end_internal_sql_clnt(&clnt);
 }
 
