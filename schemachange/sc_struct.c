@@ -505,6 +505,8 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
          break;
     }
     }
+
+    cdb2__schemachange__free_unpacked(sc, NULL);
     return 0;
 }
 
