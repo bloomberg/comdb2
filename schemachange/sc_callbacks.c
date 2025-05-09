@@ -979,7 +979,11 @@ static int scdone_bulkimport(const char tablename[], void *arg, scdone_t type)
         goto done;
 
     logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", tablename);
-    reload_after_bulkimport(db, tran);
+    rc = reload_after_bulkimport(db, tran);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s: Failed to reload\n", __func__);
+        abort();
+    }
 
     _master_recs(tran, tablename, type);
 
