@@ -3867,6 +3867,8 @@ static void rem_rep_mon(struct rep_mon *rm)
     Pthread_mutex_unlock(&rep_mon_lk);
 }
 
+int gbl_ignore_lowgen_newmaster = 1;
+
 #if defined _LINUX_SOURCE && !defined __APPLE__
 static __thread pid_t process_berkdb_tid = 0;
 #endif
@@ -4088,58 +4090,66 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         break;
 
     case DB_REP_NEWMASTER:
-        bdb_state->repinfo->repstats.rep_newmaster++;
+        uint32_t mygen = bdb_get_rep_gen(bdb_state);
+        if (gbl_ignore_lowgen_newmaster && mygen > newgen) {
+            logmsg(LOGMSG_WARN, "process_berkdb: ignoring newmaster %s "
+                    "because my generation %u is larger than newgen %u\n",
+                    host, mygen, newgen);
+            break;
+        } else {
+            bdb_state->repinfo->repstats.rep_newmaster++;
 
-        if (!got_vote2lock) {
-            logmsg(LOGMSG_WARN,
-                   "process_berkdb: got NEWMASTER with no votelock2\n");
-            abort();
-            bdb_get_rep_master(bdb_state, &master, &gen, &egen);
-        }
-
-        logmsg(LOGMSG_WARN,
-               "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to "
-               "gen=%u egen=%d\n",
-               host, time(NULL), gen, egen);
-
-        /* Check if it's us. */
-        if (host == bdb_state->repinfo->myhost) {
-            assert(got_vote2lock);
-            logmsg(LOGMSG_WARN, "NEWMASTER is ME for GENERATION %d\n", egen);
-
-            /* I'm upgrading and this thread could be holding logical locks:
-             * abort sql threads waiting on logical locks */
-            BDB_WRITELOCK_REP("upgrade");
-            /* we need to upgrade */
-            rc = bdb_upgrade(bdb_state, egen, &done);
-
-            BDB_RELLOCK();
-
-            if (rc != 0) {
-                /* why did upgrade fail?  lets exit */
-                logmsg(LOGMSG_FATAL, "upgrade failed rcode %d %d\n", rc,
-                        bdb_state->repinfo->upgrade_allowed);
-                exit(1);
+            if (!got_vote2lock) {
+                logmsg(LOGMSG_WARN,
+                        "process_berkdb: got NEWMASTER with no votelock2\n");
+                abort();
+                bdb_get_rep_master(bdb_state, &master, &gen, &egen);
             }
 
-        } else {
-            /* it's not us, but we were master - we need to downgrade */
-            if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-                rc = bdb_downgrade(bdb_state, egen, &done);
-            } else
-                done = 1;
-        }
-        if (!done) {
-            logmsg(LOGMSG_INFO, "%s:%d DB_REP_NEWMASTER during startup, ignoring\n",
-                    __FILE__, __LINE__);
-        } else
-            bdb_setmaster(bdb_state, host);
+            logmsg(LOGMSG_WARN,
+                    "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to "
+                    "gen=%u egen=%d\n",
+                    host, time(NULL), gen, egen);
 
-        if (gbl_dump_zero_coherency_timestamp) {
-            logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n",
-                   __func__, __LINE__);
+            /* Check if it's us. */
+            if (host == bdb_state->repinfo->myhost) {
+                assert(got_vote2lock);
+                logmsg(LOGMSG_WARN, "NEWMASTER is ME for GENERATION %d\n", egen);
+
+                /* I'm upgrading and this thread could be holding logical locks:
+                 * abort sql threads waiting on logical locks */
+                BDB_WRITELOCK_REP("upgrade");
+                /* we need to upgrade */
+                rc = bdb_upgrade(bdb_state, egen, &done);
+
+                BDB_RELLOCK();
+
+                if (rc != 0) {
+                    /* why did upgrade fail?  lets exit */
+                    logmsg(LOGMSG_FATAL, "upgrade failed rcode %d %d\n", rc,
+                            bdb_state->repinfo->upgrade_allowed);
+                    exit(1);
+                }
+
+            } else {
+                /* it's not us, but we were master - we need to downgrade */
+                if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+                    rc = bdb_downgrade(bdb_state, egen, &done);
+                } else
+                    done = 1;
+            }
+            if (!done) {
+                logmsg(LOGMSG_INFO, "%s:%d DB_REP_NEWMASTER during startup, ignoring\n",
+                        __FILE__, __LINE__);
+            } else
+                bdb_setmaster(bdb_state, host);
+
+            if (gbl_dump_zero_coherency_timestamp) {
+                logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n",
+                        __func__, __LINE__);
+            }
+            coherency_timestamp = 0;
         }
-        coherency_timestamp = 0;
         break;
 
     case DB_REP_DUPMASTER:
