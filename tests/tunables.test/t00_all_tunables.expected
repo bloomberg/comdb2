@@ -444,6 +444,7 @@
 (name='init_with_time_based_genids', description='Enables time-based GENIDs', type='BOOLEAN', value='OFF', read_only='Y')
 (name='inline_mtraps', description='inline_mtraps', type='BOOLEAN', value='OFF', read_only='N')
 (name='inmem_repdb_memory', description='Current memory usage of in-memory repdb.  (Default: 0)', type='INTEGER', value='0', read_only='Y')
+(name='inproc_conn_ttl', description='Close in-process cached connections after this many seconds of inactivity (Default: 10s)', type='INTEGER', value='10', read_only='N')
 (name='instant_schema_change', description='When possible (eg: when just adding fields) schema change will not rebuild the underlying tables. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='iomap_enabled', description='Map file that tells comdb2ar to pause while we fsync', type='BOOLEAN', value='ON', read_only='N')
 (name='ioqueue', description='Maximum depth of the I/O prefaulting queue. (Default: 0)', type='INTEGER', value='0', read_only='Y')
