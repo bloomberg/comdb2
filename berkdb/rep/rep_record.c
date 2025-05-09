@@ -1984,6 +1984,9 @@ more:
 			logmsg(LOGMSG_USER, "Received NEW MASTER from %s\n", *eidp);
 		}
 		ret = __rep_new_master(dbenv, rp, *eidp);
+		if (newgen) {
+			*newgen = rep->gen;
+		}
 		fromline = __LINE__;
 		goto errlock;
 	case REP_PAGE:		/* TODO */
