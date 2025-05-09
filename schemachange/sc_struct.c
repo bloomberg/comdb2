@@ -243,6 +243,8 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     s->spname_len = strlen(s->spname) + 1;
     s->newcsc2_len = (s->newcsc2) ? strlen(s->newcsc2) + 1 : 0;
     s->sc_version = sc.version = sc_version;
+    s->import_src_tablename_len = strlen(s->import_src_tablename) + 1;
+    s->import_src_dbname_len = strlen(s->import_src_dbname) + 1;
 
     sc.kind = s->kind;
     sc.rqid = s->rqid;
@@ -279,6 +281,9 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     sc.rebuild_index = s->rebuild_index;
     sc.index_to_rebuild = s->index_to_rebuild;
     sc.source_node = s->source_node;
+
+    sc.import_src_tablename = s->import_src_tablename;
+    sc.import_src_dbname = s->import_src_dbname;
 
     sc.dests = malloc(sizeof(char *) * s->dests.count);
     if (!sc.dests) {
@@ -472,6 +477,14 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
     s->usedbtablevers = sc->usedtablevers;
     s->qdb_file_ver = sc->qdb_file_ver;
     s->partition.type = sc->partition_type;
+    if (sc->import_src_tablename) {
+        strncpy(s->import_src_tablename, sc->import_src_tablename, sizeof(s->import_src_tablename));
+        s->import_src_tablename_len = strlen(s->import_src_tablename) + 1;
+    }
+    if (sc->import_src_dbname) {
+        strncpy(s->import_src_dbname, sc->import_src_dbname, sizeof(s->import_src_dbname));
+        s->import_src_dbname_len = strlen(s->import_src_dbname) + 1;
+    }
     switch (sc->partition_type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL: {

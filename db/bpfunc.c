@@ -38,9 +38,6 @@ static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errstat *err);
 */
-extern int bulk_import_do_import(const char *srcdb, const char *src_tablename,
-                                 const char *dst_tablename);
-const char *bulk_import_get_err_str(const int rc);
 
 /********************      UTILITIES     ***********************/
 
@@ -605,16 +602,6 @@ static int exec_delete_from_sc_history(void *tran, bpfunc_t *func,
     return rc;
 }
 
-static int exec_bulk_import(void *tran, bpfunc_t *func, struct errstat *err)
-{
-    const int rc = bulk_import_do_import(func->arg->bimp->srcdb, 
-        func->arg->bimp->src_tablename, func->arg->bimp->dst_tablename);
-    if (rc) {
-        errstat_set_rcstrf(err, rc, bulk_import_get_err_str(rc));
-    }
-    return rc;
-}
-
 static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 {
     func->exec = empty;
@@ -675,10 +662,6 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 
     case BPFUNC_DELETE_FROM_SC_HISTORY:
         func->exec = exec_delete_from_sc_history;
-        break;
-
-    case BPFUNC_BULK_IMPORT:
-        func->exec = exec_bulk_import;
         break;
 
     default:
