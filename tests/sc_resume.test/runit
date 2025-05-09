@@ -333,41 +333,49 @@ echo start a rebuild that will be resumed after killing current master
 force_delay_master
 
 (cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "rebuild t1 " &> rebuild.out || touch rebuild.failed) &
-
-
 echo "sleep 15 to let rebuild process some rows"
 sleep 15
 
-seed2=`get_sc_seed`
+rebuild_retries=5
+for itr in $(seq 1 1 ${rebuild_retries});
+do
+    seed2=`get_sc_seed`
 
-echo "kill master node $master in the middle of rebuild"
-kill_restart_node $master 1
-assert_vers t1 1
+    if (( itr == 1 )); then
+        echo "kill master node $master in the middle of rebuild"
+        kill_restart_node $master 1
+    else
+        echo "downgrade master node $master in the middle of rebuild"
+        cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('downgrade')"
+    fi
 
-if [ -f rebuild.failed ] ; then
-    echo "Rebuild failed as expected"
-    cat rebuild.out
-    rm rebuild.failed
-fi
+    assert_vers t1 1
 
-#run inserts, updates, deletes and make sure they are in new btrees
+    if [ -f rebuild.failed ] ; then
+        echo "Rebuild failed as expected"
+        cat rebuild.out
+        rm rebuild.failed
+    fi
 
-sleep 5
-master=`getmaster`
-echo "master node now $master"
-assert_sc_seed $seed2
+    #run inserts, updates, deletes and make sure they are in new btrees
 
-echo "about to delete, t=$SECONDS"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "delete from t1 where a % 2 = 1"
-echo "about to update, t=$SECONDS"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "update t1 set a = a + 100000 where 1"
-echo "about to insert, t=$SECONDS"
+    sleep 5
+    master=`getmaster`
+    echo "master node now $master"
+    assert_sc_seed $seed2
 
-insert_records_oneshot 401 600
-echo "after insert, t=$SECONDS"
+    echo "about to delete, t=$SECONDS"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "delete from t1 where a % 2 = 1"
+    echo "about to update, t=$SECONDS"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "update t1 set a = a + 100000 where 1"
+    echo "about to insert, t=$SECONDS"
 
-assert_vers t1 1
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "select * from t1 order by c" > allrows_pre.out
+    insert_records_oneshot 401 600
+    echo "after insert, t=$SECONDS"
+
+    assert_vers t1 1
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "select * from t1 order by c" > allrows_pre.out
+done
 
 wait_for_sc
 
