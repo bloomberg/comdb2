@@ -11961,6 +11961,9 @@ void curtran_assert_nolocks(void)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (!thd)
         return;
+    /* not all requests have curtran, like, comdb2api over cdb2sql gets it after this call */
+    if (!thd->clnt->dbtran.cursor_tran)
+        return;
     uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
     if (!lockid)
         return;
