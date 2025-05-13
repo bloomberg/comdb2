@@ -354,6 +354,12 @@ int net_send_evbuffer(netinfo_type *, const char *, int, void *, int, int, void 
 
 int get_hosts_evbuffer(int n, host_node_type **);
 
+enum net_metric_type {
+    NET_DROPS = 1,
+    MAX_QUEUE_SIZE = 2
+};
+int get_hosts_metric(const char *netname, enum net_metric_type type);
+
 int should_reject_request(void);
 
 int dist_heartbeats(dist_hbeats_type *);
