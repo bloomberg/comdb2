@@ -3232,36 +3232,6 @@ int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
     return netinfo_ptr->conntime_dump_period;
 }
 
-int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat) {
-    struct host_node_tag *ptr;
-
-    stat->num_drops = 0;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next)
-        stat->num_drops += ptr->num_queue_full;
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    return 0;
-}
-
-int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_host_stats *stat) {
-    struct host_node_tag *ptr;
-    stat->queue_size = 0;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
-        if (strcmp(host, ptr->host) == 0) {
-            stat->queue_size = time_metric_max(ptr->metric_queue_size);
-            break;
-        }
-    }
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    return 0;
-}
-
 int net_send_all(netinfo_type *netinfo_ptr, int num, void **data, int *sz,
                  int *type, int *flag)
 {

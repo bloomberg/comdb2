@@ -65,6 +65,7 @@
 
 #include <connectmsg.pb-c.h>
 #include <hostname_support.h>
+#include "net_int.h"
 
 #ifndef FIONREAD
 #  error FIONREAD not available
@@ -3559,6 +3560,46 @@ static void get_hosts_evbuffer_impl(void *arg)
     info->num_hosts = i;
 }
 
+struct hosts_metric {
+    const char *netname;
+    enum net_metric_type type;
+    int value;
+};
+
+static void get_hosts_metric_impl(void *arg)
+{
+    check_base_thd();
+    struct hosts_metric *metric = arg;
+    struct net_info *n = net_info_find(metric->netname);
+    host_node_type *me = get_host_node_by_name_ll(n->netinfo_ptr, gbl_myhostname);
+    if (!me) {
+        abort();
+    }
+    switch (metric->type) {
+        case NET_DROPS:
+            metric->value = me->num_queue_full;
+            break;
+        case MAX_QUEUE_SIZE:
+            metric->value = time_metric_max(me->metric_queue_size);
+    }
+
+    struct event_info *e;
+    LIST_FOREACH(e, &n->event_list, net_list_entry) {
+        if (e->decomissioned || !e->host_node_ptr) continue;
+        switch (metric->type) {
+            case NET_DROPS:
+                metric->value += e->host_node_ptr->num_queue_full;
+                break;
+            case MAX_QUEUE_SIZE: {
+                int tmp = time_metric_max(e->host_node_ptr->metric_queue_size);
+                if (metric->value < tmp)
+                    metric->value = tmp;
+                break;
+            }
+        }
+    }
+}
+
 static void do_increase_net_buf(void *data)
 {
     struct net_info *n;
@@ -3798,6 +3839,13 @@ int get_hosts_evbuffer(int max_hosts, host_node_type **hosts)
     struct get_hosts_info info = {.max_hosts = max_hosts, .hosts = hosts};
     run_on_base(base, get_hosts_evbuffer_impl, &info);
     return info.num_hosts;
+}
+
+int get_hosts_metric(const char *netname, enum net_metric_type type)
+{
+    struct hosts_metric metric = {.netname = netname, .type = type, .value = 0};
+    run_on_base(base, get_hosts_metric_impl, &metric);
+    return metric.value;
 }
 
 int add_appsock_handler(const char *key, event_callback_fn cb)

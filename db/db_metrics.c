@@ -31,6 +31,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include "comdb2_query_preparer.h"
+#include "net_int.h"
 
 struct comdb2_metrics_store {
     int64_t cache_hits;
@@ -509,33 +510,6 @@ static void update_weighted_standing_queue_metrics(void)
         weighted_queue_start_time = time(NULL);
 }
 
-/* TODO: this isn't threadsafe. */
-
-void refresh_queue_size(struct dbenv *dbenv) 
-{
-    const char *hostlist[REPMAX];
-    int num_nodes;
-    int max_queue_size = 0;
-    struct net_host_stats stat;
-
-    /* do this for both nets */
-    num_nodes = net_get_all_nodes_connected(dbenv->handle_sibling, hostlist);
-    for (int i = 0; i < num_nodes; i++) {
-        if (net_get_host_stats(dbenv->handle_sibling, hostlist[i], &stat) == 0) {
-            if (stat.queue_size > max_queue_size)
-                max_queue_size = stat.queue_size;
-        }
-    }
-    /* do this for both nets */
-    for (int i = 0; i < num_nodes; i++) {
-        if (net_get_host_stats(dbenv->handle_sibling_offload, hostlist[i], &stat) == 0) {
-            if (stat.queue_size > max_queue_size)
-                max_queue_size = stat.queue_size;
-        }
-    }
-    stats.net_queue_size = max_queue_size;
-}
-
 static time_t metrics_standing_queue_time(void);
 
 int refresh_metrics(void)
@@ -690,16 +664,12 @@ int refresh_metrics(void)
     stats.temptable_create_reqs = gbl_temptable_create_reqs;
     stats.temptable_spills = gbl_temptable_spills;
 
-    struct net_stats net_stats;
-    rc = net_get_stats(thedb->handle_sibling, &net_stats);
-    if (rc == 0) {
-        stats.net_drops = net_stats.num_drops;
-    }
-    else {
-        stats.net_drops = 0;
-    }
+    stats.net_drops = get_hosts_metric("replication", NET_DROPS);
 
-    refresh_queue_size(thedb);
+    stats.net_queue_size = get_hosts_metric("replication", MAX_QUEUE_SIZE);
+    rc = get_hosts_metric("offloadsql", MAX_QUEUE_SIZE);
+    if (stats.net_queue_size < rc)
+        stats.net_queue_size = rc;
 
     bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
 
