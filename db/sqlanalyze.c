@@ -677,6 +677,7 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.osql_max_trans = 0; // allow large transactions
+    clnt.admin = 1; // allow analyze to bypass sql thdpool
     int sampled_table = 0;
 
     clnt.current_user = td->current_user;
