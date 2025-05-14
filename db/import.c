@@ -1350,7 +1350,8 @@ static enum comdb2_import_op bulk_import_complete(ImportData *p_foreign_data,
             goto err;
         }
 
-        nsiblings = net_get_all_nodes(thedb->handle_sibling, hosts);
+        nsiblings = net_get_sanctioned_node_list(thedb->handle_sibling,
+                                                REPMAX, hosts);
         for (int nodeix = 0; nodeix < nsiblings; ++nodeix) {
             if (gbl_myhostname == hosts[nodeix]) { continue; }
 
