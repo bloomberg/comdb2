@@ -127,6 +127,10 @@ function kill_restart_node
     if [ -z "$delay" ] ; then # if not set
         delay=0
     fi
+    dowait=$3
+    if [ -z "$dowait" ] ; then
+        dowait=1
+    fi
 
     pushd $DBDIR
     # cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
@@ -157,7 +161,9 @@ function kill_restart_node
 
     popd
 
-    waitmach $node
+    if [[ "$dowait" == "1" ]]; then
+        waitmach $node
+    fi
 }
 
 function kill_restart_secondary_node

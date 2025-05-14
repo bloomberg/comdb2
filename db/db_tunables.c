@@ -190,6 +190,7 @@ extern int gbl_flush_on_prepare;
 extern int gbl_debug_sleep_before_prepare;
 extern int gbl_wait_for_prepare_seqnum;
 extern int gbl_flush_replicant_on_prepare;
+extern int gbl_slow_rep_log_get_loop;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_abort_on_unfound_txn;
 extern int gbl_abort_on_ufid_mismatch;
