@@ -104,6 +104,7 @@ int gbl_flush_log_at_checkpoint = 1;
 int gbl_rep_newmaster_processed_on_replicant = 0;
 int gbl_rep_verify_delay_remaining = 10;
 int gbl_flush_replicant_on_prepare = 1;
+int gbl_slow_rep_log_get_loop = 0;
 extern int gbl_wait_for_prepare_seqnum;
 extern int request_delaymore(void *bdb_state);
 int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
@@ -1834,14 +1835,21 @@ more:
 		 * gbl_req_all_threshold turns into a REQ_ALL.
 		 */
 		while (ret == 0 && rec != NULL && rec->size != 0) {
-			if ((ret =
-				__log_c_get(logc, &lsn, &data_dbt,
-					DB_NEXT)) != 0) {
+			if (gbl_slow_rep_log_get_loop) {
+				logmsg(LOGMSG_USER, "%s:%d polling in rep-log-get loop\n", __func__, __LINE__);
+				poll(NULL, 0, 5000);
+			}
+			int desired;
+			if ((desired = bdb_the_lock_desired()) || 
+					((ret = __log_c_get(logc, &lsn, &data_dbt, DB_NEXT))) != 0) {
 				if (ret == DB_NOTFOUND)
 					ret = 0;
+				if (desired != 0) {
+					logmsg(LOGMSG_INFO, "%s:%d exiting log-get loop, lock-is-desired %d\n",
+							__func__, __LINE__, desired);
+				}
 				break;
 			}
-
 			/* IMPORTANT: send NEWFILE before breaking out of loop */
 			if (lsn.file != oldfilelsn.file) {
 				if ((resp_rc = __rep_time_send_message(dbenv,

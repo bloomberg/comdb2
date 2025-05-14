@@ -275,6 +275,8 @@ REGISTER_TUNABLE("flush_on_prepare", "Flush master log on prepare. (Default: on)
                  &gbl_flush_on_prepare, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_replicant_on_prepare", "Flush replicant log on prepare. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_flush_replicant_on_prepare, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("slow_rep_log_get_loop", "Add latency to the master's log-get loop for testing.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_slow_rep_log_get_loop, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("wait_for_prepare_seqnum", "Wait-for-seqnum for prepare records. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_wait_for_prepare_seqnum, 0, NULL, NULL, NULL, NULL);
 
