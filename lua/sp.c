@@ -89,7 +89,6 @@ extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
 extern int gbl_notimeouts;
 extern int gbl_allow_lua_print;
-extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
 
@@ -5320,10 +5319,7 @@ static int create_sp_int(SP sp, char **err)
         }
     }
 
-    if(!gbl_allow_lua_dynamic_libs)
-        disable_global_variables(lua);
-
-    sp->had_allow_lua_dynamic_libs = gbl_allow_lua_dynamic_libs;
+    disable_global_variables(lua);
 
     /* To be given as lrl value. */
     lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
@@ -6336,8 +6332,7 @@ static int setup_sp_int(char *spname, struct sqlthdstate *thd, struct sqlclntsta
     SP sp = clnt->sp;
     if (sp) {
         if (clnt->want_stored_procedure_trace ||
-            clnt->want_stored_procedure_debug ||
-            sp->had_allow_lua_dynamic_libs != gbl_allow_lua_dynamic_libs) {
+            clnt->want_stored_procedure_debug) {
             close_sp(clnt);
             sp = NULL;
         }
