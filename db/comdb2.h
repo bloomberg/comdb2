@@ -2569,7 +2569,7 @@ int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
 int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len);
 
 void flush_db(void);
-void dump_cache(const char *file, int max_pages);
+void dump_cache(int max_pages);
 void load_cache(const char *file);
 void load_cache_default(void);
 void dump_cache_default(void);

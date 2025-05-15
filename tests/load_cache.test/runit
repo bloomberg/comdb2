@@ -97,7 +97,8 @@ function load_cache
         $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"load_cache $file\")"
     else
         for n in $CLUSTER ; do 
-            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"load_cache $file\")"
+            scp $file.${n} $n:/tmp/cache
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"load_cache /tmp/cache\")"
         done
     fi
 }
@@ -111,12 +112,17 @@ function dump_cache
     typeset dbname=${2:-$DBNAME}
     typeset maxpages=${3:-0}
     if [[ -z "$CLUSTER" ]]; then
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname default "exec procedure sys.cmd.send(\"dump_cache $file $maxpages\")"
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname default "exec procedure sys.cmd.send(\"dump_cache $maxpages\")"
+        sleep 5
+        cp ${DBDIR}/logs/pagelist ${file}
     else
         export first=1
         for n in $CLUSTER ; do 
-            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname --host $n "exec procedure sys.cmd.send(\"dump_cache $file $maxpages\")"
-            scp $SSH_OPT ${n}:${file} ${file}
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname --host $n "exec procedure sys.cmd.send(\"dump_cache $maxpages\")"
+        done
+        sleep 5
+        for n in $CLUSTER ; do 
+            scp $SSH_OPT ${n}:${DBDIR}/logs/pagelist ${file}
             cp ${file} ${file}.${n}
         done
     fi
@@ -203,7 +209,10 @@ function copy_test
     fi
 
     write_prompt $func "Creating physical rep $repname"
+    tmp=${TMPDIR}
+    export TMPDIR=/tmp
     ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -P ${COMDB2AR_EXE} -H $repname $cl $rmt${DBDIR}/${DBNAME}.lrl $repdir $repdir || failexit "Failure copying physical rep"
+    export TMPDIR=$tmp
 
     if [[ "$autocache" != "ON" ]] ; then
         echo "cache_flush_interval 10" >> $repdir/${repname}.lrl
@@ -220,7 +229,9 @@ function copy_test
 
     waitmach localhost $repname -n
     sleep $sleeptime
-    $CDB2SQL_EXE --tabs $repname --host localhost "exec procedure sys.cmd.send(\"dump_cache $reppage\")"
+    $CDB2SQL_EXE --tabs $repname --host localhost "exec procedure sys.cmd.send(\"dump_cache\")"
+    sleep 5
+    cp $repdir/logs/pagelist $reppage
     kill -9 $(cat $repdir/${repname}.pid)
     sort_and_diff_files $reppage $check
 }
@@ -318,3 +329,4 @@ setup
 run_test
 cleanup
 echo "Success"
+exit 0

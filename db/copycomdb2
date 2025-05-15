@@ -528,9 +528,11 @@ else
         fi
     fi
 
+    $mkdir -p $(dirname $arstatus) $(basename $exstatus)
     if [ $copy_mode = PULL ] ; then
         # Pull mode.  Serialise the db at the destination and pipe this in to
         # a local deserialise.
+        $rsh $srcmach mkdir -p $(dirname $arstatus) $(dirname $exstatus)
         if [[ $partial = yes ]] ; then
             $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $ar_compress_rmt " </dev/null | \ 
                 $ar_decompress | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
@@ -544,6 +546,7 @@ else
     elif [ $copy_mode = PUSH ] ; then
         # Push mode.  Serialise db locally, pipe through o rshd deserialise
         # process on remote machine.
+        $rsh $destmach mkdir -p $(dirname $arstatus) $(dirname $exstatus)
         if [[ $partial = yes ]] ; then
             $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $ar_compress | \
                 $rsh $destmach "$ar_decompress_rmt | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl " >$exstatus 2>&1
