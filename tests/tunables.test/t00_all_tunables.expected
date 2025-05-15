@@ -25,7 +25,6 @@
 (name='allow_broken_datetimes', description='Allow broken datetimes', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_coordinator', description='Set of dbname/tiers which can act as coordinator for this participant.  (Default: none)', type='STRING', value=NULL, read_only='Y')
 (name='allow_key_typechange', description='allow_key_typechange', type='BOOLEAN', value='OFF', read_only='N')
-(name='allow_lua_dynamic_libs', description='Enable to allow use of dynamic libraries (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='allow_lua_print', description='Enable to allow stored procedures to print trace on DB's stdout. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='allow_mismatched_tag_size', description='Allow variants in padding in static tag struct sizes', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_negative_column_size', description='Allow negative column size in csc2 schema. Added mostly for backwards compatibility. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
