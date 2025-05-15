@@ -1533,21 +1533,35 @@ static int bdb_flush_cache(bdb_state_type *bdb_state)
     return 0;
 }
 
-int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
-                           int max_pages)
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, int max_pages)
 {
     int rc, fd;
     SBUF2 *s;
-    if ((fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
+    char *filetmp = NULL;
+    char *file = NULL;
+    if (asprintf(&filetmp, "%s/pagelist.tmp", bdb_state->txndir) == -1) {
+        logmsg(LOGMSG_ERROR, "%s error allocating memory for filename: %d\n", __func__, errno);
+        return -1;
+    }
+    if (asprintf(&file, "%s/pagelist", bdb_state->txndir) == -1) {
+        logmsg(LOGMSG_ERROR, "%s error allocating memory for filename: %d\n", __func__, errno);
+        return -1;
+    }
+    if ((fd = open(filetmp, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
         (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
             Close(fd);
         logmsg(LOGMSG_ERROR, "%s error opening %s: %d\n", __func__, file,
                errno);
+        free(filetmp);
+        free(file);
         return -1;
     }
     rc = bdb_state->dbenv->memp_dump(bdb_state->dbenv, s, max_pages);
     sbuf2close(s);
+    rc = rename(filetmp, file);
+    free(filetmp);
+    free(file);
     return rc;
 }
 
