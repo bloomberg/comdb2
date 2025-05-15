@@ -2258,12 +2258,6 @@ REGISTER_TUNABLE("client_abort_on_slow",
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_client_abort_on_slow,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("test_log_file",
-                 "Dedicated log file for use by the test suite only.  "
-                 "(Default: off)", TUNABLE_STRING, &gbl_test_log_file,
-                 EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL,
-                 test_log_file_update, NULL);
-
 REGISTER_TUNABLE(
     "max_password_cache_size",
     "Password cache size, set to <=0 to turn off caching (Default: 100)",

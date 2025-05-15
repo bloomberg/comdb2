@@ -8173,6 +8173,11 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
     int j;
     int latency = 0;
 
+    if (!osqlcomm_host_known(tohost)) {
+        fprintf(stderr, "\"%s\" not a host knownt to osql\n", tohost);
+        return 1;
+    }
+
     i = 0;
     for (j = 0; j < stream; j++) {
         /* get an echo message */
@@ -8205,13 +8210,11 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
             return -1;
         }
 
-        /*TODO: validate destination node to be valid!*/
-        /* ping */
         rc = offload_net_send(tohost, NET_OSQL_ECHO_PING, (char *)buf,
-                              sizeof(osql_echo_t), 1, NULL, 0);
+                sizeof(osql_echo_t), 1, NULL, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to send ping rc=%d\n", __func__, rc);
-            return -1;
+                return -1;
         }
         i++;
     }
@@ -8908,3 +8911,21 @@ int osql_scl_print(uint8_t *p_buf_key, const uint8_t *p_buf_key_end,
     free(scl.ser_scs);
     return 0;
 }
+
+int osqlcomm_host_known(const char *tohost) 
+{
+    osql_comm_t *comm = get_thecomm();
+    if (!comm) {
+        logmsg(LOGMSG_ERROR, "osql_decom_node: no comm object?\n");
+        return 0;
+    }
+    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
+    const char *nodes[REPMAX];
+    int nnodes = net_get_all_nodes(netinfo_ptr, nodes);
+    for (int i = 0; i < nnodes; i++) {
+        if (strcmp(tohost, nodes[i]) == 0)
+            return 1;
+    }
+    return 0;
+}
+

@@ -28,9 +28,6 @@
 #include "md5.h"
 #include "tohex.h"
 
-pthread_mutex_t gbl_test_log_file_mtx = PTHREAD_MUTEX_INITIALIZER;
-char *gbl_test_log_file = NULL;
-
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -809,33 +806,6 @@ static void guidFromByteFunc(
   uuid_unparse(guid_blob, guid_str);
 
   sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
-}
-
-static void comdb2TestLogFunc(
-  sqlite3_context *context,
-  int argc,
-  sqlite3_value **argv
-){
-  assert( argc==1 );
-  if( sqlite3_value_type(argv[0])==SQLITE_TEXT ){
-    const unsigned char *zMsg = sqlite3_value_text(argv[0]);
-    if( zMsg ){
-      Pthread_mutex_lock(&gbl_test_log_file_mtx);
-      if( gbl_test_log_file!=NULL ){
-        FILE *file = fopen(gbl_test_log_file, "a+");
-        if( file!=NULL ){
-          size_t nLen = strlen((char*)zMsg);
-          size_t nRet = 0;
-          if( nLen>0 ){
-            nRet = fwrite(zMsg, sizeof(char), nLen, file);
-          }
-          fflush(file); fclose(file);
-          sqlite3_result_int64(context, (i64)nRet);
-        }
-      }
-      Pthread_mutex_unlock(&gbl_test_log_file_mtx);
-    }
-  }
 }
 
 static void comdb2DoubleToBlobFunc(
@@ -3076,7 +3046,6 @@ void sqlite3RegisterBuiltinFunctions(void){
     LIKEFUNC(like, 3, &likeInfoNorm, SQLITE_FUNC_LIKE),
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    FUNCTION(comdb2_test_log,       1, 0, 0, comdb2TestLogFunc),
     FUNCTION(comdb2_double_to_blob, 1, 0, 0, comdb2DoubleToBlobFunc),
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
     FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),

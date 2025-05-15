@@ -353,8 +353,6 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_user_vers_spfile_name;
 extern char *gbl_timepart_file_name;
-extern char *gbl_test_log_file;
-extern pthread_mutex_t gbl_test_log_file_mtx;
 extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;
 extern int gbl_ref_sync_wait_txnlist;
@@ -1264,18 +1262,6 @@ static int disttxn_allow_coordinator_set(void *context, void *value)
     comdb2_tunable *tunable = (comdb2_tunable *)context;
     int len = strlen(value);
     *(char **)tunable->var = process_allow_coordinator(value, len);
-    return 0;
-}
-
-static int test_log_file_update(void *context, void *value)
-{
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
-    char newValue[PATH_MAX];
-    bdb_trans((char *)value, newValue);
-    Pthread_mutex_lock(&gbl_test_log_file_mtx);
-    free(*(char **)tunable->var);
-    *(char **)tunable->var = strdup(newValue);
-    Pthread_mutex_unlock(&gbl_test_log_file_mtx);
     return 0;
 }
 

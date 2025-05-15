@@ -455,4 +455,9 @@ uint8_t *osqlcomm_scl_put(struct sc_list *scl,
  */
 int osql_finalize_scs(struct ireq *iq, tran_type *trans);
 
+/**
+ * Return non-zero if host is known to osqlnet, 0 if not
+ */
+int osqlcomm_host_known(const char *tohost);
+
 #endif

@@ -5041,9 +5041,9 @@ void flush_db(void)
     bdb_flush(thedb->bdb_env, &rc);
 }
 
-void dump_cache(const char *file, int max_pages)
+void dump_cache(int max_pages)
 {
-    bdb_dump_cache_to_file(thedb->bdb_env, file, max_pages);
+    bdb_dump_cache_to_file(thedb->bdb_env, max_pages);
 }
 
 void load_cache(const char *file)
