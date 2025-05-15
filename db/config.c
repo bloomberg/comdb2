@@ -58,6 +58,7 @@ extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
+extern int gbl_serializable;
 extern const snap_impl_enum gbl_snap_fallback_impl;
 extern const snap_impl_enum gbl_snap_backup_fallback_impl;
 extern snap_impl_enum gbl_snap_impl;
@@ -794,6 +795,10 @@ void set_snapshot_impl(snap_impl_enum impl) {
     gbl_snap_impl = impl;
     gbl_snap_impl == SNAP_IMPL_MODSNAP ? toggle_modsnap(1) : toggle_modsnap(0);
     gbl_snap_impl == SNAP_IMPL_NEW ? toggle_new_snapisol(1) : toggle_new_snapisol(0);
+
+    const int logical_logging_should_be_on =
+        gbl_snap_impl != SNAP_IMPL_MODSNAP || gbl_serializable || gbl_selectv_rangechk;
+    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_SNAPISOL, logical_logging_should_be_on);
 }
 
 /*
@@ -801,7 +806,7 @@ void set_snapshot_impl(snap_impl_enum impl) {
  * snapshot implementation and switches to it.
  */
 static void fallback_from_snap_impl() {
-    const snap_impl_enum fallback_impl = 
+    const snap_impl_enum fallback_impl =
         gbl_snap_fallback_impl != gbl_snap_impl ? gbl_snap_fallback_impl : gbl_snap_backup_fallback_impl;
 
     assert(fallback_impl != gbl_snap_impl);
@@ -813,13 +818,13 @@ static void fallback_from_snap_impl() {
  *
  * dbenv: Parent environment.
  */
-static void enable_snapshot(struct dbenv *dbenv) {
+static void enable_snapshot()
+{
     if (gbl_snapisol) {
         return;
     }
 
-    set_snapshot_impl(gbl_snap_impl); 
-    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+    set_snapshot_impl(gbl_snap_impl);
     gbl_snapisol = 1;
 }
 
@@ -1369,11 +1374,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        enable_snapshot(dbenv);
+        enable_snapshot();
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0 ||
                tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
         set_snapshot_impl(SNAP_IMPL_NEW);
-        enable_snapshot(dbenv);
+        enable_snapshot();
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
