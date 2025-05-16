@@ -220,15 +220,11 @@ void wait_for_sc_to_stop(const char *operation, const char *func, int line)
         }
         sleep(1);
         waited++;
-        if (waited > 10)
-            logmsg(LOGMSG_ERROR,
-                   "%s: waiting schema changes to stop for: %ds\n", operation,
-                   waited);
-        if (waited > 60) {
-            logmsg(LOGMSG_FATAL,
-                   "schema changes take too long to stop, waited %ds\n",
-                   waited);
-            abort();
+        if (waited > 10) {
+            logmsg(LOGMSG_WARN,
+                   "%s: waiting schema changes to stop for: %ds. Going to continue without waiting for them\n",
+                   operation, waited);
+            break;
         }
     }
     logmsg(LOGMSG_INFO, "proceeding with %s (waited for: %ds)\n", operation,
