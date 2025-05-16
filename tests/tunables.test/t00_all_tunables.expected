@@ -450,8 +450,6 @@
 (name='iomap_enabled', description='Map file that tells comdb2ar to pause while we fsync', type='BOOLEAN', value='ON', read_only='N')
 (name='ioqueue', description='Maximum depth of the I/O prefaulting queue. (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='iothreads', description='Number of threads to use for I/O prefaulting. (Default: 0)', type='INTEGER', value='0', read_only='Y')
-(name='kafka_brokers', description='', type='STRING', value=NULL, read_only='Y')
-(name='kafka_topic', description='', type='STRING', value=NULL, read_only='Y')
 (name='keep_referenced_files', description='Don't remove any files that may still be referenced by the logs.', type='BOOLEAN', value='ON', read_only='N')
 (name='key_updates', description='Update non-dupe keys instead of delete/add', type='BOOLEAN', value='ON', read_only='N')
 (name='keycompr', description='Enable index compression (applies to newly allocated index pages, rebuild table to force for all pages.', type='BOOLEAN', value='ON', read_only='Y')
