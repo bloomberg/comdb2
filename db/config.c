@@ -57,6 +57,7 @@ extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
+extern int gbl_serializable;
 extern const snap_impl_enum gbl_snap_fallback_impl;
 extern const snap_impl_enum gbl_snap_backup_fallback_impl;
 extern snap_impl_enum gbl_snap_impl;
@@ -628,7 +629,7 @@ static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
     /* process legacy options (we deferred them) */
 
     if (gbl_disable_new_snapshot && (gbl_snap_impl == SNAP_IMPL_NEW)) {
-        fallback_from_snap_impl();
+        fallback_from_snap_impl(dbenv);
     }
 
     if (gbl_rowlocks) {
@@ -788,22 +789,25 @@ void print_snap_config(loglvl lvl) {
  *
  * impl: The implementation to be set.
  */
-void set_snapshot_impl(snap_impl_enum impl) {
+void set_snapshot_impl(struct dbenv * const dbenv, const snap_impl_enum impl) {
     gbl_snap_impl = impl;
     gbl_snap_impl == SNAP_IMPL_MODSNAP ? toggle_modsnap(1) : toggle_modsnap(0);
     gbl_snap_impl == SNAP_IMPL_NEW ? toggle_new_snapisol(1) : toggle_new_snapisol(0);
+    
+    const int logical_logging_should_be_on = gbl_snap_impl != SNAP_IMPL_MODSNAP || gbl_serializable;
+    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, logical_logging_should_be_on);
 }
 
 /*
  * Determines what the fallback implementation should be for the current
  * snapshot implementation and switches to it.
  */
-static void fallback_from_snap_impl() {
+static void fallback_from_snap_impl(struct dbenv * const dbenv) {
     const snap_impl_enum fallback_impl = 
         gbl_snap_fallback_impl != gbl_snap_impl ? gbl_snap_fallback_impl : gbl_snap_backup_fallback_impl;
 
     assert(fallback_impl != gbl_snap_impl);
-    set_snapshot_impl(fallback_impl);
+    set_snapshot_impl(dbenv, fallback_impl);
 }
 
 /*
@@ -811,13 +815,12 @@ static void fallback_from_snap_impl() {
  *
  * dbenv: Parent environment.
  */
-static void enable_snapshot(struct dbenv *dbenv) {
+static void enable_snapshot(struct dbenv * const dbenv) {
     if (gbl_snapisol) {
         return;
     }
 
-    set_snapshot_impl(gbl_snap_impl); 
-    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+    set_snapshot_impl(dbenv, gbl_snap_impl); 
     gbl_snapisol = 1;
 }
 
@@ -1370,7 +1373,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         enable_snapshot(dbenv);
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0 ||
                tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
-        set_snapshot_impl(SNAP_IMPL_NEW);
+        set_snapshot_impl(dbenv, SNAP_IMPL_NEW);
         enable_snapshot(dbenv);
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
@@ -1653,7 +1656,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     }
 
     if (gbl_disable_new_snapshot && (gbl_snap_impl == SNAP_IMPL_NEW)) {
-        fallback_from_snap_impl();
+        fallback_from_snap_impl(dbenv);
     }
 
     if (gbl_rowlocks) {
