@@ -133,6 +133,7 @@ enum schema_change_kind {
     SC_ALTERTABLE_INDEX = 27,
     SC_DROPTABLE_INDEX = 28,
     SC_REBUILDTABLE_INDEX = 29,
+    SC_DEFAULTCONS = 30, 
     SC_LAST /* End marker */
 };
 
@@ -303,6 +304,11 @@ struct schema_change_type {
     int (*publish)(tran_type *, struct schema_change_type *);
     void (*unpublish)(struct schema_change_type *);
     uint32_t sc_version;
+
+    char tablename_for_default_cons_q[MAXTABLELEN];
+    size_t tablename_for_default_cons_q_len;
+    char * newcsc2_for_default_cons_q;
+    size_t newcsc2_for_default_cons_q_len;
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);

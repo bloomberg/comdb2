@@ -155,6 +155,7 @@
 (name='core_on_sparse_file', description='Generate a core if we catch berkeley creating a sparse file', type='BOOLEAN', value='OFF', read_only='N')
 (name='crc32c', description='Use crc32c (alternate faster implementation of CRC32, different checksums) for page checksums. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='create_dba_user', description='Automatically create 'dba' user if it does not exist already (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
+(name='create_default_consumer_atomically', description='Create default consumers atomically (default on)', type='BOOLEAN', value='ON', read_only='N')
 (name='create_default_user', description='Automatically create 'default' user when authentication is enabled. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='createdbs', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='cron_idle_secs', description='Set the default sleep time before the cron scheduler checks again the queue for events', type='INTEGER', value='30', read_only='N')
