@@ -752,6 +752,14 @@ void bdb_print_stats(const struct berkdb_thread_stats *st, const char *prefix,
                  st->rep_log_cnt, st->rep_log_bytes, U2M(st->rep_collect_time_us), U2M(st->rep_exec_time_us));
         printfn(s, context);
     }
+
+    if (st->rep_longest_dispatch_us > 0) {
+        snprintf(s, sizeof(s), "Longest rep-dispatch time %u ms at [%d:%d], commit-lsn [%u:%u]\n",
+                 U2M(st->rep_longest_dispatch_us), st->rep_longest_dispatch_file, st->rep_longest_dispatch_offset,
+                 st->rep_commit_file, st->rep_commit_offset);
+        printfn(s, context);
+    }
+
     if (st->n_lock_waits > 0) {
         snprintf(s, sizeof(s), "%s%u lock waits took %u ms (%u ms/wait)\n", prefix, st->n_lock_waits,
                  U2M(st->lock_wait_time_us), U2M(st->lock_wait_time_us / st->n_lock_waits));
