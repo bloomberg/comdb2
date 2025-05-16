@@ -1,0 +1,2 @@
+(fingerprint='002dcfc6d511a5d625fa142f7f0df9f4', normalized_sql='SELECT*FROM sqlite_stat1 LIMIT?;')
+(fingerprint='c30b0528f036eab64a7953ed7c55af40', normalized_sql='SELECT*FROM comdb2_transaction_logs(?)LIMIT?;')
