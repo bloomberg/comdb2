@@ -60,19 +60,18 @@ else()
   configure_file(bbinc/plhash.in bbinc/plhash.h COPYONLY)
 endif()
 
+find_package(LibEvent REQUIRED)
 find_package(LZ4 REQUIRED)
 find_package(OpenSSL REQUIRED)
 set(PROTOBUF_C_MIN_VERSION 1.1.0)
 find_package(Protobuf_C ${PROTOBUF_C_MIN_VERSION} REQUIRED)
-find_package(LibEvent REQUIRED)
-find_package(ZLIB REQUIRED)
 if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(UUID REQUIRED)
 endif()
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(Unwind REQUIRED)
 endif()
-
+find_package(ZLIB REQUIRED)
 
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 

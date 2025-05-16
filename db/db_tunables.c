@@ -369,8 +369,6 @@ extern int gbl_permissive_sequence_sc;
 extern int gbl_view_feature;
 extern int gbl_eventlog_fullhintsql;
 
-extern char *gbl_kafka_topic;
-extern char *gbl_kafka_brokers;
 extern int gbl_noleader_retry_duration_ms;
 extern int gbl_noleader_retry_poll_ms;
 
