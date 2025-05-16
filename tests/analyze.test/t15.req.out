@@ -1,0 +1,3 @@
+Pool [sqlenginepool] max threads set to 1
+Pool [sqlenginepool] max threads set to 48
+SUCCESS
