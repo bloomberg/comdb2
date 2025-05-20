@@ -168,6 +168,11 @@ void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2T
         return;
     }
 
+    if (!str_is_alphanumeric(spname, NON_ALPHANUM_CHARS_ALLOWED_IN_SPNAME)) {
+        sqlite3ErrorMsg(parse, "procedure name has illegal characters");
+        return;
+    }
+
     Q4SP(qname, spname);
     if (getqueuebyname(qname)) {
         sqlite3ErrorMsg(parse, "%s:%s already exists", consumer ? "consumer" : "trigger", spname);

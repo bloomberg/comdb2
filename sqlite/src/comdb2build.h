@@ -47,6 +47,7 @@
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 
+int str_is_alphanumeric(const char * const name, const char * const exceptions);
 int  readIntFromToken(Token* t, int *rst);
 int  comdb2SqlSchemaChange(OpFunc *);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
