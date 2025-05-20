@@ -65,6 +65,9 @@
 /*max length of index name, its char[64] in stat1 - 10 for $_12345678*/
 #define MAXIDXNAMELEN 54
 
+#define NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME "$._"
+#define NON_ALPHANUM_CHARS_ALLOWED_IN_SPNAME NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME
+
 /*
   Print at the given offset, detect overflow and update offset
   accordingly.

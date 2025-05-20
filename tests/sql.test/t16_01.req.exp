@@ -1,0 +1,5 @@
+[create table '#not_ok'(i int)] failed with rc -3 table name has illegal characters
+[create view '#not_ok_view' as select * from ok] failed with rc -3 view name has illegal characters
+(version='1')
+[create procedure '#not_ok_proc' { local function main (e) end }] failed with rc -3 procedure name has illegal characters
+[create default lua consumer '#not_ok_cons' on (table ok for insert)] failed with rc -3 procedure name has illegal characters
