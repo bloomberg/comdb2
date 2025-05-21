@@ -451,9 +451,8 @@ static void __fdb_add_user(fdb_t *fdb, int noTrace)
     Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users++;
 
-    if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
-
+    //if (!noTrace && gbl_fdb_track)
+        logmsg(LOGMSG_USER, "%s %p %s %s users %d\n",__func__, (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
     assert(fdb->users > 0);
     Pthread_mutex_unlock(&fdb->users_mtx);
 }
@@ -467,8 +466,8 @@ static void __fdb_rem_user(fdb_t *fdb, int noTrace)
     Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
 
-    if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
+    //if (!noTrace && gbl_fdb_track)
+        logmsg(LOGMSG_USER, "%s %p %s %s users %d\n",__func__, (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
     Pthread_mutex_unlock(&fdb->users_mtx);
@@ -1586,6 +1585,7 @@ static int __lock_wrlock_exclusive(char *dbname)
 
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
+            logmsg(LOGMSG_USER, "FOUND LOCKLESS USERS!!!!\n");
             Pthread_rwlock_unlock(&fdb->h_rwlock);
             Pthread_rwlock_unlock(&fdbs.arr_lock);
 
@@ -1594,8 +1594,10 @@ static int __lock_wrlock_exclusive(char *dbname)
                for a bdb write lock to be processed */
 
             struct sql_thread *thd = pthread_getspecific(query_info_key);
-            if (!thd)
+            if (!thd) {
+                logmsg(LOGMSG_USER, "%s : couldn't find thd ... continuing\n", __func__);
                 continue;
+            }
 
             rc = clnt_check_bdb_lock_desired(thd->clnt);
             if (rc) {
@@ -1604,8 +1606,10 @@ static int __lock_wrlock_exclusive(char *dbname)
                 return FDB_ERR_GENERIC;
             }
 
+            logmsg(LOGMSG_USER, "clnt_check_bdb_lock_desired returned 0 .... continuing\n");
             continue;
         } else {
+            logmsg(LOGMSG_USER, "NO LOCKLESS USERS!!!!\n");
             rc = FDB_NOERR;
             break; /* own fdb */
         }
@@ -4357,6 +4361,10 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             if (tran->errstr) // TODO: this can be non-null even when no error
                 errstat_set_str(&clnt->osql.xerr, tran->errstr);
             clnt->osql.error_is_remote = 1;
+
+            if (tran->is_cdb2api) {
+                logmsg(LOGMSG_ERROR, "cdb2api rc: %d, cdb2api errstr: %s\n", rc, cdb2_errstr(tran->fcon.hndl));
+            }
         }
 
         if (clnt->use_2pc) {
@@ -6262,6 +6270,12 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
         return NULL;
 
     int rc = fdb_get_remote_version(fdb->dbname, tblname, fdb->class, local, &remote_version, &err);
+
+    /*if (sqlite3UnlockTable(dbname, tblname)) {
+        logmsg(LOGMSG_ERROR, "%s:%d Failed to unlock table %s on db %s\n!!",
+                                __func__, __LINE__, tblname, dbname); 
+    }*/
+    destroy_fdb(fdb);
     switch (rc) {
         case FDB_NOERR:
             logmsg(LOGMSG_ERROR, "Table %s already exists, ver %llu\n", tblname, remote_version);
@@ -6275,7 +6289,6 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
                    tblname, rc, err.errval, err.errstr);
             return NULL;
     }
-
     fdb_push_connector_t * push = fdb_push_create(dbname, class, override, local, type);
     return push;
 }
@@ -6334,7 +6347,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     snprintf(numcols_str, 3, "%d", numcols);
 
     str[0] = "SET PARTITION NAME ";
-    strl[0] = strlen(str[0]) + strlen(sc->tablename) + 1;
+    strl[0] = strlen(str[0]) + strlen(sc->partition.u.genshard.tablename) + 1;
 
     str[1] = "SET PARTITION NUMDBS ";
     strl[1] = strlen(str[1]) + strlen(numdbs_str) + 1;
@@ -6365,7 +6378,8 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     extra_set[5] = alloca(strl[5]);
 
     /* SET PARTITION NAME <tblname>*/
-    snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->tablename);
+    snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->partition.u.genshard.tablename);
+    logmsg(LOGMSG_USER, "PARTITION NAME SET : %s\n", extra_set[0]);
 
     /* SET PARTITION NUMDBS <numdbs>*/
     snprintf(extra_set[1], strl[1], "%s%s", str[1], numdbs_str);
@@ -6422,6 +6436,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     /* commit the transaction */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
+
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
         *errmsg = "failed to commit";

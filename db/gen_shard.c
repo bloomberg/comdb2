@@ -15,6 +15,13 @@ int cson_extract_int(cson_object *cson_obj, const char *param,
                              struct errstat *err);
 cson_array *cson_extract_array(cson_object *cson_obj, const char *param,
                                        struct errstat *err);
+int views_sqlite_del_view(const char *view_name, sqlite3 *db,
+                           struct errstat *err);
+char *describe_row(const char *tblname, const char *prefix,
+                           enum views_trigger_op op_type, struct errstat *err);
+
+
+
 int gen_shard_serialize_shard(const char *tablename, uint32_t numdbs, char **dbnames, uint32_t numcols,
 									char **columns, char **shardnames, uint32_t *outLen, char **out)
 {
@@ -92,14 +99,9 @@ err:
 	return -1;
 }
 
-int gen_shard_llmeta_write_serialized_str(tran_type *tran, const char *tablename, const char *str) {
-	int rc;
-	if (str){
-		rc = bdb_set_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename, str);
-	} else {
-		/* this is a partition drop */
-		rc = bdb_clear_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename);
-	}
+int gen_shard_llmeta_write_serialized_str(tran_type *tran, const char *tablename, char *str) {
+	int rc = 0, bdberr = 0;
+    rc = bdb_set_genshard(tran, tablename, str, &bdberr);
 
 	if (rc) {
 		logmsg(LOGMSG_ERROR, "FAILED TO WRITE SHARD STRING TO LLMETA. RC: %d\n", rc);
@@ -143,22 +145,27 @@ done:
 
 int gen_shard_llmeta_read(void *tran, const char *name, char **pstr)
 {
-    int rc;
+    int rc, bdberr = 0, size = 0;
 
     *pstr = NULL;
 
-    rc = bdb_get_table_parameter_tran(LLMETA_GENERIC_SHARD, name, pstr, tran);
+    /*rc = bdb_get_table_parameter_tran(LLMETA_GENERIC_SHARD, name, pstr, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "bdb_get_table_parameter_tran failed with err: %d\n", rc);
+    }*/
+
+    rc = bdb_get_genshard(tran, name, pstr, &size, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "bdb_get_genshard failed with err: %d\n", rc);
     }
     return rc;
 }
 
-int gen_shard_deserialize_shard(uint32_t *numdbs, char ***dbnames, uint32_t *numcols, char ***columns, char ***shardnames, char *serializedStr) {
+int gen_shard_deserialize_shard(char **genshard_name, uint32_t *numdbs, char ***dbnames, uint32_t *numcols, char ***columns, char ***shardnames, char *serializedStr) {
     cson_object *rootObj = NULL;
     cson_value *rootVal = NULL, *arrVal = NULL;
     cson_array *dbs_arr = NULL, *cols_arr = NULL, *shards_arr = NULL;
-    const char *tablename = NULL;
+    char *tablename = NULL;
     char **dbs = NULL, **cols = NULL, **shards = NULL;
     char *err_str = NULL;
     int num_dbs = 0, num_cols = 0;
@@ -175,7 +182,7 @@ int gen_shard_deserialize_shard(uint32_t *numdbs, char ***dbnames, uint32_t *num
     rc = cson_value_is_object(rootVal);
     rootObj = cson_value_get_object(rootVal);
 
-    tablename = cson_extract_str(rootObj, "TABLENAME", &err);
+    tablename = (char *)cson_extract_str(rootObj, "TABLENAME", &err);
     if (!tablename) {
         err_str = "INVALID CSON. Couldn't find 'TABLENAME' key";
         goto error;
@@ -251,7 +258,7 @@ int gen_shard_deserialize_shard(uint32_t *numdbs, char ***dbnames, uint32_t *num
         }
         shards[i] = strdup(cson_value_get_cstr(arrVal));
     }
-
+    *genshard_name = strdup(tablename);
     *numdbs = num_dbs;
     *dbnames = dbs;
     *numcols = num_cols;
@@ -294,10 +301,45 @@ error:
 
 }
 
+int gen_shard_clear_inmem_db(void *tran, struct dbtable *db) {
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "dbtable object can't be NULL here!\n");
+        return -1;
+    }
+
+    if (db->genshard_name) {
+        free(db->genshard_name);
+        db->genshard_name = NULL;
+    }
+
+    for(int i=0;i<db->numdbs;i++) {
+        if (db->dbnames[i]) {
+            free(db->dbnames[i]);
+        }
+        if (db->shardnames[i]) {
+            free(db->shardnames[i]);
+        }
+    }
+
+    db->numdbs = 0;
+    db->dbnames = NULL;
+    db->shardnames = NULL;
+
+    for(int i=0;i<db->numcols;i++){
+        if (db->columns[i]) {
+            free(db->columns[i]);
+        }
+    }
+
+    db->numcols = 0;
+    db->columns = NULL;
+    return 0;
+}
+
 int gen_shard_update_inmem_db(void *tran, struct dbtable *db, const char *name) {
     char *serializedStr = NULL;
     uint32_t numdbs = 0, numcols = 0;
-    char **dbnames = NULL, **columns = NULL, **shardnames = NULL;
+    char **dbnames = NULL, **columns = NULL, **shardnames = NULL, *genshard_name = NULL;
     int rc = 0;
     rc = gen_shard_llmeta_read(tran, name, &serializedStr); 
     if (rc) {
@@ -305,13 +347,14 @@ int gen_shard_update_inmem_db(void *tran, struct dbtable *db, const char *name) 
         goto done;
     }
 
-    rc = gen_shard_deserialize_shard(&numdbs, &dbnames, &numcols, &columns, &shardnames, serializedStr);
+    rc = gen_shard_deserialize_shard(&genshard_name,&numdbs, &dbnames, &numcols, &columns, &shardnames, serializedStr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to deserialized llmeta str for table %s\n", name);
         goto done;
     }
 
     /*update the table object*/
+    db->genshard_name = genshard_name;
     db->numdbs = numdbs;
     db->dbnames = dbnames;
     db->numcols = numcols;
@@ -324,4 +367,156 @@ done:
     return rc;
 }
 
+char *gen_shard_create_view_query(struct dbtable *tbl, sqlite3 *db, struct errstat *err)
+{
+    char *select_str = NULL;
+    char *cols_str = NULL;
+    char *tmp_str = NULL;
+    char *ret_str = NULL;
+    int numshards = tbl->numdbs;
+    const char *viewname = tbl->genshard_name;
+    char **dbnames = tbl->dbnames;
+    char **shardnames = tbl->shardnames;
+    int i;
+    cols_str = sqlite3_mprintf("rowid as __hidden__rowid, ");
+    if (!cols_str) {
+        goto malloc;
+    }
+
+    cols_str = describe_row(tbl->tablename, cols_str, VIEWS_TRIGGER_QUERY, err);
+    if (!cols_str) {
+        /* preserve error, if any */
+        if (err->errval != VIEW_NOERR)
+            return NULL;
+        goto malloc;
+    } else {
+        if (gbl_gen_shard_verbose) {
+            logmsg(LOGMSG_USER, "GOT cols_str as %s\n", cols_str);
+        }
+    }
+
+    select_str = sqlite3_mprintf("");
+    i = 0;
+    logmsg(LOGMSG_USER, "num shards is : %d\n", numshards);
+    for(;i<numshards;i++){
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %s.'\%s'", select_str, (i > 0) ? " UNION ALL " : "", cols_str,
+                                  dbnames[i], shardnames[i]);
+        sqlite3_free(select_str);
+        if (!tmp_str) {
+            sqlite3_free(cols_str);
+            goto malloc;
+        }
+        select_str = tmp_str;
+    }
+
+    ret_str = sqlite3_mprintf("CREATE VIEW %w AS %s", viewname, select_str);
+    if (!ret_str) {
+        sqlite3_free(select_str);
+        sqlite3_free(cols_str);
+        goto malloc;
+    }
+
+    sqlite3_free(select_str);
+    sqlite3_free(cols_str);
+
+    if (gbl_gen_shard_verbose) {
+        logmsg(LOGMSG_USER, "THE GENERATED VIEW QUERY IS %s\n", ret_str);
+    }
+
+    return ret_str;
+
+malloc:
+    err->errval = VIEW_ERR_MALLOC;
+    snprintf(err->errstr, sizeof(err->errstr), "View %s out of memory\n", viewname);
+    return NULL;
+}
+
+int gen_shard_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
+{
+    char *errstr = NULL;
+    int rc;
+
+    /* create the view */
+    rc = sqlite3_exec(db, stmt, NULL, NULL, &errstr);
+    if (rc != SQLITE_OK) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"", errstr);
+        /* can't control sqlite errors */
+        err->errstr[sizeof(err->errstr) - 1] = '\0';
+
+        logmsg(LOGMSG_USER, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__, errstr, stmt);
+
+        if (errstr)
+            sqlite3_free(errstr);
+        return err->errval;
+    }
+
+    return VIEW_NOERR;
+}
+
+int gen_shard_add_view(struct dbtable *tbl, sqlite3 *db, struct errstat *err) 
+{
+    char *stmt_str;
+    int rc;
+
+    /* create the statement */
+    stmt_str = gen_shard_create_view_query(tbl, db, err);
+    if (!stmt_str) {
+        return err->errval;
+    }
+
+    rc = gen_shard_run_sql(db, stmt_str, err);
+
+    logmsg(LOGMSG_USER, "+++++++++++sql: %s, rc: %d\n", stmt_str, rc);
+    /* free the statement */
+    sqlite3_free(stmt_str);
+
+    if (rc != VIEW_NOERR) {
+        return err->errval;
+    }
+    return rc;
+}
+
+int gen_shard_update_sqlite(sqlite3 *db, struct errstat *err)
+{
+    Table *tab;
+    int rc;
+    for (int tbl_idx = 0; tbl_idx < thedb->num_dbs; ++tbl_idx) {
+        struct dbtable *tbl = thedb->dbs[tbl_idx];
+        if (tbl->genshard_name) {
+            logmsg(LOGMSG_USER, "TRYING ADD VIEW FOR TABLE %s PART OF GENSHARD %s\n", tbl->tablename, tbl->genshard_name);
+            /* this table is a component shard of a genshard table*/
+            tab = sqlite3FindTableCheckOnly(db, tbl->genshard_name, NULL);
+            if (tab) {
+                /* found view, is it the same version ? */
+                if (tbl->tableversion != tab->version) {
+                    /* older version, destroy current view */
+                    rc = views_sqlite_del_view(tbl->genshard_name, db, err);
+                    if (rc != VIEW_NOERR) {
+                        logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n", __func__);
+                        goto done;
+                    }
+                } else {
+                    /* up to date, nothing to do */
+                    continue;
+                }
+            }
+            rc = gen_shard_add_view(tbl, db, err);
+            if (rc != VIEW_NOERR) {
+                goto done;
+            }
+        }
+    }
+    rc = VIEW_NOERR;
+done:
+    return rc;
+}
+
+int is_gen_shard(const char *tablename) {
+    struct dbtable *db = get_dbtable_by_name(tablename);
+    if (db && strcmp(db->genshard_name, tablename)==0) {
+        return 1;
+    }
+    return 0;
+}
 
