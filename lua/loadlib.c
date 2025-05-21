@@ -556,7 +556,7 @@ static void setpath (lua_State *L, const char *fieldname, const char *envname,
   lua_setfield(L, -2, fieldname);
 }
 
-
+#if 0
 static const luaL_Reg pk_funcs[] = {
   {"loadlib", ll_loadlib},
   {"seeall", ll_seeall},
@@ -613,4 +613,5 @@ LUALIB_API int luaopen_package (lua_State *L) {
   lua_pop(L, 1);
   return 1;  /* return 'package' table */
 }
+#endif
 

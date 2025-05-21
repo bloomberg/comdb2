@@ -25,6 +25,9 @@
 
 
 static int os_pushresult (lua_State *L, int i, const char *filename) {
+  /* COMDB2 Modification */
+  return luaL_error(L, "Function disabled for comdb2.");
+#if 0
   int en = errno;  /* calls to Lua API may change this value */
   if (i) {
     lua_pushboolean(L, 1);
@@ -36,6 +39,7 @@ static int os_pushresult (lua_State *L, int i, const char *filename) {
     lua_pushinteger(L, en);
     return 3;
   }
+#endif
 }
 
 
@@ -71,6 +75,9 @@ static int os_rename (lua_State *L) {
 
 
 static int os_tmpname (lua_State *L) {
+  /* COMDB2 Modification */
+  return luaL_error(L, "Function disabled for comdb2.");
+#if 0
   char buff[LUA_TMPNAMBUFSIZE];
   int err;
   lua_tmpnam(buff, err);
@@ -78,12 +85,17 @@ static int os_tmpname (lua_State *L) {
     return luaL_error(L, "unable to generate a unique filename");
   lua_pushstring(L, buff);
   return 1;
+#endif
 }
 
 
 static int os_getenv (lua_State *L) {
+  /* COMDB2 Modification */
+  return luaL_error(L, "Function disabled for comdb2.");
+#if 0
   lua_pushstring(L, getenv(luaL_checkstring(L, 1)));  /* if NULL push nil */
   return 1;
+#endif
 }
 
 
@@ -219,6 +231,9 @@ static int os_difftime (lua_State *L) {
 
 
 static int os_setlocale (lua_State *L) {
+  /* COMDB2 Modification */
+  return luaL_error(L, "Function disabled for comdb2.");
+#if 0
   static const int cat[] = {LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY,
                       LC_NUMERIC, LC_TIME};
   static const char *const catnames[] = {"all", "collate", "ctype", "monetary",
@@ -227,6 +242,7 @@ static int os_setlocale (lua_State *L) {
   int op = luaL_checkoption(L, 2, "all", catnames);
   lua_pushstring(L, setlocale(cat[op], l));
   return 1;
+#endif
 }
 
 
