@@ -1025,6 +1025,24 @@ err:	__os_free(dbenv, argp);
 }
 
 /*
+ * PUBLIC: int __newfile_recover
+ * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ */
+int
+__newfile_recover(dbenv, dbtp, lsnp, op, info)
+    DB_ENV *dbenv;
+    DBT *dbtp;
+    DB_LSN *lsnp;
+    db_recops op;
+    void *info;
+{
+#ifdef DEBUG_RECOVER
+	__newfile_print(dbenv, dbtp, lsnp, op, info);
+#endif
+    return (0);
+}
+
+/*
  * PUBLIC: int __txn_ckp_recover
  * PUBLIC: __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
  */
