@@ -442,6 +442,16 @@ foreach {tnum sql flags norm} {
   {SELECT "t1" FROM "t1";}
   0x2
   {0 {SELECT?FROM t1;}}
+
+  1260
+  {SELECT * FROM 'comdb2_transaction_logs'('{0:1}') LIMIT 1}
+  0x2
+  {0 {SELECT*FROM comdb2_transaction_logs(?)LIMIT?;}}
+
+  1270
+  {SELECT * FROM comdb2_transaction_logs('{0:1}') LIMIT 1}
+  0x2
+  {0 {SELECT*FROM comdb2_transaction_logs(?)LIMIT?;}}
 } {
   do_test $tnum {
     set code [catch {

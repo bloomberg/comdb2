@@ -835,14 +835,26 @@ static int isLeftOperand(int tokenType){
 ** This function should return non-zero if the specified token type is
 ** a keyword that requires the next token to be a table identifier.
 */
-static int requiresTableId(int tokenType, int useStrId){
+static int requiresTableId(int tokenType, int useStrId, int prevType){
+  /* Treat the next STRING token as an ID, if we encounter any of the following
+   * token types:
+   *
+   * FROM   (eg SELECT * FROM 'a'('1'), 'a' should be treated as an ID, and '1' should be treated as a STRING)
+   * JOIN   (eg SELECT * FROM a JOIN 'b', 'b' should be treated as an ID)
+   * INTO   (eg INSERT INTO 'a'('i', 'j') VALUES (1, 1), 'a', 'i', 'j' should be treated as ID)
+   * UPDATE (eg UPDATE 'a' SET i=1, 'a' should be treated as an ID)
+   * TABLE  (eg CREATE TABLE 'a' ('i' INTEGER, 'j' INTEGER), 'a', 'i', 'j' should be treated as ID)
+   * */
   switch( tokenType ){
     case TK_FROM:
     case TK_JOIN:
     case TK_INTO:
     case TK_UPDATE:
     case TK_TABLE:    return 1;
+    case TK_LP:
     case TK_SPACE:    return useStrId;
+    case TK_STRING:
+    case TK_ID:       return ( prevType==TK_INTO || prevType==TK_TABLE );
     default:          return 0;
   }
 }
@@ -975,7 +987,7 @@ char *sqlite3Normalize_alternate(
         break;
       }
     }
-    useStrId = requiresTableId(tokenType, useStrId);
+    useStrId = requiresTableId(tokenType, useStrId, prevType);
   }
   if( tokenType!=TK_SEMI ) sqlite3_str_append(pStr, ";", 1);
   return sqlite3_str_finish(pStr);
