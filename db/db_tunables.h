@@ -739,10 +739,6 @@ REGISTER_TUNABLE("mask_internal_tunables",
                  "INTERNAL tunables (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_mask_internal_tunables, NOARG, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("allow_readonly_runtime_mod",
-                 "When enabled, allow modification of READONLY tunables at runtime.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_allow_readonly_runtime_mod, NOARG | INTERNAL, NULL, NULL, NULL, NULL);
-
 /*
   Note: master_retry_poll_ms' value < 0 was previously ignored without
   any error.
