@@ -885,7 +885,7 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
     }
 }
 
-static void fdb_msg_prepare_message(fdb_msg_t *msg)
+static int fdb_msg_prepare_message(fdb_msg_t *msg)
 {
     switch (msg->hd.type & FD_MSG_TYPE) {
     case FDB_MSG_TRAN_2PC_BEGIN:
@@ -961,8 +961,9 @@ static void fdb_msg_prepare_message(fdb_msg_t *msg)
 
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown msg %d\n", __func__, (msg->hd.type & FD_MSG_TYPE));
-        abort();
+        return -1;
     }
+    return 0;
 }
 
 /* stuff comes in network endian fomat */
@@ -1000,7 +1001,12 @@ int fdb_msg_read_message_int(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags,
 
     msg->hd.type = ntohl(msg->hd.type);
 
-    fdb_msg_prepare_message(msg);
+    rc = fdb_msg_prepare_message(msg);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to prepare message rc=%d (%s:%d)\n",
+               __func__, rc, func, line);
+        return -1;
+    }
 
     /*fprintf(stderr, "XYXY returned from sbuf2fread %llu\n",
      * osql_log_time());*/
@@ -3523,7 +3529,7 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
         }
     }
 
-    if (msg->tr.authdta && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
+    if (!rc && msg->tr.authdta && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
         rc = externalComdb2DeSerializeIdentity(&clnt->authdata, msg->tr.authdtalen, msg->tr.authdta);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
@@ -4039,7 +4045,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
             int rc2;
         clear:
             /* Bail-out if we failed early. */
-            if (svc_cb_arg.clnt == 0) {
+            if (svc_cb_arg.clnt == 0 || (!svc_cb_arg.clnt->intrans && !svc_cb_arg.clnt->in_client_trans)) {
                 goto done;
             }
 
