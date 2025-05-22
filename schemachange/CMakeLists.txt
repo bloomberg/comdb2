@@ -64,7 +64,7 @@ include_directories(
   ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )
-add_dependencies(schemachange mem proto bdb)
+add_dependencies(schemachange mem proto bdb sqlite)
 target_link_libraries(schemachange PUBLIC bdb)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(schemachange)
