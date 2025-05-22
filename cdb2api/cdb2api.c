@@ -105,6 +105,9 @@ static int CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
 #define CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT 0
 static int CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
 
+#define CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT 10
+static int CDB2_MAX_AUTO_CONSUME_ROWS = CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT;
+
 #define COMDB2DB_TIMEOUT_DEFAULT 2000
 static int COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
 
@@ -312,6 +315,7 @@ static void reset_the_configuration(void)
     CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
     CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
     CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
+    CDB2_MAX_AUTO_CONSUME_ROWS = CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT;
     COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
     CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
     CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
@@ -1093,6 +1097,7 @@ struct cdb2_hndl {
     int protobuf_offset;
     ProtobufCAllocator allocator;
     int auto_consume_timeout_ms;
+    int max_auto_consume_rows;
     struct cdb2_hndl *fdb_hndl;
     int is_child_hndl;
     CDB2SQLQUERY__IdentityBlob *id_blob;
@@ -1390,6 +1395,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     CDB2_AUTO_CONSUME_TIMEOUT_MS = atoi(tok);
+            } else if (strcasecmp("max_auto_consume_rows", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    CDB2_MAX_AUTO_CONSUME_ROWS = atoi(tok);
             } else if (strcasecmp("comdb2db_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (hndl && tok)
@@ -1598,6 +1607,8 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
         hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
     if (!hndl->auto_consume_timeout_ms)
         hndl->auto_consume_timeout_ms = CDB2_AUTO_CONSUME_TIMEOUT_MS;
+    if (!hndl->max_auto_consume_rows)
+        hndl->max_auto_consume_rows = CDB2_MAX_AUTO_CONSUME_ROWS;
 }
 
 /* Read all available comdb2 configuration files.
@@ -4442,8 +4453,14 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 
 static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 {
-    while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
-        ;
+    int hardbound = 0;
+    while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
+        hardbound++;
+        if (hardbound > hndl->max_auto_consume_rows) {
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            break;
+        }
+    }
 
     clear_responses(hndl);
     hndl->rows_read = 0;
