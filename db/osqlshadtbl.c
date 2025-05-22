@@ -1868,12 +1868,12 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
         tmptblkey = bdb_temp_table_key(tbl->blb_cur);
         idx = i;
         if (rc == IX_EMPTY || rc == IX_NOTFND ||
-            (key.seq != tmptblkey->seq || key.id != tmptblkey->id)) {
+            (tmptblkey && (key.seq != tmptblkey->seq || key.id != tmptblkey->id))) {
             /* null blob */
             data = NULL;
             ldata = -1;
         } else if (rc == IX_FND) {
-            tmptblkey = bdb_temp_table_key(tbl->blb_cur);
+            assert(tmptblkey);
             if (tmptblkey->odh)
                 idx |= OSQL_BLOB_ODH_BIT;
             data = bdb_temp_table_data(tbl->blb_cur);
