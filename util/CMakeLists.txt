@@ -58,6 +58,7 @@ set(src
   utilmisc.c
   version_util.c
   walkback.c
+  import_util.c
 )
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
