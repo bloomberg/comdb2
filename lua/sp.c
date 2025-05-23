@@ -76,6 +76,9 @@
 
 #include "fdb_fend.h"
 
+#define LOCK_CONSUMER(q) do { Pthread_mutex_lock((q)->lock); (q)->locked = 1; } while (0)
+#define UNLOCK_CONSUMER(q) do { Pthread_mutex_unlock((q)->lock); (q)->locked = 0; } while (0)
+
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -168,6 +171,7 @@ struct dbconsumer_t {
     pthread_cond_t *cond;
     const uint8_t *status;
     struct __db_trigger_subscription *hndl;
+    int locked;
 
     trigger_reg_t info; // must be last in struct
 };
@@ -446,11 +450,11 @@ out:
 static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
 {
     if (q->lock) {
-        Pthread_mutex_lock(q->lock);
+        LOCK_CONSUMER(q);
         if (*q->status != TRIGGER_SUBSCRIPTION_CLOSED) {
             bdb_trigger_unsubscribe(q->iq.usedb->handle, q->hndl);
         }
-        Pthread_mutex_unlock(q->lock);
+        UNLOCK_CONSUMER(q);
     }
     int retry = 10;
     do {
@@ -673,7 +677,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     struct qfound f = {0};
     int rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd, &f.seq,
                      bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
-    Pthread_mutex_unlock(q->lock);
+    UNLOCK_CONSUMER(q);
     if (debug_switch_test_trigger_deadlock()) {
         logmsg(LOGMSG_WARN, "%s %p released q->lock\n",__func__, (void *)(intptr_t)pthread_self());
     }
@@ -709,7 +713,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay_ms)
         if (debug_switch_test_trigger_deadlock()) {
             logmsg(LOGMSG_WARN, "%s %p acquiring q->lock\n",__func__, (void *)(intptr_t)pthread_self());
         }
-        Pthread_mutex_lock(q->lock);
+        LOCK_CONSUMER(q);
         if (debug_switch_test_trigger_deadlock()) {
             logmsg(LOGMSG_WARN, "%s %p acquired q->lock\n",__func__, (void *)(intptr_t)pthread_self());
         }
@@ -718,7 +722,7 @@ again:  status = *q->status;
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
             if (stop_waiting(L, q)) {
-                Pthread_mutex_unlock(q->lock);
+                UNLOCK_CONSUMER(q);
                 return -1;
             }
             ts = setup_dbq_ts(delay_ms);
@@ -726,7 +730,7 @@ again:  status = *q->status;
             goto again;
         } else {
             assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
-            Pthread_mutex_unlock(q->lock);
+            UNLOCK_CONSUMER(q);
             rc = -2;
         }
         if (rc == 1) {
@@ -740,12 +744,12 @@ again:  status = *q->status;
             return 0;
         }
         ts = setup_dbq_ts(delay_ms);
-        Pthread_mutex_lock(q->lock);
+        LOCK_CONSUMER(q);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
             // was woken up -- try getting from queue
             goto again;
         }
-        Pthread_mutex_unlock(q->lock);
+        UNLOCK_CONSUMER(q);
         delay_ms -= dbq_delay_ms;
         if (delay_ms <= 0) {
             return 0;
@@ -3964,6 +3968,14 @@ static struct dbtable *find_and_lock_queue_table(Lua L)
     return db;
 }
 
+static int pre_recover_ddlk_sp(struct sqlclntstate *clnt)
+{
+    SP sp = clnt->sp;
+    if (sp->consumer != NULL && sp->consumer->locked)
+        Pthread_mutex_unlock(sp->consumer->lock);
+    return 0;
+}
+
 static int recover_ddlk_sp(struct sqlclntstate *clnt)
 {
     if (debug_switch_recover_ddlk_sp_delay()) sleep(3);
@@ -3974,7 +3986,11 @@ static int recover_ddlk_sp(struct sqlclntstate *clnt)
     LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
         rc |= sqlite3LockStmtTablesRecover(dbstmt->stmt);
     }
-    if (sp->consumer) sp->consumer->iq.usedb = find_and_lock_queue_table(sp->lua);
+    if (sp->consumer) {
+        sp->consumer->iq.usedb = find_and_lock_queue_table(sp->lua);
+        if (sp->consumer->locked)
+            Pthread_mutex_lock(sp->consumer->lock);
+    }
     return rc;
 }
 
@@ -3994,7 +4010,8 @@ static void *recover_ddlk_fail_sp(struct sqlclntstate *clnt, void *arg)
 
 static void setup_clnt_for_sp(struct sqlclntstate *clnt)
 {
-    clnt->recover_ddlk = recover_ddlk_sp;
+    clnt->pre_recover_ddlk = pre_recover_ddlk_sp;
+    clnt->post_recover_ddlk = recover_ddlk_sp;
     clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
     clnt->dohsql_disable = 1;
 }
@@ -7435,7 +7452,8 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     setup_clnt_for_sp(clnt);
     int rc = exec_procedure_int(thd, clnt, err, 0);
     clnt->osql_max_trans = osql_max_trans;
-    clnt->recover_ddlk = NULL;
+    clnt->pre_recover_ddlk = NULL;
+    clnt->post_recover_ddlk = NULL;
     clnt->recover_ddlk_fail = NULL;
     clnt->dohsql_disable = dohsql_disable;
     if (clnt->sp) {

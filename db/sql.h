@@ -987,7 +987,8 @@ struct sqlclntstate {
     int8_t rowbuffer;
     /* 1 if client has requested flat column values. */
     int flat_col_vals;
-    plugin_func *recover_ddlk;
+    plugin_func *pre_recover_ddlk;
+    plugin_func *post_recover_ddlk;
     replay_func *recover_ddlk_fail;
     unsigned skip_eventlog: 1;
     unsigned request_fp: 1;
