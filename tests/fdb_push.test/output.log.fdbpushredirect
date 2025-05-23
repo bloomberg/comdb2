@@ -60,3 +60,35 @@ Test set force_fdb_push off
 (id=2, b1='Hello2')
 (id=3, b1='Hello3')
 (id=4, b1='Hello4')
+Test effects with mix of local stmt and fdb stmt in transaction
+Effects not sent by comdb2 server. 
+Number of rows affected 0
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
+Number of rows affected 1
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 1
+Number of rows affected 2
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 2
+Number of rows affected 4
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 4
+Number of rows affected 6
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 6
+Number of rows affected 3
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 3

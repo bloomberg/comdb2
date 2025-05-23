@@ -134,6 +134,19 @@ set force_fdb_push off
 select * from LOCAL_${a_remdbname}.t order by id
 EOF
 
+echo "Test effects with mix of local stmt and fdb stmt in transaction" >> $output
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+set verifyretry off
+begin
+insert into t values (5, 'Hello5')
+insert into LOCAL_${a_remdbname}.t values (5, 'Hello5')
+insert into t values (6, 'Hello6'), (7, 'Hello7')
+insert into LOCAL_${a_remdbname}.t values (6, 'Hello6'), (7, 'Hello7')
+commit
+EOF
+# TODO: effects after commit are broken (but are also broken for foreign stmts outside of fdb push)
+# returns 3 row affected instead of 6
+
 if [[ $a_dbname == "srcdbfdbpushredirectgenerated"* ]]; then
     active_output=output.log.fdbpushredirect
 else

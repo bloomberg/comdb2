@@ -174,6 +174,7 @@ struct fdb_tran {
     int errstrlen; /* length of err string, if any */
     char *errstr;  /* error string */
     fdb_t *fdb;    /* pointer to the foreign db */
+    cdb2_effects_tp last_effects; /* only set in handle_fdb_push_write  */
     int is_cdb2api;
     union {
         SBUF2 *sb;     /* connection to this fdb */

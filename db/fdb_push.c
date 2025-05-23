@@ -334,12 +334,25 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
 
     rc = forward_set_commands(clnt, hndl, err);
     if (rc) {
+        cdb2_close(hndl);
         return NULL;
     }
 
     rc = forward_extra_set_commands(hndl, n_sets, sets, err);
-    if (rc)
+    if (rc) {
+        cdb2_close(hndl);
         return NULL;
+    }
+
+    // TODO: forward all set statements properly to fdb push
+    // Currently only set stmts from accompanying fdb stmt are forwarded
+    if (clnt->verifyretry_off) {
+        rc = cdb2_run_statement(hndl, "set verifyretry off");
+        if (rc != CDB2_OK) {
+            cdb2_close(hndl);
+            return NULL;
+        }
+    }
 
     if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob &&
          ((clnt->authdata = get_authdata(clnt)) != NULL))
@@ -358,7 +371,6 @@ static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
                                 int n_sets, const char **sets)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
-
     const char *class = "default";
     if (push->local)
         class = "local";
@@ -537,7 +549,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     int created;
     int rc;
     int set_intrans = 0;
-    
+
     if (!push)
         return -2;
 
@@ -619,7 +631,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     cdb2_effects_tp effects;
 
 
-    if (!clnt->in_client_trans) {
+    if (!clnt->in_client_trans || clnt->verifyretry_off) {
         if ((rc = cdb2_get_effects(hndl, &effects))) {
             goto hndl_err;
         }
@@ -667,6 +679,16 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
         goto free;
     } else {
+        if (clnt->verifyretry_off) {
+            // take difference since effects in transaction are cumulative
+            clnt->effects.num_affected += effects.num_affected - tran->last_effects.num_affected;
+            clnt->effects.num_selected += effects.num_selected - tran->last_effects.num_selected;
+            clnt->effects.num_updated += effects.num_updated - tran->last_effects.num_updated;
+            clnt->effects.num_deleted += effects.num_deleted - tran->last_effects.num_deleted;
+            clnt->effects.num_inserted += effects.num_inserted - tran->last_effects.num_inserted;
+
+            tran->last_effects = effects;
+        }
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     }
 
