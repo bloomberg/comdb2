@@ -22,5 +22,9 @@
 
 int str_has_ending(const char * const str, const char * const ending);
 
+// Checks that a string is alphanumeric. Allowed non-alphanumeric characters can be passed in `exceptions`.
+// Pass emptystring to `exceptions` to pass no exceptions.
+int str_is_alphanumeric(const char * const name, const char * const exceptions);
+
 #endif
 

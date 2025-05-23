@@ -16,6 +16,7 @@
 #include <comdb2vdbe.h>
 #include <trigger.h>
 #include <sqlglue.h>
+#include <str_util.h>
 
 struct dbtable;
 struct dbtable *getqueuebyname(const char *);

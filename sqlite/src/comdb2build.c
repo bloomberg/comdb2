@@ -24,6 +24,7 @@
 #include <zlib.h>
 #include <shard_range.h>
 #include <logical_cron.h>
+#include <str_util.h>
 #include "cdb2_constants.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
@@ -117,19 +118,6 @@ enum table_chk_flags {
     ERROR_ON_TBL_NOT_FOUND = 1,
     ERROR_IGNORE = 2,
 };
-
-// Checks that a string is alphanumeric. Allowed non-alphanumeric characters can be passed in `exceptions`.
-// Pass emptystring to `exceptions` to pass no exceptions.
-int str_is_alphanumeric(const char * const name, const char * const exceptions)
-{
-    char c;
-    for (int i=0; (c = name[i]), c != '\0'; ++i) {
-        if (!isalnum(c) && !strchr(exceptions, c)) {
-            return 0;
-        }
-    }
-    return 1;
-}
 
 static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
