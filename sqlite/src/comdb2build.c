@@ -25,6 +25,7 @@
 #include <shard_range.h>
 #include <logical_cron.h>
 #include <str_util.h>
+#include <import_util.h>
 #include "cdb2_constants.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
@@ -1764,6 +1765,16 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 
     if (create_string_from_token(v, pParse, &src_tablename, nm3)) {
         goto err;
+    }
+
+    const enum bulk_import_validation_rc validation_rc =
+        validate_bulk_import_inputs(dst_tablename, NULL, srcdb, src_tablename);
+    if (validation_rc == BULK_IMPORT_VALIDATION_FATAL) {
+        setError(pParse, SQLITE_MISUSE,
+            "bulk import inputs have invalid characters");
+        goto err;
+    } else if (validation_rc == BULK_IMPORT_VALIDATION_WARN) {
+        logmsg(LOGMSG_WARN, "%s: bulk import inputs have invalid characters. Proceeding with import anyways.\n", __func__);
     }
 
     struct schema_change_type * const sc = new_schemachange_type();

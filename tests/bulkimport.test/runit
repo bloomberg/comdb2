@@ -316,6 +316,43 @@ function test_import_against_table_with_dollar_char() {
 	)
 }
 
+function test_bad_inputs_without_werror() {
+	(
+		# Given
+		local dst_tbl=foo src_tbl='bad-table'
+		query_dst_db "create table $dst_tbl(i int)"
+
+		trap "query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.'"$src_tbl"'" 2>&1)
+
+		# Then
+			# Import will be attempted but fail because the source table doesn't exist
+		(( $? != 0 ))
+		echo $err | grep "Source table does not exist"
+	)
+}
+
+function test_bad_inputs_with_werror() {
+	(
+		# Given
+		local dst_tbl=foo src_tbl='bad-table'
+		query_dst_db "create table $dst_tbl(i int)"
+		set_dst_tunable "bulk_import_validation_werror on"
+
+		trap "set_dst_tunable 'bulk_import_validation_werror off';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.'"$src_tbl"'" 2>&1)
+
+		# Then
+		(( $? != 0 ))
+		echo $err | grep "bulk import inputs have invalid characters"
+	)
+}
+
 function test_resume_is_blocked() {
 	(
 		# Given

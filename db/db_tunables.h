@@ -105,6 +105,11 @@ REGISTER_TUNABLE("broken_num_parser", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("buffers_per_context", NULL, TUNABLE_INTEGER,
                  &gbl_buffers_per_context, READONLY | NOZERO, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("bulk_import_validation_werror",
+                 "Treat bulk import input validation warnings as errors. "
+                 "(Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_bulk_import_validation_werror, 0, NULL, NULL, NULL,
+                 NULL);
 /*
 REGISTER_TUNABLE("cache",
                  "Database cache size (in kb) . (Default: 64mb)",
