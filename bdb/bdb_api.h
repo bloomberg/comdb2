@@ -1094,8 +1094,7 @@ int bdb_rebuild_done(bdb_state_type *bdb_handle);
 int bdb_flush(bdb_state_type *bdb_handle, int *bdberr);
 
 /* Serialize cache to this file */
-int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
-                           int max_pages);
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, int max_pages);
 
 /* Load from serialized cache */
 int bdb_load_cache(bdb_state_type *bdb_state, const char *file);
