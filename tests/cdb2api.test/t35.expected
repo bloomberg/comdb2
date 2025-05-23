@@ -1,2 +1,2 @@
 (version='def')
-[exec procedure iowrite()] failed with rc -3 [local file = io.open("/tmp/a.tx...]:3: Function disabled for comdb2.
+[exec procedure iowrite()] failed with rc -3 [local file = io.open("/tmp/a.tx...]:3: Global variables not allowed (io).
