@@ -569,7 +569,7 @@ again:
         useqno = bdb_get_timestamp(thedb->bdb_env);
         memcpy(&seqno, &useqno, sizeof(seqno));
     } else
-        rc = get_next_seqno(trans, &seqno);
+        rc = get_next_seqno(trans, NULL, &seqno);
     if (rc) {
         if (rc != RC_INTERNAL_RETRY) {
             logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d\n", rc);

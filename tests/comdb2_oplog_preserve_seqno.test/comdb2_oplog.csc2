@@ -1,0 +1,23 @@
+tag ondisk {
+longlong seqno
+int blkpos
+int optype
+blob ops null=yes
+}
+
+tag "log" {
+longlong seqno
+int optype
+int blkpos
+blob ops
+}
+
+tag "justseq" {
+longlong seqno
+int blkpos
+int optype
+}
+
+keys {
+"seqno" = seqno + blkpos
+}

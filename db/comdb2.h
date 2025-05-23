@@ -2984,7 +2984,7 @@ long long get_unique_longlong(struct dbenv *env);
 void block_new_requests(struct dbenv *dbenv);
 void allow_new_requests(struct dbenv *dbenv);
 
-int get_next_seqno(void *tran, long long *seqno);
+int get_next_seqno(void *tran, void *sc_tran, long long *seqno);
 int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
                     int logsz);
 int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
