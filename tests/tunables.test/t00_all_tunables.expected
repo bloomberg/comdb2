@@ -91,6 +91,7 @@
 (name='btpf_wndw_max', description='Maximum number of pages read ahead', type='INTEGER', value='1000', read_only='N')
 (name='btpf_wndw_min', description='Minimum number of pages read ahead', type='INTEGER', value='100', read_only='N')
 (name='buffers_per_context', description='', type='INTEGER', value='255', read_only='Y')
+(name='bulk_import_validation_werror', description='Treat bulk import input validation warnings as errors. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='bulk_sql_mode', description='Enable reading data in bulk when performing a scan (alternative is single-stepping a cursor).', type='BOOLEAN', value='ON', read_only='N')
 (name='bulk_sql_rowlocks', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='bulk_sql_threshold', description='', type='INTEGER', value='2', read_only='N')
