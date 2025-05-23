@@ -169,6 +169,10 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
     SWAP(int, pA->oldColCount, pB->oldColCount);
     SWAP(char **, pA->oldColNames, pB->oldColNames);
     SWAP(char **, pA->oldColDeclTypes, pB->oldColDeclTypes);
+    SWAP(i64, pA->luaStartTime, pB->luaStartTime);
+    SWAP(i64, pA->luaRows, pB->luaRows);
+    SWAP(double, pA->luaSavedCost, pB->luaSavedCost);
+    SWAP(u8, pA->fingerprint_added, pB->fingerprint_added);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pB->expmask = pA->expmask;
