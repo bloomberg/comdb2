@@ -36,6 +36,7 @@
 #include <sys/types.h>
 #include <pb_alloc.h>
 #include <unistd.h>
+#include <cdb2_constants.h>
 
 #include "fdb_fend.h"
 #include "bdb_api.h"
@@ -161,6 +162,37 @@ static int bulk_import_get_import_data_fname(char *import_data_fname,
 
     rc = snprintf(import_data_fname, sz_import_data_fname, "%s/%s", import_dbdir,
              "bulk_import_data") < 0;
+
+    return rc;
+}
+
+enum bulk_import_validation_rc validate_bulk_import_inputs(const char * const tablename, const char * const bulk_import_src_mach,
+    const char * const bulk_import_src_dbname, const char * const bulk_import_src_tablename)
+{
+    enum bulk_import_validation_rc rc = BULK_IMPORT_VALIDATION_OK;
+
+    assert(tablename && bulk_import_src_dbname);
+
+    if (!str_is_alphanumeric(tablename, NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME)) {
+        logmsg(LOGMSG_WARN, "%s: Bulk import source table name '%s' has illegal characters\n",
+                __func__, tablename);
+        rc = BULK_IMPORT_VALIDATION_WARN;
+    }
+    if (!str_is_alphanumeric(bulk_import_src_dbname, NON_ALPHANUM_CHARS_ALLOWED_IN_DBNAME)) {
+        logmsg(LOGMSG_WARN, "%s: Bulk import source db name '%s' has illegal characters\n",
+                __func__, bulk_import_src_dbname);
+        rc = BULK_IMPORT_VALIDATION_WARN;
+    }
+    if (bulk_import_src_tablename && !str_is_alphanumeric(bulk_import_src_tablename, NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME)) {
+        logmsg(LOGMSG_WARN, "%s: Bulk import source table name '%s' has illegal characters\n",
+               __func__, bulk_import_src_tablename);
+        rc = BULK_IMPORT_VALIDATION_WARN;
+    }
+    if (bulk_import_src_mach && !str_is_alphanumeric(bulk_import_src_mach, NON_ALPHANUM_CHARS_ALLOWED_IN_MACHINENAME)) {
+        logmsg(LOGMSG_WARN, "%s: Bulk import source machine '%s' has illegal characters\n",
+                __func__, bulk_import_src_mach);
+        rc = BULK_IMPORT_VALIDATION_FATAL;
+    }
 
     return rc;
 }

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <schemachange.h>
 #include <sc_lua.h>
+#include <sc_import.h>
 #include <comdb2.h>
 #include <bdb_api.h>
 #include <osqlsqlthr.h>
@@ -45,6 +46,7 @@ extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
+int gbl_bulk_import_validation_werror = 0;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -1764,6 +1766,17 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 
     if (create_string_from_token(v, pParse, &src_tablename, nm3)) {
         goto err;
+    }
+
+    const enum bulk_import_validation_rc validation_rc =
+        validate_bulk_import_inputs(dst_tablename, NULL, srcdb, src_tablename);
+    if ((validation_rc == BULK_IMPORT_VALIDATION_FATAL)
+        || ((validation_rc == BULK_IMPORT_VALIDATION_WARN) && gbl_bulk_import_validation_werror)) {
+        setError(pParse, SQLITE_MISUSE,
+            "bulk import inputs have invalid characters");
+        goto err;
+    } else if (validation_rc == BULK_IMPORT_VALIDATION_WARN) {
+        logmsg(LOGMSG_WARN, "%s: bulk import inputs have invalid characters. Proceeding with import anyways.\n", __func__);
     }
 
     struct schema_change_type * const sc = new_schemachange_type();
