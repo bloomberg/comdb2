@@ -2924,11 +2924,13 @@ static void do_read(int fd, short what, void *data)
         return;
     }
     /* appsock */
-    int total, pending = pending_connections + ATOMIC_LOAD32(pending_appsock_connections);
-    if ((total = check_appsock_limit(pending)) != 0) {
-        logmsg(LOGMSG_USER, "%s too many connections:%d\n", __func__, total);
-        accept_info_free(a);
-        return;
+    if (first_byte != '@') {
+        int total, pending = pending_connections + ATOMIC_LOAD32(pending_appsock_connections);
+        if ((total = check_appsock_limit(pending)) != 0) {
+            logmsg(LOGMSG_USER, "%s too many connections:%d\n", __func__, total);
+            accept_info_free(a);
+            return;
+        }
     }
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
     struct sockaddr_in ss = a->ss;
