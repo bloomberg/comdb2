@@ -619,6 +619,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     rc = _run_statement(clnt, hndl, err);
     if (rc != CDB2_OK) {
         goto hndl_err;
+    } else {
+        tran->nwrites++;
     }
 
     /* drain the socket */
