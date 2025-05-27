@@ -326,9 +326,6 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct strin
             if (t->check_next_queries == 0 && (t->cost_increased > CHECK_NEXT_QUERIES/2)) {
                 char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
                 util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
-                logmsg(LOGMSG_WARN,
-                       "Cost %"PRId64" vs Previous Avg Cost %"PRId64" of Query with fingerprint %s (normalized sql in trc.c) increased after last Analyze. Backout?\n",
-                       t->cost/(t->rows+t->count) , t->pre_cost_avg_per_row, fp);
                 ctrace("Cost %"PRId64" vs Previous Avg Cost %"PRId64" of Query %s with fingerprint %s increased after last Analyze. Backout?\n",
                        t->cost/(t->rows+t->count) , t->pre_cost_avg_per_row, t->zNormSql, fp);
             }
