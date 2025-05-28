@@ -1869,6 +1869,8 @@ static void decodeIntArray(
   }
 }
 
+char *mapped_index(const char *oldname);
+
 /*
 ** This callback is invoked once for each index when reading the
 ** sqlite_stat1 table.  
@@ -1907,6 +1909,14 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
   }else{
     pIndex = sqlite3FindIndex(pInfo->db, argv[1], pInfo->zDatabase);
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if ( pIndex==0 ) {
+      char *newName = mapped_index(argv[1]);
+      if ( newName!=0 ) {
+          pIndex = sqlite3FindIndex(pInfo->db, newName, pInfo->zDatabase);
+      }
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   z = argv[2];
 
   if( pIndex ){
@@ -2257,6 +2267,14 @@ static int loadStat4(sqlite3 *db, const char *zDb){
     zIndex = (char *)sqlite3_column_text(pStmt, 0);
     if( zIndex==0 ) continue;
     pIdx = findIndexOrPrimaryKey(db, zIndex, zDb);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pIdx==0 ) {
+        char *newName = mapped_index(zIndex);
+        if ( newName!=0 ) {
+            pIdx = sqlite3FindIndex(db, newName, zDb);
+        }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pIdx==0 ) continue;
     if( pIdx->pKeyInfo==0 ){
       Parse parse;

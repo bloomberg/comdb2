@@ -71,11 +71,13 @@ REGISTER_TUNABLE("analyze_tbl_threads",
                  NULL, analyze_set_max_table_threads, NULL);
 REGISTER_TUNABLE("always_reload_analyze", "Reload analyze data on every query. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_always_reload_analyze, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("prefer_new_style_index_names",
+                 "Default to new-style index-names / delete old-style names.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_prefer_new_style_index_names, 1, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("archive_on_init",
                  "Archive files with database extensions in the database directory "
                  "at the time of init. (Default: ON)",
-                 TUNABLE_BOOLEAN, &gbl_archive_on_init, READONLY, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_archive_on_init, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("create_default_consumer_atomically",
                  "Create default consumers atomically (default on)",
                  TUNABLE_BOOLEAN, &gbl_create_default_consumer_atomically, 1, NULL,
