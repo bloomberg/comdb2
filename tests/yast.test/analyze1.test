@@ -397,13 +397,13 @@ do_test analyze-98.2.1 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {t_ix_0 t t_ix_0 {1000 1}}
+} {{$I_3AA4168B} t t_ix_0 {1000 1}}
 do_test analyze-98.2.2 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
     EXPLAIN QUERY PLAN SELECT * FROM t ORDER BY i;
   }
-} {3 0 0 {SCAN TABLE t (~960 rows)} 4 0 0 {SCAN TABLE t USING COVERING INDEX t_ix_0 (~960 rows)}}
+} {3 0 0 {SCAN TABLE t (~960 rows)} 4 0 0 {SCAN TABLE t USING COVERING INDEX $I_3AA4168B (~960 rows)}}
 #
 # Run analyze to generate stats with new style names
 do_test analyze-98.3.1 {
@@ -412,13 +412,13 @@ do_test analyze-98.3.1 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {t_ix_0 cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
+} {{$I_3AA4168B} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1}}
 do_test analyze-98.3.2 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
     EXPLAIN QUERY PLAN SELECT * FROM t ORDER BY i;
   }
-} {3 0 0 {SCAN TABLE t (~960 rows)} 4 0 0 {SCAN TABLE t USING COVERING INDEX t_ix_0 (~960 rows)}}
+} {3 0 0 {SCAN TABLE t (~960 rows)} 4 0 0 {SCAN TABLE t USING COVERING INDEX $I_3AA4168B (~960 rows)}}
 #
 # System switches to new style names
 do_test analyze-98.4.1 {
@@ -427,7 +427,7 @@ do_test analyze-98.4.1 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
+} {{$I_3AA4168B} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1}}
 do_test analyze-98.4.2 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
@@ -442,7 +442,7 @@ do_test analyze-98.5 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} cdb2.t.sav {$I_3AA4168B} {1000 1} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1}}
+} {{$I_3AA4168B} cdb2.t.sav {$I_3AA4168B} {1000 1} t {$I_3AA4168B} {1000 1}}
 # Finally, old style names are purged from the system
 do_test analyze-98.6 {
   execsql {

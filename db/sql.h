@@ -989,6 +989,7 @@ struct sqlclntstate {
     int flat_col_vals;
     plugin_func *recover_ddlk;
     replay_func *recover_ddlk_fail;
+    unsigned loading_stat: 1;
     unsigned skip_eventlog: 1;
     unsigned request_fp: 1;
     unsigned dohsql_disable: 1;
@@ -996,9 +997,9 @@ struct sqlclntstate {
     unsigned force_fdb_push_redirect : 1; // this should only be set if can_redirect_fdb is true
     unsigned force_fdb_push_remote : 1;
     unsigned return_long_column_names : 1; // if 0 then tunable decides
+    unsigned in_local_cache : 1;
     unsigned num_adjusted_column_name_length; // does not consider fastsql
     char **adjusted_column_names;
-    unsigned in_local_cache : 1;
 
     char *sqlengine_state_file;
     int sqlengine_state_line;
