@@ -2602,6 +2602,47 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 
 int gbl_forbid_remote_admin = 1;
 
+extern char *gbl_myhostname;
+int is_connection_local(SBUF2 *sb) {
+    struct sockaddr_in peeraddr;
+    socklen_t pl = sizeof(struct sockaddr_in);
+
+    int rc = getpeername(sbuf2fileno(sb), (struct sockaddr *)&peeraddr, &pl);
+    if (rc) {
+        // default to not local on error
+        return 1;
+    }
+    char paddr[64];
+    char fromaddr[64];
+    findpeer(sbuf2fileno(sb), fromaddr, sizeof(fromaddr));
+    // allow loopback or same address as us
+    if (peeraddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
+        return 0;
+
+    // not loopback - see if it came from us
+    struct addrinfo *res = NULL, hints = {0}, *r;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_CANONNAME;
+    if ((rc = getaddrinfo(gbl_myhostname, NULL, &hints, &res)) != 0 || res == NULL) {
+        logmsg(LOGMSG_ERROR, "getaddrinfo: %s\n", gai_strerror(rc));
+        return 0;
+    }
+
+    int islocal = 0;
+    for (r = res; r != NULL; r = r->ai_next) {
+        struct in_addr addr = ((struct sockaddr_in *)r->ai_addr)->sin_addr;
+        inet_ntop(((struct sockaddr_in *)r->ai_addr)->sin_family, &addr, paddr, sizeof(paddr));
+        if (addr.s_addr == peeraddr.sin_addr.s_addr) {
+            islocal = 1;
+            break;
+        }
+    }
+
+    freeaddrinfo(res);
+    return islocal;
+}
+
 void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
                 SBUF2 *sb, uint8_t firstbyte)
 {

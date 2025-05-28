@@ -411,5 +411,6 @@ int disable_fdb_heartbeats_and_free(struct fdb_hbeats *);
 int enable_dist_heartbeats(struct dist_hbeats *);
 int disable_dist_heartbeats(struct dist_hbeats *);
 int disable_dist_heartbeats_and_free(struct dist_hbeats *);
+int is_connection_local(SBUF2 *sb);
 
 #endif
