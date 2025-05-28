@@ -78,6 +78,7 @@ int check_user_password(struct sqlclntstate *clnt)
 {
     int password_rc = 0;
     int valid_user;
+    static int remsql_warned = 0;
 
     if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) &&
             (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
@@ -112,6 +113,12 @@ int check_user_password(struct sqlclntstate *clnt)
              ATOMIC_ADD64(gbl_num_auth_allowed, 1);
          }
          return rc;
+    }
+
+    if (!remsql_warned && (!gbl_uses_password && !gbl_uses_externalauth) &&
+        ((clnt->remsql_set.is_remsql != NO_REMSQL) || clnt->features.have_sqlite_fmt)) {
+        logmsg(LOGMSG_WARN, "%s\n", "Remote sql being used on database with authentication disabled, please enable IAM on this database.");
+        remsql_warned = 1;
     }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {
