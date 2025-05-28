@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+function verify_map
+{
+    # Avoid dumb races by always going to the master
+    master=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select host from comdb2_cluster where is_master='Y'")
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master - <<'EOF'
+create table t(i int index)$$
+insert into t select value from generate_series(1, 1000)
+analyze t
+update sqlite_stat1 set idx='t_ix_0'
+update sqlite_stat4 set idx='t_ix_0'
+create table u(i int index)$$
+insert into u select value from generate_series(1, 1000)
+update sqlite_stat1 set idx='$$KEY_3AA4168B_3AA4168B' where idx = 't_ix_0'
+update sqlite_stat4 set idx='$$KEY_3AA4168B_3AA4168B' where idx = 't_ix_0'
+analyze u
+EOF
+
+    # Before ixmap, this stat4dump would fail to find any records
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('stat4dump')")
+    echo "$x"
+
+    # This needs both 'idx:u' and 'idx:t'
+    y=$(echo "$x" | grep "idx:u")
+    if [[ -z "$y" ]]; then
+        echo "Testcase failed - no idx:u"
+        exit 1
+    fi
+
+    y=$(echo "$x" | grep "idx:t")
+    if [[ -z "$y" ]]; then
+        echo "Testcase failed - no idx:t"
+        exit 1
+    fi
+    
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "drop table t"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "drop table u"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "truncate sqlite_stat1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "truncate sqlite_stat4"
+}
+
+function run_test
+{
+    echo "verify_map"
+    verify_map
+
+    echo "Success!"
+}
+
+run_test
