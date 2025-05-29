@@ -1109,12 +1109,12 @@ REGISTER_TUNABLE("slowfget", NULL, TUNABLE_INTEGER, &__slow_memp_fget_ns,
 REGISTER_TUNABLE("slowread", NULL, TUNABLE_INTEGER, &__slow_read_ns, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("slow_rep_process_txn_freq", NULL, TUNABLE_INTEGER,
-                 &gbl_slow_rep_process_txn_freq, READONLY, NULL, NULL, NULL,
+                 &gbl_slow_rep_process_txn_freq, 0, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("slow_rep_process_txn_maxms", NULL, TUNABLE_INTEGER,
-                 &gbl_slow_rep_process_txn_maxms, READONLY, NULL, NULL, NULL,
+                 &gbl_slow_rep_process_txn_maxms, 0, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("slow_rep_process_txn_minms", NULL, TUNABLE_INTEGER, &gbl_slow_rep_process_txn_minms, READONLY, NULL,
+REGISTER_TUNABLE("slow_rep_process_txn_minms", NULL, TUNABLE_INTEGER, &gbl_slow_rep_process_txn_minms, 0, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("slowwrite", NULL, TUNABLE_INTEGER, &__slow_write_ns, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sort_nulls_with_header",
