@@ -2,8 +2,6 @@ make_slow_replicants_incoherent 1
 
 logmsg level debug
 
-allow_readonly_runtime_mod 1
-
 set_coherent_state_trace 1
 
 slowrep_incoherent_factor 50
