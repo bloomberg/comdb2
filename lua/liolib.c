@@ -481,7 +481,7 @@ static int f_flush (lua_State *L) {
   return pushresult(L, fflush(tofile(L)) == 0, NULL);
 }
 
-
+#if 0
 static const luaL_Reg iolib[] = {
   {"close", io_close},
   {"flush", io_flush},
@@ -496,7 +496,7 @@ static const luaL_Reg iolib[] = {
   {"write", io_write},
   {NULL, NULL}
 };
-
+#endif
 
 static const luaL_Reg flib[] = {
   {"close", io_close},
@@ -545,7 +545,7 @@ LUALIB_API int luaopen_io (lua_State *L) {
   newfenv(L, io_fclose);
   lua_replace(L, LUA_ENVIRONINDEX);
   /* open library */
-  luaL_register(L, LUA_IOLIBNAME, iolib);
+  //luaL_register(L, LUA_IOLIBNAME, iolib);
   /* create (and set) default files */
   newfenv(L, io_noclose);  /* close function for default files */
   createstdfile(L, stdin, IO_INPUT, "stdin");
