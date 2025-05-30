@@ -85,7 +85,7 @@ do_test check-1.12 {
   catchsql {
     UPDATE t1 SET x=7 WHERE x==2
   }
-} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3BE1A9E5' unable to update record rc = 320}}
+} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3BE1A9E5' unable to update record}}
 do_test check-1.13 {
   execsql {
     SELECT * FROM t1;
@@ -95,7 +95,7 @@ do_test check-1.14 {
   catchsql {
     UPDATE t1 SET x=5 WHERE x==2
   }
-} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3BE1A9E5' unable to update record rc = 320}}
+} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3BE1A9E5' unable to update record}}
 do_test check-1.15 {
   execsql {
     SELECT * FROM t1;
@@ -271,7 +271,7 @@ do_test check-4.6 {
   catchsql {
     UPDATE t4 SET x=0, y=1;
   }
-} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_4026B7C3' unable to update record rc = 320}}
+} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_4026B7C3' unable to update record}}
 do_test check-4.7 {
   execsql {
     SELECT * FROM t4;
@@ -294,7 +294,7 @@ do_test check-4.9 {
   catchsql {
     UPDATE t4 SET x=0, y=2;
   }
-} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_4026B7C3' unable to update record rc = 320}}
+} {1 {CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_4026B7C3' unable to update record}}
 ifcapable vacuum {
   do_test check_4.10 {
     catchsql {
