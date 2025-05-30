@@ -35,7 +35,7 @@ static void test_a()
     cson_object *obj = cson_value_get_object(obj0);
     cson_object_set(obj, "myArray", arV);
     cson_object_set(obj, "myInt", cson_value_new_integer(42));
-    cson_object_set(obj, "myDouble", cson_value_new_double(42.24));
+    cson_object_set(obj, "myDouble", cson_value_new_double(42.24, 0));
     cson_object_set(obj, "myString", cson_value_new_string("hi", 2));
 
     cson_value *obj1 = cson_value_new_object();
@@ -107,7 +107,7 @@ static void test_f()
     cson_value *a = cson_value_new_array();
     cson_value *b = cson_value_new_object();
     cson_value *c = cson_value_new_integer(4);
-    cson_value *d = cson_value_new_double(4);
+    cson_value *d = cson_value_new_double(4, 0);
     cson_value *e = cson_value_new_string("hi", 2);
     cson_value *f = cson_value_null();
     cson_value *g = cson_value_new_bool(0);
@@ -425,19 +425,19 @@ static void test_p(void)
     puts(__func__);
     cson_value *inner = cson_value_new_array();
     cson_array *arr = cson_value_get_array(inner);
-    cson_array_append(arr, cson_value_new_double(strtod("-InFiNiTy", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("-inf", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("-0.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("0.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("1.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("100.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("1000.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("1000000.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("1000000000.0", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("inf", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("InFiNiTy", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("nan", NULL)));
-    cson_array_append(arr, cson_value_new_double(strtod("nanQ", NULL)));
+    cson_array_append(arr, cson_value_new_double(strtod("-InFiNiTy", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("-inf", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("-0.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("0.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("1.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("100.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("1000.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("1000000.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("1000000000.0", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("inf", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("InFiNiTy", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("nan", NULL), 0));
+    cson_array_append(arr, cson_value_new_double(strtod("nanQ", NULL), 0));
 
     cson_value *outer = cson_value_new_array();
     arr = cson_value_get_array(outer);

@@ -255,7 +255,7 @@ void eventlog_bind_double(cson_array *arr, const char *name, double val,
     case 8: type = "doublefloat"; break;
     default: return;
     }
-    eventlog_append_value(arr, name, type, cson_value_new_double(val));
+    eventlog_append_value(arr, name, type, cson_value_new_double(val, 0));
 }
 
 static void eventlog_bind_blob_int(cson_array *arr, const char *name,
@@ -332,7 +332,7 @@ void eventlog_bind_array(cson_array *arr, const char *name, void *p, int n, int 
         typestr = "doublefloat";
         for (int i = 0; i < n; ++i) {
             double v = *((double *)p + i);
-            cson_array_append(carray, cson_value_new_double(v));
+            cson_array_append(carray, cson_value_new_double(v, 1));
         }
         break;
     case CARRAY_TEXT:
@@ -545,7 +545,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     if (logger->have_id)
         cson_object_set(obj, "id", cson_value_new_string(logger->id, strlen(logger->id)));
     if (logger->sqlcost)
-        cson_object_set(obj, "cost", cson_new_double(logger->sqlcost));
+        cson_object_set(obj, "cost", cson_new_double(logger->sqlcost, 1));
     if (logger->sqlrows)
         cson_object_set(obj, "rows", cson_new_int(logger->sqlrows));
     if (logger->vreplays)
