@@ -193,6 +193,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   if ((pCur->flags & TRANLOG_FLAGS_DURABLE) && getflags == DB_FIRST) {
       if (pCur->logc->get(
           pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
+          logmsg(LOGMSG_ERROR, "%s line %d error getting a log record rc=%d\n",
+                  __func__, __LINE__, rc);
           return SQLITE_INTERNAL;
       }
   }
@@ -243,6 +245,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
 
   if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags)) != 0) {
       if (getflags != DB_NEXT && getflags != DB_PREV) {
+          logmsg(LOGMSG_ERROR, "%s line %d unknown getflags %d\n",
+                  __func__, __LINE__, getflags);
           return SQLITE_INTERNAL;
       }
 

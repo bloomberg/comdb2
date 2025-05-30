@@ -221,8 +221,10 @@ static int systblFKeyConstraintsColumn(sqlite3_vtab_cursor *cur,
 
             rc = gen_fk_constraint_name(pConstraint, pCur->iRuleid,
                                         constraint_name, MAXGENCONSLEN);
-            if (rc)
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed gen_fk_constraint_name rc %d\n", __func__, rc);
                 return SQLITE_INTERNAL;
+            }
             sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
         }
         break;
@@ -287,8 +289,10 @@ static int systblCheckConstraintsColumn(sqlite3_vtab_cursor *cur,
 
             rc = gen_check_constraint_name(pConstraint, constraint_name,
                                            MAXGENCONSLEN);
-            if (rc)
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed gen_check_constraint_name rc %d\n", __func__, rc);
                 return SQLITE_INTERNAL;
+            }
             sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
         }
         break;
