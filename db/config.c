@@ -462,7 +462,8 @@ static char *legacy_options[] = {
     "sc_current_version 3",
     "disable_sql_table_replacement 1",
     "endianize_locklist 0",
-    "create_default_consumers_atomically 0"
+    "create_default_consumers_atomically 0",
+    "prefer_new_style_index_names 0"
 };
 // clang-format on
 
