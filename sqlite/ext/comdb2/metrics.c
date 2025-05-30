@@ -91,6 +91,7 @@ static int systblMetricsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     /* Refresh the stats. */
     rc = refresh_metrics();
     if (rc) {
+        logmsg(LOGMSG_ERROR, "%s refresh_metrics error %d\n", __func__, rc);
         return SQLITE_INTERNAL;
     }
 

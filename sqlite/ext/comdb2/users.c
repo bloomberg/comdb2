@@ -104,6 +104,7 @@ static int systblUsersOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   if( bdb_user_get_all_tran(trans, &pCur->ppUsers, &pCur->nUsers) ) {
     sqlite3_free(pCur);
+    logmsg(LOGMSG_ERROR, "%s error get all trans\n", __func__);
     return SQLITE_INTERNAL;
   }
   *ppCursor = &pCur->base;

@@ -4070,6 +4070,9 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                     rc = SQLITE_OK;
                     goto done;
                 } else if (rc < 0) {
+                    logmsg(LOGMSG_ERROR, 
+                            "%s:%d failed to check genid deleted rc %d!\n",
+                            __func__, __LINE__, rc);
                     rc = SQLITE_INTERNAL;
                     goto done;
                 }
@@ -7523,6 +7526,7 @@ static int tmptbl_cursor_count(BtCursor *btcursor, i64 *count)
         return SQLITE_OK;
     }
 
+    logmsg(LOGMSG_ERROR, "%s: error rc %d\n", __func__, rc);
     return SQLITE_INTERNAL;
 }
 
@@ -8357,7 +8361,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
      * have them */
     rc = gather_blob_data_byname(cur->db, ".ONDISK", &cur->blobs, NULL);
     if (rc) {
-       logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: gather_blob_data error rc=%d\n", rc);
+        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: gather_blob_data error rc=%d\n", rc);
         return SQLITE_INTERNAL;
     }
     cur->numblobs = cur->blobs.numcblobs;
