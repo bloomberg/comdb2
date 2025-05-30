@@ -198,7 +198,7 @@ static char *cson__value_text(cson_value *val)
 
 static void cson__result_double(cson_kvp *kvp, double rVal)
 {
-    kvp->val = cson_value_new_double(rVal);
+    kvp->val = cson_value_new_double(rVal, 0);
 }
 static void cson__result_int(cson_kvp *kvp, int iVal)
 {
@@ -569,16 +569,19 @@ cson_value *cson_new_int(cson_int_t v)
 {
     return cson_value_new_integer(v);
 }
-cson_value *cson_value_new_double(cson_double_t v)
+cson_value *cson_value_new_double(cson_double_t v, int quote_strings)
 {
     cson_value *val = calloc(1, sizeof(cson_value));
     val->sql_type = SQLITE_FLOAT;
     val->u.dbl = v;
     int neg;
+    char *quote = "";
+    if (quote_strings)
+        quote = "\"";
     if (isnan(v)) {
-        val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "nan");
+        val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "%snan%s", quote, quote);
     } else if ((neg = isinf(v)) != 0) {
-        val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "%sinf", neg < 0 ? "-" : "");
+        val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "%s%sinf%s", quote, neg < 0 ? "-" : "", quote);
     } else {
         val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "%.15g", v);
     }
@@ -607,9 +610,9 @@ int cson_value_fetch_double(cson_value const *val, cson_double_t *v)
     *v = cson_value_get_double(val);
     return 0;
 }
-cson_value *cson_new_double(cson_double_t v)
+cson_value *cson_new_double(cson_double_t v, int quote_strings)
 {
-    return cson_value_new_double(v);
+    return cson_value_new_double(v, quote_strings);
 }
 cson_value *cson_value_new_string(char const *str, unsigned int n)
 {
