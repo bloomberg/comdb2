@@ -1809,6 +1809,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
     if (srs_tran_destroy(clnt))
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
 
+    logmsg(LOGMSG_ERROR, "%s: api should have blocked this\n", __func__);
     return SQLITE_INTERNAL;
 }
 
@@ -6306,7 +6307,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
 
     default:
-        logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, "
+        logmsg(LOGMSG_ERROR, "sql_check_errors got rc = %d, "
                              "returning as SQLITE_INTERNAL\n",
                rc);
         rc = SQLITE_INTERNAL;

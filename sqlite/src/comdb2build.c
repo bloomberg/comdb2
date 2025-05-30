@@ -1740,7 +1740,7 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
         return;
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
+    logmsg(LOGMSG_ERROR, "%s Bulk import from %.*s to %.*s\n", __func__, nm->n + lnm->n,
            nm->z, nm2->n +lnm2->n, nm2->z);
 }
 
@@ -1872,6 +1872,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc, int on
     return;
 
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 }
 
@@ -1925,6 +1926,7 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     return;
 
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg) free_bpfunc_arg(arg);
@@ -1978,6 +1980,7 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     return;
 
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg) free_bpfunc_arg(arg);
@@ -2024,6 +2027,7 @@ void comdb2enableGenid48(Parse* pParse, int enable)
     return;
 
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
     if (arg)
         free_bpfunc_arg(arg);   
@@ -2069,6 +2073,7 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
     return;
 
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
     if (arg)
         free_bpfunc_arg(arg);   
@@ -2123,6 +2128,7 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
 
     return;
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
     if (arg)
         free_bpfunc_arg(arg);
@@ -2138,6 +2144,7 @@ static void deleteAlias(char *alias, Parse *pParse)
     rc = llmeta_rem_tablename_alias(alias, &err);
     
     if (rc) {
+        logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
         setError(pParse, SQLITE_INTERNAL, "Could not delete alias");
     }
 }
@@ -2262,6 +2269,7 @@ static int printAliasForTablename(OpFunc *f)
         f->errorMsg = NULL;
     } else 
     {
+        logmsg(LOGMSG_ERROR, "%s alias %s not found\n", __func__, alias ? alias : "NULL");
         f->rc = SQLITE_INTERNAL;
         f->errorMsg = "Alias not found";
     }
@@ -2690,6 +2698,7 @@ static int produceAnalyzeCoverage(OpFunc *f)
         f->errorMsg = NULL;
     } else 
     {
+        logmsg(LOGMSG_ERROR, "%s error rc %d\n", __func__, rc);
         f->rc = SQLITE_INTERNAL;
         f->errorMsg = "Could not read value";
     }
@@ -2768,6 +2777,7 @@ static int produceAnalyzeThreshold(OpFunc *f)
         f->errorMsg = NULL;
     } else 
     {
+        logmsg(LOGMSG_ERROR, "%s error rc %d\n", __func__, rc);
         f->rc = SQLITE_INTERNAL;
         f->errorMsg = "Could not read value";
     }
@@ -2919,6 +2929,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
 
     return;
 err:
+    logmsg(LOGMSG_ERROR, "%s error!\n", __func__);
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
