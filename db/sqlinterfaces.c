@@ -2923,6 +2923,8 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
     rec->stmt = NULL;
 }
 
+extern int newsql_is_newsql(struct sqlclntstate *clnt);
+
 static void _prepare_error(struct sqlthdstate *thd,
                            struct sqlclntstate *clnt,
                            struct sql_state *rec, int rc,
@@ -2943,7 +2945,13 @@ static void _prepare_error(struct sqlthdstate *thd,
         errstr = (char *)sqlite3_errmsg(thd->sqldb);
         reqlog_logf(thd->logger, REQL_TRACE, "sqlite3_prepare failed %d: %s\n",
                     rc, errstr);
-        errstat_set_rcstrf(err, ERR_PREPARE_RETRY, "%s", errstr);
+
+        if (newsql_is_newsql(clnt)) {
+            /* in newsql, this is not retriable; api will retry unless ha or only begin was sent */
+            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
+        } else {
+            errstat_set_rcstrf(err, ERR_PREPARE_RETRY, "%s", errstr);
+        }
 
         //srs_tran_del_last_query(clnt);
         return;

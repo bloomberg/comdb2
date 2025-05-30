@@ -1310,6 +1310,11 @@ static int newsql_init(void *arg)
     return 0;
 }
 
+int newsql_is_newsql(struct sqlclntstate *clnt)
+{
+    return clnt && clnt->plugin.close == newsql_close_evbuffer;
+}
+
 comdb2_appsock_t newsql_plugin = {
     "newsql",             /* Name */
     "",                   /* Usage info */
