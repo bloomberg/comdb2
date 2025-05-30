@@ -1892,6 +1892,10 @@ int dohsql_error(struct sqlclntstate *clnt, const char **errstr)
     if (clnt && clnt->conns && clnt->conns->child_err) {
         child_clnt = clnt->conns->conns[clnt->conns->child_err].clnt;
         *errstr = child_clnt->saved_errstr;
+        if (child_clnt->saved_rc == SQLITE_INTERNAL) {
+            logmsg(LOGMSG_ERROR, "%s child %d error %d\n",
+                    __func__, clnt->conns->child_err, child_clnt->saved_rc);
+        }
         return child_clnt->saved_rc;
     }
 

@@ -985,8 +985,10 @@ static int logicalopsNext(sqlite3_vtab_cursor *cur){
 
 again:
     if (pCur->llog_cur.log == NULL &&
-        (bdb_llog_cursor_next(&pCur->llog_cur) != 0))
+        (bdb_llog_cursor_next(&pCur->llog_cur) != 0)) {
+        logmsg(LOGMSG_ERROR, "%s bdb_llog_cursor_next error!\n", __func__);
         return SQLITE_INTERNAL;
+    }
 
     if (pCur->llog_cur.log && !pCur->llog_cur.hitLast) {
         rc = unpack_logical_record(pCur);
@@ -999,6 +1001,7 @@ again:
         case 0:
             break;
         default:
+            logmsg(LOGMSG_ERROR, "%s unpack error rc %d!\n", __func__, rc);
             return SQLITE_INTERNAL;
             break;
         }

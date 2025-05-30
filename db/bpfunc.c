@@ -236,6 +236,7 @@ static int grantAuth(void *tran, int permission, int command_type,
         }
         break;
     default:
+        logmsg(LOGMSG_ERROR, "%s unknown permission %d\n", __func__, permission);
         rc = SQLITE_INTERNAL;
         break;
     }
