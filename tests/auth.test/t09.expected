@@ -314,7 +314,6 @@
 (candidate='comdb2_semver()')
 (candidate='comdb2_starttime()')
 (candidate='comdb2_sysinfo()')
-(candidate='comdb2_test_log()')
 (candidate='comdb2_user()')
 (candidate='comdb2_version()')
 (candidate='compress()')
