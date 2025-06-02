@@ -2001,6 +2001,11 @@ REGISTER_TUNABLE("forbid_remote_admin",
                  TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("forbid_remote_repopnewlrl",
+                 "Forbid repopnewlrl requests from remote machines.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_remote_repopnewlrl, 0, NULL, NULL, NULL,
+                 NULL);
+
 REGISTER_TUNABLE("abort_on_dta_lookup_error",
                  "Abort on dta lookup lost the race.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_dta_lookup_error,
