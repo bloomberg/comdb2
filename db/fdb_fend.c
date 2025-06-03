@@ -5878,7 +5878,7 @@ done:
 static int fdb_cursor_move_sql_cdb2api(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
-    cdb2_hndl_tp *hndl = fdbc->fcon.api.hndl;
+    cdb2_hndl_tp *hndl;
     char *sql; /* freed by _fdb_run_sql */
     int rc = 0;
 
@@ -5888,6 +5888,8 @@ static int fdb_cursor_move_sql_cdb2api(BtCursor *pCur, int how)
         logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
         return FDB_ERR_BUG;
     }
+
+    hndl = fdbc->fcon.api.hndl;
 
     /* if absolute move, send new query */
     if (how == CFIRST || how == CLAST) {
@@ -5902,6 +5904,10 @@ version_retry:
             rc = fdb_cursor_reopen(pCur);
             if (rc)
                 return rc;
+
+            /* new cursor */
+            fdbc = pCur->fdbc->impl;
+            hndl = fdbc->fcon.api.hndl;
 
             /* do we need to pre-cdb2api version */
             if (pCur->bt->fdb->server_version <= FDB_VER_AUTH) {
@@ -5935,7 +5941,7 @@ static int fdb_cursor_find_sql_cdb2api(BtCursor *pCur, Mem *key, int nfields,
        find/find_last + a followup move)
      */
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
-    cdb2_hndl_tp *hndl = fdbc->fcon.api.hndl;
+    cdb2_hndl_tp *hndl;
     char *sql; /* freed by _fdb_run_sql */
     int rc = 0;
 
@@ -5943,6 +5949,8 @@ static int fdb_cursor_find_sql_cdb2api(BtCursor *pCur, Mem *key, int nfields,
         logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
         return FDB_ERR_BUG;
     }
+
+    hndl = fdbc->fcon.api.hndl;
 
 version_retry:
     rc = _fdb_build_find_str(pCur, key, nfields, bias, &sql, NULL);
@@ -5955,6 +5963,10 @@ version_retry:
         rc = fdb_cursor_reopen(pCur);
         if (rc)
             return rc;
+
+        /* new cursor */
+        fdbc = pCur->fdbc->impl;
+        hndl = fdbc->fcon.api.hndl;
 
         /* do we need to pre-cdb2api version */
         if (pCur->bt->fdb->server_version <= FDB_VER_AUTH) {
