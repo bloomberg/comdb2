@@ -122,8 +122,9 @@ extern int gbl_debug_pb_connectmsg_gibberish;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern int gbl_pmux_route_enabled;
-extern int gbl_ssl_allow_localhost;
+extern int gbl_ready;
 extern int gbl_revsql_debug;
+extern int gbl_ssl_allow_localhost;
 extern void pstack_self(void);
 
 static struct timeval one_sec = {1, 0};
@@ -833,7 +834,6 @@ struct accept_info {
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
-static int pending_appsock_connections; /* dispatched to appsock-reader, but not processed yet */
 
 static void do_read(int, short, void *);
 static void accept_info_free(struct accept_info *);
@@ -2802,7 +2802,8 @@ static int wr_connect_msg_proto(struct event_info *e)
     return rc;
 }
 
-static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int first_byte, struct evbuffer *buf, int fd)
+static int handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int first_byte,
+                          struct evbuffer *buf, int fd)
 {
     int n = evbuffer_get_length(buf);
     char req[n + 1];
@@ -2813,7 +2814,7 @@ static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, in
     for (int i = n - 1; i > 0; --i) {
         sbuf2ungetc(req[i], sb);
     }
-    do_appsock(netinfo_ptr, ss, sb, first_byte);
+    return do_appsock(netinfo_ptr, ss, sb, first_byte);
 }
 
 /* retrive next 5 bytes to search for '*' and len */
@@ -2854,12 +2855,11 @@ static void rd_connect_msg_len(int fd, short what, void *data)
 
 void free_appsock_handler_arg(struct appsock_handler_arg *arg)
 {
-    ATOMIC_ADD32(pending_appsock_connections, -1);
     free(arg);
 }
 
-static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure,
-                               int *pbadrte)
+static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd,
+                               int is_readonly, int secure, int *pbadrte)
 {
     struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
@@ -2903,9 +2903,15 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     arg->base = appsock_base[appsock_counter++];
     if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
 
-    ATOMIC_ADD32(pending_appsock_connections, 1);
     evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
     return 0;
+}
+
+static int should_reject_request(uint8_t first_byte)
+{
+    if (db_is_exiting() || gbl_exit || !gbl_ready) return 1;
+    if (first_byte == '@') return 0; /* admin */
+    return check_appsock_limit(pending_connections);
 }
 
 static void do_read(int fd, short what, void *data)
@@ -2927,15 +2933,6 @@ static void do_read(int fd, short what, void *data)
         rd_connect_msg_len(fd, 0, a);
         return;
     }
-    /* appsock */
-    if (first_byte != '@') {
-        int total, pending = pending_connections + ATOMIC_LOAD32(pending_appsock_connections);
-        if ((total = check_appsock_limit(pending)) != 0) {
-            logmsg(LOGMSG_USER, "%s too many connections:%d\n", __func__, total);
-            accept_info_free(a);
-            return;
-        }
-    }
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
     struct sockaddr_in ss = a->ss;
     int secure = a->secure;
@@ -2943,17 +2940,26 @@ static void do_read(int fd, short what, void *data)
     a->fd = -1;
     accept_info_free(a);
     a = NULL;
-    if (should_reject_request()) {
+    if (should_reject_request(first_byte)) {
         evbuffer_free(buf);
         shutdown_close(fd);
         return;
     }
-    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure, &badrte)) == 0)
+    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure, &badrte)) == 0) {
         return;
-    if (badrte)
+    }
+    if (badrte) {
+        if (first_byte != '@') {
+            ATOMIC_ADD32(active_appsock_conns, -1);
+        }
         accept_info_new(netinfo_ptr, &ss, fd, secure, 1);
-    else
-        handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
+        return;
+    }
+    if (handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd) != 0) {
+        if (first_byte != '@') {
+            ATOMIC_ADD32(active_appsock_conns, -1);
+        }
+    }
 }
 
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -2980,9 +2986,8 @@ static void accept_error_cb(struct evconnlistener *listener, void *data)
 {
     check_base_thd();
     int err = EVUTIL_SOCKET_ERROR();
-    logmsg(LOGMSG_ERROR, "%s err:%d [%s] [outstanding fds:%d] [pending-appsock fds:%d] [appsock fds:%d]\n",
-           __func__, err, evutil_socket_error_to_string(err), pending_connections,
-           pending_appsock_connections, active_appsock_conns);
+    logmsg(LOGMSG_ERROR, "%s err:%d [%s] [outstanding fds:%d] [appsock fds:%d]\n",
+           __func__, err, evutil_socket_error_to_string(err), pending_connections, active_appsock_conns);
     if (err == EMFILE) abort();
 }
 

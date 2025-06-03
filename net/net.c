@@ -2641,7 +2641,7 @@ int is_connection_local(SBUF2 *sb) {
     return islocal;
 }
 
-void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
+int do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
                 SBUF2 *sb, uint8_t firstbyte)
 {
     watchlist_node_type *watchlist_node;
@@ -2657,21 +2657,20 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
             (cliaddr->sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
             admin = 1;
         } else {
-            logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n",
-                   paddr);
+            logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n", paddr);
             sbuf2close(sb);
-            return;
+            return -1;
         }
     } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
         logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__, __LINE__);
         sbuf2close(sb);
-        return;
+        return -1;
     }
 
 
     if (gbl_server_admin_mode && !admin) {
         sbuf2close(sb);
-        return;
+        return -1;
     }
 
     /* call user specified app routine */
@@ -2685,10 +2684,9 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
         /* set up the watchlist system for this node */
         watchlist_node = calloc(1, sizeof(watchlist_node_type));
         if (!watchlist_node) {
-            logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n",
-                   __func__);
+            logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n", __func__);
             sbuf2close(sb);
-            return;
+            return -1;
         }
         memcpy(watchlist_node->magic, "WLST", 4);
         watchlist_node->in_watchlist = 0;
@@ -2701,8 +2699,10 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
         sbuf2setuserptr(sb, watchlist_node);
 
         /* this doesn't read- it just farms this off to a thread */
-        (rtn)(netinfo_ptr, sb);
+        rtn(netinfo_ptr, sb);
+        return 0;
     }
+    return -1;
 }
 
 static watchlist_node_type *get_watchlist_node(SBUF2 *sb, const char *funcname)
