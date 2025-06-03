@@ -56,8 +56,6 @@ char appsock_supported[] = "supported\n";
 int32_t active_appsock_conns = 0;
 int64_t gbl_denied_appsock_connection_count = 0;
 
-pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
-
 /* HASH of all registered appsock handlers (one handler per appsock type) */
 hash_t *gbl_appsock_hash;
 
@@ -73,9 +71,7 @@ void close_appsock(SBUF2 *sb)
 {
     if (sb != NULL) {
         net_end_appsock(sb);
-        Pthread_mutex_lock(&appsock_conn_lk);
         ATOMIC_ADD32(active_appsock_conns, -1);
-        Pthread_mutex_unlock(&appsock_conn_lk);
     }
 }
 
@@ -282,65 +278,25 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
-int should_reject_request(void)
-{
-    return db_is_exiting() || gbl_exit || !gbl_ready;
-}
-
 void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 {
     /*START HANDLER THREAD*/
     static int last_thread_dump_time = 0;
     static int last_thread_dump_warn_time = 0;
-    int nconns = 0;
-    int curr_appsock_conns = 0;
-    int maxconns;
-    time_t now;
-
-    now = time(NULL);
+    time_t now = time(NULL);
 
     time_metric_add(dbenv->connections, thdpool_get_nthds(gbl_appsock_thdpool));
 
-    maxconns = thdpool_get_maxthds(gbl_appsock_thdpool);
-    nconns = thdpool_get_nthds(gbl_appsock_thdpool);
-    if (nconns < maxconns &&
-        nconns > (double)maxconns *
-                     ((double)gbl_appsock_connection_warn_threshold / 100)) {
+    int maxthds = thdpool_get_maxthds(gbl_appsock_thdpool);
+    int nthds = thdpool_get_nthds(gbl_appsock_thdpool);
+    if (nthds < maxthds &&
+        nthds > (double)maxthds * ((double)gbl_appsock_connection_warn_threshold / 100)) {
         if ((now - last_thread_dump_warn_time) > 10) {
             logmsg(LOGMSG_WARN,
-                   "Warning: reached %d%% of max concurrent connections "
-                   "(%d/%d):\n",
-                   gbl_appsock_connection_warn_threshold, nconns, maxconns);
+                   "Warning: reached %d%% of max concurrent connections (%d/%d):\n",
+                   gbl_appsock_connection_warn_threshold, nthds, maxthds);
             last_thread_dump_warn_time = now;
             dump_appsock_threads();
-        }
-    }
-
-    /* reject requests if we're not up, going down, or not interested */
-    if (should_reject_request()) {
-        total_appsock_rejections++;
-        net_end_appsock(sb);
-        return;
-    }
-
-    if (active_appsock_conns >=
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT)) {
-        static int lastprint = 0;
-        int now = comdb2_time_epoch();
-
-        if ((now - lastprint) > 0) {
-            int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
-
-            logmsg(
-                LOGMSG_WARN,
-                "%s: Maximum appsock connection limit approaching (%d/%d).\n",
-                __func__, active_appsock_conns, max);
-            lastprint = now;
-
-            if ((now - last_thread_dump_time) > 10) {
-                last_thread_dump_time = now;
-                dump_appsock_threads();
-            }
         }
     }
 
@@ -357,18 +313,8 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
         }
 
         logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue error\n", __func__);
-        net_end_appsock(sb);
+        close_appsock(sb);
         return;
-    }
-
-    total_appsock_conns++;
-    Pthread_mutex_lock(&appsock_conn_lk);
-    curr_appsock_conns = ATOMIC_ADD32(active_appsock_conns, 1);
-    Pthread_mutex_unlock(&appsock_conn_lk);
-
-    if (curr_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
-        logmsg(LOGMSG_WARN, "TOO many active socket connections. current limit %d\n",
-               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED));
     }
 }
 
