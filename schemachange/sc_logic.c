@@ -647,7 +647,6 @@ struct {
     {1, alter, do_alter_table, finalize_alter_table, NULL, NULL},
     {1, alter, do_alter_table, finalize_alter_table, NULL, NULL},
     {1, bulkimport, do_import, finalize_import, NULL, NULL},
-    {0, 0, NULL, NULL, do_default_cons, finalize_default_cons},
 };
 
 static int do_schema_change_tran_int(sc_arg_t *arg)

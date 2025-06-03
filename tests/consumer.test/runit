@@ -3,7 +3,4 @@ bash -n "$0" | exit 1
 
 set -e
 ./t00.sh
-if [ "$TESTCASE" == "consumer" ]; then
-	./t06.sh
-fi
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1

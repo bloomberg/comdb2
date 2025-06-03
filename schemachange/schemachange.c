@@ -1525,7 +1525,6 @@ const char *schema_change_kind(struct schema_change_type *s)
     case SC_DELSP: return "SC_DELSP";
     case SC_DEFAULTSP: return "SC_DEFAULTSP";
     case SC_SHOWSP: return "SC_SHOWSP";
-    case SC_DEFAULTCONS: return "SC_DEFAULTCONS";
     case SC_ADD_TRIGGER: return "SC_ADD_TRIGGER";
     case SC_DEL_TRIGGER: return "SC_DEL_TRIGGER";
     case SC_ADD_SFUNC: return "SC_ADD_SFUNC";

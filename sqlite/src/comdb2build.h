@@ -161,7 +161,6 @@ int comdb2TokenToStr(Token *nm, char *buf, size_t len);
 int comdb2IsPrepareOnly(Parse* pParse);
 int comdb2AuthenticateUserOp(Parse* pParse);
 
-void create_default_consumer_sp_atomic(Parse *p, char *spname, const char * tablename_for_q, const char * newcsc2_for_q, int seq_for_q, char dest_for_q[64]);
-void create_default_consumer_sp(Parse *p, char *spname);
+void create_default_consumer_sp(Parse *, char *);
 
 #endif // COMDB2BUILD_H

@@ -55,6 +55,4 @@ message CDB2_Schemachange {
   repeated string genshardshardnames = 52;
   optional string import_src_tablename = 53;
   optional string import_src_dbname = 54;
-  optional string tablename_for_default_cons_q = 55;
-  optional bytes newcsc2_for_default_cons_q = 56;
 }

@@ -51,8 +51,7 @@ typedef enum scdone {
     add_queue_file,          // 22
     del_queue_file,          // 23
     alias_table,             // 24
-    alias,                   // 25
-    default_cons,            // 26
+    alias                    // 25
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
@@ -66,7 +65,7 @@ void bdb_bump_dbopen_gen(scdone_t type, const char *message,
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, const char *tbl, int tbllen, int *bdberr);
-int bdb_llog_scdone(bdb_state_type *, scdone_t, const char *tablename,
+int bdb_llog_scdone(bdb_state_type *, scdone_t, const char *tablename, 
                     int tablenamelen, int wait, int *bdberr);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_analyze(bdb_state_type *, int wait, int *bdberr);
@@ -88,5 +87,5 @@ typedef void (*SCABORTFP)(void);
 void bdb_replace_cached_data_version(bdb_state_type *target, bdb_state_type *new);
 void bdb_replace_cached_blob_version(bdb_state_type *target, int targetnum, bdb_state_type *new, int newnum);
 void bdb_replace_cached_index_version(bdb_state_type *target, int targetnum, bdb_state_type *new, int newnum);
-int bdb_llog_alias(bdb_state_type *bdb_state, int wait, int *bdberr);
+int bdb_llog_alias(bdb_state_type *bdb_state, int wait, int *bdberr); 
 #endif

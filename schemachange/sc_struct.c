@@ -55,7 +55,6 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
     Pthread_mutex_init(&sc->mtxStart, NULL);
     Pthread_cond_init(&sc->condStart, NULL);
-    sc->newcsc2_for_default_cons_q = NULL;
     return sc;
 }
 
@@ -116,10 +115,6 @@ void free_schema_change_type(struct schema_change_type *s)
     if (s->import_src_table_data) {
         import_data__free_unpacked(s->import_src_table_data, &pb_alloc);
         s->import_src_table_data = NULL;
-    }
-    if (s->newcsc2_for_default_cons_q) {
-        free(s->newcsc2_for_default_cons_q);
-        s->newcsc2_for_default_cons_q = NULL;
     }
 
     free_dests(s);
@@ -255,8 +250,6 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     s->spname_len = strlen(s->spname) + 1;
     s->newcsc2_len = (s->newcsc2) ? strlen(s->newcsc2) + 1 : 0;
     s->sc_version = sc.version = sc_version;
-    s->tablename_for_default_cons_q_len = strlen(s->tablename_for_default_cons_q) + 1;
-    s->newcsc2_for_default_cons_q_len = (s->newcsc2_for_default_cons_q) ? strlen(s->newcsc2_for_default_cons_q) + 1 : 0;
 
     sc.kind = s->kind;
     sc.rqid = s->rqid;
@@ -296,13 +289,6 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
 
     sc.import_src_tablename = s->import_src_tablename;
     sc.import_src_dbname = s->import_src_dbname;
-
-    sc.tablename_for_default_cons_q = s->tablename_for_default_cons_q;
-    if (s->newcsc2_for_default_cons_q) {
-        sc.has_newcsc2_for_default_cons_q = 1;
-        sc.newcsc2_for_default_cons_q.data = (uint8_t *) s->newcsc2_for_default_cons_q;
-        sc.newcsc2_for_default_cons_q.len = s->newcsc2_for_default_cons_q_len;
-    }
 
     sc.dests = malloc(sizeof(char *) * s->dests.count);
     if (!sc.dests) {
@@ -406,23 +392,6 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     return 0;
 }
 
-static int unpack_newcsc2_field(const ProtobufCBinaryData *src, char **dest, size_t *dest_len)
-{
-    if (src->len) {
-        *dest_len = src->len;
-        *dest = malloc(*dest_len);
-        if (!*dest) {
-            logmsg(LOGMSG_ERROR, "unpack_newcsc2_field: malloc failed\n");
-            return -1;
-        }
-        memcpy(*dest, src->data, *dest_len);
-    } else {
-        *dest_len = 0;
-        *dest = NULL;
-    }
-    return 0;
-}
-
 int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc, size_t *plen)
 {
     int32_t *ibuf = (int32_t *)packed_sc;
@@ -463,12 +432,14 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
     s->newdtastripe = sc->newdtastripe;
     s->blobstripe = sc->blobstripe;
     s->live = sc->live;
-
-    if (unpack_newcsc2_field(&sc->newcsc2, &s->newcsc2, &s->newcsc2_len) != 0) {
-        cdb2__schemachange__free_unpacked(sc, NULL);
-        return -1;
+    if (sc->newcsc2.len) {
+        s->newcsc2_len = sc->newcsc2.len;
+        s->newcsc2 = malloc(s->newcsc2_len);
+        memcpy(s->newcsc2, sc->newcsc2.data, s->newcsc2_len);
+    } else {
+        s->newcsc2_len = 0;
+        s->newcsc2 = NULL;
     }
-
     s->scanmode = sc->scanmode;
     s->force_rebuild = sc->force_rebuild;
     s->force_dta_rebuild = sc->force_dta_rebuild;
@@ -519,23 +490,6 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
         strncpy(s->import_src_dbname, sc->import_src_dbname, sizeof(s->import_src_dbname));
         s->import_src_dbname_len = strlen(s->import_src_dbname) + 1;
     }
-
-    if (sc->tablename_for_default_cons_q) {
-        strncpy0(s->tablename_for_default_cons_q, sc->tablename_for_default_cons_q, sizeof(s->tablename_for_default_cons_q));
-        s->tablename_for_default_cons_q_len = strlen(s->tablename_for_default_cons_q) + 1;
-    } else {
-        s->tablename_for_default_cons_q[0] = '\0';
-        s->tablename_for_default_cons_q_len = 1;
-    }
-
-    if (!sc->has_newcsc2_for_default_cons_q) {
-        s->newcsc2_for_default_cons_q_len = 0;
-        s->newcsc2_for_default_cons_q = NULL;
-    } else if (unpack_newcsc2_field(&sc->newcsc2_for_default_cons_q, &s->newcsc2_for_default_cons_q, &s->newcsc2_for_default_cons_q_len) != 0) {
-        cdb2__schemachange__free_unpacked(sc, NULL);
-        return -1;
-    }
-
     switch (sc->partition_type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL: {

@@ -20,8 +20,6 @@
 struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
-extern int gbl_create_default_consumer_atomically;
-extern int gbl_sc_protobuf;
 
 #define MAX_SPNAME_FOR_TRIGGER MAX_SPNAME-strlen(Q_TAG) // includes null terminator
 #define COMDB2_DEFAULT_CONSUMER 2
@@ -134,11 +132,6 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables, SrcL
     return tmp;
 }
 
-static int can_create_default_consumer_atomically()
-{
-    return gbl_create_default_consumer_atomically && gbl_sc_protobuf;
-}
-
 void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2TrigTables *tbl)
 {
     if (comdb2IsPrepareOnly(parse))
@@ -235,28 +228,24 @@ void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2T
     char method[64];
     sprintf(method, "dest:%s:%s", consumer ? "dynlua" : "lua", spname);
 
-    if (consumer == COMDB2_DEFAULT_CONSUMER && can_create_default_consumer_atomically()) {
-        create_default_consumer_sp_atomic(parse, spname, qname, strbuf_disown(s), seq, method);
-    } else {
-        // trigger add table:qname dest:method
-        struct schema_change_type *sc = new_schemachange_type();
-        sc->kind = SC_ADD_TRIGGER;
-        sc->persistent_seq = seq;
-        strcpy(sc->tablename, qname);
-        struct dest *d = malloc(sizeof(struct dest));
-        d->dest = strdup(method);
-        listc_abl(&sc->dests, d);
-        sc->newcsc2 = strbuf_disown(s);
-        Vdbe *v = sqlite3GetVdbe(parse);
-
-        if (consumer == COMDB2_DEFAULT_CONSUMER) {
-            create_default_consumer_sp(parse, spname);
-            comdb2prepareNoRows(v, parse, 0, sc, comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
-        } else {
-            comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
-        }
-    }
+    // trigger add table:qname dest:method
+    struct schema_change_type *sc = new_schemachange_type();
+    sc->kind = SC_ADD_TRIGGER;
+    sc->persistent_seq = seq;
+    strcpy(sc->tablename, qname);
+    struct dest *d = malloc(sizeof(struct dest));
+    d->dest = strdup(method);
+    listc_abl(&sc->dests, d);
+    sc->newcsc2 = strbuf_disown(s);
     strbuf_free(s);
+    Vdbe *v = sqlite3GetVdbe(parse);
+
+    if (consumer == COMDB2_DEFAULT_CONSUMER) {
+        create_default_consumer_sp(parse, spname);
+        comdb2prepareNoRows(v, parse, 0, sc, comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
+    } else {
+        comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 }
 

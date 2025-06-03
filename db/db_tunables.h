@@ -76,10 +76,6 @@ REGISTER_TUNABLE("archive_on_init",
                  "at the time of init. (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_archive_on_init, READONLY, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("create_default_consumer_atomically",
-                 "Create default consumers atomically (default on)",
-                 TUNABLE_BOOLEAN, &gbl_create_default_consumer_atomically, 1, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
                  &gbl_test_badwrite_intvl, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bbenv", NULL, TUNABLE_BOOLEAN, &gbl_bbenv,
@@ -1933,11 +1929,6 @@ REGISTER_TUNABLE("logdelete_lock_trace",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("fail_to_create_default_cons",
-                 "Fail in the middle of creating a default consumer to test that it happens atomically.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_fail_to_create_default_cons,
-                 INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_log_at_checkpoint",
                  "Replicants flush the log at checkpoint records.  "
                  "(Default: on)",

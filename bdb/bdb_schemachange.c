@@ -85,9 +85,7 @@ static const char *const bdb_scdone_type_names[] = {
     "user_view",               // 21
     "add_queue_file",          // 22
     "del_queue_file",          // 23
-    "alias_table",             // 24
-    "alias",                   // 25
-    "default_cons",            // 26
+    "alias_table"              // 24
 };
 
 const char *bdb_get_scdone_str(scdone_t type)
@@ -95,13 +93,17 @@ const char *bdb_get_scdone_str(scdone_t type)
     int maxIndex = sizeof(bdb_scdone_type_names) /
                    sizeof(bdb_scdone_type_names[0]);
     static __thread char buf[100];
-    int index = ((int)type) + 1; // -1 ==> 0
-    if (index >= 0 && index <= maxIndex) {
-        snprintf(buf, sizeof(buf), "\"%s\" (%d)",
-                 bdb_scdone_type_names[index], (int)type);
+    if (type >= invalid && type <= del_queue_file) {
+        int index = ((int)type) + 1; // -1 ==> 0
+        if (index >= 0 && index <= maxIndex) {
+            snprintf(buf, sizeof(buf), "\"%s\" (%d)",
+                     bdb_scdone_type_names[index], (int)type);
+        } else {
+            snprintf(buf, sizeof(buf), "BAD_INDEX %d (%d)",
+                     index, (int)type);
+        }
     } else {
-        snprintf(buf, sizeof(buf), "BAD_INDEX %d (%d)",
-                 index, (int)type);
+        snprintf(buf, sizeof(buf), "UNKNOWN (%d)", (int)type);
     }
     return buf;
 }

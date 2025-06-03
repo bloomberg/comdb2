@@ -8003,23 +8003,5 @@ void create_default_consumer_sp(Parse *p, char *spname)
     strcpy(sc->tablename, spname);
     strcpy(sc->fname, version);
     comdb2prepareNoRows(v, p, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
-}
 
-void create_default_consumer_sp_atomic(Parse *p, char *spname, const char * tablename_for_q, const char * newcsc2_for_q, int seq_for_q, char dest_for_q[64])
-{
-    Vdbe *v = sqlite3GetVdbe(p);
-    const char *version = "comdb2 default consumer 1.1";
-
-    struct schema_change_type *sc = new_schemachange_type();
-    sc->kind = SC_DEFAULTCONS;
-    strcpy(sc->tablename, spname);
-    strcpy(sc->fname, version);
-    sc->newcsc2 = strdup(default_consumer);
-    sc->persistent_seq = seq_for_q;
-    struct dest *d = malloc(sizeof(struct dest));
-    d->dest = strdup(dest_for_q);
-    listc_abl(&sc->dests, d);
-    sc->newcsc2_for_default_cons_q = strdup(newcsc2_for_q);
-    strcpy(sc->tablename_for_default_cons_q, tablename_for_q);
-    comdb2PrepareSC(v, p, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
 }
