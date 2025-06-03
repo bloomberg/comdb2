@@ -336,7 +336,7 @@ uint8_t *net_wire_header_put(const wire_header_type *, uint8_t *, const uint8_t 
 
 void add_host(host_node_type *);
 void dispatch_decom(char *);
-void do_appsock(netinfo_type *, struct sockaddr_in *, SBUF2 *, uint8_t);
+int do_appsock(netinfo_type *, struct sockaddr_in *, SBUF2 *, uint8_t);
 int findpeer(int, char *, int);
 int get_dedicated_conhost(host_node_type *, struct in_addr *);
 host_node_type *get_host_node_by_name_ll(netinfo_type *, const char *);
@@ -359,8 +359,6 @@ enum net_metric_type {
     MAX_QUEUE_SIZE = 2
 };
 int get_hosts_metric(const char *netname, enum net_metric_type type);
-
-int should_reject_request(void);
 
 int dist_heartbeats(dist_hbeats_type *);
 
