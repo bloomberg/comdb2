@@ -256,7 +256,7 @@ do_execsql_test index6-2.103 {
 do_execsql_test index6-2.103eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=15 AND a<100;
-} {5 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
+} {5 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~1 row)}}
 #{/.*INDEX t2a2.*/}
 do_execsql_test index6-2.104 {
   SELECT b FROM t2 WHERE a=515 AND a>200;
@@ -264,7 +264,7 @@ do_execsql_test index6-2.104 {
 do_execsql_test index6-2.104eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=515 AND a>200;
-} {5 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
+} {5 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~1 row)}}
 #{/.*INDEX t2a2.*/}
 
 # Partial UNIQUE indices
