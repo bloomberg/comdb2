@@ -172,7 +172,7 @@ do_test index7-1.11 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {20 1} {$T1B_DA360153} {10 1} t1_ix_0 {20 1} t1_ix_1 {20 1} t1_ix_2 {10 1}}}
+} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {20 1} {$T1B_DA360153} {10 1} t1_ix_0 {20 1} t1_ix_1 {20 1} t1_ix_2 {10 1}}
 #{t1 {20 1} t1a {20 1} t1b {10 1} ok}
 
 do_test index7-1.11b {
