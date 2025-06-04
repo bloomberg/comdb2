@@ -1811,8 +1811,10 @@ int comdb2vdbeAnalyze(OpFunc *f)
     f->rc = do_analyze(f->arg, f->int_arg);
     if (f->rc == SQLITE_ANALYZE_ALREADY_RUNNING)
         f->errorMsg = "Analyze could not run because it is already running on some table";
-    else if (f->rc != SQLITE_OK)
+    else if (f->rc != SQLITE_OK) {
+        logmsg(LOGMSG_ERROR, "%s: analyze failed with rc %d\n", __func__, f->rc);
         f->errorMsg = "Analyze could not run because of internal problems";
+    }
     return f->rc;
 }
 
