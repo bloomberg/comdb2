@@ -196,14 +196,14 @@ do_test analyze-3.6 {
     ANALYZE t2;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} {$T2I2_9D967B83} {5 2} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1} t2_ix_0 {5 3} t2_ix_1 {5 2}}}
+} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} {$T2I2_9D967B83} {5 2} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1} t2_ix_0 {5 3} t2_ix_1 {5 2}}
 do_test analyze-3.7 {
   execsql {
     DROP INDEX t2i2;
     ANALYZE t2;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} t1_ix_0 {5 2} t1_ix_1 {5 2} t1_ix_2 {5 3 1} tx_ix_0 {5 3}}}
+} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1} t2_ix_0 {5 3}}
 do_test analyze-3.8 {
   execsql {
     CREATE TABLE t3 (a,b,c,d);
@@ -215,13 +215,13 @@ do_test analyze-3.8 {
     DROP TABLE t2;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1}  t2_ix_0 {5 3}}
+} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1} t2_ix_0 {5 3}}
 do_test analyze-3.9 {
   execsql {
     ANALYZE;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1}}}
+} {{$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1}}
 
 do_test analyze-3.10 {
   execsql {
@@ -233,7 +233,7 @@ do_test analyze-3.10 {
     ANALYZE;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {1 {Table not found} {$ANOTHERFOOLISHNAME_6DBDCA38} {2 1} {$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} sillyname_ix_0 {2 1} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1}}}
+} {1 {Table not found} {$ANOTHERFOOLISHNAME_6DBDCA38} {2 1} {$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} sillyname_ix_0 {2 1} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1}}
 do_test analyze-3.11 {
   execsql {
     DROP INDEX foolishname;
@@ -246,13 +246,13 @@ do_test analyze-3.12 {
     analyze;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1}}}
+} {{$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1}}
 
 do_test analyze-3.13 {
   execsql {
     SELECT idx,count() FROM sqlite_stat4 WHERE tbl in (select name from sqlite_master where type='table') group by idx;
   }
-} {{$T3I1_39FF0389} 5 {$T3I2_58D6C701} 5 {$T3I3_1F62C3BC} 5 t3_ix_0 5 t3_ix_1 5 t3_ix_2 5}}
+} {{$T3I1_39FF0389} 5 {$T3I2_58D6C701} 5 {$T3I3_1F62C3BC} 5 t3_ix_0 5 t3_ix_1 5 t3_ix_2 5}
 
 
 # Try corrupting the sqlite_stat1 table and make sure the
@@ -267,7 +267,7 @@ do_test analyze-4.0 {
     ANALYZE;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} {$T4I1_EFB47759} {5 3} {$T4I2_98B347CF} {5 2} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1} t4_ix_0 {5 3} t4_ix_1 {5 2}}}
+} {{$T3I1_39FF0389} {5 3} {$T3I2_58D6C701} {5 3 1 1 1} {$T3I3_1F62C3BC} {5 5 2 2 1} {$T4I1_EFB47759} {5 3} {$T4I2_98B347CF} {5 2} t3_ix_0 {5 3} t3_ix_1 {5 3 1 1 1} t3_ix_2 {5 5 2 2 1} t4_ix_0 {5 3} t4_ix_1 {5 2}}
 comdb2_omit_test do_test analyze-4.1 {
   execsql {
     PRAGMA writable_schema=on;
@@ -309,7 +309,7 @@ do_test analyze-5.0 {
     SELECT DISTINCT idx FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY 1;
     SELECT DISTINCT tbl FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY 1;
   }
-} {{$T3I1_39FF0389} {$T3I2_58D6C701} {$T3I3_1F62C3BC} {$T4I1_EFB47759} {$T4I2_98B347CF} t3_ix_0 t3_ix_1 t3_ix_2 t4_ix_0 t4_ix_1 t3 t4}}
+} {{$T3I1_39FF0389} {$T3I2_58D6C701} {$T3I3_1F62C3BC} {$T4I1_EFB47759} {$T4I2_98B347CF} t3_ix_0 t3_ix_1 t3_ix_2 t4_ix_0 t4_ix_1 t3 t4}
 set stat sqlite_stat4
 do_test analyze-5.1 {
     execsql "
@@ -321,10 +321,10 @@ do_test analyze-5.2 {
   execsql {
     DROP INDEX t3i2;
     ANALYZE;
-    SELECT DISTINCT idx FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY 1;
-    SELECT DISTINCT tbl FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY 1;
+    SELECT DISTINCT idx FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
+    SELECT DISTINCT tbl FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T3I1_39FF0389} {$T3I3_1F62C3BC} {$T4I1_EFB47759} {$T4I2_98B347CF} t3_ix_0 t3_ix_1 t3_ix_2 t4_ix_0 t4_ix_1 t3 t4}
+} {{$T3I1_39FF0389} {$T3I3_1F62C3BC} {$T4I1_EFB47759} {$T4I2_98B347CF} t3_ix_0 t3_ix_1 t4_ix_0 t4_ix_1 t3 t4}
 do_test analyze-5.3 {
     execsql "
       SELECT DISTINCT idx FROM $stat WHERE tbl not like 'cdb2.%.sav' ORDER BY 1;
@@ -381,7 +381,7 @@ do_test analyze-98.1.3 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}}
+} {{$I_3AA4168B} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
 do_test analyze-98.1.4 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
@@ -392,12 +392,12 @@ do_test analyze-98.1.4 {
 # Force system to use old style names
 do_test analyze-98.2.1 {
   execsql {
-    DELETE from sqlite_stat1 where idx = '$I_3AA4168B'
+    DELETE from sqlite_stat1 where idx = '$I_3AA4168B';
     REBUILD t;
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} t {$I+3AA4168B} {1000 1} t t_ix_0 {1000 1}}
+} {{$I_3AA4168B} t t_ix_0 {1000 1}}
 do_test analyze-98.2.2 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
@@ -412,7 +412,7 @@ do_test analyze-98.3.1 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} cdb2.t.sav {$I_3AA4168B} {1000 1} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
+} {{$I_3AA4168B} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
 do_test analyze-98.3.2 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
@@ -421,13 +421,14 @@ do_test analyze-98.3.2 {
 } {3 0 0 {SCAN TABLE t (~960 rows)} 4 0 0 {SCAN TABLE t USING COVERING INDEX $I_3AA4168B (~960 rows)}}
 #
 # System switches to new style names (after prod move)
+# (not yet)
 do_test analyze-98.4.1 {
   execsql {
     REBUILD t;
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} cdb2.t.sav {$I_3AA4168B} {1000 1} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}}
+} {{$I_3AA4168B} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
 do_test analyze-98.4.2 {
   execsql {
     EXPLAIN QUERY PLAN SELECT * FROM t;
@@ -442,7 +443,7 @@ do_test analyze-98.5 {
     SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 't';
     SELECT * FROM sqlite_stat1 WHERE tbl IN ('t', 'cdb2.t.sav') ORDER BY tbl, idx;
   }
-} {{$I_3AA4168B} cdb2.t.sav {$I_3AA4168B} {1000 1} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}}
+} {{$I_3AA4168B} cdb2.t.sav {$I_3AA4168B} {1000 1} cdb2.t.sav t_ix_0 {1000 1} t {$I_3AA4168B} {1000 1} t t_ix_0 {1000 1}}
 # Finally, old style names are purged from the system
 do_test analyze-98.6 {
   execsql {

@@ -226,7 +226,7 @@ do_test index7-1.15 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {15 1} {$T1A_433F50E9} {10 1} {$T1B_DA360153} {8 1} {$T1C_AD3131C5} {15 1} t1_ix_0 {15 1} t1_ix_1 {10 1} t1_ix_2 {8 1} t1_ix_3 {15 1}}}
+} {{$PRIMARY_BE5F2ECE} {15 1} {$T1A_433F50E9} {10 1} {$T1B_DA360153} {8 1} {$T1C_AD3131C5} {15 1} t1_ix_0 {15 1} t1_ix_1 {10 1} t1_ix_2 {8 1} t1_ix_3 {15 1}}
 #{t1 {15 1} t1a {10 1} t1b {8 1} t1c {15 1} ok}
 
 # Queries use partial indices as appropriate times.
