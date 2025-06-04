@@ -1694,8 +1694,9 @@ void sql_index_name_trans(char *namebuf, int len, struct schema *schema, struct 
 
     /* If we find an old-name, use the new name */
     if (stat1_find(oldstyle, schema, db, ixnum, trans) > 0) {
-        map_index(oldstyle, namebuf);
-        map_index(namebuf, oldstyle);
+        //map_index(oldstyle, namebuf);
+        //map_index(namebuf, oldstyle);
+        //snprintf(namebuf, len, "%s", oldstyle);
     }
     return;
 }

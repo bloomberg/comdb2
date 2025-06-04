@@ -2249,8 +2249,14 @@ static int loadStat4(sqlite3 *db, const char *zDb){
   int rc;                   /* Result codes from subroutines */
   sqlite3_stmt *pStmt = 0;  /* An SQL statement being run */
   char *zSql;
+
+  /*
   const char *zSql2 = "SELECT idx,neq,nlt,ndlt,sample,tbl FROM %Q.sqlite_stat4"
                       " WHERE tbl not like 'cdb2.%%.sav' order by idx desc;";
+                      */
+
+  const char *zSql2 = "SELECT idx,neq,nlt,ndlt,sample,tbl FROM %Q.sqlite_stat4"
+                      " WHERE tbl not like 'cdb2.%%.sav';";
 
   if( sqlite3FindTableCheckOnly(db, "sqlite_stat4", zDb)==0 ){
     return SQLITE_OK;
@@ -2517,7 +2523,8 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     zSql = sqlite3MPrintf(db, 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        "SELECT tbl,idx,stat FROM %Q.sqlite_stat1 WHERE tbl not like 'cdb2.%%.sav' order by idx desc", sInfo.zDatabase);
+        "SELECT tbl,idx,stat FROM %Q.sqlite_stat1 WHERE tbl not like 'cdb2.%%.sav'", sInfo.zDatabase);
+        //"SELECT tbl,idx,stat FROM %Q.sqlite_stat1 WHERE tbl not like 'cdb2.%%.sav' order by idx desc", sInfo.zDatabase);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         "SELECT tbl,idx,stat FROM %Q.sqlite_stat1", sInfo.zDatabase);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

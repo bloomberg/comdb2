@@ -164,7 +164,7 @@ do_test analyze-3.3 {
     ANALYZE;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1}}}
+} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1}}
 #} {t1i1 {5 3} t1i2 {5 2} t1i3 {5 3 1}}
 do_test analyze-3.4 {
   execsql {
@@ -175,7 +175,7 @@ do_test analyze-3.4 {
     ANALYZE;
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
   }
-} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} {$T2I2_9D967B83} {5 2} {$T2I3_2EBFF8DB} {5 3 1} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1} t2_ix_0 {5 3} t2_ix_1 {5 2} t2_ix_2 {5 3 1}}}
+} {{$T1I1_433F50E9} {5 3} {$T1I2_DA360153} {5 2} {$T1I3_A82B8A75} {5 3 1} {$T2I1_49F2A39} {5 3} {$T2I2_9D967B83} {5 2} {$T2I3_2EBFF8DB} {5 3 1} t1_ix_0 {5 3} t1_ix_1 {5 2} t1_ix_2 {5 3 1} t2_ix_0 {5 3} t2_ix_1 {5 2} t2_ix_2 {5 3 1}}
 do_test analyze-3.5.1 {
   execsql {
     DROP INDEX t2i3;
