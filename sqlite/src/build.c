@@ -790,16 +790,8 @@ Table *sqlite3LocateTableItem(
 ** TEMP first, then MAIN, then any auxiliary databases added
 ** using the ATTACH command.
 */
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-char *mapped_index(const char *oldname);
-#endif
-
 Index *sqlite3FindIndex(sqlite3 *db, const char *zName, const char *zDb){
   Index *p = 0;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  char *newName = mapped_index(zName);
-#endif
   int i;
   /* All mutexes are required for schema access.  Make sure we hold them. */
   assert( zDb!=0 || sqlite3BtreeHoldsAllMutexes(db) );
@@ -810,11 +802,6 @@ Index *sqlite3FindIndex(sqlite3 *db, const char *zName, const char *zDb){
     if( zDb && sqlite3StrICmp(zDb, db->aDb[j].zDbSName) ) continue;
     assert( sqlite3SchemaMutexHeld(db, j, 0) );
     p = sqlite3HashFind(&pSchema->idxHash, zName);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if ( p == 0 && newName != 0 ) {
-        p = sqlite3HashFind(&pSchema->idxHash, newName);
-    }
-#endif
     if( p ) break;
   }
   return p;
