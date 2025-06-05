@@ -420,8 +420,7 @@ do_test analyze-98.3.2 {
   }
 } {3 0 0 {SCAN TABLE t (~960 rows)} 4 0 0 {SCAN TABLE t USING COVERING INDEX $I_3AA4168B (~960 rows)}}
 #
-# System switches to new style names (after prod move)
-# (not yet)
+# System switches to new style names
 do_test analyze-98.4.1 {
   execsql {
     REBUILD t;
