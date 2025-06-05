@@ -266,8 +266,11 @@ retry:
         bdb_lock_tablename_write(bdb_state, tbl, tran);
     }
     /* analyze does NOT need schema_lk */
+    /* Acquire schema-lk for single prod move: analyze can force a dbopen */
+    /*
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;
+    */
 
     rc = bdb_llog_scdone_tran(bdb_state, sctype, tran, tbl, tbllen, bdberr);
 

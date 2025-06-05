@@ -1,0 +1,1 @@
+Analyze will force a dbopen if it sees old-style stats
