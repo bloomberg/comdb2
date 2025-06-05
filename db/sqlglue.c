@@ -839,7 +839,7 @@ static void addCursorCost(BtCursor *pCur, hash_t *h, void *l)
         listc_abl(l, qc);
     }
 
-    if (qc) {
+    if (qc && !pCur->clnt->loading_stat) {
         qc->nfind += pCur->nfind;
         qc->nnext += pCur->nmove;
         /* note: we record writes in record routines on the master */
@@ -1633,6 +1633,8 @@ done:
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 
+int gbl_recreate_master_recs_on_analyze = 0;
+
 /*
 ** Given a comdb2 index, this routine will decide whether to
 ** advertise its name as tablename_ix_ixnum or the new style
@@ -1647,7 +1649,10 @@ void sql_index_name_trans(char *namebuf, int len, struct schema *schema,
     form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
     if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
     snprintf(namebuf, len, "%s_ix_%d", db->tablename, ixnum);
-    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
+    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) {
+        gbl_recreate_master_recs_on_analyze = 1;
+        return;
+    }
     /* no stats - use new names */
     form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
 }
@@ -2529,6 +2534,7 @@ static inline int i64cmp(const i64 *key1, const i64 *key2)
  */
 static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 {
+    struct sqlclntstate *clnt = pCur->clnt;
     struct sql_thread *thd = pCur->thd;
     int rc = SQLITE_OK;
 
@@ -2542,22 +2548,22 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
     }
 
     /* add to cost */
-    switch (how) {
-    case CFIRST:
-    case CLAST:
-        /*printf("tbl %s first/last cost %f\n", pCur->db ? pCur->db->tablename :
-         * "<temp>", pCur->find_cost); */
-        thd->cost += pCur->find_cost;
-        pCur->nfind++;
-        break;
+    if (!clnt->loading_stat) {
+        switch (how) {
+        case CFIRST:
+        case CLAST:
+            thd->cost += pCur->find_cost;
+            pCur->nfind++;
+            break;
 
-    case CPREV:
-    case CNEXT:
-        /*printf("tbl %s next/prev cost %f\n", pCur->db ? pCur->db->tablename :
-         * "<temp>", pCur->move_cost); */
-        thd->cost += pCur->move_cost;
-        pCur->nmove++;
-        break;
+        case CPREV:
+        case CNEXT:
+            /*printf("tbl %s next/prev cost %f\n", pCur->db ? pCur->db->tablename :
+             * "<temp>", pCur->move_cost); */
+            thd->cost += pCur->move_cost;
+            pCur->nmove++;
+            break;
+        }    
     }
 
     if (!is_sqlite_db_init(pCur)) {
@@ -2569,7 +2575,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
     }
 
     int inprogress;
-    if (thd->clnt->is_analyze &&
+    if (clnt->is_analyze &&
         ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
                       get_analyze_abort_requested() ||
                       db_is_exiting())) {
@@ -2705,7 +2711,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 
     outrc = SQLITE_OK;
     *pRes = 0;
-    if (thd)
+    if (thd && !clnt->loading_stat)
         thd->nmove++;
 
     bdberr = 0;
@@ -3930,7 +3936,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
 
     /* only record for temp tables - writes for real tables are recorded in
      * block code */
-    if (thd && pCur->db == NULL) {
+    if (thd && pCur->db == NULL && !clnt->loading_stat) {
         thd->nwrite++;
         thd->cost += pCur->write_cost;
         pCur->nwrite++;
@@ -5884,10 +5890,10 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         goto done;
     }
 
-    if (thd)
+    if (!clnt->loading_stat) {
         thd->nfind++;
-
-    thd->cost += pCur->find_cost;
+        thd->cost += pCur->find_cost;
+    }
 
     /* assert that this isn't called for sampled (previously misnamed
      * compressed) */
@@ -6556,6 +6562,11 @@ void addVdbeToThdCost(int type, int *data)
     if (thd == NULL)
         return;
 
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt->loading_stat) {
+        return;
+    }
+
     switch (type) {
       case VDBESORTER_WRITE:
         thd->cost += CDB2_TEMP_WRITE_COST;
@@ -6578,8 +6589,10 @@ void addVdbeSorterCost(const VdbeSorter *pSorter)
     if (thd == NULL)
         return;
 
-    addSorterCost(pSorter, thd->query_hash, &thd->query_stats);
-    addSorterCost(pSorter, thd->query_hash_subrequest, &thd->query_stats_subrequest);
+    if (!thd->clnt->loading_stat) {
+        addSorterCost(pSorter, thd->query_hash, &thd->query_stats);
+        addSorterCost(pSorter, thd->query_hash_subrequest, &thd->query_stats_subrequest);
+    }
 }
 
 /*
@@ -6650,7 +6663,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
     }
 
-    if (thd) {
+    if (thd && !clnt->loading_stat) {
         addCursorCost(pCur, thd->query_hash, &thd->query_stats);
         addCursorCost(pCur, thd->query_hash_subrequest, &thd->query_stats_subrequest);
     }
@@ -6847,7 +6860,7 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
 
     pCur->nblobs++;
     struct sql_thread *thd = pCur->thd;
-    if (thd) thd->cost += pCur->blob_cost;
+    if (thd && !pCur->clnt->loading_stat) thd->cost += pCur->blob_cost;
 
     if (pCur->rd_blob_buffers) {
         blob = &pCur->rd_blob_buffers[f->blob_index];
@@ -8981,7 +8994,7 @@ int sqlite3BtreeInsert(
         memset(pblobs, 0, sizeof(blob_buffer_t) * MAXBLOBS);
     }
 
-    if (thd && pCur->db == NULL) {
+    if (thd && pCur->db == NULL && !clnt->loading_stat) {
         thd->nwrite++;
         thd->cost += pCur->write_cost;
         pCur->nwrite++;
@@ -10985,10 +10998,12 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
             }
         } while (rc == BDBERR_DEADLOCK && nretries++ < max_retries);
         if (rc == 0) {
-            pCur->nfind++;
-            pCur->nmove += count;
-            thd->had_tablescans = 1;
-            thd->cost += pCur->find_cost + (pCur->move_cost * count);
+            if (!clnt->loading_stat) {
+                pCur->nfind++;
+                pCur->nmove += count;
+                thd->had_tablescans = 1;
+                thd->cost += pCur->find_cost + (pCur->move_cost * count);
+            }
         } else if (rc == BDBERR_DEADLOCK) {
             rc = SQLITE_DEADLOCK;
         }

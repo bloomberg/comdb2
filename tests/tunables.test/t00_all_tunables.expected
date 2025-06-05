@@ -812,6 +812,7 @@
 (name='recovery_workers.maxt', description='Maximum number of threads in the pool.', type='INTEGER', value='16', read_only='N')
 (name='recovery_workers.mint', description='Minimum number of threads in the pool.', type='INTEGER', value='0', read_only='N')
 (name='recovery_workers.stacksz', description='Thread stack size.', type='INTEGER', value='1048576', read_only='N')
+(name='recreate_master_records_on_analyze', description='On if analyze will force a dbopen.', type='BOOLEAN', value='OFF', read_only='Y')
 (name='reject_osql_mismatch', description='(Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='reject_writes_on_rtcpu', description='reject_writes_on_rtcpu', type='BOOLEAN', value='ON', read_only='N')
 (name='release_locks_trace', description='Print trace if we release locks', type='BOOLEAN', value='OFF', read_only='N')

@@ -644,11 +644,24 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     return 0;
 }
 
+extern int gbl_recreate_master_recs_on_analyze;
+
 static void osql_analyze_commit_callback(struct ireq *iq)
 {
     int bdberr;
     if (iq->osql_flags & OSQL_FLAGS_ANALYZE) {
+        int have_lk = 0;
+        if (gbl_recreate_master_recs_on_analyze) {
+            wrlock_schema_lk();
+            have_lk = 1;
+            create_sqlmaster_records(NULL);
+            create_sqlite_master();
+            BDB_BUMP_DBOPEN_GEN(alter, NULL);
+        }
         bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
+        if (have_lk) {
+            unlock_schema_lk();
+        }
     }
 }
 

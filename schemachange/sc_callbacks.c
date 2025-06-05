@@ -1056,10 +1056,22 @@ static int scdone_luareload(const char tablename[], void *arg, scdone_t type)
     return 0;
 }
 
+extern int gbl_recreate_master_recs_on_analyze;
+
 static int scdone_sc_analyze(const char tablename[], void *arg, scdone_t type)
 {
     ATOMIC_ADD32(gbl_analyze_gen, 1);
-    logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");
+    if (gbl_recreate_master_recs_on_analyze) {
+        tran_type *tran;
+        uint32_t lid = 0;
+        int bdberr = 0;
+
+        tran = _tran(&lid, &bdberr, __func__, __LINE__);
+        if (!tran)
+            return bdberr;
+        _master_recs(tran, "analyze", alter);
+        _untran(tran, lid);
+    }
     return 0;
 }
 

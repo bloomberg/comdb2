@@ -794,6 +794,29 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
                 sqlite3_free(sql); sql = NULL;
                 goto error;
             }
+        } else {
+            logmsg(LOGMSG_USER, "%s: have idx:%s cloning into:%s\n", __func__, ix->sqlitetag, namebuf);
+            sql = sqlite3_mprintf("INSERT INTO sqlite_stat1(tbl, idx, stat) "
+                                  "SELECT tbl, '%q', stat FROM sqlite_stat1 "
+                                  "WHERE tbl='%q' AND idx='%q'",
+                                  namebuf, tbl->tablename, ix->sqlitetag);
+            rc = run_internal_sql_clnt(&clnt, sql);
+            if (rc) {
+                snprintf(zErrTab, sizeof(zErrTab), "failed:%s", sql);
+                sqlite3_free(sql); sql = NULL;
+                goto error;
+            }
+            if (!get_dbtable_by_name("sqlite_stat4")) continue;
+            sql = sqlite3_mprintf("INSERT INTO sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample) "
+                                  "SELECT tbl, '%q', neq, nlt, ndlt, sample FROM sqlite_stat4 "
+                                  "WHERE tbl='%q' AND idx='%q'",
+                                  namebuf, tbl->tablename, ix->sqlitetag);
+            rc = run_internal_sql_clnt(&clnt, sql);
+            if (rc) {
+                snprintf(zErrTab, sizeof(zErrTab), "failed:%s", sql);
+                sqlite3_free(sql); sql = NULL;
+                goto error;
+            }
         }
     }
 

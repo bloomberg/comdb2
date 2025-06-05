@@ -159,7 +159,7 @@ do_test index7-1.10 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {14 1} {$T1B_DA360153} {10 1}}
+} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {14 1} {$T1B_DA360153} {10 1} t1_ix_0 {20 1} t1_ix_1 {14 1} t1_ix_2 {10 1}}
 #{t1 {20 1} t1a {14 1} t1b {10 1} ok}
 
 # STAT1 shows the partial indices have a reduced number of
@@ -172,7 +172,7 @@ do_test index7-1.11 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {20 1} {$T1B_DA360153} {10 1}}
+} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {20 1} {$T1B_DA360153} {10 1} t1_ix_0 {20 1} t1_ix_1 {20 1} t1_ix_2 {10 1}}
 #{t1 {20 1} t1a {20 1} t1b {10 1} ok}
 
 do_test index7-1.11b {
@@ -183,7 +183,7 @@ do_test index7-1.11b {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {6 1} {$T1B_DA360153} {20 1}}
+} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {6 1} {$T1B_DA360153} {20 1} t1_ix_0 {20 1} t1_ix_1 {6 1} t1_ix_2 {20 1}}
 #{t1 {20 1} t1a {6 1} t1b {20 1} ok}
 
 do_test index7-1.12 {
@@ -194,7 +194,7 @@ do_test index7-1.12 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {13 1} {$T1B_DA360153} {10 1}}
+} {{$PRIMARY_BE5F2ECE} {20 1} {$T1A_433F50E9} {13 1} {$T1B_DA360153} {10 1} t1_ix_0 {20 1} t1_ix_1 {13 1} t1_ix_2 {10 1}}
 #{t1 {20 1} t1a {13 1} t1b {10 1} ok}
 
 do_test index7-1.13 {
@@ -204,7 +204,7 @@ do_test index7-1.13 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {15 1} {$T1A_433F50E9} {10 1} {$T1B_DA360153} {8 1}}
+} {{$PRIMARY_BE5F2ECE} {15 1} {$T1A_433F50E9} {10 1} {$T1B_DA360153} {8 1} t1_ix_0 {15 1} t1_ix_1 {10 1} t1_ix_2 {8 1}}
 #{t1 {15 1} t1a {10 1} t1b {8 1} ok}
 
 ifcapable comdb2_skip {
@@ -226,7 +226,7 @@ do_test index7-1.15 {
     SELECT idx, stat FROM sqlite_stat1 WHERE tbl not like 'cdb2.%.sav' ORDER BY idx;
     #PRAGMA integrity_check;
   }
-} {{$PRIMARY_BE5F2ECE} {15 1} {$T1A_433F50E9} {10 1} {$T1B_DA360153} {8 1} {$T1C_AD3131C5} {15 1}}
+} {{$PRIMARY_BE5F2ECE} {15 1} {$T1A_433F50E9} {10 1} {$T1B_DA360153} {8 1} {$T1C_AD3131C5} {15 1} t1_ix_0 {15 1} t1_ix_1 {10 1} t1_ix_2 {8 1} t1_ix_3 {15 1}}
 #{t1 {15 1} t1a {10 1} t1b {8 1} t1c {15 1} ok}
 
 # Queries use partial indices as appropriate times.
@@ -304,7 +304,7 @@ do_execsql_test index7-2.103 {
 do_execsql_test index7-2.103eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=15 AND a<100;
-} {5 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
+} {5 0 0 {SEARCH TABLE t2 USING INDEX t2_ix_1 (a=?) (~9 rows)}}
 #{/.*INDEX t2a2.*/}
 do_execsql_test index7-2.104 {
   SELECT b FROM t2 WHERE a=515 AND a>200;
@@ -312,7 +312,7 @@ do_execsql_test index7-2.104 {
 do_execsql_test index7-2.104eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=515 AND a>200;
-} {5 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
+} {5 0 0 {SEARCH TABLE t2 USING INDEX t2_ix_1 (a=?) (~9 rows}}
 #{/.*INDEX t2a2.*/}
 
 # Partial UNIQUE indices
