@@ -2529,6 +2529,7 @@ static inline int i64cmp(const i64 *key1, const i64 *key2)
  */
 static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 {
+    struct sqlclntstate *clnt = pCur->clnt;
     struct sql_thread *thd = pCur->thd;
     int rc = SQLITE_OK;
 
@@ -2542,25 +2543,22 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
     }
 
     /* add to cost */
-    switch (how) {
-    case CFIRST:
-    case CLAST:
-        /*printf("tbl %s first/last cost %f\n", pCur->db ? pCur->db->tablename :
-         * "<temp>", pCur->find_cost); */
-        thd->cost += pCur->find_cost;
-        pCur->nfind++;
-        break;
+    if (!clnt->loading_stat && !is_sqlite_db_init(pCur)) {
+        switch (how) {
+        case CFIRST:
+        case CLAST:
+            thd->cost += pCur->find_cost;
+            pCur->nfind++;
+            break;
 
-    case CPREV:
-    case CNEXT:
-        /*printf("tbl %s next/prev cost %f\n", pCur->db ? pCur->db->tablename :
-         * "<temp>", pCur->move_cost); */
-        thd->cost += pCur->move_cost;
-        pCur->nmove++;
-        break;
-    }
-
-    if (!is_sqlite_db_init(pCur)) {
+        case CPREV:
+        case CNEXT:
+            /*printf("tbl %s next/prev cost %f\n", pCur->db ? pCur->db->tablename :
+             * "<temp>", pCur->move_cost); */
+            thd->cost += pCur->move_cost;
+            pCur->nmove++;
+            break;
+        }
         rc = sql_tick(thd, 0);
         if (rc) {
             *done = 1;
@@ -2569,7 +2567,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
     }
 
     int inprogress;
-    if (thd->clnt->is_analyze &&
+    if (clnt->is_analyze &&
         ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
                       get_analyze_abort_requested() ||
                       db_is_exiting())) {
