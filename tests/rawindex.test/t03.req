@@ -1,4 +1,0 @@
-select * from t1 order by i
-select * from t1 where i>=0 order by i
-select * from t1 order by i desc
-select * from t1 where i>=0 order by i desc

@@ -1,6 +1,0 @@
-insert into t1 values (1234, 1234, 1234, 1234)
-insert into t1 values (4321, 4321, 1234, 1234)
-insert into t1 values (1321, 1321, 1234, null) -- Non default, no NULL contraint.
-insert into t1 values (1121, 1121, null, null) --  NULL constraint, column 3 can not be NULL.
-select * from t1 order by uid
-

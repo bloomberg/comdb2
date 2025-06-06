@@ -1,5 +1,0 @@
-logmsg level warn
-# to make wait_for_seqnum timeout faster (default is 10 seconds)
-setattr REPTIMEOUT_MINMS 2000
-# allow replicant to be marked back coherent faster (default is 10 seocnds)
-setattr DOWNGRADE_PENALTY 2000

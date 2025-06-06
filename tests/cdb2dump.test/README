@@ -1,6 +1,0 @@
-This testcase uses cdb2_dump to dump the content of one of the btrees
-in which we have inserted data, and make sure that the content dumped 
-matches a given string. 
-
-It is useful both to test the correctness of the cdb2_dump tool and 
-the content of the btree, as well as to demonstrate using such tool.

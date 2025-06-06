@@ -1,5 +1,0 @@
-Testing ability to cancel running sql. 
-We already have a way of testing manually from within cdb2sql by sending
-`sql cancelcnonce xxx` when in the middle of an ongoing stmt such as
-`select 1, sleep(30)`.
-This test exercises `sql cancel id` of a similarly running stmt.

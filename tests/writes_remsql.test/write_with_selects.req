@@ -1,6 +1,0 @@
-insert into t2 select * from t where id<10
-select * from t2 order by id
-update t2 set id=id-1 where id in (select id from t where id<3)
-select * from t2 order by id
-delete from t2 where id in (select id from t where id>3)
-select * from t2 order by id

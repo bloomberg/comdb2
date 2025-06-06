@@ -1,2 +1,0 @@
-Test to record cost incurred to execute sql queries so that
-the tests fail when the cost changes.

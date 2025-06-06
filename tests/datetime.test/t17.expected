@@ -1,5 +1,0 @@
-(cast(a as datetime)="1970-01-01T000001.000 UTC")
-(cast(a as datetime)="2021-03-11T040000.000 UTC")
-(cast(a as datetime)="2021-03-11T130000.000 UTC")
-(cast(a as datetime)="2021-03-11T180000.000 UTC")
-[with t(a) as (values (cast('2021-03-11T13:00:00 America/New_York' as datetime)), (cast('2021-03-11T13:00:00 Europe/London' as datetime)), (cast('2021-03-11T13:00:00 Asia/Tokyo' as datetime)), ('qqq')) select cast(a as datetime) from t order by a] failed with rc 113 cast to datetime failed

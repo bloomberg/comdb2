@@ -1,6 +1,0 @@
-drop table if exists t06
-create table t06 (a int, b int)$$
-dryrun alter table t06 alter column a set data type double
-dryrun alter table t06 drop column b
-dryrun alter table t06 add column c text default "hello"
-dryrun alter table t06 {tag ondisk {int b vutf8 c dbstore="world" null=yes}}

@@ -1,1 +1,0 @@
-ptrantest.sh

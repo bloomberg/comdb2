@@ -1,4 +1,0 @@
-sqlenginepool maxt 1
-# We must disable watchdog as we're setting maxt to 1 above-
-# The select-1 test from watchdog may kill the database if it can't run promptly
-nowatch

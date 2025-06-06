@@ -1,7 +1,0 @@
-(rows inserted='1')
-(rows inserted='1')
-(rows inserted='1')
-[insert into t1 values (1121, 1121, null, null) --  NULL constraint, column 3 can not be NULL.] failed with rc 304 Null constraint voilation for column 'dup_value' on table 't1'. unable to add record rc = 318
-(uid=1234, value=1234, dup_value=1234, allowed_null_value=1234)
-(uid=1321, value=1321, dup_value=1234, allowed_null_value=NULL)
-(uid=4321, value=4321, dup_value=1234, allowed_null_value=1234)

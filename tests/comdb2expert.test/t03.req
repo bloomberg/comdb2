@@ -1,9 +1,0 @@
-create table t4(i int, v varchar(100), b blob(100))$$
-insert into t4 select value, now(), x'cdb2' from generate_series(1,1000);
-set expert on
-select * from t4;
-select * from t4 where i = 100;
-select * from t4 where v = 'foo';
-select * from t4 where b = x'cdb2';
-select * from t4 where i = 1 and v = 'foo';
-select * from t4 where i = 1 and v = 'foo' and b = x'cdb2';

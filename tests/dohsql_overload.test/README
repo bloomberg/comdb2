@@ -1,1 +1,0 @@
-This test checks the queuing of parallel queries when pool is full. Test will timeout if there is a problem.

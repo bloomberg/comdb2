@@ -1,3 +1,0 @@
-ssl_client_mode VERIFY_CA
-ssl_map_cert_to_user UID
-allow_user_schema

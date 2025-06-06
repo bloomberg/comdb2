@@ -1,7 +1,0 @@
-#this should fail
-select 1
-put password 'password3' for 'user3'
-#only op user can add new user
-set user user1
-set password password1
-put password 'password3' for 'user3'

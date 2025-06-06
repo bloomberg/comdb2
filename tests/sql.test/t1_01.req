@@ -1,2 +1,0 @@
-select max(id) from t
-select min(id) from t

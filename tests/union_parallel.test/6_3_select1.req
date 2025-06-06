@@ -1,1 +1,0 @@
-select 10002 as cc union all select c from t2 union all select e from t3

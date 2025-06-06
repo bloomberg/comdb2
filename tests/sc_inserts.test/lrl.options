@@ -1,6 +1,0 @@
-table t1 t1.csc2
-round_robin_stripes
-setattr MIN_KEEP_LOGS 2
-setattr MIN_KEEP_LOGS_AGE 10
-setattr PRIVATE_BLKSEQ_MAXAGE 20
-ssl_client_mode OPTIONAL

@@ -1,1 +1,0 @@
-This test checks the behaviour of remsql connections when the remote db becomes transiently incoherent.

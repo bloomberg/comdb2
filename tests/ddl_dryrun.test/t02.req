@@ -1,6 +1,0 @@
-dryrun drop table t1
-dryrun drop table t2
-dryrun drop index key on t1
-dryrun drop trigger if exists sp
-dryrun drop procedure sp version 'test'
-

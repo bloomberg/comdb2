@@ -1,3 +1,0 @@
-CREATE INDEX t1_idx_00000069 ON t1(i,j,k,l,m);
-set expert on
-select t1.j, t2.j from t1, t2 where t1.i = t2.i

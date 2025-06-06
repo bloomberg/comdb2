@@ -1,6 +1,0 @@
-# comdb2 database used for unit testing the blob apis
-
-table blobtest1 blobtest1.csc2
-
-# only 2 stripes for this test
-dtastripe 2

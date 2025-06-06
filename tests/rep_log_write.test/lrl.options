@@ -1,3 +1,0 @@
-rep_skip_recovery 1
-abort_on_unfound_txn 0
-berkattr abort_on_replicant_log_write 1

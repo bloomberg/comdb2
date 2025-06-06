@@ -1,3 +1,0 @@
-This test attempts to verify that SQL write queries executed inside of stored
-procedures do not end up being (unintentionally) executed more than once, e.g.
-with an INSERT ending up inserting two rows instead of one.

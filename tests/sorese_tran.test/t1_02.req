@@ -1,5 +1,0 @@
-begin
-blah blah
-rollback
-begin
-commit

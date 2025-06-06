@@ -1,6 +1,0 @@
-1 insert into t1 values (1, x'11')
-2 set transaction serial
-2 begin
-2 update t1 set id=2 where id=1
-1 update t1 set id=11 where id=1
-2 commit

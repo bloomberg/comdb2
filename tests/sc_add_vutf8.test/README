@@ -1,3 +1,0 @@
-This is to test adding a blob and a vutf8 field to an already
-existing table and making sure that the fields are populated
-with the correct default content.

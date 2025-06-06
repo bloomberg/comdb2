@@ -1,4 +1,0 @@
-[GRANT READ ON 't1' TO 'default'] failed with rc -3 Table not found
-[GRANT READ ON 't123456789012345678901234567890' TO 'default'] failed with rc -3 Table not found
-[GRANT READ ON t1234567890123456789012345678901 TO 'default'] failed with rc -3 Table name is too long
-[GRANT READ ON 't1234567890123456789012345678901' TO 'default'] failed with rc -3 Table name is too long

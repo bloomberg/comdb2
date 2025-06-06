@@ -1,2 +1,0 @@
-[SELECT 1] failed with rc -105 Database disconnected while in transaction.
-[ROLLBACK] rc 0

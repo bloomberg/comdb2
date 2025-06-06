@@ -1,5 +1,0 @@
-decoupled_logputs off
-setattr REP_PROCESSORS 0
-setattr REP_WORKERS 0
-replicant_retry_on_not_durable on
-forbid_remote_admin 0

@@ -1,1 +1,0 @@
-select a as col from t union all select c from t2 union all select f from t3 limit 1 offset 12

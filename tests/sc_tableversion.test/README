@@ -1,6 +1,0 @@
-The tablecounter should increase correctly with every rebuild/alter
-command, and no select table_version(tbl) should see the old
-version after a rebuild.
-
-This tests for that case. 
-It is almost identical to sc_inserts_deletes testcase.

@@ -1,1 +1,0 @@
-update t set id=id+2 where id%2 =1

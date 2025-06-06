@@ -1,5 +1,0 @@
-This testcase alter schema to make one of the fields larger
-and force a index rebuild, while inserting.
-The two alters tried here are to turn an int field into a long long 
-and a cstring[] to be larger.
-

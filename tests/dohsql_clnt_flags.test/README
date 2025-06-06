@@ -1,1 +1,0 @@
-This test verifies that flags in the sqlclnt struct from the co-ordinator are passed correctly to the sqlclnt struct of individual shards. 

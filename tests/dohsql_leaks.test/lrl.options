@@ -1,6 +1,0 @@
-enable_sql_stmt_caching none
-sqlenginepool linger 4
-sqlenginepool mint 0
-dohsql_disable 0
-dohast_disable 0
-cache 256 mb

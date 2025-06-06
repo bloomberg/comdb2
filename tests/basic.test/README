@@ -1,3 +1,0 @@
-Basic testing of db actions.
-- test default snapshot isolation
-- test rowlocks on

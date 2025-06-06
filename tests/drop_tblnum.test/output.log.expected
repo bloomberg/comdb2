@@ -1,8 +1,0 @@
-(rows inserted=1)
-(rows inserted=1)
-(rows inserted=1)
-(a=1)
-(a=2)
-(a=3)
-(out='stable_rootpages_test   ON  (Delay sql processing to allow a schema change to finish)')
-(a=2)

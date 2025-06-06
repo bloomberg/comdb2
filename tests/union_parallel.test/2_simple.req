@@ -1,4 +1,0 @@
-select c from t2 union all select e from t3
-select * from t4 union all select * from t3
-select * from t4 union all select * from t3 union all select 100000
-select 1 from (select c from t2 union all select e from t3) where c = 333

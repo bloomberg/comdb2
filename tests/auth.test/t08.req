@@ -1,8 +1,0 @@
-set user user2
-set password password2
-#try to change password of different user
-put password 'new_password' for 'user3'
-#try changing own password
-put password 'new_password' for 'user2'
-#next query after password change should fail
-select 1

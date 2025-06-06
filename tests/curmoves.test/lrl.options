@@ -1,8 +1,0 @@
-table t t.csc2
-
-dtastripe 4
-#maxt 1
-#maxwt 1
-#handle_buf_latency_ms 50
-appsockslimit 10
-maxappsockslimit 10

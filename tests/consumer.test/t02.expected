@@ -1,5 +1,0 @@
-(version='sptest')
-(rows inserted=1)
-(rows inserted=1)
-($0="1970-01-01T000001.000 UTC", $1="1970-01-01T000001.000000 UTC")
-($0="1969-12-31T190002.000 America/New_York", $1="1969-12-31T190002.000000 America/New_York")

@@ -1,7 +1,0 @@
-[insert into t1 values (1, '9999-12-31T235959')] failed with rc 113 incompatible values from SQL string of length 17 to datetime field 'dt' for table 't1'
-(rows inserted=1)
-(id=2, dt="9999-12-31T235959.000 GMT")
-(rows inserted=1)
-(id=2, dt="9999-12-31T235959.000 GMT")
-(id=3, dt="9999-12-31T235959.999 GMT")
-[select * from t1] failed with rc 113 failed to convert sqlite to client datetime for field "dt"

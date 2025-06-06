@@ -1,3 +1,0 @@
-set user abcd
-set password abcd
-select * from test

@@ -1,3 +1,0 @@
-[CREATE INDEX a ON t(a) INCLUDE (e)] failed with rc -3 Unknown column 'e'.
-[CREATE INDEX a ON t(a) INCLUDE (b, e, c)] failed with rc -3 Unknown column 'e'.
-[CREATE INDEX a ON t(a) INCLUDE (b, e, c, a, f, g)] failed with rc -3 Unknown column 'e'.

@@ -1,2 +1,0 @@
-insert into t1 values(67.537370)
-select f as f from t1 where f = 67.537369

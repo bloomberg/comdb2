@@ -1,9 +1,0 @@
-[CREATE TABLE t1 (a INTEGER)] rc 0
-(filename='_comdb2_static_table.metalite.dta')
-(filename='sqlite_stat1.metalite.dta')
-(filename='sqlite_stat4.metalite.dta')
-(filename='t1.metalite.dta')
-[SELECT DISTINCT filename FROM comdb2_files WHERE filename LIKE '%metalite%'] rc 0
-[CREATE DEFAULT LUA CONSUMER q1 ON (TABLE t1 FOR INSERT)] rc 0
-(name='q1')
-[SELECT name FROM comdb2_procedures] rc 0

@@ -1,4 +1,0 @@
-This test case concerns having constraint violations while running Schemachange.
-
-There are two issues, one is failing schemachange if it detects a constraint violation while rebuilding, without any inserts.
-The other is failing schemachange if it detects a conflict when inserting or updating. 

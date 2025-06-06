@@ -1,5 +1,0 @@
-@bind CDB2_INTEGER 1 1
-@bind CDB2_INTEGER 2 2
-@bind CDB2_INTEGER 3 1
-@bind CDB2_INTEGER 4 1
-select 'one' as c1, comdb2_ctxinfo('parallel'), a from t where a=? or  a=? union all select 'two' as c1, comdb2_ctxinfo('parallel'), a from t where a=? and a=? order by c1

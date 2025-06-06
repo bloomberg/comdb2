@@ -1,2 +1,0 @@
-ssl_cert /tmp/san.crt
-ssl_key /tmp/san.key

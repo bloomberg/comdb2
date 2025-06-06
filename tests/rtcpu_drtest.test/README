@@ -1,2 +1,0 @@
-Verify that we wait-for-seqnum nodes which are dr-testing.  This verifies correct
-behavior for replicant_retry_on_not_durable 1.

@@ -1,1 +1,0 @@
-select * from t where id>2 order by id desc 

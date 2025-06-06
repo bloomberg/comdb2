@@ -1,7 +1,0 @@
-(rows inserted=1)
-(rows inserted=1)
-(i=1)
-(i=2)
-[select * from t1 where i in (select sleep(2))] failed with rc -107 query timed out
-(i=1)
-(i=2)

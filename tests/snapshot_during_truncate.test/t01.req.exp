@@ -1,7 +1,0 @@
-(out='pushing to logfile 2')
-done
-done
-done
-done
-[select count(*) from t] failed with rc 402 Client api should change nodes
-done

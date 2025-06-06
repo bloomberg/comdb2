@@ -1,1 +1,0 @@
-[SELECTV t1.x, t1.y FROM t1 UNION SELECTV t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y] failed with rc -1 cdb2_run_statement_typed_int: Cannot connect to db

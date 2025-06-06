@@ -1,7 +1,0 @@
-(rows inserted=1)
----------- Recommended Indexes --------------
-
-CREATE INDEX t3_idx_00000062 ON t3(b); -- stat1: 1 1
-
----------------------------------------------
-

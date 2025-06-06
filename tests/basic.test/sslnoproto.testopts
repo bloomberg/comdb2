@@ -1,2 +1,0 @@
-ssl_replicant_mode VERIFY_CA
-protobuf_connectmsg 0

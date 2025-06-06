@@ -1,2 +1,0 @@
-# make sure we have the ability to handle more than 8 queries simultaneously
-sqlenginepool maxt 16
