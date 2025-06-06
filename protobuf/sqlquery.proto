@@ -137,7 +137,7 @@ message CDB2_DISTTXN {
     optional int32 outrc = 8;
     optional string errmsg = 9;
   }
-  optional Disttxn disttxn = 2;
+  required Disttxn disttxn = 2;
 }
 
 message CDB2_QUERY {
