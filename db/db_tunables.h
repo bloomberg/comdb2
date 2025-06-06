@@ -71,6 +71,8 @@ REGISTER_TUNABLE("analyze_tbl_threads",
                  NULL, analyze_set_max_table_threads, NULL);
 REGISTER_TUNABLE("always_reload_analyze", "Reload analyze data on every query. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_always_reload_analyze, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("recreate_master_records_on_analyze", "On if analyze will force a dbopen.", TUNABLE_BOOLEAN,
+                 &gbl_recreate_master_recs_on_analyze, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("archive_on_init",
                  "Archive files with database extensions in the database directory "
                  "at the time of init. (Default: ON)",

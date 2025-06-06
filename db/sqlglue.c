@@ -1633,6 +1633,8 @@ done:
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 
+int gbl_recreate_master_recs_on_analyze = 0;
+
 /*
 ** Given a comdb2 index, this routine will decide whether to
 ** advertise its name as tablename_ix_ixnum or the new style
@@ -1647,7 +1649,10 @@ void sql_index_name_trans(char *namebuf, int len, struct schema *schema,
     form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
     if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
     snprintf(namebuf, len, "%s_ix_%d", db->tablename, ixnum);
-    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
+    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) {
+        gbl_recreate_master_recs_on_analyze = 1;
+        return;
+    }
     /* no stats - use new names */
     form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
 }
