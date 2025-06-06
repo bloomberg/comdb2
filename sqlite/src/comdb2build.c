@@ -8,6 +8,7 @@
 #include <string.h>
 #include <schemachange.h>
 #include <sc_lua.h>
+#include <sc_import.h>
 #include <comdb2.h>
 #include <bdb_api.h>
 #include <osqlsqlthr.h>
@@ -24,6 +25,7 @@
 #include <zlib.h>
 #include <shard_range.h>
 #include <logical_cron.h>
+#include <str_util.h>
 #include "cdb2_constants.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
@@ -44,6 +46,7 @@ extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
+int gbl_bulk_import_validation_werror = 0;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -117,19 +120,6 @@ enum table_chk_flags {
     ERROR_ON_TBL_NOT_FOUND = 1,
     ERROR_IGNORE = 2,
 };
-
-// Checks that a string is alphanumeric. Allowed non-alphanumeric characters can be passed in `exceptions`.
-// Pass emptystring to `exceptions` to pass no exceptions.
-int str_is_alphanumeric(const char * const name, const char * const exceptions)
-{
-    char c;
-    for (int i=0; (c = name[i]), c != '\0'; ++i) {
-        if (!isalnum(c) && !strchr(exceptions, c)) {
-            return 0;
-        }
-    }
-    return 1;
-}
 
 static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
@@ -1776,6 +1766,17 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 
     if (create_string_from_token(v, pParse, &src_tablename, nm3)) {
         goto err;
+    }
+
+    const enum bulk_import_validation_rc validation_rc =
+        validate_bulk_import_inputs(dst_tablename, NULL, srcdb, src_tablename);
+    if ((validation_rc == BULK_IMPORT_VALIDATION_FATAL)
+        || ((validation_rc == BULK_IMPORT_VALIDATION_WARN) && gbl_bulk_import_validation_werror)) {
+        setError(pParse, SQLITE_MISUSE,
+            "bulk import inputs have invalid characters");
+        goto err;
+    } else if (validation_rc == BULK_IMPORT_VALIDATION_WARN) {
+        logmsg(LOGMSG_WARN, "%s: bulk import inputs have invalid characters. Proceeding with import anyways.\n", __func__);
     }
 
     struct schema_change_type * const sc = new_schemachange_type();
