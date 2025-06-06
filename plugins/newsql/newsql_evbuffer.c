@@ -596,9 +596,8 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     struct sqlclntstate *clnt = &appdata->clnt;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery = appdata->query->sqlquery;
 
-    process_features(appdata);
-
     if (!sqlquery) goto err;
+    process_features(appdata);
     int have_ssl = clnt->features.have_ssl;
     int have_sqlite_fmt = clnt->features.have_sqlite_fmt;
     clnt->sqlite_row_format = have_sqlite_fmt;
