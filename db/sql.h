@@ -996,9 +996,11 @@ struct sqlclntstate {
     unsigned force_fdb_push_redirect : 1; // this should only be set if can_redirect_fdb is true
     unsigned force_fdb_push_remote : 1;
     unsigned return_long_column_names : 1; // if 0 then tunable decides
+    unsigned in_local_cache : 1;
+    unsigned evicted_appsock : 1;
+
     unsigned num_adjusted_column_name_length; // does not consider fastsql
     char **adjusted_column_names;
-    unsigned in_local_cache : 1;
 
     char *sqlengine_state_file;
     int sqlengine_state_line;
@@ -1679,9 +1681,7 @@ void add_lru_evbuffer(struct sqlclntstate *);
 void rem_lru_evbuffer(struct sqlclntstate *);
 void add_sql_evbuffer(struct sqlclntstate *);
 void rem_sql_evbuffer(struct sqlclntstate *);
-int add_appsock_connection_evbuffer(struct sqlclntstate *);
 void rem_appsock_connection_evbuffer(struct sqlclntstate *);
-void exhausted_appsock_connections(struct sqlclntstate *);
 void update_col_info(struct sql_col_info *info, int);
 void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);
 const char *sqlite3ErrStr(int);
