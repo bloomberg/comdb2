@@ -2675,6 +2675,10 @@ static int process_connect_message_proto(struct accept_info *a)
     evbuffer_drain(input, a->need);
     int bad = 0;
     char *missing = "Connect message missing field";
+    if (!c) {
+        logmsg(LOGMSG_ERROR, "Could not unpack connect message\n");
+        return -1;
+    }
     if (c->to_hostname)
         a->to_host = strdup(c->to_hostname);
     else {
