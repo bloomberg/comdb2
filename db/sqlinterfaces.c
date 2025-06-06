@@ -2661,8 +2661,7 @@ static void compare_estimate_cost(sqlite3_stmt *stmt)
         logmsg(LOGMSG_USER, "---------------------------\n");
 }
 
-static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                          int analyze_gen)
+static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt, int analyze_gen)
 {
     // if analyze is running, don't reload
     extern volatile int analyze_running_flag;
@@ -2727,7 +2726,9 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
         int ret;
         TRK;
         stmt_cache_reset(thd->stmt_cache);
+        clnt->loading_stat = 1;
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
+        clnt->loading_stat = 0;
         return ret;
     }
 
