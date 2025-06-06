@@ -2100,7 +2100,7 @@ static void do_enable_dist_heartbeats(int dummyfd, short what, void *data)
 
     check_dist_thd();
     if (dt->ev_hbeats)
-        abort();
+        return;
 
     dt->ev_hbeats = event_new(dist_base, -1, EV_PERSIST, dist_heartbeat, dt);
     if (!dt->ev_hbeats) {
