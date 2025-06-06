@@ -1126,6 +1126,19 @@ static dbtypes_enum sqlite_type_to_dbtype(int sqltype)
     }
 }
 
+static const char* dbtypestr(int dbtype) {
+#undef XMACRO_DBTYPES
+#define XMACRO_DBTYPES(type, typestr, unused1, unused2) \
+    case type: \
+        return typestr; \
+
+    switch (dbtype) {
+    DBTYPES
+    default:
+        return "???";
+    }
+}
+
 static void donate_stmt(SP sp, dbstmt_t *dbstmt)
 {
     sqlite3_stmt *stmt = dbstmt->stmt;
@@ -4109,6 +4122,7 @@ typedef struct {
 #define CONV_FLAG_UTF8_HEX 0x08
 #define CONV_FLAG_UTF8_MASK 0x0f
 #define CONV_FLAG_ANNOTATE 0x10
+#define CONV_FLAG_SPECIAL_FP 0x20
     unsigned flag;
 
 #define CONV_REASON_UTF8_FATAL 0x01
@@ -4152,7 +4166,17 @@ static int process_json_conv(Lua L, json_conv *conv)
             } else {
                 return -3;
             }
-        }
+        } else if (strcmp(key, "quote_special_fp_values") == 0) {
+                if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                    if (lua_toboolean(L, -2)) {
+                        conv->flag |= CONV_FLAG_SPECIAL_FP;
+                    }
+                    return 0;
+                } else {
+                    return -3;
+                }
+
+            }
     default:
         return -4;
     }
@@ -5554,6 +5578,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
 
     int tostr = 0; // 1->validate utf8   2->no validation
     int utf8_len;
+
     switch (dbtype) {
     case DBTYPES_LTABLE:
         if (is_array(L) && !get_sqlrow_stmt(L)) {
@@ -5573,7 +5598,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
         dbl = lua_tonumber(L, -1);
         integer = lua_tointeger(L, -1);
         v = (dbl == integer) ? cson_value_new_integer(integer)
-                             : cson_value_new_double(dbl);
+                             : cson_value_new_double(dbl, conv->flag & CONV_FLAG_SPECIAL_FP);
         break;
     case DBTYPES_LNIL:
         type = "nil";
@@ -5587,7 +5612,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
     case DBTYPES_REAL:
         type = "double";
         luabb_toreal(L, -1, &dbl);
-        v = cson_value_new_double(dbl);
+        v = cson_value_new_double(dbl, conv->flag & CONV_FLAG_SPECIAL_FP);
         break;
     case DBTYPES_LSTRING:
         type = "string";
