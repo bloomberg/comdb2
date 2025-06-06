@@ -1869,6 +1869,8 @@ static void decodeIntArray(
   }
 }
 
+char *mapped_index(const char *oldname);
+
 /*
 ** This callback is invoked once for each index when reading the
 ** sqlite_stat1 table.  
@@ -1907,6 +1909,20 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
   }else{
     pIndex = sqlite3FindIndex(pInfo->db, argv[1], pInfo->zDatabase);
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if ( pIndex==0 ) {
+      char *newName = mapped_index(argv[1]);
+      if ( newName!=0 ) {
+          pIndex = sqlite3FindIndex(pInfo->db, newName, pInfo->zDatabase);
+          if ( pIndex ) 
+              logmsg(LOGMSG_USER, "Mapped table %s sqlite-stat1 index %s to data in %s\n",
+                              argv[0], newName, argv[1]);
+      }
+  } else {
+      logmsg(LOGMSG_USER, "Found table %s sqlite-stat1 index %s without mapping\n",
+              argv[0], argv[1]);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   z = argv[2];
 
   if( pIndex ){
@@ -2234,7 +2250,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
   sqlite3_stmt *pStmt = 0;  /* An SQL statement being run */
   char *zSql;
   const char *zSql2 = "SELECT idx,neq,nlt,ndlt,sample,tbl FROM %Q.sqlite_stat4"
-                      " WHERE tbl not like 'cdb2.%%.sav';";
+                      " WHERE tbl not like 'cdb2.%%.sav' order by idx desc;";
 
   if( sqlite3FindTableCheckOnly(db, "sqlite_stat4", zDb)==0 ){
     return SQLITE_OK;
@@ -2257,6 +2273,20 @@ static int loadStat4(sqlite3 *db, const char *zDb){
     zIndex = (char *)sqlite3_column_text(pStmt, 0);
     if( zIndex==0 ) continue;
     pIdx = findIndexOrPrimaryKey(db, zIndex, zDb);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pIdx==0 ) {
+        char *newName = mapped_index(zIndex);
+        if ( newName!=0 ) {
+            pIdx = sqlite3FindIndex(db, newName, zDb);
+            if ( pIdx ) 
+                logmsg(LOGMSG_USER, "Mapped sqlite-stat4 index %s to data in %s\n",
+                              newName, zIndex);
+        }
+    } else {
+        logmsg(LOGMSG_USER, "Found sqlite-stat4 index %s without mapping\n",
+                zIndex);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pIdx==0 ) continue;
     if( pIdx->pKeyInfo==0 ){
       Parse parse;
@@ -2487,7 +2517,7 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     zSql = sqlite3MPrintf(db, 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        "SELECT tbl,idx,stat FROM %Q.sqlite_stat1 WHERE tbl not like 'cdb2.%%.sav'", sInfo.zDatabase);
+        "SELECT tbl,idx,stat FROM %Q.sqlite_stat1 WHERE tbl not like 'cdb2.%%.sav' order by idx desc", sInfo.zDatabase);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         "SELECT tbl,idx,stat FROM %Q.sqlite_stat1", sInfo.zDatabase);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
