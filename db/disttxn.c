@@ -1142,11 +1142,15 @@ void coordinator_resolve(const char *dist_txnid)
 
     /* txn disappeared? */
     if (!dtran) {
-        logmsg(LOGMSG_FATAL, "%s unable to find disttxn %s, aborting\n", __func__, dist_txnid);
+        logmsg(LOGMSG_ERROR, "%s unable to find disttxn %s, aborting\n", __func__, dist_txnid);
+#if DEBUG_DISTTXN
         abort();
+#endif
+        return;
+    } else {
+        dtran->state = DISTTXN_PROPAGATE_TIMEOUT;
+        dtran->resolved_time = comdb2_time_epochms();
     }
-    dtran->state = DISTTXN_PROPAGATE_TIMEOUT;
-    dtran->resolved_time = comdb2_time_epochms();
     Pthread_mutex_unlock(&dtran->lk);
     cleanup_dtran(dist_txnid);
 }
@@ -1169,8 +1173,11 @@ int coordinator_wait_propagate(const char *dist_txnid)
 
     /* Aborted before coordinator finished preparing .. */
     if (!dtran) {
-        logmsg(LOGMSG_FATAL, "%s unable to find disttxn %s, aborting\n", __func__, dist_txnid);
+        logmsg(LOGMSG_ERROR, "%s unable to find disttxn %s, aborting\n", __func__, dist_txnid);
+#if DEBUG_DISTTXN
         abort();
+#endif
+        return 0;
     }
 
     check_participant_propagate_timeout_lk(dtran);
@@ -1298,8 +1305,11 @@ static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcod
 
     /* Aborted before coordinator finished preparing .. */
     if (!dtran) {
-        logmsg(LOGMSG_FATAL, "%s unable to find disttxn %s, aborting\n", __func__, dist_txnid);
+        logmsg(LOGMSG_ERROR, "%s unable to find disttxn %s, aborting\n", __func__, dist_txnid);
+#if DEBUG_DISTTXN
         abort();
+#endif
+        return 0;
     }
 
     dtran->coordinator_local->status = PARTICIPANT_PREPARED;
@@ -1730,8 +1740,10 @@ static int participant_result(const char *dist_txnid, const char *dbname, const 
     /* Audit: TODO, remove this.. a participant should only give one answer, not 2 */
     if (!prepare_success) {
         if (transaction_has_committed(dist_txnid) == HAS_COMMITTED) {
-            logmsg(LOGMSG_FATAL, "%s committed an aborted dist-txnid %s\n", __func__, dist_txnid);
+            logmsg(LOGMSG_ERROR, "%s committed an aborted dist-txnid %s\n", __func__, dist_txnid);
+#if DEBUG_DISTTXN
             abort();
+#endif
         }
     }
 
@@ -2059,10 +2071,13 @@ int coordinator_aborted(const char *dist_txnid)
     Pthread_mutex_lock(&p->lk);
     Pthread_mutex_unlock(&part_lk);
     if (p->state == I_AM_COMMITTED) {
-        logmsg(LOGMSG_FATAL, "%s committed txn %s told to abort?\n", __func__, dist_txnid);
+        logmsg(LOGMSG_ERROR, "%s committed txn %s told to abort?\n", __func__, dist_txnid);
+#if DEBUG_DISTTXN
         abort();
+#endif
+    } else {
+        p->state = I_AM_ABORTED;
     }
-    p->state = I_AM_ABORTED;
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s line %d signaling existing participant %s\n", __func__, __LINE__, dist_txnid);
     }
