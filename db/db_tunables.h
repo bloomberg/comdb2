@@ -77,7 +77,7 @@ REGISTER_TUNABLE("archive_on_init",
                  TUNABLE_BOOLEAN, &gbl_archive_on_init, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("create_default_consumer_atomically",
-                 "Create default consumers atomically (default on)",
+                 "Create default consumers atomically (default off)",
                  TUNABLE_BOOLEAN, &gbl_create_default_consumer_atomically, 1, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
