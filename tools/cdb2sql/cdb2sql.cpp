@@ -2009,61 +2009,6 @@ static inline int dbtype_valid(char *type)
     return 0;
 }
 
-void send_cancel_cnonce(const char *cnonce)
-{
-    if (!gbl_in_stmt) return;
-    cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
-    int rc;
-    int flags = 0;
-    char *type = dbtype;
-
-    if (dbhostname) {
-        flags |= CDB2_DIRECT_CPU;
-        type = dbhostname;
-    }
-
-    if (isadmin)
-        flags |= CDB2_ADMIN;
-
-    rc = cdb2_open(&cdb2h_2, dbname, type, flags);
-    if (rc) {
-        if (debug_trace)
-            fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
-        cdb2_close(cdb2h_2);
-        return;
-    }
-    char sql[256];
-    snprintf(sql, 255, "exec procedure sys.cmd.send('sql cancelcnonce %s')",
-             cnonce);
-    if (debug_trace) printf("Cancel sql string '%s'\n", sql);
-    rc = cdb2_run_statement(cdb2h_2, sql);
-    if (!rc)
-        gbl_sent_cancel_cnonce = 1;
-    else if (debug_trace)
-        fprintf(stderr, "failed to cancel rc %d with '%s'\n", rc, sql);
-    cdb2_close(cdb2h_2);
-}
-
-/* If ctrl_c was pressed to clear existing line and go to new line
- * If we see two ctrl_c in a row we exit.
- * However, after a ctrl_c if user typed something
- * (rl_line_buffer is not empty) and then issue a ctrl_c then dont exit.
- */
-static void int_handler(int signum)
-{
-    if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
-        printf("Requesting to cancel query (press Ctrl-C to exit program). "
-               "Please wait...\n");
-    if (gbl_sent_cancel_cnonce) exit(1); // pressed ctrl-c again
-    if (!gbl_in_stmt) {
-        rl_crlf();
-        rl_on_new_line();
-        rl_replace_line("", 0);
-        rl_redisplay();
-    }
-    send_cancel_cnonce(cdb2_cnonce(cdb2h));
-}
-
 // Processes all statements as delimited blocks.
 // TODO: Put in its own file
 class BlockInputProcessor {
@@ -2485,9 +2430,6 @@ int main(int argc, char *argv[])
     if (istty) {
         rl_attempted_completion_function = my_completion;
         load_readline_history();
-        struct sigaction sact = {0};
-        sact.sa_handler = int_handler;
-        sigaction(SIGINT, &sact, NULL);
     }
 
     if (allow_multiline_stmts) {
