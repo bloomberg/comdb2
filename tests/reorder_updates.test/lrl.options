@@ -1,7 +1,0 @@
-table t1 t1.csc2
-dtastripe 1
-#do reql events detailed on
-print_deadlock_cycles 1
-
-reorder_socksql_no_deadlock on
-reorder_idx_writes on

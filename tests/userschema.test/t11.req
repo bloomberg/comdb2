@@ -1,5 +1,0 @@
-# sqlite system tables/modules must not be prefixed with user name
-set user mohit
-set password mohit
-select count(*) != 0 as pass from comdb2_tables;
-select * from generate_series(1, 10) order by 1;

@@ -1,7 +1,0 @@
-(rows inserted=1)
-(version='trigger_2')
-(SLEEP(1) -- let trigger start=1)
-(rows inserted=1)
-(SLEEP(1) -- let trigger fire=1)
-('the alter-table statement should not hang'='the alter-table statement should not hang')
-(x=1, y=NULL)

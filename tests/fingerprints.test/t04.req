@@ -1,1 +1,0 @@
-SELECT x FROM fp1 ORDER BY x;

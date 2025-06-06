@@ -1,6 +1,0 @@
-Test access via user authentication.
-
-tests t3 through t6:
-user abcd with password abcd gets table test@abcd, with values 1
-
-user dcba with password dcba gets table test@dcba, with values 2

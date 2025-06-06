@@ -1,2 +1,0 @@
-This test executes a sequence of remote selects with and without data, similar to curmoves test, and introduces a random I/O generator for the reads over the remote socket on both ends of the remsql session.
-Goal is to mask singular I/O errors, or fail gracefully on consistently failing networks.

@@ -1,7 +1,0 @@
-(user='---------- user1: OP user ----------')
-(rows inserted=1)
-(user='---------- user2: non-OP user ----------')
-(i=1)
-(user='---------- user1: OP user ----------')
-(user='---------- user2: non-OP user ----------')
-[select * from t1] failed with rc -106 Read access denied to t1 for user user2 bdberr=15

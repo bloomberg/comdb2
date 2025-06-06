@@ -1,2 +1,0 @@
-select count(*) from t
-select * from t

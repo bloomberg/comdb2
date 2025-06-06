@@ -1,8 +1,0 @@
-Test the usage of the db with a very long name < 64 characters 
-(which is the max name length that we allow). 
-If db has a longer name, it will not start.
-
-For now we start a new pmux server on port 12345 in order
-to not break testing with portmux.
-
-The runit script is copied from basic.test/

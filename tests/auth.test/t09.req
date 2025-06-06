@@ -1,5 +1,0 @@
-set user user2
-set password new_password
-SELECT 1
-SELECT DISTINCT candidate FROM comdb2_completion('')
-SELECT DISTINCT username FROM comdb2_users

@@ -1,4 +1,0 @@
-set user user1
-set password password1
-select 'user1'
-put authentication off

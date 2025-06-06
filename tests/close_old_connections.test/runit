@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-pfx=${TESTSBUILDDIR:-../../build/tests/tools}
-exec ${pfx}/close_old_connections

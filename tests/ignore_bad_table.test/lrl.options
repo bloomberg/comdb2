@@ -1,3 +1,0 @@
-do reql events off
-fingerprint_queries off
-setattr ignore_bad_table 1

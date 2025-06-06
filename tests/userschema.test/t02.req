@@ -1,5 +1,0 @@
-set user mohit
-set password mohit
-put password 'abcd' for 'abcd'
-put password 'dcba' for 'dcba'
-select * from comdb2_users

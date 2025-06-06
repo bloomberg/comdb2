@@ -1,4 +1,0 @@
-Test moving log files to backup directory (instead of being deleted).
-Start a clustered test and insert enough data to have logs roll,
-set a low blkseq holding time, so the log files will be moved to
-the backup directory specified in the lrl file.

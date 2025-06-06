@@ -1,6 +1,0 @@
-schema
-{
-   int  id null=yes
-   cstring a[1000] dbstore="abcdefghi"
-}
-

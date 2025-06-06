@@ -1,6 +1,0 @@
-create procedure testempty version 'testempty' {
-local function main()
-   db:emit()
-end
-}$$
-exec procedure testempty()

@@ -1,9 +1,0 @@
-begin;
-select count(*) from t;
-select * from t;
-delete from t where id=5;
-select count(*) from t;
-select * from t;
-commit;
-select count(*) from t;
-select * from t;

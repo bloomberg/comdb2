@@ -1,7 +1,0 @@
-This test case concerns updating fields, especially blobs while schemachange is underway.
-
-There are two issues, one is failing schemachange if the blob was null and now is not anymore.
-
-The second is far more concerning, updating a record while there SC going on, triggers a codepath
-which creates a new genid if record size is now larger than old record, thus the blobs and indices
-will contain bad genid compared to the data file--the db would be corrupt.

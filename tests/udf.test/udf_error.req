@@ -1,7 +1,0 @@
-CREATE PROCEDURE udf_error VERSION 'udf test' {
-local function udf_error()
-    return db:udf_error('my custom error string')
-end
-}$$
-CREATE LUA SCALAR FUNCTION udf_error
-SELECT udf_error()

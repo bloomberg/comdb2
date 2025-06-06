@@ -1,7 +1,0 @@
-schema
-{
-	int iold null=yes
-	int inew null=yes
-	cstring type[4]
-	cstring added_by[10]
-}

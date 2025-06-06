@@ -1,1 +1,0 @@
-This tests updates and reads while rolling partitions using a time-based partitioning with test period of 2 minutes.

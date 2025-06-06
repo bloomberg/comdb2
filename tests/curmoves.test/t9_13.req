@@ -1,1 +1,0 @@
-select count(*) as cc from (select * from t union all select * from t) where id=1

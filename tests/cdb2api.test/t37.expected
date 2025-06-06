@@ -1,2 +1,0 @@
-(version='def')
-[exec procedure dyn_lib()] failed with rc -3 [require 'torch'...]:2: Global variables not allowed (require).

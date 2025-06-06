@@ -1,2 +1,0 @@
-This test ensures index entries have correct ordering by inserting lots of
-rows in parrallel in a table with a dup index.

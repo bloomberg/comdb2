@@ -1,9 +1,0 @@
-This test targets the distributed nature of remote sql schema.
-There are three levels of information:
-V1 = schema in the remote server for the targetted remote table
-V2 = cached schema in the source server
-V3 = cached schema in any sqlite engine in the source server
-There are two types of conflicts:
-L1 = differences between V2 and V1 (direct)
-L2 = differences between V3 and V2 (indirect)
-

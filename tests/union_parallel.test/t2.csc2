@@ -1,6 +1,0 @@
-schema
-	{
-		int c null = yes 
-		int d null = yes 
-	}
-

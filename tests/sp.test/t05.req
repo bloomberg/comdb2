@@ -1,9 +1,0 @@
-create procedure json_demo{
-    local function main(j)
-        local json = db:json_to_table(j)
-        local str = db:table_to_json(json)
-        db:emit(str)
-end
-}$$
-
-exec procedure json_demo('{"aaa":{"bbb":{"ccc":{"ddd":{"eee":[{"fff":{"ggg":[{"hhh":{"iii":[{"jjj":{"kkk":[{"lll":{"mmm":[{"nnn":{"ooo":{"ppp":[{"qqq":"rrr"}]}}}]}}]}}]}}]}}]}}}}}');

@@ -1,2 +1,0 @@
-# dump sql statements blocking replication for more than a second
-rep_process_pstack_time 1

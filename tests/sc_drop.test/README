@@ -1,2 +1,0 @@
-Create and drop table while there are write operations done to 
-that table and other tables at the same time. 

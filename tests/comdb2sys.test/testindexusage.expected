@@ -1,2 +1,0 @@
-(table_name='ixtest', ix_num=0, csc_name='IXTEST_A', sql_name='$IXTEST_A_B7CCCE2', steps=4955, non_sql_steps=0)
-(table_name='ixtest', ix_num=1, csc_name='IXTEST_B', sql_name='$IXTEST_B_92759D58', steps=991, non_sql_steps=0)

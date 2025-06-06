@@ -1,2 +1,0 @@
-This test performs alters (by making the schema larger) while we are inserting. 
-The issue previously was that the buffer being larger was not compatible and insert would fail. The test makes sure that the insert do succeed because the DB (replicant node) should retry (replay the transaction) when master has returned ERR_TRAN_RETRY.

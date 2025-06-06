@@ -1,4 +1,0 @@
-SELECT * FROM 'sqlite_stat1' LIMIT 0 -- should show table name
-SELECT * FROM comdb2_transaction_logs('{1:0}') LIMIT 0 -- should not show arguments for hidden columns
-SELECT fingerprint, normalized_sql FROM comdb2_fingerprints WHERE fingerprint='002dcfc6d511a5d625fa142f7f0df9f4'
-SELECT fingerprint, normalized_sql FROM comdb2_fingerprints WHERE fingerprint='c30b0528f036eab64a7953ed7c55af40'

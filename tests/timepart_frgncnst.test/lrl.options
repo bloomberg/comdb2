@@ -1,4 +1,0 @@
-table t t.csc2
-table t2 t2.csc2
-logmsg level user
-setattr DEBUG_TIMEPART_CRON 1

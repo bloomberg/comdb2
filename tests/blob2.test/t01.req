@@ -1,3 +1,0 @@
-insert into t1 values(4, NULL, x'1234abcd')
-insert into t1 values(5, x'1234abcd', x'1234abcd')
-select length(data), length(inline_data) from t1 order by id

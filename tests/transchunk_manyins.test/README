@@ -1,1 +1,0 @@
-This test checks the "SET TRANSACTION CHUNK N" effect on bulk insert loads, when the inserts are individual statements.

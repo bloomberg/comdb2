@@ -1,7 +1,0 @@
-create table t14 {
-schema
-{
-    int i
-    datetime     dt dbstore="1981-08-30T23:59:59.987" /* missing tz */
-}
-}$$

@@ -1,1 +1,0 @@
-select * from t4 union all select * from t3 limit 10-2

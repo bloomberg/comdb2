@@ -1,2 +1,0 @@
-This test performs inserts/updates/deletes and verifies that each write
-was successful by connecting to all the nodes in the cluster.

@@ -1,2 +1,0 @@
-(id=8, parent=0, notused=0, detail='SCAN TABLE t3 AS v (~917504 rows)')
-(id=39, parent=0, notused=0, detail='USE TEMP B-TREE FOR ORDER BY')

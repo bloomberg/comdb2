@@ -1,8 +1,0 @@
-create procedure iowrite version 'def' {
-local function main()
-    local file = io.open("/tmp/a.txt", "w")
-end
-}$$
-put default procedure iowrite 'def'
-
-exec procedure iowrite()

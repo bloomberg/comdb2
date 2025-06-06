@@ -1,7 +1,0 @@
-schema
-	{
-		int h null = yes 
-		int i null = yes 
-		vutf8 j null = yes 
-	}
-

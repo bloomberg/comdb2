@@ -1,6 +1,0 @@
-insert into t(a,b) values (1, 100)
-insert into t(a,b) values (2, 200)
-insert into t(a,b) values (3, 300)
-# inner join
-select a from (select a1.a from t as a1, t as a2 on a1.a=a2.a union all select a1.a from t as a1, t as a2 on a1.a=a2.a) order by a
-delete from t

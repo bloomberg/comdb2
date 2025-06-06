@@ -1,8 +1,0 @@
-select i, j, k, v from t
-select i, j, k, v from t order by i
-
-insert into t(i, j, k, v) values(30, 3405691582, 30, 'thirty')
-insert into t(i, j) values(31, 3735928559)
-
-select i, j, k, v from t
-select i, j, k, v from t order by i

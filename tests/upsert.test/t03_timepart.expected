@@ -1,6 +1,0 @@
-(part='---------------------------------- PART #01 ----------------------------------')
-(SLEEP(5)=5)
-(rows inserted=1)
-[INSERT INTO t1_tp VALUES(1) ON CONFLICT DO NOTHING] failed with rc -3 UPSERT not supported on partition or view "t1_tp"
-[INSERT INTO t1_tp VALUES(1) ON CONFLICT(i) DO UPDATE SET i = i+1] failed with rc -3 UPSERT not supported on partition or view "t1_tp"
-(i=1)

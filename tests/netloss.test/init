@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-
-exec >/log/$(hostname).log 2>&1
-
-pmux -l &
-sleep 1
-/opt/bb/bin/comdb2 testdb 

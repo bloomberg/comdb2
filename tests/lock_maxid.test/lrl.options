@@ -1,6 +1,0 @@
-table t t.csc2
-
-dtastripe 4
-appsockslimit 10
-maxappsockslimit 10
-db_lock_maxid_override 524287

@@ -1,8 +1,0 @@
-insert into t1(i) values(5)
-insert into t1(i) values(4)
-insert into t1(i) values(3)
-insert into t1(i) values(2)
-insert into t1(i) values(1)
-select i from t1 order by d1, i desc
-select i from t1 order by d2
-select case  when (cast(now() - d1 as int)) > 120 then 1 else 0 end as diff from t1

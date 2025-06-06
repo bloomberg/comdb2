@@ -1,4 +1,0 @@
-schema
-{
-    byte dummy[1]
-}

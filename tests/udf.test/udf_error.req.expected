@@ -1,2 +1,0 @@
-udf test
-[SELECT udf_error()] failed with rc 300 [return db:udf_error('my custom ...]:3: my custom error string

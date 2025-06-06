@@ -1,4 +1,0 @@
-table t1 alltypes.csc2
-do reql events on
-do reql events detailed on
-reorder_idx_writes on

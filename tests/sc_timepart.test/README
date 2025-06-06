@@ -1,2 +1,0 @@
-This tests updates and reads while rolling partitions using a time-based partitioning with test period of 2 minutes.
-In the middle of all this, it runs a schema change for all tables of the partition.

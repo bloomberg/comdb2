@@ -1,1 +1,0 @@
-[insert into t values (2, x'2222')] failed with rc 299 add key constraint duplicate key 'ID' on table 't' index 0

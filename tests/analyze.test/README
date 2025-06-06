@@ -1,6 +1,0 @@
-Test analyze ability and consistency of the db.
-
-
-test t09 tests whether an empty table will be analyzed
-depending on setting analyze_empty_tables. Even though t09 is
-empty, it should still show in stat1 as having 1 element.

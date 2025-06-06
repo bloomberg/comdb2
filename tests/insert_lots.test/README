@@ -1,5 +1,0 @@
-Insert many rows to db from multithreaded writer, 
-and make sure that they all succeeded.
-
-In this testcast, because there are lots of rows, we will be testing 
-verify ability to cancel processing when client disconnects.

@@ -1,3 +1,0 @@
-setattr COMMITDELAYMAX 2000
-commit_delay_on_copy_ms 2000
-commit_delay_trace 1

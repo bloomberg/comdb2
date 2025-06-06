@@ -1,4 +1,0 @@
-poll_in_pgfree_recover on
-online_recovery off
-setattr REP_PROCESSORS 4
-setattr REP_WORKERS 8

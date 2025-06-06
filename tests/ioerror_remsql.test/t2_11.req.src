@@ -1,2 +1,0 @@
-select count(*) from t where id<5
-select * from t where id<5

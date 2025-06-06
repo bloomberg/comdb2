@@ -1,3 +1,0 @@
-Testing that we can rebuild and alter existing tables with tolerance of 
-broken_max_rec_sz more than the limit COMDB2_MAX_RECORD_SIZE (16k)
-but that we can't add a new tablew with that size. 

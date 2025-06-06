@@ -1,7 +1,0 @@
-Unit tests for cdb2api are located either here (i.e. partial executables) or in `tests/tools/cdb2api_unit.c`
-
-Use the following commands to run these tests locally.
-```
-cd ${TESTSBUILDDIR}/cdb2api_unit.test && make
-./${TESTSBUILDDIR}/tools/cdb2api_unit
-```

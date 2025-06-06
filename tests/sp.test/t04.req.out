@@ -1,2 +1,0 @@
-(version='testempty')
-[exec procedure testempty()] failed with rc -3 [db:emit()...]:3: calling 'emit' on bad self (no row to send back)

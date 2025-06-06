@@ -1,5 +1,0 @@
-[select 1] failed with rc -1 cdb2_run_statement_typed_int: Cannot connect to db
-(2=2)
-(name='sqlite_stat1')
-(name='sqlite_stat4')
-[SELECT name FROM sqlite_master ORDER BY name] failed with rc -106 authentication data not found

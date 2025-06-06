@@ -1,4 +1,0 @@
-init_with_queue_ondisk_header off
-init_with_queue_compr off
-init_with_queue_persistent_sequence off
-debug_queuedb on

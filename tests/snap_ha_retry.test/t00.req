@@ -1,8 +1,0 @@
-set transaction snapshot isolation
-set HASQL on
-begin
-insert into t1 values(122,1)
-insert into t1 values(133,1)
-disconnect
-insert into t1 values(144,1)
-commit

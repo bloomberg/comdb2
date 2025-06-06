@@ -1,7 +1,0 @@
-schema {
-    cstring s[33] dbstore={hex(GUID())}
-    datetime t dbstore={now()} null=yes
-    datetime t3 dbstore={now()} null=yes
-    datetime t4 dbstore={now()} null=yes
-    cstring s2[33] dbstore={hex(GUID())} null=yes
-}
