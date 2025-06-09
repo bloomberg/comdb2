@@ -1846,7 +1846,7 @@ int do_import(struct ireq *iq, struct schema_change_type *sc, tran_type *tran)
 
     const char *my_tier = get_my_mach_class_str();
     const int cmd_size = snprintf(NULL, 0,
-        "%s --import --lrl %s/import.lrl --dir %s --tables %s --src %s --my-tier %s",
+        "%s --import --lrl %s/import.lrl --dir %s --tables '%s' --src %s --my-tier %s",
         exe, tmp_db_dir, tmp_db_dir, src_tablename, srcdb, my_tier)
         + 1;
     command = malloc(cmd_size);
@@ -1857,7 +1857,7 @@ int do_import(struct ireq *iq, struct schema_change_type *sc, tran_type *tran)
     }
 
     sprintf(command,
-        "%s --import --lrl %s/import.lrl --dir %s --tables %s --src %s --my-tier %s",
+        "%s --import --lrl %s/import.lrl --dir %s --tables '%s' --src %s --my-tier %s",
          exe, tmp_db_dir, tmp_db_dir, src_tablename, srcdb, my_tier);
 
     rc = system(command);
