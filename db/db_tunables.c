@@ -579,6 +579,7 @@ extern int gbl_sql_recover_time;
 extern int gbl_legacy_requests_verbose;
 extern int gbl_long_request_ms;
 extern int gbl_comdb2_oplog_preserve_seqno;
+extern int gbl_nonodh_queue_scan_limit;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);

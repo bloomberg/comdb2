@@ -2540,4 +2540,5 @@ REGISTER_TUNABLE("iam_dbname",
 REGISTER_TUNABLE("inproc_conn_ttl", "Close in-process cached connections after this many seconds of inactivity (Default: 10s)",
                  TUNABLE_INTEGER, &gbl_inproc_conn_ttl, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("comdb2_oplog_preserve_seqno", "Preserve max value of the seqno in llmeta", TUNABLE_BOOLEAN, &gbl_comdb2_oplog_preserve_seqno, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("queue_nonodh_scan_limit", "For comdb2_queues, stop queue scan at this depth (Default: 10000)", TUNABLE_INTEGER, &gbl_nonodh_queue_scan_limit, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

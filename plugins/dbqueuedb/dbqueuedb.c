@@ -522,6 +522,7 @@ static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
     return BDB_QUEUE_WALK_CONTINUE;
 }
 
+int gbl_nonodh_queue_scan_limit = 10000;
 static int stat_callback(int consumern, size_t length,
                                  unsigned int epoch, void *userptr)
 {
@@ -537,6 +538,8 @@ static int stat_callback(int consumern, size_t length,
         }
         stats[consumern].has_stuff = 1;
         stats[consumern].depth++;
+        if ((gbl_nonodh_queue_scan_limit > 0)  && (stats[consumern].depth == gbl_nonodh_queue_scan_limit))
+            return BDB_QUEUE_WALK_STOP;
     }
 
     return BDB_QUEUE_WALK_CONTINUE;
