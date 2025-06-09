@@ -773,6 +773,7 @@
 (name='qscanmode', description='Enables queue scan mode optimisation.', type='BOOLEAN', value='OFF', read_only='N')
 (name='query_plan_percentage', description='Alarm if the average cost per row of current query plan is n percent above the cost for different query plan. (Default: 50)', type='DOUBLE', value='50', read_only='N')
 (name='query_plans', description='Keep track of query plans and their costs for each query', type='BOOLEAN', value='ON', read_only='N')
+(name='queue_nonodh_scan_limit', description='For comdb2_queues, stop queue scan at this depth (Default: 10000)', type='INTEGER', value='10000', read_only='N')
 (name='queuedb_file_interval', description='Check on this interval each queuedb against its configured maximum file size. (Default: 60000ms)', type='INTEGER', value='60000', read_only='Y')
 (name='queuedb_file_threshold', description='Maximum queuedb file size (in MB) before enqueueing to the alternate file.  (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='queuedb_genid_filename', description='Use genid in queuedb filenames.  (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
