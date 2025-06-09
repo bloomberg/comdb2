@@ -299,6 +299,23 @@ function test_feature_tunable() {
 	)
 }
 
+function test_import_against_table_with_dollar_char() {
+	(
+		# Given
+		local dst_tbl=foo src_tbl='$table'
+		query_dst_db "create table $dst_tbl(i int)"
+		query_src_db "create table '"$src_tbl"'(i int)"
+		trap "query_dst_db 'drop table $dst_tbl';
+			  query_src_db 'drop table '\''$src_tbl'\'" EXIT
+
+		# When
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.'"$src_tbl"'"
+
+		# Then
+		(( $? == 0 ))
+	)
+}
+
 function test_resume_is_blocked() {
 	(
 		# Given
