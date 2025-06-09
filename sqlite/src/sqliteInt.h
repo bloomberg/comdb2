@@ -3398,20 +3398,26 @@ struct Parse {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #if NODEBUG 
 #define SET_CURSOR_RECORDING(p,i)      \
-   (p)->recording[(i)/sizeof(int)] |= (1<<(i)%sizeof(int))
+   if ((i) < MAX_CURSOR_IDS)
+     (p)->recording[(i)/sizeof(int)] |= (1<<(i)%sizeof(int))
 #define CLR_CURSOR_RECORDING(p,i)      \
-   (p)->recording[(i)/sizeof(int)] &= ~(1<<(i)%sizeof(int))
+   if ((i) < MAX_CURSOR_IDS)
+     (p)->recording[(i)/sizeof(int)] &= ~(1<<(i)%sizeof(int))
 #define GET_CURSOR_RECORDING(p,i)      \
-   ((p)->recording[(i)/sizeof(int)] & (1<<(i)%sizeof(int)))
+   (((i) < MAX_CURSOR_IDS) ?
+     ((p)->recording[(i)/sizeof(int)] & (1<<(i)%sizeof(int))) : 0)
 #else
 static void SET_CURSOR_RECORDING(Parse *p, int i){
-  (p)->recording[(i)/sizeof(int)] |= (1<<(i)%sizeof(int));
+  if ((i) < MAX_CURSOR_IDS)
+    (p)->recording[(i)/sizeof(int)] |= (1<<(i)%sizeof(int));
 }
 static void CLR_CURSOR_RECORDING(Parse *p, int i){
-  (p)->recording[(i)/sizeof(int)] &= ~(1<<(i)%sizeof(int));
+  if ((i) < MAX_CURSOR_IDS)
+    (p)->recording[(i)/sizeof(int)] &= ~(1<<(i)%sizeof(int));
 }
 static int GET_CURSOR_RECORDING(Parse *p, int i){
-  return ((p)->recording[(i)/sizeof(int)] & (1<<(i)%sizeof(int)));
+  return ((i) < MAX_CURSOR_IDS) ?
+    ((p)->recording[(i)/sizeof(int)] & (1<<(i)%sizeof(int))) : 0;
 }
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -4655,6 +4655,13 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList){
   int i;
   struct SrcList_item *pItem;
   assert(pList || pParse->db->mallocFailed );
+
+  if (is_recording && (pList->nSrc + pParse->nTab) >= MAX_CURSOR_IDS) {
+    sqlite3ErrorMsg(pParse, "selectv requires too many cursors %d max %d",
+            pList->nSrc + pParse->nTab, MAX_CURSOR_IDS);
+    return ;
+  }
+
   if( pList ){
     for(i=0, pItem=pList->a; i<pList->nSrc; i++, pItem++){
       if( pItem->iCursor>=0 ) break;
