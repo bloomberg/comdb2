@@ -1,2 +1,3 @@
 table t1 t1.csc2
 table t2 t2.csc2
+forbid_remote_repopnewlrl off
