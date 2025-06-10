@@ -35,5 +35,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
 
 int do_schema_change_tran(sc_arg_t *);
 int do_schema_change_tran_thd(sc_arg_t *);
+void do_schema_change_tran_thd_thdpool_wrapper(struct thdpool *pool, void *work, void *thddata, int op);
 int do_schema_change_locked(struct schema_change_type *, void *tran);
+void do_schema_change_locked_thdpool_wrapper(struct thdpool *pool, void *work, void *thddata, int op);
 #endif

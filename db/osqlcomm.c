@@ -6563,8 +6563,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.start = 1; /* first shard is already there */
         arg.pos = 0; /* reset this so we do not set publish on additional shards */
     }
-    /* should we serialize ? */
-    arg.s->nothrevent = sc->partition.u.tpt.retention > gbl_dohsql_sc_max_threads;
+    arg.s->nothrevent = 0;
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
