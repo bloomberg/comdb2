@@ -4189,9 +4189,8 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-        if (!gbl_legacy_defaults)
-            if (init_sqlite_tables(thedb))
-                return -1;
+        if (!gbl_legacy_defaults && init_sqlite_tables(thedb))
+            return -1;
     } else if (thedb->num_dbs != 0) {
         /* if we are using low level meta table and this isn't the create
          * pass, we shouldn't see any table definitions in the lrl. they
@@ -5714,6 +5713,16 @@ void exec_tool(int argc, char *argv[])
     }
 }
 
+static void warn_if_any_table_name_is_invalid()
+{
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        const char * const tablename = thedb->dbs[i]->tablename;
+        if (!str_is_alphanumeric(tablename, NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME)) {
+            logmsg(LOGMSG_WARN, "TABLE NAME IS ILLEGAL: '%s'\n", tablename);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -5913,6 +5922,8 @@ int main(int argc, char **argv)
             __FILE__, __LINE__);
         exit(1);
     }
+
+    warn_if_any_table_name_is_invalid();
 
     logmsg(LOGMSG_USER, "hostname:%s  cname:%s\n", gbl_myhostname, gbl_mycname);
     logmsg(LOGMSG_USER, "I AM READY.\n");

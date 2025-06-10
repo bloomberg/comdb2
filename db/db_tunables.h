@@ -374,6 +374,9 @@ REGISTER_TUNABLE("disallow_portmux_route", "Disables 'allow_portmux_route'",
                  NULL);
 REGISTER_TUNABLE("abort_on_unfound_txn", "Abort if we cannot find a txn for a thread.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_unfound_txn, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_check_for_illegal_chars_in_table_names", "Don't check for illegal chars"
+                 " in table names (Default: off)", TUNABLE_BOOLEAN, &gbl_dont_check_for_illegal_chars_in_table_names,
+                 INTERNAL | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_abort_on_in_use_rqid", "Disable 'abort_on_in_use_rqid'",
                  TUNABLE_BOOLEAN, &gbl_abort_on_clear_inuse_rqid,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);

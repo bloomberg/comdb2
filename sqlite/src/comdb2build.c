@@ -46,6 +46,7 @@ extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
+int gbl_dont_check_for_illegal_chars_in_table_names = 0;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -145,6 +146,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
+    if (gbl_dont_check_for_illegal_chars_in_table_names) { check_for_illegal_chars = 0; }
     if (check_for_illegal_chars && !str_is_alphanumeric(table_name, NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME)) {
         rc = setError(pParse, SQLITE_MISUSE, "table name has illegal characters");
         goto cleanup;
