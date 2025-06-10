@@ -382,6 +382,7 @@
 (name='flush_replicant_on_prepare', description='Flush replicant log on prepare. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_scan_dbs_first', description='Don't hold bufpool mutex while opening files for flush', type='BOOLEAN', value='OFF', read_only='N')
 (name='forbid_remote_admin', description='Forbid non-local admin requests.  (Default: on)', type='BOOLEAN', value='OFF', read_only='N')
+(name='forbid_remote_repopnewlrl', description='Forbid repopnewlrl requests from remote machines.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='forbid_ulonglong', description='Disallow u_longlong. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='force_directio', description='Force directio on all file opens if set on environment (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='force_highslot', description='', type='BOOLEAN', value='OFF', read_only='Y')

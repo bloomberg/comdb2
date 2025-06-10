@@ -17,6 +17,9 @@
 #include "comdb2.h"
 #include "comdb2_plugin.h"
 #include "comdb2_appsock.h"
+#include "net.h"
+
+int gbl_forbid_remote_repopnewlrl = 1;
 
 static int handle_repopnewlrl_request(comdb2_appsock_arg_t *arg)
 {
@@ -25,6 +28,13 @@ static int handle_repopnewlrl_request(comdb2_appsock_arg_t *arg)
     int rc;
 
     sb = arg->sb;
+
+    if (gbl_forbid_remote_repopnewlrl && !is_connection_local(sb)) {
+        logmsg(LOGMSG_ERROR, "%s: rejecting remote repopnewlrl request\n",
+                __func__);
+        arg->error = -1;
+        return APPSOCK_RETURN_ERR;
+    }
 
     if (((rc = sbuf2gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
         (lrl_fname_out[rc - 1] != '\n')) {

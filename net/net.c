@@ -2610,14 +2610,13 @@ int is_connection_local(SBUF2 *sb) {
     int rc = getpeername(sbuf2fileno(sb), (struct sockaddr *)&peeraddr, &pl);
     if (rc) {
         // default to not local on error
-        return 1;
+        return 0;
     }
-    char paddr[64];
     char fromaddr[64];
     findpeer(sbuf2fileno(sb), fromaddr, sizeof(fromaddr));
     // allow loopback or same address as us
     if (peeraddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
-        return 0;
+        return 1;
 
     // not loopback - see if it came from us
     struct addrinfo *res = NULL, hints = {0}, *r;
@@ -2632,7 +2631,6 @@ int is_connection_local(SBUF2 *sb) {
     int islocal = 0;
     for (r = res; r != NULL; r = r->ai_next) {
         struct in_addr addr = ((struct sockaddr_in *)r->ai_addr)->sin_addr;
-        inet_ntop(((struct sockaddr_in *)r->ai_addr)->sin_family, &addr, paddr, sizeof(paddr));
         if (addr.s_addr == peeraddr.sin_addr.s_addr) {
             islocal = 1;
             break;
