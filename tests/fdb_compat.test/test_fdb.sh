@@ -26,6 +26,7 @@ mach=`cdb2sql ${S_CDB2_OPTIONS} --tabs $a_dbname default "SELECT comdb2_host()"`
 
 S_SQLT="cdb2sql ${S_CDB2_OPTIONS} --tabs --host $mach $a_dbname"
 S_SQL="cdb2sql ${S_CDB2_OPTIONS} --host $mach $a_dbname"
+S_SQLC="${BUILDDIR}/tools/cdb2sql/cdb2sql --cost ${S_CDB2_OPTIONS} --host $mach $a_dbname"
 R_SQLT="cdb2sql ${R_CDB2_OPTIONS} --tabs --host $mach $a_rdbname"
 R_SQL="cdb2sql ${R_CDB2_OPTIONS} --host $mach $a_rdbname"
 
@@ -319,6 +320,29 @@ if [[ $? != 0 ]] ; then
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
 check
+
+header 12 "check cost"
+$R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
+$S_SQLC "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+$S_SQLC "update LOCAL_${a_rdbname}.t set id = id where id in (select * from LOCAL_${a_rdbname}.t)" >> $output 2>&1
+$S_SQLC <<EOF >> $output 2>&1
+begin
+select * from LOCAL_${a_rdbname}.t order by id
+update LOCAL_${a_rdbname}.t set id = id + 1 where id in (select * from LOCAL_${a_rdbname}.t)
+select * from LOCAL_${a_rdbname}.t order by id
+commit
+EOF
+$S_SQLC <<EOF >> $output 2>&1
+select * from LOCAL_${a_rdbname}.t order by id
+select * from LOCAL_${a_rdbname}.t order by id
+EOF
+
+$S_SQLC <<EOF >> $output 2>&1
+begin
+select * from LOCAL_${a_rdbname}.t order by id
+select * from LOCAL_${a_rdbname}.t order by id
+rollback
+EOF
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_rdbname}/g" output.log > output.log.actual
