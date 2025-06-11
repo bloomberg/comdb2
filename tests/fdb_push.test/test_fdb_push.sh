@@ -83,14 +83,10 @@ select * from LOCAL_${a_remdbname}.t2 where d2=@d2
 EOF
 
 echo "Test set statement" >> $output
-# Note: fdb_push will only remember set statements for one query in most cases
-# fdb_push_redirect will remember set statement for all following queries
-# fdb_push will return empty results for the second query for each timezone below because the timezone in where clause will be reset to America/New_York after the first query
-# Thus have two different output files
-# However with fdb_push if you select from this table either with no where clause or only with a bound parameter in the where clause, the data returned will be in the set timezone
 cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
 set timezone Asia/Tokyo
 select * from LOCAL_${a_remdbname}.t2 where d="2023-09-13T13:00:00"
+set maxquerytime 10
 select * from LOCAL_${a_remdbname}.t2 where d="2023-09-13T13:00:00"
 set timezone America/Jamaica
 select * from LOCAL_${a_remdbname}.t2 where d="2023-09-13T23:00:00"
@@ -147,13 +143,8 @@ EOF
 # TODO: effects after commit are broken (but are also broken for foreign stmts outside of fdb push)
 # returns 3 row affected instead of 6
 
-if [[ $a_dbname == "srcdbfdbpushredirectgenerated"* ]]; then
-    active_output=output.log.fdbpushredirect
-else
-    active_output=output.log
-fi
 #convert the table to actual dbname
-sed "s/dorintdb/${a_remdbname}/g" $active_output > output.log.actual
+sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
 # validate results 
 testcase_output=$(cat $output)

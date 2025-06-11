@@ -256,3 +256,75 @@ Table "sqlite_stat1" Rootp 1073741924 Remrootp 4 Version=0')
 Table "sqlite_stat4" Rootp 1073741925 Remrootp 5 Version=0')
 Index "$ID_52596C31" for table "t" Rootp 1073741923 Remrootp 3 Version=0')
 Table "t" Rootp 1073741922 Remrootp 2 Version=0')
+TEST 12
+check cost
+(id=11)
+(id=12)
+(id=13)
+Cost: 13.00 NRows: 3
+    index 0 on table t finds 1 next/prev 3
+
+(rows updated=3)
+Cost: 77.00 NRows: 3
+    table t finds 4 next/prev 3[TABLE SCAN]
+    index 0 on table t finds 3 next/prev 3
+    temp index finds 1 next/prev 3 nwrite 3 
+
+NULL
+[begin] rc 0
+(id=11)
+(id=12)
+(id=13)
+Cost: 0.00 NRows: 3
+    index 0 on table dorintdb.t finds 1 next/prev 3
+
+Cost: 77.00 NRows: 3
+    table t finds 4 next/prev 3[TABLE SCAN]
+    index 0 on table t finds 3 next/prev 3
+    temp index finds 1 next/prev 3 nwrite 3 
+
+[select * from LOCAL_dorintdb.t order by id] rc 0
+[update LOCAL_dorintdb.t set id = id + 1 where id in (select * from LOCAL_dorintdb.t)] rc 0
+(id=11)
+(id=12)
+(id=13)
+Cost: 0.00 NRows: 3
+    index 0 on table dorintdb.t finds 1 next/prev 3
+
+Cost: 0.00 NRows: 1
+
+[select * from LOCAL_dorintdb.t order by id] rc 0
+[commit] rc 0
+(id=12)
+(id=13)
+(id=14)
+Cost: 13.00 NRows: 3
+    index 0 on table t finds 1 next/prev 3
+
+[select * from LOCAL_dorintdb.t order by id] rc 0
+(id=12)
+(id=13)
+(id=14)
+Cost: 13.00 NRows: 3
+    index 0 on table t finds 1 next/prev 3
+
+[select * from LOCAL_dorintdb.t order by id] rc 0
+NULL
+[begin] rc 0
+(id=12)
+(id=13)
+(id=14)
+Cost: 0.00 NRows: 3
+    index 0 on table dorintdb.t finds 1 next/prev 3
+
+[select * from LOCAL_dorintdb.t order by id] rc 0
+(id=12)
+(id=13)
+(id=14)
+Cost: 0.00 NRows: 3
+    index 0 on table dorintdb.t finds 1 next/prev 3
+
+Cost: 0.00 NRows: 1
+
+[select * from LOCAL_dorintdb.t order by id] rc 0
+[rollback] rc 0
