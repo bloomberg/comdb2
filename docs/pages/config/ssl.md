@@ -145,6 +145,11 @@ ssl_dbname_field host
 If the `host` field in the client certificate does not match the database name,
 the connection will be rejected by the server.
 
+By default, the `host` attribute is used to verify the database name.
+To change the attribute on the client side, when authenticating server to client, you would set `SSL_MODE`
+to `VERIFY_DBNAME`, followed by the desirable attribute name. `VERIFY_DBNAME CN`, for example, would
+make client verify the database name against the `CommonName` attribute in server's certificate.
+
 
 ### Protecting Intra-Cluster Communication
 
@@ -191,7 +196,7 @@ are refused to join the cluster.
 
 | Option | Description | Default Value |
 |---------------|-------------|--------|
-| `ssl_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME`, `VERIFY_DBNAME`, `PREFER`, `PREFER_VERIFY_CA`, `PREFER_VERIFY_HOSTNAME` and `PREFER_VERIFY_DBNAME` | `ALLOW` |
+| `ssl_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME $attr`, `VERIFY_DBNAME`, `PREFER`, `PREFER_VERIFY_CA`, `PREFER_VERIFY_HOSTNAME` and `PREFER_VERIFY_DBNAME $attr` | `ALLOW` |
 | `ssl_cert_path path` | Directory containing client certificate files. libcdb2api searches `client.crt`, `client.key`, `root.crt` and `root.crl` for the client certificate, key, trusted CAs and CRL respectively | `N/A` |
 | `ssl_cert file` | Path to the client certificate | `<ssl_cert_path>/client.crt` |
 | `ssl_key file` | Path to the client key | `<ssl_cert_path>/client.key` |
