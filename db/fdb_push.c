@@ -344,11 +344,10 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
         return NULL;
     }
 
-    // TODO: forward all set statements properly to fdb push
-    // Currently only set stmts from accompanying fdb stmt are forwarded
-    if (clnt->verifyretry_off) {
-        rc = cdb2_run_statement(hndl, "set verifyretry off");
-        if (rc != CDB2_OK) {
+    if (clnt->n_set_commands > 0) {
+        rc = forward_extra_set_commands(hndl, clnt->n_set_commands,
+                (const char **)clnt->set_commands, err);
+        if (rc) {
             cdb2_close(hndl);
             return NULL;
         }

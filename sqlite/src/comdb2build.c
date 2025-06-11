@@ -7904,9 +7904,18 @@ int comdb2VerifyGenShardKeyExists(Parse *pParse, IdList *cols) {
  * Create a test generic sharding partition for server testing purposes
  *
  */
+extern int gbl_fdb_push_remote_write;
 void comdb2CreateGenShard(Parse* pParse, IdList *cols, IdList *dbs)
 {
     struct comdb2_partition *partition;
+
+    /* requires fdb_push_remote_write */
+
+    if (!gbl_fdb_push_remote_write) {
+        setError(pParse, SQLITE_ABORT, "Generic sharding requires fdb remote push write");
+        return;
+    }
+
     partition = _get_partition(pParse, 0);
     if (!partition)
         return;
