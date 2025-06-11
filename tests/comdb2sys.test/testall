@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -e
+
+dbname=$1
+
+# easy system table for which we can derive the expected output
+# we've run a query on all nodes, verify that it's in the fingerprints
+# table on all the nodes
+
+if [[ -z "$CLUSTER" ]]; then
+    cdb2sql $dbname dev 'select 1' >/dev/null
+else
+  for host in $CLUSTER; do
+    cdb2sql --host $host $dbname dev 'select 1' >/dev/null
+  done
+fi
+
+cdb2sql --tabs $dbname dev "select dbhost, normalized_sql, fingerprint from comdb2_fingerprints_all where fingerprint='4f16a8ec9db90f803e406659938b2602' order by dbhost" > all.out
+if [[ -z "$CLUSTER" ]]; then
+    printf "$(hostname)\tSELECT?;\t4f16a8ec9db90f803e406659938b2602"
+else
+    for host in $(echo $CLUSTER | sort); do
+      printf "$host\tSELECT?;\t4f16a8ec9db90f803e406659938b2602\n"
+    done > all.expected
+fi
+
+# now run a query against all the *_all system tables.  Output is hard to predict - we're just
+# checking to make sure we don't have errors, don't cause a fault, etc.
+for tbl in $(cdb2sql --tabs $dbname dev "select name from comdb2_systables where name like 'comdb2%_all'"); do
+  cdb2sql $dbname dev "select * from $tbl" >/dev/null
+done
+
+diff all.out all.expected

@@ -248,6 +248,13 @@ int comdb2SystblInit(
     rc = systblApiHistoryInit(db);
   if (rc == SQLITE_OK)
     rc = systblDbInfoInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblLocationsInit(db);
+
+  // Warning: this code wraps other system tables, and must follow any it wraps.  Probably safest to
+  // always leave it last.
+  if (rc == SQLITE_OK)
+    rc = systblAllInit(db);
 #endif
   return rc;
 }

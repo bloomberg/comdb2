@@ -30,11 +30,6 @@
 char *gbl_config_root = NULL;
 static hash_t *locations;
 
-struct location {
-    char *type;
-    char *dir;
-};
-
 #define LOCATION_SEP " \t\n"
 
 static void add_location(const char *type, const char *dir)
@@ -265,7 +260,7 @@ static int locations_free(void *ptr, void *unused)
     return 0;
 }
 
-void cleanup_file_locations()
+void cleanup_file_locations(void)
 {
     if (locations) {
         hash_for(locations, locations_free, NULL);
@@ -278,4 +273,45 @@ void cleanup_file_locations()
 void update_file_location(const char *type, const char *dir)
 {
     add_location(type, dir);
+}
+
+
+struct file_location_list {
+    int nlocations;
+    struct location *locations;
+};
+
+int location_add_to_list(void *obj, void *arg) {
+    struct location *loc = (struct location*) obj;
+    struct file_location_list *l = (struct file_location_list*) arg;
+
+    if ((l->nlocations+1) % 16 == 1) {
+        struct location *lnew = realloc(l->locations, sizeof(struct location) * (l->nlocations + 16));
+        if (lnew == NULL)
+            return -1;
+        l->locations = lnew;
+    }
+    l->locations[l->nlocations].dir = NULL;
+    l->locations[l->nlocations].type = strdup(loc->type);
+    if (l->locations[l->nlocations].type == NULL)
+        return -1;
+    l->locations[l->nlocations++].dir = strdup(loc->dir);
+    if (l->locations[l->nlocations-1].dir == NULL)
+        return -1;
+    return 0;
+}
+
+int fetch_file_locations(struct location **out) {
+    struct file_location_list ret_locations = {.nlocations = 0, .locations = NULL};
+    int rc = hash_for(locations, location_add_to_list, &ret_locations);
+    if (rc) {
+        for (int i = 0; i < ret_locations.nlocations; i++) {
+            free(ret_locations.locations[i].type);
+            free(ret_locations.locations[i].dir);
+        }
+        free(ret_locations.locations);
+        return -1;
+    }
+    *out = ret_locations.locations;
+    return ret_locations.nlocations;
 }
