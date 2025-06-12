@@ -454,6 +454,7 @@ __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	void *usr_ptr;
 {
 	int64_t total_written = 0;
+	int rc;
 	if (gbl_inflate_log && !LF_ISSET(DB_LOG_DONT_INFLATE)) {
 		static int inflate_carry = 0;
 		int target, *op;
@@ -499,7 +500,7 @@ __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 		inflate_carry = 0;
 	}
 logput:
-	int rc = __log_put_int_int(dbenv, lsnp, contextp, udbt, flags,
+	rc = __log_put_int_int(dbenv, lsnp, contextp, udbt, flags,
 		off_context, usr_ptr);
 	if (rc == 0 && txn_logbytes != NULL) {
 		total_written += udbt->size;
