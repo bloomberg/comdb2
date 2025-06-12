@@ -441,7 +441,7 @@ err:
 	return (ret);
 }
 
-extern __thread uint64_t *txn_logbytes;
+extern __thread int64_t *txn_logbytes;
 
 static int
 __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
@@ -453,7 +453,7 @@ __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	int off_context;
 	void *usr_ptr;
 {
-	uint64_t total_written = 0;
+	int64_t total_written = 0;
 	if (gbl_inflate_log && !LF_ISSET(DB_LOG_DONT_INFLATE)) {
 		static int inflate_carry = 0;
 		int target, *op;

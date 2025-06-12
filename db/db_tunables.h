@@ -1449,11 +1449,11 @@ REGISTER_TUNABLE("written_rows_warn",
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_written_rows_warn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_wr_logbytes_per_txn", "Set the maximum number of log-bytes written per transaction.",
-                 TUNABLE_INTEGER, &gbl_max_wr_logbytes_per_txn, 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_INT64, &gbl_max_wr_logbytes_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("warn_wr_logbytes_per_txn",
                  "Set warning threshold for log-bytes written in a transaction.  "
                  "(Default: 0)",
-                 TUNABLE_INTEGER, &gbl_warn_wr_logbytes_per_txn, 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_INT64, &gbl_warn_wr_logbytes_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_cascaded_rows_per_txn", "Set the max cascaded rows updated per transaction.", TUNABLE_INTEGER,
                  &gbl_max_cascaded_rows_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_time_per_txn_ms", "Set the max time allowed for transaction to finish", TUNABLE_INTEGER,

@@ -2870,7 +2870,7 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
         } \
     } while(0)
 
-__thread uint64_t *txn_logbytes = NULL;
+__thread int64_t *txn_logbytes = NULL;
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
