@@ -84,7 +84,8 @@ void reset_aa_counter(char *tblname);
 void create_coherency_lease_thread(bdb_state_type *bdb_state);
 void create_master_lease_thread(bdb_state_type *bdb_state);
 
-int gbl_rep_process_pstack_time = 30;
+int gbl_rep_process_warn_time = 10;
+int gbl_rep_process_pstack_time = 0;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 void comdb2_dump_blockers(DB_ENV *);
@@ -3968,8 +3969,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
     }
 
     bdb_state->repinfo->in_rep_process_message = 1;
-
-    bdb_state->repinfo->rep_process_message_start_time = comdb2_time_epoch();
+    bdb_state->repinfo->rep_process_message_warn_start_time =
+        bdb_state->repinfo->rep_process_message_pstack_start_time = comdb2_time_epoch();
 
     if (debug_switch_rep_delay())
         sleep(2);
@@ -4000,7 +4001,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
           permlsn.file, permlsn.offset, rectype);
      */
 
-    bdb_state->repinfo->rep_process_message_start_time = 0;
+    bdb_state->repinfo->rep_process_message_warn_start_time = 0;
+    bdb_state->repinfo->rep_process_message_pstack_start_time = 0;
     bdb_state->repinfo->in_rep_process_message = 0;
 
     if (got_writelock) {
@@ -5632,17 +5634,27 @@ void *watcher_thread(void *arg)
 
         net_timeout_watchlist(bdb_state->repinfo->netinfo);
 
-        /* rep_process_message_start_time may change to 0 after we first look at it,
+        /* rep_process_message_warn/pstack_start_time may change to 0 after we first look at it,
          * and before we look at it again. remember its value. */
-        int stime = bdb_state->repinfo->rep_process_message_start_time;
-        if (bdb_state->passed_dbenv_open && stime) {
-            time_t diff = comdb2_time_epoch() - stime;
+        int wtime = bdb_state->repinfo->rep_process_message_warn_start_time;
+        int ptime = bdb_state->repinfo->rep_process_message_pstack_start_time;
+
+        if (bdb_state->passed_dbenv_open && wtime) {
+            time_t diff = comdb2_time_epoch() - wtime;
+            if (diff >= gbl_rep_process_warn_time) {
+                logmsg(LOGMSG_WARN, "rep_process_message running for %ld seconds\n", diff);
+                bdb_state->repinfo->rep_process_message_warn_start_time = 0;
+            }
+        }
+
+        if (gbl_rep_process_pstack_time && bdb_state->passed_dbenv_open && ptime) {
+            time_t diff = comdb2_time_epoch() - ptime;
             if (diff >= gbl_rep_process_pstack_time) {
                 logmsg(LOGMSG_WARN, "rep_process_message running for %ld seconds, dumping thread pool to trc.c\n", diff);
                 gbl_logmsg_ctrace = 1;
                 bdb_dump_threads_and_maybe_abort(bdb_state, 0, 0);
                 gbl_logmsg_ctrace = 0;
-                bdb_state->repinfo->rep_process_message_start_time = 0;
+                bdb_state->repinfo->rep_process_message_pstack_start_time = 0;
             }
         }
 
