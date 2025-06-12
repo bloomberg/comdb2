@@ -44,6 +44,7 @@ static int is_delete_op(int op);
 extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
 extern int gbl_debug_skip_constraintscheck_on_insert;
+extern int gbl_max_wr_logbytes_per_txn;
 
 static void generate_fkconstraint_error(struct ireq *iq, struct dbtable *child, const char *fkey,
                                         struct dbtable *parent, const char *rkey, const char *reason)
@@ -1451,6 +1452,18 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                     rc = ERR_NOMASTER;
                 }
                 ERR(rc, "error", 0);
+            }
+            if (rc == 0 && gbl_max_wr_logbytes_per_txn && (iq->written_logbytes_count >
+                        gbl_max_wr_logbytes_per_txn)) {
+                reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                        "Transaction exceeds max log-bytes limit");
+                rc = ERR_TRAN_TOO_BIG;
+                *blkpos = curop->blkpos;
+                *errout = OP_FAILED_INTERNAL;
+                *ixout = doidx;
+                close_constraint_table_cursor(cur);
+                free_cached_delayed_indexes(iq);
+                ERR(rc, "toobig", 0);
             }
         } /* for each index */
 

@@ -786,6 +786,7 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
 int gbl_javasp_early_release = 1;
 int gbl_debug_add_replication_latency = 0;
 uint32_t gbl_written_rows_warn = 0;
+uint64_t gbl_warn_wr_logbytes_per_txn = 0;
 extern int gbl_debug_disttxn_trace;
 
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, int logical,
@@ -799,10 +800,17 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
 
     memset(&ss, -1, sizeof(ss));
 
-    if (release_schema_lk && gbl_written_rows_warn > 0 && iq->written_row_count >= gbl_written_rows_warn) {
-        uuidstr_t us;
-        logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] modified %u rows\n", iq->sorese->rqid,
-               comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
+    if (release_schema_lk) {
+        if (gbl_written_rows_warn > 0 && iq->written_row_count > gbl_written_rows_warn) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] modified %u rows\n", iq->sorese->rqid,
+                   comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
+        }
+        if (gbl_warn_wr_logbytes_per_txn > 0 && iq->written_logbytes_count > gbl_warn_wr_logbytes_per_txn) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] wrote %" PRIu64 " logbytes\n", iq->sorese->rqid,
+                   comdb2uuidstr(iq->sorese->uuid, us), iq->written_logbytes_count);
+        }
     }
 
     int startms = comdb2_time_epochms();
