@@ -752,7 +752,8 @@ typedef struct {
 
     int skipsinceepoch; /* since when have we been incoherent */
 
-    int rep_process_message_start_time;
+    int rep_process_message_warn_start_time;
+    int rep_process_message_pstack_start_time;
     int dont_elect_untill_time;
 
     struct sockaddr_in *udp_addr;

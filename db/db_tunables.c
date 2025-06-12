@@ -575,6 +575,7 @@ extern int gbl_altersc_sampling_sec;
 extern int gbl_altersc_latency_inc;
 extern int gbl_sc_history_max_rows;
 extern int gbl_sc_status_max_rows;
+extern int gbl_rep_process_warn_time;
 extern int gbl_rep_process_pstack_time;
 extern int gbl_sql_recover_time;
 extern int gbl_legacy_requests_verbose;
