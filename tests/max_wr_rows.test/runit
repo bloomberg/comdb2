@@ -25,6 +25,7 @@ function createtables
     cdb2sql ${CDB2_OPTIONS} $db $stage "create table t1 {schema{int id} keys{ \"id\" = id }}"
     cdb2sql ${CDB2_OPTIONS} $db $stage "create table t2 {schema{int id} keys{ dup \"id\" = id } constraints { \"id\" -> \"t1\":\"id\" on delete cascade on update cascade }}"
     cdb2sql ${CDB2_OPTIONS} $db $stage "create table t3 (i int)"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table t4 (i int)"
 }
 
 function insert_records
@@ -274,11 +275,27 @@ function runtest_max_ttl
     # also assert that the last insert did not succeed
     local cnt=`cdb2sql ${CDB2_OPTIONS} --tabs $db $stage "select count(i) from t3"`
     assertres $cnt 2
+    cdb2sql ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 0')"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "put tunable max_time_per_txn_ms 0"
+}
+
+function runtest_max_logbytes
+{
+    cdb2sql ${CDB2_OPTIONS} $db $stage "insert into t4 (i) values (1)"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "put tunable max_wr_logbytes_per_txn 1"
+    local x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "insert into t4 (i) values (2)" 2>&1)
+    if [[ "$x" != *"Transaction exceeds max log-bytes limit"* ]]; then
+        failexit "Expected: Transaction exceeds max log-bytes limit"
+    fi
+    local cnt=`cdb2sql ${CDB2_OPTIONS} --tabs $db $stage "select count(i) from t4"`
+    assertres $cnt 1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "put tunable max_wr_logbytes_per_txn 0"
 }
 
 createtables
 runtest
 runtest_max_cascades
 runtest_max_ttl
+runtest_max_logbytes
 
 echo "Success"

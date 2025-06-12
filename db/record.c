@@ -106,6 +106,7 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 int gbl_max_cascaded_rows_per_txn = 0;
+uint64_t gbl_max_wr_logbytes_per_txn = 0;
 uint32_t gbl_max_time_per_txn_ms = 0;
 
 static inline int is_event_from_sc(int flags)
@@ -659,6 +660,12 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
         if (retrc) {
             ERR("live_sc_post rc %d", rc);
+        }
+
+        if (!retrc && gbl_max_wr_logbytes_per_txn && (iq->written_logbytes_count > gbl_max_wr_logbytes_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG, "Transaction exceeds max log-bytes limit");
+            retrc = ERR_TRAN_TOO_BIG;
+            ERR("exceeds max log-bytes limit %llu", iq->written_logbytes_count);
         }
     }
 
@@ -1639,6 +1646,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
+
+    if (!retrc && !is_event_from_sc(flags) && gbl_max_wr_logbytes_per_txn &&
+        (iq->written_logbytes_count > gbl_max_wr_logbytes_per_txn)) {
+        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG, "Transaction exceeds max log-bytes limit");
+        retrc = ERR_TRAN_TOO_BIG;
+        ERR("exceeds max log-bytes limit %llu", iq->written_logbytes_count);
+    }
+
     if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
         retrc = ERR_LIMIT;
 
@@ -1960,6 +1975,13 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     rc = live_sc_post_delete(iq, trans, genid, od_dta, del_keys, del_idx_blobs);
     if (rc != 0) {
         retrc = rc;
+        goto err;
+    }
+
+    if (!retrc && !is_event_from_sc(flags) && gbl_max_wr_logbytes_per_txn &&
+        (iq->written_logbytes_count > gbl_max_wr_logbytes_per_txn)) {
+        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG, "Transaction exceeds max log-bytes limit");
+        retrc = ERR_TRAN_TOO_BIG;
         goto err;
     }
 

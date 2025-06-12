@@ -1464,6 +1464,7 @@ struct ireq {
     int tptlock; /* need to know if we need to wrap whole txn in a view_lock */
     uint32_t written_row_count;
     uint32_t cascaded_row_count;
+    uint64_t written_logbytes_count;
 
     /* Client endian flags. */
     uint8_t client_endian;

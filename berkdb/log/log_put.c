@@ -441,6 +441,8 @@ err:
 	return (ret);
 }
 
+extern __thread uint64_t *txn_logbytes;
+
 static int
 __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	DB_ENV *dbenv;
@@ -451,6 +453,7 @@ __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	int off_context;
 	void *usr_ptr;
 {
+	uint64_t total_written = 0;
 	if (gbl_inflate_log && !LF_ISSET(DB_LOG_DONT_INFLATE)) {
 		static int inflate_carry = 0;
 		int target, *op;
@@ -492,11 +495,17 @@ __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 				__os_free(dbenv, data);
 			goto logput;
 		}
+		total_written += d.size;
 		inflate_carry = 0;
 	}
 logput:
-	return __log_put_int_int(dbenv, lsnp, contextp, udbt, flags,
-	    off_context, usr_ptr);
+	int rc = __log_put_int_int(dbenv, lsnp, contextp, udbt, flags,
+		off_context, usr_ptr);
+	if (rc == 0 && txn_logbytes != NULL) {
+		total_written += udbt->size;
+		*txn_logbytes += total_written;
+	}
+	return rc;
 }
 
 

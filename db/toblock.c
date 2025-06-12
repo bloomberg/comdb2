@@ -2870,6 +2870,8 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
         } \
     } while(0)
 
+__thread uint64_t *txn_logbytes = NULL;
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
     int rowlocks = gbl_rowlocks;
@@ -3153,6 +3155,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
     }
 
     iq->blkstate->pos = 0;
+    txn_logbytes = &iq->written_logbytes_count;
+    iq->written_logbytes_count = 0;
 
     if (!rowlocks) {
         /* start parent transaction */
@@ -6372,6 +6376,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct i
 done:
 
     assert(iq->sc_running == 0);
+    txn_logbytes = NULL;
 
     Pthread_mutex_lock(&blklk);
     blkcnt--;
