@@ -59,12 +59,10 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/lua
-  ${PROJECT_SOURCE_DIR}/sqlite
-  ${PROJECT_BINARY_DIR}/sqlite
   ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )
-add_dependencies(schemachange mem proto bdb sqlite)
+add_dependencies(schemachange mem proto bdb)
 target_link_libraries(schemachange PUBLIC bdb)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(schemachange)

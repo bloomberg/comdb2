@@ -34,6 +34,7 @@
 #include "vdbeInt.h"
 #include "comdb2uuid.h"
 #include "net_int.h"
+#include "fdb_fend_minimal.h"
 
 /**
  * REMOTE SQL VERSIONING
@@ -84,70 +85,6 @@ extern int gbl_fdb_default_ver;
 /* cc2 ftw */
 #define fdb_ver_encoded(ver) (-(ver + 1))
 #define fdb_ver_decoded(ver) (-(ver + 1))
-
-enum fdb_errors {
-    FDB_NOERR = 0 /* NO ERROR */
-    ,
-    FDB_ERR_GENERIC = -1 /* failure, generic */
-    ,
-    FDB_ERR_WRITE_IO = -2 /* failure writing on a socket */
-    ,
-    FDB_ERR_READ_IO = -3 /* failure reading from a socket */
-    ,
-    FDB_ERR_MALLOC = -4 /* failed allocation */
-    ,
-    FDB_ERR_UNSUPPORTED = -5 /* recognizing a protocol option */
-    ,
-    FDB_ERR_TRAN_IO =
-        -6 /* failed communication with a node involved in a transaction*/
-    ,
-    FDB_ERR_FDB_VERSION =
-        -7 /* sent by FDB_VER_CODE_VERSION and above to downgrade protocol */
-    ,
-    FDB_ERR_FDB_NOTFOUND = -8 /* fdb name not found */
-    ,
-    FDB_ERR_FDB_TBL_NOTFOUND = -9 /* fdb found but table not existing */
-    ,
-    FDB_ERR_CLASS_UNKNOWN = -10 /* explicit class in fdb name, unrecognized */
-    ,
-    FDB_ERR_CLASS_DENIED =
-        -11 /* denied access to the class, either implicit or explicit */
-    ,
-    FDB_ERR_REGISTER_NOTFOUND = -12 /* unable to access comdb2db */
-    ,
-    FDB_ERR_REGISTER_NODB = -13 /* no information about fdb name in comdb2db */
-    ,
-    FDB_ERR_REGISTER_NONODES = -14 /* no nodes available for the fdb */
-    ,
-    FDB_ERR_REGISTER_IO = -15 /* failure talking to comdb2db */
-    ,
-    FDB_ERR_REGISTER_NORESCPU = -16 /* no known node is rescpu */
-    ,
-    FDB_ERR_PTHR_LOCK = -17 /* pthread locks are mashed */
-    ,
-    FDB_ERR_CONNECT = -18 /* failed to connect to db */
-    ,
-    FDB_ERR_CONNECT_CLUSTER = -19 /* failed to connect to cluster */
-    ,
-    FDB_ERR_BUG = -20 /* bug in the code, should not see this */
-    ,
-    FDB_ERR_SOCKPOOL = -21 /* sockpool return error */
-    ,
-    FDB_ERR_PI_DISABLED = -22 /* foreign table has partial indexes but the
-                                 feature is disabled locally */
-    ,
-    FDB_ERR_EXPRIDX_DISABLED =
-        -23 /* foreign table has expressions indexes but the feature is
-               disabled locally */
-    ,
-    FDB_ERR_INDEX_DESCRIBE = -24 /* failed to describe index */
-    ,
-    FDB_ERR_SSL = -25 /* SSL configuration error */
-    ,
-    FDB_ERR_ACCESS = -26 /* Access error */
-    ,
-    FDB_ERR_TRANSIENT_IO = -27 /* Temporary IO failure */
-};
 
 extern int gbl_fdb_push_remote;
 extern int gbl_fdb_push_remote_write;
@@ -315,19 +252,10 @@ fdb_cursor_if_t *fdb_cursor_open(sqlclntstate *clnt, BtCursor *pCur,
 fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb);
 void fdb_sqlstats_put(fdb_t *fdb);
 
-/*
- * Create an fdb that is not linked into the global fdb structures.
- */
-int create_local_fdb(const char *fdb_name, fdb_t **fdb);
-
-void destroy_local_fdb(fdb_t *fdb);
-
 /**
  * Get dbname, tablename, and so on
  *
  */
-const char *fdb_dbname_name(const fdb_t * const fdb);
-const char *fdb_dbname_class_routing(const fdb_t * const fdb);
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent);
 const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 
@@ -383,15 +311,6 @@ int fdb_process_message(const char *line, int lline);
  *
  */
 int fdb_table_version(unsigned long long version);
-
-/*
- * Get the comdb2 semantic version that an fdb is running
- * 
- * On success, *version points to the semantic version's 
- * location in dynamic memory. It is the caller's 
- * responsibility to free this pointer.
- */
-int fdb_get_server_semver(const fdb_t * const fdb, const char ** version);
 
 /**
  * Clear sqlclntstate fdb_state object
@@ -468,9 +387,6 @@ int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr,
  */
 int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
                           int class_override);
-
-/* Check if fdb is local to this db */
-int is_local(const fdb_t *fdb);
 
 /**
  * Connect to a remote cluster based of push connector information

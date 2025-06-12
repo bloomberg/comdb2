@@ -37,7 +37,7 @@
 #include <pb_alloc.h>
 #include <unistd.h>
 
-#include "fdb_fend.h"
+#include "fdb_fend_minimal.h"
 #include "bdb_api.h"
 #include "bdb_schemachange.h"
 #include "schemachange.h"
@@ -828,7 +828,7 @@ bulk_import_data_validate(const char *dst_table_name,
     return COMDB2_IMPORT_RC_SUCCESS;
 }
 
-static enum comdb2_import_op bulk_import_validate_src_vers_is_supported(const fdb_t * const fdb) {
+static enum comdb2_import_op bulk_import_validate_src_vers_is_supported(const struct fdb * const fdb) {
     const char * src_version = NULL;
     int rc = fdb_get_server_semver(fdb, &src_version);
     if (rc) {
@@ -871,7 +871,7 @@ done:
 static enum comdb2_import_op bulk_import_perform_initial_validation(const char *src_db_name,
                                                   const char *dst_table_name) {
     cdb2_hndl_tp *hndl = NULL;
-    fdb_t *fdb = NULL;
+    struct fdb *fdb = NULL;
 
     int rc = create_local_fdb(src_db_name, &fdb);
     if (rc) {
@@ -1540,7 +1540,7 @@ err:
  */
 enum comdb2_import_tmpdb_op bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
     cdb2_hndl_tp *hndl;
-    fdb_t *fdb;
+    struct fdb *fdb;
     int rc, t_rc;
 
     rc = t_rc = 0;
