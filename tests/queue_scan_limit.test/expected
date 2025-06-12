@@ -1,2 +1,2 @@
-(queuename='__qno_odh', spname='no_odh', head_age=1, depth=10000, total_enqueued=40000, total_dequeued=0)
-(queuename='__qodh', spname='odh', head_age=1, depth=40000, total_enqueued=40000, total_dequeued=0)
+(queuename='__qno_odh', depth=10000)
+(queuename='__qodh', depth=40000)
