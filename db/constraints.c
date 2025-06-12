@@ -44,7 +44,7 @@ static int is_delete_op(int op);
 extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
 extern int gbl_debug_skip_constraintscheck_on_insert;
-extern int gbl_max_wr_logbytes_per_txn;
+extern int64_t gbl_max_wr_logbytes_per_txn;
 
 static void generate_fkconstraint_error(struct ireq *iq, struct dbtable *child, const char *fkey,
                                         struct dbtable *parent, const char *rkey, const char *reason)
