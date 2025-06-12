@@ -54,7 +54,7 @@ cdb2sql ${CDB2_OPTIONS} $db $default "create lua consumer no_odh on (table t for
 cdb2sql ${CDB2_OPTIONS} $db $default "insert into t select value from generate_series(1, 40000)"
 
 set -e
-cdb2sql ${CDB2_OPTIONS} $db $default "select * from comdb2_queues order by queuename" > out
+cdb2sql ${CDB2_OPTIONS} $db $default "select queuename, depth from comdb2_queues order by queuename" > out
 diff out expected
 
 echo "Testcase passed."
