@@ -41,6 +41,11 @@ main() {
 
 	sleep 30 # Give time for old master to hit timeout waiting for sc to finish
 
+	if ! grep "Going to continue without waiting" "${TESTDIR}"/logs/"${DBNAME}"."${old_master}".db; then
+		echo "FAIL: Database did not emit expected warning. Test might be flakey."
+		return 1
+	fi
+
 	# We're testing that the downgrading node doesn't abort. Should be available at finish when bug is fixed.
 }
 
