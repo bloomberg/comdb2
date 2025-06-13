@@ -55,7 +55,6 @@ struct schema_change_type *sc_resuming = NULL;
 /* async ddl sc */
 pthread_mutex_t sc_async_mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sc_async_cond = PTHREAD_COND_INITIALIZER;
-volatile int sc_async_threads = 0;
 
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to
@@ -687,4 +686,19 @@ void sc_alter_latency(int counter)
             gbl_altersc_delay_usec = 0;
         }
     }
+}
+
+struct thdpool *gbl_sc_thdpool = NULL;
+int init_sc_globals()
+{
+    gbl_sc_thdpool = thdpool_create("sc_thdpool", 0);
+    if (!gbl_sc_thdpool) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate threadpool\n", __func__);
+        return 1;
+    }
+
+    thdpool_set_maxthds(gbl_sc_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS));
+    thdpool_set_maxqueue(gbl_sc_thdpool, 1000);
+
+    return 0;
 }

@@ -66,10 +66,9 @@ static enum thrtype prepare_sc_thread(struct schema_change_type *s)
             thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
         } else
             thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
-        if (!s->nothrevent) {
-            backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-            logmsg(LOGMSG_INFO, "Preparing schema change read write thread\n");
-        }
+
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+        logmsg(LOGMSG_INFO, "Preparing schema change read write thread\n");
     }
     return oldtype;
 }
@@ -728,12 +727,6 @@ downgraded:
     else
         s->sc_rc = rc;
 
-    if (!s->nothrevent) {
-        Pthread_mutex_lock(&sc_async_mtx);
-        sc_async_threads--;
-        Pthread_cond_broadcast(&sc_async_cond);
-        Pthread_mutex_unlock(&sc_async_mtx);
-    }
     if (rc == SC_COMMIT_PENDING && (s->preempted == SC_ACTION_RESUME ||
                                     s->kind == SC_ALTERTABLE_PENDING)) {
         int bdberr = 0;
@@ -795,6 +788,13 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     return rc;
 }
 
+void do_schema_change_tran_thd_thdpool_wrapper(struct thdpool *pool, void *work, void *thddata, int op)
+{
+    bdb_thread_event(thedb->bdb_env, 1);
+    do_schema_change_tran_int(work);
+    bdb_thread_event(thedb->bdb_env, 0);
+}
+
 int do_schema_change_locked(struct schema_change_type *s, void *tran)
 {
     comdb2_name_thread(__func__);
@@ -823,6 +823,11 @@ int do_schema_change_locked(struct schema_change_type *s, void *tran)
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;
+}
+
+void do_schema_change_locked_thdpool_wrapper(struct thdpool *pool, void *work, void *thddata, int op)
+{
+    do_schema_change_locked(work, NULL);
 }
 
 int finalize_schema_change(struct ireq *iq, tran_type *trans)
