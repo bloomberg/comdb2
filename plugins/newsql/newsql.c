@@ -2218,6 +2218,9 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             }
         }
     }
+    if (!rc) {
+        save_set_commands(clnt);
+    }
     return rc;
 }
 
@@ -2240,6 +2243,25 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
             errstat_set_rcstrf(err, -1, "Failed to run \"%s\"", sqlstr);
             return -1;
         }
+    }
+    return 0;
+}
+
+int save_set_commands(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sql_query = appdata->sqlquery;
+    int i;
+
+    if (!sql_query || sql_query->n_set_flags == 0)
+        return 0;
+    clnt->set_commands = calloc(sql_query->n_set_flags, sizeof(char*));
+    if (!clnt->set_commands)
+        return -1;
+    clnt->n_set_commands = sql_query->n_set_flags;
+
+    for (i = 0; i < clnt->n_set_commands; i++) {
+        clnt->set_commands[i] = strdup(sql_query->set_flags[i]);
     }
     return 0;
 }

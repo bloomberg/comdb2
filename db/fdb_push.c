@@ -259,7 +259,7 @@ static void _master_clnt_set(sqlclntstate *clnt)
     clnt->plugin.tzname = _get_tzname;
 }
 
-static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
+static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl, int writes);
 
 void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
 
@@ -344,11 +344,10 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
         return NULL;
     }
 
-    // TODO: forward all set statements properly to fdb push
-    // Currently only set stmts from accompanying fdb stmt are forwarded
-    if (clnt->verifyretry_off) {
-        rc = cdb2_run_statement(hndl, "set verifyretry off");
-        if (rc != CDB2_OK) {
+    if (clnt->n_set_commands > 0) {
+        rc = forward_extra_set_commands(hndl, clnt->n_set_commands,
+                (const char **)clnt->set_commands, err);
+        if (rc) {
             cdb2_close(hndl);
             return NULL;
         }
@@ -518,7 +517,7 @@ send_error:
     }
 
     if (!irc && rc == CDB2_OK_DONE && clnt->get_cost) {
-        rc = _get_remote_cost(clnt, hndl);
+        rc = _get_remote_cost(clnt, hndl, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to save remote cost rc %d\n", rc);
             goto closing;
@@ -679,7 +678,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             rc = -1;
             goto free;
         }
-        goto free;
     } else {
         if (clnt->verifyretry_off) {
             // take difference since effects in transaction are cumulative
@@ -693,6 +691,16 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     }
+
+    if (clnt->get_cost) {
+        rc = _get_remote_cost(clnt, hndl, 1);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to save remote cost rc %d\n", rc);
+        }
+    }
+
+    if (!clnt->in_client_trans) 
+        goto free;
 
     return 0;
 
@@ -739,7 +747,7 @@ free_push:
     return rc;
 }
 
-static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
+static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl, int writes)
 {
     int rc;
 
@@ -772,7 +780,11 @@ static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
 
     clnt->fdb_push->row = cdb2_column_value(hndl, 0);
     clnt->fdb_push->rowlen = cdb2_column_size(hndl, 0);
-    const char *remcost = (const char *)fdb_push_column_text(clnt, NULL, 0);
+    const char *remcost;
+    if (writes)
+        remcost = clnt->fdb_push->row;
+    else
+        remcost = (const char *)fdb_push_column_text(clnt, NULL, 0);
     if (remcost) {
         clnt->prev_cost_string = strdup(remcost);
     }

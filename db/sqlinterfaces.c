@@ -1768,7 +1768,6 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
         write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     }
-
 done:
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
@@ -5458,6 +5457,15 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         clnt->modsnap_registration = NULL;
     }
     bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
+    if (clnt->n_set_commands) {
+        int i;
+        for (i = 0; i < clnt->n_set_commands; i++) {
+            free(clnt->set_commands[i]);
+        }
+        free(clnt->set_commands);
+        clnt->n_set_commands = 0;
+        clnt->set_commands = NULL;
+    }
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)

@@ -1031,6 +1031,8 @@ struct sqlclntstate {
     struct remsql_set remsql_set;
     int fdb_push_remote; /* cache the global on each prepare */
     int fdb_push_remote_write; /* cache the global on each prepare */
+    int n_set_commands; /* save the set that comes from a begin */
+    char **set_commands;
 
     // fdb 2pc
     int use_2pc;
@@ -1705,6 +1707,8 @@ int comdb2_sql_tick(void);
 int comdb2_sql_tick_no_recover_deadlock(void);
 int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
                          struct errstat *err);
+
+int save_set_commands(struct sqlclntstate *clnt);
 
 void wait_for_transactions(void);
 
