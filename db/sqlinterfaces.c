@@ -5367,6 +5367,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     bzero(&clnt->dbtran, sizeof(dbtran_type));
 
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
+    clnt->dbtran.throttle_txn_chunks_msec = 0;
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
     clnt->statement_timedout = 0;
