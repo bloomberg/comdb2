@@ -61,8 +61,69 @@ function high_size()
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "exec procedure sys.cmd.send('temptable_clear')"
 }
 
+function analyze_leak()
+{
+    echo "Maybe there are open temptables going into this test?"
+    lsofout=$(lsof -p $dbpid | egrep deleted)
+    [[ -n "$lsofout" ]] && failexit "Found open temptables before analyze leak test"
+
+    echo "Creating an index with ulonglong so analyze will fail"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "put tunable forbid_ulonglong = 'off'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "create table ull { schema { u_longlong u blob b }}"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "create index idx on ull(u)"
+    j=0
+    while [[ $j -lt 100 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "insert into ull (u, b) select *, randomblob(16) from generate_series(1, 1000)"
+        [[ $? != 0 ]] && failexit "Failed to insert into table ull"
+        let j=j+1
+    done
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME - << 'EOF'
+@bind CDB2_INTEGER a -1
+insert into ull (u, b) values (@a, randomblob(16));
+EOF
+    sleep 2
+
+    echo "This would have created temptables - clear them now"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "exec procedure sys.cmd.send('temptable_clear')"
+
+    echo "Make sure we don't any open temptables"
+    lsofout=$(lsof -p $dbpid | egrep deleted)
+
+    if [[ -n "$lsofout" ]] ; then
+        while :; do 
+            echo "Waiting for temptables to be cleared"
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "exec procedure sys.cmd.send('temptable_clear')"
+            sleep 1
+            lsofout=$(lsof -p $dbpid | egrep deleted)
+            [[ -z "$lsofout" ]] && break
+        done
+    fi
+    
+    echo "Analyze should fail, but we should not leak a temptable"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "analyze ull 100")
+    [[ $? == 0 ]] && failexit "Analyze worked against high ulonglong"
+
+    echo "We should STILL not have any open temptables"
+    lsofout=$(lsof -p $dbpid | egrep deleted)
+
+    if [[ -n "$lsofout" ]] ; then
+        while :; do 
+            echo "Waiting for temptables to be cleared"
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "exec procedure sys.cmd.send('temptable_clear')"
+            sleep 1
+            lsofout=$(lsof -p $dbpid | egrep deleted)
+            [[ -z "$lsofout" ]] && break
+        done
+    fi
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME - << 'EOF'
+put tunable forbid_ulonglong = 'on'
+EOF
+}
+
 function run_test()
 {
+    analyze_leak
     low_size
     high_size
 }
