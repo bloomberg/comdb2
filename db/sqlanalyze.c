@@ -432,6 +432,10 @@ static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable 
         sampled_idx_t *s_ix = &client->sampled_idx_tbl[i];
         if (!s_ix)
             continue;
+        if (s_ix->sampler) {
+            sampler_close(s_ix->sampler);
+            s_ix->sampler = NULL;
+        }
     }
 
     /* free & zero struct */

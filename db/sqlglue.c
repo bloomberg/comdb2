@@ -6741,16 +6741,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
         free(pCur->keybuf);
 
-        if (pCur->is_sampled_idx) {
-            rc = sampler_close(pCur->sampler);
-            pCur->sampler = NULL;
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor rc %d\n",
-                       __func__, bdberr);
-                rc = SQLITE_INTERNAL;
-                goto done;
-            }
-        } else if (pCur->bt && pCur->bt->is_temporary) {
+        if (!pCur->is_sampled_idx && pCur->bt && pCur->bt->is_temporary) {
             if( pCur->cursor_close ){
                 rc = pCur->cursor_close(thedb->bdb_env, pCur, &bdberr);
                 if (rc) {
