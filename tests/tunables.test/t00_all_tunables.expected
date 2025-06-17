@@ -392,7 +392,7 @@
 (name='foreign_db_auth_enabled', description='Redirect extern auth data to remote server. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='foreign_db_push_redirect', description='Redirect fdb query to run via client instead of on server. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_push_remote', description='Fdb proxy more for reads (OFF turns off writes as well). (Default: on)', type='BOOLEAN', value='ON', read_only='N')
-(name='foreign_db_push_remote_writes', description='Fdb proxy mode for writes (ON turns on reads as well). (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='foreign_db_push_remote_writes', description='Fdb proxy mode for writes (ON turns on reads as well). (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_resolve_local', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='foreign_metadb', description='Forces metadb for fdb queries to the one specified (Default:NULL)', type='STRING', value=NULL, read_only='N')
 (name='foreign_metadb_class', description='Forces metadb for fdb queries to class specified (Default:NULL)', type='STRING', value=NULL, read_only='N')
