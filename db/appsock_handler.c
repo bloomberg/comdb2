@@ -92,7 +92,6 @@ int appsock_init(void)
     thdpool_set_delt_fn(gbl_appsock_thdpool, appsock_thd_end);
     thdpool_set_minthds(gbl_appsock_thdpool, 1);
     thdpool_set_linger(gbl_appsock_thdpool, 10);
-    thdpool_set_mem_size(gbl_appsock_thdpool, 4 * 1024);
 
     return 0;
 }

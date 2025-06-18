@@ -145,8 +145,6 @@ struct thdpool {
 
     int dump_on_full;
 
-    int mem_sz;
-
     LINKC_T(struct thdpool) lnk;
 
     int last_queue_alarm;
@@ -255,9 +253,6 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     Pthread_attr_init(&pool->attrs);
     Pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
     Pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);
-
-    /* 1 meg default mem per thread for thread_malloc() */
-    pool->mem_sz = 1 * 1024 * 1024;
 
     pool->per_thread_data_sz = per_thread_data_sz;
     pool->longwaitms = 500;
@@ -392,11 +387,6 @@ void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes)
         Pthread_attr_setstacksize(&pool->attrs, pool->stack_sz);
     }
     UNLOCK(&pool->mutex);
-}
-
-void thdpool_set_mem_size(struct thdpool *pool, size_t sz_bytes)
-{
-    pool->mem_sz = sz_bytes;
 }
 
 void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn)
