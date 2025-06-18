@@ -4987,6 +4987,9 @@ read_record:
 
     // we have (hndl->first_buf != NULL)
     hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
+    if (!hndl->firstresponse) {
+        err_val = CDB2ERR_CORRUPT_RESPONSE;
+    }
     if (err_val) {
         /* we've read the 1st response of commit/rollback.
            that is all we need so simply return here.
