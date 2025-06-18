@@ -308,6 +308,8 @@ static int forward_extra_set_commands(cdb2_hndl_tp *hndl, int n_sets, const char
     return 0;
 }
 
+void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
+
 static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
                                     int flags, struct errstat *err,
                                     int n_sets, const char **sets)
@@ -354,9 +356,7 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
         }
     }
 
-    if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob &&
-         ((clnt->authdata = get_authdata(clnt)) != NULL))
-        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
+    fdb_client_set_identityBlob(clnt, hndl);
 
     return hndl;
 }
@@ -614,6 +614,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
     }
     hndl = tran->fcon.hndl;
+
+    fdb_client_set_identityBlob(clnt, hndl);
 
     /* run the statement */
     rc = _run_statement(clnt, hndl, err);
