@@ -55,7 +55,6 @@ int main()
     thdpool_set_linger(my_thdpool, 0);
     thdpool_set_longwaitms(my_thdpool, 1000000);
     thdpool_set_maxqueue(my_thdpool, 100);
-    thdpool_set_mem_size(my_thdpool, 4 * 1024);
     common_t c = {0};
     const int MAX = 100;
 
