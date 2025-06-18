@@ -967,7 +967,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             if (rc != 0) {
 
                 if (pool->exit_on_create_fail) {
-                    logmsg(LOGMSG_ERROR, "pthread_create rc %d, exiting\n", rc);
+                    logmsg(LOGMSG_ERROR, "pthread_create rc %d errstr(%s), exiting\n", rc, strerror(rc));
                     if (!gbl_disable_exit_on_thread_error)
                         exit(1);
                 }
