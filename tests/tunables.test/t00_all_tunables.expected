@@ -1117,7 +1117,7 @@
 (name='warn_nondbreg_records', description='warn on non-dbreg records before checkpoint', type='BOOLEAN', value='OFF', read_only='N')
 (name='warn_on_replicant_log_write', description='Warn if replicant is writing to logs', type='BOOLEAN', value='ON', read_only='N')
 (name='warn_slow_replicants', description='Warn if any replicant's average response times over the last 10 seconds are significantly worse than the second worst replicant's.', type='BOOLEAN', value='ON', read_only='N')
-(name='warn_wr_logbytes_per_txn', description='Set warning threshold for log-bytes written in a transaction.  (Default: 0)', type='INT64', value='0', read_only='N')
+(name='warn_wr_logbytes_per_txn', description='Set warning threshold for log-bytes written in a transaction.  (Default: 0)', type='INT64', value='536870912', read_only='N')
 (name='watchthreshold', description='Panic if node has been unhealthy (unresponsive, out of resources, etc.) for more than this many seconds. The default value is 60.', type='INTEGER', value='60', read_only='N')
 (name='written_rows_warn', description='Set warning threshold for rows written in a transaction.  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='zliblevel', description='If zlib compression is enabled, this determines the compression level.', type='INTEGER', value='6', read_only='N')
