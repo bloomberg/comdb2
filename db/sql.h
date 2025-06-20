@@ -276,6 +276,7 @@ typedef struct {
     int maxchunksize;     /* multi-transaction bulk mode */
     int crtchunksize;     /* how many rows are processed already */
     int nchunks;          /* number of chunks. 0 for a non-chunked transaction. */
+    int throttle_txn_chunks_msec; /* wait this many milliseconds before starting a new chunk (if 0 then look at tunable) */
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     table_version_cache *table_version_cache;

@@ -1725,7 +1725,20 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     sqlstr += 5;
                     sqlstr = skipws(sqlstr);
 
-                    if (!sqlstr || ((tmp = atoi(sqlstr)) <= 0)) {
+                    if (strncasecmp(sqlstr, "throttle", 8) == 0) {
+                        sqlstr += 8;
+                        sqlstr = skipws(sqlstr);
+                        tmp = atoi(sqlstr);
+                        if (tmp <= 0) {
+                            snprintf(err, sizeof(err),
+                                     "set transaction chunk throttle N: missing throttle time "
+                                     "N \"%s\"",
+                                     sqlstr);
+                            rc = ii + 1;
+                        } else {
+                            clnt->dbtran.throttle_txn_chunks_msec = tmp;
+                        }
+                    } else if (!sqlstr || ((tmp = atoi(sqlstr)) <= 0)) {
                         snprintf(err, sizeof(err),
                                  "set transaction chunk N: missing chunk size "
                                  "N \"%s\"",
