@@ -30,7 +30,6 @@ extern int gbl_default_sc_scanmode;
 
 extern pthread_mutex_t sc_async_mtx;
 extern pthread_cond_t sc_async_cond;
-extern volatile int sc_async_threads;
 
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to
@@ -86,5 +85,6 @@ struct schema_change_type *preempt_ongoing_alter(char *table, int action);
 void clear_ongoing_alter();
 int get_stopsc(const char *func, int line);
 void sc_alter_latency(int counter);
+int init_sc_globals();
 
 #endif
