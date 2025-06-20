@@ -248,7 +248,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         } else {
             clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
             errstat_cat_str(&(clnt->osql.xerr),
-                            "unable to update record rc = 4");
+                            "unable to update record");
         }
         rc = SQLITE_ABORT;
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
