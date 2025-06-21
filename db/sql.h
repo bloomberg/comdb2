@@ -1031,6 +1031,8 @@ struct sqlclntstate {
     struct remsql_set remsql_set;
     int fdb_push_remote; /* cache the global on each prepare */
     int fdb_push_remote_write; /* cache the global on each prepare */
+    int n_set_commands; /* save the set that comes from a begin */
+    char **set_commands;
 
     // fdb 2pc
     int use_2pc;
