@@ -275,13 +275,7 @@ int do_upgrade_table(struct schema_change_type *s, struct ireq *unused)
     return rc;
 }
 
-/*
-** Start transaction if not passed in (comdb2sc.tsk)
-** If started transaction, then
-**   1. also commit it
-**   2. log scdone here
-*/
-static inline int replication_only_error_code(int rc)
+int replication_only_error_code(int rc)
 {
     switch (rc) {
     case -1:
@@ -334,6 +328,12 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     return rc;
 }
 
+/*
+** Start transaction if not passed in (comdb2sc.tsk)
+** If started transaction, then
+**   1. also commit it
+**   2. log scdone here
+*/
 static int do_finalize(ddl_t func, struct ireq *iq,
                        struct schema_change_type *s, tran_type *input_tran)
 {
@@ -376,8 +376,6 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     }
 
     if (input_tran == NULL) {
-        // void all_locks(void*);
-        // all_locks(thedb->bdb_env);
         if (debug_switch_fake_sc_replication_timeout()) {
             logmsg(LOGMSG_USER,
                    "Forcing replication error table %s '%s' for tran %p\n",
@@ -389,24 +387,27 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             rc = -1;
             goto abort;
-        } else {
-            if (s->keep_locked) {
-                rc = trans_commit(iq, tran, gbl_myhostname);
-            } else {
-                rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
-            }
-            if (debug_switch_fake_sc_replication_timeout())
-                rc = -1;
-            if (rc && !replication_only_error_code(rc)) {
-                sc_errf(s, "Failed to commit finalize transaction\n");
-                trans_abort_logical(iq, ltran, NULL, 0, NULL, 0);
-                return rc;
-            }
+        }
 
-            rc = trans_commit_logical(iq, ltran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
-            if (rc) {
-                abort();
-            }
+        if (s->keep_locked) {
+            rc = trans_commit(iq, tran, gbl_myhostname);
+        } else {
+            rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
+        }
+        if (debug_switch_fake_sc_replication_timeout())
+            rc = -1;
+        if (rc && !replication_only_error_code(rc)) {
+            sc_errf(s, "Failed to commit finalize transaction\n");
+            trans_abort_logical(iq, ltran, NULL, 0, NULL, 0);
+            return rc;
+        }
+
+        rc = trans_commit_logical(iq, ltran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
+        if (replication_only_error_code(rc)) {
+            logmsg(LOGMSG_WARN, "%s: trans_commit_logical failed to replicate\n", __func__);
+        } else if (rc) {
+            logmsg(LOGMSG_FATAL, "%s: trans_commit_logical failed with rc %d\n", __func__, rc);
+            abort();
         }
 
         sc_del_unused_files(s->db);

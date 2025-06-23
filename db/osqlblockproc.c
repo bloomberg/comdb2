@@ -60,7 +60,6 @@
 extern int gbl_reorder_idx_writes;
 extern uint32_t gbl_max_time_per_txn_ms;
 
-
 struct blocksql_tran {
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
     struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
@@ -1513,8 +1512,11 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     unlock_schema_lk();
     iq->sc_locked = 0;
 
-    if (trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
-                             NULL, 0, NULL, 0)) {
+    rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
+                            NULL, 0, NULL, 0);
+    if (replication_only_error_code(rc)) {
+        logmsg(LOGMSG_WARN, "%s: trans_commit_logical failed to replicate\n", __func__);
+    } else if (rc) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
