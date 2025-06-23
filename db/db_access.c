@@ -117,7 +117,10 @@ int check_user_password(struct sqlclntstate *clnt)
 
     if (!remsql_warned && (!gbl_uses_password && !gbl_uses_externalauth) &&
         ((clnt->remsql_set.is_remsql != NO_REMSQL) || clnt->features.have_sqlite_fmt)) {
-        logmsg(LOGMSG_WARN, "%s\n", "Remote sql being used on database with authentication disabled, please enable IAM on this database.");
+        char *dbname = clnt->remsql_set.srcdbname ? clnt->remsql_set.srcdbname : "fdb_push";
+        logmsg(LOGMSG_WARN, "%s sourcedb:%s\n",
+               "Remote sql being used on database with authentication disabled, please enable IAM on this database.",
+               dbname);
         remsql_warned = 1;
     }
 
