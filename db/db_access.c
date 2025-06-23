@@ -266,7 +266,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     } else {
         /* Check read access if its not user schema. */
         /* Check it only if engine is open already. */
-        if (gbl_uses_password && (thd->clnt->in_sqlite_init == 0)) {
+        if (gbl_uses_password &&  !clnt->current_user.bypass_auth && (thd->clnt->in_sqlite_init == 0)) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_WRITE, &bdberr);
@@ -346,7 +346,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
             return SQLITE_ABORT;
         }
     } else {
-        if (gbl_uses_password && pCur && thd->clnt->in_sqlite_init == 0) {
+        if (gbl_uses_password && !clnt->current_user.bypass_auth && pCur && thd->clnt->in_sqlite_init == 0) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_READ, &bdberr);
