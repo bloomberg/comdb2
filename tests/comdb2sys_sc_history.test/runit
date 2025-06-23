@@ -26,4 +26,11 @@ SELECT name FROM comdb2_sc_history
 SELECT name, newcsc2 FROM comdb2_sc_status
 EOF
 
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
+cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('clear_sc_history')"
+cdb2sql $dbnm --host $host - >>actual <<EOF
+SELECT 6
+SELECT COUNT(*) FROM comdb2_sc_history
+SELECT COUNT(*) FROM comdb2_sc_status
+EOF
 diff expected actual
