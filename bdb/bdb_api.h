@@ -1690,6 +1690,8 @@ typedef struct {
 int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
                               int *bdberr, const char *tablename);
 
+void bdb_clear_sc_history();
+
 typedef struct schema_version_row {
     char *db_name;
     int vers;

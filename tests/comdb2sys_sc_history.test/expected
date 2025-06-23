@@ -60,3 +60,9 @@
 	}
 ')
 [SELECT name, newcsc2 FROM comdb2_sc_status] rc 0
+(6=6)
+[SELECT 6] rc 0
+(COUNT(*)=0)
+[SELECT COUNT(*) FROM comdb2_sc_history] rc 0
+(COUNT(*)=0)
+[SELECT COUNT(*) FROM comdb2_sc_status] rc 0
