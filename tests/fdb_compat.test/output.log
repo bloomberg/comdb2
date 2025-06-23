@@ -276,7 +276,7 @@ NULL
 (id=12)
 (id=13)
 Cost: 0.00 NRows: 3
-    index 0 on table dorintdb.t finds 1 next/prev 3
+    index 0 on table doh1 finds 1 next/prev 3
 
 Cost: 77.00 NRows: 3
     table t finds 4 next/prev 3[TABLE SCAN]
@@ -289,7 +289,7 @@ Cost: 77.00 NRows: 3
 (id=12)
 (id=13)
 Cost: 0.00 NRows: 3
-    index 0 on table dorintdb.t finds 1 next/prev 3
+    index 0 on table doh1 finds 1 next/prev 3
 
 Cost: 0.00 NRows: 1
 
@@ -315,14 +315,14 @@ NULL
 (id=13)
 (id=14)
 Cost: 0.00 NRows: 3
-    index 0 on table dorintdb.t finds 1 next/prev 3
+    index 0 on table doh1 finds 1 next/prev 3
 
 [select * from LOCAL_dorintdb.t order by id] rc 0
 (id=12)
 (id=13)
 (id=14)
 Cost: 0.00 NRows: 3
-    index 0 on table dorintdb.t finds 1 next/prev 3
+    index 0 on table doh1 finds 1 next/prev 3
 
 Cost: 0.00 NRows: 1
 

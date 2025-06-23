@@ -345,7 +345,9 @@ rollback
 EOF
 
 #convert the table to actual dbname
-sed "s/dorintdb/${a_rdbname}/g" output.log > output.log.actual
+shortname="${a_rdbname}.t"
+sed "s/doh1/${shortname:0:31}/g" output.log > output.log.actual.tmp
+sed "s/dorintdb/${a_rdbname}/g" output.log.actual.tmp > output.log.actual
 
 # validate results 
 testcase_output=$(cat $output)
