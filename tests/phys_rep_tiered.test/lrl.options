@@ -1,4 +1,5 @@
 logmsg level debug
+dtastripe 1
 debug_drop_nth_rep_message 10000
 incoherent_slow_inactive_timeout 0
 revsql_fake_connect_failure 1
