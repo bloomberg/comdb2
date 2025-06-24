@@ -683,10 +683,10 @@ void sc_alter_latency(int counter)
                 /* if queue latency increases too much, add a delay */
                 gbl_altersc_delay_usec += gbl_altersc_latency_inc;
                 logmsg(LOGMSG_WARN, "%s: slowing down record conversion by %dus\n", __func__, gbl_altersc_delay_usec);
-            } else {
+            } else if (gbl_altersc_delay_usec != 0) {
                 /* if queue time is acceptable, do not throttle */
                 gbl_altersc_delay_usec = 0;
-                logmsg(LOGMSG_WARN, "%s: not longer slowing down record conversion\n", __func__);
+                logmsg(LOGMSG_WARN, "%s: no longer slowing down record conversion\n", __func__);
             }
         }
     } else {
