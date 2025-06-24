@@ -1606,7 +1606,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
         if (iq->reptimems > 0) {
             uint64_t rate = iq->total_txnsize / iq->reptimems;
 
-            dumpf(logger, out, "  Wrote %llu log bytes in %d ms rep time (%llu bytes/ms)\n", iq->txnsize, iq->reptimems,
+            dumpf(logger, out, "  Wrote %llu log bytes in %d ms rep time (%llu bytes/ms)\n", iq->total_txnsize, iq->reptimems,
                   rate);
         } else {
             dumpf(logger, out, "  Wrote %llu log bytes\n", iq->total_txnsize);
