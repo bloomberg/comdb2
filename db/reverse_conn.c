@@ -253,38 +253,13 @@ static int add_reverse_host(const char *dbname, const char *host, reverse_conn_h
 }
 
 int gbl_reverse_hosts_v2 = 0;
+extern int gbl_altmetadb_count;
+int get_alt_metadb_hndl(cdb2_hndl_tp **hndl, int index);
 
-// Refresh the 'reverse connection host' list
-static int refresh_reverse_conn_hosts() {
-    reverse_conn_host_tp *old_host;
-    reverse_conn_host_tp *new_host;
-    reverse_conn_host_tp *tmp;
-    cdb2_hndl_tp *repl_metadb = NULL;
+static int populate_revconn_list(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp *new_reverse_conn_hosts)
+{
     int rc = 0;
     char cmd[400];
-
-    // Remove the 'EXITED' reverse-connection hosts from the main list.
-    pthread_mutex_lock(&reverse_conn_hosts_mu);
-    {
-        LISTC_FOR_EACH_SAFE(&reverse_conn_hosts, old_host, tmp, lnk) {
-            if (old_host->worker_state == REVERSE_CONN_WORKER_EXITED) {
-                if (gbl_revsql_debug == 1) {
-                    revconn_logmsg(LOGMSG_USER, "%s:%d %s@%s removed from 'reverse-connection' hosts list\n",
-                                   __func__, __LINE__, old_host->dbname, old_host->host);
-                }
-                free(old_host->dbname);
-                free(old_host->host);
-                free(listc_rfl(&reverse_conn_hosts, old_host));
-            }
-        }
-    }
-    pthread_mutex_unlock(&reverse_conn_hosts_mu);
-
-    if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for 'replication metadb' (rc: %d)\n",
-                       __func__, __LINE__, rc);
-        return 1;
-    }
 
     /* This machine will attempt to start a reverse connection for any target
      * which lists it's dbname/host, dbname/tier, or dbname/cluster */
@@ -298,8 +273,7 @@ static int refresh_reverse_conn_hosts() {
 
     if (rc < 0 || rc >= sizeof(cmd)) {
         revconn_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
-        rc = 1;
-        goto err;
+        return 1;
     }
 
     if (gbl_revsql_debug == 1) {
@@ -307,16 +281,13 @@ static int refresh_reverse_conn_hosts() {
     }
 
     if (gbl_revsql_cdb2_debug == 1) {
-        cdb2_set_debug_trace(repl_metadb);
+        cdb2_set_debug_trace(metadb);
     }
 
-    reverse_conn_host_list_tp new_reverse_conn_hosts;
-    listc_init(&new_reverse_conn_hosts, offsetof(reverse_conn_host_tp, lnk));
-
-    if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
-        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
-            char *dbname = (char *)cdb2_column_value(repl_metadb, 0);
-            char *host = (char *)cdb2_column_value(repl_metadb, 1);
+    if ((rc = cdb2_run_statement(metadb, cmd)) == CDB2_OK) {
+        while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
+            char *dbname = (char *)cdb2_column_value(metadb, 0);
+            char *host = (char *)cdb2_column_value(metadb, 1);
             char **class_mach_list = NULL;
             const char **cluster_mach_list = NULL;
             int count = 0;
@@ -327,35 +298,83 @@ static int refresh_reverse_conn_hosts() {
                     int add_error = 0;
                     for (int i = 0; i < count; i++) {
                         if (!add_error) {
-                            add_error += add_reverse_host(dbname, class_mach_list[i], &new_reverse_conn_hosts);
+                            add_error += add_reverse_host(dbname, class_mach_list[i], new_reverse_conn_hosts);
                         }
                         free(class_mach_list[i]);
                     }
                     free(class_mach_list);
                     if (add_error) {
-                        rc = 1;
-                        goto err;
+                        return 1;
                     }
                 }
             } else if (get_cluster_machs(host, &count, &cluster_mach_list) == 0) {
                 for (int i = 0; i < count; i++) {
-                    if (add_reverse_host(dbname, cluster_mach_list[i], &new_reverse_conn_hosts) != 0) {
-                        rc = 1;
-                        goto err;
+                    if (add_reverse_host(dbname, cluster_mach_list[i], new_reverse_conn_hosts) != 0) {
+                        return 1;
                     }
                 }
-            } else if (add_reverse_host(dbname, host, &new_reverse_conn_hosts) != 0) {
-                rc = 1;
-                goto err;
+            } else if (add_reverse_host(dbname, host, new_reverse_conn_hosts) != 0) {
+                return 1;
             }
 
             if (gbl_revsql_debug == 1) {
                 revconn_logmsg(LOGMSG_USER, "%s:%d Adding %s/%s to revconn list\n", __func__, __LINE__, dbname, host);
             }
         }
+    } else {
+        logmsg(LOGMSG_ERROR, "%s:%d Failed to run statement '%s' (rc: %d)\n", __func__, __LINE__, cmd, rc);
+    }
+    return 0;
+}
 
-        // Close the connection
-        cdb2_close(repl_metadb);
+// Refresh the 'reverse connection host' list
+static int refresh_reverse_conn_hosts()
+{
+    reverse_conn_host_tp *old_host;
+    reverse_conn_host_tp *new_host;
+    reverse_conn_host_tp *tmp;
+    cdb2_hndl_tp *metadb = NULL;
+    int rc = 0;
+
+    // Remove the 'EXITED' reverse-connection hosts from the main list.
+    pthread_mutex_lock(&reverse_conn_hosts_mu);
+    {
+        LISTC_FOR_EACH_SAFE(&reverse_conn_hosts, old_host, tmp, lnk)
+        {
+            if (old_host->worker_state == REVERSE_CONN_WORKER_EXITED) {
+                if (gbl_revsql_debug == 1) {
+                    revconn_logmsg(LOGMSG_USER, "%s:%d %s@%s removed from 'reverse-connection' hosts list\n", __func__,
+                                   __LINE__, old_host->dbname, old_host->host);
+                }
+                free(old_host->dbname);
+                free(old_host->host);
+                free(listc_rfl(&reverse_conn_hosts, old_host));
+            }
+        }
+    }
+    pthread_mutex_unlock(&reverse_conn_hosts_mu);
+
+    reverse_conn_host_list_tp new_reverse_conn_hosts;
+    listc_init(&new_reverse_conn_hosts, offsetof(reverse_conn_host_tp, lnk));
+
+    if ((rc = physrep_get_metadb_or_local_hndl(&metadb)) != 0) {
+        revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for 'replication metadb' (rc: %d)\n",
+                       __func__, __LINE__, rc);
+        return 1;
+    }
+
+    rc = populate_revconn_list(metadb, &new_reverse_conn_hosts);
+    cdb2_close(metadb);
+    int altcnt = gbl_altmetadb_count;
+    /* See if the alt-metadb requires us to spawn a reverse connection */
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for 'alt-metadb' index %d (rc: %d)\n",
+                           __func__, __LINE__, i, rc);
+            continue;
+        }
+        rc = populate_revconn_list(metadb, &new_reverse_conn_hosts);
+        cdb2_close(metadb);
     }
 
     replace_tier_by_hostname(&new_reverse_conn_hosts);
@@ -407,10 +426,6 @@ static int refresh_reverse_conn_hosts() {
     pthread_mutex_unlock(&reverse_conn_hosts_mu);
 
     return 0;
-
-err:
-    cdb2_close(repl_metadb);
-    return rc;
 }
 
 static void *reverse_connection_manager(void *args) {
