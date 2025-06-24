@@ -40,5 +40,6 @@ void physrep_update_low_file_num(int*, int*);
 void physrep_fanout_override(const char *dbname, int fanout);
 int physrep_fanout_get(const char *dbname);
 void physrep_fanout_dump(void);
+int physrep_add_alternate_metadb(char *dbname, char *host);
 
 #endif /* PHYS_REP_H */
