@@ -936,31 +936,19 @@ payload:
     process_newsql_payload(appdata, query);
 }
 
-/* 10-second in-process cache TTL (does not affect idle connections or connections held by sockpool) */
-int gbl_inproc_conn_ttl = 10;
 static void rd_hdr(int dummyfd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
-    struct sqlclntstate *clnt = &appdata->clnt;
-
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
-    }
-    if (dummyfd >= 0 && (what & EV_TIMEOUT) && clnt->in_local_cache) {
-        newsql_cleanup(appdata);
-        return;
     }
     if (rd_evbuffer(appdata) <= 0 && (what & EV_READ)) {
         newsql_cleanup(appdata);
         return;
     }
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
-        struct timeval idle_evbuffer_time = {
-            .tv_sec = gbl_inproc_conn_ttl,
-            .tv_usec = 0
-        };
-        add_rd_event(appdata, appdata->rd_hdr_ev, ((gbl_inproc_conn_ttl <= 0) ? NULL : &idle_evbuffer_time));
+        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
         return;
     }
 hdr:
