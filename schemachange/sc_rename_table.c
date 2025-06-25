@@ -25,17 +25,43 @@
 #include "sc_callbacks.h"
 
 int gbl_lightweight_rename = 0;
+int gbl_transactional_drop_plus_rename = 1;
+
+static int colliding_db_dropped_prior_in_my_tran(const struct schema_change_type * rename_sc)
+{
+    const struct schema_change_type * sc = rename_sc;
+    const char * const new_name = rename_sc->newtable;
+    while (sc) {
+        if (strcasecmp(sc->tablename, new_name) == 0 && sc->kind == SC_DROPTABLE) {
+            return 1;
+        }
+        sc = sc->sc_next;
+    }
+    return 0;
+}
+
+static int fatal_naming_collision(const struct dbtable *colliding_db, const struct dbtable *rename_db,
+                const struct schema_change_type * rename_sc)
+{
+    if (!colliding_db) { return 0; }
+    else if (gbl_lightweight_rename && (rename_db == colliding_db)) { return 0; }
+    else if (gbl_transactional_drop_plus_rename && (rename_sc->kind == SC_RENAMETABLE)
+        && colliding_db_dropped_prior_in_my_tran(rename_sc)) { return 0; }
+    return 1;
+}
 
 int do_rename_table(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    struct dbtable *db, *db2;
+    struct dbtable *db;
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_client_error(s, "Table doesn't exist");
         return SC_TABLE_DOESNOT_EXIST;
     }
-    if (((db2 = get_dbtable_by_name(s->newtable)) != NULL) && db != db2) {
+
+    const struct dbtable *colliding_db = get_dbtable_by_name(s->newtable);
+    if (fatal_naming_collision(colliding_db, db, s)) {
         sc_client_error(s, "New table name exists");
         return SC_TABLE_ALREADY_EXIST;
     }

@@ -1052,6 +1052,7 @@
 (name='tranlog_incoherent_timeout', description='Timeout in seconds for incoherent tranlog. (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='tranlog_maxpoll', description='Tranlog timeout in seconds for blocking poll. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='transaction_grace_period', description='Time to wait for connections with pending transactions to go away on exit. (Default: 60)', type='INTEGER', value='60', read_only='N')
+(name='transactional_drop_plus_rename', description='Allow dropping a table and then renaming a table to have the same name as the dropped table in a transaction (default on)', type='BOOLEAN', value='ON', read_only='N')
 (name='transient_page_reallocation', description='Orphaned pages are maintained locally', type='BOOLEAN', value='OFF', read_only='N')
 (name='typessql', description='Use typessql to attempt to buffer results until all columns are non-null. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='typessql_records_max', description='The maximum number of records for typessql to buffer and find non-null types before giving up. (Default: 1000)', type='INTEGER', value='1000', read_only='N')
