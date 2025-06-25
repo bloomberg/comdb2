@@ -42,6 +42,7 @@ extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
+extern int gbl_transactional_drop_plus_rename;
 extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
 int gbl_view_feature = 1;
@@ -3018,13 +3019,22 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName)
         return;
     }
 
-
-    db = get_dbtable_by_name(newTable);
-    /* cannot rename to an existing table, unless we are removing an alias
-    */
-    if (db && !(gbl_lightweight_rename && db->sqlaliasname && (strncmp(db->sqlaliasname, table, MAXTABLELEN) == 0))) {
-        setError(pParse, SQLITE_ERROR, "New table name already exists");
+    if (gbl_transactional_drop_plus_rename && gbl_lightweight_rename) {
+        setError(pParse, SQLITE_MISUSE, "transactional_drop_plus_rename is not supported for lightweight_resume. Disable one of them.");
         return;
+    }
+
+    // If we are running with transactional_drop_plus_rename, then defer
+    // collision checking until later so that we can detect if the client
+    // dropped the table that it is trying to rename to in the same txn.
+    if (!gbl_transactional_drop_plus_rename) {
+        db = get_dbtable_by_name(newTable);
+        /* cannot rename to an existing table, unless we are removing an alias
+        */
+        if (db && !(gbl_lightweight_rename && db->sqlaliasname && (strncmp(db->sqlaliasname, table, MAXTABLELEN) == 0))) {
+            setError(pParse, SQLITE_ERROR, "New table name already exists");
+            return;
+        }
     }
 
     sc = new_schemachange_type();

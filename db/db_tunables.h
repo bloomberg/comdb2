@@ -2503,7 +2503,9 @@ REGISTER_TUNABLE("timer_pstack_threshold",
 REGISTER_TUNABLE("timer_pstack_interval",
                  "Skip another pstack within specified interval in secs (Default: 30mins [1800sec])",
                  TUNABLE_INTEGER, &gbl_timer_pstack_interval, INTERNAL, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("transactional_drop_plus_rename",
+                 "Allow dropping a table and then renaming a table to have the same name as the dropped table in a transaction (default on)",
+                 TUNABLE_BOOLEAN, &gbl_transactional_drop_plus_rename, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
