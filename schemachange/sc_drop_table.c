@@ -143,13 +143,11 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         }
     } else if (s->partition.type == PARTITION_REM_GENSHARD) {
         struct errstat err = {0};
-        rc = gen_shard_llmeta_remove(tran, db->genshard_name, &err);
+        rc = gen_shard_rem(tran, db->partition.genshard_name, &err);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to remove llmeta entry for sharded table %s\n", s->tablename);
             return SC_INTERNAL_ERROR;
         }
-        /* remove the alias name */
-        hash_sqlalias_db(db, db->tablename);
     }
 
     live_sc_off(db);

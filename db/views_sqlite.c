@@ -127,7 +127,7 @@ int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
 
 /* internal view delete function, callable from sqlite callback */
 int views_sqlite_del_view(const char *view_name, sqlite3 *db,
-                           struct errstat *err)
+                          struct errstat *err)
 {
     int rc;
     u32 mDbFlags;

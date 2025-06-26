@@ -6155,28 +6155,21 @@ void freedb_int(dbtable *db, dbtable *replace)
     int i;
     int dbs_idx;
     char *sqlaliasname = db->sqlaliasname;
-    char *genshard_name = db->genshard_name;
     const char *timepartition_name = db->timepartition_name;
-    char **dbnames = alloca(sizeof(char*) * db->numdbs);
-    for (i = 0; i < db->numdbs; i++)
-        dbnames[i] = db->dbnames[i];
 
-    char **columns = alloca(sizeof(char*) * db->numcols);
-    for (i=0; i < db->numcols; i++)
-        columns[i] = db->columns[i];
+    char *genshard_name = db->partition.genshard_name;
+    char **dbnames = alloca(sizeof(char*) * db->partition.numdbs);
+    char **shardnames = alloca(sizeof(char*) * db->partition.numdbs);
+    for (i = 0; i < db->partition.numdbs; i++) {
+        dbnames[i] = db->partition.dbnames[i];
+        shardnames[i] = db->partition.shardnames[i];
+    }
+    char **columns = alloca(sizeof(char*) * db->partition.numcols);
+    for (i=0; i < db->partition.numcols; i++)
+        columns[i] = db->partition.columns[i];
 
     dbs_idx = db->dbs_idx;
 
-    if (!replace) {
-        free(sqlaliasname);
-        free(genshard_name);
-        for (i = 0; i < db->numdbs; i++) {
-            free(dbnames[i]);
-        }
-        for (i = 0; i < db->numcols; i++) {
-            free(columns[i]);
-        }
-    }
     free(db->lrlfname);
     free(db->tablename);
     /* who frees schema/ixschema? */
@@ -6245,11 +6238,23 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-        db->genshard_name = genshard_name;
-        for (i = 0; i < db->numdbs; i++)
-            db->dbnames[i] = dbnames[i];
-        for (i = 0; i < db->numcols; i++)
-            db->columns[i] = columns[i];
+        db->partition.genshard_name = genshard_name;
+        for (i = 0; i < db->partition.numdbs; i++) {
+            db->partition.dbnames[i] = dbnames[i];
+            db->partition.shardnames[i] = shardnames[i];
+        }
+        for (i = 0; i < db->partition.numcols; i++)
+            db->partition.columns[i] = columns[i];
+    } else {
+        free(sqlaliasname);
+        free(genshard_name);
+        for (i = 0; i < db->partition.numdbs; i++) {
+            free(dbnames[i]);
+            free(shardnames[i]);
+        }
+        for (i = 0; i < db->partition.numcols; i++) {
+            free(columns[i]);
+        }
     }
 }
 

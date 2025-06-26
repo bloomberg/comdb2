@@ -1278,10 +1278,9 @@ static int scdone_genshard_add(const char tablename[] , void *arg, scdone_t type
     uint32_t lid = 0;
     int rc = 0;
     int bdberr = 0;
-    struct dbtable *db = NULL;
+    struct dbtable *tbl = NULL;
     assert(arg!=NULL);
     const char *genshard_name = (char *)arg;
-    logmsg(LOGMSG_USER, "%s: SHARDNAME IS %s\n", __func__, genshard_name);
     tran = _tran(&lid, &bdberr, __func__, __LINE__);
     if (!tran)
         return bdberr;
@@ -1290,22 +1289,20 @@ static int scdone_genshard_add(const char tablename[] , void *arg, scdone_t type
         logmsg(LOGMSG_ERROR, "%s scdone_add_int failed. rc %d\n", __func__, rc);
         goto done;
     }
-    db = get_dbtable_by_name(tablename);
-    if (!db) {
-        logmsg(LOGMSG_ERROR, "scdone_add_int failed to add table %s\n", tablename);
+    tbl = get_dbtable_by_name(tablename);
+    if (!tbl) {
+        logmsg(LOGMSG_ERROR, "%s unable to find table %s\n", __func__, tablename);
+        abort();
     }
-    logmsg(LOGMSG_USER, "++++++ %s : calling update gen_shard_update_inmem_db\n", __func__);
-    rc = gen_shard_update_inmem_db(tran, db, genshard_name);
+    rc = gen_shard_add_inmem_tbl(tran, tbl, genshard_name);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
+        logmsg(LOGMSG_ERROR, "%s unable to set table %s shard info\n", __func__, tablename);
         goto done;
     }
-    hash_sqlalias_db(db, db->genshard_name);
 done:
     _untran(tran, lid);
     return rc;
 }
-
 
 static int scdone_genshard_drop(const char tablename[], void *arg, scdone_t type)
 {
@@ -1313,31 +1310,19 @@ static int scdone_genshard_drop(const char tablename[], void *arg, scdone_t type
     uint32_t lid = 0;
     int rc = 0;
     int bdberr = 0;
-    struct dbtable *db = get_dbtable_by_name(tablename);
-    if (db==NULL) {
+    struct dbtable *tbl = get_dbtable_by_name(tablename);
+    if (tbl==NULL) {
         logmsg(LOGMSG_USER, "%s GOT DBTABLE AS NULL. ABORTING.. \n", __func__);
         abort();
     }
-    /*assert(arg!=NULL);
-    const char *genshard_name = (char *)arg;
-    logmsg(LOGMSG_USER, "%s: SHARDNAME IS %s\n", __func__, genshard_name);
-    logmsg(LOGMSG_USER, "%s: TABLENAME IS %s\n", __func__, tablename);
-    logmsg(LOGMSG_USER, "%s: db->tablename IS %s\n", __func__, db->tablename);
-    logmsg(LOGMSG_USER, "%s: db->genshard_name IS %s\n", __func__, db->genshard_name);*/
     tran = _tran(&lid, &bdberr, __func__, __LINE__);
     if (!tran)
         return bdberr;
     
-    logmsg(LOGMSG_USER, "++++++ %s : calling update gen_shard_update_inmem_db\n", __func__);
-    rc = gen_shard_clear_inmem_db(tran, db);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
-        goto done;
-    }
-    hash_sqlalias_db(db, db->tablename);
+    gen_shard_rem_inmem_tbl(tbl);
+
     rc = scdone_drop_int(tablename, arg, type, tran);
-    /* clear the alias */
-done:
+
     _untran(tran, lid);
     return rc;
 }
