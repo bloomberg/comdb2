@@ -21,6 +21,17 @@ shards=""
 SHARDS_LIST="$DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME"
 numshards=4
 
+# for pdb discovery to work for this test, we need to add the cluster lines from the extra dbs into the primary db comdb2 config
+# since SECONDARY_CDB2_OPTIONS, TERTIARY_CDB2_OPTIONS, etc. will not be used when querying partitiondb
+cluster_line=$(head -n 1 $DBDIR/comdb2db.cfg)
+echo "s1$cluster_line" >> $DBDIR/comdb2db.cfg
+echo "s2$cluster_line" >> $DBDIR/comdb2db.cfg
+echo "s3$cluster_line" >> $DBDIR/comdb2db.cfg
+
+echo "partition partitiondb:$SHARDS_LIST" >> $DBDIR/comdb2db.cfg
+
+P_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} partitiondb default"
+P_SQL="cdb2sql ${CDB2_OPTIONS} partitiondb default"
 S0_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default"
 S0_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
 S1_SQLT="cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} ${SECONDARY_DBNAME} default"
@@ -43,7 +54,7 @@ function fail_exit()
 }
 
 function setup_testcase {
-	$S0_SQL "DROP TABLE IF EXISTS t"
+	$P_SQL "DROP TABLE IF EXISTS t"
 }
 
 function verify_table {
@@ -90,24 +101,24 @@ function verify_llmeta {
 }
 
 function test_creation_nonkey {
-	$S0_SQL "create table t(a int , b int) partitioned by columns(a) on (${shards})"
+	$P_SQL "create table t(a int , b int) partitioned by columns(a) on (${shards})"
 	if (( $? == 0 )); then
 		fail_exit "test_creation succeeded. Should have failed creating a sharded table with a non-key sharding key"
 	fi
 }
 
 function test_deletion {
-	$S0_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+	$P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
 	if (( $? != 0 )); then
 		fail_exit "test_creation failed. Could not create table"
 	fi
 	verify_table "t"
-	$S0_SQL "drop table t"
+	$P_SQL "drop table t"
 	verify_llmeta ''
 }
 
 function test_creation {
-	$S0_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+	$P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
 	if (( $? != 0 )); then
 		fail_exit "test_creation failed. Could not create table"
 	fi

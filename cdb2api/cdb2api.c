@@ -1013,12 +1013,15 @@ struct cdb2_hndl {
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
     int hosts_connected[MAX_NODES];
+    char shards[MAX_NODES][DBNAME_LEN];
     char cached_host[CDB2HOSTNAME_LEN]; /* hostname of a sockpool connection */
     int cached_port;      /* port of a sockpool connection */
     SBUF2 *sb;
     int dbnum;
     int num_hosts;          /* total number of hosts */
     int num_hosts_sameroom; /* number of hosts that are in my datacenter (aka room) */
+    int num_shards;
+    int num_shards_sameroom;
     int node_seq;           /* fail over to the `node_seq'-th host */
     int in_trans;
     int temp_trans;
@@ -1319,7 +1322,7 @@ static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
-                              int *stack_at_open)
+                              int *stack_at_open, char shards[][DBNAME_LEN], int *num_shards)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
@@ -1352,6 +1355,20 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 strncpy(db_hosts[*num_db_hosts], tok, CDB2HOSTNAME_LEN - 1);
                 tok = strtok_r(NULL, " :,", &last);
                 (*num_db_hosts)++;
+            }
+        } else if (num_shards && strcasecmp("partition", tok) == 0) {
+            tok = strtok_r(NULL, " :,", &last);
+            if (!dbname || strcasecmp(dbname, tok) != 0)
+                continue;
+            tok = strtok_r(NULL, " :,", &last);
+            while (tok != NULL) {
+                if (strcasecmp(dbname, tok) == 0) {
+                    fprintf(stderr, "%s: Can't use the partition name as one of the shards\n", __func__);
+                } else {
+                    strncpy(shards[*num_shards], tok, DBNAME_LEN - 1);
+                    (*num_shards)++;
+                }
+                tok = strtok_r(NULL, " :,", &last);
             }
         } else if (strcasecmp("comdb2_feature", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
@@ -1619,7 +1636,8 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN],
                                            const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
                                            const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
-                                           int *dbnum, int noLock, int defaultOnly)
+                                           int *dbnum, int noLock, int defaultOnly, char shards[][DBNAME_LEN],
+                                           int *num_shards)
 {
     char filename[PATH_MAX];
     SBUF2 *s;
@@ -1634,20 +1652,20 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         *num_hosts = 0;
     if (num_db_hosts)
         *num_db_hosts = 0;
+    if (num_shards)
+        *num_shards = 0;
     int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
     if (!defaultOnly && CDB2DBCONFIG_BUF != NULL) {
-        read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
-                          comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                          db_hosts, num_db_hosts, dbnum, send_stack);
+        read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
+                          db_hosts, num_db_hosts, dbnum, send_stack, shards, num_shards);
         fallback_on_bb_bin = 0;
     } else {
         if (!defaultOnly && *CDB2DBCONFIG_NOBBENV != '\0') {
             s = sbuf2openread(CDB2DBCONFIG_NOBBENV);
             if (s != NULL) {
-                read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
-                                  num_hosts, comdb2db_num, dbname, db_hosts,
-                                  num_db_hosts, dbnum, send_stack);
+                read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
+                                  db_hosts, num_db_hosts, dbnum, send_stack, shards, num_shards);
                 sbuf2close(s);
                 fallback_on_bb_bin = 0;
             }
@@ -1662,9 +1680,8 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     if (fallback_on_bb_bin) {
         s = sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN);
         if (s != NULL) {
-            read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
-                              num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, send_stack);
+            read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                              num_db_hosts, dbnum, send_stack, shards, num_shards);
             sbuf2close(s);
         }
     }
@@ -1673,7 +1690,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         s = sbuf2openread(filename);
         if (s != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, send_stack);
+                              num_db_hosts, dbnum, send_stack, shards, num_shards);
             sbuf2close(s);
         }
     }
@@ -1684,7 +1701,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
 {
     if (!strlen(cdb2_comdb2dbname)) {
-        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0);
+        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL);
     }
     (*comdb2dbname) = strdup(cdb2_comdb2dbname);
     (*comdb2dbclass) = strdup((strcmp(cdb2_comdb2dbname, "comdb3db") == 0) ? "dev" : "prod");
@@ -1742,7 +1759,7 @@ static int get_host_by_name(const char *comdb2db_name, char comdb2db_hosts[][CDB
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *comdb2db_ports,
                               int *master, const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
-                              int dbinfo_or_dns)
+                              int dbinfo_or_dns, char shards[][DBNAME_LEN], int *num_shards)
 {
     int rc;
 
@@ -1750,7 +1767,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOST
         debugprint("entering\n");
 
     rc = read_available_comdb2db_configs(hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname, db_hosts,
-                                         num_db_hosts, dbnum, 0, 0);
+                                         num_db_hosts, dbnum, 0, 0, shards, num_shards);
     if (rc == -1)
         return rc;
     if (master)
@@ -3158,8 +3175,7 @@ retry_read:
                                             happened within transaction. */
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
-        hndl->error_in_trans = 
-            cdb2_convert_error_code(hndl->firstresponse->error_code);
+        hndl->error_in_trans = cdb2_convert_error_code(hndl->firstresponse->error_code);
         if (hndl->firstresponse->error_string)
             strcpy(hndl->errstr, hndl->firstresponse->error_string);
         goto retry_read;
@@ -4778,7 +4794,7 @@ retry_queries:
         rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, (char *)sql, 0,
                              0, NULL, hndl->n_bindvars, hndl->bindvars, ntypes,
                              types, 0, 0, 0, run_last, __LINE__);
-        if (rc != 0) 
+        if (rc != 0)
             hndl->query_no -= run_last;
     }
     if (rc) {
@@ -5179,8 +5195,7 @@ read_record:
         }
         int rc = cdb2_next_record_int(hndl, 1);
         if (rc == CDB2_OK_DONE || rc == CDB2_OK) {
-            return_value = 
-                cdb2_convert_error_code(hndl->firstresponse->error_code);
+            return_value = cdb2_convert_error_code(hndl->firstresponse->error_code);
             if (is_hasql_commit)
                 cleanup_query_list(hndl, commit_query_list, __LINE__);
             PRINT_AND_RETURN(return_value);
@@ -5400,9 +5415,9 @@ void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql)
     (*hasql) = hndl->is_hasql;
 }
 
-void cdb2_set_debug_trace(cdb2_hndl_tp *hndl) 
-{ 
-    hndl->debug_trace = 1; 
+void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
+{
+    hndl->debug_trace = 1;
 }
 
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out)
@@ -5749,19 +5764,29 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
-                                int comdb2db_num, const char *host, int port,
-                                char hosts[][CDB2HOSTNAME_LEN], int *num_hosts,
-                                const char *dbname, char *cluster, int *dbnum,
-                                int *num_same_room, int num_retries)
+static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, int comdb2db_num, const char *host,
+                                int port, char hosts[][CDB2HOSTNAME_LEN], int *num_hosts, const char *dbname,
+                                char *cluster, int *dbnum, int *num_same_room, int num_retries,
+                                char shards[][DBNAME_LEN], int *num_shards, int *num_shards_same_room)
 {
-    *dbnum = 0;
+    int find_shards =
+        !!*num_shards; // boolean on whether we should be finding shards of a partition instead of nodes for a single db
+    if (!find_shards)
+        *dbnum = 0;
     int n_bindvars = 3;
     const char *sql_query = "select M.name, D.dbnum, M.room from machines M "
                             "join databases D where M.cluster IN (select "
                             "cluster_machs from clusters where name=@dbname "
                             "and cluster_name=@cluster) and D.name=@dbname "
                             "order by (room = @room) desc";
+    if (find_shards) {
+        // only care about if each shard has a node in the same room for now
+        // when we connect to a specific shard, then we will run above query
+        sql_query = "select C.name, max(M.room=@room) as has_same_room from clusters C "
+                    "join machines M ON C.cluster_machs = M.cluster and C.name in carray(@dbnames) "
+                    "and C.cluster_name=@cluster group by C.name order by has_same_room desc";
+    }
+
     CDB2SQLQUERY__Bindvalue **bindvars =
         malloc(sizeof(CDB2SQLQUERY__Bindvalue *) * n_bindvars);
     CDB2SQLQUERY__Bindvalue *bind_dbname =
@@ -5775,10 +5800,29 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     cdb2__sqlquery__bindvalue__init(bind_cluster);
     cdb2__sqlquery__bindvalue__init(bind_room);
 
-    bind_dbname->type = CDB2_CSTRING;
-    bind_dbname->varname = "dbname";
-    bind_dbname->value.data = (unsigned char *)dbname;
-    bind_dbname->value.len = strlen(dbname);
+    if (!find_shards) {
+        bind_dbname->type = CDB2_CSTRING;
+        bind_dbname->varname = "dbname";
+        bind_dbname->value.data = (unsigned char *)dbname;
+        bind_dbname->value.len = strlen(dbname);
+    } else { // bind carray of dbnames
+        bind_dbname->type = CDB2_CSTRING;
+        bind_dbname->varname = "dbnames";
+        CDB2SQLQUERY__Bindvalue__Array *carray = malloc(sizeof(CDB2SQLQUERY__Bindvalue__Array));
+        cdb2__sqlquery__bindvalue__array__init(carray);
+        CDB2SQLQUERY__Bindvalue__TxtArray *txt = malloc(sizeof(CDB2SQLQUERY__Bindvalue__TxtArray));
+        cdb2__sqlquery__bindvalue__txt_array__init(txt);
+        // txt->elements = (char **)hndl->shards;
+        txt->n_elements = hndl->num_shards;
+        txt->elements = malloc(txt->n_elements * sizeof(char *));
+        for (int i = 0; i < txt->n_elements; i++) {
+            txt->elements[i] = strdup(hndl->shards[i]);
+        }
+
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_TXT;
+        carray->txt = txt;
+        bind_dbname->carray = carray;
+    }
 
     bind_cluster->type = CDB2_CSTRING;
     bind_cluster->varname = "cluster";
@@ -5797,7 +5841,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     int is_sockfd = 1;
     int i = 0;
 
-    if (num_same_room)
+    if (!find_shards && num_same_room)
         *num_same_room = 0;
 
     int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
@@ -5823,7 +5867,14 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     }
 
     if (fd < 0) {
-        i = 0;
+        if (find_shards) {
+            for (i = 0; i < bindvars[0]->carray->txt->n_elements; i++) {
+                free(bindvars[0]->carray->txt->elements[i]);
+            }
+            free(bindvars[0]->carray->txt->elements);
+            free(bindvars[0]->carray->txt);
+            free(bindvars[0]->carray);
+        }
         for (i = 0; i < 3; i++) {
             free(bindvars[i]);
         }
@@ -5835,7 +5886,14 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     SBUF2 *ss = sbuf2open(fd, 0);
     if (ss == 0) {
         close(fd);
-        i = 0;
+        if (find_shards) {
+            for (i = 0; i < bindvars[0]->carray->txt->n_elements; i++) {
+                free(bindvars[0]->carray->txt->elements[i]);
+            }
+            free(bindvars[0]->carray->txt->elements);
+            free(bindvars[0]->carray->txt);
+            free(bindvars[0]->carray);
+        }
         for (i = 0; i < n_bindvars; i++) {
             free(bindvars[i]);
         }
@@ -5863,7 +5921,14 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
         debugprint("cdb2_send_query rc = %d\n", rc);
 
 free_vars:
-    i = 0;
+    if (find_shards) {
+        for (i = 0; i < bindvars[0]->carray->txt->n_elements; i++) {
+            free(bindvars[0]->carray->txt->elements[i]);
+        }
+        free(bindvars[0]->carray->txt->elements);
+        free(bindvars[0]->carray->txt);
+        free(bindvars[0]->carray);
+    }
     for (i = 0; i < 3; i++) {
         free(bindvars[i]);
     }
@@ -5903,7 +5968,16 @@ free_vars:
         return -1;
     }
 
-    *num_hosts = 0;
+    if (!find_shards)
+        *num_hosts = 0;
+    int prev_num_shards = 0;
+    int prev_num_shards_same_room = 0;
+    if (find_shards) { // keep track of previous data in case we get 0 rows back
+        prev_num_shards = *num_shards;
+        prev_num_shards_same_room = *num_shards_same_room;
+        *num_shards = 0;
+        *num_shards_same_room = 0;
+    }
     while (sqlresponse->response_type <= RESPONSE_TYPE__COLUMN_VALUES) {
         cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
         rc = cdb2_read_record(&tmp, &p, &len, NULL);
@@ -5922,6 +5996,16 @@ free_vars:
             break;
         if (sqlresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES &&
             (sqlresponse->value != NULL)) {
+            if (find_shards) {
+                strcpy(shards[*num_shards], (const char *)sqlresponse->value[0]->value.data);
+                // TODO: maybe try not to get NULL values? Using max so that's why getting NULL. Adding types to
+                // send_query not working.
+                if (sqlresponse->value[1]->value.data && *((long long *)sqlresponse->value[1]->value.data) == 1)
+                    (*num_shards_same_room)++;
+
+                (*num_shards)++;
+                continue;
+            }
             strcpy(hosts[*num_hosts],
                    (const char *)sqlresponse->value[0]->value.data);
             if (*dbnum == 0) {
@@ -5935,6 +6019,10 @@ free_vars:
             }
             (*num_hosts)++;
         }
+    }
+    if (find_shards && *num_shards == 0 && prev_num_shards > 0) { // revert to prev data if we didn't get any rows back
+        *num_shards = prev_num_shards;
+        *num_shards_same_room = prev_num_shards_same_room;
     }
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
@@ -6128,8 +6216,8 @@ after_callback:
 static inline void only_read_config(cdb2_hndl_tp *hndl, int noLock,
                                     int defaultOnly)
 {
-    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                                    NULL, NULL, noLock, defaultOnly);
+    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, noLock, defaultOnly, NULL,
+                                    NULL);
     set_cdb2_timeouts(hndl);
 }
 
@@ -6160,7 +6248,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     }
 
     rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name, &num_comdb2db_hosts,
-                            &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0);
+                            &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0, hndl->shards,
+                            &(hndl->num_shards));
 
     /* Before database destination discovery */
     cdb2_event *e = NULL;
@@ -6202,8 +6291,13 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         goto after_callback;
     } else {
         rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name, &num_comdb2db_hosts,
-                                &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 1);
+                                &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 1,
+                                hndl->shards, &(hndl->num_shards));
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
+            if (hndl->num_shards > 0) { // can't query comdb2db for room info but we found shards. Let's continue
+                rc = 0;
+                goto after_callback;
+            }
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);
             rc = -1;
@@ -6251,21 +6345,19 @@ retry:
         for (int i = 0; i < num_comdb2db_hosts; i++) {
             if (i == master)
                 continue;
-            rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num,
-                                      comdb2db_hosts[i], comdb2db_ports[i],
-                                      hndl->hosts, &hndl->num_hosts,
-                                      hndl->dbname, hndl->cluster, &hndl->dbnum,
-                                      &hndl->num_hosts_sameroom, num_retry);
+            rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[i], comdb2db_ports[i],
+                                      hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->cluster, &hndl->dbnum,
+                                      &hndl->num_hosts_sameroom, num_retry, hndl->shards, &hndl->num_shards,
+                                      &hndl->num_shards_sameroom);
             if (rc == 0 || time(NULL) >= max_time) {
                 break;
             }
         }
         if (rc == -1 && time(NULL) < max_time) {
-            rc = comdb2db_get_dbhosts(
-                hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master],
-                comdb2db_ports[master], hndl->hosts, &hndl->num_hosts,
-                hndl->dbname, hndl->cluster, &hndl->dbnum,
-                &hndl->num_hosts_sameroom, num_retry);
+            rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master], comdb2db_ports[master],
+                                      hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->cluster, &hndl->dbnum,
+                                      &hndl->num_hosts_sameroom, num_retry, hndl->shards, &hndl->num_shards,
+                                      &hndl->num_shards_sameroom);
         }
 
         if (rc != 0) {
@@ -6273,6 +6365,10 @@ retry:
         }
     }
 
+    if (hndl->num_shards > 0) {
+        rc = 0;
+        goto after_callback;
+    }
     if (hndl->num_hosts == 0) {
         sprintf(hndl->errstr, "cdb2_get_dbhosts: comdb2db has no entry of "
                               "db %s of cluster type %s.",
@@ -6918,6 +7014,15 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         rc = cdb2_get_dbhosts(hndl);
         if (rc)
             debugprint("cdb2_get_dbhosts returns %d\n", rc);
+        if (rc == 0 && hndl->num_shards > 0) {
+            char db_shard[DBNAME_LEN];
+            int shard_num = (hndl->num_shards_sameroom > 0 && (hndl->flags & CDB2_RANDOMROOM))
+                                ? rand() % hndl->num_shards_sameroom
+                                : rand() % hndl->num_shards;
+            strcpy(db_shard, hndl->shards[shard_num]);
+            cdb2_close(hndl);
+            return cdb2_open(handle, db_shard, type, flags);
+        }
     }
 
     if (rc == 0) {
