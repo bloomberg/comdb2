@@ -779,7 +779,6 @@ Table *sqlite3LocateTableItem(
   }else{
     zDb = p->zDatabase;
   }
-  logmsg(LOGMSG_USER, "FOUND zDb as %s\n", zDb);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( gbl_allow_user_schema ){
     char tblName[MAXTABLELEN];

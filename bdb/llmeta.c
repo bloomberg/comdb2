@@ -11472,18 +11472,11 @@ static int make_gen_shard_key(char *key, const char *table)
 
     const uint8_t *p_gen_shard_key = NULL;
     const uint8_t *p_gen_shard_key_end = NULL;
-    uint32_t key_type = 0;
-    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
-    key_type = LLMETA_GEN_SHARD;
+    uint32_t key_type = LLMETA_GEN_SHARD;
     p_gen_shard_key = (uint8_t *)key;
     p_gen_shard_key_end = p_gen_shard_key + sizeof(int) + LLMETA_TBLLEN;
 
-    if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
-                        "open, you must run bdb_llmeta_open\n",
-                __func__);
-        return -1;
-    }
+    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
 
     /* put key type */
     if (!(p_gen_shard_key =
@@ -11506,72 +11499,16 @@ static int make_gen_shard_key(char *key, const char *table)
     return 0;
 }
 
-int bdb_set_genshard(tran_type *input_tran, const char *table, char *str, int *bdberr) {
-    uint32_t retries = 0;
+int bdb_set_genshard(tran_type *tran, const char *table, char *str, int *bdberr)
+{
     int rc=0;
     char key[LLMETA_IXLEN] = {0};
-    tran_type *tran;
+
+    assert(tran);
+
     if (make_gen_shard_key(key, table)) {
         *bdberr = BDBERR_BADARGS;
         return -1;
-    }
-    /*const uint8_t *p_gen_shard_key = NULL;
-    const uint8_t *p_gen_shard_key_end = NULL;
-
-    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
-    key_type = LLMETA_GEN_SHARD;
-    p_gen_shard_key = (uint8_t *)key;
-    p_gen_shard_key_end = p_gen_shard_key + sizeof(int) + LLMETA_TBLLEN;
-
-    if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
-                        "open, you must run bdb_llmeta_open\n",
-                __func__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    if (!(p_gen_shard_key =
-              buf_put(&key_type, sizeof(key_type), (uint8_t *)p_gen_shard_key,
-                      p_gen_shard_key_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
-                        "endianess\n",
-                __func__, __LINE__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    if (!(p_gen_shard_key = 
-            buf_put(table, strlen(table) , (uint8_t *)p_gen_shard_key, p_gen_shard_key_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
-                        "endianess\n",
-                __func__, __LINE__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }*/
-retry:
-    if (++retries >= gbl_maxretries) {
-        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
-        return -1;
-    }
-    /*if the user didn't give us a transaction, create our own*/
-    if (!input_tran) {
-        tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
-        if (!tran) {
-            if (*bdberr == BDBERR_DEADLOCK) {
-                int dp = gbl_llmeta_deadlock_poll;
-                if (dp > 1)
-                    poll(NULL, 0, rand() % dp);
-                goto retry;
-            }
-
-            logmsg(LOGMSG_ERROR, "%s: failed to get "
-                            "transaction\n",
-                    __func__);
-            goto cleanup;
-        }
-    } else {
-        tran = input_tran;
     }
 
     /* write the shard string */
@@ -11582,83 +11519,21 @@ retry:
         rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
     }
     if (rc && *bdberr != BDBERR_NOERROR)
-        goto backout;
-
-    /*commit if we created our own transaction*/
-    if (!input_tran) {
-        rc = bdb_tran_commit(llmeta_bdb_state, tran, bdberr);
-        if (rc && *bdberr != BDBERR_NOERROR)
-            goto cleanup;
-    }
+        return -1;
 
     *bdberr = BDBERR_NOERROR;
     return 0;
-
-backout:
-    /*if we created the transaction*/
-    if (!input_tran) {
-        /*kill the transaction*/
-        rc = bdb_tran_abort(llmeta_bdb_state, tran, bdberr);
-        if (rc && !BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: trans abort failed with "
-                            "bdberr %d\n",
-                    __func__, *bdberr);
-            return -1;
-        }
-        if (*bdberr == BDBERR_DEADLOCK) {
-            int dp = gbl_llmeta_deadlock_poll;
-            if (dp > 1)
-                poll(NULL, 0, rand() % dp);
-            goto retry;
-        }
-
-        logmsg(LOGMSG_ERROR, "%s:%d failed with bdberr %d\n", __func__,__LINE__, *bdberr);
-    }
-cleanup:
-    return -1;
 }
 
 
-int bdb_get_genshard(tran_type *tran, const char *table, char **str, int *size, int *bdberr) {
+int bdb_get_genshard(tran_type *tran, const char *table, char **str, int *size, int *bdberr)
+{
     char key[LLMETA_IXLEN] = {0};
     if (make_gen_shard_key(key, table)) {
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
-    /*const uint8_t *p_gen_shard_key = NULL;
-    const uint8_t *p_gen_shard_key_end = NULL;
 
-    assert(sizeof(int) + strlen(table) <= LLMETA_IXLEN);
-    key_type = LLMETA_GEN_SHARD;
-    p_gen_shard_key = (uint8_t *)key;
-    p_gen_shard_key_end = p_gen_shard_key + sizeof(int) + LLMETA_TBLLEN;
-
-    if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
-                        "open, you must run bdb_llmeta_open\n",
-                __func__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    if (!(p_gen_shard_key =
-              buf_put(&key_type, sizeof(key_type), (uint8_t *)p_gen_shard_key,
-                      p_gen_shard_key_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
-                        "endianess\n",
-                __func__, __LINE__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    if (!(p_gen_shard_key = 
-            buf_put(table, strlen(table) , (uint8_t *)p_gen_shard_key, p_gen_shard_key_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%d error converting to correct "
-                        "endianess\n",
-                __func__, __LINE__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }*/
     return bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, key, (void **)str, size, bdberr);
 }
 

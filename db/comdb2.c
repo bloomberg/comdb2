@@ -208,7 +208,6 @@ static void *purge_old_files_thread(void *arg);
 static int lrllinecmp(char *lrlline, char *cmpto);
 static void ttrap(struct timer_parm *parm);
 int clear_temp_tables(void);
-int gen_shard_deserialize_shard(char **genshard_name, uint32_t *numdbs, char ***dbnames, uint32_t *numcols, char ***columns, char ***shardnames, char *serializedStr);
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
@@ -252,7 +251,7 @@ int gbl_watchdog_watch_threshold = 60;
 int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
 int gbl_reject_osql_mismatch = 1;
-int gbl_abort_on_clear_inuse_rqid = 0;
+int gbl_abort_on_clear_inuse_rqid = 1;
 int gbl_archive_on_init = 1;
 
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
@@ -1959,6 +1958,8 @@ void cleanup_newdb(dbtable *tbl)
     if (tbl->dbtype == DBTYPE_QUEUEDB)
         Pthread_rwlock_destroy(&tbl->consumer_lk);
 
+    gen_shard_rem_inmem_tbl(tbl);
+
     free(tbl);
 }
 
@@ -2290,8 +2291,8 @@ err:
     return rc;
 }
 
-int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
-    int rc = 0;
+int llmeta_load_genshards(struct dbenv *dbenv, void *tran)
+{
     int bdberr = 0;
     /* allow as many generic sharded tables as regular tables (?) */
     char **tablenames = (char **)alloca(sizeof(char*) * thedb->num_dbs);
@@ -2299,7 +2300,7 @@ int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
     char **dbnames = NULL, **columns = NULL, **shardnames = NULL;
     int table_count = 0, size = 0;
     uint32_t numdbs=0, numcols=0;
-    struct dbtable *db = NULL;
+    struct dbtable *tbl = NULL;
     /* load the tables from the low level metatable */
     if (bdb_get_genshard_names(tran, (char **)tablenames, &table_count)) {
         logmsg(
@@ -2312,57 +2313,35 @@ int llmeta_load_genshards(struct dbenv *dbenv, void *tran) {
     for (int i = 0; i < table_count; i++) {
         if (bdb_get_genshard(tran, tablenames[i], &shard_info, &size, &bdberr)) {
             logmsg(LOGMSG_ERROR,
-                   "couldn't load view definition from low level meta table "
-                   "(bdberr: %d)\n",
-                   bdberr);
-            goto err;
+                   "missing partition info in llmeta for %s bdberr %d\n", tablenames[i], bdberr);
+            continue;
         }
 
-        if (gen_shard_deserialize_shard(&genshard_name, &numdbs, &dbnames, &numcols, &columns, &shardnames, shard_info)) {
+        if (gen_shard_deserialize_shard(&genshard_name, &numdbs, &dbnames, &shardnames, &numcols, &columns, shard_info)) {
             logmsg(LOGMSG_ERROR, "Failed to deserialize llmeta str for generic shard %s\n", tablenames[i]);
+            continue;
         }
 
         for(int i=0;i<numdbs;i++){
-            db = get_dbtable_by_name(shardnames[i]);
-            if (db) {
-                /*update the table object*/
-                db->genshard_name = genshard_name;
-                db->numdbs = numdbs;
-                db->dbnames = dbnames;
-                db->numcols = numcols;
-                db->columns = columns;
-                db->shardnames = shardnames;
-                hash_sqlalias_db(db, genshard_name);
-            } else {
-                logmsg(LOGMSG_ERROR, "FAILED TO UPDATE GENERIC SHARDING METADATA FOR TABLE %s\n", tablenames[i]);
+            if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname)) == 0) {
+                /* note only one shard will be found */
+                tbl = get_dbtable_by_name(shardnames[i]);
+                if (tbl) {
+                    /*update the table object*/
+                    tbl->partition.genshard_name = genshard_name;
+                    tbl->partition.numdbs = numdbs;
+                    tbl->partition.dbnames = dbnames;
+                    tbl->partition.numcols = numcols;
+                    tbl->partition.columns = columns;
+                    tbl->partition.shardnames = shardnames;
+                } else {
+                    logmsg(LOGMSG_FATAL, "%s failed to find local shard %s\n", __func__, shardnames[i]);
+                    abort();
+                }
             }
         }
     }
-    return rc;
-err:
-    for (int i = 0; i < table_count; i++) {
-        free(tablenames[i]);
-    }
-
-    if (dbnames) {
-        for(int i=0;i<numdbs;i++){
-            free(dbnames[i]);
-        }
-        free(dbnames);
-    }
-
-    if (columns) {
-        for(int i=0;i<numcols;i++){
-            free(columns[i]);
-        }
-    }
-
-    if (shardnames) {
-        for(int i=0;i<numdbs;i++) {
-            free(shardnames[i]);
-        }
-    }
-    return rc;
+    return 0;
 }
 
 static inline int db_get_alias(void *tran, dbtable *tbl)

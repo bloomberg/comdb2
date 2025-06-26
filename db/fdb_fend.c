@@ -451,7 +451,7 @@ static void __fdb_add_user(fdb_t *fdb, int noTrace)
     Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users++;
 
-    //if (!noTrace && gbl_fdb_track)
+    if (!noTrace && gbl_fdb_track)
         logmsg(LOGMSG_USER, "%s %p %s %s users %d\n",__func__, (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
     assert(fdb->users > 0);
     Pthread_mutex_unlock(&fdb->users_mtx);
@@ -466,7 +466,7 @@ static void __fdb_rem_user(fdb_t *fdb, int noTrace)
     Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
 
-    //if (!noTrace && gbl_fdb_track)
+    if (!noTrace && gbl_fdb_track)
         logmsg(LOGMSG_USER, "%s %p %s %s users %d\n",__func__, (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
@@ -1591,7 +1591,6 @@ static int __lock_wrlock_exclusive(char *dbname)
 
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
-            logmsg(LOGMSG_USER, "FOUND LOCKLESS USERS!!!!\n");
             Pthread_rwlock_unlock(&fdb->h_rwlock);
             Pthread_rwlock_unlock(&fdbs.arr_lock);
 
@@ -1601,7 +1600,6 @@ static int __lock_wrlock_exclusive(char *dbname)
 
             struct sql_thread *thd = pthread_getspecific(query_info_key);
             if (!thd) {
-                logmsg(LOGMSG_USER, "%s : couldn't find thd ... continuing\n", __func__);
                 continue;
             }
 
@@ -1612,10 +1610,8 @@ static int __lock_wrlock_exclusive(char *dbname)
                 return FDB_ERR_GENERIC;
             }
 
-            logmsg(LOGMSG_USER, "clnt_check_bdb_lock_desired returned 0 .... continuing\n");
             continue;
         } else {
-            logmsg(LOGMSG_USER, "NO LOCKLESS USERS!!!!\n");
             rc = FDB_NOERR;
             break; /* own fdb */
         }
@@ -4397,10 +4393,6 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             if (tran->errstr) // TODO: this can be non-null even when no error
                 errstat_set_str(&clnt->osql.xerr, tran->errstr);
             clnt->osql.error_is_remote = 1;
-
-            if (tran->is_cdb2api) {
-                logmsg(LOGMSG_ERROR, "cdb2api rc: %d, cdb2api errstr: %s\n", rc, cdb2_errstr(tran->fcon.hndl));
-            }
         }
 
         if (clnt->use_2pc) {
@@ -6322,7 +6314,6 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
                                 __func__, __LINE__, tblname, dbname); 
     }
 
-    /* TODO (do we still need this?): destroy_fdb(fdb);*/
     switch (rc) {
         case FDB_NOERR:
             logmsg(LOGMSG_ERROR, "Table %s already exists, ver %llu\n", tblname, remote_version);
@@ -6429,7 +6420,6 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     /* SET PARTITION NAME <tblname>*/
     snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->partition.u.genshard.tablename);
-    logmsg(LOGMSG_USER, "PARTITION NAME SET : %s\n", extra_set[0]);
 
     /* SET PARTITION NUMDBS <numdbs>*/
     snprintf(extra_set[1], strl[1], "%s%s", str[1], numdbs_str);
@@ -6516,7 +6506,7 @@ setup_error:
 /**
  * Run a distributed schema change to create a test generic sharding
  */
-int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
+int osql_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
                               char **dbnames, uint32_t numcols, char **columns, char **shardnames)
 {
     char **sqls = (char**)alloca(nshards * sizeof(char*));
@@ -6550,11 +6540,11 @@ setup_error:
 /**
  * Run a distributed schema change to remove a test generic sharding
  */
-int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
+int osql_remove_genshard(struct schema_change_type *sc, char **errmsg)
 {
     dbtable *tbl = get_dbtable_by_name(sc->tablename);
     assert(tbl);
-    uint32_t nshards = tbl->numdbs;
+    uint32_t nshards = tbl->partition.numdbs;
     char **sqls = (char**)alloca(nshards * sizeof(char*));
     int i;
 
@@ -6581,7 +6571,8 @@ int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
 
     /* this is not passed through syntax, it is retrieved from dbtable object */
 
-    return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, 0, NULL, tbl->shardnames, sqls, AST_TYPE_DROP);
+    return _running_dist_ddl(sc, errmsg, tbl->partition.numdbs, tbl->partition.dbnames, 0, NULL,
+                             tbl->partition.shardnames, sqls, AST_TYPE_DROP);
 
 setup_error:
     for (i = 0; i < nshards && sqls[i]; i++) {

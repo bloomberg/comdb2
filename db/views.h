@@ -218,7 +218,7 @@ int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
  *
  */
 int views_sqlite_del_timepart_view(timepart_view_t *view, sqlite3 *db,
-                          struct errstat *err);
+                                   struct errstat *err);
 
 /**
  * Populate an sqlite db with views

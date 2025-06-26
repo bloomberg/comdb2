@@ -1816,7 +1816,6 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         }
         snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename),
                  "%s", clnt->remsql_set.tablename);
-        logmsg(LOGMSG_USER, "%s setting genshard.tablename to %s\n", __func__ , clnt->remsql_set.tablename);
         sc->partition.u.genshard.numdbs = clnt->remsql_set.numdbs;
         sc->partition.u.genshard.dbnames = malloc(sizeof(char*) * clnt->remsql_set.numdbs);
         for (int i = 0; i < clnt->remsql_set.numdbs; i++) {

@@ -600,6 +600,16 @@ void consumer_lock_write_int(struct dbtable *db, const char *func, int line);
 #define consumer_unlock(x) consumer_unlock_int(x, __func__, __LINE__);
 void consumer_unlock_int(struct dbtable *db, const char *func, int line);
 
+struct gen_shard {
+    char *genshard_name;
+    uint32_t numdbs;
+    char **dbnames;
+    uint32_t numcols;
+    char **columns;
+    char **shardnames;
+};
+typedef struct gen_shard gen_shard;
+
 /*
  * We now have different types of db (I overloaded this structure rather than
  * create a new structure because the ireq usedb concept is endemic anyway).
@@ -799,12 +809,7 @@ typedef struct dbtable {
     const char *timepartition_name;
 
     /* generic sharding metadata */
-    char *genshard_name;
-    uint32_t numdbs;
-    char **dbnames;
-    uint32_t numcols;
-    char **columns;
-    char **shardnames;
+    gen_shard partition;
 } dbtable;
 
 struct dbview {

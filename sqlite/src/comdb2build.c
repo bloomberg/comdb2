@@ -641,7 +641,7 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
             f->rc = SQLITE_ABORT;
             return f->rc;
         }
-        f->rc = osql_test_create_genshard(s, &f->errorMsg, nshards, dbnames, numcols, columns, shardnames);
+        f->rc = osql_create_genshard(s, &f->errorMsg, nshards, dbnames, numcols, columns, shardnames);
         return f->rc;
     } else if (s->partition.type == PARTITION_REM_GENSHARD_COORD) {
         /* dbnames are NULL here, not passed though syntax */
@@ -652,7 +652,7 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
             f->rc = SQLITE_ABORT; 
             return f->rc;
         }
-        f->rc = osql_test_remove_genshard(s, &f->errorMsg);
+        f->rc = osql_remove_genshard(s, &f->errorMsg);
         return f->rc;
     }
 
@@ -955,7 +955,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         /* Check if this is a distributed drop */
         struct dbtable *tbl = get_dbtable_by_name(sc->tablename);
 
-        if (tbl && tbl->genshard_name) {
+        if (tbl && tbl->partition.genshard_name) {
             /* dropping a generic partition */
             /* NOTE: there are two was to get here:
              * - initial drop table that is actually a partition (coordinator)
@@ -968,8 +968,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
             sc->partition.type = thd->clnt->remsql_set.is_remsql == IS_REMCREATE ?
                 PARTITION_REM_GENSHARD : PARTITION_REM_GENSHARD_COORD ;
             snprintf(sc->partition.u.genshard.tablename,
-                     sizeof(sc->partition.u.genshard.tablename), "%s", tbl->genshard_name);
-            logmsg(LOGMSG_USER, "%s genshard table name is %s\n", __func__, sc->partition.u.genshard.tablename);
+                     sizeof(sc->partition.u.genshard.tablename), "%s", tbl->partition.genshard_name);
         }
     }
 
@@ -7936,10 +7935,8 @@ void comdb2CreateGenShard(Parse* pParse, IdList *cols, IdList *dbs)
 {
     struct comdb2_partition *partition;
 
-    /* requires fdb_push_remote_write */
-
     if (!gbl_fdb_push_remote_write) {
-        setError(pParse, SQLITE_ABORT, "Generic sharding requires fdb remote push write");
+        setError(pParse, SQLITE_ABORT, "Sharding requires fdb remote push writes");
         return;
     }
 

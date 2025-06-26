@@ -328,22 +328,9 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     db->sc_to = NULL;
     update_dbstore(db);
-    sc_printf(s, "Add table ok\n");
-
-    if (gbl_init_with_bthash) {
-        logmsg(LOGMSG_INFO, "Init table with bthash size %dkb per stripe\n",
-               gbl_init_with_bthash);
-        if (put_db_bthash(db, tran, gbl_init_with_bthash) != 0) {
-            logmsg(LOGMSG_ERROR, "Failed to write bthash to meta table\n");
-            return -1;
-        }
-        bdb_handle_dbp_add_hash(db->handle, gbl_init_with_bthash);
-    }
-     
 
     /*
-     * if this is the original request for a partition table add,
-     * create partition here
+     * create partition here if this is a partitioned table
      */
     if ((s->partition.type == PARTITION_ADD_TIMED ||
          s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
@@ -369,34 +356,25 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         }
     } else if (s->partition.type == PARTITION_ADD_GENSHARD) {
         struct errstat err = {0};
-        db->genshard_name = strdup(s->partition.u.genshard.tablename);
-        db->numdbs = s->partition.u.genshard.numdbs;
-        db->dbnames = (char **)malloc(sizeof(char*) * db->numdbs);
-        for (int i = 0; i < db->numdbs; i++) {
-            db->dbnames[i] = strdup(s->partition.u.genshard.dbnames[i]);
-        }
-
-        db->numcols = s->partition.u.genshard.numcols;
-        db->columns = (char **)malloc(sizeof(char*) * db->numcols);
-        for (int i = 0; i < db->numcols; i++) {
-            db->columns[i] = strdup(s->partition.u.genshard.columns[i]);
-        }
-
-        db->shardnames = (char **)malloc(sizeof(char*) * db->numdbs);
-        for (int i = 0; i < db->numdbs; i++) {
-            db->shardnames[i] = strdup(s->partition.u.genshard.shardnames[i]);
-        }
         /*write to llmeta*/
-        if (gen_shard_llmeta_add(tran, s->partition.u.genshard.tablename, s->partition.u.genshard.numdbs, 
-                    s->partition.u.genshard.dbnames, s->partition.u.genshard.numcols, s->partition.u.genshard.columns,
-                    s->partition.u.genshard.shardnames, &err)) {
+        if (gen_shard_add(tran, db, s->partition.u.genshard.tablename,
+                          s->partition.u.genshard.numdbs, s->partition.u.genshard.dbnames, s->partition.u.genshard.shardnames,
+                          s->partition.u.genshard.numcols, s->partition.u.genshard.columns, &err)) {
             sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
-            if (db->genshard_name) {
-                free(db->genshard_name);
-                db->genshard_name = NULL;
-            }
             return -1;
         }
+    }
+
+    sc_printf(s, "Add table ok\n");
+
+    if (gbl_init_with_bthash) {
+        logmsg(LOGMSG_INFO, "Init table with bthash size %dkb per stripe\n",
+               gbl_init_with_bthash);
+        if (put_db_bthash(db, tran, gbl_init_with_bthash) != 0) {
+            logmsg(LOGMSG_ERROR, "Failed to write bthash to meta table\n");
+            return -1;
+        }
+        bdb_handle_dbp_add_hash(db->handle, gbl_init_with_bthash);
     }
 
     sc_printf(s, "Schema change ok\n");
