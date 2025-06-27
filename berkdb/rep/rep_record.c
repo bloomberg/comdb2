@@ -5038,6 +5038,12 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		lock_dbt = &prep_args->locks;
 	}
 
+	if (td_stats) {
+		struct berkdb_thread_stats *t = bb_berkdb_get_thread_stats();
+		t->rep_commit_file = maxlsn.file;
+		t->rep_commit_offset = maxlsn.offset;
+	}
+
 	if (collect_before_locking) {
 		if (lcin)
 			lc = *lcin;
@@ -5291,6 +5297,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		DB_LSN lsn;
 		lsn = lc.array[i].lsn;
 		lsnp = &lsn;
+		uint64_t start_dispatch, end_dispatch;
+
+		if (td_stats)
+			start_dispatch = bb_berkdb_fasttime();
 
 		if (!lc.array[i].rec.data) {
 			assert(!lc.filled_from_cache);
@@ -5339,6 +5349,14 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			}
 		} else
 			ret = 0;
+		if (td_stats) {
+			end_dispatch = bb_berkdb_fasttime();
+			if (end_dispatch - start_dispatch > t->rep_longest_dispatch_us) {
+				t->rep_longest_dispatch_us = end_dispatch - start_dispatch;
+				t->rep_longest_dispatch_file = lsnp->file;
+				t->rep_longest_dispatch_offset = lsnp->offset;
+			}
+		}
 	}
 
 
@@ -5700,6 +5718,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int get_schema_lk = 0, got_schema_lk = 0;
 	int dontlock = 0;
 	int endianize = 0;
+	int td_stats = gbl_bb_berkdb_enable_thread_stats;
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	rp = listc_rtl(&dbenv->inactive_transactions);
@@ -5989,6 +6008,12 @@ bad_resize:	;
 		}
 	}
 
+	if (td_stats) {
+		struct berkdb_thread_stats *t = bb_berkdb_get_thread_stats();
+		t->rep_commit_file = maxlsn.file;
+		t->rep_commit_offset = maxlsn.offset;
+	}
+
 	if (collect_before_locking) {
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
 				&had_serializable_records, rp, txnid)) != 0) {
@@ -6024,7 +6049,6 @@ bad_resize:	;
 		got_schema_lk = 1;
 	}
 
-	int td_stats = gbl_bb_berkdb_enable_thread_stats;
 	struct berkdb_thread_stats *t, *p;
 	uint64_t x1, x2, d;
 
