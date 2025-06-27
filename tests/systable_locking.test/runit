@@ -41,7 +41,7 @@ function enable_sleep_in_trigger_info
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'debug_sleep_in_trigger_info' 1" >/dev/null 2>&1
     else
         for m in $CLUSTER ; do
-            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "put tunablel 'debug_sleep_in_trigger_info' 1" >/dev/null 2>&1
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "put tunable 'debug_sleep_in_trigger_info' 1" >/dev/null 2>&1
         done
     fi
 }
@@ -53,7 +53,7 @@ function disable_sleep_in_trigger_info
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'debug_sleep_in_trigger_info' 0" >/dev/null 2>&1
     else
         for m in $CLUSTER ; do
-            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "put tunablel 'debug_sleep_in_trigger_info' 0" >/dev/null 2>&1
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "put tunable 'debug_sleep_in_trigger_info' 0" >/dev/null 2>&1
         done
     fi
 }
