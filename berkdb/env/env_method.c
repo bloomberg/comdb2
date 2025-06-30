@@ -291,6 +291,8 @@ __dbenv_init(dbenv)
         dbenv->dump_mintruncate_list = __dbenv_dump_mintruncate_list;
         dbenv->clear_mintruncate_list = __dbenv_clear_mintruncate_list;
         dbenv->build_mintruncate_list = __dbenv_build_mintruncate_list;
+	dbenv->get_rep_lsns = __dbenv_get_rep_lsns;
+	dbenv->set_coherency_check_callback = __dbenv_set_coherency_check_callback;
 #ifdef	HAVE_RPC
 	}
 #endif
