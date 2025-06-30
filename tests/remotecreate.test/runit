@@ -60,7 +60,7 @@ function verify_table {
 	if (( $? != 0 )); then
 		fail_exit "verify_table failed. Could not select from ${tbl} on ${TERNARY_DBNAME}"
 	fi
-	$S2_SQLT "SELECT * from ${tbl}"
+	$S3_SQLT "SELECT * from ${tbl}"
 	if (( $? != 0 )); then
 		fail_exit "verify_table failed. Could not select from ${tbl} on ${QUATERNARY_DBNAME}"
 	fi
