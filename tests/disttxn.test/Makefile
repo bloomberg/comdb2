@@ -14,3 +14,7 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=20m
 endif
+
+ifeq ($(SETUP_TIMEOUT),)
+	export SETUP_TIMEOUT=6m
+endif
