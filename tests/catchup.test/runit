@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t1(a int)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t2(a int)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t3(a int)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t4(a int)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t5(a int)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into t1 values(1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into t2 values(1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into t3 values(1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into t4 values(1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into t5 values(1)"
+
+rm -f pids
+yes "update t1 set a=a --catchup" | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default - >/dev/null &
+echo $! >pids
+yes "update t2 set a=a --catchup" | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default - >/dev/null &
+echo $! >>pids
+yes "update t3 set a=a --catchup" | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default - >/dev/null &
+echo $! >>pids
+yes "update t4 set a=a --catchup" | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default - >/dev/null &
+echo $! >>pids
+yes "update t5 set a=a --catchup" | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default - >/dev/null &
+echo $! >>pids
+
+sleep 5
+host=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='N' and coherent_state='coherent' limit 1")
+master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='Y'")
+$CDB2SQL_EXE --host $host ${CDB2_OPTIONS} ${DBNAME} "exec procedure sys.cmd.send('exit')"
+sleep 180
+ssh -n -o StrictHostKeyChecking=no $host /opt/bb/bin/comdb2 ${DBNAME} --lrl ${DBDIR}/${DBNAME}.lrl >dbout 2>&1 &
+
+# wait for the node to become coherent again
+while :; do
+    cdb2sql --tabs --host ${master} ${CDB2_OPTIONS} ${DBNAME} default "select * from comdb2_cluster"
+    state=$(cdb2sql --tabs --host ${master} ${CDB2_OPTIONS} ${DBNAME} default "select coherent_state from comdb2_cluster where host='$host'")
+    if [[ "$state" == "coherent" ]]; then
+        break
+    fi
+    sleep 1
+done
+
+for pid in $(cat pids); do
+    kill $pid
+done
+
+echo "Success"

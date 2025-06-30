@@ -40,6 +40,7 @@
 #include <build/db_int.h>
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
+#include "dbinc/db_swap.h"
 #include <trigger.h>
 #include "printformats.h"
 #include "phys_rep.h"
@@ -72,6 +73,7 @@ extern int gbl_debug_stat4dump_loop;
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
 extern int gbl_2pc;
+extern int gbl_nudge_replication_when_idle;
 
 /* osqlcomm.c code, hurray! */
 extern void osql_decom_node(char *decom_host);
@@ -5569,6 +5571,22 @@ void *watcher_thread(void *arg)
                 }
 
                 last_behind = behind;
+            }
+
+            DB_LSN next_lsn, gap_lsn;
+            int nrecs;
+            // if we're not seeing records or seeing only very old records, poke replication
+            // to request records in the range we expect
+            if (gbl_nudge_replication_when_idle && bdb_state->dbenv->get_rep_lsns(bdb_state->dbenv, &next_lsn, &gap_lsn, &nrecs) == 0) {
+                if (nrecs == 0 && !IS_ZERO_LSN(gap_lsn)) {
+                    DB_LSN tmp_lsn = {0};
+                    DBT max_lsn_dbt = {0};
+                    LOGCOPY_TOLSN(&tmp_lsn, &gap_lsn);
+                    max_lsn_dbt.data = &tmp_lsn;
+                    max_lsn_dbt.size = sizeof(tmp_lsn); 
+                    logmsg(LOGMSG_INFO, "poking replication: asking for %u:%u gap end at %u:%u\n", next_lsn.file, next_lsn.offset, gap_lsn.file, gap_lsn.offset);
+                    __rep_send_message(bdb_state->dbenv, bdb_state->repinfo->master_host, REP_LOG_REQ, &next_lsn, &max_lsn_dbt, 0, NULL);
+                }
             }
         }
 

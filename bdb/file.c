@@ -3015,6 +3015,8 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
         starting_time = time(NULL);
     }
 
+    bdb_state->dbenv->set_coherency_check_callback(bdb_state->dbenv, (int(*)(void*))bdb_am_i_coherent, bdb_state);
+
     /* start the network up */
     print(bdb_state, "starting network\n");
     rc = net_init(bdb_state->repinfo->netinfo);

@@ -2845,6 +2845,11 @@ struct __db_env {
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
 	int (*last_commit_lsn) __P((DB_ENV *, DB_LSN *));
+	int (*get_rep_lsns)   __P((DB_ENV *, DB_LSN *, DB_LSN *, int *));
+
+	int (*set_coherency_check_callback) __P((DB_ENV *, int(*)(void*), void*));
+	void *coherency_check_usrptr;
+	int (*coherency_check_callback)(void*);
 
 	pthread_mutex_t utxnid_lock;
 	u_int64_t next_utxnid;

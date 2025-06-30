@@ -8,6 +8,9 @@
 #include "db_config.h"
 #include "dbinc/db_swap.h"
 
+#include <time.h>
+#include <epochlib.h>
+
 #ifndef lint
 static const char revid[] =
 	"$Id: rep_record.c,v 1.193 2003/11/14 05:32:31 ubell Exp $";
@@ -1083,7 +1086,6 @@ done:
  * PUBLIC: int __rep_process_message __P((DB_ENV *, DBT *, DBT *, char**,
  * PUBLIC:	 DB_LSN *, uint32_t *,uint32_t *, char **, int));
  */
-
 int
 __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, newmaster, online)
 	DB_ENV *dbenv;
@@ -1117,17 +1119,24 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 	static int rpm_pr = 0;
 	int rpm_now;
 #endif
+	time_t now;
 	int send_count = 0;
 	static time_t verify_req_print = 0;
 	static unsigned long long verify_req_count = 0;
 	unsigned long long bytes_behind;
-	time_t now;
-
-
+	time_t start_rep_all, end_rep_all;
+	int nlsns = 0;
+	DB_LSN rep_start_lsn;
 	u_int32_t vi_last_write_gen, vi_egen;
 	int vi_nsites, vi_priority, vi_tiebreaker;
 
 	char *master;
+	static time_t report_last = 0;
+	time_t report_now = time(NULL);
+
+	if (report_last == 0) {
+		report_last = report_now;
+	}
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle, "rep_process_message",
@@ -1155,6 +1164,17 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
+
+	if (report_now != report_last && IS_REP_CLIENT(dbenv)) {
+		report_last = report_now;
+		if (dbenv->coherency_check_callback && dbenv->coherency_check_callback(dbenv->coherency_check_usrptr) == 0) {
+			logmsg(LOGMSG_USER, "gen %u dups %u queued %u ready at %u:%u rep at %u:%u last recv %u:%u\n",
+		  rep->stat.st_gen, rep->stat.st_log_duplicated, rep->stat.st_log_queued, 
+		  lp->ready_lsn.file, lp->ready_lsn.offset,
+		  lp->waiting_lsn.file, lp->waiting_lsn.offset,
+		  rp->lsn.file, rp->lsn.offset);
+		}
+	}
 
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
@@ -1505,9 +1525,12 @@ skip:				/*
 		flags = IS_ZERO_LSN(rp->lsn) ||
 			IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
 		sendflags = DB_REP_SENDACK;
+		start_rep_all = comdb2_time_epochms();
+		rep_start_lsn = lsn;
 		for (ret = __log_c_get(logc, &lsn, &data_dbt, flags);
 			ret == 0 && type != REP_LOG_MORE;
 			ret = __log_c_get(logc, &lsn, &data_dbt, DB_NEXT)) {
+			nlsns++;
 			/*
 			 * When a log file changes, we'll have a real log
 			 * record with some lsn [n][m], and we'll also want
@@ -1581,6 +1604,8 @@ more:
 			oldfilelsn = lsn;
 			oldfilelsn.offset += logc->c_len;
 		}
+		end_rep_all = comdb2_time_epochms();
+		logmsg(LOGMSG_USER, "sent %d lsns in %d ms %u:%u to %u:%u\n", nlsns, (int) (end_rep_all - start_rep_all), rep_start_lsn.file, rep_start_lsn.offset, lsn.file, lsn.offset);
 
 		if (gbl_verbose_fills){
 			logmsg(LOGMSG_USER, "%s line %d done REP_ALL fill for %s to "
@@ -3031,6 +3056,8 @@ __thread int disable_random_deadlocks = 0;
 __thread int physrep_out_of_order = 0;
 __thread DB_LSN commit_lsn = {0};
 
+extern int gbl_always_request_log_req;
+
 /*
  * __rep_apply --
  *
@@ -3068,6 +3095,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int num_retries;
 	int disabled_minwrite_noread = 0;
 	char *eid, *dist_txnid = NULL;
+	time_t now = comdb2_time_epoch();
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -3149,7 +3177,12 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	(void)count_in_func;
 	lp = dblp->reginfo.primary;
 	cmp = log_compare(&rp->lsn, &lp->ready_lsn);
-
+	if (now != lp->last_log_record_time) {
+		lp->last_log_record_time = now;
+		lp->records_last_second = 0;
+	}
+	if (cmp > 0)
+		lp->records_last_second++;
 	/*
 	 * fprintf(stderr, "Rep log file %s line %d for %d:%d ready_lsn is %d:%d cmp=%d\n", 
 	 * __FILE__, __LINE__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file, 
@@ -3430,8 +3463,14 @@ gap_check:		max_lsn_dbtp = NULL;
 			 */
 			next_lsn = lp->ready_lsn;
 			do_req = ++lp->rcvd_recs >= lp->wait_recs;
+			/* We used to have an explicit do_req=1 here.  Presumably this fixes a case
+			* where we haven't seen much traffic in the past, and get a few records
+			* but not enough to trigger a request.  Unfortunately the back-and-forth
+			* requests this generates slow down catchup whene the replicant is very far
+			* behind and has multiple gaps.  Instead we request on a timer from elsewhere. */
 
-			do_req = 1;
+			if (gbl_always_request_log_req)
+				do_req = 1;
 
 			if (do_req) {
 				lp->wait_recs = rep->request_gap;
@@ -3483,7 +3522,10 @@ gap_check:		max_lsn_dbtp = NULL;
 						max_lsn_dbtp->data);
 					max_lsn_dbtp->data = &tmp_lsn;
 				}
-
+				else {
+					ZERO_LSN(tmp_lsn);
+				}
+				// fprintf(stderr, "Requesting %u:%u - %u:%u ready %u:%u waiting %u:%u\n", next_lsn.file, next_lsn.offset, tmp_lsn.file, tmp_lsn.offset, lp->ready_lsn.file, lp->ready_lsn.offset, lp->waiting_lsn.file, lp->waiting_lsn.offset);
 				/*
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
@@ -8855,6 +8897,42 @@ __rep_inflight_txns_older_than_lsn(DB_ENV *dbenv, DB_LSN *lsn)
 		}
 	}
 	Pthread_mutex_unlock(&dbenv->recover_lk);
+	return 0;
+}
+
+// PUBLIC: int __dbenv_get_rep_lsns __P((DB_ENV *, DB_LSN *, DB_LSN *, int *));
+int 
+__dbenv_get_rep_lsns(dbenv, ready_lsn, gap_lsn, nrecs)
+DB_ENV *dbenv;
+DB_LSN *ready_lsn;
+DB_LSN *gap_lsn;
+int *nrecs;
+{
+	DB_LOG *dblp;
+	LOG *lp;
+	DB_REP *db_rep;
+
+	db_rep = dbenv->rep_handle;
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	*ready_lsn = lp->ready_lsn;
+	*gap_lsn = lp->waiting_lsn;
+	*nrecs = lp->records_last_second;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	return 0;
+}
+
+// PUBLIC: int __dbenv_set_coherency_check_callback __P((DB_ENV *, int(*)(void*), void*));
+int
+__dbenv_set_coherency_check_callback(dbenv, callback, usrptr)
+DB_ENV *dbenv;
+int (*callback)(void*);
+void *usrptr;
+{
+	dbenv->coherency_check_callback = callback;
+	dbenv->coherency_check_usrptr = usrptr;
 	return 0;
 }
 
