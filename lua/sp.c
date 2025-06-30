@@ -4012,6 +4012,15 @@ static void setup_clnt_for_sp(struct sqlclntstate *clnt)
     clnt->dohsql_disable = 1;
 }
 
+static void reset_clnt_after_sp(struct sqlclntstate *clnt,
+                const int saved_dohsql_disable,
+                const int saved_osql_max_trans)
+{
+    clnt->recover_ddlk = NULL;
+    clnt->recover_ddlk_fail = NULL;
+    clnt->dohsql_disable = saved_dohsql_disable;
+    clnt->osql_max_trans = saved_osql_max_trans;
+}
 
 static int db_udf_error(Lua L)
 {
@@ -7427,6 +7436,9 @@ void *exec_trigger(char *spname)
     ctrace("trigger:%s rc:%d err:%s\n", spname, rc, err);
     ctrace("trigger:%s stopped running\n", spname);
     free(err);
+    reset_clnt_after_sp(&clnt,
+                    clnt.osql_max_trans /* don't care if changed. keep current value */,
+                    clnt.dohsql_disable /* ^ */);
     close_sp(&clnt);
 
     put_curtran(thedb->bdb_env, &clnt);
@@ -7459,10 +7471,7 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     int dohsql_disable = clnt->dohsql_disable;
     setup_clnt_for_sp(clnt);
     int rc = exec_procedure_int(thd, clnt, err, 0);
-    clnt->osql_max_trans = osql_max_trans;
-    clnt->recover_ddlk = NULL;
-    clnt->recover_ddlk_fail = NULL;
-    clnt->dohsql_disable = dohsql_disable;
+    reset_clnt_after_sp(clnt, dohsql_disable, osql_max_trans);
     if (clnt->sp) {
         reset_sp(clnt->sp);
     }
