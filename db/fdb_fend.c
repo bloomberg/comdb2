@@ -6324,6 +6324,9 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
+    /* Fix this, for now disable 2pc if its a DDL */
+    clnt->use_2pc = 0;
+
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
 
