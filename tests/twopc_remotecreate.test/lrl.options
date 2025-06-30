@@ -1,0 +1,3 @@
+foreign_db_resolve_local 1
+foreign_db_push_remote_writes 1
+enable_2pc

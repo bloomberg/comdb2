@@ -150,6 +150,7 @@ extern int gbl_alternate_normalize;
 extern int gbl_typessql;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
+extern int gbl_2pc;
 
 /* Once and for all:
 
@@ -4208,6 +4209,9 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (rc)
         return rc;
 
+    if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt))
+        clnt->use_2pc = gbl_2pc;
+
     /* is this a snapshot? special processing */
     rc = get_high_availability(clnt);
     if (rc) {
@@ -5383,7 +5387,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->num_retry = 0;
     clnt->early_retry = 0;
 
-    extern int gbl_2pc;
     clnt->use_2pc = gbl_2pc;
     clnt->is_coordinator = 0;
     clnt->is_participant = 0;
