@@ -9879,8 +9879,8 @@ retry:
 
     /* check if we have table locks that were dropped during recovery */
     rc = 0;
-    if (clnt->recover_ddlk) {
-        rc = clnt->recover_ddlk(clnt);
+    if (clnt->post_recover_ddlk) {
+        rc = clnt->post_recover_ddlk(clnt);
     } else if (clnt->dbtran.pStmt) {
         rc = sqlite3LockStmtTablesRecover(clnt->dbtran.pStmt);
     }
@@ -10116,6 +10116,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;
+
+    if (clnt->pre_recover_ddlk)
+        clnt->pre_recover_ddlk(clnt);
 
     unlock_bdb_cursors(thd, bdbcur, &bdberr);
 
