@@ -284,6 +284,7 @@ timepart_view_t *timepart_deserialize_view(const char *str, struct errstat *err)
     }
 
 done:
+    if (cson_view) { cson_free_value(cson_view); }
     return view;
 }
 
