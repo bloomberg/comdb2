@@ -10,3 +10,4 @@ ctrace_dbdir 1
 allow_lua_print 1
 reverse_hosts_v2 1
 physrep_keepalive_v2 1
+physrep_reconnect_interval 10
