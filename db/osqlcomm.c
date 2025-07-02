@@ -6428,9 +6428,6 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
-
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
     } else {
         /*
          * use the first shard as the destination, after first altering it
@@ -6454,14 +6451,14 @@ static int _process_partitioned_table_merge(struct ireq *iq)
             return ERR_SC;
         }
 
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
-
         arg.check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
         arg.start = 1;
         /* since this is a partition drop, we do not need to set/reset arg.pos here */
     }
+
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
 
     /* at this point we have created the future btree, launch an alter
      * for each of the shards of the partition
