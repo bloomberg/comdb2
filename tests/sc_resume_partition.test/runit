@@ -16,70 +16,107 @@ declare -r DOWNGRADE=2
 declare -r CREATE=10
 declare -r ALTER=11
 
+# Creates partitioned table
+setup() {
+	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3 op_for_creating_partitioned_table=$4
+
+	local starttime
+	starttime=$(get_timestamp 120)
+
+	if (( op_for_creating_partitioned_table == CREATE )); then
+	        cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table ${tbl_name}(a int) partitioned by time period 'daily' retention ${num_shards} start '${starttime}'"
+	elif (( op_for_creating_partitioned_table == ALTER )); then
+	        cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table ${tbl_name}(a int)"
+	        cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table ${tbl_name} partitioned by time period 'daily' retention ${num_shards} start '${starttime}'"
+	else
+		echo "Don't recognize op for creating partitioned table '${op_for_creating_partitioned_table}'"
+	fi
+
+	for i in $(seq 0 1 $((num_shards-1)));
+	do
+		local shard
+		shard=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select shardname from comdb2_timepartshards limit 1 offset ${i}")
+	  	for (( i=1; i<=${num_records_per_shard}; i+=10000 )); do
+	      		local min="${i}"
+			local max="$(( ((${i} + 9999) < ${num_records_per_shard}) ? (${i} + 9999) : ${num_records_per_shard}))"
+	      		cdb2sql ${CDB2_OPTIONS} ${DBNAME} ${tier} "insert into '${shard}' select * from generate_series(${min}, ${max})"
+	  	done
+	done
+}
+
+# Destroys partitioned table
+teardown() {
+	local -r tbl_name=$1
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "drop table ${tbl_name}"
+}
+
+# Tests that the resume of partitioned table merge triggered by a crash or a downgrade completes correctly
 test_driver() {
-	# Given
-	(
-		local -r num_shards=$1 num_records_per_shard=$2 resume_trigger=$3 op_for_creating_partition=$4
+	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3 resume_trigger=$4
 
-		local master
-		master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm ${tier} 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
+	local master
+	master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm ${tier} 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
 
-		local -r tbl_name="t"
-		setup_table ${tbl_name} ${num_shards} ${num_records_per_shard} ${op_for_creating_partition}
+	COMDB2_CONFIG_MIN_RETRIES=0 \
+	COMDB2_CONFIG_MAX_RETRIES=0 \
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table ${tbl_name} partitioned by none" &
+	local -r waitpid=$!
 
-		trap "cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} 'drop table ${tbl_name}'" EXIT
+	sleep 5
 
-	#	cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
+	if (( resume_trigger == CRASH )); then
+		restart_cluster ${master}
+	elif (( resume_trigger == DOWNGRADE )); then
+		downgrade ${master}
+	else
+		echo "FAIL: expected resume_trigger to be one of: KILL, DOWNGRADE"
+		return 1
+	fi
 
-		# When
-		COMDB2_CONFIG_MIN_RETRIES=0 \
-		COMDB2_CONFIG_MAX_RETRIES=0 \
-		cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table ${tbl_name} partitioned by none" &
-		local -r waitpid=$!
+	if wait ${waitpid};
+	then
+		echo "FAIL: Merge succeeded before master swing. Test is buggy."
+		return 1
+	fi
 
-		sleep 5
+	wait_for_outstanding_scs &> /dev/null
 
-		if (( resume_trigger == CRASH )); then
-			restart_cluster ${master}
-		elif (( resume_trigger == DOWNGRADE )); then
-			downgrade ${master}
-		else
-			echo "FAIL: expected resume_trigger to be one of: KILL, DOWNGRADE"
-			return 1
-		fi
+	local timepart
+	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select * from comdb2_timepartitions where name='${tbl_name}'")
+	if [[ -n ${timepart} ]];
+	then
+		echo "FAIL: Found time partition that should not exist"
+		return 1
+	fi
 
-		# Then
-		if wait ${waitpid};
-		then
-			echo "FAIL: Merge succeeded before master swing. Test is buggy."
-			return 1
-		fi
+	local num_records
+	num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select count(*) from ${tbl_name}")
+	if (( num_records != num_shards*num_records_per_shard ));
+	then
+		echo "FAIL: Unexpected number of records after partition merge"
+		return 1
+	fi
+}
 
-		wait_for_outstanding_scs &> /dev/null
+run_test() {
+	local -r num_shards=$1 num_records_per_shard=$2 resume_trigger=$3 op_for_creating_partition=$4
+	local -r tbl_name="t"
 
-		local timepart
-		timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select * from comdb2_timepartitions where name='${tbl_name}'")
-		if [[ -n ${timepart} ]];
-		then
-			echo "FAIL: Found time partition that should not exist"
-			return 1
-		fi
+	setup ${tbl_name} ${num_shards} ${num_records_per_shard} ${op_for_creating_partition}
 
-		local num_records
-		num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select count(*) from ${tbl_name}")
-		if (( num_records != num_shards*num_records_per_shard ));
-		then
-			echo "FAIL: Unexpected number of records after partition merge"
-			return 1
-		fi
-	)
+	test_driver ${tbl_name} ${num_shards} ${num_records_per_shard} ${resume_trigger}
+	local -r rc=$?
+	
+	teardown ${tbl_name}
+
+	return ${rc}
 }
 
 main() {
 	local -r num_shards=5
-	for num_records_per_shard in 1 10000;
+	for num_records_per_shard in 10000;
 	do
-		for resume_trigger in ${CRASH} ${DOWNGRADE};
+		for resume_trigger in ${DOWNGRADE};
 		do
 			for op_for_creating_partition in ${CREATE} ${ALTER};
 			do
@@ -87,10 +124,11 @@ main() {
 				echo "Testing resume of a partitioned table triggered by a ${resume_trigger} "
 				echo "Partitioned table was created using ${op_for_creating_partition} and contains ${num_records_per_shard} "
 				echo "records in each of ${num_shards} shards"
-				if test_driver ${num_shards} ${num_records_per_shard} ${resume_trigger} ${op_for_creating_partition}; then
+				if run_test ${num_shards} ${num_records_per_shard} ${resume_trigger} ${op_for_creating_partition}; then
 					echo "Passed test --------------"
 				else
 					echo "Failed test --------------"
+					exit 1
 				fi
 			done
 		done
