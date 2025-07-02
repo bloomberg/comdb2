@@ -6836,6 +6836,7 @@ int check_appsock_limit(int pending)
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
     int current = pending + ATOMIC_ADD32(active_appsock_conns, 1);
+    time_metric_add(thedb->connections, current);
     if (warn > max) warn = max;
     if (current <= warn) return 0;
     if (current > max) {
