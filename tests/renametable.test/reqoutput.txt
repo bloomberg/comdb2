@@ -123,3 +123,7 @@
 [drop table t2] rc 0
 [alter table t2 rename to t] failed with rc 240 New table name exists
 [alter table t2 rename to t2] failed with rc 240 New table name exists
+[begin] rc 0
+[alter table t rename to dummy] rc 0
+[alter table t2 rename to t] rc 0
+[commit] rc 0
