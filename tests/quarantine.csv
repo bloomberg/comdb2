@@ -18,6 +18,5 @@ scupdates,DB_BUG,180779427
 insert_lots,FLAKEY,180779489
 incoh_remsql,UNKNOWN,180788122
 incoh_remsql_rte_connect_generated,UNKNOWN,180788122
-cldeadlock,UNKNOWN,180793115
 truncatesc_offline_generated,DB_BUG,180801974
 sc_partial_datacopy_logicalsc_generated,UNKNOWN,180802210
