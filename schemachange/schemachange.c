@@ -41,6 +41,34 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
 
 extern int gbl_test_sc_resume_race;
+extern struct thdpool *gbl_sc_thdpool;
+
+static int do_schema_change_async(struct ireq * iq, sc_arg_t *arg, struct schema_change_type *s)
+{
+    int rc = 0;
+
+    iq->sc_locked = 0;
+    if (s->kind == SC_ALTERTABLE_PENDING ||
+        s->preempted == SC_ACTION_RESUME) {
+        free(arg);
+        arg = NULL;
+        rc = thdpool_enqueue(gbl_sc_thdpool, (thdpool_work_fn) do_schema_change_locked_thdpool_wrapper, s, 0, NULL, THDPOOL_FORCE_QUEUE);
+    } else {
+        rc = thdpool_enqueue(gbl_sc_thdpool, (thdpool_work_fn) do_schema_change_tran_thd_thdpool_wrapper, arg, 0, NULL, THDPOOL_FORCE_QUEUE);
+    }
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue rc %d\n", __func__, rc);
+        if (arg) { free(arg); }
+        if (!s->is_osql) {
+            sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
+                           time(NULL), __func__, __LINE__);
+            free_schema_change_type(s);
+        }
+        rc = SC_ASYNC_FAILED;
+    }
+
+    return rc;
+}
 
 /* If this is successful, it increments */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
@@ -324,66 +352,19 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     *forward
     ** in order to produce minimal spew
     */
-    if (s->nothrevent) {
-        if (s->kind != SC_PARTIALUPRECS)
-            logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
-        rc = do_schema_change_tran(arg);
-    } else {
-        int max_threads =
-            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
-        Pthread_mutex_lock(&sc_async_mtx);
-        while (!s->must_resume && !s->resume && max_threads > 0 &&
-               sc_async_threads >= max_threads) {
-            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
-            Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
-        }
-        sc_async_threads++;
-        Pthread_mutex_unlock(&sc_async_mtx);
+    if (s->kind != SC_PARTIALUPRECS)
+        logmsg(LOGMSG_INFO, "Executing %s\n", s->nothrevent ?
+            "SYNCHRONOUSLY" : "ASYNCHRONOUSLY");
 
-        if (s->kind != SC_PARTIALUPRECS)
-            logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
-        pthread_t tid;
+    rc = s->nothrevent
+        ? do_schema_change_tran(arg)
+        : do_schema_change_async(iq, arg, s);
 
-        if (s->kind == SC_ALTERTABLE_PENDING ||
-            s->preempted == SC_ACTION_RESUME) {
-            free(arg);
-            arg = NULL;
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_locked, s);
-        } else {
-            Pthread_mutex_lock(&s->mtxStart);
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran_thd,
-                                arg);
-            if (rc == 0) {
-                while (!s->started) {
-                    Pthread_cond_wait(&s->condStart, &s->mtxStart);
-                }
-            }
-            Pthread_mutex_unlock(&s->mtxStart);
-        }
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "start_schema_change:pthread_create rc %d %s\n", rc,
-                   strerror(errno));
-
-            Pthread_mutex_lock(&sc_async_mtx);
-            sc_async_threads--;
-            Pthread_mutex_unlock(&sc_async_mtx);
-
-            if (arg)
-                free(arg);
-            if (!s->is_osql) {
-                sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
-                               time(NULL), __func__, __LINE__);
-                free_schema_change_type(s);
-            }
-            rc = SC_ASYNC_FAILED;
-        }
-    }
     /* SC_COMMIT_PENDING is SC_OK for the upper layers */
     if (rc == SC_COMMIT_PENDING) {
         rc = s->sc_rc = SC_OK;
+    } else if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d Schema change failed\n", __func__, __LINE__);
     }
 
     return rc;

@@ -349,6 +349,7 @@
 (name='pgcompactpool')
 (name='recovery_processors')
 (name='recovery_workers')
+(name='sc_thdpool')
 (name='sqlenginepool')
 (name='udppfaultpool')
 [SELECT name FROM comdb2_threadpools ORDER BY name] rc 0
