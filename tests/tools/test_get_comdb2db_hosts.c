@@ -24,7 +24,7 @@ int main()
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master,
             NULL, &num_hosts, NULL,NULL,
-            NULL, &num_db_hosts, NULL, 1);
+            NULL, &num_db_hosts, NULL, 1, NULL, NULL);
 
     assert(rc == -1);
     assert(num_hosts == -1);
@@ -34,7 +34,7 @@ int main()
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master,
             NULL, &num_hosts, NULL,NULL,
-            NULL, &num_db_hosts, NULL, 1); //just get defaults
+            NULL, &num_db_hosts, NULL, 1, NULL, NULL); //just get defaults
 
     assert(rc == 0);
     assert(num_hosts == 0);
@@ -47,7 +47,7 @@ int main()
     char db_hosts[MAX_NODES][CDB2HOSTNAME_LEN] = {0};
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master,
             NULL, &num_hosts, NULL, NULL,
-            db_hosts, &num_db_hosts, NULL, 1);
+            db_hosts, &num_db_hosts, NULL, 1, NULL, NULL);
 
     assert(rc == 0);
     assert(num_db_hosts == 0);
@@ -66,7 +66,7 @@ int main()
     char db_hosts[MAX_NODES][CDB2HOSTNAME_LEN] = {0};
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master,
             NULL, &num_hosts, NULL, NULL,
-            db_hosts, &num_db_hosts, NULL, 1);
+            db_hosts, &num_db_hosts, NULL, 1, NULL, NULL);
 
     assert(rc == 0);
     assert(num_hosts == 0);
@@ -86,7 +86,7 @@ int main()
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master,
             NULL, &num_hosts, &comdb2db_num, NULL,
-            db_hosts, &num_db_hosts, NULL, 1);
+            db_hosts, &num_db_hosts, NULL, 1, NULL, NULL);
 
     assert(rc == 0);
     assert(num_hosts == 3);
@@ -106,7 +106,7 @@ int main()
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master,
             NULL, &num_hosts, &comdb2db_num, NULL,
-            db_hosts, &num_db_hosts, NULL, 1);
+            db_hosts, &num_db_hosts, NULL, 1, NULL, NULL);
 
     assert(rc == -1);
     assert(num_hosts == 0);
@@ -123,7 +123,7 @@ int main()
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master,
             NULL, &num_hosts, &comdb2db_num, NULL,
-            db_hosts, &num_db_hosts, NULL, 1);
+            db_hosts, &num_db_hosts, NULL, 1, NULL, NULL);
 
     assert(rc == 0);
     assert(num_hosts == 3);
