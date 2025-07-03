@@ -133,6 +133,14 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2 rename to t" &>> $OUT
 # Rename to our own name
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2 rename to t2" &>> $OUT
 
+# Rename after renaming table with target name in txn
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
+begin
+alter table t rename to dummy\$\$
+alter table t2 rename to t\$\$
+commit
+EOF
+
 df=$(diff $OUT $EXP)
 if [ $? -ne 0 ] ; then
      echo "  ^^^^^^^^^^^^"
