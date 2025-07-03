@@ -55,7 +55,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
             /* found view, is it the same version ? */
             if (view->version != tab->version) {
                 /* older version, destroy current view */
-                rc = views_sqlite_del_view(view, db, err);
+                rc = views_sqlite_del_timepart_view(view, db, err);
                 if (rc != VIEW_NOERR) {
                     logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n",
                             __func__);
@@ -126,8 +126,8 @@ int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
 }
 
 /* internal view delete function, callable from sqlite callback */
-int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
-                           struct errstat *err)
+int views_sqlite_del_view(const char *view_name, sqlite3 *db,
+                          struct errstat *err)
 {
     int rc;
     u32 mDbFlags;
@@ -167,10 +167,10 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
  *
  *
  */
-int views_sqlite_del_view(timepart_view_t *view, sqlite3 *db,
+int views_sqlite_del_timepart_view(timepart_view_t *view, sqlite3 *db,
                           struct errstat *err)
 {
-    return _views_sqlite_del_view(view->name, db, err);
+    return views_sqlite_del_view(view->name, db, err);
 }
 
 static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
@@ -195,7 +195,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     if (!cols_str) {
         goto malloc;
     }
-    cols_str = _describe_row(table0name, cols_str, VIEWS_TRIGGER_QUERY, err);
+    cols_str = describe_row(table0name, cols_str, VIEWS_TRIGGER_QUERY, err);
     if (!cols_str) {
 
         /* preserve error, if any */
@@ -314,7 +314,7 @@ static int _view_delete_if_missing(const char *name, sqlite3 *db, void *arg)
 
     /* if the view doesn't exist anymore, delete it */
     if (i >= views->nviews) {
-        rc = _views_sqlite_del_view(name, db, &err);
+        rc = views_sqlite_del_view(name, db, &err);
         if (rc != VIEW_NOERR) {
             logmsg(LOGMSG_ERROR, "%s: failed to clear old view %s rc=%d str=%s\n",
                     __func__, name, rc, err.errstr);
