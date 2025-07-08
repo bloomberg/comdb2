@@ -47,7 +47,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 extern int gbl_is_physical_replicant;
 
-int gbl_multitable_ddl = 1;
+int gbl_multitable_ddl = 0;
 
 /**** Utility functions */
 
