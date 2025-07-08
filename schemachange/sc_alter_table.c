@@ -744,6 +744,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->tablename);
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -765,6 +766,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     if ((iq == NULL || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
         sc_client_error(s, "Cannot drop a table referenced by a foreign key");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
@@ -773,13 +775,14 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     /* ban old settings */
     if (db->dbnum) {
         sc_client_error(s, "Cannot comdbg tables");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
     db->sc_genids = (unsigned long long *) calloc(MAXDTASTRIPE, sizeof(unsigned long long));
     if (!db->sc_genids) {
         sc_errf(s, "failed initilizing sc_genids\n");
-        decrement_sc_yet_to_resume_counter();
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
@@ -796,6 +799,11 @@ convert_records:
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
     if (s->resume && IS_ALTERTABLE(s)) {
+        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
         decrement_sc_yet_to_resume_counter();
     }
     MEMORY_SYNC;
