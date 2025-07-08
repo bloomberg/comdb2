@@ -42,7 +42,15 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
-/* If this is successful, it increments */
+/* Spawns a schema change
+ *
+ * resuming alters will increment gbl_sc_resume_start before 
+ * they are spawned and then decrement it once they
+ * have set their last converted genid.
+ *
+ * When gbl_sc_resume_start is zero, the db knows
+ * that it is safe to apply new writes.
+ */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
