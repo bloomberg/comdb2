@@ -40,3 +40,44 @@ wait_for_outstanding_scs() {
 		num_scs=$(num_outstanding_scs)
 	done
 }
+
+create_table() {
+	local starttime
+	starttime=$(get_timestamp 120)
+	#cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table ${tbl_name}(i int, j int)"
+	if (( op_for_creating_partitioned_table == CREATE )); then
+	        cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table ${tbl_name}(a int) partitioned by time period 'daily' retention ${num_shards} start '${starttime}'"
+	elif (( op_for_creating_partitioned_table == ALTER )); then
+	        cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table ${tbl_name}(a int)"
+	        cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table ${tbl_name} partitioned by time period 'daily' retention ${num_shards} start '${starttime}'"
+	else
+		echo "Don't recognize op for creating partitioned table '${op_for_creating_partitioned_table}'"
+	fi
+}
+
+insert_records_into_table() {
+	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3 op_for_creating_partitioned_table=$4
+	for i in $(seq 0 1 $((num_shards-1)));
+	do
+		local shard
+		shard=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select shardname from comdb2_timepartshards limit 1 offset ${i}")
+	  	for (( i=1; i<=${num_records_per_shard}; i+=10000 )); do
+	      		local min="${i}"
+			local max="$(( ((${i} + 9999) < ${num_records_per_shard}) ? (${i} + 9999) : ${num_records_per_shard}))"
+	      		cdb2sql ${CDB2_OPTIONS} ${DBNAME} ${tier} "insert into '${shard}' select * from generate_series(${min}, ${max})"
+	      		#cdb2sql ${CDB2_OPTIONS} ${DBNAME} ${tier} "insert into '${tbl_name}' select 1, * from generate_series(${min}, ${max})"
+	  	done
+	done
+}
+
+trigger_resume() {
+	local -r master=$1 resume_trigger=$2
+	if (( resume_trigger == CRASH )); then
+		restart_cluster ${master}
+	elif (( resume_trigger == DOWNGRADE )); then
+		downgrade ${master}
+	else
+		echo "FAIL: expected resume_trigger to be one of: KILL, DOWNGRADE"
+		return 1
+	fi
+}
