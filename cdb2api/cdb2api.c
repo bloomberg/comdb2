@@ -2543,7 +2543,7 @@ after_callback:
     return rc;
 }
 
-static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
+static void newsql_disconnect_int(cdb2_hndl_tp *hndl, SBUF2 *sb, int line, int dontdonate)
 {
     if (sb == NULL)
         return;
@@ -2553,13 +2553,10 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     int fd = sbuf2fileno(sb);
 
     int timeoutms = 10 * 1000;
-    if (hndl->is_admin ||
+    if (hndl->is_admin || dontdonate ||
         (hndl->firstresponse &&
-         (!hndl->lastresponse ||
-          (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
-        (!hndl->firstresponse) ||
-        (hndl->in_trans) ||
-        ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
+         (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
+        (!hndl->firstresponse) || (hndl->in_trans) || ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
         sbuf2close(sb);
     } else if (sbuf2free(sb) == 0) {
         cdb2_socket_pool_donate_ext(hndl->newsql_typestr, fd, timeoutms / 1000,
@@ -2570,9 +2567,13 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     return;
 }
 
+static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
+{
+    return newsql_disconnect_int(hndl, sb, line, 0);
+}
+
 /* returns port number, or -1 for error*/
-static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
-                           const char *remote_host, const char *app,
+static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *remote_host, const char *app,
                            const char *service, const char *instance)
 {
     char name[128]; /* app/service/dbname */
@@ -4457,7 +4458,7 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
         hardbound++;
         if (hardbound > hndl->max_auto_consume_rows) {
-            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            newsql_disconnect_int(hndl, hndl->sb, __LINE__, 1);
             break;
         }
     }
