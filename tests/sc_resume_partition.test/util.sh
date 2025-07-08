@@ -42,6 +42,8 @@ wait_for_outstanding_scs() {
 }
 
 create_table() {
+	local -r tbl_name=$1
+
 	local starttime
 	starttime=$(get_timestamp 120)
 	#cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table ${tbl_name}(i int, j int)"
@@ -56,7 +58,7 @@ create_table() {
 }
 
 insert_records_into_table() {
-	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3 op_for_creating_partitioned_table=$4
+	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3
 	for i in $(seq 0 1 $((num_shards-1)));
 	do
 		local shard
@@ -77,7 +79,7 @@ trigger_resume() {
 	elif (( resume_trigger == DOWNGRADE )); then
 		downgrade ${master}
 	else
-		echo "FAIL: expected resume_trigger to be one of: KILL, DOWNGRADE"
+		echo "FAIL: expected resume_trigger to be one of: CRASH, DOWNGRADE"
 		return 1
 	fi
 }

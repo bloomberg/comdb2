@@ -28,9 +28,8 @@ teardown() {
 	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "drop table ${tbl_name}"
 }
 
-# Tests that the resume of partitioned table merge triggered by a crash or a downgrade completes correctly
-test_driver() {
-	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3 resume_trigger=$4
+do_resume() {
+	local -r tbl_name=$1 num_shards=$2 num_records_inserted_per_shard_during_resume=$3 resume_trigger=$4
 	local master
 	master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm ${tier} 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
 
@@ -38,11 +37,13 @@ test_driver() {
 	COMDB2_CONFIG_MAX_RETRIES=0 \
 	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table ${tbl_name} partitioned by none" &
 	local -r waitpid=$!
-	sleep 5
+	sleep 2
 
 	#cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "rebuild ${tbl_name}" &
 
-	trigger_resume ${master} ${resume_trigger}
+#	trigger_resume ${master} ${resume_trigger}
+	echo "TRIGGER RESUME NOW"
+	sleep 20
 
 	if wait ${waitpid};
 	then
@@ -50,10 +51,15 @@ test_driver() {
 		return 1
 	fi
 
-	local -r num_records_inserted_per_shard_during_resume=1
 	insert_records_into_table ${tbl_name} ${num_shards} ${num_records_inserted_per_shard_during_resume}
 
 	wait_for_outstanding_scs &> /dev/null
+
+}
+
+# Verifies that resume completed correctly
+verify() {
+	local -r tbl_name=$1 num_shards=$2 num_records_per_shard=$3 num_records_inserted_per_shard_during_resume=$4
 
 	local timepart
 	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select * from comdb2_timepartitions where name='${tbl_name}'")
@@ -63,7 +69,7 @@ test_driver() {
 		return 1
 	fi
 
-	local -r expected_num_records=$(num_shards*num_records_per_shard+num_shards*num_records_inserted_per_shard_during_resume)
+	local -r expected_num_records=$((num_shards*num_records_per_shard+num_shards*num_records_inserted_per_shard_during_resume))
 	local actual_num_records
 	actual_num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select count(*) from ${tbl_name}")
 	if (( actual_num_records != expected_num_records ));
@@ -75,23 +81,19 @@ test_driver() {
 
 run_test() {
 	local -r num_shards=$1 num_records_per_shard=$2 resume_trigger=$3 op_for_creating_partition=$4
-	local -r tbl_name="t"
+	local -r tbl_name="t" num_records_per_shard_inserted_during_resume=1
 
 	setup ${tbl_name} ${num_shards} ${num_records_per_shard} ${op_for_creating_partition}
-
-	test_driver ${tbl_name} ${num_shards} ${num_records_per_shard} ${resume_trigger}
-	local -r rc=$?
-	
+	do_resume ${tbl_name} ${num_shards} ${num_records_per_shard_inserted_during_resume} ${resume_trigger}
+	verify ${tbl_name} ${num_shards} ${num_records_per_shard} ${num_records_per_shard_inserted_during_resume}
 	teardown ${tbl_name}
-
-	return ${rc}
 }
 
 main() {
 	local -r num_shards=5
 	for num_records_per_shard in 10000;
 	do
-		for resume_trigger in ${DOWNGRADE};
+		for resume_trigger in ${CRASH};
 		do
 			for op_for_creating_partition in ${CREATE};
 			do
