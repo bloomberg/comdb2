@@ -779,7 +779,7 @@ static int convert_record(struct convert_record_data *data)
             rc = 0;
             if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
                 int bdberr;
-                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename,
+                rc = bdb_set_high_genid_stripe(NULL, data->from->tablename,
                                                data->stripe, -1ULL, &bdberr);
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
@@ -1027,7 +1027,7 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+        rc = bdb_set_high_genid(data->trans, data->from->tablename, genid,
                                 &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
@@ -2680,7 +2680,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
 
     if (!is_dta_being_rebuilt(data->to->plan)) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+        rc = bdb_set_high_genid(data->trans, data->from->tablename, genid,
                                 &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)

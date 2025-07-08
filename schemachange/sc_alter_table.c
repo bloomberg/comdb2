@@ -591,7 +591,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(db, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -776,6 +776,13 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
+    db->sc_genids = (unsigned long long *) calloc(MAXDTASTRIPE, sizeof(unsigned long long));
+    if (!db->sc_genids) {
+        sc_errf(s, "failed initilizing sc_genids\n");
+        decrement_sc_yet_to_resume_counter();
+        return -1;
+    }
+
     Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
@@ -824,12 +831,9 @@ convert_records:
 
     add_ongoing_alter(s);
 
-    unsigned long long sc_genids[MAXDTASTRIPE];
-    memset(sc_genids, 0, MAXDTASTRIPE*(sizeof(unsigned long long)));
-
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    rc = convert_all_records(db, newdb, sc_genids, s);
+    rc = convert_all_records(db, newdb, db->sc_genids, s);
     if (rc == 1) rc = 0;
 
     remove_ongoing_alter(s);
@@ -868,7 +872,7 @@ convert_records:
 
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, sc_genids[i]);
+                    i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
