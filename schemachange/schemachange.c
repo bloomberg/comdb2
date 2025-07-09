@@ -1545,6 +1545,7 @@ const char *schema_change_kind(struct schema_change_type *s)
     case SC_ALTERTABLE_INDEX: return "SC_ALTERTABLE_INDEX";
     case SC_DROPTABLE_INDEX: return "SC_DROPTABLE_INDEX";
     case SC_REBUILDTABLE_INDEX: return "SC_REBUILDTABLE_INDEX";
+    case SC_BULK_IMPORT: return "SC_BULK_IMPORT";
     }
     return "UNKNOWN";
 }
