@@ -2556,6 +2556,9 @@ REGISTER_TUNABLE("iam_dbname",
                  "override dbname for IAM",
                  TUNABLE_STRING, &gbl_iam_dbname, READEARLY | READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("comdb2_files_sleep_secs_after_processing_llmeta", "Number of seconds to sleep after processing "
+                "llmeta in comdb2 files query processor\n", TUNABLE_INTEGER,
+                &gbl_comdb2_files_sleep_secs_after_processing_llmeta, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("comdb2_oplog_preserve_seqno", "Preserve max value of the seqno in llmeta", TUNABLE_BOOLEAN, &gbl_comdb2_oplog_preserve_seqno, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("queue_nonodh_scan_limit", "For comdb2_queues, stop queue scan at this depth (Default: 10000)", TUNABLE_INTEGER, &gbl_nonodh_queue_scan_limit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_request_log_req", "Always request the next log record on replicant if there is a gap (default: off)", TUNABLE_BOOLEAN, &gbl_always_request_log_req, 0, NULL, NULL, NULL, NULL);

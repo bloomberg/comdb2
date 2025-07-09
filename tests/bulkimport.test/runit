@@ -353,6 +353,29 @@ function test_bad_inputs_with_werror() {
 	)
 }
 
+function test_source_table_does_not_exist() {
+	(
+		# Given
+		local dst_tbl=foo
+		query_dst_db "create table $dst_tbl(i int)"
+		trap "query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.donut_exist" 2>&1)
+
+		# Then
+		if (( $? == 0 )); then
+			echo "FAIL: Expected import to fail"
+			return 1
+		fi
+
+		if ! echo $err | grep "Source table does not exist"; then
+			echo "FAIL: Expected 'table does not exist' error"
+			return 1
+		fi
+	)
+}
+
 function test_resume_is_blocked() {
 	(
 		# Given
@@ -377,6 +400,116 @@ function test_resume_is_blocked() {
 
 		# Then
 		! verify_eq $src_tbl $dst_tbl
+	)
+}
+
+function test_src_db_table_dropped_during_import() {
+	(
+		# Given
+			# create tables
+		local src_tbl=foo dst_tbl=bar start_timestamp=$(date '+%Y/%m/%d %H:%M:%S')
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+
+			# set tunables
+			# the 30 second sleep gives the db time to flush logs reflecting the table drop
+		set_src_tunable 'comdb2_files_sleep_secs_after_processing_llmeta 30' 
+		set_src_tunable 'logmsg level debug'
+
+			# teardown routines
+		trap "set_src_tunable 'comdb2_files_sleep_secs_after_processing_llmeta 0';
+			set_src_tunable 'logmsg level warn';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+			# start import and wait for the source db to sleep after
+			# sending llmeta to the dst db
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" 2> err.txt &
+		waitpid=$!
+		wait_for_src_trace "just processed llmeta" "$start_timestamp"
+
+		# When
+		query_src_db "drop table $src_tbl"
+
+		# Then
+			# We dropped the table between the point when the src db sent 
+			# llmeta and the point when it sent the txn logs.
+			#
+			# Therefore, the drop will be reflected in the txn logs,
+			# which means that recovery will drop it from llmeta.
+			#
+			# So we expect the import to fail because
+			# the source table will not exist.
+
+		if check_for_src_trace "read_next_chunk.*done sleeping" "$start_timestamp"; then
+			echo "FAIL: Expected source database to still be sleeping. Test is buggy"
+			return 1
+		fi
+
+		if wait $waitpid; then
+			echo "FAIL: Expected import to fail."
+			return 1
+		fi
+
+		if ! cat err.txt | grep "Source table does not exist"; then
+			echo "FAIL: Expected 'table does not exist' error"
+			return 1
+		fi
+
+		if verify_eq $src_tbl $dst_tbl; then
+			echo "FAIL: Expected tables to not match"
+			return 1
+		fi
+	)
+}
+
+function test_src_db_election_during_import() {
+	(
+		# Given
+			# create tables
+		local src_tbl=foo dst_tbl=bar start_timestamp=$(date '+%Y/%m/%d %H:%M:%S')
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+
+			# set tunables
+		set_src_tunable 'comdb2_files_sleep_secs_after_processing_llmeta 10'
+		set_src_tunable 'logmsg level debug'
+
+			# teardown routines
+		trap "set_src_tunable 'comdb2_files_sleep_secs_after_processing_llmeta 0';
+			set_src_tunable 'logmsg level warn';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+
+			# start import and wait for the source db to sleep after
+			# sending llmeta to the dst db
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" &
+		waitpid=$!
+		wait_for_src_trace "just processed llmeta" "$start_timestamp"
+
+		# When
+		downgrade_src_db
+
+		# Then
+
+		downgrade_rc=$?
+		if (( downgrade_rc != 0 )); then
+			echo "FAIL: Expected downgrade to succeed"
+			return 1
+		fi
+
+		if check_for_src_trace "read_next_chunk.*done sleeping" "$start_timestamp"; then
+			echo "FAIL: Expected source database to still be sleeping. Test is buggy"
+			return 1
+		fi
+
+		if ! wait $waitpid; then
+			echo "FAIL: Expected import to succeed"
+			return 1
+		fi
+
+		if ! verify_eq $src_tbl $dst_tbl; then
+			echo "FAIL: Expected tables to match"
+			return 1
+		fi
 	)
 }
 
