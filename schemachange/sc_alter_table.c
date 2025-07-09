@@ -591,7 +591,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(db, s)) {
+    if (init_sc_genids(db, newdb, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -655,7 +655,7 @@ convert_records:
         if (!s->live)
             gbl_readonly_sc = 1;
 
-        rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+        rc = convert_all_records(db, newdb, db->sc_genids, s);
         if (rc == 1) rc = 0;
     } else
         rc = 0;
@@ -1260,7 +1260,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         sc_printf(s, "Starting FULL table upgrade.\n");
     }
 
-    if (init_sc_genids(db, s)) {
+    if (init_sc_genids(db, db, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         return SC_LLMETA_ERR;
     }
