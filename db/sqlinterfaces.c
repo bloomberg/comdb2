@@ -2092,7 +2092,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                            rc);
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                             rc = has_high_availability(clnt)
-                                     ? CDB2ERR_CHANGENODE
+                                     ? CDB2ERR_NOTDURABLE
                                      : SQLHERR_MASTER_TIMEOUT;
                         }
                         irc = trans_abort_shadow(
@@ -2122,7 +2122,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                         rc = has_high_availability(clnt)
-                                 ? CDB2ERR_CHANGENODE
+                                 ? CDB2ERR_NOTDURABLE
                                  : SQLHERR_MASTER_TIMEOUT;
                         logmsg(LOGMSG_ERROR, "td=%p no-shadow-tran %s line %d, returning %d\n", (void *)pthread_self(),
                                __func__, __LINE__, rc);
@@ -3012,7 +3012,7 @@ static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
 static int handle_bad_engine(struct sqlclntstate *clnt)
 {
     logmsg(LOGMSG_ERROR, "unable to obtain sql engine\n");
-    send_run_error(clnt, "Client api should change nodes", CDB2ERR_CHANGENODE);
+    send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
     clnt->query_rc = -1;
     return -1;
 }
@@ -4733,8 +4733,8 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc=%d!\n", __func__, (void *)pthread_self(),
                     rc);
-            send_run_error(clnt, "Client api should change nodes",
-                    CDB2ERR_CHANGENODE);
+            send_run_error(clnt, "Transaction is not durable",
+                    CDB2ERR_NOTDURABLE);
             clnt->query_rc = -1;
             clnt->osql.timings.query_finished = osql_log_time();
             osql_log_time_done(clnt);
@@ -6451,7 +6451,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return SQLHERR_MASTER_TIMEOUT;
 
     case ERR_NOT_DURABLE:
-        return CDB2ERR_CHANGENODE;
+        return CDB2ERR_NOTDURABLE;
 
     case ERR_CHECK_CONSTRAINT + ERR_BLOCK_FAILED:
         return CDB2ERR_CHECK_CONSTRAINT;
@@ -6479,7 +6479,7 @@ int sqlserver2sqlclient_error(int rc)
     case SQLITE_TRANTOOCOMPLEX:
         return SQLHERR_ROLLBACKTOOLARGE;
     case SQLITE_CLIENT_CHANGENODE:
-        return CDB2ERR_CHANGENODE;
+        return CDB2ERR_NOTDURABLE;
     case SQLITE_TRAN_CANCELLED:
         return SQLHERR_ROLLBACK_TOOOLD;
     case SQLITE_TRAN_NOLOG:

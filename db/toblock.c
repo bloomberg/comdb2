@@ -91,6 +91,7 @@ void (*comdb2_ipc_setrmtdbmc)(int dbnum, char *host, int len, void *inptr) = 0;
 extern int is_buffer_from_remote(const void *buf);
 extern pthread_t gbl_invalid_tid;
 int gbl_coordinator_wait_propagate = 1;
+int gbl_ignore_final_non_durable_retry = 0;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_debug_disttxn_trace;
