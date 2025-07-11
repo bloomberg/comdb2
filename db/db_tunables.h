@@ -2343,7 +2343,7 @@ REGISTER_TUNABLE("sockbplog_sockpool",
 REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("ignore_final_non_durable_retry", "Hide non-durable rcode from clients.  (Default: off)",
+REGISTER_TUNABLE("hide_non_durable_rcode", "Hide non-durable rcode from clients.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_ignore_final_non_durable_retry, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
