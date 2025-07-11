@@ -8,12 +8,13 @@ ifeq ($(TESTSROOTDIR),)
   # TESTSROOTDIR is not set when make is issued from within a test directory 
   # (will check assumption few lines later)
   # needs to expand to a full path, otherwise it propagates as '../'
-  export TESTSROOTDIR=$(shell readlink -f $(PWD)/.. 2> /dev/null || realpath $(PWD)/..)
+  export TESTSROOTDIR=$(shell readlink -f $(shell pwd)/.. 2> /dev/null || realpath $(shell pwd)/..)
   export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
   export INSETUP=yes
 else
   export INSETUP=
 endif
+
 
 # check that we indeed have the correct dir in TESTSROOTDIR
 ifeq ($(wildcard ${TESTSROOTDIR}/setup),)
@@ -29,8 +30,9 @@ include $(TESTSROOTDIR)/Makefile.common
 
 $(shell [ ! -f ${TESTDIR} ] &&  mkdir -p ${TESTDIR}/ )
 
-export CURRDIR?=$(shell pwd)
-export TESTCASE=$(patsubst %.test,%,$(shell basename $(CURRDIR)))
+export CURRDIR:=$(shell pwd)
+export TESTCASE:=$(patsubst %.test,%,$(shell basename $(CURRDIR)))
+
 #comdb2 does not allow db names with '_' underscore in them
 export DBNAME=$(subst _,,$(TESTCASE))$(TESTID)
 export DBDIR=$(TESTDIR)/$(DBNAME)

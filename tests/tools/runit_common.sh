@@ -106,3 +106,19 @@ retry_in_loop()
 
     return 1
 }
+
+wait_for_db()
+{
+    local -r dbname=$1
+    hosts=""
+    while [[ -z "$hosts" ]]; do
+        hosts=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbname default "select host from comdb2_cluster")
+    done
+    for host in $hosts; do
+        check=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} --host $host $dbname "select comdb2_host()")
+        if [[ "$check" != "$host" ]]; then
+            return 1
+        fi
+    done
+    return 0
+}
