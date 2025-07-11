@@ -73,7 +73,7 @@ public class Constants {
         public static final int CDB2ERR_NOMASTER = -101;
         public static final int CDB2ERR_NOTSERIAL = 230;
         public static final int CDB2ERR_DIST_ABORT = 430;
-        public static final int CDB2ERR_CHANGENODE = 402;
+        public static final int CDB2ERR_NOTDURABLE = 402;
         public static final int CDB2ERR_UNTAGGED_DATABASE = -102;
         public static final int CDB2ERR_CONSTRAINTS = -103;
 

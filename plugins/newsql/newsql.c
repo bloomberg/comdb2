@@ -284,23 +284,22 @@ static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
         sql_response.features = features;                                      \
     }
 
-#define _has_snapshot(clnt, sql_response)                                      \
-    CDB2SQLRESPONSE__Snapshotinfo snapshotinfo =                               \
-        CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                 \
-                                                                               \
-    if (newsql_has_high_availability(clnt)) {                                  \
-        int file = 0, offset = 0;                                              \
-        if (clnt->modsnap_in_progress) {                                       \
-            file = clnt->modsnap_start_lsn_file;                                 \
-            offset = clnt->modsnap_start_lsn_offset;                             \
-        } else if (fill_snapinfo(clnt, &file, &offset)) {                      \
-            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
-        }                                                                      \
-        if (file) {                                                            \
-            snapshotinfo.file = file;                                          \
-            snapshotinfo.offset = offset;                                      \
-            sql_response.snapshot_info = &snapshotinfo;                        \
-        }                                                                      \
+#define _has_snapshot(clnt, sql_response)                                                                              \
+    CDB2SQLRESPONSE__Snapshotinfo snapshotinfo = CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                \
+                                                                                                                       \
+    if (newsql_has_high_availability(clnt)) {                                                                          \
+        int file = 0, offset = 0;                                                                                      \
+        if (clnt->modsnap_in_progress) {                                                                               \
+            file = clnt->modsnap_start_lsn_file;                                                                       \
+            offset = clnt->modsnap_start_lsn_offset;                                                                   \
+        } else if (fill_snapinfo(clnt, &file, &offset)) {                                                              \
+            sql_response.error_code = (char)CDB2ERR_NOTDURABLE;                                                        \
+        }                                                                                                              \
+        if (file) {                                                                                                    \
+            snapshotinfo.file = file;                                                                                  \
+            snapshotinfo.offset = offset;                                                                              \
+            sql_response.snapshot_info = &snapshotinfo;                                                                \
+        }                                                                                                              \
     }
 
 int gbl_abort_on_unset_ha_flag = 0;
