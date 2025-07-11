@@ -847,6 +847,7 @@ These options are toggle-able at runtime.
 |forbid_remote_admin | set | Disallow admin SQL sessions unless it is on the same machine as the database
 |gbl_exit_on_pthread_create_fail  |1           | If set, database will exit if thread pools aren't able to create threads.
 |heartbeat_send_time | 5 (seconds) | Send heartbeats this often. 
+|hide_non_durable_rcode | 0 | Hide non-durable rcode from clients
 |include | | Include file given as argument.  Named file will be processed before continuing processing the current file.
 |ioqueue | 0 | Max depth of the I/O prefaulting queue
 |iothreads | 0 | Number of threads to use for I/O prefaulting
