@@ -3154,14 +3154,14 @@ static int node_in_list(int node, int list[], int listsz)
 
 int64_t gbl_distributed_commit_count = 0;
 int64_t gbl_not_durable_commit_count = 0;
+int gbl_ignore_final_non_durable_retry = 1;
 
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */
 
 int gbl_replicant_retry_on_not_durable = 0;
-int gbl_require_distributed_count = 0;
+int gbl_debug_force_non_durable = 0;
 
-static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms,
-                                            uint64_t txnsize, int newcoh)
+int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final)
 {
     int i, now, cntbytes;
     struct interned_string *nodelist[REPMAX];
@@ -3189,6 +3189,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_ty
     int total_commissioned;
     int lock_desired = 0;
     int fake_incoherent = 0;
+    int non_durable_retry = gbl_replicant_retry_on_not_durable && (!is_final || !gbl_ignore_final_non_durable_retry);
+    int force_non_durable = non_durable_retry && gbl_debug_force_non_durable;
 
     /* if we were passed a child, find his parent */
     assert(!bdb_state->parent);
@@ -3196,7 +3198,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_ty
         bdb_state = bdb_state->parent;
 
     /* Dereference from parent */
-    durable_lsns = (bdb_state->attr->durable_lsns || gbl_replicant_retry_on_not_durable || gbl_2pc);
+    durable_lsns = (bdb_state->attr->durable_lsns || non_durable_retry || gbl_2pc);
 
     /* 2pc won't allow participants to commit until coordinator-commit is durable */
     catchup_window = bdb_state->attr->catchup_window;
@@ -3458,6 +3460,10 @@ done_wait:
         outrc = -1;
     }
 
+    if (force_non_durable) {
+        outrc = BDBERR_NOT_DURABLE;
+    }
+
     uint32_t cur_gen;
     static uint32_t not_durable_count;
     static uint32_t durable_count;
@@ -3478,7 +3484,7 @@ done_wait:
             logmsg(LOGMSG_USER, "%s return not durable for durable wait seqnum test\n", __func__);
 
         ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
-        if (durable_lsns)
+        if (durable_lsns || force_non_durable)
             outrc = BDBERR_NOT_DURABLE;
         not_durable_count++;
         was_durable = 0;
@@ -3493,12 +3499,12 @@ done_wait:
         BDB_RELLOCK();
 
         if (cur_gen != seqnum->generation) {
-            if (durable_lsns)
+            if (durable_lsns || force_non_durable)
                 outrc = BDBERR_NOT_DURABLE;
             ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
             not_durable_count++;
             was_durable = 0;
-        } else if (durable_lsns) {
+        } else if (durable_lsns || force_non_durable) {
             Pthread_mutex_lock(&bdb_state->durable_lsn_lk);
             bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &seqnum->lsn, cur_gen);
             if (seqnum->lsn.file == 0) {
@@ -3535,30 +3541,29 @@ done_wait:
                calc_lsn.offset, calc_gen);
     }
 
+    /* Accounting to accommodate testcase */
+    if (was_durable && outrc == BDBERR_NOT_DURABLE) {
+        ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
+    }
     return outrc;
 }
 
 int bdb_wait_for_seqnum_from_all(bdb_state_type *bdb_state, seqnum_type *seqnum)
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_timeout(bdb_state_type *bdb_state,
-                                         seqnum_type *seqnum, int timeoutms)
+int bdb_wait_for_seqnum_from_all_timeout(bdb_state_type *bdb_state, seqnum_type *seqnum, int timeoutms)
 {
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
-                                          seqnum_type *seqnum, uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                           int *timeoutms)
 {
     *timeoutms = -1;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms,
-                                            txnsize, 0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, 0);
 }
 
 /*
@@ -3576,26 +3581,19 @@ int bdb_wait_for_seqnum_from_all_newcoh(bdb_state_type *bdb_state,
                                         seqnum_type *seqnum)
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_timeout_newcoh(bdb_state_type *bdb_state,
-                                                seqnum_type *seqnum,
-                                                int timeoutms)
+int bdb_wait_for_seqnum_from_all_timeout_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, int timeoutms)
 {
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
-                                                 seqnum_type *seqnum,
-                                                 uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                                  int *timeoutms)
 {
     *timeoutms = -1;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms,
-                                            txnsize, 1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, 0);
 }
 
 /* let everyone know what logfile we are currently using */

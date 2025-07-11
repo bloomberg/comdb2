@@ -3421,7 +3421,7 @@ after_callback:
 static int is_retryable(int err_val)
 {
     switch (err_val) {
-    case CDB2ERR_CHANGENODE:
+    case CDB2ERR_NOTDURABLE:
     case CDB2ERR_NOMASTER:
     case CDB2ERR_TRAN_IO_ERROR:
     case CDB2ERR_REJECTED:

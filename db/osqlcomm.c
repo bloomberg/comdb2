@@ -7927,8 +7927,8 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
     /* create the request */
-    sess = osql_sess_create(sql, sqllen, tzname, type, rqid, uuid, fromhost,
-                            flags & OSQL_FLAGS_REORDER_ON);
+    sess = osql_sess_create(sql, sqllen, tzname, type, rqid, uuid, fromhost, flags & OSQL_FLAGS_REORDER_ON,
+                            flags & OSQL_FLAGS_FINAL);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s unable to create new session\n", __func__);
         errmsg = "unable to create new session";

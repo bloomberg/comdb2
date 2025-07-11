@@ -92,6 +92,7 @@ extern int is_buffer_from_remote(const void *buf);
 extern pthread_t gbl_invalid_tid;
 int gbl_coordinator_wait_propagate = 1;
 extern int gbl_replicant_retry_on_not_durable;
+extern int gbl_ignore_final_non_durable_retry;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_debug_disttxn_trace;
 
@@ -893,6 +894,8 @@ int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
     return bdb_blkseq_insert(bdb_state, NULL, bskey, bskeylen, buf_fstblk, outlen, NULL, NULL, 1);
 }
 
+extern int gbl_debug_force_non_durable;
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -1214,8 +1217,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     /* If the latest commit is durable, then the blkseq commit must be durable.
      * This can incorrectly report NOT_DURABLE but that's sane given that half
      * the cluster is incoherent */
-    if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable) &&
-        !bdb_latest_commit_is_durable(thedb->bdb_env)) {
+    int is_final = iq->sorese ? iq->sorese->is_final : 0;
+    int non_durable_retry = gbl_replicant_retry_on_not_durable && (!is_final || !gbl_ignore_final_non_durable_retry);
+    int force_non_durable = non_durable_retry && gbl_debug_force_non_durable;
+
+    if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || non_durable_retry) &&
+        (!bdb_latest_commit_is_durable(thedb->bdb_env) || force_non_durable)) {
         if (IQ_HAS_SNAPINFO_KEY(iq)) {
             logmsg(LOGMSG_ERROR,
                    "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
