@@ -86,8 +86,7 @@ static int osql_begin(struct sqlclntstate *clnt, int type, int keep_rqid);
 static int osql_end(struct sqlclntstate *clnt);
 static int osql_wait(struct sqlclntstate *clnt);
 
-static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
-                             int keep_session);
+static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep_session, int is_final);
 
 #ifdef DEBUG_REORDER
 #define DEBUG_PRINT_NUMOPS()                                                   \
@@ -158,58 +157,49 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
     return 0;
 }
 
-#define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
-    do {                                                                       \
-        restarted = 0;                                                         \
-        if (osql_should_restart(clnt, rc, keep_rqid)) {                        \
-            rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, keep_rqid); \
-            if (rc) {                                                          \
-                logmsg(LOGMSG_ERROR,                                           \
-                       "%s: failed to restart socksql session rc=%d\n",        \
-                       __func__, rc);                                          \
-            } else {                                                           \
-                restarted = 1;                                                 \
-            }                                                                  \
-        }                                                                      \
-        if (rc) {                                                              \
-            logmsg(LOGMSG_ERROR,                                               \
-                   "%s: error writting record to master in offload mode "      \
-                   "rc=%d!\n",                                                 \
-                   __func__, rc);                                              \
-            if (rc != SQLITE_TOOBIG && rc != ERR_SC)                           \
-                rc = SQLITE_INTERNAL;                                          \
-        } else {                                                               \
-            rc = SQLITE_OK;                                                    \
-        }                                                                      \
+#define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                                                           \
+    do {                                                                                                               \
+        restarted = 0;                                                                                                 \
+        if (osql_should_restart(clnt, rc, keep_rqid)) {                                                                \
+            rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, keep_rqid, 0);                                      \
+            if (rc) {                                                                                                  \
+                logmsg(LOGMSG_ERROR, "%s: failed to restart socksql session rc=%d\n", __func__, rc);                   \
+            } else {                                                                                                   \
+                restarted = 1;                                                                                         \
+            }                                                                                                          \
+        }                                                                                                              \
+        if (rc) {                                                                                                      \
+            logmsg(LOGMSG_ERROR,                                                                                       \
+                   "%s: error writting record to master in offload mode "                                              \
+                   "rc=%d!\n",                                                                                         \
+                   __func__, rc);                                                                                      \
+            if (rc != SQLITE_TOOBIG && rc != ERR_SC)                                                                   \
+                rc = SQLITE_INTERNAL;                                                                                  \
+        } else {                                                                                                       \
+            rc = SQLITE_OK;                                                                                            \
+        }                                                                                                              \
     } while (0)
 
 #define RESTART_SOCKSQL RESTART_SOCKSQL_KEEP_RQID(0)
 
-#define START_SOCKSQL                                                          \
-    do {                                                                       \
-        if (!clnt->osql.sock_started) {                                        \
-            rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);                      \
-            if (rc) {                                                          \
-                logmsg(LOGMSG_ERROR,                                           \
-                       "%s: failed to start socksql transaction rc=%d\n",      \
-                       __func__, rc);                                          \
-                if (rc != SQLITE_ABORT)                                        \
-                    rc = SQLITE_CLIENT_CHANGENODE;                             \
-                return rc;                                                     \
-            }                                                                  \
-            uuidstr_t us;                                                      \
-            sql_debug_logf(clnt, __func__, __LINE__,                           \
-                           "osql_sock_start returns rqid %llu uuid %s\n",      \
-                           clnt->osql.rqid,                                    \
-                           comdb2uuidstr(clnt->osql.uuid, us), rc);            \
-        }                                                                      \
+#define START_SOCKSQL                                                                                                  \
+    do {                                                                                                               \
+        if (!clnt->osql.sock_started) {                                                                                \
+            rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0);                                                           \
+            if (rc) {                                                                                                  \
+                logmsg(LOGMSG_ERROR, "%s: failed to start socksql transaction rc=%d\n", __func__, rc);                 \
+                if (rc != SQLITE_ABORT)                                                                                \
+                    rc = SQLITE_CLIENT_CHANGENODE;                                                                     \
+                return rc;                                                                                             \
+            }                                                                                                          \
+            uuidstr_t us;                                                                                              \
+            sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns rqid %llu uuid %s\n", clnt->osql.rqid,   \
+                           comdb2uuidstr(clnt->osql.uuid, us), rc);                                                    \
+        }                                                                                                              \
     } while (0)
 
 /* see below */
-enum {
-    OSQL_START_KEEP_RQID = 1,
-    OSQL_START_NO_REORDER = 2,
-};
+enum { OSQL_START_KEEP_RQID = 1, OSQL_START_NO_REORDER = 2, OSQL_START_IS_FINAL = 4 };
 extern int gbl_debug_disttxn_trace;
 static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
                                int start_flags)
@@ -222,6 +212,7 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
     int retries = 0;
     const int max_retries = gbl_noleader_retry_duration_ms / poll_ms;
     int keep_rqid = start_flags & OSQL_START_KEEP_RQID;
+    int is_final = start_flags & OSQL_START_IS_FINAL;
 
     /* new id */
     if (!keep_rqid) {
@@ -290,6 +281,9 @@ retry:
     if (osql->is_reorder_on)
         flags |= OSQL_FLAGS_REORDER_ON;
 
+    if (is_final)
+        flags |= OSQL_FLAGS_FINAL;
+
     /* send request to blockprocessor */
     rc = osql_comm_send_socksqlreq(&osql->target, clnt->sql,
                                    strlen(clnt->sql) + 1, osql->rqid,
@@ -339,17 +333,17 @@ retry:
  * Returns ok if the packet is sent successful to the master
  * If keep_rqid, this is a retry and we want to keep the same rqid
  */
-int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_id)
+int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_id, int is_final)
 {
-    int flags = keep_id ? OSQL_START_KEEP_RQID : 0;
+    int flags = (keep_id ? OSQL_START_KEEP_RQID : 0) | (is_final ? OSQL_START_IS_FINAL : 0);
     return osql_sock_start_int(clnt, type, flags);
 }
 
 /* TODO: disable this on the master; if dbq deletes are there */
-int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_id)
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_id, int is_final)
 {
     int flags = OSQL_START_NO_REORDER;
-    flags |= keep_id ? OSQL_START_KEEP_RQID : 0;
+    flags |= (keep_id ? OSQL_START_KEEP_RQID : 0 | (is_final ? OSQL_START_IS_FINAL : 0));
     return osql_sock_start_int(clnt, type, flags);
 }
 
@@ -865,8 +859,7 @@ int gbl_master_swing_sock_restart_sleep = 0;
  * provided master and sending the cache rows to resume the current.
  * If keep_session is set, the same rqid is used for the replay
  */
-static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
-                             int keep_session)
+static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep_session, int is_final)
 {
     osqlstate_t *osql = &clnt->osql;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -933,11 +926,9 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                    comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
         }
 
-        rc = osql_sock_start(clnt,
-                             (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                 ? OSQL_SOCK_REQ
-                                 : OSQL_RECOM_REQ,
-                             keep_session);
+        rc = osql_sock_start(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL) ? OSQL_SOCK_REQ : OSQL_RECOM_REQ,
+                             keep_session, is_final);
+
         if (rc) {
             sql_debug_logf(clnt, __func__, __LINE__,
                            "osql_sock_start returns %d\n", rc);
@@ -951,8 +942,7 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         /* process messages from cache */
         rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 1);
         if (rc == SQLITE_TOOBIG) {
-            logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__,
-                   sentops);
+            logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__, sentops);
             return rc;
         }
         if (rc == ERR_SC) {
@@ -1132,10 +1122,11 @@ retry:
                             retries, gbl_master_retry_poll_ms);
 
                         poll(NULL, 0, gbl_master_retry_poll_ms);
+                        int is_final = (retries >= gbl_allow_bplog_restarts);
+                        snap_uid_t snap = {{0}};
+                        int keep_session = !is_final || (get_cnonce(clnt, &snap) == 0);
 
-                        rc = osql_sock_restart(
-                            clnt, 1,
-                            1 /*no new rqid*/); /* retry at higher level */
+                        rc = osql_sock_restart(clnt, 1, keep_session, is_final);
                         if (sock_restart_retryable_rcode(rc) && !clnt->is_coordinator) {
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);
@@ -1147,15 +1138,13 @@ retry:
                 /* transaction failed on the master, abort here as well */
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
-                        sql_debug_logf(
-                            clnt, __func__, __LINE__,
-                            "got %d and "
-                            "setting rcout to MASTER_TIMEOUT, errval is "
-                            "%d setting rcout to -109\n",
-                            rc, osql->xerr.errval);
+                        sql_debug_logf(clnt, __func__, __LINE__,
+                                       "got %d and "
+                                       "setting rcout to MASTER_TIMEOUT, errval is "
+                                       "%d setting rcout to -109\n",
+                                       rc, osql->xerr.errval);
                         rcout = -109;
-                    } else if (osql->xerr.errval == ERR_NOT_DURABLE ||
-                               rc == SQLITE_CLIENT_CHANGENODE) {
+                    } else if (osql->xerr.errval == ERR_NOT_DURABLE || rc == SQLITE_CLIENT_CHANGENODE) {
                         /* Ask the client to change nodes */
                         sql_debug_logf(clnt, __func__, __LINE__,
                                        "got %d and setting rcout to "

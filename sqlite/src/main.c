@@ -1541,7 +1541,7 @@ const char *sqlite3ErrStr(int rc){
     /* SQLITE_TRAN_NOUNDO       */ "Database changed due to sc or fastinit; snapshot failure",
     /* SQLITE_CONV_ERROR        */ "type conversion failure",
     /* SQLITE_COMDB2SCHEMA      */ "table schema changed",
-    /* SQLITE_CLIENT_CHANGENODE */ "Client api should run query against a different node",
+    /* SQLITE_CLIENT_CHANGENODE */ "Non-durable write",
     /* SQLITE_DDL_MISUSE        */ "overlapping tables detected in transactional DDL",
     /* SQLITE_TIMEDOUT          */ "query timed out",
     /* SQLITE_COST_TOO_HIGH     */ "query cost too high",

@@ -360,7 +360,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
         return rc;
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->osql.sock_started)
-        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 1);
+        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 1, 0);
 
     return rc;
 }

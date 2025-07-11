@@ -49,6 +49,7 @@ enum {
     OSQL_FLAGS_REORDER_ON = 0x00000080,
     /* indicates if index reordering is turned on */
     OSQL_FLAGS_REORDER_IDX_ON = 0x00000100,
+    OSQL_FLAGS_FINAL = 0x00000200
 };
 
 int osql_open(struct dbenv *dbenv);

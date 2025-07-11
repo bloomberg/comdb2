@@ -2343,6 +2343,12 @@ REGISTER_TUNABLE("sockbplog_sockpool",
 REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_force_non_durable", "Debug tunable which makes all commits not durable.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_force_non_durable, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("hide_non_durable_rcode", "Hide non-durable rcode from clients.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_ignore_final_non_durable_retry, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "lightweight_rename",
     "Replaces the ondisk file rename with an aliasing at llmeta level",

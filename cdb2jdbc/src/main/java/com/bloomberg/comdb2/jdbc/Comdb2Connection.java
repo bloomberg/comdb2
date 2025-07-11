@@ -805,7 +805,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_NOMASTER:
             case Constants.Errors.CDB2ERR_NOTSERIAL:
             case Constants.Errors.CDB2ERR_DIST_ABORT:
-            case Constants.Errors.CDB2ERR_CHANGENODE:
+            case Constants.Errors.CDB2ERR_NOTDURABLE:
             case Constants.Errors.CDB2ERR_FASTSEED:
             case Constants.Errors.CDB2ERR_UNTAGGED_DATABASE:
             case Constants.Errors.CDB2ERR_DEADLOCK:
