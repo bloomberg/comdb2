@@ -134,10 +134,10 @@ entries:
       url: /ruleset.html
       output: web
 
-  - title: Operating databases
-    url: /operations.html
-    output: web
-    folderitems:
+    - title: Operating databases
+      url: /operations.html
+      output: web
+      folderitems:
 
     - title: Operational commands
       url: /op.html
@@ -149,6 +149,10 @@ entries:
 
     - title: Physical Replication
       url: /physical_replication.html
+      output: web
+
+    - title: Durable LSNs
+      url: /durable_lsns.html
       output: web
 
     - title: Examining logs
