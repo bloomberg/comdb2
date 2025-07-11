@@ -1683,7 +1683,7 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *host, in
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
-        set_coherent_state(bdb_state, host, STATE_INCOHERENT_WAIT, __func__,
+        set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                            __LINE__);
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
@@ -1948,7 +1948,7 @@ void bdb_all_incoherent(bdb_state_type *bdb_state)
     struct hostinfo *h = NULL;
     LISTC_FOR_EACH(&hostinfo_list, h, lnk)
     {
-        h->coherent_state = STATE_INCOHERENT_WAIT;
+        h->coherent_state = STATE_INCOHERENT;
     }
     hostinfo_unlock();
 
