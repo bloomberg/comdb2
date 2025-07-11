@@ -91,7 +91,6 @@ void (*comdb2_ipc_setrmtdbmc)(int dbnum, char *host, int len, void *inptr) = 0;
 extern int is_buffer_from_remote(const void *buf);
 extern pthread_t gbl_invalid_tid;
 int gbl_coordinator_wait_propagate = 1;
-int gbl_ignore_final_non_durable_retry = 0;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_debug_disttxn_trace;
@@ -893,6 +892,8 @@ int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
     assert(outlen <= FSTBLK_MAX_BUF_LEN);
     return bdb_blkseq_insert(bdb_state, NULL, bskey, bskeylen, buf_fstblk, outlen, NULL, NULL, 1);
 }
+
+int gbl_ignore_final_non_durable_retry = 0;
 
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
