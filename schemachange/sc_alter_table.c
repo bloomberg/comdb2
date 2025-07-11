@@ -591,7 +591,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(db, newdb, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -654,7 +654,8 @@ convert_records:
         changed == SC_CONSTRAINT_CHANGE) {
         if (!s->live)
             gbl_readonly_sc = 1;
-        rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+
+        rc = convert_all_records(db, newdb, db->sc_genids, s);
         if (rc == 1) rc = 0;
     } else
         rc = 0;
@@ -743,6 +744,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->tablename);
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -764,6 +766,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     if ((iq == NULL || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
         sc_client_error(s, "Cannot drop a table referenced by a foreign key");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
@@ -772,13 +775,14 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     /* ban old settings */
     if (db->dbnum) {
         sc_client_error(s, "Cannot comdbg tables");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
-    /* set sc_genids, 0 them if we are starting a new schema change, or
-     * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
-        sc_client_error(s, "Failed to initialize sc_genids");
+    db->sc_genids = (unsigned long long *) calloc(MAXDTASTRIPE, sizeof(unsigned long long));
+    if (!db->sc_genids) {
+        sc_errf(s, "failed initilizing sc_genids\n");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
@@ -794,6 +798,14 @@ convert_records:
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
+    if (s->resume && IS_ALTERTABLE(s)) {
+        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
+        decrement_sc_yet_to_resume_counter();
+    }
     MEMORY_SYNC;
 
     if (get_stopsc(__func__, __LINE__)) {
@@ -813,8 +825,10 @@ convert_records:
     struct schema *tag = find_tag_schema(newdb, ".NEW..ONDISK");
     if (!tag) {
         struct errstat err = {0};
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
         rc =
             populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
                    newdb->csc2_schema);
@@ -827,7 +841,7 @@ convert_records:
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    rc = convert_all_records(db, newdb, db->sc_genids, s);
     if (rc == 1) rc = 0;
 
     remove_ongoing_alter(s);
@@ -866,7 +880,7 @@ convert_records:
 
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, newdb->sc_genids[i]);
+                    i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
@@ -884,6 +898,14 @@ convert_records:
     /* check for rename outside of taking schema lock */
     /* handle renaming sqlite_stat1 entries for idx */
     check_for_idx_rename(s->newdb, s->db);
+
+    // All shards point to the same newdb.
+    //
+    // By setting it to NULL here, we ensure that
+    // all shards except for the first shard (which does not run
+    // do_merge_table) have newdb set to NULL.
+    // This avoids double-freeing it.
+    if (rc == SC_MASTER_DOWNGRADE) { s->newdb = NULL; }
 
     return SC_OK;
 }
@@ -1238,7 +1260,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         sc_printf(s, "Starting FULL table upgrade.\n");
     }
 
-    if (init_sc_genids(db, s)) {
+    if (init_sc_genids(db, db, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         return SC_LLMETA_ERR;
     }

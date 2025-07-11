@@ -42,7 +42,15 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
-/* If this is successful, it increments */
+/* Spawns a schema change
+ *
+ * resuming alters will increment gbl_sc_resume_start before 
+ * they are spawned and then decrement it once they
+ * have set their last converted genid.
+ *
+ * When gbl_sc_resume_start is zero, the db knows
+ * that it is safe to apply new writes.
+ */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -613,7 +621,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
     }
 
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+                                         iq->usedb->sc_genids)) {
         return 0;
     }
 
@@ -711,7 +719,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
     }
 
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+                                         iq->usedb->sc_genids)) {
         return 0;
     }
 
@@ -800,7 +808,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
+    unsigned long long *sc_genids = iq->usedb->sc_genids;
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
     }

@@ -1,0 +1,3 @@
+multitable_ddl 1
+partitioned_table_merge_resume on
+test_sc_resume_race 1
