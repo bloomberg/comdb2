@@ -380,6 +380,80 @@ function test_resume_is_blocked() {
 	)
 }
 
+function test_src_db_table_dropped_during_import() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		set_src_tunable 'comdb2_files_sleep_after_processing_llmeta 1'
+		set_src_tunable 'logmsg level debug'
+
+		trap "set_src_tunable 'comdb2_files_sleep_after_processing_llmeta 0';
+			set_src_tunable 'logmsg level warn';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" &
+		waitpid=$!
+		wait_for_src_trace "just processed llmeta"
+
+		# When
+		query_src_db "drop table $src_tbl"
+
+		# Then
+			# We dropped the table between the point where it sent 
+			# llmeta and the point when it sent the txn logs.
+			#
+			# Therefore, the drop will be reflected in the txn logs,
+			# which means that recovery will drop it from llmeta.
+			#
+			# So we expect the import to fail because
+			# the source table will not exist.
+
+		if check_for_src_trace "read_next_chunk.*done sleeping"; then
+			echo "FAIL: Expected source database to still be sleeping. Test is buggy"
+			return 1
+		fi
+
+		if wait $waitpid; then
+			echo "FAIL: Expected import to fail."
+			return 1
+		fi
+
+		if verify_eq $src_tbl $dst_tbl; then
+			echo "FAIL: Expected tables to not match"
+			return 1
+		fi
+	)
+}
+
+function test_src_db_election_during_import() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+
+		trap "query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" &
+		waitpid=$!
+
+		# When
+		downgrade_src_db
+
+		# Then
+		if ! wait $waitpid; then
+			echo "FAIL: Expected import to succeed"
+			return 1
+		fi
+
+		if ! verify_eq $src_tbl $dst_tbl; then
+			echo "FAIL: Expected tables to match"
+			return 1
+		fi
+	)
+}
+
 function run_basic_test() {
 	(
 		# Given
