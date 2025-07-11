@@ -3169,15 +3169,15 @@ int64_t gbl_not_durable_commit_count = 0;
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */
 
 int gbl_replicant_retry_on_not_durable = 0;
+int gbl_block_until_applied_quorum = 0;
 int gbl_require_distributed_count = 0;
 
-static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms,
-                                            uint64_t txnsize, int newcoh)
+static int bdb_wait_for_seqnum_from_all_int_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms,
+                                                uint64_t txnsize, int newcoh)
 {
     int i, now, cntbytes;
     struct interned_string *nodelist[REPMAX];
     struct interned_string *connlist[REPMAX];
-    int durable_lsns;
     int catchup_window;
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
@@ -3205,9 +3205,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_ty
     assert(!bdb_state->parent);
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
-
-    /* Dereference from parent */
-    durable_lsns = (bdb_state->attr->durable_lsns || gbl_replicant_retry_on_not_durable || gbl_2pc);
 
     /* 2pc won't allow participants to commit until coordinator-commit is durable */
     catchup_window = bdb_state->attr->catchup_window;
@@ -3297,8 +3294,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_ty
             if (bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
                 ATOMIC_ADD64(gbl_distributed_commit_count, 1);
-                ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
-                return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+                return BDBERR_NOT_DURABLE;
             }
 
             if (wait_for_seqnum_remove_node(bdb_state, rc)) {
@@ -3388,8 +3384,7 @@ got_ack:
             logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
 
             ATOMIC_ADD64(gbl_distributed_commit_count, 1);
-            ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
-            return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+            return BDBERR_NOT_DURABLE;
         }
 
         if (rc == -999) {
@@ -3488,9 +3483,7 @@ done_wait:
         if (istest)
             logmsg(LOGMSG_USER, "%s return not durable for durable wait seqnum test\n", __func__);
 
-        ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
-        if (durable_lsns)
-            outrc = BDBERR_NOT_DURABLE;
+        outrc = BDBERR_NOT_DURABLE;
         not_durable_count++;
         was_durable = 0;
     } else {
@@ -3504,12 +3497,10 @@ done_wait:
         BDB_RELLOCK();
 
         if (cur_gen != seqnum->generation) {
-            if (durable_lsns)
-                outrc = BDBERR_NOT_DURABLE;
-            ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
+            outrc = BDBERR_NOT_DURABLE;
             not_durable_count++;
             was_durable = 0;
-        } else if (durable_lsns) {
+        } else {
             Pthread_mutex_lock(&bdb_state->durable_lsn_lk);
             bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &seqnum->lsn, cur_gen);
             if (seqnum->lsn.file == 0) {
@@ -3547,6 +3538,87 @@ done_wait:
     }
 
     return outrc;
+}
+
+/* Return 1 for true, 0 for false, assumes caller holds seqnum lock */
+static inline int have_applied_quorum_lk(bdb_state_type *bdb_state, seqnum_type *seqnum)
+{
+    struct interned_string *connlist[REPMAX];
+    int total_commissioned = net_get_all_commissioned_nodes_interned(bdb_state->repinfo->netinfo, connlist);
+    int applied_count = 0;
+
+    for (int i = 0; i < total_commissioned; i++) {
+        struct hostinfo *h = retrieve_hostinfo(connlist[i]);
+        if (h->seqnum.generation == seqnum->generation && log_compare(&h->seqnum.lsn, &seqnum->lsn) >= 0) {
+            applied_count++;
+        }
+    }
+
+    return applied_count >= ((total_commissioned / 2) + 1);
+}
+
+/* Block until more than half the nodes have applied this lsn */
+static inline int bdb_block_until_applied_quorum(bdb_state_type *bdb_state, seqnum_type *seqnum, int durable_lsns)
+{
+    int start = comdb2_time_epochms();
+    BDB_READLOCK("bdb_block_until_applied_quorum");
+    if (!bdb_iam_master(bdb_state)) {
+        BDB_RELLOCK();
+        logmsg(LOGMSG_DEBUG, "%s: no longer master\n", __func__);
+        return durable_lsns ? BDBERR_NOT_DURABLE : -1;
+    }
+
+    uint32_t rep_gen;
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &rep_gen);
+    if (rep_gen != seqnum->generation) {
+        BDB_RELLOCK();
+        logmsg(LOGMSG_DEBUG, "%s: master has swung\n", __func__);
+        return durable_lsns ? BDBERR_NOT_DURABLE : -1;
+    }
+
+    int have_quorum = 0, lock_desired = 0;
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+
+    do {
+        lock_desired = bdb_lock_desired(bdb_state);
+        have_quorum = have_applied_quorum_lk(bdb_state, seqnum);
+        if (!lock_desired && !have_quorum) {
+            struct timespec waittime;
+            setup_waittime(&waittime, 1000);
+            pthread_cond_timedwait(&(bdb_state->seqnum_info->cond), &(bdb_state->seqnum_info->lock), &waittime);
+        }
+    } while (gbl_block_until_applied_quorum && !lock_desired && !have_quorum);
+
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    BDB_RELLOCK();
+
+    int end = comdb2_time_epochms();
+    logmsg(LOGMSG_DEBUG, "%s: waited %d ms for quorum, lock_desired=%d\n", __func__, end - start, lock_desired);
+
+    if (!have_quorum) {
+        ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
+    }
+
+    return (lock_desired ? (durable_lsns ? BDBERR_NOT_DURABLE : -1) : 0);
+}
+
+static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms,
+                                            uint64_t txnsize, int newcoh)
+{
+    int durable_lsns, rc;
+
+    durable_lsns = (bdb_state->attr->durable_lsns || gbl_replicant_retry_on_not_durable || gbl_2pc);
+    rc = bdb_wait_for_seqnum_from_all_int_int(bdb_state, seqnum, timeoutms, txnsize, newcoh);
+    if (rc == BDBERR_NOT_DURABLE) {
+
+        if (gbl_block_until_applied_quorum) {
+            return bdb_block_until_applied_quorum(bdb_state, seqnum, durable_lsns);
+        }
+        ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
+        return durable_lsns ? BDBERR_NOT_DURABLE : -1;
+    }
+    return rc;
 }
 
 int bdb_wait_for_seqnum_from_all(bdb_state_type *bdb_state, seqnum_type *seqnum)
