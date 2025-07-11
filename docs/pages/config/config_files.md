@@ -912,6 +912,7 @@ These options are toggle-able at runtime.
 |repchecksum | 0 | Enable to do additional check-summing of replication stream (log records in replication stream already have checksums)
 |replicant_latches | not set | ***Experimental*** Also acquire latches on replicants
 |replicate_local | 0 | When enabled, record all database events to a comdb2_oplog table.  This can be used to set clusters/instances that are fed data from a database cluster. Alternate ways of doing this are planned, so enabling this option should not be needed in the near future.
+|replicant_retry_on_not_durable | 0 | If set, replicants will retry a transaction until it has been replicated to a quorum of the cluster.
 |report_deadlock_verbose | 0 | If set, dump the current thread's stack for every deadlock.
 |reqldiffstat | 60 (sec) | Set how often the database will dump various usage statistics (each entry will include changes in the last interval)
 |reqltruncate | 1 | Disable to always log full SQL queries in request logs (they are truncated by default to save space)
