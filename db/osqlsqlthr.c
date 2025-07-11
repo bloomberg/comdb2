@@ -87,7 +87,7 @@ static int osql_end(struct sqlclntstate *clnt);
 static int osql_wait(struct sqlclntstate *clnt);
 
 static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
-                             int keep_session);
+                             int keep_session, int is_final);
 
 #ifdef DEBUG_REORDER
 #define DEBUG_PRINT_NUMOPS()                                                   \
@@ -162,7 +162,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
     do {                                                                       \
         restarted = 0;                                                         \
         if (osql_should_restart(clnt, rc, keep_rqid)) {                        \
-            rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, keep_rqid); \
+            rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, keep_rqid, 0); \
             if (rc) {                                                          \
                 logmsg(LOGMSG_ERROR,                                           \
                        "%s: failed to restart socksql session rc=%d\n",        \
@@ -188,7 +188,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
 #define START_SOCKSQL                                                          \
     do {                                                                       \
         if (!clnt->osql.sock_started) {                                        \
-            rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);                      \
+            rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0);                   \
             if (rc) {                                                          \
                 logmsg(LOGMSG_ERROR,                                           \
                        "%s: failed to start socksql transaction rc=%d\n",      \
@@ -209,6 +209,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
 enum {
     OSQL_START_KEEP_RQID = 1,
     OSQL_START_NO_REORDER = 2,
+    OSQL_START_IS_FINAL = 4
 };
 extern int gbl_debug_disttxn_trace;
 static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
@@ -222,6 +223,7 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
     int retries = 0;
     const int max_retries = gbl_noleader_retry_duration_ms / poll_ms;
     int keep_rqid = start_flags & OSQL_START_KEEP_RQID;
+    int is_final = start_flags & OSQL_START_IS_FINAL;
 
     /* new id */
     if (!keep_rqid) {
@@ -290,6 +292,9 @@ retry:
     if (osql->is_reorder_on)
         flags |= OSQL_FLAGS_REORDER_ON;
 
+    if (is_final)
+        flags |= OSQL_FLAGS_FINAL;
+
     /* send request to blockprocessor */
     rc = osql_comm_send_socksqlreq(&osql->target, clnt->sql,
                                    strlen(clnt->sql) + 1, osql->rqid,
@@ -339,17 +344,19 @@ retry:
  * Returns ok if the packet is sent successful to the master
  * If keep_rqid, this is a retry and we want to keep the same rqid
  */
-int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_id)
+int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_id, int is_final)
 {
-    int flags = keep_id ? OSQL_START_KEEP_RQID : 0;
+    int flags = (keep_id ? OSQL_START_KEEP_RQID : 0 |
+                 (is_final ? OSQL_START_IS_FINAL : 0));
     return osql_sock_start_int(clnt, type, flags);
 }
 
 /* TODO: disable this on the master; if dbq deletes are there */
-int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_id)
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_id, int is_final   )
 {
     int flags = OSQL_START_NO_REORDER;
-    flags |= keep_id ? OSQL_START_KEEP_RQID : 0;
+    flags |= (keep_id ? OSQL_START_KEEP_RQID : 0 |
+              (is_final ? OSQL_START_IS_FINAL : 0));
     return osql_sock_start_int(clnt, type, flags);
 }
 
@@ -866,7 +873,7 @@ int gbl_master_swing_sock_restart_sleep = 0;
  * If keep_session is set, the same rqid is used for the replay
  */
 static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
-                             int keep_session)
+                             int keep_session, int is_final)
 {
     osqlstate_t *osql = &clnt->osql;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -934,10 +941,11 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         }
 
         rc = osql_sock_start(clnt,
-                             (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                 ? OSQL_SOCK_REQ
-                                 : OSQL_RECOM_REQ,
-                             keep_session);
+                (clnt->dbtran.mode == TRANLEVEL_SOSQL)
+                ? OSQL_SOCK_REQ
+                : OSQL_RECOM_REQ,
+                keep_session, is_final);
+
         if (rc) {
             sql_debug_logf(clnt, __func__, __LINE__,
                            "osql_sock_start returns %d\n", rc);
@@ -1132,10 +1140,14 @@ retry:
                             retries, gbl_master_retry_poll_ms);
 
                         poll(NULL, 0, gbl_master_retry_poll_ms);
+                        int is_final = (retries == gbl_allow_bplog_restarts);
+                        snap_uid_t snap = {{0}};
+                        int keep_session = !is_final || (get_cnonce(clnt, &snap) == 0);
 
                         rc = osql_sock_restart(
                             clnt, 1,
-                            1 /*no new rqid*/); /* retry at higher level */
+                            keep_session,
+                            is_final); 
                         if (sock_restart_retryable_rcode(rc) && !clnt->is_coordinator) {
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);

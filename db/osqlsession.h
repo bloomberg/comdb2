@@ -32,14 +32,15 @@ typedef struct osql_uuid_req osql_uuid_req_t;
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, int is_reorder_on);
+                              const char *host, int is_reorder_on, int is_final);
 /**
  * Same as osql_sess_create, but sql is already a malloced cstr
  *
  */
 osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
                                      unsigned long long rqid, uuid_t uuid,
-                                     const char *host, int is_reorder_on);
+                                     const char *host, int is_reorder_on,
+                                     int is_final);
 
 /**
  * Terminates an in-use osql session (for which we could potentially
