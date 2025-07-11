@@ -1,0 +1,1 @@
+Test that a partition database name gets mapped onto a shard via the api.
