@@ -294,7 +294,7 @@ static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
             file = clnt->modsnap_start_lsn_file;                                 \
             offset = clnt->modsnap_start_lsn_offset;                             \
         } else if (fill_snapinfo(clnt, &file, &offset)) {                      \
-            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
+            sql_response.error_code = (char)CDB2ERR_NOTDURABLE;                \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \
