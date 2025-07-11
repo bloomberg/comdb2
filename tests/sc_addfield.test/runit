@@ -100,7 +100,7 @@ do_verify t1
 
 function do_alter_and_update (){
 #updates fail (deadlock?):
-#[update t1 set c=c+10000 where 1] failed with rc 304 unable to update record rc = 199
+#[update t1 set c=c+10000 where 1] failed with rc 304 unable to update record
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" 
 assertcnt t1 3000
 do_verify t1
