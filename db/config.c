@@ -42,6 +42,7 @@
 #include "macc_glue.h"
 #include "disttxn.h"
 
+extern int gbl_serializable;
 extern int gbl_import_mode;
 extern char *gbl_import_src;
 extern char *gbl_import_table;
@@ -1384,6 +1385,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
+        gbl_serializable = 1;
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {
