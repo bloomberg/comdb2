@@ -1381,9 +1381,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         gbl_disable_new_snapshot = 1;
         logmsg(LOGMSG_INFO, "Disabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        gbl_selectv_rangechk = 1;
+        enable_snapshot(dbenv);
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {
