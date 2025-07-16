@@ -20,6 +20,7 @@
 #include <sys/poll.h>
 #include <unistd.h>
 
+#include "bdb_api.h"
 #include "ctrace.h"
 #include "bdb_int.h"
 #include "locks.h"
@@ -27,7 +28,9 @@
 #include "memory_sync.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
+#include "strbuf.h"
 #include "thrman.h"
+#include "dbinc/rep_types.h"
 #include <sys_wrap.h>
 
 int db_is_exiting(void);
@@ -524,4 +527,43 @@ void *lwm_printer_thd(void *p)
             free(active_lsns);
         poll(0, 0, 50);
     }
+}
+
+/* We don't have the stat thread available in startup, and we can't start
+ * it earlier because we need to have the bdb_state open first.  So add a
+ * thread that does ctrace for some basic stats to get a little more visibility
+ * into startup.
+ */
+void* lite_stat_dumper_thread(void *arg)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)arg;
+    uint64_t rep_event_counts[REP_MAX_TYPE], last_rep_event_counts[REP_MAX_TYPE], diff_rep_event_counts[REP_MAX_TYPE];
+    strbuf *sb = strbuf_new();
+    int had_stats = 0;
+
+    comdb2_name_thread("litestats");
+    while (!db_is_exiting()) {
+        if (bdb_state->isopen)
+            sleep(bdb_state->attr->lite_stat_interval_after_open);
+        else
+            sleep(bdb_state->attr->lite_stat_interval);
+
+        bdb_get_rep_event_counts(bdb_state, rep_event_counts);
+        for (int i = 0; i < REP_MAX_TYPE; i++) {
+            diff_rep_event_counts[i] = rep_event_counts[i] - last_rep_event_counts[i];
+            if (diff_rep_event_counts[i]) {
+                strbuf_appendf(sb, "%s:%lld ", bdb_rep_event_type_str(i),
+                               (long long)diff_rep_event_counts[i]);
+                had_stats = 1;
+            }
+            last_rep_event_counts[i] = rep_event_counts[i];
+        }
+        if (had_stats)
+            ctrace("%s\n", strbuf_buf(sb));
+        strbuf_clear(sb);
+    }
+
+    strbuf_free(sb);
+
+    return NULL;
 }
