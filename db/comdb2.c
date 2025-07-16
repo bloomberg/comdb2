@@ -147,6 +147,9 @@ void berk_memp_sync_alarm_ms(int);
 #include "machcache.h"
 #include "importdata.pb-c.h"
 #include "gen_shard.h"
+
+#include "dbinc/rep_types.h"
+
 #define tokdup strndup
 
 char * gbl_file_copier = "scp";
@@ -4708,6 +4711,8 @@ void *statthd(void *p)
     int have_scon_header = 0;
     int have_scon_stats = 0;
     int64_t rw_evicts;
+    uint64_t rep_event_counts[REP_MAX_TYPE], last_rep_event_counts[REP_MAX_TYPE], diff_rep_event_counts[REP_MAX_TYPE];
+    int have_new_rep_events = 0;
 
 
     thrman_register(THRTYPE_GENERIC);
@@ -4720,6 +4725,7 @@ void *statthd(void *p)
     reqlog_diffstat_init(statlogger);
 
     while (!db_is_exiting()) {
+        have_new_rep_events = 0;
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;
@@ -4740,6 +4746,7 @@ void *statthd(void *p)
 
         bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlocks_aborted,
                               &nlockwaits, NULL);
+
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
         diff_locks_aborted = nlocks_aborted - last_nlocks_aborted;
         diff_lockwaits = nlockwaits - last_nlockwaits;
@@ -4845,6 +4852,15 @@ void *statthd(void *p)
                 diff_nretries = nretries - last_report_nretries;
                 diff_ncommits = ncommits - last_report_ncommits;
                 diff_ncommit_time = ncommit_time - last_report_ncommit_time;
+                bdb_get_rep_event_counts(thedb->bdb_env, rep_event_counts);
+                have_new_rep_events = 0;
+                for (int i = 0; i < REP_MAX_TYPE; i++) {
+                    diff_rep_event_counts[i] = rep_event_counts[i] - last_rep_event_counts[i];
+                    if (diff_rep_event_counts[i]) {
+                        have_new_rep_events = 1;
+                    }
+                    last_rep_event_counts[i] = rep_event_counts[i];
+                }
 
                 diff_bpool_hits = bpool_hits - last_report_bpool_hits;
                 diff_bpool_misses = bpool_misses - last_report_bpool_misses;
@@ -5031,6 +5047,7 @@ void *statthd(void *p)
                 }
 
 
+
                 reqlog_diffstat_dump(statlogger);
 
                 count = 0;
@@ -5054,6 +5071,17 @@ void *statthd(void *p)
                 last_report_conns = conns;
                 last_report_conn_timeouts = conn_timeouts;
                 last_report_curr_conns = curr_conns;
+
+                if (have_new_rep_events) {
+                    for (int i = 0; i < REP_MAX_TYPE; i++) {
+                        if (diff_rep_event_counts[i]) {
+                            reqlog_logf(statlogger, REQL_INFO, "%s %lld",
+                                        bdb_rep_event_type_str(i),
+                                        (long long)diff_rep_event_counts[i]);
+                        }
+                    }
+                }
+
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);

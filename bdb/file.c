@@ -182,6 +182,7 @@ unsigned int sc_get_logical_redo_lwm();
 extern int __db_find_recovery_start_if_enabled(DB_ENV *dbenv, DB_LSN *lsn);
 extern void *master_lease_thread(void *arg);
 extern void *coherency_lease_thread(void *arg);
+extern void* lite_stat_dumper_thread(void *arg);
 
 extern int bulk_import_tmpdb_should_ignore_table(const char *table);
 extern int bulk_import_tmpdb_should_ignore_btree(const char *filename);
@@ -2955,6 +2956,10 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     BDB_WRITELOCK("dbenv_open");
 
+    /* Would like some visibility into what's happening during recovery - start
+     * logging things early in this thread */
+    create_lite_stats_thread(bdb_state);
+
     print(bdb_state, "opening %s\n", txndir);
     rc = dbenv->open(dbenv, txndir, flags, S_IRUSR | S_IWUSR);
     if (rc != 0) {
@@ -5605,7 +5610,17 @@ void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state)
 
 int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
-int create_master_lease_thread(bdb_state_type *bdb_state)
+#define CREATE_BDB_THREAD(startfunc) \
+    do { \
+        pthread_t tid; \
+        pthread_attr_t attr; \
+        Pthread_attr_init(&attr); \
+        Pthread_attr_setstacksize(&attr, 128 * 1024); \
+        Pthread_create(&tid, &attr, startfunc, bdb_state); \
+        Pthread_attr_destroy(&attr); \
+    } while (0)
+
+void create_master_lease_thread(bdb_state_type *bdb_state)
 {
     pthread_t tid;
     pthread_attr_t attr;
@@ -5613,7 +5628,6 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
     Pthread_attr_setstacksize(&attr, 128 * 1024);
     Pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
-    return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
@@ -5624,6 +5638,11 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     Pthread_attr_setstacksize(&attr, 128 * 1024);
     Pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
+}
+
+void create_lite_stats_thread(bdb_state_type *bdb_state)
+{
+    CREATE_BDB_THREAD(lite_stat_dumper_thread);
 }
 
 static comdb2bma bdb_blobmem;
@@ -5976,6 +5995,7 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
         }
 
         bdb_state->recoverylsn = recoverylsn;
+
         /*
            create a transactional environment.
            when we come back from this call, we know if we

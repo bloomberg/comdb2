@@ -23,6 +23,7 @@
 
 #include <segstr.h>
 
+#include "bdb_api.h"
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
@@ -2292,4 +2293,71 @@ int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks) {
     *nrep_deadlocks = stats->retry;
     free(stats);
     return 0;
+}
+
+int bdb_get_rep_event_counts(bdb_state_type *bdb_state, uint64_t *repevents) {
+    return bdb_state->dbenv->get_rep_event_counts(bdb_state->dbenv, repevents);
+}
+
+const char* bdb_rep_event_type_str(int event_type) {
+    switch (event_type) {
+        case REP_ALIVE:
+            return "REP_ALIVE";
+        case REP_ALIVE_REQ:
+            return "REP_ALIVE_REQ";
+        case REP_ALL_REQ:
+            return "REP_ALL_REQ";
+        case REP_DUPMASTER:
+            return "REP_DUPMASTER";
+        case REP_FILE:
+            return "REP_FILE";
+        case REP_FILE_REQ:
+            return "REP_FILE_REQ";
+        case REP_LOG:
+            return "REP_LOG";
+        case REP_LOG_MORE:
+            return "REP_LOG_MORE";
+        case REP_LOG_REQ:
+            return "REP_LOG_REQ";
+        case REP_MASTER_REQ:
+            return "REP_MASTER_REQ";
+        case REP_NEWCLIENT:
+            return "REP_NEWCLIENT";
+        case REP_NEWFILE:
+            return "REP_NEWFILE";
+        case REP_NEWMASTER:
+            return "REP_NEWMASTER";
+        case REP_NEWSITE:
+            return "REP_NEWSITE";
+        case REP_PAGE:
+            return "REP_PAGE";
+        case REP_PAGE_REQ:
+            return "REP_PAGE_REQ";
+        case REP_PLIST:
+            return "REP_PLIST";
+        case REP_PLIST_REQ:
+            return "REP_PLIST_REQ";
+        case REP_VERIFY:
+            return "REP_VERIFY";
+        case REP_VERIFY_FAIL:
+            return "REP_VERIFY_FAIL";
+        case REP_VERIFY_REQ:
+            return "REP_VERIFY_REQ";
+        case REP_VOTE1:
+            return "REP_VOTE1";
+        case REP_VOTE2:
+            return "REP_VOTE2";
+        case REP_LOG_LOGPUT:
+            return "REP_LOG_LOGPUT";
+        case  REP_PGDUMP_REQ:
+            return "REP_PGDUMP_REQ";
+        case  REP_GEN_VOTE1:
+            return "REP_GEN_VOTE1";
+        case  REP_GEN_VOTE2:
+            return "REP_GEN_VOTE2";
+        case  REP_LOG_FILL:
+            return "REP_LOG_FILL";
+        default:
+            return NULL;
+    };
 }
