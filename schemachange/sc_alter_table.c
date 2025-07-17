@@ -736,7 +736,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     struct scinfo scinfo;
 
 #ifdef DEBUG_SC
-    logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
+    logmsg(LOGMSG_INFO, "do_merge_table() %s\n", s->resume ? "resuming" : "");
 #endif
 
     gbl_sc_last_writer_time = 0;
