@@ -123,6 +123,7 @@ extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 struct timeval last_pstack_time;
 extern int gbl_modsnap_asof;
+extern int gbl_maxlsn_on_catchup;
 
 extern int get_commit_lsn_map_switch_value();
 
@@ -2956,10 +2957,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     BDB_WRITELOCK("dbenv_open");
 
-    /* Would like some visibility into what's happening during recovery - start
-     * logging things early in this thread */
-    create_lite_stats_thread(bdb_state);
-
     print(bdb_state, "opening %s\n", txndir);
     rc = dbenv->open(dbenv, txndir, flags, S_IRUSR | S_IWUSR);
     if (rc != 0) {
@@ -3022,17 +3019,59 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
     bdb_state->dbenv->set_coherency_check_callback(bdb_state->dbenv, (int(*)(void*))bdb_am_i_coherent, bdb_state);
 
+    if (!gbl_create_mode && !gbl_maxlsn_on_catchup) {
+        /* Would like some visibility into what's happening during recovery - start
+         * logging things early in this thread */
+        create_lite_stats_thread(bdb_state);
+
+        // Once we start the network, we'll periodically start reporting our LSN - make sure
+        // we have a sane value latched.  We can undersell ourselves and report our first LSN.
+        // Once we get a rep_verify_match and start processing logs we'll be reporting
+        // our real LSNs as we make progress.
+        DB_LOGC *logc;
+        DB_LSN first_lsn;
+        rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Can't get log cursor: %d\n", rc);
+            exit(1);
+        }
+        DBT logdata = {0};
+        logdata.flags = DB_DBT_MALLOC;
+        rc = __log_c_get(logc, &first_lsn, &logdata, DB_FIRST);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Can't discover start lsn: %d\n", rc);
+            exit(1);
+        }
+        if (logdata.data) {
+            free(logdata.data);
+            logdata.data = NULL;
+        }
+        rc = __log_c_close(logc);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Unexpected error closing log cursor: %d\n", rc);
+            exit(1);
+        }
+
+        struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        h->seqnum.lsn = first_lsn;
+        // no generation yet until we elect
+        h->seqnum.generation = 0;
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    }
+
     /* start the network up */
     print(bdb_state, "starting network\n");
     rc = net_init(bdb_state->repinfo->netinfo);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "init_network failed\n");
+        logmsg(LOGMSG_FATAL, "init_network failed\n");
         exit(1);
     }
 
     if (!gbl_import_mode) {
         start_udp_reader(bdb_state);
     }
+
 
     if (startasmaster) {
         logmsg(LOGMSG_INFO,
