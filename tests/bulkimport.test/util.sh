@@ -60,7 +60,8 @@ function set_dst_tunable() {
 
 function check_for_src_trace() {
 	local -r trace="$1" timestamp="$2"
-	awk -v ts="${timestamp}" '$0 >= ts' ${TESTDIR}/logs/${SRC_DBNAME}* | grep "${trace}" 
+	echo "Checking for src trace. Trace is $trace. Timestamp is $timestamp"
+	awk -v ts="${timestamp}" '$0 >= ts' ${TESTDIR}/logs/${SRC_DBNAME}* | grep "${trace}"
 }
 
 function wait_for_src_trace() {
