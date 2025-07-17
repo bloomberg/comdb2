@@ -47,6 +47,7 @@
 
 #include <cson.h>
 #include <translistener.h>
+#include <net_appsock.h>
 #include <net_types.h>
 #include <locks.h>
 #include <trigger.h>
@@ -2108,16 +2109,31 @@ static int luabb_carray_bind_integer(Lua L, int lua_idx, sqlite3_stmt *stmt, int
     return sqlite3_carray_bind(stmt, sql_idx, ints, count, CARRAY_INT64, SQLITE_TRANSIENT);
 }
 
+struct string_carray_arg {
+        int count;
+        char *strings[0];
+};
+
+static void free_string_carray(void *strings)
+{
+    struct string_carray_arg *arg = container_of(strings, struct string_carray_arg);
+    for (int i = 0; i < arg->count; ++i) {
+        free(arg->strings[i]);
+    }
+    free(arg);
+}
+
 static int luabb_carray_bind_string(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
 {
     int count = lua_objlen(L, lua_idx);
-    const char *strings[count];
+    struct string_carray_arg *arg = malloc(sizeof(struct string_carray_arg) + (sizeof(arg->strings[0]) * count));
+    arg->count = count;
     for (int i = 1; i <= count; ++i) {
         lua_rawgeti(L, lua_idx, i);
-        strings[i - 1] = luabb_tostring(L, -1);
+        arg->strings[i - 1] = strdup(luabb_tostring(L, -1));
         lua_pop(L, 1);
     }
-    return sqlite3_carray_bind(stmt, sql_idx, strings, count, CARRAY_TEXT, SQLITE_TRANSIENT);
+    return sqlite3_carray_bind(stmt, sql_idx, arg->strings, count, CARRAY_TEXT, free_string_carray);
 }
 
 static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
@@ -2140,6 +2156,10 @@ static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sq
 
 static int luabb_carray_bind(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
 {
+    int count = lua_objlen(L, lua_idx);
+    if (count > CDB2_MAX_BIND_ARRAY) {
+        return luaL_error(L, "too many arguments for carray:%d", count);
+    }
     lua_rawgeti(L, lua_idx, 1);
     dbtypes_enum dbtype = luabb_dbtype(L, -1);
     lua_pop(L, 1);
