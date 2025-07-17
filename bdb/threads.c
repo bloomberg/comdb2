@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "bdb_api.h"
+#include "bdbglue.h"
 #include "ctrace.h"
 #include "bdb_int.h"
 #include "locks.h"
