@@ -7385,7 +7385,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             logmsg(LOGMSG_USER, "    failed to deserialize object\n");
         } break;
     case LLMETA_MAX_SEQNO:
-        logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %ld\n", flibc_ntohll(*(int64_t *)p_buf_data));
+        logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %"PRIu64"\n", flibc_ntohll(*(int64_t *)p_buf_data));
         break;
     default:
          logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
