@@ -9,6 +9,7 @@ add_library(sqlite
   ext/comdb2/activelocks.c
   ext/comdb2/activeosqls.c
   ext/comdb2/api_history.c
+  ext/comdb2/all.c
   ext/comdb2/appsock_handlers.c
   ext/comdb2/auto_analyze_tables.c
   ext/comdb2/blkseq.c
@@ -30,6 +31,7 @@ add_library(sqlite
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
+  ext/comdb2/locations.c
   ext/comdb2/logicalops.c
   ext/comdb2/memstats.c
   ext/comdb2/metrics.c

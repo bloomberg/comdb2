@@ -65,7 +65,13 @@ char *comdb2_location(char *type, char *fmt, ...);
 char *comdb2_location_in_hash(char *type, char *fmt, ...);
 char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
+
+struct location {
+    char *type;
+    char *dir;
+};
 void init_file_locations(char *);
 void cleanup_file_locations();
 void update_file_location(const char *type, const char *dir);
+int fetch_file_locations(struct location **out);
 #endif
