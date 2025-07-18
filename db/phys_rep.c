@@ -84,6 +84,19 @@ char *gbl_physrep_source_host;
 char *gbl_physrep_metadb_name;
 char *gbl_physrep_metadb_host;
 
+struct metadb {
+    char *dbname;
+    char *host;
+    char **hosts;
+    pthread_mutex_t lk;
+    int host_count;
+};
+
+#define MAX_ALTERNATE_METADBS 10
+struct metadb gbl_altmetadb[MAX_ALTERNATE_METADBS] = {0};
+__thread int altmetadb_index[MAX_ALTERNATE_METADBS] = {0};
+int gbl_altmetadb_count = 0;
+
 char *gbl_physrep_repl_name = NULL;
 char *gbl_physrep_repl_host = NULL;
 
@@ -352,43 +365,53 @@ static int get_local_hndl(cdb2_hndl_tp **hndl) {
     return rc;
 }
 
+int physrep_add_alternate_metadb(char *dbname, char *host)
+{
+    if (gbl_altmetadb_count >= MAX_ALTERNATE_METADBS) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d: Too many alternate metadbs specified (max: %d)\n", __func__, __LINE__,
+                       MAX_ALTERNATE_METADBS);
+        return 1;
+    }
+    gbl_altmetadb[gbl_altmetadb_count].dbname = dbname;
+    gbl_altmetadb[gbl_altmetadb_count].host = host;
+    Pthread_mutex_init(&gbl_altmetadb[gbl_altmetadb_count].lk, 0);
+    gbl_altmetadb_count++;
+    return 0;
+}
+
 static char **physrep_metadb_hosts = NULL;
 static int physrep_metadb_host_count = 0;
 
-static int get_metadb_hndl(cdb2_hndl_tp **hndl) {
-    // Source db becomes 'replication metadb', if latter is not specified
-    char *dbname = (gbl_physrep_metadb_name) ? gbl_physrep_metadb_name : gbl_physrep_source_dbname;
-    char *host = (gbl_physrep_metadb_host) ? gbl_physrep_metadb_host : gbl_physrep_source_host;
-
-
+static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, char ***hosts, int *host_count,
+                                 int *host_index, pthread_mutex_t *lk)
+{
     if (!is_valid_mach_class(host)) {
-        static pthread_mutex_t physrep_metadb_hosts_mu = PTHREAD_MUTEX_INITIALIZER; // Protects physrep_metadb_hosts
-        static __thread int current_physrep_metadb_host = 0;
+        char **host_list = NULL;
 
-        pthread_mutex_lock(&physrep_metadb_hosts_mu);
+        Pthread_mutex_lock(lk);
 
-        if (physrep_metadb_hosts == NULL) {
+        if (*hosts == NULL) {
             char *saveptr = NULL;
             char *hst = strtok_r(host, ",", &saveptr);
 
-            physrep_metadb_host_count = 0;
+            *host_count = 0;
 
             while (hst != NULL)  {
                 if (hst[0] == '@') ++hst;
-                ++physrep_metadb_host_count;
-                physrep_metadb_hosts = realloc(physrep_metadb_hosts, sizeof(char *)*physrep_metadb_host_count);
-                physrep_metadb_hosts[physrep_metadb_host_count-1] = strdup(hst);
-
+                ++*host_count;
+                host_list = realloc(host_list, sizeof(char *) * (*host_count));
+                host_list[(*host_count) - 1] = strdup(hst);
                 hst = strtok_r(NULL, ",", &saveptr);
             }
+            (*hosts) = host_list;
         }
 
-        int max_connect_attempts = 10 * physrep_metadb_host_count;
+        int max_connect_attempts = 10 * (*host_count);
         for (int i = 0; i < max_connect_attempts; ++i) {
-            char *direct_host = physrep_metadb_hosts[current_physrep_metadb_host];
+            char *direct_host = (*hosts)[*host_index];
 
             // Move to the next host for the next attempt
-            current_physrep_metadb_host = (current_physrep_metadb_host + 1) % physrep_metadb_host_count;
+            *host_index = (*host_index + 1) % *host_count;
 
             int rc = cdb2_open(hndl, dbname, direct_host, CDB2_DIRECT_CPU);
             if (rc != 0) {
@@ -416,12 +439,12 @@ static int get_metadb_hndl(cdb2_hndl_tp **hndl) {
                 physrep_logmsg(LOGMSG_USER, "%s:%d Returning handle for: %s@%s\n",
                                __func__, __LINE__, dbname, direct_host);
             }
-            pthread_mutex_unlock(&physrep_metadb_hosts_mu);
+            pthread_mutex_unlock(lk);
             return 0;
         }
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to any host in the list\n",
                        __func__, __LINE__);
-        pthread_mutex_unlock(&physrep_metadb_hosts_mu);
+        Pthread_mutex_unlock(lk);
         return 1;
     }
 
@@ -438,6 +461,31 @@ static int get_metadb_hndl(cdb2_hndl_tp **hndl) {
                        __func__, __LINE__, dbname, host);
     }
     return 0;
+}
+
+static int get_metadb_hndl(cdb2_hndl_tp **hndl)
+{
+    char *dbname = (gbl_physrep_metadb_name) ? gbl_physrep_metadb_name : gbl_physrep_source_dbname;
+    char *host = (gbl_physrep_metadb_host) ? gbl_physrep_metadb_host : gbl_physrep_source_host;
+
+    static pthread_mutex_t physrep_metadb_hosts_mu = PTHREAD_MUTEX_INITIALIZER;
+    static __thread int current_physrep_metadb_host = 0;
+
+    return get_metadb_handle_int(hndl, dbname, host, &physrep_metadb_hosts, &physrep_metadb_host_count,
+                                 &current_physrep_metadb_host, &physrep_metadb_hosts_mu);
+}
+
+int get_alt_metadb_hndl(cdb2_hndl_tp **hndl, int index)
+{
+    if (index < 0 || index >= gbl_altmetadb_count) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d: No alternate metadbs specified!\n", __func__, __LINE__);
+        return -1;
+    }
+
+    struct metadb *metadb = &gbl_altmetadb[index];
+
+    return get_metadb_handle_int(hndl, metadb->dbname, metadb->host, &metadb->hosts, &metadb->host_count,
+                                 &altmetadb_index[index], &metadb->lk);
 }
 
 int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp **hndl) {
@@ -1286,7 +1334,6 @@ repl_loop:
         int revconn_ck = gbl_physrep_revconn_check_interval;
         if (repl_db_connected && revconn_ck > 0 && comdb2_time_epoch() - last_revconn_check > revconn_ck) {
             cdb2_hndl_tp *repl_metadb = NULL;
-            last_revconn_check = comdb2_time_epoch();
             if (gbl_physrep_debug) {
                 physrep_logmsg(LOGMSG_USER, "%s:%d Re-checking for reverse connection\n", __func__, __LINE__);
             }
@@ -1297,9 +1344,18 @@ repl_loop:
                     physrep_logmsg(LOGMSG_USER, "%s:%d Reverse connection check: do-revcon=%d, is-revcon=%d\n",
                                    __func__, __LINE__, do_revconn, is_revconn);
                 }
-                if ((do_revconn && !is_revconn) || (!do_revconn && is_revconn)) {
-                    logmsg(LOGMSG_USER, "Revconn changed, do_revconn=%d, is_revconn=%d\n", do_revconn, is_revconn);
-                    close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                if (do_revconn == -1) {
+                    logmsg(LOGMSG_ERROR, "%s:%d Failed to contact physrep metadb- keeping do_revconn the same: %d\n",
+                           __func__, __LINE__, is_revconn);
+                } else {
+
+                    /* Only update timestamp on successful check */
+                    last_revconn_check = comdb2_time_epoch();
+
+                    if ((do_revconn && !is_revconn) || (!do_revconn && is_revconn)) {
+                        logmsg(LOGMSG_USER, "Revconn changed, do_revconn=%d, is_revconn=%d\n", do_revconn, is_revconn);
+                        close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                    }
                 }
             }
         }
