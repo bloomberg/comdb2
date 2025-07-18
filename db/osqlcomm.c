@@ -6447,6 +6447,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     sc->nothrevent = 1; /* we need do_add_table / do_alter_table to run first */
     sc->finalize = 0;
 
+    // TODO: check if the first shard sc is quick enough to 
+    // not be problematic if it blocks new master from coming up
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition
@@ -6501,7 +6503,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
     if (!arg.part_name)
         return VIEW_ERR_MALLOC;
-    arg.lockless = 1;   
+    arg.lockless = 1;
 
     struct schema_change_type ** shard_scs = calloc(timepart_get_num_shards(sc->tablename),
         sizeof(struct schema_change_type *));
@@ -6509,6 +6511,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     arg.extra_args = (void *) shard_scs;
 
     rc = timepart_foreach_shard(setup_schema_change_tran_wrapper_merge, &arg);
+
+    // TODO: Do this in a thread
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
     free(arg.part_name);
 
