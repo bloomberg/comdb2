@@ -2500,5 +2500,8 @@ int release_locks_int(const char *trace, const char *func, int line, struct sqlc
 
 int bdb_keylen(bdb_state_type *bdb_state, int ixnum);
 
+int bdb_get_rep_event_counts(bdb_state_type *bdb_state, uint64_t *repevents);
+const char* bdb_rep_event_type_str(int event_type);
+
 void llmeta_collect_tablename_alias(void);
 #endif
