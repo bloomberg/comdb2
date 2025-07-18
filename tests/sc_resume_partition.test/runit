@@ -39,11 +39,8 @@ do_resume() {
 	local -r waitpid=$!
 	sleep 2
 
-	#cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "rebuild ${tbl_name}" &
-
-#	trigger_resume ${master} ${resume_trigger}
-	echo "TRIGGER RESUME NOW"
-	sleep 20
+	# cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "rebuild ${tbl_name}" &
+	trigger_resume ${master} ${resume_trigger}
 
 	if wait ${waitpid};
 	then
@@ -95,7 +92,7 @@ main() {
 	do
 		for resume_trigger in ${CRASH};
 		do
-			for op_for_creating_partition in ${CREATE};
+			for op_for_creating_partition in ${CREATE} ${ALTER};
 			do
 				echo "------------------------"
 				echo "Testing resume of a partitioned table triggered by a ${resume_trigger} "

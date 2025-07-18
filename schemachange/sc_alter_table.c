@@ -726,38 +726,28 @@ errout:
     return SC_OK;
 }
 
-static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
-                          tran_type *tran)
+// Runs after the sc is set 'running' and before it is actually
+// launched.
+int setup_merge(struct ireq *iq, struct schema_change_type *s,
+                             tran_type *tran)
 {
-    struct dbtable *db;
-    struct dbtable *newdb;
-    int i;
-    int rc;
-    struct scinfo scinfo;
-
-#ifdef DEBUG_SC
-    logmsg(LOGMSG_INFO, "do_merge_table() %s\n", s->resume ? "resuming" : "");
-#endif
-
-    gbl_sc_last_writer_time = 0;
-
-    db = get_dbtable_by_name(s->tablename);
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->tablename);
         if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return SC_TABLE_DOESNOT_EXIST;
     }
 
-
     if (s->resume == SC_PREEMPT_RESUME) {
-        newdb = db->sc_to;
-        goto convert_records;
+        return 0;
     }
 
-    newdb = s->newdb;
+    struct dbtable *newdb = s->newdb;
 
+    struct scinfo scinfo;
     set_schemachange_options_tran(s, db, &scinfo, tran);
 
+    int rc;
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
     sc_printf(s, "starting table merge with seed %0#16llx\n",
@@ -793,8 +783,27 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
+    return 0;
+}
 
-convert_records:
+static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    int i;
+    int rc;
+
+#ifdef DEBUG_SC
+    logmsg(LOGMSG_INFO, "do_merge_table() %s\n", s->resume ? "resuming" : "");
+#endif
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+    struct dbtable *newdb = s->resume == SC_PREEMPT_RESUME ? db->sc_to : s->newdb;
+
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);

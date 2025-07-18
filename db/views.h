@@ -89,6 +89,7 @@ typedef struct timepart_sc_arg {
     /* output */
     int pos; /* is this the first and/or the last shard */
     int indx;  /* currently selected shard index */
+    void *extra_args; /* any extra args we want to pass to the function */
 } timepart_sc_arg_t;
 
 extern int gbl_partitioned_table_enabled;

@@ -418,7 +418,11 @@ typedef struct sc_list sc_list_t;
  */
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
 
+int setup_merge(struct ireq *iq, struct schema_change_type *s,
+                             tran_type *tran);
 size_t schemachange_packed_size(struct schema_change_type *s);
+int setup_schema_change(struct ireq *, tran_type *tran);
+int launch_schema_change(struct ireq *, tran_type *tran);
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
 int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize);

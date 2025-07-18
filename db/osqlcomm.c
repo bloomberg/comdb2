@@ -6288,13 +6288,13 @@ static int _process_single_table_sc(struct ireq *iq)
     return rc;
 }
 
-static int start_schema_change_tran_wrapper_merge(const char *tblname,
+static int setup_schema_change_tran_wrapper_merge(const char *tblname,
                                                   timepart_view_t **pview,
                                                   timepart_sc_arg_t *arg)
 {
+    struct schema_change_type ** shard_scs = (struct schema_change_type **) arg->extra_args;
     struct schema_change_type *sc = arg->s;
     struct ireq *iq = sc->iq;
-    int rc;
 
     /* first shard drops partition also */
     if (arg->pos & LAST_SHARD) {
@@ -6316,21 +6316,37 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     alter_sc->resume = sc->resume;
     /* link the sc */
     iq->sc = alter_sc;
+    
+    int rc = setup_schema_change(iq, NULL);
+    if (rc) {
+        if (rc != SC_MASTER_DOWNGRADE) {
+        // ?
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        }
+        return rc;
+    }
 
-    /**
-     * if view is provided, this is part of a shard walk;
-     * release views lock here since sc can take awhile
-     *
-     */
-    if (arg->lockless)
-        views_unlock();
+    // sets last genid
+    rc = setup_merge(iq, iq->sc, NULL);
 
-    rc = start_schema_change_tran(iq, NULL);
+    shard_scs[arg->indx] = alter_sc;
+    return rc;
+}
+
+static int start_schema_change_tran_wrapper_merge(const char *tblname,
+                                                  timepart_view_t **pview,
+                                                  timepart_sc_arg_t *arg)
+{
+    struct schema_change_type ** shard_scs = (struct schema_change_type **) arg->extra_args;
+    struct ireq *iq = arg->s->iq;
+    iq->sc = shard_scs[arg->indx];
+
+    int rc = launch_schema_change(iq, NULL);
 
     /* link the alter */
     iq->sc->sc_next = iq->sc_pending;
     iq->sc_pending = iq->sc;
-    if (alter_sc->nothrevent) { iq->sc->newdb = NULL; /* lose ownership, otherwise double free */ }
+    if (iq->sc->nothrevent) { iq->sc->newdb = NULL; /* lose ownership, otherwise double free */ }
 
     if (arg->lockless) {
         *pview = timepart_reaquire_view(arg->part_name);
@@ -6470,7 +6486,13 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     if (!arg.part_name)
         return VIEW_ERR_MALLOC;
     arg.lockless = 1;   
-    /* note: we have already set nothrevent depending on the number of shards */
+
+    struct schema_change_type ** shard_scs = calloc(timepart_get_num_shards(sc->tablename),
+        sizeof(struct schema_change_type *));
+    if (!shard_scs) return VIEW_ERR_MALLOC;
+    arg.extra_args = (void *) shard_scs;
+
+    rc = timepart_foreach_shard(setup_schema_change_tran_wrapper_merge, &arg);
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
     free(arg.part_name);
 
