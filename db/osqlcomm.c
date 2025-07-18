@@ -6316,11 +6316,15 @@ static int setup_schema_change_tran_wrapper_merge(const char *tblname,
     alter_sc->resume = sc->resume;
     /* link the sc */
     iq->sc = alter_sc;
+
+    // Release views lock if we're doing shard walk
+    if (arg->lockless) views_unlock();
     
     int rc = setup_schema_change(iq, NULL);
     if (rc) {
         if (rc != SC_MASTER_DOWNGRADE) {
-        // ?
+        // ? TODO
+            
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         }
         return rc;
@@ -6328,6 +6332,15 @@ static int setup_schema_change_tran_wrapper_merge(const char *tblname,
 
     // sets last genid
     rc = setup_merge(iq, iq->sc, NULL);
+
+    if (arg->lockless) {
+        *pview = timepart_reaquire_view(arg->part_name);
+        if (!pview) {
+            logmsg(LOGMSG_ERROR, "%s view %s dropped while processing\n",
+                   __func__, arg->part_name);
+            return VIEW_ERR_SC;
+        }
+    }
 
     shard_scs[arg->indx] = alter_sc;
     return rc;
@@ -6340,6 +6353,9 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     struct schema_change_type ** shard_scs = (struct schema_change_type **) arg->extra_args;
     struct ireq *iq = arg->s->iq;
     iq->sc = shard_scs[arg->indx];
+
+    // Release views lock if we're doing a shard walk
+    if (arg->lockless) views_unlock();
 
     int rc = launch_schema_change(iq, NULL);
 
