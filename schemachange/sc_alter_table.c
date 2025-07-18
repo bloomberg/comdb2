@@ -389,32 +389,22 @@ static void decrement_sc_yet_to_resume_counter()
     }
 }
 
-int do_alter_table(struct ireq *iq, struct schema_change_type *s,
-                   tran_type *tran)
+int setup_alter(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
-    struct dbtable *db;
     int rc;
     int bdberr = 0;
     struct dbtable *newdb;
     int datacopy_odh = 0;
     int changed;
-    int i;
     char new_prefix[32];
     struct scinfo scinfo;
     struct errstat err = {0};
 
-    db = get_dbtable_by_name(s->tablename);
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
-
-
-    /* note for a partition merge, if we reuse the first shard (i.e. it is aliased),
-     * we need to alter it here instead of running do_merge_table
-     */
-    if (s->partition.type == PARTITION_MERGE && !db->sqlaliasname)
-        return do_merge_table(iq, s, tran);
 
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
@@ -426,7 +416,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
         changed = s->schema_change;
-        goto convert_records;
+        return 0;
     }
 
     set_schemachange_options_tran(s, db, &scinfo, tran);
@@ -606,8 +596,42 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
+    return 0;
+}
 
-convert_records:
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran)
+{
+    int rc;
+    struct dbtable *newdb;
+    int changed;
+    int i;
+
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+    /* note for a partition merge, if we reuse the first shard (i.e. it is aliased),
+     * we need to alter it here instead of running do_merge_table
+     */
+    if (s->partition.type == PARTITION_MERGE && !db->sqlaliasname)
+        return do_merge_table(iq, s, tran);
+
+    // TODO: Not sure if this is a good indicator
+    if (!s->newdb) {
+        rc = setup_alter(iq, s, tran);
+        if (rc) return rc;
+    }
+
+    if (s->resume == SC_PREEMPT_RESUME) {
+        newdb = db->sc_to;
+        changed = s->schema_change;
+    } else {
+        newdb = s->newdb;
+    }
+
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
@@ -783,6 +807,15 @@ int setup_merge(struct ireq *iq, struct schema_change_type *s,
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
+
+    if (s->resume && IS_ALTERTABLE(s)) {
+        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
+        decrement_sc_yet_to_resume_counter();
+    }
     return 0;
 }
 
@@ -807,14 +840,6 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
-    if (s->resume && IS_ALTERTABLE(s)) {
-        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
-            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
-                   __func__, __LINE__);
-            sleep(5);
-        }
-        decrement_sc_yet_to_resume_counter();
-    }
     MEMORY_SYNC;
 
     if (get_stopsc(__func__, __LINE__)) {
