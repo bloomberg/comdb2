@@ -6423,6 +6423,164 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     return rc;
 }
 
+static int setup_first_shard_sc_for_merge(struct ireq *iq, struct dbtable *first_shard) {
+
+    struct schema_change_type *sc = iq->sc;
+    if (!first_shard->sqlaliasname) {
+        sc->kind = SC_ADDTABLE;
+    } else {
+        if (gbl_enable_partitioned_table_merge_resume) {
+            sc->partition.type = PARTITION_NONE;
+        } else {
+            assert(sc->partition.type == PARTITION_MERGE);
+            // If partitioned table merge resumes are disabled,
+            // then we keep the type equal to PARTITION_MERGE.
+            // There is code later on that blocks the resume if
+            // the type is PARTITION_MERGE.
+        }
+
+        strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
+    }
+
+    int rc = setup_schema_change(iq, NULL);
+    if (rc) {
+        if (rc != SC_MASTER_DOWNGRADE) iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        return ERR_SC;
+    }
+
+    return 0;
+}
+
+static int setup_later_shard_scs_for_merge(const char *tblname,
+                                                  timepart_view_t **pview,
+                                                  timepart_sc_arg_t *arg)
+{
+    struct schema_change_type ** shard_scs = (struct schema_change_type **) arg->extra_args;
+    struct schema_change_type *sc = arg->s;
+    struct ireq *iq = sc->iq;
+
+    /* first shard drops partition also */
+    if (arg->pos & LAST_SHARD) {
+        sc->publish = partition_publish;
+        sc->unpublish = partition_unpublish;
+    }
+
+    struct schema_change_type *alter_sc = clone_schemachange_type(sc);
+
+    /* new target */
+    strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
+    /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
+    alter_sc->kind = SC_ALTERTABLE;
+    /* use the created file as target */
+    alter_sc->newdb = sc->newdb;
+    alter_sc->force_rebuild = 1; /* we are moving rows here */
+    /* alter only in parallel mode for live */
+    alter_sc->scanmode = SCAN_PARALLEL;
+    alter_sc->resume = sc->resume;
+    /* link the sc */
+    iq->sc = alter_sc;
+
+    // Release views lock if we're doing shard walk
+    if (arg->lockless) views_unlock();
+    
+    int rc = setup_schema_change(iq, NULL);
+    if (rc) {
+        if (rc != SC_MASTER_DOWNGRADE) {
+        // ? TODO
+            
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        }
+        return rc;
+    }
+
+    // sets last genid
+    rc = setup_merge(iq, iq->sc, NULL);
+
+    if (arg->lockless) {
+        *pview = timepart_reaquire_view(arg->part_name);
+        if (!pview) {
+            logmsg(LOGMSG_ERROR, "%s view %s dropped while processing\n",
+                   __func__, arg->part_name);
+            return VIEW_ERR_SC;
+        }
+    }
+
+    shard_scs[arg->indx] = alter_sc;
+    return rc;
+}
+
+static int setup_scs_for_merge(struct ireq *iq, struct schema_change_type ** first_shard_sc,
+                               struct schema_change_type **later_shard_scs) {
+    struct schema_change_type *sc = *first_shard_sc = iq->sc;
+    assert(sc->kind == SC_ALTERTABLE);
+
+    char *first_shard_name = timepart_shard_name(sc->tablename, 0, 0, NULL);
+    struct dbtable *first_shard = get_dbtable_by_name(first_shard_name);
+    free(first_shard_name);
+
+    int rc = setup_first_shard_sc_for_merge(iq, first_shard);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to setup first shard sc\n", __func__);
+        return rc;
+    }
+
+    
+    if (first_shard->sqlaliasname) {
+        strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
+    }
+
+    *later_shard_scs = calloc(timepart_get_num_shards(sc->tablename), sizeof(struct schema_change_type *));
+    if (*later_shard_scs) return VIEW_ERR_MALLOC;
+    timepart_sc_arg_t arg = {.s = sc, .start = 1 /* no publishing */,
+                             .extra_args = (void *) later_shard_scs
+                             .check_extra_shard = first_shard->sqlaliasname ? 1 : 0};
+    s->iq = iq;
+
+    rc = timepart_foreach_shard(setup_later_shard_scs_for_merge, &arg);
+}
+
+static int launch_scs_for_merge(struct ireq *iq, struct schema_change_type *first_shard_sc,
+                                struct schema_change_type **later_shard_scs)
+{
+    
+    iq->sc = first_shard_sc;
+    int shard_ix = 0;
+
+    do { 
+        if (!iq->sc) { logmsg(LOGMSG_WARN, "shard %d sc is null\n", shard_ix); continue; }
+
+        int rc = launch_schema_change(iq, NULL);
+        if (rc) {
+            if (rc != SC_MASTER_DOWNGRADE) iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            return ERR_SC;
+        }
+
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc
+        iq->sc = later_shard_scs[shard_ix]
+    } while (++shard_ix < num_shards);
+}
+
+static int process_partitioned_table_merge(struct ireq *iq)
+{
+    int num_shards;
+    struct schema_change_type *first_shard_sc, *later_shard_scs;
+
+    int rc = setup_scs_for_merge(iq, &first_shard_sc, &later_shard_scs, &num_shards);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to setup scs for partition merge. rc(%d)\n", __func__, rc);
+        return rc;
+    }
+
+    rc = launch_scs_for_merge(iq);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to launch scs for partition merge. rc(%d)\n", __func__, rc);
+        return rc;
+    }
+
+    return 0;
+}
+
 static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
@@ -6696,7 +6854,8 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     sc->nothrevent = nshards > gbl_dohsql_sc_max_threads;
 
     if (sc->partition.type == PARTITION_MERGE) {
-        return _process_partitioned_table_merge(iq);
+        return process_partitioned_table_merge(iq);
+        // return _process_partitioned_table_merge(iq);
     }
 
     timepart_sc_arg_t arg = {0};
