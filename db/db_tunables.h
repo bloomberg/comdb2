@@ -111,7 +111,7 @@ REGISTER_TUNABLE("buffers_per_context", NULL, TUNABLE_INTEGER,
                  NULL);
 REGISTER_TUNABLE("bulk_import_validation_werror",
                  "Treat bulk import input validation warnings as errors. "
-                 "(Default: off)", TUNABLE_BOOLEAN,
+                 "(Default: on)", TUNABLE_BOOLEAN,
                  &gbl_bulk_import_validation_werror, 0, NULL, NULL, NULL,
                  NULL);
 /*

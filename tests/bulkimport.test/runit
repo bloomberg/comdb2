@@ -321,8 +321,10 @@ function test_bad_inputs_without_werror() {
 		# Given
 		local dst_tbl=foo src_tbl='bad-table'
 		query_dst_db "create table $dst_tbl(i int)"
+		set_dst_tunable "bulk_import_validation_werror off"
 
-		trap "query_dst_db 'drop table $dst_tbl'" EXIT
+		trap "set_dst_tunable 'bulk_import_validation_werror on';
+			query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
 		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.'"$src_tbl"'" 2>&1)
@@ -339,10 +341,8 @@ function test_bad_inputs_with_werror() {
 		# Given
 		local dst_tbl=foo src_tbl='bad-table'
 		query_dst_db "create table $dst_tbl(i int)"
-		set_dst_tunable "bulk_import_validation_werror on"
 
-		trap "set_dst_tunable 'bulk_import_validation_werror off';
-			query_dst_db 'drop table $dst_tbl'" EXIT
+		trap "query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
 		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.'"$src_tbl"'" 2>&1)
