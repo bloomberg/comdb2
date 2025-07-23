@@ -24,8 +24,7 @@ function waitmach
         cfg=""
     fi
 
-    while [[ "$out" != "1" ]]; do
-        out=$($CDB2SQL_EXE $cfg --tabs $dbname $mach 'select 1' 2> /dev/null)
+    while ! $CDB2SQL_EXE $cfg --tabs $dbname $mach 'select 1' &> /dev/null; do
         sleep 1
     done
 }

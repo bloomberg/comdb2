@@ -9,18 +9,6 @@ set -ex
 
 dbnm=$1
 
-restart_cluster() {
-	set +e
-	for node in ${CLUSTER} ; do
-		kill_restart_node ${node} &
-	done
-	set -e
-
-	sleep 2
-
-	wait_for_cluster
-}
-
 test_partition_merge_resume() {
 	# Given
 	local starttime
@@ -33,10 +21,10 @@ test_partition_merge_resume() {
 	cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values (1)"
 
 	# When
-	COMDB2_CONFIG_MIN_RETRIES=1 cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
 	waitpid=$!
 	sleep 1
-	restart_cluster &> /dev/null
+	downgrade_master
 
 	# Then
 	if wait ${waitpid};

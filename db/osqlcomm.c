@@ -6304,6 +6304,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 
     struct schema_change_type *alter_sc = clone_schemachange_type(sc);
 
+    alter_sc->newdb_borrowed = 1; 
     /* new target */
     strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
     /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
@@ -6356,6 +6357,8 @@ static int _process_single_table_sc_merge(struct ireq *iq)
      * if this is an alter .. merge, we still prefer to sequence alters
      * to limit the amount of parallelism in flight
      */
+
+    sc->newdb_borrowed = 0;
     sc->nothrevent = 1;
     sc->finalize = 0; /* make sure */
     if (sc->kind == SC_ALTERTABLE) {
@@ -6410,6 +6413,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
     /* we need to move data */
     sc->force_rebuild = 1;
+
+    sc->newdb_borrowed = 0;
 
     if (!first_shard->sqlaliasname) {
         /*
