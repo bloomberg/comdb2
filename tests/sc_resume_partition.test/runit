@@ -8,20 +8,21 @@ set -ex
 [ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
 
 dbnm=$1
+tier="default"
 
 test_partition_merge_resume() {
 	# Given
 	local starttime
 	starttime=$(get_timestamp 120)
 	local master
-	master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
+	master=$(get_master)
 
-	cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "create table t(a int) partitioned by time period 'daily' retention 2 start '${starttime}'"
-	cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values (1)"
+	cdb2sql $dbnm --host ${master} "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "create table t(a int) partitioned by time period 'daily' retention 2 start '${starttime}'"
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "insert into t values (1)"
 
 	# When
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table t partitioned by none" &
 	waitpid=$!
 	sleep 1
 	downgrade_master
@@ -34,7 +35,7 @@ test_partition_merge_resume() {
 	fi
 
 	local timepart
-	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select * from comdb2_timepartitions where name='t'")
+	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select * from comdb2_timepartitions where name='t'")
 	if [[ -z ${timepart} ]];
 	then
 		echo "FAIL: Could not find expected time partition"
@@ -42,7 +43,7 @@ test_partition_merge_resume() {
 	fi
 
 	# Cleanup
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "drop table t"
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "drop table t"
 }
 
 test_partition_merge_resume
