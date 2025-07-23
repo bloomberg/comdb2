@@ -9,16 +9,26 @@ set -ex
 
 dbnm=$1
 
-restart_cluster() {
-	set +e
-	for node in ${CLUSTER} ; do
-		kill_restart_node ${node} &
+downgrade_master() {
+	local -r downgrade_wait_seconds=5
+
+	local master
+	master=$(get_master)
+	if (( $? != 0 )); then
+		echo "FAIL: Could not get master"
+		return 1
+	fi
+
+	local new_master=${master}
+	while [[ "${new_master}" == "${master}" ]]; do
+		if ! cdb2sql --host ${master} ${CDB2_OPTIONS} ${dbnm} ${tier} "exec procedure sys.cmd.send('downgrade')"; then
+			echo "FAIL: Could not send downgrade command to master"
+			return 1
+		fi
+
+		sleep ${downgrade_wait_seconds}
+		new_master=$(get_master)
 	done
-	set -e
-
-	sleep 2
-
-	wait_for_cluster
 }
 
 test_partition_merge_resume() {
@@ -33,10 +43,10 @@ test_partition_merge_resume() {
 	cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values (1)"
 
 	# When
-	COMDB2_CONFIG_MIN_RETRIES=1 cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
 	waitpid=$!
 	sleep 1
-	restart_cluster &> /dev/null
+	downgrade_master
 
 	# Then
 	if wait ${waitpid};

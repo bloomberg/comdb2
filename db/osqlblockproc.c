@@ -1362,8 +1362,10 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
                 }
                 if (rc == ERR_NOMASTER) {
                         sc_set_downgrading(sc);
-                        bdb_close_only(sc->newdb->handle, &bdberr);
-                        freedb(sc->newdb);
+                        if (!sc->newdb_borrowed) {
+                            bdb_close_only(sc->newdb->handle, &bdberr);
+                            freedb(sc->newdb);
+                        }
                         sc->newdb = NULL;
                         sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
                                        time(NULL), __func__, __LINE__);
