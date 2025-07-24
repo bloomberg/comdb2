@@ -7748,6 +7748,29 @@ void oldfile_dump(void)
     hash_for(oldfile_hash, oldfile_hash_dump, NULL);
 }
 
+struct collect_unused_files {
+    collect_unused_files_f func;
+    void *arg;
+};
+
+static int oldfile_collect(void *ptr, void *arg)
+{
+    struct unused_file *obj = (struct unused_file *)ptr;
+    struct collect_unused_files *u = (struct collect_unused_files *)arg;
+    (*u->func)(u->arg, obj->lognum, obj->fname);
+    return 0;
+}
+
+void oldfile_hash_collect(collect_unused_files_f func, void *arg)
+{
+    Pthread_mutex_lock(&unused_files_mtx);
+    if (oldfile_hash) {
+        struct collect_unused_files u = {.func = func, .arg = arg};
+        hash_for(oldfile_hash, oldfile_collect, &u);
+    }
+    Pthread_mutex_unlock(&unused_files_mtx);
+}
+
 /* use hash tbl to check if we have added file to list previously */
 static int oldfile_list_contains(const char *filename)
 {
