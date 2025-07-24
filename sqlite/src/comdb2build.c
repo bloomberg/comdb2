@@ -406,7 +406,10 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
 
-     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL && !clnt->admin) {
+     if (clnt->admin)
+         return SQLITE_OK;
+
+     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
          clnt->authdata = get_authdata(clnt);
 
          if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux) {
@@ -453,7 +456,11 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 
 static int comdb2CheckOpAccess(void) {
     struct sqlclntstate *clnt = get_sql_clnt();
-    if (gbl_uses_externalauth && externalComdb2CheckOpAccess && !clnt->admin) {
+
+    if (clnt->admin)
+        return SQLITE_OK;
+
+    if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
          clnt->authdata = get_authdata(clnt);
          if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux) {
              return reject_anon_id(clnt);
