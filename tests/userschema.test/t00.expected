@@ -72,6 +72,7 @@
 (tablename='comdb2_triggers', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_tunables', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_type_samples', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_unused_files', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_users', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_views', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (username='mohit', isOP='Y')

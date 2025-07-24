@@ -431,6 +431,7 @@
 (name='comdb2_triggers')
 (name='comdb2_tunables')
 (name='comdb2_type_samples')
+(name='comdb2_unused_files')
 (name='comdb2_users')
 (name='comdb2_views')
 [SELECT * FROM comdb2_systables ORDER BY name] rc 0

@@ -293,6 +293,7 @@
 (candidate='comdb2_triggers')
 (candidate='comdb2_tunables')
 (candidate='comdb2_type_samples')
+(candidate='comdb2_unused_files')
 (candidate='comdb2_users')
 (candidate='comdb2_views')
 (candidate='abs()')

@@ -2501,4 +2501,8 @@ int release_locks_int(const char *trace, const char *func, int line, struct sqlc
 int bdb_keylen(bdb_state_type *bdb_state, int ixnum);
 
 void llmeta_collect_tablename_alias(void);
+typedef int (*collect_unused_files_f)(void *args, int lognum, char *filename);
+
+void oldfile_hash_collect(collect_unused_files_f func, void *arg);
+
 #endif
