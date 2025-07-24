@@ -1367,14 +1367,15 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
                             freedb(sc->newdb);
                         }
                         sc->newdb = NULL;
-                        sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
-                                       time(NULL), __func__, __LINE__);
-                        free_schema_change_type(sc);
                 }
-            } else if (rc == ERR_NOMASTER) {
-                /* this can happen if a table was caught by downgrade during
-                 * do_ddl; code will clean sc->newdb, but does not mess with
-                 * sc_set_running
+            }
+            if (rc == ERR_NOMASTER) {
+                /*
+                 * This can happen if
+                 * 1. a table is caught by downgrade during do_ddl
+                 *      (in which case newdb will have been cleaned in do_schema_change_tran_int())
+                 * 2. a table finished do_ddl and another got caught by a downgrade
+                 *      (in which case newdb was freed in the block above)
                  */
                 sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
                                time(NULL), __func__, __LINE__);
