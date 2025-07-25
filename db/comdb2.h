@@ -1273,6 +1273,7 @@ struct osql_sess {
     int queryid;
     unsigned is_reorder_on : 1;
     unsigned is_delayed : 1;
+    unsigned is_final : 1;
 
     /* from sorese */
     osql_target_t target; /* replicant machine; host is NULL if local */
