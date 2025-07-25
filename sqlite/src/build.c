@@ -1710,6 +1710,16 @@ char sqlite3AffinityType(const char *zIn, Column *pCol){
                                                               * year */
         && aff==SQLITE_AFF_NUMERIC ){
       aff = SQLITE_AFF_DECIMAL;
+    }else if( (h&0x00FFFFFF)==(('s'<<16)+('t'<<8)+'r') ){    /*  STR: cstring, pstring */
+      aff = SQLITE_AFF_TEXT;
+    }else if( h==(('v'<<24)+('u'<<16)+('t'<<8)+'f') ){       /* VUTF: vutf8 */
+      aff = SQLITE_AFF_TEXT;
+    }else if( h==(('p'<<24)+('s'<<16)+('t'<<8)+'r') ){       /* SHOR: u_short, short */
+      aff = SQLITE_AFF_INTEGER;
+    }else if( h==(('l'<<24)+('o'<<16)+('n'<<8)+'g') ){       /* LONG: longlong */
+      aff = SQLITE_AFF_INTEGER;
+    }else if( h==(('b'<<24)+('y'<<16)+('t'<<8)+'e') ){       /* BYTES */
+      aff = SQLITE_AFF_BLOB;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
