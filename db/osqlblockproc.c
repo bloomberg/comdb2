@@ -1598,7 +1598,7 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     init_fake_ireq(thedb, iq);
 
     /* this starts schema changeas;
-     * the alters have to register themselves inline,
+     * the alters have to register themselves inline (by incrementing gbl_sc_resume_start),
      * but the rest of the execution is done in parallel
      * waiting is done by a separate thread that will finalize 
      * the schema change

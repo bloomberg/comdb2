@@ -42,6 +42,7 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_transactional_drop_plus_rename;
+extern int gbl_enable_partitioned_table_merge_resume;
 extern int gbl_bulk_import_validation_werror;
 extern int gbl_debug_sleep_during_bulk_import;
 extern int gbl_waitalive_iterations;
