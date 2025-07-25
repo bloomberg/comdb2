@@ -1570,6 +1570,27 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             exit(1);
         }
         gbl_physrep_metadb_host = tokdup(tok, ltok);
+    } else if (tokcmp(tok, ltok, "alternate_metadb") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Must specify an alternate database to replicate from\n");
+            return -1;
+        }
+        char *dbname = tokdup(tok, ltok);
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Must specify an alternate metadb host\n");
+            free(dbname);
+            return -1;
+        }
+        char *host = tokdup(tok, ltok);
+        if (physrep_add_alternate_metadb(dbname, host) != 0) {
+            logmsg(LOGMSG_ERROR, "Failed to add alternate metadb %s@%s\n", dbname, host);
+            free(dbname);
+            free(host);
+            return -1;
+        }
     } else if (tokcmp(tok, ltok, "physrep_ignore") == 0) {
         /* Tables that should ignore replication */
         while ((tok = segtok(line, len, &st, &ltok)) != NULL && ltok > 0) {
