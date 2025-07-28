@@ -785,6 +785,12 @@ static int vdbeSorterCompareTail(
     sqlite3VdbeRecordUnpack(pTask->pSorter->pKeyInfo, nKey2, pKey2, r2);
     *pbKey2Cached = 1;
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* pass tzname, just in case one of the keys turn out a datetime */
+  if (pTask->pSorter->db && pTask->pSorter->db->pVdbe) {
+    r2->aMem->tz = pTask->pSorter->db->pVdbe->tzname;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return sqlite3VdbeRecordCompareWithSkip(nKey1, pKey1, r2, 1);
 }
 
@@ -812,6 +818,12 @@ static int vdbeSorterCompare(
     sqlite3VdbeRecordUnpack(pTask->pSorter->pKeyInfo, nKey2, pKey2, r2);
     *pbKey2Cached = 1;
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* pass tzname, just in case one of the keys turn out a datetime */
+  if (pTask->pSorter->db && pTask->pSorter->db->pVdbe) {
+    r2->aMem->tz = pTask->pSorter->db->pVdbe->tzname;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return sqlite3VdbeRecordCompare(nKey1, pKey1, r2);
 }
 
