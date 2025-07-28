@@ -469,7 +469,7 @@ function test_src_db_election_during_import() {
 		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
 
 			# set tunables
-		set_src_tunable 'comdb2_files_sleep_secs_after_processing_llmeta 10'
+		set_src_tunable 'comdb2_files_sleep_secs_after_processing_llmeta 20'
 		set_src_tunable 'logmsg level debug'
 
 			# teardown routines
