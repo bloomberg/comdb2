@@ -6786,7 +6786,8 @@ void init_lru_evbuffer(struct sqlclntstate *clnt)
 void add_lru_evbuffer(struct sqlclntstate *clnt)
 {
     Pthread_mutex_lock(&lru_evbuffers_mtx);
-    if (in_client_trans(clnt)) {
+    if (in_client_trans(clnt) || clnt->admin) {
+        // admin connection don't count towards active_appsocks
         TAILQ_NEXT(clnt, lru_entry) = clnt; /* Point to self -> not in lru_evbuffers list */
     } else if (TAILQ_NEXT(clnt, lru_entry) == clnt) {
         TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
