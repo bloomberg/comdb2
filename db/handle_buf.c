@@ -1266,13 +1266,6 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 #ifdef MONITOR_STACK
                 rc = comdb2_pthread_create(&thd->tid, &attr, thd_req,
                                            (void *)thd, stack_alloc, stack_sz);
-#else
-                rc = pthread_create(&thd->tid, &attr, thd_req, (void *)thd);
-#endif
-
-#if 0
-                printf("%s:%d: thdpool CREATE THD=%p -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
-#endif
                 if (rc != 0) {
                     errUNLOCK(&lock);
                     perror_errnum("handle_buf:failed pthread_thread_start", rc);
@@ -1288,6 +1281,13 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     }
                     return reterr(curswap, thd, iq, ERR_INTERNAL);
                 }
+#else
+                Pthread_create(&thd->tid, &attr, thd_req, (void *)thd);
+#endif
+
+#if 0
+                printf("%s:%d: thdpool CREATE THD=%p -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
+#endif
                 /* added thread to thread pool.*/
                 if (num >= MAXSTAT)
                     num = MAXSTAT - 1;

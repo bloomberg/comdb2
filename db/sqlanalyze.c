@@ -327,7 +327,7 @@ static void *sampling_thread(void *arg)
 }
 
 /* dispatch a thread to sample this index */
-static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
+static void dispatch_sample_index_thread(index_descriptor_t *ix_des)
 {
     /* grab lock */
     Pthread_mutex_lock(&comp_thd_mutex);
@@ -344,11 +344,8 @@ static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
     Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* dispatch */
-    int rc = pthread_create(&ix_des->thread_id, &gbl_pthread_attr_detached,
+    Pthread_create(&ix_des->thread_id, &gbl_pthread_attr_detached,
                         sampling_thread, ix_des);
-
-    /* return */
-    return rc;
 }
 
 /* wait for an index to complete */
@@ -375,11 +372,7 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
 {
     int i;
     int err = 0;
-    char *table;
     index_descriptor_t *ix_des;
-
-    /* find table to backout */
-    table = tbl->tablename;
 
     /* allocate cmp_idx */
     client->sampled_idx_tbl = calloc(tbl->nix, sizeof(sampled_idx_t));
@@ -402,14 +395,7 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
         ix_des->sampling_pct = sampling_pct;
 
         /* start an index sampling thread */
-        int rc = dispatch_sample_index_thread(ix_des);
-        if (0 != rc) {
-            logmsg(LOGMSG_ERROR, "Couldn't start sampling-thread for table '%s' ix %d "
-                   "rc=%d\n",
-                   table, i, rc);
-            err = 1;
-            break;
-        }
+        dispatch_sample_index_thread(ix_des);
     }
 
     /* wait for them to complete */
@@ -891,7 +877,7 @@ static void *table_thread(void *arg)
 }
 
 /* dispatch a table thread when we're allowed to */
-static int dispatch_table_thread(table_descriptor_t *td)
+static void dispatch_table_thread(table_descriptor_t *td)
 {
     int rc;
     struct timespec timeout;
@@ -924,11 +910,8 @@ static int dispatch_table_thread(table_descriptor_t *td)
     Pthread_mutex_unlock(&table_thd_mutex);
 
     /* dispatch */
-    rc = pthread_create(&td->thread_id, &gbl_pthread_attr_detached,
+    Pthread_create(&td->thread_id, &gbl_pthread_attr_detached,
                         table_thread, td);
-
-    /* return */
-    return rc;
 }
 
 /* wait for table to complete */
@@ -1069,17 +1052,10 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta, int by
     }
 
     /* dispatch */
-    int rc = dispatch_table_thread(&td);
-
-    if (0 != rc) {
-       logmsg(LOGMSG_ERROR, "Analyze: Couldn't start table-thread for table '%s' rc=%d\n", table, rc);
-        logmsg(LOGMSG_ERROR, "Analyze FAILED\n");
-        analyze_running_flag = 0;
-        return -1;
-    }
+    dispatch_table_thread(&td);
 
     /* block waiting for analyze to complete */
-    rc = wait_for_table(&td);
+    int rc = wait_for_table(&td);
 
     if (rc == 0)
         sbuf2printf(sb, "SUCCESS\n");
@@ -1142,13 +1118,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         }
 
         /* dispatch analyze table thread */
-        rc = dispatch_table_thread(&td[idx]);
-        if (0 != rc) {
-            failed = 1;
-            logmsg(LOGMSG_ERROR, "Couldn't start a table-thread for table '%s' rc=%d\n",
-                   td[idx].table, rc);
-            break;
-        }
+        dispatch_table_thread(&td[idx]);
         idx++;
     }
 

@@ -445,20 +445,13 @@ static void *reverse_connection_manager(void *args) {
         pthread_mutex_lock(&reverse_conn_hosts_mu);
         {
             LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk) {
-                rc = 0;
-
                 pthread_mutex_lock(&host->mu);
                 {
                     if (host->worker_state == REVERSE_CONN_WORKER_NEW) {
-                        rc = pthread_create(&host->thd, NULL, reverse_connection_worker, host);
+                        Pthread_create(&host->thd, NULL, reverse_connection_worker, host);
                     }
                 }
                 pthread_mutex_unlock(&host->mu);
-
-                if (rc != 0) {
-                    revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to create 'reverse-connection host' worker thread for %s@%s\n",
-                                   __func__, __LINE__, host->dbname, host->host);
-                }
             }
         }
         pthread_mutex_unlock(&reverse_conn_hosts_mu);
@@ -474,11 +467,7 @@ int start_reverse_connections_manager() {
     }
 
     // Start the 'reverse-connection' manager thread
-    int rc = pthread_create(&reverse_conn_manager, NULL, reverse_connection_manager, NULL);
-    if (rc != 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s:%d pthread_create failed (rc: %d)\n", __func__, __LINE__, rc);
-        return rc;
-    }
+    Pthread_create(&reverse_conn_manager, NULL, reverse_connection_manager, NULL);
 
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' manager thread started\n", __func__, __LINE__);

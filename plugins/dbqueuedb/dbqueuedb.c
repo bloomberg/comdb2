@@ -675,20 +675,11 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
         Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     }
 
-    rc = pthread_create(&tid, blocking ? &attr : &gbl_pthread_attr_detached,
+    Pthread_create(&tid, blocking ? &attr : &gbl_pthread_attr_detached,
                         stat_thread, args);
 
     if (blocking) {
         Pthread_attr_destroy(&attr);
-    }
-
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: pthread_create failed rc=%d %s\n", __func__, rc,
-                strerror(rc));
-        free(args);
-    }
-
-    if (blocking) {
         void *status;
         rc = pthread_join(tid, &status);
         if (rc != 0)
@@ -775,7 +766,6 @@ void flush_in_thread(struct dbtable *db, int consumern)
 {
     pthread_attr_t attr;
     struct flush_thd_data *args;
-    int rc;
     pthread_t tid;
 
     if (flush_thread_active) {
@@ -797,13 +787,7 @@ void flush_in_thread(struct dbtable *db, int consumern)
     args->consumern = consumern;
 
     flush_thread_active = 1;
-    rc = pthread_create(&tid, &attr, flush_thd, args);
-    if (rc != 0) {
-        flush_thread_active = 0;
-        logmsg(LOGMSG_ERROR, "%s: pthread_create error %d %s\n",
-                __func__, rc, strerror(rc));
-        free(args);
-    }
+    Pthread_create(&tid, &attr, flush_thd, args);
     Pthread_attr_destroy(&attr);
 }
 

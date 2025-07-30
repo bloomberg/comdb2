@@ -933,8 +933,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         if (!thd &&
             (force_dispatch || pool->maxnthd == 0 ||
              listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
-            int rc;
-
             thd = calloc(1, sizeof(struct thd));
             if (!thd) {
                 pool->num_failed_dispatches++;
@@ -949,11 +947,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             listc_atl(&pool->thdlist, thd);
 
 #ifdef MONITOR_STACK
-            rc = comdb2_pthread_create(&thd->tid, &pool->attrs, thdpool_thd,
+            int rc = comdb2_pthread_create(&thd->tid, &pool->attrs, thdpool_thd,
                                        thd, pool->stack_alloc, pool->stack_sz);
-#else
-            rc = pthread_create(&thd->tid, &pool->attrs, thdpool_thd, thd);
-#endif
             if (rc != 0) {
 
                 if (pool->exit_on_create_fail) {
@@ -973,6 +968,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 free(thd);
                 return -1;
             }
+#else
+            Pthread_create(&thd->tid, &pool->attrs, thdpool_thd, thd);
+#endif
             if (listc_size(&pool->thdlist) > pool->peaknthd) {
                 pool->peaknthd = listc_size(&pool->thdlist);
             }

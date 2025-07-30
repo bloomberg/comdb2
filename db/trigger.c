@@ -215,12 +215,7 @@ void trigger_start(const char *name)
     }
     num_trigger_threads++;
     Pthread_mutex_unlock(&trig_thd_cnt_lk);
-
-    if (pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name))) {
-        Pthread_mutex_lock(&trig_thd_cnt_lk);
-        num_trigger_threads--;
-        Pthread_mutex_unlock(&trig_thd_cnt_lk);
-    }
+    Pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
 }
 
 // FIXME TODO XXX: KEEP TWO HASHES (1) by spname (2) by node num

@@ -12005,7 +12005,7 @@ void start_stat4dump_thread(void)
 {
     if (stat4dump_tid || !gbl_debug_stat4dump_loop)
         return;
-    pthread_create(&stat4dump_tid, NULL, stat4dump_thread, NULL);
+    Pthread_create(&stat4dump_tid, NULL, stat4dump_thread, NULL);
 }
 
 void curtran_assert_nolocks(void)
