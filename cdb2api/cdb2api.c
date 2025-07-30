@@ -5202,7 +5202,7 @@ read_record:
         PRINT_AND_RETURN(return_value);
     }
 
-    sprintf(hndl->errstr, "%s: Unknown response type %d", __func__,
+    sprintf(hndl->errstr, "%s: Unexpected response type %d", __func__,
             hndl->firstresponse->response_type);
     if (is_hasql_commit)
         cleanup_query_list(hndl, commit_query_list, __LINE__);
