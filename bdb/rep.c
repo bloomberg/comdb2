@@ -1389,8 +1389,6 @@ give_up:
 
 static void call_for_election_int(bdb_state_type *bdb_state, int op)
 {
-    int rc;
-
     pthread_t elect_thr;
     elect_thread_args_type *elect_thread_args;
 
@@ -1416,12 +1414,8 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
     logmsg(LOGMSG_INFO, "call_for_election: creating elect thread\n");
-    rc = pthread_create(&elect_thr, &(bdb_state->pthread_attr_detach),
+    Pthread_create(&elect_thr, &(bdb_state->pthread_attr_detach),
                         elect_thread, (void *)elect_thread_args);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "call_for_election: can't create election thread: %d\n", rc);
-        free(elect_thread_args);
-    }
 }
 
 void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
@@ -1689,7 +1683,7 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *host, in
 
         /* Colease thread will do this */
         if (!bdb_state->attr->coherency_lease) {
-            pthread_create(&tid, &(bdb_state->pthread_attr_detach),
+            Pthread_create(&tid, &(bdb_state->pthread_attr_detach),
                            dummy_add_thread, bdb_state);
         }
 
@@ -1921,12 +1915,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, struct interned_string *host)
     Pthread_attr_init(&attr);
     Pthread_attr_setstacksize(&attr, 128 * 1024);
 
-    rc = pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "%s: pthread_create hostdown_thread: %d %s\n", __func__,
-                rc, strerror(rc));
-        exit(1);
-    }
+    Pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
     rc = pthread_detach(tid);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "%s: pthread_detach hostdown_thread: %d %s\n", __func__,
@@ -3854,7 +3843,7 @@ static void add_rep_mon(struct rep_mon *rm)
         rm->added = 1;
     } else {
         pthread_t t;
-        pthread_create(&t, NULL, rep_mon, NULL);
+        Pthread_create(&t, NULL, rep_mon, NULL);
     }
     Pthread_mutex_unlock(&rep_mon_lk);
 }
@@ -4810,7 +4799,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_ADD_DUMMY: {
         extern pthread_attr_t gbl_pthread_attr_detached;
         pthread_t tid;
-        pthread_create(&tid, &gbl_pthread_attr_detached,
+        Pthread_create(&tid, &gbl_pthread_attr_detached,
                        dummy_add_thread_nodelay, bdb_state);
         net_ack_message(ack_handle, 0);
         break;

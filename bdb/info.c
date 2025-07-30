@@ -1094,7 +1094,6 @@ static void *bdb_thread_wrapper(void *p)
 int bdb_run_in_a_thread(bdb_state_type *bdb_state,
                         void (*func)(bdb_state_type *))
 {
-    int rc;
     pthread_t tid;
     struct bdb_thread_args *args;
 
@@ -1111,9 +1110,9 @@ int bdb_run_in_a_thread(bdb_state_type *bdb_state,
     args->bdb_state = bdb_state;
     args->func = func;
 
-    rc = pthread_create(&tid, &attr, bdb_thread_wrapper, args);
+    Pthread_create(&tid, &attr, bdb_thread_wrapper, args);
     Pthread_attr_destroy(&attr);
-    return rc;
+    return 0;
 }
 
 static volatile int count_freepages_abort = 0;

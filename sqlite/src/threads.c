@@ -72,13 +72,10 @@ int sqlite3ThreadCreate(
   ** forces worker threads to run sequentially and deterministically 
   ** for testing purposes. */
   if( sqlite3FaultSim(200) ){
-    rc = 1;
-  }else{    
-    rc = pthread_create(&p->tid, 0, xTask, pIn);
-  }
-  if( rc ){
     p->done = 1;
     p->pOut = xTask(pIn);
+  }else{    
+    Pthread_create(&p->tid, 0, xTask, pIn);
   }
   *ppThread = p;
   return SQLITE_OK;

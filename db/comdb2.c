@@ -4538,23 +4538,14 @@ static void ttrap(struct timer_parm *parm)
 
 void create_old_blkseq_thread(struct dbenv *dbenv)
 {
-    int rc;
-
     if (!dbenv->purge_old_blkseq_is_running) {
-        rc = pthread_create(&dbenv->purge_old_blkseq_tid, &gbl_pthread_attr,
+        Pthread_create(&dbenv->purge_old_blkseq_tid, &gbl_pthread_attr,
                             purge_old_blkseq_thread, thedb);
-        if (rc)
-            logmsg(LOGMSG_WARN, 
-                "Warning: can't start purge_old_blkseq thread: rc %d err %s\n",
-                rc, strerror(rc));
     }
 
     if (!dbenv->purge_old_files_is_running && !gbl_is_physical_replicant) {
-        rc = pthread_create(&dbenv->purge_old_files_tid, &gbl_pthread_attr,
+        Pthread_create(&dbenv->purge_old_files_tid, &gbl_pthread_attr,
                             purge_old_files_thread, thedb);
-        if (rc)
-            logmsg(LOGMSG_WARN, "Warning: can't start purge_oldfiles thread: rc %d err %s\n",
-                   rc, strerror(rc));
     }
 }
 

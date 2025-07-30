@@ -1612,13 +1612,7 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     }
 
     pthread_t tid;
-    rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+    Pthread_create(&tid, &gbl_pthread_attr_detached,
                         resume_sc_multiddl_txn_finalize, iq);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to launch thread rc %d\n",
-               __func__, rc);
-        free(iq);
-        return -1;
-    }
     return 0;
 }

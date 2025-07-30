@@ -3078,27 +3078,11 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
     /* create the watcher thread */
     logmsg(LOGMSG_DEBUG, "creating the watcher thread\n");
-    rc = pthread_create(&(bdb_state->watcher_thread), &attr, watcher_thread,
+    Pthread_create(&(bdb_state->watcher_thread), &attr, watcher_thread,
                         bdb_state);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "couldnt create watcher thread\n");
-        return NULL;
-    }
-
     Pthread_attr_destroy(&attr);
 
-    if (0) {
-        pthread_t lwm_printer_tid;
-        rc = pthread_create(&lwm_printer_tid, NULL, lwm_printer_thd, bdb_state);
-        if (rc) {
-            logmsg(LOGMSG_DEBUG, "start lwm printer thread rc %d\n", rc);
-            return NULL;
-        }
-    }
-
-/*sleep(2); this is not needed anymore */
-
-/* do not proceed untill we find a master */
+/* do not proceed until we find a master */
 waitformaster:
     while (bdb_state->repinfo->master_host == db_eid_invalid) {
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
@@ -5508,7 +5492,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
             pthread_t tid;
 
             /* schedule a dummy add */
-            pthread_create(&tid, &(bdb_state->pthread_attr_detach),
+            Pthread_create(&tid, &(bdb_state->pthread_attr_detach),
                            dummy_add_thread, bdb_state);
         }
 
@@ -5627,7 +5611,7 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
     Pthread_attr_setstacksize(&attr, 128 * 1024);
-    pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+    Pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
     return 0;
 }
@@ -5638,7 +5622,7 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
     Pthread_attr_setstacksize(&attr, 128 * 1024);
-    pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
+    Pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
 }
 
@@ -6018,16 +6002,8 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
               log files to the database files, allowing us to remove
               log files.
               */
-            rc = pthread_create(&(bdb_state->checkpoint_thread), &attr,
+            Pthread_create(&(bdb_state->checkpoint_thread), &attr,
                                 checkpoint_thread, bdb_state);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "unable to create checkpoint thread - rc=%d "
-                                "errno=%d %s\n",
-                        rc, errno, strerror(errno));
-                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
-                *bdberr = BDBERR_MISC;
-                return NULL;
-            }
 
             /*
               create memp_trickle_thread.
@@ -6035,21 +6011,13 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
               so that a read can be done without incurring a last minute
               write in an effort to make memory available for the read
               */
-            rc = pthread_create(&(bdb_state->memp_trickle_thread), &attr,
+            Pthread_create(&(bdb_state->memp_trickle_thread), &attr,
                                 memp_trickle_thread, bdb_state);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "unable to create memp_trickle thread - rc=%d "
-                                "errno=%d %s\n",
-                        rc, errno, strerror(errno));
-                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
-                *bdberr = BDBERR_MISC;
-                return NULL;
-            }
 
             /* create the deadlock detect thread if we arent doing auto
                deadlock detection */
             if (!bdb_state->attr->autodeadlockdetect) {
-                rc = pthread_create(&dummy_tid, &attr, deadlockdetect_thread,
+                Pthread_create(&dummy_tid, &attr, deadlockdetect_thread,
                                     bdb_state);
             }
 
@@ -6086,15 +6054,8 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
             } else {
                 print(bdb_state,
                       "logfiles will be deleted in logdelete_thread\n");
-                rc = pthread_create(&(bdb_state->logdelete_thread), &attr,
+                Pthread_create(&(bdb_state->logdelete_thread), &attr,
                                     logdelete_thread, bdb_state);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR,
-                           "unable to create logdelete thread rc %d %s\n", rc,
-                           strerror(rc));
-                    *bdberr = BDBERR_MISC;
-                    return NULL;
-                }
             }
 
             Pthread_attr_destroy(&attr);

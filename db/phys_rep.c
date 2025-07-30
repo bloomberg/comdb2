@@ -1781,9 +1781,8 @@ int start_physrep_threads() {
     if (gbl_physrep_source_dbname != NULL) {
         if (physrep_worker_running == 1) {
             physrep_logmsg(LOGMSG_ERROR, "Worker thread is already running!\n");
-        } else if ((rc = pthread_create(&physrep_worker_thread, NULL, physrep_worker, NULL)) != 0) {
-            physrep_logmsg(LOGMSG_ERROR, "Couldn't create physical replication worker thread (rc: %d)\n", rc);
-            return -1;
+        } else {
+            Pthread_create(&physrep_worker_thread, NULL, physrep_worker, NULL);
         }
         physrep_logmsg(LOGMSG_USER, "Worker thread has started!\n");
     } else {
@@ -1796,10 +1795,7 @@ int start_physrep_threads() {
         if (physrep_watcher_running == 1) {
             physrep_logmsg(LOGMSG_ERROR, "Watcher thread is already running!\n");
         } else {
-            if ((rc = pthread_create(&physrep_watcher_thread, NULL, physrep_watcher, NULL)) != 0) {
-                physrep_logmsg(LOGMSG_ERROR, "Couldn't create physical replication monitor thread (rc: %d)\n", rc);
-                return -1;
-            }
+            Pthread_create(&physrep_watcher_thread, NULL, physrep_watcher, NULL);
             physrep_watcher_running = 1;
             physrep_logmsg(LOGMSG_USER, "Watcher thread has started!\n");
         }

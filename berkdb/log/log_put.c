@@ -1750,14 +1750,7 @@ __log_write_td(arg)
 static void
 __log_write_segments_init(void)
 {
-	int ret;
-	if ((ret = pthread_create(&log_write_td, NULL, __log_write_td,
-			   log_write_dblp)) != 0) {
-		DB_ENV *dbenv = log_write_dblp->dbenv;
-		__db_err(dbenv,
-		    "DB_ENV->log_write_segments_init: error creating pthread");
-		ret = __db_panic(dbenv, ret);
-	}
+	Pthread_create(&log_write_td, NULL, __log_write_td, log_write_dblp);
 }
 
 /*

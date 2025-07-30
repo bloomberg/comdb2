@@ -740,24 +740,8 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             perthread[nthr].real_thread = 1;
             perthread[nthr].get_genids = get_genids;
 
-            rc = pthread_create(&perthread[nthr].tid, &attr, fstdump_thread,
+            Pthread_create(&perthread[nthr].tid, &attr, fstdump_thread,
                                 &perthread[nthr]);
-
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                    "bdb_fstdumpdta_sendsz: pthread_create failed rc %d %s\n",
-                    rc, strerror(rc));
-
-                Pthread_mutex_lock(&fstdump.lock);
-                {
-                    snprintf0(fstdump.errmsg, sizeof(fstdump.errmsg),
-                              "pthread_create failed");
-                    fstdump.bdberr = 1;
-                }
-                Pthread_mutex_unlock(&fstdump.lock);
-                break;
-            }
-
             numthreads++;
         }
 
@@ -800,23 +784,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         args.num_done = 0;
 
         for (nthr = 0; nthr < bdb_state->attr->fstdump_maxthreads; nthr++) {
-            rc = pthread_create(&tids[nthr], &attr, fstdump_thread2, &args);
-
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                    "bdb_fstdumpdta_sendsz: pthread_create failed rc %d %s\n",
-                    rc, strerror(rc));
-
-                Pthread_mutex_lock(&fstdump.lock);
-                {
-                    snprintf0(fstdump.errmsg, sizeof(fstdump.errmsg),
-                              "pthread_create failed");
-                    fstdump.bdberr = 1;
-                }
-                Pthread_mutex_unlock(&fstdump.lock);
-                break;
-            }
-
+            Pthread_create(&tids[nthr], &attr, fstdump_thread2, &args);
             numthreads++;
         }
 

@@ -906,7 +906,6 @@ void *resume_sc_multiddl_txn_finalize(void *p);
 static int process_tpt_sc_hash(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
-    int rc;
     pthread_t tid;
     logmsg(LOGMSG_INFO, "%s: processing view '%s'\n", __func__,
            tpt_sc->viewname);
@@ -923,15 +922,9 @@ static int process_tpt_sc_hash(void *obj, void *arg)
         s = s->sc_next;
     }
 
-    rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+    Pthread_create(&tid, &gbl_pthread_attr_detached,
                         resume_sc_multiddl_txn_finalize, iq);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to launch finalizing thread rc %d\n",
-               __func__, rc);
-        free(iq);
-        rc = -1;
-    }
-    return rc;
+    return 0;
 }
 
 static int verify_sc_resumed_for_shard(const char *shardname,
@@ -1349,11 +1342,8 @@ int resume_schema_change(void)
 
     if (sc_resuming) {
         pthread_t tid;
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+        Pthread_create(&tid, &gbl_pthread_attr_detached,
                             sc_resuming_watchdog, NULL);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
-                   __FILE__);
     }
     Pthread_mutex_unlock(&sc_resuming_mtx);
 
