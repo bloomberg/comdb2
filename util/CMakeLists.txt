@@ -35,6 +35,7 @@ set(src
   quantize.c
   queue.c
   queuetest.c
+  resource_use_dumper.c
   roll_file.c
   rtcpu.c
   sbuf2.c
