@@ -1,0 +1,6 @@
+[exec procedure sys.cmd.cancel()] failed with rc -3 [local msg = sys.cancel(cmd, uui...]:10: Expected string type argument: all|queued|running|cnonce|fp
+[exec procedure sys.cmd.cancel(123)] failed with rc -3 [local msg = sys.cancel(cmd, uui...]:10: Unrecognized cancel type 123
+[exec procedure sys.cmd.cancel('blah')] failed with rc -3 [local msg = sys.cancel(cmd, uui...]:10: Unrecognized cancel type blah
+[exec procedure sys.cmd.cancel('cnonce')] failed with rc -3 [local msg = sys.cancel(cmd, uui...]:10: Missing uuid for type cnonce
+[ERROR] Failed to parse uuid "123"
+[ERROR] Failed to parse uuid "1-23-456"

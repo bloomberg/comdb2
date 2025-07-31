@@ -4440,7 +4440,13 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->deque_timeus = comdb2_time_epochus();
     clnt->thd = thd;
     /* Reset the cancel-statement flag */
-    thd->sqlthd->stop_this_statement = 0;
+    if (clnt->discard_this) {
+        thd->sqlthd->stop_this_statement = 1;
+        clnt->discard_this = 0;
+    } else
+        thd->sqlthd->stop_this_statement = 0;
+
+    clnt->discard_this = 0;
     sql_update_usertran_state(clnt);
 
     rdlock_schema_lk();
@@ -4698,7 +4704,11 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     sqlthd->clnt = clnt;
     clnt->thd = thd;
     /* Reset the cancel-statement flag */
-    sqlthd->stop_this_statement = 0;
+    if (clnt->discard_this) {
+        thd->sqlthd->stop_this_statement = 1;
+        clnt->discard_this = 0;
+    } else 
+        thd->sqlthd->stop_this_statement = 0;
 
     thr_set_user("appsock", (intptr_t)clnt->appsock_id);
 
@@ -6480,6 +6490,11 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->in_transaction = clnt->in_client_trans;
     c->in_local_cache = clnt->in_local_cache;
     Pthread_mutex_unlock(&clnt->state_lk);
+    uuidstr_t us;
+    comdb2uuidstr(clnt->unifieduuid, us);
+    c->uuid = malloc(strlen(us) + 1);
+    snprintf(c->uuid, strlen(us) + 1, "%s", us);
+    c->is_canceled = clnt->discard_this;
 }
 
 static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)
@@ -6509,11 +6524,38 @@ void free_connection_info(struct connection_info *info, int num_connections)
 {
     if (info == NULL) return;
     for (int i = 0; i < num_connections; i++) {
-        if (info[i].sql) free(info[i].sql);
-        if (info[i].fingerprint) free(info[i].fingerprint);
+        free(info[i].sql);
+        free(info[i].fingerprint);
+        free(info[i].uuid);
         /* state is static, don't free */
     }
     free(info);
+}
+
+void cancel_connections(int only_queued, uuid_t filter_fp)
+{
+    struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
+        if (!comdb2uuid_is_zero(filter_fp)) {
+            if (!comdb2uuidcmp(filter_fp, clnt->unifieduuid)) {
+                clnt->discard_this = 1;
+                fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+            }
+        } else {
+            if (only_queued) {
+                if (clnt->state == CONNECTION_QUEUED) {
+                    clnt->discard_this = 1;
+                    fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+                }
+            } else if (clnt->state == CONNECTION_RUNNING ||
+                    clnt->state == CONNECTION_QUEUED) {
+                clnt->discard_this = 1;
+                fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+            }
+        }
+    }
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
 void reqlog_long_running_sql_statements(void)
