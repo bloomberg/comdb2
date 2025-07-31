@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Remote cursor moves testcase for comdb2
+################################################################################
+
+
+# args
+# <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
+echo "main db vars"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
+for required in $vars; do
+    q=${!required}
+    echo "$required=$q" 
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+
+#run tests
+echo "Starting cancel tests"
+echo ./test_cancel.sh $DBNAME $CDB2_CONFIG $DBDIR $TESTDIR
+./test_cancel.sh $DBNAME $CDB2_CONFIG $DBDIR $TESTDIR
+result=$?
+
+if (( $result != 0 )) ; then
+   echo "Failure in cancel tests"
+   exit 1
+fi
+
+echo "Starting block tests"
+
+echo "Not implemented yet"
+
+echo "Success"
