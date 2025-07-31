@@ -6728,6 +6728,10 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->in_transaction = clnt->in_client_trans;
     c->in_local_cache = clnt->in_local_cache;
     Pthread_mutex_unlock(&clnt->state_lk);
+    uuidstr_t us;
+    comdb2uuidstr(clnt->unifieduuid, us);
+    c->uuid = malloc(strlen(us) + 1);
+    snprintf(c->uuid, strlen(us) + 1, "%s", us);
 }
 
 static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)
@@ -6757,8 +6761,9 @@ void free_connection_info(struct connection_info *info, int num_connections)
 {
     if (info == NULL) return;
     for (int i = 0; i < num_connections; i++) {
-        if (info[i].sql) free(info[i].sql);
-        if (info[i].fingerprint) free(info[i].fingerprint);
+        free(info[i].sql);
+        free(info[i].fingerprint);
+        free(info[i].uuid);
         /* state is static, don't free */
     }
     free(info);

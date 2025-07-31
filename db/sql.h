@@ -1341,6 +1341,7 @@ struct connection_info {
     enum connection_state state_int;
     int64_t in_transaction;
     int64_t in_local_cache;
+    char *uuid;
 };
 
 /* makes master swing verbose */

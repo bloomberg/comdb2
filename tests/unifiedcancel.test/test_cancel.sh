@@ -20,6 +20,7 @@ S_CDB2_OPTIONS="--cdb2cfg ${a_cdb2config}"
 mach=`cdb2sql ${S_CDB2_OPTIONS} --tabs $a_dbname default "SELECT comdb2_host()"`
 
 S_SQL="cdb2sql ${S_CDB2_OPTIONS} --host $mach $a_dbname"
+S_TSQL="cdb2sql --tabs ${S_CDB2_OPTIONS} --host $mach $a_dbname"
 
 function header
 {
@@ -46,7 +47,7 @@ if [[ $? != 0 ]] ; then
 fi
 
 echo "collecting the sleep uuid"
-uuid=`$S_SQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%'"`
+uuid=`$S_TSQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%'"`
 if [[ $? != 0 ]] ; then
     echo "Failed to select uuid"
     exit 1
@@ -65,14 +66,14 @@ if [[ $? != 0 ]] ; then
     exit 1
 fi
 
-echo "check the ${uuid} is gone"
-found_uuid=`$S_SQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%'"
+echo "check if the ${uuid} is gone"
+found_uuid=`$S_TSQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%'"`
 if [[ $? != 0 ]] ; then
     echo "Failed to run cancel message"
     exit 1
 fi
 
-if [[ ! =z ${found_uuid} ]] ; then
+if [[ ! -z ${found_uuid} ]] ; then
     echo "Failed to cancel the sleep select"
     exit 1
 fi
