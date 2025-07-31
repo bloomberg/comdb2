@@ -128,6 +128,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
 #include <schemachange.h>
+#include <sc_global.h>
 #include "comdb2_atomic.h"
 #include "cron.h"
 #include "metrics.h"
@@ -5849,6 +5850,10 @@ int main(int argc, char **argv)
     */
     gbl_tunables->freeze = 1;
 
+    if (init_sc_globals()) {
+        logmsg(LOGMSG_FATAL, "Failed to init sc globals\n");
+        exit(1);
+    }
     handle_resume_sc();
 
     create_marker_file();
