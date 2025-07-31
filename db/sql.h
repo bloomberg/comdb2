@@ -745,6 +745,7 @@ struct sqlclntstate {
 
     struct rawnodestats *rawnodestats;
 
+    uuid_t      unifieduuid;         /* assigned to any statement running, used for canceling live sql */
     osqlstate_t osql;                /* offload sql state is kept here */
     enum ctrl_sqleng ctrl_sqlengine; /* use to mark a begin/end out of state,
                                         see enum ctrl_sqleng
