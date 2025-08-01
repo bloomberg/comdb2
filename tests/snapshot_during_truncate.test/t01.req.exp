@@ -3,5 +3,5 @@ done
 done
 done
 done
-[select count(*) from t] failed with rc 402 Client api should change nodes
+[select count(*) from t] failed with rc 402 Transaction is not durable
 done

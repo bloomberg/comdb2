@@ -684,7 +684,7 @@ int comdb2SqlSchemaChange_tran(OpFunc *f)
     int rc = 0;
     int sentops = 0;
     int bdberr = 0;
-    osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
+    osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0);
     comdb2SqlSchemaChange(f);
     if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
         rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
@@ -7781,7 +7781,7 @@ int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
     struct sqlclntstate *clnt = get_sql_clnt();
     int rc = 0;
     if(!clnt->intrans) {
-        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) == 0)
+        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0)) == 0)
             clnt->intrans = 1;
     }
     if (!rc)

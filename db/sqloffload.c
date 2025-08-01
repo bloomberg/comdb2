@@ -283,7 +283,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     clnt->osql.timings.commit_prep = osql_log_time();
 
     /* start the block processor session */
-    rc = osql_sock_start(clnt, osqlreq_type, is_distrib_tran);
+    rc = osql_sock_start(clnt, osqlreq_type, is_distrib_tran, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to start sorese transaction rc=%d\n",
                __func__, rc);
@@ -470,7 +470,7 @@ int selectv_range_commit(struct sqlclntstate *clnt)
         return rc;
 
     if (!clnt->osql.sock_started) {
-        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
+        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to start socksql transaction rc=%d\n", __func__,

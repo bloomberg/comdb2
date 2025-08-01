@@ -573,8 +573,8 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
         rc = CDB2ERR_SCHEMA;
         break;
     case SQLITE_CLIENT_CHANGENODE:
-        str = "Client api shoudl retry request";
-        rc = CDB2ERR_CHANGENODE;
+        str = "Transaction is not durable";
+        rc = CDB2ERR_NOTDURABLE;
         break;
     default:
         str = "Failed to reaquire locks on deadlock";

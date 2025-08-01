@@ -1016,10 +1016,8 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
 int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
                                           seqnum_type *seqnum, uint64_t txnsize,
                                           int *timeoutms);
-
-int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
-                                                 seqnum_type *seqnum,
-                                                 uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final);
+int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                                  int *timeoutms);
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,

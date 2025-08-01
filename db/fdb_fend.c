@@ -6345,7 +6345,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     /* "begin" */
     clnt->in_client_trans = 1;
-    rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
+    rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to start dtransaction rc %d\n", rc);
         goto setup_error;

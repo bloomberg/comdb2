@@ -89,3 +89,4 @@ on dump_blkseq
 init_with_genid48
 
 allow_incoherent_sql on
+hide_non_durable_rcode 0

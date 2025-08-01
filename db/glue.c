@@ -701,10 +701,11 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
     case REP_SYNC_FULL:
         iq->gluewhere = "bdb_wait_for_seqnum_from_all";
-        if (adaptive)
-            rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(
-                bdb_handle, (seqnum_type *)ss, iq->txnsize, &iq->timeoutms);
-        else if (timeoutms == -1)
+        if (adaptive) {
+            int is_final = iq->sorese ? iq->sorese->is_final : 0;
+            iq->timeoutms = -1;
+            rc = bdb_wait_for_seqnum_from_all_int(bdb_handle, (seqnum_type *)ss, &iq->timeoutms, is_final);
+        } else if (timeoutms == -1)
             rc = bdb_wait_for_seqnum_from_all(bdb_handle, (seqnum_type *)ss);
         else
             rc = bdb_wait_for_seqnum_from_all_timeout(
