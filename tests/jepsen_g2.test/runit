@@ -5,6 +5,7 @@
 #debug_trace="-D"
 export CDB2JDBC_STATEMENT_QUERYEFFECTS=1
 export CDB2JDBC_VERIFY_RETRY=0
+export LEIN="${LEIN:=$TESTSROOTDIR/tools/lein}"
 
 [[ "$debug" == 1 ]] && set -x
 needcluster=0
@@ -99,7 +100,7 @@ function runtestwithoptions
     export CDB2_CONFIG_FILE=${CDB2_CONFIG}
     (
         cd ${TESTSROOTDIR}/tools/linearizable/jepsen
-        lein run test $testargs > $outfile 2>&1 < /dev/null
+        $LEIN run test $testargs > $outfile 2>&1 < /dev/null
         r=$? ; [[ $r != 0 ]] && echo "XXX JEPSEN ERROR Lein test returns $r" >> $outfile
     )
     cat $outfile
