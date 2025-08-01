@@ -3102,9 +3102,10 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
 
 static int cdb2_effects_request(cdb2_hndl_tp *hndl)
 {
-    if (hndl && !hndl->in_trans) {
-        return -1;
-    }
+    // if we call commit and get a verify error, we should still be able to grab effects
+    // if (hndl && !hndl->in_trans) {
+    //     return -1;
+    // }
 
     if (hndl->error_in_trans)
         return -1;
