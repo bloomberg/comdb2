@@ -33,17 +33,18 @@
 #define TRANLOG_COLUMN_FLAGS        2
 #define TRANLOG_COLUMN_TIMEOUT      3
 #define TRANLOG_COLUMN_BLOCKLSN     4
-#define TRANLOG_COLUMN_LSN          5
-#define TRANLOG_COLUMN_RECTYPE      6
-#define TRANLOG_COLUMN_GENERATION   7
-#define TRANLOG_COLUMN_TIMESTAMP    8
-#define TRANLOG_COLUMN_LOG          9
-#define TRANLOG_COLUMN_TXNID        10
-#define TRANLOG_COLUMN_UTXNID       11
-#define TRANLOG_COLUMN_MAXUTXNID    12
-#define TRANLOG_COLUMN_CHILDUTXNID  13
-#define TRANLOG_COLUMN_LSN_FILE     14 /* Useful for sorting records by LSN */
-#define TRANLOG_COLUMN_LSN_OFFSET   15
+#define TRANLOG_COLUMN_MAXUTXNID    5
+#define TRANLOG_COLUMN_CHILDUTXNID  6
+#define TRANLOG_COLUMN_LSN_FILE     7 /* Useful for sorting records by LSN */
+#define TRANLOG_COLUMN_LSN_OFFSET   8 
+#define TRANLOG_COLUMN_LSN          9
+#define TRANLOG_COLUMN_RECTYPE      10
+#define TRANLOG_COLUMN_GENERATION   11
+#define TRANLOG_COLUMN_TIMESTAMP    12
+#define TRANLOG_COLUMN_LOG          13
+#define TRANLOG_COLUMN_TXNID        14
+#define TRANLOG_COLUMN_UTXNID       15
+#define TRANLOG_COLUMN_PREV_OFFSET  16
 
 extern int gbl_apprec_gen;
 int gbl_tranlog_default_timeout = 30;
@@ -58,6 +59,7 @@ struct tranlog_cursor {
   DB_LSN minLsn;             /* Minimum LSN */
   DB_LSN maxLsn;             /* Maximum LSN */
   DB_LSN blockLsn;           /* Block until this LSN */
+  int prevoffset;
   char *minLsnStr;
   char *maxLsnStr;
   char *curLsnStr;
@@ -84,7 +86,7 @@ static int tranlogConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,blocklsn hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,blocklsn hidden,maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,prevoffset integer)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -327,6 +329,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   }
 
   pCur->iRowid++;
+  pCur->prevoffset = pCur->logc->c_prev;
   return SQLITE_OK;
 }
 
@@ -704,6 +707,9 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_LOG:
         sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
+        break;
+    case TRANLOG_COLUMN_PREV_OFFSET:
+        sqlite3_result_int(ctx, pCur->prevoffset);
         break;
     case TRANLOG_COLUMN_CHILDUTXNID:
         if (pCur->data.data)
