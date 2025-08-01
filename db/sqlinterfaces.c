@@ -5161,11 +5161,25 @@ void free_client_adj_col_names(struct sqlclntstate *clnt)
     clnt->num_adjusted_column_name_length = 0;
 }
 
+void _free_set_commands(struct sqlclntstate *clnt)
+{
+    int i;
+    if (clnt->n_set_commands > 0) {
+        for (i = 0; i < clnt->n_set_commands; i++) {
+            free(clnt->set_commands[i]);
+        }
+        free(clnt->set_commands);
+        clnt->n_set_commands = 0;
+        clnt->set_commands = NULL;
+    }
+}
+
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(clnt);
     }
+    _free_set_commands(clnt);
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
@@ -5268,7 +5282,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
 
     reset_authz_hash(clnt, 1);
-
 }
 
 int gbl_unexpected_last_type_warn = 1;
@@ -5460,15 +5473,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         clnt->modsnap_registration = NULL;
     }
     bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
-    if (clnt->n_set_commands) {
-        int i;
-        for (i = 0; i < clnt->n_set_commands; i++) {
-            free(clnt->set_commands[i]);
-        }
-        free(clnt->set_commands);
-        clnt->n_set_commands = 0;
-        clnt->set_commands = NULL;
-    }
+    _free_set_commands(clnt);
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
