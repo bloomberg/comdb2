@@ -96,7 +96,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
 
 void convert_record_data_cleanup(struct convert_record_data *data);
 
-int init_sc_genids(struct dbtable *db, struct schema_change_type *s);
+int init_sc_genids(struct dbtable *db, struct dbtable *newdb, struct schema_change_type *s);
 
 void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
 
