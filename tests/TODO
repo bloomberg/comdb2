@@ -62,17 +62,6 @@ sc_resume
 DISABLED TESTS:
 async_sc_bench.test       -- benchmark for paper
 halt_processor_tds.test   -- requires a cluster
-jepsen_a6.test            -- jepsen tests require java & root access
-jepsen_a6_nemesis.test
-jepsen_atomic_writes.test
-jepsen_bank_nemesis.test
-jepsen_bank.test
-jepsen_dirty_reads.test
-jepsen_g2.test
-jepsen_register_nemesis.test
-jepsen_register.test
-jepsen_sets_nemesis.test
-jepsen_sets.test
 killcluster.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
 overflowblobs.test        -- timesout
