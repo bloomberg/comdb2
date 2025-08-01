@@ -15,6 +15,14 @@ function get_master
     echo "$x"
 }
 
+function get_replicants
+{
+    [[ "$debug" == 1 ]] && set -x
+    typeset func="get_replicants"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default 'select host from comdb2_cluster where is_master="N"')
+    echo "$x"
+}
+
 function bounce_node
 {
     [[ "$debug" == 1 ]] && set -x

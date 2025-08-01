@@ -86,3 +86,6 @@ foreign_db_push_remote 0
 foreign_db_push_remote_writes 0
 fdb_remsql_cdb2api 0
 
+# Test verifies behavior for failures that won't occur if this is enabled
+block_until_applied_quorum 0
+
