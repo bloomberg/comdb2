@@ -98,9 +98,7 @@ EOF
 echo "Test running with no sqlite_stat1" >> $output
 cdb2sql -s ${REM_CDB2_OPTIONS2} $a_remdbname2 default - < remdata.req >> $output 2>&1
 cdb2sql ${REM_CDB2_OPTIONS2} $a_remdbname2 default "drop table if exists sqlite_stat1" >> $output 2>&1
-# TODO: Uncomment output line below, currently fails with rc -3 mismatching class
-# for now just make sure db doesn't seg fault when this stmt is run
-cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname2}.t order by id" # >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname2}.t order by id" >> $output 2>&1
 
 # problem when running fdb stmt followed by local stmt in client transaction
 echo "Make sure disabled for client transactions" >> $output
@@ -140,8 +138,96 @@ insert into t values (6, 'Hello6'), (7, 'Hello7')
 insert into LOCAL_${a_remdbname}.t values (6, 'Hello6'), (7, 'Hello7')
 commit
 EOF
-# TODO: effects after commit are broken (but are also broken for foreign stmts outside of fdb push)
-# returns 3 row affected instead of 6
+
+echo "Test effects with mix of local stmt and fdb stmt in transaction with verifyretry" >> $output
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+begin
+insert into t values (8, 'Hello8')
+insert into LOCAL_${a_remdbname}.t values (8, 'Hello8')
+insert into t values (9, 'Hello9'), (100, 'Hello100')
+insert into LOCAL_${a_remdbname}.t values (9, 'Hello9'), (100, 'Hello100')
+commit
+EOF
+
+echo "effects for multiple selects part of the same transaction with verify retry" >> $output
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default -  >> $output 2>&1 << EOF
+begin
+select * from t order by 1
+select * from t order by 1
+insert into t values (1000, 'Hah')
+select * from t order by 1
+select * from t order by 1
+update t set b1='Heh' where id = 9
+select * from t order by 1
+commit
+select * from t order by 1
+EOF
+
+echo "effects for multiple selects part of the same transaction without verify retry" >> $output
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default -  >> $output 2>&1 << EOF
+set verifyretry off
+begin
+select * from t order by 1
+select * from t order by 1
+insert into t values (1001, 'Hah')
+select * from t order by 1
+select * from t order by 1
+update t set b1='Heh' where id = 1000
+select * from t order by 1
+commit
+select * from t order by 1
+EOF
+
+echo "multiple chunk transactions on same socket, with selects" >> $output
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default -  >> $output 2>&1 << EOF
+begin
+select count(*) from t
+select count(*) from LOCAL_${a_remdbname}.t
+select count(*) from LOCAL_${a_remdbname2}.t
+select * from t order by 1
+select * from LOCAL_${a_remdbname}.t order by 1
+select * from LOCAL_${a_remdbname2}.t order by 1
+delete from t where id >= 6
+delete from LOCAL_${a_remdbname}.t where id > 1
+commit
+begin
+insert into t values (1, "H1"), (2,"H2")
+insert into LOCAL_${a_remdbname}.t values (11, "H11"), (12, "H12")
+select * from t order by 1
+select * from LOCAL_${a_remdbname}.t order by 1
+commit
+select * from t order by 1
+select * from LOCAL_${a_remdbname}.t order by 1
+select * from LOCAL_${a_remdbname2}.t order by 1
+EOF
+
+echo "multiple chunk transactions on same socket, with selects, no verifyretry" >> $output
+#echo cdb2sql -f q.txt -s -showeffects$a_dbname localhost - 
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default -  >> $output 2>&1 << EOF
+set verifyretry off
+begin
+select count(*) from t
+select count(*) from LOCAL_${a_remdbname}.t
+select count(*) from LOCAL_${a_remdbname2}.t
+select * from t order by 1
+select * from LOCAL_${a_remdbname}.t order by 1
+select * from LOCAL_${a_remdbname2}.t order by 1
+update t set id = id + 100
+update LOCAL_${a_remdbname}.t set id = id + 100
+commit
+begin
+insert into t values (1, "H1D"), (2,"H2D")
+insert into LOCAL_${a_remdbname}.t values (11, "H11D"), (12, "H12D")
+select * from t order by 1
+select * from LOCAL_${a_remdbname}.t order by 1
+commit
+select * from t order by 1
+select * from LOCAL_${a_remdbname}.t order by 1
+select * from LOCAL_${a_remdbname2}.t order by 1
+EOF
+
+#convert the table to actual dbname
+sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual

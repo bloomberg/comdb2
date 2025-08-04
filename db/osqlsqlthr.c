@@ -1240,6 +1240,13 @@ done:
 
     osql->sock_started = 0;
 
+    clnt->effects.num_affected += clnt->remote_effects.num_affected;
+    clnt->effects.num_selected += clnt->remote_effects.num_selected;
+    clnt->effects.num_inserted += clnt->remote_effects.num_inserted;
+    clnt->effects.num_deleted += clnt->remote_effects.num_deleted;
+    clnt->effects.num_updated += clnt->remote_effects.num_updated;
+    bzero(&clnt->remote_effects, sizeof(clnt->remote_effects));
+
     return rcout;
 }
 
@@ -1502,9 +1509,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
 
-    extern int gbl_always_send_cnonce;
-    if (osql->rqid == OSQL_RQID_USE_UUID && !clnt->dbtran.trans_has_sp &&
-        (gbl_always_send_cnonce || has_high_availability(clnt))) {
+    if (!clnt->dbtran.trans_has_sp) {
         if (clnt->dbtran.maxchunksize > 0) {
             snap_info_p = &zero_snap_info;
         } else {
@@ -1555,15 +1560,8 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
 
         if (rc == 0) {
             osql->replicant_numops++;
-            if (osql->rqid == OSQL_RQID_USE_UUID) {
-                rc = osql_send_commit_by_uuid(
-                    &osql->target, osql->uuid, osql->replicant_numops,
-                    &osql->xerr, nettype, clnt->query_stats, snap_info_p);
-            } else {
-                rc = osql_send_commit(&osql->target, osql->rqid, osql->uuid,
-                                      osql->replicant_numops, &osql->xerr,
-                                      nettype, clnt->query_stats, NULL);
-            }
+            rc = osql_send_commit(&osql->target, osql->uuid, osql->replicant_numops,
+                                  &osql->xerr, nettype, clnt->query_stats, snap_info_p);
         }
         RESTART_SOCKSQL_KEEP_RQID(is_retry);
 
@@ -1591,14 +1589,8 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
 
     osql->replicant_numops++;
 
-    if (osql->rqid == OSQL_RQID_USE_UUID)
-        rc = osql_send_commit_by_uuid(&osql->target, osql->uuid,
-                                      osql->replicant_numops, &xerr, nettype,
-                                      clnt->query_stats, NULL);
-    else
-        rc = osql_send_commit(&osql->target, osql->rqid, osql->uuid,
-                              osql->replicant_numops, &xerr, nettype,
-                              clnt->query_stats, NULL);
+    rc = osql_send_commit(&osql->target, osql->uuid, osql->replicant_numops,
+                          &xerr, nettype, clnt->query_stats, NULL);
     /* no need to restart an abort, master will drop the transaction anyway
     RESTART_SOCKSQL; */
     osql->replicant_numops = 0;

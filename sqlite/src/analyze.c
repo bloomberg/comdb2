@@ -2499,7 +2499,8 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   sInfo.db = db;
   sInfo.zDatabase = db->aDb[iDb].zDbSName;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( sqlite3FindTableByAnalysisLoad(db, "sqlite_stat1", sInfo.zDatabase)!=0 ){
+  if( sqlite3FindTableByAnalysisLoad(db, "sqlite_stat1", sInfo.zDatabase,
+              db->aDb[iDb].local, (db->aDb[iDb].class_override) ? db->aDb[iDb].class : -1)!=0 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( sqlite3FindTable(db, "sqlite_stat1", sInfo.zDatabase)!=0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

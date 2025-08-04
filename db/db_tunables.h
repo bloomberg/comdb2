@@ -587,7 +587,7 @@ REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN, &gbl_fdb_res
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_push_remote", "Fdb proxy more for reads (OFF turns off writes as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote, NOARG, NULL, NULL, 
                  fdb_push_update, NULL);
-REGISTER_TUNABLE("foreign_db_push_remote_writes", "Fdb proxy mode for writes (ON turns on reads as well). (Default: off)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL,
+REGISTER_TUNABLE("foreign_db_push_remote_writes", "Fdb proxy mode for writes (ON turns on reads as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL,
                  fdb_push_write_update, NULL);
 REGISTER_TUNABLE("foreign_db_push_redirect",
                  "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
@@ -1467,8 +1467,6 @@ REGISTER_TUNABLE("max_time_per_txn_ms", "Set the max time allowed for transactio
                  &gbl_max_time_per_txn_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("print_deadlock_cycles", "Print every Nth deadlock cycle, set to 0 to turn off. (Default: 100)",
                  TUNABLE_INTEGER, &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("always_send_cnonce", "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,
-                 &gbl_always_send_cnonce, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("force_serial_on_writelock",
                  "Disable parallel rep on "
                  "upgrade.  (Default: on)",
@@ -1512,11 +1510,6 @@ REGISTER_TUNABLE("master_req_waitms",
                  "Request master once per this interval.  (Default: 200ms)",
                  TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE(
-    "master_sends_query_effects",
-    "Enables master to send query effects to the replicant. (Default: on)",
-    TUNABLE_BOOLEAN, &gbl_master_sends_query_effects, NOARG | READONLY, NULL,
-    NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
                  "Use req_all if a replicant is behind by "
                  "this amount or more.  (Default: 1048476)",

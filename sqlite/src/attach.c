@@ -356,8 +356,18 @@ done_with_open:
       int savedBusy = db->init.busy;
 
       db->init.busy = 0; /* TODO: prevent assert (?) */
-      rc = sqlite3InitTable(db, &zErrDyn, zName);
+      char *zTmp = (char*)zName;
+      /* we need to take care of override and local */
+      if (local) {
+        zTmp = sqlite3_mprintf("LOCAL_%s", zName);  
+      } else if (class_override) {
+        extern const char *mach_class_class2tier(int value);
+        zTmp = sqlite3_mprintf("%s_%s", mach_class_class2tier(class), zName);
+      }
+      rc = sqlite3InitTable(db, &zErrDyn, zTmp);
       db->init.busy = savedBusy;
+      if (zTmp != zName)
+        sqlite3DbFree(db, zTmp);
 
       /*
       ** Need to set the version to the table to support per table schema

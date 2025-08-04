@@ -4310,7 +4310,7 @@ Table *sqlite3FindTable(sqlite3*,const char*, const char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 Table *sqlite3FindTableCheckOnly(sqlite3*,const char*, const char*);
 Table *sqlite3FindTableCheckOnlyNoAlias(sqlite3*,const char*, const char*);
-Table *sqlite3FindTableByAnalysisLoad(sqlite3*,const char*, const char*);
+Table *sqlite3FindTableByAnalysisLoad(sqlite3*,const char*, const char*, int, int);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define LOCATE_VIEW    0x01
 #define LOCATE_NOERR   0x02
