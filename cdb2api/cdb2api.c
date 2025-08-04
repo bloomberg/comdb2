@@ -1023,6 +1023,8 @@ struct cdb2_hndl {
     int in_trans;
     int temp_trans;
     int is_retry;
+    int is_chunk;
+    int is_set;
     char newsql_typestr[DBNAME_LEN + TYPE_LEN + POLICY_LEN + 16];
     char policy[POLICY_LEN];
     int master;
@@ -3100,9 +3102,14 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
     return response_rcode;
 }
 
+enum { CHUNK_NO = 0, CHUNK_IN_PROGRESS = 1, CHUNK_COMPLETE = 2 };
+
 static int cdb2_effects_request(cdb2_hndl_tp *hndl)
 {
-    if (hndl && !hndl->in_trans) {
+    if (hndl && hndl->is_set)
+        return -1;
+    // We should still be able to grab effects if chunk transaction
+    if (hndl && !hndl->in_trans && hndl->is_chunk == CHUNK_NO) {
         return -1;
     }
 
@@ -4274,6 +4281,15 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
             hndl->is_admin = 0;
         return;
     }
+
+    if (strncasecmp(p, "transaction", 11) == 0) {
+        p += sizeof("TRANSACTION");
+        p = cdb2_skipws(p);
+        // only set is chunk to true, don't set to false here
+        if (strncasecmp(p, "chunk", 5) == 0)
+            hndl->is_chunk = CHUNK_IN_PROGRESS;
+        return;
+    }
 }
 
 /*
@@ -4386,6 +4402,7 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
     int i, j, k;
 
+    hndl->is_set = 1;
     if (hndl->in_trans) {
         sprintf(hndl->errstr, "Can't run set query inside transaction.");
         hndl->error_in_trans = CDB2ERR_BADREQ;
@@ -4793,6 +4810,10 @@ retry_queries:
         debugprint("setting in_trans to 0\n");
 
         hndl->in_trans = 0;
+        if (hndl->is_chunk == CHUNK_IN_PROGRESS) {
+            // set this on commit/rollback so next time we run statement we know to clear it
+            hndl->is_chunk = CHUNK_COMPLETE;
+        }
 
         free_query_list_on_handle(hndl);
 
@@ -5248,6 +5269,13 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         cdb2_close(hndl->fdb_hndl);
         hndl->fdb_hndl = NULL;
     }
+
+    if (hndl->is_chunk == CHUNK_COMPLETE) {
+        // this isn't a chunk statement anymore
+        hndl->is_chunk = CHUNK_NO;
+    }
+
+    hndl->is_set = 0;
 
     while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_RUN_STATEMENT, e)) !=
            NULL) {
