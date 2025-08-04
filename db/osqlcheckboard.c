@@ -41,8 +41,6 @@
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
 
-extern int gbl_master_sends_query_effects;
-
 typedef struct osql_checkboard {
     hash_t *rqs;     /* sql threads processing a blocksql are registered here */
     hash_t *rqsuuid; /* like above, but register by uuid */
@@ -338,8 +336,11 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, 
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
 
-    if (gbl_master_sends_query_effects && effects) {
+    if (effects) {
+        /* NOTE: master does not send num_selected, preserve it here */
+        int num_selected =  entry->clnt->effects.num_selected;
         memcpy(&entry->clnt->effects, effects, sizeof(struct query_effects));
+        entry->clnt->effects.num_selected = num_selected;
         if (entry->clnt->dbtran.nchunks > 0) { /* chunked */
             struct query_effects *ep = &entry->clnt->chunk_effects;
             ep->num_affected += effects->num_affected;

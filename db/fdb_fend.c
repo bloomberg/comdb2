@@ -74,7 +74,7 @@ int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
 int gbl_fdb_push_remote = 1;
-int gbl_fdb_push_remote_write = 0;
+int gbl_fdb_push_remote_write = 1;
 int gbl_fdb_push_redirect_foreign = 0;
 int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
@@ -1460,6 +1460,12 @@ retry_fdb_creation:
 
         switch (rc) {
         case FDB_ERR_FDB_TBL_NOTFOUND: {
+            /* ignore sqlite_stat not found during in_analysis_load */
+            if (in_analysis_load && strncasecmp(table, "sqlite_stat", strlen("sqlite_stat"))== 0) {
+                /* decrement the local bump */
+                __fdb_rem_user(fdb, 0);
+                return SQLITE_ERROR;
+            }
             snprintf(errstr, sizeof(errstr), "no such table \"%s\"", table);
             perrstr = errstr;
             break;
@@ -4352,8 +4358,23 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             if (tran->nwrites) {
                 /* handle is only created upon first remote write to this fdb */
                 assert(tran->fcon.hndl);
+
                 fdb_client_set_identityBlob(clnt, tran->fcon.hndl);
                 rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+                if (!rc) {
+                    cdb2_effects_tp effects;
+                    int irc;
+                    if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
+                        logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n",
+                               __func__, irc, cdb2_errstr(tran->fcon.hndl));
+                    } else {
+                        clnt->remote_effects.num_affected += effects.num_affected;
+                        clnt->remote_effects.num_selected += effects.num_selected;
+                        clnt->remote_effects.num_updated += effects.num_updated;
+                        clnt->remote_effects.num_deleted += effects.num_deleted;
+                        clnt->remote_effects.num_inserted += effects.num_inserted;
+                    }
+                }
             } else {
                 rc = 0;
             }

@@ -146,14 +146,10 @@ int osql_send_serial(osql_target_t *target, unsigned long long rqid,
  * It handles remote/local connectivity
  *
  */
-int osql_send_commit(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, int nops, struct errstat *xerr, int type,
+int osql_send_commit(osql_target_t *target, uuid_t uuid, int nops,
+                     struct errstat *xerr, int type,
                      struct client_query_stats *query_stats,
                      snap_uid_t *snap_info);
-int osql_send_commit_by_uuid(osql_target_t *target, uuid_t uuid, int nops,
-                             struct errstat *xerr, int type,
-                             struct client_query_stats *query_stats,
-                             snap_uid_t *snap_info);
 
 /**
  * Extra commit info

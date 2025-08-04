@@ -463,6 +463,8 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
   assert( sqlite3_mutex_held(db->mutex) );
   assert( sqlite3BtreeHoldsMutex(db->aDb[0].pBt) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  const char *fqdbname = NULL;
+  const char *onlydbname = NULL;
   dbname[0] = '\0';
   if( zName ){
     db->init.zTblName = strdup(zName);
@@ -471,6 +473,9 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
       memcpy(dbname, db->init.zTblName, tmp-db->init.zTblName);
       dbname[tmp-db->init.zTblName] = '\0';
       memmove(db->init.zTblName, tmp+1, strlen(tmp));
+      /* extract class overrride, if any */
+      extern const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
+      onlydbname = fdb_parse_comdb2_remote_dbname(dbname, &fqdbname);
     }else{
       logmsg(LOGMSG_WARN, "%s: confusing name %s\n", __func__, db->init.zTblName);
       dbname[0] = '\0';
@@ -500,7 +505,12 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     ** remote tables are updated on a table basis; check if the schema for this
     ** table is actually present
     */
-    if( dbname[0] && tmp && (sqlite3FindTableCheckOnly(db, tmp, db->aDb[i].zDbSName)!=0) ) continue;
+    if( onlydbname && tmp && strncasecmp(db->aDb[i].zDbSName, onlydbname, strlen(onlydbname)))
+        continue; /* not our db */
+    if( onlydbname && tmp &&
+            /* only check the schema for matching dbnames */
+            !strncasecmp(db->aDb[i].zDbSName, onlydbname, strlen(onlydbname)) &&
+            (sqlite3FindTableCheckOnly(db, tmp, db->aDb[i].zDbSName)!=0) ) continue;
     if( i>1 || !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !DbHasProperty(db, i, DB_SchemaLoaded) ){
