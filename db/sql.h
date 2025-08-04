@@ -804,6 +804,7 @@ struct sqlclntstate {
      * log_effects:   per chunked-txn. keeps track of replicant effects of all chunks,
      *                including the current chunk which hasn't committed yet.
      * chunk_effects: per chunked-txn. keeps track of master effects of all committed chunks.
+     * remote_effects: cummulation of all distributed effects
      *
      * I hope the example below explains these effects a little better.
      *
@@ -814,10 +815,19 @@ struct sqlclntstate {
      *   INSERT INTO t VALUES(2) -- (1) is committed.         effects: 1; log_effects: 2; chunk_effects: 1;
      *   INSERT INTO t VALUES(3) -- (2) is committed.         effects: 1; log_effects: 3; chunk_effects: 2;
      *   COMMIT                  -- (3) is committed.         effects: 1; log_effects: 3; chunk_effects: 3;
+     *
+     *   NOTE: handling the num_selects
+     *   - any standalone query will use effects.num_selected
+     *   - any standalone write will use and preserve effects.num_selected upon receiving master effects
+     *   - any client transaction query will use effects.num_selected, incremented for each new query
+     *   - any client transaction write will use effects.num_selected, returned or not based on verifyretry
+     *   - any client transaction commit will preserve (i.e. not reset) effects.num_selected
+     *
      */
     struct query_effects effects;
     struct query_effects log_effects;
     struct query_effects chunk_effects;
+    struct query_effects remote_effects;
     int64_t nsteps;
 
     struct user current_user;
@@ -1389,7 +1399,7 @@ void reset_clnt(struct sqlclntstate *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
 void free_client_info(struct sqlclntstate *);
 void free_client_adj_col_names(struct sqlclntstate *);
-void reset_query_effects(struct sqlclntstate *, int);
+void reset_query_effects(struct sqlclntstate *, int, int);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
                      const char *tzname, blob_buffer_t *outblob, int maxblobs,
