@@ -556,13 +556,6 @@ void *thd_req(void *vthd)
         thdinfo->ct_add_table_genid_pool =
             pool_setalloc_init(sizeof(unsigned long long), 0, malloc, free);
 
-        /* Initialize the sql statement cache */
-        thdinfo->stmt_cache = stmt_cache_new(NULL);
-        if (thdinfo->stmt_cache == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to create sql statement cache\n",
-                    __func__, __LINE__);
-        }
-
         Pthread_setspecific(thd_info_key, thdinfo);
         thd->inited = 1;
     }

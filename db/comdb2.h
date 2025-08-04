@@ -1023,7 +1023,6 @@ struct thread_info {
     void *ct_add_table;
     void *ct_del_table;
     void *ct_add_index;
-    void *stmt_cache;
     hash_t *ct_add_table_genid_hash; // for quick lookups
     pool_t *ct_add_table_genid_pool; // provides memory for the above hash
 };
