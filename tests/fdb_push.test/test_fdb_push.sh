@@ -140,8 +140,16 @@ insert into t values (6, 'Hello6'), (7, 'Hello7')
 insert into LOCAL_${a_remdbname}.t values (6, 'Hello6'), (7, 'Hello7')
 commit
 EOF
-# TODO: effects after commit are broken (but are also broken for foreign stmts outside of fdb push)
-# returns 3 row affected instead of 6
+
+echo "Test effects with mix of local stmt and fdb stmt in transaction with verifyretry" >> $output
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+begin
+insert into t values (8, 'Hello8')
+insert into LOCAL_${a_remdbname}.t values (8, 'Hello8')
+insert into t values (9, 'Hello9'), (100, 'Hello100')
+insert into LOCAL_${a_remdbname}.t values (9, 'Hello9'), (100, 'Hello100')
+commit
+EOF
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
