@@ -790,6 +790,19 @@ uint32_t gbl_written_rows_warn = 0;
 int64_t gbl_warn_wr_logbytes_per_txn = 1024 * 1024 * 512;
 extern int gbl_debug_disttxn_trace;
 
+static void make_tag(struct ireq *iq, char *tag, int taglen)
+{
+    uuidstr_t us;
+    if (iq->sorese) {
+        snprintf(tag, taglen, "[%llu:%s]", iq->sorese->rqid, comdb2uuidstr(iq->sorese->uuid, us));
+    } else if (iq->corigin[0] != '\0') {
+        snprintf(tag, taglen, "[%s]", iq->corigin);
+    } else {
+        snprintf(tag, taglen, "[???]");
+    }
+    tag[taglen - 1] = '\0';
+}
+
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey, int blkkeylen, int release_schema_lk, int nowait)
 {
@@ -802,15 +815,14 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
     memset(&ss, -1, sizeof(ss));
 
     if (release_schema_lk) {
+        char tag[1 + 200 + 1] = {0};
         if (gbl_written_rows_warn > 0 && iq->written_row_count > gbl_written_rows_warn) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] modified %u rows\n", iq->sorese->rqid,
-                   comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
+            make_tag(iq, tag, sizeof(tag));
+            logmsg(LOGMSG_USER, "transaction-audit %s modified %u rows\n", tag, iq->written_row_count);
         }
         if (gbl_warn_wr_logbytes_per_txn > 0 && iq->written_logbytes_count > gbl_warn_wr_logbytes_per_txn) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] wrote %" PRIu64 " logbytes\n", iq->sorese->rqid,
-                   comdb2uuidstr(iq->sorese->uuid, us), iq->written_logbytes_count);
+            make_tag(iq, tag, sizeof(tag));
+            logmsg(LOGMSG_USER, "transaction-audit %s wrote %" PRIu64 " logbytes\n", tag, iq->written_logbytes_count);
         }
     }
 
