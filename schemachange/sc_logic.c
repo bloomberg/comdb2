@@ -1029,6 +1029,7 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
     sc_arg.s = tpt_sc->s;
     sc_arg.check_extra_shard = 1;
     sc_arg.lockless = 1;
+    sc_arg.part_name = tpt_sc->viewname;
     timepart_foreach_shard(verify_sc_resumed_for_shard, &sc_arg);
     tpt_sc->s = sc_arg.s;
     return 0;
