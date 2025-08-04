@@ -1155,6 +1155,19 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
     return _ret; \
 } while(0)
 
+int upsert_collision_should_force_verify_error(int flags, int ixnum)
+{
+    if (!(flags & OSQL_FORCE_VERIFY)) return 0;
+    /*
+        - If the client did 'insert ... on conflict ...', then upsert_idx will
+        specify the index passed in the on conflict clause
+        - If the client did 'replace into ...', then upsert_idx will be
+        MAXINDEX + 1
+    */
+    const int upsert_idx = flags >> 8;
+    return upsert_idx == ixnum || upsert_idx == MAXINDEX + 1;
+}
+
 int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                      int *errout)
 {
@@ -1414,8 +1427,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 if (dup_txn_insert == 1) {
                     iq->dup_key_insert = 1;
                 }
-
-                if ((flags & OSQL_FORCE_VERIFY) != 0) {
+                if (upsert_collision_should_force_verify_error(flags, ixnum)) {
                     *errout = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;
                 } else {
