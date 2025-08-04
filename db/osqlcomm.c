@@ -81,6 +81,7 @@ int gbl_debug_invalid_genid;
 int gbl_partition_sc_reorder = 1;
 
 extern int db_is_exiting();
+extern int upsert_collision_should_force_verify_error(int flags, int ixnum);
 
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen);
@@ -6940,7 +6941,6 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
     return error ? ERR_SC : 0;
 }
 
-
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -7283,15 +7283,13 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
                     goto done_delete;
                 }
 
-                int upsert_idx = dt.upsert_flags >> 8;
-                if ((dt.upsert_flags & OSQL_FORCE_VERIFY) != 0) {
-                    if (upsert_idx == err->ixnum || upsert_idx == MAXINDEX + 1) {
-                        err->errcode = OP_FAILED_VERIFY;
-                        rc = ERR_VERIFY;
-                    }
+                if (upsert_collision_should_force_verify_error(dt.upsert_flags, err->ixnum)) {
+                    err->errcode = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
                 }
 
                 if ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) {
+                    const int upsert_idx = dt.upsert_flags >> 8;
                     if (upsert_idx == MAXINDEX + 1) {
                         /* We're asked to ignore DUPs for all unique indices, no insert took place.*/
                         err->errcode = 0;
