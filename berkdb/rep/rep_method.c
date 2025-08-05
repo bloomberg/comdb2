@@ -51,6 +51,7 @@ static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, int *, c
 static int __rep_elect_init
 __P((DB_ENV *, DB_LSN *, int, int, int *, u_int32_t *));
 static int __rep_flush __P((DB_ENV *));
+static int __rep_newmaster __P((DB_ENV *));
 static int __rep_restore_prepared __P((DB_ENV *));
 static int __rep_get_limit __P((DB_ENV *, u_int32_t *, u_int32_t *));
 static int __rep_set_limit __P((DB_ENV *, u_int32_t, u_int32_t));
@@ -116,6 +117,7 @@ __rep_dbenv_create(dbenv)
 	{
 		dbenv->rep_elect = __rep_elect;
 		dbenv->rep_flush = __rep_flush;
+		dbenv->rep_newmaster = __rep_newmaster;
 		dbenv->rep_process_message = __rep_process_message;
 		dbenv->rep_verify_will_recover = __rep_verify_will_recover;
 		dbenv->rep_start = __rep_start;
@@ -129,13 +131,13 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_request = __rep_set_request;
 		dbenv->set_rep_transport = __rep_set_rep_transport;
 		dbenv->set_rep_ignore = __rep_set_ignore;
-        dbenv->set_log_trigger = __rep_set_log_trigger;
+		dbenv->set_log_trigger = __rep_set_log_trigger;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
 		dbenv->set_rep_recovery_cleanup = __rep_set_rep_recovery_cleanup;
 		dbenv->rep_set_gen = __rep_set_gen_pp;
 		dbenv->wrlock_recovery_lock = __rep_wrlock_recovery_lock;
-        dbenv->wrlock_recovery_blocked = __rep_wrlock_recovery_blocked;
+		dbenv->wrlock_recovery_blocked = __rep_wrlock_recovery_blocked;
 		dbenv->lock_recovery_lock = __rep_lock_recovery_lock;
 		dbenv->unlock_recovery_lock = __rep_unlock_recovery_lock;
 		dbenv->set_check_standalone = __rep_set_check_standalone;
@@ -407,8 +409,8 @@ __rep_start(dbenv, dbt, gen, flags)
 		 */
 		logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
 				__func__, __LINE__);
-		(void)__rep_send_message(dbenv,
-			db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, NULL);
+		(void)__rep_send_message_gen(dbenv,
+			db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, gen, NULL);
 		ret = 0;
 		if (role_chg) {
 			ret = __txn_reset(dbenv);
@@ -1640,6 +1642,8 @@ __rep_elect_init(dbenv, lsnp, nsites, priority, beginp, otally)
 	DB_REP *db_rep;
 	REP *rep;
 	int ret;
+	u_int32_t gen;
+	int ismaster = 0;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -1648,14 +1652,18 @@ __rep_elect_init(dbenv, lsnp, nsites, priority, beginp, otally)
 
 	/* We may miscount, as we don't hold the replication mutex here. */
 	rep->stat.st_elections++;
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	ismaster = F_ISSET(rep, REP_F_MASTER);
+	gen = rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	/* If we are already a master; simply broadcast that fact and return. */
-	if (F_ISSET(rep, REP_F_MASTER)) {
+	if (ismaster) {
 		logmsg(LOGMSG_USER,
 				"%s line %d sending REP_NEWMASTER\n", 
 				__func__, __LINE__);
-		(void)__rep_send_message(dbenv,
-			db_eid_broadcast, REP_NEWMASTER, lsnp, NULL, 0, NULL);
+		(void)__rep_send_message_gen(dbenv,
+			db_eid_broadcast, REP_NEWMASTER, lsnp, NULL, 0, gen, NULL);
 		rep->stat.st_elections_won++;
 		return (DB_REP_NEWMASTER);
 	}
@@ -1822,6 +1830,41 @@ __rep_flush(dbenv)
 err:	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 	return (ret);
+}
+
+static int
+__rep_newmaster(dbenv)
+	DB_ENV *dbenv;
+{
+	REP *rep;
+	DB_LSN lsn;
+	DB_REP *db_rep;
+	DB_LOG *dblp;
+	int ismaster = 0;
+	u_int32_t gen;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle, "rep_newmaster", DB_INIT_REP);
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	ismaster = F_ISSET(rep, REP_F_MASTER);
+	gen = rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	if (ismaster) {
+		dblp = (DB_LOG *)dbenv->lg_handle;
+		R_LOCK(dbenv, &dblp->reginfo);
+		lsn = ((LOG *)dblp->reginfo.primary)->lsn;
+		R_UNLOCK(dbenv, &dblp->reginfo);
+
+		logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
+				__func__, __LINE__);
+		(void)__rep_send_message_gen(dbenv,
+			db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, gen, NULL);
+	}
+
+	return 0;
 }
 
 int

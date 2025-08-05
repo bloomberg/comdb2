@@ -1264,11 +1264,13 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 	 * except requests that are indicative of a new client that needs
 	 * to get in sync.
 	 */
-	if ((gbl_is_physical_replicant && rp->gen < rep->log_gen) ||
-		(rp->gen < gen &&
+	int check_rectype = (gbl_is_physical_replicant && rp->gen < rep->log_gen) ||
+						(!gbl_is_physical_replicant && rp->gen < gen);
+
+	if (check_rectype &&
 			rp->rectype != REP_ALIVE_REQ &&
 			rp->rectype != REP_NEWCLIENT &&
-			rp->rectype != REP_MASTER_REQ)) {
+			rp->rectype != REP_MASTER_REQ) {
 		/*
 		 * We don't hold the rep mutex, and could miscount if we race.
 		 */
@@ -8722,6 +8724,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 				rep_truncate_flags |= DB_REP_TRUNCATE_ONLINE;
 			dbenv->rep_truncate_callback(dbenv, &trunclsn, rep_truncate_flags);
 		}
+		__rep_set_last_locked(dbenv, &trunclsn);
 
 		logmsg(LOGMSG_WARN, "skip-recovery truncate log lsn [%d:%d]\n", trunclsn.file,
 				trunclsn.offset);
