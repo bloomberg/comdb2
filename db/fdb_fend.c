@@ -2249,7 +2249,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 else
                     tran_flags = 0;
 
-                if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata && gbl_fdb_auth_enabled) {
+                if (fdb->server_version >= FDB_VER_AUTH && (clnt->authdata = get_authdata(clnt)) && gbl_fdb_auth_enabled) {
                     tran_flags = tran_flags | FDB_MSG_TRANS_AUTH;
                 }
 
