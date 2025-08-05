@@ -834,6 +834,7 @@ struct accept_info {
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
+static int accept_paused;
 
 static void do_read(int, short, void *);
 static void accept_info_free(struct accept_info *);
@@ -843,6 +844,11 @@ static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr,
 {
     check_base_thd();
     ++pending_connections;
+    if (pending_connections >= (get_max_appsocks_limit() / 2)) {
+        struct net_info *n = net_info_find(netinfo_ptr->service);
+        accept_paused = 1;
+        evconnlistener_disable(n->listener);
+    }
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
@@ -857,6 +863,11 @@ static void accept_info_free(struct accept_info *a)
 {
     check_base_thd();
     --pending_connections;
+    if (accept_paused && pending_connections == 0) {
+        struct net_info *n = net_info_find(a->netinfo_ptr->service);
+        accept_paused = 0;
+        evconnlistener_enable(n->listener);
+    }
     if (a->ev) {
         event_free(a->ev);
     }

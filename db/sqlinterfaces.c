@@ -6830,6 +6830,11 @@ static int close_lru_evbuffer(struct sqlclntstate *self)
     return ret;
 }
 
+int get_max_appsocks_limit(void)
+{
+    return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+}
+
 int check_appsock_limit(int pending)
 {
     ++total_appsock_conns;
