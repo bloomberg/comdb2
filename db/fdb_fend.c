@@ -2348,6 +2348,9 @@ static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
                                             coordinator_tier, clnt->dist_timestamp,
                                             trans->fcon.sb);
                 } else {
+                    if (fdb->server_version >= FDB_VER_AUTH && (clnt->authdata = get_authdata(clnt)) && gbl_fdb_auth_enabled) {
+                        tran_flags = tran_flags | FDB_MSG_TRANS_AUTH;
+                    }
                     rc = fdb_send_begin(clnt, msg, trans, clnt->dbtran.mode, tran_flags, trans->fcon.sb);
                 }
                 if (rc == FDB_NOERR) {
