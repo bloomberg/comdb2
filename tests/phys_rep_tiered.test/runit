@@ -1722,6 +1722,22 @@ if [[ "$NOSOURCE" == "1" ]]; then
     restart_source_nodes
 fi
 
+# Enable memstats on the metadb
+$CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug on util\")"
+$CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug start\")"
+
+function check_metadb_memstat
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug stop\")"
+    leaks=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug dump util\")" | sort | uniq -c | sort -nr | head -1)
+    # Before the leak was fixed, the first was more than 1700 ..
+    cnt=$(echo $leaks | awk '{print $1}')
+    if [[ $cnt -gt 100 ]]; then
+        echo "Metadb memory leaks detected: $leaks"
+        failexit "Metadb memory leaks detected: $leaks"
+    fi
+}
+
 function announce
 {
     typeset text=$1
@@ -1837,8 +1853,13 @@ function run_tests
     testcase_finish $testcase
 
     testcase="multimeta"
-    testcase_preamble $multimeta
+    testcase_preamble $testcase
     multimetadb
+    testcase_finish $testcase
+
+    testcase="check_metadb_memstat"
+    testcase_preamble $testcase
+    check_metadb_memstat
     testcase_finish $testcase
 }
 

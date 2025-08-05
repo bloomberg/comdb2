@@ -1803,6 +1803,11 @@ static char *load_src(char *spname, struct spversion_t *spversion,
             return src;
         }
 
+        if (*err) {
+            free(*err);
+            *err = NULL;
+        }
+
         size = strlen(sys_src) + 1;
         if (bootstrap) {
             char *bsrc = malloc(size + sizeof(bootstrap_src));
