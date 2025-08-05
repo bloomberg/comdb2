@@ -553,7 +553,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
         d->wait_time = gbl_incoherent_clnt_wait;
         logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, waiting %ds for election fd:%d\n",
                __func__, d->wait_time, appdata->fd);
-    } else if (NEWSQL_NEW_LEADER) {
+    } else if (incoherent == NEWSQL_NEW_LEADER) {
         d->wait_time = gbl_new_leader_duration;
         logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, waiting %ds for coherency lease fd:%d\n",
                __func__, d->wait_time, appdata->fd);
