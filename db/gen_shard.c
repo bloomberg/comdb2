@@ -438,7 +438,7 @@ char * _create_view_query(struct dbtable *tbl, sqlite3 *db, struct errstat *err)
         select_str = tmp_str;
     }
 
-    ret_str = sqlite3_mprintf("CREATE VIEW %w AS %s", viewname, select_str);
+    ret_str = sqlite3_mprintf("CREATE TEMP VIEW %w AS %s", viewname, select_str);
     if (!ret_str) {
         sqlite3_free(select_str);
         sqlite3_free(cols_str);
