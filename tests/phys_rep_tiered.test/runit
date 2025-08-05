@@ -1883,6 +1883,91 @@ function check_metadb_memstat
     fi
 }
 
+# Halt a clustered physical replicant .. swing the master on that cluster
+# a number of times, then restart the physical replicant .. looking at the 
+# trace, verify that nothing ignores rectype 2, 11, or 10 ..
+function verify_non_ignored_reptype
+{
+    # Find the physrep-cluster master
+    local exit_node=""
+    local j=0
+    local cnt=0
+    local available=0
+    local clus_master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $firstNode "select host from comdb2_cluster where is_master='Y'")
+    local found_incoherent=1
+
+    for node in $CLUSTER ; do
+        if [[ "$node" != "$clus_master" ]]; then
+            exit_node=$node
+            break
+        fi
+    done
+
+    echo "Exiting $exit_node"
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $exit_node "exec procedure sys.cmd.send('exit')"
+
+    sleep 5
+
+    echo "Create a table against source"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table ignored_reptype(a int)"
+
+    echo "Insert into source"
+    j=0
+    while [[ "$j" -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into ignored_reptype select * from generate_series(1, 1000)"
+        let j=j+1
+    done
+
+    echo "Block until cluster has these records"
+    while [[ "$cnt" -ne "10000" ]]; do
+        sleep 1
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $clus_master "select count(*) from ignored_reptype")
+    done
+
+    echo "Force 5 elections"
+
+    j=0
+    while [[ "$j" -lt 5 ]]; do
+        for node in $CLUSTER ; do
+            if [[ "$node" == "$clus_master" ]]; then
+                continue
+            fi
+            $CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $node "exec procedure sys.cmd.send('downgrade')"
+        done
+        sleep 5
+        let j=j+1
+    done
+
+    echo "Restart $exit_node"
+    logFile=$TESTDIR/logs/${REPL_CLUS_DBNAME}.${exit_node}.log
+    ssh ${exit_node} "$COMDB2_EXE ${REPL_CLUS_DBNAME} --lrl ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.lrl --pidfile ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" >> ${logFile} 2>&1 < /dev/null &
+    PIDs="${PIDx} $!"
+
+    echo "Block until $exit_node is available"
+    while [[ "$available" -eq 0 ]]; do
+        sleep 1
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $exit_node "select 1" >/dev/null 2>&1
+        if [[ $? -eq 0 ]]; then
+            available=1
+        fi
+    done
+
+    echo "Find master again"
+    clus_master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $firstNode "select host from comdb2_cluster where is_master='Y'")
+
+    while [[ "$found_incoherent" -ne 0 ]]; do
+        sleep 1
+        found_incoherent=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $clus_master "select count(*) from comdb2_cluster where coherent_state != 'coherent'")
+    done
+
+    echo "We are coherent- verify that rep-messages were not ignored"
+    ignored=$(egrep "Ignoring rp->gen" ${TESTDIR}/logs/${REPL_CLUS_DBNAME}.*.log | egrep "rectype=2\>|rectype=11\>|rectype=10\>")
+
+    [[ -n "$ignored" ]] && cleanFailExit "Found ignored rep-messages after incoherent recovery: $ignored"
+}
+
+# egrep "Ignoring rp->gen" * | egrep "rectype=2\>|rectype=11\>|rectype=10\>"
+
 function announce
 {
     typeset text=$1
@@ -2015,6 +2100,11 @@ function run_tests
     testcase="check_metadb_memstat"
     testcase_preamble $testcase
     check_metadb_memstat
+    testcase_finish $testcase
+
+    testcase="verify_non_ignored_reptype"
+    testcase_preamble $testcase
+    verify_non_ignored_reptype
     testcase_finish $testcase
 }
 
