@@ -68,6 +68,7 @@ int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
 int gbl_debug_drop_nth_rep_message = 0;
+int gbl_broadcast_newmaster = 1;
 extern int gbl_debug_stat4dump_loop;
 
 extern struct thdpool *gbl_udppfault_thdpool;
@@ -4837,6 +4838,10 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         }
 
         bdb_state->dbenv->rep_flush(bdb_state->dbenv);
+
+        if (gbl_broadcast_newmaster) {
+            bdb_state->dbenv->rep_newmaster(bdb_state->dbenv);
+        }
 
         logmsg(LOGMSG_INFO, "USER_TYPE_LSNCMP %d %d    %d %d host:%s\n", lsn_cmp.lsn.file,
                 cur_lsn.file, lsn_cmp.lsn.offset, cur_lsn.offset, from_host);
