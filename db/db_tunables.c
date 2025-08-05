@@ -345,6 +345,7 @@ extern int gbl_ufid_dbreg_test;
 extern int gbl_debug_add_replication_latency;
 extern int gbl_javasp_early_release;
 extern int gbl_debug_drop_nth_rep_message;
+extern int gbl_broadcast_newmaster;
 extern int gbl_fdb_emulate_old;
 
 extern long long sampling_threshold;
