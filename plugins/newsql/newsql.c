@@ -386,7 +386,19 @@ static int newsql_response_int(struct sqlclntstate *clnt, const CDB2SQLRESPONSE 
 {
     struct newsql_appdata *appdata = clnt->appdata;
     clnt->lastresptype = r->response_type;
-    return appdata->write(clnt, h, 0, r, flush); /* newsql_write_evbuffer */
+    int state = 0;
+    // clnt->state is set to done later
+    // messages with non-zero state can be ignored
+    switch(r->response_type) {
+        case RESPONSE_TYPE__COLUMN_NAMES:
+        case RESPONSE_TYPE__COLUMN_VALUES:
+            state = NEWSQL_SERVER_STATE_RUNNING;     // Running
+            break;
+        default:
+            state = NEWSQL_SERVER_STATE_NONE;
+            break;
+    }
+    return appdata->write(clnt, h, state, r, flush); /* newsql_write_evbuffer */
 }
 
 static int newsql_response(struct sqlclntstate *c, const CDB2SQLRESPONSE *r, int flush)
@@ -2294,7 +2306,7 @@ static int save_set_commands(struct sqlclntstate *clnt)
 
 int newsql_heartbeat(struct sqlclntstate *clnt)
 {
-    int state = NEWSQL_STATE_NONE;
+    int state = NEWSQL_SERVER_STATE_NONE;
 
     if (!clnt->heartbeat)
         return 0;
@@ -2303,10 +2315,10 @@ int newsql_heartbeat(struct sqlclntstate *clnt)
 
     /* We're still in a good state if we're just waiting for the client to consume an event. */
     if (is_pingpong(clnt))
-        state = NEWSQL_STATE_ADVANCING;
+        state = NEWSQL_SERVER_STATE_ADVANCING;
     else {
         if (clnt->sqltick > clnt->sqltick_last_seen)
-            state = NEWSQL_STATE_ADVANCING;
+            state = NEWSQL_SERVER_STATE_ADVANCING;
         clnt->sqltick_last_seen = clnt->sqltick;
     }
 

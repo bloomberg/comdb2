@@ -8,6 +8,7 @@
 #include <string.h>
 #include <schemachange.h>
 #include <sc_lua.h>
+#include <sc_util.h>
 #include <comdb2.h>
 #include <bdb_api.h>
 #include <osqlsqlthr.h>
@@ -30,7 +31,6 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
 #include "alias.h"
-#include "importdata.pb-c.h"
 
 #define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
 
@@ -140,15 +140,12 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     /* Remove quotes (if any). */
     sqlite3Dequote(table_name);
 
-    /* Check whether table name length is valid. */
-    if (strlen(table_name) >= MAXTABLELEN) {
-        rc = setError(pParse, SQLITE_MISUSE, "Table name is too long");
-        goto cleanup;
-    }
-
-    if (check_for_illegal_chars && !str_is_alphanumeric(table_name, NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME)) {
-        rc = setError(pParse, SQLITE_MISUSE, "table name has illegal characters");
-        goto cleanup;
+    /* Check whether table name is valid. */
+    const char *error = NULL;
+    if (validate_table_name(table_name, strlen(table_name),
+                            check_for_illegal_chars, &error) != 0) {
+      rc = setError(pParse, SQLITE_MISUSE, error);
+      goto cleanup;
     }
 
     if (gbl_allow_user_schema && clnt->current_user.have_name &&

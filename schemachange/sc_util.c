@@ -14,10 +14,12 @@
    limitations under the License.
  */
 
-#include "schemachange.h"
 #include "sc_util.h"
-#include "logmsg.h"
+
 #include "cdb2_constants.h"
+#include "logmsg.h"
+#include "schemachange.h"
+#include "str_util.h"
 
 int close_all_dbs_tran(tran_type *tran)
 {
@@ -180,6 +182,37 @@ int validate_ix_names(struct dbtable *db)
         if (rc) break;
     }
     return rc;
+}
+
+int validate_table_name(const char *const name, size_t len,
+                        int check_for_illegal_chars, const char **error) {
+  if (len == 0) {
+    if (error) {
+      *error = comdb2_asprintf(
+          "Table name cannot be empty. length=%zu name='%s'", len, name);
+    }
+    return 1;
+  }
+
+  if (len > MAXTABLELEN - 1) {
+    if (error) {
+      *error = comdb2_asprintf(
+          "Table name is too long. max_length=%d length=%zu name='%s'",
+          MAXTABLELEN - 1, len, name);
+    }
+    return 2;
+  }
+
+  if (check_for_illegal_chars &&
+      !str_is_alphanumeric(name, NON_ALPHANUM_CHARS_ALLOWED_IN_TABLENAME)) {
+    if (error) {
+      *error = comdb2_asprintf(
+          "Table name contains illegal characters. name='%s'", name);
+    }
+    return 3;
+  }
+
+  return 0;
 }
 
 static int seed_qsort_cmpfunc(const void *key1, const void *key2)

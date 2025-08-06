@@ -2182,19 +2182,17 @@ static inline int cdb2_hostid()
 }
 
 typedef enum {
-    NEWSQL_STATE_NONE = 0,
+    NEWSQL_CLIENT_STATE_NONE = 0,
     /* Query is making progress. Applicable only when type is HEARTBEAT */
-    NEWSQL_STATE_ADVANCING,
-    /* RESET from in-process cache. Applicable only when type is RESET */
-    NEWSQL_STATE_LOCALCACHE
-} newsql_state;
+    NEWSQL_CLIENT_STATE_LOCALCACHE = 2
+} newsql_client_state;
 
 static int send_reset(SBUF2 *sb)
 {
     int rc = 0;
     struct newsqlheader hdr = {
         .type = ntohl(CDB2_REQUEST_TYPE__RESET),
-        .state = ntohl(NEWSQL_STATE_NONE)
+        .state = ntohl(NEWSQL_CLIENT_STATE_NONE)
     };
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1) {

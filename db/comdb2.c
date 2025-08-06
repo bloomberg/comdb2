@@ -141,12 +141,13 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_query_preparer.h"
 #include <net_appsock.h>
 #include "sc_csc2.h"
+#include "sc_util.h"
 #include "reverse_conn.h"
 #include "alias.h"
 #include "str_util.h" /* QUOTE */
 #include "machcache.h"
-#include "importdata.pb-c.h"
 #include "gen_shard.h"
+
 #define tokdup strndup
 
 char * gbl_file_copier = "scp";
@@ -2873,6 +2874,20 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
             have_bad_schema = 1;
             logmsg(LOGMSG_FATAL, "Table name and database name conflict (%s) tblnum %d\n",
                    dbenv->envname, ii);
+        }
+
+        const char *error = NULL;
+        if (validate_table_name(db->tablename, strlen(db->tablename),
+                                /*check_for_illegal_chars=*/1, &error) != 0) {
+          have_bad_schema = 1;
+
+          if (error) {
+            logmsg(LOGMSG_FATAL, "%s\n", error);
+            free((void *)error);
+          } else {
+            logmsg(LOGMSG_FATAL, "Table name is not valid. name='%s'\n",
+                   db->tablename);
+          }
         }
 
         if (db->nix > MAXINDEX) {
@@ -6586,4 +6601,3 @@ static void create_service_file(const char *lrlname)
 #endif
     return;
 }
-

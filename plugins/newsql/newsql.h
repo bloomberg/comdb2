@@ -29,12 +29,17 @@ struct newsql_stmt {
 };
 
 typedef enum {
-    NEWSQL_STATE_NONE,
+    NEWSQL_SERVER_STATE_NONE = 0,
     /* Query is making progress. Applicable only when type is HEARTBEAT */
-    NEWSQL_STATE_ADVANCING,
+    NEWSQL_SERVER_STATE_ADVANCING = 1,
+    NEWSQL_SERVER_STATE_RUNNING = 3
+} newsql_server_state;
+
+typedef enum {
+    NEWSQL_CLIENT_STATE_NONE = 0,
     /* RESET from in-process cache. Applicable only when type is RESET */
-    NEWSQL_STATE_LOCALCACHE
-} newsql_state;
+    NEWSQL_CLIENT_STATE_LOCALCACHE = 2,
+} newsql_client_state;
 
 struct newsqlheader {
     int type;        /*  newsql request/response type */

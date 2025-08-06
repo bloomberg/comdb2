@@ -17,6 +17,12 @@
 #ifndef INCLUDE_SC_UTIL_H
 #define INCLUDE_SC_UTIL_H
 
+#include <stddef.h>
+
+struct dbtable;
+struct tran_tag;
+typedef struct tran_tag tran_type;
+
 int close_all_dbs(void);
 int open_all_dbs(void);
 int open_all_dbs_tran(void *tran);
@@ -32,6 +38,16 @@ int sc_via_ddl_only();
 
 // check table for index name length
 int validate_ix_names(struct dbtable *db);
+
+/// Check that the name can be used as a valid table name.
+///
+/// \param name The name of the table as a null-terminated string.
+/// \param len The length of the name.
+/// \param check_for_illegal_chars Whether to check for illegal characters.
+/// \param[out] error Pointer to a string to hold the error message, if any.
+/// \return 0 if valid, non-zero if invalid.
+int validate_table_name(const char *const name, size_t len,
+                        int check_for_illegal_chars, const char **error);
 
 int sc_via_ddl_only();
 
