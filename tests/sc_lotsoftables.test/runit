@@ -129,11 +129,10 @@ test_create_tbls() {
 test_create_tbls
 
 if [[ -n "$CLUSTER" ]] ; then
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("downgrade")'
-    for node in "$CLUSTER" ; do
-        wait_till_ready $node
-    done
+    if ! downgrade_master; then
+        echo "Failed to downgrade master"
+        exit 1
+    fi
 fi
-
 
 echo "Success"
