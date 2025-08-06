@@ -1,0 +1,1 @@
+[create table "" (i int)] failed with rc -3 Table name cannot be empty

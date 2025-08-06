@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+   
+[[ $debug -eq 1 ]] && set -x
+
+dbname=$1
+if [[ -z "$dbname" ]]; then
+    echo "dbname missing"
+    exit 1
+fi
+
+for testreq in `ls t*.req`; do
+    testname=`echo ${testreq} | cut -d "." -f 1`
+    cdb2sql ${CDB2_OPTIONS} -f ${testreq} ${dbname} default > ${testname}.output 2>&1
+    diff ${testname}.expected ${testname}.output >/dev/null
+
+    if [[ $? -ne 0 ]]; then
+        echo "Failed ${testreq}"
+        exit 1
+    fi
+done
+
+echo "Success"
+exit 0
