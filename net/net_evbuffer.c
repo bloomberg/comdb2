@@ -845,9 +845,10 @@ static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr,
     check_base_thd();
     ++pending_connections;
     if (pending_connections >= (get_max_appsocks_limit() / 2)) {
-        struct net_info *n = net_info_find(netinfo_ptr->service);
         accept_paused = 1;
+        struct net_info *n = net_info_find("replication");
         evconnlistener_disable(n->listener);
+        event_del(n->unix_ev);
     }
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
@@ -864,9 +865,10 @@ static void accept_info_free(struct accept_info *a)
     check_base_thd();
     --pending_connections;
     if (accept_paused && pending_connections == 0) {
-        struct net_info *n = net_info_find(a->netinfo_ptr->service);
         accept_paused = 0;
+        struct net_info *n = net_info_find("replication");
         evconnlistener_enable(n->listener);
+        event_add(n->unix_ev, NULL);
     }
     if (a->ev) {
         event_free(a->ev);
