@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source ${TESTSROOTDIR}/tools/write_prompt.sh
+
 function waitmach
 {
     [[ "$debug" == 1 ]] && set -x
