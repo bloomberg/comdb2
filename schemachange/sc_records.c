@@ -1190,6 +1190,13 @@ err:
 
     ATOMIC_ADD64(data->from->sc_nrecs, 1);
 
+    if (data->s->iq->sorese != NULL) {
+        /* ddl schema change, update its effects */
+        snap_uid_t *snap_info = data->s->iq->sorese->snap_info;
+        if (snap_info != NULL)
+            snap_info->effects.num_inserted = data->from->sc_nrecs;
+    }
+
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
 
