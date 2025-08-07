@@ -1203,6 +1203,8 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);
+        if (!admin)
+            ATOMIC_ADD32(active_appsock_conns, -1);
         free_appsock_handler_arg(arg);
         return;
     }
