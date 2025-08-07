@@ -2923,8 +2923,9 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
 static int should_reject_request(uint8_t first_byte)
 {
     if (db_is_exiting() || gbl_exit || !gbl_ready) return 1;
-    if (first_byte == '@') return 0; /* admin */
-    return check_appsock_limit(pending_connections);
+    int is_admin = 0;
+    if (first_byte == '@') is_admin = 1;/* admin */
+    return check_appsock_limit(pending_connections, is_admin);
 }
 
 static void do_read(int fd, short what, void *data)
@@ -2954,24 +2955,25 @@ static void do_read(int fd, short what, void *data)
     accept_info_free(a);
     a = NULL;
     if (should_reject_request(first_byte)) {
+        // Failed to increment appsock count
         evbuffer_free(buf);
         shutdown_close(fd);
         return;
     }
     if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure, &badrte)) == 0) {
+        // Successfully handled fd
         return;
     }
     if (badrte) {
-        if (first_byte != '@') {
-            ATOMIC_ADD32(active_appsock_conns, -1);
-        }
+        // Failed to handle fd because of badrte
+        rem_appsock_connection_evbuffer();
         accept_info_new(netinfo_ptr, &ss, fd, secure, 1);
         return;
     }
     if (handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd) != 0) {
-        if (first_byte != '@') {
-            ATOMIC_ADD32(active_appsock_conns, -1);
-        }
+        // Failed to handle appsock
+        rem_appsock_connection_evbuffer();
+        return;
     }
 }
 

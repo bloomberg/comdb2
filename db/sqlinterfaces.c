@@ -6836,13 +6836,14 @@ int get_max_appsocks_limit(void)
     return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
 }
 
-int check_appsock_limit(int pending)
+int check_appsock_limit(int pending, int is_admin)
 {
     ++total_appsock_conns;
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
     int current = pending + ATOMIC_ADD32(active_appsock_conns, 1);
     time_metric_add(thedb->connections, current);
+    if (is_admin) return 0;
     if (warn > max) warn = max;
     if (current <= warn) return 0;
     if (current > max) {
@@ -6869,9 +6870,8 @@ int check_appsock_limit(int pending)
     return 0;
 }
 
-void rem_appsock_connection_evbuffer(struct sqlclntstate *clnt)
+void rem_appsock_connection_evbuffer()
 {
-    if (clnt->admin) return;
     ATOMIC_ADD32(active_appsock_conns, -1);
 }
 
