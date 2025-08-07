@@ -966,6 +966,7 @@ struct sqlclntstate {
     int allow_make_request;
 
     unsigned verify_dbstore : 1;
+    int require_fastsql : 1;
 };
 
 /* Query stats. */
