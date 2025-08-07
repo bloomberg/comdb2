@@ -5301,6 +5301,9 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
             clnt->authz_write_tables = hash_init_str(0);
         }
     } else {
+       if (clnt->admin) {
+           ATOMIC_ADD32(active_appsock_conns, 1);
+       }
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();
