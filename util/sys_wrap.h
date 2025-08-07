@@ -22,7 +22,6 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "logmsg.h"
-#include "resource_use_dumper.h"
 
 #ifdef SYSWRAP_DEBUG
 #define SYSWRAPDBG_TRACE(STR, FUNC, OBJ)                                                                               \
@@ -71,21 +70,7 @@
 #define Pthread_cond_init(...) WRAP_SYSFUNC(pthread_cond_init, __VA_ARGS__)
 #define Pthread_cond_signal(...) WRAP_SYSFUNC(pthread_cond_signal, __VA_ARGS__)
 #define Pthread_cond_wait(...) WRAP_SYSFUNC(pthread_cond_wait, __VA_ARGS__)
-// Special wrapper for pthread_create to diagnose EAGAIN
-#define Pthread_create(...)                                                                                  \
-    do {                                                                                                     \
-        int rc;                                                                                              \
-        SYSWRAPDBG_TRACE(TRY, pthread_create, SYSWRAP_FIRST(__VA_ARGS__));                                   \
-        rc = pthread_create(__VA_ARGS__);                                                                    \
-        if (rc != 0) {                                                                                       \
-            logmsg(LOGMSG_FATAL, "%s:%d pthread_create(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",                 \
-                    __func__, __LINE__, (uintptr_t)SYSWRAP_FIRST(__VA_ARGS__), rc, strerror(rc),             \
-                    (void *)pthread_self());                                                                 \
-            if (rc == EAGAIN) print_resource_utilization_and_limits(LOGMSG_FATAL);                           \
-            abort();                                                                                         \
-        }                                                                                                    \
-        SYSWRAPDBG_TRACE(GOT, pthread_create, SYSWRAP_FIRST(__VA_ARGS__));                                   \
-    } while (0)
+#define Pthread_create(...) WRAP_SYSFUNC(pthread_create, __VA_ARGS__)
 #define Pthread_detach(...) WRAP_SYSFUNC(pthread_detach, __VA_ARGS__)
 #define Pthread_join(...) WRAP_SYSFUNC(pthread_join, __VA_ARGS__)
 #define Pthread_key_create(...) WRAP_SYSFUNC(pthread_key_create, __VA_ARGS__)
