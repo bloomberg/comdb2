@@ -2702,6 +2702,7 @@ int do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
         rtn(netinfo_ptr, sb);
         return 0;
     }
+    sbuf2close(sb);
     return -1;
 }
 
