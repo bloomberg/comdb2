@@ -111,7 +111,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
 
     rem_lru_evbuffer(clnt);
     rem_sql_evbuffer(clnt);
-    rem_appsock_connection_evbuffer(clnt);
+    rem_appsock_connection_evbuffer();
     if (appdata->dispatch) {
         abort(); /* should have been freed by timeout or coherency-lease */
     }
@@ -1200,6 +1200,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
 
     int admin = arg->admin;
     if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
+        rem_appsock_connection_evbuffer();
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);
