@@ -238,4 +238,4 @@ keys
 (i=1, j=1)
 (i=2, j=1)
 ('---- uncommittable + constraints ----'='---- uncommittable + constraints ----')
-[COMMIT] failed with rc 2 Transaction is uncommittable: Duplicate insert on key 'KEY' in table 'c' index 0
+[COMMIT] failed with rc 299 add key constraint duplicate key 'KEY' on table 'c' index 0

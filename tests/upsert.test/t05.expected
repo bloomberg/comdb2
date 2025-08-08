@@ -1,0 +1,7 @@
+(rows inserted=1)
+[insert into a(i, j, k) values(2, 1, 1) ON CONFLICT (i, j) do update set k = 1 -- should be dup error] failed with rc 299 add key constraint duplicate key 'A_K' on table 'a' index 1
+(rows inserted=1)
+[insert into a(i, j, k) values(2, 1, 1) ON CONFLICT (i, j) do update set k = 1 -- should be either fk error or dup error] failed with rc 299 add key constraint duplicate key 'A_K' on table 'a' index 1
+[insert into a(i, j, k) values(2, 1, 0) ON CONFLICT (i, j) do update set k = 1 -- should be fk error] failed with rc 3 Transaction violates foreign key constraint a(i, j) -> b(i): key value does not exist in parent table
+(rows inserted=1)
+[insert into a(i, j, k) values(2, 1, 1) ON CONFLICT (i, j) do update set k = 1 -- should be dup error] failed with rc 299 add key constraint duplicate key 'A_K' on table 'a' index 1
