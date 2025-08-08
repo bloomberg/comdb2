@@ -74,7 +74,7 @@ int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
 int gbl_fdb_push_remote = 1;
-int gbl_fdb_push_remote_write = 0;
+int gbl_fdb_push_remote_write = 1;
 int gbl_fdb_push_redirect_foreign = 0;
 int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
@@ -4352,8 +4352,23 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             if (tran->nwrites) {
                 /* handle is only created upon first remote write to this fdb */
                 assert(tran->fcon.hndl);
+
                 fdb_client_set_identityBlob(clnt, tran->fcon.hndl);
                 rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+                if (!rc && !clnt->verifyretry_off) {
+                    cdb2_effects_tp effects;
+                    int irc;
+                    if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
+                        logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n",
+                               __func__, irc, cdb2_errstr(tran->fcon.hndl));
+                    } else {
+                        clnt->effects.num_affected += effects.num_affected;
+                        clnt->effects.num_selected += effects.num_selected;
+                        clnt->effects.num_updated += effects.num_updated;
+                        clnt->effects.num_deleted += effects.num_deleted;
+                        clnt->effects.num_inserted += effects.num_inserted;
+                    }
+                }
             } else {
                 rc = 0;
             }

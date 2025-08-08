@@ -92,3 +92,18 @@ Number of rows selected 0
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 3
+Test effects with mix of local stmt and fdb stmt in transaction with verifyretry
+Number of rows affected 0
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
+Effects not sent by comdb2 server. 
+Effects not sent by comdb2 server. 
+Effects not sent by comdb2 server. 
+Effects not sent by comdb2 server. 
+Number of rows affected 3
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 3
