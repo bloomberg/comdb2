@@ -6870,7 +6870,7 @@ int check_appsock_limit(int pending, int is_admin)
     return 0;
 }
 
-void rem_appsock_connection_evbuffer()
+void rem_appsock_connection_evbuffer(void)
 {
     ATOMIC_ADD32(active_appsock_conns, -1);
 }
