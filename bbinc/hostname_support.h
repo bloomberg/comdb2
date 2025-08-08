@@ -18,6 +18,7 @@
 #define INCLUDED_HOSTNAME_SUPPORT_H
 
 char *get_hostname_by_fileno(int);
+char *get_hostname_by_fileno_err(int fd, int *err);
 int get_hostname_by_fileno_v2(int, char *, size_t);
 
 #ifndef DISABLE_HOSTADDR_CACHE
