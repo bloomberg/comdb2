@@ -42,8 +42,8 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
-/* If this is successful, it increments */
-int start_schema_change_tran(struct ireq *iq, tran_type *trans)
+// Does everything to prepare a schema change for launch
+int setup_schema_change(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int maxcancelretry = 10;
@@ -305,10 +305,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
     iq->sc_seed = seed;
 
-    sc_arg_t *arg = malloc(sizeof(sc_arg_t));
-    arg->trans = trans;
-    arg->iq = iq;
-    arg->sc = iq->sc;
     s->started = 0;
 
     if (s->resume && s->resume != SC_OSQL_RESUME && IS_ALTERTABLE(s)) {
@@ -319,6 +315,19 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
         ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
+    return 0;
+}
+
+int launch_schema_change(struct ireq *iq, tran_type *trans)
+{
+    int rc = 0;
+    struct schema_change_type *s = iq->sc;
+
+    sc_arg_t *arg = malloc(sizeof(sc_arg_t));
+    arg->trans = trans;
+    arg->iq = iq;
+    arg->sc = iq->sc;
+
     /*
     ** if s->kind == SC_PARTIALUPRECS, we're going radio silent from this point
     *forward
@@ -367,6 +376,29 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
 
     return rc;
+}
+/* Spawns a schema change
+ *
+ * resuming alters will increment gbl_sc_resume_start before 
+ * they are spawned and then decrement it once they
+ * have set their last converted genid.
+ *
+ * When gbl_sc_resume_start is zero, the db knows
+ * that it is safe to apply new writes.
+ */
+int start_schema_change_tran(struct ireq *iq, tran_type *trans)
+{
+    int rc = setup_schema_change(iq, trans);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to setup schema change\n", __func__);
+        return rc;
+    }
+    rc = launch_schema_change(iq, trans);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to launch schema change\n", __func__);
+        return rc;
+    }
+    return 0;
 }
 
 int start_schema_change(struct schema_change_type *s)
@@ -593,7 +625,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
     }
 
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+                                         iq->usedb->sc_genids)) {
         return 0;
     }
 
@@ -691,7 +723,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
     }
 
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+                                         iq->usedb->sc_genids)) {
         return 0;
     }
 
@@ -780,7 +812,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
+    unsigned long long *sc_genids = iq->usedb->sc_genids;
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
     }

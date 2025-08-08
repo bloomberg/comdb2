@@ -192,7 +192,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
  * stripe.
  * If the schema change is not resuming it sets them all to zero
  * If success it returns 0, if failure it returns <0 */
-int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
+int init_sc_genids(struct dbtable *db, struct dbtable *newdb, struct schema_change_type *s)
 {
     void *rec;
     int orglen, bdberr, stripe;
@@ -238,8 +238,8 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
         /* get this stripe's newest genid and store it in sc_genids,
          * if we have been rebuilding the data files we can grab the genids
          * straight from there, otherwise we look in the llmeta table */
-        if (is_dta_being_rebuilt(db->plan)) {
-            rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
+        if (is_dta_being_rebuilt(newdb->plan)) {
+            rc = bdb_find_newest_genid(newdb->handle, NULL, stripe, rec, &dtalen,
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
             if (rc == 1)
@@ -779,7 +779,7 @@ static int convert_record(struct convert_record_data *data)
             rc = 0;
             if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
                 int bdberr;
-                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename,
+                rc = bdb_set_high_genid_stripe(NULL, data->from->tablename,
                                                data->stripe, -1ULL, &bdberr);
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
@@ -1027,7 +1027,7 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+        rc = bdb_set_high_genid(data->trans, data->from->tablename, genid,
                                 &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
@@ -2652,7 +2652,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
 
     if (!is_dta_being_rebuilt(data->to->plan)) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+        rc = bdb_set_high_genid(data->trans, data->from->tablename, genid,
                                 &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
