@@ -895,8 +895,12 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         process_cdb2query(appdata, query);
         break;
     case CDB2_REQUEST_TYPE__RESET:
-        newsql_reset_evbuffer(appdata);
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        if (clnt->admin) {
+            newsql_cleanup(appdata);
+        } else {
+            newsql_reset_evbuffer(appdata);
+            evtimer_once(appdata->base, rd_hdr, appdata);
+        }
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
         process_ssl_request(appdata);
