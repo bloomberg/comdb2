@@ -258,3 +258,84 @@ function wait_for_cluster
         waitmach ${node}
     done
 }
+
+get_node_gen() {
+    local -r func=${FUNCNAME[0]}
+    local -r node=${1}
+    local gen
+
+    set -o pipefail
+
+    gen=$(${CDB2SQL_EXE} --host ${node} ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.send('bdb repstat')" | awk '/st_gen:/ {print $2}' | sed 's/[^0-9]*//g')
+    if (( $? != 0 )); then
+        echo "${func}: could not get generation number from node"
+        return 1
+    fi
+    
+    if [[ -z "${gen}" ]]; then
+        echo "${func}: could not get generation number from node"
+        return 1
+    fi
+
+    echo "${gen}"
+}
+
+get_master_and_fail_if_not_found() {
+    local -r func=${FUNCNAME[0]}
+
+    set -o pipefail
+    
+    local master
+    master=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='Y'")
+    if (( $? != 0 )); then
+        echo "${func}: could not get master node"
+        return 1
+    fi
+
+    if [[ -z "${master}" ]]; then
+        echo "${func}: master node is empty"
+        return 1
+    fi
+
+    echo "${master}"
+}
+
+downgrade_master() {
+    local -r func=${FUNCNAME[0]}
+    local -r downgrade_wait_seconds=5
+
+    local master
+    if ! master=$(get_master_and_fail_if_not_found); then
+        echo "${func}: could not get master"
+        return 1
+    fi
+
+    local gen
+    if ! gen=$(get_node_gen ${master}); then
+        echo "${func}: could not get generation number from master"
+        return 1
+    fi
+
+    if ! ${CDB2SQL_EXE} --host ${master} ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.send('downgrade')"; then
+        echo "${func}: Could not send downgrade command to master"
+        return 1
+    fi
+
+    next_gen=${gen}
+    while (( next_gen == gen )); do
+        sleep ${downgrade_wait_seconds}
+        next_gen=$(get_node_gen ${master})
+        if (( $? != 0 )); then
+            # The old master may be unavailable for a while during election,
+            # so if we can't get its generation number then wait and retry.
+            next_gen=${gen}
+        fi
+    done
+
+    while ! get_master_and_fail_if_not_found; do
+        sleep ${downgrade_wait_seconds}
+    done
+
+    # Make sure everyone's available before we return
+    wait_for_cluster
+}
