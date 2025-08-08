@@ -1269,7 +1269,7 @@ static void *gethostname_fn(void *arg)
         int pending = --gethostname_ctr;
         Pthread_mutex_unlock(&gethostname_lk);
         gettimeofday(&start, NULL);
-        arg->origin = get_hostname_by_fileno(arg->fd);
+        arg->origin = get_cached_hostname_by_addr(&arg->addr);
         struct timeval now, diff, q;
         gettimeofday(&now, NULL);
         timersub(&now, &start, &diff);

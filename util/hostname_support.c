@@ -23,6 +23,7 @@
 #include <sys/types.h>
 
 #include <hostname_support.h>
+#include <errno.h>
 
 static int get_hostname_by_addr(struct sockaddr_in *addr, char *host, socklen_t hostlen)
 {
@@ -95,21 +96,38 @@ void cleanup_peer_hash(void)
 
 #endif /* ifndef DISABLE_HOSTADDR_CACHE */
 
+char *get_cached_hostname_by_addr(struct sockaddr_in *saddr) {
+    char host[NI_MAXHOST];
+# ifdef DISABLE_HOSTADDR_CACHE
+    if (get_hostname_by_addr(saddr, host, NI_MAXHOST)) return NULL;
+    return strdup(host);
+# else
+    char *name = find_peer_hash(saddr->sin_addr);
+    if (name) return name;
+    if (get_hostname_by_addr(saddr, host, NI_MAXHOST)) return NULL;
+    return add_peer_hash(saddr->sin_addr, host);
+# endif
+}
+
 char *get_hostname_by_fileno(int fd)
 {
     struct sockaddr_in saddr;
     socklen_t len = sizeof(saddr);
     if (getpeername(fd, (struct sockaddr *)&saddr, &len)) return NULL;
-    char host[NI_MAXHOST];
-# ifdef DISABLE_HOSTADDR_CACHE
-    if (get_hostname_by_addr(&saddr, host, NI_MAXHOST)) return NULL;
-    return strdup(host);
-# else
-    char *name = find_peer_hash(saddr.sin_addr);
-    if (name) return name;
-    if (get_hostname_by_addr(&saddr, host, NI_MAXHOST)) return NULL;
-    return add_peer_hash(saddr.sin_addr, host);
-# endif
+    return get_cached_hostname_by_addr(&saddr);
+}
+
+// sets getpeername's errno (0 on success)
+char *get_hostname_by_fileno_err(int fd, int *err)
+{
+    struct sockaddr_in saddr;
+    socklen_t len = sizeof(saddr);
+    if (err) *err = 0;
+    if (getpeername(fd, (struct sockaddr *)&saddr, &len)) {
+        if (err) *err = errno;
+        return NULL;
+    }
+    return get_cached_hostname_by_addr(&saddr);
 }
 
 int get_hostname_by_fileno_v2(int fd, char *out, size_t sz)
