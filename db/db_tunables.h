@@ -1084,6 +1084,8 @@ REGISTER_TUNABLE("recovery_ckp", "Emit a non-matchable ckp during recovery.  (De
                  &gbl_recovery_ckp, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reproduce_ckp_bug", "Allow full-recovery ckp-gen to exceed cluster generation.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_reproduce_ckp_bug, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("logged_newfile", "Log new-files in the transaction log. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_logged_newfile, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reqldiffstat", NULL, TUNABLE_INTEGER, &diffstat_thresh, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reqltruncate", NULL, TUNABLE_INTEGER, &reqltruncate, READONLY,
                  NULL, NULL, NULL, NULL);

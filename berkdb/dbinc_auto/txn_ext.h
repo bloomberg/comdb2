@@ -148,6 +148,8 @@ int __rep_commit_dist_prepared __P((DB_ENV *, const char *dist_txnid));
 int __rep_abort_dist_prepared __P((DB_ENV *, const char *dist_txnid));
 int __txn_prepared_collect_pp __P((DB_ENV *, collect_prepared_f, void *));
 int __txn_lowest_prepared_lsn __P((DB_ENV *, DB_LSN *lsn));
+int __newfile_recover __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+int __newfile_log __P((DB_ENV *, DB_LSN *, int32_t, u_int32_t)); 
 
 int __txn_remevent __P((DB_ENV *, DB_TXN *, const char *, u_int8_t*));
 void __txn_remrem __P((DB_ENV *, DB_TXN *, const char *));
