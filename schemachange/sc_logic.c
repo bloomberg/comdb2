@@ -709,8 +709,10 @@ downgraded:
 
             /* return NOMASTER for live schemachange writes */
             sc_set_downgrading(s);
-            bdb_close_only(s->newdb->handle, &bdberr);
-            freedb(s->newdb);
+            if (!s->newdb_borrowed) {
+                bdb_close_only(s->newdb->handle, &bdberr);
+                freedb(s->newdb);
+            }
             s->newdb = NULL;
 
             if (!trans)

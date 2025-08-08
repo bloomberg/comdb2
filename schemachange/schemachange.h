@@ -268,6 +268,11 @@ struct schema_change_type {
 
     struct dbtable *db;
     struct dbtable *newdb;
+
+    // if we are borrowing newdb, then someone else is responsible for freeing it.
+    // This information is useful for avoiding double-frees in schema changes
+    // over partitioned tables where newdb is shared between shards.
+    short newdb_borrowed;
     struct timepart_view *newpartition;
     struct scplan plan; /**** TODO This is an abomination, i know. Yet still
                            much better than on the stack where I found it.

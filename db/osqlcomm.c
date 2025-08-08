@@ -6303,6 +6303,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 
     struct schema_change_type *alter_sc = clone_schemachange_type(sc);
 
+    alter_sc->newdb_borrowed = 1; 
     /* new target */
     strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
     /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
@@ -6355,6 +6356,8 @@ static int _process_single_table_sc_merge(struct ireq *iq)
      * if this is an alter .. merge, we still prefer to sequence alters
      * to limit the amount of parallelism in flight
      */
+
+    sc->newdb_borrowed = 0;
     sc->nothrevent = 1;
     sc->finalize = 0; /* make sure */
     if (sc->kind == SC_ALTERTABLE) {
@@ -6410,11 +6413,19 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     /* we need to move data */
     sc->force_rebuild = 1;
 
+    sc->newdb_borrowed = 0;
+
+    /* 
+    * The first shard sc always needs to run synchronously.
+    * The later shard scs can theoretically run asynchronously but
+    * it doesn't work right now.
+    */
+    sc->nothrevent = 1; 
+
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition
          */
-        sc->nothrevent = 1; /* we need do_add_table to run first */
         sc->finalize = 0;   /* make sure */
         sc->kind = SC_ADDTABLE;
 
@@ -6430,9 +6441,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         iq->sc_pending = iq->sc;
     } else {
         /*
-         * use the fast shard as the destination, after first altering it
+         * use the first shard as the destination, after first altering it
          */
-        sc->nothrevent = 1; /* we need do_alter_table to run first */
         sc->finalize = 0;
 
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
@@ -6462,7 +6472,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     if (!arg.part_name)
         return VIEW_ERR_MALLOC;
     arg.lockless = 1;   
-    /* note: we have already set nothrevent depending on the number of shards */
+
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
     free(arg.part_name);
 
