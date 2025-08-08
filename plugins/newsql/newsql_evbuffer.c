@@ -1198,8 +1198,11 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
         local = 1;
     }
 
+    char *origin = arg->origin;
+
     int admin = arg->admin;
-    if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
+    if ((origin == NULL && arg->err == ENOTCONN) || thedb->no_more_sql_connections ||
+        (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);
@@ -1211,7 +1214,6 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     struct sqlclntstate *clnt = &appdata->clnt;
 
     reset_clnt(clnt, 1);
-    char *origin = arg->origin;
     clnt->origin = origin ? origin : intern("???");
     if (arg->badrte)
         logmsg(LOGMSG_ERROR, "misused rte from host %s\n", clnt->origin);
@@ -1269,7 +1271,8 @@ static void *gethostname_fn(void *arg)
         int pending = --gethostname_ctr;
         Pthread_mutex_unlock(&gethostname_lk);
         gettimeofday(&start, NULL);
-        arg->origin = get_hostname_by_fileno(arg->fd);
+        // Get the error and handle it later
+        arg->origin = get_hostname_by_fileno_err(arg->fd, &arg->err);
         struct timeval now, diff, q;
         gettimeofday(&now, NULL);
         timersub(&now, &start, &diff);
