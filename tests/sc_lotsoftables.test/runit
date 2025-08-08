@@ -33,49 +33,6 @@ function insert_records
     assertres $? 0
 }
 
-function wait_till_ready
-{
-    node=$1
-    out=0
-    # wait until we can query it
-    echo "$DBNAME: waiting until ready"
-    while [[ "$out" != "1" ]]; do
-        sleep 2
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    done
-}
-
-kill_restart_cluster()
-{
-    delay=$1
-    for node in $cluster ; do
-        echo "killrestart nodes $node"
-        kill_restart_node $node $delay &
-    done
-    sleep $delay
-    # select 1 all nodes
-    for node in $cluster ; do
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-        # wait until we can query it
-        echo "$DBNAME: waiting until ready"
-        while [[ "$out" != "1" ]]; do
-            sleep 2
-            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-        done
-    done
-}
-
-cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
-
-function flushall 
-{
-    for node in $cluster; do
-        cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
-    done
-}
-
-
-
 PRFIX=my_table_name_
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 
