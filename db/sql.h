@@ -1685,7 +1685,6 @@ void add_lru_evbuffer(struct sqlclntstate *);
 void rem_lru_evbuffer(struct sqlclntstate *);
 void add_sql_evbuffer(struct sqlclntstate *);
 void rem_sql_evbuffer(struct sqlclntstate *);
-void rem_appsock_connection_evbuffer();
 void update_col_info(struct sql_col_info *info, int);
 void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);
 const char *sqlite3ErrStr(int);
