@@ -7,6 +7,7 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
+#include "dbinc/rep_types.h"
 
 #include <time.h>
 #include <epochlib.h>
@@ -1168,11 +1169,11 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 	if (report_now != report_last && IS_REP_CLIENT(dbenv)) {
 		report_last = report_now;
 		if (dbenv->coherency_check_callback && dbenv->coherency_check_callback(dbenv->coherency_check_usrptr) == 0) {
-			logmsg(LOGMSG_USER, "gen %u dups %u queued %u ready at %u:%u rep at %u:%u last recv %u:%u\n",
+			logmsg(LOGMSG_USER, "gen %u dups %u queued %u ready at %u:%u rep at %u:%u last recv %u:%u wait_recs %d recv_recs %d reqs %d\n",
 		  rep->stat.st_gen, rep->stat.st_log_duplicated, rep->stat.st_log_queued, 
 		  lp->ready_lsn.file, lp->ready_lsn.offset,
 		  lp->waiting_lsn.file, lp->waiting_lsn.offset,
-		  rp->lsn.file, rp->lsn.offset);
+		  rp->lsn.file, rp->lsn.offset, lp->wait_recs, lp->rcvd_recs, rep->stat.st_log_requested);
 		}
 	}
 
@@ -1202,6 +1203,8 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 	 * Acquire the replication lock.
 	 */
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	if (rp->rectype >= 0 && rp->rectype < REP_MAX_TYPE)
+		rep->event_counts[rp->rectype]++;
 	if (rep->start_th != 0) {
 		/*
 		 * If we're racing with a thread in rep_start, then
@@ -3466,7 +3469,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			/* We used to have an explicit do_req=1 here.  Presumably this fixes a case
 			* where we haven't seen much traffic in the past, and get a few records
 			* but not enough to trigger a request.  Unfortunately the back-and-forth
-			* requests this generates slow down catchup whene the replicant is very far
+			* requests this generates slow down catchup when the replicant is very far
 			* behind and has multiple gaps.  Instead we request on a timer from elsewhere. */
 
 			if (gbl_always_request_log_req)
@@ -8920,6 +8923,22 @@ int *nrecs;
 	*ready_lsn = lp->ready_lsn;
 	*gap_lsn = lp->waiting_lsn;
 	*nrecs = lp->records_last_second;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	return 0;
+}
+
+/* 
+ * PUBLIC: int __dbenv_get_rep_event_counts __P((DB_ENV *, u_int64_t *));
+ */
+int
+__dbenv_get_rep_event_counts(dbenv, event_counts)
+DB_ENV *dbenv;
+u_int64_t *event_counts;
+{
+	DB_REP *db_rep = dbenv->rep_handle;
+	REP *rep = db_rep->region;
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	memcpy(event_counts, &rep->event_counts, sizeof(rep->event_counts));
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	return 0;
 }

@@ -3638,6 +3638,8 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     return (seqnum->lsn.file > 0);
 }
 
+int gbl_maxlsn_on_catchup = 0;
+
 int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
 {
     seqnum_type seqnum;
@@ -3647,7 +3649,7 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
 
     uint8_t *p_buf, *p_buf_end;
 
-    if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
+    if ((gbl_maxlsn_on_catchup && !bdb_state->caught_up) || bdb_state->exiting) {
         make_lsn(&our_lsn, INT_MAX, INT_MAX);
         bzero(&seqnum, sizeof(seqnum_type));
         memcpy(&seqnum.lsn, &our_lsn, sizeof(DB_LSN));
@@ -4024,8 +4026,14 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         logmsg(LOGMSG_USER, "after rep_process_message() got %d from %s\n", r, host);
 
     /* force a high lsn if we are starting or stopping */
-    if ((!bdb_state->caught_up) || (bdb_state->exiting))
+    if ((gbl_maxlsn_on_catchup && !bdb_state->caught_up) || (bdb_state->exiting))
         make_lsn(&permlsn, INT_MAX, INT_MAX);
+    else {
+        struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        memcpy(&permlsn, &h->seqnum.lsn, sizeof(permlsn));
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    }
 
     if ((force_election) && (host == bdb_state->repinfo->master_host)) {
         logmsg(LOGMSG_WARN, "master %s requested election\n", host);
