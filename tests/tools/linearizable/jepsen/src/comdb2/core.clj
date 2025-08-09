@@ -249,7 +249,7 @@
             :nemesis  (nemesis/partition-random-halves)
             :nodes    (cluster-nodes)
             :ssh {:username "root"
-                  :password "shadow"
+                  :password "bigsecret"
                   :strict-host-key-checking false}
             :generator generator
             :checker (checker/compose

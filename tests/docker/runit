@@ -86,6 +86,8 @@ services:
             dockerfile: tests/docker/Dockerfile.db
             args:
                 - REVISION=$prefix
+        ports:
+            - "2222:22"
         volumes:
             - ./common:/common
             - ./common/c1:/dedicated

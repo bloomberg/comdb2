@@ -1,6 +1,7 @@
 # shortcut for building jdbc driver via make
 BASEDIR:=$(realpath ..)
 VERSION?=$(shell grep ^comdb2 ../pkg/changelog  | sed 's/^comdb2 .//; s/-.*//g')
+MVNFLAGS?=$(shell echo "${COMDB2_MVN_FLAGS}")
 
 .PHONY: jdbc
 MAVEN_VER := $(shell mvn -version 2>/dev/null)
@@ -9,21 +10,21 @@ envSkipTests?='true'
 
 jdbc:
 ifdef MAVEN_VER
-	+mvn package
+	+mvn $(MVNFLAGS) package
 else
 	$(error "Could not find maven")
 endif
 
 clean:
 ifdef MAVEN_VER
-	+mvn clean
+	+mvn $(MVNFLAGS) clean
 else
 	$(error "Could not find maven")
 endif
 
 install: jdbc
 ifdef MAVEN_VER
-	+mvn install
+	+mvn $(MVNFLAGS) install
 else
 	$(error "Could not find maven")
 endif
