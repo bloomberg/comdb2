@@ -3955,8 +3955,17 @@ postprocessing:
        and we must reset the state */
     if (rc == SQLITE_EARLYSTOP_DOHSQL)
         sqlite3_reset(stmt);
-    if (rc == SQLITE_DONE || rc == SQLITE_OK) /* good rcodes */
+    if (rc == SQLITE_DONE || rc == SQLITE_OK) { /* good rcodes */
         rc = 0;
+        if (clnt->saved_rc && clnt->saved_errstr && clnt->continue_on_verify_error) {
+            // TODO: Check if need to do post_sqlite_processing. Also sends errors in there
+            write_response(clnt, RESPONSE_ERROR, (void *)clnt->saved_errstr, clnt->saved_rc);
+            // rc = SQLITE_ABORT;
+            clnt->saved_rc = 0;
+            free(clnt->saved_errstr);
+            return SQLITE_ABORT;
+        }
+    }
     /* closing: error codes, postponed write result and so on*/
     post_query_get_cost(thd, clnt);
     t_rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
@@ -5459,6 +5468,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
     clnt->netwaitus = 0;
+    clnt->continue_on_verify_error = 0;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
