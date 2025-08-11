@@ -1,0 +1,14 @@
+(count(*)=0)
+(count(*)=0)
+TURNING ON ANALYZE EMPTY TABLES
+(count(*)=1)
+(count(*)=1)
+INSERTING RECORDS
+(rows inserted=50000)
+RUNNING ANALYZE
+(count(*)=1)
+(count(*)=24)
+TURNING OFF ANALYZE EMPTY TABLES
+RUNNING ANALYZE
+(count(*)=1)
+(count(*)=24)
