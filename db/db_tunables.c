@@ -532,6 +532,7 @@ extern int gbl_chk_desc_skipscan;
 extern int gbl_sqlite_limit_var_optimization;
 extern int gbl_rep_process_pstack_time;
 extern int gbl_sqlite_interstage_optimization;
+extern int gbl_test_resolve_hostname_failure;
 
 /*
   =========================================================

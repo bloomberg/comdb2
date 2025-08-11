@@ -997,6 +997,7 @@
 (name='test_ddl_backout_nomaster', description='Force a NOMASTER error in toblock.', type='BOOLEAN', value='OFF', read_only='N')
 (name='test_delay_analyze_commit', description='Delay analyze commit', type='BOOLEAN', value='OFF', read_only='N')
 (name='test_io_time', description='Check I/O in watchdog this often', type='INTEGER', value='10', read_only='N')
+(name='test_resolve_hostname_failure', description='Tunable to test hostname resolution failure', type='INTEGER', value='0', read_only='N')
 (name='test_sc_resume_race', description='Test race between schemachange resume and blockprocessor', type='BOOLEAN', value='OFF', read_only='Y')
 (name='test_scindex_deadlock', description='Test index on expressions schema change deadlock', type='BOOLEAN', value='OFF', read_only='Y')
 (name='test_sql_time', description='Check SQL in watchdog this often', type='INTEGER', value='0', read_only='N')
