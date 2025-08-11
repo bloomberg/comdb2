@@ -4813,7 +4813,12 @@ static int register_queue_with_berkdb_and_master(Lua L, const char *type)
     memcpy(info->spname, sp->spname, info->spname_len + 1);
     int hostname_len = strlen(gbl_myhostname);
     memcpy(trigger_hostname(info), gbl_myhostname, hostname_len + 1);
-    ctrace("%s:%s %016" PRIx64 " register req\n", type, info->spname, info->trigger_cookie);
+    if (strcmp(type, "consumer") == 0) {
+        ctrace("%s:%s %016" PRIx64 " register req from host:%s argv0:%s pid:%d\n",
+            type, info->spname, info->trigger_cookie, clnt->origin, clnt->argv0, clnt->conninfo.pid);
+    } else {
+        ctrace("%s:%s %016" PRIx64 " register req\n", type, info->spname, info->trigger_cookie);
+    }
     int rc = luabb_trigger_register(L, info, consumer->register_timeoutms);
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
         ctrace("%s:%s %016" PRIx64 " register failed rc:%d\n", type, info->spname, info->trigger_cookie, rc);
