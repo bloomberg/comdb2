@@ -2220,6 +2220,14 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 } else {
                     clnt->multiline = 1;
                 }
+            } else if (strncasecmp(sqlstr, "continue_on_verify_error", 24) == 0) {
+                sqlstr += 24;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->continue_on_verify_error = 0;
+                } else {
+                    clnt->continue_on_verify_error = 1;
+                }
             } else {
                 rc = ii + 1;
             }
