@@ -46,6 +46,8 @@
 static int analyze_thread_memory = 1048576;
 #endif
 
+int gbl_debug_sleep_on_analyze = 0;
+
 extern void reset_aa_counter(char *tblname);
 
 /* global is-running flag */
@@ -590,11 +592,11 @@ done:
 
 /* get tbl sampling threshold, if NOT -1 set it
  */
-static void get_sampling_threshold(char *table, long long *sampling_thresh)
+static void get_sampling_threshold(tran_type *tran, char *table, long long *sampling_thresh)
 {
     int bdberr = 0;
     long long threshold = 0;
-    bdb_get_analyzethreshold_table(NULL, table, &threshold, &bdberr);
+    bdb_get_analyzethreshold_table(tran, table, &threshold, &bdberr);
 
 #ifdef DEBUG
     printf("retrieving from llmeta saved threshold for table '%s': %lld\n",
@@ -759,20 +761,49 @@ error:
 
 int analyze_regular_table(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab) {
     int rc = 0;
+    int have_schema_lk = 0;
     int sampled_table = 0;
-    struct dbtable *table = get_dbtable_by_name(td->table);
-    rc = analyze_rename_table_for_backup_stats(td->table, clnt, zErrTab);
+    tran_type * tran = NULL;
 
-    if (rc) 
+    rdlock_schema_lk();
+    have_schema_lk = 1;
+
+    struct dbtable * const table = get_dbtable_by_name(td->table);
+    if (!table) {
+        logmsg(LOGMSG_ERROR, "%s: Cannot find table %s\n", __func__, td->table);
+        rc = 1;
         goto err;
+    }
 
-    /* grab the size of the table */
-    int64_t totsiz = calc_table_size(table, 1);
+    tran = get_read_only_tran();
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s: Could not get tran\n", __func__);
+        rc = 1;
+        goto err;
+    }
+
+    rc = bdb_lock_tablename_read(table->handle, table->tablename, tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to acquire read lock on %s\n", __func__,
+               table->tablename);
+        rc = 1;
+        goto err;
+    }
+
+    unlock_schema_lk();
+    have_schema_lk = 0;
+
+    rc = analyze_rename_table_for_backup_stats(td->table, clnt, zErrTab);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "analyze_rename_table_for_backup_stats failed with rc %d\n", rc);
+        goto err;
+    }
+
+    const int64_t totsiz = calc_table_size(table, 1);
 
     if (sampled_tables_enabled)
-        get_sampling_threshold(td->table, &sampling_threshold);
+        get_sampling_threshold(tran, td->table, &sampling_threshold);
 
-    /* sample if enabled */
     if (sampled_tables_enabled) {
         if (totsiz <= sampling_threshold) {
             td->scale = 100;
@@ -787,7 +818,18 @@ int analyze_regular_table(table_descriptor_t *td, struct sqlclntstate *clnt, cha
         }
     }
 
+    rc = put_read_only_tran(tran);
+    tran = NULL;
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to put tran rc(%d)\n", __func__, rc);
+        goto err;
+    }
+
     clnt->is_analyze = 1;
+
+    if (gbl_debug_sleep_on_analyze) {
+        sleep(gbl_debug_sleep_on_analyze);
+    }
 
     /* run analyze as sql query */
     char *sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
@@ -803,6 +845,12 @@ int analyze_regular_table(table_descriptor_t *td, struct sqlclntstate *clnt, cha
     if (debug_switch_test_delay_analyze_commit())
         sleep(10);
 err:
+    if (have_schema_lk) {
+        unlock_schema_lk();
+    }
+    if (tran) {
+        put_read_only_tran(tran);
+    }
     if (sampled_table) {
         cleanup_sampled_indicies(clnt);
     }
