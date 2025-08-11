@@ -240,7 +240,10 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
                    gbl_recovery_lsn_file, gbl_recovery_lsn_offset);
             gbl_fullrecovery = 1;
             break;
-        case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
+        case 4: /* recovery_lsn */
+            gbl_recovery_options = optarg;
+            gbl_exit = 1;
+            break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
         case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
