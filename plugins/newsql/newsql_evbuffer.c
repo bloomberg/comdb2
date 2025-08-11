@@ -111,7 +111,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
 
     rem_lru_evbuffer(clnt);
     rem_sql_evbuffer(clnt);
-    rem_appsock_connection_evbuffer(clnt);
+    rem_appsock_connection_evbuffer();
     if (appdata->dispatch) {
         abort(); /* should have been freed by timeout or coherency-lease */
     }
@@ -895,8 +895,12 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         process_cdb2query(appdata, query);
         break;
     case CDB2_REQUEST_TYPE__RESET:
-        newsql_reset_evbuffer(appdata);
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        if (clnt->admin) {
+            newsql_cleanup(appdata);
+        } else {
+            newsql_reset_evbuffer(appdata);
+            evtimer_once(appdata->base, rd_hdr, appdata);
+        }
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
         process_ssl_request(appdata);
@@ -1210,6 +1214,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     int admin = arg->admin;
     if ((origin == NULL && arg->err == ENOTCONN) || thedb->no_more_sql_connections ||
         (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
+        rem_appsock_connection_evbuffer();
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);
