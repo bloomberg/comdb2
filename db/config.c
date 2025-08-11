@@ -1253,7 +1253,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
-        /* Disable- will circle back to fix */
+        /* Fixed, but we need to enable pglog logging first */
 /*
         gbl_new_snapisol = 1;
         gbl_new_snapisol_asof = 1;
