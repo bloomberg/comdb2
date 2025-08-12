@@ -95,10 +95,9 @@ __rep_region_init(dbenv)
 		rep->eid = db_eid_invalid;
 		rep->master_id = db_eid_invalid;
 		rep->gen = 0;
-        rep->committed_gen = 0;
-        memset(&rep->committed_lsn, 0, sizeof(rep->committed_lsn));
+		rep->committed_gen = 0;
+		memset(&rep->committed_lsn, 0, sizeof(rep->committed_lsn));
 		rep->egen = rep->gen + 1;
-
 		/*
 		 * Set default values for the min and max log records that we
 		 * wait before requesting a missing log record.

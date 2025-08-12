@@ -868,6 +868,7 @@ struct bdb_state_tag {
     pthread_t lock_detect_thread;
     pthread_t coherency_lease_thread;
     pthread_t master_lease_thread;
+    pthread_t lite_stat_dumper_thread;
 
     struct bdb_state_tag *parent; /* pointer to our parent */
     short numchildren;
@@ -1886,5 +1887,6 @@ int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
 
 int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype);
 void pstack_self(void);
+void create_lite_stats_thread(bdb_state_type *);
 
 #endif /* __bdb_int_h__ */

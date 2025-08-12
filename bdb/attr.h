@@ -669,6 +669,10 @@ DEF_ATTR(TEST_SQL_TIME, test_sql_time, SECS, 0, "Check SQL in watchdog this ofte
 DEF_ATTR(TEST_AUTH_TIME, test_auth_time, SECS, 60, "Check auth in watchdog this often")
 DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
          "Spew debug info about deleting old files.")
+DEF_ATTR(LITE_STATS_INTERVAL, lite_stat_interval, SECS, 1,
+         "ctrace stats interval for lite stats.")
+DEF_ATTR(LITE_STATS_INTERVAL_AFTER_OPEN, lite_stat_interval_after_open, SECS, 60,
+         "ctrace stats interval for lite stats after bdb_env is ready.")
 
 /*
   BDB_ATTR_REPTIMEOUT

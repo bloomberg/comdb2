@@ -123,6 +123,7 @@ extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 struct timeval last_pstack_time;
 extern int gbl_modsnap_asof;
+extern int gbl_maxlsn_on_catchup;
 
 extern int get_commit_lsn_map_switch_value();
 
@@ -182,6 +183,7 @@ unsigned int sc_get_logical_redo_lwm();
 extern int __db_find_recovery_start_if_enabled(DB_ENV *dbenv, DB_LSN *lsn);
 extern void *master_lease_thread(void *arg);
 extern void *coherency_lease_thread(void *arg);
+extern void* lite_stat_dumper_thread(void *arg);
 
 extern int bulk_import_tmpdb_should_ignore_table(const char *table);
 extern int bulk_import_tmpdb_should_ignore_btree(const char *filename);
@@ -3017,17 +3019,59 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
     bdb_state->dbenv->set_coherency_check_callback(bdb_state->dbenv, (int(*)(void*))bdb_am_i_coherent, bdb_state);
 
+    if (!gbl_create_mode && !gbl_maxlsn_on_catchup) {
+        /* Would like some visibility into what's happening during recovery - start
+         * logging things early in this thread */
+        create_lite_stats_thread(bdb_state);
+
+        // Once we start the network, we'll periodically start reporting our LSN - make sure
+        // we have a sane value latched.  We can undersell ourselves and report our first LSN.
+        // Once we get a rep_verify_match and start processing logs we'll be reporting
+        // our real LSNs as we make progress.
+        DB_LOGC *logc;
+        DB_LSN first_lsn;
+        rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Can't get log cursor: %d\n", rc);
+            exit(1);
+        }
+        DBT logdata = {0};
+        logdata.flags = DB_DBT_MALLOC;
+        rc = __log_c_get(logc, &first_lsn, &logdata, DB_FIRST);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Can't discover start lsn: %d\n", rc);
+            exit(1);
+        }
+        if (logdata.data) {
+            free(logdata.data);
+            logdata.data = NULL;
+        }
+        rc = __log_c_close(logc);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Unexpected error closing log cursor: %d\n", rc);
+            exit(1);
+        }
+
+        struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        h->seqnum.lsn = first_lsn;
+        // no generation yet until we elect
+        h->seqnum.generation = 0;
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    }
+
     /* start the network up */
     print(bdb_state, "starting network\n");
     rc = net_init(bdb_state->repinfo->netinfo);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "init_network failed\n");
+        logmsg(LOGMSG_FATAL, "init_network failed\n");
         exit(1);
     }
 
     if (!gbl_import_mode) {
         start_udp_reader(bdb_state);
     }
+
 
     if (startasmaster) {
         logmsg(LOGMSG_INFO,
@@ -5605,7 +5649,17 @@ void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state)
 
 int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
-int create_master_lease_thread(bdb_state_type *bdb_state)
+#define CREATE_BDB_THREAD(startfunc) \
+    do { \
+        pthread_t tid; \
+        pthread_attr_t attr; \
+        Pthread_attr_init(&attr); \
+        Pthread_attr_setstacksize(&attr, 128 * 1024); \
+        Pthread_create(&tid, &attr, startfunc, bdb_state); \
+        Pthread_attr_destroy(&attr); \
+    } while (0)
+
+void create_master_lease_thread(bdb_state_type *bdb_state)
 {
     pthread_t tid;
     pthread_attr_t attr;
@@ -5613,7 +5667,6 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
     Pthread_attr_setstacksize(&attr, 128 * 1024);
     Pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
-    return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
@@ -5624,6 +5677,11 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     Pthread_attr_setstacksize(&attr, 128 * 1024);
     Pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
+}
+
+void create_lite_stats_thread(bdb_state_type *bdb_state)
+{
+    CREATE_BDB_THREAD(lite_stat_dumper_thread);
 }
 
 static comdb2bma bdb_blobmem;
@@ -5976,6 +6034,7 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
         }
 
         bdb_state->recoverylsn = recoverylsn;
+
         /*
            create a transactional environment.
            when we come back from this call, we know if we

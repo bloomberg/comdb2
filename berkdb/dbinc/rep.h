@@ -9,6 +9,7 @@
 #define	_REP_H_
 
 #include "dbinc/rep_types.h"
+#include <sys/types.h>
 /* Shared replication structure. */
 
 typedef struct __rep {
@@ -86,6 +87,7 @@ typedef struct __rep {
 #define REP_F_WAITSTART     0x400       /* No logputs until start */
 #define	REP_ISCLIENT	(REP_F_UPGRADE | REP_F_LOGSONLY)
 	u_int32_t	flags;
+	u_int64_t       event_counts[REP_MAX_TYPE];
 } REP;
 
 #define	IN_ELECTION(R)		F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2)

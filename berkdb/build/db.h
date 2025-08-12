@@ -2846,6 +2846,7 @@ struct __db_env {
 
 	int (*last_commit_lsn) __P((DB_ENV *, DB_LSN *));
 	int (*get_rep_lsns)   __P((DB_ENV *, DB_LSN *, DB_LSN *, int *));
+	int (*get_rep_event_counts) __P((DB_ENV *, u_int64_t *));
 
 	int (*set_coherency_check_callback) __P((DB_ENV *, int(*)(void*), void*));
 	void *coherency_check_usrptr;
