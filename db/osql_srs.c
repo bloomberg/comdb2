@@ -275,7 +275,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
     }
 
     do {
-        reset_query_effects(clnt); /* Reset it for each retry*/
+        reset_query_effects(clnt, 0); /* Reset it for each retry*/
         if (!osql->history) {
             logmsg(LOGMSG_ERROR, "Trying to replay, but no history?\n");
             abort();
