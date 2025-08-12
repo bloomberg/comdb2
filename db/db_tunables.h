@@ -517,11 +517,14 @@ REGISTER_TUNABLE("set_snapshot_impl",
                  "*without enabling snapshot* (default 'modsnap')",
                  TUNABLE_ENUM, &gbl_snap_impl, READEARLY | READONLY,
                  snapshot_impl_value, NULL, snapshot_impl_update, NULL);
+REGISTER_TUNABLE("use_current_lsn_for_non_snapshot",
+                 "comdb2_snapshot_lsn provide current LSN if not using snapshot isolation. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_use_current_lsn_for_non_snapshot, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_sparse_lockerid_map, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_sparse_lockerid_map, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);

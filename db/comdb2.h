@@ -34,6 +34,8 @@
 
 #define COMDB2_STATIC_TABLE "_comdb2_static_table"
 
+#define MAX_LSN_STR 24
+
 enum { IOTIMEOUTMS = 10000 };
 
 struct dbtable;

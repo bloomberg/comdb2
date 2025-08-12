@@ -313,6 +313,7 @@
 (candidate='comdb2_port()')
 (candidate='comdb2_prevquerycost()')
 (candidate='comdb2_semver()')
+(candidate='comdb2_snapshot_lsn()')
 (candidate='comdb2_starttime()')
 (candidate='comdb2_sysinfo()')
 (candidate='comdb2_user()')
