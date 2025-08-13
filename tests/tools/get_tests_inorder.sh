@@ -4,35 +4,47 @@
 SKIPLONGRUNNING=0
 SHOWTIMEOUT=
 LONGESTFIRST=1
+ONLYGETSTRESSTESTS=0
 
 while true ; do
   case "$1" in
   --skip-long-running) SKIPLONGRUNNING=1; shift;;
   --show-timeout) SHOWTIMEOUT=1; shift;;
   --shortest-first) LONGESTFIRST=0; shift;;
+  --only-get-stress-tests) ONLYGETSTRESSTESTS=1; shift;;
   * ) break;;
   esac
 done
 
-DEFAULT_TIMEOUT=5  # default timeout for the tests is 5 seconds
+DEFAULT_TIMEOUT=5  # default timeout for the tests is 5 minutes
 
-#get the tests with custom times
-custom_times=`grep "TEST_TIMEOUT=" *.test/Makefile | sed 's#export TEST_TIMEOUT=##; s#/Makefile:# #; s#m$##'`
+shopt -s nullglob
+for f in *.test/Makefile ; do
+    if { [[ ${ONLYGETSTRESSTESTS} -eq 1 ]] && ! grep -q "IS_STRESS_TEST=1" "$f"; } || \
+       { [[ ${ONLYGETSTRESSTESTS} -ne 1 ]] && grep -q "IS_STRESS_TEST=1" "$f"; }; then
+        continue
+    fi
 
-#get the tests with default times
-default_times=`grep -c "TEST_TIMEOUT=" *.test/Makefile  | grep ":0" | sed "s#/Makefile:0# $DEFAULT_TIMEOUT#"`
+    testdirname=$(basename "$(dirname "${f}")")
+    timeout=$(grep "TEST_TIMEOUT=" "${f}" | sed 's#export TEST_TIMEOUT=##; s#/Makefile:# #; s#m$##')
+    if (( timeout == 0 )) ; then
+        timeout=${DEFAULT_TIMEOUT}
+    fi
+    times="${times}${testdirname} ${timeout}\n"
+
+    testname=$(basename "${testdirname}" .test)
+    for testopts in "${testdirname}"/*.testopts ; do
+        gentestdirname="${testname}_$(basename "${testopts}" .testopts)_generated.test"
+        times="${times}${gentestdirname} ${timeout}\n"
+    done
+done
+shopt -u nullglob
+
 IFS=$'\n'; 
 
-#get the generated tests
-generated=$(for j in */*.testopts ; do 
-    basedir=${j%%/*}
-    time=`echo -e "${custom_times} \n${default_times}" | grep "^$basedir" | awk '{print $2}'`
-    echo $j $time
-done | sed 's#.test/#_#g; s#\.testopts#_generated.test#g;' )
-
 F=${SHOWTIMEOUT:+,\$2}
-if [ "$LONGESTFIRST" -eq 1 ] ; then
+if [ "${LONGESTFIRST}" -eq 1 ] ; then
     SORTORDER="r"
 fi
 
-echo -e "${custom_times} \n${default_times} \n${generated}" | sort -k2 -t' ' -n${SORTORDER} | awk '{ if(!'$SKIPLONGRUNNING' || $2 < 120) { print $1'$F' } }'
+echo -e ${times} | sort -k2 -t' ' -n${SORTORDER} | awk '{ if(!'${SKIPLONGRUNNING}' || $2 < 120) { print $1'${F}' } }'
