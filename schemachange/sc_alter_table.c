@@ -389,32 +389,22 @@ static void decrement_sc_yet_to_resume_counter()
     }
 }
 
-int do_alter_table(struct ireq *iq, struct schema_change_type *s,
-                   tran_type *tran)
+int setup_alter(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
-    struct dbtable *db;
     int rc;
     int bdberr = 0;
     struct dbtable *newdb;
     int datacopy_odh = 0;
     int changed;
-    int i;
     char new_prefix[32];
     struct scinfo scinfo;
     struct errstat err = {0};
 
-    db = get_dbtable_by_name(s->tablename);
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
-
-
-    /* note for a partition merge, if we reuse the first shard (i.e. it is aliased),
-     * we need to alter it here instead of running do_merge_table
-     */
-    if (s->partition.type == PARTITION_MERGE && !db->sqlaliasname)
-        return do_merge_table(iq, s, tran);
 
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
@@ -426,7 +416,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
         changed = s->schema_change;
-        goto convert_records;
+        return 0;
     }
 
     set_schemachange_options_tran(s, db, &scinfo, tran);
@@ -591,7 +581,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(db, newdb, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -606,8 +596,42 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
+    return 0;
+}
 
-convert_records:
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran)
+{
+    int rc;
+    struct dbtable *newdb;
+    int changed;
+    int i;
+
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+    /* note for a partition merge, if we reuse the first shard (i.e. it is aliased),
+     * we need to alter it here instead of running do_merge_table
+     */
+    if (s->partition.type == PARTITION_MERGE && !db->sqlaliasname)
+        return do_merge_table(iq, s, tran);
+
+    // TODO: Not sure if this is a good indicator
+    if (!s->newdb) {
+        rc = setup_alter(iq, s, tran);
+        if (rc) return rc;
+    }
+
+    if (s->resume == SC_PREEMPT_RESUME) {
+        newdb = db->sc_to;
+        changed = s->schema_change;
+    } else {
+        newdb = s->newdb;
+    }
+
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
@@ -654,7 +678,8 @@ convert_records:
         changed == SC_CONSTRAINT_CHANGE) {
         if (!s->live)
             gbl_readonly_sc = 1;
-        rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+
+        rc = convert_all_records(db, newdb, db->sc_genids, s);
         if (rc == 1) rc = 0;
     } else
         rc = 0;
@@ -725,37 +750,28 @@ errout:
     return SC_OK;
 }
 
-static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
-                          tran_type *tran)
+// Runs after the sc is set 'running' and before it is actually
+// launched.
+int setup_merge(struct ireq *iq, struct schema_change_type *s,
+                             tran_type *tran)
 {
-    struct dbtable *db;
-    struct dbtable *newdb;
-    int i;
-    int rc;
-    struct scinfo scinfo;
-
-#ifdef DEBUG_SC
-    logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
-#endif
-
-    gbl_sc_last_writer_time = 0;
-
-    db = get_dbtable_by_name(s->tablename);
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->tablename);
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return SC_TABLE_DOESNOT_EXIST;
     }
 
-
     if (s->resume == SC_PREEMPT_RESUME) {
-        newdb = db->sc_to;
-        goto convert_records;
+        return 0;
     }
 
-    newdb = s->newdb;
+    struct dbtable *newdb = s->newdb;
 
+    struct scinfo scinfo;
     set_schemachange_options_tran(s, db, &scinfo, tran);
 
+    int rc;
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
     sc_printf(s, "starting table merge with seed %0#16llx\n",
@@ -764,6 +780,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     if ((iq == NULL || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
         sc_client_error(s, "Cannot drop a table referenced by a foreign key");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
@@ -772,13 +789,14 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     /* ban old settings */
     if (db->dbnum) {
         sc_client_error(s, "Cannot comdbg tables");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
-    /* set sc_genids, 0 them if we are starting a new schema change, or
-     * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
-        sc_client_error(s, "Failed to initialize sc_genids");
+    db->sc_genids = (unsigned long long *) calloc(MAXDTASTRIPE, sizeof(unsigned long long));
+    if (!db->sc_genids) {
+        sc_errf(s, "failed initilizing sc_genids\n");
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
         return -1;
     }
 
@@ -790,7 +808,35 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
     db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
 
-convert_records:
+    if (s->resume && IS_ALTERTABLE(s)) {
+        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
+        decrement_sc_yet_to_resume_counter();
+    }
+    return 0;
+}
+
+static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    int i;
+    int rc;
+
+#ifdef DEBUG_SC
+    logmsg(LOGMSG_INFO, "do_merge_table() %s\n", s->resume ? "resuming" : "");
+#endif
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        if (s->resume) { decrement_sc_yet_to_resume_counter(); }
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+    struct dbtable *newdb = s->resume == SC_PREEMPT_RESUME ? db->sc_to : s->newdb;
+
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
@@ -813,8 +859,10 @@ convert_records:
     struct schema *tag = find_tag_schema(newdb, ".NEW..ONDISK");
     if (!tag) {
         struct errstat err = {0};
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
         rc =
             populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
                    newdb->csc2_schema);
@@ -827,7 +875,7 @@ convert_records:
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    rc = convert_all_records(db, newdb, db->sc_genids, s);
     if (rc == 1) rc = 0;
 
     remove_ongoing_alter(s);
@@ -866,7 +914,7 @@ convert_records:
 
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, newdb->sc_genids[i]);
+                    i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
@@ -884,6 +932,14 @@ convert_records:
     /* check for rename outside of taking schema lock */
     /* handle renaming sqlite_stat1 entries for idx */
     check_for_idx_rename(s->newdb, s->db);
+
+    // All shards point to the same newdb.
+    //
+    // By setting it to NULL here, we ensure that
+    // all shards except for the first shard (which does not run
+    // do_merge_table) have newdb set to NULL.
+    // This avoids double-freeing it.
+    if (rc == SC_MASTER_DOWNGRADE) { s->newdb = NULL; }
 
     return SC_OK;
 }
@@ -1238,7 +1294,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         sc_printf(s, "Starting FULL table upgrade.\n");
     }
 
-    if (init_sc_genids(db, s)) {
+    if (init_sc_genids(db, db, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         return SC_LLMETA_ERR;
     }

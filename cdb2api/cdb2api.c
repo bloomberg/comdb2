@@ -492,6 +492,10 @@ static void do_init_once(void)
     if (min_retries) {
         MIN_RETRIES = atoi(min_retries);
     }
+    char *max_retries = getenv("COMDB2_CONFIG_MAX_RETRIES");
+    if (max_retries) {
+        MAX_RETRIES = atoi(max_retries);
+    }
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0

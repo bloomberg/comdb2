@@ -254,9 +254,13 @@ function kill_restart_tertiary_node
 
 function wait_for_cluster
 {
-    for node in ${CLUSTER} ; do
-        waitmach ${node}
-    done
+    if [ -z "$CLUSTER" ]; then
+        waitmach default
+    else
+        for node in ${CLUSTER} ; do
+            waitmach ${node}
+        done
+    fi
 }
 
 get_node_gen() {

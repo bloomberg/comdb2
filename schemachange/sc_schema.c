@@ -615,7 +615,7 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
         goto unlock;
 
     if (is_genid_right_of_stripe_pointer(usedb->handle, newgenid,
-                                         usedb->sc_to->sc_genids)) {
+                                         usedb->sc_from->sc_genids)) {
         goto unlock;
     }
 
