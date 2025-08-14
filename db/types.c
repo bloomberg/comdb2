@@ -7262,7 +7262,7 @@ static int _isISO8601(const char *str, int len)
     /* (month<1 || month>12)*/                                                 \
                                                                                \
     /*get day*/                                                                \
-    day = getInt(in, len, &offset, &ltoken, 1, 2, "-T", &skipped);             \
+    day = getInt(in, len, &offset, &ltoken, 1, 2, "-T ", &skipped);            \
     if (!ltoken)                                                               \
         return CONV_WRONG_MDAY;                                                \
     /*(day <1 || !is_valid_days(year, month, day))*/                           \
@@ -7307,8 +7307,14 @@ static int _isISO8601(const char *str, int len)
                 ss = 0;                                                        \
         } else                                                                 \
             mm = 0;                                                            \
-    } else                                                                     \
+    } else {                                                                   \
         hh = 0;                                                                \
+        /* Need to compensate if the last separator is a space */              \
+        /* Because we expect the timezone string to have a leading space */    \
+        /* See a few lines above for the same logic in parsing the fraction */ \
+        if (in[offset - 1] == ' ')                                             \
+            offset--; /*incremented afterwards*/                               \
+    }                                                                          \
                                                                                \
     /* fill in the blanks*/                                                    \
     out->tm.tm_year = year - 1900;                                             \
