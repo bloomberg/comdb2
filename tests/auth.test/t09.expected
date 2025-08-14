@@ -204,6 +204,7 @@
 (candidate='TRANSACTION')
 (candidate='TRIGGER')
 (candidate='TRUNCATE')
+(candidate='TRUNCOPLOG')
 (candidate='TUNABLE')
 (candidate='TYPE')
 (candidate='UNBOUNDED')

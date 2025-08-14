@@ -32,8 +32,7 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
 int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                                        unsigned long long new_genid,
                                        int *opfailcode);
-
-int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
-                           long long seed, int nops);
+int local_replicant_genid_by_seqno_blkpos(struct ireq *iq, long long seqno, int blkpos, unsigned long long *outgenid);
+int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno, long long seed, int nops);
 
 #endif

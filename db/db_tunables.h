@@ -1059,9 +1059,10 @@ REGISTER_TUNABLE("replicate_local",
                  "be needed in the near future. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicate_local, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("replicate_local_concurrent", NULL, TUNABLE_BOOLEAN,
-                 &gbl_replicate_local_concurrent, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+REGISTER_TUNABLE("debug_stall_in_oplog_seed", "Sleep for 10 seconds in truncoplog.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_stall_in_oplog_seed, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("replicate_local_concurrent", NULL, TUNABLE_BOOLEAN, &gbl_replicate_local_concurrent, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("report_deadlock_verbose",
                  "If set, dump the current thread's stack for every deadlock. "
                  "(Default: off)",
@@ -2565,7 +2566,6 @@ REGISTER_TUNABLE("iam_dbname",
                  "override dbname for IAM",
                  TUNABLE_STRING, &gbl_iam_dbname, READEARLY | READONLY, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("comdb2_oplog_preserve_seqno", "Preserve max value of the seqno in llmeta", TUNABLE_BOOLEAN, &gbl_comdb2_oplog_preserve_seqno, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("queue_nonodh_scan_limit", "For comdb2_queues, stop queue scan at this depth (Default: 10000)", TUNABLE_INTEGER, &gbl_nonodh_queue_scan_limit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_request_log_req", "Always request the next log record on replicant if there is a gap (default: off)", TUNABLE_BOOLEAN, &gbl_always_request_log_req, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nudge_replication_when_idle", "If we haven't seen any replication events in a while, request some (default: off)", TUNABLE_BOOLEAN, &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);

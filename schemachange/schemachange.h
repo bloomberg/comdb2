@@ -326,6 +326,8 @@ struct schema_change_type {
     size_t tablename_for_default_cons_q_len;
     char * newcsc2_for_default_cons_q;
     size_t newcsc2_for_default_cons_q_len;
+
+    int preserve_oplog_count;
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
