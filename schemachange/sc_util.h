@@ -21,7 +21,6 @@
 
 struct dbtable;
 struct tran_tag;
-typedef struct tran_tag tran_type;
 
 int close_all_dbs(void);
 int open_all_dbs(void);
@@ -54,6 +53,6 @@ int sc_via_ddl_only();
 void set_schema_change_in_progress(const char *func, int line, int val);
 
 int get_schema_change_in_progress(const char *func, int line);
-int trim_sc_history_entries(tran_type *tran, const char *tablename);
+int trim_sc_history_entries(struct tran_tag *tran, const char *tablename);
 
 #endif

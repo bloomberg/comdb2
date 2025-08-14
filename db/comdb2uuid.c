@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-#include <uuid/uuid.h>
+#include "comdb2uuid.h"
 
 void comdb2uuid(uuid_t u) { uuid_generate(u); }
 
