@@ -225,7 +225,7 @@ static int seed_qsort_cmpfunc(const void *key1, const void *key2)
 }
 
 // keep only last N sc history entries
-int trim_sc_history_entries(tran_type *tran, const char *tablename)
+int trim_sc_history_entries(struct tran_tag *tran, const char *tablename)
 {
     int rc = 0, bdberr, nkeys;
     sc_hist_row *hist = NULL;
