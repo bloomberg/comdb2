@@ -8908,6 +8908,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         // clnt takes priority for throttle time
         int throttle = clnt->dbtran.throttle_txn_chunks_msec > 0 ? clnt->dbtran.throttle_txn_chunks_msec : gbl_throttle_txn_chunks_msec;
+        throttle = 5000;
         if (throttle > 0) {
             poll(NULL, 0, throttle);
         }
