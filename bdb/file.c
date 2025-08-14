@@ -673,7 +673,7 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
             /*"%s, and num: %d, defaulting to old name scheme\n",*/
             /*bdb_state->name, (is_data_file)?"data":"idx", file_num );*/
         } else
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "Version number lookup failed with bdberr: %d for "
                     "table: %s with type: %s, and num: %d, defaulting to old "
                     "name scheme\n",
@@ -810,7 +810,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
                    bdb_state->parent->tmpdir);
     offset += len;
     if (len < 0 || offset >= buflen) {
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
                 "%s: adding -dsttmpdir arg failed or string was too "
                 "long for buffer this string len: %d total string len: %d\n",
                 __func__, len, offset);
@@ -846,7 +846,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
             len = snprintf(outbuf + offset, buflen - offset, " -file ");
             offset += len;
             if (len < 0 || offset >= buflen) {
-                logmsg(LOGMSG_ERROR, 
+                logmsg(LOGMSG_ERROR,
                         "%s: adding data -file arg failed or string was"
                         " too long for buffer this string len: %d total string "
                         "len: %d\n",
@@ -862,7 +862,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
                                     buflen - offset);
             offset += len + 1 /*include the space we're about to add*/;
             if (len < 0 || offset >= buflen) {
-                logmsg(LOGMSG_ERROR, 
+                logmsg(LOGMSG_ERROR,
                         "%s: adding src data filename failed or string "
                         "was too long for buffer this string len: %d total "
                         "string len: %d\n",
@@ -882,7 +882,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
                                     buflen - offset);
             offset += len;
             if (len < 0 || offset >= buflen) {
-                logmsg(LOGMSG_ERROR, 
+                logmsg(LOGMSG_ERROR,
                         "%s: adding dst data filename failed or string "
                         "was too long for buffer this string len: %d total "
                         "string len: %d\n",
@@ -899,7 +899,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
         len = snprintf(outbuf + offset, buflen - offset, " -file ");
         offset += len;
         if (len < 0 || offset >= buflen) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "%s: adding index -file arg failed or string was "
                    "too long for buffer this string len: %d total string len: "
                    "%d\n",
@@ -2082,7 +2082,7 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
 
     if (state != *prev_state) {
         logmsg(LOGMSG_WARN, "\n");
-        logmsg(LOGMSG_WARN, 
+        logmsg(LOGMSG_WARN,
                "I am catching up with updates that occured while I was down.\n");
         if (state > 0) {
             logmsg(LOGMSG_WARN, "I am making progress and should be allowed to continue.\n");
@@ -2127,7 +2127,7 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
                 rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0,
                                                  DB_REP_CLIENT);
 
-                logmsg(LOGMSG_WARN, "I AM FALLING FURTHER BEHIND THE MASTER NODE.\n"); 
+                logmsg(LOGMSG_WARN, "I AM FALLING FURTHER BEHIND THE MASTER NODE.\n");
             }
             logmsg(LOGMSG_WARN, "IF I DO NOT START MAKING PROGRESS SOON THEN THERE "
                             "MAY BE A PROBLEM.\n");
@@ -2899,7 +2899,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
         }
         char passwd[1024];
         if ((fgets(passwd, sizeof(passwd), crypto)) == NULL) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "%s fgets returned NULL -- ferror:%d feof:%d errno:%d (%s)\n",
                    __func__, ferror(crypto), feof(crypto), errno, strerror(errno));
             exit(1);
@@ -3295,7 +3295,7 @@ again:
 
         /* If the master is starting, it might not have set llmeta_bdb_state
          * yet. */
-        if (rc && attempts) { 
+        if (rc && attempts) {
             logmsg(LOGMSG_DEBUG, "timeout on final syncup- net_send rc=%d trying again\n", rc);
             if (attempts > 0)
                 attempts--;
@@ -3400,7 +3400,7 @@ int bdb_env_init_after_llmeta(bdb_state_type *bdb_state)
 
 
 /*
- * Check if we have a low headroom in the given path 
+ * Check if we have a low headroom in the given path
  * if used diskspace is > than threshold returns 1
  * otherwise returns 0
  */
@@ -3412,13 +3412,13 @@ int has_low_headroom(const char * path, int threshold, int debug)
         logmsg(LOGMSG_ERROR, "statvfs on %s failed: %d %s\n", path,
                 errno, strerror(errno));
         return 0;
-    } 
+    }
 
     double pfree = ((double)stvfs.f_bavail * 100.00) / (double)stvfs.f_blocks;
     double pused = 100.0 - pfree;
 
     if (pused > threshold) {
-        if(debug) 
+        if(debug)
            logmsg(LOGMSG_WARN, "Low headroom on %s: %f%% used > %d%% threshold\n",
                     path, pused, threshold);
         return 1;
@@ -3675,7 +3675,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     }
 
     if (bdb_osql_trn_get_lwm(bdb_state, &snapylsn)) {
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
                 "%s:%d failed to get snapisol/serializable lwm lsn number!\n",
                 __FILE__, __LINE__);
     } else {
@@ -3815,7 +3815,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
 
             if (recovery_lsn.file != 0 && filenum >= recovery_lsn.file) {
                 if (bdb_state->attr->debug_log_deletion)
-                    logmsg(LOGMSG_DEBUG, 
+                    logmsg(LOGMSG_DEBUG,
                            "%s: not ok to delete log %s, newer than recovery point\n", __func__, *file);
                 if (ctrace_info)
                     ctrace("not ok to delete log, newer than recovery point\n");
@@ -3923,13 +3923,13 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
                     int rc = snprintf(cmd, sizeof(cmd), "mv %s %s", logname, newname);
                     if (rc < sizeof(cmd)) {
                         rc = system(cmd);
-                        if (rc) 
+                        if (rc)
                             logmsg(LOGMSG_ERROR, "%s: Error system(\"%s\") rc = %d\n", __func__, cmd, rc);
                         else
                             deleted = 1;
                     }
                     free(newname);
-                } 
+                }
                 if (!deleted) {
                     if (bdb_state->attr->debug_log_deletion) {
                         logmsg(LOGMSG_DEBUG, "%s: deleting log %s\n", __func__, logname);
@@ -4267,10 +4267,7 @@ deadlock_again:
                 else
                     rc = bdb_get_pagesize_allblob(&tran, &llpagesize,
                                                   &tmp_bdberr);
-                if (!rc && !tmp_bdberr) {
-                    if (llpagesize)
-                        pagesize = llpagesize;
-                }
+                if (!rc && !tmp_bdberr && llpagesize) { pagesize = llpagesize; }
 
                 if (dtanum == 0)
                     rc = bdb_get_pagesize_data(bdb_state, &tran,
@@ -4278,10 +4275,7 @@ deadlock_again:
                 else
                     rc = bdb_get_pagesize_blob(bdb_state, &tran,
                                                &llpagesize, &tmp_bdberr);
-                if (!rc && !tmp_bdberr) {
-                    if (llpagesize)
-                        pagesize = llpagesize;
-                }
+                if (!rc && !tmp_bdberr && llpagesize) { pagesize = llpagesize; }
 
                 if ((gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
                     char new[PATH_MAX];
@@ -4373,6 +4367,7 @@ deadlock_again:
                         tid->abort(tid);
                         *ptid = NULL;
                     }
+                    logmsg(LOGMSG_ERROR, "Failed to form queuedb name rc=%d\n", rc);
                     return rc;
                 }
                 char new[PATH_MAX];
@@ -4440,7 +4435,7 @@ deadlock_again:
                     logmsg(LOGMSG_FATAL, "deadlock in open\n");
                     exit(1);
                 }
-                print(bdb_state, "open_dbs: cannot open %s: %d %s\n",
+                logmsg(LOGMSG_ERROR, "open_dbs: cannot open %s: %d %s\n",
                       tmpname, rc, db_strerror(rc));
                 rc = dbp->close(dbp, 0);
                 if (rc != 0) {
@@ -4634,16 +4629,10 @@ deadlock_again:
 
             /* get page sizes from the llmeta table */
             rc = bdb_get_pagesize_allindex(&tran, &llpagesize, &tmp_bdberr);
-            if (!rc && !tmp_bdberr) {
-                if (llpagesize)
-                    pagesize = llpagesize;
-            }
+            if (!rc && !tmp_bdberr && llpagesize) { pagesize = llpagesize; }
 
             rc = bdb_get_pagesize_index(bdb_state, &tran, &llpagesize, &tmp_bdberr);
-            if (!rc && !tmp_bdberr) {
-                if (llpagesize)
-                    pagesize = llpagesize;
-            }
+            if (!rc && !tmp_bdberr && llpagesize) { pagesize = llpagesize; }
 
             rc = bdb_state->dbp_ix[i]->set_pagesize(bdb_state->dbp_ix[i],
                                                     pagesize);
@@ -4728,7 +4717,7 @@ deadlock_again:
             }
 
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
+                logmsg(LOGMSG_ERROR,
                        "open_dbs: %s: cannot open cursor on stripe %d: %d %s\n",
                        bdb_state->name, stripe, rc, db_strerror(rc));
             } else {
@@ -7758,7 +7747,7 @@ static int oldfile_add(const char *filename, int lognum, const char *func,
     return rc;
 }
 
-/* Get first oldfile in list and remove from both list and hash 
+/* Get first oldfile in list and remove from both list and hash
  * Caller should free the returned pointer */
 static struct unused_file *oldfile_get_first(int spew_debug)
 {
