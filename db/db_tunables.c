@@ -44,6 +44,7 @@
 extern int gbl_transactional_drop_plus_rename;
 extern int gbl_bulk_import_validation_werror;
 extern int gbl_debug_sleep_during_bulk_import;
+extern int gbl_debug_stall_in_oplog_seed;
 extern int gbl_waitalive_iterations;
 extern int gbl_allow_anon_id_for_spmux;
 extern int gbl_allow_lua_print;
@@ -586,7 +587,6 @@ extern int gbl_rep_process_pstack_time;
 extern int gbl_sql_recover_time;
 extern int gbl_legacy_requests_verbose;
 extern int gbl_long_request_ms;
-extern int gbl_comdb2_oplog_preserve_seqno;
 extern int gbl_nonodh_queue_scan_limit;
 
 extern void set_snapshot_impl(snap_impl_enum impl);

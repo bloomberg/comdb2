@@ -1995,6 +1995,7 @@ int bdb_flush_up_to_lsn(bdb_state_type *bdb_state, unsigned file,
 int bdb_set_parallel_recovery_threads(bdb_state_type *bdb_state, int nthreads);
 unsigned long long bdb_get_commit_genid(bdb_state_type *bdb_state, void *plsn);
 void bdb_set_commit_lsn_gen(bdb_state_type *bdb_state, const void *lsn, uint32_t gen);
+unsigned long long prev_genid(bdb_state_type *bdb_state, unsigned long long genid);
 unsigned long long bdb_get_commit_genid_generation(bdb_state_type *bdb_state,
                                                    void *plsn,
                                                    uint32_t *generation);

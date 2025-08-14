@@ -56,6 +56,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     Pthread_mutex_init(&sc->mtxStart, NULL);
     Pthread_cond_init(&sc->condStart, NULL);
     sc->newcsc2_for_default_cons_q = NULL;
+    sc->preserve_oplog_count = -1;
     return sc;
 }
 
@@ -216,7 +217,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->lua_func_flags) + sizeof(s->newtable) +
         sizeof(s->usedbtablevers) + sizeof(s->qdb_file_ver) +
-        _partition_packed_size(&s->partition);
+        _partition_packed_size(&s->partition) + sizeof(s->preserve_oplog_count);
 
     return s->packed_len;
 }
@@ -375,6 +376,10 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
          break;
      }
     }
+
+    sc.has_preserve_oplog_count = 1;
+    sc.preserve_oplog_count = s->preserve_oplog_count;
+
     /* if (sc_version > 3) {
      *    sc.has_optional = 1;
      *    sc.optional = 123;
@@ -569,6 +574,7 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
          break;
     }
     }
+    s->preserve_oplog_count = (sc->has_preserve_oplog_count) ? sc->preserve_oplog_count : -1;
 
     cdb2__schemachange__free_unpacked(sc, NULL);
     return 0;
@@ -742,6 +748,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
     case PARTITION_REM_GENSHARD: {
     }
     }
+
+    p_buf = buf_put(&s->preserve_oplog_count, sizeof(s->preserve_oplog_count), p_buf, p_buf_end);
     return p_buf;
 }
 
@@ -1186,6 +1194,9 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
     case PARTITION_REM_GENSHARD: {
     }
     }
+
+    p_buf = (uint8_t *)buf_get(&s->preserve_oplog_count, sizeof(s->preserve_oplog_count),
+                               p_buf, p_buf_end);
 
     s->sc_version = 2;
 

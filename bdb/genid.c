@@ -73,6 +73,44 @@ static unsigned long long commit_genid;
 static DB_LSN commit_lsn;
 static uint32_t commit_generation;
 
+static inline unsigned long long prev_genid_timebased(unsigned long long genid)
+{
+    unsigned int *iptr = (unsigned int *)&genid;
+    unsigned int epoch = ntohl(iptr[0]);
+    unsigned short *sptr = (unsigned short *)&genid;
+    unsigned int dupecount = ntohs(sptr[2]);
+
+    if (dupecount > 1) {
+        dupecount--;
+    } else {
+        epoch--;
+        dupecount = 0xffff;
+    }
+
+    iptr[0] = htonl(epoch);
+    iptr[1] = htonl(dupecount << 16);
+    return genid;
+}
+
+static inline unsigned long long prev_genid48(unsigned long long genid)
+{
+    unsigned long long seed = (flibc_ntohll(genid >> 16) - 1);
+    return flibc_htonll((seed << 16));
+}
+
+unsigned long long prev_genid(bdb_state_type *bdb_state, unsigned long long genid)
+{
+    return (bdb_state->genid_format == LLMETA_GENID_48BIT) ? prev_genid48(genid) : prev_genid_timebased(genid);
+}
+
+unsigned long long format_genid_for_stripe(unsigned long long genid, int stripe)
+{
+    unsigned long long s = stripe;
+    genid &= ~(GENID_STRIPE_MASK);
+    genid |= ((s << GENID_STRIPE_SHIFT) & GENID_STRIPE_MASK);
+    return genid;
+}
+
 unsigned long long get_lowest_genid_for_datafile(int stripe)
 {
     unsigned long long g = stripe;

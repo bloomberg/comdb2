@@ -1,0 +1,1 @@
+'TRUNCOPLOG <N>' retains <N> most recent seqnos in comdb2_oplog
