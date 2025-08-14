@@ -753,7 +753,7 @@ int comdb2SendBpfunc(OpFunc *f)
 
 /**************************** Function prototypes ***************************/
 
-static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
+static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt, int oplog_cnt);
 
 /************************** Function definitions ****************************/
 
@@ -997,7 +997,8 @@ out:
     free(partition_first_shard);
 }
 
-static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
+static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt,
+        int oplog_count)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *partition_first_shard = NULL;
@@ -1008,7 +1009,16 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         return;
     }
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
+    /* Special case */
+    if (nm == NULL && lnm == NULL) {
+        if (oplog_count < 0) {
+            setError(pParse, SQLITE_MISUSE, "oplog count is required");
+            goto out;
+        }
+        snprintf(sc->tablename, MAXTABLELEN, "comdb2_oplog");
+        sc->preserve_oplog_count = oplog_count;
+
+    } else if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, &partition_first_shard, /* check_for_illegal_chars */ 0))
         goto out;
 
@@ -1080,7 +1090,7 @@ out:
 }
 
 
-void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt)
+void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt, int oplog_count)
 {
     if (comdb2IsPrepareOnly(p))
         return;
@@ -1094,7 +1104,7 @@ void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt)
     }
 #endif
 
-    comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB + opt);
+    comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB + opt, oplog_count);
 }
 
 
@@ -1112,7 +1122,7 @@ void comdb2RebuildData(Parse* p, Token* nm, Token* lnm, int opt)
     }
 #endif
 
-    comdb2Rebuild(p,nm,lnm,REBUILD_DATA + opt);
+    comdb2Rebuild(p,nm,lnm,REBUILD_DATA + opt, -1);
 }
 
 void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm, int opt)
@@ -1129,7 +1139,7 @@ void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm, int opt)
     }
 #endif
 
-    comdb2Rebuild(p, nm, lnm, REBUILD_BLOB + opt);
+    comdb2Rebuild(p, nm, lnm, REBUILD_BLOB + opt, -1);
 }
 
 void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)

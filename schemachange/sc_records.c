@@ -35,6 +35,7 @@
 #include "reqlog.h"
 #include "logmsg.h"
 #include "debug_switches.h"
+#include "localrep.h"
 
 int gbl_logical_live_sc = 0;
 
@@ -229,6 +230,25 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
     orglen = MAXLRL;
     rec = malloc(orglen);
 
+    unsigned long long opgenid = 0ULL;
+    if (s->preserve_oplog_count > 0) {
+        assert(strcmp(db->tablename, "comdb2_oplog") == 0);
+        long long seqno = 0LL;
+        int rc = get_next_seqno(NULL, NULL, &seqno);
+        if (rc == IX_FND) {
+            seqno = seqno - s->preserve_oplog_count;
+            struct ireq iq = {0};
+            unsigned long long fndgenid = 0ULL;
+            init_fake_ireq(thedb, &iq);
+            rc = local_replicant_genid_by_seqno_blkpos(&iq, seqno, 0, &fndgenid);
+            if (rc == 0) {
+                logmsg(LOGMSG_INFO, "truncate oplog seqno %lld sc-genid 0x%llx\n",
+                       seqno, fndgenid);
+                opgenid = fndgenid;
+            }
+        }
+    }
+
     /* get max genid for each stripe */
     for (stripe = 0; stripe < db->dtastripe; ++stripe) {
         int rc;
@@ -242,8 +262,11 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
-            if (rc == 1)
-                sc_genids[stripe] = 0ULL;
+            if (rc == 1) {
+                sc_genids[stripe] = opgenid ? 
+                                    format_genid_for_stripe(opgenid, stripe) :
+                                    0ULL;
+            }
         } else
             rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);

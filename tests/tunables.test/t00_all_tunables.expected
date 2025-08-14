@@ -140,6 +140,7 @@
 (name='coherency_lease', description='A coherency lease grants a replicant the right to be coherent for this many ms.', type='INTEGER', value='500', read_only='N')
 (name='coherency_lease_udp', description='Use udp to issue leases.', type='BOOLEAN', value='ON', read_only='N')
 (name='collect_before_locking', description='Collect a transaction from the log before acquiring locks.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='comdb2_oplog_copy_entries', description='Copy the most recent oplog entries after truncating oplog.  (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='commit_delay_on_copy_ms', description='Set automatic delay-ms for commit-delay on copy.  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='commit_delay_timeout_seconds', description='Set timeout for commit-delay on copy.  (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='commit_map_debug', description='Produce debug output in commit lsn map', type='BOOLEAN', value='OFF', read_only='N')

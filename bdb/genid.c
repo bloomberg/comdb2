@@ -73,6 +73,14 @@ static unsigned long long commit_genid;
 static DB_LSN commit_lsn;
 static uint32_t commit_generation;
 
+unsigned long long format_genid_for_stripe(unsigned long long genid, int stripe)
+{
+    unsigned long long s = stripe;
+    genid &= ~(GENID_STRIPE_MASK);
+    genid |= ((s << GENID_STRIPE_SHIFT) & GENID_STRIPE_MASK);
+    return genid;
+}
+
 unsigned long long get_lowest_genid_for_datafile(int stripe)
 {
     unsigned long long g = stripe;

@@ -56,6 +56,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     Pthread_mutex_init(&sc->mtxStart, NULL);
     Pthread_cond_init(&sc->condStart, NULL);
     sc->newcsc2_for_default_cons_q = NULL;
+    sc->preserve_oplog_count = -1;
     return sc;
 }
 
@@ -375,6 +376,10 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
          break;
      }
     }
+
+    sc.has_preserve_oplog_count = 1;
+    sc.preserve_oplog_count = s->preserve_oplog_count;
+
     /* if (sc_version > 3) {
      *    sc.has_optional = 1;
      *    sc.optional = 123;
@@ -569,6 +574,8 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
          break;
     }
     }
+    s->preserve_oplog_count = (sc->has_preserve_oplog_count) ?
+                              sc->preserve_oplog_count : -1;
 
     cdb2__schemachange__free_unpacked(sc, NULL);
     return 0;

@@ -2690,7 +2690,7 @@ int ix_next_trans(struct ireq *iq, void *trans, int ixnum, void *key,
                        0, NULL, NULL, NULL, NULL, NULL, context, trans, NULL);
 }
 
-static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
+int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
                        void *key, int keylen, void *last, int lastrrn,
                        unsigned long long lastgenid, void *fndkey, int *fndrrn,
                        unsigned long long *genid, void *fnddta, int *fndlen,

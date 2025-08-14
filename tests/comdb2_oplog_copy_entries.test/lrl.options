@@ -1,0 +1,7 @@
+replicate_local
+table comdb2_oplog comdb2_oplog.csc2
+
+# Stall after copy to test chase-tail
+debug_stall_after_oplog_copy 1
+keycompr 0
+nowatch

@@ -32,6 +32,8 @@
 #include "sc_util.h"
 #include "views.h"
 #include "macc_glue.h"
+#include "localrep.h"
+#include "unistd.h"
 
 extern int gbl_broken_max_rec_sz;
 

@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export maxtbl=10
+export maxval=50
+export initrc=5
+
+function create_tables
+{
+    typeset -l j=0
+    while [[ $j -lt $maxtbl ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists t${j} (a int, comdb2_seqno bigint)"
+        j=$((j + 1))
+    done
+}
+
+function load_val
+{
+    typeset -l t=$1
+    typeset -l v=$2
+    typeset -l i=0
+
+    while [[ $i -lt $initrc ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $t(a) values($v)" >/dev/null
+        i=$((i + 1))
+    done
+
+}
+
+function load_tbl
+{
+    typeset -l t=$1
+    typeset -l v=0
+    while [[ $v -lt $maxval ]]; do
+        load_val "$t" "$v"
+        v=$((v + 1))
+    done
+}
+
+function initial_load
+{
+    typeset -l t=0
+    while [[ $t -lt $maxtbl ]]; do
+        load_tbl "t${t}"
+        let t=t+1
+    done
+}
+
+function get_table
+{
+    typeset -l t=$((RANDOM % maxtbl))
+    echo "t${t}"
+}
+
+function get_value
+{
+    typeset -l v=$((RANDOM % maxval))
+    echo "${v}"
+}
+
+function rand_sql
+{
+    typeset -l t=$(get_table)
+    typeset -l v=$(get_value)
+    typeset -l v2=$(get_value)
+    typeset -l s=$(( ( RANDOM % 3 ) + 1 ))
+    if [[ "$s" == "1" ]]; then
+        echo "insert into $t(a) values($v)"
+    fi
+    if [[ "$s" == "2" ]]; then
+        echo "delete from $t where a = $v limit 1"
+    fi
+    if [[ "$s" == "3" ]]; then
+        echo "update $t set a = $v where a=$v2 limit 1"
+    fi
+}
+
+function rand_tran
+{
+    typeset -l nops=$((RANDOM % 10 + 1))
+    typeset -l i=0
+    typeset -l tran="BEGIN"
+
+    while [[ $i -lt $nops ]]; do
+        tran+=$'\n'$(rand_sql)
+        i=$((i + 1))
+    done
+
+    tran+=$'\nCOMMIT'
+    echo "$tran"
+}
+
+function exec_rand_tran
+{
+    typeset -l tran=$(rand_tran)
+    typeset -l rc=0
+
+    echo "$tran" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - >/dev/null 2>&1
+    rc=$?
+
+    while [[ $rc -ne 0 ]]; do
+        tran=$(rand_tran)
+        echo "$tran"
+        echo "$tran" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - >/dev/null 2>&1
+        rc=$?
+    done
+}
+
+function setup
+{
+    create_tables
+    initial_load
+}
+
+function run_test
+{
+    typeset -l ntran=20
+    typeset -l i=0
+    typeset -l maxseqno=0
+    typeset -l maxseqno2=0
+    typeset -l minseqno=0
+    while [[ $i -lt $ntran ]]; do
+        exec_rand_tran
+        i=$((i + 1))
+    done
+
+    # select all the records prior to truncate
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_oplog order by seqno, blkpos" > before
+
+    echo "Retrieve the maximum seqno"
+    maxseqno=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(seqno) from comdb2_oplog")
+
+    # truncate asynchronously
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate comdb2_oplog" &
+    sleep 3
+
+    # insert 10 more ops
+    i=0
+    while [[ $i -lt 10 ]]; do
+        exec_rand_tran
+        i=$((i + 1))
+    done
+
+    # wait for truncate to complete
+    wait
+
+    echo "Retrieve the maximum seqno after truncate"
+    maxseqno2=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(seqno) from comdb2_oplog")
+
+    echo "Retrieve the minimum seqno after truncate"
+
+    minseqno=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select min(seqno) from comdb2_oplog")
+
+    echo "The min-seqno should be the original max-seqno minus 10"
+
+    if (( minseqno != maxseqno - 10 )); then
+        failexit "ERROR: min-seqno is $minseqno, expected $((maxseqno - 10))"
+    fi
+
+    echo "The new max-seqno should be the original max-seqno plus 10"
+    if (( maxseqno2 != maxseqno + 10)); then
+        failexit "ERROR: max-seqno2 is $maxseqno2, expected $((maxseqno + 10))"
+    fi
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_oplog order by seqno, blkpos" > after
+
+    # Use sed-magic to remove the beginning lines of before
+    sed -n "/(seqno=${minseqno},/,\$p" before > before.truncated
+    
+    let maxseqno=maxseqno+1
+
+    # More sed-magic to remove the end of lines of after
+    sed "/(seqno=${maxseqno},/,\$d" after > after.truncated
+
+    # Make sure overlapping records are preserved correctly
+    diff before.truncated after.truncated > /dev/null
+    [[ $? != 0 ]] && failexit "ERROR: before and after do not match after truncate"
+}
+
+setup
+run_test
+echo "success"
