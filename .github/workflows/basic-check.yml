@@ -2,22 +2,37 @@ name: Basic Check
 
 on:
   push:
-  pull_request:
+    # Run anytime a new commit made on main.
     branches: [main]
+
+  pull_request:
+    # Run every time a PR is opened against main.
+    branches: [main]
+
+  # Enable manually triggering a run.
   workflow_dispatch:
 
 jobs:
+  # `basic-check` is the name of this job.
   basic-check:
+    # Strategies can be used to run the same job with different configurations.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
 
+    # This specifies the "runner" to use for this job. Runners can be either
+    # hosted by GitHub or self-hosted.
     runs-on: ${{ matrix.os }}
 
+    # Steps are executed serially.
     steps:
+      # `actions/checkout` is an official action supported by GitHub that we can
+      # "use".
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # In addition to using official and community actions, we can run our own
+      # shell scripts.
       - name: Basic validation
         run: |
           echo "Repository: ${{ github.repository }}"
