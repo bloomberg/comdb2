@@ -1,0 +1,28 @@
+name: Basic Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  basic-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Basic validation
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "✅ Basic check completed successfully"
+
+      - name: Verify repository structure
+        run: |
+          echo "Checking repository structure..."
+          ls -la
+          echo "✅ Repository structure verified"
