@@ -475,7 +475,12 @@ static void do_dispatch_waiting_clients(int fd, short what, void *data)
 
 void dispatch_waiting_clients(void)
 {
-    if (!dispatch_base) return;
+    if (!dispatch_base)  {
+        // Check if setup_bases has happened yet
+        dispatch_base = get_dispatch_event_base();
+        if (!dispatch_base)
+            return;
+    }
     evtimer_once(dispatch_base, do_dispatch_waiting_clients, NULL);
 }
 
