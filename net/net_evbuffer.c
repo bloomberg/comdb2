@@ -2947,8 +2947,9 @@ static int portmux_server_side_validation(struct accept_info *a, char request) {
             if (buflen > sizeof(buf)) {
                 return 1;
             }
-            /* Logic from portmuxuser.c portmux_server_side_validation */
             evbuffer_drain(a->buf, 1);
+            /* Logic from portmuxuser.c portmux_server_side_validation */
+            size_t total_len = 0;
             struct evbuffer_iovec iov[3];
             iov[0].iov_base = (void *)&size;
             iov[0].iov_len = sizeof(uint32_t);
@@ -2957,15 +2958,14 @@ static int portmux_server_side_validation(struct accept_info *a, char request) {
             iov[2].iov_base = (void *)buf;
             iov[2].iov_len = buflen;
             size = iov[1].iov_len + iov[2].iov_len;
+            total_len = size + iov[0].iov_len;
             size = htonl(size);
-            for (int i = 0; i < 3; i++) {
-                evbuffer_add(a->buf, iov[i].iov_base, iov[i].iov_len);
-                rc = evbuffer_write(a->buf, a->fd);
-                if (rc != iov[i].iov_len) {
-                    logmsg(LOGMSG_ERROR, "%s:unable to write fd:%d rc:%zd (%s)\n", __func__,
-                           a->fd, rc, strerror(errno));
-                    return 1;
-                }
+            evbuffer_add_iovec(a->buf, iov, 3);
+            rc = evbuffer_write(a->buf, a->fd);
+            if (rc != total_len) {
+                logmsg(LOGMSG_ERROR, "%s:unable to write fd:%d rc:%zd (%s)\n", __func__,
+                       a->fd, rc, strerror(errno));
+                return 1;
             }
             /* Still in pmuv validation mode, don't reset the flag */
             a->ev = event_new(base, a->fd, EV_READ, do_read, a);
