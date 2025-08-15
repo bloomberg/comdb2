@@ -1000,6 +1000,7 @@ struct sqlclntstate {
     unsigned return_long_column_names : 1; // if 0 then tunable decides
     unsigned in_local_cache : 1;
     unsigned evicted_appsock : 1;
+    unsigned continue_on_verify_error : 1;
 
     unsigned num_adjusted_column_name_length; // does not consider fastsql
     char **adjusted_column_names;
@@ -1389,7 +1390,7 @@ void reset_clnt(struct sqlclntstate *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
 void free_client_info(struct sqlclntstate *);
 void free_client_adj_col_names(struct sqlclntstate *);
-void reset_query_effects(struct sqlclntstate *);
+void reset_query_effects(struct sqlclntstate *, int);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
                      const char *tzname, blob_buffer_t *outblob, int maxblobs,
