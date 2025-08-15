@@ -73,7 +73,6 @@ extern int g_osql_ready;
 extern int gbl_goslow;
 extern int gbl_partial_indexes;
 
-int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
 int gbl_toblock_random_verify_error;
 int gbl_selectv_writelock = 0;
@@ -4933,135 +4932,6 @@ int osql_send_serial(osql_target_t *target, unsigned long long rqid,
     return target->send(target, type, buf, b_sz, 1, NULL, 0);
 }
 
-/**
- * Send DONE or DONE_XERR op
- * It handles remote/local connectivity
- *
- */
-int osql_send_commit(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, int nops, struct errstat *xerr, int type,
-                     struct client_query_stats *query_stats,
-                     snap_uid_t *snap_info)
-{
-    osql_done_rpl_t rpl_ok = {{0}};
-    osql_done_xerr_t rpl_xerr = {{0}};
-    int b_sz;
-    int used_malloc = 0;
-    int snap_info_length = 0;
-    uint8_t *buf = NULL;
-    uint8_t *p_buf;
-    uint8_t *p_buf_end;
-    int rc = xerr->errval;
-
-    /* Master does not read query_stats, since R5 maybe.  Do not send them
-    unless we decide to fix it first */
-    query_stats = NULL;
-
-    /* Always 'commit' to release starthrottle.  Failure if master has swung. */
-    if (check_master(target))
-        return OSQL_SEND_ERROR_WRONGMASTER;
-
-    /* we're also sending stats - calculate the total buffer size */
-    if (rc != SQLITE_OK) {
-        b_sz = sizeof(rpl_xerr);
-    } else {
-        if (snap_info) {
-            snap_info_length = sizeof(snap_uid_t);
-        }
-
-        if (!query_stats) {
-            b_sz = sizeof(rpl_ok) + snap_info_length;
-        } else {
-            int qs_sz = offsetof(struct client_query_stats, path_stats);
-            qs_sz += query_stats->n_components *
-                     sizeof(struct client_query_path_component);
-            b_sz = sizeof(osql_done_rpl_t) + snap_info_length + qs_sz;
-        }
-    }
-
-    /* only use malloc if we have to */
-    if (b_sz > 4096) {
-        buf = malloc(b_sz);
-        used_malloc = 1;
-    } else {
-        buf = alloca(b_sz);
-    }
-
-    /* frame output buffer */
-    p_buf = buf;
-    p_buf_end = (p_buf + b_sz);
-
-    if (rc == SQLITE_OK) {
-        if (snap_info) {
-            rpl_ok.hd.type = OSQL_DONE_SNAP;
-        } else {
-            rpl_ok.hd.type = OSQL_DONE;
-        }
-        rpl_ok.hd.sid = rqid;
-        rpl_ok.dt.rc = rc;
-        /* hack to help old code interpret the results correctly
-           convert SQLITE_OK to SQLITE_DONE
-         */
-        if (!rpl_ok.dt.rc)
-            rpl_ok.dt.rc = SQLITE_DONE;
-        rpl_ok.dt.nops = nops;
-
-        if (gbl_enable_osql_logging) {
-            logmsg(LOGMSG_DEBUG, "[%llu] send commit %s %d %d\n", rqid,
-                   osql_reqtype_str(rpl_ok.hd.type), rc, nops);
-        }
-
-#if DEBUG_REORDER
-        DEBUGMSG("[%llu] send %s rc = %d, nops = %d\n", rqid,
-                 osql_reqtype_str(rpl_ok.hd.type), rc, nops);
-#endif
-
-        if (!(p_buf = osqlcomm_done_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                   "osqlcomm_done_rpl_put");
-            if (used_malloc)
-                free(buf);
-            return -1;
-        }
-
-        if (snap_info) {
-            p_buf = (uint8_t *)snap_uid_put(snap_info, p_buf, p_buf_end);
-        }
-
-        if (query_stats) {
-            if (!(p_buf =
-                      client_query_stats_put(query_stats, p_buf, p_buf_end))) {
-                logmsg(LOGMSG_ERROR, "%s line %d:%s returns NULL\n", __func__,
-                       __LINE__, "osqlcomm_done_rpl_put");
-                if (used_malloc)
-                    free(buf);
-                return -1;
-            }
-        }
-        rc = target->send(target, type, buf, b_sz, 1, NULL, 0);
-
-    } else {
-
-        rpl_xerr.hd.type = OSQL_XERR;
-        rpl_xerr.hd.sid = rqid;
-
-        memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
-
-        if (!osqlcomm_done_xerr_type_put(&rpl_xerr, p_buf, p_buf_end)) {
-            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                   "osqlcomm_done_xerr_type_put");
-            if (used_malloc)
-                free(buf);
-            return -1;
-        }
-        rc = target->send(target, type, buf, sizeof(rpl_xerr), 1, NULL, 0);
-    }
-    if (used_malloc)
-        free(buf);
-
-    return rc;
-}
-
 int type_to_uuid_type(int type)
 {
     switch (type) {
@@ -5073,10 +4943,15 @@ int type_to_uuid_type(int type)
     }
 }
 
-int osql_send_commit_by_uuid(osql_target_t *target, uuid_t uuid, int nops,
-                             struct errstat *xerr, int type,
-                             struct client_query_stats *query_stats,
-                             snap_uid_t *snap_info)
+/**
+ * Send DONE or DONE_XERR op
+ * It handles remote/local connectivity
+ *
+ */
+int osql_send_commit(osql_target_t *target, uuid_t uuid, int nops,
+                     struct errstat *xerr, int type,
+                     struct client_query_stats *query_stats,
+                     snap_uid_t *snap_info)
 {
     osql_done_uuid_rpl_t rpl_ok = {{0}};
     osql_done_xerr_uuid_t rpl_xerr = {{0}};
@@ -5440,77 +5315,41 @@ int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
     }
 
     /* remote */
-    if (rqid == OSQL_RQID_USE_UUID) {
-        if (rc) {
-            osql_done_xerr_uuid_t rpl_xerr = {{0}};
-            msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-            uint8_t *p_buf = buf;
-            uint8_t *p_buf_end = buf + msglen;
-            rpl_xerr.hd.type = OSQL_XERR;
-            comdb2uuidcpy(rpl_xerr.hd.uuid, uuid);
-            rpl_xerr.dt = *xerr;
-            osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
-        } else {
-            osql_done_uuid_rpl_t rpl_ok = {{0}};
-            uint8_t *p_buf = buf;
-            uint8_t *p_buf_end = buf + OSQLCOMM_DONE_UUID_RPL_v2_LEN;
-            if (likely(gbl_master_sends_query_effects)) {
-                rpl_ok.hd.type = OSQL_DONE_WITH_EFFECTS;
-            } else {
-                rpl_ok.hd.type = OSQL_DONE;
-            }
-            comdb2uuidcpy(rpl_ok.hd.uuid, uuid);
-            rpl_ok.dt.rc = 0;
-            rpl_ok.dt.nops = nops;
-            if (snap) {
-                rpl_ok.effects = snap->effects;
-            }
-            p_buf = osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
-
-            msglen = OSQLCOMM_DONE_UUID_RPL_v1_LEN;
-
-            /* Send query effects to the replicant. */
-            if (likely(gbl_master_sends_query_effects)) {
-                p_buf = osqlcomm_query_effects_put(&(rpl_ok.effects), p_buf,
-                                                   p_buf_end);
-                p_buf = osqlcomm_query_effects_put(&(rpl_ok.fk_effects), p_buf,
-                                                   p_buf_end);
-                msglen = OSQLCOMM_DONE_UUID_RPL_v2_LEN;
-            }
-        }
-        type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
-        if (signal_spew)
-            logmsg(LOGMSG_DEBUG,
-                   "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
-                   __func__, __LINE__, target->host, comdb2uuidstr(uuid, us), rc,
-                   xerr->errval);
+    if (rc) {
+        osql_done_xerr_uuid_t rpl_xerr = {{0}};
+        msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = buf + msglen;
+        rpl_xerr.hd.type = OSQL_XERR;
+        comdb2uuidcpy(rpl_xerr.hd.uuid, uuid);
+        rpl_xerr.dt = *xerr;
+        osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
     } else {
-        if (rc) {
-            osql_done_xerr_t rpl_xerr = {{0}};
-            msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
-            uint8_t *p_buf = buf;
-            uint8_t *p_buf_end = buf + msglen;
-            rpl_xerr.hd.type = OSQL_XERR;
-            rpl_xerr.hd.sid = rqid;
-            rpl_xerr.dt = *xerr;
-            osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
-        } else {
-            osql_done_rpl_t rpl_ok = {{0}};
-            msglen = OSQLCOMM_DONE_RPL_LEN;
-            uint8_t *p_buf = buf;
-            uint8_t *p_buf_end = buf + msglen;
-            rpl_ok.hd.type = OSQL_DONE;
-            rpl_ok.hd.sid = rqid;
-            rpl_ok.dt.rc = 0;
-            rpl_ok.dt.nops = nops;
-            osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
+        osql_done_uuid_rpl_t rpl_ok = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = buf + OSQLCOMM_DONE_UUID_RPL_v2_LEN;
+        rpl_ok.hd.type = OSQL_DONE_WITH_EFFECTS;
+        comdb2uuidcpy(rpl_ok.hd.uuid, uuid);
+        rpl_ok.dt.rc = 0;
+        rpl_ok.dt.nops = nops;
+        if (snap) {
+            rpl_ok.effects = snap->effects;
         }
-        type = NET_OSQL_SIGNAL;
-        if (signal_spew)
-            logmsg(LOGMSG_DEBUG,
-                   "%s:%d master signaling %s rqid %llu with rc=%d xerr=%d\n",
-                   __func__, __LINE__, target->host, rqid, rc, xerr->errval);
+        p_buf = osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
+
+        msglen = OSQLCOMM_DONE_UUID_RPL_v1_LEN;
+
+        /* Send query effects to the replicant. */
+        p_buf = osqlcomm_query_effects_put(&(rpl_ok.effects), p_buf, p_buf_end);
+        p_buf = osqlcomm_query_effects_put(&(rpl_ok.fk_effects), p_buf, p_buf_end);
+        msglen = OSQLCOMM_DONE_UUID_RPL_v2_LEN;
     }
+    type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
+    if (signal_spew)
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
+               __func__, __LINE__, target->host, comdb2uuidstr(uuid, us), rc,
+               xerr->errval);
 #if 0
   printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, rqid, osql_log_time());
 #endif
@@ -7021,9 +6860,6 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
-            if (!gbl_disable_cnonce_blkseq && !gbl_master_sends_query_effects)
-                assert(IQ_HAS_SNAPINFO(iq)); // was assigned in fast pass
-
             snap_uid_t snap_info;
             p_buf_end = (const uint8_t *)msg + msglen;
 
@@ -7035,16 +6871,6 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
              */
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
         }
-
-#if 0
-        Currently this flag is not set and we do not read the bytes from the buffer;
-        until we review and decide to either remove or fix the clients_query_stats
-        (right now we send the wrong one), leave this in place as a reminder 
-        /* p_buf is pointing at client_query_stats if there is one */
-        if (type == OSQL_DONE_STATS) { 
-            dump_client_query_stats_packed(iq->dbglog_file, p_buf);
-        }
-#endif
 
         if (!rc && gbl_toblock_random_deadlock_trans && (rand() % 100) == 0) {
             logmsg(LOGMSG_USER, "%s throwing random deadlock\n", __func__);
@@ -7200,7 +7026,7 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
             return rc; /*this is blkproc rc */
         }
 
-        if (likely(gbl_master_sends_query_effects) && IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO(iq)) {
             IQ_SNAPINFO(iq)->effects.num_deleted++;
         }
         (*receivedrows)++;
@@ -7358,7 +7184,7 @@ done_delete:
                bdb_genid_to_host_order(newgenid));
 #endif
 
-        if (likely(gbl_master_sends_query_effects) && IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO(iq)) {
             IQ_SNAPINFO(iq)->effects.num_inserted++;
         }
         (*receivedrows)++;
@@ -7531,7 +7357,7 @@ done_delete:
             logmsg(LOGMSG_DEBUG, "Updated record rrn = %d, genid=%llx\n", rrn,
                    bdb_genid_to_host_order(genid));
 
-        if (likely(gbl_master_sends_query_effects) && IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO(iq)) {
             IQ_SNAPINFO(iq)->effects.num_updated++;
         }
         (*receivedrows)++;
@@ -8182,7 +8008,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
     int latency = 0;
 
     if (!osqlcomm_host_known(tohost)) {
-        fprintf(stderr, "\"%s\" not a host knownt to osql\n", tohost);
+        logmsg(LOGMSG_ERROR, "\"%s\" not a host knownt to osql\n", tohost);
         return 1;
     }
 
@@ -8561,9 +8387,8 @@ int osql_send_test(void)
     init_bplog_net(&target);
     target.host = thedb->master;
 
-    rc = osql_send_commit_by_uuid(&target, snap_info.uuid, 1 /*numops*/, &xerr,
-                                  nettype, NULL /*clnt->query_stats*/,
-                                  &snap_info);
+    rc = osql_send_commit(&target, snap_info.uuid, 1 /*numops*/, &xerr,
+                          nettype, NULL /*clnt->query_stats*/, &snap_info);
     return rc;
 }
 
@@ -8589,15 +8414,13 @@ static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen)
 
     sess->snap_info = snap_info;
 
-    if (likely(gbl_master_sends_query_effects)) {
-        /* Reset 'write' query effects as master will repopulate them
-         * and report them back to the replicant.
-         */
-        sess->snap_info->effects.num_affected = 0;
-        sess->snap_info->effects.num_updated = 0;
-        sess->snap_info->effects.num_deleted = 0;
-        sess->snap_info->effects.num_inserted = 0;
-    }
+    /* Reset 'write' query effects as master will repopulate them
+     * and report them back to the replicant.
+     */
+    sess->snap_info->effects.num_affected = 0;
+    sess->snap_info->effects.num_updated = 0;
+    sess->snap_info->effects.num_deleted = 0;
+    sess->snap_info->effects.num_inserted = 0;
 }
 
 #define UNK_ERR_SEND_RETRY 10
@@ -8745,7 +8568,6 @@ int osql_recv_commit_rc(SBUF2 *sb, int timeoutms, int timeoutdeltams, int *nops,
     case OSQL_DONE_WITH_EFFECTS: {
         break;
     }
-    /* TODO: OSQL_DONE_STATS, OSQL_DONE_SNAP */
     case OSQL_XERR: {
         char xerr_buf[ERRSTAT_LEN];
 

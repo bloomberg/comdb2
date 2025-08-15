@@ -1813,11 +1813,20 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
     return SQLITE_INTERNAL;
 }
 
-void reset_query_effects(struct sqlclntstate *clnt)
+void reset_query_effects(struct sqlclntstate *clnt, int preserve_select)
 {
+    int num_selected;
+    if (preserve_select) {
+        num_selected = clnt->effects.num_selected;
+    }
     bzero(&clnt->effects, sizeof(clnt->effects));
     bzero(&clnt->log_effects, sizeof(clnt->effects));
     bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
+    if (preserve_select) {
+        clnt->effects.num_selected = num_selected;
+    } else {
+        bzero(&clnt->remote_effects, sizeof(clnt->remote_effects));
+    }
 }
 
 char *sqlenginestate_tostr(int state)
@@ -1972,7 +1981,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
     clnt->intrans = 0;
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_ABORTED_STATE);
-    reset_query_effects(clnt);
+    reset_query_effects(clnt, 0);
 }
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
@@ -2040,7 +2049,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     clnt->dbtran.shadow_tran = NULL;
                 }
             } else {
-                reset_query_effects(clnt);
+                reset_query_effects(clnt, 0);
                 rc = recom_abort(clnt);
                 if (rc)
                     logmsg(LOGMSG_ERROR, "%s: recom abort failed %d??\n",
@@ -2125,7 +2134,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     }
                 }
             } else {
-                reset_query_effects(clnt);
+                reset_query_effects(clnt, 0);
                 if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
                     rc = serial_abort(clnt);
                 } else {
@@ -2247,7 +2256,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     clnt->saved_errstr = strdup(clnt->osql.xerr.errstr);
                 }
             } else {
-                reset_query_effects(clnt);
+                reset_query_effects(clnt, 0);
                 rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                 sql_debug_logf(clnt, __func__, __LINE__,
                                "'%s' socksql abort rc=%d replay=%d\n",
@@ -3899,7 +3908,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if (clnt->intrans == 0) {
-        reset_query_effects(clnt);
+        /* is this is a begin; select; ... txn ? */
+        reset_query_effects(clnt, clnt->ctrl_sqlengine == SQLENG_STRT_STATE);
     }
 
     /* no rows actually ? */
@@ -4140,8 +4150,9 @@ retry_legacy_remote:
             break;
         }
 
-        if (clnt->statement_query_effects)
-            reset_query_effects(clnt);
+        if (clnt->statement_query_effects) {
+            reset_query_effects(clnt, 0);
+        }
 
         int fast_error = 0;
 
@@ -5345,7 +5356,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->limits.tablescans_warn = gbl_querylimits_tablescans_warn;
     clnt->limits.temptables_warn = gbl_querylimits_temptables_warn;
 
-    reset_query_effects(clnt);
+    reset_query_effects(clnt, 0);
 
     reset_user(clnt);
 
