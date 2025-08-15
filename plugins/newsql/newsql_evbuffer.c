@@ -1207,8 +1207,18 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
         local = 1;
     }
 
+    char *origin = arg->origin;
+
+    if (origin == NULL && arg->err) {
+        char *cached_hostname = get_cached_hostname_by_addr(&arg->addr);
+        char *host = cached_hostname ? cached_hostname : intern("???");
+        logmsg(LOGMSG_USER, "%s: getpeername got error:%d (%s) from: %s\n", __func__,
+               arg->err, strerror(arg->err), host);
+     }
+
     int admin = arg->admin;
-    if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
+    if ((origin == NULL && arg->err == ENOTCONN) || thedb->no_more_sql_connections ||
+        (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
         rem_appsock_connection_evbuffer();
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
@@ -1221,7 +1231,6 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     struct sqlclntstate *clnt = &appdata->clnt;
 
     reset_clnt(clnt, 1);
-    char *origin = arg->origin;
     clnt->origin = origin ? origin : intern("???");
     if (arg->badrte)
         logmsg(LOGMSG_ERROR, "misused rte from host %s\n", clnt->origin);
@@ -1279,7 +1288,8 @@ static void *gethostname_fn(void *arg)
         int pending = --gethostname_ctr;
         Pthread_mutex_unlock(&gethostname_lk);
         gettimeofday(&start, NULL);
-        arg->origin = get_hostname_by_fileno(arg->fd);
+        // Get the error and handle it later
+        arg->origin = get_hostname_by_fileno_err(arg->fd, &arg->err);
         struct timeval now, diff, q;
         gettimeofday(&now, NULL);
         timersub(&now, &start, &diff);

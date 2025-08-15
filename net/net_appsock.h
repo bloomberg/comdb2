@@ -17,6 +17,7 @@ struct appsock_handler_arg {
     int secure; /* whether connection is routed from a secure pmux port */
     int badrte;
     int admin;
+    int err;
     struct sockaddr_in addr;
     struct evbuffer *rd_buf;
     struct event_base *base;
