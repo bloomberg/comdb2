@@ -870,7 +870,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     private boolean is_retryable(int err_val) {
         switch(err_val) {
-            case Errors.CDB2ERR_CHANGENODE:
+            case Errors.CDB2ERR_NOTDURABLE:
             case Errors.CDB2ERR_NOMASTER:
             case Errors.CDB2ERR_TRAN_IO_ERROR:
             case Errors.CDB2ERR_REJECTED:
@@ -1414,7 +1414,7 @@ public class Comdb2Handle extends AbstractConnection {
             // no hints ..
 
             if ((firstResp.errCode == Sqlresponse.CDB2_ErrorCode.MASTER_TIMEOUT_VALUE ||
-                firstResp.errCode == Errors.CDB2ERR_CHANGENODE) && (snapshotFile > 0 ||
+                firstResp.errCode == Errors.CDB2ERR_NOTDURABLE) && (snapshotFile > 0 ||
                 (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                 closeNoException();
                 retryAll = true;

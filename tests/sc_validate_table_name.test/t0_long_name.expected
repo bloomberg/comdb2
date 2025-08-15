@@ -1,0 +1,2 @@
+[create table t2345678901234567890123456789012 (i int)] failed with rc -3 Table name is too long. max_length=31 length=32 name='t2345678901234567890123456789012'
+[create table t2345678901234567890123456789012 { schema { int i } }] failed with rc -3 Table name is too long. max_length=31 length=32 name='t2345678901234567890123456789012'

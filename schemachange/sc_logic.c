@@ -275,13 +275,7 @@ int do_upgrade_table(struct schema_change_type *s, struct ireq *unused)
     return rc;
 }
 
-/*
-** Start transaction if not passed in (comdb2sc.tsk)
-** If started transaction, then
-**   1. also commit it
-**   2. log scdone here
-*/
-static inline int replication_only_error_code(int rc)
+int replication_only_error_code(int rc)
 {
     switch (rc) {
     case -1:
@@ -334,6 +328,12 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     return rc;
 }
 
+/*
+** Start transaction if not passed in (comdb2sc.tsk)
+** If started transaction, then
+**   1. also commit it
+**   2. log scdone here
+*/
 static int do_finalize(ddl_t func, struct ireq *iq,
                        struct schema_change_type *s, tran_type *input_tran)
 {
@@ -376,8 +376,6 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     }
 
     if (input_tran == NULL) {
-        // void all_locks(void*);
-        // all_locks(thedb->bdb_env);
         if (debug_switch_fake_sc_replication_timeout()) {
             logmsg(LOGMSG_USER,
                    "Forcing replication error table %s '%s' for tran %p\n",
@@ -389,24 +387,27 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             rc = -1;
             goto abort;
-        } else {
-            if (s->keep_locked) {
-                rc = trans_commit(iq, tran, gbl_myhostname);
-            } else {
-                rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
-            }
-            if (debug_switch_fake_sc_replication_timeout())
-                rc = -1;
-            if (rc && !replication_only_error_code(rc)) {
-                sc_errf(s, "Failed to commit finalize transaction\n");
-                trans_abort_logical(iq, ltran, NULL, 0, NULL, 0);
-                return rc;
-            }
+        }
 
-            rc = trans_commit_logical(iq, ltran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
-            if (rc) {
-                abort();
-            }
+        if (s->keep_locked) {
+            rc = trans_commit(iq, tran, gbl_myhostname);
+        } else {
+            rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
+        }
+        if (debug_switch_fake_sc_replication_timeout())
+            rc = -1;
+        if (rc && !replication_only_error_code(rc)) {
+            sc_errf(s, "Failed to commit finalize transaction\n");
+            trans_abort_logical(iq, ltran, NULL, 0, NULL, 0);
+            return rc;
+        }
+
+        rc = trans_commit_logical(iq, ltran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
+        if (replication_only_error_code(rc)) {
+            logmsg(LOGMSG_WARN, "%s: trans_commit_logical failed to replicate\n", __func__);
+        } else if (rc) {
+            logmsg(LOGMSG_FATAL, "%s: trans_commit_logical failed with rc %d\n", __func__, rc);
+            abort();
         }
 
         sc_del_unused_files(s->db);
@@ -708,8 +709,10 @@ downgraded:
 
             /* return NOMASTER for live schemachange writes */
             sc_set_downgrading(s);
-            bdb_close_only(s->newdb->handle, &bdberr);
-            freedb(s->newdb);
+            if (!s->newdb_borrowed) {
+                bdb_close_only(s->newdb->handle, &bdberr);
+                freedb(s->newdb);
+            }
             s->newdb = NULL;
 
             if (!trans)
@@ -905,7 +908,6 @@ void *resume_sc_multiddl_txn_finalize(void *p);
 static int process_tpt_sc_hash(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
-    int rc;
     pthread_t tid;
     logmsg(LOGMSG_INFO, "%s: processing view '%s'\n", __func__,
            tpt_sc->viewname);
@@ -922,15 +924,9 @@ static int process_tpt_sc_hash(void *obj, void *arg)
         s = s->sc_next;
     }
 
-    rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+    Pthread_create(&tid, &gbl_pthread_attr_detached,
                         resume_sc_multiddl_txn_finalize, iq);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to launch finalizing thread rc %d\n",
-               __func__, rc);
-        free(iq);
-        rc = -1;
-    }
-    return rc;
+    return 0;
 }
 
 static int verify_sc_resumed_for_shard(const char *shardname,
@@ -1035,6 +1031,7 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
     sc_arg.s = tpt_sc->s;
     sc_arg.check_extra_shard = 1;
     sc_arg.lockless = 1;
+    sc_arg.part_name = tpt_sc->viewname;
     timepart_foreach_shard(verify_sc_resumed_for_shard, &sc_arg);
     tpt_sc->s = sc_arg.s;
     return 0;
@@ -1348,11 +1345,8 @@ int resume_schema_change(void)
 
     if (sc_resuming) {
         pthread_t tid;
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+        Pthread_create(&tid, &gbl_pthread_attr_detached,
                             sc_resuming_watchdog, NULL);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
-                   __FILE__);
     }
     Pthread_mutex_unlock(&sc_resuming_mtx);
 

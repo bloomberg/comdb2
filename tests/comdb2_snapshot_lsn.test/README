@@ -1,0 +1,1 @@
+Verifies comdb2_snapshot_lsn() and user_current_lsn_for_non_snapshot

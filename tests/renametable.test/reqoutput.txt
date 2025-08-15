@@ -48,7 +48,7 @@
 (rows inserted=1)
 [insert into t values (100)] rc 0
 (rows inserted=1)
-[alter table t2 rename to t] failed with rc -3 New table name already exists
+[alter table t2 rename to t] failed with rc -3 Table not found
 [select * from t2 order by id] failed with rc -3 no such table: t2
 [insert into t values (110)] rc 0
 [alter table t rename to t2] rc 0
@@ -113,3 +113,17 @@
 (name='$1_5DD5C692')
 (name='$2_E5D0B3CA')
 (name='talias2')
+[begin] rc 0
+[drop table t] rc 0
+[alter table t2 rename to t] rc 0
+[commit] rc 0
+[commit] failed with rc 240 New table name exists
+[begin] rc 0
+[alter table t rename to t2] rc 0
+[drop table t2] rc 0
+[alter table t2 rename to t] failed with rc 240 New table name exists
+[alter table t2 rename to t2] failed with rc 240 New table name exists
+[begin] rc 0
+[alter table t rename to dummy] rc 0
+[alter table t2 rename to t] rc 0
+[commit] rc 0

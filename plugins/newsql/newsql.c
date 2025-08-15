@@ -48,6 +48,7 @@ struct newsql_appdata {
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
+static int save_set_commands(struct sqlclntstate *clnt);
 
 /*                (SERVER)                                                */
 /*  Default --> (val: 1)                                                  */
@@ -283,23 +284,22 @@ static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
         sql_response.features = features;                                      \
     }
 
-#define _has_snapshot(clnt, sql_response)                                      \
-    CDB2SQLRESPONSE__Snapshotinfo snapshotinfo =                               \
-        CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                 \
-                                                                               \
-    if (newsql_has_high_availability(clnt)) {                                  \
-        int file = 0, offset = 0;                                              \
-        if (clnt->modsnap_in_progress) {                                       \
-            file = clnt->modsnap_start_lsn_file;                                 \
-            offset = clnt->modsnap_start_lsn_offset;                             \
-        } else if (fill_snapinfo(clnt, &file, &offset)) {                      \
-            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
-        }                                                                      \
-        if (file) {                                                            \
-            snapshotinfo.file = file;                                          \
-            snapshotinfo.offset = offset;                                      \
-            sql_response.snapshot_info = &snapshotinfo;                        \
-        }                                                                      \
+#define _has_snapshot(clnt, sql_response)                                                                              \
+    CDB2SQLRESPONSE__Snapshotinfo snapshotinfo = CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                \
+                                                                                                                       \
+    if (newsql_has_high_availability(clnt)) {                                                                          \
+        int file = 0, offset = 0;                                                                                      \
+        if (clnt->modsnap_in_progress) {                                                                               \
+            file = clnt->modsnap_start_lsn_file;                                                                       \
+            offset = clnt->modsnap_start_lsn_offset;                                                                   \
+        } else if (fill_snapinfo(clnt, &file, &offset)) {                                                              \
+            sql_response.error_code = (char)CDB2ERR_NOTDURABLE;                                                        \
+        }                                                                                                              \
+        if (file) {                                                                                                    \
+            snapshotinfo.file = file;                                                                                  \
+            snapshotinfo.offset = offset;                                                                              \
+            sql_response.snapshot_info = &snapshotinfo;                                                                \
+        }                                                                                                              \
     }
 
 int gbl_abort_on_unset_ha_flag = 0;
@@ -1725,7 +1725,20 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     sqlstr += 5;
                     sqlstr = skipws(sqlstr);
 
-                    if (!sqlstr || ((tmp = atoi(sqlstr)) <= 0)) {
+                    if (strncasecmp(sqlstr, "throttle", 8) == 0) {
+                        sqlstr += 8;
+                        sqlstr = skipws(sqlstr);
+                        tmp = atoi(sqlstr);
+                        if (tmp <= 0) {
+                            snprintf(err, sizeof(err),
+                                     "set transaction chunk throttle N: missing throttle time "
+                                     "N \"%s\"",
+                                     sqlstr);
+                            rc = ii + 1;
+                        } else {
+                            clnt->dbtran.throttle_txn_chunks_msec = tmp;
+                        }
+                    } else if (!sqlstr || ((tmp = atoi(sqlstr)) <= 0)) {
                         snprintf(err, sizeof(err),
                                  "set transaction chunk N: missing chunk size "
                                  "N \"%s\"",
@@ -2218,6 +2231,9 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             }
         }
     }
+    if (!rc) {
+        save_set_commands(clnt);
+    }
     return rc;
 }
 
@@ -2241,6 +2257,38 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
             return -1;
         }
     }
+    return 0;
+}
+
+static int _find_set_command(char **commands, int n_commands, const char *cmd)
+{
+    int i;
+    for( i = 0;  i < n_commands; i++) {
+        /* bbcdb2api more conservative dedup */
+        if (!strncasecmp(commands[i], cmd, strlen(commands[i])))
+            return i;
+    }
+    return -1;
+}
+
+static int save_set_commands(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sql_query = appdata->sqlquery;
+    int i;
+
+    if (!sql_query || sql_query->n_set_flags == 0)
+        return 0;
+    for (i = 0; i < sql_query->n_set_flags; i++) {
+        int pos = _find_set_command(clnt->set_commands, clnt->n_set_commands, sql_query->set_flags[i]);
+        if (pos < 0) {
+            clnt->set_commands = realloc(clnt->set_commands, sizeof(char*)*(clnt->n_set_commands + 1));
+            if (!clnt->set_commands)
+                return -1;
+            clnt->set_commands[clnt->n_set_commands++] = strdup(sql_query->set_flags[i]);
+        }
+    }
+
     return 0;
 }
 

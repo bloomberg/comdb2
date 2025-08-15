@@ -89,7 +89,8 @@ __bam_ca_delete_int(dbp, pgno, indx, delete, fromclose)
 	 * list of DBs and then the list of cursors in each DB.
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
-	for (count = 0, ldbp = __dblist_get(dbenv, dbp->adj_fileid);
+	for (count = 0,
+	    ldbp = dbp->inadjlist ? __dblist_get(dbenv, dbp->adj_fileid) : NULL;
 	    ldbp != NULL && ldbp->adj_fileid == dbp->adj_fileid;
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 		for (dbc = __db_lock_aq(dbp, ldbp, &cq);

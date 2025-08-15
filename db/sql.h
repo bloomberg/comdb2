@@ -276,6 +276,7 @@ typedef struct {
     int maxchunksize;     /* multi-transaction bulk mode */
     int crtchunksize;     /* how many rows are processed already */
     int nchunks;          /* number of chunks. 0 for a non-chunked transaction. */
+    int throttle_txn_chunks_msec; /* wait this many milliseconds before starting a new chunk (if 0 then look at tunable) */
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     table_version_cache *table_version_cache;
@@ -1031,6 +1032,8 @@ struct sqlclntstate {
     struct remsql_set remsql_set;
     int fdb_push_remote; /* cache the global on each prepare */
     int fdb_push_remote_write; /* cache the global on each prepare */
+    int n_set_commands; /* save the set that comes from a begin */
+    char **set_commands;
 
     // fdb 2pc
     int use_2pc;
@@ -1682,7 +1685,6 @@ void add_lru_evbuffer(struct sqlclntstate *);
 void rem_lru_evbuffer(struct sqlclntstate *);
 void add_sql_evbuffer(struct sqlclntstate *);
 void rem_sql_evbuffer(struct sqlclntstate *);
-void rem_appsock_connection_evbuffer(struct sqlclntstate *);
 void update_col_info(struct sql_col_info *info, int);
 void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);
 const char *sqlite3ErrStr(int);

@@ -284,6 +284,7 @@ timepart_view_t *timepart_deserialize_view(const char *str, struct errstat *err)
     }
 
 done:
+    if (cson_view) { cson_free_value(cson_view); }
     return view;
 }
 
@@ -1408,34 +1409,34 @@ static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
     else if (uuid_parse(tmp_str, source_id)) {
         errs = "Wrong JSON format, SOURCE_ID value invalid uuid";
         goto error;
-        }
+    }
 
-        tmp_str = cson_extract_str(obj, "ROLLOUT", err);
-        if (tmp_str) {
-            if (strncasecmp(tmp_str, "truncate", sizeof("truncate") + 1)) {
-                errs = "Wrong ROLLOUT value";
-                goto error;
-            }
-            rolltype = TIMEPART_ROLLOUT_TRUNCATE;
-        } else {
-            /* rollout is optional, it is only required to opt-in the new
-             * truncate based rollout
-             */
-            bzero(err, sizeof(*err));
-            rolltype = TIMEPART_ROLLOUT_ADDDROP;
-        }
-
-        view = timepart_new_partition(name, period, retention, starttime,
-                                      &source_id, rolltype, NULL, err);
-        if (!view)
+    tmp_str = cson_extract_str(obj, "ROLLOUT", err);
+    if (tmp_str) {
+        if (strncasecmp(tmp_str, "truncate", sizeof("truncate") + 1)) {
+            errs = "Wrong ROLLOUT value";
             goto error;
+        }
+        rolltype = TIMEPART_ROLLOUT_TRUNCATE;
+    } else {
+        /* rollout is optional, it is only required to opt-in the new
+         * truncate based rollout
+         */
+        bzero(err, sizeof(*err));
+        rolltype = TIMEPART_ROLLOUT_ADDDROP;
+    }
 
-        /* TABLES */
-        tbl_arr = cson_extract_array(obj, "TABLES", err);
-        if (!tbl_arr) {
-            /* initial creation doesn't require a table section */
-            bzero(err, sizeof(*err));
-            goto look_for_shard0;
+    view = timepart_new_partition(name, period, retention, starttime,
+                                  &source_id, rolltype, NULL, err);
+    if (!view)
+        goto error;
+
+    /* TABLES */
+    tbl_arr = cson_extract_array(obj, "TABLES", err);
+    if (!tbl_arr) {
+        /* initial creation doesn't require a table section */
+        bzero(err, sizeof(*err));
+        goto look_for_shard0;
     }
 
     view->nshards = cson_array_length_get(tbl_arr);

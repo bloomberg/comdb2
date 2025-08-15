@@ -97,13 +97,8 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         listc_abl(&crons.scheds, sched);
         Pthread_rwlock_unlock(&crons.rwlock);
 
-        rc = pthread_create(&sched->tid, &gbl_pthread_attr_detached,
+        Pthread_create(&sched->tid, &gbl_pthread_attr_detached,
                             _cron_runner, sched);
-        if (rc) {
-            errstat_set_rc(err, CRON_ERR_CREATE);
-            errstat_set_strf(err, "pthread_create rc=%d", rc);
-            goto error;
-        }
     }
 
     Pthread_mutex_lock(&sched->mtx);

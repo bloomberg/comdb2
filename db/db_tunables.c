@@ -41,6 +41,7 @@
 /* Separator for composite tunable components. */
 #define COMPOSITE_TUNABLE_SEP '.'
 
+extern int gbl_transactional_drop_plus_rename;
 extern int gbl_bulk_import_validation_werror;
 extern int gbl_debug_sleep_during_bulk_import;
 extern int gbl_waitalive_iterations;
@@ -194,6 +195,7 @@ extern int gbl_debug_sleep_before_prepare;
 extern int gbl_wait_for_prepare_seqnum;
 extern int gbl_flush_replicant_on_prepare;
 extern int gbl_slow_rep_log_get_loop;
+extern int gbl_abort_during_downgrade_if_scs_dont_stop;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_abort_on_unfound_txn;
 extern int gbl_abort_on_ufid_mismatch;
@@ -308,6 +310,7 @@ extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_use_current_lsn_for_non_snapshot;
 extern int gbl_cache_flush_interval;
 extern int gbl_load_cache_threads;
 extern int gbl_load_cache_max_pages;
@@ -378,7 +381,6 @@ extern int gbl_noleader_retry_duration_ms;
 extern int gbl_noleader_retry_poll_ms;
 
 extern char *gbl_iam_dbname;
-extern int gbl_inproc_conn_ttl;
 
 /* util/ctrace.c */
 extern int nlogs;
@@ -465,6 +467,8 @@ extern int gbl_debug_sleep_in_analyze;
 extern int gbl_debug_sleep_in_summarize;
 extern int gbl_debug_sleep_in_trigger_info;
 extern int gbl_replicant_retry_on_not_durable;
+extern int gbl_debug_force_non_durable;
+extern int gbl_ignore_final_non_durable_retry;
 extern int gbl_enable_internal_sql_stmt_caching;
 extern int gbl_longreq_log_freq_sec;
 extern int gbl_disable_seekscan_optimization;
@@ -595,6 +599,9 @@ int gbl_test_tunable_int_limit = INT_MAX;
 int gbl_test_tunable_int_signed_limit = INT_MAX;
 int64_t gbl_test_tunable_int64_limit = INT64_MAX;
 int64_t gbl_test_tunable_int64_signed_limit = INT64_MAX;
+
+int gbl_always_request_log_req = 0;
+int gbl_nudge_replication_when_idle = 0;
 
 int parse_int64(const char *value, int64_t *num);
 

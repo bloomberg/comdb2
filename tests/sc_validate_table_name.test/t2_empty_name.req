@@ -1,0 +1,2 @@
+create table "" (i int)$$
+create table "" { schema { int i } }$$

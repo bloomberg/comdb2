@@ -81,6 +81,7 @@ int gbl_debug_invalid_genid;
 int gbl_partition_sc_reorder = 1;
 
 extern int db_is_exiting();
+extern int upsert_collision_should_force_verify_error(int flags, int ixnum);
 
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen);
@@ -6303,6 +6304,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 
     struct schema_change_type *alter_sc = clone_schemachange_type(sc);
 
+    alter_sc->newdb_borrowed = 1; 
     /* new target */
     strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
     /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
@@ -6355,6 +6357,8 @@ static int _process_single_table_sc_merge(struct ireq *iq)
      * if this is an alter .. merge, we still prefer to sequence alters
      * to limit the amount of parallelism in flight
      */
+
+    sc->newdb_borrowed = 0;
     sc->nothrevent = 1;
     sc->finalize = 0; /* make sure */
     if (sc->kind == SC_ALTERTABLE) {
@@ -6410,11 +6414,19 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     /* we need to move data */
     sc->force_rebuild = 1;
 
+    sc->newdb_borrowed = 0;
+
+    /* 
+    * The first shard sc always needs to run synchronously.
+    * The later shard scs can theoretically run asynchronously but
+    * it doesn't work right now.
+    */
+    sc->nothrevent = 1; 
+
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition
          */
-        sc->nothrevent = 1; /* we need do_add_table to run first */
         sc->finalize = 0;   /* make sure */
         sc->kind = SC_ADDTABLE;
 
@@ -6430,9 +6442,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         iq->sc_pending = iq->sc;
     } else {
         /*
-         * use the fast shard as the destination, after first altering it
+         * use the first shard as the destination, after first altering it
          */
-        sc->nothrevent = 1; /* we need do_alter_table to run first */
         sc->finalize = 0;
 
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
@@ -6462,7 +6473,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     if (!arg.part_name)
         return VIEW_ERR_MALLOC;
     arg.lockless = 1;   
-    /* note: we have already set nothrevent depending on the number of shards */
+
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
     free(arg.part_name);
 
@@ -6940,7 +6951,6 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
     return error ? ERR_SC : 0;
 }
 
-
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -7283,15 +7293,13 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
                     goto done_delete;
                 }
 
-                int upsert_idx = dt.upsert_flags >> 8;
-                if ((dt.upsert_flags & OSQL_FORCE_VERIFY) != 0) {
-                    if (upsert_idx == err->ixnum || upsert_idx == MAXINDEX + 1) {
-                        err->errcode = OP_FAILED_VERIFY;
-                        rc = ERR_VERIFY;
-                    }
+                if (upsert_collision_should_force_verify_error(dt.upsert_flags, err->ixnum)) {
+                    err->errcode = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
                 }
 
                 if ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) {
+                    const int upsert_idx = dt.upsert_flags >> 8;
                     if (upsert_idx == MAXINDEX + 1) {
                         /* We're asked to ignore DUPs for all unique indices, no insert took place.*/
                         err->errcode = 0;
@@ -7927,8 +7935,8 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
     /* create the request */
-    sess = osql_sess_create(sql, sqllen, tzname, type, rqid, uuid, fromhost,
-                            flags & OSQL_FLAGS_REORDER_ON);
+    sess = osql_sess_create(sql, sqllen, tzname, type, rqid, uuid, fromhost, flags & OSQL_FLAGS_REORDER_ON,
+                            flags & OSQL_FLAGS_FINAL);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s unable to create new session\n", __func__);
         errmsg = "unable to create new session";

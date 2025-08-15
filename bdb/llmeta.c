@@ -203,6 +203,7 @@ static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
                      void ***values, int **valuelens, int *num, int *bdberr);
 static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v, size_t vlen, int *bdberr);
+static int kv_del(tran_type *tran, void *k, int *bdberr);
 typedef int kv_for_each_cb(void *k, void *v, void *data);
 static int kv_for_each_pair(tran_type *t, void *sk, size_t sklen, kv_for_each_cb *cb, void *data);
 
@@ -4941,6 +4942,34 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
     return 0;
 }
 
+
+static int delete_this_entry(void *k, void *v, void *data)
+{
+    int bdberr = BDBERR_NOERROR;
+    int rc = kv_del(NULL, k, &bdberr);
+    if (rc == 0 && bdberr == BDBERR_NOERROR) {
+        (*(int *)data)++;
+        return 0;
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: kv_del rc %d bdberr %d\n", __func__, rc, bdberr);
+        return -1;
+    }
+}
+
+void bdb_clear_sc_history()
+{
+    int i, cnt;
+
+    llmetakey_t k[3] = {htonl(LLMETA_SCHEMACHANGE_STATUS),
+                        htonl(LLMETA_SCHEMACHANGE_STATUS_V2),
+                        htonl(LLMETA_SCHEMACHANGE_HISTORY)};
+
+    for (i = 0, cnt = 0; i != sizeof(k)/sizeof(llmetakey_t); ++i)
+        kv_for_each_pair(NULL, &k[i], sizeof(llmetakey_t), delete_this_entry, &cnt);
+
+    logmsg(LOGMSG_INFO, "%s: %d records removed\n", __func__, cnt);
+}
+
 /* updates the last processed genid for a stripe in the in progress schema
  * change. should only be used if schema change is not rebuilding main data
  * files because if it is you can simply query those for their highest genids
@@ -7356,7 +7385,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             logmsg(LOGMSG_USER, "    failed to deserialize object\n");
         } break;
     case LLMETA_MAX_SEQNO:
-        logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %ld\n", flibc_ntohll(*(int64_t *)p_buf_data));
+        logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %"PRIu64"\n", flibc_ntohll(*(int64_t *)p_buf_data));
         break;
     default:
          logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);

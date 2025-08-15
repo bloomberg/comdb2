@@ -268,6 +268,8 @@ struct __log {
 
 	roff_t	  maint_off;		/* offset of region maintenance info */
 #endif
+	u_int64_t    last_log_record_time;
+	u_int32_t    records_last_second;
 };
 
 /*

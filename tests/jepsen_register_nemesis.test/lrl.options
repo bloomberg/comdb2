@@ -127,3 +127,4 @@ gbl_reset_on_unelectable_cluster off
 
 # Don't use udp for acks
 noudp on
+hide_non_durable_rcode 0

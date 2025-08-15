@@ -59,7 +59,8 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
                  "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " ..
                  "             AND p.dbname = c.dbname AND p.host = c.host " ..
                  "             AND (c.file >= " .. pfile .. " AND " ..
-                 "                 (c.firstfile IS NULL OR c.firstfile <= " .. pfile ..  "))), " ..
+                 "                 (c.firstfile IS NULL OR c.firstfile <= " .. pfile ..  "))" ..
+                 "             AND (c.last_keepalive > (NOW() - cast (600 as sec)))), " ..
                  "    child_count (dbname, host, tier, cnt) AS " ..
                  "        (SELECT t.dbname, t.host, t.tier, count (*) c" ..
                  "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
@@ -78,8 +79,10 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
                  "                   host IN (" .. source_hosts ..") " ..
                  "         UNION ALL " ..
                  "         SELECT p.dbname, p.host, t.tier+1  " ..
-                 "             FROM comdb2_physrep_connections p, tiers t " ..
-                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host), " ..
+                 "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
+                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" ..
+                 "             AND p.dbname = c.dbname AND p.host = c.host " ..
+                 "             AND (c.last_keepalive > (NOW() - cast (600 as sec)))), " ..
                  "    child_count (dbname, host, tier, cnt) AS " ..
                  "        (SELECT t.dbname, t.host, t.tier, count (*) " ..
                  "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..

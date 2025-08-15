@@ -83,7 +83,7 @@ elif [[ "${DEBUG_PREFIX}" == "valgrind"* ]]; then
     TEST_TIMEOUT=$(($t * 10 + 2))m
 fi
 
-SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
+SETUP_TIMEOUT=${SETUP_TIMEOUT:-4m}
 
 if [[ -n "$NUMNODESTOUSE" ]] ; then
     ncl=`echo $CLUSTER | tr ' *' '\n' | sed '/^[[:space:]]*$/d' | shuf -n $NUMNODESTOUSE | xargs echo`

@@ -47,6 +47,7 @@
 
 #include <cson.h>
 #include <translistener.h>
+#include <net_appsock.h>
 #include <net_types.h>
 #include <locks.h>
 #include <trigger.h>
@@ -888,7 +889,7 @@ static int dbconsumer_consume(Lua L)
             luaL_error(L, "%s: start_new_transaction intrans:%d err:%s rc:%d\n",
                        __func__, clnt->intrans, err, rc);
         }
-        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) != 0) {
+        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0, 0)) != 0) {
             luaL_error(L, "%s: osql_sock_start intrans:%d err:%s rc:%d\n",
                        __func__, clnt->intrans, err, rc);
         }
@@ -929,7 +930,7 @@ static int dbconsumer_next(Lua L)
     struct sqlclntstate *clnt = sp->clnt;
     if (!clnt->intrans) {
         /* First write done by this txn */
-        rc = osql_sock_start_no_reorder(clnt, OSQL_SOCK_REQ, 0);
+        rc = osql_sock_start_no_reorder(clnt, OSQL_SOCK_REQ, 0, 0);
         if (rc) {
             luaL_error(L, "%s osql_sock_start rc:%d", __func__, rc);
         }
@@ -1802,6 +1803,11 @@ static char *load_src(char *spname, struct spversion_t *spversion,
             return src;
         }
 
+        if (*err) {
+            free(*err);
+            *err = NULL;
+        }
+
         size = strlen(sys_src) + 1;
         if (bootstrap) {
             char *bsrc = malloc(size + sizeof(bootstrap_src));
@@ -2108,16 +2114,31 @@ static int luabb_carray_bind_integer(Lua L, int lua_idx, sqlite3_stmt *stmt, int
     return sqlite3_carray_bind(stmt, sql_idx, ints, count, CARRAY_INT64, SQLITE_TRANSIENT);
 }
 
+struct string_carray_arg {
+        int count;
+        char *strings[0];
+};
+
+static void free_string_carray(void *strings)
+{
+    struct string_carray_arg *arg = container_of(strings, struct string_carray_arg);
+    for (int i = 0; i < arg->count; ++i) {
+        free(arg->strings[i]);
+    }
+    free(arg);
+}
+
 static int luabb_carray_bind_string(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
 {
     int count = lua_objlen(L, lua_idx);
-    const char *strings[count];
+    struct string_carray_arg *arg = malloc(sizeof(struct string_carray_arg) + (sizeof(arg->strings[0]) * count));
+    arg->count = count;
     for (int i = 1; i <= count; ++i) {
         lua_rawgeti(L, lua_idx, i);
-        strings[i - 1] = luabb_tostring(L, -1);
+        arg->strings[i - 1] = strdup(luabb_tostring(L, -1));
         lua_pop(L, 1);
     }
-    return sqlite3_carray_bind(stmt, sql_idx, strings, count, CARRAY_TEXT, SQLITE_TRANSIENT);
+    return sqlite3_carray_bind(stmt, sql_idx, arg->strings, count, CARRAY_TEXT, free_string_carray);
 }
 
 static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
@@ -2140,6 +2161,10 @@ static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sq
 
 static int luabb_carray_bind(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
 {
+    int count = lua_objlen(L, lua_idx);
+    if (count > CDB2_MAX_BIND_ARRAY) {
+        return luaL_error(L, "too many arguments for carray:%d", count);
+    }
     lua_rawgeti(L, lua_idx, 1);
     dbtypes_enum dbtype = luabb_dbtype(L, -1);
     lua_pop(L, 1);
@@ -4012,6 +4037,15 @@ static void setup_clnt_for_sp(struct sqlclntstate *clnt)
     clnt->dohsql_disable = 1;
 }
 
+static void reset_clnt_after_sp(struct sqlclntstate *clnt,
+                const int saved_dohsql_disable,
+                const int saved_osql_max_trans)
+{
+    clnt->recover_ddlk = NULL;
+    clnt->recover_ddlk_fail = NULL;
+    clnt->dohsql_disable = saved_dohsql_disable;
+    clnt->osql_max_trans = saved_osql_max_trans;
+}
 
 static int db_udf_error(Lua L)
 {
@@ -4779,7 +4813,12 @@ static int register_queue_with_berkdb_and_master(Lua L, const char *type)
     memcpy(info->spname, sp->spname, info->spname_len + 1);
     int hostname_len = strlen(gbl_myhostname);
     memcpy(trigger_hostname(info), gbl_myhostname, hostname_len + 1);
-    ctrace("%s:%s %016" PRIx64 " register req\n", type, info->spname, info->trigger_cookie);
+    if (strcmp(type, "consumer") == 0) {
+        ctrace("%s:%s %016" PRIx64 " register req from host:%s argv0:%s pid:%d\n",
+            type, info->spname, info->trigger_cookie, clnt->origin, clnt->argv0, clnt->conninfo.pid);
+    } else {
+        ctrace("%s:%s %016" PRIx64 " register req\n", type, info->spname, info->trigger_cookie);
+    }
     int rc = luabb_trigger_register(L, info, consumer->register_timeoutms);
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
         ctrace("%s:%s %016" PRIx64 " register failed rc:%d\n", type, info->spname, info->trigger_cookie, rc);
@@ -7427,6 +7466,9 @@ void *exec_trigger(char *spname)
     ctrace("trigger:%s rc:%d err:%s\n", spname, rc, err);
     ctrace("trigger:%s stopped running\n", spname);
     free(err);
+    reset_clnt_after_sp(&clnt,
+                    clnt.osql_max_trans /* don't care if changed. keep current value */,
+                    clnt.dohsql_disable /* ^ */);
     close_sp(&clnt);
 
     put_curtran(thedb->bdb_env, &clnt);
@@ -7459,10 +7501,7 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     int dohsql_disable = clnt->dohsql_disable;
     setup_clnt_for_sp(clnt);
     int rc = exec_procedure_int(thd, clnt, err, 0);
-    clnt->osql_max_trans = osql_max_trans;
-    clnt->recover_ddlk = NULL;
-    clnt->recover_ddlk_fail = NULL;
-    clnt->dohsql_disable = dohsql_disable;
+    reset_clnt_after_sp(clnt, dohsql_disable, osql_max_trans);
     if (clnt->sp) {
         reset_sp(clnt->sp);
     }

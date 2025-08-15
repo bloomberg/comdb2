@@ -57,6 +57,10 @@ else
     FLG=--skip-long-running
   endif
 
+  ifeq ($(STRESS_TEST), 1)
+    FLG+= --only-get-stress-tests
+  endif
+
   # This is the list of all non-disabled tests.
   export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
       $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh $(FLG))))

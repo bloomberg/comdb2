@@ -54,8 +54,8 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
         logmsg(LOGMSG_ERROR, "Received req %d sql %s\n", type, sql);
 
     /* create a session/bplog */
-    sess = osql_sess_create_socket(sql, tzname, type, rqid, uuid, host,
-                                   flags & OSQL_FLAGS_REORDER_ON);
+    sess = osql_sess_create_socket(sql, tzname, type, rqid, uuid, host, flags & OSQL_FLAGS_REORDER_ON,
+                                   flags & OSQL_FLAGS_FINAL);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "Malloc failure for new ireq\n");
         sbuf2printf(sb, "Error: Out of memory");

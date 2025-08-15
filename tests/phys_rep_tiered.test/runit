@@ -46,21 +46,21 @@ function cleanFailExit()
 
 function downgradeonce()
 {
-    local dbname=$1
+    local name=$1
     local mnode=`getmaster`
     echo "== downgrading $mnode"
-    $CDB2SQL_EXE ${CDB2_OPTIONS} --host $mnode $dbname "exec procedure sys.cmd.send('downgrade')"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --host $mnode $name "exec procedure sys.cmd.send('downgrade')"
 }
 
 function downgrade()
 {
-    local dbname=$1
+    local name=$1
     local sleepamount=${2:-4}
     while true; do
         sleep $sleepamount
         local mnode=`getmaster`
         echo "== downgrading $mnode"
-        $CDB2SQL_EXE ${CDB2_OPTIONS} --host $mnode $dbname "exec procedure sys.cmd.send('downgrade')"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} --host $mnode $name "exec procedure sys.cmd.send('downgrade')"
     done
 }
 
@@ -94,7 +94,7 @@ function wait_for_catchup()
         if [[ -z "$mnode" ]]; then
             continue;
         fi
-        c_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $dbname --host $mnode 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
+        c_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME --host $mnode 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
         r_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS ${_repl_dbname} --host ${_repl_host} 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
     done
 
@@ -317,27 +317,27 @@ function count_revconn()
 
 function count_standalone_revconn()
 {
-    local dbname=$1
+    local name=$1
     local node=$2
-    x=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $node $dbname "exec procedure sys.cmd.send('stat thr')" | grep "reversesql" | wc -l)
+    x=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $node $name "exec procedure sys.cmd.send('stat thr')" | grep "reversesql" | wc -l)
     echo $x
 }
 
 function block_for_standalone_revconn()
 {
     echo "== Blocking for standalone revconn =="
-    local dbname=$1
+    local name=$1
     local node=$2
     local blkcnt=$3
     local count=0
     local cnt=0
     
-    cnt=$(count_standalone_revconn $dbname $node)
+    cnt=$(count_standalone_revconn $name $node)
     while [[ "$cnt" -ne $blkcnt ]]; do
         let count=count+1
-        echo "Count-revconn is $cnt not $blkcnt for $dbname $node"
+        echo "Count-revconn is $cnt not $blkcnt for $name $node"
         sleep 1
-        cnt=$(count_standalone_revconn $dbname $node)
+        cnt=$(count_standalone_revconn $name $node)
     done
 }
 
@@ -365,8 +365,8 @@ function revconn_source_cluster()
 
     # Block until revcons are 0
     for node in $CLUSTER ; do
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        block_for_standalone_revconn $dbname $node 0
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        block_for_standalone_revconn $name $node 0
     done
 
     # Identify the first node of PHYS_REP_TIERED_CLUS as 'foo', the others as 'bar'
@@ -382,8 +382,8 @@ function revconn_source_cluster()
         for node2 in $CLUSTER ; do
             $CDB2SQL_EXE ${CDB2_OPTIONS} $REPL_META_DBNAME --host $node2 "exec procedure sys.cmd.send('machine_cluster add $node $cluster')"
             $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node2 "exec procedure sys.cmd.send('machine_cluster add $node $cluster')"
-            dbname=${REPL_DBNAME_PREFIX}_${node2}
-            $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname --host $node2 "exec procedure sys.cmd.send('machine_cluster add $node $cluster')"
+            name=${REPL_DBNAME_PREFIX}_${node2}
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $name --host $node2 "exec procedure sys.cmd.send('machine_cluster add $node $cluster')"
         done
 
     done
@@ -402,14 +402,14 @@ function revconn_source_cluster()
             target_cluster="foo"
         fi
 
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_CLUS_DBNAME} $source_cluster ${dbname} ${target_cluster}
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_CLUS_DBNAME} $source_cluster ${name} ${target_cluster}
     done
 
     # Wait for all of these to have a reverse-conn thread
     for node in $CLUSTER ; do
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        block_for_standalone_revconn $dbname $node 1
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        block_for_standalone_revconn $name $node 1
     done
 
     # Create table, add some records
@@ -418,13 +418,13 @@ function revconn_source_cluster()
 
     # Block until all the standalone reversconns have these records
     for node in $CLUSTER ; do
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 2>/dev/null)
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from t1" 2>/dev/null)
         while [[ "$x" -ne "1000" ]]; do
             sleep 1
-            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 2>/dev/null)
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from t1" 2>/dev/null)
         done
-        echo "Db $dbname on node $node has caught up"
+        echo "Db $name on node $node has caught up"
     done
 
     $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table t1"
@@ -440,8 +440,8 @@ function revconn_source_class()
 
     # Block until revcons are 0
     for node in $CLUSTER ; do
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        block_for_standalone_revconn $dbname $node 0
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        block_for_standalone_revconn $name $node 0
     done
 
     # Update 'class' tables for with msgtrap
@@ -457,8 +457,8 @@ function revconn_source_class()
         for node2 in $CLUSTER; do
             $CDB2SQL_EXE ${CDB2_OPTIONS} $REPL_META_DBNAME --host $node2 "exec procedure sys.cmd.send('machine_cache add ${REPL_CLUS_DBNAME} $class $node')"
             $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node2 "exec procedure sys.cmd.send('machine_cache add ${REPL_CLUS_DBNAME} $class $node')"
-            dbname=${REPL_DBNAME_PREFIX}_${node2}
-            $CDB2SQL_EXE ${CDB2_OPTIONS} ${dbname} --host $node2 "exec procedure sys.cmd.send('machine_cache add ${REPL_CLUS_DBNAME} $class $node')"
+            name=${REPL_DBNAME_PREFIX}_${node2}
+            $CDB2SQL_EXE ${CDB2_OPTIONS} ${name} --host $node2 "exec procedure sys.cmd.send('machine_cache add ${REPL_CLUS_DBNAME} $class $node')"
         done
     done
 
@@ -470,14 +470,14 @@ function revconn_source_class()
             source_class="bogo"
             first=$node
         fi
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_CLUS_DBNAME} $source_class ${dbname} ${node}
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_CLUS_DBNAME} $source_class ${name} ${node}
     done
 
     # Wait for all of these to have a reverse-conn thread
     for node in $CLUSTER ; do
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        block_for_standalone_revconn $dbname $node 1
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        block_for_standalone_revconn $name $node 1
     done
 
     # Create table, add some records
@@ -486,13 +486,13 @@ function revconn_source_class()
 
     # Block until all the standalone reversconns have these records
     for node in $CLUSTER ; do
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 2>/dev/null)
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from t1" 2>/dev/null)
         while [[ "$x" -ne "1000" ]]; do
             sleep 1
-            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 2>/dev/null)
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from t1" 2>/dev/null)
         done
-        echo "Db $dbname on node $node has caught up"
+        echo "Db $name on node $node has caught up"
     done
 
     $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table t1"
@@ -625,7 +625,7 @@ function incoherent_test()
     done
 
     echo "Dropping table"
-    cdb2sql ${CDB2_OPTIONS} $dbname default "Drop table t1"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "Drop table t1"
 }
 
 function setup_physrep_metadb()
@@ -749,11 +749,15 @@ function fix_lrl_and_restart_source_nodes()
     local _source_dbdir=$3
     local _meta_dbname=$4
     local _meta_host=$5
-    local _meta_dbdir=$6
+    local _altmeta_dbname=$6
+    local _altmeta_host=$7
 
     if [[ -z "$CLUSTER" ]]; then
         node=$(hostname)
         echo "physrep_metadb ${_meta_dbname} ${_meta_host}" >> ${_source_dbdir}/${_source_dbname}.lrl
+
+        echo "alternate_metadb ${_altmeta_dbname} ${_altmeta_host}" >> ${_source_dbdir}/${_source_dbname}.lrl
+
         #echo "blocking_physrep 0" >> ${_source_dbdir}/${_source_dbname}.lrl
         echo "physrep_debug 1" >> ${_source_dbdir}/${_source_dbname}.lrl
         echo "killrestart node $node"
@@ -772,6 +776,7 @@ function fix_lrl_and_restart_source_nodes()
 
         for node in $CLUSTER ; do
             ssh ${node} "echo \"physrep_metadb ${_meta_dbname} ${_meta_host}\" >> ${_source_dbdir}/${_source_dbname}.lrl" < /dev/null
+            ssh ${node} "echo \"alternate_metadb ${_altmeta_dbname} ${_altmeta_host}\" >> ${_source_dbdir}/${_source_dbname}.lrl" < /dev/null
             ssh ${node} "echo \"physrep_debug 1\" >> ${_source_dbdir}/${_source_dbname}.lrl" < /dev/null
             #ssh ${node} "echo \"physrep_register_interval 5\" >> ${_source_dbdir}/${_source_dbname}.lrl"
             echo "killrestart node $node"
@@ -804,6 +809,9 @@ function setup_physrep_cluster()
     local _meta_dbname=$6
     local _meta_host=$7
     local _meta_dbdir=$8
+    local _altmeta_dbname=$9
+    local _altmeta_host=${10}
+    local _altmeta_dbdir=${11}
 
     tmpdir=${TMPDIR:-/tmp}
 
@@ -875,8 +883,8 @@ function setup_physrep_cluster()
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-        ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null & 
-        PIDs="${PIDs} $!"
+            ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            PIDs="${PIDs} $!"
         done
 
         # 3. Wait for instances to come online
@@ -894,9 +902,58 @@ function setup_physrep_cluster()
     echo "Physrep replication cluster/node started!"
 }
 
+function setup_alt_replicant()
+{
+    echo "== Setting alternate replicant =="
+
+    local _alt_dbname=$1
+    local _alt_host=$2
+    local _repl_dbdir_prefix=$3
+    local _cluster_dbname=$4
+    local _cluster_host=$5
+    local _cluster_dbdir=$6
+    local _altmeta_dbname=$7
+    local _altmeta_host=$8
+    local _altmeta_dbdir=$9
+    local _repl_dbname=${_alt_dbname}
+    local _repl_dbdir=${_repl_dbdir_prefix}/${_repl_dbname}
+    local tmpdir=${TMPDIR:-/tmp}
+
+    logFile=$TESTDIR/logs/${_repl_dbname}.log
+
+    ssh ${_alt_host} "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_cluster_host} ${_cluster_host}:${_cluster_dbdir}/${_cluster_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1 < /dev/null
+
+    if [ ! $? -eq 0 ]; then
+        cleanFailExit "copycomdb2 failed"
+    fi
+
+    # Comment out both physrep_metadb and alternate_metadb
+    ssh ${_alt_host} "sed -i -E 's/^(physrep_metadb|alternate_metadb)/# \1/' ${_repl_dbdir}/${_repl_dbname}.lrl" < /dev/null
+
+    # This replicant's metadb will be the alternate metadb
+    ssh ${_alt_host} "echo "physrep_metadb ${_altmeta_dbname} ${_altmeta_host}" >> ${_repl_dbdir}/${_repl_dbname}.lrl" < /dev/null
+
+    # Ask the physrep cluster to start a reverse-connection to this replicant
+    # through the alternate metadb
+    add_to_physrep_sources ${_altmeta_dbname} ${_altmeta_host} ${_cluster_dbname} ${_cluster_host} ${_alt_dbname} ${_alt_host}
+
+    # Start the alt-replicant
+    ssh ${_alt_host} "$COMDB2_EXE ${_alt_dbname} --lrl ${_repl_dbdir}/${_alt_dbname}.lrl --pidfile ${_repl_dbdir}/${_alt_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+    PIDs="${PIDs} $!"
+
+    out=0
+    while [[ "$out" != "1" ]];  do 
+        echo "${_alt_dbname}: waiting until ready"
+        sleep $SLEEP_BETWEEN_CHECKS
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${_alt_host} ${_repl_dbname} 'select 1' 2>/dev/null)
+    done
+    echo "Setup $_alt_dbname replicant on ${_alt_host} complete"
+}
+
 function setup_physrep_replicants()
 {
     echo "== Setting up standalone replicants =="
+
     local _dbname_prefix=$1
     local _dbdir_prefix=$2
     local _source_dbname=$3
@@ -905,6 +962,9 @@ function setup_physrep_replicants()
     local _meta_dbname=$6
     local _meta_host=$7
     local _meta_dbdir=$8
+    local _altmeta_dbname=$9
+    local _altmeta_host=${10}
+    local _altmeta_dbdir=${11}
 
     local tmpdir=${TMPDIR:-/tmp}
 
@@ -917,10 +977,9 @@ function setup_physrep_replicants()
         logFile=$TESTDIR/logs/${_repl_dbname}.log
 
         # Add this node to comdb2_physrep_sources table to test for 'reverse connection'
-        add_to_physrep_sources ${_meta_dbname} ${_meta_host} ${_source_dbname} ${_source_host} ${_repl_dbname} ${node}
+        add_to_physrep_sources ${_meta_dbname} ${_meta_host} ${_source_dbname} ${_source_host} ${_alt_dbname} ${_alt_host}
 
         # use copycomdb2 to create a physical replicant
-
         ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir} >> ${logFile} 2>&1
         if [ ! $? -eq 0 ]; then
             cleanFailExit "copycomdb2 failed"
@@ -1036,7 +1095,8 @@ function run_generated_tests()
 
         # for each sql test execute it
         if [ "${file: -3}" == "sql" ]; then
-            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -f $file ${CDB2_OPTIONS} $dbname default || cleanFailExit "Error from $file"
+            echo "DBNAME is $DBNAME"
+            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -f $file ${CDB2_OPTIONS} $DBNAME default || cleanFailExit "Error from $file"
             query_cmd=$(echo $file | sed 's/\.src\.sql//').query.sql
 
         else
@@ -1046,7 +1106,7 @@ function run_generated_tests()
         fi
 
         if [ $((RANDOM % 3)) -eq 1 ] ; then
-            downgradeonce $dbname
+            downgradeonce $DBNAME
         fi
 
         is_ok=1
@@ -1186,14 +1246,21 @@ function cleanup_internal()
     kill -9 ${PIDs}
     [[ $dgpid != 0 ]] && kill -9 $dgpid
 
-    REPL_META_DBNAME=${TESTCASE}_META
+    REPL_META_DBNAME=${TESTCASE}_${TESTID}_META
     REPL_META_DBDIR=${DBDIR}/${REPL_META_DBNAME}
+    
+    REPL_ALTMETA_DBNAME=${TESTCASE}_${TESTID}_ALT
+    REPL_ALTMETA_DBDIR=${DBDIR}/${REPL_ALTMETA_DBNAME}
 
-    REPL_CLUS_DBNAME=${TESTCASE}_CLUS
+    REPL_CLUS_DBNAME=${TESTCASE}_${TESTID}_CLUS
     REPL_CLUS_DBDIR=${DBDIR}/${REPL_CLUS_DBNAME}
 
-    REPL_DBNAME_PREFIX=${TESTCASE}_REPL
+    REPL_DBNAME_PREFIX=${TESTCASE}_${TESTID}_REPL
     REPL_DBDIR_PREFIX=${DBDIR}/${REPL_DBNAME_PREFIX}
+
+    REPL_ALT_DBNAME=${REPL_DBNAME_PREFIX}_${TESTID}_${REPL_ALT_HOST}_ALT
+    REPL_ALT_DBDIR=${REPL_DBDIR_PREFIX}/${REPL_ALT_DBNAME}
+    REPL_ALT_PIDFILE=${REPL_ALT_DBDIR}/${REPL_ALT_DBNAME}.pid
 
     if [[ -n "$CLUSTER" ]]; then
         for node in $CLUSTER ; do
@@ -1202,8 +1269,11 @@ function cleanup_internal()
             ssh ${node} "kill -$sig \$(cat ${_repl_dbdir}/${_repl_dbname}.pid)" < /dev/null
             ssh ${node} "kill -$sig \$(cat ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid)" < /dev/null 
             ssh ${node} "kill -$sig \$(cat ${REPL_META_DBDIR}/${REPL_META_DBNAME}.pid)" < /dev/null
+            ssh ${node} "kill -$sig \$(cat ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid)" < /dev/null
         done
     fi
+    ssh ${first} "kill -$sig \$(cat ${REPL_CLUS_DBDIR}/${REPL_ALT_DBNAME}.pid)" < /dev/null
+    ssh ${REPL_ALT_HOST} "kill -$sig \$(cat ${REPL_ALT_PIDFILE})" < /dev/null
 }
 
 function cleanup()
@@ -1276,6 +1346,32 @@ function verify_revconn_fix
     fi
 }
 
+# All physreps are aware of the emply alternate metadb
+function multimetadb
+{
+    echo "Alternate metadb physrep should be replicating"
+    echo "Just create a table, and make sure that it replicates"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table multimetadb(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into multimetadb select * from generate_series(1, 1000)"
+    found=0
+    while [[ "$found" != "1" ]]; do
+        sleep 1
+        # ${REPL_ALT_DBNAME} ${REPL_ALT_HOST}
+        found=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_ALT_DBNAME} --host $REPL_ALT_HOST "select count(*) from comdb2_tables where tablename='multimetadb'")
+    done
+    cnt=0
+    while [[ $cnt != 1000 ]]; do
+        sleep 1
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALT_DBNAME --host $REPL_ALT_HOST "select count(*) from multimetadb")
+    done
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table multimetadb"
+    while [[ "$found" != "0" ]]; do
+        sleep 1
+        found=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALT_DBNAME --host $REPL_ALT_HOST "select count(*) from comdb2_tables where tablename='multimetadb'")
+    done
+}
+
 # Use message traps to verify overlap logic
 function match_overlap
 {
@@ -1313,10 +1409,54 @@ function verify_generation
     fi
 }
 
+function require_recent_heartbeat
+{
+    echo "Call the register-replicant command to fake a new physrep"
+    lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME default 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
+    out1=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.physrep.register_replicant('testdb', 'testmach', '$lsn', '$DBNAME', \"'$firstNode'\")")
+    lastline1=$(echo "$out1" | tail -1)
+
+    read _ name host < <(echo "$lastline1")
+    echo "Found replicant with tier $tier, name $name, host $host"
+    echo "Making it's timestamp too old"
+
+    retries=0
+
+    while [[ $retries -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "update comdb2_physreps set last_keepalive = '1981-08-30T23:59:59.987 US/Eastern' where dbname = '$name' and host = '$host'"
+
+        lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME default 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
+        out2=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.physrep.register_replicant('testdb', 'testmach', '$lsn', '$DBNAME', \"'$firstNode'\")")
+
+        echo "$out2" | grep -Fxq "$lastline1"
+        r=$?
+        if [[ $r == 0 ]]; then
+            echo "Register replicant returned new machine with old timestamp, retrying"
+            $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "select * from comdb2_physreps where dbname = '$name' and host = '$host'"
+            let retries=retries+1
+            sleep 1
+        else
+            echo "Register replicant correctly filtered by timestamp"
+            $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "update comdb2_physreps set last_keepalive = NOW() where dbname = '$name' and host = '$host'"
+            break
+        fi
+    done
+    if [[ $retries -eq 10 ]]; then
+        while :; do
+
+            lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME default 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
+            echo "exec procedure sys.physrep.register_replicant('testdb', 'testmach', '$lsn', '$DBNAME', \"'$firstNode'\") DID NOT FILTER BY HEARTBEATS"
+            sleep 5
+
+        done
+        #cleanFailExit "Register replicant returned new machine with old timestamp, but it was not expected"
+    fi
+}
+
 # Verify that physreps do not abort when given a delfiles directive
 function physrep_delfiles
 {
-    local dbname=""
+    local name=""
     local node=""
     local cnt=""
 
@@ -1330,49 +1470,49 @@ function physrep_delfiles
     # Verify that each physrep has this table
     if [[ -n "$CLUSTER" ]]; then
         for node in $CLUSTER ; do
-            dbname="${REPL_DBNAME_PREFIX}_${node}"
-            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            name="${REPL_DBNAME_PREFIX}_${node}"
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
             while [[ "$cnt" -ne "1" ]]; do
                 sleep 1
-                cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+                cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
             done
         done
     else
         node=$(hostname)
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
         while [[ "$cnt" -ne "1" ]]; do
             sleep 1
-            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
         done
 fi
 
     if [[ -n "$CLUSTER" ]]; then
         for node in $CLUSTER ; do
-            dbname="${REPL_DBNAME_PREFIX}_${node}"
-            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('delfiles fortrunc')"
+            name="${REPL_DBNAME_PREFIX}_${node}"
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "exec procedure sys.cmd.send('delfiles fortrunc')"
         done
     else
         node=$(hostname)
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('delfiles fortrunc')"
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "exec procedure sys.cmd.send('delfiles fortrunc')"
     fi
 
     # verify that we can still query each physrep
     if [[ -n "$CLUSTER" ]]; then
         for node in $CLUSTER ; do
-            dbname="${REPL_DBNAME_PREFIX}_${node}"
-            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select 1" >/dev/null 2>&1
+            name="${REPL_DBNAME_PREFIX}_${node}"
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select 1" >/dev/null 2>&1
             if [[ $? -ne 0 ]]; then
-                cleanFailExit "Failed querying $dbname on $node"
+                cleanFailExit "Failed querying $name on $node"
             fi
         done
     else
         node=$(hostname)
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select 1" >/dev/null 2>&1
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select 1" >/dev/null 2>&1
         if [[ $? -ne 0 ]]; then
-            cleanFailExit "Failed querying $dbname on $node"
+            cleanFailExit "Failed querying $name on $node"
         fi
     fi
 
@@ -1381,21 +1521,21 @@ fi
     if [[ -n "$CLUSTER" ]]; then
 
         for node in $CLUSTER ; do
-            dbname="${REPL_DBNAME_PREFIX}_${node}"
-            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            name="${REPL_DBNAME_PREFIX}_${node}"
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
             while [[ "$cnt" -ne "0" ]]; do
                 sleep 1
-                cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+                cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
             done
         done
 
     else
         node=$(hostname)
-        dbname="${REPL_DBNAME_PREFIX}_${node}"
-        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
         while [[ "$cnt" -ne "0" ]]; do
             sleep 1
-            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='fortrunc'")
         done
     fi
 }
@@ -1514,12 +1654,17 @@ function phys_rep_nomatch
 trap - INT EXIT
 
 # 1. Setup replication metadata cluster
-REPL_META_DBNAME=${TESTCASE}_META
+REPL_META_DBNAME=${TESTCASE}_${TESTID}_META
 REPL_META_DBDIR=${DBDIR}/${REPL_META_DBNAME}
 REPL_META_HOST=""
 
+REPL_ALTMETA_DBNAME=${TESTCASE}_${TESTID}_ALT
+REPL_ALTMETA_DBDIR=${DBDIR}/${REPL_ALTMETA_DBNAME}
+REPL_ALTMETA_HOST=""
+
 if [[ -z "$CLUSTER" ]]; then # Standalone
     REPL_META_HOST=$(hostname)
+    REPL_ALTMETA_HOST=$(hostname)
 else                         # Cluster
     for node in ${CLUSTER}; do
         let cluster_count=cluster_count+1
@@ -1527,20 +1672,23 @@ else                         # Cluster
     for node in ${CLUSTER}; do
         first=${node}
         REPL_META_HOST=${node}
+        REPL_ALTMETA_HOST=${node}
         # Downgrade now - we want to test incoherent later
-        cdb2sql ${CDB2_OPTIONS} ${dbname} --host $node "exec procedure sys.cmd.send('downgrade')"
+        cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.send('downgrade')"
         break
     done
 fi
 
+# Setup both metadb and altmeta
 setup_physrep_metadb ${REPL_META_DBNAME} ${REPL_META_DBDIR}
+setup_physrep_metadb ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_DBDIR}
 
 # 2. Update source cluster lrl to point to the replication metadata cluster
-SOURCE_DBNAME=${dbname}
+SOURCE_DBNAME=${DBNAME}
 SOURCE_DBDIR=${DBDIR}
 SOURCE_HOST=${REPL_META_HOST}
 
-fix_lrl_and_restart_source_nodes ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+fix_lrl_and_restart_source_nodes ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST}
 
 # 2.5 No-source ensures physrep cluster can start if parent is not running
 if [[ "$NOSOURCE" == "1" ]]; then
@@ -1548,15 +1696,24 @@ if [[ "$NOSOURCE" == "1" ]]; then
 fi
 
 # 3. Setup physical replication cluster (nodes share same hosts as the source cluster)
-REPL_CLUS_DBNAME=${TESTCASE}_CLUS
+REPL_CLUS_DBNAME=${TESTCASE}_${TESTID}_CLUS
 REPL_CLUS_DBDIR=${DBDIR}/${REPL_CLUS_DBNAME}
 REPL_CLUS_HOST=${REPL_META_HOST}
-setup_physrep_cluster ${REPL_CLUS_DBNAME} ${REPL_CLUS_DBDIR} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+setup_physrep_cluster ${REPL_CLUS_DBNAME} ${REPL_CLUS_DBDIR} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR} ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${REPL_ALTMETA_DBDIR}
 
 # 4. Setup physical replicants
-REPL_DBNAME_PREFIX=${TESTCASE}_REPL
+REPL_DBNAME_PREFIX=${TESTCASE}_${TESTID}_REPL
+REPL_ALT_HOST=$first
 REPL_DBDIR_PREFIX=${DBDIR}/${REPL_DBNAME_PREFIX}
-setup_physrep_replicants ${REPL_DBNAME_PREFIX} ${REPL_DBDIR_PREFIX} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+
+REPL_ALT_DBNAME=${REPL_DBNAME_PREFIX}_${TESTID}_${REPL_ALT_HOST}_ALT
+REPL_ALT_DBDIR=${REPL_DBDIR_PREFIX}/${REPL_ALT_DBNAME}
+REPL_ALT_PIDFILE=${REPL_ALT_DBDIR}/${REPL_ALT_DBNAME}.pid
+
+setup_alt_replicant ${REPL_ALT_DBNAME} ${REPL_ALT_HOST} ${REPL_DBDIR_PREFIX} ${REPL_CLUS_DBNAME} ${REPL_CLUS_HOST} ${REPL_CLUS_DBDIR} ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${REPL_ALTMETA_DBDIR}
+
+
+setup_physrep_replicants ${REPL_DBNAME_PREFIX} ${REPL_DBDIR_PREFIX} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR} ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${REPL_ALTMETA_DBDIR}
 
 # Verify LSNS whether or not NOSOURCE is lit 
 verify_physrep_lsns ${REPL_DBNAME_PREFIX} ${REPL_CLUS_DBNAME}
@@ -1564,6 +1721,22 @@ verify_physrep_lsns ${REPL_DBNAME_PREFIX} ${REPL_CLUS_DBNAME}
 if [[ "$NOSOURCE" == "1" ]]; then
     restart_source_nodes
 fi
+
+# Enable memstats on the metadb
+$CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug on util\")"
+$CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug start\")"
+
+function check_metadb_memstat
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug stop\")"
+    leaks=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug dump util\")" | sort | uniq -c | sort -nr | head -1)
+    # Before the leak was fixed, the first was more than 1700 ..
+    cnt=$(echo $leaks | awk '{print $1}')
+    if [[ $cnt -gt 100 ]]; then
+        echo "Metadb memory leaks detected: $leaks"
+        failexit "Metadb memory leaks detected: $leaks"
+    fi
+}
 
 function announce
 {
@@ -1589,6 +1762,11 @@ function run_tests
     testcase="verify_generation"
     testcase_preamble $testcase
     verify_generation
+    testcase_finish $testcase
+
+    testcase="require_recent_heartbeat"
+    testcase_preamble $testcase
+    require_recent_heartbeat
     testcase_finish $testcase
 
     testcase="physrep_delfiles"
@@ -1672,6 +1850,16 @@ function run_tests
     testcase="verify_revconn_fix"
     testcase_preamble $testcase
     verify_revconn_fix
+    testcase_finish $testcase
+
+    testcase="multimeta"
+    testcase_preamble $testcase
+    multimetadb
+    testcase_finish $testcase
+
+    testcase="check_metadb_memstat"
+    testcase_preamble $testcase
+    check_metadb_memstat
     testcase_finish $testcase
 }
 

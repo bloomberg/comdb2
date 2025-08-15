@@ -1,7 +1,9 @@
-#include <stdlib.h>
-#include <cdb2api.h>
-#include <string.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <cdb2api.h>
 
 const char *db;
 
@@ -986,6 +988,54 @@ static void test_bind_array_and_integer()
     test_close(hndl);
 }
 
+static void test_large_carray_in_sp_and_pass_to_sql()
+{
+    int rc;
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+
+    char *sp = "\
+create procedure long_array version 'test' {\
+local function main(strings)                                \n\
+    local stmt = db:prepare('select * from carray(@str)')   \n\
+    stmt:bind('str', strings)                               \n\
+    stmt:emit()                                             \n\
+end}";
+    if ((rc = cdb2_run_statement(hndl, sp)) != 0) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+
+    char *ptrs[SHRT_MAX], strings[SHRT_MAX][16];
+    for (int i = 0; i < SHRT_MAX; ++i) {
+        snprintf(strings[i], sizeof(strings[i]), "string:%05d", i);
+        ptrs[i] = strings[i];
+    }
+    cdb2_bind_array(hndl, "strs", CDB2_CSTRING, ptrs, SHRT_MAX, 0);
+    if ((rc = cdb2_run_statement(hndl, "exec procedure long_array(@strs)")) != 0) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    int count = 0;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        char *ret = cdb2_column_value(hndl, 0);
+        if (strcmp(ret, strings[count]) != 0) {
+            fprintf(stderr, "mismatch count:%d expected:%s received:%s\n", count, strings[count], ret);
+            abort();
+        }
+        ++count;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    if (count != SHRT_MAX) {
+            fprintf(stderr, "mismatch count:%d expected:%d\n", count, SHRT_MAX);
+            abort();
+    }
+    test_close(hndl);
+}
+
 int main(int argc, char *argv[])
 {
     db = argv[1];
@@ -1001,6 +1051,7 @@ int main(int argc, char *argv[])
     test_bind_array_in_sp(0);
     test_bind_array_in_sp(1);
     test_bind_array_and_integer();
+    test_large_carray_in_sp_and_pass_to_sql();
 
     return 0;
 }

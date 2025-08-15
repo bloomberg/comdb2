@@ -41,6 +41,8 @@ static hash_t *sc_tables = NULL;
 pthread_mutex_t ongoing_alter_mtx = PTHREAD_MUTEX_INITIALIZER;
 hash_t *ongoing_alters = NULL;
 
+int gbl_abort_during_downgrade_if_scs_dont_stop = 0;
+
 /* monitor queue latency on master during alter schema changes */
 int gbl_altersc_latency = 1; /* enable alter sc latency check and delay */
 int gbl_altersc_delay_usec = 0; /* wait this many useconds if threshold reached */
@@ -220,6 +222,13 @@ void wait_for_sc_to_stop(const char *operation, const char *func, int line)
         }
         sleep(1);
         waited++;
+        if (waited == 10 && !gbl_abort_during_downgrade_if_scs_dont_stop) {
+            logmsg(LOGMSG_WARN,
+                   "%s: waiting schema changes to stop for: %ds. "
+                   "Going to continue without waiting for them\n",
+                   operation, waited);
+            break;
+        }
         if (waited > 10)
             logmsg(LOGMSG_ERROR,
                    "%s: waiting schema changes to stop for: %ds\n", operation,
@@ -674,10 +683,10 @@ void sc_alter_latency(int counter)
                 /* if queue latency increases too much, add a delay */
                 gbl_altersc_delay_usec += gbl_altersc_latency_inc;
                 logmsg(LOGMSG_WARN, "%s: slowing down record conversion by %dus\n", __func__, gbl_altersc_delay_usec);
-            } else {
+            } else if (gbl_altersc_delay_usec != 0) {
                 /* if queue time is acceptable, do not throttle */
                 gbl_altersc_delay_usec = 0;
-                logmsg(LOGMSG_WARN, "%s: not longer slowing down record conversion\n", __func__);
+                logmsg(LOGMSG_WARN, "%s: no longer slowing down record conversion\n", __func__);
             }
         }
     } else {

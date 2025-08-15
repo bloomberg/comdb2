@@ -80,6 +80,18 @@ int check_user_password(struct sqlclntstate *clnt)
     int valid_user;
     static int remsql_warned = 0;
 
+    if (gbl_uses_password) {
+        if (!clnt->current_user.have_name) {
+            clnt->current_user.have_name = 1;
+            strcpy(clnt->current_user.name, DEFAULT_USER);
+        }
+
+        if (!clnt->current_user.have_password) {
+            clnt->current_user.have_password = 1;
+            strcpy(clnt->current_user.password, DEFAULT_PASSWORD);
+        }
+    }
+
     if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) &&
             (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
             !clnt->admin && !clnt->current_user.bypass_auth) {
@@ -117,22 +129,15 @@ int check_user_password(struct sqlclntstate *clnt)
 
     if (!remsql_warned && (!gbl_uses_password && !gbl_uses_externalauth) &&
         ((clnt->remsql_set.is_remsql != NO_REMSQL) || clnt->features.have_sqlite_fmt)) {
-        logmsg(LOGMSG_WARN, "%s\n", "Remote sql being used on database with authentication disabled, please enable IAM on this database.");
+        char *dbname = clnt->remsql_set.srcdbname ? clnt->remsql_set.srcdbname : "fdb_push";
+        logmsg(LOGMSG_WARN, "%s sourcedb:%s\n",
+               "Remote sql being used on database with authentication disabled, please enable IAM on this database.",
+               dbname);
         remsql_warned = 1;
     }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {
         return 0;
-    }
-
-    if (!clnt->current_user.have_name) {
-        clnt->current_user.have_name = 1;
-        strcpy(clnt->current_user.name, DEFAULT_USER);
-    }
-
-    if (!clnt->current_user.have_password) {
-        clnt->current_user.have_password = 1;
-        strcpy(clnt->current_user.password, DEFAULT_PASSWORD);
     }
 
     tran_type *tran = curtran_gettran();
@@ -266,7 +271,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     } else {
         /* Check read access if its not user schema. */
         /* Check it only if engine is open already. */
-        if (gbl_uses_password && (thd->clnt->in_sqlite_init == 0)) {
+        if (gbl_uses_password &&  !clnt->current_user.bypass_auth && (thd->clnt->in_sqlite_init == 0)) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_WRITE, &bdberr);
@@ -346,7 +351,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
             return SQLITE_ABORT;
         }
     } else {
-        if (gbl_uses_password && pCur && thd->clnt->in_sqlite_init == 0) {
+        if (gbl_uses_password && !clnt->current_user.bypass_auth && pCur && thd->clnt->in_sqlite_init == 0) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_READ, &bdberr);

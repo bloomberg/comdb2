@@ -200,15 +200,6 @@ int bdb_get_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     return outrc;
 }
 
-int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset)
-{
-    DB_LSN outlsn;
-    __log_txn_lsn(bdb_state->dbenv, &outlsn, NULL, NULL);
-    *logfile = outlsn.file;
-    *offset = outlsn.offset;
-    return 0;
-}
-
 int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,
                      int *offset)
 {

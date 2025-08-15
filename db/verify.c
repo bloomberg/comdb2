@@ -53,7 +53,6 @@ void init_verify_thdpool(void)
     thdpool_set_linger(gbl_verify_thdpool, 1);
     thdpool_set_longwaitms(gbl_verify_thdpool, 1000000);
     thdpool_set_maxqueue(gbl_verify_thdpool, 100);
-    thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
 }
 
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)

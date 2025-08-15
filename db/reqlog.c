@@ -1606,7 +1606,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
         if (iq->reptimems > 0) {
             uint64_t rate = iq->total_txnsize / iq->reptimems;
 
-            dumpf(logger, out, "  Wrote %llu log bytes in %d ms rep time (%llu bytes/ms)\n", iq->txnsize, iq->reptimems,
+            dumpf(logger, out, "  Wrote %llu log bytes in %d ms rep time (%llu bytes/ms)\n", iq->total_txnsize, iq->reptimems,
                   rate);
         } else {
             dumpf(logger, out, "  Wrote %llu log bytes\n", iq->total_txnsize);
@@ -2636,8 +2636,7 @@ int release_node_stats(const char *task, const char *stack, char *host)
     int task_len, stack_len = 0;
     char *tmp;
     struct interned_string *host_interned = intern_ptr(host);
-
-    host = intern(host);
+    host = host_interned->str;
     GET_NAME_AND_LEN(task, task_len);
     GET_NAME_AND_LEN(stack, stack_len);
 

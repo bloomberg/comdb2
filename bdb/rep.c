@@ -40,6 +40,7 @@
 #include <build/db_int.h>
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
+#include "dbinc/db_swap.h"
 #include <trigger.h>
 #include "printformats.h"
 #include "phys_rep.h"
@@ -72,6 +73,7 @@ extern int gbl_debug_stat4dump_loop;
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
 extern int gbl_2pc;
+extern int gbl_nudge_replication_when_idle;
 
 /* osqlcomm.c code, hurray! */
 extern void osql_decom_node(char *decom_host);
@@ -1387,8 +1389,6 @@ give_up:
 
 static void call_for_election_int(bdb_state_type *bdb_state, int op)
 {
-    int rc;
-
     pthread_t elect_thr;
     elect_thread_args_type *elect_thread_args;
 
@@ -1414,12 +1414,8 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
     logmsg(LOGMSG_INFO, "call_for_election: creating elect thread\n");
-    rc = pthread_create(&elect_thr, &(bdb_state->pthread_attr_detach),
+    Pthread_create(&elect_thr, &(bdb_state->pthread_attr_detach),
                         elect_thread, (void *)elect_thread_args);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "call_for_election: can't create election thread: %d\n", rc);
-        free(elect_thread_args);
-    }
 }
 
 void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
@@ -1681,13 +1677,13 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *host, in
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
-        set_coherent_state(bdb_state, host, STATE_INCOHERENT_WAIT, __func__,
+        set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                            __LINE__);
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         /* Colease thread will do this */
         if (!bdb_state->attr->coherency_lease) {
-            pthread_create(&tid, &(bdb_state->pthread_attr_detach),
+            Pthread_create(&tid, &(bdb_state->pthread_attr_detach),
                            dummy_add_thread, bdb_state);
         }
 
@@ -1919,12 +1915,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, struct interned_string *host)
     Pthread_attr_init(&attr);
     Pthread_attr_setstacksize(&attr, 128 * 1024);
 
-    rc = pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "%s: pthread_create hostdown_thread: %d %s\n", __func__,
-                rc, strerror(rc));
-        exit(1);
-    }
+    Pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
     rc = pthread_detach(tid);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "%s: pthread_detach hostdown_thread: %d %s\n", __func__,
@@ -1946,7 +1937,7 @@ void bdb_all_incoherent(bdb_state_type *bdb_state)
     struct hostinfo *h = NULL;
     LISTC_FOR_EACH(&hostinfo_list, h, lnk)
     {
-        h->coherent_state = STATE_INCOHERENT_WAIT;
+        h->coherent_state = STATE_INCOHERENT;
     }
     hostinfo_unlock();
 
@@ -3163,14 +3154,14 @@ static int node_in_list(int node, int list[], int listsz)
 
 int64_t gbl_distributed_commit_count = 0;
 int64_t gbl_not_durable_commit_count = 0;
+int gbl_ignore_final_non_durable_retry = 1;
 
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */
 
 int gbl_replicant_retry_on_not_durable = 0;
-int gbl_require_distributed_count = 0;
+int gbl_debug_force_non_durable = 0;
 
-static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms,
-                                            uint64_t txnsize, int newcoh)
+int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final)
 {
     int i, now, cntbytes;
     struct interned_string *nodelist[REPMAX];
@@ -3198,6 +3189,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_ty
     int total_commissioned;
     int lock_desired = 0;
     int fake_incoherent = 0;
+    int non_durable_retry = gbl_replicant_retry_on_not_durable && (!is_final || !gbl_ignore_final_non_durable_retry);
+    int force_non_durable = non_durable_retry && gbl_debug_force_non_durable;
 
     /* if we were passed a child, find his parent */
     assert(!bdb_state->parent);
@@ -3205,7 +3198,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_ty
         bdb_state = bdb_state->parent;
 
     /* Dereference from parent */
-    durable_lsns = (bdb_state->attr->durable_lsns || gbl_replicant_retry_on_not_durable || gbl_2pc);
+    durable_lsns = (bdb_state->attr->durable_lsns || non_durable_retry || gbl_2pc);
 
     /* 2pc won't allow participants to commit until coordinator-commit is durable */
     catchup_window = bdb_state->attr->catchup_window;
@@ -3467,6 +3460,10 @@ done_wait:
         outrc = -1;
     }
 
+    if (force_non_durable) {
+        outrc = BDBERR_NOT_DURABLE;
+    }
+
     uint32_t cur_gen;
     static uint32_t not_durable_count;
     static uint32_t durable_count;
@@ -3487,7 +3484,7 @@ done_wait:
             logmsg(LOGMSG_USER, "%s return not durable for durable wait seqnum test\n", __func__);
 
         ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
-        if (durable_lsns)
+        if (durable_lsns || force_non_durable)
             outrc = BDBERR_NOT_DURABLE;
         not_durable_count++;
         was_durable = 0;
@@ -3502,12 +3499,12 @@ done_wait:
         BDB_RELLOCK();
 
         if (cur_gen != seqnum->generation) {
-            if (durable_lsns)
+            if (durable_lsns || force_non_durable)
                 outrc = BDBERR_NOT_DURABLE;
             ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
             not_durable_count++;
             was_durable = 0;
-        } else if (durable_lsns) {
+        } else if (durable_lsns || force_non_durable) {
             Pthread_mutex_lock(&bdb_state->durable_lsn_lk);
             bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &seqnum->lsn, cur_gen);
             if (seqnum->lsn.file == 0) {
@@ -3544,30 +3541,29 @@ done_wait:
                calc_lsn.offset, calc_gen);
     }
 
+    /* Accounting to accommodate testcase */
+    if (was_durable && outrc == BDBERR_NOT_DURABLE) {
+        ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
+    }
     return outrc;
 }
 
 int bdb_wait_for_seqnum_from_all(bdb_state_type *bdb_state, seqnum_type *seqnum)
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_timeout(bdb_state_type *bdb_state,
-                                         seqnum_type *seqnum, int timeoutms)
+int bdb_wait_for_seqnum_from_all_timeout(bdb_state_type *bdb_state, seqnum_type *seqnum, int timeoutms)
 {
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
-                                          seqnum_type *seqnum, uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                           int *timeoutms)
 {
     *timeoutms = -1;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms,
-                                            txnsize, 0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, 0);
 }
 
 /*
@@ -3585,26 +3581,19 @@ int bdb_wait_for_seqnum_from_all_newcoh(bdb_state_type *bdb_state,
                                         seqnum_type *seqnum)
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_timeout_newcoh(bdb_state_type *bdb_state,
-                                                seqnum_type *seqnum,
-                                                int timeoutms)
+int bdb_wait_for_seqnum_from_all_timeout_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, int timeoutms)
 {
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0);
 }
 
-int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
-                                                 seqnum_type *seqnum,
-                                                 uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                                  int *timeoutms)
 {
     *timeoutms = -1;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms,
-                                            txnsize, 1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, 0);
 }
 
 /* let everyone know what logfile we are currently using */
@@ -3852,7 +3841,7 @@ static void add_rep_mon(struct rep_mon *rm)
         rm->added = 1;
     } else {
         pthread_t t;
-        pthread_create(&t, NULL, rep_mon, NULL);
+        Pthread_create(&t, NULL, rep_mon, NULL);
     }
     Pthread_mutex_unlock(&rep_mon_lk);
 }
@@ -4808,7 +4797,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_ADD_DUMMY: {
         extern pthread_attr_t gbl_pthread_attr_detached;
         pthread_t tid;
-        pthread_create(&tid, &gbl_pthread_attr_detached,
+        Pthread_create(&tid, &gbl_pthread_attr_detached,
                        dummy_add_thread_nodelay, bdb_state);
         net_ack_message(ack_handle, 0);
         break;
@@ -5569,6 +5558,22 @@ void *watcher_thread(void *arg)
                 }
 
                 last_behind = behind;
+            }
+
+            DB_LSN next_lsn, gap_lsn;
+            int nrecs;
+            // if we're not seeing records or seeing only very old records, poke replication
+            // to request records in the range we expect
+            if (gbl_nudge_replication_when_idle && bdb_state->dbenv->get_rep_lsns(bdb_state->dbenv, &next_lsn, &gap_lsn, &nrecs) == 0) {
+                if (nrecs == 0 && !IS_ZERO_LSN(gap_lsn)) {
+                    DB_LSN tmp_lsn = {0};
+                    DBT max_lsn_dbt = {0};
+                    LOGCOPY_TOLSN(&tmp_lsn, &gap_lsn);
+                    max_lsn_dbt.data = &tmp_lsn;
+                    max_lsn_dbt.size = sizeof(tmp_lsn); 
+                    logmsg(LOGMSG_INFO, "poking replication: asking for %u:%u gap end at %u:%u\n", next_lsn.file, next_lsn.offset, gap_lsn.file, gap_lsn.offset);
+                    __rep_send_message(bdb_state->dbenv, bdb_state->repinfo->master_host, REP_LOG_REQ, &next_lsn, &max_lsn_dbt, 0, NULL);
+                }
             }
         }
 

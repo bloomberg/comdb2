@@ -34,6 +34,8 @@
 
 #define COMDB2_STATIC_TABLE "_comdb2_static_table"
 
+#define MAX_LSN_STR 24
+
 enum { IOTIMEOUTMS = 10000 };
 
 struct dbtable;
@@ -1023,7 +1025,6 @@ struct thread_info {
     void *ct_add_table;
     void *ct_del_table;
     void *ct_add_index;
-    void *stmt_cache;
     hash_t *ct_add_table_genid_hash; // for quick lookups
     pool_t *ct_add_table_genid_pool; // provides memory for the above hash
 };
@@ -1273,6 +1274,7 @@ struct osql_sess {
     int queryid;
     unsigned is_reorder_on : 1;
     unsigned is_delayed : 1;
+    unsigned is_final : 1;
 
     /* from sorese */
     osql_target_t target; /* replicant machine; host is NULL if local */
@@ -3383,8 +3385,6 @@ extern int gbl_querylimits_temptables_warn;
 char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
                         ...);
 int query_limit_cmd(char *line, int llen, int toff);
-
-int is_valid_tablename(char *tbl);
 
 /* defined in toproxy.c */
 void reload_proxy_lrl_lines(char *lrlfile);

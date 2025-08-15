@@ -2644,64 +2644,42 @@ int is_connection_local(SBUF2 *sb) {
 int do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
                 SBUF2 *sb, uint8_t firstbyte)
 {
-    watchlist_node_type *watchlist_node;
-    int new_fd = sbuf2fileno(sb);
-    char paddr[64];
-
-    int admin = 0;
-    APPSOCKFP *rtn = NULL;
-
-    if (firstbyte == '@') {
-        findpeer(new_fd, paddr, sizeof(paddr));
-        if (!gbl_forbid_remote_admin ||
-            (cliaddr->sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
-            admin = 1;
-        } else {
-            logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n", paddr);
-            sbuf2close(sb);
-            return -1;
-        }
+    if (firstbyte == '@' || gbl_server_admin_mode) {
+        /* admin connections are handled by exclusively by newsql - should never get here */
+        goto err;
     } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
-        logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__, __LINE__);
-        sbuf2close(sb);
-        return -1;
+        logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s\n", __func__);
+        goto err;
     }
 
-
-    if (gbl_server_admin_mode && !admin) {
-        sbuf2close(sb);
-        return -1;
+    if (!netinfo_ptr->appsock_rtn) {
+        goto err;
     }
+
+    /* set up the watchlist system for this node */
+    watchlist_node_type *watchlist_node;
+    watchlist_node = calloc(1, sizeof(watchlist_node_type));
+    if (!watchlist_node) {
+        logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n", __func__);
+        goto err;
+    }
+    memcpy(watchlist_node->magic, "WLST", 4);
+    watchlist_node->in_watchlist = 0;
+    watchlist_node->netinfo_ptr = netinfo_ptr;
+    watchlist_node->sb = sb;
+    watchlist_node->readfn = sbuf2getr(sb);
+    watchlist_node->writefn = sbuf2getw(sb);
+    watchlist_node->addr = *cliaddr;
+    sbuf2setrw(sb, net_reads, net_writes);
+    sbuf2setuserptr(sb, watchlist_node);
 
     /* call user specified app routine */
-    if (admin && netinfo_ptr->admin_appsock_rtn) {
-        rtn = netinfo_ptr->admin_appsock_rtn;
-    } else if (netinfo_ptr->appsock_rtn) {
-        rtn = netinfo_ptr->appsock_rtn;
-    }
+    /* this doesn't read- it just farms this off to a thread */
+    netinfo_ptr->appsock_rtn(netinfo_ptr, sb);
+    return 0;
 
-    if (rtn) {
-        /* set up the watchlist system for this node */
-        watchlist_node = calloc(1, sizeof(watchlist_node_type));
-        if (!watchlist_node) {
-            logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n", __func__);
-            sbuf2close(sb);
-            return -1;
-        }
-        memcpy(watchlist_node->magic, "WLST", 4);
-        watchlist_node->in_watchlist = 0;
-        watchlist_node->netinfo_ptr = netinfo_ptr;
-        watchlist_node->sb = sb;
-        watchlist_node->readfn = sbuf2getr(sb);
-        watchlist_node->writefn = sbuf2getw(sb);
-        watchlist_node->addr = *cliaddr;
-        sbuf2setrw(sb, net_reads, net_writes);
-        sbuf2setuserptr(sb, watchlist_node);
-
-        /* this doesn't read- it just farms this off to a thread */
-        rtn(netinfo_ptr, sb);
-        return 0;
-    }
+err:
+    sbuf2close(sb);
     return -1;
 }
 

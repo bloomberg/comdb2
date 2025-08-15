@@ -83,8 +83,6 @@ void thdpool_set_longwaitms(struct thdpool *pool, unsigned longwaitms);
 void thdpool_set_maxqueueagems(struct thdpool *pool, unsigned maxqueueagems);
 void thdpool_set_maxqueueoverride(struct thdpool *pool,
                                   unsigned maxqueueoverride);
-void thdpool_set_mem_size(struct thdpool *pool, size_t sz_bytes);
-
 int thdpool_get_queue_depth(struct thdpool *pool);
 
 void thdpool_print_stats(FILE *fh, struct thdpool *pool);

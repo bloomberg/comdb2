@@ -60,7 +60,6 @@
 extern int gbl_reorder_idx_writes;
 extern uint32_t gbl_max_time_per_txn_ms;
 
-
 struct blocksql_tran {
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
     struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
@@ -1363,17 +1362,20 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
                 }
                 if (rc == ERR_NOMASTER) {
                         sc_set_downgrading(sc);
-                        bdb_close_only(sc->newdb->handle, &bdberr);
-                        freedb(sc->newdb);
+                        if (!sc->newdb_borrowed) {
+                            bdb_close_only(sc->newdb->handle, &bdberr);
+                            freedb(sc->newdb);
+                        }
                         sc->newdb = NULL;
-                        sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
-                                       time(NULL), __func__, __LINE__);
-                        free_schema_change_type(sc);
                 }
-            } else if (rc == ERR_NOMASTER) {
-                /* this can happen if a table was caught by downgrade during
-                 * do_ddl; code will clean sc->newdb, but does not mess with
-                 * sc_set_running
+            }
+            if (rc == ERR_NOMASTER) {
+                /*
+                 * This can happen if
+                 * 1. a table is caught by downgrade during do_ddl
+                 *      (in which case newdb will have been cleaned in do_schema_change_tran_int())
+                 * 2. a table finished do_ddl and another got caught by a downgrade
+                 *      (in which case newdb was freed in the block above)
                  */
                 sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
                                time(NULL), __func__, __LINE__);
@@ -1513,8 +1515,11 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     unlock_schema_lk();
     iq->sc_locked = 0;
 
-    if (trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
-                             NULL, 0, NULL, 0)) {
+    rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
+                            NULL, 0, NULL, 0);
+    if (replication_only_error_code(rc)) {
+        logmsg(LOGMSG_WARN, "%s: trans_commit_logical failed to replicate\n", __func__);
+    } else if (rc) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
@@ -1610,13 +1615,7 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     }
 
     pthread_t tid;
-    rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+    Pthread_create(&tid, &gbl_pthread_attr_detached,
                         resume_sc_multiddl_txn_finalize, iq);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to launch thread rc %d\n",
-               __func__, rc);
-        free(iq);
-        return -1;
-    }
     return 0;
 }

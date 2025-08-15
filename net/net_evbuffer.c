@@ -474,7 +474,7 @@ static void *do_pstack(void *arg)
 #define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
 int gbl_timer_warn_interval = 1500; //msec. To disable check, set to 0.
 int gbl_timer_pstack_threshold =  5000; //msec.
-int gbl_timer_pstack_interval =  30 * 60; //sec. To disable pstack, but keep monitoring, set to 0.
+int gbl_timer_pstack_interval =  0; //sec. To disable pstack, but keep monitoring, set to 0.
 extern struct timeval last_pstack_time;
 static struct timeval last_timer_check;
 void check_timers(void)
@@ -835,6 +835,7 @@ struct accept_info {
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
+static int accept_paused;
 
 static void do_read(int, short, void *);
 static void accept_info_free(struct accept_info *);
@@ -844,6 +845,12 @@ static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr,
 {
     check_base_thd();
     ++pending_connections;
+    if (pending_connections >= (get_max_appsocks_limit() / 2)) {
+        accept_paused = 1;
+        struct net_info *n = net_info_find("replication");
+        evconnlistener_disable(n->listener);
+        event_del(n->unix_ev);
+    }
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
@@ -859,6 +866,12 @@ static void accept_info_free(struct accept_info *a)
 {
     check_base_thd();
     --pending_connections;
+    if (accept_paused && pending_connections == 0) {
+        accept_paused = 0;
+        struct net_info *n = net_info_find("replication");
+        evconnlistener_enable(n->listener);
+        event_add(n->unix_ev, NULL);
+    }
     if (a->ev) {
         event_free(a->ev);
     }
@@ -1103,7 +1116,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
+    //hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
 }
 
 static void check_wr_full(struct event_info *e)
@@ -1113,7 +1126,7 @@ static void check_wr_full(struct event_info *e)
     size_t outstanding = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
     if (outstanding < max_bytes) return;
     e->wr_full = time(NULL);
-    hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
+    //hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
 }
 
 static ssize_t writev_ciphertext(struct event_info *e)
@@ -1157,7 +1170,7 @@ static void writecb(int fd, short what, void *data)
         if (len == 0) {
             event_del(e->wr_ev);
             if (e->wr_full) {
-                hprintf("RESUMING WR after:%ds\n", (int)(time(NULL) - e->wr_full));
+                //hprintf("RESUMING WR after:%ds\n", (int)(time(NULL) - e->wr_full));
                 e->wr_full = 0;
             }
         }
@@ -1689,7 +1702,7 @@ static void *rd_worker(void *data)
         e->rd_worker_sz = evbuffer_get_length(buf);
         if (e->rd_worker_sz < e->need) {
             if (e->rd_full) {
-                hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
+                //hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
                 e->rd_full = 0;
                 evtimer_once(rd_base, resume_read, e);
             }
@@ -2912,8 +2925,9 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
 static int should_reject_request(uint8_t first_byte)
 {
     if (db_is_exiting() || gbl_exit || !gbl_ready) return 1;
-    if (first_byte == '@') return 0; /* admin */
-    return check_appsock_limit(pending_connections);
+    int is_admin = 0;
+    if (first_byte == '@') is_admin = 1;
+    return check_appsock_limit(pending_connections, is_admin);
 }
 
 /* PMUV REQUEST/RESPONSE */
@@ -3025,24 +3039,25 @@ static void do_read(int fd, short what, void *data)
     accept_info_free(a);
     a = NULL;
     if (should_reject_request(first_byte)) {
+        // Failed to increment appsock count
         evbuffer_free(buf);
         shutdown_close(fd);
         return;
     }
     if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure, &badrte)) == 0) {
+        // Successfully handled fd
         return;
     }
     if (badrte) {
-        if (first_byte != '@') {
-            ATOMIC_ADD32(active_appsock_conns, -1);
-        }
+        // Failed to handle fd because of badrte
+        rem_appsock_connection_evbuffer();
         accept_info_new(netinfo_ptr, &ss, fd, secure, 1, 0);
         return;
     }
     if (handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd) != 0) {
-        if (first_byte != '@') {
-            ATOMIC_ADD32(active_appsock_conns, -1);
-        }
+        // Failed to handle appsock
+        rem_appsock_connection_evbuffer();
+        return;
     }
 }
 

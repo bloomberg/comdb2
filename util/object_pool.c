@@ -1265,7 +1265,7 @@ static int opt_evict_intv_ms(comdb2_objpool_t op, int value)
         /* eviction thr isn't running and caller wants to start it */
         Pthread_mutex_lock(&op->evict_mutex);
 
-        rc = pthread_create(&op->evict_thd, NULL, eviction_thread, op);
+        Pthread_create(&op->evict_thd, NULL, eviction_thread, op);
         Pthread_mutex_unlock(&op->evict_mutex);
     }
 
@@ -1297,7 +1297,7 @@ static int opt_evict_ratio(comdb2_objpool_t op, int value)
         /* eviction thr isn't running and caller wants to start it */
         Pthread_mutex_lock(&op->evict_mutex);
 
-        rc = pthread_create(&op->evict_thd, NULL, eviction_thread, op);
+        Pthread_create(&op->evict_thd, NULL, eviction_thread, op);
         Pthread_mutex_unlock(&op->evict_mutex);
     }
 

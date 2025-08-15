@@ -88,3 +88,4 @@ on dump_blkseq
 # Log location
 #location logs /db/logs
 init_with_genid48
+hide_non_durable_rcode 0

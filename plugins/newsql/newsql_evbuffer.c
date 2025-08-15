@@ -111,7 +111,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
 
     rem_lru_evbuffer(clnt);
     rem_sql_evbuffer(clnt);
-    rem_appsock_connection_evbuffer(clnt);
+    rem_appsock_connection_evbuffer();
     if (appdata->dispatch) {
         abort(); /* should have been freed by timeout or coherency-lease */
     }
@@ -475,7 +475,12 @@ static void do_dispatch_waiting_clients(int fd, short what, void *data)
 
 void dispatch_waiting_clients(void)
 {
-    if (!dispatch_base) return;
+    if (!dispatch_base)  {
+        // Check if setup_bases has happened yet
+        dispatch_base = get_dispatch_event_base();
+        if (!dispatch_base)
+            return;
+    }
     evtimer_once(dispatch_base, do_dispatch_waiting_clients, NULL);
 }
 
@@ -553,7 +558,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
         d->wait_time = gbl_incoherent_clnt_wait;
         logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, waiting %ds for election fd:%d\n",
                __func__, d->wait_time, appdata->fd);
-    } else if (NEWSQL_NEW_LEADER) {
+    } else if (incoherent == NEWSQL_NEW_LEADER) {
         d->wait_time = gbl_new_leader_duration;
         logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, waiting %ds for coherency lease fd:%d\n",
                __func__, d->wait_time, appdata->fd);
@@ -582,7 +587,7 @@ static void process_features(struct newsql_appdata_evbuffer *appdata) {
         case CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS: clnt->features.skip_intrans_results = 1; break;
         case CDB2_CLIENT_FEATURES__FLAT_COL_VALS: clnt->features.flat_col_vals = 1; break;
         case CDB2_CLIENT_FEATURES__REQUEST_FP: clnt->features.request_fp = 1; break;
-        case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL: clnt->features.require_fastsql = 1;
+        case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL: clnt->features.require_fastsql = 1; break;
         case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB: clnt->features.can_redirect_fdb = 1; break;
         case CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC: clnt->features.allow_master_exec = 1; break;
         case CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO: clnt->features.allow_master_dbinfo = 1; break;
@@ -895,8 +900,12 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         process_cdb2query(appdata, query);
         break;
     case CDB2_REQUEST_TYPE__RESET:
-        newsql_reset_evbuffer(appdata);
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        if (clnt->admin) {
+            newsql_cleanup(appdata);
+        } else {
+            newsql_reset_evbuffer(appdata);
+            evtimer_once(appdata->base, rd_hdr, appdata);
+        }
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
         process_ssl_request(appdata);
@@ -936,31 +945,19 @@ payload:
     process_newsql_payload(appdata, query);
 }
 
-/* 10-second in-process cache TTL (does not affect idle connections or connections held by sockpool) */
-int gbl_inproc_conn_ttl = 10;
 static void rd_hdr(int dummyfd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
-    struct sqlclntstate *clnt = &appdata->clnt;
-
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
-    }
-    if (dummyfd >= 0 && (what & EV_TIMEOUT) && clnt->in_local_cache) {
-        newsql_cleanup(appdata);
-        return;
     }
     if (rd_evbuffer(appdata) <= 0 && (what & EV_READ)) {
         newsql_cleanup(appdata);
         return;
     }
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
-        struct timeval idle_evbuffer_time = {
-            .tv_sec = gbl_inproc_conn_ttl,
-            .tv_usec = 0
-        };
-        add_rd_event(appdata, appdata->rd_hdr_ev, ((gbl_inproc_conn_ttl <= 0) ? NULL : &idle_evbuffer_time));
+        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
         return;
     }
 hdr:
@@ -1212,6 +1209,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
 
     int admin = arg->admin;
     if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
+        rem_appsock_connection_evbuffer();
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);

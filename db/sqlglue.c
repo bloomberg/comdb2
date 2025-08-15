@@ -573,8 +573,8 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
         rc = CDB2ERR_SCHEMA;
         break;
     case SQLITE_CLIENT_CHANGENODE:
-        str = "Client api shoudl retry request";
-        rc = CDB2ERR_CHANGENODE;
+        str = "Transaction is not durable";
+        rc = CDB2ERR_NOTDURABLE;
         break;
     default:
         str = "Failed to reaquire locks on deadlock";
@@ -6741,16 +6741,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
         free(pCur->keybuf);
 
-        if (pCur->is_sampled_idx) {
-            rc = sampler_close(pCur->sampler);
-            pCur->sampler = NULL;
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor rc %d\n",
-                       __func__, bdberr);
-                rc = SQLITE_INTERNAL;
-                goto done;
-            }
-        } else if (pCur->bt && pCur->bt->is_temporary) {
+        if (!pCur->is_sampled_idx && pCur->bt && pCur->bt->is_temporary) {
             if( pCur->cursor_close ){
                 rc = pCur->cursor_close(thedb->bdb_env, pCur, &bdberr);
                 if (rc) {
@@ -8905,8 +8896,10 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
              */
         }
 
-        if (gbl_throttle_txn_chunks_msec > 0) {
-            poll(NULL, 0, gbl_throttle_txn_chunks_msec);
+        // clnt takes priority for throttle time
+        int throttle = clnt->dbtran.throttle_txn_chunks_msec > 0 ? clnt->dbtran.throttle_txn_chunks_msec : gbl_throttle_txn_chunks_msec;
+        if (throttle > 0) {
+            poll(NULL, 0, throttle);
         }
 
         /* restart a new transaction */
@@ -12014,7 +12007,7 @@ void start_stat4dump_thread(void)
 {
     if (stat4dump_tid || !gbl_debug_stat4dump_loop)
         return;
-    pthread_create(&stat4dump_tid, NULL, stat4dump_thread, NULL);
+    Pthread_create(&stat4dump_tid, NULL, stat4dump_thread, NULL);
 }
 
 void curtran_assert_nolocks(void)

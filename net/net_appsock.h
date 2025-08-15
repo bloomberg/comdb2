@@ -43,7 +43,9 @@ extern unsigned long long total_appsock_conns;
 extern int32_t active_appsock_conns;
 extern int64_t gbl_denied_appsock_connection_count;
 
-int check_appsock_limit(int pending);
+int get_max_appsocks_limit(void);
+int check_appsock_limit(int pending, int is_admin);
+void rem_appsock_connection_evbuffer(void);
 
 #undef SKIP_CHECK_THD
 #ifdef SKIP_CHECK_THD

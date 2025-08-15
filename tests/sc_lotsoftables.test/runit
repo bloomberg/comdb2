@@ -33,65 +33,19 @@ function insert_records
     assertres $? 0
 }
 
-function wait_till_ready
-{
-    node=$1
-    out=0
-    # wait until we can query it
-    echo "$DBNAME: waiting until ready"
-    while [[ "$out" != "1" ]]; do
-        sleep 2
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    done
-}
-
-kill_restart_cluster()
-{
-    delay=$1
-    for node in $cluster ; do
-        echo "killrestart nodes $node"
-        kill_restart_node $node $delay &
-    done
-    sleep $delay
-    # select 1 all nodes
-    for node in $cluster ; do
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-        # wait until we can query it
-        echo "$DBNAME: waiting until ready"
-        while [[ "$out" != "1" ]]; do
-            sleep 2
-            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-        done
-    done
-}
-
-cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
-
-function flushall 
-{
-    for node in $cluster; do
-        cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
-    done
-}
-
-
-
 PRFIX=my_table_name_
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-#cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('bdb setattr DELAYED_OLDFILE_CLEANUP 0')"
 
 echo "Test with insert, SC should not fail"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table ${PRFIX}0 { `cat t1_1.csc2 ` }"
 assertres $? 0
 
 echo "real time creating"
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 500')"
 for i in `seq 1 $tblcnt`; do
   echo "create t$i: "
   time cdb2sql ${CDB2_OPTIONS} $dbnm default "create table ${PRFIX}$i  { `cat t1_1.csc2 ` }"
   assertres $? 0
   insert_records ${PRFIX}$i $i
-  #flushall
 done
 
 echo "real time truncating"
@@ -110,28 +64,7 @@ echo "real time dropping"
 for i in `seq 1 $tblcnt`; do
     assertcnt ${PRFIX}$i $i
     time cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table ${PRFIX}$i"
-    #echo rebuild t1
-    #time cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
-    #assertcnt t$i $i
-    #assertcnt t1 1
-    #flushall
 done
-
-#RESTART_DELAY=35
-#echo "killrestart all nodes"
-#kill_restart_cluster $RESTART_DELAY
-
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS 1')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS_AGE 10')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr PRIVATE_BLKSEQ_MAXAGE 10')"
-#sleep 20
-
-
-#for i in `seq 0 $tblcnt`; do
-#    assertcnt t$i $i
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('delfiles t$i ')"
-#done
-
 
 #create tables with increasing longer tablenames
 test_create_tbls() {
@@ -153,11 +86,10 @@ test_create_tbls() {
 test_create_tbls
 
 if [[ -n "$CLUSTER" ]] ; then
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host master 'exec procedure sys.cmd.send("downgrade")'
-    for node in "$CLUSTER" ; do
-        wait_till_ready $node
-    done
+    if ! downgrade_master; then
+        echo "Failed to downgrade master"
+        exit 1
+    fi
 fi
-
 
 echo "Success"

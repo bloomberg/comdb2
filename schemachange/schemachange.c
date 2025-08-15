@@ -348,37 +348,17 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             s->preempted == SC_ACTION_RESUME) {
             free(arg);
             arg = NULL;
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+            Pthread_create(&tid, &gbl_pthread_attr_detached,
                                 (void *(*)(void *))do_schema_change_locked, s);
         } else {
             Pthread_mutex_lock(&s->mtxStart);
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+            Pthread_create(&tid, &gbl_pthread_attr_detached,
                                 (void *(*)(void *))do_schema_change_tran_thd,
                                 arg);
-            if (rc == 0) {
-                while (!s->started) {
-                    Pthread_cond_wait(&s->condStart, &s->mtxStart);
-                }
+            while (!s->started) {
+                Pthread_cond_wait(&s->condStart, &s->mtxStart);
             }
             Pthread_mutex_unlock(&s->mtxStart);
-        }
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "start_schema_change:pthread_create rc %d %s\n", rc,
-                   strerror(errno));
-
-            Pthread_mutex_lock(&sc_async_mtx);
-            sc_async_threads--;
-            Pthread_mutex_unlock(&sc_async_mtx);
-
-            if (arg)
-                free(arg);
-            if (!s->is_osql) {
-                sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
-                               time(NULL), __func__, __LINE__);
-                free_schema_change_type(s);
-            }
-            rc = SC_ASYNC_FAILED;
         }
     }
     /* SC_COMMIT_PENDING is SC_OK for the upper layers */
@@ -1545,6 +1525,7 @@ const char *schema_change_kind(struct schema_change_type *s)
     case SC_ALTERTABLE_INDEX: return "SC_ALTERTABLE_INDEX";
     case SC_DROPTABLE_INDEX: return "SC_DROPTABLE_INDEX";
     case SC_REBUILDTABLE_INDEX: return "SC_REBUILDTABLE_INDEX";
+    case SC_BULK_IMPORT: return "SC_BULK_IMPORT";
     }
     return "UNKNOWN";
 }

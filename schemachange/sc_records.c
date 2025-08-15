@@ -1499,18 +1499,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         Pthread_rwlock_wrlock(&s->db->sc_live_lk);
         s->db->sc_live_logical = 1;
         Pthread_rwlock_unlock(&s->db->sc_live_lk);
-        rc = pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
+        Pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
                             (void *(*)(void *))live_sc_logical_redo_thd,
                             thdData);
-        if (rc) {
-            sc_errf(s, "[%s] starting thread failed for logical redo\n",
-                    s->tablename);
-            bdb_clear_logical_live_sc(s->db->handle, 1 /* lock table */);
-            s->logical_livesc = 0;
-            free(s->sc_convert_done);
-            s->sc_convert_done = NULL;
-            return -1;
-        }
     } else {
         if (s->resume) {
             /* if schema change was run in logical redo mode and logical redo sc
@@ -1566,20 +1557,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
             /* start thread */
             /* convert_records_thd( &threadData[ ii ]); |+ serialized calls +|*/
-            rc = pthread_create(&threadData[ii].tid, &attr,
+            Pthread_create(&threadData[ii].tid, &attr,
                                 (void *(*)(void *))convert_records_thd,
                                 &threadData[ii]);
 
-            /* if thread creation failed */
-            if (rc) {
-                sc_errf(threadData[ii].s,
-                        "[%s] starting thread failed for"
-                        " stripe: %d with return code: %d\n",
-                        from->tablename, threadData[ii].stripe, rc);
-
-                outrc = -1;
-                break;
-            }
         }
 
         /* wait for all convert threads to complete */
@@ -2016,17 +1997,8 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                       "[%s] starting thread for stripe: %d\n", db->tablename,
                       thread_data[idx].stripe);
 
-            rc = pthread_create(&thread_data[idx].tid, &attr,
+            Pthread_create(&thread_data[idx].tid, &attr,
                                 upgrade_records_thd, &thread_data[idx]);
-
-            if (rc) {
-                sc_errf(thread_data[idx].s,
-                        "starting thread failed for stripe: %d with return code: %d\n",
-                        thread_data[idx].stripe, rc);
-
-                outrc = -1;
-                break;
-            }
         }
 
         if (outrc == -1) {

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# This test exists to help validate that the stress pipeline is working correctly.
+# It simply emits a message and exits zero, so if we don't get a report that it succeeded
+# or can't see its output then something is wrong with the pipeline.
+
+echo "SmokeTest Passed"
+exit 0

@@ -1016,10 +1016,8 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
 int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
                                           seqnum_type *seqnum, uint64_t txnsize,
                                           int *timeoutms);
-
-int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
-                                                 seqnum_type *seqnum,
-                                                 uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final);
+int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                                  int *timeoutms);
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
@@ -1689,6 +1687,8 @@ typedef struct {
 
 int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
                               int *bdberr, const char *tablename);
+
+void bdb_clear_sc_history();
 
 typedef struct schema_version_row {
     char *db_name;
@@ -2499,4 +2499,8 @@ int release_locks_int(const char *trace, const char *func, int line, struct sqlc
 int bdb_keylen(bdb_state_type *bdb_state, int ixnum);
 
 void llmeta_collect_tablename_alias(void);
+typedef int (*collect_unused_files_f)(void *args, int lognum, char *filename);
+
+void oldfile_hash_collect(collect_unused_files_f func, void *arg);
+
 #endif
