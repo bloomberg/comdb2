@@ -121,8 +121,6 @@ static void set_chunk_size(db_file_t *f, size_t chunk_size)
     dbfile_set_chunk_size(f->info, chunk_size);
 }
 
-
-
 static int read_dir(const char *dirname, db_file_t **files, int *count, char *file_pattern, size_t chunk_size)
 {
     struct dirent buf;
