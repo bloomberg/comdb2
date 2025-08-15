@@ -72,12 +72,13 @@ sendtocluster()
 
 do_verify()
 {
-    tbl=$1
-    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out
+    local -r tbl=$1
+    local verify_output
+    verify_output=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('${tbl}', 'parallel')")
 
-    if ! grep succeeded verify_$tbl.out > /dev/null ; then
-        grep succeeded verify_$tbl.out | head -10
-        failexit "verify $tbl had errors"
+    if ! echo "${verify_output}" | grep -q "succeeded" ; then
+        echo "Verify output for ${tbl}: '${verify_output}'"
+        failexit "verify ${tbl} had errors"
     fi
 }
 
