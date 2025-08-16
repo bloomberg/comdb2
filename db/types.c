@@ -7262,7 +7262,7 @@ static int _isISO8601(const char *str, int len)
     /* (month<1 || month>12)*/                                                 \
                                                                                \
     /*get day*/                                                                \
-    day = getInt(in, len, &offset, &ltoken, 1, 2, "-T", &skipped);             \
+    day = getInt(in, len, &offset, &ltoken, 1, 2, "-T ", &skipped);            \
     if (!ltoken)                                                               \
         return CONV_WRONG_MDAY;                                                \
     /*(day <1 || !is_valid_days(year, month, day))*/                           \
