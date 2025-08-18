@@ -100,6 +100,7 @@ static int string_blobs = 0;
 static int show_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
+static int return_long_column_names = 0;
 static int maxretries = 0;
 static int minretries = 0;
 static FILE *redirect = NULL;
@@ -192,6 +193,7 @@ static const char *usage_text =
     " default 'local')\n"
     " -v, --verbose           Verbose debug output, implies --debugtrace\n"
     " -i, --allow-incoherent  Allow SQL to run on an incoherent node\n"
+    "     --long-columns      Allow SQL to return long column names\n"
     "Examples: \n"
     " * Querying db with name mydb on local server \n"
     "     cdb2sql mydb 'select 1'\n"
@@ -1609,6 +1611,13 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
                 return 1;
             }
         }
+        if (return_long_column_names) {
+            rc = cdb2_run_statement(cdb2h, "set return_long_column_names on");
+            if (rc) {
+                fprintf(stderr, "failed to run set return_long_column_names on\n");
+                return 1;
+            }
+        }
     }
 
     /* Bind parameter ability */
@@ -2261,6 +2270,7 @@ int main(int argc, char *argv[])
         {"showports", no_argument, &show_ports, 1},
         {"showeffects", no_argument, &show_effects, 1},
         {"cost", no_argument, &docost, 1},
+        {"long-columns", no_argument, &return_long_column_names, 1},
         {"exponent", no_argument, &exponent, 1},
         {"isatty", no_argument, &isttyarg, 1},
         {"isnotatty", no_argument, &isttyarg, 2},
