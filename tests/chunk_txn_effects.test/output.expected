@@ -128,3 +128,36 @@ Number of rows selected 4
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
+---------------- ROLLBACK -----------------
+Number of rows affected 0
+Number of rows selected 1
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
+Effects not sent by comdb2 server. 
+Number of rows affected 0
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
+Number of rows affected 10
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 10
+Number of rows affected 6
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 6
+101
+102
+103
+104
+105
+106
+Number of rows affected 0
+Number of rows selected 6
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
