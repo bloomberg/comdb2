@@ -657,6 +657,8 @@ typedef struct dbtable {
     int64_t prev_blocktypcnt[BLOCK_MAXOPCODE];
     int64_t prev_blockosqltypcnt[MAX_OSQL_TYPES];
     int64_t prev_nsql;
+    int64_t prev_qdb_adds;
+    int64_t prev_qdb_dels;
     /* counters for writes to this table */
     int64_t write_count[RECORD_WRITE_MAX];
     int64_t saved_write_count[RECORD_WRITE_MAX];
