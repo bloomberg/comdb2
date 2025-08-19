@@ -28,6 +28,7 @@
 #include "logmsg.h"
 #include "time_accounting.h"
 #include "intern_strings.h"
+#include "cdb2api.h"
 
 extern int gbl_debug_recover_deadlock_evbuffer;
 /* print a description of each tcm test */
@@ -63,6 +64,46 @@ void debug_trap(char *line, int lline)
         }
         tokcpy(tok, ltok, tag);
         del_tag_schema(table, tag);
+    } else if (tokcmp(tok, ltok, "cdb2open") == 0) {
+        char cdb2_dbname[64] = {0};
+        char cdb2_tier[64] = {0};
+
+        /* grab comdb2db name */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 64 || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "Invalid comdb2db name.\n");
+            return;
+        }
+        tokcpy(tok, ltok, cdb2_dbname);
+
+        /* grab comdb2db tier */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 64 || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "Invalid tier.\n");
+            return;
+        }
+        tokcpy(tok, ltok, cdb2_tier);
+
+        /* iterate 10 times */
+        for (int i = 0; i < 10; i++) {
+            cdb2_hndl_tp *hndl;
+            int rc = cdb2_open(&hndl, cdb2_dbname, cdb2_tier, 0);
+            if (!rc) {
+                logmsg(LOGMSG_USER, "Opened handle to %s/%s\n", cdb2_dbname, cdb2_tier);
+                if ((rc = cdb2_run_statement(hndl, "select comdb2_host()")) == CDB2_OK) {
+                    while ((rc = cdb2_next_record(hndl)) != CDB2_OK_DONE) {
+                        logmsg(LOGMSG_USER, "%s\n", (const char *)cdb2_column_value(hndl, 0));
+                    }
+                } else {
+                    logmsg(LOGMSG_USER, "Failed to run-statement on %s/%s, %s\n", cdb2_dbname, cdb2_tier,
+                           cdb2_errstr(hndl));
+                }
+                cdb2_close(hndl);
+            } else {
+                logmsg(LOGMSG_USER, "Failed to open %s/%s, %s\n", cdb2_dbname, cdb2_tier, cdb2_errstr(hndl));
+            }
+        }
+
     } else if (tokcmp(tok, ltok, "tcmtest") == 0) {
 
         /* grab the tcmtest-name */
@@ -106,6 +147,7 @@ void debug_trap(char *line, int lline)
         logmsg(LOGMSG_USER, "getvers table        - get schema version for table (or all)\n");
         logmsg(LOGMSG_USER, "putvers table num    - set schema version for table\n");
         logmsg(LOGMSG_USER, "delsc   table tag    - delete a tag\n");
+        logmsg(LOGMSG_USER, "cdb2open dbname tier - cdb2_open comdb2db test\n");
         logmsg(LOGMSG_USER, "timings              - print all accumulated "
                             "timing measurements \n");
     } else {
