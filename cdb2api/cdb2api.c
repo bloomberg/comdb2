@@ -1048,6 +1048,7 @@ struct cdb2_hndl {
     int n_bindvars;
     CDB2SQLQUERY__Bindvalue **bindvars;
     cdb2_query_list *query_list;
+    cdb2_query_list *query_list_end;
     int snapshot_file;
     int snapshot_offset;
     int query_no;
@@ -3393,12 +3394,11 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         item->is_read = hndl->is_read;
         item->next = NULL;
         item->sql = strdup(sql);
-        cdb2_query_list *last = hndl->query_list;
+        cdb2_query_list *last = hndl->query_list_end;
         if (last == NULL) {
             hndl->query_list = item;
+            hndl->query_list_end = item;
         } else {
-            while (last->next != NULL)
-                last = last->next;
             last->next = item;
         }
     } else if (on_heap) {
@@ -3752,6 +3752,7 @@ static inline void free_query_list_on_handle(cdb2_hndl_tp *hndl)
 {
     free_query_list(hndl->query_list);
     hndl->query_list = NULL;
+    hndl->query_list_end = NULL;
 }
 
 int cdb2_close(cdb2_hndl_tp *hndl)
@@ -4585,6 +4586,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     int commit_offset = 0;
     int commit_is_retry = 0;
     cdb2_query_list *commit_query_list = NULL;
+    cdb2_query_list *commit_query_list_end = NULL;
     int is_rollback = 0;
     int retries_done = 0;
 
@@ -4801,7 +4803,9 @@ retry_queries:
             commit_offset = hndl->snapshot_offset;
             commit_is_retry = hndl->is_retry;
             commit_query_list = hndl->query_list;
+            commit_query_list_end = hndl->query_list_end;
             hndl->query_list = NULL;
+            hndl->query_list_end = NULL;
             is_hasql_commit = 1;
         }
         hndl->read_intrans_results = 1;
@@ -4928,7 +4932,9 @@ read_record:
                     hndl->snapshot_offset = commit_offset;
                     hndl->is_retry = commit_is_retry;
                     hndl->query_list = commit_query_list;
+                    hndl->query_list_end = commit_query_list_end;
                     commit_query_list = NULL;
+                    commit_query_list_end = NULL;
                     commit_file = 0;
                 }
                 debugprint("goto retry_queries err_val=%d\n", err_val);
@@ -4963,7 +4969,9 @@ read_record:
                 hndl->snapshot_offset = commit_offset;
                 hndl->is_retry = commit_is_retry;
                 hndl->query_list = commit_query_list;
+                hndl->query_list_end = commit_query_list_end;
                 commit_query_list = NULL;
+                commit_query_list_end = NULL;
                 commit_file = 0;
             }
             hndl->retry_all = 1;
@@ -5001,7 +5009,9 @@ read_record:
                     hndl->snapshot_offset = commit_offset;
                     hndl->is_retry = commit_is_retry;
                     hndl->query_list = commit_query_list;
+                    hndl->query_list_end = commit_query_list_end;
                     commit_query_list = NULL;
+                    commit_query_list_end = NULL;
                     commit_file = 0;
                 }
                 debugprint("goto retry_queries err_val=%d\n", err_val);
@@ -5087,7 +5097,9 @@ read_record:
             hndl->snapshot_offset = commit_offset;
             hndl->is_retry = commit_is_retry;
             hndl->query_list = commit_query_list;
+            hndl->query_list_end = commit_query_list_end;
             commit_query_list = NULL;
+            commit_query_list_end = NULL;
             commit_file = 0;
         }
         debugprint("goto retry_queries error_code=%d\n",
@@ -5155,7 +5167,9 @@ read_record:
                 hndl->snapshot_offset = commit_offset;
                 hndl->is_retry = commit_is_retry;
                 hndl->query_list = commit_query_list;
+                hndl->query_list_end = commit_query_list_end;
                 commit_query_list = NULL;
+                commit_query_list_end = NULL;
                 commit_file = 0;
             }
             debugprint("goto retry_queries error_code=%d\n",
@@ -5203,7 +5217,9 @@ read_record:
                 hndl->snapshot_offset = commit_offset;
                 hndl->is_retry = commit_is_retry;
                 hndl->query_list = commit_query_list;
+                hndl->query_list_end = commit_query_list_end;
                 commit_query_list = NULL;
+                commit_query_list_end = NULL;
                 commit_file = 0;
             }
 
