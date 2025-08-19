@@ -47,6 +47,8 @@ serialstep.test           -- rewrite test to get counts of relevant updated rows
 snap_ha_retry.test        -- hatest task core dumps (disconnect_cdb2h hatest.c:451)
                              set transaction snapshot isolation   returns effects (garbage)
 
+# TODO: Move these to quarantine where appropriate
+
 flaky:
 sc_tableversion
 sc_swapfields

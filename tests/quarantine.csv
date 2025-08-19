@@ -1,0 +1,7 @@
+# rows are of the form: test,type,ticket
+# do not use spaces
+# type must be one of [FLAKEY/DB_BUG/UNKNOWN]
+sc_inserts,FLAKEY,180387017
+sc_downgrade,DB_BUG,180377358
+sc_transactional_rowlocks_generated,UNKNOWN,180364183
+sc_truncate_lockorder_generated,UNKNOWN,180390150
