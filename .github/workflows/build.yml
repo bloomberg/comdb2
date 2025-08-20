@@ -92,6 +92,7 @@ jobs:
             ncurses-dev          \
             protobuf-c-compiler  \
             tcl                  \
+            tcl-dev              \
             uuid-dev             \
             zlib1g-dev
 

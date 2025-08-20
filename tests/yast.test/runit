@@ -17,7 +17,7 @@ fi
 if [[ -z $BUILDDIR ]]; then
     BUILDDIR=$(dirname $TESTSROOTDIR)/build
 fi
-TCLCDB2="$BUILDDIR/tcl"
+TCLCDB2="$BUILDDIR/tests/tools/tcl"
 
 if [[ -z $TMPDIR ]]; then
     TMPDIR="/tmp"
