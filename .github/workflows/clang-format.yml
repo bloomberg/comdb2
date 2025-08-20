@@ -1,0 +1,47 @@
+name: clang-format
+
+on:
+  pull_request: { branches: ["main"] }
+
+# If someone pushes a new commit to a branch, ensure that only the latest commit
+# is built to avoid wasting runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      CLANG_FORMAT: "clang-format"
+    defaults:
+      run:
+        # Make sure to fail any "run" step early on so that steps don't silently
+        # pass even when errors may have occurred.
+        shell: bash -o errexit -o nounset -o pipefail {0}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+          $CLANG_FORMAT --version
+
+      - name: Run format check
+        run: |
+          base_repo="${{ github.event.pull_request.base.repo.full_name || github.repository }}"
+          base_url="https://github.com/${base_repo}.git"
+
+          # Fetch the base branch into a unique namespace
+          git fetch --no-tags --prune --depth=1 "${base_url}" \
+            "refs/heads/${GITHUB_BASE_REF}:refs/remotes/__base__/${GITHUB_BASE_REF}"
+
+          # Compute merge-base vs the fetched ref
+          base_commit="$(git merge-base HEAD "refs/remotes/__base__/${GITHUB_BASE_REF}")"
+
+          ./ci/scripts/format --verbose --dry-run --compare-base "${base_commit}"
