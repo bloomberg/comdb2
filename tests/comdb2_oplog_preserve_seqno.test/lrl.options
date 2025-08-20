@@ -1,3 +1,0 @@
-replicate_local
-comdb2_oplog_preserve_seqno 1
-table comdb2_oplog comdb2_oplog.csc2

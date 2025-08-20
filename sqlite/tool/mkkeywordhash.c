@@ -407,6 +407,7 @@ static Keyword aKeywordTable[] = {
   { "THRESHOLD",         "TK_THRESHOLD",         ALWAYS           },
   { "TIME",              "TK_TIME",              ALWAYS           },
   { "TRUNCATE",          "TK_TRUNCATE",          ALWAYS           },
+  { "TRUNCOPLOG",        "TK_TRUNCOPLOG",        ALWAYS           },
   { "TUNABLE",           "TK_TUNABLE",           ALWAYS           },
   { "TYPE",              "TK_TYPE",              ALWAYS           },
   { "USERSCHEMA",        "TK_USERSCHEMA",        ALWAYS           },

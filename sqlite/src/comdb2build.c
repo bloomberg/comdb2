@@ -1009,7 +1009,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt,
         return;
     }
 
-    /* Special case */
+    /* TRUNCOPLOG rebuild */
     if (nm == NULL && lnm == NULL) {
         if (oplog_count < 0) {
             setError(pParse, SQLITE_MISUSE, "oplog count is required");

@@ -463,18 +463,6 @@ int local_replicant_genid_by_seqno_blkpos(struct ireq *iq, long long seqno,
 
     *outgenid = genid;
 
-    unsigned long long prevgenid = 0LL;
-
-    rc = ix_prev_int(AUXDB_NONE, 0, iq, ixnum, key, keylen, key, 2, genid, 
-                     NULL, NULL, &prevgenid, NULL, NULL, 0, 0, NULL, NULL, NULL,
-                     NULL, NULL, 0, NULL);
-    if (rc == IX_FND) {
-        *outgenid = prevgenid;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s could not find previous genid for seqno %lld blkpos %d rc %d\n", __func__, seqno, blkpos, rc);
-    }
-    
-
     iq->usedb = savedb;
     return 0;
 }

@@ -644,7 +644,6 @@ void *thd_req(void *vthd)
             }
             thd->iq->vfy_idx_track = 0;
             thd->iq->dup_key_insert = 0;
-
 #if 0
             fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
 #endif

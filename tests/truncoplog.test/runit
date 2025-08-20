@@ -133,8 +133,8 @@ function run_test
     echo "Retrieve the maximum seqno"
     maxseqno=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(seqno) from comdb2_oplog")
 
-    # truncate asynchronously
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate comdb2_oplog" &
+    # truncate comdb2_oplog but maintain last 10 seqnos
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncoplog 10" &
     sleep 3
 
     # insert 10 more ops

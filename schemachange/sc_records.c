@@ -193,6 +193,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
  * stripe.
  * If the schema change is not resuming it sets them all to zero
  * If success it returns 0, if failure it returns <0 */
+int gbl_debug_stall_in_oplog_seed = 0;
 int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
 {
     void *rec;
@@ -222,32 +223,42 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             return -1;
         }
 
-        bzero(sc_genids, sizeof(unsigned long long) * MAXDTASTRIPE);
+        unsigned long long opgenid = 0ULL;
+        if (s->preserve_oplog_count > 0) {
+            logmsg(LOGMSG_INFO, "Preserve %d oplog seqnos\n", 
+                    s->preserve_oplog_count);
+            assert(strcmp(db->tablename, "comdb2_oplog") == 0);
+            long long seqno = 0LL;
+            int rc = get_next_seqno(NULL, NULL, &seqno);
+            if (rc == IX_FND) {
+                seqno = seqno - s->preserve_oplog_count - 1;
+                struct ireq iq = {0};
+                unsigned long long fndgenid = 0ULL;
+                init_fake_ireq(thedb, &iq);
+                rc = local_replicant_genid_by_seqno_blkpos(&iq, seqno, 0, &fndgenid);
+                if (rc == 0) {
+                    opgenid = prev_genid(thedb->bdb_attr, fndgenid);
+                    logmsg(LOGMSG_INFO, "Truncate-oplog rebuild seeding stripes with "
+                            "genid %llu for seqno %lld\n", opgenid, seqno);
+                }
+                if (gbl_debug_stall_in_oplog_seed) {
+                    logmsg(LOGMSG_INFO, "Stalling in oplog seed for 10 seconds\n");
+                    sleep(10);
+                }
+            } else {
+                logmsg(LOGMSG_INFO, "Unable to retrieve oplog seqno %lld\n", seqno);
+            }
+        }
+
+        for (stripe = 0; stripe < MAXDTASTRIPE; stripe++) {
+            sc_genids[stripe] = format_genid_for_stripe(opgenid, stripe);
+        }
         return 0;
     }
 
     /* prepare for the largest possible data */
     orglen = MAXLRL;
     rec = malloc(orglen);
-
-    unsigned long long opgenid = 0ULL;
-    if (s->preserve_oplog_count > 0) {
-        assert(strcmp(db->tablename, "comdb2_oplog") == 0);
-        long long seqno = 0LL;
-        int rc = get_next_seqno(NULL, NULL, &seqno);
-        if (rc == IX_FND) {
-            seqno = seqno - s->preserve_oplog_count;
-            struct ireq iq = {0};
-            unsigned long long fndgenid = 0ULL;
-            init_fake_ireq(thedb, &iq);
-            rc = local_replicant_genid_by_seqno_blkpos(&iq, seqno, 0, &fndgenid);
-            if (rc == 0) {
-                logmsg(LOGMSG_INFO, "truncate oplog seqno %lld sc-genid 0x%llx\n",
-                       seqno, fndgenid);
-                opgenid = fndgenid;
-            }
-        }
-    }
 
     /* get max genid for each stripe */
     for (stripe = 0; stripe < db->dtastripe; ++stripe) {
@@ -262,11 +273,8 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
-            if (rc == 1) {
-                sc_genids[stripe] = opgenid ? 
-                                    format_genid_for_stripe(opgenid, stripe) :
-                                    0ULL;
-            }
+            if (rc == 1)
+                sc_genids[stripe] = 0ULL;
         } else
             rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);

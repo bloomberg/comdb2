@@ -2303,14 +2303,7 @@ int ix_prev_blobs_auxdb(int auxdb, int lookahead, struct ireq *iq, int ixnum,
                         int maxlen, int numblobs, int *blobnums,
                         size_t *blobsizes, size_t *bloboffs, void **blobptrs,
                         int *retries, unsigned long long context);
-int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
-                       void *key, int keylen, void *last, int lastrrn,
-                       unsigned long long lastgenid, void *fndkey, int *fndrrn,
-                       unsigned long long *genid, void *fnddta, int *fndlen,
-                       int maxlen, int numblobs, int *blobnums,
-                       size_t *blobsizes, size_t *bloboffs, void **blobptrs,
-                       int *retries, unsigned long long context,
-                       bdb_cursor_ser_t *cur_ser);
+
 int get_next_genids(struct ireq *iq, int ixnum, void *key, int keylen,
                     unsigned long long *genids, int maxgenids,
                     int *num_genids_gotten);

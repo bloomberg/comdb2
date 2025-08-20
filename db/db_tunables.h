@@ -1059,6 +1059,10 @@ REGISTER_TUNABLE("replicate_local",
                  "be needed in the near future. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicate_local, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_stall_in_oplog_seed",
+                 "Sleep for 10 seconds in truncoplog.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_stall_in_oplog_seed, INTERNAL, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("replicate_local_concurrent", NULL, TUNABLE_BOOLEAN,
                  &gbl_replicate_local_concurrent, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
