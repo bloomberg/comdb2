@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+
+readonly clang_style="{BasedOnStyle: llvm, \
+                      IndentWidth: 4, \
+                      UseTab: Never, \
+                      BreakBeforeBraces: Linux, \
+                      SortIncludes: false, \
+                      IndentCaseLabels: false, \
+                      AlwaysBreakTemplateDeclarations: true, \
+                      AllowShortFunctionsOnASingleLine: false, \
+                      AllowShortCaseLabelsOnASingleLine: true, \
+                      AllowShortIfStatementsOnASingleLine: true}"
+
+readonly dirs_to_style_check="util \
+bbinc \
+bdb \
+cdb2api \
+comdb2rle \
+csc2 \
+db \
+net \
+plugins \
+schemachange \
+sockpool \
+tools/pmux \
+tools/cdb2sql \
+tools/cdb2sockpool \
+plugins/logdelete \
+plugins/newsql \
+plugins/repopnewlrl"
+
+readonly extensions_to_style_check="c cpp h"
+
+set -euo pipefail
+
+if ! which clang-format &> /dev/null; then
+  echo "clang-format not found. Please install clang-format."
+  exit 1
+fi
+
+clang_format_flags=(--style="${clang_style}" --Werror)
+compare_base=$(git rev-parse --short HEAD^)
+dry_run=0
+only_staged=0
+
+print_help() {
+  echo "Usage: $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  -d, --dry-run            Perform a dry run (default: false)"
+  echo "  -b, --compare-base <ref> Git reference to compare against (default: HEAD^)"
+  echo "  -s, --only-staged        Only format staged files"
+  echo "  -h, --help               Show this help message"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--dry-run)
+      clang_format_flags+=(--dry-run)
+      dry_run=1
+      shift ;;
+    -b|--compare-base)
+      compare_base="$2"
+      shift 2 ;;
+    -s|--only-staged)
+      only_staged=1
+      shift ;;
+    -h|--help)
+      print_help
+      exit 0 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      print_help
+      exit 1 ;;
+  esac
+done
+
+get_file_diff_ranges() {
+  local -r file=$1
+
+  # Regex to find lines in git diff output that show which lines were added or changed
+  local -r diff_range_regex='^@@.*\+(\d+)(?:,(\d+))?'
+  # Regex to extract the starting line and how many lines were changed
+  local -r extract_start_and_count_regex='s/.*\+([0-9]+)(,([0-9]+))?.*/\1 \3/'
+
+  git diff -U0 ${compare_base} -- "${file}" \
+    | grep -oP "${diff_range_regex}" \
+    | sed -E "${extract_start_and_count_regex}" \
+    | while read start count; do
+        if [ -z "${count}" ]; then count=1; fi
+        end=$((start+count-1))
+        echo "-lines=${start}:${end}"
+      done | xargs
+}
+
+clang_format_diff_file() {
+  local -r file=$1
+
+  local ranges
+  ranges=$(get_file_diff_ranges "${file}")
+  if (( $? != 0 )); then
+    echo "Error determining changed lines for ${file}"
+    return 1
+  fi
+
+  if [ -n "${ranges}" ]; then
+    echo -e "\033[34mFormatting File: ${file} Ranges: ${ranges}\033[0m"
+    clang-format "${clang_format_flags[@]}" -i ${ranges} "${file}"
+    return $?
+  fi
+}
+
+get_files_matching_extensions() {
+  local name_args=""
+  for ext in ${extensions_to_style_check}; do
+    if [ -z "$name_args" ]; then
+      name_args="-name '*.${ext}'"
+    else
+      name_args="${name_args} -o -name '*.${ext}'"
+    fi
+  done
+
+  eval "find ${dirs_to_style_check} \\( ${name_args} \\)"
+}
+
+get_filtered_files() {
+  local files_matching_extensions
+  files_matching_extensions=$(get_files_matching_extensions)
+
+  # Filter out files that haven't changed
+
+  local diff_flags=(--name-only -U0)
+  if (( only_staged )); then
+    diff_flags+=(--cached)
+  fi
+
+  echo ${files_matching_extensions} \
+    | xargs git diff "${diff_flags[@]}" ${compare_base} \
+    | grep -v "^\-" || true
+}
+
+print_info() {
+  local -r files_that_changed=$1
+
+  echo -e "\n\033[1;34m========================================\033[0m"
+  echo -e "\033[1;34m Clang-Format Check \033[0m"
+  echo -e "\033[1;34m========================================\033[0m"
+
+  if [ -z "${files_that_changed}" ]; then
+    echo -e "\033[34mNo changed files to format check.\033[0m"
+  else
+    echo -e "\033[34mFiles to format check:\033[0m"
+    for file in ${files_that_changed}; do
+      echo -e "  \033[34m$file\033[0m"
+    done
+    echo -e "\033[34mCompare base: ${compare_base}\033[0m"
+    if (( dry_run )); then
+      echo -e "\033[34mDry run mode enabled. No files will be modified.\033[0m"
+    else
+      echo -e "\033[34mFiles will be modified in place.\033[0m"
+    fi
+  fi
+
+  echo -e "\033[1;34m========================================\033[0m\n"
+}
+
+clang_format_diff_repo() {
+  local rc=0
+
+  local filtered_files
+  filtered_files=$(get_filtered_files)
+  if (( $? != 0 )); then
+    echo "Error determining files to format check."
+    return 1
+  fi
+
+  print_info "${filtered_files}"
+
+  for file in ${filtered_files}; do
+    if ! clang_format_diff_file "${file}"; then
+      rc=1
+    fi
+  done
+
+  return ${rc}
+}
+
+clang_format_diff_repo
