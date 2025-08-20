@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+
+readonly clang_style="{BasedOnStyle: llvm, \
+                      IndentWidth: 4, \
+                      UseTab: Never, \
+                      BreakBeforeBraces: Linux, \
+                      SortIncludes: false, \
+                      IndentCaseLabels: false, \
+                      AlwaysBreakTemplateDeclarations: true, \
+                      AllowShortFunctionsOnASingleLine: false, \
+                      AllowShortCaseLabelsOnASingleLine: true, \
+                      AllowShortIfStatementsOnASingleLine: true}"
+
+readonly dirs_to_style_check="util \
+bbinc \
+bdb \
+cdb2api \
+comdb2rle \
+csc2 \
+db \
+net \
+plugins \
+schemachange \
+sockpool \
+tools/pmux \
+tools/cdb2sql \
+tools/cdb2sockpool \
+plugins/logdelete \
+plugins/newsql \
+plugins/repopnewlrl"
+
+readonly extensions_to_style_check="c cpp h"
+
+set -euo pipefail
+
+if ! which clang-format-diff &> /dev/null; then
+  echo "clang-format-diff not found. Please install clang-format."
+  exit 1
+fi
+
+compare_base=$(git rev-parse --short HEAD^)
+dry_run=0
+only_staged=0
+verbose=0
+
+print_help() {
+  echo "Usage: $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  -d, --dry-run            Perform a dry run (default: false)"
+  echo "  -b, --compare-base <ref> Git reference to compare against (default: HEAD^)"
+  echo "  -s, --only-staged        Only format staged files"
+  echo "  -v, --verbose            Enable verbose output"
+  echo "  -h, --help               Show this help message"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--dry-run)
+      dry_run=1
+      shift ;;
+    -b|--compare-base)
+      compare_base="$2"
+      shift 2 ;;
+    -s|--only-staged)
+      only_staged=1
+      shift ;;
+    -v|--verbose)
+      verbose=1
+      shift ;;
+    -h|--help)
+      print_help
+      exit 0 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      print_help
+      exit 1 ;;
+  esac
+done
+
+# print errors in red
+print_error() {
+  local message="$1"
+  echo -e "\033[31mError: ${message}\033[0m"
+}
+
+# print info in blue
+print_info() {
+  local message="$1"
+  echo -e "\033[34m${message}\033[0m"
+}
+
+# print success messages in green
+print_success() {
+  local message="$1"
+  echo -e "\033[32m${message}\033[0m"
+}
+
+print_summary() {
+  local -r files_to_format=$1
+
+  print_info "========================================"
+  print_info "Clang-Format Check"
+  print_info "========================================"
+
+  if [ -z "${files_to_format}" ]; then
+    print_info "No changed files to format check."
+  else
+    print_info "Files to format check:"
+    for file in ${files_to_format}; do
+      print_info "  $file"
+    done
+    print_info "Compare base: ${compare_base}"
+    if (( dry_run )); then
+      print_info "Dry run mode enabled. No files will be modified."
+    else
+      print_info "Files will be modified in place."
+    fi
+  fi
+
+  print_info "========================================\n"
+}
+
+get_files_matching_extensions() {
+  local name_args=""
+  for ext in ${extensions_to_style_check}; do
+    if [ -z "$name_args" ]; then
+      name_args="-name '*.${ext}'"
+    else
+      name_args="${name_args} -o -name '*.${ext}'"
+    fi
+  done
+
+  eval "find ${dirs_to_style_check} \\( ${name_args} \\)"
+}
+
+get_files_to_format() {
+  local files_matching_extensions
+  files_matching_extensions=$(get_files_matching_extensions)
+
+  # Filter out files that haven't changed
+
+  local diff_flags=(--name-only -U0)
+  if (( only_staged )); then
+    diff_flags+=(--cached)
+  fi
+
+  echo ${files_matching_extensions} \
+    | xargs git diff "${diff_flags[@]}" ${compare_base} \
+    | grep -v "^\-" || true
+}
+
+clang_format_diff_repo() {
+  local rc=0
+
+  local files_to_format
+  if ! files_to_format=$(get_files_to_format); then
+    print_error "Error determining files to format check."
+    return 1
+  fi
+
+  local diff_flags=(-U0 --no-color)
+  if (( only_staged == 1)); then
+    diff_flags+=(--cached)
+  fi
+
+  local clang_format_diff_flags=(-style "${clang_style}" -p1)
+  if (( dry_run != 1 )); then
+    clang_format_diff_flags+=(-i)
+  fi
+
+  if (( verbose == 1)); then
+    clang_format_diff_flags+=(-v)
+    print_summary "${files_to_format}"
+  fi
+
+  local rc=0
+  for file in ${files_to_format}; do
+    if (( verbose == 1 )); then
+      print_info "Processing file: ${file}"
+    fi
+    if ! git diff "${diff_flags[@]}" "${compare_base}" -- "${file}" \
+      | grep -v "^\-" \
+      | clang-format-diff "${clang_format_diff_flags[@]}"; then
+      rc=1
+      print_error "${file} has incorrect formatting."
+    fi
+  done
+
+  if (( verbose == 1 && rc == 0 )); then
+    print_success "All files are correctly formatted."
+  fi
+
+  return ${rc}
+}
+
+clang_format_diff_repo

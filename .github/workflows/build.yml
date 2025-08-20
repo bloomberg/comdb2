@@ -17,7 +17,7 @@ on:
 # is built to avoid wasting runner minutes. Treat "main" as an exception,
 # probably best to test all commits to it.
 concurrency:
-  group: ${{ github.ref }}
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # We can have multiple jobs. Jobs run in parallel unless they explicitly declare
