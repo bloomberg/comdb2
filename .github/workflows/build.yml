@@ -1,15 +1,12 @@
 name: Build
 
 on:
-  # Run anytime a new commit is pushed to main.
-  push:
-    branches: [main]
-
   # Run on every PR that is opened against main.
   pull_request:
     branches: [main]
 
   # Run on a schedule (daily @ 6am Eastern time).
+  # These run against the default branch (main).
   schedule:
     - cron: "0 11 * * *"
 
