@@ -294,7 +294,7 @@ __rep_vote_info_swap(vi)
 	M_32_SWAP(vi->egen);
 	M_32_SWAP(vi->nsites);
 	M_32_SWAP(vi->priority);
-	M_32_SWAP(vi->tiebreaker);
+		M_32_SWAP(vi->tiebreaker);
 }
 
 /*
