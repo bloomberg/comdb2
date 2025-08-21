@@ -3544,7 +3544,7 @@ int delete_table_sequences(tran_type *tran, struct dbtable *);
 
 int rename_table_sequences(tran_type *tran, struct dbtable *, const char *newname);
 
-int alter_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *old, struct dbtable *new);
+int alter_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *old, struct dbtable *newtable);
 
 void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr,
                                 int persist);
@@ -3624,7 +3624,7 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *err,
 // future refactoring
 
 int compare_tag(const char *table, const char *tag, FILE *out);
-int compare_tag_int(struct schema *old, struct schema *new, FILE *out, int strict, sc_tag_change_subtype *);
+int compare_tag_int(struct schema *old, struct schema *newschema, FILE *out, int strict, sc_tag_change_subtype *);
 const char *sc_tag_change_subtype_text(sc_tag_change_subtype);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);

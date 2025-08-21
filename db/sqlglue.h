@@ -5,7 +5,6 @@
 #include <stdint.h>
 #include <blob_buffer.h>
 
-struct Mem;
 struct sqlthdstate;
 struct sqlclntstate;
 struct sqlite3_context;
