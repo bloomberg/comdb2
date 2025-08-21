@@ -501,6 +501,7 @@ struct plugin_callbacks {
     plugin_func *local_check; /* newsql_local_check_evbuffer */
     plugin_func *peer_check; /* newsql_peer_check_evbuffer */
     auth_func *get_authdata; /* newsql_get_authdata */
+    plugin_func *free_authdata; /* newsql_free_authdata */
     api_type_func *api_type; /* newsql_api_type */
 
     /* Optional */
@@ -567,6 +568,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, local_check);                         \
         make_plugin_callback(clnt, name, peer_check);                          \
         make_plugin_callback(clnt, name, get_authdata);                        \
+        make_plugin_callback(clnt, name, free_authdata);                       \
         make_plugin_callback(clnt, name, api_type);                            \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
@@ -597,6 +599,7 @@ int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
 int get_client_retries(struct sqlclntstate *);
 void *get_authdata(struct sqlclntstate *);
+void free_authdata(struct sqlclntstate *);
 char *clnt_tzname(struct sqlclntstate *, sqlite3_stmt *);
 
 struct clnt_ddl_context {
