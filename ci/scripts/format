@@ -52,6 +52,20 @@ print_help() {
   echo "  -s, --only-staged        Only format staged files"
   echo "  -v, --verbose            Enable verbose output"
   echo "  -h, --help               Show this help message"
+  echo ""
+  echo "Uses the following clang-format style:"
+  echo "  { $(echo "${clang_style}" | sed 's/[{}]//g; s/, */;\n  /g')" }
+  echo ""
+  echo "Formats files with the following extensions: ${extensions_to_style_check}"
+  echo "in the following directories:"
+  echo "  ${dirs_to_style_check}" | fold -s -w 80 | sed '2,$s/^/  /'
+  echo ""
+  echo "Examples:"
+  echo "  Format changes against upstream/main (useful before opening a PR to upstream/main):"
+  echo "  $0 -b upstream/main"
+  echo ""
+  echo "  Check format for staged changes against HEAD (useful for a pre-commit hook):"
+  echo "  $0 --dry-run --only-staged --compare-base $(git rev-parse --short HEAD)"
 }
 
 while [[ $# -gt 0 ]]; do
