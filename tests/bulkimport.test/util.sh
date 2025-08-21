@@ -30,26 +30,14 @@ function failexit() {
 	fi
 }
 
-function query_src_db_opts() {
-	query=$1
-	opts=$2
-
-	cdb2sql ${SRC_CDB2_OPTIONS} ${opts} $SRC_DBNAME default "$query"
-}
-
-function query_dst_db_opts() {
-	query=$1
-	opts=$2
-
-	cdb2sql ${DST_CDB2_OPTIONS} ${opts} $DST_DBNAME default "$query"
-}
-
 function query_src_db() {
-	query_src_db_opts "$1"
+	query=$1
+	cdb2sql ${SRC_CDB2_OPTIONS} $SRC_DBNAME default "$query"
 }
 
 function query_dst_db() {
-	query_dst_db_opts "$1"
+	query=$1
+	cdb2sql ${DST_CDB2_OPTIONS} $DST_DBNAME default "$query"
 }
 
 function set_src_tunable() {
@@ -67,6 +55,30 @@ function set_dst_tunable() {
 
 	for node in $nodes; do
 		cdb2sql --host ${node} ${DST_CDB2_OPTIONS} $DST_DBNAME "exec procedure sys.cmd.send('${tunable}')"
+	done
+}
+
+function check_for_src_trace() {
+	local -r trace="$1" timestamp="$2"
+	echo "Checking for src trace. Trace is $trace. Timestamp is $timestamp"
+	awk -v ts="${timestamp}" '$0 >= ts' ${TESTDIR}/logs/${SRC_DBNAME}* | grep "${trace}"
+}
+
+function wait_for_src_trace() {
+	local -r trace="$1" timestamp="$2"
+	while ! check_for_src_trace "$trace" "$timestamp"; do
+		sleep .1
+	done
+}
+
+function downgrade_src_db() {
+	local master
+	master=$(cdb2sql ${SRC_CDB2_OPTIONS} -tabs $SRC_DBNAME default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"') || return 1
+	cdb2sql --host ${master} ${SRC_CDB2_OPTIONS} $SRC_DBNAME "exec procedure sys.cmd.send('downgrade')" || return 1
+	local new_master=${master}
+	while [[ "${new_master}" == "${master}" ]]; do
+		sleep 1
+		new_master=$(cdb2sql ${SRC_CDB2_OPTIONS} -tabs $SRC_DBNAME default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"') || return 1
 	done
 }
 

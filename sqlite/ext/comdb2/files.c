@@ -22,6 +22,7 @@
 
 typedef unsigned char u_int8_t;
 
+int gbl_comdb2_files_sleep_secs_after_processing_llmeta = 0;
 int endianness_mismatch(struct sqlclntstate *clnt);
 void berk_fix_checkpoint_endianness(u_int8_t *buffer);
 
@@ -131,19 +132,19 @@ static int check_and_append_new_log_files(systbl_files_cursor *pCur)
 static int read_next_chunk(systbl_files_cursor *pCur)
 {
     while (pCur->rowid < pCur->nfiles) {
-        logmsg(LOGMSG_DEBUG, "%s:%d processing %s\n", __func__, __LINE__,
-               pCur->files[pCur->rowid].name);
+        const char * const fname = pCur->files[pCur->rowid].name;
+        logmsg(LOGMSG_DEBUG, "%s:%d processing %s\n", __func__, __LINE__, fname);
 
         if (pCur->files[pCur->rowid].type == FILES_TYPE_LOGFILE) {
             if (check_and_append_new_log_files(pCur) != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d Failed to process file %s\n", __func__, __LINE__, pCur->files[pCur->rowid].name);
+                logmsg(LOGMSG_ERROR, "%s:%d Failed to process file %s\n", __func__, __LINE__, fname);
                 return SQLITE_ERROR;
             }
         }
 
         int rc = read_write_file(pCur->files[pCur->rowid].info, pCur, memory_writer);
         if (rc > 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d Failed to process file %s\n", __func__, __LINE__, pCur->files[pCur->rowid].name);
+            logmsg(LOGMSG_ERROR, "%s:%d Failed to process file %s\n", __func__, __LINE__, fname);
             return SQLITE_ERROR;
         } else if (rc == 0) {
             break;
@@ -160,6 +161,14 @@ static int read_next_chunk(systbl_files_cursor *pCur)
         }
 
         pCur->rowid++; // Read the next file
+
+        if (gbl_comdb2_files_sleep_secs_after_processing_llmeta
+            && (strcmp(fname, "comdb2_llmeta.dta") == 0)) {
+            logmsg(LOGMSG_DEBUG, "%s:%d just processed llmeta. Sleeping for %d seconds\n",
+                            __func__, __LINE__, gbl_comdb2_files_sleep_secs_after_processing_llmeta);
+            sleep(gbl_comdb2_files_sleep_secs_after_processing_llmeta); 
+            logmsg(LOGMSG_DEBUG, "%s:%d done sleeping\n", __func__, __LINE__);
+        }
     }
 
     return SQLITE_OK;

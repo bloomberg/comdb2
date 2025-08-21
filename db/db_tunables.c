@@ -151,6 +151,7 @@ extern int gbl_recovery_ckp;
 extern int gbl_reproduce_ckp_bug;
 extern int gbl_sample_queries;
 extern int gbl_sample_queries_max_queries;
+extern int gbl_comdb2_files_sleep_secs_after_processing_llmeta;
 extern int gbl_slow_rep_process_txn_freq;
 extern int gbl_slow_rep_process_txn_minms;
 extern int gbl_slow_rep_process_txn_maxms;
