@@ -93,7 +93,7 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
         revconn_logmsg(LOGMSG_USER, "%s:%d Sending reversesql request to %s@%s\n", __func__, __LINE__, dbname, host);
     }
 
-    SBUF2 *sb = connect_remote_db(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte);
+    SBUF2 *sb = connect_remote_db_flags(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte, SBUF2_NO_SSL_CLOSE|SBUF2_NO_CLOSE_FD);
     if (!sb) {
         revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s:%s\n", __func__, __LINE__, dbname, host);
         return 1;
@@ -123,11 +123,14 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
         revconn_logmsg(LOGMSG_USER, "%s:%d Sent '%s' through fd:%d\n", __func__, __LINE__, msg, new_fd);
     }
 
+    sbuf2close(sb);
+
     struct timeval timeout = {.tv_usec = 100 * 1000};
     return event_base_once(get_main_event_base(), new_fd, EV_READ, do_revconn_evbuffer, NULL, &timeout);
 
 cleanup:
     sbuf2close(sb);
+    Close(new_fd);
     return rc;
 }
 

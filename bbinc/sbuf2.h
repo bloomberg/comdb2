@@ -59,6 +59,8 @@ enum SBUF2_FLAGS {
     SBUF2_NO_BLOCK = 16,
     /* the underlying connection has been marked 'READONLY' */
     SBUF2_IS_READONLY = 32,
+    /* do not close ssl */
+    SBUF2_NO_SSL_CLOSE = 64,
 };
 
 typedef int (*sbuf2readfn)(SBUF2 *sb, char *buf, int nbytes);
