@@ -18,6 +18,16 @@ struct consumer_stat {
     int depth;
 };
 
+enum consumer_t {
+    CONSUMER_TYPE_API = 0,
+    CONSUMER_TYPE_FSTSND = 1,
+    CONSUMER_TYPE_JAVASP = 2,
+    CONSUMER_TYPE_LUA,
+    CONSUMER_TYPE_DYNLUA,
+
+    CONSUMER_TYPE_LAST
+};
+
 struct comdb2_queue_consumer {
     int type;
     int (*add_consumer)(struct dbtable *db, int consumern, const char *method, int noremove);
@@ -34,17 +44,6 @@ struct comdb2_queue_consumer {
     int (*get_stats)(struct dbtable *db, int flags, void *tran, struct consumer_stat *stat);
 };
 typedef struct comdb2_queue_consumer comdb2_queue_consumer_t;
-
-
-enum consumer_t {
-    CONSUMER_TYPE_API = 0,
-    CONSUMER_TYPE_FSTSND = 1,
-    CONSUMER_TYPE_JAVASP = 2,
-    CONSUMER_TYPE_LUA,
-    CONSUMER_TYPE_DYNLUA,
-
-    CONSUMER_TYPE_LAST
-};
 
 enum {
     CDB2_TRIG_REQ_SUCCESS = 1,
