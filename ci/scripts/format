@@ -150,6 +150,14 @@ get_files_to_format() {
     | grep -v "^\-" || true
 }
 
+print_how_to_fix() {
+  local fix_flags=(--compare-base "${compare_base}")
+  if (( only_staged == 1 )); then
+    fix_flags+=(--only-staged)
+  fi
+  print_error "Run '$0 ${fix_flags[*]}' to fix formatting issues."
+}
+
 clang_format_diff_repo() {
   local rc=0
 
@@ -183,12 +191,15 @@ clang_format_diff_repo() {
       | grep -v "^\-" \
       | clang-format-diff "${clang_format_diff_flags[@]}"; then
       rc=1
-      print_error "${file} has incorrect formatting."
+      print_error "${file} has incorrect formatting.\n"
     fi
   done
 
   if (( verbose == 1 && rc == 0 )); then
     print_success "All files are correctly formatted."
+  elif (( rc != 0 )); then
+    print_error "Formatting issues detected."
+    print_how_to_fix
   fi
 
   return ${rc}
