@@ -119,15 +119,19 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     if (sb == 0)
         return -1;
 
+    int rc = 0;
     /* Gracefully shutdown SSL to make the
        fd re-usable. Close the fd if it fails. */
-    int rc = sslio_close(sb, 1);
-    if (rc)
+    if (!(sb->flags & SBUF2_NO_SSL_CLOSE)) {
+        rc = sslio_close(sb, 1);
+        if (rc) {
 #if SBUF2_SERVER
-        Close(sb->fd);
+            Close(sb->fd);
 #else
-        close(sb->fd);
+            close(sb->fd);
 #endif
+        }
+    }
 
     sb->fd = -1;
     if (sb->rbuf) {
@@ -169,7 +173,8 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 
     /* We need to send "close notify" alert
        before closing the underlying fd. */
-    sslio_close(sb, (sb->flags & SBUF2_NO_CLOSE_FD));
+    if (!(sb->flags & SBUF2_NO_SSL_CLOSE))
+        sslio_close(sb, (sb->flags & SBUF2_NO_CLOSE_FD));
 
     if (!(sb->flags & SBUF2_NO_CLOSE_FD)) {
 #if SBUF2_SERVER
