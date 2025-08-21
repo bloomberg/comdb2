@@ -2383,6 +2383,10 @@ REGISTER_TUNABLE("merge_table_enabled",
                  TUNABLE_BOOLEAN, &gbl_merge_table_enabled, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("allow_old_authn", "Reuse old successful authentication for the connection",
+                 TUNABLE_BOOLEAN, &gbl_allow_old_authn, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
