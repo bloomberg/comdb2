@@ -1632,6 +1632,7 @@ extern int gbl_maxreclen;
 extern int gbl_penaltyincpercent;
 extern int gbl_maxwthreadpenalty;
 
+extern int gbl_allow_old_authn;
 extern int gbl_uses_password;
 extern int gbl_unauth_tag_access;
 extern int gbl_uses_externalauth;
