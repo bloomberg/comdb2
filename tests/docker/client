@@ -42,5 +42,5 @@ fi
 echo READY
 
 if [[ -f /common/user_script ]]; then
-    /common/user_script
+    /common/user_script $(cat /common/user_script_args 2>/dev/null)
 fi
