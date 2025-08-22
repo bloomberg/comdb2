@@ -1,6 +1,9 @@
 # rows are of the form: test,type,ticket
 # do not use spaces
 # type must be one of [FLAKEY/DB_BUG/UNKNOWN]
+quarantine_smoketest_flakey_generated,FLAKEY,1
+quarantine_smoketest_dbbug_generated,DB_BUG,1
+quarantine_smoketest_unknown_generated,UNKNOWN,1
 sc_inserts,FLAKEY,180387017
 sc_downgrade,DB_BUG,180377358
 sc_transactional_rowlocks_generated,UNKNOWN,180364183
