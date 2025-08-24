@@ -16,7 +16,7 @@ run_test() {
     local -r timeout_secs=60
     local pids=()
     for i in $(seq 1 $num_processes); do
-        ${TESTSBUILDDIR}/undrained_connection_test ${db_name} ${tier} ${table_name} ${timeout_secs} &
+        ${TESTSBUILDDIR}/undrained_connection_test ${db_name} ${tier} ${table_name} ${timeout_secs} 0 &
         pids+=($!)
     done
     for pid in "${pids[@]}"; do
