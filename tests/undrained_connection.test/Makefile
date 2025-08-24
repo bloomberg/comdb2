@@ -1,5 +1,3 @@
-IS_STRESS_TEST=1
-unexport CLUSTER
 ifeq ($(TESTSROOTDIR),)
   include ../testcase.mk
 else
