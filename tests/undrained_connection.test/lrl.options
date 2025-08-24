@@ -1,0 +1,5 @@
+# allow a bit more queuing than default in case machine isn't powerful enough
+sqlenginepool maxq 1000
+# there'll be a lot of io errors from ssl; don't print them
+ssl_print_io_errors 0
+logmsg level info

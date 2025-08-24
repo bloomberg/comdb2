@@ -6763,8 +6763,8 @@ int check_appsock_limit(int is_admin)
         time_t now = time(NULL);
         if (now != last) {
             logmsg(LOGMSG_USER,
-                   "Exhausted appsock connections, total %d connections denied-connection count=%" PRId64 "\n",
-                   current, gbl_denied_appsock_connection_count);
+                   "Exhausted appsock connections, total %d connections denied-connection count=%" PRId64 "\n", current,
+                   gbl_denied_appsock_connection_count);
             last = now;
         }
         return -1;

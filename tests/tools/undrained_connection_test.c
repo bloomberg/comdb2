@@ -16,8 +16,11 @@ const char *gbl_dbname;
 const char *gbl_tier;
 const char *gbl_table_name;
 int gbl_timeout_secs;
+int gbl_verbose = 1;
 
 void concurrent_fprintf(FILE *stream, const char *fmt, ...) {
+    if (!gbl_verbose && stream == stdout)
+        return;
     va_list args;
     pthread_mutex_lock(&print_lock);
     fprintf(stream, "[PID %d | TID %p]: ", getpid(), (void *)pthread_self());
@@ -48,9 +51,9 @@ int waste_connection() {
         goto err;
     }
     concurrent_fprintf(stdout, "Called snprintf\n");
-    cdb2_set_debug_trace(db);
+    if (gbl_verbose)
+        cdb2_set_debug_trace(db);
     rc = cdb2_run_statement(db, sql);
-    cdb2_unset_debug_trace(db);
     if (rc) {
         concurrent_fprintf(stderr, "cdb2_run_statement failed %d %s\n", rc, cdb2_errstr(db));
         goto err;
@@ -133,6 +136,9 @@ int main(int argc, char *argv[]) {
     setvbuf(stderr, NULL, _IOLBF, 0);
     signal(SIGPIPE, SIG_IGN);
 
+    cdb2_set_max_retries(100);
+    cdb2_set_min_retries(100);
+
     const char *conf = getenv("CDB2_CONFIG");
     if (conf) { cdb2_set_comdb2db_config(conf); }
 
@@ -140,5 +146,6 @@ int main(int argc, char *argv[]) {
     gbl_tier = argv[2];
     gbl_table_name = argv[3];
     gbl_timeout_secs = atoi(argv[4]);
+    gbl_verbose = !!atoi(argv[5]);
     return run_test();
 }

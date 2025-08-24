@@ -3364,7 +3364,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
     /* An application may use different certificates.
        So we allocate an SSL context for each handle. */
     SSL_CTX *ctx;
-    int rc, dossl = 0;
+    int rc = 0, dossl = 0;
     cdb2_ssl_sess *p;
 
     if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
@@ -3372,7 +3372,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
         case PEER_SSL_UNSUPPORTED:
             sprintf(hndl->errstr, "The database does not support SSL.");
             hndl->sslerr = 1;
-            return -1;
+            rc = -1;
+            break;
         case PEER_SSL_ALLOW:
         case PEER_SSL_REQUIRE:
             dossl = 1;
@@ -3381,7 +3382,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
             sprintf(hndl->errstr,
                     "Unrecognized peer SSL mode: %d", hndl->s_sslmode);
             hndl->sslerr = 1;
-            return -1;
+            rc = -1;
+            break;
         }
     } else if (SSL_IS_PREFERRED(hndl->c_sslmode)) {
         dossl = 1;
@@ -3398,26 +3400,32 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
             sprintf(hndl->errstr,
                     "Unrecognized peer SSL mode: %d", hndl->s_sslmode);
             hndl->sslerr = 1;
-            return -1;
+            rc = -1;
+            break;
         }
     }
+
+    if (rc != 0)
+        goto out;
 
     hndl->sslerr = 0;
 
     /* fast return if SSL is not needed. */
     if (!dossl)
-        return 0;
+        goto out;
 
     if ((rc = cdb2_init_ssl(1, 1)) != 0) {
         hndl->sslerr = 1;
-        return rc;
+        goto out;
     }
 
     /* If negotiation fails, let API retry. */
     struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN)};
     rc = cdb2buf_fwrite((char *)&hdr, sizeof(hdr), 1, sb);
-    if (rc != 1)
+    if (rc != 1) {
         return -1;
+        goto out;
+    }
 #ifdef CDB2API_TEST
     if ((rc = cdb2buf_flush(sb)) < 0 || (rc = cdb2buf_getc(sb)) < 0 || fail_ssl_negotiation_once) {
 #else
@@ -3430,10 +3438,11 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
 #ifdef CDB2API_TEST
         if (rc >= 0) {
             --fail_ssl_negotiation_once;
-            return -1;
+            rc = -1;
+            goto out;
         }
 #endif
-        return rc;
+        goto out;
     }
 
     /* The node does not agree with dbinfo. This usually happens
@@ -3443,14 +3452,16 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
             hndl->c_sslmode = SSL_ALLOW;
             /* if server sends back 'N', reuse this plaintext connection;
                force reconnecting for an unexpected byte */
-            return (rc == 'N') ? 0 : -1;
+            rc = (rc == 'N') ? 0 : -1;
+            goto out;
         }
 
         /* We reach here only if the server is mistakenly downgraded
            before the client. */
         sprintf(hndl->errstr, "The database does not support SSL.");
         hndl->sslerr = 1;
-        return -1;
+        rc = -1;
+        goto out;
     }
 
     rc = ssl_new_ctx(&ctx, hndl->c_sslmode, hndl->sslpath, &hndl->cert,
@@ -3471,10 +3482,19 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sessobj = NULL;
-        return -1;
+        rc = -1;
+        goto out;
     }
     hndl->newsess = 1;
-    return 0;
+    rc = 0;
+out:
+    if (rc != 0) {
+        /* Don't leave an incomplete SSL connection here.
+         * Shut it down and reset sbuf. Caller will reconnect */
+        cdb2buf_close(hndl->sb);
+        hndl->sb = NULL;
+    }
+    return rc;
 }
 
 static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
@@ -3551,7 +3571,6 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
     cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        cdb2buf_close(sb);
         rc = -1;
         goto after_callback;
     }
@@ -3676,7 +3695,6 @@ retry_newsql_connect:
     cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        cdb2buf_close(sb);
         rc = -1;
         goto after_callback;
     }
