@@ -123,8 +123,7 @@ do {                                            \
     do {                                                        \
         if (err != NULL)                                        \
             snprintf(err, n,                                    \
-                     "SSL Error: %s: (%lu) %s",                 \
-                     msg, ERR_get_error(), SSL_ERRSTR());       \
+                     "SSL Error: %s: %s", msg, SSL_ERRSTR());   \
         else                                                    \
             PRINT_SSL_ERRSTR_MT(cb, msg);                       \
     } while (0)
