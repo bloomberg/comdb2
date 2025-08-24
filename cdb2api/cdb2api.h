@@ -233,7 +233,6 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col);
 const char *cdb2_errstr(cdb2_hndl_tp *hndl);
 const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
-void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl);
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
 void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max, int *count);
 int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
