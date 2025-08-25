@@ -592,6 +592,12 @@ void *get_authdata(struct sqlclntstate *clnt)
     return clnt->plugin.get_authdata(clnt);
 }
 
+void free_authdata(struct sqlclntstate *clnt)
+{
+    if (clnt && clnt->plugin.free_authdata)
+        clnt->plugin.free_authdata(clnt);
+}
+
 static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 {
     return clnt->plugin.skip_row(clnt, rowid);
@@ -5262,7 +5268,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     clear_session_tbls(clnt);
-    free(clnt->authdata);
+    free_authdata(clnt);
     clnt->authdata = NULL;
 
     free_client_adj_col_names(clnt);
@@ -5448,7 +5454,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     }
     free(clnt->context);
     if (clnt->authdata) {
-        free(clnt->authdata);
+        free_authdata(clnt);
         clnt->authdata = NULL;
     }
     clnt->context = NULL;
@@ -7018,6 +7024,10 @@ void *internal_get_authdata(struct sqlclntstate *a)
     if (a->authdata)
         return a->authdata;
     return NULL;
+}
+int internal_free_authdata(struct sqlclntstate *a)
+{
+    return 0;
 }
 static int internal_local_check(struct sqlclntstate *a)
 {
