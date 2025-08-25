@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+# Exit 1 so that we can test our CI. This test can be removed once CI has been tested.
+exit 1
