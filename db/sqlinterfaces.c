@@ -1423,6 +1423,7 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                newstate);
 
     if (newstate == SQLENG_WRONG_STATE) {
+        handle_sql_intrans_unrecoverable_error(clnt);
         logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from state %d file %s line %d.\n",
                clnt->ctrl_sqlengine, file, line);
     }
