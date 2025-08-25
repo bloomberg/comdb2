@@ -53,6 +53,13 @@ struct berkdb_thread_stats {
 
     uint64_t rep_collect_time_us;
     uint64_t rep_exec_time_us;
+
+    uint32_t rep_commit_file;
+    uint32_t rep_commit_offset;
+
+    uint64_t rep_longest_dispatch_us;
+    uint32_t rep_longest_dispatch_file;
+    uint32_t rep_longest_dispatch_offset;
 };
 
 #endif
