@@ -8,8 +8,9 @@ readonly clang_style="{BasedOnStyle: llvm, \
                       IndentCaseLabels: false, \
                       AlwaysBreakTemplateDeclarations: true, \
                       AllowShortFunctionsOnASingleLine: false, \
-                      AllowShortCaseLabelsOnASingleLine: true, \
-                      AllowShortIfStatementsOnASingleLine: true}"
+                      AllowShortCaseLabelsOnASingleLine: false, \
+                      AllowShortIfStatementsOnASingleLine: false, \
+                      ColumnLimit: 120}"
 
 readonly dirs_to_style_check="util \
 bbinc \
