@@ -272,8 +272,10 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
     }
 
 
-	R_LOCK(dbenv, &dblp->reginfo);
-	lock_held = 1;
+	if (!LF_ISSET(DB_LOG_NONEW)) {
+		R_LOCK(dbenv, &dblp->reginfo);
+		lock_held = 1;
+	}
 
 	ZERO_LSN(old_lsn);
 
@@ -299,8 +301,10 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 		 * messages, but we want to drop and reacquire it a minimal
 		 * number of times.
 		 */
-		R_UNLOCK(dbenv, &dblp->reginfo);
-		lock_held = 0;
+		if (!LF_ISSET(DB_LOG_NONEW)) {
+			R_UNLOCK(dbenv, &dblp->reginfo);
+			lock_held = 0;
+		}
 		/*
 		 * If we are not a rep application, but are sharing a
 		 * master rep env, we should not be writing log records.
@@ -370,7 +374,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	 * need to write out the log buffer.
 	 */
 	if (LF_ISSET(DB_FLUSH | DB_LOG_WRNOSYNC)) {
-		if (!lock_held) {
+		if (!lock_held && !LF_ISSET(DB_LOG_NONEW)) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			lock_held = 1;
 		}
@@ -647,6 +651,8 @@ __log_txn_lsn(dbenv, lsnp, mbytesp, bytesp)
 	R_UNLOCK(dbenv, &dblp->reginfo);
 }
 
+int gbl_logged_newfile = 1;
+
 /*
  * __log_put_next --
  *	Put the given record as the next in the log, wherever that may
@@ -696,14 +702,25 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 	 * replication client environment and have been told to do so,
 	 * swap files.
 	 */
-	if (lp->lsn.offset == 0 ||
-		lp->lsn.offset + hdr->size + dbt->size > lp->log_size) {
+	if (!LF_ISSET(DB_LOG_NONEW) &&
+			(lp->lsn.offset == 0 ||
+		lp->lsn.offset + hdr->size + dbt->size > lp->log_size)) {
 		if (hdr->size + sizeof(LOGP) + dbt->size > lp->log_size) {
 			__db_err(dbenv,
 		"DB_ENV->log_put: record larger than maximum file size (%lu > %lu)",
 				(u_long)hdr->size + sizeof(LOGP) + dbt->size,
 				(u_long)lp->log_size);
 			return (EINVAL);
+		}
+
+		if (gbl_logged_newfile && IS_REP_MASTER(dbenv)) {
+			DB_LSN newfile_lsn;
+			ret = __newfile_log(dbenv, &newfile_lsn, lp->lsn.file + 1, DB_LOG_NONEW);
+			if (ret != 0) {
+				logmsg(LOGMSG_ERROR, "%s %d: __newfile_log failed with %d\n",
+					__func__, __LINE__, ret);
+				return (EINVAL);
+			}
 		}
 
 		if ((ret = __log_newfile(dblp, NULL)) != 0)
