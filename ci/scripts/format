@@ -54,7 +54,7 @@ print_help() {
   echo "  -h, --help               Show this help message"
   echo ""
   echo "Uses the following clang-format style:"
-  echo "  { $(echo "${clang_style}" | sed 's/[{}]//g; s/, */;\n  /g')" }
+  echo "  { $(echo "${clang_style}" | sed 's/[{}]//g; s/, */,\n  /g')" }
   echo ""
   echo "Formats files with the following extensions: ${extensions_to_style_check}"
   echo "in the following directories:"
@@ -65,7 +65,7 @@ print_help() {
   echo "  $0 -b upstream/main"
   echo ""
   echo "  Check format for staged changes against HEAD (useful for a pre-commit hook):"
-  echo "  $0 --dry-run --only-staged --compare-base $(git rev-parse --short HEAD)"
+  echo "  $0 --dry-run --only-staged --compare-base \$(git rev-parse --short HEAD)"
 }
 
 while [[ $# -gt 0 ]]; do
