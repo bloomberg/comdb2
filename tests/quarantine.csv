@@ -5,3 +5,4 @@ sc_inserts,FLAKEY,180387017
 sc_downgrade,DB_BUG,180377358
 sc_transactional_rowlocks_generated,UNKNOWN,180364183
 sc_truncate_lockorder_generated,UNKNOWN,180390150
+reco-ddlk-sql,DB_BUG,180524256
