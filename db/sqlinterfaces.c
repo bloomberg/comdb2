@@ -2398,7 +2398,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry.
              */
-            write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
+            if (clnt->continued_on_chunk_verify_error && clnt->saved_rc && clnt->saved_errstr)
+                write_response(clnt, RESPONSE_ERROR, clnt->saved_errstr, clnt->saved_rc);
+            else
+                write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
         }
 
         outrc = SQLITE_OK; /* the happy case */
@@ -5471,6 +5474,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
     clnt->netwaitus = 0;
+    clnt->set_continue_on_chunk_verify_error = 0;
+    clnt->continued_on_chunk_verify_error = 0;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
