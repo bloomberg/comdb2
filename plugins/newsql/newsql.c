@@ -1495,6 +1495,8 @@ static int newsql_skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
+    if (clnt->continued_on_verify_error != CONT_ON_VERIFY_ERROR_NO)
+        return 1;
     if (clnt->num_retry == sqlquery->retry &&
         (clnt->num_retry == 0 || sqlquery->has_skip_rows == 0 ||
          sqlquery->skip_rows < rowid)) {
@@ -2220,6 +2222,14 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 } else {
                     clnt->multiline = 1;
                 }
+            } else if (strncasecmp(sqlstr, "continue_on_verify_error", 24) == 0) {
+                sqlstr += 24;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->continue_on_verify_error = 0;
+                } else {
+                    clnt->continue_on_verify_error = 1;
+                }
             } else {
                 rc = ii + 1;
             }
@@ -2398,6 +2408,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         bzero(&clnt->log_effects, sizeof(clnt->log_effects));
         bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
         clnt->had_errors = 0;
+        clnt->continued_on_verify_error = CONT_ON_VERIFY_ERROR_NO;
         clnt->ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
     }
     if (clnt->dbtran.mode < TRANLEVEL_SOSQL) {
@@ -2483,7 +2494,7 @@ int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
 {
     /* return 0 => shoud dispatch */
     *commit_rollback = is_commit_rollback(clnt);
-    return clnt->had_errors && !(*commit_rollback);
+    return (clnt->had_errors || clnt->continued_on_verify_error == CONT_ON_VERIFY_ERROR_SENT) && !(*commit_rollback);
 }
 
 void newsql_reset(struct sqlclntstate *clnt)
