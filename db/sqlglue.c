@@ -8885,6 +8885,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
         rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
+        int continued_on_chunk_verify_error = (clnt->set_continue_on_chunk_verify_error && rc == CDB2ERR_VERIFY_ERROR);
         if (rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe,
                                     errstat_get_str(&clnt->osql.xerr));
@@ -8893,6 +8894,12 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             /* we need to recreate the transaction in any case
                goto done;
              */
+            if (continued_on_chunk_verify_error) {
+                logmsg(LOGMSG_ERROR, "Continuing on verify error for sql %.*s\n", 100, clnt->sql);
+                rc = SQLITE_OK;
+                commit_rc = SQLITE_OK;
+                clnt->continued_on_chunk_verify_error = 1;
+            }
         }
 
         // clnt takes priority for throttle time

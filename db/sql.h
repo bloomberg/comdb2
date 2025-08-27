@@ -1008,6 +1008,8 @@ struct sqlclntstate {
     unsigned return_long_column_names : 1; // if 0 then tunable decides
     unsigned in_local_cache : 1;
     unsigned evicted_appsock : 1;
+    unsigned set_continue_on_chunk_verify_error : 1; // set stmt enabled
+    unsigned continued_on_chunk_verify_error : 1;    // did we continue on verify error?
 
     unsigned num_adjusted_column_name_length; // does not consider fastsql
     char **adjusted_column_names;

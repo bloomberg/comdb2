@@ -158,14 +158,20 @@ done:
     return rc;
 }
 
-int value_comparer(cdb2_hndl_tp *hndl, int divider, int *print_error) {
+int value_comparer(cdb2_hndl_tp *hndl, int divider, int divider2, int *print_error) {
     int rc = cdb2_run_statement(hndl, "select * from t");
     if (rc)
         return rc;
     int i = 1;
+    int expected;
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
         int val = *(int *)cdb2_column_value(hndl, 0);
-        int expected = i <= divider ? -i : i;
+        if (i <= divider)
+            expected = -i;
+        else if (i <= divider2)
+            expected = i;
+        else
+            expected = -i;
         if (val != expected) {
             fprintf(stderr, "Expected %d but got %d\n", expected, val);
             rc = -1;
@@ -267,7 +273,7 @@ int test1(char *dbname) {
     rc = cdb2_run_statement(hndl, "select * from t");
     if (rc)
         goto err;
-    rc = value_comparer(hndl, 96, &print_error);
+    rc = value_comparer(hndl, 96, 100, &print_error);
     if (rc)
         goto err;
 
@@ -287,7 +293,7 @@ done:
     return rc;
 }
 
-int test2(char *dbname) {
+int test2(char *dbname, int continue_on_verify_error) {
     cdb2_hndl_tp *hndl = NULL;
     cdb2_hndl_tp *hndl2 = NULL;
     struct cdb2_effects_type effects = {0};
@@ -317,6 +323,11 @@ int test2(char *dbname) {
     rc = cdb2_run_statement(hndl, "set verifyretry off");
     if (rc)
         goto err;
+    if (continue_on_verify_error) {
+        rc = cdb2_run_statement(hndl, "set continue_on_verify_error on");
+        if (rc)
+            goto err;
+    }
     rc = cdb2_run_statement(hndl, "begin");
     if (rc)
         goto err;
@@ -357,7 +368,10 @@ int test2(char *dbname) {
         print_error = 0;
         goto err;
     }
-    rc = effects_comparer(&effects, 16, 0, 16, 0, 0);
+    if (continue_on_verify_error)
+        rc = effects_comparer(&effects, 84, 0, 84, 0, 0);
+    else
+        rc = effects_comparer(&effects, 16, 0, 16, 0, 0);
     if (rc) {
         print_error = 0;
         goto err;
@@ -366,7 +380,10 @@ int test2(char *dbname) {
     rc = cdb2_run_statement(hndl, "select * from t");
     if (rc)
         goto err;
-    rc = value_comparer(hndl, 16, &print_error);
+    if (continue_on_verify_error)
+        rc = value_comparer(hndl, 16, 32, &print_error);
+    else
+        rc = value_comparer(hndl, 16, 100, &print_error);
     if (rc)
         goto err;
 
@@ -398,7 +415,11 @@ int main(int argc, char **argv)
     int rc = test1(dbname);
     if (rc)
         abort();
-    rc = test2(dbname);
+    rc = test2(dbname, 0);
+    if (rc)
+        abort();
+    
+    rc = test2(dbname, 1);
     if (rc)
         abort();
     
