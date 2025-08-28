@@ -1103,6 +1103,7 @@ struct cdb2_hndl {
     struct cdb2_hndl *fdb_hndl;
     int is_child_hndl;
     CDB2SQLQUERY__IdentityBlob *id_blob;
+    int comdb2db_resolved_from_config;
 };
 
 static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
@@ -1319,7 +1320,7 @@ static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
-                              int *stack_at_open)
+                              int *stack_at_open, int *comdb2db_found)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
@@ -1341,6 +1342,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 strncpy(comdb2db_hosts[*num_hosts], tok, CDB2HOSTNAME_LEN - 1);
                 (*num_hosts)++;
                 tok = strtok_r(NULL, " :,", &last);
+                if (comdb2db_found)
+                    *comdb2db_found = 1;
             }
         } else if (dbname && (strcasecmp(dbname, tok) == 0)) {
             tok = strtok_r(NULL, " :,", &last);
@@ -1619,7 +1622,7 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN],
                                            const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
                                            const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
-                                           int *dbnum, int noLock, int defaultOnly)
+                                           int *dbnum, int noLock, int defaultOnly, int *comdb2db_found)
 {
     char filename[PATH_MAX];
     SBUF2 *s;
@@ -1637,17 +1640,15 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
     if (!defaultOnly && CDB2DBCONFIG_BUF != NULL) {
-        read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
-                          comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                          db_hosts, num_db_hosts, dbnum, send_stack);
+        read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
+                          db_hosts, num_db_hosts, dbnum, send_stack, comdb2db_found);
         fallback_on_bb_bin = 0;
     } else {
         if (!defaultOnly && *CDB2DBCONFIG_NOBBENV != '\0') {
             s = sbuf2openread(CDB2DBCONFIG_NOBBENV);
             if (s != NULL) {
-                read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
-                                  num_hosts, comdb2db_num, dbname, db_hosts,
-                                  num_db_hosts, dbnum, send_stack);
+                read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
+                                  db_hosts, num_db_hosts, dbnum, send_stack, comdb2db_found);
                 sbuf2close(s);
                 fallback_on_bb_bin = 0;
             }
@@ -1662,9 +1663,8 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     if (fallback_on_bb_bin) {
         s = sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN);
         if (s != NULL) {
-            read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
-                              num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, send_stack);
+            read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                              num_db_hosts, dbnum, send_stack, comdb2db_found);
             sbuf2close(s);
         }
     }
@@ -1673,7 +1673,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         s = sbuf2openread(filename);
         if (s != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, send_stack);
+                              num_db_hosts, dbnum, send_stack, comdb2db_found);
             sbuf2close(s);
         }
     }
@@ -1684,7 +1684,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
 {
     if (!strlen(cdb2_comdb2dbname)) {
-        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0);
+        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL);
     }
     (*comdb2dbname) = strdup(cdb2_comdb2dbname);
     (*comdb2dbclass) = strdup((strcmp(cdb2_comdb2dbname, "comdb3db") == 0) ? "dev" : "prod");
@@ -1745,14 +1745,16 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOST
                               int dbinfo_or_dns)
 {
     int rc;
+    int comdb2db_found = 0;
 
     if (hndl)
         debugprint("entering\n");
 
     rc = read_available_comdb2db_configs(hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname, db_hosts,
-                                         num_db_hosts, dbnum, 0, 0);
+                                         num_db_hosts, dbnum, 0, 0, &comdb2db_found);
     if (rc == -1)
         return rc;
+    hndl->comdb2db_resolved_from_config = comdb2db_found;
     if (master)
         *master = -1;
     set_cdb2_timeouts(hndl);
@@ -5939,7 +5941,9 @@ free_vars:
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
     int timeoutms = 10 * 1000;
-    if (sbuf2free(ss) == 0)
+    if (hndl->comdb2db_resolved_from_config)
+        sbuf2close(ss);
+    else if (sbuf2free(ss) == 0)
         cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, comdb2db_num);
     free_events(&tmp);
     return 0;
@@ -6128,8 +6132,7 @@ after_callback:
 static inline void only_read_config(cdb2_hndl_tp *hndl, int noLock,
                                     int defaultOnly)
 {
-    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                                    NULL, NULL, noLock, defaultOnly);
+    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, noLock, defaultOnly, NULL);
     set_cdb2_timeouts(hndl);
 }
 
