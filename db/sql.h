@@ -322,6 +322,17 @@ typedef struct sqlclntstate_fdb {
     int failed_heartbeats; /* used to signal failed communication with remotes */
 } sqlclntstate_fdb_t;
 
+enum ucancel_type {
+    UCANCEL_INV = 0,
+    UCANCEL_ALL = 1,    /* both queued and running */
+    UCANCEL_RUN = 2,    /* running only */
+    UCANCEL_QUE = 4,    /* queued only */
+    UCANCEL_CNO = 8,    /* filter by cnonce */
+    UCANCEL_FPT = 16    /* filter by fp */
+};
+
+int ucancel_sql_statements(enum ucancel_type type, char *uuid);
+
 CurRange *currange_new();
 #define CURRANGEARR_INIT_CAP 2
 void currangearr_init(CurRangeArr *arr);

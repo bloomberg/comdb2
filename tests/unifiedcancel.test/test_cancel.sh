@@ -31,16 +31,15 @@ function header
 
 header 1 "running a long query, retrieve it and cancel it"
 echo "Running tests on node ${mach}"
-echo "inserting 3 records"
-$S_SQL "insert into t values (1), (2), (3)"
+echo "inserting 60 records"
+$S_SQL "insert into t select * from generate_series(1,60)"
 if [[ $? != 0 ]] ; then
     echo "Failed to insert"
     exit 1
 fi
 
 echo "running async select sleep"
-#$S_SQL "select *, sleep(10, 1) from t order by id"
-$S_SQL "select *, sleep(60) from t order by id" &
+$S_SQL "select *, sleep(1) from t order by 1" &
 if [[ $? != 0 ]] ; then
     echo "Failed to async run sleep"
     exit 1
@@ -60,11 +59,13 @@ if [[ -z ${uuid} ]] ; then
 fi
 
 echo "running cancel ${uuid} trap"
-$S_SQL "exec procedure sys.cmd.cancel('${uuid}')"
+$S_SQL "exec procedure sys.cmd.cancel('cnonce', '${uuid}')"
 if [[ $? != 0 ]] ; then
     echo "Failed to run cancel message"
     exit 1
 fi
+
+sleep 2
 
 echo "check if the ${uuid} is gone"
 found_uuid=`$S_TSQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%'"`
