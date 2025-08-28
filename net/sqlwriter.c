@@ -29,8 +29,8 @@
 #include <sqlwriter.h>
 #include <ssl_evbuffer.h>
 
-//send heartbeat if no data every (seconds)
-#define min_hb_time 1
+//send heartbeat if no data every (msec)
+#define min_hb_time 500
 
 struct sqlwriter {
     sql_dispatch_timeout_fn *dispatch_timeout;
@@ -44,7 +44,7 @@ struct sqlwriter {
     struct event_base *timer_base;
     pthread_t timer_thd;
     struct event_base *wr_base;
-    time_t sent_at;
+    struct timeval sent_at;
     int64_t blocked_at;
     sql_pack_fn *pack;
     sql_pack_fn *pack_hb;
@@ -208,7 +208,7 @@ static void sql_flush_cb(int fd, short what, void *arg)
     LOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
     while (evbuffer_get_length(writer->wr_buf)) {
         if ((n = wr_evbuffer(writer, fd)) <= 0) break;
-        writer->sent_at = time(NULL);
+        gettimeofday(&writer->sent_at, NULL);
         update_writer_state(writer, WRITE_SUCCEEDED);
     }
     if (evbuffer_get_length(writer->wr_buf) == 0) {
@@ -389,7 +389,11 @@ static void sql_trickle_int(struct sqlwriter *writer, int fd)
     }
     const int outstanding = evbuffer_get_length(writer->wr_buf);
     if (!outstanding) {
-        if (difftime(time(NULL), writer->sent_at) >= min_hb_time && !writer->timed_out) {
+        struct timeval now, diff;
+        gettimeofday(&now, NULL);
+        timersub(&now, &writer->sent_at, &diff);
+        int diffms = timeval_to_ms(diff);
+        if (diffms >= min_hb_time && !writer->timed_out) {
             sql_pack_heartbeat(writer);
         } else {
             return;
@@ -403,7 +407,7 @@ static void sql_trickle_int(struct sqlwriter *writer, int fd)
         return;
     }
     update_writer_state(writer, WRITE_SUCCEEDED);
-    writer->sent_at = time(NULL);
+    gettimeofday(&writer->sent_at, NULL);
 }
 
 static void sql_trickle_cb(int fd, short what, void *arg)
@@ -424,8 +428,11 @@ static void sql_heartbeat_cb(int fd, short what, void *arg)
     if (pthread_mutex_trylock(&writer->wr_lock)) return;
     if (writer->wr_continue) {
         int len = evbuffer_get_length(writer->wr_buf);
-        time_t now = time(NULL);
-        if (len || difftime(now, writer->sent_at) >= min_hb_time) {
+        struct timeval now, diff;
+        gettimeofday(&now, NULL);
+        timersub(&now, &writer->sent_at, &diff);
+        int diffms = timeval_to_ms(diff);
+        if (len || diffms >= min_hb_time) {
             event_add(writer->heartbeat_trickle_ev, NULL);
         }
     }
@@ -437,7 +444,7 @@ void sql_reset(struct sqlwriter *writer)
     writer->bad = 0;
     writer->dispatch_timeout = NULL;
     writer->done = 0;
-    writer->sent_at = time(NULL);
+    gettimeofday(&writer->sent_at, NULL);
     writer->timed_out = 0;
     writer->wr_continue = 1;
 }

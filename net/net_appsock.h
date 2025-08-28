@@ -72,4 +72,6 @@ void rem_appsock_connection_evbuffer(void);
 #define container_of(ptr, type) (type *)((uint8_t *)ptr - offsetof(type, ptr))
 #endif
 
+#define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
+
 #endif
