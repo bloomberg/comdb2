@@ -471,7 +471,6 @@ static void *do_pstack(void *arg)
     return NULL;
 }
 
-#define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
 int gbl_timer_warn_interval = 1500; //msec. To disable check, set to 0.
 int gbl_timer_pstack_threshold =  5000; //msec.
 int gbl_timer_pstack_interval =  0; //sec. To disable pstack, but keep monitoring, set to 0.
