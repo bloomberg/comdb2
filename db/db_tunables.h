@@ -2576,4 +2576,11 @@ REGISTER_TUNABLE("always_request_log_req", "Always request the next log record o
 REGISTER_TUNABLE("nudge_replication_when_idle",
                  "If we haven't seen any replication events in a while, request some (default: 100)", TUNABLE_INTEGER,
                  &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_always_reload_schemas_after_recovery",
+                 "If set, always reload schema information after recovery. This is used to "
+                 "reproduce a deadlock where post-election recovery and a dbinfo2 query "
+                 "acquire the schema lock and bdb lock in opposite orders. "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_always_reload_schemas_after_recovery, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

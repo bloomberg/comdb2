@@ -811,6 +811,7 @@ int gbl_clean_exit_on_sigterm = 1;
 
 int gbl_is_physical_replicant;
 int gbl_server_admin_mode = 0;
+int gbl_debug_always_reload_schemas_after_recovery = 0;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();

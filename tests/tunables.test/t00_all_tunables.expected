@@ -190,6 +190,7 @@
 (name='debug_all_prepare_abort', description='Prepare and abort all transactions. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_all_prepare_commit', description='Prepare all transactions. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_all_prepare_leak', description='Prepare and leak all transactions. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='debug_always_reload_schemas_after_recovery', description='If set, always reload schema information after recovery. This is used to reproduce a deadlock where post-election recovery and a dbinfo2 query acquire the schema lock and bdb lock in opposite orders. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_bdb_lock_stack', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_deadlock_replicant_percent', description='Percent of replicant events getting deadlocks', type='INTEGER', value='0', read_only='N')
 (name='debug_enospc_chance', description='DEBUG %% random ENOSPC on writes', type='INTEGER', value='0', read_only='N')
