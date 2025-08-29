@@ -12,6 +12,7 @@ RUN apt-get update && \
     gdb \
     git \
     iproute2 \
+    iptables \
     iputils-ping \
     jq \
     libevent-dev \
@@ -29,10 +30,12 @@ RUN apt-get update && \
     libz-dev \
     lsof \
     make \
+    maven \
     ncurses-dev \
     netcat-openbsd \
     net-tools \
     openssh-server \
+    openjdk-11-jdk \
     protobuf-c-compiler \
     psmisc \
     pstack \
@@ -50,14 +53,18 @@ RUN apt-get update && \
 
 COPY . /comdb2
 
-RUN cd /comdb2 &&  \
+RUN export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java)))) && \
+    export COMDB2_MVN_FLAGS="-Dhttp.proxyHost=devproxy.bloomberg.com -Dhttp.proxyPort=82 -Dhttps.proxyHost=devproxy.bloomberg.com -Dhttps.proxyPort=82" && \
+    cd /comdb2/cdb2jdbc && \
+    make install && \
+    cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
     cmake -DCOMDB2_TEST=1 .. && \
     make -j4 && \
     make -j4 test-tools && \
-    make install &&  \
+    make install && \
     cp /comdb2/tests/docker/client / && \
     cp /comdb2/tests/docker/server / && \
     apt-get clean
