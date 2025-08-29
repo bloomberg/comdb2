@@ -8,3 +8,4 @@ sc_truncate_lockorder_generated,UNKNOWN,180390150
 reco-ddlk-sql,DB_BUG,180524256
 analyze,UNKNOWN,180528295
 analyze_partial_index_off_generated,UNKNOWN,180528295
+incoherent_slow,UNKNOWN,180565323
