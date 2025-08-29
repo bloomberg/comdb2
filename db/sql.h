@@ -842,6 +842,9 @@ struct sqlclntstate {
                        need to pend the first error until a commit is issued.
                        any statements
                        past the first error are ignored. */
+    int commit_after_error; /* used with set statement continue_on_verify_error
+                               don't send row last dummy on a commit stmt
+                               if already sent error */
     int in_client_trans; /* clnt is in a client transaction (ie. client ran
                             "begin" but not yet commit or rollback */
     char *saved_errstr;  /* if had_errors, save the error string */
@@ -1010,6 +1013,7 @@ struct sqlclntstate {
     unsigned return_long_column_names : 1; // if 0 then tunable decides
     unsigned in_local_cache : 1;
     unsigned evicted_appsock : 1;
+    unsigned continue_on_verify_error : 1;
 
     unsigned num_adjusted_column_name_length; // does not consider fastsql
     char **adjusted_column_names;
