@@ -109,6 +109,8 @@ int gbl_rep_verify_delay_remaining = 10;
 int gbl_flush_replicant_on_prepare = 1;
 int gbl_slow_rep_log_get_loop = 0;
 extern int gbl_wait_for_prepare_seqnum;
+extern int gbl_debug_always_reload_schemas_after_recovery;
+
 extern int request_delaymore(void *bdb_state);
 int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
 
@@ -8810,9 +8812,14 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 */
 	master = rep->master_id;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+	/* Reload schema info if we truncated any schema changes. */
+	int should_reload_schemas = undid_schema_change && !online;
+	should_reload_schemas |= gbl_debug_always_reload_schemas_after_recovery;
+
 	if (master == db_eid_invalid) {
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-		if (undid_schema_change && !online && dbenv->truncate_sc_callback)
+		if (should_reload_schemas && dbenv->truncate_sc_callback)
 			dbenv->truncate_sc_callback(dbenv, &trunclsn);
 		ret = 0;
 	} else {
@@ -8829,7 +8836,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		 */
 		lp->wait_recs = rep->max_gap;
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-		if (undid_schema_change && !online && dbenv->truncate_sc_callback)
+		if (should_reload_schemas && dbenv->truncate_sc_callback)
 			dbenv->truncate_sc_callback(dbenv, &trunclsn);
 		if (send_rep_all_req(dbenv, master, &rp->lsn, DB_REP_NODROP,
 					__func__, __LINE__) == 0) {
