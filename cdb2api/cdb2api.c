@@ -3469,8 +3469,8 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     sbuf2printf(ss, "rte %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
-    sbuf2gets(res, sizeof(res), ss);
-    debugprint("rte '%s' returns res=%s", name, res);
+    int t_rc = sbuf2gets(res, sizeof(res), ss);
+    debugprint("rte '%s' returns rc %d res=%s errno=%s\n", name, t_rc, res, strerror(errno));
     if (res[0] != '0') { // character '0' is indication of success
         sbuf2close(ss);
         return -1;
@@ -6838,6 +6838,11 @@ void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql)
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 1;
+}
+
+void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl)
+{
+    hndl->debug_trace = 0;
 }
 
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out)

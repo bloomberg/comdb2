@@ -48,7 +48,9 @@ int waste_connection() {
         goto err;
     }
     concurrent_fprintf(stdout, "Called snprintf\n");
+    cdb2_set_debug_trace(db);
     rc = cdb2_run_statement(db, sql);
+    cdb2_unset_debug_trace(db);
     if (rc) {
         concurrent_fprintf(stderr, "cdb2_run_statement failed %d %s\n", rc, cdb2_errstr(db));
         goto err;
