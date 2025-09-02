@@ -1682,8 +1682,14 @@ static void print_ds(const intv_t *tv, char *s, int n)
 
 char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen) {
     struct param_data p = {0};
+    int rc;
 
-    if (param_value(clnt, &p, n) != 0) {
+    if (clnt->spstmt != NULL)
+        rc = sqlite3_bind_param_value(clnt->spstmt, n, &p);
+    else
+        rc = param_value(clnt, &p, n);
+
+    if (rc != 0) {
         return NULL;
     }
     int len;
@@ -1744,7 +1750,13 @@ char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen
 static void log_params(struct reqlogger *logger)
 {
     struct sqlclntstate *clnt = logger->clnt;
-    int n = param_count(clnt);
+    int n;
+    if (clnt->spstmt != NULL) {
+        /* If the sql statement was executed in a stored procedure, count parameters of that sql statement. */
+        n = sqlite3_bind_parameter_count(clnt->spstmt);
+    } else {
+        n = param_count(clnt);
+    }
     if (n <= 0) return;
     char param_out[256];
     reqlog_logf(logger, REQL_INFO, "params=%d\n", n);
@@ -2290,14 +2302,16 @@ void reqlog_begin_subrequest(struct reqlogger *logger)
     }
 }
 
-void reqlog_end_subrequest(struct reqlogger *logger, int rc, const char *callfunc, int line)
+void reqlog_end_subrequest(struct reqlogger *logger, void *spstmt, int rc, const char *callfunc, int line)
 {
     const char *request_type = logger->request_type;
     int opcode = logger->opcode;
     struct ireq *iq = logger->iq;
     struct sqlclntstate *clnt = logger->clnt;
 
+    clnt->spstmt = spstmt;
     reqlog_end_request(logger, rc, callfunc, line);
+    clnt->spstmt = NULL;
     reqlog_start_request(logger);
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd != NULL) {

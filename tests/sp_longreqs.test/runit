@@ -54,4 +54,80 @@ grep 'sp_sql=SELECT i FROM t WHERE i > 10 AND i <= 20' $logfile
 grep 'index 0 on table t finds 2 next/prev 20' $logfile
 grep 'rowcount=20, cost=40' $logfile
 
+# Verify that bound paramters are logged correctly
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+DROP TABLE IF EXISTS t_all_lua_types
+CREATE TABLE t_all_lua_types (
+    i INTEGER,
+    r REAL,
+    b BLOB,
+    t TEXT,
+    dt DATETIME,
+    dtus DATETIMEUS,
+    ds INTERVALDS,
+    dsus INTERVALDSUS,
+    ym INTERVALYM
+)\$\$
+CREATE PROCEDURE alltypes {
+local function main()
+    declare i    "int";
+    declare r    "real";
+    declare b    "blob"
+    declare t    "cstring"
+    declare dt   "datetime"
+    declare dtus "datetime"
+    declare ds   "intervalds"
+    declare dsus "intervalds"
+    declare ym   "intervalym"
+
+    i    := 1
+    r    := 3.14
+    b    := x'CDB2'
+    t    := "HELLO WORLD"
+    dt   := "1970-01-01T12:34:56.789Z"
+    dtus := "1970-01-01T12:34:56.000789Z"
+    ds   := 1.234
+    dsus := 1.234567
+    ym   := 12
+
+    local insert = db:prepare("INSERT INTO t_all_lua_types VALUES(@i, @r, @b, @t, @dt, @dtus, @ds, @dsus, @ym)");
+    insert:bind("i", i);
+    insert:bind("r", r);
+    insert:bind("b", b);
+    insert:bind("t", t);
+    insert:bind("dt", dt);
+    insert:bind("dtus", dtus);
+    insert:bind("ds", ds);
+    insert:bind("dsus", dsus);
+    insert:bind("ym", ym);
+    insert:exec();
+end }\$\$
+EOF
+
+
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE alltypes()" >/dev/null
+grep "param0.*type=int.*len=8.*name=@i.*value=1" $logfile
+grep "param1.*type=real.*len=8.*name=@r.*value=3.14" $logfile
+grep "param2.*type=blob.*len=2.*name=@b.*value=x'cdb2'" $logfile
+grep "param3.*type=cstr.*len=11.*name=@t.*value='HELLO WORLD'" $logfile
+grep "param4.*type=datetime.*len=16.*name=@dt.*value=1970-01-01T073456.789 America/New_York" $logfile
+grep "param5.*type=datetimeus.*len=16.*name=@dtus.*value=1970-01-01T073456.000789 America/New_York" $logfile
+grep "param6.*type=intervalds.*len=32.*name=@ds.*value=0 00:00:01.234" $logfile
+grep "param7.*type=intervaldsus.*len=32.*name=@dsus.*value=0 00:00:01.234567" $logfile
+grep "param8.*type=intervalym.*len=32.*name=@ym.*value=1-00" $logfile
+
+# Verify that carray paramters are logged correctly
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+CREATE PROCEDURE sp_carray {
+local function main()
+    local numbers = {0,1,2,3,4}
+    db:column_type('text', 1)
+    local stmt = db:prepare('select * from carray(@arr)')
+    stmt:bind('arr', numbers)
+    stmt:emit()
+end }\$\$
+EOF
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sp_carray()" >/dev/null
+grep "param0.*type=real.*len=40.*name=@arr.*value=carray of length 5" $logfile
+
 exit 0
