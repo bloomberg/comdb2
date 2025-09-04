@@ -105,6 +105,7 @@ setup_db() {
 
     if [[ -z "${SKIPSSL}" && $DBNAME != *"nossl"* ]] ; then
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
+        echo "ssl_print_io_errors 1" >> ${LRL}
     fi
 
     if [[ -z "${SKIPDEBUG}" ]] ; then
