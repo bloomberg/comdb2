@@ -2367,7 +2367,6 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 
     struct sql_thread *sqlthd = start_sql_thread();
     sql_get_query_id(sqlthd);
-    clnt.debug_sqlclntstate = pthread_self();
     sqlthd->clnt = &clnt;
 
     get_copy_rootpages_custom(sqlthd, ents, nents);
@@ -13170,7 +13169,6 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = (char *)query;
-    clnt.debug_sqlclntstate = pthread_self();
 
     sql_get_query_id(thd);
     thd->clnt = &clnt;

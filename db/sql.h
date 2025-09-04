@@ -763,11 +763,9 @@ struct sqlclntstate {
     int n_cmp_idx;
     sampled_idx_t *sampled_idx_tbl;
 
-    pthread_t debug_sqlclntstate;
     int last_check_time;
     int query_timeout;
     int statement_timedout;
-    struct conninfo conn;
 
     uint8_t heartbeat;
     uint8_t ready_for_heartbeats;
@@ -1531,7 +1529,6 @@ response_func write_response;
 response_func read_response;
 plugin_func get_fileno;
 
-int sql_write_sbuf(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
 int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
