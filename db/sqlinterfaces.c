@@ -16,33 +16,27 @@
 
 /* code needed to support various comdb2 interfaces to the sql engine */
 
-#include <poll.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <strings.h>
-
+#include <alloca.h>
 #include <errno.h>
-#include <string.h>
-#include <stddef.h>
-#include <pthread.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <inttypes.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
+#include <math.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <time.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <unistd.h>
 
 #include <epochlib.h>
-
 #include <plhash_glue.h>
 #include <segstr.h>
-
 #include <list.h>
-
 #include <sbuf2.h>
 #include <bdb_api.h>
 #include <bdb_int.h>
@@ -55,9 +49,7 @@
 
 #include <cdb2api.h>
 
-#include <sys/time.h>
 #include <strbuf.h>
-#include <math.h>
 
 #include <sqlite3.h>
 #include <sqliteInt.h>
@@ -65,10 +57,7 @@
 
 #include "sql.h"
 #include "sqlinterfaces.h"
-
-#include "locks.h"
 #include "sqloffload.h"
-#include "osqlcomm.h"
 #include "osqlcheckboard.h"
 #include "osqlsqlthr.h"
 #include "osqlshadtbl.h"
@@ -77,7 +66,6 @@
 #include <sqlite3expert.h>
 #include <carray.h>
 
-#include <alloca.h>
 #include <fsnapf.h>
 
 #include "flibc.h"
@@ -86,16 +74,12 @@
 
 #include <ctrace.h>
 #include <bb_oscompat.h>
-#include <netdb.h>
 
 #include "fdb_bend_sql.h"
-#include "fdb_access.h"
-#include "sqllog.h"
 #include <quantize.h>
 #include <str0.h>
 
 #include "debug_switches.h"
-#include "intern_strings.h"
 #include "views.h"
 #include "mem.h"
 #include "comdb2_atomic.h"
@@ -2842,9 +2826,6 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* debug */
     thr_set_current_sql(clnt->sql);
 
-    /* debug */
-    clnt->debug_sqlclntstate = pthread_self();
-
     clnt->nrows = 0;
 
     /* berkdb stats */
@@ -4251,7 +4232,6 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
-    clnt->debug_sqlclntstate = pthread_self();
     struct sql_thread *sqlthd;
     if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
         sqlthd->clnt = clnt;
@@ -5579,229 +5559,7 @@ static int recover_deadlock_sbuf(struct sqlclntstate *clnt)
     return 1;
 }
 
-int sql_write_sbuf(SBUF2 *sb, const char *buf, int nbytes)
-{
-    ssize_t nwrite, written = 0;
-    struct sqlclntstate *clnt = sbuf2getclnt(sb);
-    int retry = -1;
-    int released_locks = 0;
-
-retry:
-    retry++;
-    while (written < nbytes) {
-        struct pollfd pd;
-        pd.fd = sbuf2fileno(sb);
-        pd.events = POLLOUT;
-        errno = 0;
-        int rc = poll(&pd, 1, 100);
-
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                goto retry;
-            return -1;
-        }
-        if (rc == 0) {
-            if ((gbl_sql_release_locks_on_slow_reader &&
-                 (!released_locks ||
-                  bdb_curtran_has_waiters(thedb->bdb_env,
-                                          clnt->dbtran.cursor_tran))) ||
-                bdb_lock_desired(thedb->bdb_env)) {
-                rc = recover_deadlock_sbuf(clnt);
-                if (rc == 0)
-                    released_locks = 1;
-            }
-
-#ifdef _SUN_SOURCE
-            if (gbl_flush_check_active_peer) {
-                /* On Solaris, we end up with sockets with
-                 * no peer, on which poll cheerfully returns
-                 * no events. So after several retries check if
-                 * still connected. */
-                if (retry % 10 == 0) {
-                    /* if we retried for a second, see if
-                     * the connection is still around.
-                     */
-                    struct sockaddr_in peeraddr;
-                    socklen_t len = sizeof(peeraddr);
-                    rc = getpeername(pd.fd, (struct sockaddr *)&peeraddr, &len);
-                    if (rc == -1 && errno == ENOTCONN) {
-                        ctrace("fd %d disconnected\n", pd.fd);
-                        return -1;
-                    }
-                }
-            }
-#endif
-            (void)retry;
-            goto retry;
-        }
-        if (pd.revents & POLLOUT) {
-            /* I dislike this code in this layer - it should be in net. */
-            nwrite = sbuf2unbufferedwrite(sb, &buf[written], nbytes - written);
-            if (nwrite < 0)
-                return -1;
-            written += nwrite;
-        } else if (pd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            return -1;
-        }
-    }
-    return written;
-}
-
 pthread_mutex_t gbl_sql_lock;
-
-/* Write sql interface.  This will replace sqlnet.c */
-
-/* don't let connections get more than this much memory */
-static int alloc_lim = 1024 * 1024 * 8;
-
-/* any state associated with a connection (including open db handles)
-   needs to be stored here.  everything is cleaned up on end of thread
-   in destroy_sqlconn */
-struct sqlconn {
-    pthread_t tid;
-    SBUF2 *sb;
-    hash_t *handles;
-    sqlite3 *db;
-    int reqsz;
-
-    struct statement_handle *last_handle;
-
-    /* all reads are done to this buffer */
-    char *buf;
-    int bufsz;
-
-    /* for debugging/stats: current state and timestamp when it was entered */
-    char *state;
-    int tm;
-
-    LINKC_T(struct sqlconn) lnk;
-};
-
-static int write_str(struct sqlconn *conn, char *err);
-
-static void conn_set_state(struct sqlconn *conn, char *state)
-{
-    conn->state = state;
-    conn->tm = time(NULL);
-}
-
-static void conn_alloc(struct sqlconn *conn, int sz)
-{
-    if (conn->bufsz >= sz)
-        return;
-    conn->bufsz = sz;
-    conn->buf = realloc(conn->buf, conn->bufsz);
-}
-
-/* handles are always a per-connection deal, and a connection
-   always has a dedicated thread, so no need to lock around
-   handles */
-typedef unsigned long long handle_tp;
-enum req_code {
-    REQ_EOF = -2,
-    REQ_INVALID = -1,
-    REQ_CONNECT = 0,
-    REQ_PREPARE = 1,
-    REQ_VERSION = 2,
-    REQ_CHANGES = 3,
-    REQ_FINALIZE = 4,
-    REQ_STEP = 5,
-    REQ_RESET = 6
-};
-
-/* request and responses go back in this format */
-struct reqhdr {
-    int rq;
-    int followlen;
-};
-
-/* column for results coming back */
-
-struct statement_handle {
-    /* context: need to swap these when switching between handles */
-    struct sqlthdstate sqlstate;
-    struct sqlclntstate clnt;
-
-    handle_tp hid;
-    sqlite3_stmt *p;
-    int *types;
-};
-
-static void switch_context(struct sqlconn *conn, struct statement_handle *h)
-{
-    return;
-
-#if 0
-    struct sql_thread *thd;
-    int i;
-    sqlite3 *db;
-    /* don't do anything if we are working with the same statemtn as last time */
-    if (conn->last_handle == h)
-        return;
-
-    conn->last_handle = h;
-
-    thd = pthread_getspecific(query_info_key);
-    h->sqlstate.sqlthd = thd;
-    h->clnt.debug_sqlclntstate = pthread_self();
-
-
-    db = conn->db;
-    /* reset client handle - we need one per statement */
-    for (i = 0; i < db->nDb; i++) {
-         if (db->aDb[i].pBt) {
-            db->aDb[i].pBt->clnt = &h->clnt;
-         }
-    }
-#endif
-}
-
-#if 0
-static int closehndl(void *obj, void *arg) {
-    struct sqlconn *conn;
-    struct statement_handle *h;
-
-    conn = (struct sqlconn*) arg;
-    h = (struct statement_handle*) obj;
-
-    sqlite3_finalize(h->p);
-    free(h);
-}
-#endif
-
-/* read request from connection, write to connection's buffer. return request
- * type */
-static enum req_code read_req(struct sqlconn *conn)
-{
-    struct reqhdr rq;
-    int rc;
-
-    conn->reqsz = 0;
-
-    /* header */
-    rc = sbuf2fread((char *)&rq, sizeof(struct reqhdr), 1, conn->sb);
-    if (rc == 0)
-        return REQ_EOF;
-
-    if (rc != 1)
-        return REQ_INVALID;
-
-    rq.rq = ntohl(rq.rq);
-    rq.followlen = ntohl(rq.followlen);
-
-    /* sanity check buffer size required */
-    if (rq.followlen < 0 || rq.followlen > alloc_lim)
-        return REQ_INVALID;
-
-    conn_alloc(conn, rq.followlen);
-
-    conn->reqsz = rq.followlen;
-    rc = sbuf2fread((char *)conn->buf, rq.followlen, 1, conn->sb);
-    if (rc != 1)
-        return REQ_INVALID;
-
-    return rq.rq;
-}
 
 /* Called when a query is done, while all the cursors are still open.  Traverses
    the list of cursors and saves the query path and cost. */
