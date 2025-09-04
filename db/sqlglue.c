@@ -9742,6 +9742,12 @@ static int _ucancel_sql_statements_run(void)
     return 0;
 }
 
+static int _ucancel_sql_statements_que(void)
+{
+    return 0;
+}
+
+
 /*
  * "Unified" sql statements cancel routine
  * MODES:
@@ -9758,8 +9764,9 @@ int ucancel_sql_statements(enum ucancel_type type, char *uuid) {
         return _ucancel_sql_statements_cno(uuid);
     case UCANCEL_RUN:
         return _ucancel_sql_statements_run();
-    case UCANCEL_ALL:
     case UCANCEL_QUE:
+        return _ucancel_sql_statements_que();
+    case UCANCEL_ALL:
     case UCANCEL_FPT:
        logmsg(LOGMSG_ERROR, "%d unimplemented\n", type);
        return -1;

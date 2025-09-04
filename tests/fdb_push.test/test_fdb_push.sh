@@ -229,9 +229,6 @@ EOF
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
-#convert the table to actual dbname
-sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
-
 # validate results 
 testcase_output=$(cat $output)
 expected_output=$(cat output.log.actual)
