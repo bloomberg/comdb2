@@ -9826,6 +9826,7 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt, uint
                __LINE__);
     }
 
+    clnt->recover_deadlock_rcode = 0;
 retry:
     bdberr = 0;
     curtran_out = bdb_get_cursortran(bdb_state, curtran_flags, &bdberr);
