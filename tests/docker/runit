@@ -94,6 +94,8 @@ services:
             dockerfile: tests/docker/Dockerfile.db
             args:
                 - REVISION=$prefix
+        ports:
+            - "3333:22"
         volumes:
             - ./common:/common
             - ./common/c1:/dedicated
@@ -108,6 +110,10 @@ cat >> $compose <<EOF
         command: /client $commands
         cap_add:
             - SYS_PTRACE
+            - SYS_RESOURCE
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_ADMIN
 EOF
 
 for node in $containers; do
@@ -144,6 +150,9 @@ cat >> $compose <<EOF
         command: /server
         cap_add:
             - SYS_PTRACE
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_ADMIN
 EOF
 done
 
