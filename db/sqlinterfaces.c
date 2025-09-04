@@ -4732,24 +4732,18 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     assert(clnt->dbtran.pStmt == NULL);
 
-    int is_legacy_request = 0;
-    if (strstr(clnt->sql, "comdb2_legacy"))
-        is_legacy_request = 1;
-
-    if (!is_legacy_request) {
-        /* everything going in is cursor based */
-        int rc = get_curtran(thedb->bdb_env, clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc=%d!\n", __func__, (void *)pthread_self(),
-                    rc);
-            send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
-            clnt->query_rc = -1;
-            clnt->osql.timings.query_finished = osql_log_time();
-            osql_log_time_done(clnt);
-            clnt_change_state(clnt, CONNECTION_IDLE);
-            signal_clnt_as_done(clnt);
-            return;
-        }
+    /* everything going in is cursor based */
+    int rc = get_curtran(thedb->bdb_env, clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc=%d!\n", __func__, (void *)pthread_self(),
+               rc);
+        send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
+        clnt->query_rc = -1;
+        clnt->osql.timings.query_finished = osql_log_time();
+        osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
+        signal_clnt_as_done(clnt);
+        return;
     }
 
     /* it is a new query, it is time to clean the error */
@@ -4769,8 +4763,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* actually execute the query */
     thrman_setfd(thd->thr_self, get_fileno(clnt));
 
-    if (!is_legacy_request)
-        osql_shadtbl_begin_query(thedb->bdb_env, clnt);
+    osql_shadtbl_begin_query(thedb->bdb_env, clnt);
 
     if (clnt->fdb_state.remote_sql_sb) {
         clnt->query_rc = execute_sql_query_offload(thd, clnt);
@@ -4784,8 +4777,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         put_ref(&clnt->sql_ref);
     }
 
-    if (!is_legacy_request)
-        osql_shadtbl_done_query(thedb->bdb_env, clnt);
+    osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
 
     /* this is a compromise; we release the curtran here, even though
@@ -4793,11 +4785,8 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
        any query inside the begin/commit will be performed under its
        own locker id;
     */
-    if (!is_legacy_request) {
-        if (put_curtran(thedb->bdb_env, clnt)) {
-            logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                    __func__);
-        }
+    if (put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n", __func__);
     }
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
