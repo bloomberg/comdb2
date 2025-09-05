@@ -322,6 +322,17 @@ typedef struct sqlclntstate_fdb {
     int failed_heartbeats; /* used to signal failed communication with remotes */
 } sqlclntstate_fdb_t;
 
+enum ucancel_type {
+    UCANCEL_INV = 0,
+    UCANCEL_ALL = 1,    /* both queued and running */
+    UCANCEL_RUN = 2,    /* running only */
+    UCANCEL_QUE = 4,    /* queued only */
+    UCANCEL_CNO = 8,    /* filter by cnonce */
+    UCANCEL_FPT = 16    /* filter by fp */
+};
+
+int ucancel_sql_statements(enum ucancel_type type, char *uuid);
+
 CurRange *currange_new();
 #define CURRANGEARR_INIT_CAP 2
 void currangearr_init(CurRangeArr *arr);
@@ -745,6 +756,7 @@ struct sqlclntstate {
 
     struct rawnodestats *rawnodestats;
 
+    uuid_t      unifieduuid;         /* assigned to any statement running, used for canceling live sql */
     osqlstate_t osql;                /* offload sql state is kept here */
     enum ctrl_sqleng ctrl_sqlengine; /* use to mark a begin/end out of state,
                                         see enum ctrl_sqleng
@@ -1338,6 +1350,7 @@ struct connection_info {
     enum connection_state state_int;
     int64_t in_transaction;
     int64_t in_local_cache;
+    char *uuid;
 };
 
 /* makes master swing verbose */

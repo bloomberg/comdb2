@@ -2470,6 +2470,10 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
 
     /* coherent  _or_ in middle of transaction */
     if ((!incoh_reject(clnt->admin, thedb->bdb_env) || clnt->features.allow_incoherent) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
+        uuidstr_t us;
+        comdb2uuid(clnt->unifieduuid);
+        fprintf(stderr, "GENERATED %s for \"%s\"\n", comdb2uuidstr(clnt->unifieduuid, us), clnt->sql);
+
         return NEWSQL_SUCCESS;
     }
     if (gbl_incoherent_clnt_wait > 0) {

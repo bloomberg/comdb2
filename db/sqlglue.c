@@ -9700,6 +9700,79 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
         logmsg(LOGMSG_USER, "Query with cnonce %s not found (finished?)\n", cnonce);
 }
 
+static int _ucancel_sql_statements_cno(char *uuidstr)
+{
+    struct sql_thread *thd;
+    int rc = -1;
+
+    uuid_t uuid;
+
+    if (uuid_parse(uuidstr, uuid)) {
+        logmsg(LOGMSG_ERROR, "Failed to parse uuid \"%s\"\n", uuidstr);
+        return rc;
+    }
+
+    Pthread_mutex_lock(&gbl_sql_lock);
+    LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk) {
+        if (thd->clnt && memcmp(thd->clnt->unifieduuid, uuid, sizeof(uuid_t)) == 0) {
+            logmsg(LOGMSG_ERROR, "Cancelling sql %s\n", thd->clnt->sql);
+            thd->stop_this_statement = 1;
+            rc = 0;
+            break;
+        }
+    }
+    Pthread_mutex_unlock(&gbl_sql_lock);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "Sql cnonce \"%s\" not found\n", uuidstr);
+    return rc;
+}
+
+static int _ucancel_sql_statements_run(void)
+{
+    struct sql_thread *thd;
+
+    Pthread_mutex_lock(&gbl_sql_lock);
+    LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk) {   
+        if (thd->clnt)
+            thd->stop_this_statement = 1;
+    }
+    Pthread_mutex_unlock(&gbl_sql_lock);
+
+    return 0;
+}
+
+static int _ucancel_sql_statements_que(void)
+{
+    return 0;
+}
+
+
+/*
+ * "Unified" sql statements cancel routine
+ * MODES:
+ *  type == UCANCEL_ALL #cancel all running and queued statements
+ *  type == UCANCEL_RUN #cancel all running statements
+ *  type == UCANCEL_QUE #cancel all queued statements
+ *  type == UCANCEL_CNO #cancel one running statement with cnonce = "uuid"
+ *  type == UCANCEL_FPT #cancel all running statement with fingerprint = "uuid"
+ *
+ */
+int ucancel_sql_statements(enum ucancel_type type, char *uuid) {
+    switch(type) {
+    case UCANCEL_CNO:
+        return _ucancel_sql_statements_cno(uuid);
+    case UCANCEL_RUN:
+        return _ucancel_sql_statements_run();
+    case UCANCEL_QUE:
+        return _ucancel_sql_statements_que();
+    case UCANCEL_ALL:
+    case UCANCEL_FPT:
+       logmsg(LOGMSG_ERROR, "%d unimplemented\n", type);
+       return -1;
+    }
+    return 0;
+}
+
 void sql_dump_running_statements(void)
 {
     struct sql_thread *thd;
