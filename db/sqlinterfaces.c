@@ -2282,7 +2282,8 @@ static int do_send_commitrollback_response(struct sqlclntstate *clnt,
                                            int sideeffects)
 {
     if (sideeffects == TRANS_CLNTCOMM_NORMAL &&
-        (send_intrans_response(clnt) || !clnt->had_errors))
+        (send_intrans_response(clnt) ||
+         (!clnt->had_errors && clnt->continued_on_verify_error != CONT_ON_VERIFY_ERROR_SENT)))
         return 1;
     return 0;
 }
@@ -3667,7 +3668,8 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
     if (clnt->isselect || is_with_statement(clnt->sql))
         return 0;
     if (in_client_trans(clnt)) {
-        if (from_error && !clnt->had_errors) /* send on first error */
+        if (from_error && !clnt->had_errors &&
+            clnt->continued_on_verify_error != CONT_ON_VERIFY_ERROR_SENT) /* send on first error */
             return 0;
         if (send_intrans_response(clnt)) {
             return 0;
@@ -3809,11 +3811,17 @@ static void post_query_get_cost(struct sqlthdstate *thd, struct sqlclntstate *cl
 }
 
 static int post_sqlite_processing(struct sqlthdstate *thd, struct sqlclntstate *clnt, struct sql_state *rec,
-                                  int postponed_write, uint64_t row_id)
+                                  int postponed_write, uint64_t row_id, int rc)
 {
     test_no_btcursors(thd);
     char *errstr = NULL;
-    int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
+    if (rc == 0 && !skip_response_error(clnt) && clnt->continued_on_verify_error == CONT_ON_VERIFY_ERROR_SEND &&
+        clnt->saved_rc && clnt->saved_errstr) {
+        send_run_error(clnt, clnt->saved_errstr, clnt->saved_rc);
+        clnt->continued_on_verify_error = CONT_ON_VERIFY_ERROR_SENT;
+        return 0;
+    }
+    rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
     if (rc != 0) {
         if (!skip_response_error(clnt)) {
             send_run_error(clnt, errstr, rc);
@@ -3951,7 +3959,7 @@ postprocessing:
         rc = 0;
     /* closing: error codes, postponed write result and so on*/
     post_query_get_cost(thd, clnt);
-    t_rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
+    t_rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id, rc);
     if (t_rc != 0 && rc == 0)
         rc = t_rc;
 
@@ -5440,6 +5448,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
     clnt->netwaitus = 0;
+    clnt->continue_on_verify_error = 0;
+    clnt->continued_on_verify_error = CONT_ON_VERIFY_ERROR_NO;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);

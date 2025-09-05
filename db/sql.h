@@ -689,6 +689,12 @@ struct features {
     unsigned queue_me : 1;
 };
 
+enum cont_on_verify_error {
+    CONT_ON_VERIFY_ERROR_NO = 0,   // did not continue on verify error (if there even was one)
+    CONT_ON_VERIFY_ERROR_SEND = 1, // there was a verify error and we need to send an error to the client
+    CONT_ON_VERIFY_ERROR_SENT = 2  // there was a verify error and we sent an error to the client
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
     struct thdpool *pPool;     /* When null, the default SQL thread pool is
@@ -1008,6 +1014,8 @@ struct sqlclntstate {
     unsigned return_long_column_names : 1; // if 0 then tunable decides
     unsigned in_local_cache : 1;
     unsigned evicted_appsock : 1;
+    unsigned continue_on_verify_error : 1;               // set stmt enabled
+    enum cont_on_verify_error continued_on_verify_error; // did we continue on verify error?
 
     unsigned num_adjusted_column_name_length; // does not consider fastsql
     char **adjusted_column_names;
