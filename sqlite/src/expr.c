@@ -6449,8 +6449,10 @@ default_prec:
           arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
                                         atRuntime, pParamsOut,
                                         srcs);
-          if( !arg )
+          if( !arg ){
+            sqlite3_free(ret);
             return NULL;
+          }
           ret2 = sqlite3_mprintf("%s, %s", ret, arg);
           sqlite3_free(arg);
           sqlite3_free(ret);
