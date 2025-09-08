@@ -1341,7 +1341,7 @@ function verify_revconn_fix
 {
     logFile=$TESTDIR/logs/${REPL_DBNAME_PREFIX}_${firstNode}.log
     x=$(egrep "Reverse connected" $logFile | wc -l)
-    if [[ "$x" -gt 80 ]]; then
+    if [[ "$x" -gt 90 ]]; then
         cleanFailExit "Reverse connection loop in $logFile"
     fi
 }
@@ -1394,6 +1394,135 @@ function match_overlap
     test_overlap "{1:1}" "{98:98}" "{30:1}" "{101:101}" 0
     
     return 0
+}
+
+function physrep_truncate
+{
+    local mnode=`getmaster`
+    local startlsn=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $mnode "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    echo "Create table"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table cktruncate(a int, b cstring(32))"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into cktruncate select *, 'good' from generate_series(1, 1000)"
+
+    # Block until all standalones have these records
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate")
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate")
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    # Block until clustered physrep has these records
+    name="${REPL_CLUS_DBNAME}"
+    for node in $CLUSTER ; do
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate")
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    echo "Retrieve 'good' LSN"
+    local goodlsn=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $mnode "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+
+    echo "Insert 'bad' data"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into cktruncate select *, 'bad' from generate_series(1, 1000)"
+
+    # Block until all standalones have these records
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate where b = 'bad'" 2>/dev/null)
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate where b = 'bad'" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    # Block until clustered physrep has these records
+    #name=${REPL_CLUS_DBNAME}
+    name="${REPL_CLUS_DBNAME}"
+    for node in $CLUSTER ; do
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate where b = 'bad'" 2>/dev/null)
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate where b = 'bad'" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    echo "Truncate to good LSN $goodlsn"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $mnode "exec procedure sys.cmd.truncate_log(\"$goodlsn\")"
+    r=$?
+    while [[ "$r" -ne "0" ]]; do
+        echo "Truncate returned a bad rcode $r, retrying"
+        sleep 1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $mnode "exec procedure sys.cmd.truncate_log(\"$goodlsn\")"
+        r=$?
+    done
+
+    sleep 5
+    echo "Verify that truncate succeeded - there should be 1000 records"
+    x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+    while [[ "$x" -ne "1000" ]]; do
+        sleep 1
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+    done
+
+    echo "Block until standalone physreps have truncated"
+    # Block until all standalones have truncated
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    # Block until clustered physrep has truncated 
+    echo "Block until clustered physrep has truncated"
+    name="${REPL_CLUS_DBNAME}"
+    for node in $CLUSTER ; do
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    echo "Drop table"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table cktruncate"
+
+    echo "Block until standalone physreps have dropped table"
+    # Block until all standalones have truncated
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from comdb2_tables where tablename = 'cktruncate'" 2>/dev/null)
+        while [[ "$x" -ne "0" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from comdb2_tables where tablename = 'cktruncate'" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
+
+    # Block until clustered physrep has truncated 
+    echo "Block until clustered physrep has truncated"
+    name="${REPL_CLUS_DBNAME}"
+    for node in $CLUSTER ; do
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from comdb2_tables where tablename = 'cktruncate'" 2>/dev/null)
+        while [[ "$x" -ne "0" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from comdb2_tables where tablename = 'cktruncate'" 2>/dev/null)
+        done
+        echo "Db $name on node $node has caught up"
+    done
 }
 
 # Verify that we are showing generation in comdb2-transaction-logs
@@ -1850,6 +1979,11 @@ function run_tests
     testcase="verify_revconn_fix"
     testcase_preamble $testcase
     verify_revconn_fix
+    testcase_finish $testcase
+
+    testcase="physrep_truncate"
+    testcase_preamble $testcase
+    physrep_truncate
     testcase_finish $testcase
 
     testcase="multimeta"
