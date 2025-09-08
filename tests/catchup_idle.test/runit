@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/waitmach.sh
+
+function wait_for_coherent_state() {
+    local host=$1
+    local desired_state=$2
+    local master=$3
+    local state=""
+    while :; do
+        state=$(cdb2sql --tabs --host ${master} ${CDB2_OPTIONS} ${DBNAME} default "select coherent_state from comdb2_cluster where host='$host'")
+        if [[ "$state" == "$desired_state" ]]; then
+            break
+        fi
+        echo "Waiting for $host to become $desired_state (currently $state)"
+        sleep 1
+    done
+}
+
+
+
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table if not exists t(a int, b blob)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "truncate t"
+
+echo "Populating"
+for i in $(seq 1 3000); do
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into t values($i, randomblob(700000))"
+done
+
+host=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='N' and coherent_state='coherent' limit 1")
+delhost=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='N' and coherent_state='coherent' and host != '$host' limit 1")
+master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='Y'")
+
+echo "Using node $host"
+ssh $host "${CDB2SQL_EXE} -admin ${CDB2_OPTIONS} ${DBNAME} @localhost 'put tunable rep_debug_delay 10'"
+$CDB2SQL_EXE --host $delhost ${CDB2_OPTIONS} ${DBNAME} default "delete from t limit 3000" &
+sleep 10
+ssh $host "${CDB2SQL_EXE} -admin  ${CDB2_OPTIONS} ${DBNAME} @localhost 'put tunable rep_debug_delay 0'"
+
+# we expect the node we artificially delayed to become incoherent first, then coherent
+wait_for_coherent_state $host "INCOHERENT" $master
+wait_for_coherent_state $host "coherent" $master
+
+# wait for the node to actually become available (which may happen after it becomes coherent)
+# if we don't do this, then the test will fail with 'db unavailable at finish'.
+waitmach $host
+
+echo "Success"

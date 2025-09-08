@@ -638,7 +638,7 @@
 (name='notimeout', description='Turns off SQL timeouts. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='noudp', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nowatch', description='Disable watchdog. Watchdog aborts the database if basic things like creating threads, allocating memory, etc. doesn't work. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
-(name='nudge_replication_when_idle', description='If we haven't seen any replication events in a while, request some (default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='nudge_replication_when_idle', description='If we haven't seen any replication events in a while, request some (default: 100)', type='INTEGER', value='100', read_only='N')
 (name='null_blob_fix', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='nullfkey', description='Do not enforce foreign key constraints for null keys. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='num_contexts', description='', type='INTEGER', value='16', read_only='Y')
