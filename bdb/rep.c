@@ -5564,8 +5564,9 @@ void *watcher_thread(void *arg)
             int nrecs;
             // if we're not seeing records or seeing only very old records, poke replication
             // to request records in the range we expect
-            if (gbl_nudge_replication_when_idle && bdb_state->dbenv->get_rep_lsns(bdb_state->dbenv, &next_lsn, &gap_lsn, &nrecs) == 0) {
-                if (nrecs == 0 && !IS_ZERO_LSN(gap_lsn)) {
+            if (gbl_nudge_replication_when_idle > 0 &&
+                bdb_state->dbenv->get_rep_lsns(bdb_state->dbenv, &next_lsn, &gap_lsn, &nrecs) == 0) {
+                if (nrecs < gbl_nudge_replication_when_idle && !IS_ZERO_LSN(gap_lsn)) {
                     DB_LSN tmp_lsn = {0};
                     DBT max_lsn_dbt = {0};
                     LOGCOPY_TOLSN(&tmp_lsn, &gap_lsn);
