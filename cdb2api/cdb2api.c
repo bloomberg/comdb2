@@ -3608,6 +3608,11 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (!hndl)
         return 0;
 
+    if (hndl->stmt_types) {
+        free(hndl->stmt_types);
+        hndl->stmt_types = NULL;
+    }
+
     if (hndl->fdb_hndl) {
         cdb2_close(hndl->fdb_hndl);
         hndl->fdb_hndl = NULL;
@@ -3799,6 +3804,11 @@ static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
     *query_hint = sql;
     return 0;
 }
+
+struct cdb2_stmt_types {
+    int n;
+    int types[0];
+};
 
 int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql)
 {
@@ -4241,6 +4251,94 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->is_retry = 0;
 }
 
+static const struct {
+    const char *name;
+    size_t name_sz;
+    cdb2_coltype type;
+} all_types[] = {{"INTEGER", sizeof("INTEGER") - 1, CDB2_INTEGER},
+                 {"CSTRING", sizeof("CSTRING") - 1, CDB2_CSTRING},
+                 {"REAL", sizeof("REAL") - 1, CDB2_REAL},
+                 {"BLOB", sizeof("BLOB") - 1, CDB2_BLOB},
+                 {"DATETIME", sizeof("DATETIME") - 1, CDB2_DATETIME},
+                 {"DATETIMEUS", sizeof("DATETIMEUS") - 1, CDB2_DATETIMEUS},
+                 {"INTERVALDS", sizeof("INTERVALDS") - 1, CDB2_INTERVALDS},
+                 {"INTERVALDSUS", sizeof("INTERVALDSUS") - 1, CDB2_INTERVALDSUS},
+                 {"INTERVALYM", sizeof("INTERVALYM") - 1, CDB2_INTERVALYM}};
+
+static const int total_types = sizeof(all_types) / sizeof(all_types[0]);
+
+#define get_toklen(tok)                                                                                                \
+    ({                                                                                                                 \
+        cdb2_skipws(tok);                                                                                              \
+        int len = 0;                                                                                                   \
+        while (tok[len] && !isspace(tok[len]))                                                                         \
+            ++len;                                                                                                     \
+        len;                                                                                                           \
+    })
+
+static int process_set_stmt_return_types(cdb2_hndl_tp *hndl, const char *sql)
+{
+    int toklen;
+    const char *tok = sql + 3; /* if we're here, first token is "set" */
+
+    toklen = get_toklen(tok);
+    if (toklen != 9 || strncasecmp(tok, "statement", 9) != 0)
+        return -1;
+    tok += toklen;
+
+    toklen = get_toklen(tok);
+    if (toklen != 6 || strncasecmp(tok, "return", 6) != 0)
+        return -1;
+    tok += toklen;
+
+    toklen = get_toklen(tok);
+    if (toklen != 5 || strncasecmp(tok, "types", 5) != 0)
+        return -1;
+    tok += toklen;
+
+    if (hndl->stmt_types) {
+        sprintf(hndl->errstr, "%s: already have %d parameter(s)", __func__, hndl->stmt_types->n);
+        return 1;
+    }
+
+    const int max_args = 1024;
+    uint8_t types[max_args];
+    int count = 0;
+
+    while (1) {
+        toklen = get_toklen(tok);
+        if (toklen == 0)
+            break;
+        if (count == max_args) {
+            sprintf(hndl->errstr, "%s: max number of columns:%d", __func__, max_args);
+            return 1;
+        }
+        int i;
+        for (i = 0; i < total_types; ++i) {
+            if (toklen == all_types[i].name_sz && strncasecmp(tok, all_types[i].name, toklen) == 0) {
+                tok += toklen;
+                types[count++] = all_types[i].type;
+                break;
+            }
+        }
+        if (i >= total_types) {
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: column:%d has bad type:'%.*s'", __func__, count, toklen,
+                     tok);
+            return 1;
+        }
+    }
+    if (count == 0) {
+        sprintf(hndl->errstr, "%s: bad number of columns:%d", __func__, count);
+        return 1;
+    }
+    hndl->stmt_types = malloc(sizeof(struct cdb2_stmt_types) + sizeof(int) * count);
+    hndl->stmt_types->n = count;
+    for (int i = 0; i < count; ++i) {
+        hndl->stmt_types->types[i] = types[i];
+    }
+    return 0;
+}
+
 static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
     int i, j, k;
@@ -4253,8 +4351,10 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
         return CDB2ERR_BADREQ;
     }
 
-    int rc = process_ssl_set_command(hndl, sql);
-    if (rc >= 0)
+    int rc;
+    if ((rc = process_ssl_set_command(hndl, sql)) >= 0)
+        return rc;
+    if ((rc = process_set_stmt_return_types(hndl, sql)) >= 0)
         return rc;
 
     i = hndl->num_set_commands;
@@ -4415,8 +4515,8 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     child->context_msgs.has_changed = child->context_msgs.count > 0;
 }
 
-static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
-                                        int ntypes, int *types, int line)
+static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int ntypes, int *types, int line,
+                                        int *set_stmt)
 {
     int return_value;
     int using_hint = 0;
@@ -4439,7 +4539,18 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
     /* sniff out 'set hasql on' here */
     if (strncasecmp(sql, "set", 3) == 0) {
+        *set_stmt = 1;
         return process_set_command(hndl, sql);
+    }
+
+    if (hndl->stmt_types) {
+        if (ntypes || types) {
+            sprintf(hndl->errstr, "%s: provided %d type(s), but already have %d", __func__, ntypes,
+                    hndl->stmt_types->n);
+            return -1;
+        }
+        ntypes = hndl->stmt_types->n;
+        types = hndl->stmt_types->types;
     }
 
     if (strncasecmp(sql, "begin", 5) == 0) {
@@ -5103,7 +5214,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 {
     int rc = 0;
 
-    void *callbackrc;
+    int set_stmt = 0;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
@@ -5121,15 +5232,21 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 
     while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_RUN_STATEMENT, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_SQL, sql);
+        void *callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_SQL, sql);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
-    if (overwrite_rc)
+    if (overwrite_rc) {
+        const char *first = sql;
+        int len = get_toklen(first);
+        if (len == 3 && strncasecmp(first, "set", 3) == 0) {
+            set_stmt = 1;
+        }
         goto after_callback;
+    }
 
     if (hndl->temp_trans && hndl->in_trans) {
-        cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
+        cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__, &set_stmt);
     }
 
     hndl->temp_trans = 0;
@@ -5138,7 +5255,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         (strncasecmp(sql, "set", 3) != 0 && strncasecmp(sql, "begin", 5) != 0 &&
          strncasecmp(sql, "commit", 6) != 0 &&
          strncasecmp(sql, "rollback", 8) != 0)) {
-        rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__);
+        rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__, &set_stmt);
         if (rc) {
             debugprint("cdb2_run_statement_typed_int rc = %d\n", rc);
             goto after_callback;
@@ -5147,7 +5264,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     }
 
     cdb2_skipws(sql);
-    rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
+    rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__, &set_stmt);
     if (rc)
         debugprint("rc = %d\n", rc);
 
@@ -5155,26 +5272,33 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     // (they can be either read or write)
     if (hndl->temp_trans && !is_sql_read(sql)) {
         if (rc == 0) {
-            int commit_rc =
-                cdb2_run_statement_typed_int(hndl, "commit", 0, NULL, __LINE__);
+            int commit_rc = cdb2_run_statement_typed_int(hndl, "commit", 0, NULL, __LINE__, &set_stmt);
             debugprint("rc = %d\n", commit_rc);
             rc = commit_rc;
         } else {
-            cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
+            cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__, &set_stmt);
         }
         hndl->temp_trans = 0;
     }
 
     if (log_calls) {
-        if (ntypes == 0)
+        if (set_stmt || (ntypes == 0 && hndl->stmt_types == NULL))
             fprintf(stderr, "%p> cdb2_run_statement(%p, \"%s\") = %d\n",
                     (void *)pthread_self(), hndl, sql, rc);
-        else {
+        else if (ntypes) {
             fprintf(stderr, "%p> cdb2_run_statement_typed(%p, \"%s\", [",
                     (void *)pthread_self(), hndl, sql);
             for (int i = 0; i < ntypes; i++) {
                 fprintf(stderr, "%s%s", cdb2_type_str(types[i]),
                         i == ntypes - 1 ? "" : ", ");
+            }
+            fprintf(stderr, "] = %d\n", rc);
+        } else {
+            int n = hndl->stmt_types->n;
+            int *t = hndl->stmt_types->types;
+            fprintf(stderr, "%p> cdb2_run_statement_typed(%p, \"%s\", [", (void *)pthread_self(), hndl, sql);
+            for (int i = 0; i < n; ++i) {
+                fprintf(stderr, "%s%s", cdb2_type_str(t[i]), i == n - 1 ? "" : ", ");
             }
             fprintf(stderr, "] = %d\n", rc);
         }
@@ -5183,9 +5307,13 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_RUN_STATEMENT, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_SQL, sql,
-                                          CDB2_RETURN_VALUE, (intptr_t)rc);
+        void *callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_SQL, sql, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
+    }
+
+    if (hndl->stmt_types && !set_stmt) {
+        free(hndl->stmt_types);
+        hndl->stmt_types = NULL;
     }
 
     return rc;

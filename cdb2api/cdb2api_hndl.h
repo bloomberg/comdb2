@@ -84,6 +84,8 @@ struct context_messages {
     int has_changed;
 };
 
+struct cdb2_stmt_types;
+
 typedef struct cdb2_query_list_item {
     void *buf;
     int len;
@@ -202,6 +204,7 @@ struct cdb2_hndl {
     struct cdb2_hndl *fdb_hndl;
     int is_child_hndl;
     CDB2SQLQUERY__IdentityBlob *id_blob;
+    struct cdb2_stmt_types *stmt_types;
 };
 
 #endif
