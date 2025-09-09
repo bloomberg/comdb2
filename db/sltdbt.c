@@ -447,7 +447,10 @@ int handle_ireq(struct ireq *iq)
     }
 
     if (rc == RC_INTERNAL_FORWARD) {
-        rc = 0;
+        if (iq->ipc_sndbak) {
+            rc = ERR_NOMASTER;
+        } else
+            rc = 0;
     } else {
         /* SNDBAK RESPONSE */
         if (iq->debug) {
