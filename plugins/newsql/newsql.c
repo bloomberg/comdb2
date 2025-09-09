@@ -40,7 +40,7 @@ extern int gbl_incoherent_clnt_wait;
 extern int gbl_new_leader_duration;
 extern int gbl_use_modsnap_for_snapshot;
 extern int gbl_gen_shard_verbose;
-void dump_response(const CDB2SQLRESPONSE *r);
+static void dump_response(const CDB2SQLRESPONSE *r);
 
 struct newsql_appdata {
     NEWSQL_APPDATA_COMMON
@@ -2551,6 +2551,17 @@ static void *newsql_get_authdata(struct sqlclntstate *clnt)
     return NULL;
 }
 
+static int newsql_is_legacy_request(sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata) {
+        CDB2SQLQUERY *sql_query = appdata->sqlquery;
+        if (sql_query->is_legacy_request)
+            return 1;
+    }
+    return 0;
+}
+
 void newsql_setup_clnt(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -2878,7 +2889,8 @@ static const char *feature_str(CDB2ServerFeatures f) {
     };
 }
 
-void dump_response(const CDB2SQLRESPONSE *r) {
+static void dump_response(const CDB2SQLRESPONSE *r)
+{
     int depth = 0;
     dump(depth, "CDB2_SQLRESPONSE: {\n");
     depth++;
