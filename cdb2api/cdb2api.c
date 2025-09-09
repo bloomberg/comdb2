@@ -414,13 +414,6 @@ static int value_on_off(const char *value) {
     return atoi(value);
 }
 
-static inline const char *cdb2_skipws(const char *str)
-{
-    while (*str && isspace(*str))
-        str++;
-    return str;
-}
-
 char *cdb2_getargv0(void)
 {
 #if defined(__APPLE__)
@@ -494,6 +487,12 @@ static void do_init_once(void)
     }
 }
 
+#define cdb2_skipws(str)                                                                                               \
+    do {                                                                                                               \
+        while (*(str) && isspace(*(str)))                                                                              \
+            ++(str);                                                                                                   \
+    } while (0);
+
 /* if sqlstr is a read stmt will return 1 otherwise return 0
  * returns -1 if sqlstr is null
  */
@@ -507,7 +506,7 @@ static int is_sql_read(const char *sqlstr)
 
     if (sqlstr == NULL)
         return -1;
-    sqlstr = cdb2_skipws(sqlstr);
+    cdb2_skipws(sqlstr);
     int slen = strlen(sqlstr);
     if (slen) {
         if (slen < sizeof(get) - 1)
@@ -1306,7 +1305,7 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
                     sizeof(SSL_MODE_VERIFY_DBNAME) - 1) == 0) {
         s += sizeof(SSL_MODE_VERIFY_DBNAME);
         if (nid_dbname != NULL) {
-            s = cdb2_skipws(s);
+            cdb2_skipws(s);
             *nid_dbname = (*s != '\0') ? OBJ_txt2nid(s) : cdb2_nid_dbname;
         }
         return SSL_VERIFY_DBNAME;
@@ -3235,7 +3234,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     }
 
     sqlquery.dbname = (char *)dbname;
-    sqlquery.sql_query = (char *)cdb2_skipws(sql);
+    cdb2_skipws(sql);
+    sqlquery.sql_query = (char *)sql;
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
 #else
@@ -3934,7 +3934,8 @@ static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
         sprintf(hndl->errstr, "Short identifier is too long.");
         return -1;
     }
-    const char *first = cdb2_skipws(sqlquery);
+    cdb2_skipws(sqlquery);
+    const char *first = sqlquery;
     const char *tail = first;
     while (*tail && !isspace(*tail)) {
         ++tail;
@@ -4260,11 +4261,11 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
 {
     const char *p = &set_command[sizeof("SET") - 1];
 
-    p = cdb2_skipws(p);
+    cdb2_skipws(p);
 
     if (strncasecmp(p, "hasql", 5) == 0) {
         p += sizeof("HASQL");
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         if (strncasecmp(p, "on", 2) == 0)
             hndl->is_hasql = 1;
         else
@@ -4274,7 +4275,7 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
 
     if (strncasecmp(p, "admin", 5) == 0) {
         p += sizeof("ADMIN");
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         if (strncasecmp(p, "on", 2) == 0)
             hndl->is_admin = 1;
         else
@@ -4284,7 +4285,7 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
 
     if (strncasecmp(p, "transaction", 11) == 0) {
         p += sizeof("TRANSACTION");
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         // only set is chunk to true, don't set to false here
         if (strncasecmp(p, "chunk", 5) == 0)
             hndl->is_chunk = CHUNK_IN_PROGRESS;
@@ -4301,37 +4302,37 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
 {
     int rc = 0;
     const char *p = &cmd[sizeof("SET") - 1];
-    p = cdb2_skipws(p);
+    cdb2_skipws(p);
 
     if (strncasecmp(p, "SSL_MODE", sizeof("SSL_MODE") - 1) == 0) {
         p += sizeof("SSL_MODE");
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         hndl->c_sslmode = ssl_string_to_mode(p, &hndl->nid_dbname);
     } else if (strncasecmp(p, SSL_CERT_PATH_OPT,
                            sizeof(SSL_CERT_PATH_OPT) - 1) == 0) {
         p += sizeof(SSL_CERT_PATH_OPT);
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         free(hndl->sslpath);
         hndl->sslpath = strdup(p);
         if (hndl->sslpath == NULL)
             rc = ENOMEM;
     } else if (strncasecmp(p, SSL_CERT_OPT, sizeof(SSL_CERT_OPT) - 1) == 0) {
         p += sizeof(SSL_CERT_OPT);
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         free(hndl->cert);
         hndl->cert = strdup(p);
         if (hndl->cert == NULL)
             rc = ENOMEM;
     } else if (strncasecmp(p, SSL_KEY_OPT, sizeof(SSL_KEY_OPT) - 1) == 0) {
         p += sizeof(SSL_KEY_OPT);
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         free(hndl->key);
         hndl->key = strdup(p);
         if (hndl->key == NULL)
             rc = ENOMEM;
     } else if (strncasecmp(p, SSL_CA_OPT, sizeof(SSL_CA_OPT) - 1) == 0) {
         p += sizeof(SSL_CA_OPT);
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         free(hndl->ca);
         hndl->ca = strdup(p);
         if (hndl->ca == NULL)
@@ -4339,7 +4340,7 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
 #if HAVE_CRL
     } else if (strncasecmp(p, SSL_CRL_OPT, sizeof(SSL_CRL_OPT) - 1) == 0) {
         p += sizeof(SSL_CRL_OPT);
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         free(hndl->crl);
         hndl->crl = strdup(p);
         if (hndl->crl == NULL)
@@ -4348,14 +4349,14 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
     } else if (strncasecmp(p, "SSL_SESSION_CACHE",
                            sizeof("SSL_SESSION_CACHE") - 1) == 0) {
         p += sizeof("SSL_SESSION_CACHE");
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
         if (hndl->cache_ssl_sess)
             cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
     } else if (strncasecmp(p, SSL_MIN_TLS_VER_OPT,
                            sizeof(SSL_MIN_TLS_VER_OPT) - 1) == 0) {
         p += sizeof(SSL_MIN_TLS_VER_OPT);
-        p = cdb2_skipws(p);
+        cdb2_skipws(p);
         hndl->min_tls_ver = atof(p);
     } else {
         rc = -1;
@@ -5304,7 +5305,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         hndl->temp_trans = 1;
     }
 
-    sql = cdb2_skipws(sql);
+    cdb2_skipws(sql);
     rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
     if (rc)
         debugprint("rc = %d\n", rc);
@@ -6374,8 +6375,8 @@ int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
 
 static inline int is_machine_list(const char *type)
 {
-    const char *s = cdb2_skipws(type);
-    return *s == '@';
+    cdb2_skipws(type);
+    return *type == '@';
 }
 
 struct machine {
@@ -6404,7 +6405,8 @@ static int our_dc_first(const void *mp1, const void *mp2)
  */
 static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
-    char *type_copy = strdup(cdb2_skipws(type));
+    cdb2_skipws(type);
+    char *type_copy = strdup(type);
     char *eomachine = NULL;
     char *eooptions = NULL;
     int rc = 0;
