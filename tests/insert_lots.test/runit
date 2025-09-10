@@ -2,11 +2,7 @@
 bash -n "$0" | exit 1
 
 set -e
-set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
-
-# Debug variable
-debug=0
 
 dbnm=$1
 
@@ -15,13 +11,9 @@ if [ "x$dbnm" == "x" ] ; then
     exit 1
 fi
 
-# Number of insert_records function calls
-nins=0
-
-
 assertthdpoolcntzero()
 {
-    node=$1
+    local node=$1
     cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("get_verify_thdpool_status")' &> assertthdpoolcntzero.out
     grep "Current num threads       : 0"  assertthdpoolcntzero.out
     if [ $? -ne 0 ] ; then
@@ -31,8 +23,13 @@ assertthdpoolcntzero()
 
 gen_series_test()
 {
-    MAX=9000
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "drop table if exists t1"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "drop table if exists t2"
+
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t1 {$(<t1.csc2)}"
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t2 (i int)"
+
+    local MAX=9000
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "insert into t2 select * from generate_series(1, $MAX) "
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select distinct i from t2" | sort -n > gen.out
     seq 1 $MAX > gen.exp
@@ -41,38 +38,41 @@ gen_series_test()
     fi
 }
 
-echo $CDB2_CONFIG
-THRDS=20
-CNT=10000
-ITERATIONS=5
-TRANSIZE=0
-if [[ $DBNAME == *"largetrangenerated"* ]] ; then
-    TRANSIZE=2800
-fi
+insert_lots_test()
+{
+    local THRDS=20
+    local CNT=10000
+    local ITERATIONS=5
+    local TRANSIZE=$1
+
+    echo "Running with TRANSIZE: ${TRANSIZE}"
+
+    time ${TESTSBUILDDIR}/insert_lots_mt --dbname $dbnm --numthreads $THRDS --cntperthread $CNT --iterations $ITERATIONS --transize $TRANSIZE> ins.out
+    assertcnt t1 $((THRDS * CNT * ITERATIONS))
+    do_verify t1
+    local node=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
+
+    ### testing cancelling verify behavior ###
+
+    local args=()
+    args+=("'t1','parallel','verbose'")
+    args+=("'t1','parallel'")
+    args+=("'t1','verbose'")
+    args+=("'t1'")
+    for arg in ${args[@]}; do
+        cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify($arg)" &> verify_t1.out &
+        pid=$!
+        sleep 1
+        kill -9 $pid
+        sleep 3
+        assertthdpoolcntzero $node
+    done
+}
 
 gen_series_test
+insert_lots_test 0
 
-time ${TESTSBUILDDIR}/insert_lots_mt --dbname $dbnm --numthreads $THRDS --cntperthread $CNT --iterations $ITERATIONS --transize $TRANSIZE> ins.out
-assertcnt t1 $((THRDS * CNT * ITERATIONS))
-do_verify t1
-
-node=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
-
-### testing cancelling verify behavior ###
-
-declare -a args
-args+=("'t1','parallel','verbose'")
-args+=("'t1','parallel'")
-args+=("'t1','verbose'")
-args+=("'t1'")
-for arg in ${args[@]}; do
-echo cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify($arg)"
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify($arg)" &> verify_t1.out &
-pid=$!
-sleep 1
-kill -9 $pid
-sleep 3
-assertthdpoolcntzero $node
-done
+gen_series_test
+insert_lots_test 2000
 
 echo "Success"
