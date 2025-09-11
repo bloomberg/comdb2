@@ -341,6 +341,51 @@ Send messages to syslog instead of stdout.
 
 Send messages to stdout.  Useful if the database is running under a process manager like supervisord.
 
+
+## Showing live sql connections
+
+### select * from comdb2_connections
+The 'sql' shows the statement being run, if any.
+The 'uuid' is a per statement cnonce, assigned for every arriving statement, and can be used to cancel the request.
+The 'fingerprint' is a uuid generated based on the syntax of the statement.
+The 'state' field shows that state of the connection:
+| Value  | Explanation
++---------|------------------------
+| new     | connection arrived but has not been dispatched yet to sqlite engine pool
+| running | statement is running in a sqlite engine thread
+| queued  | statement is queued, all the engines are busy with other statements
+| idle    | connection has finished previous sql statement and it is waiting for a new one
+| reset   | connection received a reset, as the client donated the socket to sockpool and it waits for a new statement
+NOTE:
+If any of the above state value is suffixed with '\_canceled', example 'queued_canceled', it means that the query will be discarded upon dispatching to sql engine pool.
+In this case, an error is returned to the client.
+
+
+## Cancelling sql requests
+
+Upon executing a sys.cmd.cancel() stored procedure, a specific set of live statements are marked for canceling, and upon dispatching an error is return to the client instead of running the query.
+
+### exec sys.cmd.cancel('all')
+
+The command cancels all requests, running, queued, or new.
+
+### exec sys.cmd.cancel('running')
+
+The command cancels all running requests.
+
+### exec sys.cmd.cancel('queued')
+
+The command cancels all queued requests.
+
+### exec sys.cmd.cancel('cnonce', 'uuid')
+
+The db operator can retrieve the 'uuid' column from 'comdb2_connnection' system table and use the above command to cancel this particular statement.
+
+### exec sys.cmd.cancel('fp', 'uuid')
+
+The db operator can retrieve the fingerprint 'uuid' from comdb2_connnection system table and use this command to cancel all running instances for this fingerprint.
+
+
 ## Misc commands
 
 ### delay
