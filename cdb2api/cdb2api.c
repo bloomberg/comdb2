@@ -93,7 +93,7 @@ static char cdb2_machine_room[16] = "";
 #define CDB2_PORTMUXPORT_DEFAULT 5105
 static int CDB2_PORTMUXPORT = CDB2_PORTMUXPORT_DEFAULT;
 
-#define MAX_RETRIES_DEFAULT 21
+#define MAX_RETRIES_DEFAULT 20
 static int MAX_RETRIES = MAX_RETRIES_DEFAULT; /* We are looping each node twice. */
 
 #define MIN_RETRIES_DEFAULT 16
@@ -529,7 +529,7 @@ enum {
     PASSFD_SENDMSG = -7  /* error with sendmsg() */
 };
 
-static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
+static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd, int timeoutms)
 {
     ssize_t rc;
     size_t bytesleft;
@@ -550,6 +550,21 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
     bytesleft = nbytes;
 
     while (bytesleft > 0) {
+        if (timeoutms > 0) {
+            struct pollfd pol;
+            int pollrc;
+            pol.fd = sockfd;
+            pol.events = POLLIN;
+            pollrc = poll(&pol, 1, timeoutms);
+
+            if (pollrc == 0) {
+                return PASSFD_TIMEOUT;
+            } else if (pollrc == -1) {
+                /* error will be in errno */
+                return PASSFD_POLL;
+            }
+        }
+
 #ifdef HAVE_MSGHDR_MSG_CONTROL
         msg.msg_control = control_un.control;
         msg.msg_controllen = sizeof(control_un.control);
@@ -628,7 +643,7 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
 static int recv_fd(int sockfd, void *data, size_t nbytes, int *fd_recvd)
 {
     int rc;
-    rc = recv_fd_int(sockfd, data, nbytes, fd_recvd);
+    rc = recv_fd_int(sockfd, data, nbytes, fd_recvd, 0);
     if (rc != 0 && *fd_recvd != -1) {
         int errno_save = errno;
         if (close(*fd_recvd) == -1) {
@@ -2451,13 +2466,17 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
                              hndl->connect_timeout);
     if (fd < 0) {
         debugprint("cdb2_tcpconnecth_to returns fd=%d'\n", fd);
-        snprintf(
-            hndl->errstr, sizeof(hndl->errstr),
-            "%s:%d Can't connect to portmux port dbname: %s tier: %s host: %s "
-            "port %d. "
-            "Err(%d): %s. Portmux down on remote machine or firewall issue.",
-            __func__, __LINE__, instance, type, remote_host, CDB2_PORTMUXPORT,
-            errno, strerror(errno));
+        if (errno == EINPROGRESS) {
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s:%d Can't connect to portmux dbname: %s tier: %s host: %s port %d. "
+                     "Err(%d): %s. Firewall or connect timeout issue.",
+                     __func__, __LINE__, instance, type, remote_host, CDB2_PORTMUXPORT, errno, strerror(errno));
+        } else {
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s:%d Can't connect to portmux dbname: %s tier: %s host: %s port %d. "
+                     "Err(%d): %s. Invalid remote machine or portmux down on remote machine.",
+                     __func__, __LINE__, instance, type, remote_host, CDB2_PORTMUXPORT, errno, strerror(errno));
+        }
         port = -1;
         goto after_callback;
     }
@@ -2833,16 +2852,16 @@ static void clear_responses(cdb2_hndl_tp *hndl)
         cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
         if (hndl->protobuf_size)
             hndl->protobuf_offset = 0;
+        hndl->lastresponse = NULL;
         free((void *)hndl->last_buf);
         hndl->last_buf = NULL;
-        hndl->lastresponse = NULL;
     }
 
     if (hndl->firstresponse) {
         cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+        hndl->firstresponse = NULL;
         free((void *)hndl->first_buf);
         hndl->first_buf = NULL;
-        hndl->firstresponse = NULL;
     }
 }
 
@@ -3526,9 +3545,9 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
             effects->num_deleted = hndl->firstresponse->effects->num_deleted;
             effects->num_inserted = hndl->firstresponse->effects->num_inserted;
             cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+            hndl->firstresponse = NULL;
             free((void *)hndl->first_buf);
             hndl->first_buf = NULL;
-            hndl->firstresponse = NULL;
             rc = 0;
         } else {
             rc = -1;
@@ -3647,6 +3666,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     if (hndl->firstresponse) {
         cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+        hndl->firstresponse = NULL;
         free((void *)hndl->first_buf);
         hndl->first_buf = NULL;
     }
@@ -3655,7 +3675,9 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
         if (hndl->protobuf_size)
             hndl->protobuf_offset = 0;
+        hndl->lastresponse = NULL;
         free((void *)hndl->last_buf);
+        hndl->last_buf = NULL;
     }
 
     if (hndl->protobuf_data)
@@ -7210,6 +7232,7 @@ int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
 {
     cdb2_event *curr, *prev;
 
+    /* no-op on null. */
     if (event == NULL)
         return 0;
 
@@ -7219,7 +7242,7 @@ int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
              curr != NULL && curr != event; prev = curr, curr = curr->next)
             ;
         if (curr != event) {
-            pthread_mutex_lock(&cdb2_event_mutex);
+            pthread_mutex_unlock(&cdb2_event_mutex);
             return EINVAL;
         }
         prev->next = curr->next;
