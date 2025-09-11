@@ -349,13 +349,15 @@ The 'sql' shows the statement being run, if any.
 The 'uuid' is a per statement cnonce, assigned for every arriving statement, and can be used to cancel the request.
 The 'fingerprint' is a uuid generated based on the syntax of the statement.
 The 'state' field shows that state of the connection:
-| Value  | Explanation
+
+| Value   | Explanation
 +---------|------------------------
 | new     | connection arrived but has not been dispatched yet to sqlite engine pool
 | running | statement is running in a sqlite engine thread
 | queued  | statement is queued, all the engines are busy with other statements
 | idle    | connection has finished previous sql statement and it is waiting for a new one
 | reset   | connection received a reset, as the client donated the socket to sockpool and it waits for a new statement
+
 NOTE:
 If any of the above state value is suffixed with '\_canceled', example 'queued_canceled', it means that the query will be discarded upon dispatching to sql engine pool.
 In this case, an error is returned to the client.
