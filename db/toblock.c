@@ -464,6 +464,11 @@ static int forward_longblock_to_master(struct ireq *iq,
         return ERR_NOMASTER;
     }
 
+    // Don't attempt to forward legacy requests - return an error and let
+    // the API/proxy handle it.
+    if (iq->ipc_sndbak)
+        return ERR_NOMASTER;
+
     /*modify request to indicate forwarded and send off to remote */
     if (req_hdr_get(&req_hdr, iq->p_buf_out_start,
                     p_blkstate->p_buf_req_start, 0) != p_blkstate->p_buf_req_start)
@@ -532,6 +537,9 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
         return ERR_NOMASTER;
     }
 
+    if (iq->ipc_sndbak) {
+        return ERR_NOMASTER;
+    }
 
     /*modify request to indicate forwarded and send off to remote */
     if (req_hdr_get(&req_hdr, iq->p_buf_out_start,
