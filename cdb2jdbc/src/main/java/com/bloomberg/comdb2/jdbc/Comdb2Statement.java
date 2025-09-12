@@ -20,7 +20,8 @@ import java.sql.SQLWarning;
 import java.sql.Statement;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
@@ -30,7 +31,7 @@ import java.util.*;
  * @author Tzvetan Mikov
  */
 public class Comdb2Statement implements Statement {
-    private static Logger logger = Logger.getLogger(Comdb2Statement.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(Comdb2Statement.class);
 
     /**
      * `hndl` is a reference to the handle of its connection. So it should be
