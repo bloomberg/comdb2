@@ -17,8 +17,8 @@ import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.util.Calendar;
 import java.util.TimeZone;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Translations from C structs to Java classes.
@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  */
 public class Cdb2Types {
 
-    private static Logger logger = Logger.getLogger(Cdb2Types.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(Cdb2Types.class);
 
     /* Integer - (u_)short, (u_)int, longlong */
     public static class Int64 implements ByteArray {
@@ -210,7 +210,7 @@ public class Cdb2Types {
             try {
                 this.bytes = blob.getBytes(1, (int) blob.length());
             } catch (SQLException e) {
-                logger.log(Level.SEVERE, "Unable to convert java.sql.Blob to comdb2 blob", e);
+                logger.error("Unable to convert java.sql.Blob to comdb2 blob", e);
             }
         }
 

@@ -16,6 +16,8 @@ package com.bloomberg.comdb2.jdbc;
 import java.io.*;
 import java.util.*;
 import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.bloomberg.comdb2.jdbc.Cdb2DbInfoResponse.*;
 import com.bloomberg.comdb2.jdbc.Cdb2Query.*;
@@ -28,7 +30,7 @@ import com.bloomberg.comdb2.jdbc.Sqlresponse.CDB2_SQLRESPONSE.*;
 import com.google.protobuf.*;
 
 public class ProtobufProtocol implements Protocol {
-    private static Logger logger = Logger.getLogger(ProtobufProtocol.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(ProtobufProtocol.class);
 
     private static final long serialVersionUID = -6216737287860982050L;
 

@@ -26,12 +26,18 @@ limitations under the License. -->
     <maven-dependency-plugin.version>2.10</maven-dependency-plugin.version>
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
     <protobuf-java.version>3.25.5</protobuf-java.version>
+    <slf4j.version>2.0.17</slf4j.version>
   </properties>
   <dependencies>
     <dependency>
       <groupId>com.google.protobuf</groupId>
       <artifactId>protobuf-java</artifactId>
       <version>${protobuf-java.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>${slf4j.version}</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
