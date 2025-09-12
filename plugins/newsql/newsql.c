@@ -2532,6 +2532,7 @@ void free_newsql_appdata(struct sqlclntstate *clnt)
 }
 
 void *(*externalMakeNewsqlAuthData)(void *, CDB2SQLQUERY__IdentityBlob *id) = NULL;
+void (*externalFreeNewsqlAuthData)(void *) = NULL;
 
 static void *newsql_get_authdata(struct sqlclntstate *clnt)
 {
@@ -2549,10 +2550,19 @@ static void *newsql_get_authdata(struct sqlclntstate *clnt)
 
     }
     if (clnt->authdata) {
-        free(clnt->authdata);
+        externalFreeNewsqlAuthData(clnt->authdata);
         clnt->authdata = NULL;
     }
     return NULL;
+}
+
+static int newsql_free_authdata(struct sqlclntstate *clnt)
+{
+    if (clnt->authdata) {
+        externalFreeNewsqlAuthData(clnt->authdata);
+        clnt->authdata = NULL;
+    }
+    return 0;
 }
 
 void newsql_setup_clnt(struct sqlclntstate *clnt)

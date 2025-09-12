@@ -236,6 +236,7 @@ int gbl_uses_password;
 int gbl_unauth_tag_access = 0;
 int64_t gbl_num_auth_allowed = 0;
 int64_t gbl_num_auth_denied = 0;
+int gbl_allow_old_authn = 1;
 int gbl_uses_externalauth = 0;
 int gbl_uses_externalauth_connect = 0;
 int gbl_externalauth_warn = 0;
