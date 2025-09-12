@@ -473,7 +473,7 @@ public class Comdb2Handle extends AbstractConnection {
                 message
         };
         logger.atLevel(level).log(
-                "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
+                "td={} mach={} snapshotFile={} snapshotOffset={} cnonce={}: {}",
                 messageParams);
 
         if (debug) {
