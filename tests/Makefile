@@ -13,7 +13,10 @@ endif
 include $(TESTSROOTDIR)/Makefile.common
 
 # List of disabled tests
-DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+DISABLED_TESTS:=$(shell awk '/^DISABLED TESTS/{f=1;next};/^END DISABLED/{f=0}f' TODO | cut -d' ' -f1)
+
+# List of serial tests
+SERIAL_TESTS:=$(shell awk '/^SERIAL TESTS/{f=1;next};/^END SERIAL/{f=0}f' TODO | cut -d' ' -f1)
 
 # When SKIPSSL is on, skip running tests which rely on SSL
 ifeq ($(SKIPSSL),1)
@@ -41,15 +44,23 @@ ifeq ($(subst all,,$(MAKECMDGOALS)),) #if cmdgoals empty or 'all'
   DOALL:=1
 endif
 
-# List of all tests that need to run.
-ifeq ($(wildcard alltests.txt),alltests.txt)
-  # If file alltests.txt exists, only run the tests in that file (one line per test)
-  export ALL_TESTS:=$(patsubst %.test, %, $(shell sort -u alltests.txt) )
-else
-  ifneq ($(DISABLED_TESTS),)
-    DISABLED_TESTS:=" $(shell echo $(DISABLED_TESTS) | tr ' ' '\n' | sort -u) "
-  endif
+.PHONY: all all_tests all_nonserial_tests all_serial_tests
 
+all_tests: all_nonserial_tests all_serial_tests
+all: init basicops all_tests
+
+CANON_SERIAL := $(patsubst %.test,%, $(SERIAL_TESTS))
+
+# Read alltests.txt if present
+ifeq ($(wildcard alltests.txt),alltests.txt)
+  SELECTED := $(patsubst %.test,%, \
+    $(shell awk 'NF && $$1 !~ /^#/' alltests.txt | sed 's/[[:space:]]\+.*//' ))
+  # Ignore DISABLED if using alltests.txt
+  ALL_SERIAL_TESTS := $(filter $(CANON_SERIAL),$(SELECTED))     # preserves order of SELECTED
+  ALL_TESTS        := $(filter-out $(ALL_SERIAL_TESTS),$(SELECTED))
+else
+  DISABLED_TESTS   := $(strip $(sort $(DISABLED_TESTS)))
+  CANON_DISABLED   := $(patsubst %.test,%, $(DISABLED_TESTS))
   ifeq ($(INCLUDE_LONG_RUNNING),1)
     FLG=
   else
@@ -61,10 +72,22 @@ else
     FLG+= --only-get-stress-tests
   endif
 
-  # This is the list of all non-disabled tests.
-  export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
-      $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh $(FLG))))
+  ALL_CANDIDATES   := $(patsubst %.test,%, $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh $(FLG)))
+
+  ALL_SERIAL_TESTS := $(filter-out $(CANON_DISABLED), $(CANON_SERIAL))
+  ALL_TESTS        := $(filter-out $(ALL_SERIAL_TESTS) $(CANON_DISABLED), $(ALL_CANDIDATES))
 endif
+
+# ----- execution -----
+all_nonserial_tests: $(ALL_TESTS)
+	@echo "Non-serial tests complete"
+
+all_serial_tests: all_nonserial_tests
+	@echo "Running serial tests: $(ALL_SERIAL_TESTS)"
+	@set -e; \
+	for t in $(ALL_SERIAL_TESTS); do \
+	  $(MAKE) --no-print-directory $$t; \
+	done
 
 # get number of TOTAL tests running: used for printing progress report of tests
 TOTAL=$(words $(MAKECMDGOALS) )
@@ -72,13 +95,9 @@ ifeq ($(DOALL),1)
   TOTAL=$(words $(ALL_TESTS) )
 endif
 
-all: init basicops all_tests
 
 init:
 	@mkdir -p ${TESTDIR}
-
-# Run all non-disabled tests.
-all_tests: $(ALL_TESTS)
 
 basicops_nokey: init
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
