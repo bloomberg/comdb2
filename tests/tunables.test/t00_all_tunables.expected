@@ -736,6 +736,7 @@
 (name='physrep_max_rollback', description='Maximum logs physrep can rollback. (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='physrep_metadb_host', description='List of physical replication metadb cluster hosts.', type='STRING', value=NULL, read_only='Y')
 (name='physrep_metadb_name', description='Physical replication metadb cluster name.', type='STRING', value=NULL, read_only='Y')
+(name='physrep_pollms', description='Physical replicant poll interval in milliseconds. (Default: 200)', type='INTEGER', value='200', read_only='N')
 (name='physrep_reconnect_interval', description='Reconnect interval for physical replicants (Default: 600)', type='INTEGER', value='600', read_only='N')
 (name='physrep_reconnect_penalty', description='Physrep wait seconds before retry to the same node. (Default: 5)', type='INTEGER', value='0', read_only='N')
 (name='physrep_repl_host', description='Current physrep host.', type='STRING', value=NULL, read_only='Y')

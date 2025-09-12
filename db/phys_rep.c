@@ -23,7 +23,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <time.h>
+#include <poll.h>
 
 #include <bdb_int.h>
 #include <bdbglue.h>
@@ -1277,6 +1277,7 @@ static int do_wait_for_reverse_conn(cdb2_hndl_tp *repl_metadb) {
        This is the database/node that to replicant connects to retrieve and
        apply physical logs.
 */
+int gbl_physrep_pollms = 200;
 extern __thread int physrep_out_of_order;
 static void *physrep_worker(void *args)
 {
@@ -1562,7 +1563,7 @@ repl_loop:
             do_truncate = 1;
         }
 sleep_and_retry:
-        sleep(1);
+        poll(0, 0, gbl_physrep_pollms);
     }
 
     if (repl_db_connected == 1) {
