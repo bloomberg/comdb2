@@ -44,7 +44,6 @@ install(TARGETS cdb2api ARCHIVE DESTINATION lib)
 install(FILES cdb2api.h DESTINATION include)
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2api.pc
-  DESTINATION lib/pkgconfig
 )
 
 if(NOT COMDB2_SKIP_CDB2API_SO)
