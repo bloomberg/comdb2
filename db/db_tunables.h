@@ -1907,6 +1907,8 @@ REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOO
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 200)", TUNABLE_INTEGER,
+                 &gbl_physrep_pollms, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
 REGISTER_TUNABLE("revsql_allow_command_execution",
