@@ -15,7 +15,8 @@ package com.bloomberg.comdb2.jdbc;
 
 import java.sql.*;
 import java.util.*;
-import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.lang.reflect.*;
 import java.io.*;
 
@@ -23,7 +24,7 @@ import java.io.*;
  * @author Rivers Zhang
  */
 public class Driver implements java.sql.Driver {
-    private static Logger logger = Logger.getLogger(Driver.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(Driver.class);
     public static final String PREFIX = "jdbc:comdb2:";
     protected HashMap<String, Option> options = new HashMap<String, Option>();
     private static HealthChecker healthChecker;
@@ -41,7 +42,7 @@ public class Driver implements java.sql.Driver {
             if (val == null)
                 val = info.getProperty(opt);
             if (val != null) {
-                logger.log(Level.FINE, String.format("Setting %s to %s\n", opt, val));
+                logger.debug(String.format("Setting %s to %s\n", opt, val));
                 set(conn, val);
             }
         }
@@ -140,7 +141,7 @@ public class Driver implements java.sql.Driver {
         try {
             DriverManager.registerDriver(new Driver());
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Unable to register comdb2 driver", e);
+            logger.error("Unable to register comdb2 driver", e);
         }
     }
 
@@ -161,11 +162,11 @@ public class Driver implements java.sql.Driver {
                     try {
                         Class.forName("com.bloomberg.comdb2.jdbc." + addon);
                     } catch(ClassNotFoundException e) {
-                        logger.log(Level.WARNING, String.format("Error loading %s addon", addon));
+                        logger.warn(String.format("Error loading %s addon", addon));
                     }
                 }
             } catch (IOException ioe) {
-                logger.log(Level.WARNING, "Error processing properties file\n");
+                logger.warn("Error processing properties file\n");
             }
         }
 
@@ -245,7 +246,7 @@ public class Driver implements java.sql.Driver {
                Handle it separately. */
             if (port != null) {
                 int pval = Integer.parseInt(port);
-                logger.log(Level.FINE, String.format("Setting port to %d\n", pval));
+                logger.debug(String.format("Setting port to %d\n", pval));
                 ret.setOverriddenPort(pval);
             }
 
@@ -263,7 +264,7 @@ public class Driver implements java.sql.Driver {
                             try {
                                 Class.forName("com.bloomberg.comdb2.jdbc." + addon);
                             } catch(ClassNotFoundException e) {
-                                logger.log(Level.WARNING, String.format("Error loading %s addon", addon));
+                                logger.warn(String.format("Error loading %s addon", addon));
                             }
                         }
                     }
@@ -300,7 +301,7 @@ public class Driver implements java.sql.Driver {
         try {
             ret.lookup();
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Unable to establish cdb2api connection to " + url, e);
+            logger.error("Unable to establish cdb2api connection to {}", url, e);
             ret.close();
             throw e;
         }
@@ -332,8 +333,8 @@ public class Driver implements java.sql.Driver {
         return false;
     }
 
-    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
-        return null;
+    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+        throw new SQLFeatureNotSupportedException();
     }
 
     public static void setHealthChecker(HealthChecker hc) {
