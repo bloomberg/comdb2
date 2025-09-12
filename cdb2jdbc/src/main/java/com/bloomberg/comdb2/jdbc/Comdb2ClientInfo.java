@@ -14,11 +14,12 @@
 package com.bloomberg.comdb2.jdbc;
 
 import java.util.jar.*;
-import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.*;
 
 public class Comdb2ClientInfo {
-    private static Logger logger = Logger.getLogger(Comdb2ClientInfo.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(Comdb2ClientInfo.class);
     
     public static String getCallerClass() {
         String pkg = Comdb2ClientInfo.class.getPackage().getName() + ".";
@@ -55,7 +56,7 @@ public class Comdb2ClientInfo {
                 Attributes attributes = manifest.getMainAttributes();
                 name = attributes.getValue("Implementation-Title");
             } catch (IOException e) {
-                logger.log(Level.CONFIG, "Unable to parse driver class manifest");
+                logger.info("Unable to parse driver class manifest");
             }
         }
         return name == null ? "cdb2jdbc" : name;
@@ -70,7 +71,7 @@ public class Comdb2ClientInfo {
                 Attributes attributes = manifest.getMainAttributes();
                 version = attributes.getValue("Implementation-Version");
             } catch (IOException e) {
-                logger.log(Level.CONFIG, "Unable to parse driver class manifest");
+                logger.info("Unable to parse driver class manifest");
             }
         }
         return version == null ? "1.0" : version;

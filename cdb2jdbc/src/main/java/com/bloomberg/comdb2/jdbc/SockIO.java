@@ -15,12 +15,11 @@ package com.bloomberg.comdb2.jdbc;
 
 import java.io.*;
 import java.net.*;
-
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SockIO implements IO {
-    private static Logger logger = Logger.getLogger(SockIO.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(SockIO.class);
 
     protected Socket sock;
     protected BufferedOutputStream out;
@@ -161,11 +160,11 @@ public class SockIO implements IO {
             }
         } catch (IOException e) {
             opened = false;
-            logger.log(Level.FINE, "Unable to open socket connection to " + host + ":" + port, e);
+            logger.debug("Unable to open socket connection to {}:{}", host, port, e);
             try {
                 close();
             } catch (IOException e1) {
-                logger.log(Level.FINE, "Unable to close socket connection to " + host + ":" + port, e);
+                logger.debug("Unable to close socket connection to {}:{}", host, port, e);
             }
         }
         return opened;

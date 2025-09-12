@@ -14,7 +14,7 @@
 package com.bloomberg.comdb2.jdbc;
 
 import javax.sql.DataSource;
-
+import org.slf4j.Logger;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -28,7 +28,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Logger;
 
 //@formatter:off
 /**
@@ -327,7 +326,7 @@ public class UnpooledDataSource implements DataSource {
 			return this.driver.jdbcCompliant();
 		}
 
-		public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+		public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
 			throw new SQLFeatureNotSupportedException();
 		}
 	}
@@ -340,7 +339,7 @@ public class UnpooledDataSource implements DataSource {
 		throw new UnsupportedOperationException();
 	}
 
-	public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+	public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
 		throw new SQLFeatureNotSupportedException();
 	}
 }

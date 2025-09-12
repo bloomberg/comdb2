@@ -16,7 +16,8 @@ package com.bloomberg.comdb2.jdbc;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.net.*;
 
 import com.bloomberg.comdb2.jdbc.Cdb2DbInfoResponse.NodeInfo;
@@ -31,7 +32,7 @@ import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2SqlQuery;
  * @author Mohit Khullar
  */
 public class DatabaseDiscovery {
-    private static Logger logger = Logger.getLogger(DatabaseDiscovery.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(DatabaseDiscovery.class);
     static boolean debug = false;
 
     /**
@@ -152,7 +153,7 @@ public class DatabaseDiscovery {
                         try {
                             hndl.tcpbufsz = Integer.parseInt(tokens[2]);
                         } catch (NumberFormatException e) {
-                            logger.log(Level.WARNING, "Invalid tcp buffer size.", e);
+                            logger.warn("Invalid tcp buffer size.", e);
                         }
                     else if ((tokens[1].equalsIgnoreCase("dnssufix") ||
                                 tokens[1].equalsIgnoreCase("dnssuffix"))
@@ -163,7 +164,7 @@ public class DatabaseDiscovery {
                         try {
                             hndl.connectTimeout = Integer.parseInt(tokens[2]);
                         } catch (NumberFormatException e) {
-                            logger.log(Level.WARNING, "Invalid connect timeout.", e);
+                            logger.warn("Invalid connect timeout.", e);
                         }
                     }
                     else if (tokens[1].equalsIgnoreCase("comdb2db_timeout")
@@ -171,7 +172,7 @@ public class DatabaseDiscovery {
                         try {
                             hndl.comdb2dbTimeout = Integer.parseInt(tokens[2]);
                         } catch (NumberFormatException e) {
-                            logger.log(Level.WARNING, "Invalid comdb2db timeout.", e);
+                            logger.warn("Invalid comdb2db timeout.", e);
                         }
                     }
                     else if (tokens[1].equalsIgnoreCase("stack_at_open")
@@ -191,7 +192,7 @@ public class DatabaseDiscovery {
                 if (br != null)
                     br.close();
             } catch (IOException e) {
-                logger.log(Level.WARNING, "Unable to close stream", e);
+                logger.warn("Unable to close stream", e);
             }
         }
         return ret;
@@ -777,8 +778,7 @@ public class DatabaseDiscovery {
                 if (sleepms > 1000) {
                     sleepms = 1000;
 
-                    logger.log(Level.WARNING, 
-                            "Sleeping for 1 second on retry query to dbhosts retry " + retry);
+                    logger.warn("Sleeping for 1 second on retry query to dbhosts retry {}", retry);
                 }
                 try {
                     Thread.sleep(sleepms);
