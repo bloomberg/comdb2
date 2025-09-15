@@ -937,7 +937,7 @@ static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
 {
     struct cdb2_hndl *hndl = allocator_data;
     void *p = NULL;
-    if (size <= hndl->protobuf_size - hndl->protobuf_offset) {
+    if (hndl->protobuf_data && (size <= hndl->protobuf_size - hndl->protobuf_offset)) {
         p = hndl->protobuf_data + hndl->protobuf_offset;
         if (size%8) {
             hndl->protobuf_offset += size + (8 - size%8);
@@ -954,8 +954,7 @@ static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
 void cdb2_protobuf_free(void *allocator_data, void *p)
 {
     struct cdb2_hndl *hndl = allocator_data;
-    if (p < hndl->protobuf_data ||
-        p >= (hndl->protobuf_data + hndl->protobuf_size)) {
+    if (hndl->protobuf_data == NULL || p < hndl->protobuf_data || p >= (hndl->protobuf_data + hndl->protobuf_size)) {
         free(p);
     }
 }
@@ -2831,9 +2830,9 @@ static int cdb2_convert_error_code(int rc)
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
-                                         &hndl->allocator);
-        hndl->protobuf_offset = 0;
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
+        if (hndl->protobuf_size)
+            hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
         hndl->last_buf = NULL;
         hndl->lastresponse = NULL;
@@ -3378,13 +3377,12 @@ retry_next_record:
 
     /* free previous response */
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
-                                         &hndl->allocator);
-        hndl->protobuf_offset = 0;
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
+        if (hndl->protobuf_size)
+            hndl->protobuf_offset = 0;
     }
 
-    hndl->lastresponse =
-        cdb2__sqlresponse__unpack(&hndl->allocator, len, hndl->last_buf);
+    hndl->lastresponse = cdb2__sqlresponse__unpack(hndl->allocator, len, hndl->last_buf);
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
@@ -3654,9 +3652,9 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
-                                         &hndl->allocator);
-        hndl->protobuf_offset = 0;
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
+        if (hndl->protobuf_size)
+            hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
     }
 
@@ -7041,13 +7039,20 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
-
     if (!hndl->protobuf_size)
         hndl->protobuf_size = CDB2_PROTOBUF_SIZE;
-    hndl->protobuf_data = malloc(hndl->protobuf_size);
-    hndl->allocator.alloc = &cdb2_protobuf_alloc;
-    hndl->allocator.free = &cdb2_protobuf_free;
-    hndl->allocator.allocator_data = hndl;
+
+    if (hndl->protobuf_size > 0) {
+        hndl->protobuf_data = malloc(hndl->protobuf_size);
+        hndl->protobuf_offset = 0;
+        hndl->s_allocator.alloc = &cdb2_protobuf_alloc;
+        hndl->s_allocator.free = &cdb2_protobuf_free;
+        hndl->s_allocator.allocator_data = hndl;
+        hndl->allocator = &hndl->s_allocator;
+    } else {
+        hndl->protobuf_data = NULL;
+        hndl->allocator = NULL;
+    }
 
     hndl->request_fp = CDB2_REQUEST_FP;
 
