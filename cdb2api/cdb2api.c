@@ -383,19 +383,6 @@ static char *proc_cmdline_getargv0(void)
 #define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
 #define SQLCACHEHINTLENGTH 17
 
-static int value_on_off(const char *value) {
-    if (strcasecmp("on", value) == 0) {
-        return 1;
-    } else if (strcasecmp("off", value) == 0) {
-        return 0;
-    } else if (strcasecmp("no", value) == 0) {
-        return 0;
-    } else if (strcasecmp("yes", value) == 0) {
-        return 1;
-    }
-    return atoi(value);
-}
-
 char *cdb2_getargv0(void)
 {
 #if defined(__APPLE__)
@@ -427,6 +414,51 @@ static void atfork_child(void) {
     if (identity_cb)
         identity_cb->resetIdentity_end(0);
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
+static int value_on_off(const char *value, int *err);
+
+static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
+{
+    int ch;
+    if (s) {
+        ch = sbuf2getc(s);
+    } else {
+        ch = buf[*chrno];
+        *chrno += 1;
+    }
+    return ch;
+}
+
+static int read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno)
+{
+    int ch = get_char(s, buf, chrno);
+    while (ch == ' ' || ch == '\n')
+        ch = get_char(s, buf, chrno); // consume empty lines
+
+    int count = 0;
+    while ((ch != '\n') && (ch != EOF) && (ch != '\0')) {
+        line[count] = ch;
+        count++;
+        if (count >= maxlen)
+            return count;
+        ch = get_char(s, buf, chrno);
+    }
+    if (count == 0)
+        return -1;
+    line[count + 1] = '\0';
+    return count + 1;
+}
+
+int is_valid_int(const char *str)
+{
+    while (*str) {
+        if (!isdigit(*str))
+            return 0;
+        else
+            ++str;
+    }
+    return 1;
 }
 
 static int init_once_has_run = 0;
@@ -1069,48 +1101,36 @@ void cdb2_set_sockpool(const char *sp_path)
     SOCKPOOL_OTHER_NAME = strdup(sp_path);
 }
 
-static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
+// `err` is set to -1 if the `value` is invalid; otherwise, it is set to 0.
+//
+// `value` is invalid if it is not equal to one of the following: "on", "off", "yes", "no", "1", "0".
+// Ideally these values would be rejected, but this wouldn't be backwards compatible (currently,
+// all nonzero numbers are effectively "on" and all values that cannot be converted to integers other
+// than "on", "off", "yes", and "no" are effectively "off")
+//
+// Returning a separate error allows us to print a warning message when this occurs while maintaining
+// old behavior.
+static int value_on_off(const char *value, int *err)
 {
-    int ch;
-    if (s) {
-        ch = sbuf2getc(s);
+    *err = 0;
+
+    if (strcasecmp("on", value) == 0) {
+        return 1;
+    } else if (strcasecmp("off", value) == 0) {
+        return 0;
+    } else if (strcasecmp("no", value) == 0) {
+        return 0;
+    } else if (strcasecmp("yes", value) == 0) {
+        return 1;
+    } else if (strcasecmp("0", value) == 0) {
+        return 0;
+    } else if (strcasecmp("1", value) == 0) {
+        return 1;
     } else {
-        ch = buf[*chrno];
-        *chrno += 1;
-    }
-    return ch;
-}
+        *err = -1;
 
-static int read_line(char *line, int maxlen, SBUF2 *s, const char *buf,
-                     int *chrno)
-{
-    int ch = get_char(s, buf, chrno);
-    while (ch == ' ' || ch == '\n')
-        ch = get_char(s, buf, chrno); // consume empty lines
-
-    int count = 0;
-    while ((ch != '\n') && (ch != EOF) && (ch != '\0')) {
-        line[count] = ch;
-        count++;
-        if (count >= maxlen)
-            return count;
-        ch = get_char(s, buf, chrno);
+        return atoi(value);
     }
-    if (count == 0)
-        return -1;
-    line[count + 1] = '\0';
-    return count + 1;
-}
-
-int is_valid_int(const char *str)
-{
-    while (*str) {
-        if (!isdigit(*str))
-            return 0;
-        else
-            ++str;
-    }
-    return 1;
 }
 
 static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
@@ -1150,6 +1170,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
+    int err = 0;
 
     debugprint("entering\n");
     while (read_line((char *)&line, sizeof(line), s, buf, &line_no) != -1) {
@@ -1199,7 +1220,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             if ((strcasecmp("iam_identity_v6",tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
-                    iam_identity = value_on_off(tok);
+                    iam_identity = value_on_off(tok, &err);
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
