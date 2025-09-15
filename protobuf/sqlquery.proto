@@ -116,7 +116,6 @@ message CDB2_SQLQUERY {
       required bytes data = 4;
   }
   optional IdentityBlob identity = 18;
-  optional bool is_legacy_request = 19 [ default = false ];
 }
 
 message CDB2_DBINFO {
