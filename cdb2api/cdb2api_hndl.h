@@ -121,6 +121,9 @@ struct cdb2_hndl {
     char cached_host[CDB2HOSTNAME_LEN]; /* hostname of a sockpool connection */
     int cached_port;                    /* port of a sockpool connection */
     SBUF2 *sb;
+    int num_set_commands;
+    int num_set_commands_sent;
+    char **commands;
     int dbnum;
     int num_hosts;          /* total number of hosts */
     int num_hosts_sameroom; /* number of hosts that are in my datacenter (aka room) */
@@ -142,9 +145,9 @@ struct cdb2_hndl {
     char *sql;
     int ntypes;
     int *types;
-    uint8_t *last_buf;
+    unsigned char *last_buf;
     CDB2SQLRESPONSE *lastresponse;
-    uint8_t *first_buf;
+    unsigned char *first_buf;
     CDB2SQLRESPONSE *firstresponse;
     int error_in_trans;
     int client_side_error;
@@ -155,17 +158,26 @@ struct cdb2_hndl {
     int snapshot_offset;
     int query_no;
     int retry_all;
-    int num_set_commands;
-    int num_set_commands_sent;
     int is_read;
     int is_invalid;
     int is_rejected;
     unsigned long long rows_read;
     int read_intrans_results;
     int first_record_read;
-    char **commands;
     int ack;
     int is_hasql;
+    int sent_client_info;
+    void *user_arg;
+    int api_call_timeout;
+    int connect_timeout;
+    int comdb2db_timeout;
+    int socket_timeout;
+    int sockpool_send_timeoutms;
+    int sockpool_recv_timeoutms;
+    int *gbl_event_version; /* Cached global event version */
+    cdb2_event *events;
+    pid_t pid;
+    int got_dbinfo;
     int is_admin;
     int sockpool_enabled;
     int db_default_type_override_env;
@@ -173,37 +185,49 @@ struct cdb2_hndl {
     int debug_trace;
     int max_retries;
     int min_retries;
-    ssl_mode c_sslmode;      /* client SSL mode */
-    peer_ssl_mode s_sslmode; /* server SSL mode */
-    int sslerr;              /* 1 if unrecoverable SSL error. */
-    char *sslpath;           /* SSL certificates */
+
+    /* SSL variables */
+
+    /* client SSL mode */
+    ssl_mode c_sslmode;
+    /* server SSL mode */
+    peer_ssl_mode s_sslmode;
+    /* 1 if unrecoverable SSL error. */
+    int sslerr;
+
+    /* SSL certificate path. When specified, code looks for $sslpath/root.crt,
+       $sslpath/client.key, $sslpath/client.crt and $sslpath/root.crl, for
+       root certificate, client certificate, client key, and root CRL, respectively. */
+    char *sslpath;
+
+    /* client certificate. overrides sslpath when specified. */
     char *cert;
+    /* client key. overrides sslpath when specified. */
     char *key;
+    /* root CA certificate. overrides sslpath when specified. */
     char *ca;
+    /* root certificate revocation list (CRL). overrides sslpath when specified. */
     char *crl;
-    int cache_ssl_sess;
+
+    /* minimal TLS version. Set it to 0 if we want client and server to negotiate.
+       The final version will be the minimal version that are mutually understood by
+       both client and server. Set it to an TLS version (1.2, 1.3, etc.) to override.
+       Note that if either side does not support the version, handshake will fail. */
     double min_tls_ver;
+
+    /* 1 if caching ssl sessions (can speed up SSL handshake) */
+    int cache_ssl_sess;
     cdb2_ssl_sess *sess;
-    int nid_dbname;
     /* 1 if it's a newly established session which needs to be cached. */
     int newsess;
+
+    /* X509 attribute to check database name against */
+    int nid_dbname;
     struct context_messages context_msgs;
     char *env_tz;
-    int sent_client_info;
     char stack[MAX_STACK];
     int send_stack;
-    void *user_arg;
-    int *gbl_event_version; /* Cached global event version */
-    int api_call_timeout;
-    int connect_timeout;
-    int comdb2db_timeout;
-    int socket_timeout;
-    int sockpool_send_timeoutms;
-    int sockpool_recv_timeoutms;
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
-    cdb2_event *events;
-    pid_t pid;
-    int got_dbinfo;
 
     /* per handle iaaap::IIdentity */
     const void *identity;
@@ -222,5 +246,4 @@ struct cdb2_hndl {
     struct cdb2_stmt_types *stmt_types;
     RETRY_CALLBACK retry_clbk;
 };
-
 #endif
