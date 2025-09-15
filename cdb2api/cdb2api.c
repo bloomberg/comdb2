@@ -7227,7 +7227,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
     bindvars[0] = bind_dbname;
     bindvars[1] = bind_cluster;
     bindvars[2] = bind_room;
-    char newsql_typestr[128];
+    char newsql_typestr[TYPESTR_LEN];
     int is_sockfd = 1;
     int i = 0;
 
@@ -7456,7 +7456,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
                              char valid_hosts[][CDB2HOSTNAME_LEN], int *valid_ports, int *master_node,
                              int *num_valid_hosts, int *num_valid_sameroom_hosts)
 {
-    char newsql_typestr[128];
+    char newsql_typestr[TYPESTR_LEN];
     SBUF2 *sb = NULL;
     int fd = -1;
     int rc = 0; /* Make compilers happy. */
