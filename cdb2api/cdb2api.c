@@ -53,14 +53,25 @@
 *******************************************************************************
 */
 
+#define API_DRIVER_NAME open_cdb2api
+static char api_driver_name[] = QUOTE(API_DRIVER_NAME);
+
+#ifndef API_DRIVER_VERSION
+#define API_DRIVER_VERSION latest
+#endif
+static char api_driver_version[] = QUOTE(API_DRIVER_VERSION);
+
 #define SOCKPOOL_SOCKET_NAME "/tmp/sockpool.socket"
-static char *SOCKPOOL_OTHER_NAME = NULL;
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
+#define COMDB2DB_DEV "comdb3db"
+#define COMDB2DB_DEV_NUM 192779
+
 #define MAX_BUFSIZE_ONSTACK 8192
 static char COMDB2DB_OVERRIDE[32] = {0};
 static int COMDB2DB_NUM_OVERRIDE = 0;
 
+static char *SOCKPOOL_OTHER_NAME = NULL;
 #define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
 static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
 
@@ -75,14 +86,6 @@ static char *CDB2DBCONFIG_BUF = NULL;
 
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
-
-#define API_DRIVER_NAME open_cdb2api
-static char api_driver_name[] = QUOTE(API_DRIVER_NAME);
-
-#ifndef API_DRIVER_VERSION
-#define API_DRIVER_VERSION latest
-#endif
-static char api_driver_version[] = QUOTE(API_DRIVER_VERSION);
 
 #ifndef CDB2_DNS_SUFFIX
 #define CDB2_DNS_SUFFIX
@@ -120,7 +123,7 @@ static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
 #define CDB2_POLL_TIMEOUT_DEFAULT 250
 static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
 
-#define CDB2_PROTOBUF_SIZE_DEFAULT 4096
+#define CDB2_PROTOBUF_SIZE_DEFAULT 0
 static int CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
 
 #define CDB2_TCPBUFSZ_DEFAULT 0
@@ -135,18 +138,51 @@ static int CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
 #define CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT 1
 static int CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
 
+static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
+{
+    struct cdb2_hndl *hndl = allocator_data;
+    void *p = NULL;
+    if (hndl->protobuf_data && (size <= hndl->protobuf_size - hndl->protobuf_offset)) {
+        p = hndl->protobuf_data + hndl->protobuf_offset;
+        if (size % 8) {
+            hndl->protobuf_offset += size + (8 - size % 8);
+        } else {
+            hndl->protobuf_offset += size;
+        }
+        if (hndl->protobuf_offset > hndl->protobuf_size)
+            hndl->protobuf_offset = hndl->protobuf_size;
+    } else {
+        p = malloc(size);
+    }
+    return p;
+}
+
+void cdb2_protobuf_free(void *allocator_data, void *p)
+{
+    struct cdb2_hndl *hndl = allocator_data;
+    if (hndl->protobuf_data == NULL || p < hndl->protobuf_data || p >= (hndl->protobuf_data + hndl->protobuf_size)) {
+        free(p);
+    }
+}
+
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
+/* ssl client mode */
 static ssl_mode cdb2_c_ssl_mode = SSL_ALLOW;
-
+/* path to ssl certificate directory. searches 'client.crt', 'client.key', 'root.crt'
+   and 'root.crl' for certificate, key, CA certificate and revocation list, respectively */
 static char cdb2_sslcertpath[PATH_MAX];
+/* path to ssl certificate. overrides cdb2_sslcertpath if specified */
 static char cdb2_sslcert[PATH_MAX];
+/* path to ssl key. overrides cdb2_sslcertpath if specified */
 static char cdb2_sslkey[PATH_MAX];
+/* path to CA. overrides cdb2_sslcertpath if specified */
 static char cdb2_sslca[PATH_MAX];
 #if HAVE_CRL
+/* path to CRL. overrides cdb2_sslcertpath if specified */
 static char cdb2_sslcrl[PATH_MAX];
 #endif
-
+/* specify which NID in server certificate represents the database name */
 #ifdef NID_host /* available as of RFC 4524 */
 #define CDB2_NID_DBNAME_DEFAULT NID_host
 #else
@@ -160,6 +196,11 @@ static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 #define CDB2_MIN_TLS_VER_DEFAULT 0
 static double cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
 
+static int _PID;        /* ONE-TIME */
+static int _MACHINE_ID; /* ONE-TIME */
+static char *_ARGV0;    /* ONE-TIME */
+#define DB_TZNAME_DEFAULT "America/New_York"
+
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
@@ -172,13 +213,7 @@ static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 #define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
 static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
 
-static int _PID; /* ONE-TIME */
-static int _MACHINE_ID; /* ONE-TIME */
-static char *_ARGV0; /* ONE-TIME */
-
 static int iam_identity = 0;
-
-#define DB_TZNAME_DEFAULT "America/New_York"
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define MAX_SOCKPOOL_FDS 8
@@ -964,32 +999,6 @@ struct newsqlheader {
 };
 
 static cdb2_ssl_sess cdb2_ssl_sess_cache;
-
-static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
-{
-    struct cdb2_hndl *hndl = allocator_data;
-    void *p = NULL;
-    if (hndl->protobuf_data && (size <= hndl->protobuf_size - hndl->protobuf_offset)) {
-        p = hndl->protobuf_data + hndl->protobuf_offset;
-        if (size%8) {
-            hndl->protobuf_offset += size + (8 - size%8);
-        } else {
-            hndl->protobuf_offset += size;
-        }
-        if (hndl->protobuf_offset > hndl->protobuf_size)
-            hndl->protobuf_offset = hndl->protobuf_size;
-    } else {
-        p = malloc(size);
-    }
-    return p;
-}
-void cdb2_protobuf_free(void *allocator_data, void *p)
-{
-    struct cdb2_hndl *hndl = allocator_data;
-    if (hndl->protobuf_data == NULL || p < hndl->protobuf_data || p >= (hndl->protobuf_data + hndl->protobuf_size)) {
-        free(p);
-    }
-}
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
                                int myport, int timeoutms)
