@@ -44,4 +44,10 @@ jobs:
           # Compute merge-base vs the fetched ref
           base_commit="$(git merge-base HEAD "refs/remotes/__base__/${GITHUB_BASE_REF}")"
 
-          ./ci/scripts/format --verbose --dry-run --compare-base "${base_commit}"
+          echo "Running format checking against base commit ${base_commit}"
+
+          format_flags=(--verbose --dry-run --compare-base "${base_commit}")
+          if [[ "${RUNNER_DEBUG:-0}" == "1" ]]; then
+            format_flags+=(--super-verbose)
+          fi
+          ./ci/scripts/format "${format_flags[@]}"
