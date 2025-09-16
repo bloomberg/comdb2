@@ -1482,6 +1482,13 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
         hndl->auto_consume_timeout_ms = CDB2_AUTO_CONSUME_TIMEOUT_MS;
     if (!hndl->max_auto_consume_rows)
         hndl->max_auto_consume_rows = CDB2_MAX_AUTO_CONSUME_ROWS;
+
+    if (hndl->connect_timeout > hndl->api_call_timeout)
+        hndl->connect_timeout = hndl->api_call_timeout;
+    if (hndl->comdb2db_timeout > hndl->api_call_timeout)
+        hndl->comdb2db_timeout = hndl->api_call_timeout;
+    if (hndl->socket_timeout > hndl->api_call_timeout)
+        hndl->socket_timeout = hndl->api_call_timeout;
 }
 
 /* Read all available comdb2 configuration files.
@@ -1687,16 +1694,21 @@ enum { SOCKPOOL_DONATE = 0, SOCKPOOL_REQUEST = 1 };
 
 static int open_sockpool_ll(void)
 {
+    struct sockaddr_sun addr;
+    int fd;
     struct sockpool_hello hello;
     const char *ptr;
     size_t bytesleft;
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+    pthread_once(&init_once, do_init_once);
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd == -1) {
         fprintf(stderr, "%s:socket: %d %s\n", __func__, errno, strerror(errno));
         return -1;
     }
 
-    struct sockaddr_sun addr = {0};
+    bzero(&addr, sizeof(addr));
     addr.sun_family = AF_UNIX;
     if (SOCKPOOL_OTHER_NAME)
         strncpy(addr.sun_path, SOCKPOOL_OTHER_NAME, sizeof(addr.sun_path) - 1);
@@ -1908,6 +1920,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         return -1;
     }
     /* Please may I have a file descriptor */
+    bzero(&msg, sizeof(msg));
     msg.request = SOCKPOOL_REQUEST;
     msg.dbnum = dbnum;
     strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
@@ -1976,6 +1989,8 @@ int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
 void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
                                  int dbnum)
 {
+    if (log_calls)
+        fprintf(stderr, "%p> %s(%s,%d): fd=%d\n", (void *)pthread_self(), __func__, typestr, dbnum, fd);
     int enabled = 0;
     int sockpool_fd = -1;
     int sp_generation = -1;
@@ -2416,10 +2431,10 @@ after_callback:
     return rc;
 }
 
-static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
+static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 {
     if (sb == NULL)
-        return;
+        return 0;
 
     debugprint("disconnecting from %s, line %d\n",
                hndl->hosts[hndl->connected_host], line);
@@ -2440,7 +2455,7 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     }
     hndl->use_hint = 0;
     hndl->sb = NULL;
-    return;
+    return 0;
 }
 
 /* returns port number, or -1 for error*/
@@ -2793,19 +2808,23 @@ retry:
         rc = -1;
         goto after_callback;
     }
+
     if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_TRACE) {
         CDB2SQLRESPONSE *response =
             cdb2__sqlresponse__unpack(NULL, hdr.length, *buf);
         if (response->response_type == RESPONSE_TYPE__SP_TRACE) {
-            fprintf(stderr, "%s\n", response->info_string);
+            fprintf(stdout, "%s\n", response->info_string);
             cdb2__sqlresponse__free_unpacked(response, NULL);
         } else {
-            fprintf(stderr, "%s", response->info_string);
+            fprintf(stdout, "%s", response->info_string);
             cdb2__sqlresponse__free_unpacked(response, NULL);
             char cmd[250];
             if (fgets(cmd, 250, stdin) == NULL ||
                 strncasecmp(cmd, "quit", 4) == 0) {
-                exit(0);
+                /* don't exit program, just quit sp in the middle
+                   finish should be used to quit debugger and run sp till end */
+                rc = -1;
+                goto after_callback;
             }
             CDB2QUERY query = CDB2__QUERY__INIT;
             query.spcmd = cmd;
@@ -3845,93 +3864,7 @@ int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql)
 
 static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response, char valid_hosts[][CDB2HOSTNAME_LEN],
                              int *valid_ports, int *master_node, int *num_valid_hosts, int *num_valid_sameroom_hosts,
-                             int debug_trace, peer_ssl_mode *s_mode)
-{
-    if (log_calls)
-        fprintf(stderr, "td %" PRIxPTR "%s:%d\n", (intptr_t)pthread_self(), __func__,
-                __LINE__);
-    int num_hosts = dbinfo_response->n_nodes;
-    *num_valid_hosts = 0;
-    if (num_valid_sameroom_hosts)
-        *num_valid_sameroom_hosts = 0;
-    int myroom = 0;
-    int i = 0;
-
-    if (debug_trace) {
-        /* Print a list of nodes received via dbinforesponse. */
-        fprintf(stderr, "dbinforesponse:\n%s (master)\n",
-                dbinfo_response->master->name);
-        for (i = 0; i < num_hosts; i++) {
-            CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
-            if (strcmp(dbinfo_response->master->name, currnode->name) == 0) {
-                continue;
-            }
-            fprintf(stderr, "%s\n", currnode->name);
-        }
-    }
-
-    for (i = 0; i < num_hosts; i++) {
-        CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
-        if (!myroom) {
-            if (currnode->has_room) {
-                myroom = currnode->room;
-            } else {
-                myroom = -1;
-            }
-        }
-        if (currnode->incoherent)
-            continue;
-
-        if (strlen(currnode->name) >= CDB2HOSTNAME_LEN)
-            continue;
-
-        strncpy(valid_hosts[*num_valid_hosts], currnode->name, CDB2HOSTNAME_LEN);
-        if (currnode->has_port) {
-            valid_ports[*num_valid_hosts] = currnode->port;
-        } else {
-            valid_ports[*num_valid_hosts] = -1;
-        }
-        if (strcmp(currnode->name, dbinfo_response->master->name) == 0)
-            *master_node = *num_valid_hosts;
-
-        if (log_calls)
-            fprintf(stderr, "td %" PRIxPTR "%s:%d, %d) host=%s(%d)%s\n",
-                    (intptr_t) pthread_self(), __func__, __LINE__,
-                    *num_valid_hosts, valid_hosts[*num_valid_hosts],
-                    valid_ports[*num_valid_hosts],
-                    (*master_node == *num_valid_hosts) ? "*" : "");
-
-        if (num_valid_sameroom_hosts && (myroom == currnode->room))
-            (*num_valid_sameroom_hosts)++;
-
-        (*num_valid_hosts)++;
-    }
-
-    /* Add incoherent nodes too, don't count them for same room hosts. */
-    for (i = 0; i < num_hosts; i++) {
-        CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
-        if (!currnode->incoherent)
-            continue;
-        strncpy(valid_hosts[*num_valid_hosts], currnode->name,
-                sizeof(valid_hosts[*num_valid_hosts]) - 1);
-        if (currnode->has_port) {
-            valid_ports[*num_valid_hosts] = currnode->port;
-        } else {
-            valid_ports[*num_valid_hosts] = -1;
-        }
-        if (currnode->number == dbinfo_response->master->number)
-            *master_node = *num_valid_hosts;
-
-        (*num_valid_hosts)++;
-    }
-
-    if (!dbinfo_response->has_require_ssl)
-        *s_mode = PEER_SSL_UNSUPPORTED;
-    else if (dbinfo_response->require_ssl)
-        *s_mode = PEER_SSL_REQUIRE;
-    else
-        *s_mode = PEER_SSL_ALLOW;
-}
+                             int debug_trace, peer_ssl_mode *s_mode);
 
 static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
@@ -4135,6 +4068,91 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     }
 
     PRINT_AND_RETURN_OK(rc);
+}
+
+static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response, char valid_hosts[][CDB2HOSTNAME_LEN],
+                             int *valid_ports, int *master_node, int *num_valid_hosts, int *num_valid_sameroom_hosts,
+                             int debug_trace, peer_ssl_mode *s_mode)
+{
+    if (log_calls)
+        fprintf(stderr, "td %" PRIxPTR "%s:%d\n", (intptr_t)pthread_self(), __func__, __LINE__);
+    int num_hosts = dbinfo_response->n_nodes;
+    *num_valid_hosts = 0;
+    if (num_valid_sameroom_hosts)
+        *num_valid_sameroom_hosts = 0;
+    int myroom = 0;
+    int i = 0;
+
+    if (debug_trace) {
+        /* Print a list of nodes received via dbinforesponse. */
+        fprintf(stderr, "dbinforesponse:\n%s (master)\n", dbinfo_response->master->name);
+        for (i = 0; i < num_hosts; i++) {
+            CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
+            if (strcmp(dbinfo_response->master->name, currnode->name) == 0) {
+                continue;
+            }
+            fprintf(stderr, "%s\n", currnode->name);
+        }
+    }
+
+    for (i = 0; i < num_hosts; i++) {
+        CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
+        if (!myroom) {
+            if (currnode->has_room) {
+                myroom = currnode->room;
+            } else {
+                myroom = -1;
+            }
+        }
+        if (currnode->incoherent)
+            continue;
+
+        if (strlen(currnode->name) >= CDB2HOSTNAME_LEN)
+            continue;
+
+        strncpy(valid_hosts[*num_valid_hosts], currnode->name, CDB2HOSTNAME_LEN);
+        if (currnode->has_port) {
+            valid_ports[*num_valid_hosts] = currnode->port;
+        } else {
+            valid_ports[*num_valid_hosts] = -1;
+        }
+        if (strcmp(currnode->name, dbinfo_response->master->name) == 0)
+            *master_node = *num_valid_hosts;
+
+        if (log_calls)
+            fprintf(stderr, "td %" PRIxPTR "%s:%d, %d) host=%s(%d)%s\n", (intptr_t)pthread_self(), __func__, __LINE__,
+                    *num_valid_hosts, valid_hosts[*num_valid_hosts], valid_ports[*num_valid_hosts],
+                    (*master_node == *num_valid_hosts) ? "*" : "");
+
+        if (num_valid_sameroom_hosts && (myroom == currnode->room))
+            (*num_valid_sameroom_hosts)++;
+
+        (*num_valid_hosts)++;
+    }
+
+    /* Add incoherent nodes too, don't count them for same room hosts. */
+    for (i = 0; i < num_hosts; i++) {
+        CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
+        if (!currnode->incoherent)
+            continue;
+        strncpy(valid_hosts[*num_valid_hosts], currnode->name, sizeof(valid_hosts[*num_valid_hosts]) - 1);
+        if (currnode->has_port) {
+            valid_ports[*num_valid_hosts] = currnode->port;
+        } else {
+            valid_ports[*num_valid_hosts] = -1;
+        }
+        if (currnode->number == dbinfo_response->master->number)
+            *master_node = *num_valid_hosts;
+
+        (*num_valid_hosts)++;
+    }
+
+    if (!dbinfo_response->has_require_ssl)
+        *s_mode = PEER_SSL_UNSUPPORTED;
+    else if (dbinfo_response->require_ssl)
+        *s_mode = PEER_SSL_REQUIRE;
+    else
+        *s_mode = PEER_SSL_ALLOW;
 }
 
 static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
