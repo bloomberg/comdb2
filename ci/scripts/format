@@ -52,6 +52,7 @@ print_help() {
   echo "  -b, --compare-base <ref> Git reference to compare against (default: HEAD^)"
   echo "  -s, --only-staged        Only format staged files"
   echo "  -v, --verbose            Enable verbose output"
+  echo "  -V, --super-verbose      Enable super verbose output for script debugging (sets -x)" 
   echo "  -h, --help               Show this help message"
   echo ""
   echo "Uses the following clang-format style:"
@@ -82,6 +83,10 @@ while [[ $# -gt 0 ]]; do
       shift ;;
     -v|--verbose)
       verbose=1
+      shift ;;
+    -V|--super-verbose)
+      verbose=1
+      set -x
       shift ;;
     -h|--help)
       print_help
