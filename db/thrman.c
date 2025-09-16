@@ -501,6 +501,8 @@ static int thrman_check_threads_gone_ll(void *context)
     return 0;
 }
 
+int gbl_thread_wait_sec = 5;
+
 /* Wait for some condition to happen.  The condition will be checked by the
  * passed in function, which expects to be called under lock. */
 static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
@@ -516,7 +518,7 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
             break;
 
         gettimeofday(&tp, NULL);
-        ts.tv_sec = tp.tv_sec + 1;
+        ts.tv_sec = tp.tv_sec + gbl_thread_wait_sec;
         ts.tv_nsec = tp.tv_usec * 1000;
 
         /* Wait for something to change. */
