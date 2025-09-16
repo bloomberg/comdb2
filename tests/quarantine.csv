@@ -11,7 +11,6 @@ analyze_partial_index_off_generated,UNKNOWN,180528295
 incoherent_slow,UNKNOWN,180565323
 cdb2sql,UNKNOWN,180565576
 logfill_logput_window_generated,UNKNOWN,180717427
-skipscan,FLAKEY,180778828
 comdb2sys,FLAKEY,180779255
 sc_truncate_multiddl_generated,FLAKEY,180779289
 scupdates,DB_BUG,180779427

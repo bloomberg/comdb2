@@ -23,6 +23,50 @@ keys
 }
 "
 
+skipscan_disabled_on_node() {
+    local -r node=$1
+    local -r table=$2
+
+    local llmeta_dump
+    if ! llmeta_dump=$(cdb2sql --host $node ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('llmeta list')"); then
+        return 1
+    fi
+
+    if echo "$llmeta_dump" | grep "LLMETA_TABLE_PARAMETERS table=\"$table\".*\"disableskipscan\":\"true\"" > /dev/null ; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+skipscan_status_for_table() {
+    local -r table=$1
+    local -r expect_enabled=$2
+
+    local disabled
+    if [[ -z "$CLUSTER" ]]; then
+        if ! disabled=$(skipscan_disabled_on_node "$(hostname)" "$table") || (( disabled != (1 - expect_enabled) )); then
+            return 1
+        fi
+    else
+        for node in $CLUSTER; do
+            if ! disabled=$(skipscan_disabled_on_node "$node" "$table") || (( disabled != (1 - expect_enabled) )); then
+                return 1
+            fi
+        done
+    fi
+    return 0
+}
+
+wait_for_skipscan_table_status() {
+    local -r table=$1
+    local -r expect_enabled=$2
+
+    while ! skipscan_status_for_table "$table" "$expect_enabled"; do
+        sleep 1
+    done
+}
+
 i=1
 while [ $i -le 25 ] ; do
     j=1
@@ -48,7 +92,7 @@ fi
 
 echo "disable skipscan, check plan"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "put skipscan disable $table"
-sleep 1
+wait_for_skipscan_table_status $table 0
 
 echo "set explain on
 select a from $table where b < 34" | cdb2sql ${CDB2_OPTIONS} $dbnm default -  > out2.txt
@@ -63,7 +107,7 @@ fi
 
 echo "enable skipscan, check plan"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "put skipscan enable $table"
-sleep 1
+wait_for_skipscan_table_status $table 1
 
 echo "set explain on
 select a from $table where b < 34" | cdb2sql ${CDB2_OPTIONS} $dbnm default - > out3.txt
