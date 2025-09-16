@@ -212,6 +212,11 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
             }
             tbl->nrows = 0;
         }
+        if (db_is_exiting()) {
+            logmsg(LOGMSG_ERROR, "Interrupting %s, db is exiting\n", __func__);
+            fdbc_if->set_sql(cur, NULL); /* not owner of sql hint */
+            return -1;
+        }
     } while ((retry++) < RETRY_GET_STATS_PER_STAT);
 
 close:
@@ -247,7 +252,8 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     fdb_cursor_if_t *fdbc_if;
     char *sql_stat1 = "select * from sqlite_stat1";
     char *sql_stat4 = "select * from sqlite_stat4 where tbl not like 'cdb2.%'";
-    int rc;
+    int rc = 0;
+    int irc;
 
     /* fake a BtCursor */
     cur = calloc(1, sizeof(BtCursor) + sizeof(Btree));
@@ -292,13 +298,11 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
 
 close:
     /* close cursor */
-    rc = fdbc_if->close(cur);
-    if (rc) {
+    irc = fdbc_if->close(cur);
+    if (irc) {
         logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__,
                rc);
     }
-
-    rc = 0;
 done:
     return rc;
 }
