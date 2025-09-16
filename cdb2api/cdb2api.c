@@ -485,17 +485,6 @@ static int read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chr
     return count + 1;
 }
 
-int is_valid_int(const char *str)
-{
-    while (*str) {
-        if (!isdigit(*str))
-            return 0;
-        else
-            ++str;
-    }
-    return 1;
-}
-
 static int init_once_has_run = 0;
 
 static void do_init_once(void)
@@ -1123,6 +1112,17 @@ void cdb2_set_sockpool(const char *sp_path)
     if (SOCKPOOL_OTHER_NAME)
         free(SOCKPOOL_OTHER_NAME);
     SOCKPOOL_OTHER_NAME = strdup(sp_path);
+}
+
+static int is_valid_int(const char *str)
+{
+    while (*str) {
+        if (!isdigit(*str))
+            return 0;
+        else
+            ++str;
+    }
+    return 1;
 }
 
 // `err` is set to -1 if the `value` is invalid; otherwise, it is set to 0.
