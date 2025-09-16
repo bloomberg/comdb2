@@ -2522,6 +2522,8 @@ cdb2_hndl_tp* fdb_connect(const char *dbname, enum mach_class inclass, int local
         return NULL;
     }
 
+    cdb2_register_retry_callback(hndl, &fdb_retry_callback);
+
     return hndl;
 }
 
@@ -5482,6 +5484,8 @@ int fdb_get_server_semver(const fdb_t * const fdb, const char ** version)
     if (rc) {
         return FDB_ERR_GENERIC;
     }
+
+    cdb2_register_retry_callback(hndl, &fdb_retry_callback);
 
     rc = cdb2_run_statement(hndl, "select comdb2_semver()");
     if (rc) {

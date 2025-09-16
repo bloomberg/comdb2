@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include <epochlib.h>
 #include <plhash_glue.h>
@@ -188,6 +189,7 @@ int gbl_eventlog_fullhintsql = 1;
 comdb2_query_preparer_t *query_preparer_plugin;
 int gbl_sql_recover_time = 10;
 int gbl_debug_recover_deadlock_evbuffer = 0;
+int gbl_sql_row_delay_msecs = 0; /* testing delay per sql row, before sending the row */
 
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
@@ -2920,6 +2922,7 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
     /* terminate the current statement; we are gonna reprepare */
     sqlite3_finalize(rec->stmt);
     rec->stmt = NULL;
+    clnt->dbtran.pStmt = NULL;
 }
 
 extern int newsql_is_newsql(struct sqlclntstate *clnt);
@@ -3842,6 +3845,19 @@ static int post_sqlite_processing(struct sqlthdstate *thd, struct sqlclntstate *
     return 0;
 }
 
+void _delay_sending_row(void)
+{
+    int delay = gbl_sql_row_delay_msecs;
+    int ticks = delay;
+
+    while (ticks > 0) {
+        poll(NULL, 0, 1000);
+        ticks -= 1000;
+        if (db_is_exiting())
+            return;
+    }
+}
+
 /* The design choice here for communication is to send row data inside this
    function, and delegate the error sending to the caller (since we send
    multiple rows, but we send error only once and stop processing at that time)
@@ -3931,6 +3947,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) || v->explain) {
             postponed_write = 0;
             ++row_id;
+
+            _delay_sending_row();
+
             rc = send_row(clnt, stmt, row_id, 0, err);
             if (rc)
                 return rc;

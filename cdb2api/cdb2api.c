@@ -3096,6 +3096,14 @@ retry:
                 cdb2_invoke_callback(hndl, e, 1, CDB2_QUERY_STATE, hdr.state);
             PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
         }
+        if (hndl->retry_clbk) {
+            const char *errstring = (*hndl->retry_clbk)(hndl);
+            if (errstring) {
+                debugprint("retry callback %s:%d returned error %s\n", __func__, __LINE__, errstring);
+                rc = -1;
+                goto after_callback;
+            }
+        }
         goto retry;
     }
 
@@ -3161,6 +3169,14 @@ retry:
             }
         }
         debugprint("- going to retry\n");
+        if (hndl->retry_clbk) {
+            const char *errstring = (*hndl->retry_clbk)(hndl);
+            if (errstring) {
+                debugprint("retry callback %s:%d returned error %s\n", __func__, __LINE__, errstring);
+                rc = -1;
+                goto after_callback;
+            }
+        }
         goto retry;
     }
 
@@ -4999,6 +5015,14 @@ retry_queries:
     hndl->first_record_read = 0;
 
     retries_done++;
+
+    if (hndl->retry_clbk) {
+        const char *errstring = (*hndl->retry_clbk)(hndl);
+        if (errstring) {
+            debugprint("retry callback %s:%d returned error %s\n", __func__, __LINE__, errstring);
+            PRINT_AND_RETURN(CDB2ERR_STOPPED);
+        }
+    }
 
     int tmsec = 0;
 
@@ -7848,4 +7872,10 @@ int cdb2_get_property(cdb2_hndl_tp *hndl, const char *key, char **value) {
         sprintf(*value, "%d", hndl->firstresponse->sql_tail_offset);
         return 0;
     }
+}
+
+int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f)
+{
+    hndl->retry_clbk = f;
+    return 0;
 }

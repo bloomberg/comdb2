@@ -310,6 +310,16 @@ static int forward_extra_set_commands(cdb2_hndl_tp *hndl, int n_sets, const char
 
 void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
 
+const char *fdb_retry_callback(void *arg)
+{
+    int rc = recover_deadlock_simple(thedb->bdb_env);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to call recover_deadlock_simple rc %d\n", __func__, rc);
+    }
+
+    return NULL;
+}
+
 static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
                                     int flags, struct errstat *err,
                                     int n_sets, const char **sets)
@@ -356,6 +366,8 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
     }
 
     fdb_client_set_identityBlob(clnt, hndl);
+
+    cdb2_register_retry_callback(hndl, &fdb_retry_callback);
 
     return hndl;
 }

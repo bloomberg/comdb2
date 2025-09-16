@@ -1,0 +1,1 @@
+This test makes sure the remote sql over cdb2api respects bdb lock desired and lock waits.

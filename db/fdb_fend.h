@@ -421,5 +421,11 @@ int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
 fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class, int override, int local,
                                       enum ast_type type);
 
+/**
+ * Callback for cdb2api transport I/O retry
+ *
+ */
+const char *fdb_retry_callback(void *arg);
+
 #endif
 

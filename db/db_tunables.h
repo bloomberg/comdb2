@@ -2578,6 +2578,12 @@ REGISTER_TUNABLE("always_request_log_req", "Always request the next log record o
 REGISTER_TUNABLE("nudge_replication_when_idle",
                  "If we haven't seen any replication events in a while, request some (default: 100)", TUNABLE_INTEGER,
                  &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sql_row_delay_msecs", "Add this delay before sending back a row, for every row (default: 0)",
+                 TUNABLE_INTEGER, &gbl_sql_row_delay_msecs, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("thread_wait_sec", "Wait that many seconds for each thread to exit during a clean exit (default: 5)",
+                 TUNABLE_INTEGER, &gbl_thread_wait_sec, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_always_reload_schemas_after_recovery",
                  "If set, always reload schema information after recovery. This is used to "
                  "reproduce a deadlock where post-election recovery and a dbinfo2 query "
