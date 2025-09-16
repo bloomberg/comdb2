@@ -36,6 +36,7 @@
 #include "logmsg.h"
 #include "debug_switches.h"
 #include "localrep.h"
+#include "views.h"
 
 int gbl_logical_live_sc = 0;
 

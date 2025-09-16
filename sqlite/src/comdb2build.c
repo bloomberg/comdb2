@@ -5122,6 +5122,8 @@ void comdb2AlterTableEnd(Parse *pParse)
                          "Cannot partition a constraint target table");
                 goto cleanup;
             }
+        } else if (sc->partition.type == PARTITION_MERGE) {
+            sc->force_rebuild = 1;
         }
     }
 
