@@ -18,7 +18,6 @@
 #include <alloca.h>
 #include <stdarg.h>
 #include <sbuf2.h>
-#include <limits.h>
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
@@ -33,6 +32,7 @@
 #include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/queue.h>
 #include <fcntl.h>
 #include <math.h> // ceil
 #include <limits.h> // int_max
@@ -1879,6 +1879,27 @@ static void sockpool_close_all(void)
     }
 }
 
+#ifndef TAILQ_FIRST
+#define TAILQ_FIRST(head) ((head)->tqh_first)
+#endif
+
+#ifndef TAILQ_NEXT
+#define TAILQ_NEXT(v, field) ((v)->field.tqe_next)
+#endif
+
+#ifndef TAILQ_LAST
+#define TAILQ_LAST(head, headname) (*(((struct headname *)((head)->tqh_last))->tqh_last))
+#endif
+
+#ifndef TAILQ_FOREACH
+#define TAILQ_FOREACH(v, head, field) for ((v) = TAILQ_FIRST(head); (v); (v) = TAILQ_NEXT(v, field))
+#endif
+
+#ifndef TAILQ_FOREACH_SAFE
+#define TAILQ_FOREACH_SAFE(v, head, field, tmp)                                                                        \
+    for ((v) = TAILQ_FIRST(head); (v) && ((tmp) = TAILQ_NEXT((v), field), 1); (v) = (tmp))
+#endif
+
 // cdb2_socket_pool_get_ll: low-level
 static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
 {
@@ -3296,20 +3317,12 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     if (trans_append && hndl->snapshot_file > 0) {
         /* Retry number of transaction is different from that of query.*/
-        cdb2_query_list *item = malloc(sizeof(cdb2_query_list));
+        struct cdb2_query *item = malloc(sizeof(struct cdb2_query));
         item->buf = buf;
         item->len = len;
         item->is_read = hndl->is_read;
-        item->next = NULL;
         item->sql = strdup(sql);
-        cdb2_query_list *last = hndl->query_list;
-        if (last == NULL) {
-            hndl->query_list = item;
-        } else {
-            while (last->next != NULL)
-                last = last->next;
-            last->next = item;
-        }
+        TAILQ_INSERT_TAIL(&hndl->queries, item, entry);
     } else if (on_heap) {
         free(buf);
     }
@@ -3626,6 +3639,24 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
     return rc;
 }
 
+static void free_query_list(struct query_list *head)
+{
+    struct cdb2_query *q, *tmp;
+    TAILQ_FOREACH_SAFE(q, head, entry, tmp)
+    {
+        TAILQ_REMOVE(head, q, entry);
+        free(q->sql);
+        free(q->buf);
+        free(q);
+    }
+}
+
+/* Free query list and reset the pointer. */
+static inline void free_query_list_on_handle(cdb2_hndl_tp *hndl)
+{
+    free_query_list(&hndl->queries);
+}
+
 static void free_events(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;
@@ -3641,25 +3672,6 @@ static void free_events(cdb2_hndl_tp *hndl)
     hndl->events = NULL;
     free(hndl->gbl_event_version);
     hndl->gbl_event_version = NULL;
-}
-
-static void free_query_list(cdb2_query_list *head)
-{
-    cdb2_query_list *ditem;
-    while (head != NULL) {
-        ditem = head;
-        head = head->next;
-        free(ditem->sql);
-        free(ditem->buf);
-        free(ditem);
-    }
-}
-
-/* Free query list and reset the pointer. */
-static inline void free_query_list_on_handle(cdb2_hndl_tp *hndl)
-{
-    free_query_list(hndl->query_list);
-    hndl->query_list = NULL;
 }
 
 int cdb2_close(cdb2_hndl_tp *hndl)
@@ -3751,6 +3763,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     free(hndl->sql);
 
     cdb2_clearbindings(hndl);
+    free_query_list_on_handle(hndl);
     cdb2_free_context_msgs(hndl);
     free(hndl->sslpath);
     free(hndl->cert);
@@ -3771,7 +3784,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     if (!hndl->is_child_hndl) // parent handle will free
         free_events(hndl);
-    free_query_list(hndl->query_list);
 
     free(hndl);
     return rc;
@@ -3888,7 +3900,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response, char valid_hos
                              int *valid_ports, int *master_node, int *num_valid_hosts, int *num_valid_sameroom_hosts,
                              int debug_trace, peer_ssl_mode *s_mode);
 
-static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
+static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     debugprint("retry_all %d, intran %d\n", hndl->retry_all, hndl->in_trans);
 
@@ -3984,15 +3996,15 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         return 1;
     }
 
-    cdb2_query_list *item = hndl->query_list;
-    while (item != NULL) { /* Send all but the last query. */
-
-        /* This is the case when we got disconnected while reading the
-           query.
+    struct cdb2_query *item;
+    TAILQ_FOREACH(item, &hndl->queries, entry)
+    {
+        /* This is the case when we got disconnected while reading the query.
            In that case retry all the queries and skip their results,
            except the last one. */
-        if (run_last == 0 && item->next == NULL)
+        if (!run_last && item == TAILQ_LAST(&hndl->queries, query_list)) {
             break;
+        }
 
         struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
                                    .compression = ntohl(0),
@@ -4008,7 +4020,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         int len = 0;
 
         if (!hndl->read_intrans_results && !item->is_read) {
-            item = item->next;
             continue;
         }
         /* This is for select queries, we send just the last row. */
@@ -4041,8 +4052,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                        read_rc);
             return 1;
         }
-
-        item = item->next;
     }
     clear_responses(hndl);
     return 0;
@@ -4060,7 +4069,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     hndl->retry_all = 1;
 
     if (hndl->in_trans) {
-        rc = retry_query_list(hndl, num_retry, 0);
+        rc = retry_queries(hndl, num_retry, 0);
         if (rc) {
             PRINT_AND_RETURN_OK(rc);
         }
@@ -4294,9 +4303,7 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
     return rc;
 }
 
-static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
-                                      cdb2_query_list *commit_query_list,
-                                      int line)
+static inline void cleanup_query_list(cdb2_hndl_tp *hndl, struct query_list *commit_query_list, int line)
 {
     debugprint("called from line %d\n", line);
     hndl->read_intrans_results = 1;
@@ -4595,7 +4602,8 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int
     int commit_file = 0;
     int commit_offset = 0;
     int commit_is_retry = 0;
-    cdb2_query_list *commit_query_list = NULL;
+    struct query_list commit_query_list;
+    TAILQ_INIT(&commit_query_list);
     int is_rollback = 0;
     int retries_done = 0;
 
@@ -4722,7 +4730,7 @@ retry_queries:
                                ((time(NULL) + (tmsec / 1000)) >= max_time))) {
         sprintf(hndl->errstr, "%s: Maximum number of retries done.", __func__);
         if (is_hasql_commit) {
-            cleanup_query_list(hndl, commit_query_list, __LINE__);
+            cleanup_query_list(hndl, &commit_query_list, __LINE__);
         }
         if (is_begin) {
             hndl->in_trans = 0;
@@ -4732,7 +4740,7 @@ retry_queries:
 
     if (!hndl->sb) {
         if (is_rollback) {
-            cleanup_query_list(hndl, NULL, __LINE__);
+            cleanup_query_list(hndl, &commit_query_list, __LINE__);
             debugprint("returning 0 on unconnected rollback\n");
             PRINT_AND_RETURN(0);
         }
@@ -4762,7 +4770,7 @@ retry_queries:
         }
         if (!is_begin) {
             hndl->retry_all = 1;
-            rc = retry_query_list(hndl, (retries_done - 1), run_last);
+            rc = retry_queries(hndl, (retries_done - 1), run_last);
             if (rc > 0) {
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all = 1;
@@ -4822,8 +4830,8 @@ retry_queries:
             commit_file = hndl->snapshot_file;
             commit_offset = hndl->snapshot_offset;
             commit_is_retry = hndl->is_retry;
-            commit_query_list = hndl->query_list;
-            hndl->query_list = NULL;
+            commit_query_list = hndl->queries;
+            TAILQ_INIT(&hndl->queries);
             is_hasql_commit = 1;
         }
         hndl->read_intrans_results = 1;
@@ -4949,15 +4957,15 @@ read_record:
                     hndl->snapshot_file = commit_file;
                     hndl->snapshot_offset = commit_offset;
                     hndl->is_retry = commit_is_retry;
-                    hndl->query_list = commit_query_list;
-                    commit_query_list = NULL;
+                    hndl->queries = commit_query_list;
+                    TAILQ_INIT(&commit_query_list);
                     commit_file = 0;
                 }
                 debugprint("goto retry_queries err_val=%d\n", err_val);
                 goto retry_queries;
             } else {
                 if (is_commit) {
-                    cleanup_query_list(hndl, commit_query_list, __LINE__);
+                    cleanup_query_list(hndl, &commit_query_list, __LINE__);
                 }
                 sprintf(hndl->errstr,
                         "%s: Timeout while reading response from server", __func__);
@@ -4984,8 +4992,8 @@ read_record:
                 hndl->snapshot_file = commit_file;
                 hndl->snapshot_offset = commit_offset;
                 hndl->is_retry = commit_is_retry;
-                hndl->query_list = commit_query_list;
-                commit_query_list = NULL;
+                hndl->queries = commit_query_list;
+                TAILQ_INIT(&commit_query_list);
                 commit_file = 0;
             }
             hndl->retry_all = 1;
@@ -4994,7 +5002,7 @@ read_record:
         }
 
         if (is_hasql_commit) {
-            cleanup_query_list(hndl, commit_query_list, __LINE__);
+            cleanup_query_list(hndl, &commit_query_list, __LINE__);
         }
         sprintf(hndl->errstr,
                 "%s: Timeout while reading response from server", __func__);
@@ -5022,15 +5030,15 @@ read_record:
                     hndl->snapshot_file = commit_file;
                     hndl->snapshot_offset = commit_offset;
                     hndl->is_retry = commit_is_retry;
-                    hndl->query_list = commit_query_list;
-                    commit_query_list = NULL;
+                    hndl->queries = commit_query_list;
+                    TAILQ_INIT(&commit_query_list);
                     commit_file = 0;
                 }
                 debugprint("goto retry_queries err_val=%d\n", err_val);
                 goto retry_queries;
             } else {
                 if (is_hasql_commit) {
-                    cleanup_query_list(hndl, commit_query_list, __LINE__);
+                    cleanup_query_list(hndl, &commit_query_list, __LINE__);
                 }
                 PRINT_AND_RETURN(err_val);
             }
@@ -5046,7 +5054,7 @@ read_record:
         debugprint("Can't read response from the db\n");
         sprintf(hndl->errstr, "%s: Can't read response from the db", __func__);
         if (is_hasql_commit) {
-            cleanup_query_list(hndl, commit_query_list, __LINE__);
+            cleanup_query_list(hndl, &commit_query_list, __LINE__);
         }
         PRINT_AND_RETURN(-1);
     }
@@ -5065,7 +5073,7 @@ read_record:
             PRINT_AND_RETURN(0);
         } else {
             if (is_hasql_commit) {
-                cleanup_query_list(hndl, commit_query_list, __LINE__);
+                cleanup_query_list(hndl, &commit_query_list, __LINE__);
             }
             PRINT_AND_RETURN(err_val);
         }
@@ -5108,8 +5116,8 @@ read_record:
             hndl->snapshot_file = commit_file;
             hndl->snapshot_offset = commit_offset;
             hndl->is_retry = commit_is_retry;
-            hndl->query_list = commit_query_list;
-            commit_query_list = NULL;
+            hndl->queries = commit_query_list;
+            TAILQ_INIT(&commit_query_list);
             commit_file = 0;
         }
         debugprint("goto retry_queries error_code=%d\n",
@@ -5128,7 +5136,7 @@ read_record:
         debugprint("setting in_trans to 1\n");
         hndl->in_trans = 1;
     } else if (!is_hasql_commit && (is_rollback || is_commit)) {
-        cleanup_query_list(hndl, commit_query_list, __LINE__);
+        cleanup_query_list(hndl, &commit_query_list, __LINE__);
     }
 
     hndl->node_seq = 0;
@@ -5146,7 +5154,7 @@ read_record:
             cdb2_close(hndl->fdb_hndl);
             hndl->fdb_hndl = NULL;
             if (is_hasql_commit)
-                cleanup_query_list(hndl, commit_query_list, __LINE__);
+                cleanup_query_list(hndl, &commit_query_list, __LINE__);
 
             sprintf(hndl->errstr, "%s: Can't open fdb %s:%s", __func__, hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class);
             debugprint("Can't open fdb %s:%s\n", hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class);
@@ -5157,7 +5165,7 @@ read_record:
 
         return_value = cdb2_run_statement_typed(hndl->fdb_hndl, sql, ntypes, types);
         if (is_hasql_commit)
-            cleanup_query_list(hndl, commit_query_list, __LINE__);
+            cleanup_query_list(hndl, &commit_query_list, __LINE__);
 
         clear_responses(hndl);  // signal to cdb2_next_record_int that we are done
         PRINT_AND_RETURN(return_value);
@@ -5176,8 +5184,8 @@ read_record:
                 hndl->snapshot_file = commit_file;
                 hndl->snapshot_offset = commit_offset;
                 hndl->is_retry = commit_is_retry;
-                hndl->query_list = commit_query_list;
-                commit_query_list = NULL;
+                hndl->queries = commit_query_list;
+                TAILQ_INIT(&commit_query_list);
                 commit_file = 0;
             }
             debugprint("goto retry_queries error_code=%d\n",
@@ -5196,14 +5204,14 @@ read_record:
             return_value =
                 cdb2_convert_error_code(hndl->firstresponse->error_code);
             if (is_hasql_commit)
-                cleanup_query_list(hndl, commit_query_list, __LINE__);
+                cleanup_query_list(hndl, &commit_query_list, __LINE__);
             PRINT_AND_RETURN(return_value);
         }
         int rc = cdb2_next_record_int(hndl, 1);
         if (rc == CDB2_OK_DONE || rc == CDB2_OK) {
             return_value = cdb2_convert_error_code(hndl->firstresponse->error_code);
             if (is_hasql_commit)
-                cleanup_query_list(hndl, commit_query_list, __LINE__);
+                cleanup_query_list(hndl, &commit_query_list, __LINE__);
             PRINT_AND_RETURN(return_value);
         }
 
@@ -5223,8 +5231,8 @@ read_record:
                 hndl->snapshot_file = commit_file;
                 hndl->snapshot_offset = commit_offset;
                 hndl->is_retry = commit_is_retry;
-                hndl->query_list = commit_query_list;
-                commit_query_list = NULL;
+                hndl->queries = commit_query_list;
+                TAILQ_INIT(&commit_query_list);
                 commit_file = 0;
             }
 
@@ -5239,7 +5247,7 @@ read_record:
         return_value = cdb2_convert_error_code(rc);
 
         if (is_hasql_commit)
-            cleanup_query_list(hndl, commit_query_list, __LINE__);
+            cleanup_query_list(hndl, &commit_query_list, __LINE__);
 
         PRINT_AND_RETURN(return_value);
     }
@@ -5247,7 +5255,7 @@ read_record:
     sprintf(hndl->errstr, "%s: Unknown response type %d", __func__,
             hndl->firstresponse->response_type);
     if (is_hasql_commit)
-        cleanup_query_list(hndl, commit_query_list, __LINE__);
+        cleanup_query_list(hndl, &commit_query_list, __LINE__);
     PRINT_AND_RETURN(-1);
 }
 
@@ -6966,6 +6974,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
     hndl->events = calloc(1, sizeof(*hndl->events));
     hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
+    TAILQ_INIT(&hndl->queries);
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
     strncpy(hndl->cluster, type, sizeof(hndl->cluster) - 1);
     strncpy(hndl->type, type, sizeof(hndl->type) - 1);

@@ -23,6 +23,9 @@
 #define INCLUDED_CDB2API_HNDL_H
 #include <sbuf2.h>
 
+#include <sys/types.h>
+#include <sys/queue.h>
+
 #define MAX_NODES 128
 
 #define DBNAME_LEN 64
@@ -86,13 +89,14 @@ struct context_messages {
 
 struct cdb2_stmt_types;
 
-typedef struct cdb2_query_list_item {
+struct cdb2_query {
+    TAILQ_ENTRY(cdb2_query) entry;
     void *buf;
     int len;
     int is_read;
     char *sql;
-    struct cdb2_query_list_item *next;
-} cdb2_query_list;
+};
+TAILQ_HEAD(query_list, cdb2_query);
 
 struct cdb2_ssl_sess {
     struct cdb2_ssl_sess *next;
@@ -148,7 +152,7 @@ struct cdb2_hndl {
     int client_side_error;
     int n_bindvars;
     CDB2SQLQUERY__Bindvalue **bindvars;
-    cdb2_query_list *query_list;
+    struct query_list queries;
     int snapshot_file;
     int snapshot_offset;
     int query_no;
