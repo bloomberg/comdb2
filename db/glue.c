@@ -787,7 +787,7 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
 int gbl_javasp_early_release = 1;
 int gbl_debug_add_replication_latency = 0;
 uint32_t gbl_written_rows_warn = 0;
-int64_t gbl_warn_wr_logbytes_per_txn = 1024 * 1024 * 512;
+int64_t gbl_warn_wr_logbytes_per_txn = 1024 * 1024 * 1024;
 extern int gbl_debug_disttxn_trace;
 
 static void make_tag(struct ireq *iq, char *tag, int taglen)
