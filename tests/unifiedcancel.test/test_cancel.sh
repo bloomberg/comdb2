@@ -248,6 +248,9 @@ for cnt in {1..3} ; do
     fi
 done
 
+echo "Waiting for cdb2sql to kick in"
+sleep 5
+
 echo "Picking up one query"
 uuid=`$S_TSQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%' limit 1"`
 if [[ $? != 0 ]] ; then
