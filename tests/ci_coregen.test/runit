@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# This test is used to verify that the CI pipeline can save cores.
+cdb2sql $DBNAME default "exec procedure sys.cmd.send('crash')"
