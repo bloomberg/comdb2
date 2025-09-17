@@ -1,0 +1,2 @@
+Make sure 'select 1' returns quickly on all nodes 
+Master should not hold schema-lk while in distributed commit

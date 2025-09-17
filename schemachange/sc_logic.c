@@ -1446,8 +1446,9 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int r
         }
 
         if (tmp_tran != tran) {
-            rc = trans_commit(iq, tmp_tran, gbl_myhostname);
-            if (rc && !replication_only_error_code(rc)) return -1;
+            rc = trans_commit_nowait(iq, tmp_tran, gbl_myhostname);
+            if (rc)
+                return -1;
         }
     }
 
