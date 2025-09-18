@@ -30,4 +30,13 @@ void cdb2_socket_pool_donate_ext(cdb2_hndl_tp *hndl, const char *typestr, int fd
 int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
                   char *dist_txnid, int rcode, int outrc, char *errmsg, int async);
 
+#ifndef WITH_DL_LIBS
+#define WITH_DL_LIBS 0
+#endif
+
+#if WITH_DL_LIBS
+void cdb2_set_install_libs(void (*ptr)(const char *));
+void cdb2_set_uninstall_libs(void (*ptr)(const char *));
+#endif
+
 #endif

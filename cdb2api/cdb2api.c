@@ -190,6 +190,8 @@ void cdb2_protobuf_free(void *allocator_data, void *ptr)
 #include <openssl/crypto.h>
 
 static int cdb2_use_env_vars = 1;
+static int cdb2_install_set_from_env = 0;
+static int cdb2_uninstall_set_from_env = 0;
 
 static int default_type_override_env = 0;
 
@@ -280,16 +282,16 @@ typedef void (*cdb2_init_t)(void);
 #ifndef CDB2_INSTALL_LIBS
 #define CDB2_INSTALL_LIBS NULL
 #else
-extern void CDB2_INSTALL_LIBS(void);
+extern void CDB2_INSTALL_LIBS(const char *);
 #endif
-void (*cdb2_install)(void) = CDB2_INSTALL_LIBS;
+void (*cdb2_install)(const char *) = CDB2_INSTALL_LIBS;
 
 #ifndef CDB2_UNINSTALL_LIBS
 #define CDB2_UNINSTALL_LIBS NULL
 #else
-extern void CDB2_UNINSTALL_LIBS(void);
+extern void CDB2_UNINSTALL_LIBS(const char *);
 #endif
-void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
+void (*cdb2_uninstall)(const char *) = CDB2_UNINSTALL_LIBS;
 
 #ifndef CDB2_IDENTITY_CALLBACKS
     struct cdb2_identity *identity_cb = NULL;
@@ -304,8 +306,14 @@ void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 
 #if WITH_DL_LIBS
 #include <dlfcn.h>
-void cdb2_set_install_libs(void (*ptr)(void)) { cdb2_install = ptr; }
-void cdb2_set_uninstall_libs(void (*ptr)(void)) { cdb2_uninstall = ptr; }
+    void cdb2_set_install_libs(void (*ptr)(const char *))
+    {
+        cdb2_install = ptr;
+    }
+    void cdb2_set_uninstall_libs(void (*ptr)(const char *))
+    {
+        cdb2_uninstall = ptr;
+    }
 #endif
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1395,6 +1403,18 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_int("COMDB2_CONFIG_SOCKET_TIMEOUT", &CDB2_SOCKET_TIMEOUT, &cdb2_socket_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PROTOBUF_SIZE", &CDB2_PROTOBUF_SIZE, &cdb2_protobuf_size_set_from_env);
 
+        char *arg = getenv("COMDB2_CONFIG_INSTALL_STATIC_LIBS");
+        if ((cdb2_install != NULL) && arg != NULL) {
+            (*cdb2_install)(arg);
+            cdb2_install_set_from_env = 1;
+        }
+
+        arg = getenv("COMDB2_CONFIG_UNINSTALL_STATIC_LIBS");
+        if ((cdb2_uninstall != NULL) && arg != NULL) {
+            (*cdb2_uninstall)(arg);
+            cdb2_uninstall_set_from_env = 1;
+        }
+
         have_read_env = 1;
     }
 
@@ -1564,15 +1584,20 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 if (tok) {
                     cdb2_allow_pmux_route = value_on_off(tok, &err, 1);
                 }
-            } else if ((strcasecmp("uninstall_static_libs_v2", tok) == 0 ||
-                        strcasecmp("disable_static_libs", tok) == 0)) {
+            } else if (!cdb2_uninstall_set_from_env && (strcasecmp("uninstall_static_libs_v4", tok) == 0 ||
+                                                        strcasecmp("disable_static_libs", tok) == 0)) {
                 /* Provide a way to disable statically installed (via
                  * CDB2_INSTALL_LIBS) libraries. */
+                tok = strtok_r(NULL, " :,", &last);
                 if (cdb2_uninstall != NULL)
-                    (*cdb2_uninstall)();
-            } else if ((strcasecmp("install_static_libs_v2", tok) == 0 || strcasecmp("enable_static_libs", tok) == 0)) {
+                    (*cdb2_uninstall)(tok);
+            } else if (!cdb2_install_set_from_env &&
+                       (strcasecmp("install_static_libs_v4", tok) == 0 || strcasecmp("enable_static_libs", tok) == 0)) {
+                /* Provide a way to enable statically installed (via
+                 * CDB2_INSTALL_LIBS) libraries. */
+                tok = strtok_r(NULL, " :,", &last);
                 if (cdb2_install != NULL)
-                    (*cdb2_install)();
+                    (*cdb2_install)(tok);
 #if WITH_DL_LIBS
             } else if (strcasecmp("lib", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
