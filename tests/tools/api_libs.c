@@ -1,10 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cdb2api.h>
-
-typedef void (lib_cb)(void);
-void cdb2_set_install_libs(lib_cb *);
-void cdb2_set_uninstall_libs(lib_cb *);
+#define WITH_DL_LIBS 1
+#include <cdb2api_int.h>
 
 static void *my_open_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
 {
@@ -15,7 +13,7 @@ static void *my_open_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **a
 static cdb2_event *e;
 
 static int inited = 0;
-void gbl_init_once(void)
+void gbl_init_once(const char *unused)
 {
     if (inited)
         return;
@@ -25,7 +23,7 @@ void gbl_init_once(void)
     inited = 1;
 }
 
-void gbl_uninit(void)
+void gbl_uninit(const char *unused)
 {
     if (!inited)
         return;
