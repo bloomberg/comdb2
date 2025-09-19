@@ -55,6 +55,16 @@ sc_swapfields
 sc_versmistmatch
 sc_resume
 
+# The tests listed in this section can't run in parallel- they
+# modify the environment in a way which will break other tests
+SERIAL TESTS:
+register_linearizable.test  -- nemesis.c partitions the network
+cinsert_linearizable.test
+jepsen_a6_nemesis.test      -- nemesis partitions network
+jepsen_bank_nemesis.test
+jepsen_register_nemesis.test
+jepsen_sets_nemesis.test
+END SERIAL
 
 # The tests listed below will be skipped when ran as part of
 # 'make all'. These tests however can be run individually.
@@ -62,17 +72,6 @@ sc_resume
 DISABLED TESTS:
 async_sc_bench.test       -- benchmark for paper
 halt_processor_tds.test   -- requires a cluster
-jepsen_a6.test            -- jepsen tests require java & root access
-jepsen_a6_nemesis.test
-jepsen_atomic_writes.test
-jepsen_bank_nemesis.test
-jepsen_bank.test
-jepsen_dirty_reads.test
-jepsen_g2.test
-jepsen_register_nemesis.test
-jepsen_register.test
-jepsen_sets_nemesis.test
-jepsen_sets.test
 killcluster.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
 overflowblobs.test        -- timesout
@@ -83,5 +82,6 @@ rowlocks_blkseq.test
 sc_async_constraints.test
 sigstopcluster.test
 weighted_standing_queue.test -- failing in rhel8 + podman
+END DISABLED
 
 # vim: set sw=4 ts=4 et:
