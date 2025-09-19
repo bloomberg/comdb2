@@ -329,7 +329,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
                 strbuf_appendf(ds, "\"%s\":x", f->name);
-                strbuf_hex(ds, in + 1, flen - 1);
+                strbuf_hex(ds, (char*)in + 1, flen - 1);
             }
             printed=1;
             break;
@@ -425,7 +425,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
                 strbuf_appendf(ds, "\"%s\":x", f->name);
-                strbuf_hex(ds, (void *)in + 5, flen - 5);
+                strbuf_hex(ds, (char *)in + 5, flen - 5);
             }
             break;
         case SERVER_VUTF8:
@@ -436,7 +436,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
                 strbuf_appendf(ds, "\"%s\":x", f->name);
-                strbuf_hex(ds, (void *)in + 5, flen - 5);
+                strbuf_hex(ds, (char *)in + 5, flen - 5);
             }
             break;
         case SERVER_BLOB:

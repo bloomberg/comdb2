@@ -296,7 +296,7 @@ int process_allow_command(char *line, int lline)
         if (parse_mach_or_group(tok, ltok, &if_mach, &if_cls) != 0)
             goto bad;
 
-        if (if_mach > 0 && if_mach != gbl_myhostname)
+        if (if_mach && if_mach != gbl_myhostname)
             goto ignore;
         if (if_cls != CLASS_UNKNOWN && if_cls != get_my_mach_class())
             goto ignore;

@@ -6568,7 +6568,7 @@ int sqlite3BtreePayload(BtCursor *pCur, u32 offset, u32 amt, void *pBuf){
     rc = SQLITE_ERROR;
     goto done;
   }
-  memcpy(pBuf, pSrc + offset, amt);
+  memcpy(pBuf, ((char*)pSrc) + offset, amt);
   rc = SQLITE_OK;
 
 done:
@@ -7422,7 +7422,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             // if f->idx == -1 then "in" is already the datacopy record
             struct field *fidx = &(pCur->db->schema->member[f->idx]);
             assert(f->len == fidx->len);
-            in = pCur->bdbcur->datacopy(pCur->bdbcur) + fidx->offset;
+            in = ((uint8_t*)(pCur->bdbcur->datacopy(pCur->bdbcur))) + fidx->offset;
         }
 
         decimal_ondisk_to_sqlite(in, f->len, (decQuad *)&m->du.tv.u.dec, &null);
@@ -12062,9 +12062,9 @@ void stat4dump(int more, char *table, int istrace)
             while (hdroffset < hdrsz) {
                 u32 type;
                 Mem m = {{0}};
-                hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
+                hdroffset += sqlite3GetVarint32(((uint8_t*)in) + hdroffset, &type);
                 dataoffset +=
-                    sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+                    sqlite3VdbeSerialGet(((uint8_t*)in) + dataoffset, type, &m);
                 if (m.flags & MEM_Null) {
                     outFunc("%sNULL", sep);
                 } else if (m.flags & MEM_Int) {
@@ -13595,7 +13595,7 @@ int do_comdb2_legacy(void *payload, int payloadlen, struct sqlclntstate *clnt, i
 
     int state;
     Pthread_mutex_lock(&p_slock->req_lock);
-    rc = handle_buf_main2(thedb, NULL, payload, payload + 1024*64, 0, clnt->origin, clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, flags, legacy_iq_setup, clnt, 1, clnt->authdata);
+    rc = handle_buf_main2(thedb, NULL, payload, ((uint8_t*)payload) + 1024*64, 0, clnt->origin, clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, flags, legacy_iq_setup, clnt, 1, clnt->authdata);
     do {
         state = p_slock->reply_state;
         if (state == REPLY_STATE_NA) {

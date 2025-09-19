@@ -715,7 +715,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
             normalize_rectype(&rectype);
 
             if (rectype == DB___txn_dist_abort) {
-                bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                 LOGCOPY_TOLSN(&bslsn, bp);
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                 if (rc == 0) {
@@ -734,14 +734,14 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                        rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit ||
                        rectype == DB___txn_regop_rowlocks_endianize || rectype == DB___txn_regop_gen_endianize) {
                 /* Skip past rectype & txnid */
-                bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                 LOGCOPY_TOLSN(&bslsn, bp);
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                 if (rc == 0) {
                     LOGCOPY_32(&rectype, logdta.data);
                     normalize_rectype(&rectype);
                     if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
-                        bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                        bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                         LOGCOPY_TOLSN(&bslsn, bp);
                         rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                         if (rc == 0) {
@@ -750,7 +750,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                         }
                     }
                     if (rectype == DB_llog_ltran_commit) {
-                        bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                        bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                         LOGCOPY_TOLSN(&bslsn, bp);
 
                         /* Purge-old-files emits empty transactions in snapshot */
@@ -765,7 +765,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                         }
                     }
                     while (rc == 0 && rectype == DB___txn_child) {
-                        bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                        bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                         LOGCOPY_TOLSN(&bslsn, bp);
                         rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                         if (rc == 0) {

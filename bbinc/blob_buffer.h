@@ -17,7 +17,7 @@
 #ifndef _INCLUDED_BLOB_BUFFER_H
 #define _INCLUDED_BLOB_BUFFER_H
 
-#define OSQL_BLOB_ODH_BIT (1 << 31)
+#define OSQL_BLOB_ODH_BIT (1U << 31)
 #define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
 #define OSQL_BLOB_FILLER_LENGTH (-2)
 

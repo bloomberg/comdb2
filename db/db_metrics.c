@@ -419,7 +419,7 @@ int64_t gbl_fastsql_execute_stop;
 extern int64_t gbl_distributed_commit_count;
 extern int64_t gbl_not_durable_commit_count;
 extern int64_t gbl_incoherent_slow_skips;
-;
+
 
 static void update_fastsql_metrics() {
     stats.fastsql_execute_inline_params = gbl_fastsql_execute_inline_params;

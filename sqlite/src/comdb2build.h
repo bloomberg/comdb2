@@ -40,7 +40,7 @@
 #define OPT_ON(opt, val) (val & opt)
 
 #define SET_ANALYZE_SUMTHREAD(opt, val) opt += ((val & 0xFFFF) << 16)
-#define GET_ANALYZE_SUMTHREAD(opt) ((opt & (0xFFFF << 16)) >> 16)
+#define GET_ANALYZE_SUMTHREAD(opt) ((opt & 0xFFFF0000) >> 16)
 
 #define SET_ANALYZE_THREAD(opt, val) opt += (val & 0xFFFF)
 #define GET_ANALYZE_THREAD(opt) (opt & 0xFFFF)

@@ -3515,7 +3515,7 @@ int gbl_scwaittime = 1000;
 int send_forgetmenot(void)
 {
     char *master = thedb->master;
-    if (master > 0)
+    if (master)
         return net_send_message(thedb->handle_sibling, master, NET_FORGETMENOT,
                                 NULL, 0, 0, 0);
     else

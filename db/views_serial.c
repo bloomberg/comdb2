@@ -200,7 +200,7 @@ int timepart_serialize_view(timepart_view_t *view, int *plen, char **out,
 int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
 {
     char *str;
-    int len;
+    int len = 0;
     int i;
     int rc = VIEW_NOERR;
 

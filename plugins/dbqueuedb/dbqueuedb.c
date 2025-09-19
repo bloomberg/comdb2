@@ -50,11 +50,7 @@
 #include <bdb_api.h>
 #include <sbuf2.h>
 #include <bb_oscompat.h>
-#include <tcputil.h>
-#include "dbdest.h"
 #include "comdb2.h"
-
-#include "util.h"
 
 #include <net_types.h>
 #include <cdb2_constants.h>
