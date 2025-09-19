@@ -3140,7 +3140,7 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     }
 
     hdrbuf = pCur->keybuf;
-    dtabuf = pCur->keybuf + hdrsz;
+    dtabuf = (char *)pCur->keybuf + hdrsz;
 
     /* put header size in header */
     sz = sqlite3PutVarint((unsigned char *)hdrbuf, hdrsz);

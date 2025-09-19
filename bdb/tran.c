@@ -303,8 +303,7 @@ static tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
 }
 
 /* Logical start function to register with berkley replication */
-int berkdb_start_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
-                         DB_LSN *lsn)
+int berkdb_start_logical(DB_ENV *dbenv, void *state, u_int64_t ltranid, DB_LSN *lsn)
 {
     tran_type *txn;
     bdb_state_type *bdb_state;
@@ -332,7 +331,7 @@ int logical_commit_replicant(bdb_state_type *bdb_state,
                              unsigned long long ltranid);
 
 /* Logical commit function to register with berkley replication */
-int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
+int berkdb_commit_logical(DB_ENV *dbenv, void *state, u_int64_t ltranid,
                           DB_LSN *lsn)
 {
     int rc;

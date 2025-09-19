@@ -1779,7 +1779,9 @@ static int process_local_shadtbl_updcols(struct sqlclntstate *clnt,
     if (!tbl->updcols)
         return 0;
 
-    updCols_key_t key = {.seq = seq, .id = -1};
+    updCols_key_t key = {0};
+    key.seq = seq;
+    key.id = -1;
     savkey = seq;
 
     rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, &key,

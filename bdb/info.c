@@ -2281,8 +2281,9 @@ int bdb_fill_cluster_info(void **data, int *num_nodes) {
 }
 int bdb_rep_deadlocks(bdb_state_type *bdb_state, int64_t *nrep_deadlocks)
 {
-    *nrep_deadlocks = 0;
-    bdb_state->dbenv->rep_deadlocks(bdb_state->dbenv, (uint64_t *)nrep_deadlocks);
+    u_int64_t n = 0;
+    bdb_state->dbenv->rep_deadlocks(bdb_state->dbenv, &n);
+    *nrep_deadlocks = n;
     return 0;
 }
 

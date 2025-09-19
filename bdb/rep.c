@@ -4512,7 +4512,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
 
     assert(usertype == USER_TYPE_COHERENCY_LEASE);
     p_buf = (uint8_t *)dta;
-    p_buf_end = (uint8_t *)(dta + dtalen);
+    p_buf_end = (uint8_t *)dta + dtalen;
 
     if (!(colease_type_get(&colease, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: corrupt colease packet from %s, len=%d\n",

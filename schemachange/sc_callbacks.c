@@ -409,7 +409,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
     }
 
     rc = add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, new_dta,
-                    new_dta + usedb->sc_to->lrl, NULL, blobs, maxblobs,
+                    ((uint8_t*)new_dta) + usedb->sc_to->lrl, NULL, blobs, maxblobs,
                     &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
                     BLOCK2_ADDKL, // opcode
                     0,            // blkpos

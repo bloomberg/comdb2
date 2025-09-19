@@ -100,6 +100,9 @@
 #define HAVE_MLOCK 1
 
 /* Define to 1 if you have the `mmap' function. */
+#ifdef HAVE_MMAP
+#undef HAVE_MMAP
+#endif
 #define HAVE_MMAP 1
 
 /* Define to 1 if you have the `munlock' function. */

@@ -27,14 +27,7 @@
 extern "C" {
 #endif
 
-#if defined(__sun) 
-typedef hrtime_t bbhrtime_t;
-#endif
-
-#if defined(_LINUX_SOURCE)
 typedef struct timespec bbhrtime_t;
-#endif
-
 typedef struct timeval bbtime_t;
 
 /**

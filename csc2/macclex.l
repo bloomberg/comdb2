@@ -65,6 +65,9 @@ void csc2_syntax_error(const char *fmt, ...);
 /* Now we're piling on more hacks to support this "yyin is really a file 
  * descriptor nonsense, god help us all */
 extern int macc_ferror(FILE *fh);
+#ifdef ferror
+#undef ferror
+#endif
 #define ferror(fh) macc_ferror(fh)
 %}
 %e 10000

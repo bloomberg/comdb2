@@ -247,7 +247,7 @@ static void *watchdog_thread(void *arg)
                         its_bad_slow = its_bad = 1;
                     }
 
-                    if (!coherent && master > 0 && master != gbl_myhostname) {
+                    if (!coherent && master != NULL && master != gbl_myhostname) {
                         bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes,
                                             curlsn, sizeof(curlsn));
                         bdb_get_cur_lsn_str_node(
