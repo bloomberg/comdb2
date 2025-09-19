@@ -15,13 +15,14 @@ package com.bloomberg.system.comdb2.jdbc;
 
 import java.sql.*;
 import java.util.*;
-import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Legacy driver class.
  */
 public class Driver implements java.sql.Driver {
-    private static Logger logger = Logger.getLogger(Driver.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(Driver.class);
     private com.bloomberg.comdb2.jdbc.Driver drv;
 
     public Driver() throws SQLException {
@@ -32,7 +33,7 @@ public class Driver implements java.sql.Driver {
         try {
             DriverManager.registerDriver(new Driver());
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Unable to register legacy comdb2 driver", e);
+            logger.error("Unable to register legacy comdb2 driver", e);
         }
     }
 
@@ -66,7 +67,7 @@ public class Driver implements java.sql.Driver {
         return drv.jdbcCompliant();
     }
 
-    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
         return drv.getParentLogger();
     }
 }
