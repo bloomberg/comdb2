@@ -36,7 +36,6 @@
 #include "translistener.h"
 #include "endian_core.h"
 
-#include <tcputil.h>
 #include <unistd.h>
 #include <logmsg.h>
 #include "str0.h"

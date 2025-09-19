@@ -42,7 +42,7 @@ FILE *io_override_get_std(void) {
     return ptr;
 }
 
-inline int logmsg_level_ok(loglvl lvl) {
+int logmsg_level_ok(loglvl lvl) {
     return (lvl >= level);
 }
 

@@ -588,7 +588,7 @@ void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, v
         logmsg(LOGMSG_ERROR, "%s: failed to unpack schema change, rc=%d\n", __func__, rc);
         return NULL;
     }
-    p_buf += plen;
+    p_buf = ((char *)p_buf) + plen;
     if (p_buf > p_buf_end) {
         logmsg(LOGMSG_ERROR, "%s: advanced %ld bytes past end of buffer\n",
             __func__, (uintptr_t) p_buf - (uintptr_t) p_buf_end);
@@ -1175,19 +1175,19 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         s->partition.u.genshard.dbnames = malloc(s->partition.u.genshard.numdbs * sizeof(char*));
         for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
             s->partition.u.genshard.dbnames[i] = strdup(p_buf);
-            p_buf += strlen(s->partition.u.genshard.dbnames[i]) + 1;
+            p_buf = ((char*)p_buf) + strlen(s->partition.u.genshard.dbnames[i]) + 1;
         }
         p_buf = (uint8_t *)buf_get(&s->partition.u.genshard.numcols, sizeof(s->partition.u.genshard.numcols), p_buf,
                                    p_buf_end);
         s->partition.u.genshard.columns = malloc(s->partition.u.genshard.numcols * sizeof(char*));
         for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
             s->partition.u.genshard.columns[i] = strdup(p_buf);
-            p_buf += strlen(s->partition.u.genshard.columns[i]) + 1;
+            p_buf = ((char*)p_buf) + strlen(s->partition.u.genshard.columns[i]) + 1;
         }
         s->partition.u.genshard.shardnames = malloc(s->partition.u.genshard.numdbs * sizeof(char*));
         for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
             s->partition.u.genshard.shardnames[i] = strdup(p_buf);
-            p_buf += strlen(s->partition.u.genshard.shardnames[i]) + 1;
+            p_buf = ((char*)p_buf) + strlen(s->partition.u.genshard.shardnames[i]) + 1;
         }
         break;
     }

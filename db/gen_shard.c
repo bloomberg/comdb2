@@ -182,7 +182,7 @@ int gen_shard_deserialize_shard(uint32_t *numdbs, char ***dbnames, uint32_t *num
     }
 
     num_dbs = cson_extract_int(rootObj, "NUMDBS", &err);
-    if (numdbs < 0) {
+    if (num_dbs < 0) {
         err_str = "INVALID CSON. couldn't find 'NUMDBS' key";
         goto error;
     }

@@ -844,8 +844,8 @@ __bam_vrfy_inp(dbp, vdp, h, pgno, nentriesp, flags)
 			}
 	} else if (NUM_ENT(h) == 0) {
 		/* adjust himark for empty pfx compressed pages */
-		void *p = P_PFXENTRY(dbp, h);
-		himark = p - (void *)h;
+		char *p = (char *)P_PFXENTRY(dbp, h);
+		himark = p - (char *)h;
 	}
 
 	__os_free(dbenv, pagelayout);

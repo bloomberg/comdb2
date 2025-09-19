@@ -352,7 +352,7 @@ int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
 
         GDATALEN(buf, buflen);
 
-        if (!(buf_get(&type, sizeof(type), buf, buf + buflen))) {
+        if (!(buf_get(&type, sizeof(type), buf, (char*)buf + buflen))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                    "osqlcomm_uuid_rpl_type_get");
             rc = -1;

@@ -3308,7 +3308,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				if (dbc == NULL &&
 						(ret = __db_cursor(dbp, NULL, &dbc, 0)) != 0) {
 					abort();
-					goto err;
+					//goto err;
 				}
 
 				/* The DBTs need to persist through another call. */
@@ -3318,7 +3318,7 @@ gap_check:		max_lsn_dbtp = NULL;
 								&control_dbt, &rec_dbt,
 								DB_RMW | DB_FIRST)) != 0) {
 					abort();
-					goto err;
+					//goto err;
 				}
 				disable_random_deadlocks = 0;
 			}
@@ -3369,7 +3369,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			disable_random_deadlocks = 1;
 			if (!gbl_inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
 				abort();
-				goto err;
+				//goto err;
 			}
 			disable_random_deadlocks = 0;
 
@@ -3418,7 +3418,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				ret = __db_c_get(dbc, &lsn_dbt, &nextrec_dbt, DB_NEXT);
 				if (ret != DB_NOTFOUND && ret != 0) {
 					abort();
-					goto err;
+					//goto err;
 				}
 				disable_random_deadlocks = 0;
 
@@ -3499,7 +3499,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			disable_random_deadlocks = 1;
 			if ((ret = __db_c_close(dbc)) != 0) {
 				abort();
-				goto err;
+				//goto err;
 			}
 			disable_random_deadlocks = 0;
 		}
@@ -8395,12 +8395,12 @@ __truncate_repdb(dbenv)
 
 		if ((ret = db_create(&dbp, dbenv, DB_REP_CREATE)) != 0) {
 			abort();
-			goto err;
+			//goto err;
 		}
 
 		if ((ret = __bam_set_bt_compare(dbp, __rep_bt_cmp)) != 0) {
 			abort();
-			goto err;
+			//goto err;
 		}
 
 		/* Allow writes to this database on a client. */
@@ -8415,7 +8415,7 @@ __truncate_repdb(dbenv)
 				dbp->set_pagesize(dbp,
 					dbenv->rep_db_pagesize))) {
 				abort();
-				goto err;
+				//goto err;
 			}
 		}
 
@@ -8423,7 +8423,7 @@ __truncate_repdb(dbenv)
 			__os_malloc(dbenv, strlen(REPDBBASE) + 32,
 				&repdbname)) != 0) {
 			abort();
-			goto err;
+			//goto err;
 		}
 
 		sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
@@ -8433,7 +8433,7 @@ __truncate_repdb(dbenv)
 				repdbname, NULL, DB_BTREE, flags, 0,
 				PGNO_BASE_MD)) != 0) {
 			abort();
-			goto err;
+			//goto err;
 		}
 
 		/* Install new repdb */
@@ -8441,7 +8441,7 @@ __truncate_repdb(dbenv)
 
 		if ((ret = __os_malloc(dbenv, sizeof(*delr), &delr)) != 0) {
 			abort();
-			goto err;
+			//goto err;
 		}
 
 		delr->dbenv = dbenv;
@@ -8460,8 +8460,6 @@ __truncate_repdb(dbenv)
 
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 	}
-
-err:
 
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 	F_CLR(db_rep->rep_db, DB_AM_RECOVER);
@@ -8776,7 +8774,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 		if ((ret = __truncate_repdb(dbenv)) != 0) {
 			abort();
-			goto err;
+			//goto err;
 		}
 
 		MUTEX_LOCK(dbenv, db_rep->db_mutexp);

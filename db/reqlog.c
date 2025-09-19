@@ -120,7 +120,7 @@ static void log_all_events(struct reqlogger *logger, struct output *out);
 
 extern int is_stored_proc(struct sqlclntstate*);
 
-inline void sltdbt_get_stats(int *n_reqs, int *l_reqs)
+void sltdbt_get_stats(int *n_reqs, int *l_reqs)
 {
     *n_reqs = norm_reqs;
     *l_reqs = long_reqs;

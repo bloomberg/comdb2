@@ -134,7 +134,6 @@ static int check_chksum(DB *dbp, PAGE *p)
             printf("PGTYPE: %s - skipping chksum\n", type2str(TYPE(p)));
             return 0;
         }
-        return -1;
     }
     uint32_t chksum = *chksump;
     uint32_t orig_chksum = chksum;
