@@ -30,23 +30,18 @@
 
 #include <epochlib.h>
 #include <list.h>
+#include <poll.h>
 #include <pool.h>
 #include <time.h>
 
-#include "debug_switches.h"
 #include "lockmacros.h"
 #include "comdb2.h"
 #include "block_internal.h"
-#include "util.h"
-#include "translistener.h"
 #include "socket_interfaces.h"
-#include "osqlsession.h"
 #include "sql.h"
-#include "osqlblockproc.h"
 #include "intern_strings.h"
 #include "logmsg.h"
 #include "transactionstate_systable.h"
-#include <poll.h>
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -1039,10 +1034,21 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         return ERR_REJECTED;
     }
 
-    iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
-    if (dbenv->num_dbs == 0 || iq->origdb == NULL)
-        iq->origdb = &thedb->static_table;
-    iq->usedb = iq->origdb;
+    if (gbl_debug_always_reload_schemas_after_recovery) {
+        /*
+         * HACK: We really should get the schema/table lock here or somewhere so
+         * that `dbenv->dbs[luxref]` doesn't get invalidated/free'd from under us
+         * (e.g. if recovery simultaneously reloads all the schema info). This
+         * is a workaround to avoid segfaulting in tests that exercise dbinfo2
+         * *and* recovery.
+         */
+        iq->origdb = iq->usedb = &thedb->static_table;
+    } else {
+        iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
+        if (dbenv->num_dbs == 0 || iq->origdb == NULL)
+            iq->origdb = &thedb->static_table;
+        iq->usedb = iq->origdb;
+    }
 
     if (iq->frommach == NULL)
         iq->frommach = gbl_myhostname;
