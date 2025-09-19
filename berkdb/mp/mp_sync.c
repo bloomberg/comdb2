@@ -1909,7 +1909,6 @@ pgcmp(const void *p1, const void *p2)
 	} else {
 		return 1;
 	}
-	abort();
 }
 
 static inline int
@@ -1924,7 +1923,6 @@ pgrefcmp(const void *p1, const void *p2)
 	} else {
 		return -1;
 	}
-	abort();
 }
 
 typedef struct fileid_load_info

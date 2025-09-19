@@ -897,7 +897,7 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if (type > 2000)
 		type -= 2000;
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		(type == DB___txn_ckp_recovery) ? "__txn_ckp_recovery" : "__txn_ckp",
@@ -1288,7 +1288,7 @@ __txn_child_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_child_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_child%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+	    "[%lu][%lu]__txn_child%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -1721,7 +1721,7 @@ __txn_xa_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_xa_regop_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_xa_regop%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+	    "[%lu][%lu]__txn_xa_regop%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -2089,7 +2089,7 @@ __txn_recycle_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_recycle_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_recycle%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+	    "[%lu][%lu]__txn_recycle%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -2599,7 +2599,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	const char *prrec = type == DB___txn_regop_rowlocks ? "__txn_regop_rowlocks" : "__txn_regop_rowlocks_endianize";
 
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		prrec,
@@ -3070,7 +3070,7 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 				"__txn_regop_gen_endianize";
 
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		prrec,

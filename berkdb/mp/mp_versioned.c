@@ -77,10 +77,11 @@ void __mempv_destroy(dbenv)
 	dbenv->mempv = NULL;
 }
 
-static int __mempv_read_log_record(void *data, recovery_func_t *apply, u_int64_t *utxnid,
+static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t *utxnid,
 		db_pgno_t pgno, u_int32_t *p_rectype, long long unsigned int caller_id) {
 	int ret, utxnid_logged;
 	u_int32_t rectype;
+	char *data = ptr;
 
 	ret = 0;
 

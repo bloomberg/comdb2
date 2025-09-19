@@ -38,8 +38,6 @@
 #include <sys/poll.h>
 #include <sys/select.h>
 
-#include <tcputil.h>
-
 #include <epochlib.h>
 #include <build/db.h>
 #include "debug_switches.h"

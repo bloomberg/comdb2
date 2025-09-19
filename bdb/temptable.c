@@ -1717,7 +1717,7 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         // AZ: address of data returned by hash_find: cur->key - sizeof(int)
-        rc = hash_del(cur->tbl->temp_hash_tbl, cur->key - sizeof(int));
+        rc = hash_del(cur->tbl->temp_hash_tbl, ((char*)cur->key) - sizeof(int));
         --cur->tbl->num_mem_entries;
         goto done;
     }

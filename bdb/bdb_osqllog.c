@@ -2405,7 +2405,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
             goto done;
         }
         /* rectype -> prepare & handle below */
-        rectype = LOGCOPY_32(&rectype, logdta.data);
+        LOGCOPY_32(&rectype, logdta.data);
         normalize_rectype(&rectype);
         assert(rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize);
 
@@ -4598,7 +4598,7 @@ again:
         if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data);
             normalize_rectype(&rectype);
-            LOGCOPY_32(&txnid, pCur->data.data + 4);
+            LOGCOPY_32(&txnid, (char *)pCur->data.data + 4);
             if (!first_txnid)
                 first_txnid = txnid;
         } else {

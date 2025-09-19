@@ -273,7 +273,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	/* dump our current state */
 	if (dbenv->attr.cache_lc_debug) {
 		logmsg(LOGMSG_USER, ">> got txnid %x lsn " PR_LSN " prevlsn " PR_LSN
-		    " utxnid \%"PRIx64" type %u sz %d\n", txnid, PARM_LSN(lsn), PARM_LSN(prevlsn),
+		    " utxnid %"PRIx64" type %u sz %d\n", txnid, PARM_LSN(lsn), PARM_LSN(prevlsn),
 		    utxnid, type, dbt.size);
 	}
 

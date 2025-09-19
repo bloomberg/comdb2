@@ -1859,10 +1859,8 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
 
-int berkdb_start_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
-                         DB_LSN *lsn);
-int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
-                          DB_LSN *lsn);
+int berkdb_start_logical(DB_ENV *dbenv, void *state, u_int64_t ltranid, DB_LSN *lsn);
+int berkdb_commit_logical(DB_ENV *dbenv, void *state, u_int64_t ltranid, DB_LSN *lsn);
 
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *do_add);

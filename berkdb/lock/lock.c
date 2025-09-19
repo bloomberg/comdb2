@@ -6216,7 +6216,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 						else
 							logmsg(LOGMSG_USER, "\t\tTABLELOCK: %s", tablename);
 						// Tablenames > 28 chars have crc32 appended 
-						uint32_t crc32 = *(uint32_t *)(obj_dbt.data + 28);
+						uint32_t crc32 = *(uint32_t *)((char *)obj_dbt.data + 28);
 						if (crc32 > 0) {
 							if (fp)
 								fprintf(fp, " CRC32: %u", crc32);
@@ -6485,7 +6485,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 								logmsg(LOGMSG_USER, "\t\tTABLELOCK: %s", tablename);
 
 							// Tablenames > 28 chars have crc32 appended 
-							uint32_t crc32 = *(uint32_t *)(obj_dbt.data + 28);
+							uint32_t crc32 = *(uint32_t *)((char *)obj_dbt.data + 28);
 							if (crc32 > 0) {
 								if (fp)
 									fprintf(fp, " CRC32: %u", crc32);

@@ -31,10 +31,7 @@
 
 int getbbhrtime(bbhrtime_t *t)
 {
-#if defined(__sun)
-    *t = gethrtime();
-    return 0;
-#elif defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(__sun)
     return clock_gettime(CLOCK_MONOTONIC, t);
 #else
     logmsg(LOGMSG_ERROR, "getbbhrtime: Not defined for arch.\n");
@@ -44,10 +41,7 @@ int getbbhrtime(bbhrtime_t *t)
 
 int getbbhrvtime(bbhrtime_t *t)
 {
-#if defined(__sun)
-    *t = gethrvtime();
-    return 0;
-#elif defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(__sun)
     return getbbhrtime(t);
 #else
     #error "getbbhrvtime: not defined for platform"
@@ -65,9 +59,7 @@ bbint64_t diff_bbhrtime(bbhrtime_t *end, bbhrtime_t *start)
 
 int64_t bbhrtimens(const bbhrtime_t *t_)
 {
-#if defined(__sun)
-    return *t_;
-#elif defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(__sun)
     return ONEBILLION * t_->tv_sec + t_->tv_nsec;
 #else
     logmsg(LOGMSG_ERROR, "%s: Not defined for arch.\n", __func__);
