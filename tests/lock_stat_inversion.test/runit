@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+export debug=0
+export force_timeout=0
+export global_retries=60
+
+if [[ $debug == "1" ]] ; then
+    set -x
+fi
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export stopfile=./stopfile.txt
+
+function lockstat_machine
+{
+    local timeout=$1
+    local machine=$2
+    local pid=0
+    local cnt=0
+    local opcnt=0
+
+    echo "Starting lockstat_machine thread for $machine"
+
+    while [[ ! -f $stopfile ]]; do
+        if [[ "$debug" != 0 ]]; then
+            $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $machine "exec procedure sys.cmd.send('bdb lockinfo lockers')" &
+            pid=$!
+        else
+            $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $machine "exec procedure sys.cmd.send('bdb lockinfo lockers')" >/dev/null 2>&1 &
+            pid=$!
+        fi
+        let opcnt=opcnt+1
+
+        while [[ $cnt -lt $timeout ]]; do
+            sleep 1
+            if ! kill -0 $pid >/dev/null 2>&1; then
+                break
+            fi
+            let cnt=cnt+1
+        done
+
+        if [[ $cnt -ge $timeout ]]; then
+            echo "Lockstat timed out, database deadlocked on node $machine"
+
+            # Leave lockstat running if in debug mode
+            if [[ $debug == 0 ]]; then
+                kill -9 $pid >/dev/null 2>&1
+                wait $pid >/dev/null 2>&1
+            fi
+            touch $stopfile
+            failexit "Lockstat timed out, database is deadlocked on node $machine"
+        fi
+
+        if (( opcnt % 10 == 0 )); then
+            echo "lockstat_machine $machine completed $opcnt lockstats"
+        fi
+
+    done
+}
+
+function simple_insert
+{
+    local timeout=$1
+    local machine=$2
+    local cnt=0
+    local pid=0
+    local opcnt=0
+
+    echo "Starting simple_insert thread for $machine"
+
+    while [[ ! -f $stopfile ]]; do
+        if [[ "$debug" != 0 ]]; then
+            $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $machine "insert into t1 (a) values (1)" &
+            pid=$!
+        else
+            $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $machine "insert into t1 (a) values (1)" >/dev/null 2>&1 &
+            pid=$!
+        fi
+        let opcnt=opcnt+1
+        cnt=0
+
+        while [[ $cnt -lt $timeout ]]; do
+            sleep 1
+            if ! kill -0 $pid >/dev/null 2>&1; then
+                break
+            fi
+            let cnt=cnt+1
+        done
+
+        if [[ $cnt -ge $timeout ]]; then
+            echo "Insert timed out, database deadlocked on node $machine pid $pid"
+
+            # Leave insert running if in debug mode
+            if [[ $debug == 0 ]]; then
+                kill -9 $pid >/dev/null 2>&1
+                wait $pid >/dev/null 2>&1
+            fi
+            touch $stopfile
+            failexit "Insert timed out, database is deadlocked on node $machine pid $pid"
+        fi
+
+        if (( opcnt % 10 == 0 )); then
+            echo "simple_insert $machine completed $opcnt inserts"
+        fi
+    done
+}
+
+function setup_test
+{
+    $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS default "drop table if exists t1"
+    $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS default "create table t1(a int)"
+}
+
+function downgrade_master_timeout
+{
+    local timeout=$1
+    local pid=0
+    local cnt=0
+
+    for node in $CLUSTER ; do
+        if [[ "$debug" != 0 ]]; then
+            $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $node "exec procedure sys.cmd.send('downgrade')" &
+            pid=$!
+        else
+            $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $node "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1 &
+            pid=$!
+        fi
+        cnt=0
+
+        while [[ $cnt -lt $timeout ]]; do
+            sleep 1
+            if ! kill -0 $pid >/dev/null 2>&1; then
+                break
+            fi
+            let cnt=cnt+1
+        done
+
+        if [[ $cnt -ge $timeout ]]; then
+            echo "Downgrade timed out, database deadlocked on node $node pid $pid"
+            kill -9 $pid >/dev/null 2>&1
+            wait $pid >/dev/null 2>&1
+            touch $stopfile
+            # this touches the stopfile, so main test will fail
+        fi
+    done
+}
+
+function run_test
+{
+    local testlength=$(timeout_to_seconds)
+    local retry_length=$(( global_retries + 20 ))
+    local mylength=$(( testlength - global_retries ))
+    local now=$(date +%s)
+    local end=$(( now + mylength ))
+    local failed=0
+
+    rm -Rf $stopfile >/dev/null 2>&1
+
+    for node in $CLUSTER; do
+        lockstat_machine $global_retries $node &
+        simple_insert $global_retries $node &
+    done
+
+    echo "Starting downgrade_master loop for $mylength seconds"
+    while [[ $(date +%s) -lt $end && ! -f $stopfile ]]; do
+        #special verison of downgrade_master
+        echo "downgrading master"
+        downgrade_master_timeout $global_retries
+    done
+
+    if [[ -f $stopfile ]]; then
+        failed=1
+    fi
+
+    touch $stopfile
+    wait
+
+    if [[ $failed -eq 1 ]]; then
+        while [[ $force_timeout -ne 0 ]]; do
+            echo "Test will timeout, core cluster to see deadlock"
+            sleep 10
+        done
+
+        failexit "Test failed"
+    fi
+}
+
+[[ -z z"$CLUSTER" ]] && failexit "This test requires a cluster"
+
+setup_test
+run_test
+
+echo "Success"
