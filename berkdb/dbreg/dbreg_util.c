@@ -16,6 +16,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include <string.h>
 #endif
 
+#include <unistd.h>
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
@@ -1035,6 +1036,26 @@ __dbreg_fid_to_fname(dblp, fid, have_lock, fnamep)
 	return (ret);
 }
 
+static int
+__dbreg_get_name_int(dbenv, fid, namep, have_lock)
+	DB_ENV *dbenv;
+	u_int8_t *fid;
+	char **namep;
+	int have_lock;
+{
+	DB_LOG *dblp;
+	FNAME *fname;
+
+	dblp = dbenv->lg_handle;
+
+	if (dblp != NULL && __dbreg_fid_to_fname(dblp, fid, have_lock, &fname) == 0) {
+		*namep = R_ADDR(&dblp->reginfo, fname->name_off);
+		return (0);
+	}
+
+	return (-1);
+}
+
 /*
  * __dbreg_get_name
  *
@@ -1050,17 +1071,23 @@ __dbreg_get_name(dbenv, fid, namep)
 	u_int8_t *fid;
 	char **namep;
 {
-	DB_LOG *dblp;
-	FNAME *fname;
+	return __dbreg_get_name_int(dbenv, fid, namep, 0);
+}
 
-	dblp = dbenv->lg_handle;
-
-	if (dblp != NULL && __dbreg_fid_to_fname(dblp, fid, 0, &fname) == 0) {
-		*namep = R_ADDR(&dblp->reginfo, fname->name_off);
-		return (0);
-	}
-
-	return (-1);
+/*
+ * __dbreg_get_name_have_lock
+ *
+ * The caller already holds the log region fq_mutex.
+ *
+ * PUBLIC: int __dbreg_get_name_have_lock __P((DB_ENV *, u_int8_t *, char **));
+ */
+int
+__dbreg_get_name_have_lock(dbenv, fid, namep)
+	DB_ENV *dbenv;
+	u_int8_t *fid;
+	char **namep;
+{
+	return __dbreg_get_name_int(dbenv, fid, namep, 1);
 }
 
 /* Apparently this occurs all of the time without any issues */
@@ -1214,6 +1241,7 @@ __dbreg_check_master(dbenv, uid, name)
 	return (ret);
 }
 
+int gbl_debug_dbreg_lazy_id_sleep = 0;
 /*
  * __dbreg_lazy_id --
  *	When a replication client gets upgraded to being a replication master,
@@ -1258,6 +1286,10 @@ __dbreg_lazy_id(dbp)
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 		MUTEX_UNLOCK(dbenv, &lp->lazy_id_mutex);
 		return (0);
+	}
+	if (gbl_debug_dbreg_lazy_id_sleep && !(rand() % 2)) {
+		logmsg(LOGMSG_INFO, "%s: sleeping while holding fq_mutex\n", __func__);
+		sleep(1);
 	}
 	id = DB_LOGFILEID_INVALID;
 	if ((ret = __txn_begin(dbenv, NULL, &txn, 0)) != 0)

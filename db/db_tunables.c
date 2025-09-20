@@ -271,6 +271,7 @@ extern int gbl_req_all_time_threshold;
 extern int gbl_req_delay_count_threshold;
 extern int gbl_dbreg_stack_on_null_txn;
 extern int gbl_dbreg_abort_on_null_txn;
+extern int gbl_debug_dbreg_lazy_id_sleep;
 extern int gbl_simulate_dropping_request;
 extern int gbl_max_logput_queue;
 extern int gbl_blocking_enque;
