@@ -123,3 +123,10 @@ wait_for_db()
     done
     return 0
 }
+
+timeout_to_seconds()
+{
+    local mtimeout=${TEST_TIMEOUT%m}
+    echo $(( mtimeout * 60 ))
+}
+

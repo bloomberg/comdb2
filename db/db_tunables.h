@@ -2183,6 +2183,9 @@ REGISTER_TUNABLE("abort_on_missing_ufid", "Abort if ufid is not found.  (Default
 REGISTER_TUNABLE("ufid_dbreg_test", "Enable ufid-dbreg test.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_dbreg_test,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_dbreg_lazy_id_sleep", "Sleep in dbreg_lazy_id (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_dbreg_lazy_id_sleep, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("javasp_early_release", "Release javasp-lock before distributed commit.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_javasp_early_release, EXPERIMENTAL | INTERNAL, 
                  NULL, NULL, NULL, NULL);

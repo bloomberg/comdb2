@@ -176,6 +176,8 @@ __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, lockerid)
 	DB_LOCKOBJ *op;
 	DB_LOCKREGION *lrp;
 	DB_LOCKTAB *lt;
+	DB_LOG *dblp;
+	LOG *lp;
 	u_int32_t flags, i, j;
 	char buf[64];
 
@@ -213,6 +215,13 @@ __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, lockerid)
 
 	lt = dbenv->lk_handle;
 	lrp = lt->reginfo.primary;
+
+	/* Aquire fq_mutex up front */
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+
+	MUTEX_LOCK(dbenv, &lp->fq_mutex);
+
 	LOCKREGION(dbenv, lt);
 
 	if (LF_ISSET(LOCK_DUMP_PARAMS)) {
@@ -298,6 +307,7 @@ __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, lockerid)
 		__db_shalloc_dump(lt->reginfo.addr, fp);
 
 	UNLOCKREGION(dbenv, lt);
+	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 
 	return (0);
 }
@@ -1028,7 +1038,7 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 
 		fidp = (u_int32_t *) (ptr +sizeof(db_pgno_t));
 		type = *(u_int32_t *) (ptr +sizeof(db_pgno_t) + DB_FILE_ID_LEN);
-		if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+		if (__dbreg_get_name_have_lock(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
 			namep = NULL;
 
 		if (just_active_locks &&type !=DB_PAGE_LOCK &&
@@ -1059,7 +1069,7 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 
 		fidp = (u_int32_t*) fileid;
 
-		if (__dbreg_get_name(lt->dbenv, (u_int8_t *)fidp, &namep) != 0)
+		if (__dbreg_get_name_have_lock(lt->dbenv, (u_int8_t *)fidp, &namep) != 0)
 			namep = NULL;
 
 		if (namep == NULL)
