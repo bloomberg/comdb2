@@ -439,6 +439,7 @@ static int type_to_sptype(int type, int len)
     case SERVER_BYTEARRAY:
         return SP_FIELD_BYTEARRAY;
     case SERVER_BLOB:
+    case SERVER_BLOB2:
         return SP_FIELD_BLOB;
 
     case SERVER_DATETIME:
@@ -631,6 +632,21 @@ static int append_field(struct byte_buffer *bytes, struct field *f,
         byte_buffer_append_int32(bytes, record->blobs[f->blob_index].bloblen);
         byte_buffer_append(bytes, record->blobs[f->blob_index].blobdta,
                            record->blobs[f->blob_index].bloblen);
+        break;
+
+    case SERVER_BLOB2:
+        if (record->blobs[f->blob_index].bloblen) {
+            byte_buffer_append_int32(bytes, record->blobs[f->blob_index].bloblen);
+            byte_buffer_append(bytes, record->blobs[f->blob_index].blobdta, record->blobs[f->blob_index].bloblen);
+        } else {
+            int len;
+            /* The field is not null or append_field would not be called.  It must either be
+             * zero-length or fits in the inline portion. */
+            memcpy(&len, (uint8_t *)rec + f->offset + 1, sizeof(int));
+            len = ntohl(len);
+            byte_buffer_append_int32(bytes, len);
+            byte_buffer_append(bytes, (uint8_t *)rec + f->offset + 1 + sizeof(int), len);
+        }
         break;
 
     case SERVER_DATETIME: {
@@ -1154,7 +1170,7 @@ static int sp_field_is_a_blob(const char *table, const char *field)
         f = &db->schema->member[fnum];
         if (strcasecmp(f->name, field) == 0) {
             /* TODO: need is_a_blob_type(type) */
-            if (f->type == SERVER_BLOB || f->type == SERVER_VUTF8) {
+            if (f->type == SERVER_BLOB || f->type == SERVER_BLOB2 || f->type == SERVER_VUTF8) {
                 return 1;
             }
             break;
