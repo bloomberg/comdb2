@@ -230,6 +230,16 @@ static int _MACHINE_ID; /* ONE-TIME */
 static char *_ARGV0;    /* ONE-TIME */
 #define DB_TZNAME_DEFAULT "America/New_York"
 
+static pthread_mutex_t cdb2_event_mutex = PTHREAD_MUTEX_INITIALIZER;
+static cdb2_event cdb2_gbl_events;
+static int cdb2_gbl_event_version;
+static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *, cdb2_event_type, cdb2_event *);
+static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, int, ...);
+static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
+
+static pthread_once_t init_once = PTHREAD_ONCE_INIT;
+static int log_calls = 0; /* ONE-TIME */
+
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
@@ -239,23 +249,7 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl);
 
 static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define MAX_SOCKPOOL_FDS 8
-
-#include <netdb.h>
-
-static pthread_once_t init_once = PTHREAD_ONCE_INIT;
-static int log_calls = 0; /* ONE-TIME */
-
 static void reset_sockpool(void);
-
-static pthread_mutex_t cdb2_event_mutex = PTHREAD_MUTEX_INITIALIZER;
-static cdb2_event cdb2_gbl_events;
-static int cdb2_gbl_event_version;
-static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *, cdb2_event_type,
-                                      cdb2_event *);
-static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, int, ...);
-static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 
 #define PROCESS_EVENT_CTRL_BEFORE(h, e, rc, callbackrc, ovwrrc)                \
     do {                                                                       \
@@ -309,6 +303,37 @@ void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 void cdb2_set_install_libs(void (*ptr)(void)) { cdb2_install = ptr; }
 void cdb2_set_uninstall_libs(void (*ptr)(void)) { cdb2_uninstall = ptr; }
 #endif
+
+pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define MAX_SOCKPOOL_FDS 8
+
+#include <netdb.h>
+
+static char *cdb2_type_str(int type)
+{
+    switch (type) {
+    case CDB2_INTEGER:
+        return "CDB2_INTEGER";
+    case CDB2_REAL:
+        return "CDB2_REAL";
+    case CDB2_CSTRING:
+        return "CDB2_CSTRING";
+    case CDB2_BLOB:
+        return "CDB2_BLOB";
+    case CDB2_DATETIME:
+        return "CDB2_DATETIME";
+    case CDB2_INTERVALYM:
+        return "CDB2_INTERVALYM";
+    case CDB2_INTERVALDS:
+        return "CDB2_INTERVALDS";
+    case CDB2_DATETIMEUS:
+        return "CDB2_DATETIMEUS";
+    case CDB2_INTERVALDSUS:
+        return "CDB2_INTERVALDSUS";
+    default:
+        return "???";
+    }
+}
 
 #define debugprint(fmt, args...)                                               \
     do {                                                                       \
@@ -1104,14 +1129,6 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
 static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl);
 static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
 
-/* Make it equal to FSQL header. */
-struct newsqlheader {
-    int type;
-    int compression;
-    int state; /* query state */
-    int length;
-};
-
 static cdb2_ssl_sess cdb2_ssl_sess_cache;
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
@@ -1147,6 +1164,14 @@ after_callback:
     }
     return rc;
 }
+
+/* Make it equal to FSQL header. */
+struct newsqlheader {
+    int type;
+    int compression;
+    int state; /* query state */
+    int length;
+};
 
 void cdb2_set_min_retries(int min_retries)
 {
@@ -2023,6 +2048,28 @@ static int sockpool_get_from_pool(void)
     return fd;
 }
 
+static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
+{
+    int rc;
+    struct sockaddr_in addr;
+    socklen_t addr_size = sizeof(struct sockaddr_in);
+
+    if (!get_hostname_from_sockpool_fd)
+        return;
+
+    if (fd == -1)
+        return;
+
+    rc = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
+    if (rc == 0) {
+        if (port != NULL)
+            *port = addr.sin_port;
+        /* Request a short host name. Set buf to empty on error. */
+        if (getnameinfo((struct sockaddr *)&addr, addr_size, buf, n, NULL, 0, NI_NOFQDN))
+            buf[0] = '\0';
+    }
+}
+
 /* The sockpool mutex must be locked at this point */
 static int sockpool_place_fd_in_pool(int fd)
 {
@@ -2505,27 +2552,6 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     }
     sbuf2free(ss);
     return fd;
-}
-
-static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
-{
-    int rc;
-    struct sockaddr_in addr;
-    socklen_t addr_size = sizeof(struct sockaddr_in);
-
-    if (!get_hostname_from_sockpool_fd)
-        return;
-
-    if (fd == -1)
-        return;
-
-    rc = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
-    if (rc == 0) {
-        *port = addr.sin_port;
-        /* Request a short host name. Set buf to empty on error. */
-        if (getnameinfo((struct sockaddr *)&addr, addr_size, buf, n, NULL, 0, NI_NOFQDN))
-            buf[0] = '\0';
-    }
 }
 
 static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
@@ -3854,6 +3880,17 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
     }
 
     return rc;
+}
+
+/*
+  Clear ack flag so cdb2_close will not consume event
+*/
+int cdb2_clear_ack(cdb2_hndl_tp *hndl)
+{
+    if (hndl && hndl->ack) {
+        hndl->ack = 0;
+    }
+    return 0;
 }
 
 static void free_query_list(struct query_list *head)
@@ -5474,32 +5511,6 @@ read_record:
     if (is_hasql_commit)
         cleanup_query_list(hndl, &commit_query_list, __LINE__);
     PRINT_AND_RETURN(-1);
-}
-
-static char *cdb2_type_str(int type)
-{
-    switch (type) {
-    case CDB2_INTEGER:
-        return "CDB2_INTEGER";
-    case CDB2_REAL:
-        return "CDB2_REAL";
-    case CDB2_CSTRING:
-        return "CDB2_CSTRING";
-    case CDB2_BLOB:
-        return "CDB2_BLOB";
-    case CDB2_DATETIME:
-        return "CDB2_DATETIME";
-    case CDB2_INTERVALYM:
-        return "CDB2_INTERVALYM";
-    case CDB2_INTERVALDS:
-        return "CDB2_INTERVALDS";
-    case CDB2_DATETIMEUS:
-        return "CDB2_DATETIMEUS";
-    case CDB2_INTERVALDSUS:
-        return "CDB2_INTERVALDSUS";
-    default:
-        return "???";
-    }
 }
 
 int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
@@ -7476,17 +7487,6 @@ int cdb2_pop_context(cdb2_hndl_tp *hndl)
 int cdb2_clear_contexts(cdb2_hndl_tp *hndl)
 {
     return cdb2_free_context_msgs(hndl);
-}
-
-/*
-  Clear ack flag so cdb2_close will not consume event
-*/
-int cdb2_clear_ack(cdb2_hndl_tp* hndl)
-{
-    if (hndl) {
-        hndl->ack = 0;
-    }
-    return 0;
 }
 
 cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
