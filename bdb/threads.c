@@ -293,7 +293,7 @@ void *coherency_lease_thread(void *arg)
         if (inc_wait && (add_interval = bdb_state->attr->add_record_interval)) {
             time_t now = time(NULL);
             if ((now - last_add_record) >= add_interval) {
-                pthread_create(&tid, &gbl_pthread_attr_detached,
+                Pthread_create(&tid, &gbl_pthread_attr_detached,
                                rep_catchup_add_thread, bdb_state);
                 last_add_record = now;
             }

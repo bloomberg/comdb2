@@ -14,6 +14,7 @@ else
 fi
 
 rm -f $logfile $logfile.rerun
+touch $logfile
 
 for ((i = $from; i < $to; ++i)); do
     echo "exec procedure $sp()"

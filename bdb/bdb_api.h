@@ -1016,10 +1016,8 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
 int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
                                           seqnum_type *seqnum, uint64_t txnsize,
                                           int *timeoutms);
-
-int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
-                                                 seqnum_type *seqnum,
-                                                 uint64_t txnsize,
+int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final);
+int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state, seqnum_type *seqnum, uint64_t txnsize,
                                                  int *timeoutms);
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
@@ -1997,6 +1995,7 @@ int bdb_flush_up_to_lsn(bdb_state_type *bdb_state, unsigned file,
 int bdb_set_parallel_recovery_threads(bdb_state_type *bdb_state, int nthreads);
 unsigned long long bdb_get_commit_genid(bdb_state_type *bdb_state, void *plsn);
 void bdb_set_commit_lsn_gen(bdb_state_type *bdb_state, const void *lsn, uint32_t gen);
+unsigned long long prev_genid(bdb_state_type *bdb_state, unsigned long long genid);
 unsigned long long bdb_get_commit_genid_generation(bdb_state_type *bdb_state,
                                                    void *plsn,
                                                    uint32_t *generation);
@@ -2501,4 +2500,8 @@ int release_locks_int(const char *trace, const char *func, int line, struct sqlc
 int bdb_keylen(bdb_state_type *bdb_state, int ixnum);
 
 void llmeta_collect_tablename_alias(void);
+typedef int (*collect_unused_files_f)(void *args, int lognum, char *filename);
+
+void oldfile_hash_collect(collect_unused_files_f func, void *arg);
+void bdb_tran_set_is_sc_rebuild(tran_type *tran, int is_sc_rebuild);
 #endif

@@ -106,7 +106,7 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 int gbl_max_cascaded_rows_per_txn = 0;
-int64_t gbl_max_wr_logbytes_per_txn = 0;
+int64_t gbl_max_wr_logbytes_per_txn = 10LL * 1024 * 1024 * 1024;
 uint32_t gbl_max_time_per_txn_ms = 0;
 
 static inline int is_event_from_sc(int flags)

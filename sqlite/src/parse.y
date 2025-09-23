@@ -388,7 +388,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
-  TESTDEFAULT TESTGENSHARD THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
+  TESTDEFAULT TESTGENSHARD THREADS THRESHOLD TIME TRUNCATE TRUNCOPLOG TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
 %endif SQLITE_BUILDING_FOR_COMDB2
   .
@@ -2356,7 +2356,8 @@ cmd ::= rebuild.
 
 rebuild ::= dryrun REBUILD nm(T) dbnm(X) comdb2opt(O). { /* REBUILD FULL CANNOT BE USED
                                         BECAUSE OF SQLITE SYNTAX */
-    comdb2RebuildFull(pParse,&T,&X,O);
+    int tmp = -1;
+    comdb2RebuildFull(pParse,&T,&X,O,tmp);
 }
 
 rebuild ::= dryrun REBUILD INDEX nm(T) dbnm(Y) nm(X) comdb2opt(O). {
@@ -2449,6 +2450,15 @@ cmd ::= dryrun TRUNCATE table_opt nm(T) dbnm(Y). {
 
 cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
     comdb2bulkimport(pParse, &A, &B, &C, &D);
+}
+
+/////////////////////////////// TRUNCOPLOG TABLE ////////////////////////////////
+
+cmd ::= TRUNCOPLOG INTEGER(F). {
+    int tmp;
+    if (!readIntFromToken(&F, &tmp))
+        tmp = -1;
+    comdb2RebuildFull(pParse, NULL, NULL, 0, tmp); 
 }
 
 ////////////////////////////// CREATE PARTITION ///////////////////////////////

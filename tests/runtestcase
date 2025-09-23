@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 . ${TESTSROOTDIR}/testutils
+. ${TESTSROOTDIR}/quarantine.sh
 
 testdb_start_testcase
 
@@ -524,6 +525,12 @@ if [ -t 1 ] ; then
 fi
 
 teststatus=0
+
+if test_is_quarantined $TESTCASE ; then
+    msg="!$TESTCASE: ${YELLOW}WARNING: $(get_quarantined_test_description $TESTCASE)${NEUTRAL}"
+    echo -e "$msg"
+    echo "$msg" >> ${TEST_LOG}
+fi
 
 if [[ -n "$dbdown" ]] ; then
     # if this is intentional, please run test with 'CHECK_DB_AT_FINISH=0' (ex. put in test Makefile:export CHECK_DB_AT_FINISH=0)

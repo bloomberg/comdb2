@@ -34,6 +34,8 @@
 
 #define COMDB2_STATIC_TABLE "_comdb2_static_table"
 
+#define MAX_LSN_STR 24
+
 enum { IOTIMEOUTMS = 10000 };
 
 struct dbtable;
@@ -1023,7 +1025,6 @@ struct thread_info {
     void *ct_add_table;
     void *ct_del_table;
     void *ct_add_index;
-    void *stmt_cache;
     hash_t *ct_add_table_genid_hash; // for quick lookups
     pool_t *ct_add_table_genid_pool; // provides memory for the above hash
 };
@@ -1273,6 +1274,7 @@ struct osql_sess {
     int queryid;
     unsigned is_reorder_on : 1;
     unsigned is_delayed : 1;
+    unsigned is_final : 1;
 
     /* from sorese */
     osql_target_t target; /* replicant machine; host is NULL if local */
@@ -1630,6 +1632,7 @@ extern int gbl_maxreclen;
 extern int gbl_penaltyincpercent;
 extern int gbl_maxwthreadpenalty;
 
+extern int gbl_allow_old_authn;
 extern int gbl_uses_password;
 extern int gbl_unauth_tag_access;
 extern int gbl_uses_externalauth;
@@ -3384,8 +3387,6 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
                         ...);
 int query_limit_cmd(char *line, int llen, int toff);
 
-int is_valid_tablename(char *tbl);
-
 /* defined in toproxy.c */
 void reload_proxy_lrl_lines(char *lrlfile);
 
@@ -3510,6 +3511,9 @@ extern int gbl_max_sql_hint_cache;
 
 /* Remote cursor support */
 /* use portmux to open an SBUF2 to local db or proxied db */
+SBUF2 *connect_remote_db_flags(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+                         int force_rte, int sbflags);
+
 SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
                          int force_rte);
 int get_rootpage_numbers(int nums);
@@ -3544,7 +3548,7 @@ int delete_table_sequences(tran_type *tran, struct dbtable *);
 
 int rename_table_sequences(tran_type *tran, struct dbtable *, const char *newname);
 
-int alter_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *old, struct dbtable *new);
+int alter_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *old, struct dbtable *newtable);
 
 void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr,
                                 int persist);
@@ -3624,7 +3628,7 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *err,
 // future refactoring
 
 int compare_tag(const char *table, const char *tag, FILE *out);
-int compare_tag_int(struct schema *old, struct schema *new, FILE *out, int strict, sc_tag_change_subtype *);
+int compare_tag_int(struct schema *old, struct schema *newschema, FILE *out, int strict, sc_tag_change_subtype *);
 const char *sc_tag_change_subtype_text(sc_tag_change_subtype);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);

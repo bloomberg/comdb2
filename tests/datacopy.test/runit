@@ -28,7 +28,7 @@ cdb2sql -tabs ${CDB2_OPTIONS} $DB default 'exec procedure sys.cmd.send("stat4dum
 diff sqlite_stat4.output sqlite_stat4.expected
 if [[ $? -ne 0 ]] ; then
     echo "Failed"
-    exit $?
+    exit 1
 fi
 
 # POPULATE STAT4 ROWS ORDERED RANDOMLY
@@ -42,7 +42,7 @@ while [[ $i -lt 100 ]]; do
     diff sqlite_stat4.output.$i sqlite_stat4.expected
     if [[ $? -ne 0 ]] ; then
         echo "Failed - $i"
-        exit $?
+        exit 1
     fi
     i=$(( $i + 1 ))
 done
@@ -57,5 +57,33 @@ cdb2sql -s ${CDB2_OPTIONS} $DB default "INSERT INTO t1 VALUES(3, 3, 3, 3)"
 cdb2sql -s ${CDB2_OPTIONS} $DB default "EXEC PROCEDURE sys.cmd.verify('t1')"
 cdb2sql -s ${CDB2_OPTIONS} $DB default "REBUILD t1"
 cdb2sql -s ${CDB2_OPTIONS} $DB default "EXEC PROCEDURE sys.cmd.verify('t1')"
+
+# Test that we do not use datacopy field b to speed a look-up. Use such fields only for covering queries.
+cdb2sql ${CDB2_OPTIONS} $DB default 'create table t2 {
+schema
+{
+	int a
+	cstring b[2] null=yes
+}
+keys
+{
+	datacopy "a" = a
+}
+}'
+cdb2sql -s ${CDB2_OPTIONS} $DB default "insert into t2 values(1, NULL)"
+
+plan=$(cdb2sql ${CDB2_OPTIONS} $DB default "explain query plan select * from t2 where a = 1 and b is NULL")
+expected_plan="(id=3, parent=0, notused=0, detail='SEARCH TABLE t2 USING COVERING INDEX \$A_DDF9B51C (a=?) (~9 rows)')"
+if [[ $plan != $expected_plan ]] ; then
+    echo "Failed. Expected plan to be '$expected_plan', got '$plan'"
+    exit 1
+fi
+
+# If we do not find a row then we probably were trying to use datacopy field b to speed up the look-up.
+numrows=$(cdb2sql ${CDB2_OPTIONS} $DB default "select * from t2 where a = 1 and b is NULL" | wc -l)
+if [[ $numrows != 1 ]] ; then
+    echo "Failed. Expected 1 row, got $numrows"
+    exit 1
+fi
 
 echo Success

@@ -44,6 +44,7 @@
 extern int gbl_transactional_drop_plus_rename;
 extern int gbl_bulk_import_validation_werror;
 extern int gbl_debug_sleep_during_bulk_import;
+extern int gbl_debug_stall_in_oplog_seed;
 extern int gbl_waitalive_iterations;
 extern int gbl_allow_anon_id_for_spmux;
 extern int gbl_allow_lua_print;
@@ -203,7 +204,6 @@ extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
 extern int gbl_print_deadlock_cycles;
-extern int gbl_always_send_cnonce;
 extern int gbl_rep_badgen_trace;
 extern int gbl_dump_zero_coherency_timestamp;
 extern int gbl_allow_incoherent_sql;
@@ -271,6 +271,7 @@ extern int gbl_req_all_time_threshold;
 extern int gbl_req_delay_count_threshold;
 extern int gbl_dbreg_stack_on_null_txn;
 extern int gbl_dbreg_abort_on_null_txn;
+extern int gbl_debug_dbreg_lazy_id_sleep;
 extern int gbl_simulate_dropping_request;
 extern int gbl_max_logput_queue;
 extern int gbl_blocking_enque;
@@ -310,6 +311,7 @@ extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_use_current_lsn_for_non_snapshot;
 extern int gbl_cache_flush_interval;
 extern int gbl_load_cache_threads;
 extern int gbl_load_cache_max_pages;
@@ -321,7 +323,6 @@ extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
 extern int gbl_sc_protobuf;
 extern int gbl_sc_current_version;
-extern int gbl_master_sends_query_effects;
 extern int gbl_create_dba_user;
 extern int gbl_lock_dba_user;
 extern int gbl_dump_sql_on_repwait_sec;
@@ -466,6 +467,8 @@ extern int gbl_debug_sleep_in_analyze;
 extern int gbl_debug_sleep_in_summarize;
 extern int gbl_debug_sleep_in_trigger_info;
 extern int gbl_replicant_retry_on_not_durable;
+extern int gbl_debug_force_non_durable;
+extern int gbl_ignore_final_non_durable_retry;
 extern int gbl_enable_internal_sql_stmt_caching;
 extern int gbl_longreq_log_freq_sec;
 extern int gbl_disable_seekscan_optimization;
@@ -508,6 +511,7 @@ extern int gbl_physrep_reconnect_interval;
 extern int gbl_physrep_shuffle_host_list;
 extern int gbl_physrep_ignore_queues;
 extern int gbl_physrep_max_rollback;
+extern int gbl_physrep_pollms;
 
 /* source-name / host is from lrl */
 extern char *gbl_physrep_source_dbname;
@@ -583,7 +587,6 @@ extern int gbl_rep_process_pstack_time;
 extern int gbl_sql_recover_time;
 extern int gbl_legacy_requests_verbose;
 extern int gbl_long_request_ms;
-extern int gbl_comdb2_oplog_preserve_seqno;
 extern int gbl_nonodh_queue_scan_limit;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
@@ -598,7 +601,7 @@ int64_t gbl_test_tunable_int64_limit = INT64_MAX;
 int64_t gbl_test_tunable_int64_signed_limit = INT64_MAX;
 
 int gbl_always_request_log_req = 0;
-int gbl_nudge_replication_when_idle = 0;
+int gbl_nudge_replication_when_idle = 100;
 
 int parse_int64(const char *value, int64_t *num);
 

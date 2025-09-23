@@ -8801,7 +8801,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_sna
         args[i].last_checkpoint_lsn.offset = last_checkpoint_lsn_offset;
         if (parallel_count) {
             args[i].sqlthd = pthread_getspecific(query_info_key);
-            pthread_create(&thds[i], &attr, db_count, &args[i]);
+            Pthread_create(&thds[i], &attr, db_count, &args[i]);
         } else {
             args[i].sqlthd = NULL;
             db_count(&args[i]);

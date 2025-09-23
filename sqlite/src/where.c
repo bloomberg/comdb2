@@ -2482,6 +2482,14 @@ static int whereLoopAddBtreeIndex(
   assert( pNew->u.btree.nEq<pProbe->nColumn );
 
   saved_nEq = pNew->u.btree.nEq;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if(pProbe->azColl!=0
+   && pProbe->azColl[saved_nEq]!=0
+   && sqlite3_stricmp(pProbe->azColl[saved_nEq],"DATACOPY")==0
+  ){
+    return rc;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   saved_nBtm = pNew->u.btree.nBtm;
   saved_nTop = pNew->u.btree.nTop;
   saved_nSkip = pNew->nSkip;

@@ -105,7 +105,7 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable);
 void comdb2setAlias(Parse*, Token*, Token*);
 void comdb2getAlias(Parse*, Token*);
 
-void comdb2RebuildFull(Parse*,Token*,Token*,int opt);
+void comdb2RebuildFull(Parse*,Token*,Token*,int opt, int oplog_count);
 void comdb2RebuildIndex(Parse*, Token*, Token*, Token*,int opt);
 void comdb2RebuildData(Parse*, Token*, Token*,int opt);
 void comdb2RebuildDataBlob(Parse*,Token*, Token*,int opt);

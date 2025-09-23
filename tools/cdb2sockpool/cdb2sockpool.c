@@ -151,13 +151,7 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
         Pthread_attr_destroy(&attr);
         return -1;
     }
-    rc = pthread_create(tid, &attr, start_routine, arg);
-    if (rc != 0) {
-        syslog(LOG_ERR, "%s:pthread_create: %d %s\n", __func__, rc,
-               strerror(rc));
-        Pthread_attr_destroy(&attr);
-        return -1;
-    }
+    Pthread_create(tid, &attr, start_routine, arg);
     Pthread_attr_destroy(&attr);
     return 0;
 }

@@ -5145,6 +5145,9 @@ int sqlite3VdbeRecordCompareWithSkip(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   memset(&mem1, 0, sizeof(Mem));
+  /* pass tzname to Mem1 as well, in case it is a datetime that needs conversion */
+  mem1.tz = pRhs->tz;
+  mem1.enc = pPKey2->pKeyInfo->enc;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* If bSkip is true, then the caller has already determined that the first
   ** two elements in the keys are equal. Fix the various stack variables so

@@ -63,6 +63,51 @@ insert 1 10
 export COMDB2TZ="America/New_York"
 $CDB2SQL_EXE -s $CDB2_OPTIONS $DBNAME default "select opnum, operation, tablename, oldrecord, record from comdb2_logical_operations" > select.txt
 
+nbefore=`$CDB2SQL_EXE --tabs -s $CDB2_OPTIONS $DBNAME default "SELECT COUNT(*) FROM comdb2_logical_operations"`
+$CDB2SQL_EXE -s $CDB2_OPTIONS $DBNAME default "REBUILD alltypes"
+nafter=`$CDB2SQL_EXE --tabs -s $CDB2_OPTIONS $DBNAME default "SELECT COUNT(*) FROM comdb2_logical_operations"`
+
+# rebuild should not write llog records
+if [[ "$nbefore" != "$nafter" ]]; then
+    failexit "Rebuild shouldn't generate logical log records!"
+fi
+
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<"EOF"
+create table yet_another_alltypes {
+schema
+{
+    short           alltypes_short           null=yes
+    u_short         alltypes_ushort          null=yes
+    int             alltypes_int             null=yes
+    u_int           alltypes_uint            null=yes
+    longlong        alltypes_longlong        null=yes
+    float           alltypes_float           null=yes
+    double          alltypes_double          null=yes
+    byte            alltypes_byte[16]        null=yes
+    cstring         alltypes_cstring[16]     null=yes
+    datetime        alltypes_datetime        null=yes
+    datetimeus      alltypes_datetimeus      null=yes
+    intervalym      alltypes_intervalym      null=yes
+    intervalds      alltypes_intervalds      null=yes
+    intervaldsus    alltypes_intervaldsus    null=yes
+    decimal32       alltypes_decimal32       null=yes
+    decimal64       alltypes_decimal64       null=yes
+    decimal128      alltypes_decimal128      null=yes
+}
+}
+EOF
+
+# partition-table should not write llog
+nbefore=`$CDB2SQL_EXE --tabs -s $CDB2_OPTIONS $DBNAME default "SELECT COUNT(*) FROM comdb2_logical_operations"`
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "ALTER TABLE yet_another_alltypes PARTITIONED BY TIME PERIOD 'DAILY' RETENTION 3 START '1970-01-01'"
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "ALTER TABLE yet_another_alltypes PARTITIONED BY NONE"
+nafter=`$CDB2SQL_EXE --tabs -s $CDB2_OPTIONS $DBNAME default "SELECT COUNT(*) FROM comdb2_logical_operations"`
+
+# partitioning should not write llog records
+if [[ "$nbefore" != "$nafter" ]]; then
+    failexit "Partitioning shouldn't generate logical log records!"
+fi
+
 diff ./select.txt ./expected.txt
 if [[ $? != 0 ]]; then
     failexit "Unexpected results from comdb2_logical_operations"

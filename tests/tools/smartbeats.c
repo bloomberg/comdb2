@@ -45,6 +45,22 @@ void *consumer(void *_)
     return NULL;
 }
 
+static int ddl_progress;
+static void *processing_ddl_heartbeat(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
+{
+    if (argc != 1)
+        return NULL;
+
+    int state = (intptr_t)argv[0];
+
+    if (state > 0) {
+        puts("ddl is making progress!");
+        ++ddl_progress;
+    }
+
+    return NULL;
+}
+
 static int TEST_heartbeat_events()
 {
     int rc;
@@ -135,10 +151,23 @@ static int TEST_heartbeat_events()
         return rc;
 
     cdb2_unregister_event(h, e);
+
+    /*************************************************
+     *      Testcase 5: long running schema change   *
+     *************************************************/
+    e = cdb2_register_event(h, CDB2_AT_RECEIVE_HEARTBEAT, 0,
+                            processing_ddl_heartbeat, NULL, 1, CDB2_QUERY_STATE);
+    cdb2_run_statement(h, "create table t5 (i int)");
+    cdb2_run_statement(h, "insert into t5 values(1),(2),(3),(4),(5)");
+
+    rc = cdb2_run_statement(h, "REBUILD t5");
+    if (rc != 0)
+        return rc;
+
     cdb2_close(h);
 
     /* Make sure heartbeats were indeed checked. */
-    return (nheartbeats == 0);
+    return (nheartbeats == 0) || (ddl_progress == 0);
 }
 
 int main(int argc, char **argv)

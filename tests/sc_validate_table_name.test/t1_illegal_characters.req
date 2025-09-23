@@ -1,0 +1,2 @@
+create table "table-with>illegal<chars" (i int)$$
+create table "table-with>illegal<chars" { schema { int i } }$$

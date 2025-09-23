@@ -10,6 +10,7 @@ if [ "x$dbnm" == "x" ] ; then
 fi
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/waitmach.sh
 
 $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t1(a int)"
 $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table t2(a int)"
@@ -50,6 +51,10 @@ while :; do
     fi
     sleep 1
 done
+
+# wait for the node to actually become available (which may happen after it becomes coherent)
+# if we don't do this, then the test will fail with 'db unavailable at finish'.
+waitmach $host
 
 for pid in $(cat pids); do
     kill $pid

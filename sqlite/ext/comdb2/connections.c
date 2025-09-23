@@ -55,19 +55,19 @@ int get_connections(void **data, int *num_points) {
 
         switch (info[i].state_int) {
             case CONNECTION_NEW:
-                info[i].state = "new";
+                info[i].state = !info[i].is_canceled ? "new" : "new_canceled";
                 break;
             case CONNECTION_IDLE:
-                info[i].state = "idle";
+                info[i].state = !info[i].is_canceled ? "idle" : "idle_canceled";
                 break;
             case CONNECTION_RESET:
-                info[i].state = "reset";
+                info[i].state = !info[i].is_canceled ? "reset" : "reset_canceled";
                 break;
             case CONNECTION_QUEUED:
-                info[i].state = "queued";
+                info[i].state = !info[i].is_canceled ? "queued" : "queued_canceled";
                 break;
             case CONNECTION_RUNNING:
-                info[i].state = "running";
+                info[i].state = !info[i].is_canceled ? "running" : " running_canceled";
                 break;
         }
     }
@@ -98,5 +98,6 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_INTEGER, "has_cert", -1, offsetof(struct connection_info, has_cert),
             CDB2_CSTRING, "common_name", -1, offsetof(struct connection_info, common_name),
             CDB2_INTEGER, "in_local_cache", -1, offsetof(struct connection_info, in_local_cache),
+            CDB2_CSTRING, "uuid", -1, offsetof(struct connection_info, uuid),
             SYSTABLE_END_OF_FIELDS);
 }

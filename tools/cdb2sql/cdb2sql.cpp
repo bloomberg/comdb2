@@ -100,6 +100,7 @@ static int string_blobs = 0;
 static int show_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
+static int return_long_column_names = 0;
 static int maxretries = 0;
 static int minretries = 0;
 static FILE *redirect = NULL;
@@ -169,39 +170,39 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
-static const char *usage_text =
-    "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
-    "\n"
-    "Options:\n"
-    " -c, --cdb2cfg FL        Set the config file to FL\n"
-    "     --coltype           Prefix column output with associated type\n"
-    "     --cost              Log the cost of query in db trace files\n"
-    "     --debugtrace        Set debug trace flag on api handle\n"
-    " -d, --delim str         Set string used to separate two sql statements read "
-    "from a file or input stream\n"
-    " -f, --file FL           Read queries from the specified file FL\n"
-    " -h, --help              Help on usage \n"
-    " -n, --host HOST         Host to connect to and run query.\n"
-    " -p, --precision #       Set precision for floation point outputs\n"
-    " -s, --script            Script mode (less verbose output)\n"
-    "     --showeffects       Show the effects of query at the end\n"
-    "     --strblobs          Display blobs as strings\n"
-    "     --tabs              Set column separator to tabs rather than commas\n"
-    "     --tabular           Display result in tabular format\n"
-    " -t, --type TYPE         Type of database or tier ('dev' or 'prod',"
-    " default 'local')\n"
-    " -v, --verbose           Verbose debug output, implies --debugtrace\n"
-    " -i, --allow-incoherent  Allow SQL to run on an incoherent node\n"
-    "Examples: \n"
-    " * Querying db with name mydb on local server \n"
-    "     cdb2sql mydb 'select 1'\n"
-    " * Query db via interactive session:\n"
-    "     cdb2sql mydb - \n"
-    " * Query db by connecting to a specific server:\n"
-    "     cdb2sql mydb --host node1 'select 1'\n"
-    " * Query db by connecting to a known set of servers/ports:\n"
-    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
-    "\n";
+static const char *usage_text = "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
+                                "\n"
+                                "Options:\n"
+                                " -c, --cdb2cfg FL        Set the config file to FL\n"
+                                "     --coltype           Prefix column output with associated type\n"
+                                "     --cost              Log the cost of query in db trace files\n"
+                                "     --debugtrace        Set debug trace flag on api handle\n"
+                                " -d, --delim str         Set string used to separate two sql statements read "
+                                "from a file or input stream\n"
+                                " -f, --file FL           Read queries from the specified file FL\n"
+                                " -h, --help              Help on usage \n"
+                                " -n, --host HOST         Host to connect to and run query.\n"
+                                " -p, --precision #       Set precision for floation point outputs\n"
+                                " -s, --script            Script mode (less verbose output)\n"
+                                "     --showeffects       Show the effects of query at the end\n"
+                                "     --strblobs          Display blobs as strings\n"
+                                "     --tabs              Set column separator to tabs rather than commas\n"
+                                "     --tabular           Display result in tabular format\n"
+                                " -t, --type TYPE         Type of database or tier ('dev' or 'prod',"
+                                " default 'local')\n"
+                                " -v, --verbose           Verbose debug output, implies --debugtrace\n"
+                                " -i, --allow-incoherent  Allow SQL to run on an incoherent node\n"
+                                "     --long-columns      Allow SQL to return long column names\n"
+                                "Examples: \n"
+                                " * Querying db with name mydb on local server \n"
+                                "     cdb2sql mydb 'select 1'\n"
+                                " * Query db via interactive session:\n"
+                                "     cdb2sql mydb - \n"
+                                " * Query db by connecting to a specific server:\n"
+                                "     cdb2sql mydb --host node1 'select 1'\n"
+                                " * Query db by connecting to a known set of servers/ports:\n"
+                                "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
+                                "\n";
 
 static const char *interactive_usage =
     "Interactive session commands:\n"
@@ -1609,6 +1610,13 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
                 return 1;
             }
         }
+        if (return_long_column_names) {
+            rc = cdb2_run_statement(cdb2h, "set return_long_column_names on");
+            if (rc) {
+                fprintf(stderr, "failed to run set return_long_column_names on\n");
+                return 1;
+            }
+        }
     }
 
     /* Bind parameter ability */
@@ -2248,38 +2256,38 @@ int main(int argc, char *argv[])
 
     signal(SIGPIPE, SIG_IGN);
 
-    static struct option long_options[] = {
-        {"pause", no_argument, &pausemode, 1},
-        {"binary", no_argument, &printmode, DISP_BINARY},
-        {"tabs", no_argument, &printmode, DISP_TABS},
-        {"tabular", no_argument, &printmode, DISP_TABULAR},
-        {"coltype", no_argument, &printcoltype, 1},
-        {"stderr", no_argument, &printtostderr, 1},
-        {"verbose", no_argument, &verbose, 1},
-        {"strblobs", no_argument, &string_blobs, 1},
-        {"debugtrace", no_argument, &debug_trace, 1},
-        {"showports", no_argument, &show_ports, 1},
-        {"showeffects", no_argument, &show_effects, 1},
-        {"cost", no_argument, &docost, 1},
-        {"exponent", no_argument, &exponent, 1},
-        {"isatty", no_argument, &isttyarg, 1},
-        {"isnotatty", no_argument, &isttyarg, 2},
-        {"admin", no_argument, &isadmin, 1},
-        {"help", no_argument, NULL, 'h'},
-        {"script", no_argument, NULL, 's'},
-        {"maxretries", required_argument, NULL, 'r'},
-        {"precision", required_argument, NULL, 'p'},
-        {"cdb2cfg", required_argument, NULL, 'c'},
-        {"file", required_argument, NULL, 'f'},
-        {"gensql", required_argument, NULL, 'g'},
-        {"delim", required_argument, NULL, 'd'},
-        {"type", required_argument, NULL, 't'},
-        {"host", required_argument, NULL, 'n'},
-        {"minretries", required_argument, NULL, 'R'},
-        {"connect-to-master", no_argument, NULL, 'm'},
-        {"multiline", no_argument, NULL, 'l'},
-        {"allow-incoherent", no_argument, NULL, 'i'},
-        {0, 0, 0, 0}};
+    static struct option long_options[] = {{"pause", no_argument, &pausemode, 1},
+                                           {"binary", no_argument, &printmode, DISP_BINARY},
+                                           {"tabs", no_argument, &printmode, DISP_TABS},
+                                           {"tabular", no_argument, &printmode, DISP_TABULAR},
+                                           {"coltype", no_argument, &printcoltype, 1},
+                                           {"stderr", no_argument, &printtostderr, 1},
+                                           {"verbose", no_argument, &verbose, 1},
+                                           {"strblobs", no_argument, &string_blobs, 1},
+                                           {"debugtrace", no_argument, &debug_trace, 1},
+                                           {"showports", no_argument, &show_ports, 1},
+                                           {"showeffects", no_argument, &show_effects, 1},
+                                           {"cost", no_argument, &docost, 1},
+                                           {"long-columns", no_argument, &return_long_column_names, 1},
+                                           {"exponent", no_argument, &exponent, 1},
+                                           {"isatty", no_argument, &isttyarg, 1},
+                                           {"isnotatty", no_argument, &isttyarg, 2},
+                                           {"admin", no_argument, &isadmin, 1},
+                                           {"help", no_argument, NULL, 'h'},
+                                           {"script", no_argument, NULL, 's'},
+                                           {"maxretries", required_argument, NULL, 'r'},
+                                           {"precision", required_argument, NULL, 'p'},
+                                           {"cdb2cfg", required_argument, NULL, 'c'},
+                                           {"file", required_argument, NULL, 'f'},
+                                           {"gensql", required_argument, NULL, 'g'},
+                                           {"delim", required_argument, NULL, 'd'},
+                                           {"type", required_argument, NULL, 't'},
+                                           {"host", required_argument, NULL, 'n'},
+                                           {"minretries", required_argument, NULL, 'R'},
+                                           {"connect-to-master", no_argument, NULL, 'm'},
+                                           {"multiline", no_argument, NULL, 'l'},
+                                           {"allow-incoherent", no_argument, NULL, 'i'},
+                                           {0, 0, 0, 0}};
 
     while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mMl", long_options, &opt_indx)) != -1) {
         switch (c) {

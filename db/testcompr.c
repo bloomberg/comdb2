@@ -421,9 +421,8 @@ void handle_testcompr(SBUF2 *sb, const char *table)
     arg.sb = sb;
     arg.table = table;
     arg.rc = 0;
-    int ret = pthread_create(&t, NULL, handle_comptest_thd, &arg);
-    if (!ret)
-        pthread_join(t, &rc);
+    Pthread_create(&t, NULL, handle_comptest_thd, &arg);
+    pthread_join(t, &rc);
 
     if (arg.rc == 0) {
         sbuf2printf(sb, "SUCCESS\n");

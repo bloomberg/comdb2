@@ -35,6 +35,8 @@
 #include "reqlog.h"
 #include "logmsg.h"
 #include "debug_switches.h"
+#include "localrep.h"
+#include "views.h"
 
 int gbl_logical_live_sc = 0;
 
@@ -192,6 +194,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
  * stripe.
  * If the schema change is not resuming it sets them all to zero
  * If success it returns 0, if failure it returns <0 */
+int gbl_debug_stall_in_oplog_seed = 0;
 int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
 {
     void *rec;
@@ -221,7 +224,37 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             return -1;
         }
 
-        bzero(sc_genids, sizeof(unsigned long long) * MAXDTASTRIPE);
+        unsigned long long opgenid = 0ULL;
+        if (s->preserve_oplog_count >= 0) {
+            logmsg(LOGMSG_INFO, "Preserve %d oplog seqnos\n", s->preserve_oplog_count);
+            assert(strcmp(db->tablename, "comdb2_oplog") == 0);
+            long long seqno = 0LL;
+            int rc = get_next_seqno(NULL, NULL, &seqno);
+            if (rc == IX_FND) {
+                seqno = seqno - s->preserve_oplog_count - 1;
+                struct ireq iq = {0};
+                unsigned long long fndgenid = 0ULL;
+                init_fake_ireq(thedb, &iq);
+                rc = local_replicant_genid_by_seqno_blkpos(&iq, seqno, 0, &fndgenid);
+                if (rc == 0) {
+                    opgenid = prev_genid(thedb->bdb_attr, fndgenid);
+                    logmsg(LOGMSG_INFO,
+                           "Truncate-oplog rebuild seeding stripes with "
+                           "genid %llu for seqno %lld\n",
+                           opgenid, seqno);
+                }
+                if (gbl_debug_stall_in_oplog_seed) {
+                    logmsg(LOGMSG_INFO, "Stalling in oplog seed for 10 seconds\n");
+                    sleep(10);
+                }
+            } else {
+                logmsg(LOGMSG_INFO, "Unable to retrieve oplog seqno %lld\n", seqno);
+            }
+        }
+
+        for (stripe = 0; stripe < MAXDTASTRIPE; stripe++) {
+            sc_genids[stripe] = format_genid_for_stripe(opgenid, stripe);
+        }
         return 0;
     }
 
@@ -1158,6 +1191,13 @@ err:
 
     ATOMIC_ADD64(data->from->sc_nrecs, 1);
 
+    if (data->s->iq->sorese != NULL) {
+        /* ddl schema change, update its effects */
+        snap_uid_t *snap_info = data->s->iq->sorese->snap_info;
+        if (snap_info != NULL)
+            snap_info->effects.num_inserted = data->from->sc_nrecs;
+    }
+
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
 
@@ -1499,18 +1539,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         Pthread_rwlock_wrlock(&s->db->sc_live_lk);
         s->db->sc_live_logical = 1;
         Pthread_rwlock_unlock(&s->db->sc_live_lk);
-        rc = pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
+        Pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
                             (void *(*)(void *))live_sc_logical_redo_thd,
                             thdData);
-        if (rc) {
-            sc_errf(s, "[%s] starting thread failed for logical redo\n",
-                    s->tablename);
-            bdb_clear_logical_live_sc(s->db->handle, 1 /* lock table */);
-            s->logical_livesc = 0;
-            free(s->sc_convert_done);
-            s->sc_convert_done = NULL;
-            return -1;
-        }
     } else {
         if (s->resume) {
             /* if schema change was run in logical redo mode and logical redo sc
@@ -1566,20 +1597,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
             /* start thread */
             /* convert_records_thd( &threadData[ ii ]); |+ serialized calls +|*/
-            rc = pthread_create(&threadData[ii].tid, &attr,
+            Pthread_create(&threadData[ii].tid, &attr,
                                 (void *(*)(void *))convert_records_thd,
                                 &threadData[ii]);
 
-            /* if thread creation failed */
-            if (rc) {
-                sc_errf(threadData[ii].s,
-                        "[%s] starting thread failed for"
-                        " stripe: %d with return code: %d\n",
-                        from->tablename, threadData[ii].stripe, rc);
-
-                outrc = -1;
-                break;
-            }
         }
 
         /* wait for all convert threads to complete */
@@ -2016,17 +2037,8 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                       "[%s] starting thread for stripe: %d\n", db->tablename,
                       thread_data[idx].stripe);
 
-            rc = pthread_create(&thread_data[idx].tid, &attr,
+            Pthread_create(&thread_data[idx].tid, &attr,
                                 upgrade_records_thd, &thread_data[idx]);
-
-            if (rc) {
-                sc_errf(thread_data[idx].s,
-                        "starting thread failed for stripe: %d with return code: %d\n",
-                        thread_data[idx].stripe, rc);
-
-                outrc = -1;
-                break;
-            }
         }
 
         if (outrc == -1) {

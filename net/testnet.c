@@ -407,12 +407,8 @@ int main(int argc, char *argv[])
      * of data for that node to receive. */
     for (ii = 0; ii < numnodes; ii++) {
         if (mynetnode != &netnodes[ii]) {
-            rc = pthread_create(&netnodes[ii].generator_tid, NULL,
+            Pthread_create(&netnodes[ii].generator_tid, NULL,
                                 generator_thd, &netnodes[ii]);
-            if (rc != 0) {
-                fprintf(stderr, "pthread_create: %d %s\n", rc, strerror(rc));
-                exit(1);
-            }
         }
     }
 

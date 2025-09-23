@@ -258,3 +258,102 @@ function wait_for_cluster
         waitmach ${node}
     done
 }
+
+get_node_gen() {
+    local -r node=${1}
+    local gen
+
+    set -o pipefail
+
+    gen=$(${CDB2SQL_EXE} --host ${node} ${CDB2_OPTIONS} ${DBNAME} default \
+        "exec procedure sys.cmd.send('bdb repstat')" | awk '/st_gen:/ {print $2}' | sed 's/[^0-9]*//g')
+    if (( $? != 0 )); then
+        return 1
+    fi
+    
+    if [[ -z "${gen}" ]]; then
+        return 1
+    fi
+
+    echo "${gen}"
+}
+
+get_master_and_fail_if_not_found() {
+    local -r func=${FUNCNAME[0]}
+
+    local master
+    master=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} ${DBNAME} default \
+        "select host from comdb2_cluster where is_master='Y'")
+    if (( $? != 0 )); then
+        return 1
+    fi
+
+    if [[ -z "${master}" ]]; then
+        return 1
+    fi
+
+    echo "${master}"
+}
+
+get_num_incoherent() {
+    local -r master=$1
+
+    local num_incoherent
+    num_incoherent=$(${CDB2SQL_EXE} --tabs --host ${master} ${CDB2_OPTIONS} ${DBNAME} default \
+        "select count(*) from comdb2_cluster where coherent_state != 'coherent'")
+    if (( $? != 0 )); then
+        return 1
+    fi
+
+    echo "${num_incoherent}"
+}
+
+downgrade_master() {
+    local -r func=${FUNCNAME[0]}
+    local -r downgrade_wait_seconds=5
+
+    local master
+    if ! master=$(get_master_and_fail_if_not_found); then
+        echo "${func}: could not get master"
+        return 1
+    fi
+
+    local gen
+    if ! gen=$(get_node_gen ${master}); then
+        echo "${func}: could not get generation number from master"
+        return 1
+    fi
+
+    if ! ${CDB2SQL_EXE} --host ${master} ${CDB2_OPTIONS} ${DBNAME} default \
+        "exec procedure sys.cmd.send('downgrade')"; then
+        echo "${func}: Could not send downgrade command to master"
+        return 1
+    fi
+
+    # Wait for election to start
+    next_gen=${gen}
+    while (( next_gen == gen )); do
+        sleep ${downgrade_wait_seconds}
+        next_gen=$(get_node_gen ${master})
+        if (( $? != 0 )); then
+            # The old master may be unavailable for a while during election,
+            # so if we can't get its generation number then wait and retry.
+            next_gen=${gen}
+        fi
+    done
+
+    # Wait for a new master to be elected
+    while ! master=$(get_master_and_fail_if_not_found); do
+        sleep ${downgrade_wait_seconds}
+    done
+
+    # Wait for cluster to become coherent
+    num_incoherent=$(get_num_incoherent ${master})
+    while (( num_incoherent > 0 )); do
+        sleep ${downgrade_wait_seconds}
+        num_incoherent=$(get_num_incoherent ${master})
+    done
+
+    # Double check that the cluster is up
+    wait_for_cluster
+}

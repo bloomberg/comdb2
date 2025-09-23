@@ -198,10 +198,7 @@ static void sqllog_changesync(int async)
         async_have_thread = 0;
         sqllog_use_async = 0;
     } else {
-        rc = pthread_create(&sqllog_threadid, NULL, async_logthd, NULL);
-        if (rc)
-            logmsg(LOGMSG_ERROR, 
-                    "can't create sql logger thread, logging disabled\n");
+        Pthread_create(&sqllog_threadid, NULL, async_logthd, NULL);
         sqllog_use_async = 1;
         async_have_thread = 1;
     }

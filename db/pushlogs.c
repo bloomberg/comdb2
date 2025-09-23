@@ -167,16 +167,10 @@ void set_target_lsn(uint32_t logfile, uint32_t logbyte)
     Pthread_mutex_lock(&mutex);
     bdb_make_seqnum((seqnum_type *)target, logfile, logbyte);
     if (!have_thread && logfile > 0) {
-        int rc;
         pthread_t tid;
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached, pushlogs_thread,
+        Pthread_create(&tid, &gbl_pthread_attr_detached, pushlogs_thread,
                             NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "set_target_lsn: can't make thread: %d %s\n", rc,
-                    strerror(rc));
-        } else {
-            have_thread = 1;
-        }
+        have_thread = 1;
     }
     Pthread_mutex_unlock(&mutex);
 }

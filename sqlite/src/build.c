@@ -659,9 +659,22 @@ Table *sqlite3FindTableCheckOnlyNoAlias(
 Table *sqlite3FindTableByAnalysisLoad(
   sqlite3 *db,
   const char *zName,
-  const char *zDatabase
+  const char *zDatabase,
+  int local,
+  int class
 ){
-  return sqlite3FindTable_int(db, zName, zDatabase, 1, 1, 0);
+  char *fqdbname = (char*)zDatabase;
+  Table *ret;
+  if (local)
+    fqdbname = sqlite3_mprintf("LOCAL_%s", zDatabase);
+  else if (class >= 0)  {
+    extern const char *mach_class_class2tier(int value);
+    fqdbname = sqlite3_mprintf("%s_%s", mach_class_class2tier(class), zDatabase);
+  }
+  ret = sqlite3FindTable_int(db, zName, fqdbname, 1, 1, 0);
+  if (fqdbname != zDatabase)
+    sqlite3DbFree(db, fqdbname);
+  return ret;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

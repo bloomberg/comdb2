@@ -814,6 +814,7 @@ static void host_connected_info_free(struct host_connected_info *info)
 struct accept_info {
     int fd;
     int secure; /* whether connection is routed from a secure pmux port */
+    int pmuv;
     int badrte;
     struct evbuffer *buf;
     int to_len;
@@ -834,21 +835,29 @@ struct accept_info {
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
+static int accept_paused;
 
 static void do_read(int, short, void *);
 static void accept_info_free(struct accept_info *);
 
 static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure,
-                                           int badrte)
+                                           int badrte, int pmuv)
 {
     check_base_thd();
     ++pending_connections;
+    if (pending_connections >= (get_max_appsocks_limit() / 2)) {
+        accept_paused = 1;
+        struct net_info *n = net_info_find("replication");
+        evconnlistener_disable(n->listener);
+        event_del(n->unix_ev);
+    }
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
     a->fd = fd;
     a->secure = secure;
     a->badrte = badrte;
+    a->pmuv = pmuv;
     a->ev = event_new(base, fd, EV_READ, do_read, a);
     event_add(a->ev, NULL);
 }
@@ -857,6 +866,12 @@ static void accept_info_free(struct accept_info *a)
 {
     check_base_thd();
     --pending_connections;
+    if (accept_paused && pending_connections == 0) {
+        accept_paused = 0;
+        struct net_info *n = net_info_find("replication");
+        evconnlistener_enable(n->listener);
+        event_add(n->unix_ev, NULL);
+    }
     if (a->ev) {
         event_free(a->ev);
     }
@@ -1101,7 +1116,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
+    //hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
 }
 
 static void check_wr_full(struct event_info *e)
@@ -1111,7 +1126,7 @@ static void check_wr_full(struct event_info *e)
     size_t outstanding = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
     if (outstanding < max_bytes) return;
     e->wr_full = time(NULL);
-    hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
+    //hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
 }
 
 static ssize_t writev_ciphertext(struct event_info *e)
@@ -1155,7 +1170,7 @@ static void writecb(int fd, short what, void *data)
         if (len == 0) {
             event_del(e->wr_ev);
             if (e->wr_full) {
-                hprintf("RESUMING WR after:%ds\n", (int)(time(NULL) - e->wr_full));
+                //hprintf("RESUMING WR after:%ds\n", (int)(time(NULL) - e->wr_full));
                 e->wr_full = 0;
             }
         }
@@ -1687,7 +1702,7 @@ static void *rd_worker(void *data)
         e->rd_worker_sz = evbuffer_get_length(buf);
         if (e->rd_worker_sz < e->need) {
             if (e->rd_full) {
-                hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
+                //hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
                 e->rd_full = 0;
                 evtimer_once(rd_base, resume_read, e);
             }
@@ -2910,8 +2925,78 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
 static int should_reject_request(uint8_t first_byte)
 {
     if (db_is_exiting() || gbl_exit || !gbl_ready) return 1;
-    if (first_byte == '@') return 0; /* admin */
-    return check_appsock_limit(pending_connections);
+    int is_admin = 0;
+    if (first_byte == '@') is_admin = 1;
+    return check_appsock_limit(pending_connections, is_admin);
+}
+
+/* PMUV REQUEST/RESPONSE */
+enum request { V_WHO = 1, V_NAK = 2, V_ACK = 3 };
+enum response { V_NONE = 0, V_ID = 1 };
+
+static int portmux_server_side_validation(struct accept_info *a, char request) {
+    ssize_t rc;
+    char response;
+    switch(request) {
+        case V_WHO:
+            response = V_ID;
+            rc = write(a->fd, &response, 1);
+            if (rc != 1) {
+                logmsg(LOGMSG_ERROR, "%s:write failure fd:%d rc:%zd (%s)\n", __func__,
+                       a->fd, rc, strerror(errno));
+                return 1;
+            }
+
+            uint32_t size = 0;
+            uint32_t features = htonl(0);
+            /* format the triplet into a string.
+             * snprintf returns the number of characters printed, excluding
+             * the null byte used to end output to strings - we want that too.
+             */
+            char buf[512];
+            netinfo_type *netinfo_ptr = a->netinfo_ptr;
+            uint32_t buflen = snprintf(buf, sizeof(buf), "%s/%s/%s", netinfo_ptr->app,
+                                       netinfo_ptr->service, netinfo_ptr->instance) +
+                              1;
+            if (buflen > sizeof(buf)) {
+                return 1;
+            }
+            evbuffer_drain(a->buf, 1);
+            /* Logic from portmuxuser.c portmux_server_side_validation */
+            size_t total_len = 0;
+            struct evbuffer_iovec iov[3];
+            iov[0].iov_base = (void *)&size;
+            iov[0].iov_len = sizeof(uint32_t);
+            iov[1].iov_base = (void *)&features;
+            iov[1].iov_len = sizeof(uint32_t);
+            iov[2].iov_base = (void *)buf;
+            iov[2].iov_len = buflen;
+            size = iov[1].iov_len + iov[2].iov_len;
+            total_len = size + iov[0].iov_len;
+            size = htonl(size);
+            evbuffer_add_iovec(a->buf, iov, 3);
+            rc = evbuffer_write(a->buf, a->fd);
+            if (rc != total_len) {
+                logmsg(LOGMSG_ERROR, "%s:unable to write fd:%d rc:%zd (%s)\n", __func__,
+                       a->fd, rc, strerror(errno));
+                return 1;
+            }
+            /* Still in pmuv validation mode, don't reset the flag */
+            a->ev = event_new(base, a->fd, EV_READ, do_read, a);
+            event_add(a->ev, NULL);
+            return 0;
+        case V_NAK:
+            /* Validation failed */
+            return 1;
+        case V_ACK:
+            /* Validation done */
+            a->pmuv = 0;
+            a->ev = event_new(base, a->fd, EV_READ, do_read, a);
+            event_add(a->ev, NULL);
+            return 0;
+        default:
+            return 1;
+    }
 }
 
 static void do_read(int fd, short what, void *data)
@@ -2927,6 +3012,18 @@ static void do_read(int fd, short what, void *data)
     }
     uint8_t first_byte;
     evbuffer_copyout(buf, &first_byte, 1);
+    if (a->pmuv) {
+        a->buf = buf;
+        evbuffer_drain(buf, 1);
+        if (portmux_server_side_validation(a, first_byte) != 0) {
+            evbuffer_free(buf);
+            shutdown_close(fd);
+        } else {
+            evbuffer_free(buf);
+            a->buf = NULL;
+        }
+        return;
+    }
     if (first_byte == 0) { /* replication or offloadsql */
         evbuffer_drain(buf, 1);
         a->buf = buf;
@@ -2941,25 +3038,36 @@ static void do_read(int fd, short what, void *data)
     accept_info_free(a);
     a = NULL;
     if (should_reject_request(first_byte)) {
+        // Failed to increment appsock count
         evbuffer_free(buf);
         shutdown_close(fd);
         return;
     }
     if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure, &badrte)) == 0) {
+        // Successfully handled fd
         return;
     }
     if (badrte) {
-        if (first_byte != '@') {
-            ATOMIC_ADD32(active_appsock_conns, -1);
-        }
-        accept_info_new(netinfo_ptr, &ss, fd, secure, 1);
+        // Failed to handle fd because of badrte
+        rem_appsock_connection_evbuffer();
+        accept_info_new(netinfo_ptr, &ss, fd, secure, 1, 0);
         return;
     }
     if (handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd) != 0) {
-        if (first_byte != '@') {
-            ATOMIC_ADD32(active_appsock_conns, -1);
-        }
+        // Failed to handle appsock
+        rem_appsock_connection_evbuffer();
+        return;
     }
+}
+
+static void accept_pmuv(struct evconnlistener *listener, evutil_socket_t fd,
+                      struct sockaddr *addr, int len, void *data)
+{
+    check_base_thd();
+    struct net_info *n = data;
+    netinfo_type *netinfo_ptr = n->netinfo_ptr;
+    netinfo_ptr->num_accepts++;
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 0, 0, 1);
 }
 
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -2969,7 +3077,7 @@ static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 0, 0);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 0, 0, 0);
 }
 
 static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *addr, int len,
@@ -2979,7 +3087,7 @@ static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, s
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1, 0);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1, 0, 0);
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *data)
@@ -3012,7 +3120,7 @@ static void reopen_unix(int fd, struct net_info *n)
      (m)->cmsg_level == SOL_SOCKET && (m)->cmsg_type == SCM_RIGHTS)
 #endif
 
-static int recvfd(int pmux_fd, int *secure)
+static int recvfd(int pmux_fd, int *secure, int *pmuv)
 {
     int newfd = -1;
     char buf[sizeof("pmux") - 1];
@@ -3066,13 +3174,15 @@ static int recvfd(int pmux_fd, int *secure)
     }
     newfd = *(int *)CMSG_DATA(m);
 #   endif
-    if (memcmp(buf, "pmux", sizeof(buf)) != 0 && memcmp(buf, "spmu", sizeof(buf)) != 0) {
+    if (memcmp(buf, "pmux", sizeof(buf)) != 0 && memcmp(buf, "spmu", sizeof(buf)) != 0 &&
+        memcmp(buf, "pmuv", sizeof(buf))) {
         shutdown_close(newfd);
         logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d unexpected msg:%.*s\n", __func__,
                pmux_fd, (int)sizeof(buf), buf);
         return -1;
     }
     *secure = (memcmp(buf, "spmu", sizeof(buf)) == 0);
+    *pmuv = (memcmp(buf, "pmuv", sizeof(buf)) == 0);
     return newfd;
 }
 
@@ -3081,14 +3191,21 @@ static void do_recvfd(int pmux_fd, short what, void *data)
     check_base_thd();
     struct net_info *n = data;
     int secure;
-    int newfd = recvfd(pmux_fd, &secure);
+    int pmuv;
+    int newfd = recvfd(pmux_fd, &secure, &pmuv);
     if (newfd == 0) return;
     if (newfd < 0) {
         reopen_unix(pmux_fd, n);
         return;
     }
     make_server_socket(newfd);
-    ssize_t rc = write(newfd, "0\n", 2);
+    ssize_t rc;
+    if (pmuv) {
+        /* Validate */
+        rc = write(newfd, "1\n", 2);
+    } else {
+        rc = write(newfd, "0\n", 2);
+    }
     if (rc != 2) {
         logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
         shutdown_close(newfd);
@@ -3098,10 +3215,12 @@ static void do_recvfd(int pmux_fd, short what, void *data)
     struct sockaddr *addr = (struct sockaddr *)&saddr;
     socklen_t addrlen = sizeof(saddr);
     getpeername(newfd, addr, &addrlen);
-    if (!secure)
-        accept_cb(NULL, newfd, addr, addrlen, n);
-    else
+    if (secure)
         accept_secure(NULL, newfd, addr, addrlen, n);
+    else if (pmuv)
+        accept_pmuv(NULL, newfd, addr, addrlen, n);
+    else
+        accept_cb(NULL, newfd, addr, addrlen, n);
 }
 
 static int process_reg_reply(char *res, struct net_info *n, int unix_fd)

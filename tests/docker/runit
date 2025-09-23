@@ -3,6 +3,7 @@
 set -e
 nodeprefix="m"
 
+script_args=()
 while [[ $1 = -* ]]; do
     if [[ "$1" = "-s" ]] || [[ "$1" = "--source" ]]; then
         shift
@@ -19,6 +20,9 @@ while [[ $1 = -* ]]; do
     elif [[ "$1" = "-f" ]] || [[ "$1" = "--file" ]]; then
         shift
         script=$1
+    elif [[ "$1" = "-a" ]] || [[ "$1" = "--file-arg" ]]; then
+        shift
+        script_args+=("$1")
     fi
     shift
 done
@@ -59,6 +63,10 @@ if [[ "$script" != "" ]]; then
     cp $script common/user_script
     chmod +x common/user_script
 fi
+if ((${#script_args[@]} > 0)); then
+    printf '%s ' "${script_args[@]}" > common/user_script_args
+fi
+
 docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.install $src
 
 echo $cluster >common/cluster

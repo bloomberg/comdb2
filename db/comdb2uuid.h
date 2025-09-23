@@ -17,7 +17,8 @@
 #ifndef INCLUDED_COMDB2_UUID_H
 #define INCLUDED_COMDB2_UUID_H
 
-typedef unsigned char uuid_t[16];
+#include <uuid/uuid.h>
+
 typedef char uuidstr_t[37];
 
 void comdb2uuid(uuid_t u);

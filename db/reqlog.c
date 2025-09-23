@@ -2636,8 +2636,7 @@ int release_node_stats(const char *task, const char *stack, char *host)
     int task_len, stack_len = 0;
     char *tmp;
     struct interned_string *host_interned = intern_ptr(host);
-
-    host = intern(host);
+    host = host_interned->str;
     GET_NAME_AND_LEN(task, task_len);
     GET_NAME_AND_LEN(stack, stack_len);
 

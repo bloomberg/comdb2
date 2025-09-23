@@ -64,9 +64,7 @@ master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.se
 timepart_stats
 
 # create the partition
-#echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '`date +\"%Y-%m-%dT%H%M%S America/New_York\" --date \"now 1 minutes\"`'" 
-#cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '`date +\"%Y-%m-%dT%H%M%S America/New_York\" --date \"now 1 minutes\"`'" >> $OUT
-starttime=$(get_timestamp 60)
+starttime=$(get_timestamp 120)
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '${starttime}'" 
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '${starttime}'" >> $OUT
 if (( $? != 0 )) ; then

@@ -111,7 +111,7 @@ REGISTER_TUNABLE("buffers_per_context", NULL, TUNABLE_INTEGER,
                  NULL);
 REGISTER_TUNABLE("bulk_import_validation_werror",
                  "Treat bulk import input validation warnings as errors. "
-                 "(Default: off)", TUNABLE_BOOLEAN,
+                 "(Default: on)", TUNABLE_BOOLEAN,
                  &gbl_bulk_import_validation_werror, 0, NULL, NULL, NULL,
                  NULL);
 /*
@@ -517,11 +517,14 @@ REGISTER_TUNABLE("set_snapshot_impl",
                  "*without enabling snapshot* (default 'modsnap')",
                  TUNABLE_ENUM, &gbl_snap_impl, READEARLY | READONLY,
                  snapshot_impl_value, NULL, snapshot_impl_update, NULL);
+REGISTER_TUNABLE("use_current_lsn_for_non_snapshot",
+                 "comdb2_snapshot_lsn provide current LSN if not using snapshot isolation. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_use_current_lsn_for_non_snapshot, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_sparse_lockerid_map, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_sparse_lockerid_map, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
@@ -584,7 +587,7 @@ REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN, &gbl_fdb_res
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_push_remote", "Fdb proxy more for reads (OFF turns off writes as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote, NOARG, NULL, NULL, 
                  fdb_push_update, NULL);
-REGISTER_TUNABLE("foreign_db_push_remote_writes", "Fdb proxy mode for writes (ON turns on reads as well). (Default: off)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL,
+REGISTER_TUNABLE("foreign_db_push_remote_writes", "Fdb proxy mode for writes (ON turns on reads as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL,
                  fdb_push_write_update, NULL);
 REGISTER_TUNABLE("foreign_db_push_redirect",
                  "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
@@ -1056,9 +1059,10 @@ REGISTER_TUNABLE("replicate_local",
                  "be needed in the near future. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicate_local, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("replicate_local_concurrent", NULL, TUNABLE_BOOLEAN,
-                 &gbl_replicate_local_concurrent, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+REGISTER_TUNABLE("debug_stall_in_oplog_seed", "Sleep for 10 seconds in truncoplog.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_stall_in_oplog_seed, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("replicate_local_concurrent", NULL, TUNABLE_BOOLEAN, &gbl_replicate_local_concurrent, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("report_deadlock_verbose",
                  "If set, dump the current thread's stack for every deadlock. "
                  "(Default: off)",
@@ -1464,8 +1468,6 @@ REGISTER_TUNABLE("max_time_per_txn_ms", "Set the max time allowed for transactio
                  &gbl_max_time_per_txn_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("print_deadlock_cycles", "Print every Nth deadlock cycle, set to 0 to turn off. (Default: 100)",
                  TUNABLE_INTEGER, &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("always_send_cnonce", "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,
-                 &gbl_always_send_cnonce, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("force_serial_on_writelock",
                  "Disable parallel rep on "
                  "upgrade.  (Default: on)",
@@ -1509,11 +1511,6 @@ REGISTER_TUNABLE("master_req_waitms",
                  "Request master once per this interval.  (Default: 200ms)",
                  TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE(
-    "master_sends_query_effects",
-    "Enables master to send query effects to the replicant. (Default: on)",
-    TUNABLE_BOOLEAN, &gbl_master_sends_query_effects, NOARG | READONLY, NULL,
-    NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
                  "Use req_all if a replicant is behind by "
                  "this amount or more.  (Default: 1048476)",
@@ -1910,6 +1907,8 @@ REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOO
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 200)", TUNABLE_INTEGER,
+                 &gbl_physrep_pollms, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
 REGISTER_TUNABLE("revsql_allow_command_execution",
@@ -2184,6 +2183,9 @@ REGISTER_TUNABLE("abort_on_missing_ufid", "Abort if ufid is not found.  (Default
 REGISTER_TUNABLE("ufid_dbreg_test", "Enable ufid-dbreg test.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_dbreg_test,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_dbreg_lazy_id_sleep", "Sleep in dbreg_lazy_id (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_dbreg_lazy_id_sleep, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("javasp_early_release", "Release javasp-lock before distributed commit.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_javasp_early_release, EXPERIMENTAL | INTERNAL, 
                  NULL, NULL, NULL, NULL);
@@ -2343,6 +2345,12 @@ REGISTER_TUNABLE("sockbplog_sockpool",
 REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_force_non_durable", "Debug tunable which makes all commits not durable.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_force_non_durable, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("hide_non_durable_rcode", "Hide non-durable rcode from clients.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_ignore_final_non_durable_retry, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "lightweight_rename",
     "Replaces the ondisk file rename with an aliasing at llmeta level",
@@ -2373,6 +2381,10 @@ REGISTER_TUNABLE("merge_table_enabled",
                  "Allow syntax create/alter table ... merge ...",
                  TUNABLE_BOOLEAN, &gbl_merge_table_enabled, 0, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("allow_old_authn", "Reuse old successful authentication for the connection",
+                 TUNABLE_BOOLEAN, &gbl_allow_old_authn, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
@@ -2556,8 +2568,9 @@ REGISTER_TUNABLE("iam_dbname",
                  "override dbname for IAM",
                  TUNABLE_STRING, &gbl_iam_dbname, READEARLY | READONLY, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("comdb2_oplog_preserve_seqno", "Preserve max value of the seqno in llmeta", TUNABLE_BOOLEAN, &gbl_comdb2_oplog_preserve_seqno, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("queue_nonodh_scan_limit", "For comdb2_queues, stop queue scan at this depth (Default: 10000)", TUNABLE_INTEGER, &gbl_nonodh_queue_scan_limit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_request_log_req", "Always request the next log record on replicant if there is a gap (default: off)", TUNABLE_BOOLEAN, &gbl_always_request_log_req, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("nudge_replication_when_idle", "If we haven't seen any replication events in a while, request some (default: off)", TUNABLE_BOOLEAN, &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("nudge_replication_when_idle",
+                 "If we haven't seen any replication events in a while, request some (default: 100)", TUNABLE_INTEGER,
+                 &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

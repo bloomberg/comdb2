@@ -238,18 +238,13 @@ static void *watchdog_thread(void *arg)
                     its_bad_slow = 0;
 
                     /* try to create a thread */
-                    rc = pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
+                    Pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
                                         dummy_thread, thedb);
+                    rc = pthread_join(dummy_tid, NULL);
                     if (rc) {
-                        logmsg(LOGMSG_WARN, "watchdog: Can't create thread\n");
+                        logmsg(LOGMSG_WARN,
+                                "watchdog: Can't join thread\n");
                         its_bad_slow = its_bad = 1;
-                    } else {
-                        rc = pthread_join(dummy_tid, NULL);
-                        if (rc) {
-                            logmsg(LOGMSG_WARN,
-                                   "watchdog: Can't join thread\n");
-                            its_bad_slow = its_bad = 1;
-                        }
                     }
 
                     if (!coherent && master > 0 && master != gbl_myhostname) {
@@ -484,31 +479,13 @@ static void *watchdog_watcher_thread(void *arg)
 
 void create_watchdog_thread(struct dbenv *dbenv)
 {
-    int rc;
     pthread_attr_t attr;
 
     Pthread_attr_init(&attr);
     Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-    /* HP needs more stack space to call AttachCurrentThread:
-       http://docs.hp.com/en/JDKJRE60RN/jdk_rnotes_6.0.01.html#CreateJavaVM
-       The docs refer to a different version of java and a different machine,
-       but it still seems to hold true for 1.4 on our hardware.
-
-       DEFAULT_THD_STACKSZ is 512k on HP */
     Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-
-    rc = pthread_create(&dbenv->watchdog_tid, &attr, watchdog_thread, thedb);
-    if (rc)
-        logmsg(LOGMSG_ERROR, "Warning: can't start watchdog_thread thread: rc %d err %s\n",
-               rc, strerror(rc));
-
-    rc = pthread_create(&dbenv->watchdog_watcher_tid, &gbl_pthread_attr,
+    Pthread_create(&dbenv->watchdog_tid, &attr, watchdog_thread, thedb);
+    Pthread_create(&dbenv->watchdog_watcher_tid, &gbl_pthread_attr,
                         watchdog_watcher_thread, thedb);
-    if (rc)
-        logmsg(LOGMSG_ERROR, "Warning: can't start watchdog_watcher_thread thread:"
-               " rc %d err %s\n",
-               rc, strerror(rc));
-
     Pthread_attr_destroy(&attr);
 }

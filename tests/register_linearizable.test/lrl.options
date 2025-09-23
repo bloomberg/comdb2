@@ -95,3 +95,4 @@ init_with_genid48
 #dump_zero_coherency_ts on
 
 verbose_send_cohlease on
+hide_non_durable_rcode 0

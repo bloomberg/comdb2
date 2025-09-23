@@ -3,7 +3,7 @@
 #include <str_util.h>
 #include <logmsg.h>
 
-int gbl_bulk_import_validation_werror = 0;
+int gbl_bulk_import_validation_werror = 1;
 
 enum bulk_import_validation_rc validate_bulk_import_inputs(const char * const dest_tablename, const char * const bulk_import_src_mach,
     const char * const bulk_import_src_dbname, const char * const bulk_import_src_tablename)

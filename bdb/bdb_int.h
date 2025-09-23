@@ -438,6 +438,8 @@ struct tran_tag {
 
     /* Set to 1 if this is a schema change txn */
     int schema_change_txn;
+    /* 1 if this is from a schema change rebuild */
+    int is_sc_rebuild;
     struct tran_tag *sc_parent_tran;
 
     /* Set to 1 if this txn touches a logical live sc table */
@@ -1616,6 +1618,8 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
                                             tran_type *shadow_tran);
 
 unsigned long long get_lowest_genid_for_datafile(int file);
+
+unsigned long long format_genid_for_stripe(unsigned long long genid, int stripe);
 
 uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
 

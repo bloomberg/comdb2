@@ -296,11 +296,6 @@ int comdb2_pthread_create(pthread_t *thread, pthread_attr_t *attr,
         return rc;
     }
 
-    rc = pthread_create(thread, attr, thr_func, arg);
-    if (rc != 0) {
-        comdb2_free(arg->memptr);
-        comdb2_free(arg);
-    }
-
-    return rc;
+    Pthread_create(thread, attr, thr_func, arg);
+    return 0;
 }

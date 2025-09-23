@@ -486,6 +486,37 @@ $cmd "select * from t15 order by a" >> $OUT
 echo $cmd "select * from t16 order by a"
 $cmd "select * from t16 order by a" >> $OUT 2>&1
 
+echo $cmd "delete from t15"
+$cmd "delete from t15"
+if (( $? != 0 )) ; then
+   echo "FAILURE to alter merge"
+   exit 1
+fi
+
+echo $cmd "CREATE TABLE t16_2(a int)"
+$cmd "CREATE TABLE t16_2(a int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table t16_2"
+   exit 1
+fi
+
+echo $cmd "insert into t16_2 values (100), (200)"
+$cmd "insert into t16_2 values (100), (200)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t16_2"
+   exit 1
+fi
+
+echo $cmd "alter table t15 add column c int, merge t16_2"
+$cmd "alter table t15 add column c int, merge t16_2"
+if (( $? != 0 )) ; then
+   echo "FAILURE to alter merge"
+   exit 1
+fi
+
+echo $cmd "select * from t15 order by a"
+$cmd "select * from t15 order by a" >> $OUT
+
 timepart_stats 0
 
 header 16 "Test PARTITION NONE on ALIASED table"

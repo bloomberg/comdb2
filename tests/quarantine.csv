@@ -1,0 +1,23 @@
+# rows are of the form: test,type,ticket
+# do not use spaces
+# type must be one of [FLAKEY/DB_BUG/UNKNOWN]
+sc_inserts,FLAKEY,180387017
+sc_downgrade,DB_BUG,180377358
+sc_transactional_rowlocks_generated,UNKNOWN,180364183
+sc_truncate_lockorder_generated,UNKNOWN,180390150
+reco-ddlk-sql,DB_BUG,180524256
+analyze,UNKNOWN,180528295
+analyze_partial_index_off_generated,UNKNOWN,180528295
+incoherent_slow,UNKNOWN,180565323
+cdb2sql,UNKNOWN,180565576
+logfill_logput_window_generated,UNKNOWN,180717427
+logfill,UNKNOWN,180717427
+comdb2sys,FLAKEY,180779255
+sc_truncate_multiddl_generated,FLAKEY,180779289
+scupdates,DB_BUG,180779427
+insert_lots,FLAKEY,180779489
+incoh_remsql,UNKNOWN,180788122
+incoh_remsql_rte_connect_generated,UNKNOWN,180788122
+cldeadlock,UNKNOWN,180793115
+truncatesc_offline_generated,DB_BUG,180801974
+sc_partial_datacopy_logicalsc_generated,UNKNOWN,180802210

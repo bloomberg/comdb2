@@ -482,8 +482,9 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
 
     if( convMem2ClientDatetimeStr(pMem, tmp, sizeof(tmp), &outdtsz) ){ 
       char *z;
-      sqlite3ErrorWithMsg(pMem->db, SQLITE_CONV_ERROR,
-            "can't convert datetime value to string");
+      if (pMem->db)
+          sqlite3ErrorWithMsg(pMem->db, SQLITE_CONV_ERROR,
+                              "can't convert datetime value to string");
       pMem->n = strlen("conv_error");
       z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
       if( !z ) return SQLITE_NOMEM;

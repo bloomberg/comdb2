@@ -298,11 +298,8 @@ struct connection {
     void route(int dest)
     {
         event_del(&ev);
-        event_assign(&ev, base, dest, EV_WRITE | EV_TIMEOUT, routefd, this);
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 10 * 1000; //10ms
-        event_add(&ev, &timeout);
+        event_assign(&ev, base, dest, EV_WRITE, routefd, this);
+        event_add(&ev, NULL);
     }
     int active()
     {
@@ -437,10 +434,7 @@ static void routefd(int serverfd, short what, void *arg)
     *((int *)CMSG_DATA(cmsgptr)) = clientfd;
 #endif
     ssize_t rc = sendmsg(serverfd, &msg, 0);
-    if (rc == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        return;
-    }
-    if (rc != sizeof(c->protocol)) {
+    if (rc > 0 && rc != sizeof(c->protocol)) {
         syslog(LOG_ERR, "%s:sendmsg fd:%d rc:%zd expected:%zu (%s)\n", __func__, serverfd, rc, sizeof(c->protocol),
                strerror(errno));
         const auto &s = connection_map.find(c->svc);

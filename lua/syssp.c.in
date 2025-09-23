@@ -424,19 +424,16 @@ static int db_comdb_truncate_time(Lua L) {
     return 1;
 }
 
-static int db_send(Lua L) {
+static int _db_process_command(Lua L, char *cmd, const char *colname)
+{
     FILE *f;
     char buf[1024];
     int rownum = 1;
-    char *cmd;
     SP sp = getsp(L);
 
     if (sp) {
         sp->max_num_instructions = 1000000; //allow large number of steps
     }
-
-    if (!lua_isstring(L, 1))
-        return luaL_error(L, "Expected string argument");
 
     if (gbl_uses_password) {
       if (sp && sp->clnt) {
@@ -447,9 +444,6 @@ static int db_send(Lua L) {
           }
       }
     }
-
-    cmd = (char*) lua_tostring(L, -1);
-    lua_settop(L, 0);
 
     lua_createtable(L, 0, 0);
 
@@ -472,7 +466,7 @@ static int db_send(Lua L) {
 
         lua_createtable(L, 0, 1);
 
-        lua_pushstring(L, "out");
+        lua_pushstring(L, colname);
         lua_pushstring(L, buf);
         lua_settable(L, -3);
 
@@ -482,6 +476,53 @@ static int db_send(Lua L) {
 
     return 1;
 }
+
+static int db_send(Lua L)
+{
+    char *cmd;
+
+    if (!lua_isstring(L, 1))
+        return luaL_error(L, "Expected string argument");
+    cmd = (char*) lua_tostring(L, -1);
+    lua_settop(L, 0);
+
+    return _db_process_command(L, cmd, "out");
+}
+
+static int db_unified_cancel(Lua L)
+{
+    const char *type;
+    const char *uuid = NULL;
+    char cmd[256];
+
+    int nargs = lua_gettop(L);
+
+    /* type */
+    if (nargs != 2 || !lua_isstring(L, -2))
+        return luaL_error(L, "Expected string type argument: all|queued|running|cnonce|fp");
+    type = lua_tostring(L, -2);
+    /* check argument combinations */
+    if (strncasecmp(type, "all", sizeof("all")) == 0 ||
+            strncasecmp(type, "running", sizeof("running")) == 0 ||
+            strncasecmp(type, "queued", sizeof("queued")) == 0) {
+            if (!lua_isnil(L, -1))
+                return luaL_error(L, "Extra argument present for type %s", type);
+    } else if (strncasecmp(type, "cnonce", sizeof("cnonce")) == 0 ||
+            strncasecmp(type, "fp", sizeof("fp")) == 0) {
+        if (lua_isnil(L, -1))
+            return luaL_error(L, "Missing uuid for type %s", type);
+        uuid = lua_tostring(L, -1);
+    } else {
+        return luaL_error(L, "Unrecognized cancel type %s", type);
+    }
+
+    lua_settop(L, 0);
+
+    snprintf(cmd, sizeof(cmd), "sql ucancel %s%s%s\n", type, uuid ? " ": "", uuid ? uuid : "");
+
+    return _db_process_command(L, cmd, "result");
+}
+
 static int db_comdb_start_replication(Lua L)
 {
     int rc;
@@ -591,6 +632,7 @@ static const luaL_Reg sys_funcs[] = {
     { "stop_replication", db_comdb_stop_replication },
     { "physrep_tunables", db_comdb_physrep_tunables },
     { "delete_sc_history", db_comdb_delete_sc_history },
+    { "cancel", db_unified_cancel},
     { NULL, NULL }
 }; 
 
@@ -767,6 +809,24 @@ static struct sp_source syssps[] = {
         "  else\n"
         "    db:emit('Failed to delete from sc_history for tablename '..t)\n"
         "  end \n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.cancel",
+        "local function main(cmd, uuid)\n"
+        "    local schema = {\n"
+        "        { 'string', 'result' },\n"
+        "    }\n"
+        "    db:num_columns(table.getn(schema))\n"
+        "    for i, v in ipairs(schema) do\n"
+        "        db:column_name(v[2], i)\n"
+        "        db:column_type(v[1], i)\n"
+        "    end\n"
+        "    local msg = sys.cancel(cmd, uuid)\n"
+        "    for i, v in ipairs(msg) do\n"
+        "        db:emit(v)\n"
+        "    end\n"
         "end\n",
         NULL
     },

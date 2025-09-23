@@ -1,57 +1,57 @@
 Starting
 Inserting rows
 Inserting chunks of 99 rows
-(out='    OSQL_DONE            51')
+(out='    OSQL_DONE_SNAP       51')
 (count(*)=5000)
 Deleting the existing rows
-(out='    OSQL_DONE            52')
+(out='    OSQL_DONE_SNAP       52')
 Inserting chunks of 1 row
-(out='    OSQL_DONE            5052')
+(out='    OSQL_DONE_SNAP       5052')
 (count(*)=5000)
 Deleting the existing rows
-(out='    OSQL_DONE            5053')
+(out='    OSQL_DONE_SNAP       5053')
 Multiple inserts in a transaction chunks of 1
-(out='    OSQL_DONE            5059')
+(out='    OSQL_DONE_SNAP       5059')
 Failure tests
 [commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
-(out='    OSQL_DONE            5059')
+(out='    OSQL_DONE_SNAP       5059')
 [commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
-(out='    OSQL_DONE            5059')
+(out='    OSQL_DONE_SNAP       5059')
 (a=1)
 (a=2)
 (a=3)
 [select * from t order by a limit 3] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
 [commit] failed with rc 299 
-(out='    OSQL_DONE            5059')
+(out='    OSQL_DONE_SNAP       5059')
 (a=1)
 (a=2)
 (a=3)
 [commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
-(out='    OSQL_DONE            5059')
+(out='    OSQL_DONE_SNAP       5059')
 [commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
 (count(*)=6)
-(out='    OSQL_DONE            5059')
+(out='    OSQL_DONE_SNAP       5059')
 [commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
 (a=123456789)
 (count(*)=7)
-(out='    OSQL_DONE            5060')
+(out='    OSQL_DONE_SNAP       5060')
 (rows inserted=994)
-(out='    OSQL_DONE            5560')
+(out='    OSQL_DONE_SNAP       5560')
 (count(*)=502)
-(out='    OSQL_DONE            5611')
+(out='    OSQL_DONE_SNAP       5611')
 (count(*)=0)
 Checking error on wrong default transaction mode
 [begin] failed with rc -3 transaction chunks require SOCKSQL transaction mode
 [delete from t where 1] failed with rc -3 transaction chunks require SOCKSQL transaction mode
 [commit] failed with rc -8 Wrong sql handle state
-(out='    OSQL_DONE            5611')
+(out='    OSQL_DONE_SNAP       5611')
 Checking error on setting wrong transaction mode
 [begin] failed with rc -3 transaction chunks require SOCKSQL transaction mode
 [delete from t where 1] failed with rc -3 transaction chunks require SOCKSQL transaction mode
 [commit] failed with rc -8 Wrong sql handle state
-(out='    OSQL_DONE            5611')
+(out='    OSQL_DONE_SNAP       5611')
 Checking deduping multiple chunk sets
-(out='    OSQL_DONE            501')
+(out='    OSQL_DONE_SNAP       501')
 chunk + indexes on expressions
 (rows inserted=3)
 (COUNT(*)=0)

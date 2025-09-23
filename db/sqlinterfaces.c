@@ -16,33 +16,27 @@
 
 /* code needed to support various comdb2 interfaces to the sql engine */
 
-#include <poll.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <strings.h>
-
+#include <alloca.h>
 #include <errno.h>
-#include <string.h>
-#include <stddef.h>
-#include <pthread.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <inttypes.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
+#include <math.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <time.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <unistd.h>
 
 #include <epochlib.h>
-
 #include <plhash_glue.h>
 #include <segstr.h>
-
 #include <list.h>
-
 #include <sbuf2.h>
 #include <bdb_api.h>
 #include <bdb_int.h>
@@ -55,9 +49,7 @@
 
 #include <cdb2api.h>
 
-#include <sys/time.h>
 #include <strbuf.h>
-#include <math.h>
 
 #include <sqlite3.h>
 #include <sqliteInt.h>
@@ -65,10 +57,7 @@
 
 #include "sql.h"
 #include "sqlinterfaces.h"
-
-#include "locks.h"
 #include "sqloffload.h"
-#include "osqlcomm.h"
 #include "osqlcheckboard.h"
 #include "osqlsqlthr.h"
 #include "osqlshadtbl.h"
@@ -77,7 +66,6 @@
 #include <sqlite3expert.h>
 #include <carray.h>
 
-#include <alloca.h>
 #include <fsnapf.h>
 
 #include "flibc.h"
@@ -86,16 +74,12 @@
 
 #include <ctrace.h>
 #include <bb_oscompat.h>
-#include <netdb.h>
 
 #include "fdb_bend_sql.h"
-#include "fdb_access.h"
-#include "sqllog.h"
 #include <quantize.h>
 #include <str0.h>
 
 #include "debug_switches.h"
-#include "intern_strings.h"
 #include "views.h"
 #include "mem.h"
 #include "comdb2_atomic.h"
@@ -590,6 +574,12 @@ int get_client_retries(struct sqlclntstate *clnt)
 void *get_authdata(struct sqlclntstate *clnt)
 {
     return clnt->plugin.get_authdata(clnt);
+}
+
+void free_authdata(struct sqlclntstate *clnt)
+{
+    if (clnt && clnt->plugin.free_authdata)
+        clnt->plugin.free_authdata(clnt);
 }
 
 static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
@@ -1425,6 +1415,7 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
     if (newstate == SQLENG_WRONG_STATE) {
         logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from state %d file %s line %d.\n",
                clnt->ctrl_sqlengine, file, line);
+        handle_sql_intrans_unrecoverable_error(clnt);
     }
 
     clnt->sqlengine_state_file = file;
@@ -1813,11 +1804,21 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
     return SQLITE_INTERNAL;
 }
 
-void reset_query_effects(struct sqlclntstate *clnt)
+void reset_query_effects(struct sqlclntstate *clnt, int keep_chunk_effects, int preserve_select)
 {
+    int num_selected;
+    if (preserve_select) {
+        num_selected = clnt->effects.num_selected;
+    }
     bzero(&clnt->effects, sizeof(clnt->effects));
     bzero(&clnt->log_effects, sizeof(clnt->effects));
-    bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
+    if (!keep_chunk_effects)
+        bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
+    if (preserve_select) {
+        clnt->effects.num_selected = num_selected;
+    } else {
+        bzero(&clnt->remote_effects, sizeof(clnt->remote_effects));
+    }
 }
 
 char *sqlenginestate_tostr(int state)
@@ -1972,7 +1973,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
     clnt->intrans = 0;
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_ABORTED_STATE);
-    reset_query_effects(clnt);
+    reset_query_effects(clnt, 0, 0);
 }
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
@@ -2040,7 +2041,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     clnt->dbtran.shadow_tran = NULL;
                 }
             } else {
-                reset_query_effects(clnt);
+                reset_query_effects(clnt, 1, 0);
                 rc = recom_abort(clnt);
                 if (rc)
                     logmsg(LOGMSG_ERROR, "%s: recom abort failed %d??\n",
@@ -2091,9 +2092,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                            " converted-rc %d\n",
                                            rc);
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                            rc = has_high_availability(clnt)
-                                     ? CDB2ERR_CHANGENODE
-                                     : SQLHERR_MASTER_TIMEOUT;
+                            rc = has_high_availability(clnt) ? CDB2ERR_NOTDURABLE : SQLHERR_MASTER_TIMEOUT;
                         }
                         irc = trans_abort_shadow(
                             (void **)&clnt->dbtran.shadow_tran, &bdberr);
@@ -2121,15 +2120,13 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         logmsg(LOGMSG_ERROR, "td=%p no-shadow-tran %s line %d, returning %d\n", (void *)pthread_self(),
                                __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                        rc = has_high_availability(clnt)
-                                 ? CDB2ERR_CHANGENODE
-                                 : SQLHERR_MASTER_TIMEOUT;
+                        rc = has_high_availability(clnt) ? CDB2ERR_NOTDURABLE : SQLHERR_MASTER_TIMEOUT;
                         logmsg(LOGMSG_ERROR, "td=%p no-shadow-tran %s line %d, returning %d\n", (void *)pthread_self(),
                                __func__, __LINE__, rc);
                     }
                 }
             } else {
-                reset_query_effects(clnt);
+                reset_query_effects(clnt, 1, 0);
                 if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
                     rc = serial_abort(clnt);
                 } else {
@@ -2251,7 +2248,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     clnt->saved_errstr = strdup(clnt->osql.xerr.errstr);
                 }
             } else {
-                reset_query_effects(clnt);
+                reset_query_effects(clnt, 1, 0);
                 rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                 sql_debug_logf(clnt, __func__, __LINE__,
                                "'%s' socksql abort rc=%d replay=%d\n",
@@ -2391,7 +2388,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry.
              */
-            write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
+            if (clnt->continued_on_chunk_verify_error && clnt->saved_rc && clnt->saved_errstr)
+                write_response(clnt, RESPONSE_ERROR, clnt->saved_errstr, clnt->saved_rc);
+            else
+                write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
         }
 
         outrc = SQLITE_OK; /* the happy case */
@@ -2835,9 +2835,6 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* debug */
     thr_set_current_sql(clnt->sql);
 
-    /* debug */
-    clnt->debug_sqlclntstate = pthread_self();
-
     clnt->nrows = 0;
 
     /* berkdb stats */
@@ -3012,7 +3009,7 @@ static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
 static int handle_bad_engine(struct sqlclntstate *clnt)
 {
     logmsg(LOGMSG_ERROR, "unable to obtain sql engine\n");
-    send_run_error(clnt, "Client api should change nodes", CDB2ERR_CHANGENODE);
+    send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
     clnt->query_rc = -1;
     return -1;
 }
@@ -3903,7 +3900,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if (clnt->intrans == 0) {
-        reset_query_effects(clnt);
+        /* is this is a begin; select; ... txn ? */
+        reset_query_effects(clnt, 0, clnt->ctrl_sqlengine == SQLENG_STRT_STATE);
     }
 
     /* no rows actually ? */
@@ -4144,8 +4142,9 @@ retry_legacy_remote:
             break;
         }
 
-        if (clnt->statement_query_effects)
-            reset_query_effects(clnt);
+        if (clnt->statement_query_effects) {
+            reset_query_effects(clnt, 0, 0);
+        }
 
         int fast_error = 0;
 
@@ -4242,7 +4241,6 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
-    clnt->debug_sqlclntstate = pthread_self();
     struct sql_thread *sqlthd;
     if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
         sqlthd->clnt = clnt;
@@ -4448,7 +4446,13 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->deque_timeus = comdb2_time_epochus();
     clnt->thd = thd;
     /* Reset the cancel-statement flag */
-    thd->sqlthd->stop_this_statement = 0;
+    if (clnt->discard_this) {
+        thd->sqlthd->stop_this_statement = 1;
+        clnt->discard_this = 0;
+    } else
+        thd->sqlthd->stop_this_statement = 0;
+
+    clnt->discard_this = 0;
     sql_update_usertran_state(clnt);
 
     rdlock_schema_lk();
@@ -4706,7 +4710,11 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     sqlthd->clnt = clnt;
     clnt->thd = thd;
     /* Reset the cancel-statement flag */
-    sqlthd->stop_this_statement = 0;
+    if (clnt->discard_this) {
+        thd->sqlthd->stop_this_statement = 1;
+        clnt->discard_this = 0;
+    } else 
+        thd->sqlthd->stop_this_statement = 0;
 
     thr_set_user("appsock", (intptr_t)clnt->appsock_id);
 
@@ -4723,25 +4731,18 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     assert(clnt->dbtran.pStmt == NULL);
 
-    int is_legacy_request = 0;
-    if (strstr(clnt->sql, "comdb2_legacy"))
-        is_legacy_request = 1;
-
-    if (!is_legacy_request) {
-        /* everything going in is cursor based */
-        int rc = get_curtran(thedb->bdb_env, clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc=%d!\n", __func__, (void *)pthread_self(),
-                    rc);
-            send_run_error(clnt, "Client api should change nodes",
-                    CDB2ERR_CHANGENODE);
-            clnt->query_rc = -1;
-            clnt->osql.timings.query_finished = osql_log_time();
-            osql_log_time_done(clnt);
-            clnt_change_state(clnt, CONNECTION_IDLE);
-            signal_clnt_as_done(clnt);
-            return;
-        }
+    /* everything going in is cursor based */
+    int rc = get_curtran(thedb->bdb_env, clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc=%d!\n", __func__, (void *)pthread_self(),
+               rc);
+        send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
+        clnt->query_rc = -1;
+        clnt->osql.timings.query_finished = osql_log_time();
+        osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
+        signal_clnt_as_done(clnt);
+        return;
     }
 
     /* it is a new query, it is time to clean the error */
@@ -4761,8 +4762,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* actually execute the query */
     thrman_setfd(thd->thr_self, get_fileno(clnt));
 
-    if (!is_legacy_request)
-        osql_shadtbl_begin_query(thedb->bdb_env, clnt);
+    osql_shadtbl_begin_query(thedb->bdb_env, clnt);
 
     if (clnt->fdb_state.remote_sql_sb) {
         clnt->query_rc = execute_sql_query_offload(thd, clnt);
@@ -4776,8 +4776,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         put_ref(&clnt->sql_ref);
     }
 
-    if (!is_legacy_request)
-        osql_shadtbl_done_query(thedb->bdb_env, clnt);
+    osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
 
     /* this is a compromise; we release the curtran here, even though
@@ -4785,11 +4784,8 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
        any query inside the begin/commit will be performed under its
        own locker id;
     */
-    if (!is_legacy_request) {
-        if (put_curtran(thedb->bdb_env, clnt)) {
-            logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                    __func__);
-        }
+    if (put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n", __func__);
     }
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
@@ -5161,11 +5157,25 @@ void free_client_adj_col_names(struct sqlclntstate *clnt)
     clnt->num_adjusted_column_name_length = 0;
 }
 
+void _free_set_commands(struct sqlclntstate *clnt)
+{
+    int i;
+    if (clnt->n_set_commands > 0) {
+        for (i = 0; i < clnt->n_set_commands; i++) {
+            free(clnt->set_commands[i]);
+        }
+        free(clnt->set_commands);
+        clnt->n_set_commands = 0;
+        clnt->set_commands = NULL;
+    }
+}
+
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(clnt);
     }
+    _free_set_commands(clnt);
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
@@ -5241,7 +5251,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     clear_session_tbls(clnt);
-    free(clnt->authdata);
+    free_authdata(clnt);
     clnt->authdata = NULL;
 
     free_client_adj_col_names(clnt);
@@ -5268,11 +5278,22 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
 
     reset_authz_hash(clnt, 1);
-
 }
 
 int gbl_unexpected_last_type_warn = 1;
 int gbl_unexpected_last_type_abort = 0;
+
+int cdb2_in_client_trans() {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL)
+        return 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt == NULL)
+        return 0;
+
+    return clnt->in_client_trans;
+}
 
 void reset_clnt(struct sqlclntstate *clnt, int initial)
 {
@@ -5337,7 +5358,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->limits.tablescans_warn = gbl_querylimits_tablescans_warn;
     clnt->limits.temptables_warn = gbl_querylimits_temptables_warn;
 
-    reset_query_effects(clnt);
+    reset_query_effects(clnt, 0, 0);
 
     reset_user(clnt);
 
@@ -5359,6 +5380,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     bzero(&clnt->dbtran, sizeof(dbtran_type));
 
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
+    clnt->dbtran.throttle_txn_chunks_msec = 0;
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
     clnt->statement_timedout = 0;
@@ -5427,7 +5449,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     }
     free(clnt->context);
     if (clnt->authdata) {
-        free(clnt->authdata);
+        free_authdata(clnt);
         clnt->authdata = NULL;
     }
     clnt->context = NULL;
@@ -5449,6 +5471,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
     clnt->netwaitus = 0;
+    clnt->set_continue_on_chunk_verify_error = 0;
+    clnt->continued_on_chunk_verify_error = 0;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
@@ -5460,15 +5484,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         clnt->modsnap_registration = NULL;
     }
     bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
-    if (clnt->n_set_commands) {
-        int i;
-        for (i = 0; i < clnt->n_set_commands; i++) {
-            free(clnt->set_commands[i]);
-        }
-        free(clnt->set_commands);
-        clnt->n_set_commands = 0;
-        clnt->set_commands = NULL;
-    }
+    _free_set_commands(clnt);
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5576,229 +5592,7 @@ static int recover_deadlock_sbuf(struct sqlclntstate *clnt)
     return 1;
 }
 
-int sql_write_sbuf(SBUF2 *sb, const char *buf, int nbytes)
-{
-    ssize_t nwrite, written = 0;
-    struct sqlclntstate *clnt = sbuf2getclnt(sb);
-    int retry = -1;
-    int released_locks = 0;
-
-retry:
-    retry++;
-    while (written < nbytes) {
-        struct pollfd pd;
-        pd.fd = sbuf2fileno(sb);
-        pd.events = POLLOUT;
-        errno = 0;
-        int rc = poll(&pd, 1, 100);
-
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                goto retry;
-            return -1;
-        }
-        if (rc == 0) {
-            if ((gbl_sql_release_locks_on_slow_reader &&
-                 (!released_locks ||
-                  bdb_curtran_has_waiters(thedb->bdb_env,
-                                          clnt->dbtran.cursor_tran))) ||
-                bdb_lock_desired(thedb->bdb_env)) {
-                rc = recover_deadlock_sbuf(clnt);
-                if (rc == 0)
-                    released_locks = 1;
-            }
-
-#ifdef _SUN_SOURCE
-            if (gbl_flush_check_active_peer) {
-                /* On Solaris, we end up with sockets with
-                 * no peer, on which poll cheerfully returns
-                 * no events. So after several retries check if
-                 * still connected. */
-                if (retry % 10 == 0) {
-                    /* if we retried for a second, see if
-                     * the connection is still around.
-                     */
-                    struct sockaddr_in peeraddr;
-                    socklen_t len = sizeof(peeraddr);
-                    rc = getpeername(pd.fd, (struct sockaddr *)&peeraddr, &len);
-                    if (rc == -1 && errno == ENOTCONN) {
-                        ctrace("fd %d disconnected\n", pd.fd);
-                        return -1;
-                    }
-                }
-            }
-#endif
-            (void)retry;
-            goto retry;
-        }
-        if (pd.revents & POLLOUT) {
-            /* I dislike this code in this layer - it should be in net. */
-            nwrite = sbuf2unbufferedwrite(sb, &buf[written], nbytes - written);
-            if (nwrite < 0)
-                return -1;
-            written += nwrite;
-        } else if (pd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            return -1;
-        }
-    }
-    return written;
-}
-
 pthread_mutex_t gbl_sql_lock;
-
-/* Write sql interface.  This will replace sqlnet.c */
-
-/* don't let connections get more than this much memory */
-static int alloc_lim = 1024 * 1024 * 8;
-
-/* any state associated with a connection (including open db handles)
-   needs to be stored here.  everything is cleaned up on end of thread
-   in destroy_sqlconn */
-struct sqlconn {
-    pthread_t tid;
-    SBUF2 *sb;
-    hash_t *handles;
-    sqlite3 *db;
-    int reqsz;
-
-    struct statement_handle *last_handle;
-
-    /* all reads are done to this buffer */
-    char *buf;
-    int bufsz;
-
-    /* for debugging/stats: current state and timestamp when it was entered */
-    char *state;
-    int tm;
-
-    LINKC_T(struct sqlconn) lnk;
-};
-
-static int write_str(struct sqlconn *conn, char *err);
-
-static void conn_set_state(struct sqlconn *conn, char *state)
-{
-    conn->state = state;
-    conn->tm = time(NULL);
-}
-
-static void conn_alloc(struct sqlconn *conn, int sz)
-{
-    if (conn->bufsz >= sz)
-        return;
-    conn->bufsz = sz;
-    conn->buf = realloc(conn->buf, conn->bufsz);
-}
-
-/* handles are always a per-connection deal, and a connection
-   always has a dedicated thread, so no need to lock around
-   handles */
-typedef unsigned long long handle_tp;
-enum req_code {
-    REQ_EOF = -2,
-    REQ_INVALID = -1,
-    REQ_CONNECT = 0,
-    REQ_PREPARE = 1,
-    REQ_VERSION = 2,
-    REQ_CHANGES = 3,
-    REQ_FINALIZE = 4,
-    REQ_STEP = 5,
-    REQ_RESET = 6
-};
-
-/* request and responses go back in this format */
-struct reqhdr {
-    int rq;
-    int followlen;
-};
-
-/* column for results coming back */
-
-struct statement_handle {
-    /* context: need to swap these when switching between handles */
-    struct sqlthdstate sqlstate;
-    struct sqlclntstate clnt;
-
-    handle_tp hid;
-    sqlite3_stmt *p;
-    int *types;
-};
-
-static void switch_context(struct sqlconn *conn, struct statement_handle *h)
-{
-    return;
-
-#if 0
-    struct sql_thread *thd;
-    int i;
-    sqlite3 *db;
-    /* don't do anything if we are working with the same statemtn as last time */
-    if (conn->last_handle == h)
-        return;
-
-    conn->last_handle = h;
-
-    thd = pthread_getspecific(query_info_key);
-    h->sqlstate.sqlthd = thd;
-    h->clnt.debug_sqlclntstate = pthread_self();
-
-
-    db = conn->db;
-    /* reset client handle - we need one per statement */
-    for (i = 0; i < db->nDb; i++) {
-         if (db->aDb[i].pBt) {
-            db->aDb[i].pBt->clnt = &h->clnt;
-         }
-    }
-#endif
-}
-
-#if 0
-static int closehndl(void *obj, void *arg) {
-    struct sqlconn *conn;
-    struct statement_handle *h;
-
-    conn = (struct sqlconn*) arg;
-    h = (struct statement_handle*) obj;
-
-    sqlite3_finalize(h->p);
-    free(h);
-}
-#endif
-
-/* read request from connection, write to connection's buffer. return request
- * type */
-static enum req_code read_req(struct sqlconn *conn)
-{
-    struct reqhdr rq;
-    int rc;
-
-    conn->reqsz = 0;
-
-    /* header */
-    rc = sbuf2fread((char *)&rq, sizeof(struct reqhdr), 1, conn->sb);
-    if (rc == 0)
-        return REQ_EOF;
-
-    if (rc != 1)
-        return REQ_INVALID;
-
-    rq.rq = ntohl(rq.rq);
-    rq.followlen = ntohl(rq.followlen);
-
-    /* sanity check buffer size required */
-    if (rq.followlen < 0 || rq.followlen > alloc_lim)
-        return REQ_INVALID;
-
-    conn_alloc(conn, rq.followlen);
-
-    conn->reqsz = rq.followlen;
-    rc = sbuf2fread((char *)conn->buf, rq.followlen, 1, conn->sb);
-    if (rc != 1)
-        return REQ_INVALID;
-
-    return rq.rq;
-}
 
 /* Called when a query is done, while all the cursors are still open.  Traverses
    the list of cursors and saves the query path and cost. */
@@ -6451,7 +6245,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return SQLHERR_MASTER_TIMEOUT;
 
     case ERR_NOT_DURABLE:
-        return CDB2ERR_CHANGENODE;
+        return CDB2ERR_NOTDURABLE;
 
     case ERR_CHECK_CONSTRAINT + ERR_BLOCK_FAILED:
         return CDB2ERR_CHECK_CONSTRAINT;
@@ -6479,7 +6273,7 @@ int sqlserver2sqlclient_error(int rc)
     case SQLITE_TRANTOOCOMPLEX:
         return SQLHERR_ROLLBACKTOOLARGE;
     case SQLITE_CLIENT_CHANGENODE:
-        return CDB2ERR_CHANGENODE;
+        return CDB2ERR_NOTDURABLE;
     case SQLITE_TRAN_CANCELLED:
         return SQLHERR_ROLLBACK_TOOOLD;
     case SQLITE_TRAN_NOLOG:
@@ -6701,7 +6495,8 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
         c->common_name = c->common_name_str;
     }
     Pthread_mutex_lock(&clnt->state_lk);
-    if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
+    if ((clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) &&
+         clnt->osql.replay == OSQL_RETRY_NONE /* a replaying clnt won't have a clnt->sql */) {
         char zFingerprint[FINGERPRINTSZ * 2 + 1];
         util_tohex(zFingerprint, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
         c->sql = strdup(clnt->sql);
@@ -6713,6 +6508,11 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->in_transaction = clnt->in_client_trans;
     c->in_local_cache = clnt->in_local_cache;
     Pthread_mutex_unlock(&clnt->state_lk);
+    uuidstr_t us;
+    comdb2uuidstr(clnt->unifieduuid, us);
+    c->uuid = malloc(strlen(us) + 1);
+    snprintf(c->uuid, strlen(us) + 1, "%s", us);
+    c->is_canceled = clnt->discard_this;
 }
 
 static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)
@@ -6742,11 +6542,38 @@ void free_connection_info(struct connection_info *info, int num_connections)
 {
     if (info == NULL) return;
     for (int i = 0; i < num_connections; i++) {
-        if (info[i].sql) free(info[i].sql);
-        if (info[i].fingerprint) free(info[i].fingerprint);
+        free(info[i].sql);
+        free(info[i].fingerprint);
+        free(info[i].uuid);
         /* state is static, don't free */
     }
     free(info);
+}
+
+void cancel_connections(int only_queued, uuid_t filter_fp)
+{
+    struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
+        if (!comdb2uuid_is_zero(filter_fp)) {
+            if (!comdb2uuidcmp(filter_fp, clnt->unifieduuid)) {
+                clnt->discard_this = 1;
+                fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+            }
+        } else {
+            if (only_queued) {
+                if (clnt->state == CONNECTION_QUEUED) {
+                    clnt->discard_this = 1;
+                    fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+                }
+            } else if (clnt->state == CONNECTION_RUNNING ||
+                    clnt->state == CONNECTION_QUEUED) {
+                clnt->discard_this = 1;
+                fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+            }
+        }
+    }
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
 void reqlog_long_running_sql_statements(void)
@@ -6830,13 +6657,19 @@ static int close_lru_evbuffer(struct sqlclntstate *self)
     return ret;
 }
 
-int check_appsock_limit(int pending)
+int get_max_appsocks_limit(void)
+{
+    return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+}
+
+int check_appsock_limit(int pending, int is_admin)
 {
     ++total_appsock_conns;
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
     int current = pending + ATOMIC_ADD32(active_appsock_conns, 1);
     time_metric_add(thedb->connections, current);
+    if (is_admin) return 0;
     if (warn > max) warn = max;
     if (current <= warn) return 0;
     if (current > max) {
@@ -6863,9 +6696,8 @@ int check_appsock_limit(int pending)
     return 0;
 }
 
-void rem_appsock_connection_evbuffer(struct sqlclntstate *clnt)
+void rem_appsock_connection_evbuffer(void)
 {
-    if (clnt->admin) return;
     ATOMIC_ADD32(active_appsock_conns, -1);
 }
 
@@ -6999,6 +6831,10 @@ void *internal_get_authdata(struct sqlclntstate *a)
     if (a->authdata)
         return a->authdata;
     return NULL;
+}
+int internal_free_authdata(struct sqlclntstate *a)
+{
+    return 0;
 }
 static int internal_local_check(struct sqlclntstate *a)
 {

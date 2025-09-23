@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+export stopfile=./stopfile.txt
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+function timeout_to_seconds
+{
+    local mtimeout=${TEST_TIMEOUT%m}
+    echo $(( mtimeout * 60 ))
+}
+
+function reads_follows_writes_sc
+{
+    local tblnum=0
+
+    while [[ ! -f $stopfile ]]; do
+        t=t$tblnum
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table $t(a int)"
+        r=$?
+        if [[ "$r" -ne 0 ]]; then
+            touch $stopfile
+            failexit "create table $t failed"
+        fi
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $t values(1)"
+        r=$?
+        if [[ "$r" -ne 0 ]]; then
+            touch $stopfile
+            failexit "insert into table $t failed"
+        fi
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table $t"
+        r=$?
+        if [[ "$r" -ne 0 ]]; then
+            touch $stopfile
+            failexit "drop table $t failed"
+        fi
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $t values(1)"
+        r=$?
+        if [[ "$r" -eq 0 ]]; then
+            touch $stopfile
+            failexit "insert into table $t succeeded after drop"
+        fi
+        tblnum=$(( tblnum + 1 ))
+    done
+}
+
+function run_test
+{
+    local testlength=$(timeout_to_seconds)
+    local mylength=$(( testlength - 60 ))
+    local now=$(date +%s)
+    local end=$(( now + mylength ))
+    local failed=0
+
+    rm -Rf $stopfile >/dev/null 2>&1
+
+    reads_follows_writes_sc &
+
+    while [[ $(date +%s) -lt $end && ! -f $stopfile ]]; do
+        #echo "Test still running"
+        sleep 5
+    done
+
+    if [[ -f $stopfile ]]; then
+        echo "Testcase failed"
+        failed=1
+    fi
+
+    touch $stopfile
+    wait
+
+    if [[ $failed -ne 0 ]]; then
+        failexit "Testcase failed"
+    fi
+}
+
+run_test
+echo "Success"

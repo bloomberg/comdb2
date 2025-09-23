@@ -68,6 +68,7 @@ or to run a subset of tests:
    fi
 
    for testreq in `ls t*.req` ; do
+     testname=`echo $testreq | cut -d "." -f 1`
      cmd="`cdb2sql` ${CDB2_OPTIONS} -f $testreq $dbname default > $testname.output 2>&1"
      $cmd
      cmd="diff $testname.expected $testname.output >/dev/null"
@@ -130,7 +131,7 @@ Variable | Description
 --- | ---
 `TESTID`        | Randomly generated; all output will go into `test_${TESTID}`
 `TESTDIR`       | `Path/to/source/tests/test_${TESTID}`<br>You can have the db run in a directory of your choosing by passing `TESTDIR=/tmp/somedirfortest` to `make`, ex: <br>`make testname TESTCASE=/tmp/somedirfortest`
-`TESTCASE`      | Name of the testcase currently running.  You can assume `${TESTDIR}/${TESTCASE}.test/ is where your files are.`
+`TESTCASE`      | Name of the testcase currently running.  You can assume `${TESTDIR}/${TESTCASE}.test/` is where your files are.
 `DBNAME`        | Name of the database used for the testcase: name of testcase with `$TESTID` appended to the end.
 `DBDIR`         | Database files directory
 `CDB2_OPTIONS`  | Option that `runit` has to pass to ``cdb2sql``

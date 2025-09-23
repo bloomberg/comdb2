@@ -99,7 +99,7 @@ void bdb_detect(void *_bdb_state)
     dbenv = bdb_state->dbenv;
     pthread_t t;
     extern pthread_attr_t gbl_pthread_attr_detached;
-    pthread_create(&t, &gbl_pthread_attr_detached, detect, NULL);
+    Pthread_create(&t, &gbl_pthread_attr_detached, detect, NULL);
 }
 
 void bdb_locker_summary(void *_bdb_state)
@@ -202,7 +202,7 @@ static void test_same_lock(db_lockmode_t mode)
         arg[i].num_obj = 1;
         arg[i].mode = mode;
         arg[i].tid = i;
-        pthread_create(&t[i], &locktest_attr, test_lockmgr, &arg[i]);
+        Pthread_create(&t[i], &locktest_attr, test_lockmgr, &arg[i]);
     }
     fail = 0;
     for (i = 0; i < THDS; ++i) {
@@ -254,7 +254,7 @@ static void test_n_locks(const int n, db_lockmode_t mode)
         arg->tid = i;
 
         for (j = 0; j < THD_GRPS; ++j) {
-            pthread_create(&t[i++], &locktest_attr, test_lockmgr, arg);
+            Pthread_create(&t[i++], &locktest_attr, test_lockmgr, arg);
         }
     }
     fail = 0;
@@ -296,7 +296,7 @@ static void test_diff_lock(db_lockmode_t mode)
         arg->mode = mode;
         arg->num_obj = 1;
         arg->tid = i;
-        pthread_create(&t[i], &locktest_attr, test_lockmgr, arg);
+        Pthread_create(&t[i], &locktest_attr, test_lockmgr, arg);
     }
     fail = 0;
     for (i = 0; i < THDS; ++i) {
@@ -359,7 +359,7 @@ static void test_lock_per_sec(db_lockmode_t mode)
     pthread_t t;
     ssize_t *rc;
     stop = 0;
-    pthread_create(&t, &locktest_attr, test_get_put, (void *)mode);
+    Pthread_create(&t, &locktest_attr, test_get_put, (void *)mode);
     sleep(sleep_sec);
     stop = 1;
     pthread_join(t, (void **)&rc);
@@ -598,7 +598,7 @@ static ssize_t tester(const char *name, size_t num, tester_routine *routine)
     for (i = 0; i < num; ++i) {
         arg[i].id = i;
         arg[i].num = num;
-        pthread_create(&t[i], &locktest_attr, routine, &arg[i]);
+        Pthread_create(&t[i], &locktest_attr, routine, &arg[i]);
     }
     for (i = 0; i < num; ++i) {
         pthread_join(t[i], (void **)&ret[i]);
@@ -715,7 +715,7 @@ static void get_locks_wrapper(int argc, GetLocksArg argv[])
     int i;
 
     for (i = 0; i < argc; ++i) {
-        pthread_create(&t[i], &locktest_attr, get_locks, &argv[i]);
+        Pthread_create(&t[i], &locktest_attr, get_locks, &argv[i]);
     }
     for (i = 0; i < argc; ++i) {
         pthread_join(t[i], (void **)&rc[i]);
@@ -915,7 +915,7 @@ static void locvec_test()
     int i;
     pthread_t t[20];
     for (i = 0; i < arraylen(t); ++i) {
-        pthread_create(&t[i], NULL, lockvec, NULL);
+        Pthread_create(&t[i], NULL, lockvec, NULL);
     }
     void *ret;
     for (i = 0; i < arraylen(t); ++i) {
@@ -997,7 +997,7 @@ void bdb_locktest(void *_bdb_state)
     void *ret;
     pthread_t t;
     uint64_t before = gettimeofday_ms();
-    pthread_create(&t, NULL, locktest, io_override_get_std());
+    Pthread_create(&t, NULL, locktest, io_override_get_std());
     pthread_join(t, &ret);
     Pthread_attr_destroy(&locktest_attr);
     uint64_t after = gettimeofday_ms();

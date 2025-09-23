@@ -982,6 +982,8 @@ Test ALTER table MERGE
 (a=100)
 (a=200)
 [select * from t16 order by a] failed with rc -3 no such table: t16
+(a=100, c=NULL)
+(a=200, c=NULL)
 cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
 [
  {

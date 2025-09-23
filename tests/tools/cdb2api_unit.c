@@ -194,6 +194,8 @@ void test_read_comdb2db_cfg()
     int num_db_hosts = 0;
     int dbnum = 0;
     int stack_at_open = 0;
+    char shards[10][DBNAME_LEN];
+    int num_shards = 0;
 
     const char *buf = 
 "\
@@ -206,17 +208,20 @@ void test_read_comdb2db_cfg()
                       buf, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &stack_at_open);
+                      &dbnum, &stack_at_open,
+                      shards, &num_shards);
 
     assert(num_hosts == 0);
     assert(comdb2db_num == 0);
     assert(num_db_hosts == 0);
     assert(dbnum == 0);
+    assert(num_shards == 0);
 
     const char *buf2 = 
 "\n\
   comdb2dbnm:a,b,c:d:e  \n\
   mydb:n1,n2,n3:n4:n5,n6    \n\
+  partition mydb:mydb1,mydb2,mydb3,mydb4    \n\
   comdb2_config:default_type:testsuite  \n\
   comdb2_config:portmuxport=12345   \n\
   comdb2_config:allow_pmux_route:true   \
@@ -226,7 +231,8 @@ void test_read_comdb2db_cfg()
                       buf2, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &stack_at_open);
+                      &dbnum, &stack_at_open,
+                      shards, &num_shards);
 
     assert(num_hosts == 5);
     assert(comdb2db_num == 0);
@@ -247,12 +253,21 @@ void test_read_comdb2db_cfg()
     assert(dbnum == 0);
     assert(12345 == CDB2_PORTMUXPORT);
 
+    assert(num_shards == 4);
+    assert(strcmp(shards[0], "mydb1") == 0);
+    assert(strcmp(shards[1], "mydb2") == 0);
+    assert(strcmp(shards[2], "mydb3") == 0);
+    assert(strcmp(shards[3], "mydb4") == 0);
+
     // test with buf3 which provokes buffer overflow in cdb2api
+    // make sure cannot use mydb as shard name (will be ignored)
     num_hosts = 0;
     num_db_hosts = 0;
+    num_shards = 0;
     const char *buf3 = "\
   comdb2dbnm:test_short_hostname,test_long_hostname_xf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00f,test_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncated   \n\
   mydb:test_short_hostname,test_long_hostname_xf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00f,test_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncated   \n\
+  partition mydb:test_short_shard,mydb,test_long_shard_xf00fxf00fxf00f,test_overflow_shard_extra_text_is_truncated    \n\
   comdb2_config:default_type:test_overflow_when_assigning_the_default_type_extra_text_is_truncated   \n\
   comdb2_config:room:test_overflow_when_assigning_the_room_extra_text_is_truncated   \n\
   comdb2_config:comdb2dbname:test_overflow_when_assigning_the_dbname_extra_text_is_truncated   \n\
@@ -262,7 +277,8 @@ void test_read_comdb2db_cfg()
                       buf3, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &stack_at_open);
+                      &dbnum, &stack_at_open,
+                      shards, &num_shards);
 
     assert(num_db_hosts == 3);
     assert(num_hosts == 3);
@@ -276,6 +292,11 @@ void test_read_comdb2db_cfg()
     assert(strcmp(cdb2_machine_room, "test_overflow_w") == 0);
     assert(strcmp(cdb2_comdb2dbname, "test_overflow_when_assigning_th") == 0);
     assert(strcmp(cdb2_dnssuffix, "test_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is") == 0);
+
+    assert(num_shards == 3);
+    assert(strcmp(shards[0], "test_short_shard") == 0);
+    assert(strcmp(shards[1], "test_long_shard_xf00fxf00fxf00f") == 0);
+    assert(strcmp(shards[2], "test_overflow_shard_extra_text_is_truncated") == 0);
 }
 
 

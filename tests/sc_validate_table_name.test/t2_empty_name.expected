@@ -1,0 +1,2 @@
+[create table "" (i int)] failed with rc -3 Table name cannot be empty. length=0 name=''
+[create table "" { schema { int i } }] failed with rc -3 Table name cannot be empty. length=0 name=''

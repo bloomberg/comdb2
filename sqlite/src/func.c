@@ -1117,6 +1117,35 @@ static void comdb2UserFunc(
                       SQLITE_STATIC);
 }
 
+int gbl_use_current_lsn_for_non_snapshot = 0;
+
+static void comdb2SnapshotLsnFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  struct sqlclntstate *clnt = get_sql_clnt();
+  char lsn[MAX_LSN_STR];
+  int sz = 0;
+  if (clnt != NULL && clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+    sz = snprintf(lsn, sizeof(lsn), "{%d:%d}",
+             clnt->modsnap_start_lsn_file,
+             clnt->modsnap_start_lsn_offset);
+  } else if (gbl_use_current_lsn_for_non_snapshot) {
+    DB_LSN curlsn;
+    __log_txn_lsn(thedb->bdb_env->dbenv, &curlsn, NULL, NULL);
+    sz = snprintf(lsn, sizeof(lsn), "{%d:%d}", curlsn.file, curlsn.offset);
+  } else {
+    sqlite3_result_null(context);
+    return;
+  }
+
+  assert(sz < sizeof(lsn));
+  (void)sz; // suppress unused variable warning
+  sqlite3_result_text(context, lsn, -1, SQLITE_TRANSIENT);
+}
+
 /* The code below is based on the example presented here: https://www.zlib.net/zpipe.c */
 
 #define CHUNK 32768
@@ -3062,6 +3091,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
     FUNCTION(comdb2_last_cost,      0, 0, 0, comdb2LastCostFunc),
+    FUNCTION(comdb2_snapshot_lsn,   0, 0, 0, comdb2SnapshotLsnFunc),
     FUNCTION(checksum_md5,          1, 0, 0, md5Func),
     FUNCTION(compress,              1, 0, 0, compressFunc),
     FUNCTION(uncompress,            1, 0, 0, uncompressFunc),

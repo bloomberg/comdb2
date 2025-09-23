@@ -141,12 +141,13 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_query_preparer.h"
 #include <net_appsock.h>
 #include "sc_csc2.h"
+#include "sc_util.h"
 #include "reverse_conn.h"
 #include "alias.h"
 #include "str_util.h" /* QUOTE */
 #include "machcache.h"
-#include "importdata.pb-c.h"
 #include "gen_shard.h"
+
 #define tokdup strndup
 
 char * gbl_file_copier = "scp";
@@ -235,6 +236,7 @@ int gbl_uses_password;
 int gbl_unauth_tag_access = 0;
 int64_t gbl_num_auth_allowed = 0;
 int64_t gbl_num_auth_denied = 0;
+int gbl_allow_old_authn = 1;
 int gbl_uses_externalauth = 0;
 int gbl_uses_externalauth_connect = 0;
 int gbl_externalauth_warn = 0;
@@ -2875,6 +2877,20 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
                    dbenv->envname, ii);
         }
 
+        const char *error = NULL;
+        if (validate_table_name(db->tablename, strlen(db->tablename),
+                                /*check_for_illegal_chars=*/1, &error) != 0) {
+          have_bad_schema = 1;
+
+          if (error) {
+            logmsg(LOGMSG_FATAL, "%s\n", error);
+            free((void *)error);
+          } else {
+            logmsg(LOGMSG_FATAL, "Table name is not valid. name='%s'\n",
+                   db->tablename);
+          }
+        }
+
         if (db->nix > MAXINDEX) {
             have_bad_schema = 1;
             logmsg(LOGMSG_FATAL, "Database %s has too many indexes (%d)\n",
@@ -4538,23 +4554,14 @@ static void ttrap(struct timer_parm *parm)
 
 void create_old_blkseq_thread(struct dbenv *dbenv)
 {
-    int rc;
-
     if (!dbenv->purge_old_blkseq_is_running) {
-        rc = pthread_create(&dbenv->purge_old_blkseq_tid, &gbl_pthread_attr,
+        Pthread_create(&dbenv->purge_old_blkseq_tid, &gbl_pthread_attr,
                             purge_old_blkseq_thread, thedb);
-        if (rc)
-            logmsg(LOGMSG_WARN, 
-                "Warning: can't start purge_old_blkseq thread: rc %d err %s\n",
-                rc, strerror(rc));
     }
 
     if (!dbenv->purge_old_files_is_running && !gbl_is_physical_replicant) {
-        rc = pthread_create(&dbenv->purge_old_files_tid, &gbl_pthread_attr,
+        Pthread_create(&dbenv->purge_old_files_tid, &gbl_pthread_attr,
                             purge_old_files_thread, thedb);
-        if (rc)
-            logmsg(LOGMSG_WARN, "Warning: can't start purge_oldfiles thread: rc %d err %s\n",
-                   rc, strerror(rc));
     }
 }
 
@@ -4699,11 +4706,10 @@ void *statthd(void *p)
     uint64_t last_report_bpool_misses = 0;
 
     int64_t conns=0, conn_timeouts=0, curr_conns = 0;
-    int64_t last_conns=0, last_conn_timeouts=0, last_curr_conns=0; 
-    int64_t diff_conns=0, diff_conn_timeouts=0, diff_curr_conns=0; 
+    int64_t last_conns=0, last_conn_timeouts=0;
+    int64_t diff_conns=0, diff_conn_timeouts=0;
     int64_t last_report_conns = 0;
     int64_t last_report_conn_timeouts = 0;
-    int64_t last_report_curr_conns=0;
 
     struct reqlogger *statlogger = NULL;
     struct berkdb_thread_stats last_bdb_stats = {0};
@@ -4741,7 +4747,7 @@ void *statthd(void *p)
         vreplays = gbl_verify_tran_replays;
 
         conns = net_get_num_accepts(thedb->handle_sibling);
-        curr_conns = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+        curr_conns = net_get_num_current_non_appsock_accepts(thedb->handle_sibling)+ active_appsock_conns;
         conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
 
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
@@ -4765,7 +4771,6 @@ void *statthd(void *p)
         diff_bpool_hits = bpool_hits - last_bpool_hits;
         diff_bpool_misses = bpool_misses - last_bpool_misses;
         diff_conns = conns - last_conns;
-        diff_curr_conns = curr_conns - last_curr_conns;
         diff_conn_timeouts = conn_timeouts - last_conn_timeouts;
 
         last_qtrap = nqtrap;
@@ -4783,7 +4788,6 @@ void *statthd(void *p)
         last_bpool_hits = bpool_hits;
         last_bpool_misses = bpool_misses;
         last_conns = conns;
-        last_curr_conns = curr_conns;
         last_conn_timeouts = conn_timeouts;
 
         have_scon_header = 0;
@@ -4792,7 +4796,7 @@ void *statthd(void *p)
         if (diff_qtrap || diff_nsql || diff_newsql || diff_nsql_steps ||
             diff_fstrap || diff_vreplays || diff_bpool_hits ||
             diff_bpool_misses || diff_ncommit_time ||
-            diff_conns || diff_conn_timeouts || diff_curr_conns) {
+            diff_conns || diff_conn_timeouts || curr_conns) {
             if (gbl_report) {
                 logmsg(LOGMSG_USER, "diff");
                 have_scon_header = 1;
@@ -4825,8 +4829,8 @@ void *statthd(void *p)
                            diff_bpool_misses);
                 if (diff_conns)
                     logmsg(LOGMSG_USER, " connects %"PRId64, diff_conns);
-                if (diff_curr_conns)
-                    logmsg(LOGMSG_USER, " current_connects %"PRId64, diff_curr_conns);
+                if (curr_conns)
+                    logmsg(LOGMSG_USER, " current_connects %"PRId64, curr_conns);
                 if (diff_conn_timeouts)
                     logmsg(LOGMSG_USER, " connect_timeouts %"PRId64, diff_conn_timeouts);
                 have_scon_stats = 1;
@@ -5032,11 +5036,11 @@ void *statthd(void *p)
                     lastlsnbytes = curlsnbytes;
                 }
 
-                if (conns - last_report_conns || curr_conns - last_report_curr_conns) {
+                if (conns - last_report_conns || curr_conns) {
                    reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld current_connections %lld\n", 
                          conns - last_report_conns,
                          conn_timeouts - last_report_conn_timeouts,
-                         curr_conns - last_report_curr_conns);
+                         curr_conns);
                 }
 
 
@@ -5062,7 +5066,6 @@ void *statthd(void *p)
 
                 last_report_conns = conns;
                 last_report_conn_timeouts = conn_timeouts;
-                last_report_curr_conns = curr_conns;
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
@@ -6595,4 +6598,3 @@ static void create_service_file(const char *lrlname)
 #endif
     return;
 }
-

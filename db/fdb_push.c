@@ -503,6 +503,15 @@ send_error:
         write_response(clnt, RESPONSE_ERROR, err->errstr, 0);
         rc = -1;
         goto closing;
+    } else {
+        cdb2_effects_tp effects;
+        int irc;
+        if (!(irc = cdb2_get_effects(hndl, &effects))) {
+            clnt->effects.num_selected = effects.num_selected;
+        } else {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n",
+                   __func__, __LINE__, irc, clnt->sql);
+        }
     }
 
     /* send last row */
@@ -632,10 +641,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     }
 
     cdb2_effects_tp effects;
-
-
     if (!clnt->in_client_trans || clnt->verifyretry_off) {
         if ((rc = cdb2_get_effects(hndl, &effects))) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n",
+                   __func__, __LINE__, rc, clnt->sql);
             goto hndl_err;
         }
     }
@@ -709,6 +718,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
 hndl_err:
     errstr = cdb2_errstr(hndl);
     extern const char *err_pre2pc;
+    /* fallback if this is a not supported 2pc error */
     if (errstr && !strncasecmp(errstr, err_pre2pc, strlen(err_pre2pc))) {
         if (!created) {
             /* instead of an assert */
