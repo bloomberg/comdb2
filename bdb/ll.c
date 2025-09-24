@@ -651,7 +651,7 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     DBT dbt_key = {0};
     DBT dbt_dta = {0};
     int crc;
-    const int genid_sz = sizeof(unsigned long long);
+    enum {genid_sz = sizeof(unsigned long long)};
     unsigned char dtacopy_payload[MAXRECSZ + ODH_SIZE_RESERVE + genid_sz];
     int dtacopy_payload_len = 0;
     unsigned char keydata[MAXKEYSZ];
