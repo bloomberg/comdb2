@@ -2920,6 +2920,8 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
         close(fd);
         return -1;
     }
+    const int timeout = hndl->api_call_timeout < hndl->connect_timeout ? hndl->api_call_timeout : hndl->connect_timeout;
+    sbuf2settimeout(ss, timeout, timeout);
     sbuf2printf(ss, "rte %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
