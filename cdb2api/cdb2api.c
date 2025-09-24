@@ -150,10 +150,8 @@ static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 #define CDB2_REQUEST_FP_DEFAULT 0
 static int CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
 
-/* Request host name of a connection obtained from sockpool */
 #define CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT 1
-static int get_hostname_from_sockpool_fd = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
-static int cdb2_get_hostname_from_sockpool_fd_set_from_env = 0;
+static int CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
 
 static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
 {
@@ -191,13 +189,6 @@ void cdb2_protobuf_free(void *allocator_data, void *ptr)
 static int cdb2_use_env_vars = 1;
 
 static int default_type_override_env = 0;
-
-static int iam_identity = 0;
-static int cdb2_iam_identity_set_from_env = 0;
-
-#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
-static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
-static int cdb2_allow_pmux_route_set_from_env = 0;
 
 /* ssl client mode */
 static ssl_mode cdb2_c_ssl_mode = SSL_ALLOW;
@@ -241,6 +232,12 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl);
 
 static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
+
+#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
+static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
+static int cdb2_allow_pmux_route_set_from_env = 0;
+
+static int iam_identity = 0;
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define MAX_SOCKPOOL_FDS 8
@@ -369,7 +366,7 @@ static void reset_the_configuration(void)
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
     cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
     CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
-    get_hostname_from_sockpool_fd = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
+    CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
 
     cdb2_c_ssl_mode = SSL_ALLOW;
 
@@ -1347,7 +1344,6 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     if (!have_read_env) {
         // Do these once.
-        process_env_var_str_on_off("COMDB2_FEATURE_IAM_IDENTITY", &iam_identity, &cdb2_iam_identity_set_from_env);
         process_env_var_str("COMDB2_CONFIG_ROOM", (char *)&cdb2_machine_room, sizeof(cdb2_machine_room),
                             &cdb2_machine_room_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PORTMUXPORT", &CDB2_PORTMUXPORT, &cdb2_portmuxport_set_from_env);
@@ -1358,8 +1354,6 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                             &cdb2_dnssuffix_set_from_env);
         process_env_var_str_on_off("COMDB2_CONFIG_ALLOW_PMUX_ROUTE", &cdb2_allow_pmux_route,
                                    &cdb2_allow_pmux_route_set_from_env);
-        process_env_var_str_on_off("COMDB2_CONFIG_GET_HOSTNAME_FROM_SOCKPOOL_FD", &get_hostname_from_sockpool_fd,
-                                   &cdb2_get_hostname_from_sockpool_fd_set_from_env);
         process_env_var_str("COMDB2_CONFIG_DEFAULT_TYPE", (char *)&cdb2_default_cluster, sizeof(cdb2_default_cluster),
                             &cdb2_default_cluster_set_from_env);
         process_env_var_int("COMDB2_CONFIG_CONNECT_TIMEOUT", &CDB2_CONNECT_TIMEOUT, &cdb2_connect_timeout_set_from_env);
@@ -1450,7 +1444,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             }
         } else if (strcasecmp("comdb2_feature", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
-            if (!cdb2_iam_identity_set_from_env && (strcasecmp("iam_identity_v6", tok) == 0)) {
+            if ((strcasecmp("iam_identity_v6",tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     iam_identity = value_on_off(tok, &err, 0);
@@ -1575,11 +1569,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                         *stack_at_open = 0;
                     }
                 }
-            } else if (!cdb2_get_hostname_from_sockpool_fd_set_from_env &&
-                       (strcasecmp("get_hostname_from_sockpool_fd_v3", tok) == 0)) {
+            } else if (strcasecmp("get_hostname_from_sockpool_fd", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
-                    get_hostname_from_sockpool_fd = value_on_off(tok, &err, 1);
+                    CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = (strncasecmp(tok, "true", 4) == 0);
             } else if (strcasecmp("ssl_mode", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok != NULL) {
@@ -2516,7 +2509,7 @@ static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
     struct sockaddr_in addr;
     socklen_t addr_size = sizeof(struct sockaddr_in);
 
-    if (!get_hostname_from_sockpool_fd)
+    if (!CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD)
         return;
 
     if (fd == -1)
