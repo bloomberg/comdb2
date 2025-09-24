@@ -167,8 +167,6 @@ struct cdb2_hndl {
     int ack;
     int is_hasql;
     int is_admin;
-    int sockpool_enabled;
-    int db_default_type_override_env;
     int clear_snap_line;
     int debug_trace;
     int max_retries;
