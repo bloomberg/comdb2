@@ -2120,7 +2120,7 @@ static int cdb2_socket_pool_get_ll(cdb2_hndl_tp *hndl, const char *typestr, int 
 
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     if (cdb2_use_env_vars) {
-        if (((hndl->sockpool_enabled != -1) && sockpool_enabled == 0)) {
+        if ((hndl && (hndl->sockpool_enabled != -1) && sockpool_enabled == 0)) {
             time_t current_time = time(NULL);
             /* Check every 10 seconds. */
             if ((current_time - sockpool_fail_time) > 10) {
