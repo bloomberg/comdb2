@@ -51,7 +51,7 @@ static void cheapstub(FILE *f)
     if (f == NULL)
         f=stdout;
     pthread_t tid = pthread_self();
-    const char size = 32;
+    enum {size = 32};
     void *buf[size];
     int n = backtrace(buf, size);
 

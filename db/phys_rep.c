@@ -119,6 +119,8 @@ reverse_conn_handle_tp *rev_conn_hndl = NULL;
 static int last_register;
 static int repl_db_connect_time;
 
+enum {nodes_list_sz = REPMAX * (255 + 1) + 3};
+
 static int add_replicant_host(char *hostname, char *dbname);
 static void dump_replicant_hosts(void);
 static void delete_replicant_host(DB_Connection *cnct);
@@ -495,7 +497,6 @@ int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp **hndl) {
 
 static int update_registry(cdb2_hndl_tp *repl_metadb, const char *remote_dbname, const char *remote_host)
 {
-    const size_t nodes_list_sz = REPMAX * (255 + 1) + 3;
     char cmd[120 + nodes_list_sz];
     int bytes_written = 0;
     int rc;
@@ -559,7 +560,6 @@ static int update_registry_periodic(const char *remote_dbname, const char *remot
 
 static int send_reset_nodes(const char *state)
 {
-    const size_t nodes_list_sz = REPMAX * (255+1) + 3;
     char cmd[120+nodes_list_sz];
     int bytes_written = 0;
     int rc = 0;
@@ -739,7 +739,6 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
 
 static int register_self(cdb2_hndl_tp *repl_metadb)
 {
-    const size_t nodes_list_sz = REPMAX * (255+1) + 3;
     char cmd[120+nodes_list_sz];
     int bytes_written = 0;
     int rc;
@@ -1142,7 +1141,6 @@ static int slow_replicants_count(unsigned int *count) {
 }
 
 static int update_min_logfile(void) {
-    const size_t nodes_list_sz = REPMAX * (255+1) + 3;
     char cmd[120+nodes_list_sz];
     char *buf;
     size_t buf_len;
@@ -1624,7 +1622,6 @@ static int check_and_log_slow_replicants() {
    does so by comparing it's lsn with that of source node(s).
 */
 static void am_i_hung(time_t cur_time) {
-    const size_t nodes_list_sz = REPMAX * (255+1) + 3;
     char query[120+nodes_list_sz];
     int bytes_written = 0;
     int rc;

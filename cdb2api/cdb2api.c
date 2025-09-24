@@ -4596,7 +4596,7 @@ static int process_set_stmt_return_types(cdb2_hndl_tp *hndl, const char *sql)
         return 1;
     }
 
-    const int max_args = 1024;
+    enum {max_args = 1024};
     uint8_t types[max_args];
     int count = 0;
 
