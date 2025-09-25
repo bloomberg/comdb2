@@ -32,7 +32,6 @@
 extern char gbl_dbname[];
 extern int gbl_nid_dbname;
 extern SSL_CTX *gbl_ssl_ctx;
-extern ssl_mode gbl_client_ssl_mode;
 extern uint64_t gbl_ssl_num_full_handshakes;
 extern uint64_t gbl_ssl_num_partial_handshakes;
 

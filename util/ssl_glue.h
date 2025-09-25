@@ -16,17 +16,35 @@
 
 #ifndef INCLUDED_SSL_GLUE_H
 #define INCLUDED_SSL_GLUE_H
+
+/* XXX Don't change the order of the enum types */
+typedef enum ssl_mode {
+    SSL_DISABLE, /* invisible to users */
+    SSL_UNKNOWN, /* invisible to users */
+    SSL_ALLOW,
+    SSL_PREFER,
+    SSL_PREFER_VERIFY_CA,       /* implies PREFER */
+    SSL_PREFER_VERIFY_HOSTNAME, /* implies PREFER_VERIFY_CA */
+    SSL_PREFER_VERIFY_DBNAME,   /* implies PREFER_VERIFY_DBNAME */
+    SSL_REQUIRE,
+    SSL_VERIFY_CA,       /* It implies REQUIRE. */
+    SSL_VERIFY_HOSTNAME, /* It impiles VERIFY_CA. */
+    SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
+} ssl_mode;
+
 #include <openssl/ssl.h>
 int ssl_verify_dbname(X509 *, const char *, int);
 int ssl_x509_get_attr(const X509 *, int, char *, size_t);
 int ssl_verify_hostname(X509 *, int);
 
 #ifndef SBUF2_SERVER
-#define SBUF2_SERVER 1
+#  define SBUF2_SERVER 1
 #endif
+
 #if SBUF2_SERVER /* visible to server only */
-/* returns 1 if the connection is whitelisted */
-int ssl_whitelisted(const char *);
+struct ssl_data;
+int ssl_whitelisted(const char *); /* returns 1 if the connection is whitelisted */
+int verify_ssl_evbuffer(struct ssl_data *, enum ssl_mode);
 #endif
 
 #endif /* INCLUDED_SSL_GLUE_H */

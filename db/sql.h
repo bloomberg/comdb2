@@ -238,12 +238,6 @@ enum ctrl_sqleng {
     SQLENG_WRONG_STATE,
 };
 
-enum trans_clntcomm {
-    TRANS_CLNTCOMM_NOREPLY = 0,
-    TRANS_CLNTCOMM_NORMAL = 1,
-    TRANS_CLNTCOMM_CHUNK = 2
-};
-
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate);
 

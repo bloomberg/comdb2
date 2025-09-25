@@ -26,8 +26,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#ifndef SBUF2_SERVER
-#  define SBUF2_SERVER 1
+#include <ssl_glue.h>
+
+#if SBUF2_SERVER
 #  ifndef SBUF2_UNGETC
 #    define SBUF2_UNGETC 1
 #  endif
@@ -128,21 +129,6 @@ do {                                            \
         else                                                    \
             PRINT_SSL_ERRSTR_MT(cb, msg);                       \
     } while (0)
-
-/* XXX Don't change the order of the enum types */
-typedef enum ssl_mode {
-    SSL_DISABLE, /* invisible to users */
-    SSL_UNKNOWN, /* invisible to users */
-    SSL_ALLOW,
-    SSL_PREFER,
-    SSL_PREFER_VERIFY_CA,       /* implies PREFER */
-    SSL_PREFER_VERIFY_HOSTNAME, /* implies PREFER_VERIFY_CA */
-    SSL_PREFER_VERIFY_DBNAME,   /* implies PREFER_VERIFY_DBNAME */
-    SSL_REQUIRE,
-    SSL_VERIFY_CA,       /* It implies REQUIRE. */
-    SSL_VERIFY_HOSTNAME, /* It impiles VERIFY_CA. */
-    SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
-} ssl_mode;
 
 #define SSL_IS_ABLE(mode) ((mode) >= SSL_ALLOW)
 #define SSL_IS_REQUIRED(mode) ((mode) >= SSL_REQUIRE)
