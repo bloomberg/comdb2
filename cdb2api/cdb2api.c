@@ -285,16 +285,16 @@ typedef void (*cdb2_init_t)(void);
 #ifndef CDB2_INSTALL_LIBS
 #define CDB2_INSTALL_LIBS NULL
 #else
-extern void CDB2_INSTALL_LIBS(void);
+extern void CDB2_INSTALL_LIBS(const char *);
 #endif
-void (*cdb2_install)(void) = CDB2_INSTALL_LIBS;
+void (*cdb2_install)(const char *) = CDB2_INSTALL_LIBS;
 
 #ifndef CDB2_UNINSTALL_LIBS
 #define CDB2_UNINSTALL_LIBS NULL
 #else
-extern void CDB2_UNINSTALL_LIBS(void);
+extern void CDB2_UNINSTALL_LIBS(const char *);
 #endif
-void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
+void (*cdb2_uninstall)(const char *) = CDB2_UNINSTALL_LIBS;
 
 #ifndef CDB2_IDENTITY_CALLBACKS
     struct cdb2_identity *identity_cb = NULL;
@@ -309,8 +309,14 @@ void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 
 #if WITH_DL_LIBS
 #include <dlfcn.h>
-void cdb2_set_install_libs(void (*ptr)(void)) { cdb2_install = ptr; }
-void cdb2_set_uninstall_libs(void (*ptr)(void)) { cdb2_uninstall = ptr; }
+    void cdb2_set_install_libs(void (*ptr)(const char *))
+    {
+        cdb2_install = ptr;
+    }
+    void cdb2_set_uninstall_libs(void (*ptr)(const char *))
+    {
+        cdb2_uninstall = ptr;
+    }
 #endif
 
 #define debugprint(fmt, args...)                                               \
@@ -1538,15 +1544,19 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 if (tok) {
                     cdb2_allow_pmux_route = value_on_off(tok, &err, 1);
                 }
-            } else if ((strcasecmp("uninstall_static_libs_v2", tok) == 0 ||
+            } else if ((strcasecmp("uninstall_static_libs_v4", tok) == 0 ||
                         strcasecmp("disable_static_libs", tok) == 0)) {
                 /* Provide a way to disable statically installed (via
                  * CDB2_INSTALL_LIBS) libraries. */
+                tok = strtok_r(NULL, " :,", &last);
                 if (cdb2_uninstall != NULL)
-                    (*cdb2_uninstall)();
-            } else if ((strcasecmp("install_static_libs_v2", tok) == 0 || strcasecmp("enable_static_libs", tok) == 0)) {
+                    (*cdb2_uninstall)(tok);
+            } else if ((strcasecmp("install_static_libs_v4", tok) == 0 || strcasecmp("enable_static_libs", tok) == 0)) {
+                /* Provide a way to enable statically installed (via
+                 * CDB2_INSTALL_LIBS) libraries. */
+                tok = strtok_r(NULL, " :,", &last);
                 if (cdb2_install != NULL)
-                    (*cdb2_install)();
+                    (*cdb2_install)(tok);
 #if WITH_DL_LIBS
             } else if (strcasecmp("lib", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
