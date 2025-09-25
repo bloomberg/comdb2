@@ -773,6 +773,7 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
             sqlite3_free(sql); sql = NULL;
             goto error;
         }
+        sqlite3_free(sql); sql = NULL;
         if (!get_dbtable_by_name("sqlite_stat4")) continue;
         sql = sqlite3_mprintf("INSERT INTO sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample) "
                 "SELECT tbl, '%q', neq, nlt, ndlt, sample FROM sqlite_stat4 "
@@ -784,6 +785,7 @@ static int analyze_table_int(table_descriptor_t *td, struct thr_handle *thr_self
             sqlite3_free(sql); sql = NULL;
             goto error;
         }
+        sqlite3_free(sql); sql = NULL;
     }
 
     if (rc)
