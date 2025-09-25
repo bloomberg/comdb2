@@ -150,6 +150,7 @@ extern int gbl_rep_skip_recovery;
 extern int gbl_retrieve_gen_from_ckp;
 extern int gbl_recovery_ckp;
 extern int gbl_reproduce_ckp_bug;
+extern int gbl_logged_newfile;
 extern int gbl_sample_queries;
 extern int gbl_sample_queries_max_queries;
 extern int gbl_slow_rep_process_txn_freq;
