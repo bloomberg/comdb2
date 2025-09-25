@@ -1,3 +1,4 @@
 logmsg level info
 enable_snapshot_isolation
-ssl_client_mode OPTIONAL
+ssl_client_gode OPTIONAL
+set_snapshot_impl new

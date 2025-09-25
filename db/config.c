@@ -377,7 +377,8 @@ void set_snapshot_impl(const snap_impl_enum impl)
     gbl_snap_impl == SNAP_IMPL_MODSNAP ? toggle_modsnap(1) : toggle_modsnap(0);
     gbl_snap_impl == SNAP_IMPL_NEW ? toggle_new_snapisol(1) : toggle_new_snapisol(0);
 
-    const int logical_logging_should_be_on = gbl_snap_impl != SNAP_IMPL_MODSNAP || gbl_serializable;
+    const int logical_logging_should_be_on =
+        gbl_snap_impl != SNAP_IMPL_MODSNAP || gbl_serializable || gbl_selectv_rangechk;
     bdb_attr_set(thedb->bdb_attr, BDB_ATTR_SNAPISOL, logical_logging_should_be_on);
 }
 
