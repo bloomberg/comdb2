@@ -769,6 +769,10 @@ REGISTER_TUNABLE("master_swing_osql_verbose",
                  "change. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_master_swing_osql_verbose,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("ignore_lowgen_newmaster",
+                 "Ignore newmasters from lower generation.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_ignore_lowgen_newmaster,
+                 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("master_swing_osql_verbose_off",
                  "Disables 'master_swing_osql_verbose'", TUNABLE_BOOLEAN,
                  &gbl_master_swing_osql_verbose, INVERSE_VALUE | NOARG, NULL,
