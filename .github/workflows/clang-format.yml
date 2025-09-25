@@ -34,15 +34,18 @@ jobs:
 
       - name: Run format check
         run: |
-          base_repo="${{ github.event.pull_request.base.repo.full_name || github.repository }}"
-          base_url="https://github.com/${base_repo}.git"
+          # Get the base branch name from the PR event
+          base_branch="${GITHUB_BASE_REF}"
 
-          # Fetch the base branch into a unique namespace
-          git fetch --no-tags --prune --depth=1 "${base_url}" \
-            "refs/heads/${GITHUB_BASE_REF}:refs/remotes/__base__/${GITHUB_BASE_REF}"
+          # Get the number of commits in the PR (commits in HEAD not in base branch)
+          num_commits=$(git rev-list --count HEAD ^origin/${base_branch})
 
-          # Compute merge-base vs the fetched ref
-          base_commit="$(git merge-base HEAD "refs/remotes/__base__/${GITHUB_BASE_REF}")"
+          # Get the commit before all PR commits
+          if [[ "$num_commits" -gt 0 ]]; then
+            base_commit="HEAD~${num_commits}"
+          else
+            base_commit="HEAD^"
+          fi
 
           echo "Running format checking against base commit ${base_commit}"
 
