@@ -163,7 +163,11 @@ setup_db() {
     if [[ -f lrl.options ]]; then
         # lrl.options provides common options to all db ranks
 
-        cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
+        if [[ -z "${SKIPSSL}" && $DBNAME != *"nossl"* ]] ; then
+            cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
+        else
+            grep -v ssl lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
+        fi
     fi
 
     if [[ -f lrl_${dbrank}.options ]]; then

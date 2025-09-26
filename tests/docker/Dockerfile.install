@@ -30,6 +30,7 @@ RUN apt-get update && \
     libz-dev \
     lsof \
     make \
+    maven \
     ncurses-dev \
     netcat-openbsd \
     net-tools \
@@ -51,6 +52,7 @@ RUN apt-get update && \
   dpkg-reconfigure --frontend noninteractive tzdata
 
 COPY . /comdb2
+COPY ./settings.xml* /usr/share/maven/conf/settings.xml
 
 ARG CMAKE_FLAGS="-DCOMDB2_TEST=1"
 
