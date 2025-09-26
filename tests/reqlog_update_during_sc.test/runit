@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+bash -n "${0}" || exit 1
+
+source "${TESTSROOTDIR}/tools/cluster_utils.sh"
+source "${TESTSROOTDIR}/tools/runit_common.sh"
+
+set -e
+DBNAME="${1}"
+
+#declare -rx debug=1
+
+function create_table()
+{
+    "${CDB2SQL_EXE}" ${CDB2_OPTIONS} "${DBNAME}" default "create table t (i int)"
+}
+
+function populate_table()
+{
+    # Adjust the number of rows inserted based on whether we are running against
+    # cluster vs. standalone. The latter is able to rebuild the table faster and
+    # thus may not run long enough to exercise the logic of this test.
+    local -r num_iter=$(if [[ -n "${CLUSTER}" ]]; then echo 200; else echo 500; fi)
+
+    for i in `seq 1 ${num_iter}`; do
+        "${CDB2SQL_EXE}" ${CDB2_OPTIONS} "${DBNAME}" default "insert into t select * from generate_series(1, 1000)"
+    done
+}
+
+function spam_queries()
+{
+    # Spam queries to generate statreqs while schema change is running.
+    while true; do
+        "${CDB2SQL_EXE}" ${CDB2_OPTIONS} "${DBNAME}" default "delete from t limit 1" > /dev/null
+    done
+}
+
+function run_schema_change()
+{
+    # Trigger a schema change that will cover multiple iterations of the statthd loop.
+    "${CDB2SQL_EXE}" ${CDB2_OPTIONS} "${DBNAME}" default "rebuild t"
+}
+
+function filter_logs()
+{
+    local -r logfile="${1}"
+    local -r start_time="${2}"
+    local -r end_time="${3}"
+
+    awk -f "${TESTDIR}/${TESTCASE}.test/filter.awk" -v start="${start_time}" -v end="${end_time}" "${logfile}"
+}
+
+function extract_log_timestamps()
+{
+    local -r logfile="${1}"
+
+    awk -f "${TESTDIR}/${TESTCASE}.test/extract_timestamps.awk" "${logfile}" | sort -nu
+}
+
+function verify_log_continuity()
+{
+    local -r timestamps_file="${1}"
+    local -r start_time="${2}"
+    local -r end_time="${3}"
+    local -r node="${4}"  # only for logging purposes
+
+    for (( timestamp = start_time; timestamp <= end_time; timestamp++ )); do
+        if ! grep -q "^${timestamp}$" "${timestamps_file}"; then
+            failexit "Missing statreqs for timestamp on node '${node}': ${timestamp} ($( date -d @${timestamp} '+%m/%d %H:%M:%S' ))"
+        fi
+    done
+}
+
+function verify_logs_for_node()
+{
+    local -r logfile="${1}"
+    local -r start_time="${2}"
+    local -r end_time="${3}"
+    local -r node="${4}"
+
+    # Filter logs to only include entries between when schema change started and ended.
+    filter_logs "${logfile}" "${start_time}" "${end_time}" > "${logfile}.filtered"
+
+    if [[ -n "${debug}" ]]; then
+        echo
+        echo "Full log contents on node ${node}:"
+        echo
+        cat "${logfile}"
+        echo
+        echo "Filtered log contents on node ${node} (between ${start_time} and ${end_time}):"
+        echo
+        cat "${logfile}.filtered"
+        echo
+    fi
+    
+    # Get the timestamps for all the seconds during which we got statreqs.
+    extract_log_timestamps "${logfile}.filtered" > "${logfile}.filtered.timestamps"
+
+    # Check that for every second between when schema change started and ended,
+    # we got statreqs. Use `start_time + 1` and `end_time - 1` as the logs from
+    # the first and last seconds may not have overlapped with schema change.
+    verify_log_continuity "${logfile}.filtered.timestamps" $(( start_time + 1 )) $(( end_time - 1 )) "${node}"
+}
+
+function verify_logs()
+{
+    local -r start_time="${1}"
+    local -r end_time="${2}"
+
+    src="${TESTDIR}/var/log/cdb2/${DBNAME}.statreqs"
+
+    if [[ -n "${CLUSTER}" ]]; then
+        for node in ${CLUSTER}; do
+            # Grab logs from node.
+            local dest="${TESTDIR}/logs/${DBNAME}_${node}.statreqs"
+            ssh -o StrictHostKeyChecking=no "${node}" "cat ${src}" > "${dest}"
+            verify_logs_for_node "${dest}" "${start_time}" "${end_time}" "${node}"
+        done
+    else
+        # Single node case.
+        local dest="${TESTDIR}/logs/${DBNAME}_standalone.statreqs"
+        cp "${src}" "${dest}"
+        verify_logs_for_node "${dest}" "${start_time}" "${end_time}" "standalone"
+    fi
+}
+
+function main()
+{
+    # Set up dummy data.
+    create_table
+    populate_table
+
+    # Run schema change and spam queries at the same time.
+    spam_queries &
+    spam_pid=$!
+
+    echo "Master is $(get_master)"
+    local -r rebuild_start_time=$(date +%s)
+    echo "Starting schema change at $(date -d @${rebuild_start_time} '+%m/%d %H:%M:%S')"
+    run_schema_change
+    local -r rebuild_end_time=$(date +%s)
+    echo "Finished schema change at $(date -d @${rebuild_end_time} '+%m/%d %H:%M:%S')"
+
+    # Stop spamming queries.
+    kill "${spam_pid}"
+
+    # Give time for log files to flush.
+    sleep 1
+
+    # Check that we got statreqs on all nodes from the spam queries despite
+    # schema change running at the same time.
+    verify_logs "${rebuild_start_time}" "${rebuild_end_time}"
+}
+
+main
+echo "Success"
