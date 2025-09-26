@@ -327,7 +327,7 @@ REGISTER_TUNABLE("debug_random_prepare", "Prepare randomly. (Default: off)", TUN
                  &gbl_random_prepare_commit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_all_prepare_commit", "Prepare all transactions. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_all_prepare_commit, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("debug_all_prepare_abort", "Prepare and abort all transactions. (Default: off)", TUNABLE_BOOLEAN,
+	REGISTER_TUNABLE("debug_all_prepare_abort", "Prepare and abort all transactions. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_all_prepare_abort, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_all_prepare_leak", "Prepare and leak all transactions. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_all_prepare_leak, 0, NULL, NULL, NULL, NULL);
