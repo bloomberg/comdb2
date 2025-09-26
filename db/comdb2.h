@@ -1937,6 +1937,7 @@ extern int gbl_logical_live_sc;
 extern int gbl_test_io_errors;
 extern uint64_t gbl_sc_headroom;
 extern int gbl_debug_always_reload_schemas_after_recovery;
+extern int gbl_prefer_non_blocking_coherency_check;
 
 /* init routines */
 int appsock_init(void);

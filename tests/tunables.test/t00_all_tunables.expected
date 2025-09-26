@@ -763,6 +763,7 @@
 (name='prefaulthelper_blockops', description='', type='INTEGER', value='1', read_only='Y')
 (name='prefaulthelper_sqlreadahead', description='', type='INTEGER', value='1', read_only='Y')
 (name='prefaulthelperthreads', description='Max number of prefault helper threads. (Default: 0)', type='INTEGER', value='0', read_only='Y')
+(name='prefer_non_blocking_coherency_check', description='If set, prefer to use `bdb_try_am_i_coherent()` over `bdb_am_i_coherent()` when checking whether we are coherent. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='prefix_foreign_keys', description='Allow foreign key to be a prefix of your key', type='BOOLEAN', value='ON', read_only='N')
 (name='print_blockp_stats', description='print thread-count in block processor', type='BOOLEAN', value='OFF', read_only='N')
 (name='print_deadlock_cycles', description='Print every Nth deadlock cycle, set to 0 to turn off. (Default: 100)', type='INTEGER', value='100', read_only='N')

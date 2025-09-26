@@ -88,6 +88,7 @@ void create_master_lease_thread(bdb_state_type *bdb_state);
 
 int gbl_rep_process_warn_time = 10;
 int gbl_rep_process_pstack_time = 0;
+int gbl_prefer_non_blocking_coherency_check = 1;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 void comdb2_dump_blockers(DB_ENV *);
@@ -4303,29 +4304,40 @@ int bdb_valid_lease(void *in_bdb_state)
 
 int bdb_am_i_coherent(bdb_state_type *bdb_state)
 {
-    int x;
+    if (gbl_prefer_non_blocking_coherency_check)
+        return bdb_try_am_i_coherent(bdb_state);
+
+    int coherent = 0;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
     BDB_READLOCK("bdb_am_i_coherent");
 
-    x = bdb_am_i_coherent_int(bdb_state);
+    coherent = bdb_am_i_coherent_int(bdb_state);
 
     BDB_RELLOCK();
 
-    return x;
+    return coherent;
 }
 
 int bdb_try_am_i_coherent(bdb_state_type *bdb_state)
 {
     int coherent = 0;
-    if (bdb_state->parent) bdb_state = bdb_state->parent;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    /*
+     * If we cannot get the bdb-lock, that means the lock is desired,
+     * which only happens during election. We are not coherent if the
+     * master is changing.
+     */
     if (BDB_TRYREADLOCK("bdb_am_i_coherent") == 0) {
-        /* if we cannot get bdb-lock, we are not coherent */
         coherent = bdb_am_i_coherent_int(bdb_state);
         BDB_RELLOCK();
     }
+
     return coherent;
 }
 
