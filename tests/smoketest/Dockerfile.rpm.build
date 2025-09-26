@@ -15,6 +15,6 @@ COPY . /comdb2/
 
 WORKDIR /comdb2/smoketestbuild
 
-RUN cmake3 .. && make package && rpm -i comdb2*.rpm
+RUN cmake3 -DCOMDB2_TEST=0 -DCOMDB2_SKIP_TESTS=1 .. && make package && rpm -i comdb2*.rpm
 
 ENV PATH="/opt/bb/bin:${PATH}"
