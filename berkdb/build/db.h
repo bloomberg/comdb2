@@ -2592,6 +2592,7 @@ struct __db_env {
 	void *rep_handle;		/* Replication handle and methods. */
 	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, int *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
+	int  (*rep_newmaster) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
 		char **, DB_LSN *, uint32_t *, uint32_t *, char **, int));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
