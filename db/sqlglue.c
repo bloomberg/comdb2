@@ -124,6 +124,7 @@ int gbl_force_writesql = 1;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_tmptbl_corrupt_mem;
 extern int gbl_utxnid_log;
+extern int gbl_serializable;
 
 extern int get_commit_lsn_map_switch_value();
 
@@ -3817,23 +3818,71 @@ done:
     return rc;
 }
 
+static char *tranlevel_toclntstr(int lvl)
+{
+    switch (lvl) {
+    case TRANLEVEL_SOSQL:
+        return "SOCKSQL";
+    case TRANLEVEL_RECOM:
+        return "READ COMMITTED";
+    case TRANLEVEL_SNAPISOL:
+    case TRANLEVEL_MODSNAP:
+        return "SNAPSHOT";
+    case TRANLEVEL_SERIAL:
+        return "SERIALIZABLE";
+    default:
+        return "???";
+    };
+}
+
+static int modsnap_enabled_correctly()
+{
+    return gbl_snapisol && get_commit_lsn_map_switch_value() && gbl_utxnid_log;
+}
+
+static int snapisol_enabled_correctly()
+{
+    return gbl_rowlocks || gbl_snapisol;
+}
+
+static void warn_if_serial_tunable_disabled()
+{
+    if (!gbl_serializable) {
+        logmsg(LOGMSG_WARN,
+               "Using %s transactions without setting enable_serial_isolation will "
+               "be disallowed in a future release.\n",
+               tranlevel_toclntstr(TRANLEVEL_SERIAL));
+    }
+}
+
+static int serial_enabled_correctly()
+{
+    static pthread_once_t warn_once = PTHREAD_ONCE_INIT;
+    pthread_once(&warn_once, warn_if_serial_tunable_disabled);
+    return snapisol_enabled_correctly();
+}
+
+static int isolation_level_enabled_correctly(const int mode)
+{
+    if (mode == TRANLEVEL_MODSNAP) {
+        return modsnap_enabled_correctly();
+    } else if (mode == TRANLEVEL_SNAPISOL) {
+        return snapisol_enabled_correctly();
+    } else if (mode == TRANLEVEL_SERIAL) {
+        return serial_enabled_correctly();
+    } else {
+        return 1;
+    }
+}
+
 int sql_set_transaction_mode(sqlite3 *db, struct sqlclntstate *clnt, int mode)
 {
-    int i;
-
-    /* snapshot/serializable protection */
-    if ((mode == TRANLEVEL_MODSNAP && (!gbl_snapisol || !get_commit_lsn_map_switch_value() || !gbl_utxnid_log)) || 
-        ((mode == TRANLEVEL_SERIAL || mode == TRANLEVEL_SNAPISOL) &&
-        !(gbl_rowlocks || gbl_snapisol))) {
-        logmsg(LOGMSG_ERROR, "%s REQUIRES MODIFICATIONS TO THE LRL FILE\n",
-                (mode == TRANLEVEL_SNAPISOL) ? "SNAPSHOT ISOLATION"
-                                             : (mode == TRANLEVEL_MODSNAP) 
-                                                ? "MODSNAP SNAPSHOT IMPLEMENTATION" 
-                                                : "SERIALIZABLE");
+    if (!isolation_level_enabled_correctly(mode)) {
+        logmsg(LOGMSG_ERROR, "%s REQUIRES MODIFICATIONS TO THE LRL FILE\n", tranlevel_toclntstr(mode));
         return -1;
     }
 
-    for (i = 0; i < db->nDb; i++)
+    for (int i = 0; i < db->nDb; i++)
         if (db->aDb[i].pBt) {
             if (clnt->osql.count_changes) {
                 db->flags |= SQLITE_CountRows;
