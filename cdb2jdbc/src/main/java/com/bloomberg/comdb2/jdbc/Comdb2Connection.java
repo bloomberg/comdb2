@@ -18,7 +18,8 @@ import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author Rivers Zhang
@@ -26,7 +27,7 @@ import java.util.logging.*;
  * @author Tzvetan Mikov
  */
 public class Comdb2Connection implements Connection {
-    private static Logger logger = Logger.getLogger(Comdb2Connection.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(Comdb2Connection.class);
 
     public static final int TRANSACTION_SNAPSHOT = 128;
     public static final int TRANSACTION_SNAPSHOT_HA = 129;
@@ -438,9 +439,7 @@ public class Comdb2Connection implements Connection {
                     try {
                         hndl.close();
                     } catch (IOException e) {
-                        logger.log(Level.WARNING,
-                                   "Unable to close comdb2 connection to " + db + "/" + cluster,
-                                   e);
+                        logger.warn("Unable to close comdb2 connection to {}/{}", db, cluster, e);
                     }
                 opened = false;
             }
