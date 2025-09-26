@@ -4303,29 +4303,26 @@ int bdb_valid_lease(void *in_bdb_state)
 
 int bdb_am_i_coherent(bdb_state_type *bdb_state)
 {
-    int x;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    BDB_READLOCK("bdb_am_i_coherent");
-
-    x = bdb_am_i_coherent_int(bdb_state);
-
-    BDB_RELLOCK();
-
-    return x;
+    return bdb_try_am_i_coherent(bdb_state);
 }
 
 int bdb_try_am_i_coherent(bdb_state_type *bdb_state)
 {
     int coherent = 0;
-    if (bdb_state->parent) bdb_state = bdb_state->parent;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    /*
+     * If we cannot get the bdb-lock, that means the lock is desired,
+     * which only happens during election. We are not coherent if the
+     * master is changing.
+     */
     if (BDB_TRYREADLOCK("bdb_am_i_coherent") == 0) {
-        /* if we cannot get bdb-lock, we are not coherent */
         coherent = bdb_am_i_coherent_int(bdb_state);
         BDB_RELLOCK();
     }
+
     return coherent;
 }
 
