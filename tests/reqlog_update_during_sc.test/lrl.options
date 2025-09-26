@@ -1,0 +1,2 @@
+# Update /bb/data/$dbname.statreq every second.
+reqldiffstat 1
