@@ -1,0 +1,13 @@
+=== Starting consumer (listening for events) ===
+10
+add	1	101
+add	2	102
+add	3	103
+add	4	104
+add	5	105
+add	6	106
+add	7	107
+add	8	108
+add	9	109
+add	10	110
+txn	NULL	NULL
