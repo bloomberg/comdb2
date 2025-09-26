@@ -70,6 +70,8 @@ if ((${#script_args[@]} > 0)); then
     printf '%s ' "${script_args[@]}" > common/user_script_args
 fi
 
+# use current user's maven settings
+[ -f ${HOME}/.m2/settings.xml ] && { cp ${HOME}/.m2/settings.xml ${src}/settings.xml ; }
 docker build -t comdb2test:$prefix -f "$src/tests/docker/Dockerfile.install" "$src" --build-arg CMAKE_FLAGS="${cmake_flags[*]}"
 
 echo $cluster >common/cluster

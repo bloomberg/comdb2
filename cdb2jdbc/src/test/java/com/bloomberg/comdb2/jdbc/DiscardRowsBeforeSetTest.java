@@ -38,13 +38,13 @@ public class DiscardRowsBeforeSetTest {
 
         stmt1.executeQuery("SET TIMEZONE UTC");
         stmt1.executeQuery("SELECT NOW() AS utctime");
-        stmt2.executeQuery("SET TIMEZONE Zulu");
-        rs = stmt2.executeQuery("SELECT NOW() AS zulutime");
+        stmt2.executeQuery("SET TIMEZONE EST");
+        rs = stmt2.executeQuery("SELECT NOW() AS esttime");
 
         Assert.assertEquals("Got rows back from server", true, rs.next());
-        String zulutime = rs.getString("zulutime");
-        tz_taking_effect = zulutime.contains("Zulu");
-        Assert.assertEquals("Timezone is Zulu", true, tz_taking_effect);
+        String esttime = rs.getString("esttime");
+        tz_taking_effect = esttime.contains("EST");
+        Assert.assertEquals("Timezone is EST", true, tz_taking_effect);
     }
 }
 /* vim: set sw=4 ts=4 et: */
