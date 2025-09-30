@@ -500,6 +500,7 @@ extern int gbl_physrep_fanout;
 extern int gbl_physrep_hung_replicant_check_freq_sec;
 extern int gbl_physrep_hung_replicant_threshold;
 extern int gbl_physrep_revconn_check_interval;
+extern int gbl_debug_fake_rte_failure;
 extern int gbl_physrep_update_registry_interval;
 extern int gbl_physrep_i_am_metadb;
 extern int gbl_physrep_keepalive_v2;
