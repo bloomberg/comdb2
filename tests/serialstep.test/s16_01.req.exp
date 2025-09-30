@@ -10,6 +10,7 @@ done
 done
 (rows updated=1)
 done
+[commit] failed with rc -103 selectv constraints
 done
 done
 (id=1, b1=x'11')
@@ -25,5 +26,5 @@ done
 done
 (rows updated=1)
 done
-[commit] failed with rc -103 constraints error, no genid
+[commit] failed with rc -103 selectv constraints
 done
