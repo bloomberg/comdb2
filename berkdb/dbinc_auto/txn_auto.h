@@ -141,4 +141,10 @@ typedef struct __txn_ckp_recovery_args {
 #define DB___txn_regop_gen_endianize 151
 #define DB___txn_dist_prepare_endianize 152
 
+#define DB___newfile 153
+typedef struct __newfile_args {
+    u_int32_t type;
+    int32_t nextfile;
+} __newfile_args;
+
 #endif
