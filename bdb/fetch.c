@@ -617,6 +617,7 @@ static int bdb_fetch_int_ll(
 
     uint8_t *ver = &args->ver;
 
+    rc = 0;
     foundrrn = 0;
     foundgenid = 0;
     *bdberr = BDBERR_NOERROR;
