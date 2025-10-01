@@ -67,7 +67,6 @@
 #include <sql_stmt_cache.h>
 #include <debug_switches.h>
 #include <string_ref.h>
-#include "comdb2_atomic.h"
 #include "sql_stmt_cache.h"
 #include "util.h"
 
@@ -78,9 +77,6 @@
 #include "fdb_fend.h"
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
-extern int gbl_return_long_column_names;
-extern int gbl_max_sqlcache;
-extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
 extern int gbl_notimeouts;
@@ -89,9 +85,9 @@ extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
 
 pthread_t gbl_break_lua;
-int gbl_break_all_lua = 0;
-char *gbl_break_spname;
-void *debug_clnt;
+static int gbl_break_all_lua = 0;
+static char *gbl_break_spname;
+static sqlclntstate *debug_clnt;
 
 pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
@@ -2263,7 +2259,7 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
                                struct sql_state *rec, int flags)
 {
     Lua L = sp->lua;
-    int maxRetries = ATOMIC_LOAD32(gbl_lua_prepare_max_retries);
+    int maxRetries = gbl_lua_prepare_max_retries;
     int nRetry = 0;
     struct errstat err;
     struct sql_state rec_lcl = {0};
@@ -2288,7 +2284,7 @@ retry:
     sp->initial = 0;
     if ((sp->rc == SQLITE_PERM) && (maxRetries != 0) &&
             ((maxRetries == -1) || (nRetry++ < maxRetries))) {
-        int sleepms = ATOMIC_LOAD32(gbl_lua_prepare_retry_sleep);
+        int sleepms = gbl_lua_prepare_retry_sleep;
         if (sleepms >= 0) poll(NULL, 0, sleepms);
         goto retry;
     }

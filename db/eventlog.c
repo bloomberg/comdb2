@@ -60,8 +60,8 @@ static int eventlog_verbose = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static int eventlog_every_n = 1;
-static int64_t eventlog_count = 0;
+static uint32_t eventlog_every_n = 1;
+static uint32_t eventlog_count = 0;
 static int eventlog_debug_events = 0;
 
 static void eventlog_roll(void);
@@ -613,7 +613,7 @@ void eventlog_add(const struct reqlogger *logger)
         return;
     }
 
-    int loc_count = ATOMIC_ADD64(eventlog_count, 1);
+    uint32_t loc_count = ATOMIC_ADD32(eventlog_count, 1);
     if (eventlog_every_n > 1 && loc_count % eventlog_every_n != 0) {
         return;
     }

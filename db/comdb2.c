@@ -173,7 +173,7 @@ int gbl_recovery_timestamp = 0;
 int gbl_recovery_lsn_file = 0;
 int gbl_recovery_lsn_offset = 0;
 int gbl_trace_prepare_errors = 0;
-int gbl_trigger_timepart = 0;
+uint32_t gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
 int gbl_perform_full_clean_exit = 1;
 int gbl_abort_on_dangling_stringrefs = 0;
@@ -233,8 +233,8 @@ int gbl_move_deadlk_max_attempt = 500;
 
 int gbl_uses_password;
 int gbl_unauth_tag_access = 0;
-int64_t gbl_num_auth_allowed = 0;
-int64_t gbl_num_auth_denied = 0;
+uint64_t gbl_num_auth_allowed = 0;
+uint64_t gbl_num_auth_denied = 0;
 int gbl_allow_old_authn = 1;
 int gbl_uses_externalauth = 0;
 int gbl_uses_externalauth_connect = 0;
@@ -351,7 +351,7 @@ int gbl_meta_lite = 1;
 int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
-static int gbl_db_is_exiting = 0; /* Indicates this process is exiting */
+static uint32_t gbl_db_is_exiting = 0; /* Indicates this process is exiting */
 
 
 int gbl_debug_omit_dta_write;
@@ -382,13 +382,13 @@ int gbl_init_with_bthash = 0;
 int64_t gbl_nsql;
 long long gbl_nsql_steps;
 
-int64_t gbl_nnewsql;
+uint64_t gbl_nnewsql;
 int64_t gbl_nnewsql_ssl;
 long long gbl_nnewsql_steps;
 
 int64_t gbl_nnewsql_compat;
 
-uint32_t gbl_masterrejects = 0;
+int gbl_masterrejects = 0;
 
 volatile uint32_t gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
@@ -515,8 +515,8 @@ long n_retries;
 long n_missed;
 long n_dbinfo;
 
-int n_commits;
-long long n_commit_time; /* in micro seconds.*/
+uint32_t n_commits;
+uint64_t n_commit_time; /* in micro seconds.*/
 
 int n_retries_transaction_active = 0;
 int n_retries_transaction_done = 0;
@@ -1668,8 +1668,8 @@ static void begin_clean_exit(void)
 #endif
     /* this defaults to 5 minutes */
     alarm(alarmtime);
-
-    XCHANGE32(gbl_db_is_exiting, comdb2_time_epoch());
+    uint32_t now = comdb2_time_epoch();
+    XCHANGE32(gbl_db_is_exiting, now);
 
     /* dont let any new requests come in.  we're going to go non-coherent
        here in a second, so letting new reads in would be bad. */

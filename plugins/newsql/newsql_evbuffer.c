@@ -23,7 +23,6 @@
 
 #include <bdb_api.h>
 #include <comdb2_appsock.h>
-#include <comdb2_atomic.h>
 #include <comdb2_plugin.h>
 #include <hostname_support.h>
 #include <intern_strings.h>

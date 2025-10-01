@@ -637,7 +637,7 @@ int toggle_case_sensitive_like(sqlite3 *db, int enable)
     return rc;
 }
 
-static int64_t connid = 0;
+static uint64_t connid = 0;
 
 /* lru_evbuffers may be accessed by multiple sql threads, hence we need to protect it with a mutex. */
 static pthread_mutex_t lru_evbuffers_mtx = PTHREAD_MUTEX_INITIALIZER;

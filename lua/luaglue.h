@@ -20,11 +20,8 @@
 struct lua_State;
 struct lua_TValue;
 
-enum dbtypes_enum;
 int luabb_type_by_name(const char *);
 int luabb_dbtype_by_name(const char *);
-enum dbtypes_enum;
-const char *luabb_dbtype_to_str(enum dbtypes_enum);
 void luabb_typeconvert(struct lua_State *, int pos, int type);
 char *luabb_newblob(struct lua_State *, int len, void **blob);
 int parseblob(const char *str, int len, char *out);
