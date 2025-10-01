@@ -381,6 +381,7 @@ extern int gbl_noleader_retry_duration_ms;
 extern int gbl_noleader_retry_poll_ms;
 
 extern char *gbl_iam_dbname;
+extern char *gbl_iam_base_bri;
 
 /* util/ctrace.c */
 extern int nlogs;
