@@ -107,6 +107,8 @@ struct cdb2_ssl_sess {
 };
 typedef struct cdb2_ssl_sess cdb2_ssl_sess;
 
+#define TYPESTR_LEN DBNAME_LEN + TYPE_LEN + POLICY_LEN + 16
+
 struct cdb2_hndl {
     char dbname[DBNAME_LEN];
     char cluster[64];
@@ -130,7 +132,7 @@ struct cdb2_hndl {
     int is_retry;
     int is_chunk;
     int is_set;
-    char newsql_typestr[DBNAME_LEN + TYPE_LEN + POLICY_LEN + 16];
+    char newsql_typestr[TYPESTR_LEN];
     char policy[POLICY_LEN];
     int master;
     int connected_host;
