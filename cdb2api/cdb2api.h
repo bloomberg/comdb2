@@ -272,9 +272,6 @@ int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 
 char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *str);
 
-int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
-                  char *dist_txnid, int rcode, int outrc, char *errmsg, int async);
-
 // on success, `*value` points to dynamically allocated memory
 // that must be freed by the caller.
 int cdb2_get_property(cdb2_hndl_tp *hndl, const char *key, char **value);
@@ -296,9 +293,9 @@ typedef enum cdb2_event_type {
     CDB2_AFTER_SEND_QUERY = 1 << 7,
     CDB2_BEFORE_READ_RECORD = 1 << 8,
     CDB2_AFTER_READ_RECORD = 1 << 9,
-    CDB2_AT_RECEIVE_HEARTBEAT = 1 << 10,
-    CDB2_BEFORE_TCP_CONNECT = 1 << 11,
-    CDB2_AFTER_TCP_CONNECT = 1 << 12,
+    CDB2_BEFORE_TCP_CONNECT = 1 << 10,
+    CDB2_AFTER_TCP_CONNECT = 1 << 11,
+    CDB2_AT_RECEIVE_HEARTBEAT = 1 << 12,
 
     /* Logical operation events.
        A logicial operation event typically

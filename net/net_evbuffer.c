@@ -4092,5 +4092,10 @@ void do_revconn_evbuffer(int fd, short what, void *data)
     socklen_t laddr = sizeof(addr);
     getsockname(fd, (struct sockaddr *)&addr, &laddr);
     int badrte = 0;
-    do_appsock_evbuffer(buf, &addr, fd, 1, 0, &badrte);
+    if ((do_appsock_evbuffer(buf, &addr, fd, 1, 0, &badrte)) == 0) {
+        return;
+    }
+    logmsg(LOGMSG_USER, "revconn: %s: Failed appsock_evbuffer, badrte=%d\n", __func__, badrte);
+    shutdown_close(fd);
+    return;
 }

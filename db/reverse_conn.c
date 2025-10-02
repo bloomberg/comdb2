@@ -51,6 +51,13 @@ typedef struct reverse_conn_host_st {
 
 typedef LISTC_T(reverse_conn_host_tp) reverse_conn_host_list_tp;
 
+static void free_rev_conn_host(reverse_conn_host_tp *ent)
+{
+    free(ent->dbname);
+    free(ent->host);
+    free(ent);
+}
+
 extern char *gbl_myhostname;
 extern char *gbl_physrep_metadb_name;
 extern char *gbl_physrep_metadb_host;
@@ -143,9 +150,7 @@ int replace_tier_by_hostname(reverse_conn_host_list_tp *new_reverse_conn_hosts) 
 
             if ((rc = cdb2_open(&hndl, new_host->dbname, new_host->host, 0)) != 0) {
                 revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n", __func__, __LINE__, new_host->dbname, new_host->host, rc);
-                free(new_host->dbname);
-                free(new_host->host);
-                free(listc_rfl(&new_reverse_conn_hosts, new_host));
+                free_rev_conn_host(listc_rfl(&new_reverse_conn_hosts, new_host));
                 continue;
             }
 
@@ -240,9 +245,7 @@ static int add_reverse_host(const char *dbname, const char *host, reverse_conn_h
         // Free the items added to the list
         LISTC_FOR_EACH_SAFE(reverse_conn_hosts, new_host, tmp, lnk)
         {
-            free(new_host->dbname);
-            free(new_host->host);
-            free(listc_rfl(reverse_conn_hosts, new_host));
+            free_rev_conn_host(listc_rfl(reverse_conn_hosts, new_host));
         }
         return -1;
     }
@@ -349,9 +352,7 @@ static int refresh_reverse_conn_hosts()
                     revconn_logmsg(LOGMSG_USER, "%s:%d %s@%s removed from 'reverse-connection' hosts list\n", __func__,
                                    __LINE__, old_host->dbname, old_host->host);
                 }
-                free(old_host->dbname);
-                free(old_host->host);
-                free(listc_rfl(&reverse_conn_hosts, old_host));
+                free_rev_conn_host(listc_rfl(&reverse_conn_hosts, old_host));
             }
         }
     }
@@ -423,7 +424,7 @@ static int refresh_reverse_conn_hosts()
             listc_abl(&reverse_conn_hosts,
                       listc_rfl(&new_reverse_conn_hosts, new_host));
         } else {
-            listc_rfl(&new_reverse_conn_hosts, new_host);
+            free_rev_conn_host(listc_rfl(&new_reverse_conn_hosts, new_host));
         }
     }
     pthread_mutex_unlock(&reverse_conn_hosts_mu);

@@ -11659,6 +11659,8 @@ int gbl_connect_remote_rte = 0;
  */
 int gbl_fdb_socket_timeout_ms;
 
+int gbl_debug_fake_rte_failure = 0;
+
 SBUF2 *connect_remote_db_flags(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
                          int force_rte, int sbflags)
 {
@@ -11734,8 +11736,17 @@ sbuf:
         sbuf2flush(sb);
         sbuf2gets(res, sizeof(res), sb);
 
-        if (res[0] != '0') {
+        int debug_fake_failure = (gbl_debug_fake_rte_failure && (rand() % 2) == 0);
+        if (debug_fake_failure) {
+            logmsg(LOGMSG_USER, "%s: fake rte failure,  dbname=%s machine=%s\n", __func__, dbname, host);
+        }
+
+        if (res[0] != '0' || debug_fake_failure) {
+            logmsg(LOGMSG_ERROR, "%s: rte failed to machine %s\n", __func__, host);
             sbuf2close(sb);
+            if (sbflags & SBUF2_NO_CLOSE_FD) {
+                Close(sockfd);
+            }
             return NULL;
         }
     }

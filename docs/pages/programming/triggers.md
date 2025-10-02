@@ -34,12 +34,12 @@ table `audit`. The stored procedure would like to log values of i, j when a new
 row is inserted, log values of j, k when rows are updated and log values of k,
 l when rows are deleted.
 
-`CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT OF i, j AND UPDATE OF j, k AND DELETE OF k, l)`
+`CREATE LUA TRIGGER audit FOR (TABLE t ON INSERT INCLUDE i, j ON UPDATE INCLUDE j, k ON DELETE INCLUDE k, l)`
 
 If we wanted to log all columns when a row is inserted, the statement would
 look like:
 
-`CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT OF i, j, k, l)`
+`CREATE LUA TRIGGER audit FOR (TABLE t ON INSERT INCLUDE i, j, k, l)`
 
 If we skip column names, then all columns at the time of creating trigger are
 considered. Keep in mind that these definitions are not updated automatically

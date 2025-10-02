@@ -395,6 +395,20 @@ See also:
 [table-event](#table-event)
 
 
+### CREATE LUA CONSUMER
+
+![CREATE CONSUMER](images/create-consumer.gif)
+
+Creates a new consumer or default consumer, to be called for specified table events. See the [Lua Consumers](triggers.html#lua-consumers) section for a full explanation and examples. Briefly, Lua consumers are used in Comdb2 to handle database change events (such as inserts, updates, and deletes) using Lua-based logic. They listen to changes on a Comdb2 table and execute Lua scripts when changes occur. Lua consumers run asynchronously in response to committed changes, while Lua triggers run synchronously as part of the transaction.
+
+
+Similar to [Lua Triggers](sql.html#create-lua-trigger), Procedure-name must be a name of an existing Lua procedure created with a
+[```CREATE PROCEDURE```](#create-procedure) statement.
+
+See also:
+
+[table-event](#table-event)
+
 ### CREATE LUA FUNCTION
 
 ![CREATE LUA FUNCTION](images/create-lua-func.gif)

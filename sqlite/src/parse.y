@@ -2641,6 +2641,10 @@ cmd ::= dryrun CREATE trigger(T) nm(Q) withsequence(S) ON table_trigger_event(E)
     comdb2CreateTrigger(pParse,T,S,&Q,E);
 }
 
+cmd ::= dryrun CREATE trigger(T) nm(Q) withsequence(S) FOR table_trigger_new_event(E). {
+    comdb2CreateTrigger(pParse,T,S,&Q,E);
+}
+
 %type trigger {int}
 trigger(A) ::= LUA TRIGGER. { A = 0; }
 trigger(A) ::= LUA CONSUMER. { A = 1; }
@@ -2654,6 +2658,14 @@ table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
   A = comdb2AddTriggerTable(pParse,0,T,B);
 }
 
+table_trigger_new_event(A) ::= table_trigger_new_event(B) COMMA LP TABLE fullname(T) ON trigger_new_events(C) RP. {
+  A = comdb2AddTriggerTable(pParse,B,T,C);
+}
+
+table_trigger_new_event(A) ::= LP TABLE fullname(T) ON trigger_new_events(B) RP. {
+  A = comdb2AddTriggerTable(pParse,0,T,B);
+}
+
 %type withsequence {int}
 withsequence(A) ::= .                   { A = -1; }
 withsequence(A) ::= WITHOUT SEQUENCE.   { A = 0; }
@@ -2662,16 +2674,56 @@ withsequence(A) ::= WITH SEQUENCE.      { A = 1; }
 %type table_trigger_event {Cdb2TrigTables*}
 %destructor table_trigger_event {sqlite3DbFree(pParse->db, $$);}
 
+%type table_trigger_new_event {Cdb2TrigTables*}
+%destructor table_trigger_new_event {sqlite3DbFree(pParse->db, $$);}
+
 %type cdb2_trigger_event {Cdb2TrigEvent}
 %destructor cdb2_trigger_event {sqlite3IdListDelete(pParse->db, $$.cols);}
 
 %type trigger_events {Cdb2TrigEvents*}
 %destructor trigger_events {sqlite3DbFree(pParse->db, $$);}
 
+%type trigger_new_events {Cdb2TrigEvents*}
+%destructor trigger_new_events {sqlite3DbFree(pParse->db, $$);}
+
+%type cdb2_trigger_event_new {Cdb2TrigEvent}
+%destructor cdb2_trigger_event_new {sqlite3IdListDelete(pParse->db, $$.cols);}
+
+cdb2_trigger_event_new(A) ::= INSERT. {
+  A.op = TK_INSERT;
+  A.cols = 0;
+}
+cdb2_trigger_event_new(A) ::= UPDATE. {
+  A.op = TK_UPDATE;
+  A.cols = 0;
+}
+cdb2_trigger_event_new(A) ::= DELETE. {
+  A.op = TK_DELETE;
+  A.cols = 0;
+}
+cdb2_trigger_event_new(A) ::= INSERT INCLUDE idlist(X). {
+  A.op = TK_INSERT;
+  A.cols = X;
+}
+cdb2_trigger_event_new(A) ::= UPDATE INCLUDE idlist(X). {
+  A.op = TK_UPDATE;
+  A.cols = X;
+}
+cdb2_trigger_event_new(A) ::= DELETE INCLUDE idlist(X). {
+  A.op = TK_DELETE;
+  A.cols = X;
+}
+
 trigger_events(A) ::= trigger_events(B) AND cdb2_trigger_event(C). {
   A = comdb2AddTriggerEvent(pParse,B,&C);
 }
 trigger_events(A) ::= cdb2_trigger_event(B). {
+  A = comdb2AddTriggerEvent(pParse,0,&B);
+}
+trigger_new_events(A) ::= trigger_new_events(B) ON cdb2_trigger_event_new(C). {
+  A = comdb2AddTriggerEvent(pParse,B,&C);
+}
+trigger_new_events(A) ::= cdb2_trigger_event_new(B). {
   A = comdb2AddTriggerEvent(pParse,0,&B);
 }
 cdb2_trigger_event(A) ::= DELETE. {

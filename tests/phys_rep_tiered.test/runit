@@ -869,6 +869,7 @@ function setup_physrep_cluster()
             #ssh $node "echo \"allow reads from mips\" >> ${_dbdir}/${_dbname}.lrl" < /dev/null
             ssh $node "echo \"allow writes from bogo\" >> ${_dbdir}/${_dbname}.lrl" < /dev/null
             ssh $node "echo \"allow writes from mips\" >> ${_dbdir}/${_dbname}.lrl" < /dev/null
+            ssh $node "echo \"debug_fake_rte_failure 1\" >> ${_dbdir}/${_dbname}.lrl" < /dev/null
 
             if [[ ${firstNode} == "" ]]; then
                 ssh $node "echo \"machine_classes all bogo\" >> ${_dbdir}/${_dbname}.lrl" < /dev/null
@@ -1343,6 +1344,21 @@ function verify_revconn_fix
     x=$(egrep "Reverse connected" $logFile | wc -l)
     if [[ "$x" -gt 90 ]]; then
         cleanFailExit "Reverse connection loop in $logFile"
+    fi
+}
+
+# Count number of file-descriptors used by the revconn-source
+function revconn_leak_test
+{
+    echo "Getting pid on first node for clustered physrep"
+    pid=$(ssh ${firstNode} "cat ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" < /dev/null)
+
+    echo "Counting open file descriptors for pid $pid"
+    count=$(ssh ${firstNode} "lsof -p $pid | egrep TCP | egrep 5105 | wc -l" < /dev/null)
+
+    echo "Open file descriptors count is $count"
+    if [[ "$count" -gt 10 ]]; then
+        cleanFailExit "Leaked file descriptors, count is $count"
     fi
 }
 
@@ -1979,6 +1995,11 @@ function run_tests
     testcase="verify_revconn_fix"
     testcase_preamble $testcase
     verify_revconn_fix
+    testcase_finish $testcase
+
+    testcase="revconn_leak_test"
+    testcase_preamble $testcase
+    revconn_leak_test
     testcase_finish $testcase
 
     testcase="physrep_truncate"

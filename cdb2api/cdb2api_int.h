@@ -27,4 +27,7 @@
 int cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
 void cdb2_socket_pool_donate_ext(cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
 
+int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
+                  char *dist_txnid, int rcode, int outrc, char *errmsg, int async);
+
 #endif

@@ -11,6 +11,7 @@
 #include <bdb_api.h>
 #include <bdb_int.h>
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 #include <unistd.h>
 #include <alloca.h>
 #include <segstr.h>

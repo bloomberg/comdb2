@@ -1861,6 +1861,8 @@ REGISTER_TUNABLE("physrep_update_registry_interval", "Physrep update-registry in
                  &gbl_physrep_update_registry_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_revconn_check_interval", "Physrep recheck revconn interval.  (Default: 60)", TUNABLE_INTEGER,
                  &gbl_physrep_revconn_check_interval, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_fake_rte_failure", "Fake rte failures in connect-remote-db.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_fake_rte_failure, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_v2", "Use version 2 of keepalive which includes first lsn. (Default: off)",
