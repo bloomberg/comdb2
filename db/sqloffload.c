@@ -223,24 +223,31 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int sentops = 0;
     int bdberr = 0;
     int rc = 0;
+    int serial_rc = 0;
     int usedb_only = 0;
     int force_master = gbl_serialize_reads_like_writes;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    /* get_rep_gen & serial_check call into berkley */
+    BDB_READLOCK("rese_commit");
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
         if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
-    if (clnt->selectv_arr)
+    /* selectv pre-check optimization */
+    if (clnt->early_retry == 0 && clnt->selectv_arr && (force_master || !osql_shadtbl_empty(clnt))) {
         currangearr_build_hash(clnt->selectv_arr);
-    if (clnt->selectv_arr &&
-        bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
-                              &(clnt->selectv_arr->file),
-                              &(clnt->selectv_arr->offset), 0)) {
-        clnt->osql.xerr.errval = ERR_CONSTR;
-        errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
-        rc = SQLITE_ABORT;
-    } else if (clnt->early_retry == EARLY_ERR_VERIFY) {
+        if ((serial_rc = bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr, &(clnt->selectv_arr->file),
+                                               &(clnt->selectv_arr->offset), 0)) != 0) {
+            clnt->early_retry = (serial_rc == -99) ? EARLY_ERR_GENCHANGE : EARLY_ERR_SELECTV;
+        }
+    }
+
+    BDB_RELLOCK();
+
+    if (clnt->early_retry == EARLY_ERR_VERIFY) {
         if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
             clnt->osql.xerr.errval = ERR_NOTSERIAL;
             errstat_cat_str(&(clnt->osql.xerr),
@@ -253,7 +260,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         rc = SQLITE_ABORT;
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
         clnt->osql.xerr.errval = ERR_CONSTR;
-        errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
+        errstat_cat_str(&(clnt->osql.xerr), "constraints error");
         rc = SQLITE_ABORT;
     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
