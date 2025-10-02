@@ -134,6 +134,14 @@ static int cdb2_api_call_timeout_set_from_env = 0;
 static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
 static int cdb2_socket_timeout_set_from_env = 0;
 
+#define CDB2_SOCKPOOL_SEND_TIMEOUTMS_DEFAULT 0
+static int CDB2_SOCKPOOL_SEND_TIMEOUTMS = CDB2_SOCKPOOL_SEND_TIMEOUTMS_DEFAULT;
+static int cdb2_sockpool_send_timeoutms_set_from_env = 0;
+
+#define CDB2_SOCKPOOL_RECV_TIMEOUTMS_DEFAULT 0
+static int CDB2_SOCKPOOL_RECV_TIMEOUTMS = CDB2_SOCKPOOL_RECV_TIMEOUTMS_DEFAULT;
+static int cdb2_sockpool_recv_timeoutms_set_from_env = 0;
+
 #define CDB2_POLL_TIMEOUT_DEFAULT 250
 static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
 
@@ -391,6 +399,8 @@ static void reset_the_configuration(void)
     CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
     CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
     CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+    CDB2_SOCKPOOL_SEND_TIMEOUTMS = CDB2_SOCKPOOL_SEND_TIMEOUTMS_DEFAULT;
+    CDB2_SOCKPOOL_RECV_TIMEOUTMS = CDB2_SOCKPOOL_RECV_TIMEOUTMS_DEFAULT;
     CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
     CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
     CDB2_MAX_AUTO_CONSUME_ROWS = CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT;
@@ -843,10 +853,12 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd, int
  * may have received before the error occured.  Alse we make sure that we
  * preserve the value of errno which may be needed if the error was
  * PASSFD_RECVMSG. */
-static int recv_fd(int sockfd, void *data, size_t nbytes, int *fd_recvd)
+static int recv_fd(cdb2_hndl_tp *hndl, int sockfd, void *data, size_t nbytes, int *fd_recvd)
 {
-    int rc;
-    rc = recv_fd_int(sockfd, data, nbytes, fd_recvd, 0);
+    int rc, timeoutms = hndl ? hndl->sockpool_recv_timeoutms : CDB2_SOCKPOOL_RECV_TIMEOUTMS;
+    if (hndl && hndl->api_call_timeout && (timeoutms > hndl->api_call_timeout))
+        timeoutms = hndl->api_call_timeout;
+    rc = recv_fd_int(sockfd, data, nbytes, fd_recvd, timeoutms);
     if (rc != 0 && *fd_recvd != -1) {
         int errno_save = errno;
         if (close(*fd_recvd) == -1) {
@@ -945,9 +957,12 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
     return PASSFD_SUCCESS;
 }
 
-static int send_fd(int sockfd, const void *data, size_t nbytes, int fd_to_send)
+static int send_fd(cdb2_hndl_tp *hndl, int sockfd, const void *data, size_t nbytes, int fd_to_send)
 {
-    return send_fd_to(sockfd, data, nbytes, fd_to_send, 0);
+    int timeoutms = hndl ? hndl->sockpool_send_timeoutms : CDB2_SOCKPOOL_SEND_TIMEOUTMS;
+    if (hndl && hndl->api_call_timeout && (timeoutms > hndl->api_call_timeout))
+        timeoutms = hndl->api_call_timeout;
+    return send_fd_to(sockfd, data, nbytes, fd_to_send, timeoutms);
 }
 
 static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
@@ -1397,6 +1412,10 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_str("COMDB2_CONFIG_DEFAULT_TYPE", (char *)&cdb2_default_cluster, sizeof(cdb2_default_cluster),
                             &cdb2_default_cluster_set_from_env);
         process_env_var_int("COMDB2_CONFIG_CONNECT_TIMEOUT", &CDB2_CONNECT_TIMEOUT, &cdb2_connect_timeout_set_from_env);
+        process_env_var_int("COMDB2_CONFIG_SOCKPOOL_SEND_TIMEOUTMS", &CDB2_SOCKPOOL_SEND_TIMEOUTMS,
+                            &cdb2_sockpool_send_timeoutms_set_from_env);
+        process_env_var_int("COMDB2_CONFIG_SOCKPOOL_RECV_TIMEOUTMS", &CDB2_SOCKPOOL_RECV_TIMEOUTMS,
+                            &cdb2_sockpool_recv_timeoutms_set_from_env);
         process_env_var_int("COMDB2_CONFIG_API_CALL_TIMEOUT", &CDB2_API_CALL_TIMEOUT,
                             &cdb2_api_call_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_COMDB2DB_TIMEOUT", &COMDB2DB_TIMEOUT, &cdb2_comdb2db_timeout_set_from_env);
@@ -1423,6 +1442,10 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
             strcpy(hndl->cluster, cdb2_default_cluster);
         if (cdb2_connect_timeout_set_from_env)
             hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
+        if (cdb2_sockpool_send_timeoutms_set_from_env)
+            hndl->sockpool_send_timeoutms = CDB2_SOCKPOOL_SEND_TIMEOUTMS;
+        if (cdb2_sockpool_recv_timeoutms_set_from_env)
+            hndl->sockpool_recv_timeoutms = CDB2_SOCKPOOL_RECV_TIMEOUTMS;
         if (cdb2_api_call_timeout_set_from_env)
             hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
         if (cdb2_comdb2db_timeout_set_from_env)
@@ -1553,6 +1576,20 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                     hndl->comdb2db_timeout = atoi(tok);
                 else if (tok)
                     COMDB2DB_TIMEOUT = atoi(tok);
+            } else if (!cdb2_sockpool_recv_timeoutms_set_from_env &&
+                       (strcasecmp("sockpool_recv_timeoutms", tok) == 0)) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (hndl)
+                    hndl->sockpool_recv_timeoutms = atoi(tok);
+                else
+                    CDB2_SOCKPOOL_RECV_TIMEOUTMS = atoi(tok);
+            } else if (!cdb2_sockpool_send_timeoutms_set_from_env &&
+                       (strcasecmp("sockpool_send_timeoutms", tok) == 0)) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (hndl)
+                    hndl->sockpool_send_timeoutms = atoi(tok);
+                else
+                    CDB2_SOCKPOOL_SEND_TIMEOUTMS = atoi(tok);
             } else if (!cdb2_socket_timeout_set_from_env && strcasecmp("socket_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (hndl && tok)
@@ -1742,18 +1779,22 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 {
     if (!hndl)
         return;
-    if (!hndl->api_call_timeout)
-        hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
     if (!hndl->connect_timeout)
         hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
     if (!hndl->comdb2db_timeout)
         hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
     if (!hndl->socket_timeout)
         hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
+    if (!hndl->sockpool_recv_timeoutms)
+        hndl->sockpool_recv_timeoutms = CDB2_SOCKPOOL_RECV_TIMEOUTMS;
+    if (!hndl->sockpool_send_timeoutms)
+        hndl->sockpool_send_timeoutms = CDB2_SOCKPOOL_SEND_TIMEOUTMS;
     if (!hndl->auto_consume_timeout_ms)
         hndl->auto_consume_timeout_ms = CDB2_AUTO_CONSUME_TIMEOUT_MS;
     if (!hndl->max_auto_consume_rows)
         hndl->max_auto_consume_rows = CDB2_MAX_AUTO_CONSUME_ROWS;
+    if (!hndl->api_call_timeout)
+        hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
 
     if (hndl->connect_timeout > hndl->api_call_timeout)
         hndl->connect_timeout = hndl->api_call_timeout;
@@ -2253,7 +2294,7 @@ static int cdb2_socket_pool_get_ll(cdb2_hndl_tp *hndl, const char *typestr, int 
     strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
     errno = 0;
-    int rc = send_fd(sockpool_fd, &msg, sizeof(msg), -1);
+    int rc = send_fd(hndl, sockpool_fd, &msg, sizeof(msg), -1);
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
@@ -2268,7 +2309,7 @@ static int cdb2_socket_pool_get_ll(cdb2_hndl_tp *hndl, const char *typestr, int 
     /* Read reply from server.  It can legitimately not send
      * us a file descriptor. */
     errno = 0;
-    rc = recv_fd(sockpool_fd, &msg, sizeof(msg), &fd);
+    rc = recv_fd(hndl, sockpool_fd, &msg, sizeof(msg), &fd);
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
@@ -2355,7 +2396,7 @@ void cdb2_socket_pool_donate_ext(cdb2_hndl_tp *hndl, const char *typestr, int fd
             strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
             errno = 0;
-            rc = send_fd(sockpool_fd, &msg, sizeof(msg), fd);
+            rc = send_fd(hndl, sockpool_fd, &msg, sizeof(msg), fd);
             if (rc != PASSFD_SUCCESS) {
                 fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
                         errno, strerror(errno));
