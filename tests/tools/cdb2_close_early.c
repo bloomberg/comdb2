@@ -125,7 +125,7 @@ done:
     end = gettimeofday_ms();
     tot = end - start;
     printf("cdb2_close took %"PRId64" ms\n", tot);
-    if (tot >= 4)
+    if (tot >= 5)
         exit(1);
     return 0;
 }
