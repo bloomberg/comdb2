@@ -203,6 +203,16 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
+option(GENERATE_COVERAGE "Enable gcov/lcov coverage flags" OFF)
+function(configure_coverage)
+  message(STATUS "Enabling gcov/lcov coverage flags")
+  # Ensure debug info and disable optimizations for accurate coverage.
+  add_compile_options(-g -O0 --coverage)
+  # Propagate coverage to linker flags for executables and shared libs.
+  add_link_options(--coverage)
+  add_compile_definitions(GENERATE_COVERAGE)
+endfunction()
+
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
@@ -214,6 +224,9 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
   endif()
   set(COMMON_FLAGS "${COMMON_FLAGS} -pthread")
   set(COMMON_FLAGS "${COMMON_FLAGS} -fno-strict-aliasing")
+  if(GENERATE_COVERAGE)
+    configure_coverage()
+  endif()
 elseif(${CMAKE_C_COMPILER_ID} STREQUAL SunPro)
   set(COMMON_FLAGS "${COMMON_FLAGS} -mt=yes")
   set(COMMON_FLAGS "${COMMON_FLAGS} -fma=fused")
