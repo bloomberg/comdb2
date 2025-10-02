@@ -225,6 +225,10 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc = 0;
     int usedb_only = 0;
     int force_master = gbl_serialize_reads_like_writes;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    /* get_rep_gen & serial_check call into berkley */
+    BDB_READLOCK("rese_commit");
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
@@ -260,6 +264,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
         rc = SQLITE_ABORT;
     }
+
+    BDB_RELLOCK();
     if (rc) {
         clnt->early_retry = 0;
         rc = SQLITE_ABORT;
