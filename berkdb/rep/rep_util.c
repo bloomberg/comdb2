@@ -102,22 +102,23 @@ static inline int is_logput(int type) {
 }
 
 /*
- * __rep_send_message --
+ * __rep_send_message_gen --
  *	This is a wrapper for sending a message.  It takes care of constructing
  * the REP_CONTROL structure and calling the user's specified send function.
  *
- * PUBLIC: int __rep_send_message __P((DB_ENV *, char*,
+ * PUBLIC: int __rep_send_message_gen __P((DB_ENV *, char*,
  * PUBLIC:	 u_int32_t, DB_LSN *, const DBT *, u_int32_t,
- * PUBLIC:	 void *usr_ptr));
+ * PUBLIC:	 u_int32_t, void *usr_ptr));
  */
 int
-__rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
+__rep_send_message_gen(dbenv, eid, rtype, lsnp, dbtp, flags, gen, usr_ptr)
 	DB_ENV *dbenv;
 	char *eid;
 	u_int32_t rtype;
 	DB_LSN *lsnp;
 	const DBT *dbtp;
 	u_int32_t flags;
+    u_int32_t gen;
 	void *usr_ptr;
 {
 	DB_REP *db_rep;
@@ -158,10 +159,7 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	cntrl.flags = flags;
 	cntrl.rep_version = DB_REPVERSION;
 	cntrl.log_version = DB_LOGVERSION;
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	cntrl.gen = rep->gen;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-
+    cntrl.gen = gen;
 
 	memset(&cdbt, 0, sizeof(cdbt));
 	cdbt.data = &cntrl;
@@ -280,6 +278,36 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 #endif
 	return (ret);
 }
+
+
+/*
+ * __rep_send_message --
+ *	This is a wrapper for sending a message.  It takes care of constructing
+ * the REP_CONTROL structure and calling the user's specified send function.
+ *
+ * PUBLIC: int __rep_send_message __P((DB_ENV *, char*,
+ * PUBLIC:	 u_int32_t, DB_LSN *, const DBT *, u_int32_t,
+ * PUBLIC:	 void *usr_ptr));
+ */
+int
+__rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
+	DB_ENV *dbenv;
+	char *eid;
+	u_int32_t rtype;
+	DB_LSN *lsnp;
+	const DBT *dbtp;
+	u_int32_t flags;
+	void *usr_ptr;
+{
+	u_int32_t gen;
+	DB_REP *db_rep = dbenv->rep_handle;
+	REP *rep = db_rep->region;
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	gen = rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	return __rep_send_message_gen(dbenv, eid, rtype, lsnp, dbtp, flags, gen, usr_ptr);
+}
+
 
 /*
  * __rep_send_log_more --

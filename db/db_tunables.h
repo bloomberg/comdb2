@@ -1498,6 +1498,10 @@ REGISTER_TUNABLE("debug_drop_nth_rep_message", "Drop the Nth replication message
                  "for testing purposes (Default: 0)", TUNABLE_INTEGER,
                  &gbl_debug_drop_nth_rep_message, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("broadcast_newmaster",
+                 "Broadcast new-master periodically.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_broadcast_newmaster, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "max_clientstats",
     "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
