@@ -1118,7 +1118,7 @@ int sqlite3VdbeExec(
 #if defined(SQLITE_DEBUG) || defined(VDBE_PROFILE)
     pOrigOp = pOp;
 #endif
-  
+
     switch( pOp->opcode ){
 
 /*****************************************************************************

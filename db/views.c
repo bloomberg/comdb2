@@ -36,7 +36,7 @@
 #include "logical_cron.h"
 #include "sc_util.h"
 #include "bdb_int.h"
-
+#include "sqlanalyze.h"
 #define VIEWS_MAX_RETENTION 1000
 
 extern int gbl_is_physical_replicant;
@@ -158,6 +158,8 @@ int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
 
 int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
                          char *src, int acquire_schema_lk);
+
+void get_saved_scale(char *table, int *scale);
 
 char *timepart_describe(sched_if_t *_)
 {
@@ -3463,9 +3465,40 @@ done:
     return rc;
 }
 
+int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
+                               struct errstat *err)
+{
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    int rc = 0;
+    int i = 0;
+
+    Pthread_rwlock_rdlock(&views_lk);
+
+    view = _get_view(views, name);
+    if (!view) {
+        logmsg(LOGMSG_ERROR, "%s:%d could not find partition %s\n", __func__, __LINE__, name);
+        errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST, "no partition %s", name);
+        goto done;
+    }
+
+    for (i=0; i<view->nshards; i++) {
+        rc = analyze_regular_table(view->shards[i].tblname, td, clnt, err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n",
+                   __func__, __LINE__, view->shards[i].tblname, name, rc);
+            errstat_set_rcstrf(err, rc, "analyze failed shard %s of %s",
+                               view->shards[i].tblname, name);
+            goto done;
+        }
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    return rc;
+}
+
 #include "views_systable.c"
 
 #include "views_serial.c"
 
 #include "views_sqlite.c"
-
