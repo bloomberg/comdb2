@@ -26,3 +26,5 @@ lock_stat_inversion,UNKNOWN,180915326
 pglogs_seqnum,UNKNOWN,180959545
 phys_rep_tiered,UNKNOWN,180991871
 phys_rep_tiered_nosource_generated,UNKNOWN,180991871
+sc_swapfields_logicalsc_generated,UNKNOWN,181013093
+sc_datacopy_logicalsc_generated,UNKNOWN,181013102
