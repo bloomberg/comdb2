@@ -181,7 +181,7 @@ static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
 static int syncmode_callback(bdb_state_type *bdb_state);
 
 /* How many times we became, or ceased to be, master node. */
-int gbl_master_changes = 0;
+uint32_t gbl_master_changes = 0;
 
 /* Dont block when removing old files */
 int gbl_txn_fop_noblock = 0;

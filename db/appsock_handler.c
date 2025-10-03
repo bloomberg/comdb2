@@ -53,7 +53,7 @@ struct thdpool *gbl_appsock_thdpool = NULL;
 char appsock_unknown_old[] = "-1 #unknown command\n";
 char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
-int32_t active_appsock_conns = 0;
+uint32_t active_appsock_conns = 0;
 int64_t gbl_denied_appsock_connection_count = 0;
 
 /* HASH of all registered appsock handlers (one handler per appsock type) */
@@ -106,7 +106,7 @@ int destroy_appsock(void)
 void appsock_quick_stat(void)
 {
     logmsg(LOGMSG_USER, "num appsock connections %llu\n", total_appsock_conns);
-    logmsg(LOGMSG_USER, "num active appsock connections %d\n", active_appsock_conns);
+    logmsg(LOGMSG_USER, "num active appsock connections %u\n", active_appsock_conns);
     logmsg(LOGMSG_USER, "num appsock commands    %llu\n", total_toks);
 }
 

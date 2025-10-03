@@ -54,7 +54,7 @@ enum {
 /* trigger registration info */
 typedef struct trigger_reg {
     int node;
-    int elect_cookie;
+    uint32_t elect_cookie;
     genid_t trigger_cookie;
     int spname_len;
     char spname[0]; // spname_len + 1

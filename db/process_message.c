@@ -1905,11 +1905,10 @@ clipper_usage:
                    gbl_epoch_time - gbl_starttime);
             logmsg(LOGMSG_USER, "readonly                %c\n", gbl_readonly ? 'Y' : 'N');
             logmsg(LOGMSG_USER, "num sql queries         %"PRId64"\n", gbl_nsql);
-            logmsg(LOGMSG_USER, "num new sql queries     %"PRId64"\n", gbl_nnewsql);
+            logmsg(LOGMSG_USER, "num new sql queries     %"PRIu64"\n", gbl_nnewsql);
             logmsg(LOGMSG_USER, "num ssl sql queries     %"PRId64"\n", gbl_nnewsql_ssl);
             logmsg(LOGMSG_USER, "num sql compat queries %"PRId64"\n", gbl_nnewsql_compat);
-            logmsg(LOGMSG_USER, "num master rejects      %u\n",
-                   gbl_masterrejects);
+            logmsg(LOGMSG_USER, "num master rejects      %d\n", gbl_masterrejects);
             logmsg(LOGMSG_USER, "sql ticks               %llu\n", gbl_sqltick);
             logmsg(LOGMSG_USER, "sql deadlocks recover attempts %llu failures %llu\n",
                    gbl_sql_deadlock_reconstructions, gbl_sql_deadlock_failures);

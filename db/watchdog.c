@@ -331,7 +331,7 @@ static void *watchdog_thread(void *arg)
             socket_pool_timeout();
         }
         
-        int one = 1;
+        uint32_t one = 1;
         if (CAS32(gbl_trigger_timepart, one, 0)) {
             if (thedb->master == gbl_myhostname) {
                 rc = views_cron_restart(thedb->timepart_views);
@@ -369,11 +369,11 @@ static void *watchdog_thread(void *arg)
                         if ((diff_seconds < 0) || (diff_seconds > slow_seconds)) {
                             logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
                                            LOGMSG_FATAL : LOGMSG_ERROR,
-                                   "%s: client #%lld has been in state %s for "
+                                   "%s: client #%" PRIu64 " has been in state %s for "
                                    "%d seconds (>%d): connect_time %0.2f "
                                    "seconds, raw_time_in_state %d, host {%s}, "
                                    "pid %lld, sql {%s}\n", __func__,
-                                   (long long int)conn_info->connection_id,
+                                   conn_info->connection_id,
                                    zState, diff_seconds, slow_seconds,
                                    difftime(conn_info->connect_time_int, (time_t)0),
                                    conn_info->time_in_state_int, conn_info->host,

@@ -238,12 +238,6 @@ enum ctrl_sqleng {
     SQLENG_WRONG_STATE,
 };
 
-enum trans_clntcomm {
-    TRANS_CLNTCOMM_NOREPLY = 0,
-    TRANS_CLNTCOMM_NORMAL = 1,
-    TRANS_CLNTCOMM_CHUNK = 2
-};
-
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate);
 
@@ -988,7 +982,7 @@ struct sqlclntstate {
     struct sqlthdstate *thd;
     int had_lease_at_begin;
 
-    int64_t connid;
+    uint64_t connid;
     int64_t total_sql;
     int64_t sql_since_reset;
     int64_t num_resets;

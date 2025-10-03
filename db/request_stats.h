@@ -60,16 +60,16 @@ struct per_request_stats {
 };
 
 struct global_stats {
-    int64_t page_reads;
-    int64_t page_writes;
-    int64_t failed_page_reads;
-    int64_t failed_page_writes;
-    int64_t fsyncs;
-    int64_t mempgets;
-    int64_t page_bytes_read;
-    int64_t page_bytes_written;
-    int64_t failed_page_bytes_read;
-    int64_t failed_page_bytes_written;
+    uint64_t page_reads;
+    uint64_t page_writes;
+    uint64_t failed_page_reads;
+    uint64_t failed_page_writes;
+    uint64_t fsyncs;
+    uint64_t mempgets;
+    uint64_t page_bytes_read;
+    uint64_t page_bytes_written;
+    uint64_t failed_page_bytes_read;
+    uint64_t failed_page_bytes_written;
 };
 
 void user_request_begin(enum request_type type, int flags);
@@ -79,7 +79,7 @@ void user_request_read_callback(int);
 void user_request_write_callback(int);
 void user_request_memp_callback(void);
 void user_request_init(void);
-void global_request_stats(struct global_stats *stats);
+struct global_stats global_request_stats(void);
 
 void user_request_on(void);
 void user_request_off(void);

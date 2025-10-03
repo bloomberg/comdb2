@@ -2331,7 +2331,7 @@ static int do_query_on_master_check(struct sqlclntstate *clnt, CDB2SQLQUERY *sql
         return 0;
     }
     if (bdb_master_should_reject(thedb->bdb_env) && allow_master_exec == 0) {
-        ATOMIC_ADD32(gbl_masterrejects, 1);
+        ++gbl_masterrejects;
         if (allow_master_dbinfo) {
             struct newsql_appdata *appdata = clnt->appdata;
             appdata->write_dbinfo(clnt);

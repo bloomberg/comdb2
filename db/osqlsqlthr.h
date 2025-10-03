@@ -37,7 +37,12 @@
  */
 
 struct BtCursor;
-enum trans_clntcomm;
+
+enum trans_clntcomm {
+    TRANS_CLNTCOMM_NOREPLY = 0,
+    TRANS_CLNTCOMM_NORMAL = 1,
+    TRANS_CLNTCOMM_CHUNK = 2
+};
 
 /* Upsert flags that attach with OSQL_INSERT. */
 enum osql_rec_flags {

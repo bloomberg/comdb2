@@ -30,8 +30,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     char recovery_command[200] = {0};
     char recovery_lsn[100] = {0};
     char line[128] = {0};
-    int before_master;
-    int after_master;
+    uint32_t before_master, after_master;
     int before_sc;
     int after_sc;
     int report_back = 0;

@@ -658,16 +658,16 @@ typedef struct dbtable {
     int64_t prev_blockosqltypcnt[MAX_OSQL_TYPES];
     int64_t prev_nsql;
     /* counters for writes to this table */
-    int64_t write_count[RECORD_WRITE_MAX];
+    uint64_t write_count[RECORD_WRITE_MAX];
     int64_t saved_write_count[RECORD_WRITE_MAX];
     /* counters for cascaded writes to this table */
     int64_t casc_write_count;
     int64_t saved_casc_write_count;
     int64_t deadlock_count;
     int64_t saved_deadlock_count;
-    int64_t aa_saved_counter; // zeroed out at autoanalyze
-    int64_t aa_lastepoch;
-    int64_t aa_needs_analyze_time; // time when analyze is needed for table in request mode, otherwise 0
+    uint64_t aa_saved_counter; // zeroed out at autoanalyze
+    uint64_t aa_lastepoch;
+    uint64_t aa_needs_analyze_time; // time when analyze is needed for table in request mode, otherwise 0
     int64_t read_count; // counter for reads to this table
     int64_t index_used_count;   // counter for number of times a table index was used
 
@@ -1605,11 +1605,11 @@ typedef struct {
 
 /* global settings */
 extern int gbl_sc_timeoutms;
-extern int gbl_trigger_timepart;
+extern uint32_t gbl_trigger_timepart;
 extern int gbl_multitable_ddl;
 
-extern int64_t gbl_num_auth_allowed;
-extern int64_t gbl_num_auth_denied;
+extern uint64_t gbl_num_auth_allowed;
+extern uint64_t gbl_num_auth_denied;
 
 extern const char *const gbl_db_git_version_sha;
 extern const char gbl_db_version[];
@@ -1772,7 +1772,7 @@ extern pthread_attr_t gbl_pthread_attr_detached;
 extern int64_t gbl_nsql;
 extern long long gbl_nsql_steps;
 
-extern int64_t gbl_nnewsql;
+extern uint64_t gbl_nnewsql;
 extern int64_t gbl_nnewsql_ssl;
 extern long long gbl_nnewsql_steps;
 
@@ -1802,7 +1802,7 @@ extern int64_t gbl_fastsql_set_datetime_precision;
 extern int64_t gbl_fastsql_sslconn;
 extern int64_t gbl_fastsql_execute_stop;
 
-extern unsigned int gbl_masterrejects;
+extern int gbl_masterrejects;
 
 extern int gbl_selectv_rangechk;
 
@@ -1826,7 +1826,7 @@ extern int gbl_verify_abort;
 
 extern int gbl_sort_nulls_correctly;
 
-extern int gbl_master_changes;
+extern uint32_t gbl_master_changes;
 extern int gbl_sc_commit_count;
 
 extern int gbl_fix_validate_cstr;

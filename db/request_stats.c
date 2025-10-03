@@ -17,7 +17,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <errno.h>
 #include <string.h>
 #include <strings.h>
 #include <stddef.h>
@@ -170,8 +169,10 @@ void user_request_memp_callback(void)
     ATOMIC_ADD64(global.mempgets, 1);
 }
 
-void global_request_stats(struct global_stats *stats)
+struct global_stats global_request_stats(void)
 {
+    return global;
+    /*
     stats->page_reads = ATOMIC_LOAD64(global.page_reads);
     stats->page_writes = ATOMIC_LOAD64(global.page_writes);
     stats->failed_page_reads = ATOMIC_LOAD64(global.failed_page_reads);
@@ -182,6 +183,7 @@ void global_request_stats(struct global_stats *stats)
     stats->page_bytes_written = ATOMIC_LOAD64(global.page_bytes_written);
     stats->failed_page_bytes_read = ATOMIC_LOAD64(global.failed_page_bytes_read);
     stats->failed_page_bytes_written = ATOMIC_LOAD64(global.failed_page_bytes_written);
+    */
 }
 
 void user_request_init(void)

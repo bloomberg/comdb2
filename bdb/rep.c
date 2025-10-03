@@ -3152,8 +3152,8 @@ static int node_in_list(int node, int list[], int listsz)
 
   */
 
-int64_t gbl_distributed_commit_count = 0;
-int64_t gbl_not_durable_commit_count = 0;
+uint64_t gbl_distributed_commit_count = 0;
+uint64_t gbl_not_durable_commit_count = 0;
 int gbl_ignore_final_non_durable_retry = 1;
 
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */

@@ -171,4 +171,6 @@ typedef union {
     blob_t bl;
 } all_types_t;
 
+const char *luabb_dbtype_to_str(enum dbtypes_enum);
+
 #endif

@@ -58,16 +58,13 @@
 #include "sql.h"
 #include "sqloffload.h"
 #include "errstat.h"
-#include "timer.h"
 #include "dbglog.h"
 #include "osqlblockproc.h"
 #include <gettimeofday_ms.h>
 #include <endian_core.h>
-#include "bdb_access.h"
 #include "bdb_int.h"
 #include "osqlblkseq.h"
 #include "localrep.h"
-#include "util.h"
 #include "tohex.h"
 #include "osqlcomm.h"
 #include <bdb_schemachange.h>
@@ -102,8 +99,8 @@ int gbl_debug_wait_on_verify_off;
 extern int gbl_osql_verify_retries_max;
 extern int verbose_deadlocks;
 extern int gbl_goslow;
-extern int n_commits;
-extern int n_commit_time;
+extern uint32_t n_commits;
+extern uint64_t n_commit_time;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
@@ -6251,7 +6248,7 @@ add_blkseq:
                   trans, iq->total_txnsize, iq->timeoutms, iq->reptimems, rate);
     }
 
-    int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
+    int64_t diff_time_micros = reqlog_current_us(iq->reqlogger);
 
     ATOMIC_ADD64(n_commit_time, diff_time_micros);
     ATOMIC_ADD32(n_commits, 1);

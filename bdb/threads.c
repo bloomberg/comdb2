@@ -81,26 +81,18 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     return NULL;
 }
 
-/* try to with atomic compare-and-exchange to set thread_running to 1
- * if CAS is successful, we are the only (first) such thread and returns 1
- * if CAS is UNsuccessful, another thread is already running and we return 0
- */
-static inline int try_set(int *thread_running)
-{
-    int zero = 0;
-    return CAS32(*thread_running, zero, 1);
-}
-
 void *memp_trickle_thread(void *arg)
 {
     unsigned int time;
     bdb_state_type *bdb_state;
-    static int memp_trickle_thread_running = 0;
+    static uint32_t memp_trickle_thread_running = 0;
+    static uint32_t zero = 0;
     int nwrote;
     int rc;
 
-    if (try_set(&memp_trickle_thread_running) == 0)
+    if (!CAS32(memp_trickle_thread_running, zero, 1)) {
         return NULL;
+    }
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -212,10 +204,12 @@ void *master_lease_thread(void *arg)
     int pollms, renew, lease_time;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    static int master_lease_thread_running = 0;
+    static uint32_t master_lease_thread_running = 0;
+    uint32_t zero = 0;
 
-    if (try_set(&master_lease_thread_running) == 0)
+    if (!CAS32(master_lease_thread_running, zero, 1)) {
         return NULL;
+    }
 
     bdb_state->master_lease_thread = pthread_self();
 
@@ -252,10 +246,12 @@ void *coherency_lease_thread(void *arg)
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
-    static int coherency_thread_running = 0;
+    static uint32_t coherency_thread_running = 0;
+    uint32_t zero = 0;
 
-    if (try_set(&coherency_thread_running) == 0)
+    if (!CAS32(coherency_thread_running, zero, 1)) {
         return NULL;
+    }
 
     bdb_state->coherency_lease_thread = pthread_self();
 
@@ -372,10 +368,12 @@ void *checkpoint_thread(void *arg)
     DB_LSN logfile;
     DB_LSN crtlogfile;
     int broken;
-    static int checkpoint_thd_running = 0;
+    static uint32_t checkpoint_thd_running = 0;
+    uint32_t zero = 0;
 
-    if (try_set(&checkpoint_thd_running) == 0)
+    if (!CAS32(checkpoint_thd_running, zero, 1)) {
         return NULL;
+    }
 
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb checkpoint");

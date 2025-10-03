@@ -40,7 +40,7 @@
 #include <disttxn.h>
 
 struct sess_impl {
-    int clients; /* number of threads using the session */
+    uint32_t clients; /* number of threads using the session */
 
     unsigned dispatched : 1; /* Set when session is dispatched to handle_buf */
     unsigned terminate : 1;  /* Set when this session is about to be terminated */
@@ -222,8 +222,9 @@ int osql_sess_addclient(osql_sess_t *psess)
     Pthread_mutex_lock(&sess->mtx);
     if (sess->dispatched) {
         rc = -1;
-    } else
+    } else {
         sess->clients += 1;
+    }
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
