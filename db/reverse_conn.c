@@ -91,10 +91,12 @@ enum {
 };
 
 int gbl_revsql_force_rte = 1;
+int gbl_admin_revsql = 0;
 
 int send_reversesql_request(const char *dbname, const char *host, const char *command)
 {
     int rc = 0;
+    int isadmin = gbl_admin_revsql ? 1 : 0;
 
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d Sending reversesql request to %s@%s\n", __func__, __LINE__, dbname, host);
@@ -108,6 +110,11 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
 
     int new_fd = sbuf2fileno(sb);
     make_server_socket(new_fd);
+
+    if (revcon_should_reject(isadmin)) {
+        rc = -1;
+        goto cleanup;
+    }
 
     if (db_is_exiting()) {
         if (gbl_revsql_debug == 1) {

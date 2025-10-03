@@ -2930,6 +2930,17 @@ static int should_reject_request(uint8_t first_byte)
     return check_appsock_limit(pending_connections, is_admin);
 }
 
+struct should_reject_request_arg {
+    intptr_t *ret;
+    int isadmin;
+};
+
+static void invoke_should_reject_request(void *data)
+{
+    struct should_reject_request_arg *arg = data;
+    *arg->ret = should_reject_request(arg->isadmin ? '@' : 'n');
+}
+
 /* PMUV REQUEST/RESPONSE */
 enum request { V_WHO = 1, V_NAK = 2, V_ACK = 3 };
 enum response { V_NONE = 0, V_ID = 1 };
@@ -3976,6 +3987,14 @@ int get_hosts_metric(const char *netname, enum net_metric_type type)
     struct hosts_metric metric = {.netname = netname, .type = type, .value = 0};
     run_on_base(base, get_hosts_metric_impl, &metric);
     return metric.value;
+}
+
+int revcon_should_reject(int admin)
+{
+    intptr_t ret;
+    struct should_reject_request_arg arg = {.ret = &ret, .isadmin = admin};
+    run_on_base(base, invoke_should_reject_request, &arg);
+    return ret;
 }
 
 int add_appsock_handler(const char *key, event_callback_fn cb)
