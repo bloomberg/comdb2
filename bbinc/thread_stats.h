@@ -36,6 +36,7 @@ struct berkdb_thread_stats {
     unsigned n_memp_fgets;
     uint64_t memp_fget_time_us;
 
+    /* number of times data had to be paged into / out of the buffer pool */
     unsigned n_memp_pgs;
     uint64_t memp_pg_time_us;
 
