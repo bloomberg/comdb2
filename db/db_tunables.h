@@ -1940,6 +1940,8 @@ REGISTER_TUNABLE("revsql_host_refresh_freq_sec", "The frequency at which the "
                  "reverse connection host list will be refreshed (Default: 5secs)",
                  TUNABLE_INTEGER, &gbl_revsql_host_refresh_freq_sec, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("admin_revsql", "Run revsql sessions as admin.  (Default: Off)", TUNABLE_BOOLEAN, &gbl_admin_revsql, 0,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reverse_hosts_v2", "Use reverse_hosts_v2, which includes class and cluster.  (Default: Off)",
                  TUNABLE_BOOLEAN, &gbl_reverse_hosts_v2, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("gbl_class_machs_refresh", "Requery-time for class-machine lookup.  (Default: 300s)", TUNABLE_INTEGER,
