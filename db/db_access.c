@@ -71,6 +71,8 @@ void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt) {
             clnt->conninfo.pid);
 } 
 
+int gbl_fdb_auth_error = 0;
+
 /* If user password does not match this function
  * will write error response and return a non 0 rc
  */
@@ -127,13 +129,24 @@ int check_user_password(struct sqlclntstate *clnt)
          return rc;
     }
 
-    if (!remsql_warned && (!gbl_uses_password && !gbl_uses_externalauth) &&
+    if ((!remsql_warned || gbl_fdb_auth_error) && (!gbl_uses_password && !gbl_uses_externalauth) &&
         ((clnt->remsql_set.is_remsql != NO_REMSQL) || clnt->features.have_sqlite_fmt)) {
         char *dbname = clnt->remsql_set.srcdbname ? clnt->remsql_set.srcdbname : "fdb_push";
-        logmsg(LOGMSG_WARN, "%s sourcedb:%s\n",
-               "Remote sql being used on database with authentication disabled, please enable IAM on this database.",
+        char errstr[1024];
+        snprintf(errstr, sizeof(errstr),
+               "Remote sql being used on database with authentication disabled, please enable IAM on this database. sourcedb:%s",
                dbname);
-        remsql_warned = 1;
+        if (!remsql_warned) {
+            logmsg(LOGMSG_WARN, "%s\n", errstr);
+            remsql_warned = 1;
+        }
+        if (gbl_fdb_auth_error) {
+            ATOMIC_ADD64(gbl_num_auth_denied, 1);
+            write_response(clnt, RESPONSE_ERROR,
+               errstr,
+               CDB2ERR_ACCESS);
+            return 1;
+        }
     }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {

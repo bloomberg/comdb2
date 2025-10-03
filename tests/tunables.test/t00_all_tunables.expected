@@ -393,6 +393,7 @@
 (name='force_writesql', description='Force admin mode to for write sql.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='foreign_db_allow_cross_class', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='foreign_db_auth_enabled', description='Redirect extern auth data to remote server. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='foreign_db_auth_error', description='Error out on fdb access without auth being enabled. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_push_redirect', description='Redirect fdb query to run via client instead of on server. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_push_remote', description='Fdb proxy more for reads (OFF turns off writes as well). (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='foreign_db_push_remote_writes', description='Fdb proxy mode for writes (ON turns on reads as well). (Default: on)', type='BOOLEAN', value='ON', read_only='N')

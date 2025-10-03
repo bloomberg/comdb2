@@ -597,6 +597,8 @@ REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_auth_enabled", "Redirect extern auth data to remote server. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_fdb_auth_enabled, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_db_auth_error", "Error out on fdb access without auth being enabled. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_fdb_auth_error, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fullrecovery",
                  "Attempt to run database "
                  "recovery from the beginning of "
