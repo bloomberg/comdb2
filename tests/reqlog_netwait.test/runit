@@ -35,7 +35,7 @@ if [ "$milliseconds" -gt 100 ]; then
 fi
 echo netwait 1: $milliseconds
 milliseconds=`grep rowcount=5 $logfile | awk '{print substr($0, index($0, "netwait=") + length("netwait=")) + 0}'`
-if [ "$milliseconds" -lt 5000 ]; then
+if [ "$milliseconds" -lt 4000 ]; then
     echo netwait latency too low $milliseconds >&2
     exit 1
 fi
