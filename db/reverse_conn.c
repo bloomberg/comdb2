@@ -91,6 +91,7 @@ enum {
 };
 
 int gbl_revsql_force_rte = 1;
+int gbl_revconn_rdtimeout = 100;
 
 int send_reversesql_request(const char *dbname, const char *host, const char *command)
 {
@@ -132,7 +133,8 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
 
     sbuf2close(sb);
 
-    struct timeval timeout = {.tv_usec = 100 * 1000};
+    int rdtimeout = gbl_revconn_rdtimeout > 0 ? gbl_revconn_rdtimeout : 100;
+    struct timeval timeout = {.tv_usec = rdtimeout * 1000};
     return event_base_once(get_main_event_base(), new_fd, EV_READ, do_revconn_evbuffer, NULL, &timeout);
 
 cleanup:
