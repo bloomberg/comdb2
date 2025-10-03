@@ -109,6 +109,11 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
     int new_fd = sbuf2fileno(sb);
     make_server_socket(new_fd);
 
+    if (revcon_should_reject()) {
+        rc = -1;
+        goto cleanup;
+    }
+
     if (db_is_exiting()) {
         if (gbl_revsql_debug == 1) {
             revconn_logmsg(LOGMSG_USER, "%s:%d Comdb2 is exiting\n", __func__, __LINE__);

@@ -359,6 +359,7 @@ enum net_metric_type {
     MAX_QUEUE_SIZE = 2
 };
 int get_hosts_metric(const char *netname, enum net_metric_type type);
+int revcon_should_reject(void);
 
 int dist_heartbeats(dist_hbeats_type *);
 
