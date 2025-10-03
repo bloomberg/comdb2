@@ -22,10 +22,13 @@
 #ifndef INCLUDED_CDB2API_INT_H
 #define INCLUDED_CDB2API_INT_H
 
+#include <sbuf2.h>
 #include "cdb2api.h"
 
-int cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
-void cdb2_socket_pool_donate_ext(cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
+SBUF2 *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port, int *was_from_local_cache);
+// use this one for fastsql since client_sbuf and server_sbuf are different
+int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
+void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
 
 int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
                   char *dist_txnid, int rcode, int outrc, char *errmsg, int async);
