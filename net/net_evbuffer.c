@@ -4069,6 +4069,8 @@ struct event_base *get_main_event_base(void)
     return base;
 }
 
+int gbl_admin_revsql = 0;
+
 void do_revconn_evbuffer(int fd, short what, void *data)
 {
     check_base_thd();
@@ -4088,6 +4090,15 @@ void do_revconn_evbuffer(int fd, short what, void *data)
     if (gbl_revsql_debug) {
         logmsg(LOGMSG_USER, "revconn: %s: Received 'newsql' request over 'reversesql' connection fd:%d\n", __func__, fd);
     }
+
+    int admin = gbl_admin_revsql;
+    if (should_reject_request(admin ? '@' : 'n')) {
+        logmsg(LOGMSG_USER, "revconn: %s: Rejecting 'newsql' request over 'reversesql' connection\n", __func__);
+        evbuffer_free(buf);
+        shutdown_close(fd);
+        return;
+    }
+
     struct sockaddr_in addr;
     socklen_t laddr = sizeof(addr);
     getsockname(fd, (struct sockaddr *)&addr, &laddr);

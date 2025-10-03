@@ -1796,6 +1796,21 @@ function phys_rep_nomatch
     return 0
 }
 
+# rev-cons were decrementing active_appsock_conns without incrementing
+# Verify that there are a sane number of 'concurrent_connections' in comdb2_metrics
+function verify_connection_count
+{
+    if [[ -z "$CLUSTER" ]]; then
+        num=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_metrics where name='concurrent_connections'")
+        [[ "$num" == -* ]] && cleanFailExit "Connection count is negative"
+    else
+        for node in ${CLUSTER} ; do
+            num=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME --host $node "select value from comdb2_metrics where name='concurrent_connections'")
+            [[ "$num" == -* ]] && cleanFailExit "Connection count is negative"
+        done
+    fi
+}
+
 trap - INT EXIT
 
 # 1. Setup replication metadata cluster
@@ -2105,6 +2120,11 @@ function run_tests
     testcase="verify_non_ignored_reptype"
     testcase_preamble $testcase
     verify_non_ignored_reptype
+    testcase_finish $testcase
+
+    testcase="verify_connection_count"
+    testcase_preamble $testcase
+    verify_connection_count
     testcase_finish $testcase
 }
 
