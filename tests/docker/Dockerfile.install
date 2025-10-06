@@ -14,6 +14,7 @@ RUN apt-get update && \
     iproute2 \
     iputils-ping \
     jq \
+    lcov \
     libevent-dev \
     liblz4-dev \
     liblz4-tool \
@@ -36,6 +37,7 @@ RUN apt-get update && \
     protobuf-c-compiler \
     psmisc \
     pstack \
+    rsync \
     socat \
     strace \
     tcl \
@@ -50,11 +52,13 @@ RUN apt-get update && \
 
 COPY . /comdb2
 
+ARG CMAKE_FLAGS="-DCOMDB2_TEST=1"
+
 RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake -DCOMDB2_TEST=1 .. && \
+    cmake ${CMAKE_FLAGS} .. && \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \
