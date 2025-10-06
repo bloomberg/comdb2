@@ -606,7 +606,7 @@ static int process_env_var_str(const char *var, char *value, int len, int *indic
     return 1;
 }
 
-static int value_on_off(const char *value, int *err, int allow_true_false);
+static int value_on_off(const char *value, int *err);
 
 // Prints a warning if the env var's value is invalid.
 //
@@ -617,7 +617,7 @@ static int process_env_var_str_on_off(const char *var, int *value, int *indicato
     int err;
 
     if (s) {
-        *value = value_on_off(s, &err, 0);
+        *value = value_on_off(s, &err);
 
         if (err == -1) {
             fprintf(stderr, "WARNING: %s: Value of %s is not valid. Using value '%s'.\n", __func__, var,
@@ -1330,15 +1330,14 @@ static int is_valid_int(const char *str)
 
 // `err` is set to -1 if the `value` is invalid; otherwise, it is set to 0.
 //
-// `value` is invalid if it is not equal to one of the following: "on", "off", "yes", "no", "1", "0".
-// "true" and "false" are also allowed if allow_true_false is set (for allow_pmux_route backwards compatibility).
+// `value` is invalid if it is not equal to one of the following: "on", "off", "yes", "no", "1", "0", "true", "false".
 // Ideally these values would be rejected, but this wouldn't be backwards compatible (currently,
 // all nonzero numbers are effectively "on" and all values that cannot be converted to integers other
 // than "on", "off", "yes", and "no" are effectively "off")
 //
 // Returning a separate error allows us to print a warning message when this occurs while maintaining
 // old behavior.
-static int value_on_off(const char *value, int *err, int allow_true_false)
+static int value_on_off(const char *value, int *err)
 {
     *err = 0;
 
@@ -1354,9 +1353,9 @@ static int value_on_off(const char *value, int *err, int allow_true_false)
         return 0;
     } else if (strcasecmp("1", value) == 0) {
         return 1;
-    } else if (allow_true_false && strcasecmp("true", value) == 0) {
+    } else if (strcasecmp("true", value) == 0) {
         return 1;
-    } else if (allow_true_false && strcasecmp("false", value) == 0) {
+    } else if (strcasecmp("false", value) == 0) {
         return 0;
     } else {
         *err = -1;
@@ -1566,11 +1565,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             if (!cdb2_iam_identity_set_from_env && (strcasecmp("iam_identity_v6", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
-                    iam_identity = value_on_off(tok, &err, 0);
+                    iam_identity = value_on_off(tok, &err);
             } else if ((strcasecmp("use_env_vars", tok) == 0) && !hndl) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
-                    cdb2_use_env_vars = value_on_off(tok, &err, 0);
+                    cdb2_use_env_vars = value_on_off(tok, &err);
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
@@ -1663,7 +1662,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             } else if (!cdb2_allow_pmux_route_set_from_env && strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    cdb2_allow_pmux_route = value_on_off(tok, &err, 1);
+                    cdb2_allow_pmux_route = value_on_off(tok, &err);
                 }
             } else if (!cdb2_uninstall_set_from_env && (strcasecmp("uninstall_static_libs_v4", tok) == 0 ||
                                                         strcasecmp("disable_static_libs", tok) == 0)) {
@@ -1731,13 +1730,13 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                        (strcasecmp("retry_dbinfo_on_cached_connection_failure", tok) == 0)) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    retry_dbinfo_on_cached_connection_failure = value_on_off(tok, &err, 0);
+                    retry_dbinfo_on_cached_connection_failure = value_on_off(tok, &err);
                 }
             } else if (!cdb2_get_hostname_from_sockpool_fd_set_from_env &&
                        (strcasecmp("get_hostname_from_sockpool_fd_v3", tok) == 0)) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
-                    get_hostname_from_sockpool_fd = value_on_off(tok, &err, 1);
+                    get_hostname_from_sockpool_fd = value_on_off(tok, &err);
             } else if (strcasecmp("ssl_mode", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok != NULL) {
