@@ -5492,6 +5492,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->netwaitus = 0;
     clnt->set_continue_on_chunk_verify_error = 0;
     clnt->continued_on_chunk_verify_error = 0;
+    clnt->multiline = 0;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
