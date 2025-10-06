@@ -4,6 +4,7 @@ set -e
 nodeprefix="m"
 
 script_args=()
+cmake_flags=(-DCOMDB2_TEST=1)
 while [[ $1 = -* ]]; do
     if [[ "$1" = "-s" ]] || [[ "$1" = "--source" ]]; then
         shift
@@ -23,6 +24,8 @@ while [[ $1 = -* ]]; do
     elif [[ "$1" = "-a" ]] || [[ "$1" = "--file-arg" ]]; then
         shift
         script_args+=("$1")
+    elif [[ "$1" = "--coverage" ]]; then
+        cmake_flags+=(-DGENERATE_COVERAGE=1)
     fi
     shift
 done
@@ -67,7 +70,7 @@ if ((${#script_args[@]} > 0)); then
     printf '%s ' "${script_args[@]}" > common/user_script_args
 fi
 
-docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.install $src
+docker build -t comdb2test:$prefix -f "$src/tests/docker/Dockerfile.install" "$src" --build-arg CMAKE_FLAGS="${cmake_flags[*]}"
 
 echo $cluster >common/cluster
 ssh-keygen -N "" -f common/id_rsa
