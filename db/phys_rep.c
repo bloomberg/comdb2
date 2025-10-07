@@ -558,7 +558,7 @@ static int update_registry_periodic(const char *remote_dbname, const char *remot
     return rc;
 }
 
-static int send_reset_nodes(const char *state)
+static int send_reset_nodes_int(cdb2_hndl_tp *hndl, const char *state)
 {
     char cmd[120+nodes_list_sz];
     int bytes_written = 0;
@@ -591,17 +591,12 @@ static int send_reset_nodes(const char *state)
         return 1;
     }
 
-    cdb2_hndl_tp *repl_metadb;
-    if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-        return rc;
-    }
-
     if (gbl_physrep_debug) {
         physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
     }
 
-    if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
-        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK)
+    if ((rc = cdb2_run_statement(hndl, cmd)) == CDB2_OK) {
+        while ((rc = cdb2_next_record(hndl)) == CDB2_OK)
             ;
         if (rc == CDB2_OK_DONE)
             rc = 0;
@@ -609,8 +604,41 @@ static int send_reset_nodes(const char *state)
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
         rc = -1;
     }
-    cdb2_close(repl_metadb);
+
     return rc;
+}
+
+static int send_reset_nodes(const char *state, int doalt)
+{
+    cdb2_hndl_tp *metadb;
+    int rc, altcnt = gbl_altmetadb_count, badrc = 0;
+
+    if ((rc = physrep_get_metadb_or_local_hndl(&metadb)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get metadb handle rc=%d\n", __func__, rc);
+        badrc++;
+    } else {
+        if ((send_reset_nodes_int(metadb, state)) != 0) {
+            badrc++;
+        }
+        cdb2_close(metadb);
+    }
+
+    if (doalt == 0 || altcnt == 0)
+        return badrc ? -1 : 0;
+
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
+            badrc++;
+            continue;
+        }
+        if ((send_reset_nodes_int(metadb, state)) != 0) {
+            badrc++;
+        }
+        cdb2_close(metadb);
+    }
+
+    return badrc ? -1 : 0;
 }
 
 char *physrep_master_cached = NULL;
@@ -756,7 +784,7 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
     if (gbl_physrep_debug) {
         physrep_logmsg(LOGMSG_USER, "%s:%d Send-reset nodes\n", __func__, __LINE__);
     }
-    rc = send_reset_nodes("Inactive");
+    rc = send_reset_nodes("Inactive", 0);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                        __func__, __LINE__, rc);
@@ -974,30 +1002,24 @@ static void delete_replicant_host(DB_Connection *cnct)
 
 int gbl_physrep_keepalive_v2 = 0;
 
-static int send_keepalive(void)
+static int send_keepalive_int(cdb2_hndl_tp *metadb)
 {
     int rc = 0, use_v2 = 0;
     char cmd[600];
     LOG_INFO info;
-
-    cdb2_hndl_tp *repl_metadb;
-    if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-        return rc;
-    }
 
     /* TODO: remove after v2 enabled & new-schema is everywhere */
     if (gbl_physrep_keepalive_v2) {
         rc = snprintf(
             cmd, sizeof(cmd),
             "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'");
-        rc = cdb2_run_statement(repl_metadb, cmd);
+        rc = cdb2_run_statement(metadb, cmd);
         if (rc != CDB2_OK) {
             physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute cmd %s (rc: %d)\n", __func__, __LINE__, cmd, rc);
-            cdb2_close(repl_metadb);
             return rc;
         }
-        if (cdb2_next_record(repl_metadb) == CDB2_OK) {
-            int64_t val = *(int64_t *)cdb2_column_value(repl_metadb, 0);
+        if (cdb2_next_record(metadb) == CDB2_OK) {
+            int64_t val = *(int64_t *)cdb2_column_value(metadb, 0);
             use_v2 = (val != 0) ? 1 : 0;
         }
     }
@@ -1020,14 +1042,37 @@ static int send_keepalive(void)
     if (gbl_physrep_debug)
         physrep_logmsg(LOGMSG_USER, "%s:%d: Executing: %s\n", __func__, __LINE__, cmd);
 
-    rc = cdb2_run_statement(repl_metadb, cmd);
+    rc = cdb2_run_statement(metadb, cmd);
     if (rc == CDB2_OK) {
-        while (cdb2_next_record(repl_metadb) == CDB2_OK) {}
+        while (cdb2_next_record(metadb) == CDB2_OK) {
+        }
     } else if (gbl_physrep_debug)
         physrep_logmsg(LOGMSG_USER, "%s:%d Failed to send keepalive\n", __func__, __LINE__);
 
-    cdb2_close(repl_metadb);
     return rc;
+}
+
+static int send_keepalive(void)
+{
+    cdb2_hndl_tp *metadb;
+    int rc, altcnt = gbl_altmetadb_count;
+
+    if ((rc = physrep_get_metadb_or_local_hndl(&metadb)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get metadb handle rc=%d\n", __func__, rc);
+    } else {
+        send_keepalive_int(metadb);
+        cdb2_close(metadb);
+    }
+
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
+            continue;
+        }
+        send_keepalive_int(metadb);
+        cdb2_close(metadb);
+    }
+    return 0;
 }
 
 unsigned int physrep_min_filenum() {
@@ -1104,11 +1149,10 @@ void physrep_update_low_file_num(int *lowfilenum, int *local_lowfilenum) {
     }
 }
 
-static int slow_replicants_count(unsigned int *count) {
+static int slow_replicants_count_int(cdb2_hndl_tp *metadb, unsigned int *count)
+{
     char query[400];
     int rc = 0;
-
-    *count = 0;
 
     /* tables are already indexed on dbname+host */
     sprintf(query,
@@ -1119,16 +1163,11 @@ static int slow_replicants_count(unsigned int *count) {
             "AND now() - last_keepalive >= %d",
             gbl_dbname, gbl_physrep_hung_replicant_threshold);
 
-    cdb2_hndl_tp *repl_metadb;
-    if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-        return rc;
-    }
-
-    rc = cdb2_run_statement(repl_metadb, query);
+    rc = cdb2_run_statement(metadb, query);
     if (rc == CDB2_OK) {
-        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
-            int64_t *val = (int64_t *)cdb2_column_value(repl_metadb, 0);
-            *count = (unsigned int) *val;
+        while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
+            int64_t *val = (int64_t *)cdb2_column_value(metadb, 0);
+            *count += (unsigned int)*val;
         }
         if (rc == CDB2_OK_DONE)
             rc = 0;
@@ -1136,11 +1175,41 @@ static int slow_replicants_count(unsigned int *count) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
     }
 
-    cdb2_close(repl_metadb);
     return rc;
 }
 
-static int update_min_logfile(void) {
+static int slow_replicants_count(unsigned int *count)
+{
+    cdb2_hndl_tp *metadb;
+    int rc, altcnt = gbl_altmetadb_count, badrc = 0;
+
+    *count = 0;
+
+    if ((rc = physrep_get_metadb_or_local_hndl(&metadb)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get metadb handle rc=%d\n", __func__, rc);
+        badrc++;
+    } else {
+        if ((slow_replicants_count_int(metadb, count)) != 0) {
+            badrc++;
+        }
+        cdb2_close(metadb);
+    }
+
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
+            continue;
+        }
+        if ((slow_replicants_count_int(metadb, count)) != 0) {
+            badrc++;
+        }
+        cdb2_close(metadb);
+    }
+    return badrc ? -1 : 0;
+}
+
+static int update_min_logfile_int(cdb2_hndl_tp *metadb)
+{
     char cmd[120+nodes_list_sz];
     char *buf;
     size_t buf_len;
@@ -1189,15 +1258,10 @@ static int update_min_logfile(void) {
         physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
     }
 
-    cdb2_hndl_tp *repl_metadb;
-    if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-        return rc;
-    }
-
-    rc = cdb2_run_statement(repl_metadb, cmd);
+    rc = cdb2_run_statement(metadb, cmd);
     if (rc == CDB2_OK) {
-        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
-            int64_t *minfile = (int64_t *)cdb2_column_value(repl_metadb, 0);
+        while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
+            int64_t *minfile = (int64_t *)cdb2_column_value(metadb, 0);
             physrep_min_logfile = minfile ? (unsigned int)*minfile : 0;
         }
         if (rc == CDB2_OK_DONE)
@@ -1206,8 +1270,30 @@ static int update_min_logfile(void) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
     }
 
-    cdb2_close(repl_metadb);
     return rc;
+}
+
+static int update_min_logfile(void)
+{
+    cdb2_hndl_tp *metadb;
+    int rc, altcnt = gbl_altmetadb_count;
+
+    if ((rc = physrep_get_metadb_or_local_hndl(&metadb)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get metadb handle rc=%d\n", __func__, rc);
+    } else {
+        update_min_logfile_int(metadb);
+        cdb2_close(metadb);
+    }
+
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
+            continue;
+        }
+        update_min_logfile_int(metadb);
+        cdb2_close(metadb);
+    }
+    return 0;
 }
 
 /*
@@ -1721,7 +1807,7 @@ static void *physrep_watcher(void *args) {
                 if ((now - physrep_source_nodes_last_refreshed) >= gbl_physrep_source_nodes_refresh_freq_sec) {
                     // Add/update information about nodes in the current cluster in comdb2_physreps table.
                     // Note that the table could either be local or in 'replication meta db'.
-                    int rc = send_reset_nodes("Active");
+                    int rc = send_reset_nodes("Active", 1);
                     if (rc != 0) {
                         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                                        __func__, __LINE__, rc);
@@ -1884,7 +1970,7 @@ void physrep_cleanup() {
         return;
     }
 
-    int rc = send_reset_nodes("Inactive");
+    int rc = send_reset_nodes("Inactive", 0);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                        __func__, __LINE__, rc);
