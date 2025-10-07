@@ -1406,6 +1406,21 @@ function multimetadb
         sleep 1
         found=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALT_DBNAME --host $REPL_ALT_HOST "select count(*) from comdb2_tables where tablename='multimetadb'")
     done
+
+    echo "Verify that the source is listed in both metadbs"
+    cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_META_DBNAME --host $REPL_META_HOST "select count(*) from comdb2_physreps where dbname='${DBNAME}'")
+    [[ "$cnt" == 0 ]] && cleanFailExit "Source not found in ${REPL_META_DBNAME}/${REPL_META_HOST}"
+    
+    cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "select count(*) from comdb2_physreps where dbname='${DBNAME}'")
+    [[ "$cnt" == 0 ]] && cleanFailExit "Source not found in ${REPL_ALTMETA_DBNAME}/${REPL_ALTMETA_HOST}"
+
+    echo "Verify that the database using the altmeta db is listed in the alt-metadb"
+    cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "select count(*) from comdb2_physreps where dbname='${REPL_ALT_DBNAME}'")
+    [[ "$cnt" == 0 ]] && cleanFailExit "Alt-replicant not found in ${REPL_ALTMETA_DBNAME}/${REPL_ALTMETA_HOST}"
+
+    echo "Verify $REPL_ALT_DBNAME only registered in ${REPL_ALTMETA_DBNAME}/${REPL_ALTMETA_HOST}"
+    cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_META_DBNAME --host $REPL_META_HOST "select count(*) from comdb2_physreps where dbname='${REPL_ALT_DBNAME}'")
+    [[ "$cnt" != 0 ]] && cleanFailExit "Source incorrectly found in ${REPL_META_DBNAME}/${REPL_META_HOST}"
 }
 
 # Use message traps to verify overlap logic
