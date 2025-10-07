@@ -3072,11 +3072,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     int timeoutms = 10 * 1000;
     if (hndl->is_admin ||
         (hndl->firstresponse &&
-         (!hndl->lastresponse ||
-          (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
-        (!hndl->firstresponse) ||
-        (hndl->in_trans) ||
-        ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
+         (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
+        (!hndl->firstresponse) || (hndl->in_trans) || (hndl->pid != _PID) || ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
         sbuf2close(sb);
     } else {
         int donated = local_connection_cache_put(hndl, hndl->newsql_typestr, sb);
@@ -5188,7 +5185,34 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int
 
     debugprint("running '%s' from line %d\n", sql, line);
 
-    consume_previous_query(hndl);
+    if (hndl->is_invalid) {
+        sprintf(hndl->errstr, "Running query on an invalid sql handle\n");
+        PRINT_AND_RETURN(CDB2ERR_BADSTATE);
+    }
+
+    if (hndl->pid != _PID) {
+        pid_t oldpid = hndl->pid;
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
+        hndl->pid = _PID;
+
+        if (hndl->in_trans) {
+            sprintf(hndl->errstr, "Can't continue transaction started in another process (pid %d)", (int)oldpid);
+            PRINT_AND_RETURN(CDB2ERR_BADSTATE);
+        }
+    } else if (hndl->ack) {
+        hndl->ack = 0;
+        if (hndl->sb) {
+            int fd = sbuf2fileno(hndl->sb);
+            shutdown(fd, SHUT_RDWR);
+        }
+    } else {
+        consume_previous_query(hndl);
+    }
+
+    clear_responses(hndl);
+
+    hndl->rows_read = 0;
+
     if (!sql)
         return 0;
 
@@ -7749,6 +7773,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         }
     }
 
+    hndl->pid = _PID;
+
     if (getenv("CDB2_DEBUG")) {
         hndl->debug_trace = 1;
         debugprint("debug trace enabled\n");
@@ -7891,6 +7917,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->request_fp = CDB2_REQUEST_FP;
 
 out:
+    if (rc != 0 && hndl)
+        hndl->is_invalid = 1;
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
                         "%x) = %d => %p\n",
