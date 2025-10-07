@@ -73,14 +73,11 @@ static char COMDB2DB_OVERRIDE[32] = {0};
 static int COMDB2DB_NUM_OVERRIDE = 0;
 
 static char *SOCKPOOL_OTHER_NAME = NULL;
-#define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
-static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
+static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
 
 /* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
-#define CDB2DBCONFIG_NOBBENV_PATH_DEFAULT "/etc/cdb2/config.d/"
-static char CDB2DBCONFIG_NOBBENV_PATH[] = CDB2DBCONFIG_NOBBENV_PATH_DEFAULT; /* READ-ONLY */
+static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/"; /* READ-ONLY */
 
-#define CDB2DBCONFIG_TEMP_BB_BIN_DEFAULT "/bb/bin/comdb2db.cfg"
 static char CDB2DBCONFIG_TEMP_BB_BIN[512] = "/bb/bin/comdb2db.cfg";
 
 static char *CDB2DBCONFIG_BUF = NULL;
@@ -102,66 +99,49 @@ static int cdb2_dnssuffix_set_from_env = 0;
 static char cdb2_machine_room[16] = "";
 static int cdb2_machine_room_set_from_env = 0;
 
-#define CDB2_PORTMUXPORT_DEFAULT 5105
-static int CDB2_PORTMUXPORT = CDB2_PORTMUXPORT_DEFAULT;
+static int CDB2_PORTMUXPORT = 5105;
 static int cdb2_portmuxport_set_from_env = 0;
 
-#define MAX_RETRIES_DEFAULT 20
-static int MAX_RETRIES = MAX_RETRIES_DEFAULT; /* We are looping each node twice. */
+static int MAX_RETRIES = 20; /* We are looping each node twice. */
 
-#define MIN_RETRIES_DEFAULT 16
-static int MIN_RETRIES = MIN_RETRIES_DEFAULT;
+static int MIN_RETRIES = 16;
 
-#define CDB2_CONNECT_TIMEOUT_DEFAULT 100
-static int CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
+static int CDB2_CONNECT_TIMEOUT = 100;
 static int cdb2_connect_timeout_set_from_env = 0;
 
-#define CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT 0
-static int CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
+static int CDB2_AUTO_CONSUME_TIMEOUT_MS = 0;
 
-#define CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT 10
-static int CDB2_MAX_AUTO_CONSUME_ROWS = CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT;
+static int CDB2_MAX_AUTO_CONSUME_ROWS = 10;
 
-#define COMDB2DB_TIMEOUT_DEFAULT 2000
-static int COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+static int COMDB2DB_TIMEOUT = 2000;
 static int cdb2_comdb2db_timeout_set_from_env = 0;
 
-#define CDB2_API_CALL_TIMEOUT_DEFAULT 120000 /* defaults to 2 minute */
-static int CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
+static int CDB2_API_CALL_TIMEOUT = 120000; /* defaults to 2 minute */
 static int cdb2_api_call_timeout_set_from_env = 0;
 
-#define CDB2_SOCKET_TIMEOUT_DEFAULT 5000
-static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+static int CDB2_SOCKET_TIMEOUT = 5000;
 static int cdb2_socket_timeout_set_from_env = 0;
 
-#define CDB2_SOCKPOOL_SEND_TIMEOUTMS_DEFAULT 0
-static int CDB2_SOCKPOOL_SEND_TIMEOUTMS = CDB2_SOCKPOOL_SEND_TIMEOUTMS_DEFAULT;
+static int CDB2_SOCKPOOL_SEND_TIMEOUTMS = 0;
 static int cdb2_sockpool_send_timeoutms_set_from_env = 0;
 
-#define CDB2_SOCKPOOL_RECV_TIMEOUTMS_DEFAULT 0
-static int CDB2_SOCKPOOL_RECV_TIMEOUTMS = CDB2_SOCKPOOL_RECV_TIMEOUTMS_DEFAULT;
+static int CDB2_SOCKPOOL_RECV_TIMEOUTMS = 0;
 static int cdb2_sockpool_recv_timeoutms_set_from_env = 0;
 
-#define CDB2_POLL_TIMEOUT_DEFAULT 250
-static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
+static int CDB2_POLL_TIMEOUT = 250;
 
-#define CDB2_TCPBUFSZ_DEFAULT 0
-static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
+static int cdb2_tcpbufsz = 0;
 static int cdb2_tcpbufsz_set_from_env = 0;
 
-#define CDB2_PROTOBUF_SIZE_DEFAULT 0
-static int CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
+static int CDB2_PROTOBUF_SIZE = 0;
 static int cdb2_protobuf_size_set_from_env = 0;
 
-#define CDB2CFG_OVERRIDE_DEFAULT 0
-static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
+static int cdb2cfg_override = 0;
 
-#define CDB2_REQUEST_FP_DEFAULT 0
-static int CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
+static int CDB2_REQUEST_FP = 0;
 
 /* Request host name of a connection obtained from sockpool */
-#define CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT 1
-static int get_hostname_from_sockpool_fd = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
+static int get_hostname_from_sockpool_fd = 1;
 static int cdb2_get_hostname_from_sockpool_fd_set_from_env = 0;
 
 static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
@@ -262,11 +242,9 @@ static char cdb2_sslcrl[PATH_MAX];
 #endif
 int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 
-#define CDB2_CACHE_SSL_SESS_DEFAULT 0
-static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+static int cdb2_cache_ssl_sess = 0;
 
-#define CDB2_MIN_TLS_VER_DEFAULT 0
-static double cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
+static double cdb2_min_tls_ver = 0;
 
 static int _PID;        /* ONE-TIME */
 static int _MACHINE_ID; /* ONE-TIME */
@@ -391,74 +369,6 @@ static char *cdb2_type_str(int type)
             fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
                     __func__, __LINE__, ##args);                               \
     } while (0);
-
-/*
-** NOTE: This function is designed to reset the internal state of this module,
-**       related to the configuration, back to initial defaults.  It should
-**       allow for the subsequent reconfiguration using different parameters.
-**       Currently, it is surfaced via passing a NULL value to the public APIs
-**       cdb2_set_comdb2db_config() and cdb2_set_comdb2db_info().
-*/
-static void reset_the_configuration(void)
-{
-    if (log_calls)
-        fprintf(stderr, "%p> %s()\n", (void *)pthread_self(), __func__);
-
-    memset(CDB2DBCONFIG_NOBBENV, 0, sizeof(CDB2DBCONFIG_NOBBENV));
-    strncpy(CDB2DBCONFIG_NOBBENV, CDB2DBCONFIG_NOBBENV_DEFAULT, 511);
-
-    memset(CDB2DBCONFIG_TEMP_BB_BIN, 0, sizeof(CDB2DBCONFIG_TEMP_BB_BIN));
-    strncpy(CDB2DBCONFIG_TEMP_BB_BIN, CDB2DBCONFIG_TEMP_BB_BIN_DEFAULT, 511);
-
-    memset(COMDB2DB_OVERRIDE, 0, sizeof(COMDB2DB_OVERRIDE));
-    COMDB2DB_NUM_OVERRIDE = 0;
-
-    if (CDB2DBCONFIG_BUF != NULL) {
-        free(CDB2DBCONFIG_BUF);
-        CDB2DBCONFIG_BUF = NULL;
-    }
-
-    memset(cdb2_default_cluster, 0, sizeof(cdb2_default_cluster));
-    memset(cdb2_comdb2dbname, 0, sizeof(cdb2_comdb2dbname));
-    memset(cdb2_dnssuffix, 0, sizeof(cdb2_dnssuffix));
-    memset(cdb2_machine_room, 0, sizeof(cdb2_machine_room));
-
-    CDB2_PORTMUXPORT = CDB2_PORTMUXPORT_DEFAULT;
-    MAX_RETRIES = MAX_RETRIES_DEFAULT;
-    MIN_RETRIES = MIN_RETRIES_DEFAULT;
-    CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
-    CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
-    CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
-    CDB2_SOCKPOOL_SEND_TIMEOUTMS = CDB2_SOCKPOOL_SEND_TIMEOUTMS_DEFAULT;
-    CDB2_SOCKPOOL_RECV_TIMEOUTMS = CDB2_SOCKPOOL_RECV_TIMEOUTMS_DEFAULT;
-    CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
-    CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
-    CDB2_MAX_AUTO_CONSUME_ROWS = CDB2_MAX_AUTO_CONSUME_ROWS_DEFAULT;
-    COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
-    CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
-    CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
-    CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
-    cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
-
-    cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
-    cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
-    CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
-    get_hostname_from_sockpool_fd = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
-
-    cdb2_c_ssl_mode = SSL_ALLOW;
-
-    memset(cdb2_sslcertpath, 0, sizeof(cdb2_sslcertpath));
-    memset(cdb2_sslcert, 0, sizeof(cdb2_sslcert));
-    memset(cdb2_sslkey, 0, sizeof(cdb2_sslkey));
-    memset(cdb2_sslca, 0, sizeof(cdb2_sslca));
-    memset(cdb2_sslcrl, 0, sizeof(cdb2_sslcrl));
-
-    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
-    cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
-    cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
-
-    reset_sockpool();
-}
 
 static SBUF2 *sbuf2openread(const char *filename)
 {
@@ -1280,8 +1190,6 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
     if (cfg_file != NULL) {
         cdb2cfg_override = 1;
         strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
-    } else {
-        reset_the_configuration();
     }
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
@@ -1299,7 +1207,6 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
         CDB2DBCONFIG_BUF = NULL;
     }
     if (cfg_info == NULL) {
-        reset_the_configuration();
         pthread_mutex_unlock(&cdb2_cfg_lock);
         return;
     }
@@ -7377,8 +7284,8 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     cdb2_sslcrl[0] = '\0';
 
     cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
-    cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
-    cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
+    cdb2_cache_ssl_sess = 0;
+    cdb2_min_tls_ver = 0;
     return 0;
 }
 
