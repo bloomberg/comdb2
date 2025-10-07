@@ -1567,6 +1567,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     int needed_to_abort = 0;
     int set_seqnum = 0;
     uint32_t generation = 0;
+    uint32_t commit_gen = 0;
     tran_type *physical_tran = NULL;
     DB_LSN lsn;
     DB_LSN old_lsn;
@@ -1605,7 +1606,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
     case TRANCLASS_LOGICAL_NOROWLOCKS:
         flags = (tran->request_ack) ? DB_TXN_REP_ACK : 0;
-        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, &commit_gen, tran);
         if (rc != 0) {
             *bdberr = BDBERR_MISC;
             outrc = -1;
@@ -1697,7 +1698,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
-        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, &commit_gen, tran);
         bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
@@ -1720,7 +1721,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                 // TODO not sure if this is necessary anymore 
                 // I should be setting this from a hook in log-put
                 memcpy(&h->seqnum.lsn, &lsn, sizeof(DB_LSN));
-                h->seqnum.generation = generation;
+                h->seqnum.generation = commit_gen > 0 ? commit_gen : generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         }

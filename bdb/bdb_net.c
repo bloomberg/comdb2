@@ -135,7 +135,7 @@ void disable_ack_trace(void)
     gbl_ack_trace = 0;
 }
 
-int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
+int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen)
 {
     int rc;
     char *master;
@@ -149,18 +149,16 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
 
     cnt++;
     if (gbl_ack_trace && (now = time(NULL)) > lastpr) {
-        logmsg(LOGMSG_ERROR,
-               "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
-               permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,
-               gbl_udp);
+        logmsg(LOGMSG_ERROR, "Sending ack %d:%d, commit_gen=%u rep_gen=%u cnt=%llu diff=%llu, udp=%d\n", permlsn.file,
+               permlsn.offset, commit_gen, rep_gen, cnt, cnt - lpcnt, gbl_udp);
         lpcnt = cnt;
         lastpr = now;
     }
 
     seqnum_type seqnum = {{0}};
     seqnum.lsn = permlsn;
-    seqnum.commit_generation = generation;
-    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);
+    seqnum.commit_generation = commit_gen;
+    seqnum.generation = rep_gen;
     /* Master lease time is 0 (master will ignore) */
 
     if (permlsn.file == 0 || seqnum.lsn.file == 0)
@@ -193,10 +191,10 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     return rc;
 }
 
-void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t generation)
+void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)dbenv->app_private;
-    do_ack(bdb_state, permlsn, generation);
+    do_ack(bdb_state, permlsn, commit_gen, rep_gen);
 }
 
 char *print_addr(struct sockaddr_in *addr, char *buf)

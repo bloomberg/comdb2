@@ -131,7 +131,7 @@ extern int set_commit_context(unsigned long long context, uint32_t *generation,
 extern int gbl_berkdb_verify_skip_skipables;
 
 static int __rep_apply __P((DB_ENV *, REP_CONTROL *, DBT *, DB_LSN *,
-	uint32_t *, int));
+	uint32_t *, uint32_t, int));
 static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *, int, int *));
 int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
@@ -510,7 +510,6 @@ static int queue_log_more_count = 0;
 static int queue_log_fill_count = 0;
 int gbl_verbose_repdups = 0;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
-void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
 int gbl_dedup_rep_all_reqs = 1;
 
@@ -670,14 +669,15 @@ static void *apply_thread(void *arg)
 					last_applying_print = now;
 				}
 
-				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
+				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, q->rp->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
 					bdb_set_seqnum(dbenv->app_private);
 
 					if (ret == DB_REP_ISPERM && (!gbl_early && !gbl_reallyearly)) {
 						/* Call this but not really early anymore */
-						comdb2_early_ack(dbenv, ret_lsnp, q->gen);
+						if (dbenv->rep_send_ack)
+							dbenv->rep_send_ack(dbenv, ret_lsnp, q->gen, q->rp->gen);
 					}
 				}
 				count++;
@@ -1669,7 +1669,7 @@ more:
 			} else {
 				fromline = __LINE__;
 				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								commit_gen, 0);
+								commit_gen, rep->gen, 0);
 			}
 		} else {
 			send_master_req(dbenv, __func__, __LINE__);
@@ -2004,7 +2004,7 @@ more:
 	case REP_NEWFILE:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
-		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, 0);
+		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, rep->gen, 0);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWMASTER:
@@ -3071,12 +3071,13 @@ extern int gbl_always_request_log_req;
  * process and manage incoming log records.
  */
 static int
-__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
+__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
+    uint32_t rep_gen;
 	int decoupled;
 {
 	__dbreg_register_args dbreg_args;
@@ -3765,8 +3766,8 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 
 		if (gbl_wait_for_prepare_seqnum) {
-			comdb2_early_ack(dbenv, rp->lsn,
-					rep->committed_gen);
+			if (dbenv->rep_send_ack)
+				dbenv->rep_send_ack(dbenv, rp->lsn, rep->committed_gen, rep->gen);
 		}
 		break;
 	case DB___txn_dist_abort:
@@ -3880,8 +3881,8 @@ gap_check:		max_lsn_dbtp = NULL;
 					/* don't ack 0:0, which happens for out-of-sequence commits */
 					!(max_lsn.file == 0 && max_lsn.offset == 0)
 					) {
-					comdb2_early_ack(dbenv, max_lsn,
-						rep->committed_gen);
+					if (dbenv->rep_send_ack)
+						dbenv->rep_send_ack(dbenv, max_lsn, rep->committed_gen, rep->gen);
 				}
 
 				if (dbenv->num_recovery_processor_threads &&
@@ -3889,11 +3890,11 @@ gap_check:		max_lsn_dbtp = NULL;
 					ret =
 						__rep_process_txn_concurrent(dbenv,
 						rp, rec, &ltrans, rp->lsn, max_lsn,
-						commit_gen, dbenv->prev_commit_lsn);
+						commit_gen, rep_gen, dbenv->prev_commit_lsn);
 				} else {
 					ret =
 						__rep_process_txn(dbenv, rp, rec,
-						&ltrans, max_lsn, commit_gen);
+						&ltrans, max_lsn, commit_gen, rep_gen);
 				}
 
 				/* Always release locks in order.  This is probably too conservative. */
@@ -4022,12 +4023,13 @@ int gbl_time_rep_apply = 0;
 static pthread_mutex_t apply_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static int
-__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
+__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
+    uint32_t rep_gen;
 	int decoupled;
 {
 	static unsigned long long rep_apply_count = 0;
@@ -4044,7 +4046,7 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 
 	Pthread_mutex_lock(&apply_lk);
 	getbbtime(&start);
-	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);
+	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled);
 	getbbtime(&end);
 	Pthread_mutex_unlock(&apply_lk);
 	usecs = diff_bbtime(&end, &start);
@@ -4090,7 +4092,7 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 
 	/* call with decoupled = 2 to differentiate from true master */
 	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp,
-				  (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2);
+				  (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, rep->gen, 2);
 
 	if (ret == 0 || ret == DB_REP_ISPERM) {
 		bdb_set_seqnum(dbenv->app_private);
@@ -4828,7 +4830,7 @@ int gbl_debug_lock_get_list_copy_compare = 0;
  *
  */
 static inline int
-__rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
+__rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, lockid, rp,
 	lcin)
 	DB_ENV *dbenv;
 	REP_CONTROL *rctl;
@@ -4836,6 +4838,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	LTDESC **ltrans;
 	DB_LSN maxlsn;
 	uint32_t *commit_gen;
+    uint32_t rep_gen;
 	u_int32_t lockid;
 	struct __recovery_processor *rp;
 	LSN_COLLECTION *lcin;
@@ -5251,7 +5254,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 						maxlsn.offset, *commit_gen);
 				lastpr = now;
 			}
-			comdb2_early_ack(dbenv, maxlsn, *commit_gen);
+			if (dbenv->rep_send_ack)
+				dbenv->rep_send_ack(dbenv, maxlsn, *commit_gen, rep_gen);
 		} 
 
 		if (txn_rl_args)
@@ -5529,15 +5533,16 @@ static unsigned long long rep_process_txn_cnt = 0;
 
 int gbl_abort_ufid_open = 0;
 
-// PUBLIC: int __rep_process_txn __P((DB_ENV *, REP_CONTROL *, DBT *, LTDESC **, DB_LSN, uint32_t *));
+// PUBLIC: int __rep_process_txn __P((DB_ENV *, REP_CONTROL *, DBT *, LTDESC **, DB_LSN, uint32_t *, uint32_t));
 int
-__rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
+__rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen)
 	DB_ENV *dbenv;
 	REP_CONTROL *rctl;
 	DBT *rec;
 	LTDESC **ltrans;
 	DB_LSN maxlsn;
 	uint32_t *commit_gen;
+	uint32_t rep_gen;
 {
 	static int lastpr = 0;
 	int now;
@@ -5549,7 +5554,7 @@ __rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
 
 	if (!gbl_rep_process_txn_time) {
 		rc = __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
-			commit_gen, 0, NULL, NULL);
+			commit_gen, rep_gen, 0, NULL, NULL);
 	} else {
 		long long usecs;
 		bbtime_t start = { 0 }, end = {
@@ -5558,7 +5563,7 @@ __rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
 		rep_process_txn_cnt++;
 		getbbtime(&start);
 		rc = __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
-			commit_gen, 0, NULL, NULL);
+			commit_gen, rep_gen, 0, NULL, NULL);
 		getbbtime(&end);
 		usecs = diff_bbtime(&end, &start);
 		rep_process_txn_usc += usecs;
@@ -5707,7 +5712,7 @@ extern int gbl_force_serial_on_writelock;
 
 static inline int
 __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
-	commit_gen, prev_commit_lsn)
+	commit_gen, rep_gen, prev_commit_lsn)
 	DB_ENV *dbenv;
 	REP_CONTROL *rctl;
 	DBT *rec;
@@ -5715,6 +5720,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DB_LSN ctrllsn;
 	DB_LSN maxlsn;
 	uint32_t *commit_gen;
+	uint32_t rep_gen;
 	DB_LSN prev_commit_lsn;
 {
 	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
@@ -6209,7 +6215,8 @@ bad_resize:	;
 					maxlsn.offset, *commit_gen);
 			lastpr = now;
 		}
-		comdb2_early_ack(dbenv, maxlsn, *commit_gen);
+		if (dbenv->rep_send_ack)
+			dbenv->rep_send_ack(dbenv, maxlsn, *commit_gen, rep_gen);
 	}
 
 	if (txn_rl_args)
@@ -6310,7 +6317,7 @@ bad_resize:	;
 
 		ret =
 			__rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
-			commit_gen, lockid, rp, &rp->lc);
+			commit_gen, rep_gen, lockid, rp, &rp->lc);
 
 		reset_recovery_processor(rp);
 		Pthread_mutex_lock(&dbenv->recover_lk);
@@ -6458,10 +6465,10 @@ err:
 }
 
 // PUBLIC: int __rep_process_txn_concurrent __P((DB_ENV *, REP_CONTROL *, DBT *, LTDESC **,
-// PUBLIC:	 DB_LSN, DB_LSN, uint32_t *, DB_LSN));
+// PUBLIC:	 DB_LSN, DB_LSN, uint32_t *, uint32_t, DB_LSN));
 int
 __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
-	commit_gen, prev_commit_lsn)
+	commit_gen, rep_gen, prev_commit_lsn)
 	DB_ENV *dbenv;
 	REP_CONTROL *rctl;
 	DBT *rec;
@@ -6469,13 +6476,14 @@ __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DB_LSN ctrllsn;
 	DB_LSN maxlsn;
 	uint32_t *commit_gen;
+	uint32_t rep_gen;
 	DB_LSN prev_commit_lsn;
 {
 	static int lastpr = 0;
 	int now;
 	if (!gbl_rep_process_txn_time) {
 		return __rep_process_txn_concurrent_int(dbenv, rctl, rec,
-			ltrans, ctrllsn, maxlsn, commit_gen, prev_commit_lsn);
+			ltrans, ctrllsn, maxlsn, commit_gen, rep_gen, prev_commit_lsn);
 	} else {
 		int rc;
 		long long usecs;
@@ -6485,7 +6493,7 @@ __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 		rep_process_txn_cnt++;
 		getbbtime(&start);
 		rc = __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans,
-			ctrllsn, maxlsn, commit_gen, prev_commit_lsn);
+			ctrllsn, maxlsn, commit_gen, rep_gen, prev_commit_lsn);
 		getbbtime(&end);
 		usecs = diff_bbtime(&end, &start);
 		rep_process_txn_usc += usecs;
@@ -8698,7 +8706,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 			goto err;
 		}
 
-		logmsg(LOGMSG_WARN, "TRUNCATING to %u:%u checkpoint lsn is %u:%u\n",
+		logmsg(LOGMSG_INFO, "TRUNCATING to %u:%u checkpoint lsn is %u:%u\n",
 			max_lsn.file, max_lsn.offset,
 			last_valid_checkpoint.file, last_valid_checkpoint.offset);
 
@@ -8726,11 +8734,11 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		}
 		__rep_set_last_locked(dbenv, &trunclsn);
 
-		logmsg(LOGMSG_WARN, "skip-recovery truncate log lsn [%d:%d]\n", trunclsn.file,
+		logmsg(LOGMSG_INFO, "skip-recovery truncate log lsn [%d:%d]\n", trunclsn.file,
 				trunclsn.offset);
 	} else {
 		if (gbl_rep_skip_recovery) {
-			logmsg(LOGMSG_WARN, "skip-recovery cannot skip, prev-commit=[%d:%d] trunc-lsn=[%d:%d]\n",
+			logmsg(LOGMSG_INFO, "skip-recovery cannot skip, prev-commit=[%d:%d] trunc-lsn=[%d:%d]\n",
 				dbenv->prev_commit_lsn.file, dbenv->prev_commit_lsn.offset, rp->lsn.file, rp->lsn.offset);
 		}
 		ZERO_LSN(dbenv->prev_commit_lsn);
