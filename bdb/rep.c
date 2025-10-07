@@ -68,7 +68,7 @@ int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
 int gbl_debug_drop_nth_rep_message = 0;
-int gbl_broadcast_newmaster = 1;
+int gbl_broadcast_newmaster = 0;
 extern int gbl_debug_stat4dump_loop;
 
 extern struct thdpool *gbl_udppfault_thdpool;
