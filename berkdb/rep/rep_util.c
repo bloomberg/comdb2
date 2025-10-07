@@ -1133,17 +1133,46 @@ __rep_set_last_locked(dbenv, last_locked_lsn)
  *
  *	Get the last "locked" lsn
  *
- * PUBLIC: int __rep_get_last_locked __P((DB_ENV *, DB_LSN *));
+ * PUBLIC: int __rep_get_last_locked __P((DB_ENV *, DB_LSN *, u_int32_t *));
  */
 int
-__rep_get_last_locked(dbenv, last_locked_lsn)
+__rep_get_last_locked(dbenv, last_locked_lsn, genp)
 	DB_ENV *dbenv;
 	DB_LSN *last_locked_lsn;
+    u_int32_t *genp;
 {
-	Pthread_mutex_lock(&dbenv->locked_lsn_lk);
-	*last_locked_lsn = dbenv->last_locked_lsn;
-	Pthread_mutex_unlock(&dbenv->locked_lsn_lk);
-	return 0;
+	int rc = 0;
+	int ismaster = 0;
+	REP *rep;
+	DB_REP *db_rep;
+	DB_LOG *dblp;
+	LOG *lp;
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+
+	/* Return a bad-rcode until we have sync'd the txn-log with the new master */
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+   	if (rep->in_recovery || F_ISSET(rep, REP_F_READY | REP_F_RECOVER)) {
+		rc = -1;
+	}
+	if (F_ISSET(rep, REP_F_MASTER)) {
+		ismaster = 1;
+	} else {
+		Pthread_mutex_lock(&dbenv->locked_lsn_lk);
+		*last_locked_lsn = dbenv->last_locked_lsn;
+		Pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+	}
+
+	*genp = rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	if (ismaster) {
+		R_LOCK(dbenv, &dblp->reginfo);
+		*last_locked_lsn = lp->lsn;
+		R_UNLOCK(dbenv, &dblp->reginfo);
+	}
+	return rc;
 }
 
 /*

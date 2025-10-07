@@ -12,3 +12,5 @@ allow_lua_print 1
 reverse_hosts_v2 1
 physrep_keepalive_v2 1
 physrep_reconnect_interval 10
+wait_for_seqnum_trace 1
+online_recovery 0

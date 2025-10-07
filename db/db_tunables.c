@@ -247,7 +247,6 @@ extern int gbl_long_read_threshold;
 extern int gbl_always_ack_fills;
 extern int gbl_verbose_fills;
 extern int gbl_getlock_latencyms;
-extern int gbl_last_locked_seqnum;
 extern int gbl_set_coherent_state_trace;
 extern int gbl_incoherent_slow_inactive_timeout;
 extern int gbl_max_incoherent_slow;

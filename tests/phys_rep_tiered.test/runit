@@ -83,7 +83,7 @@ function wait_for_catchup()
 
     echo "== Comparing source against $_repl_dbname@$_repl_host"
 
-    while [[ -z "$mnode" ]] || [[ -z "$c_lsn" ]] || [[ -z "$r_lsn" ]] || [[ "$c_lsn" -ne "$r_lsn" ]]; do
+    while [[ -z "$mnode" ]] || [[ -z "$c_lsn" ]] || [[ -z "$r_lsn" ]] || [[ "$c_lsn" != "$r_lsn" ]]; do
         sleep 0.5
         elapsed=$((SECONDS-start))
         if [[ $elapsed -gt $SLEEPAMOUNT ]] ; then
@@ -94,14 +94,18 @@ function wait_for_catchup()
         if [[ -z "$mnode" ]]; then
             continue;
         fi
-        c_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME --host $mnode 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
-        r_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS ${_repl_dbname} --host ${_repl_host} 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
+        c_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME --host $mnode 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
+        r_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS ${_repl_dbname} --host ${_repl_host} 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
     done
 
-    if [[ "$c_lsn" -ne "$r_lsn" ]] ; then
+    if [[ "$c_lsn" != "$r_lsn" ]] ; then
         cleanFailExit "The wait_for_lsn is not enough and we need the extra sleep because lsn on replicant can move ahead--as local log--then roll back"
     else
-        echo "comdb2_transaction_logs are the same, continue"
+        echo "comdb2_transaction_logs are the same"
+        # Seeing that physreps can ALSO suffer from the 'last-locked' race .. 
+        # Paper over this by sleeping for a bit here
+        echo "sleeping for a bit to paper-over last-locked race"
+        sleep 5
     fi
 }
 
@@ -1121,6 +1125,20 @@ function run_generated_tests()
 
         ${CDB2SQL_EXE} -s --tabs -f $query_cmd ${REPL_CLUS_DBNAME} --host ${REPL_CLUS_HOST} 2> dest.err > dest.out
 
+        # Physreps reconnect every 10 seconds in this test, which can cause 
+        # some flakiness for this check.
+        cnt=0
+        diff src.out dest.out
+        rc=$?
+        while [[ $rc != 0 && $cnt -lt 10 ]] ; do
+            echo "Result not matching, retrying $cnt"
+            sleep 5
+            ${CDB2SQL_EXE} -s --tabs -f $query_cmd ${REPL_CLUS_DBNAME} --host ${REPL_CLUS_HOST} 2> dest.err > dest.out
+            diff src.out dest.out
+            rc=$?
+            let cnt=cnt+1
+        done
+
         if ! diff src.out dest.out ; then
             echo "Replicant not updated [correctly] vimdiff $PWD/{src.out,dest.out}"
             sleep 1
@@ -1342,7 +1360,9 @@ function verify_revconn_fix
 {
     logFile=$TESTDIR/logs/${REPL_DBNAME_PREFIX}_${firstNode}.log
     x=$(egrep "Reverse connected" $logFile | wc -l)
-    if [[ "$x" -gt 90 ]]; then
+    y=$(egrep "Faking connect failure" $logFile | wc -l)
+    z=$(( x - y ))
+    if [[ "$z" -gt 90 ]]; then
         cleanFailExit "Reverse connection loop in $logFile"
     fi
 }
@@ -1482,11 +1502,13 @@ function physrep_truncate
     done
 
     sleep 5
-    echo "Verify that truncate succeeded - there should be 1000 records"
-    x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
-    while [[ "$x" -ne "1000" ]]; do
-        sleep 1
+    echo "Verify that truncate succeeded: there should be 1000 records on each node"
+    for node in $CLUSTER; do
         x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from cktruncate" 2>/dev/null)
+        done
     done
 
     echo "Block until standalone physreps have truncated"

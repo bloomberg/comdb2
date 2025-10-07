@@ -1771,7 +1771,8 @@ void *udpbackup_and_autoanalyze_thd(void *arg);
 void udp_backup(int, short, void *);
 void auto_analyze(int, short, void *);
 
-int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
+int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation, uint32_t rep_gen);
+void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen);
 void net_rep_throttle_init(netinfo_type *netinfo_ptr);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
                         struct interned_string *from_host_interned,
