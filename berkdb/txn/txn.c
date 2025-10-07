@@ -177,7 +177,7 @@ static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
 static int __txn_logbytes_pp __P((DB_TXN *, u_int64_t *));
 static int __txn_set_discard __P((DB_TXN *));
-static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
+static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, u_int32_t *gen, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
 static int __txn_dist_prepare_pp __P((DB_TXN *, const char *, const char *, const char*, u_int32_t, DBT *, DB_LSN *, u_int32_t));
@@ -1044,7 +1044,7 @@ int gbl_endianize_locklist = 1;
  */
 static int
 __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
-	nrlocks, logbytes, begin_lsn, lsn_out, usr_ptr)
+	nrlocks, logbytes, begin_lsn, lsn_out, commit_gen, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -1056,6 +1056,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	u_int64_t *logbytes;
 	DB_LSN *begin_lsn;
 	DB_LSN *lsn_out;
+	u_int32_t *commit_gen;
 	void *usr_ptr;
 {
 	DBT list_dbt;
@@ -1070,7 +1071,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	UTXNID *utxnid_track;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
-	uint32_t gen;
+	uint32_t gen = 0;
 	u_int64_t context = 0;
 	int ret, t_ret, elect_highest_committed_gen, commit_lsn_map;
 	int endianize_locklist = gbl_endianize_locklist;
@@ -1592,6 +1593,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
+
+	if (commit_gen)
+		*commit_gen = gen;
 	
 	if (is_prepare) {
 		return 0;
@@ -1653,7 +1657,7 @@ __txn_commit(txnp, flags)
 	DB_TXN *txnp;
 	u_int32_t flags;
 {
-	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
+	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL);
 }
 
 
@@ -1672,7 +1676,7 @@ __txn_commit_pp(txnp, flags)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 	return (ret);
@@ -1694,7 +1698,7 @@ __txn_commit_txnlen_pp(txnp, logbytes, flags)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, logbytes, NULL, NULL, NULL);
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, logbytes, NULL, NULL, NULL, NULL);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 	return (ret);
@@ -1705,11 +1709,12 @@ __txn_commit_txnlen_pp(txnp, logbytes, flags)
  *	Interface routine to TXN->commit.
  */
 static int
-__txn_commit_getlsn_pp(txnp, flags, logbytes, lsn_out, usr_ptr)
+__txn_commit_getlsn_pp(txnp, flags, logbytes, lsn_out, commit_gen, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t *logbytes;
 	DB_LSN *lsn_out;
+	u_int32_t *commit_gen;
 	void *usr_ptr;
 {
 	DB_ENV *dbenv;
@@ -1720,7 +1725,7 @@ __txn_commit_getlsn_pp(txnp, flags, logbytes, lsn_out, usr_ptr)
 	not_child = txnp->parent == NULL;
 	ret =
 		__txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, logbytes, NULL,
-		lsn_out, usr_ptr);
+		lsn_out, commit_gen, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -1759,7 +1764,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	not_child = txnp->parent == NULL;
 
 	ret = __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn,
-		rlocks, lks, nrlocks, logbytes, begin_lsn, lsn_out, usr_ptr);
+		rlocks, lks, nrlocks, logbytes, begin_lsn, lsn_out, NULL, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -2084,7 +2089,7 @@ __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coor
 	lflags |= DB_TXN_DIST_PREPARE;
 
 	ret =
-		__txn_commit_int(txnp, lflags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, commit_lsn, NULL);
+		__txn_commit_int(txnp, lflags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, commit_lsn, NULL, NULL);
 	return (ret);
 }
 

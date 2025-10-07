@@ -2676,6 +2676,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
        over the network */
     dbenv->set_rep_transport(dbenv, bdb_state->repinfo->myhost,
                              berkdb_send_rtn);
+    dbenv->set_rep_send_ack(dbenv, comdb2_early_ack);
 
     dbenv->set_check_standalone(dbenv, comdb2_is_standalone);
     dbenv->set_truncate_sc_callback(dbenv, comdb2_reload_schemas);
