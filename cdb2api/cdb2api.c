@@ -6102,21 +6102,26 @@ static void cdb2_bind_param_helper(cdb2_hndl_tp *hndl, int type, const void *var
     cdb2__sqlquery__bindvalue__init(bindval);
     bindval->type = type;
     bindval->value.data = (void *)varaddr;
-    bindval->value.len = length;
-    if (length == 0) {
+    if (varaddr == NULL) {
         /* protobuf-c discards `data' if `len' is 0. A NULL value and a 0-length
            value would look the same from the server's perspective. Hence we
            need an addtional isnull flag to tell them apart. */
+        bindval->value.len = 0;
         bindval->has_isnull = 1;
-        bindval->isnull = (varaddr == NULL);
-
+        bindval->isnull = 1;
+    } else if (type == CDB2_CSTRING && length == 0) {
         /* R6 and old R7 ignore isnull for cstring and treat a 0-length string
            as NULL. So we send 1 dummy byte here to be backward compatible with
            an old backend. */
-        if (type == CDB2_CSTRING && !bindval->isnull) {
-            bindval->value.data = (unsigned char *)"";
-            bindval->value.len = 1;
-        }
+        bindval->value.data = (unsigned char *)"";
+        bindval->value.len = 1;
+    } else if (type == CDB2_BLOB && length == 0) {
+        bindval->value.data = (unsigned char *)"";
+        bindval->value.len = 0;
+        bindval->has_isnull = 1;
+        bindval->isnull = 0;
+    } else {
+        bindval->value.len = length;
     }
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
 }
@@ -6127,21 +6132,22 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
     cdb2_bind_param_helper(hndl, type, varaddr, length);
     CDB2SQLQUERY__Bindvalue *bindval = hndl->bindvars[hndl->n_bindvars - 1];
     bindval->varname = (char *)varname;
-    if (log_calls)
+    if (log_calls) {
         fprintf(stderr, "%p> cdb2_bind_param(%p, \"%s\", %s, %p, %d) = 0\n",
                 (void *)pthread_self(), hndl, varname, cdb2_type_str(type),
                 varaddr, length);
+    }
     return 0;
 }
 
 int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
                     const void *varaddr, int length)
 {
-    if (log_calls)
+    if (log_calls) {
         fprintf(stderr, "%p> cdb2_bind_index(%p, %d, %s, %p, %d)\n",
                 (void *)pthread_self(), hndl, index, cdb2_type_str(type),
                 varaddr, length);
-
+    }
     if (index <= 0) {
         sprintf(hndl->errstr, "%s: bind index starts at value 1", __func__);
         return -1;
@@ -6294,7 +6300,8 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
         return 0;
     if (hndl->fdb_hndl)
         cdb2_clearbindings(hndl->fdb_hndl);
-    for (int i = 0; i < hndl->n_bindvars; i++) {
+    int i = 0;
+    for (i = 0; i < hndl->n_bindvars; i++) {
         CDB2SQLQUERY__Bindvalue *val = hndl->bindvars[i];
         if (val->carray) {
             free(val->carray->i32);
