@@ -201,7 +201,7 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                tran_type *tran, int dtafile, int dtastripe, DBT *dbt_key,
                DBT *dbt_data, int flags, int odhready)
 {
-    int outrc = 0, rc;
+    int outrc = 0;
     int tran_flags;
 
     tran_flags = tran ? 0 : DB_AUTO_COMMIT;
@@ -217,17 +217,7 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state, tran)) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, tran->tid->txnid);
-            if (rc) {
-                logmsg(LOGMSG_FATAL,
-                       "%s:%d error clearing tracked writelocks: %d\n",
-                       __FILE__, __LINE__, rc);
-                abort();
-            }
-        }
-
+        add_snapisol_logging(bdb_state, tran);
         outrc = bdb_put_pack(bdb_state, dtafile > 0 ? 1 : 0, dbp,
                              tran ? tran->tid : NULL, dbt_key, dbt_data,
                              tran_flags, odhready);
@@ -245,12 +235,6 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                 bdb_state->parent->dbenv, tran->tid, &parent->last_logical_lsn,
                 0, &dbt_tbl, dtafile, dtastripe, genid, parent->logical_tranid,
                 &parent->last_logical_lsn, NULL);
-            if (iirc)
-                abort();
-
-            iirc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, tran->tid, tran->tid->txnid,
-                parent->last_logical_lsn);
             if (iirc)
                 abort();
         }
@@ -312,17 +296,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     /* fall through */
     case TRANCLASS_PHYSICAL: {
 
-        if (add_snapisol_logging(bdb_state, tran)) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, tran->tid->txnid);
-            if (rc) {
-                logmsg(LOGMSG_FATAL,
-                       "%s:%d error clearing tracked writelocks: %d\n",
-                       __FILE__, __LINE__, rc);
-                abort();
-            }
-        }
-
+        add_snapisol_logging(bdb_state, tran);
         rc = dbp->cursor(dbp, tran->tid, &dbcp, 0);
         if (rc) {
             if (rc != DB_LOCK_DEADLOCK)
@@ -458,12 +432,6 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                                          dtastripe, dta_out_si.size, NULL);
             if (iirc)
                 abort();
-
-            iirc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, tran->tid, tran->tid->txnid,
-                parent->last_logical_lsn);
-            if (iirc)
-                abort();
         }
 
     } break;
@@ -513,17 +481,7 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state, tran)) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, tran->tid->txnid);
-            if (rc) {
-                logmsg(LOGMSG_FATAL,
-                       "%s:%d error clearing tracked writelocks: %d\n",
-                       __FILE__, __LINE__, rc);
-                abort();
-            }
-        }
-
+        add_snapisol_logging(bdb_state, tran);
         if ((bdb_state->attr->snapisol || bdb_state->logical_live_sc) &&
             !payloadsz)
             payloadsz = &payloadsz_si;
@@ -617,12 +575,6 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
                 &parent->last_logical_lsn, NULL, keylen, *payloadsz);
             if (iirc)
                 abort();
-
-            iirc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, tran->tid, tran->tid->txnid,
-                parent->last_logical_lsn);
-            if (iirc)
-                abort();
         }
 
         break;
@@ -697,17 +649,7 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state, tran)) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, tran->tid->txnid);
-            if (rc) {
-                logmsg(LOGMSG_FATAL,
-                       "%s:%d error clearing tracked writelocks: %d\n",
-                       __FILE__, __LINE__, rc);
-                abort();
-            }
-        }
-
+        add_snapisol_logging(bdb_state, tran);
         /* open a cursor on the index, find exact key to be deleted
            (if key doesn't allow dupes we need to verify the genid),
            then delete */
@@ -803,12 +745,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                 if (iirc)
                     abort();
             }
-
-            iirc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, tran->tid, tran->tid->txnid,
-                parent->last_logical_lsn);
-            if (iirc)
-                abort();
         }
 
         break;
@@ -845,17 +781,7 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state, tran)) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, tran->tid->txnid);
-            if (rc) {
-                logmsg(LOGMSG_FATAL,
-                       "%s:%d error clearing tracked writelocks: %d\n",
-                       __FILE__, __LINE__, rc);
-                abort();
-            }
-        }
-
+        add_snapisol_logging(bdb_state, tran);
         rc = bdb_state->dbp_ix[ixnum]->put(bdb_state->dbp_ix[ixnum], tran->tid,
                                            dbt_key, dbt_data, DB_NOOVERWRITE);
         if (rc) {
@@ -875,12 +801,6 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
                 bdb_state->parent->dbenv, tran->tid, &parent->last_logical_lsn,
                 0, &dbt_tbl, ixnum, ingenid, parent->logical_tranid,
                 &parent->last_logical_lsn, dbt_key->size, dbt_data->size);
-            if (iirc)
-                abort();
-
-            iirc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, tran->tid, tran->tid->txnid,
-                parent->last_logical_lsn);
             if (iirc)
                 abort();
         }
@@ -960,17 +880,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state, tran)) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, tran->tid->txnid);
-            if (rc) {
-                logmsg(LOGMSG_FATAL,
-                       "%s:%d error clearing tracked writelocks: %d\n",
-                       __FILE__, __LINE__, rc);
-                abort();
-            }
-        }
-
+        add_snapisol_logging(bdb_state, tran);
         /* open a cursor */
         rc = dbp->cursor(dbp, tran->tid, &dbcp, 0);
         if (rc != 0) {
@@ -1377,12 +1287,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
                   parent->last_logical_lsn.file,
             parent->last_logical_lsn.offset);
              */
-            if (iirc)
-                abort();
-
-            iirc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, tran->tid, tran->tid->txnid,
-                parent->last_logical_lsn);
             if (iirc)
                 abort();
         }

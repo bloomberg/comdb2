@@ -56,12 +56,6 @@
 #include <logmsg.h>
 #include <tohex.h>
 
-#ifdef NEWSI_STAT
-#include <time.h>
-#include <sys/time.h>
-#include <util.h>
-#endif
-
 extern int gbl_dispatch_rowlocks_bench;
 
 /* TODO:
@@ -1874,10 +1868,6 @@ static void free_hash(hash_t *h)
     hash_free(h);
 }
 
-#ifdef NEWSI_STAT
-extern struct timeval comprec_time;
-extern unsigned long long num_comprec;
-#endif
 /* This is called by tran_abort when it's called on a logical transaction.
    Gets a log cursor, finds the last logical log record, and
    traverses the log in reverse lsn order for that logical
@@ -1973,22 +1963,8 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         }
 
         undolsn = lsn;
-#ifdef NEWSI_STAT
-        num_comprec++;
-#endif
-#ifdef NEWSI_STAT
-        struct timeval before, after, diff;
-        gettimeofday(&before, NULL);
-#endif
-
         rc = undo_physical_transaction(bdb_state, tran, &logdta, &did_something,
                                        &undolsn, &lsn);
-
-#ifdef NEWSI_STAT
-        gettimeofday(&after, NULL);
-        timersub(&after, &before, &diff);
-        timeradd(&comprec_time, &diff, &comprec_time);
-#endif
         if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
             memcpy(&start_phys_txn, &undolsn, sizeof(start_phys_txn));
 
@@ -3547,46 +3523,6 @@ int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
 
     *oldest_ltran = oldest;
     *ltran_count = ltrancount;
-    return 0;
-}
-
-int bdb_prepare_newsi_bkfill(bdb_state_type *bdb_state,
-                             uint64_t **logical_txn_list,
-                             int *logical_txn_count,
-                             DB_LSN *oldest_logical_birth_lsn)
-{
-    DB_LTRAN *ltranlist;
-    u_int32_t ltrancount;
-    DB_LSN oldest = {0};
-    int idx, rc;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                               &ltrancount)) != 0)
-        abort();
-
-    if (ltrancount == 0) {
-        *logical_txn_count = 0;
-        *logical_txn_list = NULL;
-        *oldest_logical_birth_lsn = (DB_LSN){.file = 0, .offset = 0};
-        return 0;
-    }
-
-    *logical_txn_list = (uint64_t *)malloc(sizeof(uint64_t *) * ltrancount);
-
-    for (idx = 0; idx < ltrancount; idx++) {
-        (*logical_txn_list)[idx] = ltranlist[idx].tranid;
-        if (oldest.file == 0 ||
-            log_compare(&ltranlist[idx].begin_lsn, &oldest) < 0)
-            oldest = ltranlist[idx].begin_lsn;
-    }
-
-    free(ltranlist);
-
-    *oldest_logical_birth_lsn = oldest;
-    *logical_txn_count = ltrancount;
     return 0;
 }
 

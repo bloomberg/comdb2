@@ -45,13 +45,6 @@
 #include <ctrace.h>
 #include <logmsg.h>
 
-#ifdef NEWSI_STAT
-#include <time.h>
-#include <sys/time.h>
-#include <util.h>
-extern struct timeval logical_undo_time;
-#endif
-
 unsigned int bdb_osql_trn_total_count = 0;
 extern int gbl_modsnap_asof;
 
@@ -97,8 +90,6 @@ static int
 bdb_osql_trn_create_backfill_active_trans(bdb_state_type *bdb_state,
                                           bdb_osql_trn_t *trn, int *bdberr,
                                           struct bfillhndl **ret_bkfill_hndl);
-int bdb_prepare_newsi_bkfill(bdb_state_type *bdb_state, uint64_t **list,
-                             int *count, DB_LSN *oldest);
 
 /**
  * Create the snapshot/serializable transaction repository
@@ -208,7 +199,6 @@ int bdb_osql_trn_repo_destroy(int *bdberr)
 }
 
 extern int gbl_extended_sql_debug_trace;
-extern int gbl_new_snapisol;
 DB_LSN bdb_gbl_recoverable_lsn;
 int32_t bdb_gbl_recoverable_timestamp = 0;
 pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
@@ -221,7 +211,7 @@ pthread_cond_t bdb_asof_current_lsn_cond;
 
 void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp)
 {
-    if (!gbl_new_snapisol_asof && !gbl_modsnap_asof)
+    if (!gbl_modsnap_asof)
         return;
     Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
     bdb_gbl_recoverable_timestamp = timestamp;
@@ -375,14 +365,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
      * after we set our startgenid and birthlsn
      */
     if (backfill_required) {
-        if (gbl_new_snapisol)
-            rc = bdb_prepare_newsi_bkfill(bdb_state,
-                                          &shadow_tran->bkfill_txn_list,
-                                          &shadow_tran->bkfill_txn_count,
-                                          &shadow_tran->oldest_txn_at_start);
-        else
-            rc = bdb_osql_trn_create_backfill_active_trans(
-                bdb_state, trn, bdberr, &bkfill_hndl);
+        rc = bdb_osql_trn_create_backfill_active_trans(bdb_state, trn, bdberr, &bkfill_hndl);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s:%d failed to create backfill active trans, rc %d\n",
@@ -405,123 +388,12 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
 done:
     Pthread_mutex_unlock(&trn_repo_mtx);
 
-    if (gbl_new_snapisol) {
-        shadow_tran->pglogs_queue_hash =
-            hash_init_o(offsetof(struct pglogs_queue_cursor, fileid),
-                        DB_FILE_ID_LEN * sizeof(unsigned char));
-    }
-
     if (!rc && backfill_required) {
-        if (gbl_new_snapisol) {
-            if (epoch && gbl_new_snapisol_asof) {
-                rc = bdb_get_lsn_context_from_timestamp(
-                    bdb_state, epoch, &shadow_tran->asof_lsn,
-                    &shadow_tran->startgenid, bdberr);
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "%s line %d get_lsn_context from "
-                            "epoch=%d lsn=[%d][%d] rc=%d\n", __func__, 
-                            __LINE__, epoch, file, offset, rc);
-                }
-                Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
-                if (!rc && ((bdb_gbl_recoverable_lsn.file == 0 &&
-                             bdb_gbl_recoverable_lsn.offset == 1) ||
-                            (log_compare(&shadow_tran->asof_lsn,
-                                         &bdb_gbl_recoverable_lsn) < 0))) {
-                    shadow_tran->asof_lsn.file = 0;
-                    shadow_tran->asof_lsn.offset = 1;
-                    rc = -1;
-                } else if (rc) {
-                    logmsg(LOGMSG_ERROR, "%s failed to get lsn from timestamp\n",
-                            __func__);
-                    if (epoch >= bdb_gbl_recoverable_timestamp) {
-                        shadow_tran->asof_lsn = bdb_gbl_recoverable_lsn;
-                        rc = 0;
-                    }
-                }
-                Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
-            } else if (file && gbl_new_snapisol_asof) {
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "%s line %d creating asof backfill lsn=[%d][%d]\n",
-                            __func__, __LINE__, file, offset);
-                }
-                shadow_tran->asof_lsn.file = file;
-                shadow_tran->asof_lsn.offset = offset;
-                Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
-                if ((bdb_gbl_recoverable_lsn.file == 0 &&
-                     bdb_gbl_recoverable_lsn.offset == 1) ||
-                    (log_compare(&shadow_tran->asof_lsn,
-                                 &bdb_gbl_recoverable_lsn) < 0)) {
-                    shadow_tran->asof_lsn.file = 0;
-                    shadow_tran->asof_lsn.offset = 1;
-                    rc = -1;
-                }
-                Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
-                if (!rc) {
-                    bdb_get_context_from_lsn(bdb_state, &shadow_tran->asof_lsn,
-                                             &shadow_tran->startgenid, bdberr);
-                }
-            }
-
-            if (shadow_tran->asof_lsn.file != 0 &&
-                shadow_tran->asof_lsn.offset != 1) {
-                int counter = 0;
-                DB_LSN latest_commit_lsn;
-
-                Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
-                assert(bdb_latest_commit_lsn.file);
-                latest_commit_lsn = bdb_latest_commit_lsn;
-
-                // Make sure we have everything copied into pglogs
-                while (log_compare(&bdb_asof_current_lsn, &latest_commit_lsn) <
-                       0) {
-                    struct timespec now;
-
-                    if (counter++ > 3) {
-                        logmsg(LOGMSG_ERROR, 
-                                "%s: waiting for asof_lsn %d:%d to become "
-                                "current with req %d:%d, count=%d\n",
-                                __func__, bdb_asof_current_lsn.file,
-                            bdb_asof_current_lsn.offset, latest_commit_lsn.file,
-                            latest_commit_lsn.offset, counter);
-                    }
-
-                    rc = clock_gettime(CLOCK_REALTIME, &now);
-                    now.tv_sec += 1;
-                    pthread_cond_timedwait(&bdb_asof_current_lsn_cond,
-                                           &bdb_asof_current_lsn_mutex, &now);
-                }
-                Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
-
-                shadow_tran->asof_hashtbl =
-                    hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
-                bdb_checkpoint_list_get_ckplsn_before_lsn(
-                    shadow_tran->asof_lsn, &shadow_tran->asof_ref_lsn);
-#ifdef ASOF_TRACE
-                printf("snapshot shadow_tran %p began as of lsn[%u][%u], "
-                       "ref_lsn[%u][%u], startgenid %llx\n",
-                       shadow_tran, shadow_tran->asof_lsn.file,
-                       shadow_tran->asof_lsn.offset,
-                       shadow_tran->asof_ref_lsn.file,
-                       shadow_tran->asof_ref_lsn.offset,
-                       shadow_tran->startgenid);
-#endif
-            } else if (rc) {
-                // not able to recover back to that point
-                logmsg(LOGMSG_ERROR, "%s:%d unable to recover db to epoch %d, "
-                                     "file %d, offset %d\n",
-                       __func__, __LINE__, epoch, file, offset);
-                *bdberr = BDBERR_NO_LOG;
-            }
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "%s line %d creating old-style backfill epoch=%d lsn=[%d][%d]\n", __func__, __LINE__,
+                   epoch, file, offset);
         }
-
-        if (!gbl_new_snapisol || !gbl_new_snapisol_asof) {
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d creating old-style backfill epoch=%d lsn=[%d][%d]\n",
-                        __func__, __LINE__, epoch, file, offset);
-            }
-            rc = bdb_osql_trn_create_backfill(bdb_state, trn, bdberr, epoch,
-                                              file, offset, bkfill_hndl);
-        }
+        rc = bdb_osql_trn_create_backfill(bdb_state, trn, bdberr, epoch, file, offset, bkfill_hndl);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "fail to backfill %d %d\n", rc, *bdberr);
@@ -1102,17 +974,8 @@ static int bdb_osql_trn_create_backfill(bdb_state_type *bdb_state,
             trn->shadow_tran->snapy_commit_lsn.offset = offset;
         }
 
-#ifdef NEWSI_STAT
-        struct timeval before, after, diff;
-        gettimeofday(&before, NULL);
-#endif
         rc = bdb_osql_trn_process_bfillhndl(bdb_state, trn, bdberr, bkfill_hndl,
                                             0 /* dont skip committed trans */);
-#ifdef NEWSI_STAT
-        gettimeofday(&after, NULL);
-        timersub(&after, &before, &diff);
-        timeradd(&logical_undo_time, &diff, &logical_undo_time);
-#endif
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s:%d failed to process backfill handler, rc = %d\n",
@@ -1143,10 +1006,6 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
         bdb_tran_open_shadow(cur->state, cur->dbnum, cur->shadow_tran, cur->idx,
                              cur->type, (type == BERKDB_SHAD_CREATE), bdberr);
 
-#ifdef NEWSI_STAT
-    struct timeval before, after, diff;
-    gettimeofday(&before, NULL);
-#endif
     /* backfill only snapshot/serializable for now */
     if ((cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
          cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL) &&
@@ -1198,11 +1057,6 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
             return NULL;
     }
 
-#ifdef NEWSI_STAT
-    gettimeofday(&after, NULL);
-    timersub(&after, &before, &diff);
-    timeradd(&logical_undo_time, &diff, &logical_undo_time);
-#endif
 
     if (dirty && !shadcur) {
         /* retrieve now a cursor for the newly created shadow */

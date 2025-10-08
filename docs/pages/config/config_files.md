@@ -229,7 +229,6 @@ disable_blob_check|  off |return immediately in check_blob_buffers
 disable_sql_table_replacement|  off |Disable SQL table replacement
 disable_etc_services_lookup|  off |When on, disables using /etc/services first to resolve ports
 disable_exit_on_thread_error | off | don't exit on thread errors
-disable_new_si_overhead|  off |return immediately in several new snapisol functions
 disable_rowlocks_logging|  off |Don't add logical logging for rowlocks
 disable_rowlocks|  off |Follow rowlocks codepath but don't lock
 disable_stable_for_ipu|  on |For inplace update tables, disable stable find-next cursors

@@ -5391,8 +5391,6 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_dump_sql_on_repwait_sec;
 extern int gbl_lock_get_list_start;
-int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
-                            int truncate);
 extern int gbl_2pc;
 void disttxn_timer(void);
 
@@ -5507,11 +5505,6 @@ void *watcher_thread(void *arg)
         stopped_count = 0;
 
         BDB_READLOCK("watcher_thread");
-
-        if (!gbl_new_snapisol_asof) {
-            DB_LSN lsn = {0};
-            bdb_clean_pglogs_queues(bdb_state, lsn, 0);
-        }
 
         if (bdb_state->attr->coherency_lease &&
             !bdb_state->coherency_lease_thread) {
