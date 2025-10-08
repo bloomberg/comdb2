@@ -1070,9 +1070,6 @@ void bdb_set_commit_genid( bdb_state_type *bdb_state, unsigned long long context
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    if (plsn)
-        bdb_update_ltran_lsns(bdb_state, *(const DB_LSN *)plsn, args, rectype);
-
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
 
     set_commit_genid_lsn_gen(bdb_state, context, (const DB_LSN *)plsn,

@@ -54,7 +54,6 @@ extern int gbl_recovery_lsn_file;
 extern int gbl_recovery_lsn_offset;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
-extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;

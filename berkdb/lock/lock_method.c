@@ -124,10 +124,6 @@ __lock_dbenv_create(dbenv)
 		    __lock_locker_pagelockcount_pp;
 		dbenv->lock_vec = __lock_vec_pp;
 		dbenv->lock_to_dbt = __lock_to_dbt_pp;
-		dbenv->lock_update_tracked_writelocks_lsn =
-		    __lock_update_tracked_writelocks_lsn_pp;
-		dbenv->lock_clear_tracked_writelocks =
-		    __lock_clear_tracked_writelocks_pp;
 	}
 }
 
