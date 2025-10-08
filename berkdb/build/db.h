@@ -2561,9 +2561,6 @@ struct __db_env {
 		u_int32_t, u_int32_t, DB_LOCKREQ *, int, DB_LOCKREQ **));
 	int  (*lock_to_dbt) __P((DB_ENV *,DB_LOCK *, DBT *));
 	int  (*lock_add_child_locker) __P((DB_ENV *, u_int32_t, u_int32_t));
-	int  (*lock_update_tracked_writelocks_lsn)
-		__P((DB_ENV *, DB_TXN *, u_int32_t, DB_LSN));
-	int  (*lock_clear_tracked_writelocks) __P((DB_ENV *, u_int32_t));
 	void *mp_handle;		/* Mpool handle and methods. */
 	int  (*get_cachesize) __P((DB_ENV *, u_int32_t *, u_int32_t *, int *));
 	int  (*set_cachesize) __P((DB_ENV *, u_int32_t, u_int32_t, int));

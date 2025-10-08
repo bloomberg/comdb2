@@ -60,7 +60,6 @@
 #include "logmsg.h"
 
 extern int gbl_rowlocks;
-extern int gbl_new_snapisol;
 extern int gbl_test_blob_race;
 
 /* if cursor_ser_enabled is enabled and the disabling pbit isn't set */
@@ -155,8 +154,6 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
         int rc2 = 0;
         int rc = 0;
 
-        int pgno;
-
         /* Could have changed in get_unpack_blob. */
         genid = ingenid;
         genid_t = ingenid;
@@ -203,52 +200,6 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
             /* Switching this to cursor mode; this will let us
                catch potential deadlocks 02262008dh */
             DBC *dbcp = NULL;
-            DBC *dbcp_t = NULL;
-
-            if (gbl_new_snapisol && parent && parent->shadow_tran &&
-                (parent->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                 parent->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE)) {
-                if (tran || parent == NULL) {
-                    rc = dbp->cursor(dbp, tran ? tran->tid : NULL, &dbcp_t, 0);
-
-                    if (rc) {
-                        bdb_get_error(bdb_state, tran ? tran->tid : NULL, rc,
-                                      BDBERR_MISC, bdberr, __func__);
-                        logmsg(LOGMSG_ERROR, 
-                                "^%s: failed to get a cursor bdberr=%d\n",
-                                __func__, *bdberr);
-                        return -1;
-                    }
-                } else {
-                    dbcp_t = get_cursor_for_cursortran_flags(parent->curtran,
-                                                             dbp, 0, bdberr);
-                    rc = (dbcp_t == 0);
-                    if (rc) {
-                        logmsg(LOGMSG_ERROR, 
-                                "^%s: failed to get a cursor bdberr=%d\n",
-                                __func__, *bdberr);
-                        return -1;
-                    }
-                }
-
-                genid_t = ingenid;
-
-                rc = dbcp_t->c_get(dbcp_t, &dbt_key_t, &dbt_data_t,
-                                   DB_SET_RANGE);
-                pgno = dbcp_t->lastpage;
-                if (dbt_data_t.data)
-                    free(dbt_data_t.data);
-
-                if ((rc2 = dbcp_t->c_close(dbcp_t)) != 0) {
-                    logmsg(LOGMSG_ERROR, "%s: error closing a temporary cursor %d\n", __func__, rc2);
-                }
-                dbcp_t = NULL;
-
-                if (pparent->updateshadows_pglogs(
-                        pparent, (unsigned int *)&pgno, dbp->fileid, bdberr))
-                    return -1;
-            }
-
             rc = 0;
             rc2 = 0;
 

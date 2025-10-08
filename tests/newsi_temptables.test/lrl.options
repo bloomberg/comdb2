@@ -1,9 +1,0 @@
-set_snapshot_impl new
-enable_snapshot_isolation
-setattr LOGFILESIZE 4194304
-setattr LOGMEMSIZE 1048576
-setattr LOGDELETE_RUN_INTERVAL 5
-setattr DEBUG_LOG_DELETION 1
-MIN_KEEP_LOGS 5
-MIN_KEEP_LOGS_AGE 10
-private_blkseq_maxage 10

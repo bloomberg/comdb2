@@ -2412,7 +2412,6 @@ extern int comdb2_is_standalone(DB_ENV *dbenv);
 extern int comdb2_reload_schemas(DB_ENV *dbenv, DB_LSN *lsn);
 extern int comdb2_replicated_truncate(DB_ENV *dbenv, DB_LSN *lsn,
                                       uint32_t flags);
-extern int comdb2_recovery_cleanup(DB_ENV *dbenv, DB_LSN *lsn, int is_master);
 
 int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 {
@@ -2680,7 +2679,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     dbenv->set_check_standalone(dbenv, comdb2_is_standalone);
     dbenv->set_truncate_sc_callback(dbenv, comdb2_reload_schemas);
     dbenv->set_rep_truncate_callback(dbenv, comdb2_replicated_truncate);
-    dbenv->set_rep_recovery_cleanup(dbenv, comdb2_recovery_cleanup);
 
     /* Register logical start and commit functions */
     dbenv->set_logical_start(dbenv, berkdb_start_logical);
@@ -3482,8 +3480,6 @@ static int get_filenum_from_logfile(char *str_in)
     return filenum;
 }
 
-extern int gbl_new_snapisol_asof;
-
 static int32_t gbl_min_truncate_file;
 static int32_t gbl_min_truncate_offset;
 static int32_t gbl_min_truncate_timestamp;
@@ -3700,29 +3696,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
     }
 
-    if (gbl_new_snapisol_asof) {
-        DB_LSN asoflsn;
-        extern pthread_mutex_t bdb_asof_current_lsn_mutex;
-        extern DB_LSN bdb_asof_current_lsn;
-
-        Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
-        asoflsn = bdb_asof_current_lsn;
-        Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
-
-        if (asoflsn.file <= local_lowfilenum)
-            local_lowfilenum = asoflsn.file - 1;
-        if (asoflsn.file <= lowfilenum) {
-            if (bdb_state->attr->debug_log_deletion) {
-                logmsg(LOGMSG_USER,
-                       "%s: Setting lowfilenum to %d from %d because asoflsn is "
-                       "%d:%d\n",
-                       __func__, asoflsn.file - 1, lowfilenum, asoflsn.file,
-                       asoflsn.offset);
-            }
-            lowfilenum = asoflsn.file - 1;
-        }
-    }
-
     delete_adjacent = 1;
     /* ask berk for a list of files that it thinks we can delete */
     rc = bdb_state->dbenv->log_archive(bdb_state->dbenv, &list, 0);
@@ -3886,27 +3859,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
                 break;
             }
 
-            if (gbl_new_snapisol_asof) {
-                /* avoid trace between reading and writting recoverable lsn */
-                Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
-                /* check active begin-as-of transactions */
-                if (!bdb_osql_trn_asof_ok_to_delete_log(filenum)) {
-                    Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
-                    if (bdb_state->attr->debug_log_deletion)
-                        logmsg(LOGMSG_USER, "%s: not ok to delete log %s, log file "
-                                        "needed to maintain begin-as-of "
-                                        "transactions\n",
-                                __func__, *file);
-                    if (ctrace_info)
-                        ctrace("not ok to delete log %s, log file needed to "
-                               "maintain begin-as-of transactions\n",
-                               *file);
-                    break;
-                }
-            }
-
-            if ((gbl_new_snapisol_asof || gbl_modsnap_asof)
-                && bdb_need_log_to_fulfill_log_age_requirement(filenum)) {
+            if (gbl_modsnap_asof && bdb_need_log_to_fulfill_log_age_requirement(filenum)) {
                 Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
                 if (bdb_state->attr->debug_log_deletion)
                     logmsg(LOGMSG_USER, "%s: not ok to delete log %s, log file needed "
@@ -3929,9 +3882,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
              * get rid of the new snapshot temptables. We do not need to keep those
              * around if we're only holding log files for other replicants to recover.
              */
-            if (filenum <= local_lowfilenum && gbl_new_snapisol_asof)
-                bdb_snapshot_asof_delete_log(bdb_state, filenum, logfile_stats.st_mtime);
-
             if (filenum <= local_lowfilenum && gbl_modsnap_asof) {
                 bdb_modsnap_delete_log(bdb_state, filenum, logfile_stats.st_mtime);
             }
@@ -4011,10 +3961,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
                     ctrace("not deleting %s, lowfilenum %d adj %d\n",
                            *file, lowfilenum, delete_adjacent);
                 delete_adjacent = 0;
-            }
-
-            if (gbl_new_snapisol_asof) {
-                Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
             }
         }
         free(list);
@@ -6590,8 +6536,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     return ret;
 }
 
-void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
-
 /* Pass in mangled file name, this will delete it. */
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr)
@@ -6612,7 +6556,6 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
-            bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
             dbp->close(dbp, DB_NOSYNC);
         }
 
@@ -9010,12 +8953,6 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                 }
                 memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
                 hash_add(fileid_tbl, fileid);
-#ifdef NEWSI_DEBUG
-                char *txt;
-                hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
-                logmsg(LOGMSG_DEBUG, "%s: hash_add fileid %s\n", __func__, txt);
-                free(txt);
-#endif
                 dbp->close(dbp, DB_NOSYNC);
             }
         }

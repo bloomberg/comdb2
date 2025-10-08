@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-default_implementation="modsnap" # "original", "newsi", or "modsnap"
-newsi_switches="gbl_new_snapisol gbl_new_snapisol_asof gbl_new_snapisol_logging"
+default_implementation="modsnap" # "original" or "modsnap"
 modsnap_switches="gbl_use_modsnap_for_snapshot gbl_modsnap_asof"
 
 verify_switch_values() {
@@ -35,7 +34,6 @@ verify_implementation() {
 
 check_original_implementation_is_enabled() {
 	verify_implementation 'original' && \
-	verify_switch_values "$newsi_switches" "off" && \
 	verify_switch_values "$modsnap_switches" "off"
 
 	return $?
@@ -43,16 +41,7 @@ check_original_implementation_is_enabled() {
 
 check_modsnap_implementation_is_enabled() {
 	verify_implementation 'modsnap' && \
-	verify_switch_values "$newsi_switches" "off" && \
 	verify_switch_values "$modsnap_switches" "on"
-
-	return $?
-}
-
-check_newsi_implementation_is_enabled() {
-	verify_implementation 'new' && \
-	verify_switch_values "$newsi_switches" "on" && \
-	verify_switch_values "$modsnap_switches" "off"
 
 	return $?
 }
@@ -61,22 +50,10 @@ main() {
 	if [ "$TESTCASE" == "siconfig" ];
 	then
 		check_${default_implementation}_implementation_is_enabled
-	elif [ "$TESTCASE" == "siconfig_disable_newsi_generated" -a "$default_implementation" != "newsi" ];
-	then
-		check_${default_implementation}_implementation_is_enabled
-	elif [ "$TESTCASE" == "siconfig_newsi_generated" ];
-	then
-		check_newsi_implementation_is_enabled
 	elif [ "$TESTCASE" == "siconfig_modsnap_generated" ];
 	then
 		check_modsnap_implementation_is_enabled
 	elif [ "$TESTCASE" == "siconfig_orig_generated" ];
-	then
-		check_original_implementation_is_enabled
-	elif [ "$TESTCASE" == "siconfig_orig_after_newsi_generated" ];
-	then
-		check_original_implementation_is_enabled
-	elif [ "$TESTCASE" == "siconfig_disable_newsi_generated" && "$default_implementation" == "newsi" ];
 	then
 		check_original_implementation_is_enabled
 	else

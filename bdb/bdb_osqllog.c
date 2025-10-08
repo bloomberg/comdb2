@@ -55,12 +55,6 @@
 #include <llog_auto.h>
 #include <llog_ext.h>
 
-#ifdef NEWSI_STAT
-#include <time.h>
-#include <sys/time.h>
-#include <util.h>
-#endif
-
 static int log_repo_lsns = 0;
 
 #include "bdb_osql_log_rec.h"
@@ -2306,154 +2300,6 @@ static int undo_get_ltranid(bdb_state_type *bdb_state, DBT *logdta,
     return rc;
 }
 
-extern int gbl_new_snapisol;
-
-void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
-                           const void *args, unsigned int rectype)
-{
-    DB_LOGC *logcur = NULL;
-    DBT logdta;
-    DB_LSN lsn;
-    __txn_regop_args *argp = NULL;
-    __txn_regop_gen_args *arggenp = NULL;
-    __txn_regop_rowlocks_args *argrlp = NULL;
-    __txn_dist_commit_args *argdistp = NULL;
-    __txn_dist_prepare_args *argprepp = NULL;
-    void *freeme = NULL;
-    unsigned long long ltranid;
-    tran_type *ltrans = NULL;
-    int rc = 0;
-
-    if (!gbl_new_snapisol) {
-        return;
-    }
-
-    if (rectype != DB___txn_regop && rectype != DB___txn_regop_rowlocks && rectype != DB___txn_regop_gen &&
-        rectype != DB___txn_dist_commit && rectype != DB___txn_dist_prepare &&
-        rectype != DB___txn_regop_gen_endianize && rectype != DB___txn_regop_rowlocks_endianize &&
-        rectype != DB___txn_dist_prepare_endianize) {
-        return;
-    }
-
-    if (rectype == DB___txn_regop)
-        argp = (__txn_regop_args *)args;
-    else if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize)
-        arggenp = (__txn_regop_gen_args *)args;
-    else if (rectype == DB___txn_dist_commit)
-        argdistp = (__txn_dist_commit_args *)args;
-    else if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize)
-        argprepp = (__txn_dist_prepare_args *)args;
-    else
-        argrlp = (__txn_regop_rowlocks_args *)args;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    bzero(&logdta, sizeof(DBT));
-    logdta.flags = DB_DBT_REALLOC;
-
-    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logcur, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s log_cursor rc %d\n", __FILE__, __LINE__,
-                __func__, rc);
-        return;
-    }
-
-    if (rectype == DB___txn_regop) {
-        lsn = argp->prev_lsn;
-        if (lsn.file == 0 || lsn.offset == 0)
-            goto done;
-
-        rc = logcur->get(logcur, &lsn, &logdta, DB_SET);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d %s log_cur->get(%u:%u) rc %d\n", __FILE__,
-                    __LINE__, __func__, lsn.file, lsn.offset, rc);
-            goto done;
-        }
-
-        rc = undo_get_ltranid(bdb_state, &logdta, &ltranid);
-        if (rc)
-            goto done;
-    }
-
-    if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize) {
-        lsn = arggenp->prev_lsn;
-        if (lsn.file == 0 || lsn.offset == 0)
-            goto done;
-
-        rc = logcur->get(logcur, &lsn, &logdta, DB_SET);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d %s log_cur->get(%u:%u) rc %d\n", __FILE__,
-                    __LINE__, __func__, lsn.file, lsn.offset, rc);
-            goto done;
-        }
-
-        rc = undo_get_ltranid(bdb_state, &logdta, &ltranid);
-        if (rc)
-            goto done;
-    }
-    /* Dist-commit is preceeded by prepare-record before a logical log  */
-    if (rectype == DB___txn_dist_commit) {
-        lsn = argdistp->prev_lsn;
-        if (lsn.file == 0 || lsn.offset == 0)
-            goto done;
-
-        rc = logcur->get(logcur, &lsn, &logdta, DB_SET);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d %s log_cur->get(%u:%u) rc %d\n", __FILE__, __LINE__, __func__, lsn.file,
-                   lsn.offset, rc);
-            goto done;
-        }
-        /* rectype -> prepare & handle below */
-        LOGCOPY_32(&rectype, logdta.data);
-        normalize_rectype(&rectype);
-        assert(rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize);
-
-        rc = __txn_dist_prepare_read(bdb_state->dbenv, logdta.data, &argprepp);
-        if (rc)
-            goto done;
-
-        freeme = argprepp;
-    }
-
-    if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
-        lsn = argprepp->prev_lsn;
-        if (lsn.file == 0 || lsn.offset == 0)
-            goto done;
-
-        rc = logcur->get(logcur, &lsn, &logdta, DB_SET);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d %s log_cur->get(%u:%u) rc %d\n", __FILE__, __LINE__, __func__, lsn.file,
-                   lsn.offset, rc);
-            goto done;
-        }
-        rc = undo_get_ltranid(bdb_state, &logdta, &ltranid);
-        if (rc)
-            goto done;
-    }
-
-    if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
-        lsn = argrlp->prev_lsn;
-        ltranid = argrlp->ltranid;
-    }
-
-    Pthread_mutex_lock(&bdb_state->translist_lk);
-    ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
-    if (ltrans) {
-        ltrans->last_logical_lsn = lsn;
-        ltrans->last_physical_commit_lsn = lsn;
-        ltrans->last_regop_lsn = regop_lsn;
-    }
-    Pthread_mutex_unlock(&bdb_state->translist_lk);
-
-done:
-    if (logdta.data)
-        free(logdta.data);
-    if (freeme)
-        free(freeme);
-    logcur->close(logcur, 0);
-}
-
 extern int gbl_snapisol;
 
 /**
@@ -2484,7 +2330,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
         return 0;
 
     /* Return immediately if snapisol isn't enabled */
-    if (!gbl_snapisol || gbl_new_snapisol)
+    if (!gbl_snapisol)
         return 0;
 
     /* Skip entirely if there are no clients */
@@ -3098,14 +2944,6 @@ int bdb_osql_set_null_blob_in_shadows(bdb_cursor_impl_t *cur,
     return rc;
 }
 
-#ifdef NEWSI_STAT
-extern struct timeval log_read_time;
-extern struct timeval log_read_time2;
-extern struct timeval log_apply_time;
-extern unsigned long long num_log_read;
-extern unsigned long long num_log_applied_opt;
-extern unsigned long long num_log_applied_unopt;
-#endif
 int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                                         bdb_osql_trn_t *trn, int *dirty,
                                         int trak, int *bdberr)
@@ -3142,11 +2980,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     /* Should be the child bdb_state, not the parent. */
     assert(bdb_state->parent != NULL);
 
-#ifdef NEWSI_STAT
-    struct timeval before, after, diff;
-    gettimeofday(&before, NULL);
-#endif
-
     /* get log cursors */
     rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logcur, 0);
     if (rc) {
@@ -3164,14 +2997,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     }
     LOGCOPY_32(&rectype, logdta.data);
     normalize_rectype(&rectype);
-#ifdef NEWSI_STAT
-    gettimeofday(&after, NULL);
-    timersub(&after, &before, &diff);
-    timeradd(&log_read_time, &diff, &log_read_time);
-    num_log_read++;
-    gettimeofday(&before, NULL);
-#endif
-
     switch (rectype) {
     case DB_llog_undo_del_dta:
     case DB_llog_undo_del_dta_lk: {
@@ -3372,12 +3197,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         rc = -1;
         goto done;
     }
-#ifdef NEWSI_STAT
-    gettimeofday(&after, NULL);
-    timersub(&after, &before, &diff);
-    timeradd(&log_read_time2, &diff, &log_read_time2);
-#endif
-
     if (!skip) {
         rc = bdb_osql_log_applicable(cur, rec, bdberr);
         if (rc < 0) {
@@ -3385,21 +3204,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         }
 
         if (rc) {
-#ifdef NEWSI_DEBUG
-            tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
-            logmsg(LOGMSG_DEBUG,
-                   "NEWSI tran %p shadow_tran %p birthlsn[%d][%d] applying log "
-                   "lsn[%d][%d] type[%d] genid[%llx] dbnum[%d] dtafile[%d] "
-                   "dtastripe[%d]\n",
-                   trn, shadow_tran, shadow_tran->birth_lsn.file,
-                   shadow_tran->birth_lsn.offset, rec->lsn.file,
-                   rec->lsn.offset, rec->type, rec->genid, rec->dbnum,
-                   rec->dtafile, rec->dtastripe);
-#endif
-
-#ifdef NEWSI_STAT
-            gettimeofday(&before, NULL);
-#endif
             rc = bdb_osql_log_try_run_optimized(cur, logcur, NULL, rec, trn,
                                                 dirty, trak, bdberr);
             if (rc < 0)
@@ -3407,12 +3211,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
 
             if (rc) {
                 rc = 0;
-#ifdef NEWSI_STAT
-                gettimeofday(&after, NULL);
-                timersub(&after, &before, &diff);
-                timeradd(&log_apply_time, &diff, &log_apply_time);
-                num_log_applied_opt++;
-#endif
                 goto done;
             }
 
@@ -3424,12 +3222,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                         __func__, rc, *bdberr);
                 goto done;
             }
-#ifdef NEWSI_STAT
-            gettimeofday(&after, NULL);
-            timersub(&after, &before, &diff);
-            timeradd(&log_apply_time, &diff, &log_apply_time);
-            num_log_applied_unopt++;
-#endif
         }
     }
 

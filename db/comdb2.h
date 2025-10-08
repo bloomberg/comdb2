@@ -3320,9 +3320,6 @@ extern int gbl_rowlocks;
 extern int gbl_disable_tagged_api;
 extern int gbl_disable_tagged_api_writes;
 extern int gbl_snapisol;
-extern int gbl_new_snapisol;
-extern int gbl_new_snapisol_logging;
-extern int gbl_new_snapisol_asof;
 extern int gbl_update_shadows_interval;
 extern int gbl_lowpri_snapisol_sessions;
 extern int gbl_disable_legacy_queues;
@@ -3431,7 +3428,6 @@ enum { TAGGED_API_BIG_ENDIAN = 1, TAGGED_API_LITTLE_ENDIAN = 2 };
 
 typedef enum {
     SNAP_IMPL_ORIG,
-    SNAP_IMPL_NEW,
     SNAP_IMPL_MODSNAP,
 } snap_impl_enum;
 

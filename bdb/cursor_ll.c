@@ -1387,8 +1387,6 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
     return rc;
 }
 
-extern int gbl_new_snapisol;
-
 static int bdb_berkdb_cget(bdb_berkdb_impl_t *berkdb, int use_bulk, int how,
                            int *bdberr)
 {
@@ -1414,9 +1412,6 @@ static int bdb_berkdb_cget(bdb_berkdb_impl_t *berkdb, int use_bulk, int how,
             rc = bt->dbc->c_get(bt->dbc, &bt->key, &bt->data, how);
     }
 
-    if (gbl_new_snapisol && (how == DB_SET_RANGE || how == DB_SET))
-        bt->pagenum = bt->dbc->lastpage;
-
     if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD) {
         *bdberr = BDBERR_DEADLOCK;
         return -1;
@@ -1431,9 +1426,6 @@ static int bdb_berkdb_cget(bdb_berkdb_impl_t *berkdb, int use_bulk, int how,
 
     rc = bt->dbc->c_get_pageinfo(bt->dbc, &bt->pagenum, &bt->pageidx,
                                  &bt->pagelsn);
-
-    if (gbl_new_snapisol && (how == DB_SET_RANGE || how == DB_SET))
-        bt->pagenum = bt->dbc->lastpage;
 
     if (rc == 0 && bt->pagelsn.file != 0 && cur->shadow_tran &&
         cur->shadow_tran->snapy_commit_lsn.file != 0 &&

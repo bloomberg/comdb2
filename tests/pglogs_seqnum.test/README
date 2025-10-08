@@ -1,1 +1,0 @@
-This test ensures pglogs_recovery does not set the master's seqnum (it shouldn't)
