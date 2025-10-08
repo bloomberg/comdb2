@@ -5646,6 +5646,11 @@ static void handle_resume_sc()
 static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
+#ifdef GENERATE_COVERAGE
+    extern void __gcov_dump(void);
+    __gcov_dump();
+    return;
+#endif
 #ifndef NDEBUG //TODO:wrap the follwing lines before checking in
     if (gbl_perform_full_clean_exit) {
         char cmd[400];
