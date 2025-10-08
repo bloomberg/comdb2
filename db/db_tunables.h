@@ -1892,7 +1892,7 @@ REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster nam
                  NULL);
 REGISTER_TUNABLE("physrep_reconnect_penalty", "Physrep wait seconds before retry to the same node. (Default: 5)",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_reconnect_interval", "Reconnect interval for physical replicants (Default: 600)",
+REGISTER_TUNABLE("physrep_reconnect_interval", "Reconnect interval for physical replicants (Default: 604800)",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_shuffle_host_list",
                  "Shuffle the host list returned by register_replicant() "
