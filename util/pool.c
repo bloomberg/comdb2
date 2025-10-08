@@ -241,10 +241,6 @@ pool_t *pool_setalloc_verify_init(int entry_size, int stepsize,
                                   poolfree_t *poolfree, int verify)
 {
     pool_t *p;
-#ifdef NEWSI_DEBUG_POOL
-    extern int gbl_verify_all_pools;
-    verify = (verify + gbl_verify_all_pools);
-#endif
     if (verify)
         entry_size += sizeof(pool_t *);
     /* must store a next-ptr in the block when it's on the free list */

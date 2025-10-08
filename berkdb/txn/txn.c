@@ -279,11 +279,6 @@ __txn_begin_with_prop_pp(dbenv, parent, txnpp, flags, prop)
 	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, prop);
 }
 
-int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
-	pthread_mutex_t * mutexp);
-int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,
-	pthread_mutex_t * mutexp);
-
 /*
  * __txn_begin --
  *	DB_ENV->txn_begin.
@@ -374,11 +369,6 @@ __txn_begin_main(dbenv, parent, txnpp, flags, prop)
 				region->tx_timeout, DB_SET_TXN_TIMEOUT)) != 0)
 				goto err;
 	}
-
-	ret = bdb_txn_pglogs_init(dbenv->app_private, &txn->pglogs_hashtbl,
-		&txn->pglogs_mutex);
-	if (ret)
-		goto err;
 
 	*txnpp = txn;
 
@@ -1018,8 +1008,6 @@ __txn_deallocate_ltrans(dbenv, lt)
 	listc_abl(&dbenv->inactive_ltrans, lt);
 	Pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 }
-extern int gbl_new_snapisol;
-extern int gbl_new_snapisol_logging;
 int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl, 
 	pthread_mutex_t *mutexp, DB_LSN commit_lsn, uint32_t flags,
 	unsigned long long logical_tranid, int32_t timestamp,
@@ -1462,25 +1450,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				if (!is_prepare)
 					Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
-				if (gbl_new_snapisol && !is_prepare) {
-					if (!txnp->pglogs_hashtbl) {
-						DB_ASSERT(
-							F_ISSET(
-							txnp. TXN_COMPENSATE));
-					} else {
-						bdb_transfer_txn_pglogs(
-							dbenv->app_private,
-							txnp->pglogs_hashtbl,
-							&txnp->pglogs_mutex,
-							txnp->last_lsn,
-							(flags & 
-							 (DB_TXN_LOGICAL_COMMIT |
-							  DB_TXN_DONT_GET_REPO_MTX
-								 )),
-							ltranid, timestamp,
-							context);
-					}
-				}
 			}
 
 			if (list_dbt_rl.data != NULL)
@@ -1521,24 +1490,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			if (__lock_set_parent_has_pglk_lsn(dbenv,
 				txnp->parent->txnid, txnp->txnid) != 0)
 				abort();
-
-			if (gbl_new_snapisol) {	 
-				if (!txnp->pglogs_hashtbl) {		
-					DB_ASSERT(F_ISSET(txnp. 
-							  TXN_COMPENSATE));
-				} else {
-					uint32_t fl = 
-						(flags & DB_TXN_DONT_GET_REPO_MTX) |
-						DB_TXN_LOGICAL_COMMIT;
-					bdb_transfer_txn_pglogs(
-						dbenv->app_private,
-						txnp->pglogs_hashtbl,	   
-						&txnp->pglogs_mutex,
-						txnp->parent->last_lsn,
-						fl, 0, timestamp, 0);
-				}	  
-			}
-
 
 			if (lsn_out) {
 				/* its a child txn - */
@@ -2019,10 +1970,6 @@ __txn_discard(txnp, flags)
 	}
 	MUTEX_THREAD_UNLOCK(dbenv, txnp->mgrp->mutexp);
 	if (freep != NULL) {
-		if (freep->pglogs_hashtbl)
-			bdb_txn_pglogs_close(dbenv->app_private,
-				&freep->pglogs_hashtbl,
-				&freep->pglogs_mutex);
 		__os_free(dbenv, freep);
 	}
 
@@ -2424,12 +2371,6 @@ __txn_end(txnp, is_commit)
 		MUTEX_THREAD_LOCK(dbenv, mgr->mutexp);
 		TAILQ_REMOVE(&mgr->txn_chain, txnp, links);
 		MUTEX_THREAD_UNLOCK(dbenv, mgr->mutexp);
-
-		if (txnp->pglogs_hashtbl)
-			bdb_txn_pglogs_close(dbenv->app_private,
-				&txnp->pglogs_hashtbl,
-				&txnp->pglogs_mutex);
-
 		__os_free(dbenv, txnp);
 	}
 

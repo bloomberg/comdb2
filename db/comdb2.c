@@ -534,11 +534,6 @@ int gbl_disable_tagged_api = 1;
 int gbl_disable_tagged_api_writes = 1;
 int gbl_serializable = 0; // Just for bookkeeping
 int gbl_snapisol = 0;
-int gbl_new_snapisol = 0;
-int gbl_new_snapisol_asof = 0;
-int gbl_new_snapisol_logging = 0;
-int gbl_disable_new_snapshot = 0;
-int gbl_newsi_use_timestamp_table = 0;
 int gbl_update_shadows_interval = 0;
 int gbl_lowpri_snapisol_sessions = 0;
 int gbl_support_sock_luxref = 1;
@@ -722,7 +717,6 @@ int gbl_dump_page_on_byteswap_error = 0;
 int gbl_dump_after_byteswap = 0;
 int gbl_micro_retry_on_deadlock = 1;
 int gbl_disable_blob_check = 0;
-int gbl_disable_new_snapisol_overhead = 0;
 int gbl_verify_all_pools = 0;
 int gbl_print_blockp_stats = 0;
 int gbl_allow_parallel_rep_on_pagesplit = 1;
@@ -4169,24 +4163,10 @@ static int init(int argc, char **argv)
 
     disttxn_init_recover_prepared();
 
-    if (!gbl_exit && gbl_new_snapisol && gbl_snapisol) {
-        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
-
-        if (bdb_gbl_pglogs_mem_init(thedb->bdb_env) != 0)
-            exit(1);
-
-        if (bdb_gbl_pglogs_init(thedb->bdb_env) != 0)
-            exit(1);
-        logmsg(LOGMSG_INFO, "new snapisol is running\n");
-    } else if (!gbl_exit && gbl_modsnap_asof) {
+    if (!gbl_exit && gbl_modsnap_asof) {
         bdb_gbl_asof_modsnap_init(thedb->bdb_env);
     } else {
-        logmsg(LOGMSG_INFO, "new snapisol is not running\n");
-        gbl_new_snapisol = 0;
-        gbl_new_snapisol_asof = 0;
-#ifdef NEWSI_STAT
-        bdb_newsi_stat_init();
-#endif
+        logmsg(LOGMSG_INFO, "snapisol is not running\n");
     }
 
     /* We grab alot of genids in the process of opening llmeta */
@@ -5487,9 +5467,6 @@ static void register_all_int_switches()
     register_int_switch("disable_blob_check",
                         "return immediately in check_blob_buffers",
                         &gbl_disable_blob_check);
-    register_int_switch("disable_new_si_overhead",
-                        "return immediately in several new snapisol functions",
-                        &gbl_disable_new_snapisol_overhead);
     register_int_switch("verify_all_pools",
                         "verify objects are returned to the correct pools",
                         &gbl_verify_all_pools);
@@ -6351,23 +6328,6 @@ int thdpool_alarm_on_queing(int len)
             len)
         return 0;
     return 1;
-}
-
-int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
-{
-    int *file = &(((int *)(inlsn))[0]);
-    int *offset = &(((int *)(inlsn))[1]);
-    int rc;
-
-    assert(*file >= 0 && *offset >= 0);
-    logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
-           *offset, is_master ? "MASTER" : "REPLICANT");
-
-    rc = truncate_asof_pglogs(thedb->bdb_env, *file, *offset);
-
-    logmsg(LOGMSG_INFO, "%s complete [%d:%d] rc=%d\n", __func__, *file, *offset,
-           rc);
-    return rc;
 }
 
 int comdb2_replicated_truncate(void *dbenv, void *inlsn, uint32_t flags)

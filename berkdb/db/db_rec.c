@@ -669,9 +669,6 @@ out:	if (pagep != NULL)
 	REC_CLOSE;
 }
 
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 /*
  * __db_relink_next_add_undo_rem_redo --
  * Undo relink add or undo relink rem on next page.
@@ -769,12 +766,6 @@ __db_relink_recover(dbenv, dbtp, lsnp, op, info)
 	COMPQUIET(info, NULL);
 	REC_PRINT(__db_relink_print);
 	REC_INTRO(__db_relink_read, 1);
-
-	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-		argp->pgno, argp->prev, argp->next, *lsnp) != 0) {
-		logmsg(LOGMSG_FATAL, "%s: fail relink pglogs\n", __func__);
-		abort();
-	}
 
 	/*
 	 * There are up to three pages we need to check -- the page, and the
