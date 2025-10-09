@@ -34,26 +34,26 @@ table `audit`. The stored procedure would like to log values of i, j when a new
 row is inserted, log values of j, k when rows are updated and log values of k,
 l when rows are deleted.
 
-`CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT OF i, j AND UPDATE OF j, k AND DELETE OF k, l)`
+`CREATE LUA TRIGGER audit FOR (TABLE t ON INSERT INCLUDE i, j ON UPDATE INCLUDE j, k ON DELETE INCLUDE k, l)`
 
 If we wanted to log all columns when a row is inserted, the statement would
 look like:
 
-`CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT OF i, j, k, l)`
+`CREATE LUA TRIGGER audit FOR (TABLE t ON INSERT INCLUDE i, j, k, l)`
 
 If we skip column names, then all columns at the time of creating trigger are
 considered. Keep in mind that these definitions are not updated automatically
 when table `t` is altered. Previous example could be written as:
 
-`CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT)`
+`CREATE LUA TRIGGER audit FOR (TABLE t ON INSERT)`
 
 Trigger can be set up so the system will assign monotonically increasing ids to events:
-`CREATE LUA TRIGGER audit WITH SEQUENCE ON (TABLE t FOR INSERT)`
+`CREATE LUA TRIGGER audit WITH SEQUENCE FOR (TABLE t ON INSERT INCLUDE i, j, k, l)`
 
 Statement to set up trigger on insert into multiple tables, say `t1` and `t2`
 would look like:
 
-`CREATE LUA TRIGGER audit ON (TABLE t1 FOR INSERT), (TABLE t2 FOR INSERT)`
+`CREATE LUA TRIGGER audit FOR (TABLE t1 ON INSERT INCLUDE i, j), (TABLE t2 ON INSERT INCLUDE i, j)`
 
 Behind the scenes, the database will set up a queue to save requested changes
 to specified tables. The database will then select one node in the cluster to
@@ -104,7 +104,7 @@ local function main(event)
     return audit:insert(chg)
 end
 }$$
-CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT AND UPDATE AND DELETE)
+CREATE LUA TRIGGER audit FOR (TABLE t ON INSERT INCLUDE type, tbl, logtime, i, j, old_i, old_j ON UPDATE INCLUDE type, tbl, logtime, i, j, old_i, old_j ON DELETE INCLUDE type, tbl, logtime, i, j, old_i, old_j)
 INSERT INTO t VALUES(1,1),(1,2),(1,3),(1,4)
 UPDATE t SET i = j WHERE j % 2 = 0
 DELETE FROM t WHERE i % 2 <> 0
@@ -135,11 +135,11 @@ will run the following statement:
 
 ## Lua Consumers
 
-The [`CREATE LUA CONSUMER`](sql.html#create-lua-trigger) statement creates the
+The [`CREATE LUA CONSUMER`](sql.html#create-lua-consumer) statement creates the
 named-consumer for INSERT/UPDATE/DELETE of specified fields from the specified
-table. A Lua consumer is similar in mechanics to a Lua trigger. Instead of the
+table. A Lua consumer is similar in mechanics to a [`Lua trigger`](triggers.html#lua-triggers). Instead of the
 database running the stored procedure automatically, this requires a client
-program to run 'EXEC PROCEDURE sp-name()'. Additionally, there is a mechanism
+program to run `EXEC PROCEDURE sp-name()`. Additionally, there is a mechanism
 to send back data to the calling program and block until client signals that
 data is consumed. This is different from regular server-client protocol which
 streams rows and blocks only when socket is full.
@@ -196,7 +196,7 @@ local function main()
     end
 end
 }$$
-CREATE LUA CONSUMER watch ON (TABLE t FOR INSERT AND UPDATE AND DELETE)
+CREATE LUA CONSUMER watch FOR (TABLE t ON INSERT INCLUDE i, d, c, b, t, y ON UPDATE INCLUDE i, d, c, b, t, y ON DELETE INCLUDE i, d, c, b, t, y)
 
 INSERT INTO t VALUES(1, 22.0/7, 'hello', x'deadbeef', now(), 5)
 UPDATE t set i = i + d, d = d + i, b = x'600dc0de'

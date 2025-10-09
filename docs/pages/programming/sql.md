@@ -395,6 +395,20 @@ See also:
 [table-event](#table-event)
 
 
+### CREATE LUA CONSUMER
+
+![CREATE CONSUMER](images/create-consumer.gif)
+
+Creates a new consumer or default consumer, to be called for specified table events. See the [Lua Consumers](triggers.html#lua-consumers) section for a full explanation and examples.
+
+
+Similar to [Lua Triggers](sql.html#create-lua-trigger), Procedure-name must be a name of an existing Lua procedure created with a
+[```CREATE PROCEDURE```](#create-procedure) statement.
+
+See also:
+
+[table-event](#table-event)
+
 ### CREATE LUA FUNCTION
 
 ![CREATE LUA FUNCTION](images/create-lua-func.gif)
