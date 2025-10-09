@@ -80,6 +80,7 @@ static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
 
 /* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
 static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/"; /* READ-ONLY */
+static char CDB2DBCONFIG_PKG_PATH[64] = "/bb/etc/cdb2/config.d/";
 
 static char CDB2DBCONFIG_TEMP_BB_BIN[512] = "/bb/bin/comdb2db.cfg";
 
@@ -226,6 +227,10 @@ static int cdb2_connect_host_on_reject_set_from_env = 0;
 static int iam_identity = 0;
 static int cdb2_iam_identity_set_from_env = 0;
 
+/* Skip dbinfo query if sockpool provides connection */
+static int get_dbinfo = 0;
+static int cdb2_get_dbinfo_set_from_env = 0;
+
 /* Request host name of a connection obtained from sockpool */
 static int get_hostname_from_sockpool_fd = 1;
 static int cdb2_get_hostname_from_sockpool_fd_set_from_env = 0;
@@ -275,6 +280,7 @@ static int cdb2_gbl_event_version;
 static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *, cdb2_event_type, cdb2_event *);
 static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, int, ...);
 static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
+static int cdb2_get_dbhosts(cdb2_hndl_tp *);
 static int send_reset(SBUF2 *sb, int localcache);
 
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
@@ -1322,13 +1328,15 @@ static char *get_dbhosts_from_env(const char *dbname)
     return getenv(COMDB2_CONFIG_DB_HOSTS);
 }
 
-static void parse_dbhosts_from_env(int *dbnum, int *num_hosts, char hosts[][CDB2HOSTNAME_LEN], const char *dbname)
+static void parse_dbhosts_from_env(int *dbnum, int *num_hosts, char hosts[][CDB2HOSTNAME_LEN], int *db_found,
+                                   const char *dbname)
 {
     char *db_info = get_dbhosts_from_env(dbname);
 
     if (db_info) {
         char *str = strdup(db_info);
         *num_hosts = 0; // overwrite hosts found in config files
+        *db_found = 1;
         char *tok = NULL;
         char *last = NULL;
         tok = strtok_r(str, " :,", &last);
@@ -1352,7 +1360,7 @@ static void parse_dbhosts_from_env(int *dbnum, int *num_hosts, char hosts[][CDB2
 static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2db_name,
                                           char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                                           const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
-                                          int *dbnum)
+                                          int *dbnum, int *dbname_found, int *comdb2db_found)
 {
 
     pthread_mutex_lock(&cdb2_sockpool_mutex);
@@ -1380,6 +1388,7 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                                    &cdb2_retry_dbinfo_on_cached_connection_failure_set_from_env);
         process_env_var_str_on_off("COMDB2_CONFIG_GET_HOSTNAME_FROM_SOCKPOOL_FD", &get_hostname_from_sockpool_fd,
                                    &cdb2_get_hostname_from_sockpool_fd_set_from_env);
+        process_env_var_str_on_off("COMDB2_CONFIG_GET_DBINFO", &get_dbinfo, &cdb2_get_dbinfo_set_from_env);
         process_env_var_str("COMDB2_CONFIG_DEFAULT_TYPE", (char *)&cdb2_default_cluster, sizeof(cdb2_default_cluster),
                             &cdb2_default_cluster_set_from_env);
         process_env_var_int("COMDB2_CONFIG_CONNECT_TIMEOUT", &CDB2_CONNECT_TIMEOUT, &cdb2_connect_timeout_set_from_env);
@@ -1431,15 +1440,15 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     }
 
     if (comdb2db_name)
-        parse_dbhosts_from_env(comdb2db_num, num_hosts, comdb2db_hosts, comdb2db_name);
+        parse_dbhosts_from_env(comdb2db_num, num_hosts, comdb2db_hosts, comdb2db_found, comdb2db_name);
 
     if (dbname)
-        parse_dbhosts_from_env(dbnum, num_db_hosts, db_hosts, dbname);
+        parse_dbhosts_from_env(dbnum, num_db_hosts, db_hosts, dbname_found, dbname);
 
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
+static void only_read_config(cdb2_hndl_tp *); /* FORWARD */
 
 static int cdb2_max_room_num = 0;
 static int cdb2_has_room_distance = 0;
@@ -1448,20 +1457,24 @@ static int *cdb2_room_distance = NULL;
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
-                              int *stack_at_open, char shards[][DBNAME_LEN], int *num_shards)
+                              int *dbname_found, int *comdb2db_found, int *stack_at_open, char shards[][DBNAME_LEN],
+                              int *num_shards)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
     int err = 0;
 
+    bzero(line, sizeof(line));
     debugprint("entering\n");
     while (cdb2_read_line((char *)&line, sizeof(line), s, buf, &line_no) != -1) {
         char *last = NULL;
         char *tok = NULL;
         tok = strtok_r(line, " :", &last);
-        if (tok == NULL)
+        if (tok == NULL) {
+            // Skip unparseable line
             continue;
-        else if (comdb2db_name && strcasecmp(comdb2db_name, tok) == 0) {
+        }
+        if (comdb2db_name && strcasecmp(comdb2db_name, tok) == 0) {
             tok = strtok_r(NULL, " :,", &last);
             if (tok && is_valid_int(tok)) {
                 *comdb2db_num = atoi(tok);
@@ -1471,6 +1484,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 strncpy(comdb2db_hosts[*num_hosts], tok, CDB2HOSTNAME_LEN - 1);
                 (*num_hosts)++;
                 tok = strtok_r(NULL, " :,", &last);
+                *comdb2db_found = 1;
             }
         } else if (dbname && (strcasecmp(dbname, tok) == 0)) {
             tok = strtok_r(NULL, " :,", &last);
@@ -1482,6 +1496,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 strncpy(db_hosts[*num_db_hosts], tok, CDB2HOSTNAME_LEN - 1);
                 tok = strtok_r(NULL, " :,", &last);
                 (*num_db_hosts)++;
+                *dbname_found = 1;
             }
         } else if (num_shards && strcasecmp("partition", tok) == 0) {
             tok = strtok_r(NULL, " :,", &last);
@@ -1711,6 +1726,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                         *stack_at_open = 0;
                     }
                 }
+            } else if (!cdb2_get_dbinfo_set_from_env && (strcasecmp("get_dbinfo_v3", tok) == 0)) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok) {
+                    get_dbinfo = value_on_off(tok, &err);
+                }
             } else if ((strcasecmp("max_local_connection_cache_entries", tok) == 0)) {
                 if (hndl == NULL && !max_local_connection_cache_entries_envvar) {
                     tok = strtok_r(NULL, " :,", &last);
@@ -1811,10 +1831,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_min_tls_ver = atof(tok);
-            } else if (strcasecmp("include_defaults", tok) == 0) {
-                pthread_mutex_unlock(&cdb2_sockpool_mutex);
-                only_read_config(NULL, 1, 1);
-                pthread_mutex_lock(&cdb2_sockpool_mutex);
             } else if (strcasecmp("request_fingerprint", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1829,7 +1845,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
 static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname, int dbnum, const char *host,
                              char valid_hosts[][CDB2HOSTNAME_LEN], int *valid_ports, int *master_node,
                              int *num_valid_hosts, int *num_valid_sameroom_hosts);
-static int get_config_file(const char *dbname, char *f, size_t s)
+static int get_config_file(const char *dbname, char *f, size_t s, int use_pkg_path)
 {
     char *root = getenv("COMDB2_ROOT");
 
@@ -1840,9 +1856,16 @@ static int get_config_file(const char *dbname, char *f, size_t s)
     if (dbname == NULL)
         return -1;
 
+    size_t n;
+    if (use_pkg_path) {
+        n = snprintf(f, s, "%s%s.cfg", CDB2DBCONFIG_PKG_PATH, dbname);
+        if (n >= s)
+            return -1;
+        return 0;
+    }
+
     if (root == NULL)
         root = QUOTE(COMDB2_ROOT);
-    size_t n;
     n = snprintf(f, s, "%s%s%s.cfg", root, CDB2DBCONFIG_NOBBENV_PATH, dbname);
     if (n >= s)
         return -1;
@@ -1884,17 +1907,18 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN],
                                            const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
                                            const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
-                                           int *dbnum, int noLock, int defaultOnly, char shards[][DBNAME_LEN],
-                                           int *num_shards)
+                                           int *dbnum, char shards[][DBNAME_LEN], int *num_shards)
 {
+    SBUF2 *s = NULL;
     char filename[PATH_MAX];
-    SBUF2 *s;
+    int comdb2db_found = 0;
+    int dbname_found = 0;
     int fallback_on_bb_bin = 1;
 
     if (hndl)
         debugprint("entering\n");
 
-    if (!noLock) pthread_mutex_lock(&cdb2_cfg_lock);
+    pthread_mutex_lock(&cdb2_cfg_lock);
 
     if (num_hosts)
         *num_hosts = 0;
@@ -1904,20 +1928,16 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         *num_shards = 0;
     int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
-    if (!defaultOnly && CDB2DBCONFIG_BUF != NULL) {
+    if (CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                          db_hosts, num_db_hosts, dbnum, send_stack, shards, num_shards);
+                          db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
+                          num_shards);
         fallback_on_bb_bin = 0;
-    } else {
-        if (!defaultOnly && *CDB2DBCONFIG_NOBBENV != '\0') {
-            s = cdb2_sbuf2openread(CDB2DBCONFIG_NOBBENV);
-            if (s != NULL) {
-                read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                                  db_hosts, num_db_hosts, dbnum, send_stack, shards, num_shards);
-                sbuf2close(s);
-                fallback_on_bb_bin = 0;
-            }
-        }
+    } else if (*CDB2DBCONFIG_NOBBENV != '\0' && (s = cdb2_sbuf2openread(CDB2DBCONFIG_NOBBENV)) != NULL) {
+        read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+        sbuf2close(s);
+        fallback_on_bb_bin = 0;
     }
 
     /* This is a temporary solution.  There's no clear plan for how comdb2db.cfg
@@ -1926,34 +1946,35 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
      * can't find the file in any standard location, look at /bb/bin
      * Once deployment details for comdb2db.cfg solidify, this will go away. */
     if (fallback_on_bb_bin) {
-        s = cdb2_sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN);
-        if (s != NULL) {
+        if ((s = cdb2_sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN)) != NULL) {
             read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, send_stack, shards, num_shards);
+                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
             sbuf2close(s);
         }
     }
 
-    if (get_config_file(dbname, filename, sizeof(filename)) == 0) {
-        s = cdb2_sbuf2openread(filename);
-        if (s != NULL) {
-            read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, send_stack, shards, num_shards);
-            sbuf2close(s);
-        }
+    if (get_config_file(dbname, filename, sizeof(filename), 0) == 0 && (s = cdb2_sbuf2openread(filename)) != NULL) {
+        read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+        sbuf2close(s);
+    } else if (get_config_file(dbname, filename, sizeof(filename), 1) == 0 &&
+               (s = cdb2_sbuf2openread(filename)) != NULL) {
+        read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+        sbuf2close(s);
     }
     if (cdb2_use_env_vars) {
         read_comdb2db_environment_cfg(hndl, comdb2db_name, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                                      num_db_hosts, dbnum);
+                                      num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
     }
-    if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
+    pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
 }
 
 int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
 {
     if (!strlen(cdb2_comdb2dbname)) {
-        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL);
+        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     }
     (*comdb2dbname) = strdup(cdb2_comdb2dbname);
     (*comdb2dbclass) = strdup((strcmp(cdb2_comdb2dbname, "comdb3db") == 0) ? "dev" : "prod");
@@ -2019,7 +2040,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOST
         debugprint("entering\n");
 
     rc = read_available_comdb2db_configs(hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname, db_hosts,
-                                         num_db_hosts, dbnum, 0, 0, shards, num_shards);
+                                         num_db_hosts, dbnum, shards, num_shards);
     if (rc == -1)
         return rc;
     if (master)
@@ -3045,6 +3066,11 @@ retry_newsql_connect:
     }
 
     if (fd < 0) {
+        if (hndl->num_hosts == 0 && hndl->got_dbinfo == 0) {
+            hndl->got_dbinfo = 1;
+            cdb2_get_dbhosts(hndl);
+            host = hndl->hosts[idx];
+        }
         if (port <= 0) {
             if (!cdb2_allow_pmux_route)
                 port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
@@ -3240,8 +3266,6 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int low,
     }
     return -1;
 }
-
-static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
 
 /* combine hashes similar to hash_combine from boost library */
 static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
@@ -4923,6 +4947,18 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
         if (hndl->sb != NULL) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
         }
+
+        /* XXX-GET-DBINFO when client asks for SSL, learn server's SSL capability
+           from dbinfo if we haven't done so. We need dbinfo for 1) handling old
+           server versions which do not have the ssl bit in dbinfo; 2) figuring
+           out the host name for an SSL session in order for the session to be reused
+           correctly (i.e., if cluster nodes are configured with different certificates,
+           we would want to match a session to its corresponding host, and we get that
+           host information from dbinfo). There's a similar logic in set_up_ssl_params(). */
+        if (hndl->c_sslmode >= SSL_REQUIRE && (hndl->num_hosts == 0 && hndl->got_dbinfo == 0)) {
+            hndl->got_dbinfo = 1;
+            rc = cdb2_get_dbhosts(hndl);
+        }
     }
 
     return rc;
@@ -5210,6 +5246,18 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     child->events = parent->events;
     child->gbl_event_version = parent->gbl_event_version;
 
+    /* XXX-GET-DBINFO when client asks for SSL, learn server's SSL capability
+    from dbinfo if we haven't done so. We need dbinfo for 1) handling old
+    server versions which do not have the ssl bit in dbinfo; 2) figuring
+    out the host name for an SSL session in order for the session to be reused
+    correctly (i.e., if cluster nodes are configured with different certificates,
+    we would want to match a session to its corresponding host, and we get that
+    host information from dbinfo). There's a similar logic in set_up_ssl_params(). */
+    if (child->c_sslmode >= SSL_REQUIRE && (child->num_hosts == 0 && child->got_dbinfo == 0)) {
+        child->got_dbinfo = 1;
+        cdb2_get_dbhosts(child);
+    }
+
     memcpy(&child->context_msgs, &parent->context_msgs, sizeof(child->context_msgs));
     // this is a new handle so send if non-empty
     child->context_msgs.has_changed = child->context_msgs.count > 0;
@@ -5340,6 +5388,16 @@ retry_queries:
         }
     }
 
+    if (hndl->num_hosts == 0 && hndl->got_dbinfo == 0) {
+        if (retries_done == 1) {
+            goto after_delay;
+        }
+        /* discount first attempt without dbinfo */
+        --retries_done;
+        hndl->got_dbinfo = 1;
+        cdb2_get_dbhosts(hndl);
+    }
+
     int tmsec = 0;
 
     if (!hndl->sb && (retries_done > hndl->num_hosts)) {
@@ -5386,6 +5444,9 @@ retry_queries:
             debugprint("polling for %d ms\n", tmsec);
             poll(NULL, 0, tmsec);
         }
+    }
+after_delay:
+    if (!hndl->sb) {
         cdb2_connect_sqlhost(hndl);
         if (hndl->sb == NULL) {
             debugprint("rc=%d goto retry_queries on connect failure\n", rc);
@@ -7023,11 +7084,9 @@ after_callback:
     return rc;
 }
 
-static inline void only_read_config(cdb2_hndl_tp *hndl, int noLock,
-                                    int defaultOnly)
+static inline void only_read_config(cdb2_hndl_tp *hndl)
 {
-    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, noLock, defaultOnly, NULL,
-                                    NULL);
+    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     set_cdb2_timeouts(hndl);
 }
 
@@ -7263,34 +7322,114 @@ const char *cdb2_dbname(cdb2_hndl_tp *hndl)
     return NULL;
 }
 
+struct db_info {
+    char name[DBNAME_LEN];
+    char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
+    int ports[MAX_NODES];
+    int n_hosts;
+    int found;
+    int num;
+};
+
+static void hndl_set_sbuf(cdb2_hndl_tp *hndl, SBUF2 *sb)
+{
+    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
+    hndl->sb = sb;
+    hndl->num_set_commands_sent = 0;
+    hndl->sent_client_info = 0;
+}
+
+static int init_connection(cdb2_hndl_tp *hndl, SBUF2 *buf)
+{
+    if (send_reset(buf, 0) != 0) {
+        sbuf2close(buf);
+        return -1;
+    }
+    set_cdb2_timeouts(hndl);
+    hndl_set_sbuf(hndl, buf);
+    return 0;
+}
+
+static SBUF2 *sockpool_get(cdb2_hndl_tp *hndl)
+{
+    SBUF2 *sb = NULL;
+    int use_local_cache;
+    set_cdb2_timeouts(hndl);
+    snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr), "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type,
+             hndl->policy);
+    sb = cdb2_socket_pool_get(hndl, hndl->newsql_typestr, hndl->dbnum, NULL, &use_local_cache);
+    get_host_and_port_from_fd(sbuf2fileno(sb), hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
+    return sb;
+}
+
+static void before_discovery(cdb2_hndl_tp *hndl)
+{
+    void *callbackrc;
+    cdb2_event *e = NULL;
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DISCOVERY, e)) != NULL) {
+        int unused;
+        (void)unused;
+        /* return unresolved tier name (eg "default") on CDB2_BEFORE_DISCOVERY */
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_DBTYPE, hndl->type);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
+    }
+}
+
+static void after_discovery(cdb2_hndl_tp *hndl)
+{
+    void *callbackrc;
+    cdb2_event *e = NULL;
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) != NULL) {
+        int unused;
+        (void)unused;
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
+    }
+}
+
+static int get_connection_int(cdb2_hndl_tp *hndl)
+{
+    only_read_config(hndl);
+    if (get_dbinfo)
+        return -1;
+    before_discovery(hndl);
+    SBUF2 *sb = sockpool_get(hndl);
+    after_discovery(hndl);
+    if (sb == NULL)
+        return -1;
+    return init_connection(hndl, sb);
+}
+
+static int get_connection(cdb2_hndl_tp *hndl)
+{
+    if (hndl->is_admin || (hndl->flags & CDB2_MASTER)) // don't grab from sockpool
+        return -1;
+    if (cdb2_use_env_vars) {
+        // If we read a value for the environment variable `COMDB2_CONFIG_DEFAULT_TYPE_<dbname>`, then we would have
+        // overwritten type=default with this override value before this point since it has the highest priority of all
+        // of the possible default type overrides (*db-specific override set in env* > db-specific override set in file
+        // > general override set in env > general override set in file).
+        //
+        // If we did not get a value for that environment variable, then we need to delay sockpool communication until
+        // we have read all given default type overrides, at which point we can resolve `default` with the highest
+        // priority of these values and then reach out to sockpool.
+        if (get_dbinfo || sockpool_enabled == -1 || hndl->sockpool_enabled == -1 ||
+            (!hndl->db_default_type_override_env && (cdb2cfg_override || default_type_override_env))) {
+            return -1;
+        }
+    } else if (get_dbinfo || sockpool_enabled == -1 || cdb2cfg_override) {
+        return -1;
+    }
+    int rc = get_connection_int(hndl);
+    return rc;
+}
+
 const char *cdb2_host(cdb2_hndl_tp *hndl)
 {
     if (hndl && hndl->connected_host >= 0) {
         return hndl->hosts[hndl->connected_host];
     }
     return NULL;
-}
-
-int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
-{
-    cdb2_hndl_tp *hndl;
-    *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
-    strncpy(hndl->dbname, c_hndl->dbname, sizeof(hndl->dbname) - 1);
-    strncpy(hndl->cluster, c_hndl->cluster, sizeof(hndl->cluster) - 1);
-    strncpy(hndl->type, c_hndl->type, sizeof(hndl->type) - 1);
-    hndl->num_hosts = c_hndl->num_hosts;
-    hndl->dbnum = c_hndl->dbnum;
-    int i = 0;
-    for (i = 0; i < c_hndl->num_hosts; i++) {
-        strncpy(hndl->hosts[i], c_hndl->hosts[i], sizeof(hndl->hosts[i]) - 1);
-        hndl->ports[i] = c_hndl->ports[i];
-    }
-    hndl->master = c_hndl->master;
-    // don't copy fdb_hndl
-    if (log_calls)
-        fprintf(stderr, "%p> cdb2_clone(%p) => %p\n", (void *)pthread_self(),
-                c_hndl, hndl);
-    return 0;
 }
 
 static inline int is_machine_list(const char *type)
@@ -7338,7 +7477,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    only_read_config(hndl, 0, 0);
+    only_read_config(hndl);
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -7443,6 +7582,19 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     else {
         hndl->c_sslmode = cdb2_c_ssl_mode;
         hndl->nid_dbname = cdb2_nid_dbname;
+    }
+
+    /* XXX-GET-DBINFO when client asks for SSL, learn server's SSL capability
+       from dbinfo if we haven't done so. We need dbinfo for 1) handling old
+       server versions which do not have the ssl bit in dbinfo; 2) figuring
+       out the host name for an SSL session in order for the session to be reused
+       correctly (i.e., if cluster nodes are configured with different certificates,
+       we would want to match a session to its corresponding host, and we get that
+       host information from dbinfo). There's a similar logic in process_ssl_set_command(). */
+    if (hndl->c_sslmode >= SSL_REQUIRE && (hndl->num_hosts == 0 && hndl->got_dbinfo == 0)) {
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
+        hndl->got_dbinfo = 1;
+        cdb2_get_dbhosts(hndl);
     }
 
     if ((sslenv = getenv("SSL_CERT_PATH")) != NULL && sslenv[0] != '\0') {
@@ -7849,9 +8001,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         goto out;
 
     if (hndl->flags & CDB2_DIRECT_CPU) {
-        hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
-        only_read_config(hndl, 0, 0);
+        only_read_config(hndl);
+        hndl->got_dbinfo = 1;
+        hndl->num_hosts = 1;
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {
@@ -7877,7 +8030,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             hndl->sockpool_enabled = db_host_info ? -1 : 0;
         }
 
-        rc = cdb2_get_dbhosts(hndl);
+        if (get_connection(hndl) != 0) {
+            hndl->got_dbinfo = 1;
+            rc = cdb2_get_dbhosts(hndl);
+        }
         if (rc)
             debugprint("cdb2_get_dbhosts returns %d\n", rc);
         if (rc == 0 && hndl->num_shards > 0) {
@@ -7895,6 +8051,16 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         rc = set_up_ssl_params(hndl);
         if (rc)
             debugprint("set_up_ssl_params returns %d\n", rc);
+
+        if (hndl->num_hosts == 0 && hndl->got_dbinfo == 0 && /* skip-dbinfo */
+            SSL_IS_PREFERRED(hndl->c_sslmode) && SSL_IS_OPTIONAL(hndl->c_sslmode) /* Prefer but not require */) {
+            /* XXX-GET-DBINFO Try to establish an SSL connection. If server supports SSL, we're all set.
+               If server understands our SSL negotiation protocol but does not have certificates, it'll send back
+               an ssl-unable packet. If server doesn't understand the SSL negotiation protocol (eg R6), it'll
+               close the connection, and we'll reconnect in plaintext. */
+            (void)try_ssl(hndl, hndl->sb);
+        }
+
         /*
          * Check and set user and password if they have been specified using
          * the environment variables.
