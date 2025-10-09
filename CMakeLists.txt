@@ -90,6 +90,7 @@ add_definitions(
   -DCOMDB2_ROOT=${COMDB2_ROOT}
   -DCOMDB2_VERSION="2"
   -D_FILE_OFFSET_BITS=64
+  -Dlint
 )
 
 option(DEBUG_TXNLIST_PLHASH "Debug plhash txnlist implementation" OFF)
