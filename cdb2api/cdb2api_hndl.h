@@ -202,6 +202,7 @@ struct cdb2_hndl {
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
     cdb2_event *events;
     pid_t pid;
+    int got_dbinfo;
     // Protobuf allocator data used only for row data i.e. lastresponse
     ProtobufCAllocator s_allocator;
     void *protobuf_data;
