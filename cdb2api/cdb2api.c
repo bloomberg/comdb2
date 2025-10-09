@@ -426,9 +426,6 @@ static char *proc_cmdline_getargv0(void)
 }
 #endif
 
-#define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
-#define SQLCACHEHINTLENGTH 17
-
 char *cdb2_getargv0(void)
 {
 #if defined(__APPLE__)
@@ -3020,7 +3017,6 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
             cdb2_socket_pool_donate_ext(hndl, hndl->newsql_typestr, fd, timeoutms / 1000, hndl->dbnum);
         }
     }
-    hndl->use_hint = 0;
     hndl->sb = NULL;
     return 0;
 }
@@ -3113,15 +3109,6 @@ after_callback:
         PROCESS_EVENT_CTRL_AFTER(hndl, e, port, callbackrc);
     }
     return port;
-}
-
-void cdb2_use_hint(cdb2_hndl_tp *hndl)
-{
-    hndl->use_hint = 1;
-    if (log_calls) {
-        fprintf(stderr, "%p> cdb2_use_hint(%p)\n", (void *)pthread_self(),
-                hndl);
-    }
 }
 
 /* try to connect to range from low (inclusive) to high (exclusive) starting with begin */
@@ -4315,9 +4302,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         hndl->commands = NULL;
     }
 
-    free(hndl->query);
-    free(hndl->query_hint);
-    free(hndl->hint);
     free(hndl->sql);
 
     cdb2_clearbindings(hndl);
@@ -4409,39 +4393,6 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
         *out = 0;
     }
     return rc;
-}
-
-static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
-                                int len, char *short_identifier, char **hint,
-                                char **query_hint)
-{
-    int len_id = strlen(short_identifier);
-    if (len_id > 128) {
-        sprintf(hndl->errstr, "Short identifier is too long.");
-        return -1;
-    }
-    cdb2_skipws(sqlquery);
-    const char *first = sqlquery;
-    const char *tail = first;
-    while (*tail && !isspace(*tail)) {
-        ++tail;
-    }
-    int first_len = tail - first;
-    char pfx[] = " /*+ RUNCOMDB2SQL ";
-    char sfx[] = " */";
-    size_t sz;
-    char *sql;
-
-    sz = first_len + sizeof(pfx) + sizeof(sfx) + len_id + 1;
-    sql = malloc(sz);
-    snprintf(sql, sz, "%.*s%s%s%s", first_len, first, pfx, short_identifier, sfx);
-    *hint = sql;
-
-    sz = len + sizeof(pfx) + sizeof(sfx) + len_id + 1;
-    sql = malloc(sz);
-    snprintf(sql, sz, "%.*s%s%s%s%s", first_len, first, pfx, short_identifier, sfx, tail);
-    *query_hint = sql;
-    return 0;
 }
 
 struct cdb2_stmt_types {
@@ -5142,7 +5093,6 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     child->max_retries = parent->max_retries;
 
     child->debug_trace = parent->debug_trace;
-    child->use_hint = parent->use_hint;
 
     free_events(child);
     child->events = parent->events;
@@ -5157,7 +5107,6 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int
                                         int *set_stmt)
 {
     int return_value;
-    int using_hint = 0;
     int rc = 0;
     int is_begin = 0;
     int is_commit = 0;
@@ -5222,42 +5171,6 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int
     struct timeval tv;
     gettimeofday(&tv, NULL);
     hndl->timestampus = ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
-
-    if (hndl->use_hint) {
-        if (hndl->query && (strcmp(hndl->query, sql) == 0)) {
-            sql = hndl->hint;
-            using_hint = 1;
-        } else {
-
-            if (hndl->query) {
-                free(hndl->query);
-                hndl->query = NULL;
-            }
-
-            if (hndl->query_hint) {
-                free(hndl->query_hint);
-                hndl->query_hint = NULL;
-            }
-
-            if (hndl->hint) {
-                free(hndl->hint);
-                hndl->hint = NULL;
-            }
-
-            int len = strlen(sql);
-            if (len > 100) {
-                hndl->query = malloc(len + 1);
-                strcpy(hndl->query, sql);
-
-                if ((rc = next_cnonce(hndl)) != 0)
-                    PRINT_AND_RETURN(rc);
-                cdb2_query_with_hint(hndl, sql, len, hndl->cnonce.str, &hndl->hint,
-                                     &hndl->query_hint);
-
-                sql = hndl->query_hint;
-            }
-        }
-    }
 
     if (!hndl->in_trans) { /* only one cnonce for a transaction. */
         clear_snapshot_info(hndl, __LINE__);
@@ -5652,19 +5565,7 @@ read_record:
 
     debugprint("Received message %d\n", hndl->firstresponse->response_type);
 
-    if (using_hint) {
-        if (hndl->firstresponse->error_code ==
-                CDB2__ERROR_CODE__PREPARE_ERROR_OLD ||
-            hndl->firstresponse->error_code ==
-                CDB2__ERROR_CODE__PREPARE_ERROR) {
-            sql = hndl->query;
-            hndl->retry_all = 1;
-            debugprint("goto retry_queries error_code=%d\n",
-                       hndl->firstresponse->error_code);
-            goto retry_queries;
-        }
-    } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB &&
-               !hndl->in_trans) {
+    if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB && !hndl->in_trans) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
         for (int i = 0; i < hndl->num_hosts; i++) {
@@ -8147,4 +8048,8 @@ int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f)
 {
     hndl->retry_clbk = f;
     return 0;
+}
+
+void cdb2_use_hint(cdb2_hndl_tp *hndl)
+{
 }
