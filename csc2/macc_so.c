@@ -53,7 +53,6 @@ int comdb2_iam_master();
 extern int gbl_ready;
 extern int gbl_create_mode;
 
-char *revision = "$Revision: 1.24 $";
 int unionflag = 0;
 int dimidx = 0, dims[7], rngidx = 0, ranges[2], range_or_array = 0, range = 0,
     declaration = 0, cparse = -1;
@@ -2568,16 +2567,8 @@ int macc_ferror(FILE *fh)
 static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
                                 char *tablename)
 {
-    char *ifn = NULL;
     int fhopen = 0;
     extern FILE *yyin; /* lexer's input file           */
-
-    char VER[16];
-    strcpy(VER, revision + 10); /* get my version               */
-    ifn = strchr(VER, '$');     /* clean up version text        */
-    if (ifn)
-        *ifn = 0;
-
     macc_globals->flag_anyname = 1;
     if (strlen(dbname) >= MAX_DBNAME_LENGTH || strlen(dbname) < 3) {
         csc2_error("ERROR: BAD DATABASE NAME '%s'. VALID=3-%d CHARACTERS\n",
@@ -2594,21 +2585,16 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
 
     /* check args for an input filename or any options */
     if (schematxt) {
-        ifn = dbname;
         ischematext = schematxt;
         ipos = 0;
         iusestr = 1;
     } else if (filename) {
-        ifn = filename;
-        if (ifn) {
-            yyin = fopen(ifn, "r");
-            if (yyin == NULL) {
-                csc2_error( "Can't open file '%s': %s\n", ifn,
-                        strerror(errno));
-                return -1;
-            }
-            fhopen = 1;
+        yyin = fopen(filename, "r");
+        if (yyin == NULL) {
+            csc2_error( "Can't open file '%s': %s\n", filename, strerror(errno));
+            return -1;
         }
+        fhopen = 1;
         iusestr = 0;
     } else {
         csc2_error( "BAD CALL\n");
