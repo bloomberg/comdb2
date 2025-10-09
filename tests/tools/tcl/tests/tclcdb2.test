@@ -2294,7 +2294,6 @@ catch {resetConfig false}; # Reset configuration and disable sockpool.
 
 test cdb2-91.2 {configure sub-command with included defaults} -body {
   cdb2 configure [string trim [appendArgs \
-    comdb2_config:include_defaults\n \
     comdb2_config:connect_timeout=2000\n \
     comdb2_config:comdb2db_timeout=4000\n \
     comdb2_config:auto_consume_timeout=6000\n \

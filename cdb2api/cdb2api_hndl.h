@@ -203,6 +203,7 @@ struct cdb2_hndl {
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
     cdb2_event *events;
     pid_t pid;
+    int got_dbinfo;
 
     /* per handle iaaap::IIdentity */
     const void *identity;

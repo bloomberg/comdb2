@@ -162,6 +162,8 @@ void test_read_comdb2db_cfg()
     int stack_at_open = 0;
     char shards[10][DBNAME_LEN];
     int num_shards = 0;
+    int dbname_found;
+    int comdb2db_found;
 
     const char *buf = 
 "\
@@ -174,7 +176,8 @@ void test_read_comdb2db_cfg()
                       buf, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &stack_at_open,
+                      &dbnum, &dbname_found,
+                      &comdb2db_found, &stack_at_open,
                       shards, &num_shards);
 
     assert(num_hosts == 0);
@@ -197,7 +200,8 @@ void test_read_comdb2db_cfg()
                       buf2, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &stack_at_open,
+                      &dbnum, &dbname_found,
+                      &comdb2db_found, &stack_at_open,
                       shards, &num_shards);
 
     assert(num_hosts == 5);
@@ -243,7 +247,8 @@ void test_read_comdb2db_cfg()
                       buf3, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &stack_at_open,
+                      &dbnum, &dbname_found,
+                      &comdb2db_found, &stack_at_open,
                       shards, &num_shards);
 
     assert(num_db_hosts == 3);
@@ -269,16 +274,16 @@ void test_read_comdb2db_cfg()
 void test_get_config_file()
 {
     char shortname[16];
-    int rc = get_config_file("mydb", shortname, sizeof(shortname));
+    int rc = get_config_file("mydb", shortname, sizeof(shortname), 0);
     assert(rc == -1); //does not fit
 
     char filename[PATH_MAX];
-    rc = get_config_file(NULL, filename, sizeof(filename));
+    rc = get_config_file(NULL, filename, sizeof(filename), 0);
     /* NULL dbname is no longer permitted. */
     assert(rc == -1);
 
     setenv("COMDB2_ROOT", "myroot", 1);
-    rc = get_config_file("mydb", filename, sizeof(filename));
+    rc = get_config_file("mydb", filename, sizeof(filename), 0);
     assert(rc == 0);
     assert(strcmp(filename, "myroot/etc/cdb2/config.d/mydb.cfg") == 0);
 }

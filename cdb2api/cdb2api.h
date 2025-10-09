@@ -212,9 +212,7 @@ void cdb2_set_comdb2db_config(const char *cfg_file);
 void cdb2_set_comdb2db_info(const char *cfg_info);
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
-int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type,
-              int flags);
-int cdb2_clone(cdb2_hndl_tp **hndl, cdb2_hndl_tp *c_hndl);
+int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type, int flags);
 
 int cdb2_next_record(cdb2_hndl_tp *hndl);
 
