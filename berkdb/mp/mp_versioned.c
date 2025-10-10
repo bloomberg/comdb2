@@ -193,6 +193,8 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 	BH *bhp;
 	void *data_t;
 
+	abort();
+
 	ret = found = add_to_cache = 0;
 	logc = NULL;
 	page = page_image = NULL;
