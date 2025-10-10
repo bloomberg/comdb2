@@ -170,7 +170,7 @@ find_cores() {
     # always check localhost because thats where we create db
     if [[ -z "${cr}" ]] && [[ $has_pattern -eq 1 ]] ; then
         local PID=$(cat ${PIDFL} 2> /dev/null)
-        COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
+        COREFL=`echo $CPAT | sed "s/.%e/.[^.]*/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
         COREFL=$COREDIR/$COREFL
         CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
         if [ "x$PID" == "x" ] ; then
@@ -197,7 +197,7 @@ find_cores() {
         PIDFL=${TMPDIR}/${LCLDBNM}.$HOSTNAME.pid
         if [ $has_pattern -eq 1 ] ; then
             local PID=$(cat ${PIDFL} 2> /dev/null)
-            COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
+            COREFL=`echo $CPAT | sed "s/.%e/.[^.]*/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
             COREFL=$COREDIR/$COREFL
             CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
             if [ "x$PID" == "x" ] ; then
@@ -227,7 +227,7 @@ find_cores() {
             if [ "x$PID" == "x" ] ; then
                 continue
             fi
-            COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
+            COREFL=`echo $CPAT | sed "s/.%e/.[^.]*/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
             COREFL=$COREDIR/$COREFL
             CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
         fi
