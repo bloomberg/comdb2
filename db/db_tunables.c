@@ -676,7 +676,6 @@ struct snapshot_impl_config_st {
     const char *name;
     int code;
 } snapshot_impl_config_vals[] = {{"original", SNAP_IMPL_ORIG},
-                                {"new", SNAP_IMPL_NEW},
                                 {"modsnap", SNAP_IMPL_MODSNAP}};
 
 static int snapshot_impl_update(void *context, void *value) {

@@ -1,3 +1,0 @@
-# Make sure that the later `set_snapshot_impl` takes precedence
-set_snapshot_impl new
-set_snapshot_impl original

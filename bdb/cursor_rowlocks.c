@@ -1267,8 +1267,6 @@ done:
     return rc;
 }
 
-extern int gbl_new_snapisol;
-
 /* Finds
  * -
  * 1 Do the find
@@ -1393,16 +1391,6 @@ again:
         if (0 == rc) {
             /* Return IX_NOTFND */
             frc = IX_NOTFND;
-
-            if (gbl_new_snapisol) {
-                /* Grab the page index and page */
-                r->pagelock_cursor->c_get_pageindex(r->pagelock_cursor, &pg,
-                                                    &idx);
-
-                /* Stash in cursor */
-                r->page = pg;
-                r->index = idx;
-            }
 
             /* Release immediately */
             bdb_release_row_lock(bdb_state, &endlk);
@@ -1730,15 +1718,6 @@ again:
     if (DB_NOTFOUND == rc) {
         /* Return IX_NOTFND */
         frc = IX_NOTFND;
-
-        if (gbl_new_snapisol) {
-            /* Get the page number and index */
-            r->pagelock_cursor->c_get_pageindex(r->pagelock_cursor, &pg, &idx);
-
-            /* Stash in cursor */
-            r->page = pg;
-            r->index = idx;
-        }
 
         /* Release the lock immediately */
         bdb_release_row_lock(bdb_state, &dtalk);

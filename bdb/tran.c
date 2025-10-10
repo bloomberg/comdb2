@@ -740,59 +740,30 @@ extern int gbl_extended_sql_debug_trace;
 int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
                                    int *file, int *offset)
 {
-    if (gbl_new_snapisol_asof) {
-        if (tran && tran->asof_lsn.file) {
-            *file = tran->asof_lsn.file;
-            *offset = tran->asof_lsn.offset;
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d using asof lsn [%d][%d]\n",
-                       __func__, __LINE__, *file, *offset);
-            }
-            return 0;
-        } else if (tran && tran->birth_lsn.file) {
-            *file = tran->birth_lsn.file;
-            *offset = tran->birth_lsn.offset;
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d using birth lsn [%d][%d]\n",
-                       __func__, __LINE__, *file, *offset);
-            }
-            return 0;
-        } else
-            return -1;
-    } else {
-        if (tran && tran->snapy_commit_lsn.file) {
-            *file = tran->snapy_commit_lsn.file;
-            *offset = tran->snapy_commit_lsn.offset;
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER,
-                       "%s line %d using snappy-commit lsn [%d][%d]\n",
-                       __func__, __LINE__, *file, *offset);
-            }
-            return 0;
-        } 
-        else
-        {
-            // If we are not in a transaction, return nothing
-            if (tran) {
-                bdb_get_current_lsn(bdb_state, (unsigned int *)file,
-                                    (unsigned int *)offset);
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "%s line %d using current lsn[%d][%d], tran is %p\n", 
-                            __func__, __LINE__, *file, *offset, tran);
-                }
-            }
-            else {
-                *file = 0;
-                *offset = 0;
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "%s line %d using ZERO lsn[%d][%d], tran is NULL\n", 
-                            __func__, __LINE__, *file, *offset);
-                }
-
-
-            }
-            return 0;
+    if (tran && tran->snapy_commit_lsn.file) {
+        *file = tran->snapy_commit_lsn.file;
+        *offset = tran->snapy_commit_lsn.offset;
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "%s line %d using snappy-commit lsn [%d][%d]\n", __func__, __LINE__, *file, *offset);
         }
+        return 0;
+    } else {
+        // If we are not in a transaction, return nothing
+        if (tran) {
+            bdb_get_current_lsn(bdb_state, (unsigned int *)file, (unsigned int *)offset);
+            if (gbl_extended_sql_debug_trace) {
+                logmsg(LOGMSG_USER, "%s line %d using current lsn[%d][%d], tran is %p\n", __func__, __LINE__, *file,
+                       *offset, tran);
+            }
+        } else {
+            *file = 0;
+            *offset = 0;
+            if (gbl_extended_sql_debug_trace) {
+                logmsg(LOGMSG_USER, "%s line %d using ZERO lsn[%d][%d], tran is NULL\n", __func__, __LINE__, *file,
+                       *offset);
+            }
+        }
+        return 0;
     }
     return -1;
 }

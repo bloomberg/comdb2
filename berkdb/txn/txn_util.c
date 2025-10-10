@@ -1651,10 +1651,6 @@ extern int update_shadows_beforecommit(void *bdb_state, DB_LSN *last_logical_lsn
 		unsigned long long *commit_genid, int is_master);
 extern int bdb_update_pglogs_commitlsn(void *bdb_state, void *pglogs, unsigned int nkeys,
 		DB_LSN commit_lsn);
-extern int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
-		unsigned int nkeys, int is_logical_commit,
-		unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
-		int32_t timestamp, unsigned long long context);
 
 extern int __rep_lsn_cmp __P((const void *, const void *));
 
@@ -2029,8 +2025,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	/* We use the (incorrect) 'prepare' lsn collecting pglogs above */
 	bdb_update_pglogs_commitlsn(dbenv->app_private, p->pglogs, p->keycnt, lsn_out);
-	bdb_transfer_pglogs_to_queues(dbenv->app_private, p->pglogs, p->keycnt, 0,
-		0, lsn_out, gen, timestamp, context);
 
 	if (F_ISSET(p, DB_DIST_UPDSHADOWS)) {
 #if defined (DEBUG_PREPARE)

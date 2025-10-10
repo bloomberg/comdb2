@@ -325,9 +325,6 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	return (0);
 }
 
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 /*
  * __db_pitem --
  *  Put an item on a page.
@@ -406,13 +403,6 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 				pagep->pgno, &pagep->lsn, pagep->prev_pgno, plsnp,
 				pagep->next_pgno, nlsnp)) != 0)
 			goto err;
-
-		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
-			pagep->pgno, pagep->prev_pgno, pagep->next_pgno,
-			ret_lsn) != 0) {
-			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
-			abort();
-		}
 	} else
 		LSN_NOT_LOGGED(ret_lsn);
 	if (np != NULL)

@@ -234,7 +234,6 @@
 (name='disable_inplace_blobs', description='Disables 'enable_inplace_blobs'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_legacy_queues', description='Disable legacy queues and route messages through comdb2 queue buddy. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_lowpri_snapisol', description='Disables 'enable_lowpri_snapisol'', type='BOOLEAN', value='ON', read_only='Y')
-(name='disable_new_si_overhead', description='return immediately in several new snapisol functions', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_osql_blob_optimization', description='Disables 'enable_osql_blob_optimization'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_overflow_page_trace', description='Disables 'enable_overflow_page_trace'', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_page_compact', description='Sets 'page_compact_thresh_ff' to 0.', type='BOOLEAN', value='ON', read_only='Y')
