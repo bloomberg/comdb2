@@ -7166,6 +7166,8 @@ static int get_connection_int(cdb2_hndl_tp *hndl)
 
 static int get_connection(cdb2_hndl_tp *hndl)
 {
+    if (hndl->is_admin || (hndl->flags & CDB2_MASTER)) // don't grab from sockpool
+        return -1;
     if (cdb2_use_env_vars) {
         // If we read a value for the environment variable `COMDB2_CONFIG_DEFAULT_TYPE_<dbname>`, then we would have
         // overwritten type=default with this override value before this point since it has the highest priority of all
