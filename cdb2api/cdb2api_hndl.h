@@ -136,10 +136,6 @@ struct cdb2_hndl {
     char policy[POLICY_LEN];
     int master;
     int connected_host;
-    char *query;
-    char *query_hint;
-    char *hint;
-    int use_hint;
     int flags;
     char errstr[1024];
     cnonce_t cnonce;
