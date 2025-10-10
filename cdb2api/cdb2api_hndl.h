@@ -204,6 +204,7 @@ struct cdb2_hndl {
     int sockpool_recv_timeoutms;
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
     cdb2_event *events;
+    int got_dbinfo;
     // Protobuf allocator data used only for row data i.e. lastresponse
     ProtobufCAllocator s_allocator;
     void *protobuf_data;
