@@ -651,8 +651,15 @@ public class DatabaseDiscovery {
 
             if (!found) {
                 /* Could not get comdb2db dbinfo. Retry. */
-                if (retries < hndlRetries)
+                if (retries < hndlRetries) {
+                    try {
+                        Thread.sleep(250); /* sleep 250ms on each retry */
+                    } catch (InterruptedException e)  {
+                        // Ignore
+                    }
+
                     continue;
+                }
 
                 if (hndl.comdb2dbHosts.size() == 0)
                     throw new NoDbHostFoundException(hndl.comdb2dbName,
@@ -733,14 +740,9 @@ public class DatabaseDiscovery {
         error_during_discovery = null;
 
         int port = -1;
-        int increment = hndl.myDbHosts.size();
-
-        if (increment == 0)
-            increment = 1;
-
         String connerr = "";
 
-        for (int retry = 0; (retry < hndlRetries) && (found == false); retry += increment) {
+        for (int retry = 0; (retry < hndlRetries) && (found == false); ++retry) {
             for (int i = 0; i != hndl.myDbHosts.size(); ++i) {
                 try {
                     String host = hndl.myDbHosts.get(i);
@@ -770,7 +772,7 @@ public class DatabaseDiscovery {
                 }
             }
 
-            if (retry > 0 && found == false) {
+            if (retry > hndl.myDbHosts.size() && !found) {
                 int sleepms = (100 * (retry - hndl.myDbHosts.size() + 1));
                 if (sleepms > 1000) {
                     sleepms = 1000;
