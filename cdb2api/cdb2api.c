@@ -197,6 +197,8 @@ static int local_connection_cache_use_sbuf_envvar = 0;
 
 static int connection_cache_entries = 0;
 
+int cdb2_use_ftruncate = 0;
+static int cdb2_use_ftruncate_set_from_env = 0;
 static int cdb2_use_env_vars = 1;
 static int cdb2_install_set_from_env = 0;
 static int cdb2_uninstall_set_from_env = 0;
@@ -1344,6 +1346,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     if (!have_read_env) {
         // Do these once.
         process_env_var_str_on_off("COMDB2_FEATURE_IAM_IDENTITY", &iam_identity, &cdb2_iam_identity_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_USE_FTRUNCATE", &cdb2_use_ftruncate,
+                                   &cdb2_use_ftruncate_set_from_env);
         process_env_var_str("COMDB2_CONFIG_ROOM", (char *)&cdb2_machine_room, sizeof(cdb2_machine_room),
                             &cdb2_machine_room_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PORTMUXPORT", &CDB2_PORTMUXPORT, &cdb2_portmuxport_set_from_env);
@@ -1473,6 +1477,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     iam_identity = value_on_off(tok, &err);
+            } else if (!cdb2_use_ftruncate_set_from_env && (strcasecmp("use_ftruncate", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_use_ftruncate = value_on_off(tok, &err);
             } else if ((strcasecmp("use_env_vars", tok) == 0) && !hndl) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
