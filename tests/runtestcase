@@ -184,7 +184,7 @@ find_cores() {
         if [ ! -f $cr ] ; then 
             ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
         fi
-        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+        which gdb > /dev/null && [ -f $cr ] && gdb --batch -q -ex 'set print thread-events off' -ex 'where' $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
         which gdb > /dev/null && [ -f $cr ] && echo 't a a bt full' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace_long.$HOSTNAME.txt
         ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
         echo $cr # this is the return value of the function
@@ -209,7 +209,7 @@ find_cores() {
         if [[ -n "$cr" ]] ; then
             echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
             cp ${cr} $LCLDBDIR
-            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+            which gdb > /dev/null && [ -f $cr ] && gdb --batch -q -ex 'set print thread-events off' -ex 'where' $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
             which gdb > /dev/null && [ -f $cr ] && echo 't a a bt full' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace_long.$HOSTNAME.txt
             ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
             echo $cr # this is the return value of the function
@@ -242,7 +242,7 @@ find_cores() {
                 local copy_core=$LCLDBDIR/${node}.`basename $cr`
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core
                 echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
-                echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace.$node.txt
+                gdb --batch -q -ex 'set print thread-events off' -ex 'where' $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace.$node.txt
                 echo 't a a bt full' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace_long.$node.txt
                 ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
                 echo "    see $LCLDBDIR/core_stacktrace.$node.txt"
