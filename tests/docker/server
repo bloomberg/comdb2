@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ulimit -c unlimited
+
 # wait for keys
 mkdir ~/.ssh
 chmod 700 ~/.ssh
