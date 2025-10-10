@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ulimit -c unlimited
+
 # create and distribute ssh key
 mkdir ~/.ssh
 chmod 700 ~/.ssh
