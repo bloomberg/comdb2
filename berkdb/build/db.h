@@ -1074,7 +1074,7 @@ struct __db_txn {
 					/* Methods. */
 	int	  (*abort) __P((DB_TXN *));
 	int	  (*commit) __P((DB_TXN *, u_int32_t));
-	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
+	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, u_int32_t *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
 			  u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
@@ -2595,6 +2595,8 @@ struct __db_env {
 	int  (*rep_newmaster) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
 		char **, DB_LSN *, uint32_t *, uint32_t *, char **, int));
+	void (*rep_send_ack) __P((DB_ENV *, DB_LSN lsn, uint32_t commit_gen, uint32_t rep_gen));
+	int  (*set_rep_send_ack) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN, uint32_t, uint32_t)));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -2608,7 +2610,7 @@ struct __db_env {
 	int  (*set_rep_limit) __P((DB_ENV *, u_int32_t, u_int32_t));
 	void  (*get_rep_gen) __P((DB_ENV *, u_int32_t *));
 	void  (*get_rep_log_gen) __P((DB_ENV *, u_int32_t *));
-	int  (*get_last_locked) __P((DB_ENV *, DB_LSN *));
+	int  (*get_last_locked) __P((DB_ENV *, DB_LSN *, u_int32_t *));
 	int  (*set_rep_request) __P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*set_rep_transport) __P((DB_ENV *, char*,
 		int (*) (DB_ENV *, const DBT *, const DBT *, const DB_LSN *,

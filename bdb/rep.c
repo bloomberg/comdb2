@@ -3739,27 +3739,21 @@ void bdb_exiting(bdb_state_type *bdb_state)
     MEMORY_SYNC;
 }
 
-int gbl_last_locked_seqnum = 1;
-
 void bdb_set_seqnum(void *in_bdb_state)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     static int lastpr = 0;
-    int now;
+    int now, rc = 0;
     DB_LSN lastlsn;
-    uint32_t mygen;
+    u_int32_t mygen;
 
-    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+    rc = bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn, &mygen);
 
-    /* Always only use get_last_locked.  Leave the other in until we are sure
-     * that this code works. */
-    if (gbl_last_locked_seqnum &&
-        bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
-        bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn);
-    else
-        __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
+    if (rc != 0 && gbl_set_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s line %d not setting seqnum, get_last_locked returned %d\n", __func__, __LINE__, rc);
+    }
 
-    if (lastlsn.file > 0) {
+    if (rc == 0 && lastlsn.file > 0) {
         struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
         h->seqnum.lsn = lastlsn;
@@ -4160,7 +4154,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
          */
 
         if (!gbl_early) {
-            rc = do_ack(bdb_state, permlsn, generation);
+            rc = do_ack(bdb_state, permlsn, commit_generation, generation);
         }
 
         break;
@@ -4174,7 +4168,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
             uint32_t gen;
             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
-            rc = do_ack(bdb_state, permlsn, gen);
+            rc = do_ack(bdb_state, permlsn, gen, gen);
         } else {
             /* fprintf(stderr, "got a NOTPERM\n"); */
         }

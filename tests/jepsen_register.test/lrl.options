@@ -93,5 +93,4 @@ init_with_genid48
 
 # Uncomment these to reproduce the logput-decoupled 'reads-follows-writes' error
 # rep_getlock_latency 1000
-# last_locked_seqnum off
 hide_non_durable_rcode 0

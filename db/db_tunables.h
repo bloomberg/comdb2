@@ -1610,10 +1610,6 @@ REGISTER_TUNABLE("max_apply_dequeue",
                  "loop.  this many times.  (Default: 100000)",
                  TUNABLE_INTEGER, &gbl_max_apply_dequeue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("last_locked_seqnum",
-                 "Broadcast last-locked variable as seqnum.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_last_locked_seqnum,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_getlock_latency",
                  "Sleep on replicant before getting locks.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_getlock_latencyms,
