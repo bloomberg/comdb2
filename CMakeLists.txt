@@ -209,8 +209,8 @@ function(configure_coverage)
   message(STATUS "Configuring gcov/lcov coverage flags")
   add_link_options(--coverage)
   add_compile_definitions(GENERATE_COVERAGE)
-  # Ensure debug info and disable optimizations for accurate coverage.
-  add_compile_options(-g -O0 --coverage)
+  # Ensure debug info, disable optimizations, and disable inlining for accurate coverage
+  add_compile_options(-g -O0 --coverage -fno-inline)
 endfunction()
 
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
