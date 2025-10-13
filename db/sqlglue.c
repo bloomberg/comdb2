@@ -4815,8 +4815,8 @@ void get_current_lsn(struct sqlclntstate *clnt)
         clnt->arr->offset = clnt->offset;
     }
     if (clnt->selectv_arr) {
-        clnt->selectv_arr->file = clnt->file;
-        clnt->selectv_arr->offset = clnt->offset;
+        clnt->selectv_arr->file = clnt->modsnap_in_progress ? clnt->modsnap_start_lsn_file : clnt->file;
+        clnt->selectv_arr->offset = clnt->modsnap_in_progress ? clnt->modsnap_start_lsn_offset : clnt->offset;
     }
 }
 

@@ -1,0 +1,9 @@
+1 create table t(i int)
+1 insert into t values(1)
+1 set transaction snapshot
+1 begin
+2 update t set i=i
+1 selectv * from t
+1 update t set i=i
+1 commit
+1 drop table t
