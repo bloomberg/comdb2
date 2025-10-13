@@ -29,3 +29,4 @@ sc_swapfields_logicalsc_generated,UNKNOWN,181013093
 sc_datacopy_logicalsc_generated,UNKNOWN,181013102
 skipscan,UNKNOWN,181051795
 queuedb_rollover_noroll1_generated,UNKNOWN,181062375
+cldeadlock,UNKNOWN,181137733
