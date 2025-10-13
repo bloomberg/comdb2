@@ -3524,9 +3524,16 @@ static int memcpy_evbuffer(struct evbuffer *flush_buf, struct event_info *e, int
     return 0;
 }
 
+static void libevent_fatal_cb(int err)
+{
+    logmsg(LOGMSG_FATAL, "received fatal error %d from libevent, aborting\n", err);
+    abort();
+}
+
 /* All you base are belong to me.. */
 static void setup_bases(void)
 {
+    event_set_fatal_callback(libevent_fatal_cb);
     init_base(&base_thd, &base, "main");
     if (dedicated_timer) {
         gettimeofday(&timer_tick, NULL);
