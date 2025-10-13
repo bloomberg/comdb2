@@ -213,6 +213,8 @@ typedef struct local_connection_cache_list local_connection_cache_list;
 static int cdb2cfg_override = 0;
 static int default_type_override_env = 0;
 
+static int connect_host_on_reject = 1;
+static int cdb2_connect_host_on_reject_set_from_env = 0;
 static int iam_identity = 0;
 static int cdb2_iam_identity_set_from_env = 0;
 
@@ -1348,6 +1350,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     if (!have_read_env) {
         // Do these once.
+        process_env_var_str_on_off("COMDB2_FEATURE_CONNECT_HOST_ON_REJECT", &connect_host_on_reject,
+                                   &cdb2_connect_host_on_reject_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_IAM_IDENTITY", &iam_identity, &cdb2_iam_identity_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_USE_FTRUNCATE", &cdb2_use_ftruncate,
                                    &cdb2_use_ftruncate_set_from_env);
@@ -1483,7 +1487,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             }
         } else if (strcasecmp("comdb2_feature", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
-            if (!cdb2_iam_identity_set_from_env && (strcasecmp("iam_identity_v6", tok) == 0)) {
+            if (!cdb2_connect_host_on_reject_set_from_env && (strcasecmp("connect_host_on_reject", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                connect_host_on_reject = value_on_off(tok, &err);
+            } else if (!cdb2_iam_identity_set_from_env && (strcasecmp("iam_identity_v6", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     iam_identity = value_on_off(tok, &err);
@@ -2971,10 +2978,10 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *rem
 /* Tries to connect to specified node using sockpool.
  * If there is none, then makes a new socket connection.
  */
-static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
+static int newsql_connect(cdb2_hndl_tp *hndl, int idx)
 {
-    const char *host = hndl->hosts[node_indx];
-    int port = hndl->ports[node_indx];
+    const char *host = hndl->hosts[idx];
+    int port = hndl->ports[idx];
     debugprint("entering, host '%s:%d'\n", host, port);
     int fd = -1;
     int rc = 0;
@@ -3004,44 +3011,51 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
                    hndl->newsql_typestr);
     }
 
-    while (!hndl->is_admin && !(hndl->flags & CDB2_MASTER) &&
-           (sb = cdb2_socket_pool_get(hndl, hndl->newsql_typestr, hndl->dbnum, NULL, &use_local_cache)) != NULL) {
+retry_newsql_connect:
+    if (!hndl->is_admin && !(hndl->flags & CDB2_MASTER)) {
+        if (hndl->num_hosts && hndl->is_rejected && connect_host_on_reject) {
+            char host_typestr[TYPESTR_LEN - TYPE_LEN + CDB2HOSTNAME_LEN];
+            snprintf(host_typestr, sizeof(host_typestr), "comdb2/%s/%s/newsql/%s", hndl->dbname, host, hndl->policy);
+            sb = cdb2_socket_pool_get(hndl, host_typestr, hndl->dbnum, NULL, &use_local_cache);
+        } else {
+            sb = cdb2_socket_pool_get(hndl, hndl->newsql_typestr, hndl->dbnum, NULL, &use_local_cache);
+        }
         fd = sbuf2fileno(sb);
         get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
-        if (send_reset(sb, 0) == 0) {
-            break;      // connection is ready
-        }
-        sbuf2close(sb); // retry newsql connect;
     }
 
     if (fd < 0) {
-        if (!cdb2_allow_pmux_route) {
-            if (port <= 0) {
-                port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
-                hndl->ports[node_indx] = port;
-            }
-            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
-        } else {
-            if (port <= 0) {
-                /* cdb2portmux_route() works without the assignment. We do it here to make it clear
-                   that we will be connecting directly to portmux on this host. */
-                hndl->ports[node_indx] = CDB2_PORTMUXPORT;
-            }
-            fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
-                                   hndl->dbname);
+        if (port <= 0) {
+            port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
+            hndl->ports[idx] = port;
         }
+
+        if (!cdb2_allow_pmux_route)
+            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
+        else
+            fd = cdb2portmux_route(hndl, host, "comdb2", "replication", hndl->dbname);
         if (fd < 0) {
             rc = -1;
             goto after_callback;
         }
-
-        if ((sb = sbuf2open(fd, 0)) == 0) {
+        sb = sbuf2open(fd, 0);
+        if (sb == 0) {
             close(fd);
             rc = -1;
             goto after_callback;
         }
-        sbuf2printf(sb, hndl->is_admin ? "@newsql\n" : "newsql\n");
+        if (hndl->is_admin)
+            sbuf2printf(sb, "@");
+        sbuf2printf(sb, "newsql\n");
         sbuf2flush(sb);
+    } else {
+        if (send_reset(sb, 0) != 0) {
+            sbuf2close(sb);
+            if (hndl->is_admin)
+                fd = -1;
+            sb = NULL;
+            goto retry_newsql_connect;
+        }
     }
 
     sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
@@ -3055,7 +3069,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
-    hndl->connected_host = node_indx;
+    hndl->connected_host = idx;
     hndl->hosts_connected[hndl->connected_host] = 1;
     debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
 
@@ -3077,7 +3091,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     int fd = sbuf2fileno(sb);
 
     int timeoutms = 10 * 1000;
-    if (hndl->is_admin ||
+    if (hndl->is_admin || hndl->is_rejected ||
         (hndl->firstresponse &&
          (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
         (!hndl->firstresponse) || (hndl->in_trans) || (hndl->pid != _PID) || ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
@@ -5697,6 +5711,7 @@ read_record:
     }
 
     if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__APPSOCK_LIMIT) {
+        hndl->is_rejected = 1;
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->sb = NULL;
         // retry all shouldn't matter here. Can only happen at beginning of transaction on begin?
@@ -5764,6 +5779,7 @@ read_record:
             goto retry_queries;
         }
 
+        hndl->is_rejected = 0;
         if (hndl->firstresponse->error_code) {
             if (is_begin) {
                 hndl->in_trans = 0;

@@ -159,6 +159,7 @@ struct cdb2_hndl {
     int num_set_commands_sent;
     int is_read;
     int is_invalid;
+    int is_rejected;
     unsigned long long rows_read;
     int read_intrans_results;
     int first_record_read;
