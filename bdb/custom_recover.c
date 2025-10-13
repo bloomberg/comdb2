@@ -97,8 +97,7 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
     LOGCOPY_32(&rectype, bp);
     normalize_rectype(&rectype);
 
-    if (bdb_state->attr->snapisol && !gbl_rowlocks &&
-        (op == DB_TXN_FORWARD_ROLL || op == DB_TXN_APPLY)) {
+    if (bdb_state->attr->logicallog && !gbl_rowlocks && (op == DB_TXN_FORWARD_ROLL || op == DB_TXN_APPLY)) {
         switch (rectype) {
         case DB_llog_scdone:
         case DB_llog_blkseq:

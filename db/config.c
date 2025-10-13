@@ -798,7 +798,7 @@ void set_snapshot_impl(snap_impl_enum impl) {
 
     const int logical_logging_should_be_on =
         gbl_snap_impl != SNAP_IMPL_MODSNAP || gbl_serializable || gbl_selectv_rangechk;
-    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_SNAPISOL, logical_logging_should_be_on);
+    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_LOGICALLOG, logical_logging_should_be_on);
 }
 
 /*
@@ -1371,7 +1371,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
     } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGICALLOG, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         enable_snapshot();
@@ -1380,14 +1380,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         set_snapshot_impl(SNAP_IMPL_NEW);
         enable_snapshot();
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGICALLOG, 1);
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
     } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {
         gbl_disable_new_snapshot = 1;
         logmsg(LOGMSG_INFO, "Disabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGICALLOG, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
         gbl_serializable = 1;

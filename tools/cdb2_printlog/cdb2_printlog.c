@@ -231,7 +231,7 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	st.dir = "./";
 	st.attr = calloc(1, sizeof(bdb_attr_type));
-	st.attr->snapisol = 1;
+	st.attr->logicallog = 1;
 	st.dbenv = dbenv;
 	st.passed_dbenv_open = 1;
 

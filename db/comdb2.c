@@ -4395,7 +4395,7 @@ static int init(int argc, char **argv)
         add_schema_change_tables();
 
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
-        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_LOGICALLOG, 1);
         gbl_snapisol = 1;
     }
 
