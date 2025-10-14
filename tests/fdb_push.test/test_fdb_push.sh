@@ -226,6 +226,16 @@ select * from LOCAL_${a_remdbname}.t order by 1
 select * from LOCAL_${a_remdbname2}.t order by 1
 EOF
 
+echo "only remote writes, no verifyretry" >> $output
+#echo cdb2sql -f q.txt -s -showeffects$a_dbname localhost - 
+cdb2sql -s -showeffects ${SRC_CDB2_OPTIONS} $a_dbname default -  >> $output 2>&1 << EOF
+set verifyretry off
+begin
+update LOCAL_${a_remdbname}.t set id = id + 100
+delete from LOCAL_${a_remdbname2}.t
+commit
+EOF
+
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
