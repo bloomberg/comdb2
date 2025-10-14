@@ -28,3 +28,4 @@ sc_datacopy_logicalsc_generated,UNKNOWN,181013102
 skipscan,UNKNOWN,181051795
 queuedb_rollover_noroll1_generated,UNKNOWN,181062375
 simple_ssl,UNKNOWN,181151988
+disttxn,DB_BUG,181155636
