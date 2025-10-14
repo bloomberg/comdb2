@@ -29,11 +29,14 @@
 #include <strings.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/queue.h>
 #include <fcntl.h>
+#include <resolv.h>
 #include <math.h> // ceil
 #include <limits.h> // int_max
 
@@ -135,6 +138,10 @@ static int cdb2_tcpbufsz_set_from_env = 0;
 
 static int CDB2_PROTOBUF_SIZE = 0;
 static int cdb2_protobuf_size_set_from_env = 0;
+static int cdb2_use_bmsd = 0; // TODO: enable at some point
+static int cdb2_use_bmsd_set_from_env = 0;
+static int cdb2_comdb2db_fallback = 1;
+static int cdb2_comdb2db_fallback_set_from_env = 0;
 
 static int cdb2cfg_override = 0;
 
@@ -1368,6 +1375,9 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_int("COMDB2_CONFIG_COMDB2DB_TIMEOUT", &COMDB2DB_TIMEOUT, &cdb2_comdb2db_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_SOCKET_TIMEOUT", &CDB2_SOCKET_TIMEOUT, &cdb2_socket_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PROTOBUF_SIZE", &CDB2_PROTOBUF_SIZE, &cdb2_protobuf_size_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_USE_BMSD", &cdb2_use_bmsd, &cdb2_use_bmsd_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_COMDB2DB_FALLBACK", &cdb2_comdb2db_fallback,
+                            &cdb2_comdb2db_fallback_set_from_env);
 
         char *arg = getenv("COMDB2_CONFIG_INSTALL_STATIC_LIBS");
         if ((cdb2_install != NULL) && arg != NULL) {
@@ -1411,6 +1421,10 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
 }
 
 static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
+
+static int cdb2_max_room_num = 0;
+static int cdb2_has_room_distance = 0;
+static int *cdb2_room_distance = NULL;
 
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
@@ -1470,6 +1484,59 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     iam_identity = value_on_off(tok, &err);
+            } else if (!cdb2_comdb2db_fallback_set_from_env && (strcasecmp("comdb2db_fallback", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_comdb2db_fallback = value_on_off(tok, &err);
+            } else if (!cdb2_use_bmsd_set_from_env && (strcasecmp("use_bmsd", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_use_bmsd = value_on_off(tok, &err);
+                /* Add way to reset room_distance */
+                if (cdb2_use_bmsd != 1 && cdb2_use_bmsd != 0) {
+                    cdb2_use_bmsd = 0;
+                    cdb2_has_room_distance = 0;
+                    if (cdb2_room_distance) {
+                        free(cdb2_room_distance);
+                        cdb2_room_distance = NULL;
+                    }
+                }
+            } else if (!cdb2_has_room_distance && (strcasecmp("room_distance", tok) == 0)) {
+                int distance = INT_MAX;
+                int current_size = 20;
+                cdb2_room_distance = malloc((current_size + 1) * sizeof(int));
+                tok = strtok_r(NULL, " =:,", &last);
+                int ii;
+                for (ii = 0; ii <= current_size; ii++)
+                    cdb2_room_distance[ii] = INT_MAX;
+                while (tok != NULL) {
+                    if (!is_valid_int(tok))
+                        break;
+                    ii = atoi(tok);
+                    if (ii == 0) {
+                        break;
+                    }
+                    distance = INT_MAX;
+                    if (ii > current_size) {
+                        cdb2_room_distance = realloc(cdb2_room_distance, (ii + 1) * sizeof(int));
+                        for (int j = current_size + 1; j <= ii; j++) {
+                            cdb2_room_distance[j] = INT_MAX;
+                        }
+                        current_size = ii;
+                    }
+                    tok = strtok_r(NULL, " ,", &last);
+
+                    if (tok && is_valid_int(tok))
+                        distance = atoi(tok);
+                    else
+                        continue;
+
+                    cdb2_room_distance[ii] = distance;
+                    if (ii > cdb2_max_room_num)
+                        cdb2_max_room_num = ii;
+                    tok = strtok_r(NULL, " :", &last);
+                }
+                cdb2_has_room_distance = 1;
             } else if ((strcasecmp("use_env_vars", tok) == 0) && !hndl) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
@@ -6241,13 +6308,199 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
     return 0;
 }
 
+typedef struct SRVRecord {
+    unsigned short priority;
+    unsigned short weight;
+    unsigned short port;
+    char dname[MAXCDNAME];
+} SRVRecord;
+
+#ifndef CDB2_BMS_SUFFIX
+#define CDB2_BMS_SUFFIX
+#endif
+static char cdb2_bmssuffix[128] = QUOTE(CDB2_BMS_SUFFIX);
+;
+
+static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, const char *tier, int *num_hosts,
+                          int *num_same_room)
+{
+    int rc;
+    char dns_name[256] = {0};
+
+    *num_hosts = 0;
+
+    rc = snprintf(dns_name, sizeof(dns_name), "%s.comdb2.%s.%s", dbname, tier, cdb2_bmssuffix);
+
+    if (rc < 0 || rc >= sizeof(dns_name))
+        return -1;
+
+    struct __res_state res;
+    memset(&res, 0, sizeof(res));
+    if (res_ninit(&res) != 0)
+        return -1;
+
+    unsigned char answer[16384];
+    int len = res_nsearch(&res, dns_name, C_IN, ns_t_srv, answer, sizeof(answer));
+
+    if (len < 0) {
+        rc = -1;
+        goto done;
+    }
+
+    ns_msg handle;
+    ns_rr rr;
+
+    rc = -1;
+
+    ns_initparse(answer, len, &handle);
+
+    SRVRecord resolved;
+
+    int min_distance = INT_MAX;
+    int min_distance_nodes = 0;
+    int near_nodes = 0;
+    int far_nodes = 0;
+
+    char db_hosts[MAX_NODES][64];
+    int host_distance[MAX_NODES];
+    for (int i = 0; i < ns_msg_count(handle, ns_s_an); i++) {
+        if (ns_parserr(&handle, ns_s_an, i, &rr) < 0 || ns_rr_type(rr) != ns_t_srv) {
+            perror("ns_parserr");
+            continue;
+        }
+        resolved.port = ns_get16(ns_rr_rdata(rr) + 2 * NS_INT16SZ);
+        // decompress domain name
+        if (dn_expand(ns_msg_base(handle), ns_msg_end(handle), ns_rr_rdata(rr) + 3 * NS_INT16SZ, resolved.dname,
+                      sizeof(resolved.dname)) < 0)
+            continue;
+
+        strcpy(db_hosts[*num_hosts], resolved.dname);
+        if (resolved.port > cdb2_max_room_num)
+            resolved.port = 0;
+        int distance = host_distance[*num_hosts] = cdb2_room_distance[resolved.port];
+        if (distance < min_distance) {
+            min_distance = distance;
+            min_distance_nodes = 1;
+        } else if (distance == min_distance) {
+            min_distance_nodes++;
+        }
+        (*num_hosts)++;
+        rc = 0;
+    }
+    for (int i = 0; i < *num_hosts; i++) {
+        if (host_distance[i] == min_distance) {
+            strcpy(hosts[near_nodes], db_hosts[i]);
+            near_nodes++;
+        } else {
+            strcpy(hosts[min_distance_nodes + far_nodes], db_hosts[i]);
+            far_nodes++;
+        }
+    }
+    if (num_same_room)
+        *num_same_room = near_nodes;
+
+done:
+#if defined(_SUN_SOURCE)
+    res_ndestroy(&res);
+#else
+    res_nclose(&res);
+#endif
+    return rc;
+}
+
+static int bms_ip_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, const char *room, const char *tier,
+                         int *num_hosts, int *num_same_room, int start_count)
+{
+    int rc;
+    char dns_name[256] = {0};
+    if (start_count == 0) {
+        if (num_hosts)
+            *num_hosts = 0;
+        if (num_same_room)
+            *num_same_room = 0;
+    }
+    if (room && room[0]) {
+        rc = snprintf(dns_name, sizeof(dns_name), "%s.%s.comdb2.%s.%s", room, dbname, tier, cdb2_bmssuffix);
+    } else {
+        rc = snprintf(dns_name, sizeof(dns_name), "%s.comdb2.%s.%s", dbname, tier, cdb2_bmssuffix);
+    }
+
+    if (rc < 0 || rc >= sizeof(dns_name))
+        return -1;
+
+    struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = 0, .ai_flags = 0};
+    struct addrinfo *result = NULL;
+    int gai_rc = getaddrinfo(dns_name, /*service=*/NULL, &hints, &result);
+    if (gai_rc != 0) {
+        if (!room)
+            return -1;
+        else
+            goto no_roomresult;
+    }
+
+    int count = start_count;
+    const struct addrinfo *rp;
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        char host[64];
+        if (count >= MAX_NODES) {
+            fprintf(stderr, "WARNING: %s:getaddrinfo(%s) returned more than %d results\n", __func__, dns_name,
+                    MAX_NODES);
+            break;
+        } else if (rp->ai_family != AF_INET) {
+            fprintf(stderr, "WARNING: %s:getaddrinfo(%s) returned non-AF_INET results\n", __func__, dns_name);
+        } else if (!inet_ntop(AF_INET, &((const struct sockaddr_in *)rp->ai_addr)->sin_addr, host, sizeof(host))) {
+            fprintf(stderr, "%s:inet_ntop(): %d %s\n", __func__, errno, strerror(errno));
+            /* Don't make this a fatal error; just don't increment num_hosts */
+        } else {
+            count++;
+            int add_host = 1;
+            if (start_count > 0) {
+                for (int i = 0; i < start_count; i++) {
+                    if (strncmp(host, hosts[i], sizeof(host)) == 0) {
+                        add_host = 0;
+                        continue;
+                    }
+                }
+            }
+            if (add_host) {
+                strcpy(hosts[*num_hosts], host);
+                (*num_hosts)++;
+            }
+        }
+    }
+no_roomresult:
+    if (result)
+        freeaddrinfo(result);
+    if (room) {
+        if (num_same_room)
+            *num_same_room = *num_hosts;
+        return bms_ip_lookup(hosts, dbname, NULL, tier, num_hosts, NULL, *num_hosts);
+    }
+    return 0;
+}
+
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, int comdb2db_num, const char *host,
                                 int port, char hosts[][CDB2HOSTNAME_LEN], int *num_hosts, const char *dbname,
-                                char *cluster, int *dbnum, int *num_same_room, int num_retries,
+                                char *cluster, int *dbnum, int *num_same_room, int num_retries, int use_bmsd,
                                 char shards[][DBNAME_LEN], int *num_shards, int *num_shards_same_room)
 {
     int find_shards =
         !!*num_shards; // boolean on whether we should be finding shards of a partition instead of nodes for a single db
+
+    use_bmsd = use_bmsd && !find_shards; // can only find shards via comdb2db.cfg currently
+    int bmsd_rc = -1;
+
+    if (use_bmsd && cdb2_has_room_distance)
+        bmsd_rc = bms_srv_lookup(hosts, dbname, cluster, num_hosts, num_same_room);
+    else if (use_bmsd)
+        bmsd_rc = bms_ip_lookup(hosts, dbname, cdb2_machine_room, cluster, num_hosts, num_same_room, 0);
+
+    if (bmsd_rc == 0) {
+        return 0;
+    } else if (use_bmsd) {
+        return -1;
+    }
+
     if (!find_shards)
         *dbnum = 0;
     int n_bindvars = 3;
@@ -6705,6 +6958,7 @@ static inline void only_read_config(cdb2_hndl_tp *hndl, int noLock,
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 {
+    int use_bmsd = 0;
     char comdb2db_hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     int comdb2db_ports[MAX_NODES];
     int num_comdb2db_hosts;
@@ -6803,6 +7057,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (max_time < 0)
         max_time = 0;
 
+    use_bmsd = cdb2_use_bmsd;
 retry:
     if (rc) {
         if (num_retry >= MAX_RETRIES || time(NULL) > max_time)
@@ -6817,7 +7072,7 @@ retry:
                num_retry, hndl->num_hosts, num_comdb2db_hosts);
 
     if (hndl->num_hosts == 0) {
-        if (master == -1) {
+        if (!use_bmsd && master == -1) {
             for (int i = 0; i < num_comdb2db_hosts; i++) {
                 rc = cdb2_dbinfo_query(
                     hndl, cdb2_default_cluster, comdb2db_name, comdb2db_num,
@@ -6838,16 +7093,20 @@ retry:
                 continue;
             rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[i], comdb2db_ports[i],
                                       hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->cluster, &hndl->dbnum,
-                                      &hndl->num_hosts_sameroom, num_retry, hndl->shards, &hndl->num_shards,
+                                      &hndl->num_hosts_sameroom, num_retry, use_bmsd, hndl->shards, &hndl->num_shards,
                                       &hndl->num_shards_sameroom);
             if (rc == 0 || time(NULL) >= max_time) {
                 break;
+            } else if (use_bmsd) {
+                if (cdb2_comdb2db_fallback)
+                    use_bmsd = 0;
+                goto retry;
             }
         }
         if (rc == -1 && time(NULL) < max_time) {
             rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master], comdb2db_ports[master],
                                       hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->cluster, &hndl->dbnum,
-                                      &hndl->num_hosts_sameroom, num_retry, hndl->shards, &hndl->num_shards,
+                                      &hndl->num_hosts_sameroom, num_retry, use_bmsd, hndl->shards, &hndl->num_shards,
                                       &hndl->num_shards_sameroom);
         }
 
