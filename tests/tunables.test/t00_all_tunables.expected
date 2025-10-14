@@ -341,7 +341,7 @@
 (name='enable_pageorder_recsz_check', description='Disables 'disable_pageorder_recsz_chk'', type='BOOLEAN', value='ON', read_only='N')
 (name='enable_partial_indexes', description='If set, allows partial index definitions in table schema. (Default: off)', type='BOOLEAN', value='ON', read_only='Y')
 (name='enable_prefault_udp', description='Send lossy prefault requests to replicants. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
-(name='enable_selectv_range_check', description='If set, SELECTV will send ranges for verification, not every touched record. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='enable_selectv_range_check', description='If set, SELECTV will send ranges for verification, not every touched record. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='enable_seqnum_generations', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='enable_serial_isolation', description='Enable to allow SERIALIZABLE level transactions to run against the database. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='enable_snapshot_isolation', description='Enable to allow SNAPSHOT level transactions to run against the database. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')

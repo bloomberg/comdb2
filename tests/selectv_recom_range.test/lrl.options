@@ -1,5 +1,4 @@
 table t1 t1.csc2
 table t2 t2.csc2
 round_robin_stripes
-enable_snapshot_isolation
 enable_selectv_range_check

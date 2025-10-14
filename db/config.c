@@ -1365,6 +1365,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
+    } else if (tokcmp(tok, ltok, "enable_selectv_range_check") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        gbl_selectv_rangechk = 1;
     } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
