@@ -1037,6 +1037,14 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     osql->timings.commit_start = osql_log_time();
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !osql->sock_started) {
+        /* we only have remote writes; at this point, we have clnt->effects tracking all remote writes
+         * also clnt->remote_effects
+         * if we have local writes, the clnt->effects gets reset, so final commit results are ok (we 
+         * add whatever local master sends to the clnt->remote_effects);
+         * HERE howewer, there is no local write, so clnt->effects does not get reset; we need to reset
+         * it so we do not overcount
+         */
+        bzero(&clnt->effects, sizeof(clnt->effects));
         goto done;
     }
 

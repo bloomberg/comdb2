@@ -546,3 +546,25 @@ Number of rows selected 4
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
+only remote writes, no verifyretry
+Effects not sent by comdb2 server. 
+Number of rows affected 0
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
+Number of rows affected 5
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 5
+Number of rows inserted 0
+Number of rows affected 9
+Number of rows selected 0
+Number of rows deleted 4
+Number of rows updated 5
+Number of rows inserted 0
+Number of rows affected 9
+Number of rows selected 0
+Number of rows deleted 4
+Number of rows updated 5
+Number of rows inserted 0
