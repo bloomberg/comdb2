@@ -2698,7 +2698,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
         break;
 
     case DB_TXN_SNAPISOL:
-        if (bdb_state->attr->snapisol) {
+        if (bdb_state->attr->logicallog) {
             if (!args->isabort) {
                 rc = update_shadows_beforecommit(bdb_state, lprev, commit_genid,
                                                  0);

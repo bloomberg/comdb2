@@ -136,7 +136,7 @@ DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 0,
          "the application. Occasionally useful to allow replicants to catch up "
          "on startup with a very busy system.")
 DEF_ATTR(SCATTERKEYS, scatterkeys, BOOLEAN, 0, "")
-DEF_ATTR(SNAPISOL, snapisol, BOOLEAN, 0, NULL)
+DEF_ATTR(LOGICALLOG, logicallog, BOOLEAN, 0, "Generate logical logs")
 DEF_ATTR(LOWDISKTHRESHOLD, lowdiskthreshold, PERCENT, 95,
          "Sets the low headroom threshold (percent of filesystem full) above "
          "which Comdb2 will start removing logs against set policy.")
