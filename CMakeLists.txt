@@ -86,6 +86,10 @@ if(DEFINED CDB2_DNS_SUFFIX)
   add_definitions(-DCDB2_DNS_SUFFIX=${CDB2_DNS_SUFFIX})
 endif()
 
+if(DEFINED CDB2_BMS_SUFFIX)
+  add_definitions(-DCDB2_BMS_SUFFIX=${CDB2_BMS_SUFFIX})
+endif()
+
 add_definitions(
   -DCOMDB2_ROOT=${COMDB2_ROOT}
   -DCOMDB2_VERSION="2"

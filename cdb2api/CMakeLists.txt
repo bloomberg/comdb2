@@ -38,6 +38,7 @@ else()
 
 add_library(cdb2api STATIC ${src})
 add_dependencies(cdb2api proto)
+target_link_libraries(cdb2api PUBLIC resolv)
 
 configure_file(cdb2api.pc cdb2api.pc @ONLY)
 install(TARGETS cdb2api ARCHIVE DESTINATION lib)
@@ -57,6 +58,7 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
        ${ZLIB_LIBRARIES}
        ${PROTOBUF-C_LIBRARY}
        ${UNWIND_LIBRARY}
+       resolv
   )
   install(TARGETS cdb2api_shared LIBRARY DESTINATION lib)
 endif()
