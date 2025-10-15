@@ -59,6 +59,7 @@ struct comdb2_metrics_store {
     int64_t start_time;
     int64_t threads;
     int64_t current_connections;
+    int64_t max_current_connections;
     int64_t diskspace;
     double service_time;
     double queue_depth;
@@ -375,6 +376,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_execute_stop, NULL},
     {"legacy_requests", "Number of non-cdb2api requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.legacy_requests, NULL},
+    {"max_current_connections", "Max current connections for sampled interval", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.max_current_connections, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -708,6 +711,7 @@ int refresh_metrics(void)
     curtran_puttran(trans);
 
     update_fastsql_metrics();
+    stats.max_current_connections = time_metric_max(thedb->connections);
 
     return 0;
 }
