@@ -1399,7 +1399,7 @@ static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcod
             flush_log();
             logmsg(LOGMSG_FATAL, "%s exiting coordinator before commit on debug tunable\n", __func__);
             sleep(3);
-            exit(1);
+            _exit(1);
         }
         if (gbl_debug_sleep_coordinator_before_commit) {
             logmsg(LOGMSG_USER, "%s DISTTXN %s sleeping before writing commit record on debug tunable\n", __func__,
@@ -1417,7 +1417,7 @@ static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcod
             flush_log();
             logmsg(LOGMSG_FATAL, "%s exiting coordinator after commit on debug tunable\n", __func__);
             sleep(3);
-            exit(1);
+            _exit(1);
         }
 
         Pthread_mutex_lock(&dtran->lk);
@@ -1913,7 +1913,7 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
         logmsg(LOGMSG_FATAL, "%s exiting participant on debug tunable\n", __func__);
         /* Sleep to make sure all replicants have gotten the prepare */
         sleep(3);
-        exit(1);
+        _exit(1);
     }
 
     Pthread_mutex_lock(&part_lk);
