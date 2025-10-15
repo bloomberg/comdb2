@@ -106,8 +106,8 @@ function run_test_three
     # adding the 16th vutf8 field will fail
     $CDB2SQL_EXE --tabs $CDB2_OPTIONS $dbnm default 'select columnname from comdb2_columns where tablename = "t2"' >> add_vutf8.out
     $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "alter table t2 add v$i vutf8" &>> add_vutf8.out
-    echo "[alter table t2 add v$i vutf8] failed with rc 240 a schema change error occurred" >> add_vutf8.expected
-
+    echo "[alter table t2 add v$i vutf8] failed with rc 240 Maximum number of vutf8/blob fields exceeded" >> add_vutf8.expected
+    echo "" >> add_vutf8.expected
     if ! diff add_vutf8.out add_vutf8.expected ; then
         echo "diff $PWD/{add_vutf8.out,add_vutf8.expected}"
         echo "Failed"

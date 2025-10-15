@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+DBNAME=$1
+TESTNAME="sc_vutf8_max_update"
+output="$TESTNAME.out"
+expected="$TESTNAME.exp"
+if [ -f $output ] ; then
+    rm -f $output
+fi
+
+if [[ "x${DBNAME}" == "x" ]] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Schema changes that go over max vutf8/blob counts don't propagate error to application
+master=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+
+MAXDATAFILES=16
+
+prefix="$TESTSROOTDIR/$TESTNAME.test"
+gen_vutf8_csc2 () {
+    n=$1
+    file="$prefix/vutf8_${n}.csc2"
+    rm -f $file
+    echo "schema { " > $file
+    for (( i=1; i<=n; i++ )); do
+        echo "vutf8 a${i}[128] null=yes" >> $file
+    done
+    echo "}" >> $file
+}
+
+create_table_max_blobs() {
+    j=$(($MAXDATAFILES + 1))
+    gen_vutf8_csc2 $j
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table if exists t1" 
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1 { `cat $prefix/vutf8_${n}.csc2 ` }" > /dev/null 2>$output
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table if exists t1" 
+    echo "[create table t1 { `cat $prefix/vutf8_${n}.csc2 ` }] failed with rc 240 Maximum number of vutf8/blob fields exceeded" > $expected
+    echo "" >> $expected
+}
+
+alter_table_max_blobs() {
+    j=$(($MAXDATAFILES - 5))
+    gen_vutf8_csc2 $j
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table if exists t1" 
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1 { `cat $prefix/vutf8_${n}.csc2 ` }" > /dev/null 2>&1
+    j=$(($MAXDATAFILES + 1))
+    gen_vutf8_csc2 $j
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "alter table t1 { `cat $prefix/vutf8_${n}.csc2 ` }" 2>>$output
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table if exists t1" 
+    echo "[alter table t1 { $(cat $prefix/vutf8_${n}.csc2) }] failed with rc 240 Maximum number of vutf8/blob fields exceeded" >> $expected
+    echo "" >> $expected
+}
+
+cleanup() {
+    rm -f $prefix/vutf8_*.csc2
+}
+
+create_table_max_blobs
+alter_table_max_blobs
+cleanup
+
+if diff -q $output $expected ; then
+    echo "Passed $TESTNAME test"
+    rm -f $output $expected
+    exit 0
+else
+    echo "Failed $TESTNAME test"
+    diff $output $expected | head -n 10
+    exit 1
+fi
+
