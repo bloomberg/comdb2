@@ -57,6 +57,23 @@ function test_import_many_tables_over_table() {
 	)
 }
 
+function test_import_renamed_table() {
+	(
+		# Given
+		local src_tbl=foo src_tbl_renamed=bar dst_tbl=baz rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		query_src_db "alter table $src_tbl rename to $src_tbl_renamed" > /dev/null
+		trap "query_src_db 'drop table $src_tbl_renamed'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_renamed" 2>&1)
+		rc=$?
+
+		# Then
+		(( rc != 0 )) && ! verify_eq $src_tbl_renamed $dst_tbl && grep -qF -- "Source table has no ODH option" <<< "$err"
+	)
+}
+
 function test_multiple_imports_at_once() {
 	(
 		# Given
