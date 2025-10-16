@@ -308,7 +308,10 @@ int ssl_bend_init(const char *default_certdir)
     char errmsg[512];
     ks = (gbl_cert_dir == NULL) ? default_certdir : gbl_cert_dir;
 
-    rc = cdb2_init_ssl(1, 1);
+    rc = OPENSSL_init_crypto(OPENSSL_INIT_NO_ATEXIT, NULL);
+    if (rc != 1)
+        return -1;
+    rc = cdb2_init_ssl(1, 0);
     if (rc != 0)
         return rc;
 
