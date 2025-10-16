@@ -6519,7 +6519,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
          clnt->osql.replay == OSQL_RETRY_NONE /* a replaying clnt won't have a clnt->sql */) {
         char zFingerprint[FINGERPRINTSZ * 2 + 1];
         util_tohex(zFingerprint, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
-        c->sql = strdup(clnt->sql);
+        c->sql = clnt->sql ? strdup(clnt->sql) : NULL;
         c->fingerprint = strdup(zFingerprint);
     } else {
         c->sql = NULL;
