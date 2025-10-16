@@ -1782,6 +1782,11 @@ void clean_exit(void)
 
     backend_cleanup(thedb);
     net_cleanup();
+
+    if (gbl_ssl_ctx != NULL) {
+        SSL_CTX_free(gbl_ssl_ctx);
+        OPENSSL_cleanup();
+    }
     cleanup_sqlite_master();
 
     free_dbtables(thedb);
