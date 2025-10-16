@@ -58,9 +58,6 @@ extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
-extern const snap_impl_enum gbl_snap_fallback_impl;
-extern const snap_impl_enum gbl_snap_backup_fallback_impl;
-extern snap_impl_enum gbl_snap_impl;
 
 int gbl_disable_access_controls;
 
@@ -73,7 +70,6 @@ static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
 static int pre_read_option(char *, int);
 static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int, int *);
-static void fallback_from_snap_impl();
 
 // clang-format off
 static struct option long_options[] = {
@@ -629,10 +625,6 @@ static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
 
     /* process legacy options (we deferred them) */
 
-    if (gbl_disable_new_snapshot && (gbl_snap_impl == SNAP_IMPL_NEW)) {
-        fallback_from_snap_impl();
-    }
-
     if (gbl_rowlocks) {
         /* We can't ever choose a writer as a deadlock victim in rowlocks mode
            (at least without some kludgery, or snapshots) */
@@ -717,110 +709,6 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     hash_add(dbenv->db_hash, db);
 
     return 0;
-}
-
-/*
- * Toggles the 'modsnap' snapshot implementation on and off.
- *
- * switch_val: 1 if toggling on and 0 if toggling off.
- */
-static void toggle_modsnap(int switch_val) {
-    gbl_use_modsnap_for_snapshot = switch_val;
-    gbl_modsnap_asof = switch_val;
-}
-
-/*
- * Toggles the 'new' snapshot implementation on and off.
- *
- * switch_val: 1 if toggling on and 0 if toggling off.
- */
-static void toggle_new_snapisol(int switch_val) {
-    gbl_new_snapisol = switch_val;
-    gbl_new_snapisol_asof = switch_val;
-    gbl_new_snapisol_logging = switch_val;
-}
-
-/*
- * Prints a string representation of a `snap_impl_enum` type,
- * or "UNKNOWN" if the value passed in is not a valid `snap_impl_enum`.
- *
- * impl: The value to output as a string.
- */
-const char *snap_impl_str(snap_impl_enum impl) {
-    switch (impl) {
-    case SNAP_IMPL_ORIG:
-        return "ORIGINAL";
-        break;
-    case SNAP_IMPL_NEW:
-        return "NEW";
-        break;
-    case SNAP_IMPL_MODSNAP:
-        return "MODSNAP";
-        break;
-    default:
-        return "UNKNOWN";
-        break;
-    }
-}
-
-static const char * value_on_off(int switch_var) {
-    const char * value = switch_var ? "ON" : "OFF";
-    return value;
-}
-
-void print_snap_config(loglvl lvl) {
-    logmsg(lvl, "Snapshot is %s; "
-                "Implementation set to '%s'; "
-                "gbl_use_modsnap_for_snapshot=%s; "
-                "gbl_modsnap_asof=%s; "
-                "gbl_new_snapisol=%s; "
-                "gbl_new_snapisol_asof=%s; "
-                "gbl_new_snapisol_logging=%s\n",
-                value_on_off(gbl_snapisol),
-                snap_impl_str(gbl_snap_impl),
-                value_on_off(gbl_use_modsnap_for_snapshot),
-                value_on_off(gbl_modsnap_asof),
-                value_on_off(gbl_new_snapisol),
-                value_on_off(gbl_new_snapisol_asof),
-                value_on_off(gbl_new_snapisol_logging));
-}
-
-/*
- * Sets the snapshot implementation.
- *
- * impl: The implementation to be set.
- */
-void set_snapshot_impl(snap_impl_enum impl) {
-    gbl_snap_impl = impl;
-    gbl_snap_impl == SNAP_IMPL_MODSNAP ? toggle_modsnap(1) : toggle_modsnap(0);
-    gbl_snap_impl == SNAP_IMPL_NEW ? toggle_new_snapisol(1) : toggle_new_snapisol(0);
-}
-
-/*
- * Determines what the fallback implementation should be for the current
- * snapshot implementation and switches to it.
- */
-static void fallback_from_snap_impl() {
-    const snap_impl_enum fallback_impl = 
-        gbl_snap_fallback_impl != gbl_snap_impl ? gbl_snap_fallback_impl : gbl_snap_backup_fallback_impl;
-
-    assert(fallback_impl != gbl_snap_impl);
-    set_snapshot_impl(fallback_impl);
-}
-
-/*
- * Enables snapshot isolation.
- *
- * dbenv: Parent environment.
- */
-static void enable_snapshot(struct dbenv *dbenv) {
-    if (gbl_snapisol) {
-        return;
-    }
-
-    set_snapshot_impl(gbl_snap_impl); 
-    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-    gbl_snapisol = 1;
 }
 
 #define parse_lua_funcs(pfx)                                                                                           \
@@ -1372,18 +1260,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        enable_snapshot(dbenv);
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0 ||
-               tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
-        set_snapshot_impl(SNAP_IMPL_NEW);
-        enable_snapshot(dbenv);
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
-    } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {
-        gbl_disable_new_snapshot = 1;
-        logmsg(LOGMSG_INFO, "Disabled new snapshot\n");
+        gbl_snapisol = 1;
+        gbl_use_modsnap_for_snapshot = 1;
+        gbl_modsnap_asof = 1;
     } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
@@ -1677,10 +1557,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
             }
         }
-    }
-
-    if (gbl_disable_new_snapshot && (gbl_snap_impl == SNAP_IMPL_NEW)) {
-        fallback_from_snap_impl();
     }
 
     if (gbl_rowlocks) {

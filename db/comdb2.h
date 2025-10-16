@@ -3429,12 +3429,6 @@ enum { TCM_PARENT_DEADLOCK = 1, TCM_MAX = 1 };
 /* tagged api big or little endian. */
 enum { TAGGED_API_BIG_ENDIAN = 1, TAGGED_API_LITTLE_ENDIAN = 2 };
 
-typedef enum {
-    SNAP_IMPL_ORIG,
-    SNAP_IMPL_NEW,
-    SNAP_IMPL_MODSNAP,
-} snap_impl_enum;
-
 extern int gbl_check_schema_change_permissions;
 
 extern int gbl_support_datetime_in_triggers;

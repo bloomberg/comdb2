@@ -232,12 +232,6 @@ REGISTER_TUNABLE("disable_inplace_blobs", "Disables 'enable_inplace_blobs'",
 REGISTER_TUNABLE("disable_lowpri_snapisol", "Disables 'enable_lowpri_snapisol'",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
-/*
-REGISTER_TUNABLE("disable_new_snapshot",
-                 "Disables 'enable_new_snapshot'", TUNABLE_BOOLEAN,
-                 &gbl_new_snapisol, INVERSE_VALUE | READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
-*/
 REGISTER_TUNABLE("disable_osql_blob_optimization",
                  "Disables 'enable_osql_blob_optimization'", TUNABLE_BOOLEAN,
                  &gbl_osql_blob_optimization, INVERSE_VALUE | READONLY | NOARG,
@@ -461,22 +455,6 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  "state. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
-
-/*
-REGISTER_TUNABLE("enable_new_snapshot",
-                 "Enable new SNAPSHOT implementation. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE(
-    "enable_new_snapshot_asof",
-    "Enable new BEGIN TRANSACTION AS OF implementation. (Default: off)",
-    TUNABLE_BOOLEAN, &gbl_new_snapisol_asof, READONLY | NOARG, NULL, NULL, NULL,
-    NULL);
-REGISTER_TUNABLE("enable_new_snapshot_logging",
-                 "Enable alternate logging scheme. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol_logging, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
-*/
 REGISTER_TUNABLE("enable_osql_blob_optimization",
                  "Replicant tracks which columns are modified in a transaction "
                  "to allow blob updates to be ommitted if possible. (Default: "
@@ -511,11 +489,6 @@ REGISTER_TUNABLE("enable_serial_isolation",
                  "the database. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_serializable, NOARG | READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("set_snapshot_impl",
-                 "Changes the default snapshot implementation "
-                 "*without enabling snapshot* (default 'modsnap')",
-                 TUNABLE_ENUM, &gbl_snap_impl, READEARLY | READONLY,
-                 snapshot_impl_value, NULL, snapshot_impl_update, NULL);
 REGISTER_TUNABLE("use_current_lsn_for_non_snapshot",
                  "comdb2_snapshot_lsn provide current LSN if not using snapshot isolation. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_use_current_lsn_for_non_snapshot, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL,
