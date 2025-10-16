@@ -446,6 +446,8 @@ function main() {
 		 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
 		MISMATCHED_CONFIG_TEST=1
 		tests="test_basic"
+	elif [ "$TESTCASE" == "bulkimport_noblobstripe_generated" ]; then
+		tests="test_basic"
 	else
 		tests=$(compgen -A function | grep -oh "test_\w*")
 	fi
