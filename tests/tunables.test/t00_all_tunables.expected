@@ -920,7 +920,6 @@
 (name='serialize_reads_like_writes', description='Send read-only multi-statement schedules to the master.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='set_abort_flag_in_locker', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='set_repinfo_master_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
-(name='set_snapshot_impl', description='Changes the default snapshot implementation *without enabling snapshot* (default 'modsnap')', type='ENUM', value='MODSNAP', read_only='Y')
 (name='sgio_enabled', description='Do scatter gather I/O', type='BOOLEAN', value='OFF', read_only='N')
 (name='sgio_max', description='Max scatter gather I/O to do at one time', type='INTEGER', value='10485760', read_only='N')
 (name='shadows_nonblocking', description='', type='BOOLEAN', value='OFF', read_only='N')

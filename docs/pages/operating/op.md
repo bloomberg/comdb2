@@ -919,10 +919,6 @@ Display key compression information.
 
 Display root page cache information.
 
-### stat snapconfig
-
-Prints out snapshot configuration information.
-
 ### Other stats
 
 Various other commands can also be run prepended with stat: [stax](#stax), [long](#long), [stal](#stal), [thr](#thr), [dmpl](#dmpl).

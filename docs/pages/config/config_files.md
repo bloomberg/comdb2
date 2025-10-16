@@ -805,7 +805,6 @@ These options are toggle-able at runtime.
 |disable_inplace_blob_optimization | | Disables enable_inplace_blob_optimization
 |disable_inplace_blobs | | Disables enable_inplace_blobs (needs enable_inplace_blob_optimization, and enable_osql_blob_optimization also enabled - which they are by default)
 |disable_lowpri_snapisol | |
-|disable_new_snapshot | | Disables alternate snapshot implementation
 |disable_osql_blob_optimization | | Disables disable_osql_blob_optimization
 |disable_overflow_page_trace | 1 | If set, warn when a page order table scan encounters an overflow page.
 |disable_page_latches | | Turns off page latches
@@ -828,9 +827,6 @@ These options are toggle-able at runtime.
 |enable_inplace_blob_optimization | | Enables inplace blob updates (blobs are updated in place in their b-tree when possible, not deleted/added)
 |enable_inplace_blobs | set | Don't update the rowid of a blob entry on an update 
 |enable_lowpri_snapisol | 0 | Give lower priority to locks acquired when updating snapshot state 
-|enable_new_snapshot | 0 | ***Experimental*** Enable new SNAPSHOT implementation
-|enable_new_snapshot_asof | 0 | ***Experimental*** Enable new BEGIN TRANSACTION AS OF implementation
-|enable_new_snapshot_logging | 0 | ***Experimental*** Enable alternate logging scheme 
 |enable_osql_blob_optimization | set | Replicant tracks which columns are modified in a transaction to allow blob updates to be omitted if possible
 |enable_overflow_page_trace | | If set, don't warn when a page order table scan encounters an overflow page.
 |enable_pageorder_recsz_check | | Disables enable_pageorder_recsz_check

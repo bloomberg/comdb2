@@ -25,7 +25,6 @@
 (out='stat mtrap                 - show mtrap system stats')
 (out='stat dohsql                - show distributed sql stats')
 (out='stat oldfile               - dump oldfile hash')
-(out='stat snapconfig            - print snapshot configuration information')
 (out='dmpl                       - dump threads')
 (out='dmptrn                     - show long transaction stats')
 (out='dmpcts                     - show table constraints')
