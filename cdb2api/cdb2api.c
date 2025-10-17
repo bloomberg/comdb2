@@ -2763,7 +2763,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     /* An application may use different certificates.
        So we allocate an SSL context for each handle. */
     SSL_CTX *ctx;
-    int rc, dossl = 0;
+    int rc = 0, dossl = 0;
     cdb2_ssl_sess *p;
 
     if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
@@ -2771,7 +2771,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
         case PEER_SSL_UNSUPPORTED:
             sprintf(hndl->errstr, "The database does not support SSL.");
             hndl->sslerr = 1;
-            return -1;
+            rc = -1;
+            break;
         case PEER_SSL_ALLOW:
         case PEER_SSL_REQUIRE:
             dossl = 1;
@@ -2780,7 +2781,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
             sprintf(hndl->errstr,
                     "Unrecognized peer SSL mode: %d", hndl->s_sslmode);
             hndl->sslerr = 1;
-            return -1;
+            rc = -1;
+            break;
         }
     } else if (SSL_IS_PREFERRED(hndl->c_sslmode)) {
         dossl = 1;
@@ -2797,32 +2799,38 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
             sprintf(hndl->errstr,
                     "Unrecognized peer SSL mode: %d", hndl->s_sslmode);
             hndl->sslerr = 1;
-            return -1;
+            rc = -1;
+            break;
         }
     }
+
+    if (rc != 0)
+        goto out;
 
     hndl->sslerr = 0;
 
     /* fast return if SSL is not needed. */
     if (!dossl)
-        return 0;
+        goto out;
 
     if ((rc = cdb2_init_ssl(1, 1)) != 0) {
         hndl->sslerr = 1;
-        return rc;
+        goto out;
     }
 
     /* If negotiation fails, let API retry. */
     struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN)};
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
-    if (rc != 1)
-        return -1;
+    if (rc != 1) {
+        rc = -1;
+        goto out;
+    }
     if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
         /* If SSL is optional (this includes ALLOW and PREFER), change
            my mode to ALLOW so that we can reconnect in plaintext. */
         if (SSL_IS_OPTIONAL(hndl->c_sslmode))
             hndl->c_sslmode = SSL_ALLOW;
-        return rc;
+        goto out;
     }
 
     /* The node does not agree with dbinfo. This usually happens
@@ -2832,14 +2840,16 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
             hndl->c_sslmode = SSL_ALLOW;
             /* if server sends back 'N', reuse this plaintext connection;
                force reconnecting for an unexpected byte */
-            return (rc == 'N') ? 0 : -1;
+            rc = (rc == 'N') ? 0 : -1;
+            goto out;
         }
 
         /* We reach here only if the server is mistakenly downgraded
            before the client. */
         sprintf(hndl->errstr, "The database does not support SSL.");
         hndl->sslerr = 1;
-        return -1;
+        rc = -1;
+        goto out;
     }
 
     rc = ssl_new_ctx(&ctx, hndl->c_sslmode, hndl->sslpath, &hndl->cert,
@@ -2854,15 +2864,25 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname, ((p != NULL) ? p->sessobj : NULL));
 
     SSL_CTX_free(ctx);
+
     if (rc != 1) {
         hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sessobj = NULL;
-        return -1;
+        rc = -1;
+        goto out;
     }
     hndl->newsess = 1;
-    return 0;
+    rc = 0;
+out:
+    if (rc != 0) {
+        /* Don't leave an incomplete SSL connection here.
+         * Shut it down and reset sbuf. Caller will reconnect */
+        sbuf2close(hndl->sb);
+        hndl->sb = NULL;
+    }
+    return rc;
 }
 
 static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
@@ -2896,8 +2916,8 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     sbuf2printf(ss, "rte %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
-    sbuf2gets(res, sizeof(res), ss);
-    debugprint("rte '%s' returns res=%s", name, res);
+    int t_rc = sbuf2gets(res, sizeof(res), ss);
+    debugprint("rte '%s' returns rc %d res=%s errno=%s\n", name, t_rc, res, strerror(errno));
     if (res[0] != '0') { // character '0' is indication of success
         sbuf2close(ss);
         return -1;
@@ -2938,7 +2958,6 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
     sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        sbuf2close(sb);
         rc = -1;
         goto after_callback;
     }
@@ -3040,7 +3059,6 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
     sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        sbuf2close(sb);
         rc = -1;
         goto after_callback;
     }
@@ -5962,6 +5980,11 @@ void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql)
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 1;
+}
+
+void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl)
+{
+    hndl->debug_trace = 0;
 }
 
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out)
