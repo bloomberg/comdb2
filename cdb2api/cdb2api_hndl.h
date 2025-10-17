@@ -158,6 +158,7 @@ struct cdb2_hndl {
     int num_set_commands;
     int num_set_commands_sent;
     int is_read;
+    int is_invalid;
     unsigned long long rows_read;
     int read_intrans_results;
     int first_record_read;
@@ -200,6 +201,7 @@ struct cdb2_hndl {
     int sockpool_recv_timeoutms;
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
     cdb2_event *events;
+    pid_t pid;
     // Protobuf allocator data used only for row data i.e. lastresponse
     ProtobufCAllocator s_allocator;
     void *protobuf_data;
