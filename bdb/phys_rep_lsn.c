@@ -153,6 +153,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
 
     *file = rec_lsn.file;
     *offset = rec_lsn.offset;
+    logc->close(logc, 0);
 
     return 0;
 }

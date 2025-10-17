@@ -83,6 +83,9 @@ __log_cursor_pp(dbenv, logcp, flags)
 static pthread_mutex_t curlk = PTHREAD_MUTEX_INITIALIZER;
 static DB_LOGC *curhd = NULL;
 
+static pthread_mutex_t active_curlk = PTHREAD_MUTEX_INITIALIZER;
+static DB_LOGC *active_log_cursors;
+
 static inline int __log_cursor_cache(dbenv, logcp)
     DB_ENV *dbenv;
     DB_LOGC **logcp;
@@ -123,39 +126,55 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
 
 	*logcp = NULL;
 
-    if (bpsize || maxrec || (ret = __log_cursor_cache(dbenv, &logc)) != 0) {
+	if (bpsize || maxrec || (ret = __log_cursor_cache(dbenv, &logc)) != 0) {
 
-        /* Allocate memory for the cursor. */
-        if ((ret = __os_calloc(dbenv, 1, sizeof(DB_LOGC), &logc)) != 0)
-            return (ret);
+		/* Allocate memory for the cursor. */
+		if ((ret = __os_calloc(dbenv, 1, sizeof(DB_LOGC), &logc)) != 0)
+			return (ret);
 
-        logc->bp_size = bpsize ? bpsize : DB_LOGC_BUF_SIZE;
-        /*
-         * Set this to something positive.
-         */
-        logc->bp_maxrec = maxrec ? maxrec : MEGABYTE;
-        if ((ret = __os_malloc(dbenv, logc->bp_size, &logc->bp)) != 0) {
-            __os_free(dbenv, logc);
-            return (ret);
-        }
+		logc->bp_size = bpsize ? bpsize : DB_LOGC_BUF_SIZE;
+		/*
+		 * Set this to something positive.
+		 */
+		logc->bp_maxrec = maxrec ? maxrec : MEGABYTE;
+		if ((ret = __os_malloc(dbenv, logc->bp_size, &logc->bp)) != 0) {
+			__os_free(dbenv, logc);
+			return (ret);
+		}
 
-        logc->dbenv = dbenv;
-        logc->close = __log_c_close_pp;
+		logc->dbenv = dbenv;
+		logc->close = __log_c_close_pp;
 		logc->get = __log_c_get_pp;
 		logc->setflags = __log_c_setflags_pp;
 		logc->stat = __log_c_stat_pp;
-    }
-    logc->incursor_count = 0;
-    logc->ondisk_count = 0;
-    logc->inregion_count = 0;
-    logc->incursorus = 0;
-    logc->ondiskus = 0;
-    logc->inregionus = 0;
-    logc->totalus = 0;
-    logc->lockwaitus = 0;
+	}
+	logc->incursor_count = 0;
+	logc->ondisk_count = 0;
+	logc->inregion_count = 0;
+	logc->incursorus = 0;
+	logc->ondiskus = 0;
+	logc->inregionus = 0;
+	logc->totalus = 0;
+	logc->lockwaitus = 0;
+	logc->tid = pthread_self();
+#if defined INSTRUMENT_LOG_CURSOR
+	int comdb2_cheapstack_char_array(char *str, int maxln);
+	comdb2_cheapstack_char_array(logc->logc_cursor_open_stack, LOG_CURSOR_MAXBYTE);
+#endif
 
 	if (bpsize || maxrec)
 		F_SET(logc, DB_LOG_CUSTOM_SIZE);
+
+	/* Place cursor on 'active-cursors' list */
+	Pthread_mutex_lock(&active_curlk);
+	logc->prev = NULL;
+	logc->next = active_log_cursors;
+	if (active_log_cursors) active_log_cursors->prev = logc;
+	active_log_cursors = logc;
+	Pthread_mutex_unlock(&active_curlk);
+
+	/* Hold loglk in read-mode */
+	Pthread_rwlock_rdlock(&dbenv->loglk);
 
 	*logcp = logc;
 	return (0);
@@ -172,7 +191,7 @@ __log_cursor(dbenv, logcp)
 	DB_ENV *dbenv;
 	DB_LOGC **logcp;
 {
-    return __log_cursor_complete(dbenv, logcp, 0, 0);
+	return __log_cursor_complete(dbenv, logcp, 0, 0);
 }
 
 /*
@@ -216,29 +235,43 @@ __log_c_close(logc)
 
 	dbenv = logc->dbenv;
 
-    if (dbenv->attr.log_cursor_cache && !F_ISSET(logc, DB_LOG_CUSTOM_SIZE))
-    {
-        ZERO_LSN(logc->c_lsn);
-        logc->c_len = 0;
-        logc->c_prev = 0;
-        if (logc->c_dbt.data != NULL)
-            __os_free(dbenv, logc->c_dbt.data);
-        memset(&logc->c_dbt, 0, sizeof(DBT));
-        ZERO_LSN(logc->bp_lsn);
-        logc->bp_maxrec = 0;
-        logc->bp_rlen = 0;
-        if (logc->c_fhp != NULL) {
-            (void)__os_closehandle(dbenv, logc->c_fhp);
-            logc->c_fhp = NULL;
-        }
-        Pthread_mutex_lock(&curlk);
-        logc->prev = NULL;
-        logc->next = curhd;
-        if (curhd) curhd->prev = logc;
-        curhd = logc;
-        Pthread_mutex_unlock(&curlk);
-        return (0);
-    }
+	/* Remove from active-cursors */
+	Pthread_mutex_lock(&active_curlk);
+	if (logc == active_log_cursors)
+		active_log_cursors = logc->next;
+	if (logc->next != NULL) {
+		logc->next->prev = logc->prev;
+	}
+	if (logc->prev != NULL) {
+		logc->prev->next = logc->next;
+	}
+	Pthread_mutex_unlock(&active_curlk);
+
+	if (dbenv->attr.log_cursor_cache && !F_ISSET(logc, DB_LOG_CUSTOM_SIZE))
+	{
+		ZERO_LSN(logc->c_lsn);
+		logc->c_len = 0;
+		logc->c_prev = 0;
+		if (logc->c_dbt.data != NULL)
+			__os_free(dbenv, logc->c_dbt.data);
+		memset(&logc->c_dbt, 0, sizeof(DBT));
+		ZERO_LSN(logc->bp_lsn);
+		logc->bp_maxrec = 0;
+		logc->bp_rlen = 0;
+		if (logc->c_fhp != NULL) {
+			(void)__os_closehandle(dbenv, logc->c_fhp);
+			logc->c_fhp = NULL;
+		}
+		Pthread_mutex_lock(&curlk);
+		logc->prev = NULL;
+		logc->next = curhd;
+		if (curhd) curhd->prev = logc;
+		curhd = logc;
+		Pthread_mutex_unlock(&curlk);
+
+		Pthread_rwlock_unlock(&dbenv->loglk);
+		return (0);
+	}
 
 	if (logc->c_fhp != NULL) {
 		(void)__os_closehandle(dbenv, logc->c_fhp);
@@ -250,6 +283,7 @@ __log_c_close(logc)
 
 	__os_free(dbenv, logc->bp);
 	__os_free(dbenv, logc);
+	Pthread_rwlock_unlock(&dbenv->loglk);
 
 	return (0);
 }
