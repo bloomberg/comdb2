@@ -763,7 +763,7 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 	persist = (LOGP *)(tmp + hdrsize);
 	/* Try to read the header. */
 	if ((ret = __os_read(dbenv, fhp, tmp, recsize + hdrsize, &nw)) != 0 ||
-	    nw != recsize + hdrsize) {
+		nw != recsize + hdrsize) {
 		if (ret == 0)
 			status = DB_LV_INCOMPLETE;
 		else
@@ -772,7 +772,7 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 			 * incompletely initialized log file.
 			 */
 			__db_err(dbenv, "Ignoring log file: %s: %s",
-			    fname, db_strerror(ret));
+				fname, db_strerror(ret));
 		goto err;
 	}
 
@@ -814,13 +814,14 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 		}
 		/* Check the checksum and decrypt. */
 		if ((ret = __db_check_chksum(dbenv, db_cipher, &hdr->chksum[0],
-		    (u_int8_t *)persist, hdr->len - hdrsize, is_hmac)) != 0) {
+			(u_int8_t *)persist, hdr->len - hdrsize, is_hmac)) != 0) {
 			__db_err(dbenv, "log record checksum mismatch");
 			goto err;
 		}
 		if ((ret = db_cipher->decrypt(dbenv, db_cipher->data,
-		    &hdr->iv[0], (u_int8_t *)persist, hdr->len - hdrsize)) != 0)
+		    &hdr->iv[0], (u_int8_t *)persist, hdr->len - hdrsize)) != 0) {
 			goto err;
+		}
 	}
 
 	if (LOG_SWAPPED())
@@ -829,8 +830,8 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 	/* Validate the header. */
 	if (persist->magic != DB_LOGMAGIC) {
 		__db_err(dbenv,
-		    "Ignoring log file: %s: magic number %lx, not %lx",
-		    fname, (u_long)persist->magic, (u_long)DB_LOGMAGIC);
+			"Ignoring log file: %s: magic number %lx, not %lx",
+			fname, (u_long)persist->magic, (u_long)DB_LOGMAGIC);
 		ret = EINVAL;
 		goto err;
 	}
@@ -843,16 +844,16 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 	if (persist->version > DB_LOGVERSION) {
 		/* This is a fatal error--the log file is newer than DB. */
 		__db_err(dbenv,
-		    "Ignoring log file: %s: unsupported log version %lu",
-		    fname, (u_long)persist->version);
+			"Ignoring log file: %s: unsupported log version %lu",
+			fname, (u_long)persist->version);
 		ret = EINVAL;
 		goto err;
 	} else if (persist->version < DB_LOGOLDVER) {
 		status = DB_LV_OLD_UNREADABLE;
 		/* This is a non-fatal error, but give some feedback. */
 		__db_err(dbenv,
-		    "Ignoring log file: %s: unreadable log version %lu",
-		    fname, (u_long)persist->version);
+			"Ignoring log file: %s: unreadable log version %lu",
+			fname, (u_long)persist->version);
 		/*
 		 * We don't want to set persistent info based on an
 		 * unreadable region, so jump to "err".
@@ -872,8 +873,8 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 			__log_persistswap(persist);
 
 		if ((ret = __db_check_chksum(dbenv,
-			    db_cipher, &hdr->chksum[0], (u_int8_t *)persist,
-			    hdr->len - hdrsize, is_hmac)) != 0) {
+				db_cipher, &hdr->chksum[0], (u_int8_t *)persist,
+				hdr->len - hdrsize, is_hmac)) != 0) {
 			__db_err(dbenv, "log record checksum mismatch");
 			goto err;
 		}
@@ -1167,6 +1168,7 @@ __log_vtruncate(dbenv, lsn, ckplsn, trunclsn)
 	dblp = (DB_LOG *)dbenv->lg_handle;
 	lp = (LOG *)dblp->reginfo.primary;
 
+	Pthread_rwlock_wrlock(&dbenv->loglk);
 	R_LOCK(dbenv, &dblp->reginfo);
 
 	/*
@@ -1216,11 +1218,13 @@ __log_vtruncate(dbenv, lsn, ckplsn, trunclsn)
 	if (trunclsn != NULL)
 		*trunclsn = lp->lsn;
 
+	lp->log_cursor_gen++;
 	/* Truncate the log to the new point. */
 	if ((ret = __log_zero(dbenv, &lp->lsn, &end_lsn)) != 0)
 		goto err;
 
 err:	R_UNLOCK(dbenv, &dblp->reginfo);
+	Pthread_rwlock_unlock(&dbenv->loglk);
 	return (ret);
 }
 

@@ -244,6 +244,13 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   }
 
   if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags)) != 0) {
+      if (rc == DB_LOG_TRUNCATED) {
+        logmsg(LOGMSG_INFO, "%s line %d: log truncated while reading tranlog\n", __func__, __LINE__);
+        pCur->logc->close(pCur->logc, 0);
+        pCur->openCursor = 0;
+        return SQLITE_INTERNAL;
+      }
+       
       if (getflags != DB_NEXT && getflags != DB_PREV) {
           logmsg(LOGMSG_ERROR, "%s line %d did not expect logc->get to fail with flag: %d."
                                "got rc %d\n",
@@ -257,10 +264,17 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
               !(pCur->flags & TRANLOG_FLAGS_DESCENDING)) {
           int poll_start_time = comdb2_time_epoch();
           do {
+              if (rc == DB_LOG_TRUNCATED) {
+                  logmsg(LOGMSG_INFO, "%s line %d: log truncated while reading tranlog\n", __func__, __LINE__);
+                  pCur->logc->close(pCur->logc, 0);
+                  pCur->openCursor = 0;
+                  return SQLITE_INTERNAL;
+              }
               /* Tick up. Return an error if sql_tick() fails
                  (peer dropped connection, max query time reached, etc.) */
-              if ((rc = comdb2_sql_tick()) != 0)
+              if ((rc = comdb2_sql_tick()) != 0) {
                   return rc;
+              }
 
               if (pCur->blockLsn.file > 0 &&
                       log_compare(&pCur->curLsn, &pCur->blockLsn) >= 0) {
@@ -750,8 +764,9 @@ static int tranlogEof(sqlite3_vtab_cursor *cur){
 
   /* If we are not positioned, position now */
   if (pCur->openCursor == 0) {
-      if ((rc=tranlogNext(cur)) != SQLITE_OK)
+      if ((rc=tranlogNext(cur)) != SQLITE_OK) {
           return rc;
+      }
   }
   if (pCur->hitLast || pCur->notDurable)
       return 1;

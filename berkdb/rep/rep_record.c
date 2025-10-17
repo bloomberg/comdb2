@@ -2214,10 +2214,16 @@ notfound:
 				verify_match_print = now;
 			}
 
+			/* Close cursor before truncating transaction log */
+			if ((t_ret = __log_c_close(logc)) != 0) {
+				logmsg(LOGMSG_FATAL, "%s:%d __log_c_close failed %d\n", __func__, __LINE__, t_ret);
+				abort();
+			}
+			logc = NULL;
 			ret = __rep_verify_match(dbenv, rp, savetime, online);
 		}
 
-rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
+rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 			ret == 0)
 			ret = t_ret;
 		fromline = __LINE__;
@@ -7270,7 +7276,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	DBT mylog;
 	DB_LOGC *logc = NULL;
 	DB_LOGC *logc_dist = NULL;
-	int ret, t_ret, undo;
+	int ret, undo;
 	int have_recover_lk = 0;
 	int schema_lk_count = 0;
 	int i_am_master = 0;
@@ -7497,6 +7503,17 @@ restart:
 		}
 	}
 
+	/* close log cursors before truncating txnlog */
+	if (logc_dist != NULL) {
+		__log_c_close(logc_dist);
+		logc_dist = NULL;
+	}
+
+	if ((ret = __log_c_close(logc)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s: log cursor close failed: %d\n", __func__, ret);
+		abort();
+	}
+
 	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
 			lsnp->file, lsnp->offset);
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
@@ -7551,14 +7568,6 @@ err:
 	if (have_recover_lk) {
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	}
-
-	if (logc_dist != NULL) {
-		__log_c_close(logc_dist);
-		logc_dist = NULL;
-	}
-
-	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
-		ret = t_ret;
 
 	if (lockid != DB_LOCK_INVALIDID) {
 		recovery_release_locks(dbenv, lockid);
