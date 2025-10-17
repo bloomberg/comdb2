@@ -149,47 +149,52 @@ int printlog(bdb_state_type *bdb_state, int startfile, int startoff, int endfile
 void dump_remote_policy();
 extern void print_snap_config(loglvl lvl);
 
-static const char *HELP_MAIN[] = {
-    "stat           - status report",
-    "async ...      - execute mtrap asynchronously",
-    "detach_mtrap   - detach currently running mtrap thread",
-    "cton           - use constraint logic",
-    "ctof           - stop using constraint logic",
-    "debg #         - operation debugging", "who #          - who debugging",
-    "meta ...       - meta db debugging",
-    "netdon         - net direct writes (non-queued) on!",
-    "netdof         - net direct writes (non-queued) off!",
-    "netdbg #       - net library trace level (0-off)",
-    "sqlpool        - on/off/stat/mark #/ # of threads.  fast sql pool thread "
-    "control",
-    "scon/scof      - request report",
-    "erron/erroff   - db error report back to client",
-    "ling #         - set of seconds for idle thread linger",
-    "maxt #         - set max # of threads",
-    "maxwt #        - set max # of writer threads",
-    "maxq #         - set max # of items on queue",
-    "sync <full|normal|source|none> - sync parameters (sync he for more)",
-    "electtime #    - override timeout for elections in seconds,",
-    "                 0 for no override",
-    "delay #        - set commit delay in ms; use this to throttle the write "
-    "rate",
-    "delaymax #     - set maximum commit delay in ms; this is the max delay "
-    "that",
-    "                 the master will set automatically at the request of "
-    "replicants",
-    "allow ...      - same format as in lrl file",
-    "disallow ...   - same format as in lrl file",
+static const char *HELP_MAIN[] = {"stat           - status report",
+                                  "async ...      - execute mtrap asynchronously",
+                                  "detach_mtrap   - detach currently running mtrap thread",
+                                  "crash          - crash the database",
+                                  "cton           - use constraint logic",
+                                  "ctof           - stop using constraint logic",
+                                  "debg #         - operation debugging",
+                                  "who #          - who debugging",
+                                  "meta ...       - meta db debugging",
+                                  "netdon         - net direct writes (non-queued) on!",
+                                  "netdof         - net direct writes (non-queued) off!",
+                                  "netdbg #       - net library trace level (0-off)",
+                                  "sqlpool        - on/off/stat/mark #/ # of threads.  fast sql pool thread "
+                                  "control",
+                                  "scon/scof      - request report",
+                                  "erron/erroff   - db error report back to client",
+                                  "ling #         - set of seconds for idle thread linger",
+                                  "maxt #         - set max # of threads",
+                                  "maxwt #        - set max # of writer threads",
+                                  "maxq #         - set max # of items on queue",
+                                  "sync <full|normal|source|none> - sync parameters (sync he for more)",
+                                  "electtime #    - override timeout for elections in seconds,",
+                                  "                 0 for no override",
+                                  "delay #        - set commit delay in ms; use this to throttle the write "
+                                  "rate",
+                                  "delaymax #     - set maximum commit delay in ms; this is the max delay "
+                                  "that",
+                                  "                 the master will set automatically at the request of "
+                                  "replicants",
+                                  "allow ...      - same format as in lrl file",
+                                  "disallow ...   - same format as in lrl file",
 #ifdef COMDB2_TEST
-    "semver <vers>  - set semantic version",
+                                  "semver <vers>  - set semantic version",
 #endif
-    "bdb ...        - backend commands", "debug ...      - misc debugging",
-    "blob ...       - blob subsystem commands",
-    "sql ...        - sql subsystem commands",
-    "help stat      - other general status query commands",
-    "help bdb       - database backend commands",
-    "help schema    - schema related commands",
-    "help fstblk    - fstblk commands", "help compr     - compression commands",
-    "help analyze   - analyze commands", "exit           - exit task", NULL};
+                                  "bdb ...        - backend commands",
+                                  "debug ...      - misc debugging",
+                                  "blob ...       - blob subsystem commands",
+                                  "sql ...        - sql subsystem commands",
+                                  "help stat      - other general status query commands",
+                                  "help bdb       - database backend commands",
+                                  "help schema    - schema related commands",
+                                  "help fstblk    - fstblk commands",
+                                  "help compr     - compression commands",
+                                  "help analyze   - analyze commands",
+                                  "exit           - exit task",
+                                  NULL};
 
 static const char *HELP_JAVA[] = {
     "Java stored procedure engine commands:-", "java stat",
@@ -5121,6 +5126,9 @@ clipper_usage:
         bdb_del_seqno(NULL);
     } else if (tokcmp(tok, ltok, "clear_sc_history") == 0) {
         bdb_clear_sc_history();
+    } else if (tokcmp(tok, ltok, "crash") == 0) {
+        logmsg(LOGMSG_ERROR, "Crashing db as requested\n");
+        abort();
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;
