@@ -432,6 +432,12 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
         /* find the next valid commit (prev_lsn of DB___txn_regop points to
          * DB_llog_ltran_commit) */
         while (1) {
+            if (bdb_lock_desired(bdb_state)) {
+                logmsg(LOGMSG_ERROR, "bdb-lock desired, halting serial check\n");
+                logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
+                rc = -99;
+                goto done;
+            }
             if (logdta.data) {
                 free(logdta.data);
                 logdta.data = NULL;
