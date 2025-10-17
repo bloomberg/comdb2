@@ -1538,9 +1538,6 @@ void bdb_bdblock_debug_init(bdb_state_type *bdb_state);
 bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                               int maxkey, int *bdberr);
 
-void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
-                           const void *args, unsigned int rectype);
-
 int update_shadows_beforecommit(bdb_state_type *bdb_state, DB_LSN *lsn,
                                 unsigned long long *commit_genid,
                                 int is_master);
@@ -1751,9 +1748,6 @@ extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
 
 extern int gbl_rowlocks;
-extern int gbl_new_snapisol;
-extern int gbl_new_snapisol_asof;
-extern int gbl_new_snapisol_logging;
 extern int gbl_early;
 extern int gbl_modsnap;
 extern int gbl_udp;

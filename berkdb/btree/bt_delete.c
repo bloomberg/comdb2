@@ -230,9 +230,6 @@ __bam_adjindx(dbc, h, indx, indx_copy, is_insert)
 
 unsigned int hash_fixedwidth(const unsigned char *genid);
 
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 /*
  * __bam_dpages --
  *	Delete a set of locked pages.
@@ -477,13 +474,6 @@ err:		for (; epg <= cp->csp; ++epg) {
 				PGNO(parent), RE_NREC(parent), &b,
 				&parent->lsn)) != 0)
 				goto stop;
-			if (bdb_relink_pglogs(dbp->dbenv->app_private,
-				mpf->fileid, PGNO(child), PGNO(parent),
-				PGNO_INVALID, child->lsn) != 0) {
-				logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n",
-					__func__);
-				abort();
-			}
 		} else
 			LSN_NOT_LOGGED(child->lsn);
 

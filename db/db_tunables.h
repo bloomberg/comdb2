@@ -232,12 +232,6 @@ REGISTER_TUNABLE("disable_inplace_blobs", "Disables 'enable_inplace_blobs'",
 REGISTER_TUNABLE("disable_lowpri_snapisol", "Disables 'enable_lowpri_snapisol'",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
-/*
-REGISTER_TUNABLE("disable_new_snapshot",
-                 "Disables 'enable_new_snapshot'", TUNABLE_BOOLEAN,
-                 &gbl_new_snapisol, INVERSE_VALUE | READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
-*/
 REGISTER_TUNABLE("disable_osql_blob_optimization",
                  "Disables 'enable_osql_blob_optimization'", TUNABLE_BOOLEAN,
                  &gbl_osql_blob_optimization, INVERSE_VALUE | READONLY | NOARG,
@@ -461,22 +455,6 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  "state. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
-
-/*
-REGISTER_TUNABLE("enable_new_snapshot",
-                 "Enable new SNAPSHOT implementation. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE(
-    "enable_new_snapshot_asof",
-    "Enable new BEGIN TRANSACTION AS OF implementation. (Default: off)",
-    TUNABLE_BOOLEAN, &gbl_new_snapisol_asof, READONLY | NOARG, NULL, NULL, NULL,
-    NULL);
-REGISTER_TUNABLE("enable_new_snapshot_logging",
-                 "Enable alternate logging scheme. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol_logging, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
-*/
 REGISTER_TUNABLE("enable_osql_blob_optimization",
                  "Replicant tracks which columns are modified in a transaction "
                  "to allow blob updates to be ommitted if possible. (Default: "
