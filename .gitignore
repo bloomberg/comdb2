@@ -19,6 +19,7 @@ cdb2jdbc/target/**
 cdb2jdbc/maven.m2/**
 cdb2jdbc/.gradle/**
 cdb2jdbc/build/**
+settings.xml
 
 # hibernate dialect
 contrib/cdb2hibernatedialect/.gradle/**
