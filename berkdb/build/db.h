@@ -689,8 +689,14 @@ struct __db_log_cursor {
 #define DB_LOG_NO_PANIC		0x08    /* Don't panic on error. */
 #define DB_LOG_CUSTOM_SIZE  0x10    /* This cursor has a custom size */
 	u_int32_t flags;
-    struct __db_log_cursor *next;
-    struct __db_log_cursor *prev;
+	pthread_t tid; /* Thread ID owner */
+#if INSTRUMENT_LOG_CURSOR
+#define LOG_CURSOR_MAXBYTE 16384
+	char logc_cursor_open_stack[LOG_CURSOR_MAXBYTE];
+#endif
+	int64_t log_cursor_gen;
+	struct __db_log_cursor *next;
+	struct __db_log_cursor *prev;
 };
 
 /* Log statistics structure. */
@@ -1414,7 +1420,7 @@ typedef enum {
 #define DB_LOCK_DEADLOCK_CUSTOM	(-31001)/* Deadlock on custom log record.  */
 
 #define  DB_REP_STALEMASTER	(-31002) /* mismatch client/master identities */
-
+#define DB_LOG_TRUNCATED (-31003) /* the transaction log was truncated */
 
 /* DB (private) error return codes. */
 #define DB_IGNORED			(-30900) /* Ignore logging to this btree */
@@ -2782,6 +2788,8 @@ struct __db_env {
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
 	pthread_rwlock_t recoverlk;
+	pthread_rwlock_t loglk;
+	int64_t log_cursor_gen;
 	DB_LSN recovery_start_lsn;
 	int (*get_recovery_lsn) __P((DB_ENV*, DB_LSN*));
 	int (*set_recovery_lsn) __P((DB_ENV*, DB_LSN*));
