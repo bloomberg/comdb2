@@ -1607,7 +1607,7 @@ done:
 			/* We are going to truncate, so we'd best close the cursor. */
 			if (logc != NULL && (ret = __log_c_close(logc)) != 0)
 				goto err;
-
+			logc = NULL;
 			__log_vtruncate(dbenv, max_lsn, &region->last_ckp, trunclsn);
 
 			invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(dbenv, *trunclsn);
@@ -1623,7 +1623,7 @@ done:
 		 * truncated the log, we need to recompute from where the
 		 * openfiles pass should begin.
 		 */
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		if (logc == NULL && (ret = __log_cursor(dbenv, &logc)) != 0)
 			goto err;
 		if ((ret = __log_c_get(logc, &first_lsn, &data, DB_FIRST)) != 0) {
 			if (ret == DB_NOTFOUND)

@@ -58,6 +58,8 @@ struct tranlog_cursor {
   DB_LSN minLsn;             /* Minimum LSN */
   DB_LSN maxLsn;             /* Maximum LSN */
   DB_LSN blockLsn;           /* Block until this LSN */
+  char *record;
+  int reclen;
   char *minLsnStr;
   char *maxLsnStr;
   char *curLsnStr;
@@ -65,7 +67,6 @@ struct tranlog_cursor {
   int flags;           /* 1 if we should block */
   int hitLast;
   int notDurable;
-  int openCursor;
   int startAppRecGen;
   int starttime;
   int timeout;
@@ -113,13 +114,8 @@ static int tranlogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
 
 static int tranlogClose(sqlite3_vtab_cursor *cur){
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
-  if (pCur->openCursor) {
-      assert(pCur->logc);
-      pCur->logc->close(pCur->logc, 0);
-      pCur->openCursor = 0;
-  }
-  if (pCur->data.data)
-      free(pCur->data.data);
+  if (pCur->record)
+      free(pCur->record);
   if (pCur->minLsnStr)
       sqlite3_free(pCur->minLsnStr);
   if (pCur->maxLsnStr)
@@ -153,7 +149,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   DB_LSN durable_lsn = {0};
   uint32_t durable_gen=0, rc, getflags;
   bdb_state_type *bdb_state = thedb->bdb_env;
-
+  
   if (pCur->notDurable || pCur->hitLast)
       return SQLITE_OK;
 
@@ -162,17 +158,16 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
       return SQLITE_OK;
   }
 
-  if (!pCur->openCursor) {
-      if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0))
-              != 0) {
-          logmsg(LOGMSG_ERROR, "%s line %d error getting a log cursor rc=%d\n",
-                  __func__, __LINE__, rc);
-          return SQLITE_INTERNAL;
-      }
-      pCur->logc->setflags(pCur->logc, DB_LOG_SILENT_ERR);
-      pCur->openCursor = 1;
-      pCur->data.flags = DB_DBT_REALLOC;
+  if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0))
+          != 0) {
+      logmsg(LOGMSG_ERROR, "%s line %d error getting a log cursor rc=%d\n",
+              __func__, __LINE__, rc);
+      return SQLITE_INTERNAL;
+  }
+  pCur->logc->setflags(pCur->logc, DB_LOG_SILENT_ERR);
+  pCur->data.flags = DB_DBT_REALLOC;
 
+  if (pCur->curLsn.file == 0) {
       if (pCur->minLsn.file == 0) {
           getflags = DB_FIRST;
       } else {
@@ -186,6 +181,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
           }
       }
   } else {
+      /* Reposition cursor */
+      pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_SET);
       getflags = (pCur->flags & TRANLOG_FLAGS_DESCENDING) ? DB_PREV : DB_NEXT;
   }
 
@@ -193,6 +190,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   if ((pCur->flags & TRANLOG_FLAGS_DURABLE) && getflags == DB_FIRST) {
       if (pCur->logc->get(
           pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
+          pCur->logc->close(pCur->logc, 0);
+          pCur->logc = NULL;
           logmsg(LOGMSG_ERROR, "%s line %d error getting a log record rc=%d\n",
                   __func__, __LINE__, rc);
           return SQLITE_INTERNAL;
@@ -226,6 +225,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
           if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
               pCur->hitLast = 1;
               pCur->notDurable = 1;
+              pCur->logc->close(pCur->logc, 0);
+              pCur->logc = NULL;
               return SQLITE_OK;
           }
 
@@ -248,6 +249,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
           logmsg(LOGMSG_ERROR, "%s line %d did not expect logc->get to fail with flag: %d."
                                "got rc %d\n",
                   __func__, __LINE__, getflags, rc);
+          pCur->logc->close(pCur->logc, 0);
+          pCur->logc = NULL;
           return SQLITE_INTERNAL;
       }
 
@@ -259,17 +262,24 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
           do {
               /* Tick up. Return an error if sql_tick() fails
                  (peer dropped connection, max query time reached, etc.) */
-              if ((rc = comdb2_sql_tick()) != 0)
+              if ((rc = comdb2_sql_tick()) != 0) {
+                  pCur->logc->close(pCur->logc, 0);
+                  pCur->logc = NULL;
                   return rc;
+              }
 
               if (pCur->blockLsn.file > 0 &&
                       log_compare(&pCur->curLsn, &pCur->blockLsn) >= 0) {
                   pCur->hitLast = 1;
+                  pCur->logc->close(pCur->logc, 0);
+                  pCur->logc = NULL;
                   return SQLITE_OK;
               }
 
               if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
                   pCur->hitLast = 1;
+                  pCur->logc->close(pCur->logc, 0);
+                  pCur->logc = NULL;
                   return SQLITE_OK;
               }
 
@@ -278,6 +288,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
                       logmsg(LOGMSG_DEBUG, "%s: returning after poll for %d seconds\n",
                               __func__, gbl_tranlog_maxpoll);
                       pCur->hitLast = 1;
+                      pCur->logc->close(pCur->logc, 0);
+                      pCur->logc = NULL;
                       return SQLITE_OK;
                   }
               }
@@ -292,12 +304,16 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
                       logmsg(LOGMSG_DEBUG, "%s: incoherent for %d seconds\n",
                               __func__, gbl_tranlog_incoherent_timeout);
                       pCur->hitLast = 1;
+                      pCur->logc->close(pCur->logc, 0);
+                      pCur->logc = NULL;
                       return SQLITE_OK;
                   }
               }
 
               if (db_is_exiting() || pCur->startAppRecGen != gbl_apprec_gen) {
                     pCur->hitLast = 1;
+                    pCur->logc->close(pCur->logc, 0);
+                    pCur->logc = NULL;
                     return SQLITE_OK;
               }
 
@@ -326,6 +342,13 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
       }
   }
 
+  /* Copy record */
+  pCur->record = sqlite3_realloc(pCur->record, pCur->data.size);
+  memcpy(pCur->record, pCur->data.data, pCur->data.size);
+  pCur->reclen = pCur->data.size;
+
+  pCur->logc->close(pCur->logc, 0);
+  pCur->logc = NULL;
   pCur->iRowid++;
   return SQLITE_OK;
 }
@@ -583,10 +606,10 @@ static int tranlogColumn(
         sqlite3_result_text(ctx, pCur->maxLsnStr, -1, NULL);
         break;
     case TRANLOG_COLUMN_MAXUTXNID: 
-        if (pCur->data.data) {
-            LOGCOPY_32(&rectype, pCur->data.data); 
+        if (pCur->record) {
+            LOGCOPY_32(&rectype, pCur->record); 
             if (rectype == DB___txn_ckp+2000 || rectype == DB___txn_ckp_recovery+2000) {
-                LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+                LOGCOPY_64(&maxutxnid, &((char*)pCur->record)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
                 sqlite3_result_int64(ctx, maxutxnid);
                 break;
             } 
@@ -614,34 +637,34 @@ static int tranlogColumn(
         sqlite3_result_text(ctx, pCur->curLsnStr, -1, NULL);
         break;
     case TRANLOG_COLUMN_RECTYPE:
-        if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); 
+        if (pCur->record)
+            LOGCOPY_32(&rectype, pCur->record); 
         sqlite3_result_int64(ctx, rectype);
         break;
     case TRANLOG_COLUMN_GENERATION:
-        if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); 
+        if (pCur->record)
+            LOGCOPY_32(&rectype, pCur->record); 
 
         normalize_rectype(&rectype);
 
         if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize){
-            generation = get_generation_from_regop_gen_record(pCur->data.data);
+            generation = get_generation_from_regop_gen_record(pCur->record);
         }
 
         if (rectype == DB___txn_dist_commit){
-            generation = get_generation_from_dist_commit_record(pCur->data.data);
+            generation = get_generation_from_dist_commit_record(pCur->record);
         }
 
         if (rectype == DB___txn_dist_abort){
-            generation = get_generation_from_dist_abort_record(pCur->data.data);
+            generation = get_generation_from_dist_abort_record(pCur->record);
         }
 
         if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
-            generation = get_generation_from_regop_rowlocks_record(pCur->data.data);
+            generation = get_generation_from_regop_rowlocks_record(pCur->record);
         }
 
         if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
-            generation = get_generation_from_ckp_record(pCur->data.data);
+            generation = get_generation_from_ckp_record(pCur->record);
         }
 
         if (generation > 0) {
@@ -651,14 +674,14 @@ static int tranlogColumn(
         }
         break;
     case TRANLOG_COLUMN_TXNID:
-        LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+        LOGCOPY_32(&txnid, &((char *) pCur->record)[4]); 
         sqlite3_result_int64(ctx, txnid);
         break;
     case TRANLOG_COLUMN_UTXNID:
-        if (pCur->data.data) {
-            LOGCOPY_32(&rectype, pCur->data.data); 
+        if (pCur->record) {
+            LOGCOPY_32(&rectype, pCur->record); 
             if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]); 
+                LOGCOPY_64(&utxnid, &((char *) pCur->record)[4 + 4 + 8]); 
                 sqlite3_result_int64(ctx, utxnid);
                 break;
             }
@@ -666,34 +689,34 @@ static int tranlogColumn(
         sqlite3_result_null(ctx);
         break;
     case TRANLOG_COLUMN_TIMESTAMP:
-        if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); 
+        if (pCur->record)
+            LOGCOPY_32(&rectype, pCur->record); 
 
         if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
             rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
-            timestamp = get_timestamp_from_regop_gen_record(pCur->data.data);
+            timestamp = get_timestamp_from_regop_gen_record(pCur->record);
         }
 
         if (rectype == DB___txn_dist_commit || (rectype == DB___txn_dist_commit+2000)){
-            timestamp = get_timestamp_from_dist_commit_record(pCur->data.data);
+            timestamp = get_timestamp_from_dist_commit_record(pCur->record);
         }
 
         if (rectype == DB___txn_dist_abort || (rectype == DB___txn_dist_abort+2000)){
-            timestamp = get_timestamp_from_dist_abort_record(pCur->data.data);
+            timestamp = get_timestamp_from_dist_abort_record(pCur->record);
         }
 
         if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
             rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
-            timestamp = get_timestamp_from_regop_rowlocks_record(pCur->data.data);
+            timestamp = get_timestamp_from_regop_rowlocks_record(pCur->record);
         }
 
         if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
-            timestamp = get_timestamp_from_regop_record(pCur->data.data);
+            timestamp = get_timestamp_from_regop_record(pCur->record);
         }
 
 		if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000) ||
 			rectype == DB___txn_ckp_recovery || (rectype == DB___txn_ckp_recovery+2000)) {
-			timestamp = get_timestamp_from_ckp_record(pCur->data.data);
+			timestamp = get_timestamp_from_ckp_record(pCur->record);
 		}
 
         if (timestamp > 0) {
@@ -703,21 +726,21 @@ static int tranlogColumn(
         }
         break;
     case TRANLOG_COLUMN_LOG:
-        sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
+        sqlite3_result_blob(ctx, pCur->record, pCur->reclen, NULL);
         break;
     case TRANLOG_COLUMN_CHILDUTXNID:
-        if (pCur->data.data)
-                LOGCOPY_32(&rectype, pCur->data.data);
+        if (pCur->record)
+            LOGCOPY_32(&rectype, pCur->record);
 
         if (rectype == DB___txn_child+2000 || rectype == DB___txn_child+3000)
         { 
-                LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[4 + 4 + 8 + 8 + 4]); 
+            LOGCOPY_64(&childutxnid, &((char *) pCur->record)[4 + 4 + 8 + 8 + 4]); 
         }
 
         if (childutxnid > 0) {
-                sqlite3_result_int64(ctx, childutxnid);
+            sqlite3_result_int64(ctx, childutxnid);
         } else {
-                sqlite3_result_null(ctx);
+            sqlite3_result_null(ctx);
         }
         break;
     case TRANLOG_COLUMN_LSN_FILE:
@@ -749,9 +772,10 @@ static int tranlogEof(sqlite3_vtab_cursor *cur){
   int rc;
 
   /* If we are not positioned, position now */
-  if (pCur->openCursor == 0) {
-      if ((rc=tranlogNext(cur)) != SQLITE_OK)
+  if (pCur->curLsn.file == 0) {
+      if ((rc=tranlogNext(cur)) != SQLITE_OK) {
           return rc;
+      }
   }
   if (pCur->hitLast || pCur->notDurable)
       return 1;
