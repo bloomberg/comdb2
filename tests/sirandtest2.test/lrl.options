@@ -4,4 +4,5 @@ dtastripe 4
 blobstripe
 round_robin_stripes
 enable_snapshot_isolation
+enable_serial_isolation
 ssl_client_mode OPTIONAL
