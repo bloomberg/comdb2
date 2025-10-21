@@ -4723,6 +4723,8 @@ void *statthd(void *p)
     const struct berkdb_thread_stats *pstats;
     char lastlsn[63] = "", curlsn[64];
     uint64_t lastlsnbytes = 0, curlsnbytes;
+    bdb_get_cur_lsn_str(thedb->bdb_env, &lastlsnbytes, lastlsn, sizeof(lastlsn));
+
     int ii;
     int jj;
     int thresh;
