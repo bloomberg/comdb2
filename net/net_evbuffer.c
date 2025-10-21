@@ -3554,8 +3554,8 @@ static void setup_bases(void)
             gettimeofday(&appsock_tick[i], NULL);
             char thdname[16];
             snprintf(thdname, sizeof(thdname), "appsock:%d", i);
-            //priorities: 0 => timer-tick;  1 => free-connection;  2 => process-connection
-            init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 3, &appsock_tick[i]);
+            //priorities: 0 => timer-tick;  1 => free-connection;  2 => process-connection; 2 => Default priority
+            init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 4, &appsock_tick[i]);
         }
     } else {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
