@@ -537,13 +537,25 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     rc = open_temp_db_resume(iq, newdb, new_prefix, s->resume, 0, tran);
     if (rc) {
+        if (rc == BDBERR_EXCEEDED_BLOBS) {
+            sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
+            reqerrstr(iq, ERR_SC, "Maximum number of vutf8/blob fields exceeded\n");
+            rc = SC_BDB_ERROR;
+        } else if (rc == BDBERR_EXCEEDED_INDEXES) {
+            sc_errf(s, "Maximum number of indexes exceeded\n");
+            reqerrstr(iq, ERR_SC, "Maximum number of indexes exceeded\n");
+            rc = SC_BDB_ERROR;
+        } else {
+            sc_errf(s, "failed opening new db\n");
+            reqerrstr(iq, ERR_SC, "failed opening new db\n");
+            rc = -1;
+        }
         /* todo: clean up db */
-        sc_errf(s, "failed opening new db\n");
         change_schemas_recover(s->tablename);
         if (local_lock)
             unlock_schema_lk();
         decrement_sc_yet_to_resume_counter();
-        return -1;
+        return rc;
     }
 
     if (verify_new_temp_sc_db(db, newdb, tran)) {

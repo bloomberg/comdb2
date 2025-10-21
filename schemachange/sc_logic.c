@@ -1442,7 +1442,7 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int r
                    tmpname, bdberr);
 
             free(tmpname);
-            return -1;
+            return bdberr;
         }
 
         if (tmp_tran != tran) {
