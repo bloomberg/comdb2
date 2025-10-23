@@ -380,7 +380,7 @@ static char *cdb2_type_str(int type)
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
-static SBUF2 *sbuf2openread(const char *filename)
+SBUF2 *sbuf2openread(const char *filename)
 {
     int fd;
     SBUF2 *s;
@@ -560,7 +560,7 @@ static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno)
+int read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno)
 {
     int ch = get_char(s, buf, chrno);
     while (ch == ' ' || ch == '\n')
@@ -3807,7 +3807,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
     } else if (iam_identity && identity_cb && (hndl && (hndl->flags & CDB2_SQL_ROWS) == 0)) {
-        id_blob = identity_cb->getIdentity();
+        id_blob = identity_cb->getIdentity(hndl, 0); // TODO: optional value choice
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
         }

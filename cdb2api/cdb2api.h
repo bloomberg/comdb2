@@ -339,7 +339,7 @@ int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f);
 struct cdb2_identity {
     void  (*resetIdentity_start)();
     void  (*resetIdentity_end)(int);
-    void *(*getIdentity)();
+    void *(*getIdentity)(cdb2_hndl_tp *, int);
 };
 
 #if defined __cplusplus
