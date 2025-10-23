@@ -52,9 +52,9 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "explain query plan SELECT t1.* FROM t1,
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "SELECT t1.* FROM t1,t2 order by t1.k" &>> sel2.res
 
 
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "explain query plan SELECT t1.* FROM t1,t2,t2 order by t1.k" &> sel3.res
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "explain query plan SELECT t1.* FROM t1,t2,t2,t2 order by t1.k" &> sel3.res
 set +e
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "SELECT t1.* FROM t1,t2,t2 order by t1.k" &> err.res
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "SELECT t1.* FROM t1,t2,t2,t2 order by t1.k" &> err.res
 rc=$?
 
 if [ $rc == 0 ] || ! diff err.expected err.res ; then
