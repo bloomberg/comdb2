@@ -3019,7 +3019,13 @@ retry_newsql_connect:
 
     if (fd < 0) {
         if (port <= 0) {
-            port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
+            if (!cdb2_allow_pmux_route)
+                port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
+            else {
+                /* cdb2portmux_route() works without the assignment. We do it here to make it clear
+                   that we will be connecting directly to portmux on this host. */
+                port = CDB2_PORTMUXPORT;
+            }
             hndl->ports[idx] = port;
         }
 
