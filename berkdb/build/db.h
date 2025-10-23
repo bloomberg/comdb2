@@ -689,8 +689,13 @@ struct __db_log_cursor {
 #define DB_LOG_NO_PANIC		0x08    /* Don't panic on error. */
 #define DB_LOG_CUSTOM_SIZE  0x10    /* This cursor has a custom size */
 	u_int32_t flags;
-    struct __db_log_cursor *next;
-    struct __db_log_cursor *prev;
+	pthread_t tid; /* Thread ID owner */
+#if INSTRUMENT_LOG_CURSOR
+#define LOG_CURSOR_MAXBYTE 16384
+	char logc_cursor_open_stack[LOG_CURSOR_MAXBYTE];
+#endif
+	struct __db_log_cursor *next;
+	struct __db_log_cursor *prev;
 };
 
 /* Log statistics structure. */
@@ -2782,6 +2787,7 @@ struct __db_env {
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
 	pthread_rwlock_t recoverlk;
+	pthread_rwlock_t loglk;
 	DB_LSN recovery_start_lsn;
 	int (*get_recovery_lsn) __P((DB_ENV*, DB_LSN*));
 	int (*set_recovery_lsn) __P((DB_ENV*, DB_LSN*));
