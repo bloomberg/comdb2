@@ -88,6 +88,8 @@ extern int gbl_allow_lua_print;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
 
+extern char *tranlevel_toclntstr(int lvl);
+
 pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
 char *gbl_break_spname;
@@ -4788,7 +4790,8 @@ static int register_queue_with_berkdb_and_master(Lua L, const char *type)
         return luaL_error(L, "attempt to run consumer in child thread");
     }
     if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
-        return luaL_error(L, "%s is only supported under default transaction mode", type);
+        logmsg(LOGMSG_WARN, "attempt to run %s in %s mode. Switching to %s\n", type, tranlevel_toclntstr(clnt->dbtran.mode), tranlevel_toclntstr(TRANLEVEL_SOSQL));
+        clnt->dbtran.mode = TRANLEVEL_SOSQL;
     }
 
     dbconsumer_t *consumer;
