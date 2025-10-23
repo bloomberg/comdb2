@@ -4848,233 +4848,191 @@ void *statthd(void *p)
         if (count % gbl_update_metrics_interval == 0)
             update_metrics();
 
-        if (!get_schema_change_in_progress(__func__, __LINE__)) {
-            thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
-                strbuf *logstr = strbuf_new();
-                diff_qtrap = nqtrap - last_report_nqtrap;
-                diff_fstrap = nfstrap - last_report_nfstrap;
-                diff_nsql = nsql - last_report_nsql;
-                diff_nsql_steps = nsql_steps - last_report_nsql_steps;
-                diff_newsql = newsql - last_report_newsql;
-                int diff_newsql_steps = newsql_steps - last_report_newsql_steps;
-                diff_nretries = nretries - last_report_nretries;
-                diff_ncommits = ncommits - last_report_ncommits;
-                diff_ncommit_time = ncommit_time - last_report_ncommit_time;
+        thresh = reqlog_diffstat_thresh();
+        if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
+            strbuf *logstr = strbuf_new();
+            diff_qtrap = nqtrap - last_report_nqtrap;
+            diff_fstrap = nfstrap - last_report_nfstrap;
+            diff_nsql = nsql - last_report_nsql;
+            diff_nsql_steps = nsql_steps - last_report_nsql_steps;
+            diff_newsql = newsql - last_report_newsql;
+            int diff_newsql_steps = newsql_steps - last_report_newsql_steps;
+            diff_nretries = nretries - last_report_nretries;
+            diff_ncommits = ncommits - last_report_ncommits;
+            diff_ncommit_time = ncommit_time - last_report_ncommit_time;
 
-                diff_bpool_hits = bpool_hits - last_report_bpool_hits;
-                diff_bpool_misses = bpool_misses - last_report_bpool_misses;
+            diff_bpool_hits = bpool_hits - last_report_bpool_hits;
+            diff_bpool_misses = bpool_misses - last_report_bpool_misses;
 
-                if (diff_qtrap || diff_newsql || diff_nsql || diff_nsql_steps ||
-                    diff_fstrap || diff_bpool_hits || diff_bpool_misses ||
-                    diff_ncommit_time) {
+            if (diff_qtrap || diff_newsql || diff_nsql || diff_nsql_steps || diff_fstrap || diff_bpool_hits ||
+                diff_bpool_misses || diff_ncommit_time) {
 
-                    strbuf_appendf(logstr, "diff");
-                    if (diff_qtrap || diff_nretries) {
-                        strbuf_appendf(logstr, " n_reqs %d n_retries %d",
-                                       diff_qtrap, diff_nretries);
-                    }
-                    if (diff_nsql) {
-                        strbuf_appendf(logstr, " nsql %d", diff_nsql);
-                    }
-                    if (diff_newsql) {
-                        strbuf_appendf(logstr, " newsql %d", diff_newsql);
-                    }
-                    if (diff_nsql_steps) {
-                        strbuf_appendf(logstr, " nsqlsteps %d",
-                                       diff_nsql_steps);
-                    }
-                    if (diff_newsql_steps) {
-                        strbuf_appendf(logstr, " newsqlsteps %d",
-                                       diff_newsql_steps);
-                    }
-                    if (diff_fstrap) {
-                        strbuf_appendf(logstr, " n_fsreqs %d", diff_fstrap);
-                    }
-                    if (diff_ncommit_time && diff_ncommits) {
-                        strbuf_appendf(logstr, " n_commit_time %lld ms",
-                                       diff_ncommit_time /
-                                           (1000 * diff_ncommits));
-                    }
-                    if (diff_bpool_hits) {
-                        strbuf_appendf(logstr, " n_cache_hits %llu",
-                                       (long long unsigned int)diff_bpool_hits);
-                    }
-                    if (diff_bpool_misses) {
-                        strbuf_appendf(
-                            logstr, " n_cache_misses %llu",
-                            (long long unsigned int)diff_bpool_misses);
-                    }
-                    strbuf_appendf(logstr, "\n");
-                    reqlog_logl(statlogger, REQL_INFO, strbuf_buf(logstr));
+                strbuf_appendf(logstr, "diff");
+                if (diff_qtrap || diff_nretries) {
+                    strbuf_appendf(logstr, " n_reqs %d n_retries %d", diff_qtrap, diff_nretries);
                 }
-
-                int aa_include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
-                rdlock_schema_lk();
-                for (ii = 0; ii < dbenv->num_dbs; ++ii) {
-                    dbtable *tbl = dbenv->dbs[ii];
-                    int hdr = 0;
-
-                    for (jj = 0; jj <= MAXTYPCNT; jj++) {
-                        log_tbl_item(tbl->typcnt[jj], &tbl->prev_typcnt[jj], req2a, 
-                                     jj, NULL, &hdr, statlogger, tbl, 1);
-                    }
-
-                    for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
-                        log_tbl_item(tbl->blocktypcnt[jj], &tbl->prev_blocktypcnt[jj],
-                                     breq2a, jj, NULL, &hdr, statlogger, tbl, 0);
-                    }
-                    for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
-                        log_tbl_item(tbl->blockosqltypcnt[jj], &tbl->prev_blockosqltypcnt[jj],
-                                     osql_reqtype_str, jj, NULL, &hdr, statlogger, tbl, 0);
-                    }
-
-                    log_tbl_item(dbenv->txns_committed, &dbenv->prev_txns_committed,
-                                 NULL, 0, "txns committed", &hdr, statlogger, tbl, 0);
-
-                    log_tbl_item(dbenv->txns_aborted, &dbenv->prev_txns_aborted, NULL,
-                                 0, "txns aborted", &hdr, statlogger, tbl, 0);
-
-                    log_tbl_item(tbl->nsql, &tbl->prev_nsql, NULL, 0, "nsql",
-                                 &hdr, statlogger, tbl, 0);
-
-                    // log write_count, save in saved_write_count, compute autoanalyze delta
-                    int64_t prev = tbl->saved_write_count[RECORD_WRITE_DEL] +
-                                    tbl->saved_write_count[RECORD_WRITE_INS];
-                    int64_t curr = tbl->write_count[RECORD_WRITE_DEL] +
-                                    tbl->write_count[RECORD_WRITE_INS];
-
-                    if (aa_include_updates) {
-                        prev += tbl->saved_write_count[RECORD_WRITE_UPD];
-                        curr += tbl->write_count[RECORD_WRITE_UPD];
-                    }
-
-                    ATOMIC_ADD64(tbl->aa_saved_counter, (curr - prev));
-                    log_tbl_item(tbl->write_count[RECORD_WRITE_INS], &tbl->saved_write_count[RECORD_WRITE_INS],
-                                 NULL, 0, "inserted rows", &hdr, statlogger, tbl, 0);
-                    log_tbl_item(tbl->write_count[RECORD_WRITE_UPD], &tbl->saved_write_count[RECORD_WRITE_UPD],
-                                 NULL, 0, "updated rows", &hdr, statlogger, tbl, 0);
-                    log_tbl_item(tbl->write_count[RECORD_WRITE_DEL], &tbl->saved_write_count[RECORD_WRITE_DEL],
-                                 NULL, 0, "deleted rows", &hdr, statlogger, tbl, 0);
-                    log_tbl_item(tbl->casc_write_count, &tbl->saved_casc_write_count,
-                                 NULL, 0, "cascaded upd/del rows", &hdr, statlogger, tbl, 0);
-                    log_tbl_item(tbl->deadlock_count, &tbl->saved_deadlock_count,
-                                 NULL, 0, "deadlock count", &hdr, statlogger, tbl, 0);
+                if (diff_nsql) {
+                    strbuf_appendf(logstr, " nsql %d", diff_nsql);
                 }
-                unlock_schema_lk();
-
-                pstats = bdb_get_process_stats();
-                cur_bdb_stats = *pstats;
-                if (cur_bdb_stats.n_lock_waits > last_bdb_stats.n_lock_waits) {
-                    unsigned nwaits = cur_bdb_stats.n_lock_waits -
-                                      last_bdb_stats.n_lock_waits;
-                    reqlog_logf(statlogger, REQL_INFO,
-                                "%u locks, avg time %ums, worst time %ums\n",
-                                nwaits,
-                                U2M(cur_bdb_stats.lock_wait_time_us -
-                                    last_bdb_stats.lock_wait_time_us) /
-                                    nwaits,
-                                U2M(cur_bdb_stats.worst_lock_wait_time_us));
-                    bb_berkdb_reset_worst_lock_wait_time_us();
+                if (diff_newsql) {
+                    strbuf_appendf(logstr, " newsql %d", diff_newsql);
                 }
-                if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
-                    unsigned npreads =
-                        cur_bdb_stats.n_preads - last_bdb_stats.n_preads;
-                    reqlog_logf(statlogger, REQL_INFO,
-                                "%u preads, %u bytes, avg time %ums\n", npreads,
-                                cur_bdb_stats.pread_bytes -
-                                    last_bdb_stats.pread_bytes,
-                                U2M(cur_bdb_stats.pread_time_us -
-                                    last_bdb_stats.pread_time_us) /
-                                    npreads);
+                if (diff_nsql_steps) {
+                    strbuf_appendf(logstr, " nsqlsteps %d", diff_nsql_steps);
                 }
-                if (cur_bdb_stats.n_pwrites > last_bdb_stats.n_pwrites) {
-                    unsigned npwrites =
-                        cur_bdb_stats.n_pwrites - last_bdb_stats.n_pwrites;
-                    reqlog_logf(statlogger, REQL_INFO,
-                                "%u pwrites, %u bytes, avg time %ums\n",
-                                npwrites, cur_bdb_stats.pwrite_bytes -
-                                              last_bdb_stats.pwrite_bytes,
-                                U2M(cur_bdb_stats.pwrite_time_us -
-                                    last_bdb_stats.pwrite_time_us) /
-                                    npwrites);
+                if (diff_newsql_steps) {
+                    strbuf_appendf(logstr, " newsqlsteps %d", diff_newsql_steps);
                 }
-                if (cur_bdb_stats.n_memp_fgets > last_bdb_stats.n_memp_fgets) {
-                    unsigned n_memp_fgets = cur_bdb_stats.n_memp_fgets -
-                                            last_bdb_stats.n_memp_fgets;
-                    unsigned us = cur_bdb_stats.memp_fget_time_us -
-                                  last_bdb_stats.memp_fget_time_us;
-                    reqlog_logf(statlogger, REQL_INFO,
-                                "n_memp_fgets=%u, memp_fgets avg time=%ums\n",
-                                n_memp_fgets, U2M(us) / n_memp_fgets);
+                if (diff_fstrap) {
+                    strbuf_appendf(logstr, " n_fsreqs %d", diff_fstrap);
                 }
-                if (cur_bdb_stats.n_memp_pgs > last_bdb_stats.n_memp_pgs) {
-                    unsigned n_memp_pgs =
-                        cur_bdb_stats.n_memp_pgs - last_bdb_stats.n_memp_pgs;
-                    unsigned us = cur_bdb_stats.memp_pg_time_us -
-                                  last_bdb_stats.memp_pg_time_us;
-                    reqlog_logf(statlogger, REQL_INFO,
-                                "n_memp_pgs=%u, memp_pgs avg time=%ums\n",
-                                n_memp_pgs, U2M(us) / n_memp_pgs);
+                if (diff_ncommit_time && diff_ncommits) {
+                    strbuf_appendf(logstr, " n_commit_time %lld ms", diff_ncommit_time / (1000 * diff_ncommits));
                 }
-                last_bdb_stats = cur_bdb_stats;
-
-                diff_deadlocks = ndeadlocks - last_report_deadlocks;
-                diff_lockwaits = nlockwaits - last_report_lockwaits;
-                diff_vreplays = vreplays - last_report_vreplays;
-
-                if (diff_deadlocks || diff_lockwaits || diff_vreplays)
-                    reqlog_logf(statlogger, REQL_INFO,
-                                "ndeadlocks %d, nlockwaits %d, vreplays %d, "
-                                "locks aborted %d\n",
-                                diff_deadlocks, diff_lockwaits, diff_vreplays,
-                                diff_locks_aborted);
-
-                bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes, curlsn,
-                                    sizeof(curlsn));
-                if (strcmp(curlsn, lastlsn) != 0) {
-                    reqlog_logf(statlogger, REQL_INFO, "LSN %s diff %llu\n",
-                                curlsn, curlsnbytes - lastlsnbytes);
-                    strncpy0(lastlsn, curlsn, sizeof(lastlsn));
-                    lastlsnbytes = curlsnbytes;
+                if (diff_bpool_hits) {
+                    strbuf_appendf(logstr, " n_cache_hits %llu", (long long unsigned int)diff_bpool_hits);
                 }
-
-                if (conns - last_report_conns || curr_conns) {
-                   reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld current_connections %lld\n", 
-                         conns - last_report_conns,
-                         conn_timeouts - last_report_conn_timeouts,
-                         curr_conns);
+                if (diff_bpool_misses) {
+                    strbuf_appendf(logstr, " n_cache_misses %llu", (long long unsigned int)diff_bpool_misses);
                 }
-
-
-                reqlog_diffstat_dump(statlogger);
-
-                count = 0;
-                last_report_nqtrap = nqtrap;
-                last_report_nfstrap = nfstrap;
-                last_report_nsql = nsql;
-                last_report_nsql_steps = nsql_steps;
-                last_report_newsql = newsql;
-                last_report_newsql_steps = newsql_steps;
-                last_report_nretries = nretries;
-                last_report_bpool_hits = bpool_hits;
-                last_report_bpool_misses = bpool_misses;
-
-                last_report_deadlocks = ndeadlocks;
-                last_report_lockwaits = nlockwaits;
-                last_report_vreplays = vreplays;
-
-                last_report_ncommits = ncommits;
-                last_report_ncommit_time = ncommit_time;
-
-                last_report_conns = conns;
-                last_report_conn_timeouts = conn_timeouts;
-
-                osql_comm_diffstat(statlogger, NULL);
-                strbuf_free(logstr);
-
-                dump_client_sql_data(statlogger, 1);
+                strbuf_appendf(logstr, "\n");
+                reqlog_logl(statlogger, REQL_INFO, strbuf_buf(logstr));
             }
+
+            int aa_include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
+            rdlock_schema_lk();
+            for (ii = 0; ii < dbenv->num_dbs; ++ii) {
+                dbtable *tbl = dbenv->dbs[ii];
+                int hdr = 0;
+
+                for (jj = 0; jj <= MAXTYPCNT; jj++) {
+                    log_tbl_item(tbl->typcnt[jj], &tbl->prev_typcnt[jj], req2a, jj, NULL, &hdr, statlogger, tbl, 1);
+                }
+
+                for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
+                    log_tbl_item(tbl->blocktypcnt[jj], &tbl->prev_blocktypcnt[jj], breq2a, jj, NULL, &hdr, statlogger,
+                                 tbl, 0);
+                }
+                for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
+                    log_tbl_item(tbl->blockosqltypcnt[jj], &tbl->prev_blockosqltypcnt[jj], osql_reqtype_str, jj, NULL,
+                                 &hdr, statlogger, tbl, 0);
+                }
+
+                log_tbl_item(dbenv->txns_committed, &dbenv->prev_txns_committed, NULL, 0, "txns committed", &hdr,
+                             statlogger, tbl, 0);
+
+                log_tbl_item(dbenv->txns_aborted, &dbenv->prev_txns_aborted, NULL, 0, "txns aborted", &hdr, statlogger,
+                             tbl, 0);
+
+                log_tbl_item(tbl->nsql, &tbl->prev_nsql, NULL, 0, "nsql", &hdr, statlogger, tbl, 0);
+
+                // log write_count, save in saved_write_count, compute autoanalyze delta
+                int64_t prev = tbl->saved_write_count[RECORD_WRITE_DEL] + tbl->saved_write_count[RECORD_WRITE_INS];
+                int64_t curr = tbl->write_count[RECORD_WRITE_DEL] + tbl->write_count[RECORD_WRITE_INS];
+
+                if (aa_include_updates) {
+                    prev += tbl->saved_write_count[RECORD_WRITE_UPD];
+                    curr += tbl->write_count[RECORD_WRITE_UPD];
+                }
+
+                ATOMIC_ADD64(tbl->aa_saved_counter, (curr - prev));
+                log_tbl_item(tbl->write_count[RECORD_WRITE_INS], &tbl->saved_write_count[RECORD_WRITE_INS], NULL, 0,
+                             "inserted rows", &hdr, statlogger, tbl, 0);
+                log_tbl_item(tbl->write_count[RECORD_WRITE_UPD], &tbl->saved_write_count[RECORD_WRITE_UPD], NULL, 0,
+                             "updated rows", &hdr, statlogger, tbl, 0);
+                log_tbl_item(tbl->write_count[RECORD_WRITE_DEL], &tbl->saved_write_count[RECORD_WRITE_DEL], NULL, 0,
+                             "deleted rows", &hdr, statlogger, tbl, 0);
+                log_tbl_item(tbl->casc_write_count, &tbl->saved_casc_write_count, NULL, 0, "cascaded upd/del rows",
+                             &hdr, statlogger, tbl, 0);
+                log_tbl_item(tbl->deadlock_count, &tbl->saved_deadlock_count, NULL, 0, "deadlock count", &hdr,
+                             statlogger, tbl, 0);
+            }
+            unlock_schema_lk();
+
+            pstats = bdb_get_process_stats();
+            cur_bdb_stats = *pstats;
+            if (cur_bdb_stats.n_lock_waits > last_bdb_stats.n_lock_waits) {
+                unsigned nwaits = cur_bdb_stats.n_lock_waits - last_bdb_stats.n_lock_waits;
+                reqlog_logf(statlogger, REQL_INFO, "%u locks, avg time %ums, worst time %ums\n", nwaits,
+                            U2M(cur_bdb_stats.lock_wait_time_us - last_bdb_stats.lock_wait_time_us) / nwaits,
+                            U2M(cur_bdb_stats.worst_lock_wait_time_us));
+                bb_berkdb_reset_worst_lock_wait_time_us();
+            }
+            if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
+                unsigned npreads = cur_bdb_stats.n_preads - last_bdb_stats.n_preads;
+                reqlog_logf(statlogger, REQL_INFO, "%u preads, %u bytes, avg time %ums\n", npreads,
+                            cur_bdb_stats.pread_bytes - last_bdb_stats.pread_bytes,
+                            U2M(cur_bdb_stats.pread_time_us - last_bdb_stats.pread_time_us) / npreads);
+            }
+            if (cur_bdb_stats.n_pwrites > last_bdb_stats.n_pwrites) {
+                unsigned npwrites = cur_bdb_stats.n_pwrites - last_bdb_stats.n_pwrites;
+                reqlog_logf(statlogger, REQL_INFO, "%u pwrites, %u bytes, avg time %ums\n", npwrites,
+                            cur_bdb_stats.pwrite_bytes - last_bdb_stats.pwrite_bytes,
+                            U2M(cur_bdb_stats.pwrite_time_us - last_bdb_stats.pwrite_time_us) / npwrites);
+            }
+            if (cur_bdb_stats.n_memp_fgets > last_bdb_stats.n_memp_fgets) {
+                unsigned n_memp_fgets = cur_bdb_stats.n_memp_fgets - last_bdb_stats.n_memp_fgets;
+                unsigned us = cur_bdb_stats.memp_fget_time_us - last_bdb_stats.memp_fget_time_us;
+                reqlog_logf(statlogger, REQL_INFO, "n_memp_fgets=%u, memp_fgets avg time=%ums\n", n_memp_fgets,
+                            U2M(us) / n_memp_fgets);
+            }
+            if (cur_bdb_stats.n_memp_pgs > last_bdb_stats.n_memp_pgs) {
+                unsigned n_memp_pgs = cur_bdb_stats.n_memp_pgs - last_bdb_stats.n_memp_pgs;
+                unsigned us = cur_bdb_stats.memp_pg_time_us - last_bdb_stats.memp_pg_time_us;
+                reqlog_logf(statlogger, REQL_INFO, "n_memp_pgs=%u, memp_pgs avg time=%ums\n", n_memp_pgs,
+                            U2M(us) / n_memp_pgs);
+            }
+            last_bdb_stats = cur_bdb_stats;
+
+            diff_deadlocks = ndeadlocks - last_report_deadlocks;
+            diff_lockwaits = nlockwaits - last_report_lockwaits;
+            diff_vreplays = vreplays - last_report_vreplays;
+
+            if (diff_deadlocks || diff_lockwaits || diff_vreplays)
+                reqlog_logf(statlogger, REQL_INFO,
+                            "ndeadlocks %d, nlockwaits %d, vreplays %d, "
+                            "locks aborted %d\n",
+                            diff_deadlocks, diff_lockwaits, diff_vreplays, diff_locks_aborted);
+
+            bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes, curlsn, sizeof(curlsn));
+            if (strcmp(curlsn, lastlsn) != 0) {
+                reqlog_logf(statlogger, REQL_INFO, "LSN %s diff %llu\n", curlsn, curlsnbytes - lastlsnbytes);
+                strncpy0(lastlsn, curlsn, sizeof(lastlsn));
+                lastlsnbytes = curlsnbytes;
+            }
+
+            if (conns - last_report_conns || curr_conns) {
+                reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld current_connections %lld\n",
+                            conns - last_report_conns, conn_timeouts - last_report_conn_timeouts, curr_conns);
+            }
+
+            reqlog_diffstat_dump(statlogger);
+
+            count = 0;
+            last_report_nqtrap = nqtrap;
+            last_report_nfstrap = nfstrap;
+            last_report_nsql = nsql;
+            last_report_nsql_steps = nsql_steps;
+            last_report_newsql = newsql;
+            last_report_newsql_steps = newsql_steps;
+            last_report_nretries = nretries;
+            last_report_bpool_hits = bpool_hits;
+            last_report_bpool_misses = bpool_misses;
+
+            last_report_deadlocks = ndeadlocks;
+            last_report_lockwaits = nlockwaits;
+            last_report_vreplays = vreplays;
+
+            last_report_ncommits = ncommits;
+            last_report_ncommit_time = ncommit_time;
+
+            last_report_conns = conns;
+            last_report_conn_timeouts = conn_timeouts;
+
+            osql_comm_diffstat(statlogger, NULL);
+            strbuf_free(logstr);
+
+            dump_client_sql_data(statlogger, 1);
         }
 
         if (gbl_repscore)
