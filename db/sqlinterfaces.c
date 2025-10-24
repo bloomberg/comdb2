@@ -1706,6 +1706,29 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     log_queue_time(thd->logger, clnt);
 }
 
+int cache_table_versions(struct sqlclntstate *clnt)
+{
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
+    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed initialize table verison cache rc=%d\n", __func__, rc);
+        return rc;
+    }
+
+    int bdberr;
+    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to cache table versions rc=%d bdberr=%d\n", __func__, rc, bdberr);
+        return rc;
+    }
+
+    return 0;
+}
+
 int start_modsnap_transaction(struct sqlclntstate *clnt)
 {
     struct dbtable *db = &thedb->static_table;
@@ -1725,6 +1748,11 @@ int start_modsnap_transaction(struct sqlclntstate *clnt)
                              clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
                              &clnt->modsnap_registration)) {
         logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
+        return 1;
+    }
+
+    if (cache_table_versions(clnt)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
         return 1;
     }
 
