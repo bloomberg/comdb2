@@ -852,7 +852,6 @@ static void *table_thread(void *arg)
     ctrace("analyze_table_int: Table %s, rc = %d\n", td->table, rc);
     /* mark the return */
     if (0 == rc) {
-        td->table_state = TABLE_COMPLETE;
         if (thedb->master == gbl_myhostname) { // reset directly
             ctrace("analyze: Analyzed Table %s, reseting counter to 0\n", td->table);
             reset_aa_counter(td->table);
@@ -860,6 +859,7 @@ static void *table_thread(void *arg)
             ctrace("analyze: Analyzed Table %s, msg to master to reset counter to 0\n", td->table);
             bdb_send_analysed_table_to_master(thedb->bdb_env, td->table);
         }
+        td->table_state = TABLE_COMPLETE;
     } else if (TABLE_SKIPPED == rc) {
         td->table_state = TABLE_SKIPPED;
     } else {
