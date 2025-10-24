@@ -1707,6 +1707,32 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     log_queue_time(thd->logger, clnt);
 }
 
+int start_modsnap_transaction(struct sqlclntstate *clnt)
+{
+    struct dbtable *db = &thedb->static_table;
+    assert(db->handle);
+
+    if (clnt->is_hasql_retry) {
+        get_snapshot(clnt, (int *)&clnt->modsnap_start_lsn_file, (int *)&clnt->modsnap_start_lsn_offset);
+    }
+    if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
+                                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
+                                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
+        return 1;
+    }
+
+    if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
+                             clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
+                             &clnt->modsnap_registration)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
+        return 1;
+    }
+
+    clnt->modsnap_in_progress = 1;
+    return 0;
+}
+
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
@@ -1734,27 +1760,9 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     /* Latch the last commit LSN */
-    struct dbtable *db = &thedb->static_table;
-    assert(db->handle);
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
-        if (clnt->is_hasql_retry) {
-            get_snapshot(clnt, (int *) &clnt->modsnap_start_lsn_file, (int *) &clnt->modsnap_start_lsn_offset);
-        }
-        if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
-                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, 
-                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
-            rc = SQLITE_INTERNAL;
-            goto done;
-        }
-
-        if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
-                   clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
-            rc = SQLITE_INTERNAL;
-            goto done;
-        }
-        clnt->modsnap_in_progress = 1;
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (start_modsnap_transaction(clnt) != 0)) {
+        rc = SQLITE_INTERNAL;
+        goto done;
     }
 
     if (clnt->osql.replay)
