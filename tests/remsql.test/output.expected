@@ -19,7 +19,7 @@
 (a=3, b=3)
 (TEST='REMSQL DEDUP TEST 3')
 (a=0, b=0)
-(a=0, b=3)
+(a=3, b=3)
 (rows inserted=1)
 (hint='inserted 3 records from remote to source; source should have 3 records')
 (COUNT(*)=3)

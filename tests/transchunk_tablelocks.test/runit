@@ -21,6 +21,7 @@ echo "Starting" > $outlog
 echo "Inserting 20 rows in 2 chunks, will alter the table after first chunk"
 echo "Inserting 20 rows in 2 chunks, will alter the table after first chunk" >> $outlog
 $r >> $outlog 2>&1 << "EOF" &
+set transaction blocksql
 set transaction chunk 10
 begin
 insert into t select value from generate_series(1, 20)
@@ -55,6 +56,7 @@ $rt "select * from t order by a" >> $outlog
 echo "Deleting the rows, will drop the table after first chunk"
 echo "Deleting the rows, will drop the table after first chunk" >> $outlog
 $r >> $outlog 2>&1 << "EOF" &
+set transaction blocksql
 set transaction chunk 10
 begin
 delete from t where 1

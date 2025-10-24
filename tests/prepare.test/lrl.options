@@ -19,3 +19,5 @@ dtastripe 1
 utxnid_log on
 ufid_log on
 block_set_commit_genid_trace 1
+
+sql_tranlevel_default blocksock
