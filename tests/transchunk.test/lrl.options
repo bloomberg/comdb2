@@ -1,3 +1,4 @@
 dbnum 123
 table t t.csc2
 table t2 t2.csc2
+sql_tranlevel_default blocksock

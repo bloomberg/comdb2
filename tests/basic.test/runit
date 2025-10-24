@@ -258,9 +258,7 @@ if ! diff  dupins4.out dupins4.exp; then
 fi
 
 
-if echo $DBNAME | grep 'snapshot\|rowlocks' ; then
-  cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
-fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
 
 assertcnt t2 2
 do_verify t2
