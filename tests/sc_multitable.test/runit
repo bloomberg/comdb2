@@ -37,6 +37,7 @@ if (( $? != 0 )) ; then
 fi
 
 cdb2sql ${CDB2_OPTIONS} $dbname default >> $OUT <<EOF
+set transaction blocksql
 set transaction chunk 10000
 begin
 insert into ${VIEW1} select * from  generate_series(1,100000)
@@ -97,6 +98,7 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 cdb2sql ${CDB2_OPTIONS} $dbname default >> $OUT <<EOF
+set transaction blocksql
 set transaction chunk 1000
 begin
 insert into '\$14_CC37A197' (a) select * from  generate_series(1,1000000)

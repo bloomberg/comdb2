@@ -45,6 +45,8 @@ void run1(cdb2_hndl_tp *hndl)
 void run2(cdb2_hndl_tp *hndl)
 {
     int rc;
+    rc = cdb2_run_statement(hndl, "set transaction blocksql");
+    assert(rc == 0);
     rc = cdb2_run_statement(hndl, "set transaction chunk 1000");
     assert(rc == 0);
     rc = cdb2_run_statement(hndl, "begin");
@@ -55,11 +57,15 @@ void run2(cdb2_hndl_tp *hndl)
     if (rc)
         fprintf(stderr, "Failed with rc: %d: err:%s\n", rc, cdb2_errstr(hndl));
     assert(rc == 0);
+    rc = cdb2_run_statement(hndl, "set transaction snapshot");
+    assert(rc == 0);
 }
 
 void run3(cdb2_hndl_tp *hndl)
 {
     int rc;
+    rc = cdb2_run_statement(hndl, "set transaction blocksql");
+    assert(rc == 0);
     rc = cdb2_run_statement(hndl, "set transaction chunk 1000");
     assert(rc == 0);
     rc = cdb2_run_statement(hndl, "begin");
@@ -68,6 +74,8 @@ void run3(cdb2_hndl_tp *hndl)
     assert(rc == 0);
     rc = cdb2_run_statement(hndl, "commit");
     assert(rc == 0);
+    rc = cdb2_run_statement(hndl, "set transaction blocksql");
+    assert(rc == 0);
     rc = cdb2_run_statement(hndl, "set transaction chunk 1000");
     assert(rc == 0);
     rc = cdb2_run_statement(hndl, "begin");
@@ -75,6 +83,8 @@ void run3(cdb2_hndl_tp *hndl)
     rc = cdb2_run_statement(hndl, "insert into setoptionstable select value from generate_series(1, 100001)");
     assert(rc == 0);
     rc = cdb2_run_statement(hndl, "commit");
+    assert(rc == 0);
+    rc = cdb2_run_statement(hndl, "set transaction snapshot");
     assert(rc == 0);
 }
 
@@ -100,6 +110,8 @@ void run4(cdb2_hndl_tp *hndl)
     rc = cdb2_run_statement(hndl, "insert into setoptionstable select value from generate_series(1, 100001)");
     assert(rc == 0);
     rc = cdb2_run_statement(hndl, "commit");
+    assert(rc == 0);
+    rc = cdb2_run_statement(hndl, "set transaction snapshot");
     assert(rc == 0);
 }
 

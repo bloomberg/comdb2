@@ -102,6 +102,7 @@ EOF
 
 ###### inserting to source from remote ######
 cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+set transaction blocksql
 DROP TABLE IF EXISTS chunky
 CREATE TABLE chunky (a INT)\$\$
 SET TRANSACTION CHUNK 1
@@ -114,6 +115,7 @@ EOF
 
 ###### inserting to remote from source ######
 cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+set transaction blocksql
 SET TRANSACTION CHUNK 1
 BEGIN
 INSERT INTO LOCAL_${dbname}.chunky SELECT a FROM chunky
@@ -124,6 +126,7 @@ EOF
 
 ###### inserting to remote from remote ######
 cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+set transaction blocksql
 SET TRANSACTION CHUNK 1
 BEGIN
 INSERT INTO LOCAL_${dbname}.chunky SELECT a FROM LOCAL_${dbname}.chunky
@@ -139,6 +142,7 @@ cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbnam
 
 ###### Verify that we don't block writing results of a remote SELECT into another remote table, when chunking ######
 cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+set transaction blocksql
 SET TRANSACTION CHUNK 1
 BEGIN
 INSERT INTO LOCAL_${dbname}.yet_another_table SELECT a FROM LOCAL_${dbname}.chunky

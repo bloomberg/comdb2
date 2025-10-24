@@ -16,9 +16,10 @@ done
 (rows updated=1)
 done
 1 [commit]
+[commit] failed with rc 2 find old record failed unable to update record rc = 4
 done
 1 [select * from test1]
-(i=1, j=3)
+(i=1, j=2)
 done
 1 [begin]
 done
@@ -33,7 +34,7 @@ done
 [commit] failed with rc 2 find old record failed unable to update record rc = 4
 done
 1 [select * from test1]
-(i=1, j=4)
+(i=1, j=3)
 done
 1 [select * from test2]
 (i=1, j=1)
@@ -54,7 +55,7 @@ done
 [commit] failed with rc 2 find old record failed unable to update record rc = 4
 done
 1 [select * from test1]
-(i=1, j=4)
+(i=1, j=3)
 done
 1 [select * from test2]
 (i=1, j=1)
@@ -67,9 +68,10 @@ done
 (rows updated=1)
 done
 1 [commit]
+[commit] failed with rc 2 find old record failed unable to update record rc = 4
 done
 1 [select * from test1]
-(i=1, j=6)
+(i=1, j=4)
 done
 1 [begin]
 done
@@ -83,7 +85,7 @@ done
 [commit] failed with rc 240 stale version for table:test2 master:1 replicant:0
 done
 1 [select * from test1]
-(i=1, j=6)
+(i=1, j=4)
 done
 1 [select * from test2]
 (i=1, j=1)
