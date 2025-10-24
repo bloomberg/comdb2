@@ -1,0 +1,8 @@
+1 set transaction snapshot
+2 set transaction snapshot
+1 drop table if exists t
+1 create table t(i int)
+1 insert into t values(1)
+1 begin
+2 alter table t add column j int
+1 select * from t
