@@ -1707,6 +1707,29 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     log_queue_time(thd->logger, clnt);
 }
 
+int cache_table_versions(struct sqlclntstate *clnt)
+{
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
+    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed initialize table verison cache rc=%d\n", __func__, rc);
+        return rc;
+    }
+
+    int bdberr;
+    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to cache table versions rc=%d bdberr=%d\n", __func__, rc, bdberr);
+        return rc;
+    }
+
+    return 0;
+}
+
 int start_modsnap_transaction(struct sqlclntstate *clnt)
 {
     struct dbtable *db = &thedb->static_table;
@@ -1715,12 +1738,24 @@ int start_modsnap_transaction(struct sqlclntstate *clnt)
     if (clnt->is_hasql_retry) {
         get_snapshot(clnt, (int *)&clnt->modsnap_start_lsn_file, (int *)&clnt->modsnap_start_lsn_offset);
     }
+
+    rdlock_schema_lk();
     if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
                                     &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
                                     &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
+        unlock_schema_lk();
         logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
         return 1;
     }
+
+    // TODO: Refactor cache_table_versions to not take in a clnt and then call it within bdb_get_modsnap_start_state
+    // so that we're holding the schema lock over less code.
+    if (cache_table_versions(clnt)) {
+        unlock_schema_lk();
+        logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
+        return 1;
+    }
+    unlock_schema_lk();
 
     if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
                              clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
