@@ -1923,6 +1923,14 @@ fi
 $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug on util\")"
 $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug start\")"
 
+# Set reconnect-interval to 10 on all physreps
+for node in $CLUSTER; do
+    name="${REPL_DBNAME_PREFIX}_${node}"
+    clusname="${REPL_CLUS_DBNAME}"
+    $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "put tunable physrep_reconnect_interval 10"
+    $CDB2SQL_EXE $CDB2_OPTIONS $clusname --host $node "put tunable physrep_reconnect_interval 10"
+done
+
 function check_metadb_memstat
 {
     $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.cmd.send(\"memstat debug stop\")"
