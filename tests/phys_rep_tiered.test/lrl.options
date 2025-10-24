@@ -11,6 +11,14 @@ ctrace_dbdir 1
 allow_lua_print 1
 reverse_hosts_v2 1
 physrep_keepalive_v2 1
-physrep_reconnect_interval 10
+
+# Reproduced 'incoherent-physrep' bug with this removed.
+# Actually could not start physrep-cluster at all.
+# Will toggle in testcase after setup
+#
+# physrep_reconnect_interval 10
+
 wait_for_seqnum_trace 1
 online_recovery 0
+set_seqnum_trace 1
+setattr WAIT_FOR_SEQNUM_TRACE 1

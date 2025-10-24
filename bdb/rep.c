@@ -1473,8 +1473,7 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
         bdb_state = bdb_state->parent;
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-        logmsg(LOGMSG_USER, "%s: not-adding: master-hode=%s myhost=%s\n",
-               __func__, bdb_state->repinfo->master_host,
+        logmsg(LOGMSG_USER, "%s: not-adding: master-node=%s myhost=%s\n", __func__, bdb_state->repinfo->master_host,
                bdb_state->repinfo->myhost);
         goto done;
     } else if (gbl_is_physical_replicant == 1) {
@@ -5697,6 +5696,7 @@ void *watcher_thread(void *arg)
         if (bdb_state->caught_up) {
             /* periodically send info too all nodes about our curresnt LSN and
                the current logfile we are on */
+            bdb_set_seqnum(bdb_state);
             send_myseqnum_to_all(bdb_state, 0);
         }
 
