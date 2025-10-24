@@ -25,7 +25,7 @@ fi
 # Setup ssl certificate
 # Create root key
 openssl genrsa -out $CADIR/root.key 4096
-chmod 400 $CADIR/root.key
+chmod 700 $CADIR/root.key
 # Create and self sign the root certificate
 openssl req -x509 -new -nodes -key $CADIR/root.key -days 30 -out $CADIR/root.crt \
             -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CN"
@@ -65,15 +65,16 @@ policy = policy_match
 ' > $CADIR/ca.cnf
 
 if [ "$SCN" = "" ]; then
-	SCN=$CN
+    ssubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CN/host=ssldbname*/UID=roborivers"
+else
+    ssubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$SCN/host=ssldbname*/UID=roborivers"
 fi
 
 if [ "$CCN" = "" ]; then
-	CCN=$CN
+    csubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CN/host=ssldbname*/UID=roborivers"
+else
+    csubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CCN/host=ssldbname*/UID=roborivers"
 fi
-
-ssubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$SCN/host=ssldbname*/UID=roborivers"
-csubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CCN/host=ssldbname*/UID=roborivers"
 
 # Create server key
 openssl genrsa -out $CADIR/server.key 4096
@@ -84,7 +85,7 @@ openssl req -new -key $CADIR/server.key -out $CADIR/server.key.csr \
 openssl x509 -req -in $CADIR/server.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
              -CAcreateserial -out $CADIR/server.crt -days 10
 # Change key permissions
-chmod 400 $CADIR/server.key
+chmod 700 $CADIR/server.key
 
 # Create client key
 openssl genrsa -out $CADIR/client.key 4096
@@ -95,7 +96,7 @@ openssl req -new -key $CADIR/client.key -out $CADIR/client.key.csr \
 openssl x509 -req -in $CADIR/client.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
              -CAserial $CADIR/root.srl -out $CADIR/client.crt -days 10
 # Change key permissions
-chmod 400 $CADIR/client.key
+chmod 700 $CADIR/client.key
 
 # Create revoked key
 openssl genrsa -out $CADIR/revoked.key 4096
@@ -106,7 +107,7 @@ openssl req -new -key $CADIR/revoked.key -out $CADIR/revoked.key.csr \
 openssl x509 -req -in $CADIR/revoked.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
              -CAserial $CADIR/root.srl -out $CADIR/revoked.crt -days 10
 # Change key permissions
-chmod 400 $CADIR/revoked.key
+chmod 700 $CADIR/revoked.key
 ## Revoke
 openssl ca -config $CADIR/ca.cnf -revoke $CADIR/revoked.crt \
            -keyfile $CADIR/root.key -cert $CADIR/root.crt
@@ -169,16 +170,25 @@ for node in $CLUSTER; do
   ssh -o StrictHostKeyChecking=no $node "mkdir -p $CADIR"
   fqdn=`ssh -o StrictHostKeyChecking=no $node 'hostname -f'`
 
+  # override common name if present
+  if [ "$SCN" != "" ]; then
+      nodecn=$SCN
+      extensions=""
+  else
+      nodecn=$fqdn
+      extensions=" -extensions v3_req -extfile $CADIR/san.cnf "
+  fi
+
   # Create server_$fqdn key
   openssl genrsa -out $CADIR/server_$fqdn.key 4096
   # Create signing request
   openssl req -new -key $CADIR/server_$fqdn.key -out $CADIR/server_$fqdn.key.csr \
-              -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$fqdn/host=ssldbname*"
+              -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$nodecn/host=ssldbname*"
   # Sign server_$fqdn key
   openssl x509 -req -in $CADIR/server_$fqdn.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
-               -CAcreateserial -out $CADIR/server_$fqdn.crt -days 10 -extensions v3_req -extfile $CADIR/san.cnf
+               -CAcreateserial -out $CADIR/server_$fqdn.crt -days 10 ${extensions}
   # Change key permissions
-  chmod 400 $CADIR/server_$fqdn.key
+  chmod 700 $CADIR/server_$fqdn.key
 
   scp -o StrictHostKeyChecking=no $CADIR/server_$fqdn.crt $node:$CADIR/server.crt
   scp -o StrictHostKeyChecking=no $CADIR/server_$fqdn.key $node:$CADIR/server.key

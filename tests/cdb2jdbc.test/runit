@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Generate Java key store and trust store
+rm -f ${TESTDIR}/client-keystore.pkcs12 ${TESTDIR}/keystore ${TESTDIR}/truststore
+
+openssl pkcs12 -export \
+        -in ${TESTDIR}/client.crt \
+        -inkey ${TESTDIR}/client.key \
+        -name cdb2clikey \
+        -passout pass:cdb2jdbctest \
+        -out ${TESTDIR}/client-keystore.pkcs12
+keytool -noprompt -importkeystore \
+        -srckeystore ${TESTDIR}/client-keystore.pkcs12 \
+        -srcstoretype pkcs12 \
+        -srcstorepass cdb2jdbctest \
+        -destkeystore ${TESTDIR}/keystore \
+        -deststoretype JKS \
+        -deststorepass cdb2jdbctest
+keytool -noprompt -importcert \
+        -alias cdb2ca \
+        -file ${TESTDIR}/root.crt \
+        -keystore ${TESTDIR}/truststore \
+        -storepass cdb2jdbctest
+
+chmod 644 ${TESTDIR}/keystore ${TESTDIR}/truststore
+
+export envSkipTests='false'
+export envSSLTestDatabase=${DBNAME}
+export envTestDatabase=${SECONDARY_DBNAME}
+export envSSLCertPath=${TESTDIR}
+export envSSLCertPass='cdb2jdbctest'
+
+if [ -n "${CLUSTER}" ]; then
+    export envTestCluster=`echo ${CLUSTER} | sed 's/ /,/g'`
+else
+    export envTestCluster=localhost
+fi
+
+set -x
+mvn -f ${SRCHOME}/cdb2jdbc/pom.xml \
+        -Dmaven.javadoc.skip=true \
+        -Denv.skipTests=${envSkipTests} \
+        -DargLine="-Dcdb2jdbc.test.database=${envTestDatabase} \
+        -Dcdb2jdbc.test.cluster=${envTestCluster} \
+        -Dcdb2jdbc.test.ssldatabase=${envSSLTestDatabase} \
+        -Dcdb2jdbc.test.sslcertpath=${envSSLCertPath} \
+        -Dcdb2jdbc.test.sslcertpass=${envSSLCertPass}" \
+clean install

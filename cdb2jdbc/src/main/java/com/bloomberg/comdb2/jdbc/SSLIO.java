@@ -263,12 +263,14 @@ public class SSLIO extends SockIO {
         try {
             servCerts = sess.getPeerCertificates();
         } catch (SSLPeerUnverifiedException pue) {
+            if (err != null)
+                err.append("Could not get server certificate");
             return false;
         }
 
         if (servCerts == null || servCerts.length == 0) {
             if (err != null)
-                err.append("Could not get peer certificate.");
+                err.append("Empty server certificate");
             return false;
         }
 
@@ -311,10 +313,14 @@ public class SSLIO extends SockIO {
                     }
                 }
                 /* RFC 6125 */
+                if (err != null)
+                    err.append("Certificate does not match host name.");
                 return false;
             }
         } catch (CertificateParsingException cpe) {
             /* malformed certificate, return false */
+            if (err != null)
+                err.append("Malformed server certificate");
             return false;
         }
 
@@ -323,6 +329,8 @@ public class SSLIO extends SockIO {
         try {
             DN = new LdapName(servCert.getSubjectX500Principal().getName());
         } catch (InvalidNameException ine) {
+            if (err != null)
+                err.append("Invalid LDAP name");
             return false;
         }
 
@@ -352,8 +360,11 @@ public class SSLIO extends SockIO {
                 break;
             }
         }
-        if (dbnameInCert == null)
+        if (dbnameInCert == null) {
+            if (err != null)
+                err.append("Missing database name");
             return false;
+        }
 
         if (!matchDbName(dbnameInCert, sslDbName)) {
             if (err != null)
