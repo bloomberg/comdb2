@@ -4993,34 +4993,6 @@ int start_new_transaction(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int cache_table_versions(struct sqlclntstate *clnt)
-{
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
-
-    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
-    if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "%s failed initialize table verison cache rc=%d\n",
-               __func__, rc);
-        return rc;
-    }
-
-    int bdberr;
-    rc = bdb_osql_cache_table_versions(thedb->bdb_env,
-        clnt->dbtran.table_version_cache, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "%s failed to cache table versions rc=%d bdberr=%d\n",
-               __func__, rc, bdberr);
-        return rc;
-    }
-
-    return 0;
-}
-
 static int must_start_new_transaction(const struct sqlclntstate *clnt, int is_writer)
 {
     if (is_writer) { return 1; }
@@ -5120,9 +5092,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         goto done;
     }
 
-    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-        clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL) {
         rc = cache_table_versions(clnt);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);

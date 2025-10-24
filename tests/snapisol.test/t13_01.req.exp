@@ -1,0 +1,10 @@
+done
+done
+done
+done
+(rows inserted=1)
+done
+done
+done
+[select * from foo] failed with rc -3 table "foo" was schema changed
+done
