@@ -3818,7 +3818,7 @@ done:
     return rc;
 }
 
-static char *tranlevel_toclntstr(int lvl)
+char *tranlevel_toclntstr(int lvl)
 {
     switch (lvl) {
     case TRANLEVEL_SOSQL:

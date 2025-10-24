@@ -14,3 +14,4 @@ dump_blkseq on
 extended_sql_debug_trace on
 decoupled_logputs off
 nowatch
+sql_tranlevel_default blocksock
