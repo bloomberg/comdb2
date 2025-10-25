@@ -27,7 +27,20 @@ EOF
 
 cluster=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where host!='$host'")
 
-ssh -n -o StrictHostKeyChecking=no $host /opt/bb/bin/comdb2 ${DBNAME} --lrl ${DBDIR}/${DBNAME}.lrl >dbout 2>&1 &
+mv --backup=numbered ${TESTDIR}/logs/${DBNAME}.${host}.db ${TESTDIR}/logs/${DBNAME}.${host}.db.1
+
+PARAMS="$DBNAME --no-global-lrl"
+CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+
+otherhosts=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} --host $master "select host from comdb2_cluster where host != '$host' and is_master='N'")
+
+# Make sure all the other hosts have applied the large transaction
+for other in $otherhosts; do
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $other "select comdb2_host(), count(*) from t"
+done
+
+ssh -o StrictHostKeyChecking=no -tt $host ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${host}.db) &
+kpid=$!
 
 failed=0
 
@@ -50,6 +63,10 @@ while :; do
         break
     fi
 done
+
+echo "Killing restarted db"
+kill -9 $kpid >/dev/null 2>&1
+wait
 
 if [[ $failed -ne 0 ]]; then
     echo "Failed"
