@@ -338,8 +338,9 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	/* Save the flags passed to DB_ENV->open. */
 	dbenv->open_flags = flags;
 
-    Pthread_rwlock_init(&dbenv->dbreglk, NULL);
-    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
+	Pthread_rwlock_init(&dbenv->dbreglk, NULL);
+	Pthread_rwlock_init(&dbenv->loglk, NULL);
+	Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
 	/*
 	 * Initialize the subsystems.
