@@ -30,10 +30,10 @@ function kill_query
         exit 1
     fi
 
-    echo "running cancel('cnonce', '${uuid}') trap"
-    ${SM} "exec procedure sys.cmd.cancel('cnonce', '${uuid}')"
+    echo "running cancel('uuid', '${uuid}') trap"
+    ${SM} "exec procedure sys.cmd.cancel('uuid', '${uuid}')"
     if [[ $? != 0 ]] ; then
-        echo "Failed to run cancel cnonce sp"
+        echo "Failed to run cancel uuid sp"
         exit 1
     fi
 }

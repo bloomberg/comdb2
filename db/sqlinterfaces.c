@@ -6517,7 +6517,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     Pthread_mutex_lock(&clnt->state_lk);
     if ((clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) &&
          clnt->osql.replay == OSQL_RETRY_NONE /* a replaying clnt won't have a clnt->sql */) {
-        char zFingerprint[FINGERPRINTSZ * 2 + 1];
+        char zFingerprint[FINGERPRINTSZ * 2 + 1] = {0};
         util_tohex(zFingerprint, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
         c->sql = clnt->sql ? strdup(clnt->sql) : NULL;
         c->fingerprint = strdup(zFingerprint);
@@ -6570,26 +6570,33 @@ void free_connection_info(struct connection_info *info, int num_connections)
     free(info);
 }
 
-void cancel_connections(int only_queued, uuid_t filter_fp)
+void cancel_connections(int only_queued, uuid_t uuid, char *fp)
 {
     struct sqlclntstate *clnt;
     Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
-        if (!comdb2uuid_is_zero(filter_fp)) {
-            if (!comdb2uuidcmp(filter_fp, clnt->unifieduuid)) {
+        if (!comdb2uuid_is_zero(uuid)) {
+            if (!comdb2uuidcmp(uuid, clnt->unifieduuid)) {
                 clnt->discard_this = 1;
-                fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+                logmsg(LOGMSG_WARN, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+            }
+        } else if (fp) {
+            char zFingerprint[FINGERPRINTSZ * 2 + 1] = {0};
+            util_tohex(zFingerprint, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
+            if (strcmp(zFingerprint, fp) == 0) {
+                clnt->discard_this = 1;
+                logmsg(LOGMSG_WARN, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
             }
         } else {
             if (only_queued) {
                 if (clnt->state == CONNECTION_QUEUED) {
                     clnt->discard_this = 1;
-                    fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+                    logmsg(LOGMSG_WARN, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
                 }
             } else if (clnt->state == CONNECTION_RUNNING ||
                     clnt->state == CONNECTION_QUEUED) {
                 clnt->discard_this = 1;
-                fprintf(stderr, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
+                logmsg(LOGMSG_WARN, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
             }
         }
     }

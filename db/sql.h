@@ -1741,7 +1741,7 @@ int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int 
                               char **dbnames, uint32_t numcols, char **columns, char **shardnames);
 int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg);
 
-void cancel_connections(int only_queued, uuid_t filter_fp);
+void cancel_connections(int only_queued, uuid_t uuid, char *fp);
 
 struct sp_tmptbl {
     pthread_mutex_t lk;
