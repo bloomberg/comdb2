@@ -99,5 +99,6 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_CSTRING, "common_name", -1, offsetof(struct connection_info, common_name),
             CDB2_INTEGER, "in_local_cache", -1, offsetof(struct connection_info, in_local_cache),
             CDB2_CSTRING, "uuid", -1, offsetof(struct connection_info, uuid),
+            CDB2_CSTRING, "identity", -1, offsetof(struct connection_info, identity),
             SYSTABLE_END_OF_FIELDS);
 }

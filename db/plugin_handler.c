@@ -37,6 +37,7 @@
 
 /* All registered plugins */
 comdb2_plugin_t *gbl_plugins[MAXPLUGINS];
+comdb2_plugin_t *gbl_systable_plugins[MAXPLUGINS];
 
 /* If specified, the plugins will be loaded from this directory. */
 static char *plugindir;
@@ -51,6 +52,7 @@ static comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
 static int install_plugin_int(comdb2_plugin_t *new_plugin)
 {
     int i;
+    int systable_plugin_count = 0;
     assert(new_plugin);
 
     for (i = 0; gbl_plugins[i]; ++i) {
@@ -141,6 +143,9 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         query_preparer_plugin = (comdb2_query_preparer_t *)new_plugin->data;
         break;
     }
+    case COMDB2_PLUGIN_SYSTABLE:
+        gbl_systable_plugins[systable_plugin_count++] = new_plugin;
+        break;
     default:
         logmsg(LOGMSG_ERROR, "Invalid plugin %s.\n", new_plugin->name);
         return 1;
@@ -318,6 +323,8 @@ const char *comdb2_plugin_type_to_str(int type)
         return "machine_info";
     case COMDB2_PLUGIN_INITIALIZER:
         return "initializer";
+    case COMDB2_PLUGIN_SYSTABLE:
+        return "systable";
     case COMDB2_PLUGIN_QUEUE_CONSUMER:
         return "queue_consumer";
     case COMDB2_PLUGIN_QUERY_PREPARER:
@@ -407,4 +414,15 @@ void plugin_post_dbenv_hook(struct dbenv *dbenv) {
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++)
         thedb->queue_consumer_handlers[i] = queue_consumer_handlers[i];
+}
+
+void plugin_run_systable_hooks(sqlite3 *sqldb)
+{
+    for (int i = 0; i < MAXPLUGINS; i++) {
+        if (gbl_systable_plugins[i] == NULL || gbl_systable_plugins[i]->name == NULL)
+            break;
+        void (*register_systable_callback)(sqlite3 *sqldb) = (void (*)(sqlite3 *sqldb))gbl_systable_plugins[i]->data;
+        if (register_systable_callback)
+            register_systable_callback(sqldb);
+    }
 }

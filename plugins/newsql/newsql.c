@@ -29,6 +29,7 @@
 #include "fdb_fend.h"
 #include "sqlquery.pb-c.h"
 #include "newsql.h"
+#include "cheapstack.h"
 
 void free_original_normalized_sql(struct sqlclntstate *);
 
@@ -2936,6 +2937,42 @@ void dump_response(const CDB2SQLRESPONSE *r) {
         dump(depth, "sqlite_row: ");
         dump_value(0, &r->sqlite_row);
     }
+    depth--;
+    dump(depth, "}\n");
+}
+
+void dump_flags(int depth, int n_flags, CDB2FLAG **flag) {
+    for (int i = 0; i < n_flags; i++) {
+        dump(0, "%d=%d ", flag[i]->option, flag[i]->value);
+    }
+    dump(0, "\n");
+}
+
+void dump_bindvars(int depth, const CDB2SQLQUERY *q) {
+    dump(depth, "... # TODO");
+}
+
+void dump_request(const CDB2SQLQUERY *q) {
+    comdb2_linux_cheap_stack_trace();
+    int depth = 0;
+    dump(depth, "CDB2SQLQUERY: {\n");
+    depth++;
+    dump(depth, "dbname=\"%s\"\n", q->dbname);
+    dump(depth, "sql_query=\"%s\"\n", q->sql_query);
+    dump(depth, "flag=");
+    dump_flags(depth, q->n_flag, q->flag);
+
+    dump(depth, "little_endian=%d\n", q->little_endian);
+    dump(depth, "bindvars: {");
+    if (q->n_bindvars == 0)
+        dump(0, "}\n");
+    else {
+        depth++;
+        dump_bindvars(depth, q);
+        depth--;
+        dump(depth, "}\n");
+    }
+    dump(depth, "is_tagged=%d (has %d)\n", q->is_tagged, q->has_is_tagged);
     depth--;
     dump(depth, "}\n");
 }

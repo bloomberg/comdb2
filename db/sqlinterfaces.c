@@ -1014,6 +1014,7 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
     int rc = sqlite3_open(filename, ppDb, thd);
     if (rc == SQLITE_OK && thd != NULL) {
         comdb2_setup_authorizer_for_sqlite(*ppDb, &thd->authState, 1);
+        plugin_run_systable_hooks(*ppDb);
     }
     if (serial)
         Pthread_mutex_unlock(&open_serial_lock);
@@ -6491,6 +6492,8 @@ void run_internal_sql(char *sql)
     end_internal_sql_clnt(&clnt);
 }
 
+extern char *whoamiiam(void *authdata);
+
 static void gather_connection_int(struct connection_info *c, struct sqlclntstate *clnt)
 {
     c->connection_id = clnt->connid;
@@ -6507,6 +6510,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->is_admin = clnt->admin;
     c->is_ssl = clnt->plugin.has_ssl(clnt);
     c->has_cert = clnt->plugin.has_x509(clnt);
+    c->identity = clnt->externalAuthUser;
     if (!c->has_cert) {
         c->common_name = NULL;
     } else {
