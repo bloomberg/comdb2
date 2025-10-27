@@ -229,20 +229,20 @@ static const char *HELP_STAT[] = {
 };
 static const char *HELP_SQL[] = {
     "sql ...",
-    "dump               - dump currently running statements and cursor info",
-    "dump repblockers   - dump info on currently running statements that are"
-    "                     blocking replication thread",
-    "keep N             - keep stats on last N statements",
-    "hist               - show recently run statements",
-    "cancel N           - cancel running statement with id N",
-    "cancelcnonce N     - cancel running statement with cnonce N",
-    "ucancel cnonce N   - cancel running statement with unified uuid N (per comdb2_connections)",
-    "ucancel fp N       - cancel running statement with fingerprint N (per comdb2_connections)",
-    "ucancel running    - cancel all running statement (leaves queued statements intact)",
-    "ucancel queued     - cancel all queued statement (leaves running statements intact)",
-    "ucancel all        - cancel all queued and running statements",
-    "wrtimeout N        - set write timeout in ms",
-    "help               - this information",
+    "dump                  - dump currently running statements and cursor info",
+    "dump repblockers      - dump info on currently running statements that are"
+    "                        blocking replication thread",
+    "keep N                - keep stats on last N statements",
+    "hist                  - show recently run statements",
+    "cancel N              - cancel running statement with id N",
+    "cancelcnonce N        - cancel running statement with cnonce N",
+    "ucancel uuid N        - cancel running statement with unified uuid N (per comdb2_connections)",
+    "ucancel fingerprint N - cancel all running statements with fingerprint N (per comdb2_connections)",
+    "ucancel running       - cancel all running statement (leaves queued statements intact)",
+    "ucancel queued        - cancel all queued statement (leaves running statements intact)",
+    "ucancel all           - cancel all queued and running statements",
+    "wrtimeout N           - set write timeout in ms",
+    "help                  - this information",
     NULL,
 };
 static const char *HELP_SCHEMA[] = {
@@ -3121,7 +3121,7 @@ clipper_usage:
                 free(cnonce);
             }
         } else if (tokcmp(tok, ltok, "ucancel") == 0) {
-            char *uuid = NULL;
+            char *str = NULL;
             enum ucancel_type t = UCANCEL_INV;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok) {
@@ -3131,23 +3131,23 @@ clipper_usage:
                     t = UCANCEL_RUN;
                 else if (tokcmp(tok, ltok, "queued") == 0)
                     t = UCANCEL_QUE;
-                else if (tokcmp(tok, ltok, "cnonce") == 0)
+                else if (tokcmp(tok, ltok, "uuid") == 0)
                     t = UCANCEL_CNO;
-                else if (tokcmp(tok, ltok, "fp") == 0)
+                else if (tokcmp(tok, ltok, "fingerprint") == 0)
                     t = UCANCEL_FPT;
 
                 if (t == UCANCEL_CNO || t == UCANCEL_FPT) {
                     tok =  segtok(line, lline, &st, &ltok);
                     if (ltok)
-                        uuid = tokdup(tok, ltok);
+                        str = tokdup(tok, ltok);
                     else
                         t = UCANCEL_INV;
                 }
                 if (t != UCANCEL_INV)
-                    ucancel_sql_statements(t, uuid);
+                    ucancel_sql_statements(t, str);
             }
             if (t == UCANCEL_INV)
-                logmsg(LOGMSG_ERROR, "Usage sql ucancel [all|queued|running|fp N|cnonce N]");
+                logmsg(LOGMSG_ERROR, "Usage sql ucancel [all|queued|running|fingerprint N|uuid N]");
         } else if (tokcmp(tok, ltok, "help") == 0) {
             print_help_page(HELP_SQL);
         } else if (tokcmp(tok, ltok, "debug") == 0) {
