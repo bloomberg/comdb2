@@ -116,6 +116,10 @@ message CDB2_SQLQUERY {
       required bytes data = 4;
   }
   optional IdentityBlob identity = 18;
+
+  // This lets cdb2api carry other protocols - if this flag is set,
+  // don't dispatch to an SQL thread, this isn't SQL.
+  optional bool is_tagged = 19;
 }
 
 message CDB2_DBINFO {

@@ -1086,6 +1086,9 @@ struct sqlclntstate {
 
     struct features features;
     int discard_this; /* set by a cancel() trap, complement thd->stop_this_statement for queued request */
+
+    // this is not an SQL request, distpatch it elsewhere
+    int is_tagged;
 };
 typedef struct sqlclntstate sqlclntstate;
 
@@ -1347,6 +1350,7 @@ struct connection_info {
     int64_t has_cert; /* 1 if the SSL connection has an X509 certificate */
     char *common_name; /* common name in the certificate */
     char common_name_str[ub_common_name];
+    char *identity;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;

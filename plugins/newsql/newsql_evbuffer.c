@@ -43,6 +43,9 @@
 
 #include <newsql.h>
 
+void dump_response(const CDB2SQLRESPONSE *r); 
+void dump_request(const CDB2SQLQUERY *q);
+
 extern int gbl_incoherent_clnt_wait;
 extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
@@ -137,6 +140,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     }
     if (appdata->query) {
         cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+        appdata->query = NULL;
     }
     free_newsql_appdata(clnt);
     sqlwriter_free(appdata->writer);
@@ -433,6 +437,86 @@ static int dispatch_client(struct newsql_appdata_evbuffer *appdata)
     return dispatch_sql_query_no_wait(&appdata->clnt);
 }
 
+extern pthread_mutex_t buf_lock;
+extern pool_t *p_slocks;
+
+static void legacy_sndbak(struct ireq *iq, int rc, int len) {
+    struct buf_lock_t *p_slock = iq->request_data;
+    struct legacy_response {
+        int rc;
+        int outlen;
+        char buf[64*1024];
+    } rsp;
+
+    struct sqlclntstate *clnt = (struct sqlclntstate*) iq->setup_data;
+    rsp.rc = rc;
+    rsp.outlen = len;
+    int flip = endianness_mismatch(clnt);
+    if (flip)
+        rsp.rc = flibc_intflip(rsp.rc);
+    char *fb = (char *)rsp.buf;
+    fb[0] = 0xfd;
+    // seems to be lots of copying here...
+    memcpy(rsp.buf, p_slock->bigbuf, len);
+#if 0
+    printf("outlen %d outrc %d\n", len, rc);
+    fsnapf(stdout, rsp.buf, len);
+#endif
+
+    write_response(clnt, RESPONSE_RAW_PAYLOAD, &rsp, 0);
+
+    free(p_slock->bigbuf);
+    Pthread_mutex_lock(&buf_lock);
+    pool_relablk(p_slocks, p_slock);
+    Pthread_mutex_unlock(&buf_lock);
+    clnt->done_cb(clnt);
+}
+
+static void legacy_iq_setup(struct ireq *iq, void *setup_data) {
+    struct sqlclntstate *clnt = (struct sqlclntstate*) setup_data;
+    iq->ipc_sndbak = legacy_sndbak;
+    iq->setup_data = setup_data;
+    iq->has_ssl = clnt->plugin.has_ssl(clnt);
+    get_client_origin(iq->corigin, sizeof(iq->corigin), clnt);
+}
+
+static int dispatch_tagged(struct sqlclntstate *clnt) {
+    int rc;
+    struct newsql_appdata_evbuffer *appdata = (struct newsql_appdata_evbuffer *) clnt->appdata;
+
+    struct buf_lock_t *p_slock = NULL;
+    Pthread_mutex_lock(&buf_lock);
+    p_slock = pool_getablk(p_slocks);
+    Pthread_mutex_unlock(&buf_lock);
+
+    void *buf = appdata->sqlquery->bindvars[0]->value.data;
+    int sz = appdata->sqlquery->bindvars[0]->value.len;
+
+    Pthread_mutex_init(&(p_slock->req_lock), 0);
+    Pthread_cond_init(&(p_slock->wait_cond), NULL);
+    p_slock->bigbuf = malloc(64*1024);
+    memcpy(p_slock->bigbuf, buf, sz);
+    p_slock->sb = NULL;
+    p_slock->reply_state = REPLY_STATE_NA;
+
+    clnt->authdata = get_authdata(clnt);
+    if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL || 
+            appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[2] == NULL) {
+        // TODO
+        // write error response: HOW
+        fprintf(stderr, "bad?\n");
+        return 1;
+    }
+    // TODO: get from bindvars
+    int luxref = 0;
+    int comdbg_flags = 0;
+
+    // This will dispatch to a thread - it's not done inline
+    rc = handle_buf_main2(thedb, NULL, p_slock->bigbuf, (uint8_t*)p_slock->bigbuf + 1024*64, 0, clnt->origin, clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, comdbg_flags, legacy_iq_setup, clnt, 0, clnt->authdata);
+    return rc;
+}
+
+
 static void free_dispatch_sql_arg(struct dispatch_sql_arg *d)
 {
     d->appdata->dispatch = NULL;
@@ -596,6 +680,7 @@ static void process_features(struct newsql_appdata_evbuffer *appdata) {
     }
 }
 
+
 static void process_query(struct newsql_appdata_evbuffer *appdata)
 {
     struct sqlclntstate *clnt = &appdata->clnt;
@@ -606,6 +691,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     int have_ssl = clnt->features.have_ssl;
     int have_sqlite_fmt = clnt->features.have_sqlite_fmt;
     clnt->sqlite_row_format = have_sqlite_fmt;
+    clnt->is_tagged = sqlquery->has_is_tagged && sqlquery->is_tagged;
     ++clnt->sqltick;
 
     /* If the connection is forwarded from a secure pmux port,
@@ -632,7 +718,9 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     if (incoherent == NEWSQL_ERROR) goto err;
     int commit_rollback;
     if (newsql_should_dispatch(clnt, &commit_rollback) != 0) {
-read:   cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+read:
+        if (appdata->query)
+            cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         appdata->query = NULL;
         evtimer_once(appdata->base, rd_hdr, appdata);
         return;
@@ -644,6 +732,13 @@ read:   cdb2__query__free_unpacked(appdata->query, &pb_alloc);
     sql_enable_heartbeat(appdata->writer);
     if (incoherent) {
         wait_for_leader(appdata, incoherent);
+    } else if (clnt->is_tagged) {
+        if (dispatch_tagged(clnt) != 0) {
+            printf("err?\n");
+            goto err;
+        }
+        // called code will clean up
+        appdata->query = NULL;
     } else if (dispatch_client(appdata) != 0) {
 err:    newsql_cleanup(appdata);
     }
@@ -779,7 +874,8 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
     if (disttxn) {
         process_disttxn(appdata, disttxn);
     }
-    cdb2__query__free_unpacked(query, &pb_alloc);
+    if (query)
+        cdb2__query__free_unpacked(query, &pb_alloc);
 }
 
 static void add_rd_event_ssl(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *t)
@@ -887,6 +983,20 @@ cleanup:
     newsql_cleanup(appdata);
 }
 
+
+static const char *header_type_str(int type) {
+    switch (type) {
+        case CDB2_REQUEST_TYPE__CDB2QUERY:
+            return "cdb2query";
+        case CDB2_REQUEST_TYPE__RESET:
+            return "reset";
+        case CDB2_REQUEST_TYPE__SSLCONN:
+            return "sslconn";
+        default:
+            return "???";
+    }
+}
+
 static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
     struct sqlclntstate *clnt = &appdata->clnt;
@@ -977,6 +1087,7 @@ static void *newsql_destroy_stmt_evbuffer(struct sqlclntstate *clnt, void *arg)
         appdata->query = NULL;
     }
     cdb2__query__free_unpacked(stmt->query, &pb_alloc);
+    stmt->query = NULL;
     free(stmt);
     return NULL;
 }

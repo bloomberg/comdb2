@@ -17,6 +17,10 @@
 #ifndef __INCLUDED_COMDB2_PLUGIN_H
 #define __INCLUDED_COMDB2_PLUGIN_H
 
+#include <stdlib.h>
+#include <stdint.h>
+#include <sqlite3.h>
+
 // clang-format off
 enum comdb2_plugin_type {
     COMDB2_PLUGIN_APPSOCK,
@@ -25,6 +29,7 @@ enum comdb2_plugin_type {
     COMDB2_PLUGIN_INITIALIZER,
     COMDB2_PLUGIN_QUEUE_CONSUMER,
     COMDB2_PLUGIN_QUERY_PREPARER,
+    COMDB2_PLUGIN_SYSTABLE,
     COMDB2_PLUGIN_LAST
 };
 
@@ -64,5 +69,8 @@ struct dbenv;
  * have it passed to the next handler in the chain. */
 void plugin_register_lrl_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
 void plugin_register_message_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
+
+/* This should run when creating a new SQLite vm for running application queries. */
+void plugin_run_systable_hooks(sqlite3 *sqldb);
 
 #endif /* ! __INCLUDED_COMDB2_PLUGIN_H */
