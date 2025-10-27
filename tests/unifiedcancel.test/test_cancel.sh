@@ -76,10 +76,10 @@ if [[ -z ${uuid} ]] ; then
     exit 1
 fi
 
-echo "running cancel('cnonce', '${uuid}') trap"
-$S_SQL "exec procedure sys.cmd.cancel('cnonce', '${uuid}')"
+echo "running cancel('uuid', '${uuid}') trap"
+$S_SQL "exec procedure sys.cmd.cancel('uuid', '${uuid}')"
 if [[ $? != 0 ]] ; then
-    echo "Failed to run cancel cnonce sp"
+    echo "Failed to run cancel uuid sp"
     exit 1
 fi
 
@@ -237,7 +237,8 @@ fi
 
 ooo=run.log
 
-header 5 "test cancelling fp sql"
+header 5 "test cancelling fingerprint sql"
+$S_SQL "put tunable sqlenginepool.maxt 10"
 echo "Running 3 slow sql"
 for cnt in {1..3} ; do
     echo "running async select sleep $cnt"
@@ -247,27 +248,29 @@ for cnt in {1..3} ; do
         exit 1
     fi
 done
+echo "different query"
+$S_SQL "select 123, *, sleep(1) from t order by 1" &
 
 echo "Waiting for cdb2sql to kick in"
 sleep 5
 
 echo "Picking up one query"
-uuid=`$S_TSQL "select uuid from comdb2_connections where sql like '%sleep%' and sql not like '%connections%' limit 1"`
+uuid=`$S_TSQL "select fingerprint from comdb2_connections where sql like '%sleep%' and sql not like '%connections%' and sql not like '%123$' limit 1"`
 if [[ $? != 0 ]] ; then
     echo "Failed to select uuid"
     exit 1
 fi
 
-echo "Found uuid '${uuid}'"
+echo "Found fingerprint '${uuid}'"
 if [[ -z ${uuid} ]] ; then 
     echo "Failed to retrieve the uuid for sleeping query"
     exit 1
 fi
 
-echo "running cancel('fp', '${uuid}') trap"
-$S_SQL "exec procedure sys.cmd.cancel('fp', '${uuid}')"
+echo "running cancel('fingerprint', '${uuid}') trap"
+$S_SQL "exec procedure sys.cmd.cancel('fingerprint', '${uuid}')"
 if [[ $? != 0 ]] ; then
-    echo "Failed to run cancel fp sp"
+    echo "Failed to run cancel fingerprint sp"
     exit 1
 fi
 
@@ -291,12 +294,26 @@ if [[ ! "$?" -eq "0" ]] ; then
     echo "Failed to cancel all requests, timeout"
     exit 1
 fi
-if [[ ! "$found_cnt" -eq "2" ]] ; then
-    echo "Failed to cancel only one fp ${uuid} requests"
+if [[ ! "$found_cnt" -eq "1" ]] ; then
+    echo "Failed to cancel only the specified fingerprint ${uuid} requests"
     exit 1
 fi
 
 echo "Cancelling all sql"
+$S_SQL "put tunable sqlenginepool.maxt 4"
+echo "Running 10 slow sql"
+for cnt in {1..10} ; do
+    echo "running async select sleep $cnt"
+    $S_SQL "select *, sleep(1) from t order by 1" &
+    if [[ $? != 0 ]] ; then
+        echo "Failed to async run sleep $cnt"
+        exit 1
+    fi
+done
+
+echo "Waiting for cdb2sql to kick in"
+sleep 5
+
 $S_SQL "exec procedure sys.cmd.cancel('all')"
 if [[ $? != 0 ]] ; then
     echo "Failed to run cancel all the other requests"
@@ -320,17 +337,17 @@ if [[ $? == 0 ]] ; then
     echo "Failed bogus string type"
     exit 1
 fi
-$S_TSQL "exec procedure sys.cmd.cancel('cnonce')" >> $ooo 2>&1
+$S_TSQL "exec procedure sys.cmd.cancel('uuid')" >> $ooo 2>&1
 if [[ $? == 0 ]] ; then
     echo "Failed no uuid cnonce"
     exit 1
 fi
-$S_TSQL "exec procedure sys.cmd.cancel('cnonce', 123)" >> $ooo 2>&1
+$S_TSQL "exec procedure sys.cmd.cancel('uuid', 123)" >> $ooo 2>&1
 if [[ $? != 0 ]] ; then
     echo "Failed wrong type uuid cnonce"
     exit 1
 fi
-$S_TSQL "exec procedure sys.cmd.cancel('cnonce', '1-23-456')" >> $ooo 2>&1
+$S_TSQL "exec procedure sys.cmd.cancel('uuid', '1-23-456')" >> $ooo 2>&1
 if [[ $? != 0 ]] ; then
     echo "Failed invalid uuid cnonce"
     exit 1
