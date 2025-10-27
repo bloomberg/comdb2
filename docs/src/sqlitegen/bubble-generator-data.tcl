@@ -370,15 +370,14 @@ set all_graphs {
     {line lbrc /lua-src rbrc}
   }
   create-trigger {stack
-    {line CREATE {or {line {opt DEFAULT} LUA CONSUMER} {line LUA TRIGGER}} /procedure-name}
+    {line CREATE {line LUA TRIGGER} /procedure-name}
     {opt {line {or WITH WITHOUT} SEQUENCE}}
-    {line ON {loop {line ( table-event )} ,}}
+    {line FOR {loop {line ( table-event )} ,}}
   }
-  table-event {stack
-    {line TABLE /table-name FOR }
-    {loop {line
-      {or INSERT UPDATE DELETE}
-      {opt {line OF {loop /column-name ,}}}} AND}
+  create-consumer {stack
+    {line CREATE {or {line {opt DEFAULT} LUA CONSUMER} } /procedure-name}
+    {opt {line {or WITH WITHOUT} SEQUENCE}}
+    {line FOR {loop {line ( table-event )} ,}}
   }
   create-lua-func {
     line CREATE LUA {or {SCALAR} {AGGREGATE}} FUNCTION /procedure-name
@@ -664,13 +663,14 @@ stack
 
   table-event {
       stack
-      {line ( TABLE /table-name FOR }
+      {line ( TABLE /table-name ON }
       {loop
           {or
-              {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
-              {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
-              {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
+              {line INSERT {opt {line INCLUDE ID {opt {loop , ID}}}}}
+              {line UPDATE {opt {line INCLUDE ID {opt {loop , ID}}}}}
+              {line DELETE {opt {line INCLUDE ID {opt {loop , ID}}}}}
           }
+          { ON }
       }
       {line )
           {opt
