@@ -24,8 +24,6 @@
 #include <bb_oscompat.h>
 #include <cdb2api.c>
 
-#define CDB2HOSTNAME_LEN 128
-
 void test_is_sql_read()
 {
     assert(is_sql_read(NULL) == -1);
