@@ -89,12 +89,22 @@ add_exe(verify_atomics_work verify_atomics_work.c)
 add_exe(upsert_replay upsert_replay.c)
 
 target_link_libraries(cson_test cson)
-target_link_libraries(stepper util mem dlmalloc util)
-target_link_libraries(test_threadpool util mem dlmalloc util)
-target_link_libraries(test_consistent_hash util mem dlmalloc util)
-target_link_libraries(test_consistent_hash_bench util mem dlmalloc util)
+target_link_libraries(stepper util mem dlmalloc)
+target_link_libraries(test_threadpool util mem dlmalloc)
+target_link_libraries(test_consistent_hash util mem dlmalloc crc32c)
+target_link_libraries(test_consistent_hash_bench util mem dlmalloc crc32c)
 target_link_libraries(test_compare_semver util)
 target_link_libraries(test_str_util util)
+
+# Build the crc32c library with UBSAN. Compiling the test driver alone with
+# UBSAN and linking in a non-instrumented copy of the library is insufficient.
+# The instrumentation needs to exist in the library object code.
+add_crc32c_library(crc32c_ubsan WITH_UBSAN)
+
+# Build the crc32c test driver.
+add_executable(crc32c_test crc32c_test.c)
+target_link_libraries(crc32c_test crc32c_ubsan)
+list(APPEND test-tools crc32c_test)
 
 list(APPEND common-deps
   ${READLINE_LIBRARIES}
@@ -105,7 +115,6 @@ list(APPEND common-deps
   ${UNWIND_LIBRARY}
   ${CMAKE_DL_LIBS}
   m
-  crc32c
 )
 
 if (NOT COMDB2_SKIP_CDB2API_SO)

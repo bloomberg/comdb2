@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Tweak these as necessary for debugging. The combination of `set -e` and
+# `halt_on_error=1` is what allows this test case to fail if undefined behavior
+# is detected.
+export UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1"
+
+echo "running crc32c test executable: ${TESTSBUILDDIR}/crc32c_test"
+${TESTSBUILDDIR}/crc32c_test

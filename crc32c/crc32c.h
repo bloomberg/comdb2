@@ -26,15 +26,17 @@ extern "C" {
 extern int gbl_crc32c;
 #define CRC32C_SEED 0 //The sparse files with all 0s will get a 0 checksum
 
+uint32_t crc32c_software(const uint8_t* data, uint32_t size, uint32_t crc);
+
 #if defined (__x86_64) || defined(_HAS_CRC32_ARMV7) || defined(_HAS_CRC32_ARMV8) 
     void crc32c_init(int v);
-    #define crc32c(buf, sz) crc32c_comdb2(buf,sz)
     uint32_t crc32c_comdb2(const uint8_t* buf, uint32_t sz);
 #else
     #define crc32c_init(...)
-    #define crc32c(x, y) crc32c_software((x), (y), CRC32C_SEED)
-    uint32_t crc32c_software(const uint8_t* data, uint32_t size, uint32_t crc);
+    #define crc32c_comdb2(buf, sz) crc32c_software((buf), (sz), CRC32C_SEED)
 #endif
+
+#define crc32c(buf, sz) crc32c_comdb2(buf, sz)
 
 #ifdef __cplusplus
 }
