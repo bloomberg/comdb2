@@ -297,6 +297,102 @@ static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void reset_sockpool(void);
 
+#ifdef CDB2API_TEST
+#include "cdb2api_test.h"
+#define MAKE_CDB2API_TEST_SWITCH(name)                                                                                 \
+    static int name;                                                                                                   \
+    void set_##name(int num)                                                                                           \
+    {                                                                                                                  \
+        name = num;                                                                                                    \
+    }
+MAKE_CDB2API_TEST_SWITCH(fail_dbhosts_invalid_response)
+MAKE_CDB2API_TEST_SWITCH(fail_dbhosts_bad_response)
+MAKE_CDB2API_TEST_SWITCH(fail_dbhosts_cant_read_response)
+MAKE_CDB2API_TEST_SWITCH(fail_dbinfo_invalid_header)
+MAKE_CDB2API_TEST_SWITCH(fail_dbinfo_invalid_response)
+MAKE_CDB2API_TEST_SWITCH(fail_dbinfo_no_response)
+MAKE_CDB2API_TEST_SWITCH(fail_next)
+MAKE_CDB2API_TEST_SWITCH(fail_read)
+MAKE_CDB2API_TEST_SWITCH(fail_reject)
+MAKE_CDB2API_TEST_SWITCH(fail_sb)
+MAKE_CDB2API_TEST_SWITCH(fail_send)
+MAKE_CDB2API_TEST_SWITCH(fail_sockpool)
+MAKE_CDB2API_TEST_SWITCH(fail_tcp)
+MAKE_CDB2API_TEST_SWITCH(fail_timeout_sockpool_recv)
+MAKE_CDB2API_TEST_SWITCH(fail_timeout_sockpool_send)
+MAKE_CDB2API_TEST_SWITCH(fail_ssl_negotiation_once)
+MAKE_CDB2API_TEST_SWITCH(fail_sslio_close_in_local_cache)
+
+#define MAKE_CDB2API_TEST_COUNTER(name)                                                                                \
+    static int name;                                                                                                   \
+    int get_##name(void)                                                                                               \
+    {                                                                                                                  \
+        return name;                                                                                                   \
+    }
+MAKE_CDB2API_TEST_COUNTER(num_get_dbhosts)
+MAKE_CDB2API_TEST_COUNTER(num_skip_dbinfo)
+MAKE_CDB2API_TEST_COUNTER(num_sockpool_fd)
+MAKE_CDB2API_TEST_COUNTER(num_sql_connects)
+MAKE_CDB2API_TEST_COUNTER(num_tcp_connects)
+MAKE_CDB2API_TEST_COUNTER(num_cache_lru_evicts)
+MAKE_CDB2API_TEST_COUNTER(num_cache_hits)
+MAKE_CDB2API_TEST_COUNTER(num_cache_misses)
+MAKE_CDB2API_TEST_COUNTER(num_sockpool_recv)
+MAKE_CDB2API_TEST_COUNTER(num_sockpool_send)
+MAKE_CDB2API_TEST_COUNTER(num_sockpool_recv_timeouts)
+MAKE_CDB2API_TEST_COUNTER(num_sockpool_send_timeouts)
+
+// The tunable value needs to be a string literal or have the lifetime
+// managed by the caller - I could strdup locally, but don't want to be
+// flagged by valgrind.
+#define MAKE_CDB2API_TEST_TUNABLE(name)                                                                                \
+    static char *cdb2api_test_##name;                                                                                  \
+    void set_cdb2api_test_##name(const char *value)                                                                    \
+    {                                                                                                                  \
+        cdb2api_test_##name = value;                                                                                   \
+    }
+MAKE_CDB2API_TEST_TUNABLE(comdb2db_cfg)
+MAKE_CDB2API_TEST_TUNABLE(dbname_cfg)
+
+void set_allow_pmux_route(int allow)
+{
+    cdb2_allow_pmux_route = allow;
+}
+
+void set_local_connections_limit(int lim)
+{
+    max_local_connection_cache_entries = lim;
+}
+
+static int sent_valid_identity = 0;
+static char sent_identity_principal[500] = {0};
+
+int sent_iam_identity(void)
+{
+    return sent_valid_identity;
+}
+char *sent_id_principal()
+{
+    return sent_identity_principal;
+}
+
+const char *get_default_cluster(void)
+{
+    return cdb2_default_cluster;
+}
+
+const char *get_default_cluster_hndl(cdb2_hndl_tp *hndl)
+{
+    return hndl->type;
+}
+
+void set_protobuf_size(int size)
+{
+    CDB2_PROTOBUF_SIZE = size;
+}
+
+#endif /* CDB2API_TEST */
+
 #define PROCESS_EVENT_CTRL_BEFORE(h, e, rc, callbackrc, ovwrrc)                \
     do {                                                                       \
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {                          \
@@ -463,7 +559,11 @@ char *cdb2_getargv0(void)
 }
 
 static void sockpool_close_all(void);
-static void local_connection_cache_clear(int);
+#ifndef CDB2API_TEST
+static
+#endif
+    void
+    local_connection_cache_clear(int);
 
 static void atfork_prepare(void) {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
@@ -632,7 +732,25 @@ static void process_env_vars(void)
     }
 }
 
+#ifdef CDB2API_TEST
+void test_process_env_vars(void)
+{
+    process_env_vars();
+}
+
+int get_max_local_connection_cache_entries(void)
+{
+    return max_local_connection_cache_entries;
+}
+#endif
+
 static int init_once_has_run = 0;
+#ifdef CDB2API_TEST
+void reset_once(void)
+{
+    init_once_has_run = 0;
+}
+#endif
 
 static void do_init_once(void)
 {
@@ -741,8 +859,18 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd, int
             pol.fd = sockfd;
             pol.events = POLLIN;
             pollrc = poll(&pol, 1, timeoutms);
+#ifdef CDB2API_TEST
+            if (fail_timeout_sockpool_recv) {
+                fail_timeout_sockpool_recv--;
+                num_sockpool_recv_timeouts++;
+                return PASSFD_TIMEOUT;
+            }
+#endif
 
             if (pollrc == 0) {
+#ifdef CDB2API_TEST
+                num_sockpool_recv_timeouts++;
+#endif
                 return PASSFD_TIMEOUT;
             } else if (pollrc == -1) {
                 /* error will be in errno */
@@ -818,6 +946,10 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd, int
 #endif
     }
 
+#ifdef CDB2API_TEST
+    ++num_sockpool_recv;
+#endif
+
     return PASSFD_SUCCESS;
 }
 
@@ -869,7 +1001,17 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
             pol.fd = sockfd;
             pol.events = POLLOUT;
             pollrc = poll(&pol, 1, timeoutms);
+#ifdef CDB2API_TEST
+            if (fail_timeout_sockpool_send) {
+                fail_timeout_sockpool_send--;
+                num_sockpool_send_timeouts++;
+                return PASSFD_TIMEOUT;
+            }
+#endif
             if (pollrc == 0) {
+#ifdef CDB2API_TEST
+                num_sockpool_send_timeouts++;
+#endif
                 return PASSFD_TIMEOUT;
             } else if (pollrc == -1) {
                 /* error will be in errno */
@@ -925,6 +1067,9 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
         cdata += rc;
         bytesleft -= rc;
     }
+#ifdef CDB2API_TEST
+    ++num_sockpool_send;
+#endif
 
     return PASSFD_SUCCESS;
 }
@@ -994,6 +1139,12 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
 static int lclconn(int s, const struct sockaddr *name, int namelen,
                    int timeoutms)
 {
+#ifdef CDB2API_TEST
+    if (fail_tcp) {
+        --fail_tcp;
+        return -1;
+    }
+#endif
     /* connect with timeout */
     struct pollfd pfd;
     int flags, rc;
@@ -1046,6 +1197,9 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
 static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
                               int timeoutms)
 {
+#ifdef CDB2API_TEST
+    ++num_tcp_connects;
+#endif
     int sockfd, rc;
     int sendbuff;
     struct sockaddr_in tcp_srv_addr; /* server's Internet socket addr */
@@ -2319,6 +2473,61 @@ static void sockpool_close_all(void)
     for ((v) = TAILQ_FIRST(head); (v) && ((tmp) = TAILQ_NEXT((v), field), 1); (v) = (tmp))
 #endif
 
+#ifdef CDB2API_TEST
+
+void dump_cached_connections(void)
+{
+    struct local_cached_connection *cc;
+    printf("lru:\n");
+    TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
+    {
+        if (local_connection_cache_use_sbuf)
+            printf("%p %s %d\n", cc, cc->typestr, sbuf2fileno(cc->sb));
+        else
+            printf("%p %s %d\n", cc, cc->typestr, cc->fd);
+    }
+    printf("used:\n");
+    TAILQ_FOREACH(cc, &free_local_connection_cache, local_cache_lnk)
+    {
+        if (local_connection_cache_use_sbuf)
+            printf("%p %d\n", cc, sbuf2fileno(cc->sb));
+        else
+            printf("%p %d\n", cc, cc->fd);
+    }
+    printf("hits %d missed %d evicts %d\n", num_cache_hits, num_cache_misses, num_cache_lru_evicts);
+}
+
+int get_num_cached_connections_for(const char *dbname)
+{
+    char typestr[20];
+    sprintf(typestr, "/%s/", dbname);
+    struct local_cached_connection *cc;
+    int nconn = 0;
+    TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
+    {
+        if (strstr(cc->typestr, typestr))
+            nconn++;
+    }
+    return nconn;
+}
+
+int get_cached_connection_index(const char *dbname)
+{
+    char typestr[20];
+    sprintf(typestr, "/%s/", dbname);
+    struct local_cached_connection *cc;
+    int nconn = 0;
+    TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
+    {
+        if (strstr(cc->typestr, typestr))
+            return nconn;
+        nconn++;
+    }
+    return -1;
+}
+
+#endif
+
 static int local_connection_cache_get_fd(const cdb2_hndl_tp *hndl, const char *typestr)
 {
     int fd = -1;
@@ -2335,9 +2544,16 @@ static int local_connection_cache_get_fd(const cdb2_hndl_tp *hndl, const char *t
                 TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
                 TAILQ_INSERT_TAIL(&free_local_connection_cache, cc, local_cache_lnk);
                 connection_cache_entries--;
+#ifdef CDB2API_TEST
+                ++num_cache_hits;
+#endif
                 break;
             }
         }
+#ifdef CDB2API_TEST
+        if (fd == -1)
+            ++num_cache_misses;
+#endif
         pthread_mutex_unlock(&local_connection_cache_lock);
     }
     return fd;
@@ -2375,8 +2591,15 @@ static SBUF2 *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, const ch
                 TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
                 TAILQ_INSERT_TAIL(&free_local_connection_cache, cc, local_cache_lnk);
                 connection_cache_entries--;
+#ifdef CDB2API_TEST
+                ++num_cache_hits;
+#endif
             }
         }
+#ifdef CDB2API_TEST
+        if (sb == NULL)
+            ++num_cache_misses;
+#endif
         pthread_mutex_unlock(&local_connection_cache_lock);
     }
     while (nexpired-- > 0) {
@@ -2418,6 +2641,10 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
 
         /* Stripe out SSL before placing the fd in the cache. */
         rc = sslio_close(sb, 1);
+#ifdef CDB2API_TEST
+        if (fail_sslio_close_in_local_cache)
+            rc = -1;
+#endif
         /* The fd can't be shut down cleanly. Don't donate it.
            Also return a fake good rcode to prevent caller from donating it to sockpool */
         if (rc != 0) {
@@ -2429,6 +2656,9 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
         if (connection_cache_entries >= max_local_connection_cache_entries) {
             /* lru an entry if we've reached the max number we want to cache */
             cc = TAILQ_LAST(&local_connection_cache, local_connection_cache_list);
+#ifdef CDB2API_TEST
+            ++num_cache_lru_evicts;
+#endif
             TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
             close(cc->fd);
             cc->fd = -1;
@@ -2450,6 +2680,19 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
             cc->fd = fd;
             TAILQ_INSERT_HEAD(&local_connection_cache, cc, local_cache_lnk);
 
+#ifdef CDB2API_TEST
+            struct local_cached_connection *cc;
+            int found = 0;
+            TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
+            {
+                if (strcmp(cc->typestr, typestr) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found)
+                abort();
+#endif
             sbuf2free(sb);
             donated = 1;
         }
@@ -2479,6 +2722,9 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
         if (connection_cache_entries >= max_local_connection_cache_entries) {
             /* lru an entry if we've reached the max number we want to cache */
             cc = TAILQ_LAST(&local_connection_cache, local_connection_cache_list);
+#ifdef CDB2API_TEST
+            ++num_cache_lru_evicts;
+#endif
             TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
             int fd = sbuf2fileno(cc->sb);
             if (sbuf2free(cc->sb) == 0) /* the function closes fd on error */
@@ -2501,6 +2747,19 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
             cc->when = time(NULL);
             TAILQ_INSERT_HEAD(&local_connection_cache, cc, local_cache_lnk);
 
+#ifdef CDB2API_TEST
+            struct local_cached_connection *cc;
+            int found = 0;
+            TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
+            {
+                if (strcmp(cc->typestr, typestr) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found)
+                abort();
+#endif
             donated = 1;
         }
         pthread_mutex_unlock(&local_connection_cache_lock);
@@ -2516,7 +2775,11 @@ static int local_connection_cache_put(const cdb2_hndl_tp *hndl, const char *type
     return local_connection_cache_put_fd(hndl, typestr, sb);
 }
 
-static void local_connection_cache_clear(int do_close)
+#ifndef CDB2API_TEST
+static
+#endif
+    void
+    local_connection_cache_clear(int do_close)
 {
     struct local_cached_connection *cc;
     while ((cc = TAILQ_FIRST(&local_connection_cache)) != NULL) {
@@ -2536,6 +2799,12 @@ static void local_connection_cache_clear(int do_close)
         }
     }
     connection_cache_entries = 0;
+
+#ifdef CDB2API_TEST
+    num_cache_lru_evicts = 0;
+    num_cache_hits = 0;
+    num_cache_misses = 0;
+#endif
 }
 
 // cdb2_socket_pool_get_ll: low-level
@@ -2872,11 +3141,21 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1)
         return -1;
+#ifdef CDB2API_TEST
+    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0 || fail_ssl_negotiation_once) {
+#else
     if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
+#endif
         /* If SSL is optional (this includes ALLOW and PREFER), change
            my mode to ALLOW so that we can reconnect in plaintext. */
         if (SSL_IS_OPTIONAL(hndl->c_sslmode))
             hndl->c_sslmode = SSL_ALLOW;
+#ifdef CDB2API_TEST
+        if (rc >= 0) {
+            --fail_ssl_negotiation_once;
+            return -1;
+        }
+#endif
         return rc;
     }
 
@@ -3021,6 +3300,9 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *rem
  */
 static int newsql_connect(cdb2_hndl_tp *hndl, int idx)
 {
+#ifdef CDB2API_TEST
+    ++num_sql_connects;
+#endif
     const char *host = hndl->hosts[idx];
     int port = hndl->ports[idx];
     debugprint("entering, host '%s:%d'\n", host, port);
@@ -3408,6 +3690,12 @@ retry:
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
     debugprint("READ HDR b_read=%d, sizeof(hdr)=(%zu):\n", b_read, sizeof(hdr));
 
+#ifdef CDB2API_TEST
+    if (fail_read > 0) {
+        --fail_read;
+        b_read = -1;
+    }
+#endif
     if (b_read != sizeof(hdr)) {
         debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%zu):\n",
                    b_read, sizeof(hdr));
@@ -4087,6 +4375,12 @@ retry_next_record:
     }
 
     rc = cdb2_read_record(hndl, &hndl->last_buf, &len, NULL);
+#ifdef CDB2API_TEST
+    if (fail_next) {
+        --fail_next;
+        rc = -1;
+    }
+#endif
     if (rc) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         sprintf(hndl->errstr, "%s: Timeout while reading response from server",
@@ -6532,6 +6826,11 @@ static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, co
             far_nodes++;
         }
     }
+#ifdef CDB2API_TEST
+    for (int i = 0; i < *num_hosts; i++) {
+        printf("FINAL NODE no:%d host:%s near nodes:%d\n", i, hosts[i], near_nodes);
+    }
+#endif
     if (num_same_room)
         *num_same_room = near_nodes;
 
@@ -6612,6 +6911,11 @@ no_roomresult:
             *num_same_room = *num_hosts;
         return bms_ip_lookup(hosts, dbname, NULL, tier, num_hosts, NULL, *num_hosts);
     }
+#ifdef CDB2API_TEST
+    for (int i = 0; i < *num_hosts; i++) {
+        printf("FINAL NODE no:%d host:%s near nodes:%d\n", i, hosts[i], start_count);
+    }
+#endif
     return 0;
 }
 
@@ -6637,6 +6941,10 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
         return -1;
     }
 
+#ifdef CDB2API_TEST
+    if (cdb2_use_bmsd)
+        printf("Going ahead with comdb2db query");
+#endif
     if (!find_shards)
         *dbnum = 0;
     int n_bindvars = 3;
@@ -6809,6 +7117,12 @@ free_vars:
     CDB2SQLRESPONSE *sqlresponse = NULL;
     cdb2_hndl_tp tmp = {.sb = ss};
     rc = cdb2_read_record(&tmp, &p, &len, NULL);
+#ifdef CDB2API_TEST
+    if (fail_dbhosts_invalid_response) {
+        --fail_dbhosts_invalid_response;
+        rc = -1;
+    }
+#endif
     if (rc) {
         debugprint("cdb2_read_record rc = %d\n", rc);
         sbuf2close(ss);
@@ -6816,11 +7130,20 @@ free_vars:
                  "%s:%d  Invalid sql response from db %s \n", __func__,
                  __LINE__, comdb2db_name);
         free_events(&tmp);
+#ifdef CDB2API_TEST_DEBUG
+        printf("*** %s", hndl->errstr);
+#endif
         return -1;
     }
     if ((p != NULL) && (len != 0)) {
         sqlresponse = cdb2__sqlresponse__unpack(NULL, len, p);
     }
+#ifdef CDB2API_TEST
+    if (fail_dbhosts_bad_response) {
+        --fail_dbhosts_bad_response;
+        sqlresponse = NULL;
+    }
+#endif
     if ((len == 0) || (sqlresponse == NULL) || (sqlresponse->error_code != 0) ||
         (sqlresponse->response_type != RESPONSE_TYPE__COLUMN_NAMES &&
          sqlresponse->n_value != 1 && sqlresponse->value[0]->has_type != 1 &&
@@ -6829,6 +7152,9 @@ free_vars:
                  "%s: Got bad response for %s query. Reply len: %d\n", __func__,
                  comdb2db_name, len);
         sbuf2close(ss);
+#ifdef CDB2API_TEST_DEBUG
+        printf("*** %s", hndl->errstr);
+#endif
         free_events(&tmp);
         return -1;
     }
@@ -6846,11 +7172,20 @@ free_vars:
     while (sqlresponse->response_type <= RESPONSE_TYPE__COLUMN_VALUES) {
         cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
         rc = cdb2_read_record(&tmp, &p, &len, NULL);
+#ifdef CDB2API_TEST
+        if (fail_dbhosts_cant_read_response) {
+            --fail_dbhosts_cant_read_response;
+            rc = -1;
+        }
+#endif
         if (rc) {
             snprintf(hndl->errstr, sizeof(hndl->errstr),
                      "%s: Can't read dbinfo response from %s \n", __func__,
                      comdb2db_name);
             sbuf2close(ss);
+#ifdef CDB2API_TEST_DEBUG
+            printf("*** %s", hndl->errstr);
+#endif
             free_events(&tmp);
             return -1;
         }
@@ -7014,8 +7349,17 @@ again:
     free(buf);
 
     rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+#ifdef CDB2API_TEST
+    if (fail_dbinfo_invalid_header) {
+        --fail_dbinfo_invalid_header;
+        rc = -1;
+    }
+#endif
     if (rc != sizeof(hdr)) {
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d  Invalid header from db %s \n", __func__, __LINE__, dbname);
+#ifdef CDB2API_TEST_DEBUG
+        printf("*** %s", hndl->errstr);
+#endif
         sbuf2close(sb);
         rc = -1;
         if (connection_was_cached && retry_dbinfo_on_cached_connection_failure)
@@ -7036,10 +7380,19 @@ again:
     }
 
     rc = sbuf2fread(p, 1, hdr.length, sb);
+#ifdef CDB2API_TEST
+    if (fail_dbinfo_invalid_response) {
+        --fail_dbinfo_invalid_response;
+        rc = -1;
+    }
+#endif
     if (rc != hdr.length) {
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "%s:%d  Invalid dbinfo response from db %s \n", __func__,
                  __LINE__, dbname);
+#ifdef CDB2API_TEST_DEBUG
+        printf("*** %s", hndl->errstr);
+#endif
         sbuf2close(sb);
         free(p);
         rc = -1;
@@ -7047,10 +7400,19 @@ again:
     }
     CDB2DBINFORESPONSE *dbinfo_response = cdb2__dbinforesponse__unpack(
         NULL, hdr.length, (const unsigned char *)p);
+#ifdef CDB2API_TEST
+    if (fail_dbinfo_no_response) {
+        --fail_dbinfo_no_response;
+        dbinfo_response = NULL;
+    }
+#endif
 
     if (dbinfo_response == NULL) {
         sprintf(hndl->errstr, "%s: Got no dbinfo response from comdb2 database",
                 __func__);
+#ifdef CDB2API_TEST_DEBUG
+        printf("*** %s", hndl->errstr);
+#endif
         sbuf2close(sb);
         free(p);
         rc = -1;
@@ -7092,6 +7454,10 @@ static inline void only_read_config(cdb2_hndl_tp *hndl)
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 {
+#ifdef CDB2API_TEST
+    ++num_get_dbhosts;
+#endif
+
     int use_bmsd = 0;
     char comdb2db_hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     int comdb2db_ports[MAX_NODES];
@@ -7273,6 +7639,10 @@ retry:
         /* Try dbinfo on same room first */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
+#ifdef CDB2API_TEST
+            if (cdb2_use_bmsd)
+                printf("Try node %d name %s master %d\n", try_node, hndl->hosts[try_node], hndl->master);
+#endif
             rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
                                    hndl->hosts[try_node], hndl->hosts,
                                    hndl->ports, &hndl->master, &hndl->num_hosts,
