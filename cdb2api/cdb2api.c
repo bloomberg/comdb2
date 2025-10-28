@@ -99,6 +99,12 @@ static int cdb2_comdb2dbname_set_from_env = 0;
 static char cdb2_dnssuffix[255] = QUOTE(CDB2_DNS_SUFFIX);
 static int cdb2_dnssuffix_set_from_env = 0;
 
+#ifndef CDB2_BMS_SUFFIX
+#define CDB2_BMS_SUFFIX
+#endif
+static char cdb2_bmssuffix[128] = QUOTE(CDB2_BMS_SUFFIX);
+static int cdb2_bmssuffix_set_from_env = 0;
+
 static char cdb2_machine_room[16] = "";
 static int cdb2_machine_room_set_from_env = 0;
 
@@ -1363,6 +1369,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_int("COMDB2_CONFIG_TCPBUFSZ", &cdb2_tcpbufsz, &cdb2_tcpbufsz_set_from_env);
         process_env_var_str("COMDB2_CONFIG_DNSSUFFIX", (char *)&cdb2_dnssuffix, sizeof(cdb2_dnssuffix),
                             &cdb2_dnssuffix_set_from_env);
+        process_env_var_str("COMDB2_CONFIG_BMSSUFFIX", (char *)&cdb2_bmssuffix, sizeof(cdb2_bmssuffix),
+                            &cdb2_bmssuffix_set_from_env);
         process_env_var_str_on_off("COMDB2_CONFIG_ALLOW_PMUX_ROUTE", &cdb2_allow_pmux_route,
                                    &cdb2_allow_pmux_route_set_from_env);
         process_env_var_str_on_off("COMDB2_CONFIG_RETRY_DBINFO_ON_CACHED_CONNECTION_FAILURE",
@@ -1644,6 +1652,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     strncpy(cdb2_dnssuffix, tok, sizeof(cdb2_dnssuffix) - 1);
+            } else if (!cdb2_bmssuffix_set_from_env && strcasecmp("bmssuffix", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    strncpy(cdb2_bmssuffix, tok, sizeof(cdb2_bmssuffix) - 1);
             } else if (!cdb2_allow_pmux_route_set_from_env && strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
@@ -6375,12 +6387,6 @@ typedef struct SRVRecord {
     unsigned short port;
     char dname[MAXCDNAME];
 } SRVRecord;
-
-#ifndef CDB2_BMS_SUFFIX
-#define CDB2_BMS_SUFFIX
-#endif
-static char cdb2_bmssuffix[128] = QUOTE(CDB2_BMS_SUFFIX);
-;
 
 static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, const char *tier, int *num_hosts,
                           int *num_same_room)
