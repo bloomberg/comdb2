@@ -29,3 +29,4 @@ skipscan,UNKNOWN,181051795
 queuedb_rollover_noroll1_generated,UNKNOWN,181062375
 simple_ssl,UNKNOWN,181151988
 sc_timepart,UNKNOWN,181186021
+snapshot_during_truncate,UNKNOWN,181344241
