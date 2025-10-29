@@ -380,7 +380,7 @@ static char *cdb2_type_str(int type)
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
-static SBUF2 *sbuf2openread(const char *filename)
+SBUF2 *cdb2_sbuf2openread(const char *filename)
 {
     int fd;
     SBUF2 *s;
@@ -417,7 +417,7 @@ static char *proc_cmdline_getargv0(void)
     static char argv0[PATH_MAX];
 
     snprintf(procname, sizeof(procname), "/proc/self/cmdline");
-    SBUF2 *s = sbuf2openread(procname);
+    SBUF2 *s = cdb2_sbuf2openread(procname);
     if (s == NULL) {
         fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
                 strerror(errno));
@@ -560,7 +560,7 @@ static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno)
+int cdb2_read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno)
 {
     int ch = get_char(s, buf, chrno);
     while (ch == ' ' || ch == '\n')
@@ -1443,7 +1443,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
     int err = 0;
 
     debugprint("entering\n");
-    while (read_line((char *)&line, sizeof(line), s, buf, &line_no) != -1) {
+    while (cdb2_read_line((char *)&line, sizeof(line), s, buf, &line_no) != -1) {
         char *last = NULL;
         char *tok = NULL;
         tok = strtok_r(line, " :", &last);
@@ -1890,7 +1890,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         fallback_on_bb_bin = 0;
     } else {
         if (!defaultOnly && *CDB2DBCONFIG_NOBBENV != '\0') {
-            s = sbuf2openread(CDB2DBCONFIG_NOBBENV);
+            s = cdb2_sbuf2openread(CDB2DBCONFIG_NOBBENV);
             if (s != NULL) {
                 read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                   db_hosts, num_db_hosts, dbnum, send_stack, shards, num_shards);
@@ -1906,7 +1906,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
      * can't find the file in any standard location, look at /bb/bin
      * Once deployment details for comdb2db.cfg solidify, this will go away. */
     if (fallback_on_bb_bin) {
-        s = sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN);
+        s = cdb2_sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN);
         if (s != NULL) {
             read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, send_stack, shards, num_shards);
@@ -1915,7 +1915,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     }
 
     if (get_config_file(dbname, filename, sizeof(filename)) == 0) {
-        s = sbuf2openread(filename);
+        s = cdb2_sbuf2openread(filename);
         if (s != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, send_stack, shards, num_shards);
@@ -3807,7 +3807,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
     } else if (iam_identity && identity_cb && (hndl && (hndl->flags & CDB2_SQL_ROWS) == 0)) {
-        id_blob = identity_cb->getIdentity();
+        id_blob = identity_cb->getIdentity(hndl, 0); // TODO: optional value choice
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
         }
