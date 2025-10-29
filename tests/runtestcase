@@ -390,7 +390,7 @@ verify_db_at_finish() {
 }
 
 exit_if_above_max_test_failures () {
-    MAX_TEST_FAILURES=${MAX_TEST_FAILURES:-10}    # stop running if more that this number of failures in test.log
+    MAX_TEST_FAILURES=${MAX_TEST_FAILURES:-300}    # stop running if more that this number of failures in test.log
     F=`grep failed ${TESTDIR}/test.log | wc -l`
     if [ "$F" -ge "$MAX_TEST_FAILURES" ] ; then 
         echo "$TESTCASE: Max number of allowed test failures ($MAX_TEST_FAILURES) reached" >> ${TESTDIR}/test.log
