@@ -306,6 +306,7 @@ typedef enum cdb2_event_type {
     CDB2_AT_EXIT_NEXT_RECORD = 1 << 16,
 
     /* Lifecycle events */
+    CDB2_AFTER_HNDL_ALLOC = 1 << 26,
     CDB2_BEFORE_DISCOVERY = 1 << 27,
     CDB2_AFTER_DISCOVERY = 1 << 28,
     CDB2_AT_OPEN = 1 << 29,
