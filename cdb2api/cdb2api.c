@@ -7743,7 +7743,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
               int flags)
 {
     cdb2_hndl_tp *hndl;
-    int rc = 0;
     void *callbackrc;
     cdb2_event *e = NULL;
 
@@ -7825,6 +7824,15 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
            merely 48 chars. */
         strcpy(hndl->policy, (hndl->flags & CDB2_DIRECT_CPU) ? "dc" : "random_room");
     }
+
+    int rc = 0;
+
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_HNDL_ALLOC, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
+    }
+    if (rc != 0)
+        goto out;
 
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
