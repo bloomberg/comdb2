@@ -23,4 +23,4 @@ find . -name 'root.crt' | grep 'root.crt'
 find . -name 'server.crt' | grep 'server.crt'
 find . -name 'server.key' | grep 'server.key'
 
-ls -al server.key | grep 'r--------'
+ls -al server.key | grep 'rw-------'
