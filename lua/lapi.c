@@ -347,8 +347,7 @@ LUA_API const char *lua_tolstring (lua_State *L, int idx, size_t *len) {
   if (!ttisstring(o)) {
     /* COMDB2 MODIFICATION */
     if (luabb_iscstring(L, idx)) {
-        const char *s = luabb_tocstring(L, idx);
-        if (len) *len = strlen(s);
+        const char *s = luabb_tolcstring(L, idx, len);
         return s;
     }
     lua_lock(L);  /* `luaV_tostring' may create a new string */
