@@ -1,2 +1,2 @@
-ssl_cert /tmp/san.crt
-ssl_key /tmp/san.key
+ssl_cert ${TESTDIR}/san.crt
+ssl_key ${TESTDIR}/san.key

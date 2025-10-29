@@ -1,34 +1,36 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+CERTDIR=${TESTDIR}/certs
+
 # Generate Java key store and trust store
-rm -f ${TESTDIR}/client-keystore.pkcs12 ${TESTDIR}/keystore ${TESTDIR}/truststore
+rm -f ${CERTDIR}/client-keystore.pkcs12 ${CERTDIR}/keystore ${CERTDIR}/truststore
 
 openssl pkcs12 -export \
-        -in ${TESTDIR}/client.crt \
-        -inkey ${TESTDIR}/client.key \
+        -in ${CERTDIR}/client.crt \
+        -inkey ${CERTDIR}/client.key \
         -name cdb2clikey \
         -passout pass:cdb2jdbctest \
-        -out ${TESTDIR}/client-keystore.pkcs12
+        -out ${CERTDIR}/client-keystore.pkcs12
 keytool -noprompt -importkeystore \
-        -srckeystore ${TESTDIR}/client-keystore.pkcs12 \
+        -srckeystore ${CERTDIR}/client-keystore.pkcs12 \
         -srcstoretype pkcs12 \
         -srcstorepass cdb2jdbctest \
-        -destkeystore ${TESTDIR}/keystore \
+        -destkeystore ${CERTDIR}/keystore \
         -deststoretype JKS \
         -deststorepass cdb2jdbctest
 keytool -noprompt -importcert \
         -alias cdb2ca \
-        -file ${TESTDIR}/root.crt \
-        -keystore ${TESTDIR}/truststore \
+        -file ${CERTDIR}/root.crt \
+        -keystore ${CERTDIR}/truststore \
         -storepass cdb2jdbctest
 
-chmod 644 ${TESTDIR}/keystore ${TESTDIR}/truststore
+chmod 644 ${CERTDIR}/keystore ${CERTDIR}/truststore
 
 export envSkipTests='false'
 export envSSLTestDatabase=${DBNAME}
 export envTestDatabase=${SECONDARY_DBNAME}
-export envSSLCertPath=${TESTDIR}
+export envSSLCertPath=${CERTDIR}
 export envSSLCertPass='cdb2jdbctest'
 
 if [ -n "${CLUSTER}" ]; then

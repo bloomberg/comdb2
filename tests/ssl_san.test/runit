@@ -10,10 +10,10 @@ dbnm=$1
 set -e
 
 # Firstly verify that the certificate has SAN records.
-openssl x509 -in /tmp/san.crt -text -noout | grep -A1 'Subject Alternative Name'
+openssl x509 -in ${TESTDIR}/san.crt -text -noout | grep -A1 'Subject Alternative Name'
 
 # Secondly verify the CN isn't a real domain.
-openssl x509 -in /tmp/san.crt -text -noout | grep 'www.example.com'
+openssl x509 -in ${TESTDIR}/san.crt -text -noout | grep 'www.example.com'
 
 # Lastly verify that we validate the SAN records correctly.
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default - >output.actual 2>&1
