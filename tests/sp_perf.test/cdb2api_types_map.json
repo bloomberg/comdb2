@@ -1,0 +1,22 @@
+{
+  "alltypes_short": "CDB2_INTEGER",
+  "alltypes_u_short": "CDB2_INTEGER",
+  "alltypes_int": "CDB2_INTEGER",
+  "alltypes_u_int": "CDB2_INTEGER",
+  "alltypes_longlong": "CDB2_INTEGER",
+  "alltypes_float": "CDB2_REAL",
+  "alltypes_double": "CDB2_REAL",
+  "alltypes_byte": "CDB2_BLOB",
+  "alltypes_cstring": "CDB2_CSTRING",
+  "alltypes_pstring": "CDB2_CSTRING",
+  "alltypes_blob": "CDB2_BLOB",
+  "alltypes_datetime": "CDB2_DATETIME",
+  "alltypes_datetimeus": "CDB2_DATETIMEUS",
+  "alltypes_vutf8": "CDB2_BLOB",
+  "alltypes_intervalym": "CDB2_INTERVALYM",
+  "alltypes_intervalds": "CDB2_INTERVALDS",
+  "alltypes_intervaldsus": "CDB2_INTERVALDSUS",
+  "alltypes_decimal32": "CDB2_CSTRING",
+  "alltypes_decimal64": "CDB2_CSTRING",
+  "alltypes_decimal128": "CDB2_CSTRING"
+}
