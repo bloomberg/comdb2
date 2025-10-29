@@ -1,0 +1,14 @@
+[drop table if exists bindt] rc 0
+[create table bindt {
+schema {
+    cstring i[32] null=yes
+    cstring j[32] null=yes
+}}] rc 0
+(version='test')
+(i='1', j='')
+(version='test')
+(i='5', j='6')
+(rows inserted=1)
+[INSERT INTO bindt (i, j) VALUES ('5', NULL)] rc 0
+(rows inserted=1)
+[INSERT INTO bindt (i, j) VALUES ('', '6')] rc 0

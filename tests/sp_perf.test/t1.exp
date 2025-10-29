@@ -1,0 +1,33 @@
+(version='instrig')
+(rows inserted=1)
+Trigger test passed!!
+(version='instrig')
+Trigger test passed!!
+Consumer test passed!
+(version='spcstr')
+(rows inserted=1)
+(conversion='cstring->int', input='14', output='14')
+(conversion='cstring->real', input='-100.00900268555', output='-100.00900268555')
+(conversion='cstring->blob', input='1014', output='31303134')
+(conversion='cstring->datetime', input='2024-01-15T123000.000 America/New_York', output='2024-01-15T123000.000 America/New_York')
+(conversion='cstring->decimal', input='-100009', output='-100009')
+(conversion='cstring->intervalym', input='- 1-07', output='- 1-07')
+(conversion='cstring->intervalds', input='- 1 03:46:49.000', output='- 1 03:46:49.000')
+t1 rows:
+(alltypes_short=14)
+(alltypes_short=15)
+t1_cstr rows:
+(alltypes_short='14')
+(version='spcstr')
+(conversion='cstring->int', input='15', output='15')
+(conversion='cstring->real', input='-100.00099945068', output='-100.00099945068')
+(conversion='cstring->blob', input='1111', output='31313131')
+(conversion='cstring->datetime', input='2025-12-16T132546.000 America/New_York', output='2025-12-16T132546.000 America/New_York')
+(conversion='cstring->decimal', input='-100001', output='-100001')
+(conversion='cstring->intervalym', input='- 0-11', output='- 0-11')
+(conversion='cstring->intervalds', input='- 1 03:46:41.000', output='- 1 03:46:41.000')
+t1 rows:
+(alltypes_short=15)
+(alltypes_short=16)
+t1_cstr rows:
+(alltypes_short='15')

@@ -625,7 +625,7 @@ void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
         case DBTYPES_CSTRING:
             cs = lua_touserdata(L, idx);
             c = cs->val;
-            *len = strlen(c);
+            *len = cs->len;
             break;
         default:
             c = (char *)luabb_tostring_noerr(L, idx);
@@ -2201,6 +2201,7 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     intv_t *i;
     datetime_t *d;
     int type;
+    size_t l;
     if ((type = luabb_dbtype(lua, value)) > DBTYPES_MINTYPE) {
         if (luabb_isnull(lua, value)) {
             return sqlite3_bind_null(stmt, position);
@@ -2210,8 +2211,8 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     switch (type) {
     case DBTYPES_LNIL: return sqlite3_bind_null(stmt, position);
     case DBTYPES_LSTRING:
-        c = lua_tostring(lua, value);
-        return sqlite3_bind_text(stmt, position, c, strlen(c), NULL);
+        c = lua_tolstring(lua, value, &l);
+        return sqlite3_bind_text(stmt, position, c, l, NULL);
     case DBTYPES_LNUMBER:
         return sqlite3_bind_double(stmt, position, lua_tonumber(lua, value));
     case DBTYPES_INTEGER:
@@ -2220,7 +2221,8 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
         return sqlite3_bind_double(stmt, position, ((lua_real_t *)p)->val);
     case DBTYPES_CSTRING:
         c = ((lua_cstring_t *)p)->val;
-        return sqlite3_bind_text(stmt, position, c, strlen(c), NULL);
+        l = ((lua_cstring_t *)p)->len;
+        return sqlite3_bind_text(stmt, position, c, l, NULL);
     case DBTYPES_BLOB:
         b = &((lua_blob_t *)p)->val;
         return sqlite3_bind_blob(stmt, position, b->data, b->length, NULL);
@@ -2961,8 +2963,10 @@ static void copy_comdb2_type(lua_State *lua1, lua_State *lua2, int index,
         copy_type(dbtypes.cstring, lua_cstring_t);
         if (f1->is_null) {
             f2->val = NULL;
+            f2->len = 0;
         } else {
             f2->val = strdup(f1->val);
+            f2->len = f1->len;
         }
     } else if (luabb_istype(lua1, index, DBTYPES_BLOB)) {
         copy_type(dbtypes.blob, lua_blob_t);
@@ -4514,6 +4518,7 @@ static int db_setnull(Lua lua)
         c = (lua_cstring_t *)t;
         free(c->val);
         c->val = NULL;
+        c->len = 0;
         break;
     case DBTYPES_BLOB:
         b = (lua_blob_t *)t;
@@ -5933,7 +5938,7 @@ static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
         case CLIENT_REAL: return push_real_array(L, &p);
         }
         return -1;
-    }
+    }       
     switch (p.type) {
     case CLIENT_INT:
     case CLIENT_UINT: luabb_pushinteger(L, p.u.i); break;
