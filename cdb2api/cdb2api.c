@@ -148,6 +148,8 @@ static int cdb2_use_bmsd = 0; // TODO: enable at some point
 static int cdb2_use_bmsd_set_from_env = 0;
 static int cdb2_comdb2db_fallback = 1;
 static int cdb2_comdb2db_fallback_set_from_env = 0;
+static int cdb2_use_optional_identity = 1;
+static int cdb2_use_optional_identity_set_from_env = 0;
 
 static int CDB2_REQUEST_FP = 0;
 
@@ -1393,6 +1395,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_int("COMDB2_FEATURE_USE_BMSD", &cdb2_use_bmsd, &cdb2_use_bmsd_set_from_env);
         process_env_var_int("COMDB2_FEATURE_COMDB2DB_FALLBACK", &cdb2_comdb2db_fallback,
                             &cdb2_comdb2db_fallback_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_USE_OPTIONAL_IDENTITY", &cdb2_use_optional_identity,
+                            &cdb2_use_optional_identity_set_from_env);
 
         char *arg = getenv("COMDB2_CONFIG_INSTALL_STATIC_LIBS");
         if ((cdb2_install != NULL) && arg != NULL) {
@@ -1506,6 +1510,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     cdb2_use_ftruncate = value_on_off(tok, &err);
+            } else if (!cdb2_use_optional_identity_set_from_env && (strcasecmp("use_optional_identity", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_use_optional_identity = value_on_off(tok, &err);
             } else if (!cdb2_comdb2db_fallback_set_from_env && (strcasecmp("comdb2db_fallback", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
@@ -3819,7 +3827,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
     } else if (iam_identity && identity_cb && (hndl && (hndl->flags & CDB2_SQL_ROWS) == 0)) {
-        id_blob = identity_cb->getIdentity(hndl, 0); // TODO: optional value choice
+        id_blob = identity_cb->getIdentity(hndl, cdb2_use_optional_identity);
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
         }
