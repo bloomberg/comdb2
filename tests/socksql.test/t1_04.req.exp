@@ -1,1 +1,6 @@
-[SELECT * FROM t1] failed with rc -3 Failed to set transaction mode
+(a=1, b=2, c=3, d=4)
+(a=1, b=1, c=11, d=12)
+(a=1, b=1, c=1, d=1)
+(a=1, b=12, c=1, d=14)
+(a=1, b=6, c=7, d=8)
+(a=1, b=8, c=1, d=10)
