@@ -149,25 +149,9 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     Close(fd);
 }
 
-struct event *high_priority_event_new(struct event_base *base, evutil_socket_t fd, short what,
-                                      event_callback_fn fn, void *data)
-{
-    struct event *ev = event_new(base, fd, what, fn, data);
-    event_priority_set(ev, 1);
-    return ev;
-}
-
-struct event *std_priority_event_new(struct event_base *base, evutil_socket_t fd, short what,
-                                     event_callback_fn fn, void *data)
-{
-    struct event *ev = event_new(base, fd, what, fn, data);
-    event_priority_set(ev, 2);
-    return ev;
-}
-
 static void newsql_cleanup(struct newsql_appdata_evbuffer *appdata)
 {
-    appdata->cleanup_ev = high_priority_event_new(appdata->base, -1, 0, free_newsql_appdata_evbuffer, appdata);
+    appdata->cleanup_ev = event_new(appdata->base, -1, 0, free_newsql_appdata_evbuffer, appdata);
     event_active(appdata->cleanup_ev, 0, 0);
 }
 
@@ -289,7 +273,7 @@ static int newsql_ping_pong_evbuffer(struct sqlclntstate *clnt)
     if (!appdata->ping) {
         appdata->ping = malloc(sizeof(struct ping_pong));
         int flags = EV_READ | EV_TIMEOUT;
-        appdata->ping->ev = std_priority_event_new(wrbase, appdata->fd, flags, ping_pong_cb, appdata);
+        appdata->ping->ev = event_new(wrbase, appdata->fd, flags, ping_pong_cb, appdata);
     }
     struct ping_pong *ping = appdata->ping;
     ping->status = -1;
@@ -632,7 +616,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
     struct dispatch_sql_arg *d = calloc(1, sizeof(struct dispatch_sql_arg));
     d->appdata = appdata;
     d->thd = pthread_self();
-    d->ev = std_priority_event_new(appdata->base, -1, EV_TIMEOUT | EV_PERSIST, dispatch_sql, appdata);
+    d->ev = event_new(appdata->base, -1, EV_TIMEOUT | EV_PERSIST, dispatch_sql, appdata);
     Pthread_mutex_lock(&dispatch_lk);
     if (bdb_try_am_i_coherent(thedb->bdb_env)) {
         /* check again under lock to prevent race with concurrent leader-upgrade */
@@ -1132,7 +1116,7 @@ static int newsql_read_evbuffer(struct sqlclntstate *clnt, void *b, int l, int n
     struct debug_cmd cmd;
     cmd.appdata = appdata;
     cmd.need = need;
-    cmd.ev = std_priority_event_new(wrbase, appdata->fd, EV_READ, debug_cmd_cb, &cmd);
+    cmd.ev = event_new(wrbase, appdata->fd, EV_READ, debug_cmd_cb, &cmd);
     add_rd_event(appdata, cmd.ev, NULL);
     event_base_dispatch(wrbase);
     event_free(cmd.ev);
@@ -1354,8 +1338,8 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     appdata->local = local;
     appdata->fd = arg->fd;
     appdata->rd_buf = arg->rd_buf;
-    appdata->rd_hdr_ev = std_priority_event_new(appdata->base, arg->fd, EV_READ, rd_hdr, appdata);
-    appdata->rd_payload_ev = std_priority_event_new(appdata->base, arg->fd, EV_READ, rd_payload, appdata);
+    appdata->rd_hdr_ev = event_new(appdata->base, arg->fd, EV_READ, rd_hdr, appdata);
+    appdata->rd_payload_ev = event_new(appdata->base, arg->fd, EV_READ, rd_payload, appdata);
     struct sqlwriter_arg sqlwriter_arg = {
         .fd = arg->fd,
         .clnt = clnt,
