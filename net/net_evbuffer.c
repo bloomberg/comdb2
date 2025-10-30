@@ -412,7 +412,6 @@ struct net_dispatch_info {
     const char *who;
     struct event_base *base;
     struct timeval *tick;
-    int priority;
 };
 
 struct user_msg_info {
@@ -547,7 +546,6 @@ static void *net_dispatch(void *arg)
 
     struct event *ev = event_new(n->base, -1, EV_PERSIST, event_tick, n);
     struct timeval one = {1, 0};
-    if (n->priority) event_priority_set(ev, 0);
     event_add(ev, &one);
 
     if (start_callback) {
@@ -566,25 +564,15 @@ static void *net_dispatch(void *arg)
     return NULL;
 }
 
-static void init_base_priority(pthread_t *t, struct event_base **bb, const char *who, int priority,
-                               struct timeval *tick)
+static void init_base(pthread_t *t, struct event_base **bb, const char *who, struct timeval *tick)
 {
     struct net_dispatch_info *info = calloc(1, sizeof(struct net_dispatch_info));
     *bb = event_base_new();
-    if (priority) {
-        event_base_priority_init(*bb, priority);
-    }
     info->who = who;
     info->base = *bb;
     info->tick = tick;
-    info->priority = priority;
     Pthread_create(t, NULL, net_dispatch, info);
     Pthread_detach(*t);
-}
-
-static void init_base(pthread_t *t, struct event_base **bb, const char *who)
-{
-    init_base_priority(t, bb, who, 0, NULL);
 }
 
 static struct host_info *host_info_new(char *host)
@@ -596,12 +584,12 @@ static struct host_info *host_info_new(char *host)
     if (reader_policy == POLICY_PER_HOST) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "R:%s", h->host);
-        init_base(&h->per_host.rdthd, &h->per_host.rdbase, strdup(thdname));
+        init_base(&h->per_host.rdthd, &h->per_host.rdbase, strdup(thdname), NULL);
     }
     if (writer_policy == POLICY_PER_HOST) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "W:%s", h->host);
-        init_base(&h->per_host.wrthd, &h->per_host.wrbase, strdup(thdname));
+        init_base(&h->per_host.wrthd, &h->per_host.wrbase, strdup(thdname), NULL);
     }
     LIST_INIT(&h->event_list);
     LIST_INSERT_HEAD(&host_list, h, entry);
@@ -650,12 +638,12 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     if (reader_policy == POLICY_PER_NET) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "R:%s", n->service);
-        init_base(&n->per_net.rdthd, &n->per_net.rdbase, strdup(thdname));
+        init_base(&n->per_net.rdthd, &n->per_net.rdbase, strdup(thdname), NULL);
     }
     if (writer_policy == POLICY_PER_NET) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "W:%s", n->service);
-        init_base(&n->per_net.wrthd, &n->per_net.wrbase, strdup(thdname));
+        init_base(&n->per_net.wrthd, &n->per_net.wrbase, strdup(thdname), NULL);
     }
     LIST_INIT(&n->event_list);
     LIST_INSERT_HEAD(&net_list, n, entry);
@@ -758,13 +746,13 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
         char thdname[16];
         int x = snprintf(thdname, sizeof(thdname), "R:%s", entry->key);
         (void)x;
-        init_base(&e->per_event.rdthd, &e->per_event.rdbase, strdup(thdname));
+        init_base(&e->per_event.rdthd, &e->per_event.rdbase, strdup(thdname), NULL);
     }
     if (writer_policy == POLICY_PER_EVENT) {
         char thdname[16];
         int x = snprintf(thdname, sizeof(thdname), "W:%s", entry->key);
         (void)x;
-        init_base(&e->per_event.wrthd, &e->per_event.wrbase, strdup(thdname));
+        init_base(&e->per_event.wrthd, &e->per_event.wrbase, strdup(thdname), NULL);
     }
     /* set up rd_worker */
     Pthread_mutex_init(&e->rd_lk, NULL);
@@ -3534,24 +3522,24 @@ static void libevent_fatal_cb(int err)
 static void setup_bases(void)
 {
     event_set_fatal_callback(libevent_fatal_cb);
-    init_base(&base_thd, &base, "main");
+    init_base(&base_thd, &base, "main", NULL);
     if (dedicated_timer) {
         gettimeofday(&timer_tick, NULL);
-        init_base_priority(&timer_thd, &timer_base, "timer", 0, &timer_tick);
+        init_base(&timer_thd, &timer_base, "timer", &timer_tick);
     } else {
         timer_thd = base_thd;
         timer_base = base;
     }
     if (dedicated_fdb) {
         gettimeofday(&fdb_tick, NULL);
-        init_base_priority(&fdb_thd, &fdb_base, "fdb", 0, &fdb_tick);
+        init_base(&fdb_thd, &fdb_base, "fdb", &fdb_tick);
     } else {
         fdb_thd = base_thd;
         fdb_base = base;
     }
     if (dedicated_dist) {
         gettimeofday(&dist_tick, NULL);
-        init_base_priority(&dist_thd, &dist_base, "dist", 0, &dist_tick);
+        init_base(&dist_thd, &dist_base, "dist", &dist_tick);
     } else {
         dist_thd = base_thd;
         dist_base = base;
@@ -3561,8 +3549,7 @@ static void setup_bases(void)
             gettimeofday(&appsock_tick[i], NULL);
             char thdname[16];
             snprintf(thdname, sizeof(thdname), "appsock:%d", i);
-            //priorities: 0 => timer-tick;  1 => free-connection;  2 => process-connection; 2 => Default priority
-            init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 4, &appsock_tick[i]);
+            init_base(&appsock_thd[i], &appsock_base[i], strdup(thdname), &appsock_tick[i]);
         }
     } else {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
@@ -3574,14 +3561,14 @@ static void setup_bases(void)
         single.wrthd = base_thd;
         single.wrbase = base;
     } else if (writer_policy == POLICY_SINGLE) {
-        init_base(&single.wrthd, &single.wrbase, "write");
+        init_base(&single.wrthd, &single.wrbase, "write", NULL);
     }
 
     if (reader_policy == POLICY_NONE) {
         single.rdthd = base_thd;
         single.rdbase = base;
     } else if (reader_policy == POLICY_SINGLE) {
-        init_base(&single.rdthd, &single.rdbase, "read");
+        init_base(&single.rdthd, &single.rdbase, "read", NULL);
     }
 
     logmsg(LOGMSG_USER, "Libevent:%s method:%s\n", event_get_version(), event_base_get_method(base));
