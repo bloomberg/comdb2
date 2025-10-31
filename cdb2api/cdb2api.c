@@ -145,7 +145,7 @@ static int cdb2_tcpbufsz_set_from_env = 0;
 
 static int CDB2_PROTOBUF_SIZE = 0;
 static int cdb2_protobuf_size_set_from_env = 0;
-static int cdb2_use_bmsd = 0; // TODO: enable at some point
+static int cdb2_use_bmsd = 1;
 static int cdb2_use_bmsd_set_from_env = 0;
 static int cdb2_comdb2db_fallback = 1;
 static int cdb2_comdb2db_fallback_set_from_env = 0;
@@ -6926,8 +6926,6 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
 {
     int find_shards =
         !!*num_shards; // boolean on whether we should be finding shards of a partition instead of nodes for a single db
-
-    use_bmsd = use_bmsd && !find_shards; // can only find shards via comdb2db.cfg currently
     int bmsd_rc = -1;
 
     if (use_bmsd && cdb2_has_room_distance)
@@ -7557,7 +7555,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (max_time < 0)
         max_time = 0;
 
-    use_bmsd = cdb2_use_bmsd;
+    use_bmsd = cdb2_use_bmsd && (*cdb2_bmssuffix != '\0') && !hndl->num_shards; // cannot find shards via bmsd yet
 retry:
     if (rc) {
         if (num_retry >= MAX_RETRIES || time(NULL) > max_time)
