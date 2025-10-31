@@ -18,6 +18,7 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "logmsg.h"
+#include "types.h"
 
 int gbl_alternate_normalize = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1963,6 +1964,91 @@ const char *sqlite3_bind_parameter_name(sqlite3_stmt *pStmt, int i){
   if( p==0 ) return 0;
   return sqlite3VListNumToName(p->pVList, i);
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <carray.h>
+int sqlite3_bind_param_value(sqlite3_stmt* pStmt, int i, struct param_data *param){
+  Vdbe *p = (Vdbe*)pStmt;
+  memset(param, 0, sizeof(struct param_data));
+
+  /* VDBE param name index is 1-base, value is 0-based. */
+  param->name = (char *)sqlite3_bind_parameter_name(pStmt, i + 1);
+
+  Mem *sqlite_param = &p->aVar[i];
+  int fg = sqlite_param->flags;
+
+  if( fg&MEM_Null ){
+    if (sqlite_param->eSubtype == 'p'){
+      param->arraylen = sqlite3_carray_size(sqlite_param->z);
+      switch( sqlite3_carray_type(sqlite_param->z) ) {
+      case CARRAY_INT32:
+        param->type = CLIENT_INT;
+        param->len = 4 * param->arraylen;
+        break;
+      case CARRAY_INT64:
+        param->type = CLIENT_INT;
+        param->len = 8 * param->arraylen;
+        break;
+      case CARRAY_DOUBLE:
+        param->type = CLIENT_REAL;
+        param->len = 8 * param->arraylen;
+        break;
+      case CARRAY_TEXT:
+        param->type = CLIENT_CSTR;
+        break;
+      case CARRAY_BLOB:
+        param->type = CLIENT_BLOB;
+        break;
+      default:
+        /* unhandled carray types */
+        break;
+      }
+      return 0;
+    }else{
+      /* set null flag and continue to get client type */
+      param->null = 1;
+      param->len = 0;
+    }
+  }
+
+  if( fg&MEM_Str ){
+    param->type = CLIENT_CSTR;
+    param->len = sqlite_param->n;
+    param->u.p = sqlite_param->z;
+  }else if( fg&MEM_Int ){
+    param->type = CLIENT_INT;
+    param->len = sizeof(sqlite_param->u.i);
+    param->u.i = sqlite_param->u.i;
+  }else if( fg&MEM_Real ){
+    param->type = CLIENT_REAL;
+    param->len = sizeof(sqlite_param->u.r);
+    param->u.r = sqlite_param->u.r;
+  }else if( fg&MEM_Blob ){
+    param->type = CLIENT_BLOB;
+    param->len = sqlite_param->n;
+    param->u.p = sqlite_param->z;
+  }else if( fg&MEM_Datetime ){
+    if (sqlite_param->du.dt.dttz_prec == DTTZ_PREC_MSEC)
+        param->type = CLIENT_DATETIME;
+    else
+        param->type = CLIENT_DATETIMEUS;
+    param->len = sizeof(param->u.dt);
+    param->u.dt = sqlite_param->du.dt;
+  }else if( fg&MEM_Interval ){
+    if( sqlite_param->du.tv.type==INTV_YM_TYPE )
+        param->type = CLIENT_INTVYM;
+    else if( sqlite_param->du.tv.type==INTV_DS_TYPE )
+        param->type = CLIENT_INTVDS;
+    else if( sqlite_param->du.tv.type==INTV_DSUS_TYPE )
+        param->type = CLIENT_INTVDSUS;
+    param->len = sizeof(sqlite_param->du.tv);
+    param->u.tv = sqlite_param->du.tv;
+  }else{
+    return -1;
+  }
+  return 0;
+}
+#endif
 
 /*
 ** Given a wildcard parameter name, return the index of the variable
