@@ -11,6 +11,7 @@ create table t(a int, b int, c int); \$\$
 create index t_ix on t(a, b);
 truncate t;
 
+set transaction blocksql
 set transaction chunk 100;
 begin;
 insert into t select a.value as a, b.value as b, 0 from generate_series(1, 10000) as a cross join generate_series(1, 10) as b;

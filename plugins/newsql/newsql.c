@@ -2410,7 +2410,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         clnt->ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
     }
     if (clnt->dbtran.mode < TRANLEVEL_SOSQL) {
-        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+        clnt->dbtran.mode = TRANLEVEL_MODSNAP;
     }
     clnt->osql.sent_column_data = 0;
 
