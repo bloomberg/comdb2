@@ -210,6 +210,7 @@ typedef struct cdb2_effects_type effects_tp;
 
 void cdb2_set_comdb2db_config(const char *cfg_file);
 void cdb2_set_comdb2db_info(const char *cfg_info);
+void cdb2_set_identity(cdb2_hndl_tp *hndl, const void *identity);
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type,
@@ -242,8 +243,6 @@ void cdb2_set_max_retries(int max_retries);
 void cdb2_set_min_retries(int min_retries);
 void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
 void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
-
-void cdb2_use_hint(cdb2_hndl_tp *hndl);
 
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
                     const void *varaddr, int length);
@@ -333,14 +332,24 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
                                 void *user_arg, int argc, ...);
 int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *e);
 
+void cdb2_use_hint(cdb2_hndl_tp *);
+
 typedef const char *(*RETRY_CALLBACK)(void *);
 
 int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f);
+
+void cdb2_identity_create();
+void cdb2_identity_destroy(int is_task_exit);
+int cdb2_identity_valid();
 
 struct cdb2_identity {
     void  (*resetIdentity_start)();
     void  (*resetIdentity_end)(int);
     void *(*getIdentity)(cdb2_hndl_tp *, int);
+    void (*set_identity)(cdb2_hndl_tp *, const void *);
+    void (*identity_create)();
+    void (*identity_destroy)(int);
+    int (*identity_valid)();
 };
 
 #if defined __cplusplus
