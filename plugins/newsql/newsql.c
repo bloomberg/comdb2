@@ -2564,6 +2564,12 @@ static int newsql_free_authdata(struct sqlclntstate *clnt)
     return 0;
 }
 
+void *newsql_get_identity(struct sqlclntstate *clnt) {
+    // latch the identity in clnt, if not there already
+    newsql_get_authdata(clnt);
+    return clnt->externalAuthUser;
+}
+
 void newsql_setup_clnt(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -2973,6 +2979,7 @@ void dump_request(const CDB2SQLQUERY *q) {
         dump(depth, "}\n");
     }
     dump(depth, "is_tagged=%d (has %d)\n", q->is_tagged, q->has_is_tagged);
+    dump(depth, "identity=%s\n", q->identity ? q->identity->principal : NULL);
     depth--;
     dump(depth, "}\n");
 }

@@ -477,6 +477,7 @@ static void legacy_iq_setup(struct ireq *iq, void *setup_data) {
     iq->ipc_sndbak = legacy_sndbak;
     iq->setup_data = setup_data;
     iq->has_ssl = clnt->plugin.has_ssl(clnt);
+    iq->identity = clnt->plugin.get_identity(clnt);
     get_client_origin(iq->corigin, sizeof(iq->corigin), clnt);
 }
 
@@ -504,7 +505,6 @@ static int dispatch_tagged(struct sqlclntstate *clnt) {
             appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[2] == NULL) {
         // TODO
         // write error response: HOW
-        fprintf(stderr, "bad?\n");
         return 1;
     }
     // TODO: get from bindvars
@@ -692,7 +692,8 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     int have_sqlite_fmt = clnt->features.have_sqlite_fmt;
     clnt->sqlite_row_format = have_sqlite_fmt;
     clnt->is_tagged = sqlquery->has_is_tagged && sqlquery->is_tagged;
-    ++clnt->sqltick;
+    if (!clnt->is_tagged)
+        ++clnt->sqltick;
 
     /* If the connection is forwarded from a secure pmux port,
      * both IAM and TLS must be enabled on the database. */
@@ -734,7 +735,7 @@ read:
         wait_for_leader(appdata, incoherent);
     } else if (clnt->is_tagged) {
         if (dispatch_tagged(clnt) != 0) {
-            printf("err?\n");
+            // TODO:: return error?
             goto err;
         }
         // called code will clean up

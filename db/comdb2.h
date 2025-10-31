@@ -1497,6 +1497,7 @@ struct ireq {
     char *argv0;
     int has_ssl;
     void *setup_data;
+    char *identity;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
