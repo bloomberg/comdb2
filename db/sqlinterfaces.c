@@ -1706,6 +1706,60 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     log_queue_time(thd->logger, clnt);
 }
 
+int cache_table_versions(struct sqlclntstate *clnt)
+{
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
+    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed initialize table verison cache rc=%d\n", __func__, rc);
+        return rc;
+    }
+
+    int bdberr;
+    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to cache table versions rc=%d bdberr=%d\n", __func__, rc, bdberr);
+        return rc;
+    }
+
+    return 0;
+}
+
+int start_modsnap_transaction(struct sqlclntstate *clnt)
+{
+    struct dbtable *db = &thedb->static_table;
+    assert(db->handle);
+
+    if (clnt->is_hasql_retry) {
+        get_snapshot(clnt, (int *)&clnt->modsnap_start_lsn_file, (int *)&clnt->modsnap_start_lsn_offset);
+    }
+    if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
+                                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
+                                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
+        return 1;
+    }
+
+    if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
+                             clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
+                             &clnt->modsnap_registration)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
+        return 1;
+    }
+
+    if (cache_table_versions(clnt)) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
+        return 1;
+    }
+
+    clnt->modsnap_in_progress = 1;
+    return 0;
+}
+
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
@@ -1733,27 +1787,9 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     /* Latch the last commit LSN */
-    struct dbtable *db = &thedb->static_table;
-    assert(db->handle);
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
-        if (clnt->is_hasql_retry) {
-            get_snapshot(clnt, (int *) &clnt->modsnap_start_lsn_file, (int *) &clnt->modsnap_start_lsn_offset);
-        }
-        if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
-                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, 
-                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
-            rc = SQLITE_INTERNAL;
-            goto done;
-        }
-
-        if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
-                   clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
-            rc = SQLITE_INTERNAL;
-            goto done;
-        }
-        clnt->modsnap_in_progress = 1;
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (start_modsnap_transaction(clnt) != 0)) {
+        rc = SQLITE_INTERNAL;
+        goto done;
     }
 
     if (clnt->osql.replay)
