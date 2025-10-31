@@ -1447,13 +1447,36 @@ function match_overlap
     return 0
 }
 
+function blocking_logcursor
+{
+    typeset out=$1
+    typeset startlsn=$2
+    local breakcnt=0
+    local starttm
+    local stoptm
+    local logcursorpid=0
+
+    > $out
+    starttm=$SECONDS
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select *, sleep(1) from comdb2_transaction_logs('$startlsn', NULL, 1, 100)" >> $out 2>&1
+    stoptm=$SECONDS
+    echo "Logcursor took $(( stoptm - starttm )) seconds"
+    echo "Logcursor took $(( stoptm - starttm )) seconds" >> $out
+}
+
 function physrep_truncate
 {
     local mnode=`getmaster`
     local startlsn=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $mnode "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    local logcursor_output=./logcursor_output.$$.$RANDOM
+
     echo "Create table"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table cktruncate(a int, b cstring(32))"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into cktruncate select *, 'good' from generate_series(1, 1000)"
+
+    rm -Rf $logcursor_output >/dev/null 2>&1
+    blocking_logcursor $logcursor_output $startlsn &
+    logcursorpid=$!
 
     # Block until all standalones have these records
     for node in $CLUSTER ; do
@@ -1576,6 +1599,16 @@ function physrep_truncate
         done
         echo "Db $name on node $node has caught up"
     done
+
+    wait $logcursorpid
+
+    lctime=$(egrep "Logcursor took" $logcursor_output | tail -1 | awk '{print $3}')
+    echo "Blocking logcursor returned after $lctime seconds"
+    
+    if [[ -z "$lctime" || "$lctime" -gt 90 ]]; then
+        echo "log-cursor should have returned at truncation"
+        cleanFailExit "Logcursor survived logfile-truncate"
+    fi
 }
 
 # Verify that we are showing generation in comdb2-transaction-logs

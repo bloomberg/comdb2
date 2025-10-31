@@ -270,6 +270,7 @@ struct __log {
 #endif
 	u_int64_t    last_log_record_time;
 	u_int32_t    records_last_second;
+	int64_t log_cursor_gen;
 };
 
 /*
