@@ -8930,6 +8930,31 @@ int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f)
     return 0;
 }
 
+void cdb2_set_identity(cdb2_hndl_tp *hndl, const void *identity)
+{
+    if (identity_cb)
+        identity_cb->set_identity(hndl, identity);
+}
+
+void cdb2_identity_create()
+{
+    if (identity_cb)
+        identity_cb->identity_create();
+}
+
+void cdb2_identity_destroy(int is_task_exit)
+{
+    if (identity_cb)
+        identity_cb->identity_destroy(is_task_exit);
+}
+
+int cdb2_identity_valid()
+{
+    if (identity_cb)
+        return identity_cb->identity_valid();
+    return 0;
+}
+
 void cdb2_use_hint(cdb2_hndl_tp *hndl)
 {
 }
