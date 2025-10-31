@@ -1573,6 +1573,7 @@ static void analyzeOneTable(
         VdbeCoverage(v);
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
       addrNext = sqlite3VdbeCurrentAddr(v);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(v, regStat4, STAT_GET_ROWID, regSampleRowid);

@@ -524,4 +524,11 @@ enum {
  */
 int timepart_rollout(const char *partname);
 
+/**
+ * Analyze all shards of a "name" partition
+ *
+ */
+int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
+                               struct errstat *err);
+
 #endif

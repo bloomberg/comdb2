@@ -1874,13 +1874,14 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc, int on
             goto err;
 
         if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                                  ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, /* check_for_illegal_chars */ 0)) {
+                                  ERROR_ON_TBL_NOT_FOUND, 0, 0, NULL, /* check_for_illegal_chars */ 0)) {
             free(tablename);
             goto err;
         }
-        else
+        else {
             comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze,
                                 (vdbeFuncArgFree) &free);
+        }
     }
 
     return;
