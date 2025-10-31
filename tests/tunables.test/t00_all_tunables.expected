@@ -31,7 +31,7 @@
 (name='allow_mismatched_tag_size', description='Allow variants in padding in static tag struct sizes', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_negative_column_size', description='Allow negative column size in csc2 schema. Added mostly for backwards compatibility. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='allow_offline_upgrades', description='Allow machines marked offline to become master.', type='BOOLEAN', value='OFF', read_only='N')
-(name='allow_old_authn', description='Reuse old successful authentication for the connection', type='BOOLEAN', value='OFF', read_only='N')
+(name='allow_old_authn', description='Reuse old successful authentication for the connection', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_parallel_rep_on_pagesplit', description='allow parallel rep on pgsplit', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_parallel_rep_on_prefix', description='allow parallel rep on bam_prefix', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_portmux_route', description='', type='BOOLEAN', value='ON', read_only='Y')
