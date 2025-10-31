@@ -519,6 +519,7 @@ struct plugin_callbacks {
     SQLITE_CALLBACK_API(sqlite3_value *, value);      /* sqlite3_column_value */
     const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int, int);  /* sqlite3_column_interval*/
     int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);    /* sqlite3_errcode */
+    void *(*get_identity)(struct sqlclntstate *);
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -570,6 +571,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_authdata);                        \
         make_plugin_callback(clnt, name, free_authdata);                       \
         make_plugin_callback(clnt, name, api_type);                            \
+        make_plugin_callback(clnt, name, get_identity);                        \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
         make_plugin_optional_null(clnt, int64);                                \

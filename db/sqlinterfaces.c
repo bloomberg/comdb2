@@ -6899,6 +6899,10 @@ static const char * internal_api_type(struct sqlclntstate *clnt)
 {
     return "internal";
 }
+void *internal_get_identity(struct sqlclntstate *clnt)
+{
+    return NULL;
+}
 
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {

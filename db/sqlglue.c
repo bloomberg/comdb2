@@ -13605,6 +13605,7 @@ static void legacy_iq_setup(struct ireq *iq, void *setup_data) {
     struct sqlclntstate *clnt = (struct sqlclntstate*) setup_data;
     iq->ipc_sndbak = legacy_sndbak;
     iq->has_ssl = clnt->plugin.has_ssl(clnt);
+    iq->identity = clnt->plugin.get_identity(clnt);
     get_client_origin(iq->corigin, sizeof(iq->corigin), clnt);
 }
 
