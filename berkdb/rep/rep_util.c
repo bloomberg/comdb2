@@ -1170,6 +1170,8 @@ __rep_get_last_locked(dbenv, last_locked_lsn, genp)
 	if (ismaster) {
 		R_LOCK(dbenv, &dblp->reginfo);
 		*last_locked_lsn = lp->lsn;
+		if (last_locked_lsn->offset > sizeof(LOGP))
+			last_locked_lsn->offset -= lp->len;
 		R_UNLOCK(dbenv, &dblp->reginfo);
 	}
 	return rc;
