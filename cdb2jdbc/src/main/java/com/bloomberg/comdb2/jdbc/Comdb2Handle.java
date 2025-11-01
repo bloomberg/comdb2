@@ -1115,7 +1115,7 @@ public class Comdb2Handle extends AbstractConnection {
                 }
                 tdlog(Level.TRACE, "Connected to %s", dbHostConnected);
 
-                if (retry > 0 && !is_begin) {
+                if (!is_begin) {
                     retryAll = true;
                     int retryrc = retryQueries(retry, runLast);
 
