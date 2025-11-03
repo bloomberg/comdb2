@@ -43,3 +43,5 @@ void log_legacy_request(struct ireq *iq, sqlclntstate *clnt) {
     first_clnt = clnt;
     pthread_once(&once, legacy_init);
 }
+
+void (*gbl_tagged_request_callback)(struct ireq *iq) = NULL;

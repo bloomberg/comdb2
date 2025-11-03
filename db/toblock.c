@@ -2879,6 +2879,18 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
 
 __thread int64_t *txn_logbytes = NULL;
 
+#define LOG_TAG_HIT() \
+    do { \
+            static int once = 1;\
+            if (once) {\
+                once = 0; \
+                fprintf(stderr, "%s: tagged request callback registered %p\n", __func__, gbl_tagged_request_callback); \
+            } \
+        if (gbl_tagged_request_callback) { \
+            gbl_tagged_request_callback(iq); \
+        } \
+    } while(0)
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
     int rowlocks = gbl_rowlocks;
@@ -2916,6 +2928,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
     int is_mixed_sqldyn = 0;
     int have_legacy_requests = 0;
     bdb_state_type *bdb_state = thedb->bdb_env;
+    iq->block_opcode = iq->opcode;
 
 #if DEBUG_DID_REPLAY
     int did_replay = 0;
@@ -3306,6 +3319,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             hdr.opcode != BLOCK2_DBGLOG_COOKIE && hdr.opcode != BLOCK2_PRAGMA) {
             is_mixed_sqldyn = 1;
         }
+        iq->block_opcode = hdr.opcode;
 
         switch (hdr.opcode) {
         case BLOCK2_RNGDELKL:
@@ -3377,6 +3391,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3487,6 +3502,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             }
             /* TODO should this be set to rrn? where did that value come
              * from? */
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3548,6 +3564,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3569,6 +3586,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (iq->debug)
                 reqprintf(iq, "IGNORED IX %d", addkey.ixnum);
             rc = 0;
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3610,6 +3628,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3646,6 +3665,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3715,6 +3735,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             saved_rrn = rrn;
             if (iq->debug)
                 reqprintf(iq, "SAVED IX %d RRN %d", delkey.ixnum, saved_rrn);
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3774,6 +3795,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3864,7 +3886,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
-
+            LOG_TAG_HIT();
             break;
         }
 
@@ -3944,7 +3966,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
-
+            LOG_TAG_HIT();
             break;
         }
         case BLOCK_SEQ: {
@@ -3977,6 +3999,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             rc = 0;
             if (iq->debug)
                 reqprintf(iq, "IGNORED IX %d", ixnum);
+            LOG_TAG_HIT();
             break;
         }
 
@@ -4028,6 +4051,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -4062,6 +4086,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (iq->debug)
                 reqprintf(iq, "IGNORED IX %d", ixnum);
             rc = 0;
+            LOG_TAG_HIT();
             break;
         }
 
@@ -4186,6 +4211,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 numerrs = 1;
                 GOTOBACKOUT;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -4412,6 +4438,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0)
                 GOTOBACKOUT;
+            // TODO: should we count this as a tagged hit?  This doesn't use BLOCK2_USE, so isn't attributed
+            //       to a table, but queues are treated as tables in every other regard.  Latch/set usedb, call 
+            //       add_tag_hit, reset usedb?
             break;
         }
         case BLOCK_SETFLAGS: {
@@ -4520,6 +4549,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (rc) {
                 goto backout;
             }
+            LOG_TAG_HIT();
             break;
         }
 
@@ -4634,7 +4664,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 rc = ERR_BADREQ;
                 GOTOBACKOUT;
             }
-
             break;
         }
 
