@@ -374,6 +374,9 @@ static int sorese_abort(struct sqlclntstate *clnt, int osqlreq_type)
     int rc = 0;
     int bdberr = 0;
 
+    clnt->osql.sentops = 0;
+    clnt->osql.tran_ops = 0;
+
     /* CLOSE the shadow tables */
     osql_shadtbl_close(clnt);
 
