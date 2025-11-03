@@ -1351,6 +1351,7 @@ struct ireq {
 
     int commit_file;
     int commit_offset;
+    int block_opcode;
 
     /************/
     /* REGION 2 */
@@ -3764,5 +3765,6 @@ void get_disable_skipscan_all();
 
 void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt);
 void log_legacy_request(struct ireq *iq, struct sqlclntstate *clnt);
+extern void (*gbl_tagged_request_callback)(struct ireq *iq);
 
 #endif /* !INCLUDED_COMDB2_H */

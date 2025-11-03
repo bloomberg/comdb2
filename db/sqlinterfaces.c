@@ -6492,8 +6492,6 @@ void run_internal_sql(char *sql)
     end_internal_sql_clnt(&clnt);
 }
 
-extern char *whoamiiam(void *authdata);
-
 static void gather_connection_int(struct connection_info *c, struct sqlclntstate *clnt)
 {
     c->connection_id = clnt->connid;
