@@ -2,3 +2,5 @@
 (COUNT(*)=2=1)
 [COMMIT] failed with rc 202 transaction too big
 (COUNT(*)=2=1)
+[INSERT INTO t1 VALUES(1), (2), (3)] failed with rc 202 transaction too big
+(rows inserted=1)
