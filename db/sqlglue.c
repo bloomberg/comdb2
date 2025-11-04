@@ -3763,11 +3763,11 @@ done:
     return rc;
 }
 
-static char *tranlevel_toclntstr(int lvl)
+char *tranlevel_toclntstr(int lvl)
 {
     switch (lvl) {
     case TRANLEVEL_SOSQL:
-        return "SOCKSQL";
+        return "BLOCKSQL";
     case TRANLEVEL_RECOM:
         return "READ COMMITTED";
     case TRANLEVEL_SNAPISOL:
