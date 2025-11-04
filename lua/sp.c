@@ -87,6 +87,9 @@ extern int gbl_notimeouts;
 extern int gbl_allow_lua_print;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
+extern int gbl_sql_tranlevel_default;
+
+extern char *tranlevel_toclntstr(int lvl);
 
 pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
@@ -4788,7 +4791,7 @@ static int register_queue_with_berkdb_and_master(Lua L, const char *type)
         return luaL_error(L, "attempt to run consumer in child thread");
     }
     if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
-        return luaL_error(L, "%s is only supported under default transaction mode", type);
+        return luaL_error(L, "%s is only supported under %s transaction mode", type, tranlevel_toclntstr(TRANLEVEL_SOSQL));
     }
 
     dbconsumer_t *consumer;
@@ -7211,7 +7214,17 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         (*err) = strdup("Cannot execute consumer on physical-replicant");
     }
     else {
+        const int clnt_mode_is_snapshot_by_default = clnt->dbtran.mode == TRANLEVEL_MODSNAP && gbl_sql_tranlevel_default == SQL_TDEF_SNAPISOL;
+        const int convert_modsnap_to_sosql = clnt_mode_is_snapshot_by_default && sp->can_consume && !clnt->in_client_trans;
+        if (convert_modsnap_to_sosql) {
+            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+        }
+
         rc = push_args_and_run_sp(clnt, end_ptr, err);
+
+        if (convert_modsnap_to_sosql) {
+            clnt->dbtran.mode = TRANLEVEL_MODSNAP;
+        }
     }
 
     if (trigger) {

@@ -739,16 +739,23 @@ for ((i=0;i<500;++i)); do
 done | cdb2sql $SP_OPTIONS - > /dev/null
 
 #START CONSUMERS
-cdb2sql $SP_OPTIONS - <<'EOF'
-set transaction snapisol
+
+if [[ $DBNAME == *"snapshotgenerated"* ]]; then
+    # If we're running snapshot by default, then we can run consumers in snapshot mode, so pick another illegal mode.
+    illegal_mode="read committed"
+else
+    # If we're not running snapshot by default, we can't run consumers in snapshot mode.
+    illegal_mode="snapshot"
+fi
+
+cdb2sql $SP_OPTIONS - <<EOF
+set transaction ${illegal_mode}
 exec procedure cons0(true)
 EOF
 cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
-set transaction blocksql
 exec procedure cons0(true)
 EOF
 cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
-set transaction blocksql
 exec procedure cons1(false)
 EOF
 #GENERATE DATA

@@ -10,7 +10,6 @@ if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
        echo "FAILURE: DB is not running in snapshot isolation mode"
        exit 1
     fi
-    cdb2sql ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
 
 
