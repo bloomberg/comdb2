@@ -4118,6 +4118,7 @@ void do_revconn_evbuffer(int fd, short what, void *data)
         return;
     }
     logmsg(LOGMSG_ERROR, "revconn: %s: Failed appsock_evbuffer, badrte=%d\n", __func__, badrte);
+    evbuffer_free(buf);
     shutdown_close(fd);
     return;
 }
