@@ -418,6 +418,7 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl, int 
 
 static int dispatch_client(struct newsql_appdata_evbuffer *appdata)
 {
+    ATOMIC_ADD64(gbl_nnewsql, 1);
     return dispatch_sql_query_no_wait(&appdata->clnt);
 }
 
