@@ -9,15 +9,15 @@ commit
 SQL
 )
 
-    if ! cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - <<< "${serial_txn_sql}" > /dev/null; then
-        echo "Failed to run serializable transaction"
+    if cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - <<< "${serial_txn_sql}" > /dev/null; then
+        echo "Should have failed to run serializable transaction"
         return 1
     fi
 
     # WARNING: The following string is hardcoded and depends on upstream log message.
-    local -r deprecation_warning="Using SERIALIZABLE transactions without setting enable_serial_isolation will be disallowed in a future release."
-    if ! grep -q "${deprecation_warning}" "${TESTDIR}/logs/${DBNAME}.db"; then
-        echo "Did not find expected deprecation warning in log"
+    local -r error="SERIALIZABLE REQUIRES MODIFICATIONS TO THE LRL FILE"
+    if ! grep -q "${error}" "${TESTDIR}/logs/${DBNAME}.db"; then
+        echo "Did not find expected error in log"
         return 1
     fi
 }
