@@ -1477,7 +1477,6 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
                bdb_state->repinfo->myhost);
         goto done;
     } else if (gbl_is_physical_replicant == 1) {
-        logmsg(LOGMSG_USER, "physrep: %s:%d: Not inserting a dummy record\n", __func__, __LINE__);
         goto done;
     }
 

@@ -4082,14 +4082,18 @@ void do_revconn_evbuffer(int fd, short what, void *data)
 {
     check_base_thd();
     if (what & EV_TIMEOUT) {
-        logmsg(LOGMSG_USER, "revconn: %s: Timeout reading from fd:%d\n", __func__, fd);
+        if (gbl_revsql_debug) {
+            logmsg(LOGMSG_USER, "revconn: %s: Timeout reading from fd:%d\n", __func__, fd);
+        }
         shutdown_close(fd);
         return;
     }
     int rc;
     struct evbuffer *buf = evbuffer_new();
     if ((rc = evbuffer_read(buf, fd, -1)) <= 0) {
-        logmsg(LOGMSG_USER, "revconn: %s: Failed to read from fd:%d rc:%d\n", __func__, fd, rc);
+        if (gbl_revsql_debug) {
+            logmsg(LOGMSG_USER, "revconn: %s: Failed to read from fd:%d rc:%d\n", __func__, fd, rc);
+        }
         evbuffer_free(buf);
         shutdown_close(fd);
         return;
@@ -4100,7 +4104,7 @@ void do_revconn_evbuffer(int fd, short what, void *data)
 
     int admin = gbl_admin_revsql;
     if (should_reject_request(admin ? '@' : 'n')) {
-        logmsg(LOGMSG_USER, "revconn: %s: Rejecting 'newsql' request over 'reversesql' connection\n", __func__);
+        logmsg(LOGMSG_INFO, "revconn: %s: Rejecting 'newsql' request over 'reversesql' connection\n", __func__);
         evbuffer_free(buf);
         shutdown_close(fd);
         return;
@@ -4113,7 +4117,7 @@ void do_revconn_evbuffer(int fd, short what, void *data)
     if ((do_appsock_evbuffer(buf, &addr, fd, 1, 0, &badrte)) == 0) {
         return;
     }
-    logmsg(LOGMSG_USER, "revconn: %s: Failed appsock_evbuffer, badrte=%d\n", __func__, badrte);
+    logmsg(LOGMSG_ERROR, "revconn: %s: Failed appsock_evbuffer, badrte=%d\n", __func__, badrte);
     shutdown_close(fd);
     return;
 }
