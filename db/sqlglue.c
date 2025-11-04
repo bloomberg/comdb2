@@ -3845,21 +3845,9 @@ static int snapisol_enabled_correctly()
     return gbl_rowlocks || gbl_snapisol;
 }
 
-static void warn_if_serial_tunable_disabled()
-{
-    if (!gbl_serializable) {
-        logmsg(LOGMSG_WARN,
-               "Using %s transactions without setting enable_serial_isolation will "
-               "be disallowed in a future release.\n",
-               tranlevel_toclntstr(TRANLEVEL_SERIAL));
-    }
-}
-
 static int serial_enabled_correctly()
 {
-    static pthread_once_t warn_once = PTHREAD_ONCE_INIT;
-    pthread_once(&warn_once, warn_if_serial_tunable_disabled);
-    return snapisol_enabled_correctly();
+    return gbl_serializable && snapisol_enabled_correctly();
 }
 
 static int isolation_level_enabled_correctly(const int mode)
