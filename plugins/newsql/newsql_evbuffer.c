@@ -458,11 +458,6 @@ static void legacy_sndbak(struct ireq *iq, int rc, int len) {
     fb[0] = 0xfd;
     // seems to be lots of copying here...
     memcpy(rsp.buf, p_slock->bigbuf, len);
-#if 0
-    printf("outlen %d outrc %d\n", len, rc);
-    fsnapf(stdout, rsp.buf, len);
-#endif
-
     write_response(clnt, RESPONSE_RAW_PAYLOAD, &rsp, 0);
 
     free(p_slock->bigbuf);
@@ -501,15 +496,21 @@ static int dispatch_tagged(struct sqlclntstate *clnt) {
     p_slock->reply_state = REPLY_STATE_NA;
 
     clnt->authdata = get_authdata(clnt);
-    if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL || 
-            appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[2] == NULL) {
+    if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL ||
+            appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[1]->value.len != sizeof(int) ||
+            appdata->sqlquery->bindvars[2] == NULL || appdata->sqlquery->bindvars[2]->value.len != sizeof(int)) {
         // TODO
         // write error response: HOW
         return 1;
     }
-    // TODO: get from bindvars
-    int luxref = 0;
-    int comdbg_flags = 0;
+    int luxref;
+    int comdbg_flags;
+    memcpy(&luxref, appdata->sqlquery->bindvars[1]->value.data, sizeof(int));
+    memcpy(&comdbg_flags, appdata->sqlquery->bindvars[2]->value.data, sizeof(int));
+    if (endianness_mismatch(clnt)) {
+        luxref = flibc_intflip(luxref);
+        comdbg_flags = flibc_intflip(comdbg_flags);
+    }
 
     // This will dispatch to a thread - it's not done inline
     rc = handle_buf_main2(thedb, NULL, p_slock->bigbuf, (uint8_t*)p_slock->bigbuf + 1024*64, 0, clnt->origin, clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, comdbg_flags, legacy_iq_setup, clnt, 0, clnt->authdata);
