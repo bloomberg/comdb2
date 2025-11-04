@@ -3078,13 +3078,23 @@ static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, s
     accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1, 0, 0);
 }
 
+static void libevent_fatal_cb(int err)
+{
+    logmsg(LOGMSG_FATAL, "received fatal error %d from libevent, aborting\n", err);
+    logmsg(LOGMSG_FATAL, "max:%d\ncurrent:%d\npending:%d\npending_evicted:%d\n",
+        get_max_appsocks_limit(), active_appsock_conns, pending_connections, evicted_appsock_conns);
+    abort();
+}
+
 static void accept_error_cb(struct evconnlistener *listener, void *data)
 {
     check_base_thd();
     int err = EVUTIL_SOCKET_ERROR();
+    if (err == EMFILE) {
+        libevent_fatal_cb(err);
+    }
     logmsg(LOGMSG_ERROR, "%s err:%d [%s] [outstanding fds:%d] [appsock fds:%d]\n",
            __func__, err, evutil_socket_error_to_string(err), pending_connections, active_appsock_conns);
-    if (err == EMFILE) abort();
 }
 
 static void reopen_unix(int fd, struct net_info *n)
@@ -3510,12 +3520,6 @@ static int memcpy_evbuffer(struct evbuffer *flush_buf, struct event_info *e, int
     }
     evbuffer_commit_space(flush_buf, v, 1);
     return 0;
-}
-
-static void libevent_fatal_cb(int err)
-{
-    logmsg(LOGMSG_FATAL, "received fatal error %d from libevent, aborting\n", err);
-    abort();
 }
 
 /* All you base are belong to me.. */
