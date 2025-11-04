@@ -312,9 +312,12 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
 
 const char *fdb_retry_callback(void *arg)
 {
-    int rc = recover_deadlock_simple(thedb->bdb_env);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to call recover_deadlock_simple rc %d\n", __func__, rc);
+    int rc;
+    if (bdb_lock_desired(thedb->bdb_env)) {
+        rc = recover_deadlock_simple(thedb->bdb_env);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to call recover_deadlock_simple rc %d\n", __func__, rc);
+        }
     }
 
     return NULL;
