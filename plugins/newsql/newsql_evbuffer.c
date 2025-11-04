@@ -1418,8 +1418,9 @@ static void *gethostname_fn(void *arg)
     }
 }
 
-static void gethostname_enqueue(struct appsock_handler_arg *arg)
+static void gethostname_enqueue(int fd, short what, void *data)
 {
+    struct appsock_handler_arg *arg = data;
     gettimeofday(&arg->start, NULL);
     Pthread_mutex_lock(&gethostname_lk);
     TAILQ_INSERT_TAIL(&gethostname_list, arg, entry);
@@ -1428,26 +1429,12 @@ static void gethostname_enqueue(struct appsock_handler_arg *arg)
     Pthread_mutex_unlock(&gethostname_lk);
 }
 
-static void handle_newsql_request_evbuffer(int dummyfd, short what, void *data)
-{
-    struct appsock_handler_arg *arg = data;
-    arg->admin = 0;
-    gethostname_enqueue(arg);
-}
-
-static void handle_newsql_admin_request_evbuffer(int dummyfd, short what, void *data)
-{
-    struct appsock_handler_arg *arg = data;
-    arg->admin = 1;
-    gethostname_enqueue(arg);
-}
-
 static int newsql_init(void *arg)
 {
     dispatch_base = get_dispatch_event_base();
     Pthread_create(&gethostname_thd, NULL, gethostname_fn, NULL);
-    add_appsock_handler("newsql\n", handle_newsql_request_evbuffer);
-    add_appsock_handler("@newsql\n", handle_newsql_admin_request_evbuffer);
+    add_appsock_handler("newsql\n", gethostname_enqueue);
+    add_appsock_handler("@newsql\n", gethostname_enqueue);
     return 0;
 }
 
