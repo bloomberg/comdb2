@@ -15,7 +15,8 @@ logfill,UNKNOWN,180717427
 comdb2sys,FLAKEY,180779255
 sc_truncate_multiddl_generated,FLAKEY,180779289
 scupdates,DB_BUG,180779427
-insert_lots,FLAKEY,180779489
+insert_lots,UNKNOWN,180779489
+insert_lots_ssl_generated,UNKNOWN,180779489
 incoh_remsql,UNKNOWN,180788122
 incoh_remsql_rte_connect_generated,UNKNOWN,180788122
 truncatesc,DB_BUG,180801974
