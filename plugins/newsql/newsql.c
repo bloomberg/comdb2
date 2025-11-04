@@ -2472,7 +2472,6 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
     }
 
-    ATOMIC_ADD64(gbl_nnewsql, 1);
     struct newsql_appdata *appdata = clnt->appdata;
     if (appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT)
         ATOMIC_ADD64(gbl_nnewsql_compat, 1);
