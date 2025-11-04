@@ -42,7 +42,7 @@ function replay_count
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t1 { schema { int a } }'
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t2 { schema { int a } keys { "a" = a } }'
 
-if [[ $TESTCASE == "blkseq_snapiso_generated" ]] ; then
+if [[ $TESTCASE == "blkseq_serial_generated" ]] ; then
     echo "
 set hasql on
 set transaction serializable" > insert.t1
