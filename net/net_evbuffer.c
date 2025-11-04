@@ -2864,33 +2864,25 @@ void free_appsock_handler_arg(struct appsock_handler_arg *arg)
 static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd,
                                int is_readonly, int secure, int *pbadrte)
 {
-    struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
-    if (b.pos == -1) {
-        b = evbuffer_search(buf, " ", 1, NULL);
+    if (b.pos == -1) b = evbuffer_search(buf, " ", 1, NULL);
+    if (b.pos == -1) return 1;
+    char key[SBUF2UNGETC_BUF_MAX + 1];
+    evbuffer_copyout(buf, key, b.pos + 1);
+    key[b.pos + 1] = 0;
+    if (secure && strstr(key, "newsql") == NULL) {
+        logmsg(LOGMSG_ERROR, "appsock '%s' disallowed on secure port\n", key);
+        return 1;
     }
-
-    if (b.pos != -1) {
-        char key[b.pos + 2];
-        evbuffer_copyout(buf, key, b.pos + 1);
-        key[b.pos + 1] = 0;
-        if (secure && strstr(key, "newsql") == NULL) {
-            logmsg(LOGMSG_ERROR, "appsock '%s' disallowed on secure port\n", key);
-            return 1;
-        }
-
-        if (strcmp(key, "rte ") == 0) {
-            evbuffer_read(buf, fd, -1);
-            evbuffer_free(buf);
-            ssize_t rc = write(fd, "0\n", 2);
-            if (rc == 2 && pbadrte)
-                *pbadrte = 1;
-            return 1;
-        }
-
-        info = get_appsock_info(key);
+    if (strcmp(key, "rte ") == 0) {
+        evbuffer_read(buf, fd, -1);
+        evbuffer_free(buf);
+        ssize_t rc = write(fd, "0\n", 2);
+        if (rc == 2 && pbadrte)
+            *pbadrte = 1;
+        return 1;
     }
-
+    struct appsock_info *info = get_appsock_info(key);
     if (info == NULL) return 1;
 
     evbuffer_drain(buf, b.pos + 1);
@@ -2901,12 +2893,18 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     arg->is_readonly = is_readonly;
     arg->secure = secure;
     arg->badrte = *pbadrte;
+    arg->admin = key[0] == '@';
 
     static int appsock_counter = 0;
     arg->base = appsock_base[appsock_counter++];
     if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
 
-    evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
+    char *first = key + arg->admin;
+    if (strcmp(first, "newsql\n") == 0) {
+        info->cb(-1, 0, arg); /* -> gethostname_enqueue */
+    } else {
+        evtimer_once(arg->base, info->cb, arg);
+    }
     return 0;
 }
 
