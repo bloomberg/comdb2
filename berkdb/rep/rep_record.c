@@ -1170,7 +1170,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 	if (report_now != report_last && IS_REP_CLIENT(dbenv)) {
 		report_last = report_now;
 		if (dbenv->coherency_check_callback && dbenv->coherency_check_callback(dbenv->coherency_check_usrptr) == 0) {
-			logmsg(LOGMSG_USER, "gen %u dups %u queued %u ready at %u:%u rep at %u:%u last recv %u:%u\n",
+			logmsg(LOGMSG_DEBUG, "gen %u dups %u queued %u ready at %u:%u rep at %u:%u last recv %u:%u\n",
 		  rep->stat.st_gen, rep->stat.st_log_duplicated, rep->stat.st_log_queued, 
 		  lp->ready_lsn.file, lp->ready_lsn.offset,
 		  lp->waiting_lsn.file, lp->waiting_lsn.offset,
