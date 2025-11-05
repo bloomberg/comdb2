@@ -1933,19 +1933,16 @@ REGISTER_TUNABLE("fail_to_create_default_cons",
                  TUNABLE_BOOLEAN, &gbl_fail_to_create_default_cons,
                  INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("debug_block_comdb2ar",
-                 "Block comdb2ar while true.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_debug_block_comdb2ar, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_block_comdb2ar", "Block comdb2ar while true.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_block_comdb2ar, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("debug_pause_delete_files",
-                 "Pause delete files thread.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_debug_pause_delete_files, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_pause_delete_files", "Pause delete files thread.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_pause_delete_files, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("verbose_set_sc_in_progress",
                  "Prints a line of trace when sc_in_progress is set.  "
                  "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("legacy_schema", "Only allow legacy compatible csc2 schema",
                  TUNABLE_BOOLEAN, &gbl_legacy_schema,
