@@ -559,7 +559,31 @@ int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 		return 0;
 	}
 	int rc = __rep_send_message(dbenv, master_eid, REP_ALL_REQ, lsn, NULL, flags, NULL);
-	logmsg(LOGMSG_INFO, "SENDING rep_all_req from %s line %d rc=%d\n", func, line, rc);
+	if (gbl_verbose_fills) {
+		logmsg(LOGMSG_USER, "%s rep_all_req from %s line %d -> %d:%d rc=%d\n", rc != 0 ? "FAILED SENDING" : "SENT", func, line, lsn->file, lsn->offset, rc);
+	}
+	return rc;
+}
+
+int send_rep_log_req(DB_ENV *dbenv, char *master_eid, DB_LSN *startlsn, DB_LSN *maxlsn,
+					int flags, const char *func, int line)
+{
+	DBT *max_lsn_dbt_ptr = NULL, max_lsn_dbt = {0};
+	DB_LSN tmp_lsn = {0};
+	static unsigned long long cnt = 0;
+	if (maxlsn) {
+		LOGCOPY_TOLSN(&tmp_lsn, maxlsn);
+		max_lsn_dbt.data = &tmp_lsn;
+		max_lsn_dbt.size = sizeof(tmp_lsn);
+		max_lsn_dbt_ptr = &max_lsn_dbt;
+	}
+	cnt++;
+	int rc = __rep_send_message(dbenv, master_eid, REP_LOG_REQ, startlsn, max_lsn_dbt_ptr, flags, NULL);
+	if (gbl_verbose_fills) {
+		logmsg(LOGMSG_USER, "%s rep_log_req from %s line %d %d:%d -> %d:%d rc=%d cnt=%llu\n",
+				rc != 0 ? "FAILED SENDING" : "SENT", func, line, startlsn->file, startlsn->offset,
+				maxlsn ? maxlsn->file : -1, maxlsn ? maxlsn->offset : -1, rc, cnt);
+	}
 	return rc;
 }
 
@@ -861,29 +885,9 @@ static void *apply_thread(void *arg)
 			}
 		} else if (log_compare(&my_lsn, &first_repdb_lsn) < 0){
 			/* Request the gap to repdb */
-			DBT max_lsn_dbt = {0};
-			DB_LSN tmp_lsn = {0};
-			LOGCOPY_TOLSN(&tmp_lsn, &first_repdb_lsn);
-			max_lsn_dbt.data = &tmp_lsn;
-			max_lsn_dbt.size = sizeof(tmp_lsn); 
-			if ((ret = __rep_send_message(dbenv, master_eid,
-							REP_LOG_REQ, &my_lsn, &max_lsn_dbt, 0,
-							NULL)) == 0) {
+			ret = send_rep_log_req(dbenv, master_eid, &my_lsn, &first_repdb_lsn, 0, __func__, __LINE__);
+			if (ret == 0) {
 				last_fill = comdb2_time_epochms();
-
-				if (gbl_verbose_fills) {
-					logmsg(LOGMSG_USER, "%s line %d successful REP_LOG_REQ"
-							" from %d:%d to %d:%d\n", __func__, __LINE__,
-							my_lsn.file, my_lsn.offset, first_repdb_lsn.file,
-							first_repdb_lsn.offset);
-				}
-			} else {
-				if (gbl_verbose_fills) {
-					logmsg(LOGMSG_USER, "%s line %d failed REP_LOG_REQ"
-							" from %d:%d to %d:%d\n", __func__, __LINE__,
-							my_lsn.file, my_lsn.offset, first_repdb_lsn.file,
-							first_repdb_lsn.offset);
-				}
 			}
 		}
 		BDB_RELLOCK();
@@ -3092,11 +3096,12 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 	static int count_in_func = 0;
 	DB_REP *db_rep;
 	DBT control_dbt, key_dbt, lsn_dbt;
-	DBT max_lsn_dbt, *max_lsn_dbtp, nextrec_dbt, rec_dbt;
+	DBT nextrec_dbt, rec_dbt;
 	DB *dbp;
 	DBC *dbc;
 	DB_LOG *dblp;
-	DB_LSN max_lsn, next_lsn, tmp_lsn;
+	DB_LSN max_lsn, next_lsn, tmp_lsn = {0};
+	int use_range = 0;
 	LOG *lp;
 	REP *rep;
 	REP_CONTROL *grp;
@@ -3113,7 +3118,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 	ret = gap = 0;
 	memset(&control_dbt, 0, sizeof(control_dbt));
 	memset(&rec_dbt, 0, sizeof(rec_dbt));
-	max_lsn_dbtp = NULL;
 	bzero(&max_lsn, sizeof(max_lsn));
 
 	if (rep->ignore_gen >= rp->gen) {
@@ -3301,7 +3305,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 			 * We just filled in a gap in the log record stream.
 			 * Write subsequent records to the log.
 			 */
-gap_check:		max_lsn_dbtp = NULL;
+gap_check:		use_range = 0;
 			lp->wait_recs = 0;
 			lp->rcvd_recs = 0;
 			ZERO_LSN(lp->max_wait_lsn);
@@ -3491,13 +3495,8 @@ gap_check:		max_lsn_dbtp = NULL;
 					 * This single record was requested
 					 * so ask for the rest of the gap.
 					 */
-					lp->max_wait_lsn = lp->waiting_lsn;
-					memset(&max_lsn_dbt,
-						0, sizeof(max_lsn_dbt));
-					max_lsn_dbt.data = &lp->waiting_lsn;
-					max_lsn_dbt.size =
-						sizeof(lp->waiting_lsn);
-					max_lsn_dbtp = &max_lsn_dbt;
+					tmp_lsn = lp->max_wait_lsn = lp->waiting_lsn;
+					use_range = 1;
 				}
 			}
 		} else {
@@ -3527,23 +3526,14 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * the payload lsn if we're requesting a range.
 				 */
 
-				if (max_lsn_dbtp) {
-					LOGCOPY_TOLSN(&tmp_lsn,
-						max_lsn_dbtp->data);
-					max_lsn_dbtp->data = &tmp_lsn;
-				}
-				else {
-					ZERO_LSN(tmp_lsn);
-				}
 				// fprintf(stderr, "Requesting %u:%u - %u:%u ready %u:%u waiting %u:%u\n", next_lsn.file, next_lsn.offset, tmp_lsn.file, tmp_lsn.offset, lp->ready_lsn.file, lp->ready_lsn.offset, lp->waiting_lsn.file, lp->waiting_lsn.offset);
 				/*
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
 				if (!gbl_decoupled_logputs) {
-					if ((rc = __rep_send_message(dbenv, eid,
-							REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-							NULL)) == 0) {
+                    rc = send_rep_log_req(dbenv, eid, &next_lsn, use_range ? &tmp_lsn : NULL, 0, __func__, __LINE__);
+					if (rc == 0) {
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
 									"for %d:%d\n", __func__, __LINE__, 
@@ -3604,14 +3594,11 @@ gap_check:		max_lsn_dbtp = NULL;
 			 * this record, not the entire gap.
 			 */
 			if (IS_ZERO_LSN(lp->max_wait_lsn)) {
-				lp->max_wait_lsn = lp->waiting_lsn;
-				memset(&max_lsn_dbt, 0, sizeof(max_lsn_dbt));
-				max_lsn_dbt.data = &lp->waiting_lsn;
-				max_lsn_dbt.size = sizeof(lp->waiting_lsn);
-				max_lsn_dbtp = &max_lsn_dbt;
+				tmp_lsn = lp->max_wait_lsn = lp->waiting_lsn;
+                use_range = 1;
 			} else {
-				max_lsn_dbtp = NULL;
 				lp->max_wait_lsn = next_lsn;
+				use_range = 0;
 			}
 		}
 #if defined INSTRUMENT_REP_APPLY
@@ -3674,20 +3661,13 @@ gap_check:		max_lsn_dbtp = NULL;
 				rep->stat.st_log_requested++;
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-				if (max_lsn_dbtp) {
-					LOGCOPY_TOLSN(&tmp_lsn,
-						max_lsn_dbtp->data);
-					max_lsn_dbtp->data = &tmp_lsn;
-				}
-
 				/*
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
 				if (!gbl_decoupled_logputs) {
-					if ((rc = __rep_send_message(dbenv, eid,
-								REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-								NULL)) == 0) {
+					rc = send_rep_log_req(dbenv, eid, &next_lsn, use_range ? &tmp_lsn : NULL, 0, __func__, __LINE__);
+					if (rc == 0) {
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
 									"for %d:%d\n", __func__, __LINE__, 
