@@ -35,3 +35,4 @@ reqlog_update_during_sc,UNKNOWN,181484732
 scupdates_logicalsc_generated,UNKNOWN,181484749
 phys_rep_tiered_firstfile_generated,UNKNOWN,181484776
 sc_resume_logicalsc_generated,UNKNOWN,181484807
+consumer_non_atomic_default_consumer_generated,DB_BUG,181573461
