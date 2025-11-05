@@ -224,7 +224,7 @@ static int default_type_override_env = 0;
 
 static int connect_host_on_reject = 1;
 static int cdb2_connect_host_on_reject_set_from_env = 0;
-static int iam_identity = 0;
+static int iam_identity = 1; /* on by default */
 static int cdb2_iam_identity_set_from_env = 0;
 
 /* Skip dbinfo query if sockpool provides connection */
