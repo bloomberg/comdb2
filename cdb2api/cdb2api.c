@@ -287,6 +287,9 @@ static int send_reset(SBUF2 *sb, int localcache);
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
+static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
+static int check_hb_on_blocked_write_set_from_env = 0;
+
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
@@ -1584,6 +1587,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                             &cdb2_comdb2db_fallback_set_from_env);
         process_env_var_int("COMDB2_FEATURE_USE_OPTIONAL_IDENTITY", &cdb2_use_optional_identity,
                             &cdb2_use_optional_identity_set_from_env);
+        process_env_var_str_on_off("COMDB2_CONFIG_CHECK_HB_ON_BLOCKED_WRITE", &check_hb_on_blocked_write,
+                                   &check_hb_on_blocked_write_set_from_env);
 
         char *arg = getenv("COMDB2_CONFIG_INSTALL_STATIC_LIBS");
         if ((cdb2_install != NULL) && arg != NULL) {
@@ -2009,6 +2014,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_min_tls_ver = atof(tok);
+            } else if (strcasecmp("check_hb_on_blocked_write", tok) == 0) {
+                if (!check_hb_on_blocked_write_set_from_env) {
+                    tok = strtok_r(NULL, " :,", &last);
+                    if (tok)
+                        check_hb_on_blocked_write = !!atoi(tok);
+                }
             } else if (strcasecmp("request_fingerprint", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -4164,6 +4175,54 @@ retry_read:
     return 0;
 }
 
+static int wait_for_write(SBUF2 *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl)
+{
+    int fd = sbuf2fileno(sb);
+    if (fd < 0)
+        return -1;
+    if (read(fd, NULL, 0) != 0)
+        return -1;
+
+    while (1) {
+        if (!sbuf2rd_pending(sb)) {
+            struct pollfd p = {.fd = fd, .events = POLLIN | POLLOUT};
+            int rc = poll(&p, 1, hndl->socket_timeout);
+            if (rc != 1) {
+                fprintf(stderr, "%s: Unexpected poll fd:%d rc:%d errno:%d %s\n", __func__, fd, rc, errno,
+                        strerror(errno));
+                break;
+            }
+            if (p.revents & POLLOUT) {
+                return sbuf2flush(sb);
+            }
+            if ((p.revents & POLLIN) == 0) {
+                fprintf(stderr, "%s: Unexpected poll event\n", __func__);
+                break;
+            }
+        }
+        struct newsqlheader hdr = {0};
+        int rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+        if (rc != sizeof(hdr)) {
+            fprintf(stderr, "%s: Failed to read heartbeat rc:%d\n", __func__, rc);
+            break;
+        }
+        if (hdr.length != 0) {
+            fprintf(stderr, "%s: Unexpected read (wanted heartbeat) len:%d type:%d\n", __func__, ntohl(hdr.length),
+                    ntohl(hdr.type));
+            break;
+        }
+        cdb2_event *e = NULL;
+        void *callbackrc;
+        while ((e = cdb2_next_callback(event_hndl, CDB2_AT_RECEIVE_HEARTBEAT, e)) != NULL) {
+            int unused;
+            (void)unused;
+            callbackrc = cdb2_invoke_callback(event_hndl, e, 1, CDB2_QUERY_STATE, ntohl(hdr.state));
+            PROCESS_EVENT_CTRL_AFTER(event_hndl, e, unused, callbackrc);
+        }
+    }
+    return -1;
+}
+
 static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
                            SBUF2 *sb, const char *dbname, const char *sql,
                            int n_set_commands, int n_set_commands_sent,
@@ -4358,7 +4417,26 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (rc != len)
         debugprint("sbuf2write rc = %d (len = %d)\n", rc, len);
 
+    struct timeval start;
+    if (check_hb_on_blocked_write)
+        gettimeofday(&start, NULL);
+
     rc = sbuf2flush(sb);
+
+    if (check_hb_on_blocked_write && rc < 0) {
+        // Failed writing to server. Don't know if sbuf2flush failed due to
+        // a timeout. Make a best effort guess:
+        struct timeval end;
+        gettimeofday(&end, NULL);
+        int64_t end_us = end.tv_sec * 1000000 + end.tv_usec;
+        int64_t start_us = start.tv_sec * 1000000 + start.tv_usec;
+        int64_t elapsed_us = end_us - start_us;
+        if (!is_begin && !hndl->is_read && hndl->in_trans && hndl->socket_timeout &&
+            elapsed_us >= (hndl->socket_timeout * 1000)) {
+            rc = wait_for_write(sb, hndl, event_hndl);
+        }
+    }
+
     if (rc < 0) {
         debugprint("sbuf2flush rc = %d\n", rc);
         if (on_heap)

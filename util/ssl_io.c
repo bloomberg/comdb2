@@ -476,3 +476,8 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
     sb->ssl = NULL;
     return rc;
 }
+
+int SBUF2_FUNC(sslio_pending)(SBUF2 *sb)
+{
+    return SSL_pending(sb->ssl);
+}

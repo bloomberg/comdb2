@@ -126,6 +126,9 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb);
 int SBUF2_FUNC(sbuf2gets)(char *out, int lout, SBUF2 *sb);
 #define sbuf2gets SBUF2_FUNC(sbuf2gets)
 
+int SBUF2_FUNC(sbuf2rd_pending)(SBUF2 *sb);
+#define sbuf2rd_pending SBUF2_FUNC(sbuf2rd_pending)
+
 /* fread from SBUF2. returns # of items read or <0 for error */
 int SBUF2_FUNC(sbuf2fread)(char *ptr, int size, int nitems, SBUF2 *sb);
 #define sbuf2fread SBUF2_FUNC(sbuf2fread)
