@@ -5293,13 +5293,14 @@ int sqlite3BtreeCommit(Btree *pBt)
             }
         } else {
             rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
-            osqlstate_t *osql = &thd->clnt->osql;
-            if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
-                osql->xerr.errval = 0;
-            }
         }
         break;
 
+    }
+
+    osqlstate_t *osql = &thd->clnt->osql;
+    if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
+        osql->xerr.errval = 0;
     }
 
     clnt->ins_keys = 0ULL;
