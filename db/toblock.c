@@ -2879,17 +2879,17 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
 
 __thread int64_t *txn_logbytes = NULL;
 
-#define LOG_TAG_HIT() \
-    do { \
-            static int once = 1;\
-            if (once) {\
-                once = 0; \
-                fprintf(stderr, "%s: tagged request callback registered %p\n", __func__, gbl_tagged_request_callback); \
-            } \
-        if (gbl_tagged_request_callback) { \
-            gbl_tagged_request_callback(iq); \
-        } \
-    } while(0)
+#define LOG_TAG_HIT()                                                                                                  \
+    do {                                                                                                               \
+        static int once = 1;                                                                                           \
+        if (once) {                                                                                                    \
+            once = 0;                                                                                                  \
+            fprintf(stderr, "%s: tagged request callback registered %p\n", __func__, gbl_tagged_request_callback);     \
+        }                                                                                                              \
+        if (gbl_tagged_request_callback) {                                                                             \
+            gbl_tagged_request_callback(iq);                                                                           \
+        }                                                                                                              \
+    } while (0)
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -4439,7 +4439,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (rc != 0)
                 GOTOBACKOUT;
             // TODO: should we count this as a tagged hit?  This doesn't use BLOCK2_USE, so isn't attributed
-            //       to a table, but queues are treated as tables in every other regard.  Latch/set usedb, call 
+            //       to a table, but queues are treated as tables in every other regard.  Latch/set usedb, call
             //       add_tag_hit, reset usedb?
             break;
         }

@@ -393,9 +393,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
 
 static int check_tag_access(struct ireq *iq) {
     if ((gbl_uses_password || gbl_uses_externalauth) && !gbl_unauth_tag_access && !iq->authdata) {
-        reqerrstr(iq, ERR_ACCESS,
-                  "Tag access denied for table %s from %s\n",
-                  iq->usedb->tablename, iq->corigin);
+        reqerrstr(iq, ERR_ACCESS, "Tag access denied for table %s from %s\n", iq->usedb ? iq->usedb->tablename : "???",
+                  iq->corigin);
         return ERR_ACCESS;
     }
 
@@ -425,7 +424,7 @@ int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
 {
     int rc = 0;
 
-    if (gbl_uses_externalauth && iq->authdata && externalComdb2AuthenticateUserRead) {
+    if (gbl_uses_externalauth && iq->authdata && externalComdb2AuthenticateUserRead && iq->usedb) {
         return externalComdb2AuthenticateUserRead(iq->authdata, iq->usedb->tablename, iq->corigin);
     }
 

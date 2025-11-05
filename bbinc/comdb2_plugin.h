@@ -67,8 +67,8 @@ struct dbenv;
 /* register handlers for lrl lines and messages.  These will be called if the core code doesn't
  * know how to handle an entry.  Handler should return 0 if it handled the entry, or non-zero to
  * have it passed to the next handler in the chain. */
-void plugin_register_lrl_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
-void plugin_register_message_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
+void plugin_register_lrl_handler(struct dbenv *dbenv, int (*)(struct dbenv *, const char *));
+void plugin_register_message_handler(struct dbenv *dbenv, int (*)(struct dbenv *, const char *));
 
 /* This should run when creating a new SQLite vm for running application queries. */
 void plugin_run_systable_hooks(sqlite3 *sqldb);

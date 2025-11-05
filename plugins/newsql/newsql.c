@@ -2564,7 +2564,8 @@ static int newsql_free_authdata(struct sqlclntstate *clnt)
     return 0;
 }
 
-void *newsql_get_identity(struct sqlclntstate *clnt) {
+void *newsql_get_identity(struct sqlclntstate *clnt)
+{
     // latch the identity in clnt, if not there already
     newsql_get_authdata(clnt);
     return clnt->externalAuthUser;
@@ -2947,18 +2948,21 @@ void dump_response(const CDB2SQLRESPONSE *r) {
     dump(depth, "}\n");
 }
 
-void dump_flags(int depth, int n_flags, CDB2FLAG **flag) {
+void dump_flags(int depth, int n_flags, CDB2FLAG **flag)
+{
     for (int i = 0; i < n_flags; i++) {
         dump(0, "%d=%d ", flag[i]->option, flag[i]->value);
     }
     dump(0, "\n");
 }
 
-void dump_bindvars(int depth, const CDB2SQLQUERY *q) {
+void dump_bindvars(int depth, const CDB2SQLQUERY *q)
+{
     dump(depth, "... # TODO");
 }
 
-void dump_request(const CDB2SQLQUERY *q) {
+void dump_request(const CDB2SQLQUERY *q)
+{
     comdb2_linux_cheap_stack_trace();
     int depth = 0;
     dump(depth, "CDB2SQLQUERY: {\n");

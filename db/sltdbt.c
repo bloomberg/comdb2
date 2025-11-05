@@ -394,6 +394,15 @@ static inline int opcode_supported(int opcode)
     }
 }
 
+// Older requests believe databases to contain a single table, and set luxref
+// as the number of the table the request is about.  For those, by the time we
+// call handle_ireq, we've set iq->usedb to be that table.  For other requests,
+// we don't know until we process the request which table it is about.
+static int tablename_implicit(int opcode)
+{
+    return opcode < OP_FNDKLESS;
+}
+
 int handle_ireq(struct ireq *iq)
 {
     int rc;
@@ -405,7 +414,7 @@ int handle_ireq(struct ireq *iq)
         // until they are fully read and processed - defer incrementing
         // usage counters for those
         /*this should be under lock, but its just a counter?*/
-        if (iq->opcode < OP_FNDKLESS || iq->opcode > OP_RNGEXTTAGPTZ)
+        if (tablename_implicit(iq->opcode))
             iq->usedb->typcnt[iq->opcode]++;
     }
 
