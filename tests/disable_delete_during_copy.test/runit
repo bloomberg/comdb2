@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+export archivepid=0
+export stopfile=./stopfile.$$
+
+function create_and_truncate_t1
+{
+    local j=0
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1 (a int, b blob)"
+    while [[ $j -lt 100 ]]; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "truncate t1"
+        let j=j+1
+    done
+}
+
+function get_current_lsn_file
+{
+    # 0x4 -> start at most recent record
+    local master=$(getmaster)
+    local lsn=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME --host $master "select lsn from comdb2_transaction_logs(NULL, NULL, 0x4) limit 1")
+    local file=$(echo "$lsn" | sed -E 's/^\{([0-9]+):.*/\1/')
+    echo $file
+}
+
+function get_oldest_lsn_file
+{
+    local master=$(getmaster)
+    local lsn=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME --host $master "select lsn from comdb2_transaction_logs(NULL, NULL, 0x0) limit 1")
+    local file=$(echo "$lsn" | sed -E 's/^\{([0-9]+):.*/\1/')
+    echo $file
+}
+
+function write_thread
+{
+    while [[ ! -f $stopfile ]]; do
+        ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "insert into t1 select *, randomblob(128) from generate_series(1, 1000)" > /dev/null 2>&1
+    done
+}
+
+function push_and_delete_logs
+{
+    local startfile=$(get_current_lsn_file)
+    local lowest=$(get_oldest_lsn_file)
+    local master=$(getmaster)
+    local iters=0
+    local j=0
+
+    rm $stopfile > /dev/null 2>&1
+    while [[ $j -lt 5 ]]; do
+        write_thread $j &
+        let j=j+1
+    done
+
+    while [[ "$lowest" -le "$startfile" ]] ; do
+        let iters=iters+1
+        sleep 1
+        lowest=$(get_oldest_lsn_file)
+    done
+    touch $stopfile
+    wait
+}
+
+function query_unused_files
+{
+    local master=$(getmaster)
+    local cnt=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} $DBNAME --host $master "select count(*) from comdb2_unused_files")
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $master "select * from comdb2_unused_files"
+    echo "Count is $cnt"
+}
+
+function start_archive
+{
+    local master=$(getmaster)
+    # This should block
+    ssh $master "$COMDB2AR_EXE c ${DBDIR}/${DBNAME}.lrl > /dev/null 2>&1" </dev/null &
+    archivepid=$!
+    sleep 5
+    # Verify that this is blocked
+    kill -0 $archivepid
+    if [[ $? -ne 0 ]]; then
+        echo "Archive process is not running, expected it to be blocked"
+        failexit "Archive process is not blocked"
+    fi
+}
+
+function disable_debug_pause_delete_files
+{
+    local master=$(getmaster)
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $master "put tunable debug_pause_delete_files 0" 
+}
+
+function verify_delete_is_blocked
+{
+    local master=$(getmaster)
+    local is_verified=0
+    local cnt=0
+    local log=${TESTDIR}/logs/${DBNAME}.$master.db
+
+    # If the logic doesn't work, this will timeout
+    while :; do
+        w=$(egrep "defer purging files during copy" $log | wc -l)
+        if [[ $w -gt 0 ]]; then
+            is_verified=1
+            echo "Verified that delete was blocked during archive, cnt=$cnt"
+            break
+        fi
+        let cnt=cnt+1
+        sleep 5
+    done
+}
+
+function unblock_comdb2ar
+{
+    local master=$(getmaster)
+    # Verify again that comdb2ar is blocked
+    kill -0 $archivepid
+    if [[ $? -ne 0 ]]; then
+        echo "Archive process is not running, expected it to be blocked"
+        failexit "Archive process is not blocked"
+    fi
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $master "put tunable debug_block_comdb2ar 0"
+    wait $archivepid
+}
+
+# 1) Create table, do 100 truncates, then grab the LSN
+# 2) In a loop:
+#       Do lots of writes 
+#       Ask the database to delete logs
+# 3) Proceed after the database deletes the log file of LSN
+#       Query 'comdb2_unused_files' table (should be consistent count)
+# 4) Create an archive: this should block
+# 5) Disable 'debug_pause_delete_files'
+# 6) Ask the database to delete files
+# 7) Verify that deletes are blocked
+# 8) Set 'debug_block_comdb2ar' to 0
+
+function run_test
+{
+    create_and_truncate_t1
+    push_and_delete_logs
+    query_unused_files
+    start_archive
+    disable_debug_pause_delete_files
+    verify_delete_is_blocked
+    unblock_comdb2ar
+}
+
+run_test
+echo "success"

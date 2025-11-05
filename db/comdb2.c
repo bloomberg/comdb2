@@ -1274,6 +1274,8 @@ static inline void sleep_with_check_for_exiting(int secs)
         sleep(1);
 }
 
+int gbl_debug_pause_delete_files = 0;
+
 static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
@@ -1317,6 +1319,12 @@ static void *purge_old_files_thread(void *arg)
             } else {
                 gbl_master_changed_oldfiles = 0;
             }
+        }
+
+        if (gbl_debug_pause_delete_files) {
+            logmsg(LOGMSG_USER, "%s: debug flag set, not deleting files\n", __func__);
+            sleep_with_check_for_exiting(empty_pause);
+            continue;
         }
 
         init_fake_ireq(thedb, &iq);

@@ -20,6 +20,9 @@
 #include <comdb2_atomic.h>
 #include "unistd.h"
 
+/* For testcase demonstrating that file-delete cannot occur during a copy */
+int gbl_debug_block_comdb2ar = 0;
+
 /* Forward declaration */
 comdb2_appsock_t logdelete3_plugin;
 
@@ -60,6 +63,11 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     before_master = ATOMIC_LOAD32(gbl_master_changes);
     before_sc = gbl_sc_commit_count;
     logmsg(LOGMSG_INFO, "Disabling log file deletion\n");
+
+    while (gbl_debug_block_comdb2ar) {
+        logmsg(LOGMSG_USER, "%s blocking comdb2ar for testcase\n", __func__);
+        sleep(1);
+    }
 
     /* respond so that comdb2logdel.tsk knows it got through. */
     sbuf2printf(sb, "log file deletion disabled\n");

@@ -1,0 +1,8 @@
+debug_block_comdb2ar 1
+debug_pause_delete_files 1
+#setattr DEBUG_LOG_DELETION 1
+setattr LOGDELETELOWFILENUM -1
+setattr MIN_KEEP_LOGS_AGE 10
+setattr PRIVATE_BLKSEQ_MAXAGE 10
+setattr CHECKPOINTTIME 10
+setattr CHECKPOINTRAND 5
