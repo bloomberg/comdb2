@@ -103,7 +103,6 @@ int gbl_req_all_threshold = 1024 * 1024; /* 1 mb */
 int gbl_req_all_time_threshold = 0;
 int gbl_req_delay_count_threshold = 5;
 int gbl_getlock_latencyms = 0;
-int gbl_flush_log_at_checkpoint = 1;
 int gbl_rep_newmaster_processed_on_replicant = 0;
 int gbl_rep_verify_delay_remaining = 10;
 int gbl_flush_replicant_on_prepare = 1;
@@ -3837,8 +3836,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 
 		__os_free(dbenv, ckp_args);
-		if (gbl_flush_log_at_checkpoint)
-			__log_flush(dbenv, NULL);
+		__log_flush(dbenv, NULL);
 		__memp_sync_out_of_band(dbenv, &rp->lsn);
 		break;
 	case DB___txn_regop_rowlocks:
