@@ -66,4 +66,7 @@ int SBUF2_FUNC(sslio_accept)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
 /* Given an NID, return the attribute in the X509 certificate in `out'. */
 int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len);
 #define sslio_x509_attr SBUF2_FUNC(sslio_x509_attr)
+
+int SBUF2_FUNC(sslio_pending)(SBUF2 *sb);
+#define sslio_pending SBUF2_FUNC(sslio_pending)
 #endif

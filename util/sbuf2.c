@@ -437,6 +437,13 @@ int SBUF2_FUNC(sbuf2gets)(char *out, int lout, SBUF2 *sb)
     return ii; /*return string len*/
 }
 
+int SBUF2_FUNC(sbuf2rd_pending)(SBUF2 *sb)
+{
+    if (!sb || !sb->ssl)
+        return 0;
+    return sslio_pending(sb);
+}
+
 /* returns num items read || <0 for error*/
 static int sbuf2fread_int(char *ptr, int size, int nitems,
                           SBUF2 *sb, int *was_timeout)
