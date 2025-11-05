@@ -89,7 +89,7 @@ void free_newsql_appdata(struct sqlclntstate *);
 void newsql_effects(CDB2SQLRESPONSE *, CDB2EFFECTS *, struct sqlclntstate *);
 void newsql_set_client_info(struct sqlclntstate *, CDB2SQLQUERY *, int initial);
 int newsql_is_newsql(struct sqlclntstate *clnt);
-void* newsql_get_identity(struct sqlclntstate *clnt);
+void *newsql_get_identity(struct sqlclntstate *clnt);
 
 #define plugin_set_callbacks_newsql(name)                                      \
     clnt->plugin.close = newsql_close##_##name;                                \
