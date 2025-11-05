@@ -232,7 +232,7 @@ static int get_dbinfo = 0;
 static int cdb2_get_dbinfo_set_from_env = 0;
 
 /* Request host name of a connection obtained from sockpool */
-static int get_hostname_from_sockpool_fd = 1;
+static int get_hostname_from_sockpool_fd = 0;
 static int cdb2_get_hostname_from_sockpool_fd_set_from_env = 0;
 
 #define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
@@ -1086,9 +1086,7 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
 {
     /*RESOLVE AN ADDRESS*/
     in_addr_t inaddr;
-
     int len;
-    struct hostent *hp = NULL;
     char tok[128], *cc;
     cc = strchr(host, (int)':');
     if (cc == 0) {
@@ -1109,29 +1107,29 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
         /* it's dotted-decimal */
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-#ifdef __APPLE__
-        hp = gethostbyname(tok);
-#elif _LINUX_SOURCE
-        int herr;
-        char tmp[8192];
-        int tmplen = 8192;
-        struct hostent hostbuf;
-        gethostbyname_r(tok, &hostbuf, tmp, tmplen, &hp, &herr);
-#elif _SUN_SOURCE
-        int herr;
-        char tmp[8192];
-        int tmplen = 8192;
-        struct hostent hostbuf;
-        hp = gethostbyname_r(tok, &hostbuf, tmp, tmplen, &herr);
-#else
-        hp = gethostbyname(tok);
-#endif
-        if (hp == NULL) {
-            fprintf(stderr, "%s:gethostbyname(%s): errno=%d err=%s\n", __func__,
-                    tok, errno, strerror(errno));
+        struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = 0, .ai_flags = 0};
+        struct addrinfo *result = NULL;
+        int gai_rc = getaddrinfo(tok, /*service=*/NULL, &hints, &result);
+        if (gai_rc != 0) {
+            fprintf(stderr, "%s:getaddrinfo(%s): %d %s\n", __func__, tok, gai_rc, gai_strerror(gai_rc));
             return -1;
         }
-        memcpy(&in->s_addr, hp->h_addr, hp->h_length);
+
+        /* if multiple results are returned, just use the first one. */
+        if (!result) {
+            fprintf(stderr, "%s:getaddrinfo(%s): no results returned\n", __func__, tok);
+            return -1;
+        }
+
+        if (result->ai_family != AF_INET) {
+            fprintf(stderr, "%s:getaddrinfo(%s): expected AF_INET\n", __func__, tok);
+            freeaddrinfo(result);
+            return -1;
+        }
+
+        memcpy(&in->s_addr, &((const struct sockaddr_in *)result->ai_addr)->sin_addr, sizeof(in->s_addr));
+
+        freeaddrinfo(result);
     }
     return 0;
 }
@@ -2136,51 +2134,59 @@ int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
 }
 
 /* populate comdb2db_hosts based on hostname info of comdb2db_name
- * returns -1 if error or no osts wa found
+ * returns -1 if error or no hosts were found
  * returns 0 if hosts were found
  * this function has functionality similar to cdb2_tcpresolve()
  */
-static int get_host_by_name(const char *comdb2db_name, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts)
+static int get_host_by_addr(const char *comdb2db_name, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts)
 {
-    struct hostent *hp = NULL;
-    char dns_name[512];
+    char dns_name[256];
+    int size = 0;
 
     if (cdb2_default_cluster[0] == '\0') {
-        snprintf(dns_name, sizeof(dns_name), "%s.%s", comdb2db_name, cdb2_dnssuffix);
+        size = snprintf(dns_name, sizeof(dns_name), "%s.%s", comdb2db_name, cdb2_dnssuffix);
     } else {
-        snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", cdb2_default_cluster, comdb2db_name, cdb2_dnssuffix);
+        size = snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", cdb2_default_cluster, comdb2db_name, cdb2_dnssuffix);
     }
-#ifdef __APPLE__
-    hp = gethostbyname(dns_name);
-#elif _LINUX_SOURCE
-    int herr;
-    char tmp[8192];
-    int tmplen = sizeof(tmp);
-    struct hostent hostbuf;
-    gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &hp, &herr);
-#elif _SUN_SOURCE
-    int herr;
-    char tmp[8192];
-    int tmplen = sizeof(tmp);
-    struct hostent hostbuf;
-    hp = gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &herr);
-#else
-    hp = gethostbyname(dns_name);
-#endif
-    if (!hp) {
-        fprintf(stderr, "%s:gethostbyname(%s): errno=%d err=%s\n", __func__,
-                dns_name, errno, strerror(errno));
+
+    if (size < 0 || size >= sizeof(dns_name)) {
+        fprintf(stderr, "%s: DNS name too long\n", __func__);
         return -1;
     }
 
-    int rc = -1;
-    struct in_addr **addr_list = (struct in_addr **)hp->h_addr_list;
-    for (int i = 0; addr_list[i] != NULL; i++) {
-        strcpy(comdb2db_hosts[i], inet_ntoa(*addr_list[i]));
-        (*num_hosts)++;
-        rc = 0;
+    struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = 0, .ai_flags = 0};
+    struct addrinfo *result = NULL;
+    int gai_rc = getaddrinfo(dns_name, /*service=*/NULL, &hints, &result);
+    if (gai_rc != 0) {
+        fprintf(stderr, "%s:getaddrinfo(%s): %d %s\n", __func__, dns_name, gai_rc, gai_strerror(gai_rc));
+        return -1;
     }
-    return rc;
+
+    int count = 0;
+    const struct addrinfo *rp;
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        if (count >= MAX_NODES) {
+            fprintf(stderr, "WARNING: %s:getaddrinfo(%s) returned more than %d results\n", __func__, dns_name,
+                    MAX_NODES);
+            break;
+        } else if (rp->ai_family != AF_INET) {
+            fprintf(stderr, "WARNING: %s:getaddrinfo(%s) returned non-AF_INET results\n", __func__, dns_name);
+        } else if (!inet_ntop(AF_INET, &((const struct sockaddr_in *)rp->ai_addr)->sin_addr, comdb2db_hosts[count],
+                              sizeof(comdb2db_hosts[count]))) {
+            fprintf(stderr, "%s:inet_ntop(): %d %s\n", __func__, errno, strerror(errno));
+            /* Don't make this a fatal error; just don't increment num_hosts */
+        } else {
+            count++;
+            (*num_hosts)++;
+        }
+    }
+
+    freeaddrinfo(result);
+
+    if (count > 0)
+        return 0;
+
+    return -1;
 }
 
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *comdb2db_ports,
@@ -2213,7 +2219,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOST
                                comdb2db_ports, master, num_hosts, NULL);
         /* DNS lookup comdb2db hosts. */
         if (rc != 0)
-            rc = get_host_by_name(comdb2db_name, comdb2db_hosts, num_hosts);
+            rc = get_host_by_addr(comdb2db_name, comdb2db_hosts, num_hosts);
     }
 
     return rc;
