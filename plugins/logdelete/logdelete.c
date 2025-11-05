@@ -18,6 +18,7 @@
 #include "comdb2.h"
 #include "comdb2_appsock.h"
 #include <comdb2_atomic.h>
+#include "unistd.h"
 
 /* Forward declaration */
 comdb2_appsock_t logdelete3_plugin;

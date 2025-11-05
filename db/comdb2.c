@@ -1324,8 +1324,18 @@ static void *purge_old_files_thread(void *arg)
         /* ok, get to work now */
         retries = 0;
     retry:
+        /* Don't delete files during db-copy */
+        logdelete_lock(__func__, __LINE__);
+        if (dbenv->log_delete_filenum == 0) {
+            logdelete_unlock(__func__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%s: defer purging files during copy\n", __func__);
+            sleep_with_check_for_exiting(empty_pause);
+            continue;
+        }
+
         rc = trans_start_sc_fop(&iq, &trans);
         if (rc != 0) {
+            logdelete_unlock(__func__, __LINE__);
             logmsg(LOGMSG_ERROR, "%s: failed to create transaction\n", __func__);
             sleep_with_check_for_exiting(empty_pause);
             continue;
@@ -1340,6 +1350,7 @@ static void *purge_old_files_thread(void *arg)
 
         if (rc == 0) {
             rc = trans_commit(&iq, trans, gbl_myhostname);
+            logdelete_unlock(__func__, __LINE__);
             if (rc) {
                 if (rc == RC_INTERNAL_RETRY && retries < 10) {
                     retries++;
@@ -1358,6 +1369,7 @@ static void *purge_old_files_thread(void *arg)
                 continue;
             }
         } else {
+            logdelete_unlock(__func__, __LINE__);
             logmsg(LOGMSG_ERROR,
                    "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
                    __func__, rc, bdberr);
