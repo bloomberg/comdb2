@@ -1624,8 +1624,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     }
 
     if (hndl) {
-        if ((strcasecmp(hndl->cluster, "default") == 0) && cdb2_default_cluster_set_from_env)
-            strcpy(hndl->cluster, cdb2_default_cluster);
+        if ((strcasecmp(hndl->type, "default") == 0) && cdb2_default_cluster_set_from_env)
+            strcpy(hndl->type, cdb2_default_cluster);
         if (cdb2_connect_timeout_set_from_env)
             hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
         if (cdb2_sockpool_send_timeoutms_set_from_env)
@@ -1649,7 +1649,7 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-static void only_read_config(cdb2_hndl_tp *); /* FORWARD */
+static void only_read_config(cdb2_hndl_tp *, int *); /* FORWARD */
 
 static int cdb2_max_room_num = 0;
 static int cdb2_has_room_distance = 0;
@@ -1814,8 +1814,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             if (!cdb2_default_cluster_set_from_env && strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    if (hndl && (strcasecmp(hndl->cluster, "default") == 0)) {
-                        strncpy(hndl->cluster, tok, sizeof(cdb2_default_cluster) - 1);
+                    if (hndl && (strcasecmp(hndl->type, "default") == 0)) {
+                        strncpy(hndl->type, tok, sizeof(cdb2_default_cluster) - 1);
                     } else if (!hndl) {
                         strncpy(cdb2_default_cluster, tok, sizeof(cdb2_default_cluster) - 1);
                     }
@@ -2240,6 +2240,11 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 #ifdef CDB2API_TEST
     }
 #endif
+
+    if (hndl && strcasecmp(hndl->type, "default") == 0 && cdb2_default_cluster[0] != '\0') {
+        strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type) - 1);
+    }
+
     pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
 }
@@ -3072,6 +3077,20 @@ int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, 
     return fd;
 }
 
+static int typestr_type_is_default(const char *typestr)
+{
+    const int TYPESTR_TIER_IDX = 2;
+    const char *type_start = typestr;
+    for (int i = 0; i < TYPESTR_TIER_IDX; i++) {
+        type_start = strchr(type_start, '/');
+        assert(type_start);
+        type_start++;
+    }
+    const char *const type_end = strchr(type_start, '/');
+    assert(type_end);
+    return strncmp(type_start, "default", type_end - type_start) == 0;
+}
+
 /* Get the sbuf of a socket matching the given type string from
  * the pool.  Returns NULL if none is available or the sbuf on
  * success. */
@@ -3086,6 +3105,13 @@ SBUF2 *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, 
             fprintf(stderr, "%p> %s(%s,%d,%p,%p): fd=%d\n", (void *)pthread_self(), __func__, typestr, dbnum, port,
                     was_from_local_cache, sbuf2fileno(sb));
         return NULL;
+    }
+#endif
+
+#ifdef CDB2API_TEST
+    if (typestr_type_is_default(typestr)) {
+        fprintf(stderr, "%s: ERR: Did not expect default type in typestring\n", __func__);
+        abort();
     }
 #endif
 
@@ -3112,6 +3138,13 @@ void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, 
 {
     if (log_calls)
         fprintf(stderr, "%p> %s(%s,%d): fd=%d\n", (void *)pthread_self(), __func__, typestr, dbnum, fd);
+#ifdef CDB2API_TEST
+    if (typestr_type_is_default(typestr)) {
+        fprintf(stderr, "%s: ERR: Did not expect default type in typestring\n", __func__);
+        abort();
+    }
+#endif
+
     int enabled = 0;
     int sockpool_fd = -1;
     int sp_generation = -1;
@@ -7769,9 +7802,17 @@ after_callback:
     return rc;
 }
 
-static inline void only_read_config(cdb2_hndl_tp *hndl)
+static inline void only_read_config(cdb2_hndl_tp *hndl, int *default_err)
 {
     read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    if (default_err && strcasecmp(hndl->type, "default") == 0) {
+        if (cdb2_default_cluster[0] != '\0') {
+            strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type) - 1);
+        } else {
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "No default_type entry in comdb2db config.\n");
+            *default_err = -1;
+        }
+    }
     set_cdb2_timeouts(hndl);
 }
 
@@ -7796,6 +7837,11 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name, &num_comdb2db_hosts,
                             &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0, hndl->shards,
                             &(hndl->num_shards));
+
+    if (strcasecmp(hndl->type, "default") == 0) {
+        sprintf(hndl->errstr, "No default_type entry in comdb2db config.\n");
+        return -1;
+    }
 
     /* Before database destination discovery */
     cdb2_event *e = NULL;
@@ -7836,20 +7882,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         strcpy(comdb2db_name, cdb2_comdb2dbname);
     }
 
-    if (strcasecmp(hndl->cluster, "default") == 0) {
-        if (cdb2_default_cluster[0] == '\0') {
-            sprintf(hndl->errstr, "cdb2_get_dbhosts: no default_type "
-                                  "entry in comdb2db config.");
-            rc = -1;
-            goto after_callback;
-        }
-        strncpy(hndl->cluster, cdb2_default_cluster, sizeof(hndl->cluster) - 1);
-        if (cdb2cfg_override || (cdb2_use_env_vars && default_type_override_env)) {
-            strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type) - 1);
-        }
-    }
-
-    if (strcasecmp(hndl->cluster, "local") == 0) {
+    if (strcasecmp(hndl->type, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
         hndl->flags |= CDB2_DIRECT_CPU;
@@ -7915,7 +7948,7 @@ retry:
             if (i == master)
                 continue;
             rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[i], comdb2db_ports[i],
-                                      hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->cluster, &hndl->dbnum,
+                                      hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->type, &hndl->dbnum,
                                       &hndl->num_hosts_sameroom, num_retry, use_bmsd, hndl->shards, &hndl->num_shards,
                                       &hndl->num_shards_sameroom);
             if (rc == 0 || time(NULL) >= max_time) {
@@ -7928,7 +7961,7 @@ retry:
         }
         if (rc == -1 && time(NULL) < max_time) {
             rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master], comdb2db_ports[master],
-                                      hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->cluster, &hndl->dbnum,
+                                      hndl->hosts, &hndl->num_hosts, hndl->dbname, hndl->type, &hndl->dbnum,
                                       &hndl->num_hosts_sameroom, num_retry, use_bmsd, hndl->shards, &hndl->num_shards,
                                       &hndl->num_shards_sameroom);
         }
@@ -7943,9 +7976,10 @@ retry:
         goto after_callback;
     }
     if (hndl->num_hosts == 0) {
-        sprintf(hndl->errstr, "cdb2_get_dbhosts: comdb2db has no entry of "
-                              "db %s of cluster type %s.",
-                hndl->dbname, hndl->cluster);
+        sprintf(hndl->errstr,
+                "cdb2_get_dbhosts: comdb2db has no entry of "
+                "db %s of cluster type %s.",
+                hndl->dbname, hndl->type);
         rc = -1;
         goto after_callback;
     }
@@ -8084,10 +8118,10 @@ static void after_discovery(cdb2_hndl_tp *hndl)
     }
 }
 
-static int get_connection_int(cdb2_hndl_tp *hndl)
+static int get_connection_int(cdb2_hndl_tp *hndl, int *err)
 {
-    only_read_config(hndl);
-    if (get_dbinfo)
+    only_read_config(hndl, err);
+    if (get_dbinfo || *err)
         return -1;
     before_discovery(hndl);
     SBUF2 *sb = sockpool_get(hndl);
@@ -8097,7 +8131,7 @@ static int get_connection_int(cdb2_hndl_tp *hndl)
     return init_connection(hndl, sb);
 }
 
-static int get_connection(cdb2_hndl_tp *hndl)
+static int get_connection(cdb2_hndl_tp *hndl, int *err)
 {
     if (hndl->is_admin || (hndl->flags & CDB2_MASTER)) // don't grab from sockpool
         return -1;
@@ -8117,7 +8151,7 @@ static int get_connection(cdb2_hndl_tp *hndl)
     } else if (get_dbinfo || sockpool_enabled == -1 || cdb2cfg_override) {
         return -1;
     }
-    int rc = get_connection_int(hndl);
+    int rc = get_connection_int(hndl, err);
     return rc;
 }
 
@@ -8174,7 +8208,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    only_read_config(hndl);
+    only_read_config(hndl, NULL); // don't care about default here
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -8522,8 +8556,7 @@ static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
         return NULL;
 
     for (pos = cdb2_ssl_sess_cache.next; pos != NULL; pos = pos->next) {
-        if (strcasecmp(hndl->dbname, pos->dbname) == 0 &&
-            strcasecmp(hndl->cluster, pos->cluster) == 0) {
+        if (strcasecmp(hndl->dbname, pos->dbname) == 0 && strcasecmp(hndl->type, pos->cluster) == 0) {
             if (!pos->ref) {
                 pos->ref = 1;
                 break;
@@ -8562,8 +8595,8 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
             return ENOMEM;
         strncpy(hndl->sess->dbname, hndl->dbname, sizeof(hndl->dbname) - 1);
         hndl->sess->dbname[sizeof(hndl->dbname) - 1] = '\0';
-        strncpy(hndl->sess->cluster, hndl->cluster, sizeof(hndl->cluster) - 1);
-        hndl->sess->cluster[sizeof(hndl->cluster) - 1] = '\0';
+        strncpy(hndl->sess->cluster, hndl->type, sizeof(hndl->type) - 1);
+        hndl->sess->cluster[sizeof(hndl->type) - 1] = '\0';
         hndl->sess->ref = 1;
         hndl->sess->sessobj = NULL;
 
@@ -8618,7 +8651,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
     TAILQ_INIT(&hndl->queries);
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
-    strncpy(hndl->cluster, type, sizeof(hndl->cluster) - 1);
     strncpy(hndl->type, type, sizeof(hndl->type) - 1);
     hndl->flags = flags;
     hndl->dbnum = 1;
@@ -8659,8 +8691,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
                 fprintf(stderr, "WARNING: %s:Value of %s is not valid. Using value '%s'.\n", __func__,
                         COMDB2_CONFIG_DB_DEFAULT_TYPE, db_default_type);
             }
-            strncpy(hndl->cluster, db_default_type, sizeof(hndl->cluster) - 1);
-            strncpy(hndl->type, hndl->cluster, sizeof(hndl->type) - 1);
+            strncpy(hndl->type, db_default_type, sizeof(hndl->type) - 1);
             hndl->db_default_type_override_env = 1;
         }
     }
@@ -8699,7 +8730,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if (hndl->flags & CDB2_DIRECT_CPU) {
         /* Get defaults from comdb2db.cfg */
-        only_read_config(hndl);
+        only_read_config(hndl, &rc);
+        if (rc)
+            goto out;
         hndl->got_dbinfo = 1;
         hndl->num_hosts = 1;
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
@@ -8727,7 +8760,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             hndl->sockpool_enabled = db_host_info ? -1 : 0;
         }
 
-        if (get_connection(hndl) != 0) {
+        const int should_get_dbinfo = get_connection(hndl, &rc);
+        if (rc)
+            goto out;
+        if (should_get_dbinfo) {
             hndl->got_dbinfo = 1;
             rc = cdb2_get_dbhosts(hndl);
         }
@@ -9047,7 +9083,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
     void *rc;
     int state;
     char *fp;
-    const char *dbtype = (hndl == NULL) ? NULL : hndl->type;
+    const char *dbtype;
 
     /* Fast return if no arguments need to be passed to the callback. */
     if (e->argc == 0)
@@ -9069,6 +9105,12 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         hostname = hndl->hosts[hndl->connected_host];
         port = hndl->ports[hndl->connected_host];
     }
+
+    if (hndl == NULL || strcasecmp(hndl->type, "default") == 0)
+        dbtype = cdb2_default_cluster;
+    else
+        dbtype = hndl->type;
+
     rc = 0;
     state = 0;
 
