@@ -52,8 +52,8 @@ static int sslio_pollin(SBUF2 *sb)
     do {
         pol.fd = sb->fd;
         pol.events = POLLIN;
-        /* A readtimeout of 0 actually means an infinite poll timeout. */
-        rc = poll(&pol, 1, sb->readtimeout == 0 ? -1 : sb->readtimeout);
+        /* Don't wait for remote if the flag is set */
+        rc = poll(&pol, 1, sb->nowait ? 0 : (sb->readtimeout == 0 ? -1 : sb->readtimeout));
     } while (rc == -1 && errno == EINTR);
 
     if (rc <= 0) /* timedout or error. */

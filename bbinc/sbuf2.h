@@ -153,6 +153,10 @@ sbuf2readfn SBUF2_FUNC(sbuf2getr)(SBUF2 *sb);
 sbuf2writefn SBUF2_FUNC(sbuf2getw)(SBUF2 *sb);
 #define sbuf2getw SBUF2_FUNC(sbuf2getw)
 
+/* Set no wait value */
+void SBUF2_FUNC(subf2setnowait)(SBUF2 *sb, int value);
+#define sbuf2setnowait SBUF2_FUNC(subf2setnowait)
+
 /* set up poll timeout on file descriptor*/
 void SBUF2_FUNC(sbuf2settimeout)(SBUF2 *sb, int readtimeout, int writetimeout);
 #define sbuf2settimeout SBUF2_FUNC(sbuf2settimeout)

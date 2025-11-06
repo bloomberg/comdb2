@@ -140,6 +140,7 @@ struct cdb2_hndl {
     char errstr[1024];
     cnonce_t cnonce;
     char *sql;
+    char partial_sql[64];
     int ntypes;
     int *types;
     uint8_t *last_buf;
