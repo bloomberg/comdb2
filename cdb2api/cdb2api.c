@@ -153,6 +153,12 @@ static int cdb2_comdb2db_fallback = 1;
 static int cdb2_comdb2db_fallback_set_from_env = 0;
 static int cdb2_use_optional_identity = 1;
 static int cdb2_use_optional_identity_set_from_env = 0;
+static int cdb2_discard_unread_socket_data = 0;
+static int cdb2_discard_unread_socket_data_set_from_env = 0;
+static int cdb2_alarm_unread_socket_data = 0;
+static int cdb2_alarm_unread_socket_data_set_from_env = 0;
+static int cdb2_max_discard_records = 1;
+static int cdb2_max_discard_records_set_from_env = 0;
 
 static int CDB2_REQUEST_FP = 0;
 
@@ -228,6 +234,9 @@ static int connect_host_on_reject = 1;
 static int cdb2_connect_host_on_reject_set_from_env = 0;
 static int iam_identity = 1; /* on by default */
 static int cdb2_iam_identity_set_from_env = 0;
+
+static int donate_unused_connections = 1; /* on by default */
+static int cdb2_donate_unused_connections_set_from_env = 0;
 
 /* Skip dbinfo query if sockpool provides connection */
 static int get_dbinfo = 0;
@@ -448,6 +457,13 @@ void (*cdb2_uninstall)(const char *) = CDB2_UNINSTALL_LIBS;
 #else
     extern struct cdb2_identity CDB2_IDENTITY_CALLBACKS;
     struct cdb2_identity *identity_cb = &CDB2_IDENTITY_CALLBACKS;
+#endif
+
+#ifndef CDB2_PUBLISH_EVENT_CALLBACKS
+    struct cdb2_publish_event *publish_event_cb = NULL;
+#else
+    extern struct cdb2_publish_event CDB2_PUBLISH_EVENT_CALLBACKS;
+    struct cdb2_publish_event *publish_event_cb = &CDB2_PUBLISH_EVENT_CALLBACKS;
 #endif
 
 #ifndef WITH_DL_LIBS
@@ -1544,6 +1560,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_str_on_off("COMDB2_FEATURE_CONNECT_HOST_ON_REJECT", &connect_host_on_reject,
                                    &cdb2_connect_host_on_reject_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_IAM_IDENTITY", &iam_identity, &cdb2_iam_identity_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_DONATE_UNUSED_CONNECTIONS", &donate_unused_connections,
+                                   &cdb2_donate_unused_connections_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_USE_FTRUNCATE", &cdb2_use_ftruncate,
                                    &cdb2_use_ftruncate_set_from_env);
         process_env_var_str("COMDB2_CONFIG_ROOM", (char *)&cdb2_machine_room, sizeof(cdb2_machine_room),
@@ -1581,6 +1599,12 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                             &cdb2_comdb2db_fallback_set_from_env);
         process_env_var_int("COMDB2_FEATURE_USE_OPTIONAL_IDENTITY", &cdb2_use_optional_identity,
                             &cdb2_use_optional_identity_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_DISCARD_UNREAD_SOCKET_DATA", &cdb2_discard_unread_socket_data,
+                            &cdb2_discard_unread_socket_data_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_ALARM_UNREAD_SOCKET_DATA", &cdb2_alarm_unread_socket_data,
+                            &cdb2_alarm_unread_socket_data_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_MAX_DISCARD_RECORDS", &cdb2_max_discard_records,
+                            &cdb2_max_discard_records_set_from_env);
         process_env_var_str_on_off("COMDB2_CONFIG_CHECK_HB_ON_BLOCKED_WRITE", &check_hb_on_blocked_write,
                                    &check_hb_on_blocked_write_set_from_env);
 
@@ -1698,6 +1722,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     iam_identity = value_on_off(tok, &err);
+            } else if (!cdb2_donate_unused_connections_set_from_env &&
+                       (strcasecmp("donate_unused_connections", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    donate_unused_connections = value_on_off(tok, &err);
             } else if (!cdb2_use_ftruncate_set_from_env && (strcasecmp("use_ftruncate", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
@@ -1763,6 +1792,20 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     cdb2_use_env_vars = value_on_off(tok, &err);
+            } else if (!cdb2_discard_unread_socket_data_set_from_env &&
+                       (strcasecmp("discard_unread_socket_data", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_discard_unread_socket_data = value_on_off(tok, &err);
+            } else if (!cdb2_alarm_unread_socket_data_set_from_env &&
+                       (strcasecmp("alarm_unread_socket_data_v1", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_alarm_unread_socket_data = value_on_off(tok, &err);
+            } else if (!cdb2_max_discard_records_set_from_env && (strcasecmp("max_discard_records", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok && is_valid_int(tok))
+                    cdb2_max_discard_records = atoi(tok);
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
@@ -3522,6 +3565,67 @@ after_callback:
     return rc;
 }
 
+static int cdb2_read_record_ignore_data(cdb2_hndl_tp *hndl, uint8_t **buf, int *count, int *type)
+{
+    SBUF2 *sb = hndl->sb;
+    struct newsqlheader hdr = {0};
+    int rc;
+reread:
+    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+    if (rc != sizeof(hdr))
+        return -1;
+    hdr.type = ntohl(hdr.type);
+    hdr.length = ntohl(hdr.length);
+    hdr.state = ntohl(hdr.state);
+    if (hdr.length == 0) /* ignore heartbeats */
+        goto reread;
+    if (hdr.type != RESPONSE_HEADER__SQL_RESPONSE)
+        return -1;
+    *buf = realloc(*buf, hdr.length);
+    rc = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
+    if (rc != hdr.length)
+        return -1;
+    if (hdr.state == NEWSQL_SERVER_STATE_NONE) {
+        CDB2SQLRESPONSEIGNOREDATA *response = cdb2__sqlresponse__ignoredata__unpack(NULL, hdr.length, *buf);
+        if (!response)
+            return -1;
+        *type = response->response_type;
+        cdb2__sqlresponse__ignoredata__free_unpacked(response, NULL);
+    } else {
+        // Running state
+        *type = RESPONSE_TYPE__COLUMN_VALUES;
+    }
+    if (count)
+        (*count)++;
+    return 0;
+}
+
+static int cdb2_discard_unread_data(cdb2_hndl_tp *hndl)
+{
+    int rc = 0;
+    int type = 0;
+    int count = 0;
+    if (!cdb2_discard_unread_socket_data)
+        return 1;
+    sbuf2setnowait(hndl->sb, 1); // Will be reset when we get it back from pool
+    while ((rc = cdb2_read_record_ignore_data(hndl, &hndl->last_buf, &count, &type)) == 0 &&
+           (type != RESPONSE_TYPE__LAST_ROW) && count < cdb2_max_discard_records)
+        ;
+    ;
+    // Reset it in here only instead of relying on other functions
+#ifdef CDB2API_TEST
+    printf("Discarded socket %d Discarded %d Max %d type %d\n", (type != RESPONSE_TYPE__LAST_ROW), count,
+           cdb2_max_discard_records, type);
+#endif
+    sbuf2setnowait(hndl->sb, 0);
+
+    if (cdb2_alarm_unread_socket_data && publish_event_cb && type != RESPONSE_TYPE__LAST_ROW && count > 0)
+        publish_event_cb->publish_event("Unread rows", _ARGV0, _PID, hndl->dbname, hndl->type, hndl->partial_sql,
+                                        "Unread records for the task");
+
+    return (type != RESPONSE_TYPE__LAST_ROW);
+}
+
 static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 {
     if (sb == NULL)
@@ -3533,9 +3637,12 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 
     int timeoutms = 10 * 1000;
     if (hndl->is_admin || hndl->is_rejected ||
+        (!hndl->firstresponse && (hndl->sent_client_info || !donate_unused_connections)) || hndl->in_trans ||
+        hndl->pid != _PID ||
         (hndl->firstresponse &&
-         (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
-        (!hndl->firstresponse) || (hndl->in_trans) || (hndl->pid != _PID) || ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
+         ((!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW)) &&
+          cdb2_discard_unread_data(hndl))) ||
+        ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
         sbuf2close(sb);
     } else {
         int donated = local_connection_cache_put(hndl, hndl->newsql_typestr, sb);
@@ -5962,6 +6069,7 @@ after_delay:
 
     clear_responses(hndl);
 
+    snprintf(hndl->partial_sql, sizeof(hndl->partial_sql), "%s", sql);
     hndl->ntypes = ntypes;
     hndl->types = types;
 

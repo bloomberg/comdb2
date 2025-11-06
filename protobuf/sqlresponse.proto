@@ -145,6 +145,11 @@ message CDB2_EFFECTS {
     required int32 num_inserted = 5;
 }
 
+message CDB2_SQLRESPONSE_IGNOREDATA {
+    required ResponseType response_type=1; // enum ReponseType
+    required CDB2_ErrorCode error_code = 4;
+}
+
 message CDB2_SQLRESPONSE {
     required ResponseType response_type=1; // enum ReponseType
     message column {
