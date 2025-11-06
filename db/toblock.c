@@ -2881,11 +2881,6 @@ __thread int64_t *txn_logbytes = NULL;
 
 #define LOG_TAG_HIT()                                                                                                  \
     do {                                                                                                               \
-        static int once = 1;                                                                                           \
-        if (once) {                                                                                                    \
-            once = 0;                                                                                                  \
-            fprintf(stderr, "%s: tagged request callback registered %p\n", __func__, gbl_tagged_request_callback);     \
-        }                                                                                                              \
         if (gbl_tagged_request_callback) {                                                                             \
             gbl_tagged_request_callback(iq);                                                                           \
         }                                                                                                              \
