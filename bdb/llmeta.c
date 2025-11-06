@@ -7067,7 +7067,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_FVER_FILE_TYPE_TBL:
     case LLMETA_FVER_FILE_TYPE_IX:
     case LLMETA_FVER_FILE_TYPE_DTA: {
-        struct llmeta_file_type_dbname_file_num_key akey;
+        struct llmeta_file_type_dbname_file_num_key akey = {0};
         struct llmeta_version_number_type adata = {0};
 
         if (keylen < sizeof(akey)) {
@@ -7082,9 +7082,9 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         if (type == LLMETA_FVER_FILE_TYPE_DTA && akey.dbname[0] == 0) {
             /* stupid overloaded type, this one contains the list of the names
              */
-            struct llmeta_table_name llmeta_tbl;
+            struct llmeta_table_name llmeta_tbl = {0};
 
-           logmsg(LOGMSG_USER, "LLMETA_TBL_NAMES:\n");
+            logmsg(LOGMSG_USER, "LLMETA_TBL_NAMES:\n");
 
             while (p_buf_data < p_buf_end_data) {
                 p_buf_data = llmeta_table_name_get(&llmeta_tbl, p_buf_data,
@@ -7112,7 +7112,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     } break;
 
     case LLMETA_IN_SCHEMA_CHANGE: {
-        struct llmeta_schema_change_type akey;
+        struct llmeta_schema_change_type akey = {0};
 
         if (keylen < sizeof(akey) || datalen < sizeof(unsigned long long)) {
             logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_IN_SCHEMA_CHANGE entry\n",
@@ -7160,7 +7160,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             *bdberr = BDBERR_MISC;
             return -1;
         }
-        llmeta_newsc_redo_genid_key k;
+        llmeta_newsc_redo_genid_key k = {0};
         struct llmeta_db_lsn_data_type newsc_lsn = {{0}};
         llmeta_newsc_redo_genid_key_get(&k, p_buf_key, p_buf_end_key);
         llmeta_db_lsn_data_type_get(&newsc_lsn, p_buf_data, p_buf_end_data);
@@ -7181,7 +7181,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             return -1;
         }
 
-        struct llmeta_hist_key k;
+        struct llmeta_hist_key k = {0};
         llmeta_sc_hist_key_get(&k, p_buf_key, p_buf_end_key);
         llmeta_sc_hist_data_get(&sc_hist, p_buf_data, p_buf_end_data);
 
@@ -7194,7 +7194,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     } break;
 
     case LLMETA_HIGH_GENID: {
-        struct llmeta_high_genid_key_type akey;
+        struct llmeta_high_genid_key_type akey = {0};
         unsigned long long genid;
 
         if (keylen < sizeof(akey) || datalen < sizeof(unsigned long long)) {
@@ -7215,7 +7215,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     } break;
 
     case LLMETA_CSC2: {
-        struct llmeta_file_type_dbname_csc2_vers_key csc2_vers_key;
+        struct llmeta_file_type_dbname_csc2_vers_key csc2_vers_key = {0};
 
         p_buf_key = llmeta_file_type_dbname_csc2_vers_key_get(
             &csc2_vers_key, p_buf_key, p_buf_end_key);
@@ -7245,7 +7245,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         logmsg(LOGMSG_USER, "LLMETA_LOGICAL_LSN_LWM\n");
         break;
     case LLMETA_SC_SEEDS: {
-        struct llmeta_schema_change_type akey;
+        struct llmeta_schema_change_type akey = {0};
 
         if (keylen < sizeof(akey) || datalen < sizeof(unsigned long long)) {
             logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_IN_SCHEMA_CHANGE entry\n",
@@ -7263,7 +7263,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
 
     } break;
     case LLMETA_SC_START_LSN: {
-        struct llmeta_schema_change_type akey;
+        struct llmeta_schema_change_type akey = {0};
         struct llmeta_db_lsn_data_type adata = {{0}};
 
         if (keylen < sizeof(akey) || datalen < sizeof(adata)) {
@@ -7284,7 +7284,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     } break;
     case LLMETA_TABLE_USER_READ:
     case LLMETA_TABLE_USER_WRITE: {
-        struct llmeta_tbl_access akey;
+        struct llmeta_tbl_access akey = {0};
 
         p_buf_key = llmeta_tbl_access_get(&akey, p_buf_key, p_buf_end_key);
 
@@ -7330,7 +7330,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         logmsg(LOGMSG_USER, "LLMETA_ANALYZECOVERAGE_TABLE\n");
         break;
     case LLMETA_TABLE_VERSION: {
-        char tblname[LLMETA_TBLLEN + 1];
+        char tblname[LLMETA_TBLLEN + 1] = {0};
         buf_no_net_get(&(tblname),
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
@@ -7355,7 +7355,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                : "UNKNOWN GENID FORMAT");
         } break;
     case LLMETA_TABLE_PARAMETERS: {
-        char tblname[LLMETA_TBLLEN + 1];
+        char tblname[LLMETA_TBLLEN + 1] = {0};
         buf_no_net_get(&(tblname), sizeof(tblname), p_buf_key + sizeof(int),
                        p_buf_end_key);
 
