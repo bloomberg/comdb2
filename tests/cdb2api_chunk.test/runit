@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+total=500000
+expected_max=$((total - 1))
+dbname=${DBNAME}
+tier=default
+cfg=$DBDIR/comdb2db.cfg
+chunk=${TESTSBUILDDIR}/cdb2api_chunk
+
+function check {
+    count=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbname $tier 'select count(i) from chunk')
+    min=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbname $tier 'select min(i) from chunk')
+    max=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbname $tier 'select max(i) from chunk')
+    if [[ ${count} -ne ${total} ]] || [[ ${min} -ne 0 ]] || [[ ${max} -ne ${expected_max} ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+
+#####################
+## RUN WITHOUT FIX ##
+#####################
+echo 'comdb2_config:check_hb_on_blocked_write=0' >> ${cfg}
+${chunk} ${dbname} ${tier} ${total}
+if [[ $? -eq 0 ]]; then
+    echo >&2 'Tunabled disabled - test expected to fail'
+    echo >&2 'chunk - fail'
+    exit 1
+fi
+
+check
+if [[ $? -eq 0 ]]; then
+    cat >&2 ${cfg}
+    echo >&2 "count:${count} (expected:${total})  min:${min} (expected:0)  max:${max} (expected:${expected_max})"
+    echo >&2 'chunk - fail'
+    exit 1
+fi
+
+
+##################
+## RUN WITH FIX ##
+##################
+sed -i 's/comdb2_config:check_hb_on_blocked_write=0/comdb2_config:check_hb_on_blocked_write=1/' ${cfg}
+${chunk} ${dbname} ${tier} ${total}
+if [[ $? -ne 0 ]]; then
+    echo >&2 'Tunabled enabled using config file - test expected to work'
+    echo >&2 'chunk - fail'
+    exit 1
+fi
+
+check
+if [[ $? -ne 0 ]]; then
+    echo >&2 "count:${count} (expected:${total})  min:${min} (expected:0)  max:${max} (expected:${expected_max})"
+    echo >&2 'chunk - fail'
+    exit 1
+fi
+
+
+###############################
+## RUN WITH FIX ENV VARIABLE ##
+###############################
+sed -i '/comdb2_config:check_hb_on_blocked_write=1/d' ${cfg}
+COMDB2_CONFIG_CHECK_HB_ON_BLOCKED_WRITE=1 ${chunk} ${dbname} ${tier} ${total}
+if [[ $? -ne 0 ]]; then
+    echo >&2 'Tunabled enabled using env variable - test expected to work'
+    echo >&2 'chunk - fail'
+    exit 1
+fi
+
+check
+if [[ $? -ne 0 ]]; then
+    echo >&2 "count:${count} (expected:${total})  min:${min} (expected:0)  max:${max} (expected:${expected_max})"
+    echo >&2 'chunk - fail'
+    exit 1
+fi
+
+echo 'chunk - pass'
+exit 0
