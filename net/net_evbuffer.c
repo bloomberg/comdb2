@@ -2463,17 +2463,6 @@ static void pmux_connect(int dummyfd, short what, void *data)
     }
 }
 
-static struct timeval ms_to_timeval(int ms)
-{
-    struct timeval t = {0};
-    if (ms >= 1000) {
-        t.tv_sec = ms / 1000;
-        ms %= 1000;
-    }
-    t.tv_usec = ms * 1000;
-    return t;
-}
-
 static int accept_host(struct accept_info *a)
 {
     check_base_thd();
