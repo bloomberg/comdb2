@@ -84,7 +84,7 @@ for sqlfile in $sqlfiles; do
         echo "see diffs here: $HOSTNAME"
         echo "> diff -u ${PWD}/{$testname.$exp_extn,$testname.output}"
         echo "first 10 lines of the diff:"
-        $cmd | head -10
+        diff $testname.$exp_extn $testname.output | head -10
         echo
         exit 1
     fi
