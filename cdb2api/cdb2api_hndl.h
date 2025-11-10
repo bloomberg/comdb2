@@ -26,7 +26,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
-#define MAX_NODES 128
+#define MAX_NODES 48
 
 #define DBNAME_LEN 64
 #define TYPE_LEN 64
