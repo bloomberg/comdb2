@@ -284,7 +284,6 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *);
 static void hndl_set_sbuf(cdb2_hndl_tp *, SBUF2 *);
 static int send_reset(SBUF2 *sb, int localcache);
 
-static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
 static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
@@ -767,10 +766,12 @@ int get_max_local_connection_cache_entries(void)
 }
 #endif
 
+static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int init_once_has_run = 0;
 #ifdef CDB2API_TEST
 void reset_once(void)
 {
+    init_once = PTHREAD_ONCE_INIT;
     init_once_has_run = 0;
 }
 #endif
