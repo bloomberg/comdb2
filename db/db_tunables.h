@@ -2580,5 +2580,6 @@ REGISTER_TUNABLE("prefer_non_blocking_coherency_check",
                  "If set, prefer to use `bdb_try_am_i_coherent()` over `bdb_am_i_coherent()` when checking whether we "
                  "are coherent. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_prefer_non_blocking_coherency_check, 0, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("new_connection_grace_ms", "Time (in ms) before new connection is eligible for eviction (Default: 100ms)",
+                 TUNABLE_INTEGER, &gbl_new_connection_grace_ms, INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

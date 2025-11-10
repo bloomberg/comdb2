@@ -2463,17 +2463,6 @@ static void pmux_connect(int dummyfd, short what, void *data)
     }
 }
 
-static struct timeval ms_to_timeval(int ms)
-{
-    struct timeval t = {0};
-    if (ms >= 1000) {
-        t.tv_sec = ms / 1000;
-        ms %= 1000;
-    }
-    t.tv_usec = ms * 1000;
-    return t;
-}
-
 static int accept_host(struct accept_info *a)
 {
     check_base_thd();
@@ -3203,7 +3192,7 @@ static void do_recvfd(int pmux_fd, short what, void *data)
         rc = write(newfd, "0\n", 2);
     }
     if (rc != 2) {
-        logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:write fd:%d rc:%zd (%s)\n", __func__, newfd, rc, strerror(errno));
         shutdown_close(newfd);
         return;
     }
