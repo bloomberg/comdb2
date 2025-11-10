@@ -455,7 +455,6 @@ static char *legacy_options[] = {
     "setattr max_sql_idle_time 864000",
     "retrieve_gen_from_ckp 0",
     "recovery_ckp 0",
-    "sc_protobuf 0",
     "sc_current_version 3",
     "disable_sql_table_replacement 1",
     "endianize_locklist 0"
