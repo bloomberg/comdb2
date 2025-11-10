@@ -57,7 +57,9 @@
 *******************************************************************************
 */
 
+#ifndef API_DRIVER_NAME
 #define API_DRIVER_NAME open_cdb2api
+#endif
 static char api_driver_name[] = QUOTE(API_DRIVER_NAME);
 
 #ifndef API_DRIVER_VERSION
