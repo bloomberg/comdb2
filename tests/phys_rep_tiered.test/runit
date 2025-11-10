@@ -1474,10 +1474,6 @@ function physrep_truncate
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table cktruncate(a int, b cstring(32))"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into cktruncate select *, 'good' from generate_series(1, 1000)"
 
-    rm -Rf $logcursor_output >/dev/null 2>&1
-    blocking_logcursor $logcursor_output $startlsn &
-    logcursorpid=$!
-
     # Block until all standalones have these records
     for node in $CLUSTER ; do
         name="${REPL_DBNAME_PREFIX}_${node}"
@@ -1528,6 +1524,12 @@ function physrep_truncate
         done
         echo "Db $name on node $node has caught up"
     done
+
+    rm -Rf $logcursor_output >/dev/null 2>&1
+    blocking_logcursor $logcursor_output $startlsn &
+    logcursorpid=$!
+
+    sleep 5
 
     echo "Truncate to good LSN $goodlsn"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $mnode "exec procedure sys.cmd.truncate_log(\"$goodlsn\")"
