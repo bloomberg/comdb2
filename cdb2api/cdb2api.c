@@ -1943,7 +1943,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     get_hostname_from_sockpool_fd = value_on_off(tok, &err);
-            } else if (strcasecmp("ssl_mode", tok) == 0) {
+            } else if (strcasecmp("ssl_mode", tok) == 0 || strcasecmp("ssl_mode_v9", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok != NULL) {
                     if (strcasecmp(SSL_MODE_ALLOW, tok) == 0)
