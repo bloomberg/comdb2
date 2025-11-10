@@ -27,6 +27,7 @@ pglogs_seqnum,UNKNOWN,180959545
 sc_swapfields_logicalsc_generated,UNKNOWN,181013093
 sc_datacopy_logicalsc_generated,UNKNOWN,181013102
 skipscan,UNKNOWN,181051795
+queuedb_rollover,UNKNOWN,181062375
 queuedb_rollover_noroll1_generated,UNKNOWN,181062375
 simple_ssl,UNKNOWN,181151988
 sc_timepart,UNKNOWN,181186021
