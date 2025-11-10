@@ -8785,13 +8785,14 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (rc != 0)
         goto out;
 
-    if (hndl->flags & CDB2_DIRECT_CPU) {
+    if ((hndl->flags & CDB2_DIRECT_CPU) || (hndl->flags & CDB2_ADMIN)) {
         /* Get defaults from comdb2db.cfg */
         only_read_config(hndl, &rc);
         if (rc)
             goto out;
         hndl->got_dbinfo = 1;
         hndl->num_hosts = 1;
+        set_cdb2_timeouts(hndl);
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {
