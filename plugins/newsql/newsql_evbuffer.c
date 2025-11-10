@@ -86,6 +86,7 @@ struct newsql_appdata_evbuffer {
     struct event *rd_hdr_ev;
     struct event *rd_payload_ev;
 
+    unsigned allow_lru : 1;
     unsigned initial : 1; /* New connection or called newsql_reset */
     unsigned local : 1;
 
@@ -704,6 +705,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         }
     }
     if (appdata->initial && newsql_first_run(clnt, sqlquery) != 0) goto err;
+    appdata->allow_lru = 1;
     appdata->initial = 0;
     newsql_loop_result incoherent = newsql_loop(clnt, sqlquery);
     if (incoherent == NEWSQL_ERROR) goto err;
@@ -882,7 +884,12 @@ static void add_rd_event_plaintext(struct newsql_appdata_evbuffer *appdata, stru
 
 static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *timeout)
 {
-    add_lru_evbuffer(&appdata->clnt); /* going to wait for read; eligible for shutdown */
+    struct timeval new_connection_grace = {.tv_usec = 100 * 1000};
+    if (appdata->allow_lru) { /* going to wait for read; eligible for shutdown */
+        add_lru_evbuffer(&appdata->clnt);
+    } else if (!timeout) { /* new connection */
+        timeout = &new_connection_grace;
+    }
     appdata->add_rd_event_fn(appdata, ev, timeout); /* add_rd_event_plaintext */
 }
 
@@ -1026,6 +1033,9 @@ static void rd_payload(int dummyfd, short what, void *arg)
         free_newsql_appdata_evbuffer(appdata);
         return;
     }
+    if (!appdata->allow_lru && (what & EV_TIMEOUT)) {
+        appdata->allow_lru = 1;
+    }
     if (evbuffer_get_length(appdata->rd_buf) < appdata->hdr.length) {
         add_rd_event(appdata, appdata->rd_payload_ev, NULL);
         return;
@@ -1053,6 +1063,9 @@ static void rd_hdr(int dummyfd, short what, void *arg)
     if (rd_evbuffer(appdata) <= 0 && (what & EV_READ)) {
         free_newsql_appdata_evbuffer(appdata);
         return;
+    }
+    if (!appdata->allow_lru && (what & EV_TIMEOUT)) {
+        appdata->allow_lru = 1;
     }
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
         add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
