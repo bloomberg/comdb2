@@ -607,6 +607,7 @@ int64_t gbl_test_tunable_int64_signed_limit = INT64_MAX;
 
 int gbl_always_request_log_req = 0;
 int gbl_nudge_replication_when_idle = 100;
+int gbl_new_connection_grace_ms = 100;
 
 int parse_int64(const char *value, int64_t *num);
 
