@@ -46,6 +46,7 @@
 void dump_response(const CDB2SQLRESPONSE *r);
 void dump_request(const CDB2SQLQUERY *q);
 
+int gbl_new_connection_grace_ms = 100;
 extern int gbl_incoherent_clnt_wait;
 extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
@@ -86,6 +87,7 @@ struct newsql_appdata_evbuffer {
     struct event *rd_hdr_ev;
     struct event *rd_payload_ev;
 
+    unsigned allow_lru : 1;
     unsigned initial : 1; /* New connection or called newsql_reset */
     unsigned local : 1;
 
@@ -418,8 +420,12 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl, int 
 
 static int dispatch_client(struct newsql_appdata_evbuffer *appdata)
 {
-    ATOMIC_ADD64(gbl_nnewsql, 1);
-    return dispatch_sql_query_no_wait(&appdata->clnt);
+    int rc = dispatch_sql_query_no_wait(&appdata->clnt);
+    if (rc == 0) {
+        ATOMIC_ADD64(gbl_nnewsql, 1);
+        appdata->allow_lru = 1;
+    }
+    return rc;
 }
 
 extern pthread_mutex_t buf_lock;
@@ -881,9 +887,26 @@ static void add_rd_event_plaintext(struct newsql_appdata_evbuffer *appdata, stru
     event_add(ev, t);
 }
 
+static struct timeval ms_to_timeval(int ms)
+{
+    struct timeval t = {0};
+    if (ms >= 1000) {
+        t.tv_sec = ms / 1000;
+        ms %= 1000;
+    }
+    t.tv_usec = ms * 1000;
+    return t;
+}
+
 static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *timeout)
 {
-    add_lru_evbuffer(&appdata->clnt); /* going to wait for read; eligible for shutdown */
+    struct timeval new_connection_grace;
+    if (appdata->allow_lru) { /* going to wait for read; eligible for shutdown */
+        add_lru_evbuffer(&appdata->clnt);
+    } else if (!timeout && gbl_new_connection_grace_ms) { /* new connection */
+        new_connection_grace = ms_to_timeval(gbl_new_connection_grace_ms);
+        timeout = &new_connection_grace;
+    }
     appdata->add_rd_event_fn(appdata, ev, timeout); /* add_rd_event_plaintext */
 }
 
@@ -1016,7 +1039,16 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
     }
 }
 
-static void rd_payload(int dummyfd, short what, void *arg)
+static void maybe_allow_lru(struct newsql_appdata_evbuffer *appdata, int fd, short what)
+{
+    if (appdata->allow_lru) return;
+    if (fd == -1) return; /* fd == -1 -> evtimer_once, not from timeout we set */
+    if (what & EV_READ) return;
+    if (!(what & EV_TIMEOUT)) return;
+    appdata->allow_lru = 1;
+}
+
+static void rd_payload(int fd, short what, void *arg)
 {
     CDB2QUERY *query = NULL;
     struct newsql_appdata_evbuffer *appdata = arg;
@@ -1027,6 +1059,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
         free_newsql_appdata_evbuffer(appdata);
         return;
     }
+    maybe_allow_lru(appdata, fd, what);
     if (evbuffer_get_length(appdata->rd_buf) < appdata->hdr.length) {
         add_rd_event(appdata, appdata->rd_payload_ev, NULL);
         return;
@@ -1044,7 +1077,7 @@ payload:
     process_newsql_payload(appdata, query);
 }
 
-static void rd_hdr(int dummyfd, short what, void *arg)
+static void rd_hdr(int fd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
@@ -1055,6 +1088,7 @@ static void rd_hdr(int dummyfd, short what, void *arg)
         free_newsql_appdata_evbuffer(appdata);
         return;
     }
+    maybe_allow_lru(appdata, fd, what);
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
         add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
         return;
