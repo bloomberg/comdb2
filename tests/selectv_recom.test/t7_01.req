@@ -4,8 +4,6 @@
 1 insert into t7 values (3, 30)
 1 insert into t7 values (4, 40)
 1 insert into t7 values (5, 50)
-1 set transaction read committed
-2 set transaction read committed
 1 begin
 1 selectv * from t7 where a = 2
 1 insert into t7 values (10, 100)
