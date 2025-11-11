@@ -1642,49 +1642,6 @@ done:
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 
-struct ixmap {
-    char *oldname;
-    char *newname;
-};
-
-static hash_t *ixname_map = NULL;
-static pthread_mutex_t ixname_lk = PTHREAD_MUTEX_INITIALIZER;
-
-static void map_index(const char *oldname, const char *newname)
-{
-    Pthread_mutex_lock(&ixname_lk);
-    if (ixname_map == NULL) {
-        ixname_map = hash_init_strptr(offsetof(struct ixmap, oldname));
-    }
-    struct ixmap *m = hash_find(ixname_map, &oldname);
-    if (!m) {
-        m = calloc(sizeof(*m), 1);
-        m->oldname = strdup(oldname);
-        m->newname = strdup(newname);
-        hash_add(ixname_map, m);
-    } else if (strcmp(m->newname, newname) != 0) {
-        free(m->newname);
-        m->newname = strdup(newname);
-    }
-    Pthread_mutex_unlock(&ixname_lk);
-}
-
-char *mapped_index(const char *oldname)
-{
-    char *newname = NULL;
-    Pthread_mutex_lock(&ixname_lk);
-    if (ixname_map == NULL) {
-        Pthread_mutex_unlock(&ixname_lk);
-        return NULL;
-    }
-    struct ixmap *m = hash_find(ixname_map, &oldname);
-    if (m) {
-        newname = m->newname;
-    }
-    Pthread_mutex_unlock(&ixname_lk);
-    return newname;
-}
-
 /*
 ** Given a comdb2 index, this routine will decide whether to
 ** advertise its name as tablename_ix_ixnum or the new style
@@ -1696,16 +1653,6 @@ char *mapped_index(const char *oldname)
 void sql_index_name_trans(char *namebuf, int len, struct schema *schema, struct dbtable *db, int ixnum, void *trans)
 {
     form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
-    if (stat1_find(namebuf, schema, db, ixnum, trans) > 0) return;
-
-    char *oldstyle = alloca(len);
-    snprintf(oldstyle, len, "%s_ix_%d", db->tablename, ixnum);
-
-    /* If we find an old-name, use the new name */
-    if (stat1_find(oldstyle, schema, db, ixnum, trans) > 0) {
-        map_index(oldstyle, namebuf);
-    }
-    return;
 }
 
 /*

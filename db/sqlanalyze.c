@@ -710,51 +710,6 @@ error:
     return rc;
 }
 
-
-static int gen_old_new_idx_stats(struct sqlclntstate *clnt, struct dbtable *tbl, struct errstat *err)
-{
-    char *sql = NULL;
-    int rc = 0;
-    char *name = tbl->sqlaliasname ? tbl->sqlaliasname : tbl->tablename;
-
-    for (int i = 0; i < tbl->nsqlix; ++i) {
-        struct schema *ix = tbl->ixschema[i];
-        char namebuf[128];
-        snprintf(namebuf, sizeof(namebuf), "%s_ix_%d", name, i);
-
-        /* Temporarily generate both old & new style names for single prod move */
-        logmsg(LOGMSG_USER, "%s: have idx:%s cloning into:%s\n", __func__, ix->sqlitetag, namebuf);
-        sql = sqlite3_mprintf("INSERT INTO sqlite_stat1(tbl, idx, stat) "
-                "SELECT tbl, '%q', stat FROM sqlite_stat1 "
-                "WHERE tbl='%q' AND idx='%q'",
-                ix->sqlitetag, name, namebuf);
-        rc = run_internal_sql_clnt(clnt, sql);
-        if (rc) {
-            errstat_set_rcstrf(err, rc, "failed:%s", sql);
-            goto error;
-        }
-        sqlite3_free(sql);
-        sql = NULL;
-        if (!get_dbtable_by_name("sqlite_stat4")) continue;
-        sql = sqlite3_mprintf("INSERT INTO sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample) "
-                "SELECT tbl, '%q', neq, nlt, ndlt, sample FROM sqlite_stat4 "
-                "WHERE tbl='%q' AND idx='%q'",
-                ix->sqlitetag, name, namebuf);
-        rc = run_internal_sql_clnt(clnt, sql);
-        if (rc) {
-            errstat_set_rcstrf(err, rc, "failed:%s", sql);
-            goto error;
-        }
-        sqlite3_free(sql);
-        sql = NULL;
-    }
-error:
-    if (sql)
-        sqlite3_free(sql);
-
-    return rc;
-}
-
 /* NOTE: this is part of a transaction that caller should set by calling begin */
 int analyze_regular_table(const char *tablename, table_descriptor_t *td,
                           struct sqlclntstate *clnt, struct errstat *err)
@@ -821,10 +776,6 @@ int analyze_regular_table(const char *tablename, table_descriptor_t *td,
     sql = NULL;
     clnt->is_analyze = 0;
 
-    if (rc)
-        goto err;
-
-    rc = gen_old_new_idx_stats(clnt, table, err);
     if (rc)
         goto err;
 
