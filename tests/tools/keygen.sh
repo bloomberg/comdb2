@@ -201,3 +201,14 @@ for crt in `find ${CADIR} -name 'server*.crt'`; do
              -keyfile ${CADIR}/root.key -cert ${CADIR}/root.crt
 done
 openssl ca -config ${CADIR}/ca.cnf -gencrl -out ${CADIR}/client.crl
+
+for node in $CLUSTER; do
+    if [ "$node" = "$myhostname" ] ; then
+      continue
+    fi
+    scp -o StrictHostKeyChecking=no $CADIR/client.crt $node:$CADIR/client.crt
+    scp -o StrictHostKeyChecking=no $CADIR/client.key $node:$CADIR/client.key
+    scp -o StrictHostKeyChecking=no $CADIR/root.crt $node:$CADIR/root.crt
+    scp -o StrictHostKeyChecking=no $CADIR/root.crl $node:$CADIR/root.crl
+done
+

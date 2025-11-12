@@ -40,13 +40,29 @@ delhost=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host fro
 master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='Y'")
 
 echo "Using node $host"
-ssh $host "${CDB2SQL_EXE} -admin ${CDB2_OPTIONS} ${DBNAME} @localhost 'put tunable rep_debug_delay 10'"
-$CDB2SQL_EXE --host $delhost ${CDB2_OPTIONS} ${DBNAME} default "delete from t limit 3000" &
-sleep 10
-ssh $host "${CDB2SQL_EXE} -admin  ${CDB2_OPTIONS} ${DBNAME} @localhost 'put tunable rep_debug_delay 0'"
+${CDB2SQL_EXE} -admin ${CDB2_OPTIONS} ${DBNAME} --host $host 'put tunable rep_debug_delay 10000'
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $delhost "delete from t limit 10" &
+pid=$!
 
-# we expect the node we artificially delayed to become incoherent first, then coherent
-wait_for_coherent_state $host "INCOHERENT" $master
+state=$(cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host ${master} "select coherent_state from comdb2_cluster where host='$host'")
+while [[ "$state" != "INCOHERENT" ]]; do
+    if kill -0 $pid 2> /dev/null; then
+        sleep 1
+    else
+        wait $pid
+        $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $delhost "delete from t limit 10" &
+        pid=$!
+    fi
+    state=$(cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host ${master} "select coherent_state from comdb2_cluster where host='$host'")
+done
+
+${CDB2SQL_EXE} -admin ${CDB2_OPTIONS} ${DBNAME} --host $host 'put tunable rep_debug_delay 0'
+
+if kill -0 $pid 2> /dev/null; then
+    wait $pid
+fi
+
+# wait for the node we artificially delayed to become coherent
 wait_for_coherent_state $host "coherent" $master
 
 # wait for the node to actually become available (which may happen after it becomes coherent)

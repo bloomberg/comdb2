@@ -57,6 +57,7 @@ static int __rep_get_limit __P((DB_ENV *, u_int32_t *, u_int32_t *));
 static int __rep_set_limit __P((DB_ENV *, u_int32_t, u_int32_t));
 int __rep_set_request __P((DB_ENV *, u_int32_t, u_int32_t));
 static int __rep_set_rep_send_ack __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN, uint32_t, uint32_t)));
+static int __rep_set_signal_logfill __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN *)));
 static int __rep_set_rep_transport __P((DB_ENV *, char *,
 	int (*)(DB_ENV *, const DBT *, const DBT *, const DB_LSN *,
 		char *, int, void *)));
@@ -131,6 +132,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_request = __rep_set_request;
 		dbenv->set_rep_transport = __rep_set_rep_transport;
 		dbenv->set_rep_send_ack = __rep_set_rep_send_ack;
+		dbenv->set_rep_signal_logfill = __rep_set_signal_logfill;
 		dbenv->set_rep_ignore = __rep_set_ignore;
 		dbenv->set_log_trigger = __rep_set_log_trigger;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
@@ -1053,10 +1055,25 @@ __rep_set_rep_send_ack(dbenv, f_send_ack)
 	PANIC_CHECK(dbenv);
 	if (f_send_ack == NULL) {
 		__db_err(dbenv,
-			"DB_ENV->set_rep_transport: no send function specified");
+			"DB_ENV->set_rep_send_ack: no send function specified");
 		return (EINVAL);
 	}
 	dbenv->rep_send_ack = f_send_ack;
+	return (0);
+}
+
+static int
+__rep_set_signal_logfill(dbenv, f_signal_logfill)
+	DB_ENV *dbenv;
+	void (*f_signal_logfill)(DB_ENV *, DB_LSN *);
+{
+	PANIC_CHECK(dbenv);
+	if (f_signal_logfill == NULL) {
+		__db_err(dbenv,
+			"DB_ENV->set_rep_signal_logfill: no send function specified");
+		return (EINVAL);
+	}
+	dbenv->rep_signal_logfill = f_signal_logfill;
 	return (0);
 }
 
