@@ -18,21 +18,21 @@ SELECT * FROM t
 EXEC PROCEDURE watcher('{"with_id":false, "consume_count":3}')
 
 -- legacy default version
-CREATE PROCEDURE foo {}$$
-SELECT name, version, "default" FROM comdb2_procedures WHERE name='foo'
+CREATE PROCEDURE foo_t3 {}$$
+SELECT name, version, "default" FROM comdb2_procedures WHERE name='foo_t3'
 -- should overwrite legacy default version
-CREATE DEFAULT LUA CONSUMER foo ON (TABLE t FOR INSERT)
-SELECT name, version, "default" FROM comdb2_procedures WHERE name='foo'
+CREATE DEFAULT LUA CONSUMER foo_t3 ON (TABLE t FOR INSERT)
+SELECT name, version, "default" FROM comdb2_procedures WHERE name='foo_t3'
 
 -- client specified version
-CREATE PROCEDURE bar VERSION 'baz' {}$$
-SELECT name, version, "default" FROM comdb2_procedures WHERE name='bar'
+CREATE PROCEDURE bar_t3 VERSION 'baz' {}$$
+SELECT name, version, "default" FROM comdb2_procedures WHERE name='bar_t3'
 -- should overwrite default version
-CREATE DEFAULT LUA CONSUMER bar ON (TABLE t FOR INSERT)
-SELECT name, version, "default" FROM comdb2_procedures WHERE name='bar'
+CREATE DEFAULT LUA CONSUMER bar_t3 ON (TABLE t FOR INSERT)
+SELECT name, version, "default" FROM comdb2_procedures WHERE name='bar_t3'
 
 DROP TABLE t
 DROP TABLE u
 DROP LUA CONSUMER watcher
-DROP LUA CONSUMER foo
-DROP LUA CONSUMER bar
+DROP LUA CONSUMER foo_t3
+DROP LUA CONSUMER bar_t3
