@@ -1422,6 +1422,21 @@ REGISTER_TUNABLE("apply_pollms",
                  "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_apply_thread_pollms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill", "Request transaction logs via sql thread.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_sql_logfill, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_debug", "Enable extended trace for sql logfill thread.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sql_logfill, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_stats", "Print periodic stats from sql logfill thread.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_sql_logfill_stats, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_apply_thread", "Use a dedicated thread to apply sql logfills.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sql_logfill_dedicated_apply_thread, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_lookahead_records",
+                 "Max lookahead records cached for dedicated apply thread.  (Default: 10000)", TUNABLE_INTEGER,
+                 &gbl_sql_logfill_lookahead_records, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_next_timeout", "Max amount of time logfill blocked on transaction-logs.  (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_sql_logfill_next_timeout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("periodic_rep_report", "Report replication status every second.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_periodic_rep_report, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_always_grab_writelock", "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
                  &gbl_rep_verify_always_grab_writelock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_will_recover_trace", "Trace rep_verify_will_recover.", TUNABLE_BOOLEAN,
@@ -1588,35 +1603,25 @@ REGISTER_TUNABLE("rep_getlock_latency",
                  "Sleep on replicant before getting locks.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_getlock_latencyms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("inmem_repdb",
-                 "Use in memory structure for repdb (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_inmem_repdb,
-                 EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb", "Use in memory structure for repdb (Default: off)", TUNABLE_BOOLEAN, &gbl_inmem_repdb,
+                 READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog",
                  "Maximum records for in-memory replist.  "
-                 "(Default: 10000)",
-                 TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("durable_set_trace",
-                 "Trace setting durable lsn.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_durable_set_trace, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("set_seqnum_trace",
-                 "Trace setting setting seqnum.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_set_seqnum_trace,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 "(Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb_most_recent", "Toggles storing the most-recent N records (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_inmem_repdb_most_recent, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("durable_set_trace", "Trace setting durable lsn.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_durable_set_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("set_seqnum_trace", "Trace setting setting seqnum.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_set_seqnum_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("elect_priority_bias",
                  "Bias this node's election priority by this amount.  "
                  "(Default: 0)",
-                 TUNABLE_INTEGER, &gbl_elect_priority_bias, 0, NULL, NULL, NULL,
-                 NULL);
+                 TUNABLE_INTEGER, &gbl_elect_priority_bias, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_queue_memory",
                  "Current memory usage of apply-queue.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_apply_queue_memory, READONLY, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("inmem_repdb_memory",
-                 "Current memory usage of in-memory repdb.  (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_inmem_repdb_memory, READONLY, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("queuedb_genid_filename",
                  "Use genid in queuedb filenames.  (Default: on)",

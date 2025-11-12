@@ -200,8 +200,7 @@ int bdb_get_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     return outrc;
 }
 
-int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,
-                     int *offset)
+int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, uint32_t *logfile, uint32_t *offset)
 {
     struct interned_string *host_interned = intern_ptr(host);
     struct hostinfo *h = retrieve_hostinfo(host_interned);

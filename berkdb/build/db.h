@@ -2601,6 +2601,8 @@ struct __db_env {
 		char **, DB_LSN *, uint32_t *, uint32_t *, char **, int));
 	void (*rep_send_ack) __P((DB_ENV *, DB_LSN lsn, uint32_t commit_gen, uint32_t rep_gen));
 	int  (*set_rep_send_ack) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN, uint32_t, uint32_t)));
+	void (*rep_signal_logfill) __P((DB_ENV *, DB_LSN *w));
+	int  (*set_rep_signal_logfill) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN *w)));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));

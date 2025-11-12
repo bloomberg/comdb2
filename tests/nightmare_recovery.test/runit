@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-#export debug=1
+export debug=1
 [[ "$debug" == "1" ]] && set -x
 
 . ${TESTSROOTDIR}/tools/write_prompt.sh
@@ -29,7 +29,7 @@ function insert_thd
 
 function findmaster
 {
-    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default 'select host from comdb2_cluster where is_master="Y"'
+    $CDB2SQL_EXE --admin --tabs $CDB2_OPTIONS $DBNAME default 'select host from comdb2_cluster where is_master="Y"'
 }
 
 function current_log_file

@@ -105,7 +105,8 @@ enum {
     BDB_CALLBACK_SERIALCHECK,
     BDB_CALLBACK_ADMIN_APPSOCK,
     BDB_CALLBACK_SYNCMODE,
-    BDB_CALLBACK_NODEUP_DRTEST
+    BDB_CALLBACK_NODEUP_DRTEST,
+    BDB_CALLBACK_SIGNAL_LOGFILL
 };
 
 enum { BDB_REPFAIL_NET, BDB_REPFAIL_TIMEOUT, BDB_REPFAIL_RMTBDB };
@@ -409,6 +410,9 @@ typedef int (*SYNCMODE)(bdb_state_type *);
 
 /* Callback to dr-test aware rtcpu */
 typedef int (*NODEUP_DRTEST)(bdb_state_type *, const char *hode, int *isdrtest);
+
+/* Callback to signal logfill */
+typedef int (*SIGNAL_LOGFILL)(bdb_state_type *);
 
 typedef int (*BDB_CALLBACK_FP)();
 bdb_callback_type *bdb_callback_create(void);
