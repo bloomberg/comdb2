@@ -1643,9 +1643,7 @@ done:
 }
 
 /*
-** Given a comdb2 index, this routine will decide whether to
-** advertise its name as tablename_ix_ixnum or the new style
-** $csctag_hash to SQLite (new style has preceeding $).
+** Forms the 'new-style' index name.
 **
 ** The index name to be adv. to sqlite is returned in namebuf.
 ** A valid name is always returned.
