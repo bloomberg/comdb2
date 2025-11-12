@@ -3852,6 +3852,8 @@ static void rem_rep_mon(struct rep_mon *rm)
     Pthread_mutex_unlock(&rep_mon_lk);
 }
 
+extern __thread char *rep_apply_caller;
+
 #if defined _LINUX_SOURCE && !defined __APPLE__
 static __thread pid_t process_berkdb_tid = 0;
 #endif
@@ -3965,9 +3967,11 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         logmsg(LOGMSG_INFO, "%s:%d dropping message!\n", __func__, __LINE__);
         r = 0;
     } else {
+        rep_apply_caller = "replication";
         r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
                                                   &host, &permlsn,
                                                   &commit_generation, &newgen, &newmaster, online);
+        rep_apply_caller = NULL;
     }
 
     if (got_vote2lock) {
@@ -5209,6 +5213,12 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
 
         recbufsz = p_rep_type_berkdb_rep_buf_hdr.recbufsz;
         recbufcrc = p_rep_type_berkdb_rep_buf_hdr.recbufcrc;
+
+        if (recbufsz < 0 || recbufsz > dtalen) {
+            logmsg(LOGMSG_ERROR, "invalid recbufsz %d\n", recbufsz);
+            logmsg(LOGMSG_ERROR, "%p %p %d\n", p_buf, dta, dtalen);
+            return -1;
+        }
 
         recbuf = (char *)p_buf;
         p_buf += recbufsz;

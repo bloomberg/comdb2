@@ -30,6 +30,7 @@ add_library(bdb
   genid.c
   import.c
   info.c
+  log_info.c
   lite.c
   ll.c
   llmeta.c
@@ -50,6 +51,7 @@ add_library(bdb
   rowlocks.c
   rowlocks_util.c
   serializable.c
+  signallogfill.c
   summarize.c
   temphash.c
   temptable.c

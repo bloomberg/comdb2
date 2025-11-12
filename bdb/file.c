@@ -35,6 +35,8 @@
 #include <dirent.h>
 #include <fcntl.h>
 
+#include <signallogfill.h>
+
 #ifdef __sun
 /* for PTHREAD_STACK_MIN on Solaris */
 #define __EXTENSIONS__
@@ -110,6 +112,7 @@
 #include <phys_rep_lsn.h>
 
 #include <log_trigger.h>
+#include <sqllogfill.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -2422,6 +2425,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
+extern int gbl_sql_logfill;
 int gbl_skip_catchup_logic = 0;
 int gbl_debug_downgrade_cluster_at_open = 0;
 
@@ -2676,7 +2680,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     dbenv->set_rep_transport(dbenv, bdb_state->repinfo->myhost,
                              berkdb_send_rtn);
     dbenv->set_rep_send_ack(dbenv, comdb2_early_ack);
-
+    dbenv->set_rep_signal_logfill(dbenv, comdb2_signal_logfill);
     dbenv->set_check_standalone(dbenv, comdb2_is_standalone);
     dbenv->set_truncate_sc_callback(dbenv, comdb2_reload_schemas);
     dbenv->set_rep_truncate_callback(dbenv, comdb2_replicated_truncate);
@@ -3089,6 +3093,10 @@ waitformaster:
     }
 
     master_host = bdb_state->repinfo->master_host;
+
+    if (!gbl_exit && gbl_sql_logfill) {
+        create_sql_logfill_threads(bdb_state);
+    }
 
     if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
         goto waitformaster;

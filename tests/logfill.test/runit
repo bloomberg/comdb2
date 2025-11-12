@@ -145,7 +145,7 @@ function runit {
 
     insertforever 1000 2
 
-    pauseandrestart 1 60
+    pauseandrestart 1 30
 
     waitforcoherency
 
