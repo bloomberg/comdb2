@@ -1422,6 +1422,21 @@ REGISTER_TUNABLE("apply_pollms",
                  "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_apply_thread_pollms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sql_logfill", "Request transaction logs via sql thread.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_sql_logfill, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_debug", "Enable extended trace for sql logfill thread.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sql_logfill, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_stats", "Print periodic stats from sql logfill thread.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_sql_logfill_stats, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_only_gaps", "Only request records up to repdb lsn.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_sql_logfill_only_gaps, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_apply_thread", "Use a dedicated thread to apply sql logfills.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sql_logfill_dedicated_apply_thread, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_lookahead_records",
+                 "Max lookahead records cached for dedicated apply thread.  (Default: 10000)", TUNABLE_INTEGER,
+                 &gbl_sql_logfill_lookahead_records, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_verify_always_grab_writelock", "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
                  &gbl_rep_verify_always_grab_writelock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_will_recover_trace", "Trace rep_verify_will_recover.", TUNABLE_BOOLEAN,

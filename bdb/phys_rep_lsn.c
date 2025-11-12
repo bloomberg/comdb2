@@ -29,58 +29,6 @@ extern int gbl_physrep_debug;
 int gbl_physrep_exit_on_invalid_logstream = 0;
 int gbl_physrep_ignore_queues = 1;
 
-static LOG_INFO get_lsn_internal(bdb_state_type *bdb_state, int flags)
-{
-    int rc;
-
-    /* get db internals */
-    DB_LOGC *logc;
-    DBT logrec;
-    DB_LSN log_lsn;
-    LOG_INFO log_info = {0};
-
-    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
-    if (rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s: Can't get log cursor rc %d\n", __func__, rc);
-        return log_info;
-    }
-    bzero(&logrec, sizeof(DBT));
-    logrec.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &log_lsn, &logrec, flags);
-    if (rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s: Can't get last log record rc %d\n", __func__,
-                       rc);
-        logc->close(logc, 0);
-        return log_info;
-    }
-#if 0
-    if (gbl_physrep_debug)
-        physrep_logmsg(LOGMSG_USER, "%s: LSN %u:%u\n", __func__, log_lsn.file,
-                       log_lsn.offset);
-#endif
-
-    log_info.file = log_lsn.file;
-    log_info.offset = log_lsn.offset;
-    log_info.size = logrec.size;
-
-    if (logrec.data)
-        free(logrec.data);
-
-    logc->close(logc, 0);
-
-    return log_info;
-}
-
-LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
-{
-    return get_lsn_internal(bdb_state, DB_LAST);
-}
-
-LOG_INFO get_first_lsn(bdb_state_type *bdb_state)
-{
-    return get_lsn_internal(bdb_state, DB_FIRST);
-}
-
 int compare_log(DBT *logrec, void *blob, unsigned int blob_len)
 {
     int rc;
@@ -251,11 +199,6 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
 }
 
 /* generator code */
-
-uint32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
-{
-    return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
-}
 
 int apply_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype, void *blob,
               int blob_len)
