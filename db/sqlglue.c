@@ -4996,8 +4996,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
     struct dbtable *db =
         &thedb->static_table; 
     /* Latch last commit LSN */
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && (db->handle != NULL) &&
-        (start_modsnap_transaction(clnt) != 0)) {
+    if (!clnt->in_sqlite_init && clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress &&
+        (db->handle != NULL) && (start_modsnap_transaction(clnt) != 0)) {
         rc = SQLITE_INTERNAL;
         goto done;
     }
@@ -5116,7 +5116,9 @@ int sqlite3BtreeCommit(Btree *pBt)
     if (clnt->selectv_arr)
         currangearr_coalesce(clnt->selectv_arr);
 
-    if (!clnt->in_sqlite_init && (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE) && (clnt->ctrl_sqlengine != SQLENG_STRT_STATE)) {
+    if (clnt->modsnap_in_progress && (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE) &&
+        (clnt->ctrl_sqlengine != SQLENG_STRT_STATE)) {
+        assert(!clnt->in_sqlite_init);
         clnt->modsnap_in_progress = 0;
         if (clnt->modsnap_registration) {
             bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
