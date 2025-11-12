@@ -1,0 +1,5 @@
+1 set transaction snapshot
+1 create table t14(i int)
+1 select sleep(0)
+2 insert into t14 values(1)
+1 select 'you should see me' from t14
