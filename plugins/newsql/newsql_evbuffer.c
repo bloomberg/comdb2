@@ -505,9 +505,6 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
     if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL ||
         appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[1]->value.len != sizeof(int) ||
         appdata->sqlquery->bindvars[2] == NULL || appdata->sqlquery->bindvars[2]->value.len != sizeof(int)) {
-        // TODO
-        // write error response: HOW
-        // fprintf(stdout, ">> couldn't dispatch %d\n", __LINE__);
         return 1;
     }
     int luxref;
@@ -700,7 +697,9 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     int have_sqlite_fmt = clnt->features.have_sqlite_fmt;
     clnt->sqlite_row_format = have_sqlite_fmt;
     clnt->is_tagged = sqlquery->has_is_tagged && sqlquery->is_tagged;
-    if (!clnt->is_tagged)
+    if (clnt->is_tagged)
+        ++n_tagged_over_cdb2api;
+    else
         ++clnt->sqltick;
 
     /* If the connection is forwarded from a secure pmux port,
