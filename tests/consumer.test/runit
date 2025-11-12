@@ -7,5 +7,6 @@ if [ "$TESTCASE" == "consumer" ]; then
 	./t06.sh
 	./t07.sh
 	./t08.sh
+	./cdb2api_drain.sh
 fi
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
