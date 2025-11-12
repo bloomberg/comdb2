@@ -286,7 +286,6 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *);
 static void hndl_set_sbuf(cdb2_hndl_tp *, SBUF2 *);
 static int send_reset(SBUF2 *sb, int localcache);
 
-static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
 static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
@@ -779,21 +778,16 @@ void reset_once(void)
 
 static void do_init_once(void)
 {
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-    if (init_once_has_run == 0) {
-        pthread_mutex_lock(&lk);
-        if (!init_once_has_run) {
-            srandom(time(0));
-            _PID = getpid();
-            _MACHINE_ID = gethostid();
-            _ARGV0 = cdb2_getargv0();
-            pthread_atfork(atfork_prepare, atfork_me, atfork_child);
-            TAILQ_INIT(&local_connection_cache);
-            TAILQ_INIT(&free_local_connection_cache);
-            process_env_vars();
-            init_once_has_run = 1;
-        }
-        pthread_mutex_unlock(&lk);
+    if (!init_once_has_run) {
+        srandom(time(0));
+        _PID = getpid();
+        _MACHINE_ID = gethostid();
+        _ARGV0 = cdb2_getargv0();
+        pthread_atfork(atfork_prepare, atfork_me, atfork_child);
+        TAILQ_INIT(&local_connection_cache);
+        TAILQ_INIT(&free_local_connection_cache);
+        process_env_vars();
+        init_once_has_run = 1;
     }
 }
 
@@ -1384,7 +1378,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
 void cdb2_set_comdb2db_config(const char *cfg_file)
 {
     pthread_mutex_lock(&cdb2_cfg_lock);
-    pthread_once(&init_once, do_init_once);
+    do_init_once();
     if (log_calls)
         fprintf(stderr, "%p> %s(\"%s\")\n", (void *)pthread_self(), __func__,
                 cfg_file);
@@ -1400,7 +1394,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
 {
     int len;
     pthread_mutex_lock(&cdb2_cfg_lock);
-    pthread_once(&init_once, do_init_once);
+    do_init_once();
     if (log_calls)
         fprintf(stderr, "%p> cdb2_set_comdb2db_info(\"%s\")\n",
                 (void *)pthread_self(), cfg_info);
@@ -2356,7 +2350,9 @@ static int open_sockpool_ll(void)
     const char *ptr;
     size_t bytesleft;
 
-    pthread_once(&init_once, do_init_once);
+    pthread_mutex_lock(&cdb2_cfg_lock);
+    do_init_once();
+    pthread_mutex_unlock(&cdb2_cfg_lock);
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd == -1) {
@@ -8505,7 +8501,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     cdb2_event *e = NULL;
 
     pthread_mutex_lock(&cdb2_cfg_lock);
-    pthread_once(&init_once, do_init_once);
+    do_init_once();
     pthread_mutex_unlock(&cdb2_cfg_lock);
 
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
