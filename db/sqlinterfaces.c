@@ -1816,6 +1816,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     /* Latch the last commit LSN */
+    assert(!clnt->modsnap_in_progress);
     if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (populate_modsnap_state(clnt) != 0)) {
         rc = SQLITE_INTERNAL;
         goto done;
@@ -3365,6 +3366,7 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                       struct sql_state *rec, struct errstat *err, int flags)
 {
     curtran_assert_nolocks();
+    assert(!clnt->modsnap_in_progress || clnt->in_client_trans);
     if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
         return SQLITE_INTERNAL;
     }
@@ -4081,6 +4083,9 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         fdb_push_free(&clnt->fdb_push);
     if (clnt->typessql_state)
         typessql_end(clnt);
+    if (clnt->modsnap_in_progress && !clnt->in_client_trans) {
+        clear_modsnap_state(clnt);
+    }
 
     if ((rec->status & CACHE_HAS_HINT) && rec->sql != clnt->sql && gbl_eventlog_fullhintsql) { 
         clnt->hint_sql_ref = create_string_ref(rec->sql);
