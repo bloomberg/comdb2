@@ -1774,6 +1774,14 @@ void clear_modsnap_state(struct sqlclntstate *clnt)
     assert(clnt->modsnap_registration);
     bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
     clnt->modsnap_registration = NULL;
+
+    // Table version cache might have already been freed, so check before
+    // freeing it.
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
     clnt->modsnap_in_progress = 0;
 }
 
