@@ -739,10 +739,6 @@ for ((i=0;i<500;++i)); do
 done | cdb2sql $SP_OPTIONS - > /dev/null
 
 #START CONSUMERS
-cdb2sql $SP_OPTIONS - <<'EOF'
-set transaction snapisol
-exec procedure cons0(true)
-EOF
 cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
 set transaction blocksql
 exec procedure cons0(true)

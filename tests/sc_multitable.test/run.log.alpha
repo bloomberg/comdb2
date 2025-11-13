@@ -15,6 +15,7 @@
   ]
  }
 ]
+[set transaction blocksql] rc 0
 [set transaction chunk 10000] rc 0
 [begin] rc 0
 [insert into testview1 select * from  generate_series(1,100000)] rc 0
@@ -94,6 +95,7 @@
 ]
 (rows inserted=10)
 (rows inserted=10)
+[set transaction blocksql] rc 0
 [set transaction chunk 1000] rc 0
 [begin] rc 0
 [insert into '$14_CC37A197' (a) select * from  generate_series(1,1000000)] rc 0
