@@ -973,6 +973,11 @@ __db_close(dbp, txn, flags)
 	u_int32_t dbpflags;
 	int db_ref, deferred_close, ret, t_ret;
 
+	DB_LSN dummy_lsn;
+	ZERO_LSN(dummy_lsn);
+	DB *ufid_dbp = NULL;
+	int ufid_find_rc = 0;
+
 	dbenv = dbp->dbenv;
 	deferred_close = ret = 0;
 
@@ -997,7 +1002,18 @@ __db_close(dbp, txn, flags)
 	dbpflags = dbp->flags;
 
 	if (dbp->added_to_ufid) {
-		__ufid_clear_dbp(dbenv,  dbp);
+		__ufid_clear_dbp(dbenv, dbp);
+	} else {
+		ufid_find_rc = __ufid_find_db(dbenv, txn, &ufid_dbp, dbp->fileid, &dummy_lsn);
+		if (ufid_find_rc == 0 && ufid_dbp != NULL && ufid_dbp != dbp) {
+			DB_ASSERT(F_ISSET(ufid_dbp, DB_AM_RECOVER));
+			DB_ASSERT(ufid_dbp->added_to_ufid);
+			logmsg(LOGMSG_INFO, "%s: closing ufid hash open DB handle to %s\n", __func__, dbp->fname);
+			ret = __db_close(ufid_dbp, txn, flags);
+			if (ret != 0) {
+				__db_err(dbenv, "__db_close(%s)", dbp->fname);
+			}
+		}
 	}
 
 	/* Refresh the structure and close any underlying resources. */
