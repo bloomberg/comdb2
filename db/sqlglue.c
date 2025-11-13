@@ -5116,12 +5116,9 @@ int sqlite3BtreeCommit(Btree *pBt)
     if (clnt->selectv_arr)
         currangearr_coalesce(clnt->selectv_arr);
 
-    if (!clnt->in_sqlite_init && (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE) && (clnt->ctrl_sqlengine != SQLENG_STRT_STATE)) {
-        clnt->modsnap_in_progress = 0;
-        if (clnt->modsnap_registration) {
-            bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
-            clnt->modsnap_registration = NULL;
-        }
+    if (clnt->modsnap_in_progress && !clnt->in_sqlite_init && (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE) &&
+        (clnt->ctrl_sqlengine != SQLENG_STRT_STATE)) {
+        clear_modsnap_state(clnt);
     }
     if (!clnt->intrans || clnt->in_sqlite_init ||
         (!clnt->in_sqlite_init && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
