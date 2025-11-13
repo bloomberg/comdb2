@@ -102,7 +102,7 @@ jobs:
           cd build
 
           echo "Running CMake"
-          cmake ..
+          cmake -DCOMDB2_TEST=1 ..
 
       - name: Build [all]
         working-directory: build

@@ -360,7 +360,7 @@ MAKE_CDB2API_TEST_COUNTER(num_sockpool_send_timeouts)
 // managed by the caller - I could strdup locally, but don't want to be
 // flagged by valgrind.
 #define MAKE_CDB2API_TEST_TUNABLE(name)                                                                                \
-    static char *cdb2api_test_##name;                                                                                  \
+    static const char *cdb2api_test_##name;                                                                            \
     void set_cdb2api_test_##name(const char *value)                                                                    \
     {                                                                                                                  \
         cdb2api_test_##name = value;                                                                                   \
@@ -7962,10 +7962,11 @@ retry:
         /* Try dbinfo on same room first */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
-#ifdef CDB2API_TEST
-            if (cdb2_use_bmsd)
-                printf("Try node %d name %s master %d\n", try_node, hndl->hosts[try_node], hndl->master);
-#endif
+            // comment out for now. Extra output fails ssl_dbname and ssl_set_cmd test.
+            // #ifdef CDB2API_TEST
+            //             if (cdb2_use_bmsd)
+            //                 printf("Try node %d name %s master %d\n", try_node, hndl->hosts[try_node], hndl->master);
+            // #endif
             rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
                                    hndl->hosts[try_node], hndl->hosts,
                                    hndl->ports, &hndl->master, &hndl->num_hosts,

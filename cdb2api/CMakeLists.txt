@@ -28,6 +28,10 @@ include_directories(
 add_definitions(-DDISABLE_HOSTADDR_CACHE)
 add_definitions(-DSBUF2_SERVER=0)
 
+if (COMDB2_TEST)
+  add_definitions(-DCDB2API_TEST)
+endif()
+
 if (COMDB2_BBCMAKE)
   include(${EXTRA_PLUGINS}/cdb2api/cdb2api.cmake)
   add_library(opencdb2api STATIC ${src})
