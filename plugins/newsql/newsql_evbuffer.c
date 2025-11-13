@@ -505,11 +505,9 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
     if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL ||
         appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[1]->value.len != sizeof(int) ||
         appdata->sqlquery->bindvars[2] == NULL || appdata->sqlquery->bindvars[2]->value.len != sizeof(int)) {
-        // TODO
-        // write error response: HOW
-        // fprintf(stdout, ">> couldn't dispatch %d\n", __LINE__);
         return 1;
     }
+
     int luxref;
     int comdbg_flags;
     memcpy(&luxref, appdata->sqlquery->bindvars[1]->value.data, sizeof(int));

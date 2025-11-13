@@ -1692,6 +1692,9 @@ int tolongblock(struct ireq *iq)
             if (iq->is_socketrequest) {
                 return ERR_REJECTED;
             }
+            if (iq->ipc_sndbak)
+                return ERR_NOMASTER;
+
             /* need to be master for this, so send it to the master */
             return forward_longblock_to_master(iq, &blkstate, mstr);
         }
@@ -2102,6 +2105,8 @@ int toblock(struct ireq *iq)
                 (!bdb_am_i_coherent(iq->dbenv->bdb_env) || !iq->request_data)) {
                 return ERR_REJECTED;
             }
+            if (iq->ipc_sndbak)
+                return ERR_NOMASTER;
 
             /* need to be master for this, so send it to the master */
             return forward_block_to_master(iq, &blkstate, mstr);
