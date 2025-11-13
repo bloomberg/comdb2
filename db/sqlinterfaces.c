@@ -1730,7 +1730,7 @@ int cache_table_versions(struct sqlclntstate *clnt)
     return 0;
 }
 
-int start_modsnap_transaction(struct sqlclntstate *clnt)
+int populate_modsnap_state(struct sqlclntstate *clnt)
 {
     struct dbtable *db = &thedb->static_table;
     assert(db->handle);
@@ -1795,7 +1795,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     /* Latch the last commit LSN */
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (start_modsnap_transaction(clnt) != 0)) {
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (populate_modsnap_state(clnt) != 0)) {
         rc = SQLITE_INTERNAL;
         goto done;
     }
