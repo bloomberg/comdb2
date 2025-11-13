@@ -3,3 +3,5 @@ rep_processors 0
 rep_workers 0
 set_seqnum_trace 1
 setattr WAIT_FOR_SEQNUM_TRACE 1
+catchup_window 0
+incoherent_clnt_wait 0
