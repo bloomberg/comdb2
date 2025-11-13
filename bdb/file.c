@@ -6612,7 +6612,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
         int rc;
 
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
-            (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
+            (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, DB_CLR_UFID, 0666)) == 0) {
             bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
             dbp->close(dbp, DB_NOSYNC);
         }
