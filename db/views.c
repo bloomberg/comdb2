@@ -97,8 +97,6 @@ static int _views_do_op(timepart_views_t *views, const char *name,
                         int (*op)(timepart_views_t *, timepart_view_t *,
                                   struct errstat *),
                         struct errstat *err);
-static char *_describe_row(const char *tblname, const char *prefix,
-                           enum views_trigger_op op_type, struct errstat *err);
 static void *timepart_cron_kickoff(struct cron_event *_, struct errstat *err);
 static int _next_shard_exists(timepart_view_t *view, char *newShardName,
                               int newShardNameLen);
@@ -1441,8 +1439,8 @@ int timepart_dump_timepartitions(FILE *dest)
     return has_tp;
 }
 
-static char *_describe_row(const char *tblname, const char *prefix,
-                           enum views_trigger_op op_type, struct errstat *err)
+char *describe_row(const char *tblname, const char *prefix,
+                   enum views_trigger_op op_type, struct errstat *err)
 {
     struct dbtable *gdb;
     char *cols_str;
