@@ -111,7 +111,6 @@ typedef struct cdb2_ssl_sess cdb2_ssl_sess;
 
 struct cdb2_hndl {
     char dbname[DBNAME_LEN];
-    char cluster[64];
     char type[TYPE_LEN];
     char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     uint64_t timestampus; // client query timestamp of first try

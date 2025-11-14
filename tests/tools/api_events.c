@@ -254,7 +254,7 @@ static int TEST_dbtype_arg(const char *db, const char *tier)
     e1 = cdb2_register_event(NULL, CDB2_BEFORE_DISCOVERY, 0, my_dbtype_hook, NULL, 1, CDB2_DBTYPE);
     e2 = cdb2_register_event(NULL, CDB2_AT_OPEN, 0, my_dbtype_hook, NULL, 1, CDB2_DBTYPE);
 
-    /* default */
+    /* actual */
     cdb2_open(&h, db, tier, 0);
     cdb2_close(h);
     /* actual */
