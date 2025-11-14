@@ -41,6 +41,7 @@
 #include <sbuf2.h>
 #include <bdb_api.h>
 #include <bdb_int.h>
+#include <bdbglue.h>
 
 #include "comdb2.h"
 #include "types.h"
@@ -183,6 +184,7 @@ int gbl_dump_history_on_too_many_verify_errors = 0;
 int gbl_thdpool_queue_only = 0;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
+int gbl_sleep_5s_after_caching_table_versions = 0;
 
 int gbl_eventlog_fullhintsql = 1;
 
@@ -1730,41 +1732,51 @@ int cache_table_versions(struct sqlclntstate *clnt)
     return 0;
 }
 
-int populate_modsnap_state(struct sqlclntstate *clnt)
+static int populate_modsnap_state(struct sqlclntstate *clnt)
 {
+    assert_no_schema_lk();
+
+    int rc = 0;
     struct dbtable *db = &thedb->static_table;
     assert(db->handle);
+
+    bdb_state_type *const bdb_state = thedb->bdb_env;
+    BDB_READLOCK(__func__);
+    rdlock_schema_lk();
 
     if (clnt->is_hasql_retry) {
         get_snapshot(clnt, (int *)&clnt->modsnap_start_lsn_file, (int *)&clnt->modsnap_start_lsn_offset);
     }
 
-    rdlock_schema_lk();
-    if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
-                                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
-                                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
-        unlock_schema_lk();
+    rc = bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
+                                     &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
+                                     &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
-        return 1;
+        goto done;
     }
 
     // TODO: Refactor cache_table_versions to not take in a clnt and then call it within bdb_get_modsnap_start_state
     // so that we're holding the schema lock over less code.
-    if (cache_table_versions(clnt)) {
-        unlock_schema_lk();
+    rc = cache_table_versions(clnt);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
-        return 1;
+        goto done;
     }
-    unlock_schema_lk();
 
-    if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
-                             clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
-                             &clnt->modsnap_registration)) {
+    rc = bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
+                              clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
+                              &clnt->modsnap_registration);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
-        return 1;
+        goto done;
     }
 
     clnt->modsnap_in_progress = 1;
+
+done:
+    unlock_schema_lk();
+    BDB_RELLOCK();
     return 0;
 }
 
@@ -3355,6 +3367,12 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* sc-thread holds schema-lk in verify_dbstore */
     if (!clnt->verify_dbstore) {
         curtran_assert_nolocks();
+        if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
+            return SQLITE_INTERNAL;
+        }
+        if (gbl_sleep_5s_after_caching_table_versions) {
+            sleep(5);
+        }
         rdlock_schema_lk();
     }
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
