@@ -4993,15 +4993,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
     }
 #endif
 
-    struct dbtable *db =
-        &thedb->static_table; 
-    /* Latch last commit LSN */
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && (db->handle != NULL) &&
-        (populate_modsnap_state(clnt) != 0)) {
-        rc = SQLITE_INTERNAL;
-        goto done;
-    }
-
     /* already have a transaction, keep using it until it commits/aborts */
     if (clnt->intrans || clnt->in_sqlite_init ||
         (clnt->ctrl_sqlengine != SQLENG_STRT_STATE &&

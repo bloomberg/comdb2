@@ -938,6 +938,7 @@
 (name='skip_sync_if_direct', description='Don't fsync files if directio enabled', type='BOOLEAN', value='ON', read_only='N')
 (name='skip_table_schema_check', description='skip_table_schema_check', type='BOOLEAN', value='OFF', read_only='N')
 (name='skipdelaybase', description='Delay commits by at least this much if forced to delay by incoherent nodes.', type='INTEGER', value='100', read_only='N')
+(name='sleep_5s_after_caching_table_versions', description='Sleep for 5 seconds between caching table versions and getting schema lock in get_prepared_stmt (Default OFF)', type='BOOLEAN', value='OFF', read_only='N')
 (name='slow_rep_log_get_loop', description='Add latency to the master's log-get loop for testing.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='slow_rep_process_txn_freq', description='', type='INTEGER', value='0', read_only='N')
 (name='slow_rep_process_txn_maxms', description='', type='INTEGER', value='0', read_only='N')
