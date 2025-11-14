@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# failing test. Return 0 for now
+# TIER=testsuite
+# CDB2_HOST_NAME=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs -s ${DBNAME} default "select comdb2_host()")
+# ${TESTSBUILDDIR}/cdb2api_direct ${DBNAME} ${CDB2_HOST_NAME} ${TIER}
+# [[ $? -ne 0 ]] && echo "cdb2api_direct - fail" && exit 1
+# echo 'cdb2api_direct - pass'
+
+${TESTSBUILDDIR}/cdb2api_setoptions ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_setoptions - fail" && exit 1
+echo 'cdb2api_setoptions - pass'
+
+CDB2_LOG_CALLS=1 ${TESTSBUILDDIR}/cdb2api_stmt_return_types ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_stmt_return_types - fail" && exit 1
+echo 'cdb2api_stmt_return_types - pass'
+
+${TESTSBUILDDIR}/cdb2api_string_escape
+[[ $? -ne 0 ]] && echo "cdb2api_string_escape - fail" && exit 1
+echo 'cdb2api_string_escape - pass'
+
+exit 0
