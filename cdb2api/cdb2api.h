@@ -350,6 +350,10 @@ struct cdb2_identity {
     int (*identity_valid)();
 };
 
+struct cdb2_publish_event {
+    int (*publish_event)(char *, char *, int, char *, char *, char *, char *);
+};
+
 #if defined __cplusplus
 }
 #endif

@@ -71,6 +71,7 @@ struct sbuf2 {
 
     int readtimeout;
     int writetimeout;
+    int nowait;
 
     int rhd, rtl;
     int whd, wtl;
@@ -664,11 +665,11 @@ static int sread_unsecure(SBUF2 *sb, char *cc, int len)
     struct pollfd pol;
     if (sb == 0)
         return -1;
-    if (sb->readtimeout > 0) {
+    if (sb->nowait || sb->readtimeout > 0) {
         do {
             pol.fd = sb->fd;
             pol.events = POLLIN;
-            rc = poll(&pol, 1, sb->readtimeout);
+            rc = poll(&pol, 1, sb->nowait ? 0 : sb->readtimeout);
         } while (rc == -1 && errno == EINTR);
 
         if (rc <= 0)
@@ -752,10 +753,16 @@ ssl_downgrade:
     return n;
 }
 
+void SBUF2_FUNC(subf2setnowait)(SBUF2 *sb, int value)
+{
+    sb->nowait = value;
+}
+
 void SBUF2_FUNC(sbuf2settimeout)(SBUF2 *sb, int readtimeout, int writetimeout)
 {
     sb->readtimeout = readtimeout;
     sb->writetimeout = writetimeout;
+    sb->nowait = 0;
 }
 
 void SBUF2_FUNC(sbuf2gettimeout)(SBUF2 *sb, int *readtimeout, int *writetimeout)
