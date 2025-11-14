@@ -15,11 +15,9 @@ if(COMDB2_BUILD_STATIC)
   SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
-option(COMDB2_TEST "Turn ON to compile with testing features" ON)
+option(COMDB2_TEST "Turn ON to compile with testing features" OFF)
 if(COMDB2_TEST)
-	add_definitions(-DCOMDB2_TEST=1)
-else()
-	add_definitions(-DCOMDB2_TEST=0)
+	add_definitions(-DCOMDB2_TEST)
 endif()
 
 option(WITH_TINFO "Turn ON on platforms where tinfo library is required for cdb2sql" OFF)
