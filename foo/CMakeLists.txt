@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(foo)
+find_package(ConfigureBbTarget QUIET)
+add_executable(foo foo.c)
+set_target_properties(foo PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries(foo PRIVATE cdb2api)
+configure_bb_target(foo V2)
