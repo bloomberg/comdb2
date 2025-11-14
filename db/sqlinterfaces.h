@@ -88,6 +88,7 @@ struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
 int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt, struct sqlclntstate *clnt, char **err,
                     int sample_queries);
 int populate_modsnap_state(struct sqlclntstate *clnt);
+void clear_modsnap_state(struct sqlclntstate *clnt);
 int cache_table_versions(struct sqlclntstate *clnt);
 
 #endif

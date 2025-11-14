@@ -1768,6 +1768,15 @@ int populate_modsnap_state(struct sqlclntstate *clnt)
     return 0;
 }
 
+void clear_modsnap_state(struct sqlclntstate *clnt)
+{
+    assert(clnt->modsnap_in_progress);
+    assert(clnt->modsnap_registration);
+    bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+    clnt->modsnap_registration = NULL;
+    clnt->modsnap_in_progress = 0;
+}
+
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
@@ -2032,10 +2041,8 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     int irc = 0, rc = 0, bdberr = 0;
 
-    clnt->modsnap_in_progress = 0;
-    if (clnt->modsnap_registration) {
-        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
-        clnt->modsnap_registration = NULL;
+    if (clnt->modsnap_in_progress) {
+        clear_modsnap_state(clnt);
     }
 
     if (!clnt->intrans) {
@@ -2347,10 +2354,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int outrc = 0;
 
-    clnt->modsnap_in_progress = 0;
-    if (clnt->modsnap_registration) {
-        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
-        clnt->modsnap_registration = NULL;
+    if (clnt->modsnap_in_progress) {
+        clear_modsnap_state(clnt);
     }
 
     if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
@@ -5335,9 +5340,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->sql_tick_lk);
     Pthread_mutex_destroy(&clnt->sql_lk);
 
-    if (clnt->modsnap_registration) {
-        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
-        clnt->modsnap_registration = NULL;
+    if (clnt->modsnap_in_progress) {
+        clear_modsnap_state(clnt);
     }
 
     reset_authz_hash(clnt, 1);
@@ -5542,11 +5546,10 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         init_bplog_socket(clnt);
     }
 
-    clnt->modsnap_in_progress = 0;
-    if (clnt->modsnap_registration) {
-        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
-        clnt->modsnap_registration = NULL;
+    if (clnt->modsnap_in_progress) {
+        clear_modsnap_state(clnt);
     }
+
     bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
     _free_set_commands(clnt);
 }
@@ -5557,10 +5560,8 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
     clnt->has_recording = 0;
     clnt->statement_timedout = 0;
     clnt->writeTransaction = 0;
-    clnt->modsnap_in_progress = 0;
-    if (clnt->modsnap_registration) {
-        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
-        clnt->modsnap_registration = NULL;
+    if (clnt->modsnap_in_progress) {
+        clear_modsnap_state(clnt);
     }
 }
 
