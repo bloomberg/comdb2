@@ -1730,20 +1730,20 @@ int cache_table_versions(struct sqlclntstate *clnt)
     return 0;
 }
 
-int populate_modsnap_state(struct sqlclntstate *clnt)
+// Must be called holding schema read lock
+static int populate_modsnap_state(struct sqlclntstate *clnt)
 {
     struct dbtable *db = &thedb->static_table;
     assert(db->handle);
+    assert(have_schema_lock());
 
     if (clnt->is_hasql_retry) {
         get_snapshot(clnt, (int *)&clnt->modsnap_start_lsn_file, (int *)&clnt->modsnap_start_lsn_offset);
     }
 
-    rdlock_schema_lk();
     if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot,
                                     &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
                                     &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
-        unlock_schema_lk();
         logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
         return 1;
     }
@@ -1751,11 +1751,9 @@ int populate_modsnap_state(struct sqlclntstate *clnt)
     // TODO: Refactor cache_table_versions to not take in a clnt and then call it within bdb_get_modsnap_start_state
     // so that we're holding the schema lock over less code.
     if (cache_table_versions(clnt)) {
-        unlock_schema_lk();
         logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
         return 1;
     }
-    unlock_schema_lk();
 
     if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
                              clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
@@ -1795,9 +1793,13 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     /* Latch the last commit LSN */
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (populate_modsnap_state(clnt) != 0)) {
-        rc = SQLITE_INTERNAL;
-        goto done;
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        rdlock_schema_lk();
+        rc = populate_modsnap_state(clnt) ? SQLITE_INTERNAL : 0;
+        unlock_schema_lk();
+        if (rc) {
+            goto done;
+        }
     }
 
     if (clnt->osql.replay)
@@ -3347,13 +3349,21 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                       struct sql_state *rec, struct errstat *err, int flags)
 {
+    int rc = 0;
+
     /* sc-thread holds schema-lk in verify_dbstore */
     if (!clnt->verify_dbstore) {
         curtran_assert_nolocks();
         rdlock_schema_lk();
     }
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err,
-                                   flags | PREPARE_RECREATE);
+
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
+        rc = SQLITE_INTERNAL;
+        goto done;
+    }
+
+    rc = get_prepared_stmt_int(thd, clnt, rec, err, flags | PREPARE_RECREATE);
+done:
     if (!clnt->verify_dbstore) {
         unlock_schema_lk();
     }
