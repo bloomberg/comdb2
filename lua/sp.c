@@ -6073,6 +6073,10 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
             b[0] = '\0';
             break;
         } else {
+            // deprecating: exec proc('@param') usage, instead use exec proc(@param)
+            logmsg(LOGMSG_WARN,
+                   "Warning: passing bind parameters inside quotes and it is "
+                   "deprecated. Use exec procedure estr(@x) instead of exec procedure estr('@x')\n");
             // lose the quotes
             ++a;
             --b;
