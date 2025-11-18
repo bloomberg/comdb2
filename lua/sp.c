@@ -7160,8 +7160,6 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     reqlog_set_event(thd->logger, EV_SP);
 
-    assert(!trigger || !gbl_is_physical_replicant);
-
     if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
 
