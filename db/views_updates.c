@@ -148,7 +148,7 @@ char *_views_create_update_trigger_query(timepart_view_t *view,
 
     assert(view->nshards >= 1);
 
-    cols_str = _describe_row(view->shards[view->current_shard].tblname, NULL,
+    cols_str = describe_row(view->shards[view->current_shard].tblname, NULL,
                              VIEWS_TRIGGER_UPDATE, err);
     if (!cols_str) {
         sqlite3_free(ret_str);
@@ -194,7 +194,7 @@ char *_views_create_insert_trigger_query(timepart_view_t *view,
 
     assert(view->nshards >= 1);
 
-    cols_str = _describe_row(view->shards[view->current_shard].tblname, NULL,
+    cols_str = describe_row(view->shards[view->current_shard].tblname, NULL,
                              VIEWS_TRIGGER_INSERT, err);
     if (!cols_str) {
         goto oom;
