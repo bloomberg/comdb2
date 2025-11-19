@@ -771,7 +771,7 @@
 (name='print_blockp_stats', description='print thread-count in block processor', type='BOOLEAN', value='OFF', read_only='N')
 (name='print_deadlock_cycles', description='Print every Nth deadlock cycle, set to 0 to turn off. (Default: 100)', type='INTEGER', value='100', read_only='N')
 (name='print_flush_log_msg', description='Produce trace when flushing log files.', type='BOOLEAN', value='OFF', read_only='N')
-(name='print_syntax_err', description='Trace all SQL with syntax errors. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='print_syntax_err', description='Trace all SQL with syntax errors. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='private_blkseq', description='Keep a private blkseq', type='BOOLEAN', value='ON', read_only='N')
 (name='private_blkseq_cachesz', description='Cache size of the blkseq table.', type='INTEGER', value='4194304', read_only='N')
 (name='private_blkseq_close_warn_time', description='Warn when it takes longer than this many MS to roll a blkseq table.', type='BOOLEAN', value='ON', read_only='N')
