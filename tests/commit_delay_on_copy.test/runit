@@ -5,7 +5,12 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/timers.sh
 
 #export debug=1
-export fasttime=200
+
+# We saw this take more than 500ms (??)
+# but it was not due to commit-delay
+#
+# Have enabled extended-sql debug trace
+export fasttime=500
 export slowtime=2000
 
 function failexit
