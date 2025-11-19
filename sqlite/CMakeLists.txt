@@ -37,6 +37,7 @@ add_library(sqlite
   ext/comdb2/opcode_handlers.c
   ext/comdb2/partial_datacopies.c
   ext/comdb2/permissions.c
+  ext/comdb2/phys_rep_alt_metadb.c
   ext/comdb2/plugins.c
   ext/comdb2/procedures.c
   ext/comdb2/query_plans.c

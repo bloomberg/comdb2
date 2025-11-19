@@ -13,7 +13,7 @@ pull the physical logs from the source machine and apply it locally.
 It is important to note that physreps are applying the logs out-of-band and, thus,
 should not be considered part of the source cluster.
 
-In order to enable replication, `replicate_from` must be added to the copycomdb2-d
+In order to enable replication, `replicate_from` must be added to the `copycomdb2 -d`
 physrep's lrl file. This line can either take a valid Comdb2 cluster tier, a
 hostname or a comma-separated list of hostnames (without any space).
 
@@ -30,8 +30,9 @@ physrep added to the system would add to the overall cost incurred by the source
 host/cluster. 
 
 In order to avoid having source support all physreps directly, one could setup tiered
-replication in which some physical replicants could become the source for the other
-replicants, thus keeping some load off of the top-level source host/cluster.
+replication (not to be confused with machine classes), in which some physical replicants 
+could become the source for the other replicants, thus keeping some load off of 
+the top-level source host/cluster.
 
 ```
 
@@ -49,20 +50,22 @@ Note: The source cluster nodes are always considered at tier 0.
 Setting up tiered replication topology requires 2 base tables to maintain the
 current state of replication as well as the replication topology.
 
-* comdb2_physreps
-* comdb2_physrep_connection
+* [comdb2_physreps](#comdb2_physreps)
+* [comdb2_physrep_connection](#comdb2_physrep_connections)
 
 These tables automatically get updated to reflect the changes as replicants
 join or leave the system and thus are not designed to be manually modified
 under normal circumstances. In order to keep the load evenly spread, these table
 are consulted to ensure a certain fanout `physrep_fanout` is maintained across all
-the nodes. The LSN information in `comdb2_physreps` table is used by all the
+the nodes. The LSN (file:offset) information in `comdb2_physreps` table is used by all the
 nodes to pause log-deletion.
 
 ## Algorithm
 
 On start, a physical replicant executes `sys.physrep.register_replicant()` against
-the `physrep_metadb`, which in turn, responds with a list of potential nodes that
+the `physrep_metadb`, which in turn, responds with a list of potential nodes 
+(by doing a graph traversal on nodes (`comdb2_physreps`) and edges (`comdb2_physrep_connections`)
+, starting at the source as root node/tier 0, ref: `lua/lib/physrep_register_replicant.lua`) that
 can be used as the source of physical logs. The replicant then picks up a node from
 the list and tries to connect to it. On successful connection, the replicant executes
 `sys.physrep.update_registry()` against the `physrep_metadb`, confirming that the
@@ -112,6 +115,21 @@ the hosts listed in that cluster, as represented by the bbcpu.lst.
 NOTE: In cross-tier replication, the replication metadata tables must be hosted by a
 separate database running in the a lower (development) tier.
 
+### Alternate Metadbs
+
+Physrep setup supports configuring multiple alternate metadbs in addition to the primary 
+`physrep_metadb`. The idea was to setup an alternate metadb in a separate tier/class (say beta) so that 
+the production tier/class doesn't have to directly interact with its lower level tiers (this is an update to the 
+cross-tier replication model discussed above). 
+
+Key gotchas:
+* A physical replicant registers (`register_replicant`) only against the primary metadb (never an alternate). 
+* The Metadb does not provide transaction logs, but returns candidate source nodes to replicate from (based on fanout and tree traversal, refer to [algorithm](#algorithm)).
+* Alternate metadbs are primarily used by the source (physrep-parent) side to try and establish a reverse connection based on the `comdb2_physrep_sources` table.
+* The source cluster writes replication metadata (entries into `comdb2_physreps`, `comdb2_physrep_connections`) to primary physrep_metadb.
+* If a source is itself a physrep (tiered chain), it still uses only its primary metadb for its own registration, while reverse connecting outwards based on configured alternate metadbs or physrep_metadb.
+
+
 ## Physical replication metadata tables
 
 ### comdb2_physreps
@@ -125,6 +143,7 @@ CREATE TABLE comdb2_physreps(dbname CSTRING(60),
                              state CSTRING(60),
                              UNIQUE (dbname, host))
 ```
+This could be thought of as the registry of all the physical replicants nodes in the system (both sources and replicants).
 * Physical replicant states:
     * `Pending`  : The node has requested to become a physical replicant (registration in-progress)
     * `Active`   : The node is a physical replicant
@@ -181,6 +200,7 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * replicate_from dbname @host/tier: This line sets the source host/cluster. It is required for all physical replicants.
 * replicate_wait <sec>: Tells the physical replicant to wait for this many seconds before applying the log records.
 * physrep_metadb: If set, all the nodes will connect to this database (as against source host/cluster mentioned via `replicate_from`) for replication metadata tables
+* alternate_metadb <dbname> <host>: If set, parent node will try to establish reverse connection based on the `comdb2_physrep_sources` table.
 * physrep_fanout_override <dbname> <fanout>: This is set on the metadb, and allows per-database overrides of the 'physrep_fanout' tunable.  The 'physrep_fanout_override' message-trap allows this to be set dynamically.  The 'physrep_fanout_dump' message-trap prints the current overrides.
 * physrep_ignore <tables>: All the log records that belong to any of these tables are ignored by physical replicants
 * nonames: This configuration forces system database file names to not carry the database name. This setting is required for physical-log based replication to work properly.

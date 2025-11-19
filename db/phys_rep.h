@@ -20,6 +20,16 @@
 #include <stdlib.h>
 #include <cdb2api.h>
 
+struct metadb {
+    char *dbname;
+    char *host;
+    char **hosts;
+    pthread_mutex_t lk;
+    int host_count;
+};
+
+#define MAX_ALTERNATE_METADBS 10
+
 extern char *gbl_physrep_source_dbname;
 extern char *gbl_physrep_source_host;
 extern char *gbl_physrep_metadb_name;
@@ -31,6 +41,8 @@ extern int gbl_deferred_phys_flag;
 
 extern unsigned int gbl_deferred_phys_update;
 
+extern struct metadb gbl_altmetadb[MAX_ALTERNATE_METADBS];
+
 int start_physrep_threads();
 int stop_physrep_threads();
 int physrep_exited();
@@ -41,5 +53,6 @@ void physrep_fanout_override(const char *dbname, int fanout);
 int physrep_fanout_get(const char *dbname);
 void physrep_fanout_dump(void);
 int physrep_add_alternate_metadb(char *dbname, char *host);
+void physrep_alt_metadb_print(void);
 
 #endif /* PHYS_REP_H */
