@@ -974,10 +974,8 @@ REGISTER_TUNABLE("prefaulthelperthreads",
                  "Max number of prefault helper threads. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_prefaulthelperthreads, READONLY, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("print_syntax_err",
-                 "Trace all SQL with syntax errors. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
+REGISTER_TUNABLE("print_syntax_err", "Trace all SQL with syntax errors. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_print_syntax_err, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prioritize_queries",
                  "Prioritize SQL queries based on loaded rulesets. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
