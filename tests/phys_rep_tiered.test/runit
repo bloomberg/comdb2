@@ -1978,6 +1978,24 @@ function check_metadb_memstat
     fi
 }
 
+function verify_alt_metadb_system_table 
+{
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "exec procedure sys.cmd.send('physrep_alt_metadb_print')" | grep "$REPL_ALTMETA_DBNAME" | wc -l)
+    if [[ "$out" -ne "1" ]]; then
+        cleanFailExit "Alt metadb $REPL_ALTMETA_DBNAME message trap"
+    fi
+
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $SOURCE_DBNAME --host $SOURCE_HOST "select * from comdb2_physrep_altmetadb" | grep "$REPL_ALTMETA_DBNAME" | wc -l)
+    if [[ "$out" -ne "1" ]]; then
+        cleanFailExit "alt metadb $REPL_ALTMETA_DBNAME not found in the sytem table on source"
+    fi
+
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "select * from comdb2_physrep_altmetadb" | grep "$REPL_ALTMETA_DBNAME" | wc -l)
+    if [[ "$out" -ne "1" ]]; then
+        cleanFailExit "alt metadb $REPL_ALTMETA_DBNAME not found in the sytem table on replicant"
+    fi
+}
+
 # Halt a clustered physical replicant .. swing the master on that cluster
 # a number of times, then restart the physical replicant .. looking at the 
 # trace, verify that nothing ignores rectype 2, 11, or 10 ..
@@ -2205,6 +2223,11 @@ function run_tests
     testcase="verify_connection_count"
     testcase_preamble $testcase
     verify_connection_count
+    testcase_finish $testcase
+
+    testcase="verify_alt_metadb_system_table"
+    testcase_preamble $testcase
+    verify_alt_metadb_system_table
     testcase_finish $testcase
 }
 

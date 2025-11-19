@@ -84,15 +84,6 @@ char *gbl_physrep_source_host;
 char *gbl_physrep_metadb_name;
 char *gbl_physrep_metadb_host;
 
-struct metadb {
-    char *dbname;
-    char *host;
-    char **hosts;
-    pthread_mutex_t lk;
-    int host_count;
-};
-
-#define MAX_ALTERNATE_METADBS 10
 struct metadb gbl_altmetadb[MAX_ALTERNATE_METADBS] = {0};
 __thread int altmetadb_index[MAX_ALTERNATE_METADBS] = {0};
 int gbl_altmetadb_count = 0;
@@ -187,6 +178,16 @@ void physrep_fanout_dump(void)
         physrep_logmsg(LOGMSG_USER, "no fanout overrides\n");
     }
     Pthread_mutex_unlock(&fanout_lk);
+}
+
+void physrep_alt_metadb_print(void)
+{
+    physrep_logmsg(LOGMSG_USER, "Alternate metadb count: %d\n", gbl_altmetadb_count);
+    for (int i = 0; i < gbl_altmetadb_count; ++i) {
+        physrep_logmsg(LOGMSG_USER, "  metadb %d: dbname %s host %s\n", i,
+                       gbl_altmetadb[i].dbname ? gbl_altmetadb[i].dbname : "NULL",
+                       gbl_altmetadb[i].host ? gbl_altmetadb[i].host : "NULL");
+    }
 }
 
 void cleanup_hosts()
