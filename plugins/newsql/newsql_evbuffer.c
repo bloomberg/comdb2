@@ -319,16 +319,18 @@ static void wr_dbinfo_plaintext(struct newsql_appdata_evbuffer *appdata)
     wr_dbinfo_int(appdata, rc);
 }
 
-static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct evbuffer *buf)
+static void process_dbinfo_int(struct get_hosts_evbuffer_arg *arg)
 {
+    struct newsql_appdata_evbuffer *appdata = arg->appdata;
+    host_node_type **hosts = arg->hosts;
+    int num_hosts = arg->num_hosts;
+
     CDB2DBINFORESPONSE__Nodeinfo *nodes[REPMAX];
     CDB2DBINFORESPONSE__Nodeinfo same_dc[REPMAX], diff_dc[REPMAX];
     CDB2DBINFORESPONSE__Nodeinfo no_master = CDB2__DBINFORESPONSE__NODEINFO__INIT, *master = &no_master;
     no_master.name = db_eid_invalid;
     no_master.number = -1;
     int num_same_dc = 0, num_diff_dc = 0;
-    host_node_type *hosts[REPMAX];
-    int num_hosts = get_hosts_evbuffer(REPMAX, hosts);
     int my_dc = machine_dc(gbl_myhostname);
     int process_incoherent = 0;
     if (bdb_amimaster(thedb->bdb_env)) {
@@ -373,16 +375,26 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     struct newsqlheader hdr = {0};
     hdr.type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
     hdr.length = htonl(len);
-    uint8_t out[len];
+    uint8_t *out = alloca(len);
     cdb2__dbinforesponse__pack(&response, out);
-    evbuffer_add(buf, &hdr, sizeof(hdr));
-    evbuffer_add(buf, out, len);
+
+    struct iovec vec[2];
+    vec[0].iov_base = &hdr;
+    vec[0].iov_len = sizeof(hdr);
+    vec[1].iov_base = out;
+    vec[1].iov_len = len;
+
+    struct evbuffer *buf = sql_wrbuf(appdata->writer);
+    evbuffer_add_iovec(buf, vec, 2);
 }
 
-static void process_dbinfo(struct newsql_appdata_evbuffer *appdata)
+static void process_dbinfo(int dummyfd, short what, void *data)
 {
-    process_dbinfo_int(appdata, sql_wrbuf(appdata->writer));
-    event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
+    struct get_hosts_evbuffer_arg *arg = data;
+    struct newsql_appdata_evbuffer *appdata = arg->appdata;
+    process_dbinfo_int(arg);
+    wr_dbinfo(-1, 0, appdata);
+    free(arg);
 }
 
 static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
@@ -875,7 +887,11 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
         if (dbinfo->has_want_effects && dbinfo->want_effects) {
             process_get_effects(appdata);
         } else {
-            process_dbinfo(appdata);
+            struct get_hosts_evbuffer_arg *arg = malloc(sizeof(struct get_hosts_evbuffer_arg));
+            arg->base = appdata->base;
+            arg->cb = process_dbinfo;
+            arg->appdata = appdata;
+            get_hosts_evbuffer(arg); /* -> process_dbinfo */
         }
     }
     if (disttxn) {
@@ -1330,11 +1346,11 @@ static int newsql_write_postponed_evbuffer(struct sqlclntstate *clnt)
 static int newsql_write_dbinfo_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    struct evbuffer *buf = evbuffer_new();
-    process_dbinfo_int(appdata, buf);
-    int rc = sql_write_buffer(appdata->writer, buf);
-    evbuffer_free(buf);
-    return rc || sql_flush(appdata->writer);
+    struct get_hosts_evbuffer_arg arg;
+    arg.appdata = appdata;
+    get_hosts_evbuffer_inline(&arg);
+    process_dbinfo_int(&arg);
+    return sql_flush(appdata->writer);
 }
 
 static int allow_admin(int local)
