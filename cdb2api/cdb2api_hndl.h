@@ -168,6 +168,7 @@ struct cdb2_hndl {
     int is_hasql;
     int sent_client_info;
     void *user_arg;
+    long long max_call_time;
     int api_call_timeout;
     int connect_timeout;
     int comdb2db_timeout;
