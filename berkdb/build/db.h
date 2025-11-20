@@ -1812,6 +1812,7 @@ struct __db {
 	int  (*paired_cursor_from_lid) __P((DB *, u_int32_t, DBC **, u_int32_t));
 	int  (*cursor_nocount) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	int  (*get_numpages) __P((DB *, db_pgno_t *));
+	int  (*estimate_fill) __P((DB *, DB_TXN *, int npages, double *percent_freelist, double *avg_percent_fill));
 
 	/*
 	 * Never called; these are a place to save function pointers

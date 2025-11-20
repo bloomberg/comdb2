@@ -9041,3 +9041,44 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
     op.data = &endianized;
     return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
 }
+
+int bdb_estimate_table_fill(bdb_state_type *bdb_state, tran_type *trans, int dtafile, int stripe, int ixnum, double *percent_free, double *percent_empty, int *bdberr) {
+    DB *db;
+    DB_TXN *txn;
+    *bdberr = BDBERR_NOERROR;
+    if (trans == NULL)
+        txn = NULL;
+    else
+        txn = trans->tid;
+
+    if (ixnum == -1) {
+        if (dtafile < 0 || dtafile >= MAXDTAFILES) {
+            logmsg(LOGMSG_ERROR, "%s %s dtafile out of range %d\n", __func__, bdb_state->name, dtafile);
+            return -1;
+        }
+        if (stripe < 0 || stripe >= bdb_state->attr->dtastripe || (dtafile > 0 && !bdb_state->attr->blobstripe)) {
+            logmsg(LOGMSG_ERROR, "%s %s stripe out of range %d\n", __func__, bdb_state->name, dtafile);
+            return -1;
+        }
+        db = bdb_state->dbp_data[dtafile][stripe];
+    }
+    else {
+        if (ixnum < 0 || ixnum >= bdb_state->numix) {
+            logmsg(LOGMSG_ERROR, "%s %s index out of range %d\n", __func__, bdb_state->name, ixnum);
+            return -1;
+        }
+        db = bdb_state->dbp_ix[ixnum];
+    }
+
+    int ret = db->estimate_fill(db, txn, bdb_state->attr->fill_estimate_sample_size, percent_free, percent_empty);
+    if (ret) {
+        if (ret == DB_LOCK_DEADLOCK)
+            *bdberr = BDBERR_DEADLOCK;
+        else
+            *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR, "estimate_fill: stripe %d ret %d\n", stripe, ret);
+        return -1;
+    }
+
+    return 0;
+}

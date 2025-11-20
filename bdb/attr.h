@@ -670,6 +670,9 @@ DEF_ATTR(TEST_AUTH_TIME, test_auth_time, SECS, 60, "Check auth in watchdog this 
 DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
          "Spew debug info about deleting old files.")
 
+DEF_ATTR(FILL_ESTIMATE_SAMPLE_SIZE, fill_estimate_sample_size, QUANTITY, 50,
+"How many pages per btree to sample to estimate fill factor.")
+
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

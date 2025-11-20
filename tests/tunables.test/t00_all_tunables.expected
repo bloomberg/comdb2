@@ -378,6 +378,7 @@
 (name='fdbtrackhints', description='', type='INTEGER', value='0', read_only='Y')
 (name='file_copier', description='Tool used to copy files between nodes. Keys must be setup between machines. (Default: scp)', type='STRING', value='scp', read_only='Y')
 (name='file_permissions', description='Default filesystem permissions for database files. (Default: 0660)', type='STRING', value='0660', read_only='N')
+(name='fill_estimate_sample_size', description='How many pages per btree to sample to estimate fill factor.', type='INTEGER', value='50', read_only='N')
 (name='fingerprint_queries', description='Compute fingerprint for SQL queries', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_cstr', description='Fix validation of cstrings', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_pinref', description='fix_pinref', type='BOOLEAN', value='ON', read_only='N')

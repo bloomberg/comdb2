@@ -44,6 +44,7 @@ add_library(sqlite
   ext/comdb2/repl_stats.c
   ext/comdb2/repnetqueue.c
   ext/comdb2/sample_queries.c
+  ext/comdb2/schemaversions.c
   ext/comdb2/schistory.c
   ext/comdb2/scstatus.c
   ext/comdb2/sqlclientstats.c
@@ -72,7 +73,7 @@ add_library(sqlite
   ext/comdb2/users.c
   ext/comdb2/views.c
   ext/comdb2/fdb.c
-  ext/comdb2/schemaversions.c
+  ext/comdb2/fill.c
   ext/misc/carray.c
   ext/misc/completion.c
   ext/misc/regexp.c

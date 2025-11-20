@@ -406,6 +406,7 @@
 (name='comdb2_sc_history')
 (name='comdb2_sc_status')
 (name='comdb2_schemaversions')
+(name='comdb2_space_estimate')
 (name='comdb2_sql_client_stats')
 (name='comdb2_sqlpool_queue')
 (name='comdb2_stacks')

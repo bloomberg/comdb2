@@ -279,6 +279,7 @@ __db_init(dbp, flags)
 	dbp->get_numpages = __db_get_numpages;
 	dbp->set_compression_flags = __db_set_compression_flags;
 	dbp->get_compression_flags = __db_get_compression_flags;
+	dbp->estimate_fill = __db_estimate_fill;
 
 	/* Access method specific. */
 	if ((ret = __bam_db_create(dbp)) != 0)
