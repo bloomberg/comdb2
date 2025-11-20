@@ -77,6 +77,7 @@ struct newsql_appdata_evbuffer {
     NEWSQL_APPDATA_COMMON /* Must be first */
 
     int fd;
+    pthread_t thd;
     struct event_base *base;
     struct event *cleanup_ev;
     struct newsqlheader hdr;
@@ -300,7 +301,7 @@ static void wr_dbinfo_int(struct newsql_appdata_evbuffer *appdata, int write_res
     }
     struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
     if (evbuffer_get_length(wr_buf) == 0) {
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        rd_hdr(-1, 0, appdata);
         return;
     }
     event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
@@ -728,7 +729,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         if (appdata->query)
             cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         appdata->query = NULL;
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        rd_hdr(-1, 0, appdata);
         return;
     }
     sql_reset(appdata->writer);
@@ -972,7 +973,7 @@ static void newsql_accept_ssl_success(void *data)
 {
     struct newsql_appdata_evbuffer *appdata = data;
     if (enable_ssl_evbuffer(appdata) == 0) {
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        rd_hdr(-1, 0, appdata);
     } else {
         newsql_accept_ssl_error(appdata);
     }
@@ -996,7 +997,7 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         goto cleanup;
     }
     if (ssl_response == 'N') {
-        evtimer_once(appdata->base, rd_hdr, appdata);
+        rd_hdr(-1, 0, appdata);
         return;
     }
     appdata->ssl_data = ssl_data_new(appdata->fd, clnt->origin);
@@ -1038,7 +1039,7 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
             free_newsql_appdata_evbuffer(appdata);
         } else {
             newsql_reset_evbuffer(appdata);
-            evtimer_once(appdata->base, rd_hdr, appdata);
+            rd_hdr(-1, 0, appdata);
         }
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
@@ -1086,6 +1087,7 @@ static void rd_hdr(int dummyfd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
+    check_thd(appdata->thd);
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
     }
@@ -1376,6 +1378,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     clnt->force_readonly = arg->is_readonly;
     clnt->secure = arg->secure;
     appdata->base = arg->base;
+    appdata->thd = pthread_self();
     appdata->initial = 1;
     appdata->local = local;
     appdata->fd = arg->fd;
