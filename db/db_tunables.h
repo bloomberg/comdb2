@@ -2582,4 +2582,5 @@ REGISTER_TUNABLE("prefer_non_blocking_coherency_check",
                  TUNABLE_BOOLEAN, &gbl_prefer_non_blocking_coherency_check, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("new_connection_grace_ms", "Time (in ms) before new connection is eligible for eviction (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_new_connection_grace_ms, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("accept_headroom", "", TUNABLE_INTEGER, &gbl_accept_headroom, INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

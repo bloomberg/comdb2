@@ -110,6 +110,7 @@
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
+int gbl_accept_headroom = 100;
 int gbl_pb_connectmsg = 1;
 int gbl_libevent_rte_only = 0;
 
@@ -227,6 +228,7 @@ struct net_info;
 static void *rd_worker(void *);
 static void do_add_host(int, short, void *);
 static void do_open(int, short, void *);
+static void do_read(int, short, void *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *);
 static void resume_read(int, short, void *);
@@ -824,22 +826,51 @@ struct accept_info {
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
-static int accept_paused;
+static int accept_paused = 0;
+static struct timeval accept_paused_at;
+static void maybe_enable_accept(int fd, short what, void *data)
+{
+    struct net_info *n = data;
+    int limit = get_max_appsocks_limit();
+    int total = active_appsock_conns + pending_connections + evicted_appsock_conns;
+    if (total <= limit) {
+        accept_paused = 0;
+        evconnlistener_enable(n->listener);
+        event_add(n->unix_ev, NULL);
+        struct timeval now, diff;
+        gettimeofday(&now, NULL);
+        timersub(&now, &accept_paused_at, &diff);
+        if (diff.tv_sec == 0) return;
+        logmsg(LOGMSG_USER, "%s: resuming after %lds.%ldms active:%d pending:%d evicted:%d\n",
+               __func__, diff.tv_sec, diff.tv_usec / 1000,
+               active_appsock_conns, pending_connections, evicted_appsock_conns);
+    } else {
+        struct timeval hundred_ms = {.tv_usec = 100 * 1000};
+        event_base_once(base, -1, EV_TIMEOUT, maybe_enable_accept, n, &hundred_ms);
+    }
+}
 
-static void do_read(int, short, void *);
-static void accept_info_free(struct accept_info *);
+static void maybe_disable_accept(struct net_info *n)
+{
+    if (accept_paused) return;
+    int limit = get_max_appsocks_limit() + gbl_accept_headroom;
+    int total = active_appsock_conns + pending_connections + evicted_appsock_conns;
+    if (total > limit && n->listener && n->unix_ev) {
+        accept_paused = 1;
+        gettimeofday(&accept_paused_at, NULL);
+        evconnlistener_disable(n->listener);
+        event_del(n->unix_ev);
+        struct timeval ten_ms = {.tv_usec = 10 * 1000};
+        event_base_once(base, -1, EV_TIMEOUT, maybe_enable_accept, n, &ten_ms);
+    }
+}
 
 static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure,
                                            int badrte, int pmuv)
 {
     check_base_thd();
     ++pending_connections;
-    if (pending_connections >= (get_max_appsocks_limit() / 2)) {
-        accept_paused = 1;
-        struct net_info *n = net_info_find("replication");
-        evconnlistener_disable(n->listener);
-        event_del(n->unix_ev);
-    }
+    maybe_disable_accept(netinfo_ptr->net_info);
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
@@ -855,12 +886,6 @@ static void accept_info_free(struct accept_info *a)
 {
     check_base_thd();
     --pending_connections;
-    if (accept_paused && pending_connections == 0) {
-        accept_paused = 0;
-        struct net_info *n = net_info_find("replication");
-        evconnlistener_enable(n->listener);
-        event_add(n->unix_ev, NULL);
-    }
     if (a->ev) {
         event_free(a->ev);
     }
@@ -2903,7 +2928,7 @@ static int should_reject_request(uint8_t first_byte)
     if (db_is_exiting() || gbl_exit || !gbl_ready) return 1;
     int is_admin = 0;
     if (first_byte == '@') is_admin = 1;
-    return check_appsock_limit(pending_connections, is_admin);
+    return check_appsock_limit(is_admin);
 }
 
 /* PMUV REQUEST/RESPONSE */
@@ -3258,8 +3283,8 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     evconnlistener_set_error_cb(n->listener, accept_error_cb);
     int fd = evconnlistener_get_fd(n->listener);
     update_net_info(n, fd, port);
-    logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
-           n->service, port, fd);
+    logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__, n->service, port, fd);
+    maybe_disable_accept(n);
     return 0;
 }
 
