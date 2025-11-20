@@ -3646,16 +3646,10 @@ void add_timer_event(event_callback_fn func, void *data, int ms)
 }
 #endif
 
-struct get_hosts_info {
-    int max_hosts;
-    int num_hosts;
-    host_node_type **hosts;
-};
-
 static void get_hosts_evbuffer_impl(void *arg)
 {
     check_base_thd();
-    struct get_hosts_info *info = arg;
+    struct get_hosts_evbuffer_arg *info = arg;
     struct net_info *n = net_info_find("replication");
     host_node_type *me = get_host_node_by_name_ll(n->netinfo_ptr, gbl_myhostname);
     if (!me) {
@@ -3668,11 +3662,18 @@ static void get_hosts_evbuffer_impl(void *arg)
         if (e->decomissioned || !e->host_node_ptr) continue;
         info->hosts[i] = e->host_node_ptr;
         ++i;
-        if (i == info->max_hosts) {
+        if (i == REPMAX) {
             break;
         }
     }
     info->num_hosts = i;
+}
+
+static void invoke_get_hosts_evbuffer_impl(int dummyfd, short what, void *data)
+{
+    struct get_hosts_evbuffer_arg *arg = data;
+    get_hosts_evbuffer_impl(arg);
+    evtimer_once(arg->base, arg->cb, arg); /* -> process_dbinfo */
 }
 
 struct hosts_metric {
@@ -3949,11 +3950,14 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     }
 }
 
-int get_hosts_evbuffer(int max_hosts, host_node_type **hosts)
+void get_hosts_evbuffer(struct get_hosts_evbuffer_arg *arg)
 {
-    struct get_hosts_info info = {.max_hosts = max_hosts, .hosts = hosts};
-    run_on_base(base, get_hosts_evbuffer_impl, &info);
-    return info.num_hosts;
+    evtimer_once(base, invoke_get_hosts_evbuffer_impl, arg);
+}
+
+void get_hosts_evbuffer_inline(struct get_hosts_evbuffer_arg *arg)
+{
+    run_on_base(base, get_hosts_evbuffer_impl, arg);
 }
 
 int get_hosts_metric(const char *netname, enum net_metric_type type)
