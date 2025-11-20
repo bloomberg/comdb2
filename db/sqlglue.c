@@ -12866,26 +12866,6 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     return rc;
 }
 
-static int run_verify_dbstore_function(char *sql)
-{
-    struct schema_mem sm = {0};
-
-    struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
-    clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.sql = sql;
-    clnt.admin = gbl_force_writesql;
-    clnt.schema_mems = &sm;
-    clnt.verify_dbstore = 1;
-
-    int rc = dispatch_sql_query(&clnt);
-    rc = rc ? rc : clnt.had_errors;
-
-    end_internal_sql_clnt(&clnt);
-
-    return rc;
-}
-
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter)
