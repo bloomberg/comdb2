@@ -3219,7 +3219,10 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     /* Accept connection on unix fd */
     evbuffer_free(n->unix_buf);
     n->unix_buf = NULL;
-    event_free(n->unix_ev);
+    if (n->unix_ev) {
+        logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
+        abort();
+    }
     n->unix_ev = event_new(base, unix_fd, EV_READ | EV_PERSIST, do_recvfd, n);
     logmsg(LOGMSG_USER, "%s: svc:%s accepting on unix socket fd:%d\n",
            __func__, n->service, unix_fd);
@@ -3264,6 +3267,10 @@ static void unix_reg_reply(int fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
+    if (n->unix_ev) {
+        logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
+        abort();
+    }
     if ((what & EV_READ) == 0) {
         logmsg(LOGMSG_WARN, "%s fd:%d %s%s%s%s\n", __func__, fd,
                (what & EV_TIMEOUT) ? " timeout" : "",
@@ -3308,6 +3315,10 @@ static void unix_reg(int fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
+    if (n->unix_ev) {
+        logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
+        abort();
+    }
     if ((what & EV_WRITE) == 0) {
         logmsg(LOGMSG_WARN, "%s fd:%d %s%s%s%s\n", __func__, fd,
                (what & EV_TIMEOUT) ? " timeout" : "",
@@ -3328,10 +3339,9 @@ static void unix_reg(int fd, short what, void *data)
         return;
     }
     if (evbuffer_get_length(buf) == 0) {
-        struct event *ev = n->unix_ev;
-        event_free(ev);
-        n->unix_ev = event_new(base, fd, EV_READ | EV_PERSIST, unix_reg_reply, n);
-        event_add(n->unix_ev, &one_sec);
+        event_base_once(base, fd, EV_READ | EV_TIMEOUT, unix_reg_reply, n, &one_sec);
+    } else {
+        event_base_once(base, fd, EV_WRITE | EV_TIMEOUT, unix_reg, n, &one_sec);
     }
 }
 
@@ -3339,7 +3349,7 @@ static void unix_connect(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
-    if (n->unix_ev) {
+    if (n->unix_ev || n->unix_buf) {
         logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
         abort();
     }
@@ -3359,8 +3369,7 @@ static void unix_connect(int dummyfd, short what, void *data)
     }
     n->unix_buf = evbuffer_new();
     evbuffer_add_printf(n->unix_buf, "reg %s/%s/%s\n", n->app, n->service, n->instance);
-    n->unix_ev = event_new(base, fd, EV_WRITE | EV_PERSIST, unix_reg, n);
-    event_add(n->unix_ev, &one_sec);
+    event_base_once(base, fd, EV_WRITE | EV_TIMEOUT, unix_reg, n, &one_sec);
 }
 
 static void net_accept(netinfo_type *netinfo_ptr)
