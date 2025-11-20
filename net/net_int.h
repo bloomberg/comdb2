@@ -352,8 +352,6 @@ int write_hello_reply(netinfo_type *, host_node_type *);
 int write_list_evbuffer(host_node_type *, int, const struct iovec *, int, int);
 int net_send_evbuffer(netinfo_type *, const char *, int, void *, int, int, void **, int *, int);
 
-int get_hosts_evbuffer(int n, host_node_type **);
-
 enum net_metric_type {
     NET_DROPS = 1,
     MAX_QUEUE_SIZE = 2
@@ -369,5 +367,15 @@ void dist_heartbeat_free_tran(dist_hbeats_type *);
 #if defined _SUN_SOURCE
 void wait_alive(int fd);
 #endif
+
+struct get_hosts_evbuffer_arg {
+    struct event_base *base;
+    void (*cb)(int, short, void *);
+    void *appdata;
+    int num_hosts; /* out-param */
+    host_node_type *hosts[REPMAX]; /* out-param */
+};
+void get_hosts_evbuffer(struct get_hosts_evbuffer_arg *);
+void get_hosts_evbuffer_inline(struct get_hosts_evbuffer_arg *);
 
 #endif /* INCLUDED__NET_INT_H */
