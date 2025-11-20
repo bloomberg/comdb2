@@ -218,7 +218,9 @@ typedef struct userfunc_info {
     int64_t totus;
 } userfunc_t;
 
+struct net_info;
 struct netinfo_struct {
+    struct net_info *net_info;
     host_node_type *head;
     sanc_node_type *sanctioned_list;
     int numhosts;
