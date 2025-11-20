@@ -3364,22 +3364,17 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                       struct sql_state *rec, struct errstat *err, int flags)
 {
-    /* sc-thread holds schema-lk in verify_dbstore */
-    if (!clnt->verify_dbstore) {
-        curtran_assert_nolocks();
-        if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
-            return SQLITE_INTERNAL;
-        }
-        if (gbl_sleep_5s_after_caching_table_versions) {
-            sleep(5);
-        }
-        rdlock_schema_lk();
+    curtran_assert_nolocks();
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
+        return SQLITE_INTERNAL;
     }
+    if (gbl_sleep_5s_after_caching_table_versions) {
+        sleep(5);
+    }
+    rdlock_schema_lk();
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags | PREPARE_RECREATE);
-    if (!clnt->verify_dbstore) {
-        unlock_schema_lk();
-    }
+    unlock_schema_lk();
     if (gbl_stable_rootpages_test) {
         static int skip = 0;
         if (!skip) {
@@ -4356,7 +4351,7 @@ check_version:
 
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
-        if (!got_views_lock && !clnt->verify_dbstore) {
+        if (!got_views_lock) {
             unlock_schema_lk();
 
             if (!clnt->dbtran.cursor_tran) {
