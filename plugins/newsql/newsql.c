@@ -2335,7 +2335,7 @@ static int do_query_on_master_check(struct sqlclntstate *clnt, CDB2SQLQUERY *sql
         ATOMIC_ADD32(gbl_masterrejects, 1);
         if (allow_master_dbinfo) {
             struct newsql_appdata *appdata = clnt->appdata;
-            appdata->write_dbinfo(clnt);
+            appdata->write_dbinfo(clnt); /* -> newsql_write_dbinfo_evbuffer */
         }
         logmsg(LOGMSG_DEBUG, "Rejecting query on master\n");
         return 1;
