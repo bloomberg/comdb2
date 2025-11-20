@@ -627,6 +627,7 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
 {
     check_base_thd();
     struct net_info *n = calloc(1, sizeof(struct net_info));
+    netinfo_ptr->net_info = n;
     n->netinfo_ptr = netinfo_ptr;
     n->service = strdup(netinfo_ptr->service);
     n->instance = strdup(netinfo_ptr->instance);
@@ -2474,7 +2475,7 @@ static int accept_host(struct accept_info *a)
         host_node_ptr = add_to_netinfo_ll(netinfo_ptr, host, port);
         if (!host_node_ptr) return -1;
     }
-    struct net_info *n = net_info_find(netinfo_ptr->service);
+    struct net_info *n = netinfo_ptr->net_info;
     if (n == NULL) {
         n = net_info_new(netinfo_ptr);
     }
@@ -3365,7 +3366,7 @@ static void unix_connect(int dummyfd, short what, void *data)
 static void net_accept(netinfo_type *netinfo_ptr)
 {
     check_base_thd();
-    struct net_info *n = net_info_find(netinfo_ptr->service);
+    struct net_info *n = netinfo_ptr->net_info;
     if (n) {
         return;
     }
@@ -3398,7 +3399,7 @@ static void do_add_host(int accept_fd, short what, void *data)
     if (strcmp(host, gbl_myhostname) == 0) {
         return;
     }
-    struct net_info *n = net_info_find(netinfo_ptr->service);
+    struct net_info *n = netinfo_ptr->net_info;
     if (n == NULL) {
         n = net_info_new(netinfo_ptr);
     }
@@ -3850,7 +3851,7 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
             return NET_SEND_FAIL_MALLOC_FAIL;
         }
     }
-    struct net_info *ni = net_info_find(netinfo_ptr->service);
+    struct net_info *ni = netinfo_ptr->net_info;
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
         if (logput && netinfo_ptr->throttle_rtn && (netinfo_ptr->throttle_rtn)(netinfo_ptr, e->host_interned)) {
@@ -4013,7 +4014,7 @@ void run_on_base(struct event_base *base, run_on_base_fn func, void *arg)
 
 void net_queue_stat_iterate_evbuffer(netinfo_type *netinfo_ptr, QSTATITERFP func, struct net_get_records *arg)
 {
-    struct net_info *ni = net_info_find(netinfo_ptr->service);
+    struct net_info *ni = netinfo_ptr->net_info;
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
         int type_counts[REP_MAX_TYPE] = {0};
