@@ -69,6 +69,7 @@ struct tranlog_cursor {
   int startAppRecGen;
   int starttime;
   int timeout;
+  int invalidRecord;
   DB_LOGC *logc;             /* Log Cursor */
   DBT data;
 };
@@ -153,6 +154,11 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   DB_LSN durable_lsn = {0};
   uint32_t durable_gen=0, rc, getflags;
   bdb_state_type *bdb_state = thedb->bdb_env;
+
+  if (pCur->invalidRecord) {
+      pCur->hitLast = 1;
+      return SQLITE_OK;
+  }
 
   if (pCur->notDurable || pCur->hitLast)
       return SQLITE_OK;
@@ -252,9 +258,13 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
       }
        
       if (getflags != DB_NEXT && getflags != DB_PREV) {
-          logmsg(LOGMSG_ERROR, "%s line %d did not expect logc->get to fail with flag: %d."
-                               "got rc %d\n",
-                  __func__, __LINE__, getflags, rc);
+          if (pCur->flags & TRANLOG_FLAGS_SENTINEL) {
+              /* Return sentinel record with LSN {-1:-1} */
+              pCur->curLsn.file = pCur->curLsn.offset = -1;
+              pCur->invalidRecord = 1;
+              pCur->iRowid++;
+              return SQLITE_OK;
+          }
           return SQLITE_INTERNAL;
       }
 
@@ -665,7 +675,9 @@ static int tranlogColumn(
         }
         break;
     case TRANLOG_COLUMN_TXNID:
-        LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+        if (pCur->data.data) {
+            LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+        }
         sqlite3_result_int64(ctx, txnid);
         break;
     case TRANLOG_COLUMN_UTXNID:
@@ -717,7 +729,11 @@ static int tranlogColumn(
         }
         break;
     case TRANLOG_COLUMN_LOG:
-        sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
+        if (pCur->data.data) {
+            sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
+        } else {
+            sqlite3_result_null(ctx);
+        }
         break;
     case TRANLOG_COLUMN_CHILDUTXNID:
         if (pCur->data.data)
