@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+pgrep cdb2sockpool
+if [ $? -ne 0 ]; then
+    echo 'SOCKPOOL IS REQUIRED TO RUN THE TEST BUT IS NOT RUNNING.' >&2
+    echo 'TRYING TO BRING IT UP'
+    ${BUILDDIR}/tools/cdb2sockpool/cdb2sockpool
+    sleep 1
+    pgrep cdb2sockpool
+    if [ $? -ne 0 ]; then
+        echo 'FAILED BRINGING UP SOCKPOOL' >&2
+        exit 1
+    fi
+fi
+
+
+cfg=$DBDIR/comdb2db.cfg
+echo 'comdb2_feature:discard_unread_socket_data=on' >> ${cfg}
+${TESTSBUILDDIR}/cdb2api_unread_data ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_unread_data - fail" && exit 1
+sed -i '/comdb2_feature:discard_unread_socket_data=on/d' "${cfg}"
+echo 'cdb2api_unread_data - pass'
+
+exit 0

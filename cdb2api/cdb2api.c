@@ -3235,7 +3235,11 @@ void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, 
                 close(sockpool_fd);
                 sockpool_fd = -1;
             }
+        } else if (sockpool_fd != -1) {
+            fprintf(stderr, "%s: typestr too long to donate to sockpool, length %ld max %ld\n", __func__,
+                    strlen(typestr), sizeof(msg.typestr) - 1);
         }
+
         if (sockpool_fd != -1) {
             pthread_mutex_lock(&cdb2_sockpool_mutex);
             int closeit = 0;
