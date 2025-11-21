@@ -24,6 +24,7 @@ enum {
     TRANLOG_FLAGS_BLOCK             = 0x1,
     TRANLOG_FLAGS_DURABLE           = 0x2,
     TRANLOG_FLAGS_DESCENDING        = 0x4,
+    TRANLOG_FLAGS_SENTINEL          = 0x8,
 };
 
 u_int64_t get_timestamp_from_matchable_record(char *data);

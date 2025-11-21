@@ -1808,7 +1808,7 @@ REGISTER_TUNABLE("match_on_ckp", "Allow rep_verify_match on ckp records.  (Defau
                  &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 /* physical replication */
-REGISTER_TUNABLE("blocking_physrep", "Physical replicant blocks on select. (Default: off)", TUNABLE_BOOLEAN,
+REGISTER_TUNABLE("blocking_physrep", "Physical replicant blocks on select. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_blocking_physrep, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_default_timeout", "Default timeout for tranlog queries.  (Default: 30)", TUNABLE_INTEGER,
                  &gbl_tranlog_default_timeout, 0, NULL, NULL, NULL, NULL);
@@ -1885,7 +1885,7 @@ REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOO
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 200)", TUNABLE_INTEGER,
+REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_pollms, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */

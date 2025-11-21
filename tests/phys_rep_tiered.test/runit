@@ -1996,6 +1996,16 @@ function verify_alt_metadb_system_table
     fi
 }
 
+# Ask for a non-existent record with and without sentinel flag
+function non_existent_record
+{
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs('{1:1}', NULL, 8)" 2>/dev/null)
+    [[ "$x" != '{-1:-1}' ]] && cleanFailExit "Expected {-1:-1} for non-existent record with sentinel flag, got $x"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs('{1:1}', NULL, 0)" 2>/dev/null)
+    [[ -n "$x" ]] && cleanFailExit "Expected no output, got $x, for non-existent record without sentinel flag"
+}
+
 # Halt a clustered physical replicant .. swing the master on that cluster
 # a number of times, then restart the physical replicant .. looking at the 
 # trace, verify that nothing ignores rectype 2, 11, or 10 ..
@@ -2213,6 +2223,11 @@ function run_tests
     testcase="check_metadb_memstat"
     testcase_preamble $testcase
     check_metadb_memstat
+    testcase_finish $testcase
+
+    testcase="non_existent_record"
+    testcase_preamble $testcase
+    non_existent_record
     testcase_finish $testcase
 
     testcase="verify_non_ignored_reptype"
