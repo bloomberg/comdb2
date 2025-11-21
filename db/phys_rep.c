@@ -57,7 +57,7 @@ typedef struct DB_Connection {
 int gbl_physrep_debug = 0;
 int gbl_physrep_reconnect_interval = 3600; // force re-registration every hour
 int gbl_physrep_reconnect_penalty = 0;
-int gbl_blocking_physrep = 0;
+int gbl_blocking_physrep = 1;
 int gbl_physrep_fanout = 8;
 int gbl_physrep_max_candidates = 6;
 int gbl_physrep_max_pending_replicants = 10;
@@ -1362,7 +1362,7 @@ static int do_wait_for_reverse_conn(cdb2_hndl_tp *repl_metadb) {
        This is the database/node that to replicant connects to retrieve and
        apply physical logs.
 */
-int gbl_physrep_pollms = 200;
+int gbl_physrep_pollms = 0;
 extern __thread int physrep_out_of_order;
 static void *physrep_worker(void *args)
 {
@@ -1377,6 +1377,7 @@ static void *physrep_worker(void *args)
     int is_revconn = -1;
     int last_revconn_check = 0;
     int last_update_registry = 0;
+    int pollms;
     LOG_INFO info;
     LOG_INFO prev_info;
     DB_Connection *repl_db_cnct = NULL;
@@ -1404,8 +1405,6 @@ repl_loop:
             if (repl_db_connected) {
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             }
-            if (gbl_physrep_debug)
-                physrep_logmsg(LOGMSG_USER, "I am not the LEADER node, skipping async-replication\n");
             goto sleep_and_retry;
         }
 
@@ -1648,7 +1647,14 @@ repl_loop:
             do_truncate = 1;
         }
 sleep_and_retry:
-        poll(0, 0, gbl_physrep_pollms);
+        if ((thedb->master != gbl_myhostname) || !repl_db_connected) {
+            sleep(1);
+        } else {
+            pollms = gbl_physrep_pollms;
+            if (pollms > 0) {
+                poll(0, 0, pollms);
+            }
+        }
     }
 
     if (repl_db_connected == 1) {
