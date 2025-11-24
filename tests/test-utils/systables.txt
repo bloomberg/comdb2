@@ -29,6 +29,7 @@ comdb2_metrics
 comdb2_net_userfuncs
 comdb2_opcode_handlers
 comdb2_partial_datacopies
+comdb2_physrep_altmetadb
 comdb2_plugins
 comdb2_prepared
 comdb2_procedures
