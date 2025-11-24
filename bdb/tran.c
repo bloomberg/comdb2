@@ -2803,7 +2803,23 @@ static int get_modsnap_start_lsn(bdb_state_type *bdb_state, bdb_attr_type *bdb_a
             return rc;
         }
     } else {
-        (void)bdb_get_current_lsn(bdb_state, p_modsnap_start_lsn_file, p_modsnap_start_lsn_offset);
+        // The 'current' LSN is the last one that updated genids.
+        // This can be lower than the recoverable LSN. If it is, then
+        // use the recoverable LSN. Othwerwise, use the current LSN.
+
+        DB_LSN current_lsn;
+        (void)bdb_get_current_lsn(bdb_state, &(current_lsn.file), &(current_lsn.offset));
+
+        DB_LSN recoverable_lsn;
+        bdb_get_gbl_recoverable_lsn(&recoverable_lsn);
+
+        if (log_compare(&current_lsn, &recoverable_lsn) < 0) {
+            *p_modsnap_start_lsn_file = recoverable_lsn.file;
+            *p_modsnap_start_lsn_offset = recoverable_lsn.offset;
+        } else {
+            *p_modsnap_start_lsn_file = current_lsn.file;
+            *p_modsnap_start_lsn_offset = current_lsn.offset;
+        }
     }
 
     return 0;
