@@ -83,7 +83,12 @@ struct page_logical_lsn_key;
 int bdb_osql_trn_asof_ok_to_delete_log(int filenum);
 
 /**
- * set global recoverabel lsn
+ * Get global recoverable lsn
+ */
+void bdb_get_gbl_recoverable_lsn(void *lsn);
+
+/**
+ * set global recoverable lsn
  */
 void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp);
 

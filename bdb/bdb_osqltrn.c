@@ -219,6 +219,13 @@ uint32_t bdb_latest_commit_gen = 0;
 pthread_mutex_t bdb_asof_current_lsn_mutex;
 pthread_cond_t bdb_asof_current_lsn_cond;
 
+void bdb_get_gbl_recoverable_lsn(void *lsn)
+{
+    Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
+    *(DB_LSN *)lsn = bdb_gbl_recoverable_lsn;
+    Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
+}
+
 void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp)
 {
     if (!gbl_new_snapisol_asof && !gbl_modsnap_asof)
