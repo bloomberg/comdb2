@@ -36,6 +36,8 @@ for testreq in `ls t*.req` ; do
     if [[  $? -eq 0 ]]; then
         echo "passed $testname"
     else
+        cat $testname.expected 
+        diff -u $testname.expected $testname.output | head -n 10
         echo "failed $testname"
         echo "see diffs here: $HOSTNAME"
         echo "> diff ${PWD}/{$testname.expected,$testname.output}"

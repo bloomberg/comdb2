@@ -29,6 +29,9 @@ prepare_abort() {
     exit 1
 }
 
+# Source shared systables injection functions
+source ${TESTSROOTDIR}/test-utils/inject_systables.sh
+
 while getopts "sd:r:e:" options; do
     case "${options}" in
         d) dbname=${OPTARG} ;;
@@ -76,7 +79,10 @@ for sqlfile in $sqlfiles; do
     cmd="cdb2sql ${CDB2_OPTIONS} $script_mode -f $sqlfile $dbname default "
     echo $cmd "> $testname.output"
     eval $cmd 2>&1 | sed 's/rrn 2 genid 0x[[:alnum:]]\+/rrn xx genid xx/' > $testname.output
-    diff $testname.$exp_extn $testname.output > /dev/null
+    
+    inject_systables_in_expected_files "$testname.$exp_extn" 
+    
+    diff "$testname.$exp_extn"  $testname.output > /dev/null
     if [[  $? -eq 0 ]]; then
         echo "passed $testname"
     else
@@ -88,6 +94,8 @@ for sqlfile in $sqlfiles; do
         echo
         exit 1
     fi
+
+    restore_expected_files
 done
 echo
 exit 0
