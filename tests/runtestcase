@@ -414,10 +414,17 @@ if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     callgrind_control -i on
 fi
 
+# Source shared systables injection functions
+source ${TESTSROOTDIR}/test-utils/inject_systables.sh
+
+inject_systables_in_expected_files
+
 testdb_note "test start"
 timeout --kill-after=5s ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 rc=${PIPESTATUS[0]}
 testdb_note "test end"
+
+restore_expected_files
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo "!$TESTCASE: finished running with timeout ${TEST_TIMEOUT} at $DATETIME"
