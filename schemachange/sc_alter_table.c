@@ -1150,8 +1150,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->handle = old_bdb_handle;
 
     /* if this is an alter to partition an existing table */
-    if ((s->partition.type == PARTITION_ADD_TIMED ||
-         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
+    if ((s->partition.type == PARTITION_ADD_TIMED || s->partition.type == PARTITION_ADD_TIMED_RETRO ||
+         s->partition.type == PARTITION_ADD_MANUAL) &&
+        s->publish) {
         struct errstat err = {0};
         assert(s->newpartition);
         rc = partition_llmeta_write(transac, s->newpartition, 0, &err);
@@ -1180,7 +1181,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         }
         db->timepartition_name = NULL;
     }
-
 
     /* deletion of btree files we don't need is handled in
      * osql_scdone_commit_callback and osql_scdone_abort_callback */

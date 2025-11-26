@@ -173,6 +173,7 @@
 (candidate='RESTRICT')
 (candidate='RESUME')
 (candidate='RETENTION')
+(candidate='RETROACTIVELY')
 (candidate='REVOKE')
 (candidate='RIGHT')
 (candidate='RLE')

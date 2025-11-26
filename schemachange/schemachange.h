@@ -74,6 +74,7 @@ enum comdb2_partition_type {
     PARTITION_ADD_GENSHARD = 71,
     PARTITION_REM_GENSHARD_COORD = 72,
     PARTITION_REM_GENSHARD = 73,
+    PARTITION_ADD_TIMED_RETRO = 74
 };
 
 struct comdb2_partition {
