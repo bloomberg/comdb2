@@ -159,6 +159,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_REMOVE:
         return sizeof(p->type);
     case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_TIMED_RETRO:
     case PARTITION_ADD_MANUAL:
         return sizeof(p->type) + sizeof(p->u.tpt.period) +
                sizeof(p->u.tpt.retention) + sizeof(p->u.tpt.start);
@@ -325,6 +326,7 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     sc.partition_type = s->partition.type;
     switch (s->partition.type) {
     case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_TIMED_RETRO:
     case PARTITION_ADD_MANUAL: {
         sc.has_tpperiod = 1;
         sc.has_tpretention = 1;
@@ -543,6 +545,7 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
 
     switch (sc->partition_type) {
     case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_TIMED_RETRO:
     case PARTITION_ADD_MANUAL: {
         s->partition.u.tpt.period = sc->tpperiod;
         s->partition.u.tpt.retention = sc->tpretention;
@@ -1152,6 +1155,7 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
                                p_buf, p_buf_end);
     switch (s->partition.type) {
     case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_TIMED_RETRO:
     case PARTITION_ADD_MANUAL: {
         p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.period, sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
         p_buf =

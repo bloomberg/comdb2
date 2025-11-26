@@ -732,8 +732,7 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
     int rc = 0;
     Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
 
-    rc = live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
-                                                  ins_keys, od_len);
+    rc = live_sc_post_update_delayed_key_adds(iq, trans, newgenid, od_dta, ins_keys, od_len);
 
     Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
     return rc;

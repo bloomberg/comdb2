@@ -42,6 +42,8 @@
 extern int gbl_is_physical_replicant;
 int gbl_partitioned_table_enabled = 1;
 int gbl_merge_table_enabled = 1;
+int gbl_retro_tpt = 1;
+int gbl_retro_tpt_verbose = 0;
 
 struct timepart_shard {
     char *tblname; /* name of the table covering the shard, can be an alias */
@@ -2908,7 +2910,7 @@ static int _get_starttime_to_future(timepart_view_t *view)
     return current_starttime;
 }
 
-int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
+int timepart_populate_shards(timepart_view_t *view, int retro_partition, struct errstat *err)
 {
     int rc = VIEW_NOERR;
     int i;
@@ -2926,7 +2928,7 @@ int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
 
     /* since we do not need to do fake rollouts, lets bring starttime to present
      */
-    int next_rollout = _get_starttime_to_future(view);
+    int next_rollout = retro_partition ? view->starttime : _get_starttime_to_future(view);
 
     /* generate shard names */
     char *old_name = view->name;
@@ -2967,6 +2969,37 @@ int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
 error:
 
     return rc;
+}
+
+/**
+ * Populate time limits for past empty shards
+ * We set the current shard to be last one for easy search
+ * retros->limits will be in time order from oldest to newest
+ *
+ */
+int timepart_populate_timelimits(timepart_view_t *view, timepart_retro_t *retros, struct errstat *err)
+{
+    /* STEP1 : complete shard 0 limits (i.e. low)
+     * we only have the next rollout for shard 0
+     * we need to calculate what would have been the rollout that created shard 0 and set low to that
+     * STEP2..N: complate the shards N-1 to 1
+     * going from highest (N-1) to lowest (1), set the high to low of the next (N-1 gets wrapped to 0)
+     * set the low to the previous rollout that would have created current shard
+     */
+    /* STEP 1*/
+    view->shards[0].low = _view_get_next_rollout(view->period, view->retention, view->shards[0].high,
+                                                 view->shards[0].high, view->retention, 1);
+    retros->limits[view->retention - 1] = view->shards[0].high;
+    /* STEP 2..N */
+    for (int i = view->retention - 1; i > 0; i--) {
+        view->shards[i].high = view->shards[(i + 1) % view->retention].low;
+        view->shards[i].low = i > 1 ? _view_get_next_rollout(view->period, view->retention, view->shards[i].high,
+                                                             view->shards[i].high, view->retention, 1)
+                                    : INT_MIN;
+        retros->limits[i - 1] = view->shards[i].high;
+    }
+    retros->n = view->retention;
+    return 0;
 }
 
 static int _view_new_rollout_lkless(char *name, int period, int roll_time,
@@ -3151,7 +3184,7 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
-        if (rc == VIEW_NOERR) {
+        if (rc == VIEW_NOERR && !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
             rc = _view_new_rollout_lkless(name_dup, period, rolltime,
                                           &source_id, err);
             if (rc != VIEW_NOERR) {
@@ -3212,12 +3245,12 @@ int timepart_create_inmem_view(timepart_view_t *view)
             }
         }
 
-        /* we need to add the first scheduler event */
-        rc = _view_new_rollout_lkless(name_dup, period, rolltime, &source_id,
-                                      &err);
-        if (rc != VIEW_NOERR) {
-            logmsg(LOGMSG_ERROR, "Failed to add new rollout event %s\n",
-                   view->name);
+        if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+            /* we need to add the first scheduler event */
+            rc = _view_new_rollout_lkless(name_dup, period, rolltime, &source_id, &err);
+            if (rc != VIEW_NOERR) {
+                logmsg(LOGMSG_ERROR, "Failed to add new rollout event %s\n", view->name);
+            }
         }
     }
     return rc;
@@ -3359,6 +3392,7 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
     if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
         case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_TIMED_RETRO:
         case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_create_inmem_view(sc->newpartition);
@@ -3394,6 +3428,7 @@ void partition_unpublish(struct schema_change_type *sc)
    if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
         case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_TIMED_RETRO:
         case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_destroy_inmem_view(sc->timepartition_name);
@@ -3495,6 +3530,40 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
 done:
     Pthread_rwlock_unlock(&views_lk);
     return rc;
+}
+
+/**
+ * Route a row based on genid to a specific time partition shard
+ *
+ */
+struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned long long genid, const char *f, int l)
+{
+    struct dbtable *ret;
+    unsigned long long lltm = flibc_llflip(genid);
+    int tm = lltm >> 32;
+
+    /* by default, all goes to current */
+    ret = retros->ss[retros->n - 1] ? retros->ss[retros->n - 1]->newdb : NULL;
+
+    int i;
+    for (i = 0; i < retros->n; i++) {
+        if (tm < retros->limits[i]) {
+            if (retros->ss[i] && retros->ss[i]->newdb)
+                ret = retros->ss[i]->newdb;
+            else
+                return NULL;
+            break;
+        }
+    }
+    if (i < retros->n) {
+        pthread_mutex_lock(&retros->cs[i].mtx);
+        retros->cs[i].counter++;
+        if (gbl_retro_tpt_verbose)
+            logmsg(LOGMSG_USER, "%s:%d FOR %llx found shard %s counter %d\n", f, l, genid,
+                   ret ? ret->tablename : "NULL", retros->cs[i].counter);
+        pthread_mutex_unlock(&retros->cs[i].mtx);
+    }
+    return ret;
 }
 
 #include "views_systable.c"

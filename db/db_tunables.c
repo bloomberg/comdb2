@@ -590,6 +590,8 @@ int gbl_incoherent_clnt_wait = 10;
 int gbl_new_leader_duration = 3;
 extern int gbl_transaction_grace_period;
 extern int gbl_partition_sc_reorder;
+extern int gbl_retro_tpt;
+extern int gbl_retro_tpt_verbose;
 extern int gbl_dohsql_joins;
 extern int gbl_altersc_latency;
 extern int gbl_altersc_delay_usec;

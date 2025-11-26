@@ -1,0 +1,1 @@
+This tests the time partitioning of an existing table using genid to retroactively distribute the data in shards.

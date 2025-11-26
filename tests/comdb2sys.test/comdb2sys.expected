@@ -81,11 +81,11 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=226)
+(KEYWORDS_COUNT=227)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
 (RESERVED_KW=66)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=160)
+(NONRESERVED_KW=161)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
@@ -278,6 +278,7 @@
 (name='RESTRICT', reserved='N')
 (name='RESUME', reserved='N')
 (name='RETENTION', reserved='N')
+(name='RETROACTIVELY', reserved='N')
 (name='REVOKE', reserved='N')
 (name='RLE', reserved='N')
 (name='ROLLBACK', reserved='N')
