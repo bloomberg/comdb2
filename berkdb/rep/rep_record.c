@@ -6070,89 +6070,47 @@ bad_resize:	;
 		x1 = bb_berkdb_fasttime();
 	}
 
-	if (!rp->context) {
-		uint32_t flags =
-			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
-			LOCK_GET_LIST_PRINTLOCK : 0);
-		if (endianize) {
-			flags |= LOCK_GET_LIST_ENDIANIZE;
-		}
-		if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
-			flags |= LOCK_GET_LIST_FORCEFLIP;
-		}
+	uint32_t flags =
+		LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
+		LOCK_GET_LIST_PRINTLOCK : 0);
+	if (endianize) {
+		flags |= LOCK_GET_LIST_ENDIANIZE;
+	}
+	if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
+		flags |= LOCK_GET_LIST_FORCEFLIP;
+	}
 
-		/* Safeguard lock-get-list on a tunable */
-		DBT lock_dbt_copy = {0};
-		int copy_compare = gbl_debug_lock_get_list_copy_compare;
-		if (copy_compare) {
-			lock_dbt_copy.data = malloc(lock_dbt->size);
-			lock_dbt_copy.size = lock_dbt->size;
-			memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
-		}
+	/* Safeguard lock-get-list on a tunable */
+	DBT lock_dbt_copy = {0};
+	int copy_compare = gbl_debug_lock_get_list_copy_compare;
+	if (copy_compare) {
+		lock_dbt_copy.data = malloc(lock_dbt->size);
+		lock_dbt_copy.size = lock_dbt->size;
+		memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
+	}
 
-		assert(gbl_rep_lock_time_ms == 0);
-		gbl_rep_lock_time_ms = comdb2_time_epochms();
-		ret =
-			__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
-			copy_compare ? &lock_dbt_copy : lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt);
-		if (copy_compare) {
-			if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
-				logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
-				abort();
-			}
-			free(lock_dbt_copy.data);
+	assert(gbl_rep_lock_time_ms == 0);
+	gbl_rep_lock_time_ms = comdb2_time_epochms();
+	ret = !rp->context ?
+		__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
+		copy_compare ? &lock_dbt_copy : lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt)
+		: __lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
+		copy_compare ? &lock_dbt_copy : lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+	if (copy_compare) {
+		if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
+			logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
+			abort();
 		}
-		assert(gbl_rep_lock_time_ms != 0);
-		gbl_rep_lock_time_ms = 0;
-		if (ret != 0)
-			goto err;
+		free(lock_dbt_copy.data);
+	}
+	assert(gbl_rep_lock_time_ms != 0);
+	gbl_rep_lock_time_ms = 0;
+	if (ret != 0)
+		goto err;
 
-		if (ret == 0 && rp->context && !throwdeadlock) {
-			set_commit_context(rp->context, commit_gen,
-				&(rctl->lsn), args, rectype);
-		}
-	} else {
-		uint32_t flags =
-			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
-			LOCK_GET_LIST_PRINTLOCK : 0);
-		if (endianize) {
-			flags |= LOCK_GET_LIST_ENDIANIZE;
-		}
-		if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
-			flags |= LOCK_GET_LIST_FORCEFLIP;
-		}
-
-		/* Safeguard lock-get-list on a tunable */
-		DBT lock_dbt_copy = {0};
-		int copy_compare = gbl_debug_lock_get_list_copy_compare;
-		if (copy_compare) {
-			lock_dbt_copy.data = malloc(lock_dbt->size);
-			lock_dbt_copy.size = lock_dbt->size;
-			memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
-		}
-
-		assert(gbl_rep_lock_time_ms == 0);
-		gbl_rep_lock_time_ms = comdb2_time_epochms();
-		ret =
-			__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
-			copy_compare ? &lock_dbt_copy : lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
-		if (copy_compare) {
-			if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
-				logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
-				abort();
-			}
-			free(lock_dbt_copy.data);
-		}
-
-		assert(gbl_rep_lock_time_ms != 0);
-		gbl_rep_lock_time_ms = 0;
-		if (ret != 0)
-			goto err;
-
-		if (ret == 0 && rp->context) {
-			set_commit_context(rp->context, commit_gen,
-				&(rctl->lsn), args, rectype);
-		}
+	if (ret == 0 && rp->context && !throwdeadlock) {
+		set_commit_context(rp->context, commit_gen,
+			&(rctl->lsn), args, rectype);
 	}
 
 	if (td_stats) {
