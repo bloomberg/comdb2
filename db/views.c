@@ -42,6 +42,7 @@
 extern int gbl_is_physical_replicant;
 int gbl_partitioned_table_enabled = 1;
 int gbl_merge_table_enabled = 1;
+int gbl_retro_tpt = 1;
 
 struct timepart_shard {
     char *tblname; /* name of the table covering the shard, can be an alias */
@@ -2969,6 +2970,37 @@ error:
     return rc;
 }
 
+/**
+ * Populate time limits for past empty shards
+ * We set the current shard to be last one for easy search
+ * retros->limits will be in time order from oldest to newest
+ *
+ */
+int timepart_populate_timelimits(timepart_view_t *view, timepart_retro_t *retros, struct errstat *err)
+{
+    /* STEP1 : complete shard 0 limits (i.e. low)
+     * we only have the next rollout for shard 0
+     * we need to calculate what would have been the rollout that created shard 0 and set low to that
+     * STEP2..N: complate the shards N-1 to 1
+     * going from highest (N-1) to lowest (1), set the high to low of the next (N-1 gets wrapped to 0)
+     * set the low to the previous rollout that would have created current shard 
+     */
+    /* STEP 1*/
+    view->shards[0].low = _view_get_next_rollout(view->period, view->retention, view->shards[0].high,
+                                                 view->shards[0].high, view->retention, 1);
+    retros->limits[view->retention-1] = view->shards[0].high;
+    /* STEP 2..N */
+    for (int i = view->retention - 1; i > 0; i--) {
+        view->shards[i].high = view->shards[(i + 1) % view->retention].low;
+        view->shards[i].low = i > 1 ?
+            _view_get_next_rollout(view->period, view->retention,
+                                   view->shards[i].high, view->shards[i].high, view->retention, 1) : INT_MIN;
+        retros->limits[i-1] = view->shards[i].high;
+    }
+    retros->n = view->retention;
+    return 0;
+}
+
 static int _view_new_rollout_lkless(char *name, int period, int roll_time,
                                     uuid_t *source_id, struct errstat *err)
 {
@@ -3495,6 +3527,35 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
 done:
     Pthread_rwlock_unlock(&views_lk);
     return rc;
+}
+
+/**
+ * Route a row based on genid to a specific time partition shard
+ *
+ */
+struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned long long genid)
+{
+    struct dbtable *ret;
+    unsigned long long lltm = flibc_llflip(genid);
+    int tm = lltm >> 32;
+    fprintf(stderr, "FOR %llx time is %x %u\n", genid, tm, tm);
+
+    /* by default, all goes to current */
+    ret = retros->ss[retros->n - 1] ? retros->ss[retros->n - 1]->newdb : NULL;
+
+    int i;
+    for (i = 0; i < retros->n; i++) {
+        if (tm < retros->limits[i]) {
+            if (retros->ss[i] && retros->ss[i]->newdb)
+                ret = retros->ss[i]->newdb;
+            else
+                return NULL;
+            break;
+        }
+    }
+
+    fprintf(stderr, "FOR %llx found shard %s\n", genid, ret ? ret->tablename : "NULL");
+    return ret;
 }
 
 #include "views_systable.c"

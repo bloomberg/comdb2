@@ -74,7 +74,15 @@ enum views_trigger_op {
     VIEWS_TRIGGER_UPDATE = 3
 };
 
-enum shard_pos {
+
+typedef struct timepart_retro
+{
+    int n;
+    int *limits;
+    struct schema_change_type **ss;
+} timepart_retro_t;
+
+enum shard_pos { /* keep them bits */
     FIRST_SHARD = 1,
     LAST_SHARD = 2
 };
@@ -86,9 +94,11 @@ typedef struct timepart_sc_arg {
     int start; /* start shard */
     int cur_last; /* we want to process current shard last */
     int lockless; /* free views lock during sc; all but new partitions */
+    int clonelast; /* generate a schema change after last shard, used for reverse walks */
     /* output */
     int pos; /* is this the first and/or the last shard */
     int indx;  /* currently selected shard index */
+    timepart_retro_t *retros;
 } timepart_sc_arg_t;
 
 extern int gbl_partitioned_table_enabled;
@@ -412,6 +422,12 @@ timepart_view_t *timepart_new_partition(const char *name, int period,
 int timepart_populate_shards(timepart_view_t *view, struct errstat *err);
 
 /**
+ * Populate time limits for past empty shards
+ *
+ */
+int timepart_populate_timelimits(timepart_view_t *view, timepart_retro_t *retros, struct errstat *err);
+
+/**
  * Create partition llmeta entry
  *
  */
@@ -530,5 +546,11 @@ int timepart_rollout(const char *partname);
  */
 int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
                                struct errstat *err);
+
+/**
+ * Route a row based on genid to a specific time partition shard
+ *
+ */
+struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned long long genid);
 
 #endif

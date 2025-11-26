@@ -1041,6 +1041,18 @@ static int convert_record(struct convert_record_data *data)
            We'll adjust it after add_record() when we know the actual number of log bytes. */
         throttle_sc_logbytes(estimate);
 
+        /* if we want to distribute the data, change the destination table here */
+        struct dbtable *tbl = data->iq.usedb;
+        if (data->s->sharding_func) {
+            data->iq.usedb =  data->s->sharding_func(data->s->sharding_arg, ngenid);
+            if (!data->iq.usedb) {
+                logmsg(LOGMSG_ERROR, "%s failed to get the sharding usedb for %s\n",
+                       __func__, tbl->tablename);
+                rc = -1;
+                goto err;
+            }
+        }
+    
         rc = add_record(
             &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
             p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,
@@ -1049,6 +1061,8 @@ static int convert_record(struct convert_record_data *data)
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
             addflags, 0);
+
+        data->iq.usedb = tbl;
 
         if (rc)
             goto err;
