@@ -63,7 +63,6 @@ static int __rep_set_rep_transport __P((DB_ENV *, char *,
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
 static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
 static int __rep_set_rep_truncate_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, uint32_t is_master)));
-static int __rep_set_rep_recovery_cleanup __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, int is_master)));
 static int __rep_lock_recovery_lock __P((DB_ENV *, const char *func, int line));
 static int __rep_wrlock_recovery_lock __P((DB_ENV *, const char *func, int line));
 static int __rep_unlock_recovery_lock __P((DB_ENV *, const char *func, int line));
@@ -136,7 +135,6 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_log_trigger = __rep_set_log_trigger;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
-		dbenv->set_rep_recovery_cleanup = __rep_set_rep_recovery_cleanup;
 		dbenv->rep_set_gen = __rep_set_gen_pp;
 		dbenv->wrlock_recovery_lock = __rep_wrlock_recovery_lock;
 		dbenv->wrlock_recovery_blocked = __rep_wrlock_recovery_blocked;
@@ -913,20 +911,6 @@ __rep_set_check_standalone(dbenv, f_check_standalone)
 		return (EINVAL);
 	}
 	dbenv->check_standalone = f_check_standalone;
-	return (0);
-}
-
-static int
-__rep_set_rep_recovery_cleanup(dbenv, rep_recovery_cleanup)
-	DB_ENV *dbenv;
-	int (*rep_recovery_cleanup) __P((DB_ENV *, DB_LSN *lsn, int is_master));
-{
-	PANIC_CHECK(dbenv);
-	if (rep_recovery_cleanup == NULL) {
-		__db_err(dbenv, "DB_ENV->set_rep_recovery_cleanup: no function specified");
-		return (EINVAL);
-	}
-	dbenv->rep_recovery_cleanup = rep_recovery_cleanup;
 	return (0);
 }
 

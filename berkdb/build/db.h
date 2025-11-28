@@ -2567,9 +2567,6 @@ struct __db_env {
 		u_int32_t, u_int32_t, DB_LOCKREQ *, int, DB_LOCKREQ **));
 	int  (*lock_to_dbt) __P((DB_ENV *,DB_LOCK *, DBT *));
 	int  (*lock_add_child_locker) __P((DB_ENV *, u_int32_t, u_int32_t));
-	int  (*lock_update_tracked_writelocks_lsn)
-		__P((DB_ENV *, DB_TXN *, u_int32_t, DB_LSN));
-	int  (*lock_clear_tracked_writelocks) __P((DB_ENV *, u_int32_t));
 	void *mp_handle;		/* Mpool handle and methods. */
 	int  (*get_cachesize) __P((DB_ENV *, u_int32_t *, u_int32_t *, int *));
 	int  (*set_cachesize) __P((DB_ENV *, u_int32_t, u_int32_t, int));
@@ -2832,8 +2829,6 @@ struct __db_env {
 	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, uint32_t flags)));
 	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, uint32_t flags);
 	void (*rep_set_gen)(DB_ENV *, uint32_t gen);
-	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
-	int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
 	int (*wrlock_recovery_lock)(DB_ENV *, const char *func, int line);
     int (*wrlock_recovery_blocked)(DB_ENV *);
 	int (*lock_recovery_lock)(DB_ENV *, const char *func, int line);

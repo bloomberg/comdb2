@@ -39,8 +39,6 @@ int genidcmp(const void *hash_genid, const void *genid);
 void genidcpy(void *dest, const void *src);
 void genidsetzero(void *g);
 
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 extern int gbl_check_page_in_recovery;
 
 /*
@@ -143,23 +141,6 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 
 	REC_INTRO_PANIC(__bam_split_read, 1);
 	dbp = file_dbp->peer;
-
-
-	if (mpf) {
-		if (argp->root_pgno != PGNO_INVALID) {
-			/* root split */
-			ret = bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-				argp->root_pgno, argp->left, argp->right, *lsnp);
-		} else {
-			ret = bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-				argp->left, argp->root_pgno, argp->right, *lsnp);
-		}
-		if (ret) {
-			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
-			abort();
-		}
-	}
-
 
 	/*
 	 * There are two kinds of splits that we have to recover from.  The
@@ -594,12 +575,6 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__bam_rsplit_print);
 	REC_INTRO_PANIC(__bam_rsplit_read, 1);
 	dbp = file_dbp->peer;
-
-	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-		argp->pgno, argp->root_pgno, PGNO_INVALID, *lsnp) != 0) {
-		logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
-		abort();
-	}
 
 	/* Fix the root page. */
 	pgno = root_pgno = argp->root_pgno;

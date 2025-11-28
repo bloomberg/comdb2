@@ -4741,10 +4741,6 @@ debug_dump_lsns(DB_LSN commit_lsn, LSN_COLLECTION * lc, int ret)
 }
 
 extern int gbl_replicant_gather_rowlocks;
-int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
-	unsigned int nkeys, int is_logical_commit,
-	unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
-	int32_t timestamp, unsigned long long context);
 
 static unsigned long long getlock_poll_count = 0;
 int gbl_rep_lock_time_ms = 0;
@@ -4846,7 +4842,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 	__txn_dist_commit_args *txn_dist_commit_args = NULL;
 	void *args = NULL;
-	int32_t timestamp = 0;
 	__txn_xa_regop_args *prep_args;
 	u_int32_t rectype;
 	int i, ret, t_ret, line = 0;
@@ -5241,26 +5236,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			if (dbenv->rep_send_ack)
 				dbenv->rep_send_ack(dbenv, maxlsn, *commit_gen, rep_gen);
 		} 
-
-		if (txn_rl_args)
-			timestamp = txn_rl_args->timestamp;
-		else if (txn_gen_args)
-			timestamp = txn_gen_args->timestamp;
-		else if (txn_args)
-			timestamp = txn_args->timestamp;
-		else if (txn_dist_commit_args)
-			timestamp = txn_dist_commit_args->timestamp;
-
-		ret =
-			bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs,
-			keycnt, (!txn_rl_args ||
-			(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
-			(txn_rl_args) ? txn_rl_args->ltranid : 0, rctl->lsn,
-			*commit_gen, timestamp, context);
-		if (ret) {
-			line = __LINE__;
-			goto err;
-		}
 	}
 
 	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
@@ -5708,7 +5683,6 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DB_LSN prev_commit_lsn;
 {
 	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
-	int32_t timestamp = 0;
 	char *dist_txnid = NULL;
 	int commit_lsn_map = get_commit_lsn_map_switch_value();
 	int collect_before_locking = gbl_collect_before_locking;
@@ -6161,21 +6135,8 @@ bad_resize:	;
 			dbenv->rep_send_ack(dbenv, maxlsn, *commit_gen, rep_gen);
 	}
 
-	if (txn_rl_args)
-		timestamp = txn_rl_args->timestamp;
-	else if (txn_gen_args)
-		timestamp = txn_gen_args->timestamp;
-	else if (txn_args)
-		timestamp = txn_args->timestamp;
-
-	ret = bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs, keycnt,
-		(!txn_rl_args || (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
-		(txn_rl_args) ? txn_rl_args->ltranid : 0,
-		rctl->lsn, *commit_gen, timestamp, rp->context);
 	if (pglogs)
 		__os_free(dbenv, pglogs);
-	if (ret)
-		goto err;
 
 	/* Before we do anything else - see if this transaction contains any fileops.
 	 * If it does, transactions after it in the log may depend on these fileops,
@@ -7460,10 +7421,6 @@ restart:
 		__rep_set_gen(dbenv, __func__, __LINE__, newgen);
 	}
 
-	/* Recovery cleanup is called holding recoverlk */
-	if (dbenv->rep_recovery_cleanup)
-		dbenv->rep_recovery_cleanup(dbenv, trunclsnp, i_am_master);
-
 	logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
 			trunclsnp->file, trunclsnp->offset);
 
@@ -8664,10 +8621,6 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_SET(region, TXN_IN_RECOVERY);
 		__log_vtruncate(dbenv, &rp->lsn, &region->last_ckp, &trunclsn);
 		F_CLR(region, TXN_IN_RECOVERY);
-
-		/* Recovery cleanup */
-		if (dbenv->rep_recovery_cleanup)
-			dbenv->rep_recovery_cleanup(dbenv, &trunclsn, i_am_master);
 
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 

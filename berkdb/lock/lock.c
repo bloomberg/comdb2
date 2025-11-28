@@ -974,10 +974,6 @@ __count_write_latches(dbenv, lidptr)
 	return count;
 }
 
-int bdb_update_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
-    pthread_mutex_t * mutexp, db_pgno_t pgno, unsigned char *fileid,
-    DB_LSN lsn);
-
 static int
 __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
     u_int32_t lockerid, DB_LSN lsn)
@@ -986,7 +982,6 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	u_int32_t i;
 	DB_LOCKERID_LATCH_NODE *lidptr;
 	DB_ILOCK_LATCH *ilatch;
-	DB_LOCK_ILOCK *ilock;
 	struct __db_lock_lsn *lsnp;
 	struct __db_lock_lsn *first_lsnp;
 
@@ -1022,12 +1017,6 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 			    __db_lock_lsn);
 			ilatch->nlsns++;
 			Pthread_mutex_unlock(&ilatch->lsns_mtx);
-			if (txnp->pglogs_hashtbl) {
-				ilock = (DB_LOCK_ILOCK *)ilatch->lock;
-				bdb_update_txn_pglogs(dbenv->app_private,
-				    txnp->pglogs_hashtbl, &txnp->pglogs_mutex,
-				    ilock->pgno, ilock->fileid, lsn);
-			}
 		}
 	}
 	return 0;
@@ -5409,8 +5398,6 @@ typedef struct __db_lock_idxlock DB_LOCK_IDXLOCK;
 					     sizeof(u_int64_t); 	\
 				} while (0)
 
-
-extern int gbl_new_snapisol_logging;
 #define MAX_LOCK_COUNT	0xffffffff
 
 static int
@@ -5469,22 +5456,10 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn, endianize)
 			obj = (struct __db_dbt_internal *)obj_dbt;
 		size = sizeof(unsigned long long);
 		size += RET_SIZE(obj->size, 1);
-		if (gbl_new_snapisol_logging) {
-			size += sizeof(u_int32_t);	// n pagelock-lsn pairs
-			size += sizeof(u_int32_t);	// flag to indicate new logging format
-		}
-		if (has_pglk_lsn && gbl_new_snapisol_logging) {
-			size += sizeof(u_int32_t);	// nlsn
-			size += obj_lsn->nlsns * sizeof(DB_LSN);	// lsn list
-		}
 		if ((ret = __os_malloc(dbenv, size, &data)) != 0)
 			return (ret);
 
 		dp = data;
-		if (gbl_new_snapisol_logging) {
-			PUT_COUNT(dp, MAX_LOCK_COUNT);	// indicate new logging format
-			PUT_NKEYS(dp, has_pglk_lsn ? obj_lsn->nlsns : 0);
-		}
 		PUT_COUNT(dp, 1);
 		PUT_PCOUNT(dp, 0);
 		PUT_SIZE(dp, obj->size);
@@ -5494,26 +5469,12 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn, endianize)
 			COPY_OBJ(dp, obj);
 		}
 		if (has_pglk_lsn) {
-			if (gbl_new_snapisol_logging)
-				PUT_LSNCOUNT(dp, obj_lsn->nlsns);
 			for (lsnp =
 			    SH_LIST_FIRST(&(obj_lsn->lsns), __db_lock_lsn);
 			    lsnp != NULL; lsnp = next_lsnp) {
 				next_lsnp =
 				    SH_LIST_NEXT(lsnp, lsn_links,
 				    __db_lock_lsn);
-#ifdef NEWSI_DEBUG
-				if (next_lsnp)
-					assert(log_compare(&lsnp->llsn,
-						&next_lsnp->llsn) >= 0);
-#endif
-				if (gbl_new_snapisol_logging) {
-					if (endianize) {
-						PUT_LSN_ENDIANIZE(dp, &(lsnp->llsn));
-					} else {
-						PUT_LSN(dp, &(lsnp->llsn));
-					}
-				}
 				SH_LIST_REMOVE(lsnp, lsn_links, __db_lock_lsn);
 				__deallocate_db_lock_lsn(dbenv, lsnp);
 			}
@@ -5641,16 +5602,6 @@ not_ilock:
 
 		size += (unsigned char *)ptr - (unsigned char *)baseptr;
 
-		if (gbl_new_snapisol_logging) {
-			size += sizeof(u_int32_t);	// flag to indicate new logging format
-			size += sizeof(u_int32_t);	// n pagelock-lsn key
-		}
-		if (has_pglk_lsn && gbl_new_snapisol_logging) {
-			/* allowed space for list of lsns */
-			size += nlocks * sizeof(u_int32_t);	//nlsn for each lock
-			size += nlsns * sizeof(DB_LSN);	//total number of lsns
-		}
-
 		/* allocate space for context */
 		size += sizeof(unsigned long long);
 
@@ -5662,21 +5613,6 @@ not_ilock:
 		dp = data;
 
 		endptr = dp + size;
-
-		if (gbl_new_snapisol_logging) {
-			if (dp + sizeof(u_int32_t) > (uint8_t *)endptr) {
-				logmsg(LOGMSG_USER, "%d: __lock_fix_list about to overrun (PUT_COUNT)\n",
-				    __LINE__);
-				abort();
-			}
-			PUT_COUNT(dp, MAX_LOCK_COUNT);
-			if (dp + sizeof(u_int32_t) > (uint8_t *)endptr) {
-				logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_NKEYS)\n",
-				    __LINE__);
-				abort();
-			}
-			PUT_NKEYS(dp, has_pglk_lsn ? nlsns : 0);
-		}
 
 		if (dp + sizeof(u_int32_t) > (uint8_t *)endptr) {
             logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_COUNT)\n",
@@ -5718,16 +5654,6 @@ not_ilock:
 					COPY_OBJ(dp, &obj_lsn[i]);
 				}
 
-				if (gbl_new_snapisol_logging) {
-					if (dp + sizeof(u_int16_t) >
-					    (uint8_t *)endptr) {
-						logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSNCOUNT)\n",
-						    __LINE__);
-						abort();
-					}
-					PUT_LSNCOUNT(dp, obj_lsn[i].nlsns);
-				}
-
 				for (lsnp =
 				    SH_LIST_FIRST(&(obj_lsn[i].lsns),
 					__db_lock_lsn); lsnp != NULL;
@@ -5735,24 +5661,7 @@ not_ilock:
 					next_lsnp =
 					    SH_LIST_NEXT(lsnp, lsn_links,
 					    __db_lock_lsn);
-#ifdef NEWSI_DEBUG
-					if (next_lsnp)
-						assert(log_compare(&lsnp->llsn,
-							&next_lsnp->llsn) >= 0);
-#endif
-					if (gbl_new_snapisol_logging) {
-						if (dp + sizeof(DB_LSN) >
-						    (uint8_t *)endptr) {
-							logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSN)\n",
-							    __LINE__);
-							abort();
-						}
-						if (endianize) {
-							PUT_LSN_ENDIANIZE(dp, &(lsnp->llsn));
-						} else {
-							PUT_LSN(dp, &(lsnp->llsn));
-						}
-					} SH_LIST_REMOVE(lsnp, lsn_links,
+					SH_LIST_REMOVE(lsnp, lsn_links,
 					    __db_lock_lsn);
 					__deallocate_db_lock_lsn(dbenv, lsnp);
 				}
@@ -5786,17 +5695,6 @@ not_ilock:
 					}
 					PUT_PGNO(dp, lock->pgno);
 
-					if (gbl_new_snapisol_logging) {
-						if (dp + sizeof(u_int16_t) >
-						    (uint8_t *)endptr) {
-							logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSNCOUNT)\n",
-							    __LINE__);
-							abort();
-						}
-						PUT_LSNCOUNT(dp,
-						    obj_lsn[j].nlsns);
-					}
-
 					for (lsnp =
 					    SH_LIST_FIRST(&(obj_lsn[j].lsns),
 						__db_lock_lsn); lsnp != NULL;
@@ -5804,27 +5702,6 @@ not_ilock:
 						next_lsnp =
 						    SH_LIST_NEXT(lsnp,
 						    lsn_links, __db_lock_lsn);
-#ifdef NEWSI_DEBUG
-						if (next_lsnp)
-							assert(log_compare
-							    (&lsnp->llsn,
-								&next_lsnp->
-								llsn) >= 0);
-#endif
-						if (gbl_new_snapisol_logging) {
-							if (dp +
-							    sizeof(DB_LSN) >
-							    (uint8_t *)endptr) {
-								logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSN)\n",
-								    __LINE__);
-								abort();
-							}
-							if (endianize) {
-								PUT_LSN_ENDIANIZE(dp, &(lsnp->llsn));
-							} else {
-								PUT_LSN(dp, &(lsnp->llsn));
-							}
-						}
 						SH_LIST_REMOVE(lsnp, lsn_links,
 						    __db_lock_lsn);
 						__deallocate_db_lock_lsn(dbenv,
@@ -7135,136 +7012,5 @@ __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 
 	parent_locker->has_pglk_lsn = locker->has_pglk_lsn;
 
-	return 0;
-}
-
-// PUBLIC: int __lock_update_tracked_writelocks_lsn_pp __P((DB_ENV *, DB_TXN *, u_int32_t, DB_LSN));
-int
-__lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
-	u_int32_t lockid, DB_LSN lsn)
-{
-	DB_LOCKTAB *lt = dbenv->lk_handle;
-	DB_LOCKREGION *region = lt->reginfo.primary;
-	DB_LOCKER *locker;
-	u_int32_t i = 0;
-	struct __db_lock *lp;
-	DB_LOCKOBJ *lockobj;
-	DB_LOCK_ILOCK *ilock;
-	struct __db_lock_lsn *lsnp;
-	struct __db_lock_lsn *first_lsnp;
-	int rc = 0;
-
-	if (!gbl_new_snapisol_logging)
-		return 0;
-
-	if (use_page_latches(dbenv))
-		return __latch_update_tracked_writelocks_lsn(dbenv, txnp,
-			lockid, lsn);
-
-	int ndx;
-	LOCKER_INDX(lt, region, lockid, ndx);
-	if (__lock_getlocker(lt, lockid, ndx, 0, &locker) != 0
-		|| locker == NULL) {
-		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
-		abort();
-	}
-
-	if (!F_ISSET(locker, DB_LOCKER_TRACK_WRITELOCKS)) {
-		logmsg(LOGMSG_FATAL, "%s: BUG! Writelocks for lsn[%u][%u] were not tracked\n",
-			__func__, lsn.file, lsn.offset);
-		abort();
-	}
-
-	F_CLR(locker, DB_LOCKER_TRACK_WRITELOCKS);
-	locker->has_pglk_lsn = 1;
-
-	if (!txnp->pglogs_hashtbl)
-		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
-
-#ifdef NEWSI_DEBUG
-	for (i = 0; i < locker->ntrackedlocks; i++) {
-		lp = SH_LIST_FIRST(&locker->heldby, __db_lock);
-		for ( ; lp != NULL; lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
-			if (lp == locker->tracked_locklist[i])
-				break;
-		}
-		assert(lp != NULL);
-	}
-#endif
-
-	assert(locker->ntrackedlocks != 0);
-	for (i = 0; i < locker->ntrackedlocks; i++) {
-		lp = locker->tracked_locklist[i];
-		if (lp->status == DB_LSTAT_HELD) {
-			rc = __allocate_db_lock_lsn(dbenv, &lsnp);
-			if (rc)
-				return ENOMEM;
-			lsnp->llsn = lsn;
-			Pthread_mutex_lock(&lp->lsns_mtx);
-			first_lsnp = SH_LIST_FIRST(&lp->lsns, __db_lock_lsn);
-			if (first_lsnp &&
-				log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {
-				Pthread_mutex_unlock(&lp->lsns_mtx);
-				__deallocate_db_lock_lsn(dbenv, lsnp);
-			} else {
-				SH_LIST_INSERT_HEAD(&lp->lsns, lsnp, lsn_links,
-					__db_lock_lsn);
-				lp->nlsns++;
-				Pthread_mutex_unlock(&lp->lsns_mtx);
-				if (txnp->pglogs_hashtbl) {
-					lockobj = lp->lockobj;
-					if (lockobj->lockobj.size ==
-						sizeof(DB_LOCK_ILOCK)) {
-						ilock = lockobj->lockobj.data;
-						bdb_update_txn_pglogs(dbenv->
-							app_private,
-							txnp->pglogs_hashtbl,
-							&txnp->pglogs_mutex,
-							ilock->pgno, ilock->fileid,
-							lsn);
-					}
-				}
-			}
-		}
-	}
-	return 0;
-}
-
-// PUBLIC: int __lock_clear_tracked_writelocks_pp __P((DB_ENV *, u_int32_t));
-int
-__lock_clear_tracked_writelocks_pp(DB_ENV *dbenv, u_int32_t lockid)
-{
-	DB_LOCKTAB *lt = dbenv->lk_handle;
-	DB_LOCKREGION *region = lt->reginfo.primary;
-	DB_LOCKER *locker;
-	int rc = 0;
-	int ndx;
-
-	if (!gbl_new_snapisol_logging)
-		return 0;
-
-	if (use_page_latches(dbenv))
-		return __latch_clear_tracked_writelocks(dbenv, lockid);
-
-	LOCKER_INDX(lt, region, lockid, ndx);
-	if (__lock_getlocker(lt, lockid, ndx, GETLOCKER_CREATE, &locker) != 0
-		|| locker == NULL) {
-		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
-		abort();
-	}
-	F_SET(locker, DB_LOCKER_TRACK_WRITELOCKS);
-
-	if (!locker->tracked_locklist) {
-		int count = dbenv->attr.tracked_locklist_init > 0 ?
-			dbenv->attr.tracked_locklist_init : 10;
-		locker->maxtrackedlocks = count;
-		rc = __os_malloc(dbenv,
-			sizeof(struct __db_lock *) & locker->maxtrackedlocks,
-			&(locker->tracked_locklist));
-		if (rc)
-			return ENOMEM;
-	}
-
-	locker->ntrackedlocks = 0;
 	return 0;
 }

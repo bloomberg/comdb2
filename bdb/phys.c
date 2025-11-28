@@ -320,13 +320,6 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        if (gbl_rowlocks) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, physical_tran->tid->txnid);
-            if (rc)
-                goto done;
-        }
-
         /* Insert row */
         rc = ll_dta_add(bdb_state, genid, dbp, physical_tran, dtafile,
                         dtastripe, dbt_key, dbt_data, DB_NOOVERWRITE, odhready);
@@ -356,12 +349,6 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
         /* Logical log on success */
         rc = bdb_llog_add_dta_lk(bdb_state, physical_tran, genid, dtafile,
                                  dtastripe);
-        if (rc)
-            goto done;
-
-        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-            physical_tran->logical_tran->last_logical_lsn);
     }
 
 done:
@@ -434,13 +421,6 @@ int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        if (gbl_rowlocks) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, physical_tran->tid->txnid);
-            if (rc)
-                goto done;
-        }
-
         /* Call dta-del */
         rc = ll_dta_del(bdb_state, physical_tran, rrn, genid, dbp, dtafile,
                         dtastripe, &dbt_dta);
@@ -469,10 +449,6 @@ int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
         /* Logical log successful delete */
         rc = bdb_llog_del_dta_lk(bdb_state, physical_tran, genid, &dbt_dta,
                                  dtafile, dtastripe);
-        if (!rc)
-            rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-                physical_tran->logical_tran->last_logical_lsn);
     }
     if (dbt_dta.size)
         free(dbt_dta.data);
@@ -560,13 +536,6 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        if (gbl_rowlocks) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, physical_tran->tid->txnid);
-            if (rc)
-                goto done;
-        }
-
         *newgenid = orignew;
 
         /* Returns wall genid, wall rowlock, new genid & new rowlock */
@@ -599,10 +568,6 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
         /* Write the logical log for this update */
         rc = bdb_llog_upd_dta_lk(bdb_state, physical_tran, oldgenid, *newgenid,
                                  dtafile, dtastripe, &old_dta);
-        if (!rc)
-            rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-                bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-                physical_tran->logical_tran->last_logical_lsn);
     }
 
     if (old_dta.data)
@@ -680,13 +645,6 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
 
     /* Add key */
     do {
-        if (gbl_rowlocks) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, physical_tran->tid->txnid);
-            if (rc)
-                goto done;
-        }
-
         rc = ll_key_add(bdb_state, genid, physical_tran, ixnum, dbt_key,
                         dbt_data);
 
@@ -714,12 +672,6 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
         /* Logical log on success */
         rc = bdb_llog_add_ix_lk(bdb_state, physical_tran, ixnum, genid, dbt_key,
                                 dbt_data->size);
-        if (rc)
-            goto done;
-
-        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-            physical_tran->logical_tran->last_logical_lsn);
     }
 
 done:
@@ -798,13 +750,6 @@ int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
 
     /* Call key-delete */
     do {
-        if (gbl_rowlocks) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, physical_tran->tid->txnid);
-            if (rc)
-                goto done;
-        }
-
         rc = ll_key_del(bdb_state, physical_tran, ixnum, key->data, key->size,
                         2, genid, &payloadsz);
         if (micro_retry && --retry_count > 0 &&
@@ -831,12 +776,6 @@ int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
         /* Logical log successful delete */
         rc = bdb_llog_del_ix_lk(bdb_state, physical_tran, ixnum, genid, key,
                                 payloadsz);
-        if (rc)
-            goto done;
-
-        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-            physical_tran->logical_tran->last_logical_lsn);
     }
 
 done:
@@ -874,13 +813,6 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        if (gbl_rowlocks) {
-            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-                bdb_state->dbenv, physical_tran->tid->txnid);
-            if (rc)
-                goto done;
-        }
-
         /* Call into ll */
         rc = ll_key_upd(bdb_state, physical_tran, table_name, oldgenid,
                         newgenid, key, ix, keylen, dta, dtalen);
@@ -909,12 +841,6 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
         rc = bdb_llog_upd_ix_lk(bdb_state, physical_tran, table_name, key,
                                 keylen, ix, llog_payload_len, oldgenid,
                                 newgenid);
-        if (rc)
-            goto done;
-
-        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-            physical_tran->logical_tran->last_logical_lsn);
     }
 
 done:
@@ -948,17 +874,10 @@ int ll_undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
     if (rc)
         goto done;
     dbp = table->dbp_ix[ixnum];
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
     rc = dbp->del(dbp, physical_tran->tid, &dbt_key, 0);
     if (rc)
         goto done;
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 done:
 
     return rc;
@@ -995,17 +914,10 @@ int ll_undo_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 
     /* TODO: should this call ll.c? */
     dbp = table->dbp_data[dtafile][dtastripe];
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
     rc = dbp->del(dbp, physical_tran->tid, &dbt_genid, 0);
     if (rc)
         goto done;
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 done:
 
     return rc;
@@ -1041,19 +953,10 @@ int ll_undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
 
     /* call ll.c? */
     dbp = table->dbp_ix[ixnum];
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
     rc = dbp->put(dbp, physical_tran->tid, &dbt_key, &dbt_data, DB_NOOVERWRITE);
     if (rc)
         goto done;
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    if (rc)
-        goto done;
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 done:
 
     return rc;
@@ -1086,20 +989,11 @@ int ll_undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
     rc =
         dbp->put(dbp, physical_tran->tid, &dbt_genid, &dbt_dta, DB_NOOVERWRITE);
     if (rc)
         goto done;
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    if (rc)
-        goto done;
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 done:
     return rc;
 }
@@ -1132,11 +1026,6 @@ int ll_undo_inplace_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     dbp = table->dbp_data[dtafile][dtastripe];
 
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
-
     rc = dbp->cursor(dbp, physical_tran->tid, &cur, 0);
     if (rc)
         goto done;
@@ -1167,13 +1056,6 @@ int ll_undo_inplace_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 
     /* write compensation record and commit */
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    if (rc)
-        goto done;
-
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
-
 done:
     if (cur) {
         int crc;
@@ -1218,11 +1100,6 @@ int ll_undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     dbt_key.data = &search_genid;
     dbt_key.size = sizeof(unsigned long long);
 
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
-
     /* undo the update */
     /* delete new genid */
     rc = dbp->del(dbp, physical_tran->tid, &dbt_key, 0);
@@ -1249,12 +1126,6 @@ int ll_undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 
     /* write compensation record */
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    if (rc)
-        goto done;
-
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 done:
     return rc;
 }
@@ -1283,11 +1154,6 @@ int ll_undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
     if (rc)
         goto done;
     dbp = table->dbp_ix[ixnum];
-
-    rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-        bdb_state->dbenv, physical_tran->tid->txnid);
-    if (rc)
-        goto done;
 
     rc = dbp->cursor(dbp, physical_tran->tid, &cur, 0);
     if (rc)
@@ -1340,13 +1206,6 @@ int ll_undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
 
     /* write compensation record and commit */
     rc = bdb_llog_comprec(bdb_state, physical_tran, undolsn);
-    if (rc)
-        goto done;
-
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
-
 done:
     if (cur) {
         int crc;

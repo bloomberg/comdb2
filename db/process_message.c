@@ -607,13 +607,7 @@ extern int gbl_fdb_track_hints;
 extern unsigned long long release_locks_on_si_lockwait_cnt;
 extern int reset_blkmax(void);
 extern int reset_sequence(const char *table, const char *column, int64_t val);
-extern int gbl_new_snapisol;
-#ifdef NEWSI_STAT
-void bdb_print_logfile_pglogs_stat();
-void bdb_clear_logfile_pglogs_stat();
-#endif
 void bdb_osql_trn_clients_status();
-void bdb_newsi_mempool_stat();
 
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 void *clean_exit_thd(void *unused)
@@ -968,25 +962,6 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "enable_pageorder_recsz_check") == 0) {
         logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
-    } else if (tokcmp(tok, ltok, "get_newsi_status") == 0) {
-        logmsg(LOGMSG_USER,
-               "new snapshot is %s; new snapshot logging is %s; new snapshot "
-               "as-of is %s\n",
-               gbl_new_snapisol ? "ENABLED" : "DISABLED",
-               gbl_new_snapisol_logging ? "ENABLED" : "DISABLED",
-               gbl_new_snapisol_asof ? "ENABLED" : "DISABLED");
-        bdb_osql_trn_clients_status();
-        logmsg(LOGMSG_USER, "Release locks on snapisol lockwait count: %llu\n",
-               release_locks_on_si_lockwait_cnt);
-        if (gbl_new_snapisol) {
-            logmsg(LOGMSG_USER, "newsi memory pool stat:\n");
-            bdb_newsi_mempool_stat();
-        }
-#ifdef NEWSI_STAT
-        bdb_print_logfile_pglogs_stat();
-    } else if (tokcmp(tok, ltok, "clear_newsi_status") == 0) {
-        bdb_clear_logfile_pglogs_stat();
-#endif
     } else if (tokcmp(tok, ltok, "stack_warn_threshold") == 0) {
         int thresh;
         tok = segtok(line, lline, &st, &ltok);

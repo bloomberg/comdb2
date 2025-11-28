@@ -24,7 +24,6 @@ if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
     if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
        failexit "DB is not running in snapshot isolation mode"
     fi
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
 
 assert_vers()
