@@ -32,7 +32,6 @@ queuedb_rollover_noroll1_generated,UNKNOWN,181062375
 simple_ssl,UNKNOWN,181151988
 sc_timepart,UNKNOWN,181186021
 snapshot_during_truncate,UNKNOWN,181344241
-reqlog_update_during_sc,UNKNOWN,181484732
 scupdates_logicalsc_generated,UNKNOWN,181484749
 sc_resume_logicalsc_generated,UNKNOWN,181484807
 consumer_non_atomic_default_consumer_generated,DB_BUG,181573461

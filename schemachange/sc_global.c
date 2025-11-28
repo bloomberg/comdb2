@@ -697,3 +697,52 @@ void sc_alter_latency(int counter)
         }
     }
 }
+
+int list_running_schema_changes(struct running_sc_info **info, int *num_running_sc)
+{
+    unsigned int bucket;
+    void *entry;
+    sc_table_t *sc_table = NULL;
+    *num_running_sc = 0;
+
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+
+    if (!sc_tables) {
+        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+        return 1;
+    }
+
+    /* preallocate outparam */
+    int unused;
+    int num_entries = 0;
+    hash_info(sc_tables, &unused, &unused, &unused, &unused, &num_entries, &unused, &unused);
+    *info = malloc(sizeof(struct running_sc_info) * num_entries);
+
+    for (sc_table = hash_first(sc_tables, &entry, &bucket); sc_table;
+         sc_table = hash_next(sc_tables, &entry, &bucket)) {
+
+        /* get_dbtable_by_name looks at thedb->db_hash, so caller must
+         * hold the schema lock */
+        struct dbtable *db = get_dbtable_by_name(sc_table->tablename);
+
+        if (!db)
+            continue;
+
+        Pthread_rwlock_rdlock(&db->sc_live_lk);
+
+        if (db->doing_conversion || db->doing_upgrade) {
+            struct running_sc_info *sc_info = &((*info)[*num_running_sc]);
+            sc_info->table_name = strdup(sc_table->tablename);
+            sc_info->nrecs = db->sc_nrecs;
+            sc_info->adds = db->sc_adds;
+            sc_info->updates = db->sc_updates;
+            sc_info->deletes = db->sc_deletes;
+            ++(*num_running_sc);
+        }
+
+        Pthread_rwlock_unlock(&db->sc_live_lk);
+    }
+
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return 0;
+}
