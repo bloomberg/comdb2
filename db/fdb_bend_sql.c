@@ -608,6 +608,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
     pCur->numblobs = get_schema_blob_count(pCur->db, ".ONDISK");
 
     if (need_bdbcursor) {
+        assert(clnt->dbtran.mode != TRANLEVEL_MODSNAP || clnt->modsnap_in_progress);
         pCur->bdbcur = bdb_cursor_open(
             pCur->db->handle, clnt->dbtran.cursor_tran,
             clnt->dbtran.shadow_tran, pCur->ixnum,
