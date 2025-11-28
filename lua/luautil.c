@@ -422,7 +422,7 @@ HashType luabb_hashinfo(void *udata, double *d, const char **c, size_t *l)
         if (c != NULL && l != NULL) {
             if (t->dbtype == DBTYPES_CSTRING) {
                 *c = ((lua_cstring_t *)t)->val;
-                *l = strlen(*c);
+                *l = ((lua_cstring_t *)t)->len;
             } else {
                 *c = ((lua_blob_t *)t)->val.data;
                 *l = ((lua_blob_t *)t)->val.length;
@@ -582,12 +582,13 @@ int luabb_iscstring(Lua l, int idx)
 }
 
 /* assumes luabb_iscstring is true */
-const char *luabb_tocstring(Lua l, int idx)
+const char *luabb_tolcstring(Lua l, int idx, size_t *len)
 {
     const TValue *o = index2adr(l, idx);
     lua_dbtypes_t *bb = luabb_todbpointer(o);
     if (bb->dbtype != DBTYPES_CSTRING) abort();
     lua_cstring_t *ptr = (lua_cstring_t *)bb;
+    if (len != NULL) *len = ptr->len;
     return ptr->val;
 }
 
