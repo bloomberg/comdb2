@@ -17,6 +17,8 @@
 #ifndef INCLUDE_SC_GLOBAL_H
 #define INCLUDE_SC_GLOBAL_H
 
+#include <stdint.h>
+
 extern pthread_mutex_t schema_change_in_progress_mutex;
 extern pthread_mutex_t fastinit_in_progress_mutex;
 extern pthread_mutex_t schema_change_sbuf2_lock;
@@ -60,6 +62,14 @@ extern int rep_sync_save;
 extern int log_sync_save;
 extern int log_sync_time_save;
 
+struct running_sc_info {
+    const char *table_name;
+    uint64_t nrecs;   /* num records converted (does not include `adds`) */
+    uint32_t adds;    /* num added in front of sc cursor */
+    uint32_t updates; /* num updated behind sc cursor */
+    uint32_t deletes; /* num deleted behind sc cursor */
+};
+
 int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name(const char *);
 void wait_for_sc_to_stop(const char *operation, const char *func, int line);
@@ -87,5 +97,8 @@ struct schema_change_type *preempt_ongoing_alter(char *table, int action);
 void clear_ongoing_alter();
 int get_stopsc(const char *func, int line);
 void sc_alter_latency(int counter);
+/* List all running schema changes and their progress. Caller must acquire schema
+ * lock in read mode. */
+int list_running_schema_changes(struct running_sc_info **info, int *num_running_sc);
 
 #endif
