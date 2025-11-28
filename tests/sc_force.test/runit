@@ -11,6 +11,7 @@ master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $fixednode 'exec procedure s
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >actual 2>&1 
 drop table if exists t
 create table t {`cat t1.csc2`}\$\$
+set transaction blocksql
 set transaction chunk 10000
 BEGIN
 insert into t select * from generate_series(1,1000000)
