@@ -2,3 +2,4 @@ create table t5 { schema { cstring a[10] } keys { "a" = (cstring[10])"LOWER(a)" 
 insert into t5 values("hi");
 set expert on
 select 1;
+drop table t5
