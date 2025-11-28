@@ -208,6 +208,7 @@ struct txn_properties;
 #define	DB_USE_ENVIRON	      0x0000400	/* Use the environment. */
 #define	DB_USE_ENVIRON_ROOT   0x0000800	/* Use the environment if root. */
 #define DB_RECOVERY_CKP       0x0001000 /* Do recovery checkpoint */
+#define	DB_CLR_UFID           0x0002000	/* Clear open handle in ufid-hash */
 
 /*
  * Common flags --

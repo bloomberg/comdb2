@@ -77,6 +77,11 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	int ret;
 	u_int32_t id;
 
+	DB_LSN dummy_lsn;
+	ZERO_LSN(dummy_lsn);
+	DB *ufid_dbp = NULL;
+	int ufid_find_rc = 0;
+
 	dbenv = dbp->dbenv;
 	id = TXN_INVALID;
 
@@ -158,6 +163,19 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 		    txn, fname, dname, mode, flags)) != 0)
 			return (ret);
 		meta_pgno = dbp->meta_pgno;
+	}
+
+	if (LF_ISSET(DB_CLR_UFID)) {
+		ufid_find_rc = __ufid_find_db(dbenv, txn, &ufid_dbp, dbp->fileid, &dummy_lsn);
+		if (ufid_find_rc == 0 && ufid_dbp != NULL && F_ISSET(ufid_dbp, DB_AM_RECOVER)) {
+			logmsg(LOGMSG_WARN, "%s: closing ufid hash open DB handle to %s\n", __func__, fname);
+			ret = __db_close(ufid_dbp, txn, flags);
+			if (ret != 0) {
+				__db_err(dbenv, "__db_close(%s)", dbp->fname);
+			}
+		}
+		/* don't fail */
+		ret = 0;
 	}
 
 	/*
