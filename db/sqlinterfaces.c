@@ -3632,6 +3632,14 @@ static void handle_expert_query(struct sqlthdstate *thd,
     int rc;
     char *zErr = 0;
 
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        if (clnt->modsnap_in_progress) {
+            clear_modsnap_state(clnt);
+        }
+        logmsg(LOGMSG_WARN, "%s: Downgrading to blocksql for expert mode query\n", __func__);
+        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+    }
+
     *outrc = 0;
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
