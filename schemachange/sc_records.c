@@ -140,16 +140,20 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
     /* totals across all threads */
     if (data->scanmode != SCAN_PARALLEL) return 1;
 
-    long long total_nrecs_diff =
-        data->from->sc_nrecs - data->from->sc_prev_nrecs;
+    uint64_t total_nrecs_diff = data->from->sc_nrecs - data->from->sc_prev_nrecs;
     data->from->sc_prev_nrecs = data->from->sc_nrecs;
+
+    /* actual progress made after accounting for updates and deletes that
+     * happened behind the schema change cursor (by definition, all adds happen
+     * in front of the schema change cursor) */
+    uint64_t actual_nrecs = data->from->sc_nrecs - (data->from->sc_updates + data->from->sc_deletes);
+
     sc_printf(data->s,
-              "[%s] progress TOTAL %lld +%lld actual "
-              "progress total %lld rate %lld r/s\n",
-              data->from->tablename, data->from->sc_nrecs, total_nrecs_diff,
-              data->from->sc_nrecs -
-                  (data->from->sc_adds + data->from->sc_updates),
-              total_nrecs_diff / sc_report_freq);
+              "[%s] progress TOTAL %lld +%lld rate %lld r/s "
+              "actual progress total %lld\n",
+              data->from->tablename, data->from->sc_nrecs, total_nrecs_diff, total_nrecs_diff / sc_report_freq,
+              actual_nrecs);
+
     return 1;
 }
 
