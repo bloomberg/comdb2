@@ -7421,10 +7421,6 @@ restart:
 		__rep_set_gen(dbenv, __func__, __LINE__, newgen);
 	}
 
-	/* Recovery cleanup is called holding recoverlk */
-	if (dbenv->rep_recovery_cleanup)
-		dbenv->rep_recovery_cleanup(dbenv, trunclsnp, i_am_master);
-
 	logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
 			trunclsnp->file, trunclsnp->offset);
 
@@ -8625,10 +8621,6 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_SET(region, TXN_IN_RECOVERY);
 		__log_vtruncate(dbenv, &rp->lsn, &region->last_ckp, &trunclsn);
 		F_CLR(region, TXN_IN_RECOVERY);
-
-		/* Recovery cleanup */
-		if (dbenv->rep_recovery_cleanup)
-			dbenv->rep_recovery_cleanup(dbenv, &trunclsn, i_am_master);
 
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 

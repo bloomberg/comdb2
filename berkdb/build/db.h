@@ -2830,8 +2830,6 @@ struct __db_env {
 	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, uint32_t flags)));
 	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, uint32_t flags);
 	void (*rep_set_gen)(DB_ENV *, uint32_t gen);
-	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
-	int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
 	int (*wrlock_recovery_lock)(DB_ENV *, const char *func, int line);
     int (*wrlock_recovery_blocked)(DB_ENV *);
 	int (*lock_recovery_lock)(DB_ENV *, const char *func, int line);
