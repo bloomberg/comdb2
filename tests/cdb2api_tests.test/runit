@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+cfg=$DBDIR/comdb2db.cfg
+echo 'comdb2_feature:discard_unread_socket_data=on' >> ${cfg}
+echo 'comdb2_config:max_local_connection_cache_entries=4' >> ${cfg}
+echo 'comdb2_config:max_local_connection_cache_age=10' >> ${cfg}
+echo 'comdb2_config:local_connection_cache_use_sbuf=1' >> ${cfg}
+${TESTSBUILDDIR}/cdb2api_unread_data ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_unread_data - fail" && exit 1
+sed -i '/comdb2_feature:discard_unread_socket_data=on/d' "${cfg}"
+sed -i '/comdb2_config:max_local_connection_cache_entries=4/d' "${cfg}"
+sed -i '/comdb2_config:max_local_connection_cache_age=10/d' "${cfg}"
+sed -i '/comdb2_config:local_connection_cache_use_sbuf=1/d' "${cfg}"
+echo 'cdb2api_unread_data - pass'
+
 exit 0
