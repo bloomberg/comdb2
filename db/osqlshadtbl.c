@@ -2243,6 +2243,7 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             }
         }
 
+        assert(thd->clnt->dbtran.mode != TRANLEVEL_MODSNAP || thd->clnt->modsnap_in_progress);
         tmpcur = bdb_cursor_open(
             pCur->db->handle, thd->clnt->dbtran.cursor_tran,
             thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
@@ -2349,6 +2350,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
         }
         memcpy(&key[db->ix_keylen[ix]], &genid, sizeof(genid));
 
+        assert(thd->clnt->dbtran.mode != TRANLEVEL_MODSNAP || thd->clnt->modsnap_in_progress);
         tmpcur = bdb_cursor_open(
             db->handle, thd->clnt->dbtran.cursor_tran,
             thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,

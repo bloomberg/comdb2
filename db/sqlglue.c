@@ -8449,6 +8449,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     } else {
         open_type = BDB_OPEN_REAL;
     }
+    assert(clnt->dbtran.mode != TRANLEVEL_MODSNAP || clnt->modsnap_in_progress);
     cur->bdbcur = bdb_cursor_open(
         cur->db->handle, clnt->dbtran.cursor_tran, shadow_tran, cur->ixnum,
         open_type, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
