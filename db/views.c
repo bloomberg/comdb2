@@ -3538,7 +3538,7 @@ struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned lon
     struct dbtable *ret;
     unsigned long long lltm = flibc_llflip(genid);
     int tm = lltm >> 32;
-    fprintf(stderr, "FOR %llx time is %x %u\n", genid, tm, tm);
+    //fprintf(stderr, "FOR %llx time is %x %u\n", genid, tm, tm);
 
     /* by default, all goes to current */
     ret = retros->ss[retros->n - 1] ? retros->ss[retros->n - 1]->newdb : NULL;
@@ -3553,8 +3553,13 @@ struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned lon
             break;
         }
     }
-
-    fprintf(stderr, "FOR %llx found shard %s\n", genid, ret ? ret->tablename : "NULL");
+    if (i < retros->n) {
+        pthread_mutex_lock(&retros->cs[i].mtx);
+        retros->cs[i].counter++;
+        if (retros->cs[i].counter % 1000 == 1)
+            fprintf(stderr, "FOR %llx found shard %s counter %d\n", genid, ret ? ret->tablename : "NULL", retros->cs[i].counter);
+        pthread_mutex_unlock(&retros->cs[i].mtx);
+    }
     return ret;
 }
 

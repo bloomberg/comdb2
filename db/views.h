@@ -74,12 +74,18 @@ enum views_trigger_op {
     VIEWS_TRIGGER_UPDATE = 3
 };
 
+typedef struct timepart_retro_ctr
+{
+    pthread_mutex_t mtx;
+    int counter;
+} timepart_retro_ctr_t;
 
 typedef struct timepart_retro
 {
     int n;
     int *limits;
     struct schema_change_type **ss;
+    timepart_retro_ctr_t *cs;
 } timepart_retro_t;
 
 enum shard_pos { /* keep them bits */

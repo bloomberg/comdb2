@@ -6396,13 +6396,17 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         /* we want to retroactively populate the shards with existing data */
 
         /* determine retroactive time boundaries for the shards */
-        int len = sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*));
+        int len = sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*) + sizeof(timepart_retro_ctr_t));
         arg.retros = malloc(len);
         if (!arg.retros)
             abort();
         bzero(arg.retros, len);
         arg.retros->limits = (int*)(((char*)arg.retros) + sizeof(struct timepart_retro));
         arg.retros->ss = (struct schema_change_type**)((char*)arg.retros+ sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * sizeof(int));
+        arg.retros->cs = (timepart_retro_ctr_t*)((char*)arg.retros+ sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*)));
+        for(int ii=0; ii < sc->partition.u.tpt.retention; ii++) {
+            pthread_mutex_init(&arg.retros->cs[ii].mtx, 0);
+        }
         rc = timepart_populate_timelimits(sc->newpartition, arg.retros, &err);
         if (rc) {
             timepart_free_view(sc->newpartition);
@@ -6445,6 +6449,11 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.s->sharding_func = timepart_retro_route;
         arg.s->newpartition = newpartition;
         arg.s->force_rebuild = 1;
+        for( int jj = 0; jj < arg.retros->n; jj++) {
+            fprintf(stderr, "PARTITION %s shard %d time %u name %s\n",
+                    arg.part_name, jj, arg.retros->limits[jj],
+                    (jj < (arg.retros->n - 1)) ? arg.retros->ss[jj]->tablename : arg.part_name);
+        }
         /* existing table name matches the partition name */
         rc = start_schema_change_tran_wrapper(arg.part_name, NULL, &arg);
         if (rc) {
