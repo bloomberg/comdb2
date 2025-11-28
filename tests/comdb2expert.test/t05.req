@@ -1,0 +1,17 @@
+insert into t5 values(1)
+insert into t5 values(2)
+insert into t5 values(3)
+insert into t5 values(4)
+insert into t5 values(1)
+insert into t5 values(1)
+insert into t5 values(1)
+insert into t5 values(2)
+insert into t5 values(3)
+insert into t5 values(4)
+
+-- Test expert mode inside an explicit transaction
+set expert on
+begin
+select * from t5 where i = 1;
+commit
+
