@@ -141,6 +141,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "sc_util.h"
+#include "sc_global.h"
 #include "reverse_conn.h"
 #include "alias.h"
 #include "str_util.h" /* QUOTE */
@@ -4647,8 +4648,6 @@ int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
-#include <sc_util.h>
-
 
 static inline void log_tbl_item(int64_t curr, int64_t *prev, const char *(*type_to_str)(int), int type, char *string,
                                 int *hdr_p, struct reqlogger *statlogger, dbtable *tbl, int first) 
@@ -4750,6 +4749,8 @@ void *statthd(void *p)
     int have_scon_stats = 0;
     int64_t rw_evicts;
 
+    int last_num_sc = 0;
+    struct running_sc_info *last_schema_changes = NULL;
 
     thrman_register(THRTYPE_GENERIC);
     thread_started("statthd");
@@ -4923,7 +4924,9 @@ void *statthd(void *p)
             }
 
             int aa_include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
+
             rdlock_schema_lk();
+
             for (ii = 0; ii < dbenv->num_dbs; ++ii) {
                 dbtable *tbl = dbenv->dbs[ii];
                 int hdr = 0;
@@ -4970,6 +4973,50 @@ void *statthd(void *p)
                 log_tbl_item(tbl->deadlock_count, &tbl->saved_deadlock_count, NULL, 0, "deadlock count", &hdr,
                              statlogger, tbl, 0);
             }
+
+            int num_sc = 0;
+            struct running_sc_info *schema_changes = NULL;
+
+            if (list_running_schema_changes(&schema_changes, &num_sc) == 0) {
+                if (num_sc > 0) {
+                    /* log header */
+                    reqlog_logf(statlogger, REQL_INFO, "SCHEMA CHANGE STATS\n");
+                }
+
+                for (ii = 0; ii < num_sc; ii++) {
+                    struct running_sc_info sc = schema_changes[ii];
+                    struct running_sc_info *last_sc = NULL;
+
+                    for (jj = 0; jj < last_num_sc; jj++) {
+                        if (strcmp(last_schema_changes[jj].table_name, sc.table_name) == 0) {
+                            last_sc = &last_schema_changes[jj];
+                            break;
+                        }
+                    }
+
+                    uint64_t last_nrecs = last_sc ? last_sc->nrecs : 0;
+                    uint32_t last_adds = last_sc ? last_sc->adds : 0;
+                    uint32_t last_updates = last_sc ? last_sc->updates : 0;
+                    uint32_t last_deletes = last_sc ? last_sc->deletes : 0;
+
+                    uint64_t diff_nrecs = sc.nrecs - last_nrecs;
+
+                    reqlog_logf(
+                        statlogger, REQL_INFO,
+                        "    table '%s' records converted %ld diff %ld rate %ld r/s adds %d updates %d deletes %d\n",
+                        sc.table_name,                             //
+                        sc.nrecs, diff_nrecs, diff_nrecs / thresh, //
+                        sc.adds - last_adds,                       //
+                        sc.updates - last_updates,                 //
+                        sc.deletes - last_deletes);
+                }
+
+                free(last_schema_changes);
+
+                last_num_sc = num_sc;
+                last_schema_changes = schema_changes;
+            }
+
             unlock_schema_lk();
 
             pstats = bdb_get_process_stats();
