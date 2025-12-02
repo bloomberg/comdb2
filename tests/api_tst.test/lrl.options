@@ -1,1 +1,2 @@
 enable_snapshot_isolation
+forbid_remote_admin 1

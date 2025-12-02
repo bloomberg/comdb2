@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+db=${DBNAME}
+tier=default
+CDB2_HOST_NAME=localhost
+
+if [[ -n "$CLUSTER" ]]; then
+    node=$(echo "$CLUSTER" | awk '{print $1}')
+    ssh -o StrictHostKeyChecking=no $node "${TESTSBUILDDIR}/cdb2api_admin ${db} ${CDB2_HOST_NAME} ${tier}"
+    [[ $? -ne 0 ]] && echo "admin connection to local host test failed" &&  echo "admin - fail" && exit 1
+else
+    ${TESTSBUILDDIR}/cdb2api_admin ${db} ${CDB2_HOST_NAME} ${tier}
+    [[ $? -ne 0 ]] && echo "admin connection to local host test failed" &&  echo "admin - fail" && exit 1
+fi
+
+if [[ -n "$CLUSTER" ]]; then
+    CDB2_HOST_NAME=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs -s ${db} ${tier} "select comdb2_host()")
+    ${TESTSBUILDDIR}/cdb2api_admin ${db} ${CDB2_HOST_NAME} ${tier} 
+    [[ $? -ne 0 ]] && echo "admin connection to remote host test failed" && echo "admin - fail" && exit 1
+fi
+
+echo 'admin - pass'
+
 ${TESTSBUILDDIR}/cdb2api_hasql ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_hasql - fail" && exit 1
 echo 'cdb2api_hasql - pass'
