@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+${TESTSBUILDDIR}/cdb2api_hasql ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_hasql - fail" && exit 1
+echo 'cdb2api_hasql - pass'
+
 pgrep cdb2sockpool
 if [ $? -ne 0 ]; then
     echo 'SOCKPOOL IS REQUIRED TO RUN THE TEST BUT IS NOT RUNNING.' >&2
