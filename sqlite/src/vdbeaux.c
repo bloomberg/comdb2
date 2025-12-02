@@ -104,9 +104,17 @@ void sqlite3VdbeAddDblquoteStr(sqlite3 *db, Vdbe *p, const char *z){
     DblquoteStr *pStr = sqlite3DbMallocRawNN(db,
                             sizeof(*pStr)+n+1-sizeof(pStr->z));
     if( pStr ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if (!p->dblStrHash) {
+        p->dblStrHash = hash_init_str(0);
+      }
+#endif
       pStr->pNextStr = p->pDblStr;
       p->pDblStr = pStr;
       memcpy(pStr->z, z, n+1);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      hash_add(p->dblStrHash, pStr->z);
+#endif
     }
   }
 }
@@ -124,15 +132,21 @@ int sqlite3VdbeUsesDoubleQuotedString(
   ,int iDefDqId           /* Return value when there is no Vdbe. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
-  DblquoteStr *pStr;
   assert( zId!=0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( pVdbe==0 ) return iDefDqId;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pVdbe->pDblStr==0 ) return 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if (pVdbe->dblStrHash) {
+    return (hash_find(pVdbe->dblStrHash, zId)) != 0;
+  }
+#else
+  DblquoteStr *pStr;
   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){
     if( strcmp(zId, pStr->z)==0 ) return 1;
   }
+#endif
   return 0;
 }
 #endif
@@ -3485,6 +3499,13 @@ void sqlite3VdbeClearObject(sqlite3 *db, Vdbe *p){
       pNext = pThis->pNextStr;
       sqlite3DbFree(db, pThis);
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if (p->dblStrHash) {
+      hash_clear(p->dblStrHash);
+      hash_free(p->dblStrHash);
+      p->dblStrHash = NULL;
+    }
+#endif
   }
 #endif
 #ifdef SQLITE_ENABLE_STMT_SCANSTATUS
