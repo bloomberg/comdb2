@@ -21,6 +21,7 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <time.h>
 #include <strings.h>
+#include <plhash_glue.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -569,6 +570,9 @@ struct Vdbe {
 #ifdef SQLITE_ENABLE_NORMALIZE
   char *zNormSql;         /* Normalization of the associated SQL statement */
   DblquoteStr *pDblStr;   /* List of double-quoted string literals */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  hash_t *dblStrHash;
+#endif
 #endif
   void *pFree;            /* Free this when deleting the vdbe */
   VdbeFrame *pFrame;      /* Parent frame */
