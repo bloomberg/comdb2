@@ -29,7 +29,7 @@ for node in $cluster ; do
     fi
 
     currused=`echo $line | awk '{ print $5 }' | sed 's/%//'`
-    currfree=$((101-currused))
+    currfree=$((111-currused))
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr sqlite_sorter_tempdir_reqfree $currfree')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb attr ')" | grep -i sqlite_sorter_tempdir_reqfree
 done
