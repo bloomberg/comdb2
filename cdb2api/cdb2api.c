@@ -7181,7 +7181,7 @@ typedef struct SRVRecord {
     unsigned short priority;
     unsigned short weight;
     unsigned short port;
-    char dname[MAXCDNAME];
+    char dname[NS_MAXCDNAME];
 } SRVRecord;
 
 static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, const char *tier, int *num_hosts,
@@ -7203,7 +7203,7 @@ static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, co
         return -1;
 
     unsigned char answer[16384];
-    int len = res_nsearch(&res, dns_name, C_IN, ns_t_srv, answer, sizeof(answer));
+    int len = res_nsearch(&res, dns_name, ns_c_in, ns_t_srv, answer, sizeof(answer));
 
     if (len < 0) {
         rc = -1;

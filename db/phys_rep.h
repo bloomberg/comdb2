@@ -17,6 +17,7 @@
 #ifndef PHYS_REP_H
 #define PHYS_REP_H
 
+#include <pthread.h>
 #include <stdlib.h>
 #include <cdb2api.h>
 
