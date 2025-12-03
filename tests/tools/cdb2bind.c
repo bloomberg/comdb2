@@ -588,7 +588,7 @@ static void test_bind_blob_array()
 {
     cdb2_hndl_tp *hndl = NULL;
     test_open(&hndl, db);
-    const int N = INT16_MAX;
+    enum { N = INT16_MAX };
     struct blob blobs[N];
     uint8_t db[N];
     memset(db, 0xdb, sizeof(db));
@@ -700,7 +700,7 @@ static void test_pass_array_to_sp()
     test_open(&hndl, db);
 
 
-    const int N = 10240;
+    enum { N = 10240 };
     int32_t i32s[N];
     int64_t i64s[N];
     double ds[N];
