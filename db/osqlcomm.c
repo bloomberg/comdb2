@@ -6340,6 +6340,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
+    int retro_partition = sc->kind == SC_ALTERTABLE && gbl_retro_tpt;
 
     if (sc->partition.type == PARTITION_REMOVE) {
         logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
@@ -6371,7 +6372,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     }
 
     /* create shards for the partition */
-    rc = timepart_populate_shards(sc->newpartition, &err);
+    rc = timepart_populate_shards(sc->newpartition, retro_partition, &err);
     if (rc) {
         assert(err.errval != VIEW_NOERR);
 
@@ -6392,7 +6393,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         return ERR_SC;
     arg.lockless = 0; /* the partition does not exist */
 
-    if (sc->kind == SC_ALTERTABLE && gbl_retro_tpt) {
+    if (retro_partition) {
         /* we want to retroactively populate the shards with existing data */
 
         /* determine retroactive time boundaries for the shards */

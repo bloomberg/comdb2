@@ -425,7 +425,7 @@ timepart_view_t *timepart_new_partition(const char *name, int period,
  * view->retention
  *
  */
-int timepart_populate_shards(timepart_view_t *view, struct errstat *err);
+int timepart_populate_shards(timepart_view_t *view, int retro_partition, struct errstat *err);
 
 /**
  * Populate time limits for past empty shards

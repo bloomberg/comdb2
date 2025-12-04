@@ -2909,7 +2909,7 @@ static int _get_starttime_to_future(timepart_view_t *view)
     return current_starttime;
 }
 
-int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
+int timepart_populate_shards(timepart_view_t *view, int retro_partition, struct errstat *err)
 {
     int rc = VIEW_NOERR;
     int i;
@@ -2927,7 +2927,7 @@ int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
 
     /* since we do not need to do fake rollouts, lets bring starttime to present
      */
-    int next_rollout = _get_starttime_to_future(view);
+    int next_rollout = retro_partition ? view->starttime : _get_starttime_to_future(view);
 
     /* generate shard names */
     char *old_name = view->name;
@@ -3183,7 +3183,7 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
-        if (rc == VIEW_NOERR) {
+        if (rc == VIEW_NOERR && !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
             rc = _view_new_rollout_lkless(name_dup, period, rolltime,
                                           &source_id, err);
             if (rc != VIEW_NOERR) {
@@ -3244,12 +3244,14 @@ int timepart_create_inmem_view(timepart_view_t *view)
             }
         }
 
-        /* we need to add the first scheduler event */
-        rc = _view_new_rollout_lkless(name_dup, period, rolltime, &source_id,
+        if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+            /* we need to add the first scheduler event */
+            rc = _view_new_rollout_lkless(name_dup, period, rolltime, &source_id,
                                       &err);
-        if (rc != VIEW_NOERR) {
-            logmsg(LOGMSG_ERROR, "Failed to add new rollout event %s\n",
-                   view->name);
+            if (rc != VIEW_NOERR) {
+                logmsg(LOGMSG_ERROR, "Failed to add new rollout event %s\n",
+                        view->name);
+            }
         }
     }
     return rc;
