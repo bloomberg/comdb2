@@ -3236,8 +3236,10 @@ void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, 
                 sockpool_fd = -1;
             }
         } else if (sockpool_fd != -1) {
-            fprintf(stderr, "%s: typestr too long to donate to sockpool, length %ld max %ld\n", __func__,
-                    strlen(typestr), sizeof(msg.typestr) - 1);
+            if (log_calls) {
+                fprintf(stderr, "%s: typestr too long to donate to sockpool, length %ld max %ld\n", __func__,
+                        strlen(typestr), sizeof(msg.typestr) - 1);
+            }
         }
 
         if (sockpool_fd != -1) {
