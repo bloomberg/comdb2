@@ -2882,13 +2882,6 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
     return ptr;
 }
 
-/*
-  1) set up a socket bound, and listening on our host/port
-  2) create an accept_thread blocked on that socket
-  3) create a connect thread for each entry in sites[] array
-  4) create a heartbeat thread
-*/
-
 int net_init(netinfo_type *netinfo_ptr)
 {
     int rc;
