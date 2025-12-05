@@ -154,6 +154,9 @@ setup_db() {
         echo "portmux_bind_path $pmux_socket" >> ${LRL}
     fi
 
+    echo "sql_tranlevel_default snapshot" >> ${LRL}
+    echo "enable_snapshot_isolation" >> ${LRL}
+
     # let test specific lrl options take precedence
     if [[ -f lrl ]]; then
         cat lrl >> ${LRL}
