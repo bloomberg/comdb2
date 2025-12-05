@@ -2486,6 +2486,9 @@ REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2a
 REGISTER_TUNABLE("incoherent_clnt_wait", "Delay incoherent reject if without master (Default: 10sec)", TUNABLE_INTEGER,
                  &gbl_incoherent_clnt_wait, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("new_connection_grace_ms", "Time (in ms) before new connection is eligible for eviction (Default: 100ms)",
+                 TUNABLE_INTEGER, &gbl_new_connection_grace_ms, INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("new_leader_duration", "Time new query waits for replicanted-recovery (Default: 3sec)",
                  TUNABLE_INTEGER, &gbl_new_leader_duration, 0, NULL, NULL, NULL, NULL);
 
@@ -2578,5 +2581,7 @@ REGISTER_TUNABLE("prefer_non_blocking_coherency_check",
                  "If set, prefer to use `bdb_try_am_i_coherent()` over `bdb_am_i_coherent()` when checking whether we "
                  "are coherent. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_prefer_non_blocking_coherency_check, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("accept_headroom", "", TUNABLE_INTEGER, &gbl_accept_headroom, INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
