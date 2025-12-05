@@ -31,7 +31,7 @@ struct sqlclntstate;
 struct sqlwriter;
 struct ssl_data;
 
-int  sql_flush(struct sqlwriter *);
+int sql_flush(struct sqlwriter *);
 
 void sql_enable_heartbeat(struct sqlwriter *);
 void sql_disable_heartbeat(struct sqlwriter *);
@@ -55,6 +55,7 @@ struct sqlwriter_arg {
 struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *);
 void sqlwriter_free(struct sqlwriter *);
 void sql_reset(struct sqlwriter *);
+void sqlwriter_init(void); /* called once from net on startup */
 
 int sql_done(struct sqlwriter *);
 int sql_peer_check(struct sqlwriter *);
