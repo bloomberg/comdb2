@@ -5,6 +5,22 @@ ${TESTSBUILDDIR}/cdb2api_hasql ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_hasql - fail" && exit 1
 echo 'cdb2api_hasql - pass'
 
+${TESTSBUILDDIR}/cdb2api_setoptions ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_setoptions - fail" && exit 1
+echo 'cdb2api_setoptions - pass'
+
+CDB2_LOG_CALLS=1 ${TESTSBUILDDIR}/cdb2api_stmt_return_types ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_stmt_return_types - fail" && exit 1
+echo 'cdb2api_stmt_return_types - pass'
+
+${TESTSBUILDDIR}/cdb2api_string_escape
+[[ $? -ne 0 ]] && echo "cdb2api_string_escape - fail" && exit 1
+echo 'cdb2api_string_escape - pass'
+
+${TESTSBUILDDIR}/cdb2api_txn ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_txn - fail" && exit 1
+echo 'cdb2api_txn - pass'
+
 pgrep cdb2sockpool
 if [ $? -ne 0 ]; then
     echo 'SOCKPOOL IS REQUIRED TO RUN THE TEST BUT IS NOT RUNNING.' >&2
