@@ -228,6 +228,14 @@ extern int gbl_debug_partial_write;
 extern int gbl_debug_sleep_on_verify;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
+
+extern int gbl_sql_logfill;
+extern int gbl_debug_sql_logfill;
+extern int gbl_sql_logfill_stats;
+extern int gbl_sql_logfill_only_gaps;
+extern int gbl_sql_logfill_dedicated_apply_thread;
+extern int gbl_sql_logfill_lookahead_records;
+
 extern int gbl_dedup_rep_all_reqs;
 extern int gbl_apply_queue_memory;
 extern int gbl_inmem_repdb;

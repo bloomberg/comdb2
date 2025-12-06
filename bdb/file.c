@@ -35,6 +35,8 @@
 #include <dirent.h>
 #include <fcntl.h>
 
+#include <signallogfill.h>
+
 #ifdef __sun
 /* for PTHREAD_STACK_MIN on Solaris */
 #define __EXTENSIONS__
@@ -2677,7 +2679,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     dbenv->set_rep_transport(dbenv, bdb_state->repinfo->myhost,
                              berkdb_send_rtn);
     dbenv->set_rep_send_ack(dbenv, comdb2_early_ack);
-
+    dbenv->set_rep_signal_logfill(dbenv, comdb2_signal_logfill);
     dbenv->set_check_standalone(dbenv, comdb2_is_standalone);
     dbenv->set_truncate_sc_callback(dbenv, comdb2_reload_schemas);
     dbenv->set_rep_truncate_callback(dbenv, comdb2_replicated_truncate);

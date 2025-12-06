@@ -4,16 +4,10 @@
 #include <stdint.h>
 #include <time.h>
 
-typedef struct LOG_INFO LOG_INFO;
-struct LOG_INFO {
-    uint32_t file;
-    uint32_t offset;
-    uint32_t size;
-    uint32_t gen;
-};
-
 struct __db_env;
 struct bdb_state_tag;
+
+#include <log_info.h>
 
 typedef unsigned char u_int8_t;
 
@@ -32,9 +26,6 @@ int physrep_ignore_table_count(void);
 /* List ignored tables */
 int physrep_list_ignored_tables(void);
 
-LOG_INFO get_last_lsn(struct bdb_state_tag *);
-LOG_INFO get_first_lsn(struct bdb_state_tag *);
-uint32_t get_next_offset(struct __db_env *, LOG_INFO log_info);
 int apply_log(struct bdb_state_tag *, unsigned int file, unsigned int offset, int64_t rectype, void *blob,
               int blob_len);
 int truncate_log_lock(struct bdb_state_tag *, unsigned int file,
