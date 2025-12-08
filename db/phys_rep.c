@@ -1371,12 +1371,50 @@ static int do_wait_for_reverse_conn(cdb2_hndl_tp *repl_metadb) {
        This is the database/node that to replicant connects to retrieve and
        apply physical logs.
 */
+
+static int get_current_lcgen(cdb2_hndl_tp *repl_db, int64_t *lcgen)
+{
+    char cmd[200];
+    int rc;
+    rc = snprintf(cmd, sizeof(cmd), "select * from comdb2_transaction_logs limit 1");
+    if (rc < 0 || rc >= sizeof(cmd)) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
+    }
+
+    if (gbl_physrep_debug)
+        physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
+
+    rc = cdb2_run_statement(repl_db, cmd);
+    if (rc == CDB2_OK) {
+        while ((rc = cdb2_next_record(repl_db)) == CDB2_OK) {
+            int numcolumns = cdb2_numcolumns(repl_db);
+            if (numcolumns > 7) {
+                *lcgen = *(int64_t *)cdb2_column_value(repl_db, 7);
+                if (gbl_physrep_debug) {
+                    physrep_logmsg(LOGMSG_USER, "%s:%d first lcgen: %" PRId64 "\n", __func__, __LINE__, *lcgen);
+                }
+            } else {
+                *lcgen = -1;
+                if (gbl_physrep_debug) {
+                    physrep_logmsg(LOGMSG_USER, "%s:%d lcgen column not found, set to -1\n", __func__, __LINE__);
+                }
+            }
+        }
+    } else {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
+    }
+
+    return 0;
+}
+
 int gbl_physrep_pollms = 0;
 static void *physrep_worker(void *args)
 {
     comdb2_name_thread(__func__);
 
     volatile int64_t gen, highest_gen = 0;
+    int64_t first_lcgen = -1;
     size_t sql_cmd_len = 150;
     char sql_cmd[sql_cmd_len];
     int do_truncate = 0;
@@ -1551,6 +1589,10 @@ repl_loop:
 
         if (do_truncate && repl_db) {
             info = get_last_lsn(thedb->bdb_env);
+            if (get_current_lcgen(repl_db, &first_lcgen) != 0) {
+                close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                goto sleep_and_retry;
+            }
             prev_info = handle_truncation(repl_db, info);
             if (prev_info.file == 0) {
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
@@ -1598,8 +1640,22 @@ repl_loop:
         /* our log matches, so apply each record log received */
         while (stop_physrep_worker == 0 && thedb->master == gbl_myhostname && !do_truncate &&
                (rc = cdb2_next_record(repl_db)) == CDB2_OK) {
-            /* check the generation id to make sure the master hasn't
-             * switched */
+            /* log-cursor-gen tells us if the source has truncated its txnlog */
+            int numcolumns = cdb2_numcolumns(repl_db);
+            if (numcolumns > 7) {
+                int64_t *lcgen = (int64_t *)cdb2_column_value(repl_db, 7);
+                if (first_lcgen > -1 && *lcgen != first_lcgen) {
+                    if (gbl_physrep_debug) {
+                        physrep_logmsg(LOGMSG_USER,
+                                       "%s:%d: source logfile has been truncated, close connection and truncate\n",
+                                       __func__, __LINE__);
+                    }
+                    close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                    do_truncate = 1;
+                    first_lcgen = -1;
+                    goto repl_loop;
+                }
+            }
 
             int64_t *rec_gen = (int64_t *)cdb2_column_value(repl_db, 2);
             if (rec_gen && *rec_gen > highest_gen) {
