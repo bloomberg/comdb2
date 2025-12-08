@@ -40,10 +40,11 @@
 #define TRANLOG_COLUMN_LOG          9
 #define TRANLOG_COLUMN_TXNID        10
 #define TRANLOG_COLUMN_UTXNID       11
-#define TRANLOG_COLUMN_MAXUTXNID    12
-#define TRANLOG_COLUMN_CHILDUTXNID  13
-#define TRANLOG_COLUMN_LSN_FILE     14 /* Useful for sorting records by LSN */
-#define TRANLOG_COLUMN_LSN_OFFSET   15
+#define TRANLOG_COLUMN_LOGCGEN      12
+#define TRANLOG_COLUMN_MAXUTXNID    13
+#define TRANLOG_COLUMN_CHILDUTXNID  14
+#define TRANLOG_COLUMN_LSN_FILE     15 /* Useful for sorting records by LSN */
+#define TRANLOG_COLUMN_LSN_OFFSET   16
 
 extern int gbl_apprec_gen;
 int gbl_tranlog_default_timeout = 30;
@@ -85,7 +86,7 @@ static int tranlogConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,blocklsn hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,blocklsn hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,logcgen integer, maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -587,6 +588,7 @@ static int tranlogColumn(
   int64_t timestamp = 0;
   u_int32_t txnid = 0;
   u_int64_t utxnid = 0;
+  int64_t logcgen = -1;
   u_int64_t maxutxnid = 0;
   u_int64_t childutxnid = 0;
 
@@ -690,6 +692,12 @@ static int tranlogColumn(
             }
         }
         sqlite3_result_null(ctx);
+        break;
+    case TRANLOG_COLUMN_LOGCGEN:
+        if (pCur->openCursor) {
+            logcgen = pCur->logc->log_cursor_gen;
+        }
+        sqlite3_result_int64(ctx, logcgen);
         break;
     case TRANLOG_COLUMN_TIMESTAMP:
         if (pCur->data.data)
