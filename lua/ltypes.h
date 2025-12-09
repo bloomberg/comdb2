@@ -134,7 +134,6 @@ typedef struct {
 typedef struct {
     DBTYPES_COMMON;
     char* val;
-    int len;
 } lua_cstring_t;
 
 typedef struct {

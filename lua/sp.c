@@ -4511,7 +4511,6 @@ static int db_setnull(Lua lua)
         c = (lua_cstring_t *)t;
         free(c->val);
         c->val = NULL;
-        c->len = 0;
         break;
     case DBTYPES_BLOB:
         b = (lua_blob_t *)t;
