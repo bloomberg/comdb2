@@ -6,17 +6,14 @@ export exe=${TESTSBUILDDIR}/cdb2_close_early
 
 set -e
 
-echo "comdb2_config:auto_consume_timeout=2" >>$DBDIR/comdb2db.cfg
+echo "comdb2_feature:discard_unread_socket_data=on" >>$DBDIR/comdb2db.cfg
 
 cdb2sql ${CDB2_OPTIONS} $db default "create table t1 (i int)"
-cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_series(1,20)"
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_series(1,100000)"
 
 $exe -d $db -e > out.txt 2>&1
-grep "auto consume 19 records" out.txt
-
-cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_series(1,100000)"
-$exe -d $db -e > out2.txt 2>&1
-grep "auto consume.*records took [234] ms" out2.txt
+grep "Discarded socket 1 Discarded 1 Max 1 type 2" out.txt
+grep "cdb2_close took 0 ms" out.txt
 
 echo "Passed"
 exit 0
