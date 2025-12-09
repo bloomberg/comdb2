@@ -34,6 +34,8 @@
 #include "truncate_log.h"
 #include "reversesql.h"
 #include "reverse_conn.h"
+#include <rtcpu.h>
+#include <machclass.h>
 
 #include <parse_lsn.h>
 #include <logmsg.h>
@@ -72,6 +74,7 @@ int gbl_physrep_revconn_check_interval = 60;
 int gbl_physrep_update_registry_interval = 60;
 int gbl_physrep_shuffle_host_list = 0;
 int gbl_physrep_i_am_metadb = 0;
+int gbl_physrep_filter_by_class = 1;
 int gbl_started_physrep_threads = 0;
 
 unsigned int physrep_min_logfile;
@@ -775,6 +778,65 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
     return next_info;
 }
 
+static enum mach_class normalize_class(enum mach_class class)
+{
+    if (class == CLASS_UAT)
+        return CLASS_BETA;
+    if (class == CLASS_FUZZ || class == CLASS_INTEGRATION)
+        return CLASS_TEST;
+    return class;
+}
+
+static int physrep_class_allow_source(const char *hostname)
+{
+    enum mach_class src_class = normalize_class(get_mach_class(hostname));
+    enum mach_class my_class = normalize_class(get_my_mach_class());
+    /*
+        CLASS_UNKNOWN = 0,
+        CLASS_TEST = 1,
+        CLASS_ALPHA = 2,
+        CLASS_UAT = 3,
+        CLASS_BETA = 4,
+        CLASS_PROD = 5,
+    */
+    int rtn = (my_class <= src_class);
+    if (!rtn) {
+        physrep_logmsg(LOGMSG_INFO, "%s discarding source %s class %s (my class is %s)\n", __func__, hostname,
+                       mach_class_class2tier(src_class), mach_class_class2tier(my_class));
+    }
+    return rtn;
+}
+
+int physrep_allowed_source(const char *dbname, const char *hostname)
+{
+    bdb_state_type *bdb_state = gbl_bdb_state;
+
+    /* Exclude anything which is part of this cluster */
+    if (!strcmp(dbname, gbl_dbname)) {
+        struct host_node_info nodes[REPMAX];
+        int num_nodes;
+        num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
+        for (int i = 0; i < num_nodes; ++i) {
+            if (!strcmp(nodes[i].host, hostname)) {
+                if (gbl_physrep_debug) {
+                    physrep_logmsg(LOGMSG_USER, "%s: discarding same-cluster mach %s\n", __func__, hostname);
+                }
+                return 0;
+            }
+        }
+    }
+
+    /* Exclude any lower tier */
+    if (gbl_physrep_filter_by_class && !physrep_class_allow_source(hostname)) {
+        if (gbl_physrep_debug) {
+            enum mach_class class = get_mach_class(hostname);
+            physrep_logmsg(LOGMSG_USER, "%s: discard lower-tier source, %s\n", __func__, mach_class_class2tier(class));
+        }
+        return 0;
+    }
+    return 1;
+}
+
 static int register_self(cdb2_hndl_tp *repl_metadb)
 {
     char cmd[120+nodes_list_sz];
@@ -843,9 +905,10 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
                 char *dbname = (char *)cdb2_column_value(repl_metadb, 1);
                 char *hostname = (char *)cdb2_column_value(repl_metadb, 2);
 
-                add_replicant_host(hostname, dbname);
-
-                ++ candidate_leaders_count;
+                if (physrep_allowed_source(dbname, hostname)) {
+                    add_replicant_host(hostname, dbname);
+                    ++candidate_leaders_count;
+                }
             }
             last_register = time(NULL);
 

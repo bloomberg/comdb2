@@ -69,6 +69,7 @@ extern int __berkdb_read_alarm_ms;
 #include "fdb_fend.h"
 #include "rtcpu.h"
 #include "machcache.h"
+#include "machclass.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -2132,6 +2133,60 @@ clipper_usage:
         gbl_who = toknum(tok, ltok);
         gbl_debug = gbl_sdebug = 0;
         logmsg(LOGMSG_USER, "Set who to %d\n", gbl_who);
+    } else if (tokcmp(tok, ltok, "machine_class_add") == 0) {
+        char *hostname = NULL;
+        char *class = NULL;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "class_add requires hostname & class\n");
+            return -1;
+        }
+        hostname = alloca(ltok + 1);
+        tokcpy(tok, ltok, hostname);
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "class_add requires hostname & class\n");
+            return -1;
+        }
+        class = alloca(ltok + 1);
+        tokcpy(tok, ltok, class);
+        enum mach_class c = mach_class_name2class(class);
+        if (c == CLASS_UNKNOWN) {
+            logmsg(LOGMSG_ERROR, "class_add: %s is an invalid class\n", class);
+            return -1;
+        }
+        machine_class_add(hostname, c);
+    } else if (tokcmp(tok, ltok, "machine_class") == 0) {
+        char *hostname = NULL;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "machine_class requires a hostname\n");
+            return -1;
+        }
+        hostname = alloca(ltok + 1);
+        tokcpy(tok, ltok, hostname);
+        int mclass = machine_class(hostname);
+        const char *clstr = mach_class_class2name(mclass);
+        logmsg(LOGMSG_USER, "machine_class for %s is %s\n", hostname, clstr);
+    } else if (tokcmp(tok, ltok, "physrep_allowed_source") == 0) {
+        char *dbname = NULL;
+        char *hostname = NULL;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "physrep_allowed_source requires dbname & hostname\n");
+            return -1;
+        }
+        dbname = alloca(ltok + 1);
+        tokcpy(tok, ltok, dbname);
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "physrep_allowed_source requires dbname & hostname\n");
+            return -1;
+        }
+        hostname = alloca(ltok + 1);
+        tokcpy(tok, ltok, hostname);
+        int rtn = physrep_allowed_source(dbname, hostname);
+        logmsg(LOGMSG_USER, "physrep_allowed_source dbname=%s hostname=%s rtn=%d\n", dbname, hostname, rtn);
     } else if (tokcmp(tok, ltok, "physrep_force_registration") == 0) {
         extern int gbl_physrep_force_registration;
         logmsg(LOGMSG_USER, "physrep forcing registration, current-value is %d\n", gbl_physrep_force_registration);
