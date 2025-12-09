@@ -239,7 +239,6 @@ struct cdb2_hndl {
     int protobuf_size;
     int protobuf_offset;
     ProtobufCAllocator *allocator;
-    int auto_consume_timeout_ms;
     int max_auto_consume_rows;
     struct cdb2_hndl *fdb_hndl;
     int is_child_hndl;

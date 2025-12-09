@@ -121,8 +121,6 @@ static int MIN_RETRIES = 16;
 static int CDB2_CONNECT_TIMEOUT = 100;
 static int cdb2_connect_timeout_set_from_env = 0;
 
-static int CDB2_AUTO_CONSUME_TIMEOUT_MS = 0;
-
 static int CDB2_MAX_AUTO_CONSUME_ROWS = 10;
 
 static int COMDB2DB_TIMEOUT = 2000;
@@ -1881,10 +1879,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
             } else if (!cdb2_api_call_timeout_set_from_env && (strcasecmp("enforce_api_call_timeout", tok) == 0)) {
                 tok = strtok_r(NULL, " :,", &last);
                 CDB2_ENFORCE_API_CALL_TIMEOUT = value_on_off(tok, &err);
-            } else if (strcasecmp("auto_consume_timeout", tok) == 0) {
-                tok = strtok_r(NULL, " :,", &last);
-                if (tok)
-                    CDB2_AUTO_CONSUME_TIMEOUT_MS = atoi(tok);
             } else if (strcasecmp("max_auto_consume_rows", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -2152,8 +2146,6 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
         hndl->sockpool_recv_timeoutms = CDB2_SOCKPOOL_RECV_TIMEOUTMS;
     if (!hndl->sockpool_send_timeoutms)
         hndl->sockpool_send_timeoutms = CDB2_SOCKPOOL_SEND_TIMEOUTMS;
-    if (!hndl->auto_consume_timeout_ms)
-        hndl->auto_consume_timeout_ms = CDB2_AUTO_CONSUME_TIMEOUT_MS;
     if (!hndl->max_auto_consume_rows)
         hndl->max_auto_consume_rows = CDB2_MAX_AUTO_CONSUME_ROWS;
     if (!hndl->api_call_timeout)
@@ -5086,29 +5078,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     if (hndl->ack)
         ack(hndl);
-
-    if (hndl->auto_consume_timeout_ms > 0 && hndl->sb && !hndl->in_trans && hndl->firstresponse &&
-        (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
-        int nrec = 0;
-        sbuf2settimeout(hndl->sb, hndl->auto_consume_timeout_ms, hndl->auto_consume_timeout_ms);
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        uint64_t starttimems = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-        while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
-            nrec++;
-            gettimeofday(&tv, NULL);
-            uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-            /* auto consume for up to CDB2_AUTO_CONSUME_TIMEOUT_MS */
-            if (curr - starttimems >= hndl->auto_consume_timeout_ms)
-                break;
-        }
-        if (hndl->debug_trace) {
-            gettimeofday(&tv, NULL);
-            uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-            fprintf(stderr, "%s: auto consume %d records took %" PRIu64 " ms\n",
-                    __func__, nrec, curr - starttimems);
-        }
-    }
 
     if (hndl->sb)
         newsql_disconnect(hndl, hndl->sb, __LINE__);
