@@ -873,7 +873,7 @@ char *sqlite3Normalize_alternate(
   int prevType = 0;  /* Previous non-whitespace token */
   int nParen;        /* Number of nested levels of parentheses */
   int iStartIN;      /* Start of RHS of IN operator in z[] */
-  int nParenAtIN;    /* Value of nParent at start of RHS of IN operator */
+  int nParenAtIN;    /* Value of nParen at start of RHS of IN operator */
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
   int useStrId = 0;  /* Treat string token as identifier */
@@ -928,32 +928,51 @@ char *sqlite3Normalize_alternate(
       }
       case TK_STRING:
       case TK_ID: {
-        iStartIN = 0;
         j = pStr->nChar;
         if( sqlite3Isquote(zSql[i]) ){
+          /* Dequote the token to get just the identifier. */
           char *zId = sqlite3_mprintf("%.*s", n, zSql+i);
-          int nId;
-          int eType = 0;
           if( zId==0 ) break;
           sqlite3Dequote(zId);
-          int maybeStrLiteral = zSql[i] == '\'' || ( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) );
-          if ( maybeStrLiteral && !useStrId ){
+
+          /* If it is a string literal, replace it with a placeholder. */
+          int isSingleQuotedLiteral = ( zSql[i]=='\'' );
+          int isDoubleQuotedLiteral = ( zSql[i]=='"'  && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) );
+          int isLiteral = ( isSingleQuotedLiteral || isDoubleQuotedLiteral ) && !useStrId;
+
+          if ( isLiteral ){
             sqlite3_str_append(pStr, "?", 1);
             sqlite3DbFree(db, zId);
             break;
           }
-          nId = sqlite3Strlen30(zId);
+
+          /* This is definitely an identifier. Re-tokenize the dequoted
+          ** string to check whether it contains any internal double quotes.
+          ** If it does, re-quote it and escape the internal double quotes. */
+          int eType = 0;
+          int nId = sqlite3Strlen30(zId);
+
           if( sqlite3GetToken((u8*)zId, &eType)==nId && eType==TK_ID ){
             addSpaceSeparator(pStr);
             sqlite3_str_append(pStr, zId, nId);
           }else{
             sqlite3_str_appendf(pStr, "\"%w\"", zId);
           }
+
           sqlite3DbFree(db, zId);
         }else{
+          /* Not quoted, this is definitely an identifier. */
           addSpaceSeparator(pStr);
           sqlite3_str_append(pStr, zSql+i, n);
         }
+
+        /* At this point, we know for sure we have an identifier and not a
+        ** string literal. If we are in an IN clause, prevent the identifier
+        ** from being clobbered with '?,?,?' later. */
+        iStartIN = 0;
+
+        /* Identifiers are case insensitive, "select a from t" and
+        ** "select A from t" should have the same normalized SQL. */
         while( j<pStr->nChar ){
           pStr->zText[j] = sqlite3Tolower(pStr->zText[j]);
           j++;

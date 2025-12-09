@@ -452,6 +452,175 @@ foreach {tnum sql flags norm} {
   {SELECT * FROM comdb2_transaction_logs('{0:1}') LIMIT 1}
   0x2
   {0 {SELECT*FROM comdb2_transaction_logs(?)LIMIT?;}}
+
+  1280
+  {
+    -- 'a' is a string literal, "a" is an identifier (column name).
+    -- 'h' and "h" are both string literals because t1 has no column
+    -- with that name.
+    SELECT 'a', "a", [b], `c`, 'h', "h" FROM t1
+  }
+  0x2
+  {0 {SELECT?,a,b,c,?,?FROM t1;}}
+
+  1290
+  {
+    -- IN clause contains identifiers.
+    SELECT a FROM t1 WHERE b IN (c, d)
+  }
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d);}}
+
+  1291
+  {SELECT a FROM t1 WHERE b IN ("c", "d")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d);}}
+
+  1292
+  {SELECT a FROM t1 WHERE b IN ([c], [d])}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d);}}
+
+  1293
+  {SELECT a FROM t1 WHERE b IN (`c`, `d`)}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d);}}
+
+  1310
+  {
+    -- IN clause contains quoted and unquoted identifiers.
+    SELECT a FROM t1 WHERE b IN (c, "d", [e], `w`)
+  }
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d,e,w);}}
+
+  1311
+  {SELECT a FROM t1 WHERE b IN ("c", [d], `e`, w)}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d,e,w);}}
+
+  1312
+  {SELECT a FROM t1 WHERE b IN ([c], `d`, e, "w")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d,e,w);}}
+
+  1313
+  {SELECT a FROM t1 WHERE b IN (`c`, d, "e", [w])}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,d,e,w);}}
+
+  1330
+  {
+    -- IN clause contains string literals and unquoted identifiers.
+    SELECT a FROM t1 WHERE b IN ('a', c)
+  }
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,c);}}
+
+  1331
+  {SELECT a FROM t1 WHERE b IN ("foo", c)}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,c);}}
+
+  1332
+  {SELECT a FROM t1 WHERE b IN (c, 'a')}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,?);}}
+
+  1333
+  {SELECT a FROM t1 WHERE b IN (c, "foo")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,?);}}
+
+  1340
+  {
+    -- IN clause contains string literals and quoted identifiers.
+    SELECT a FROM t1 WHERE b IN ('a', "c")
+  }
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,c);}}
+
+  1341
+  {SELECT a FROM t1 WHERE b IN ("foo", [c])}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,c);}}
+
+  1342
+  {SELECT a FROM t1 WHERE b IN (`c`, 'a')}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,?);}}
+
+  1343
+  {SELECT a FROM t1 WHERE b IN ("c", "foo")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(c,?);}}
+
+  1350
+  {
+    -- IN clause contains a string literal with the same value
+    -- as the name of an identifier.
+    SELECT a FROM t1 WHERE b IN (a, 'a')
+  }
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(a,?);}}
+
+  1351
+  {SELECT a FROM t1 WHERE b IN ('a', a)}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,a);}}
+
+  1352
+  {SELECT a FROM t1 WHERE b IN ("a", 'a')}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(a,?);}}
+
+  1353
+  {SELECT a FROM t1 WHERE b IN ('a', "a")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,a);}}
+
+  1354
+  {SELECT a FROM t1 WHERE b IN ('a', [a])}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,a);}}
+
+  1355
+  {SELECT a FROM t1 WHERE b IN (`a`, 'a')}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(a,?);}}
+
+  1360
+  {
+    -- String literals in IN clauses should be consolidated.
+    SELECT a FROM t1 WHERE b IN ('foo', "bar", 'baz', "qux", 'quux')
+  }
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,?,?);}}
+
+  1361
+  {SELECT a FROM t1 WHERE b IN ('foo', "bar", 'baz', "qux")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,?,?);}}
+
+  1362
+  {SELECT a FROM t1 WHERE b IN ('foo', "bar", 'baz')}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,?,?);}}
+
+  1363
+  {SELECT a FROM t1 WHERE b IN ('foo', "bar")}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,?,?);}}
+
+  1364
+  {SELECT a FROM t1 WHERE b IN ('foo')}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,?,?);}}
+
+  1365
+  {SELECT a FROM t1 WHERE b IN ()}
+  0x2
+  {0 {SELECT a FROM t1 WHERE b IN(?,?,?);}}
 } {
   do_test $tnum {
     set code [catch {

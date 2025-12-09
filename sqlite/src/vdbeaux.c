@@ -122,8 +122,8 @@ void sqlite3VdbeAddDblquoteStr(sqlite3 *db, Vdbe *p, const char *z){
 
 #ifdef SQLITE_ENABLE_NORMALIZE
 /*
-** zId of length nId is a double-quoted identifier.  Check to see if
-** that identifier is really used as a string literal.
+** zId of length nId is a double-quoted identifier. Return non-zero
+** if that identifier is really used as a string literal.
 */
 int sqlite3VdbeUsesDoubleQuotedString(
   Vdbe *pVdbe,            /* The prepared statement */
