@@ -1217,6 +1217,53 @@ function tranlog_timeout()
     fi
 }
 
+function get_log_cursor_gen()
+{
+    typeset node=$1
+    local gen=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME --host $node "select logcgen from comdb2_transaction_logs(NULL, NULL, 0x8) limit 1")
+    echo $gen
+}
+
+# physreps use the lcgen column in comdb2 transaction logs to detect when a 
+# source machine truncates its transaction log.  Verify this behavior by
+# downgrading the master on the source.
+function verify_log_cursor_gen()
+{
+    local -A lcgen
+    local master=$(getmaster)
+    local newmaster=$master
+    local nodegen=""
+
+    echo "== Grabbing current logcgen for all nodes"
+    for node in $CLUSTER ; do
+        lcgen[$node]=$(get_log_cursor_gen $node)
+        echo "log cursor gen for node $node is ${lcgen[$node]}"
+    done
+
+    while [[ "$newmaster" == "$master" ]]; do
+        echo "== Downgrading master $master"
+        $CDB2SQL_EXE --admin ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+        echo "Sleep for 5"
+        sleep 5
+        newmaster=$(getmaster)
+    done
+
+    echo "== All non-masters should have incremented logcgen"
+    for node in $CLUSTER ; do
+        nodegen=$(get_log_cursor_gen $node)
+		if [[ "$node" == "$newmaster" ]]; then
+			echo "Node $node is new master, old=${lcgen[$node]}, new=$nodegen (not checked)"
+			continue
+		fi
+
+		if (( nodegen <= lcgen[$node] )); then
+			cleanFailExit "Node $node did not increase logcgen after master downgrade (old=${lcgen[$node]}, new=$nodegen)"
+		else
+			echo "Node $node incremented logcgen from ${lcgen[$node]} to $nodegen"
+		fi
+    done
+}
+
 function revconn_latency()
 {
     typeset now=$(date +%s)
@@ -2137,6 +2184,11 @@ function run_tests
     tranlog_timeout
     testcase_finish $testcase
 
+    testcase="verify_log_cursor_gen"
+    testcase_preamble $testcase
+    verify_log_cursor_gen
+    testcase_finish $testcase
+
     testcase="tranlog_blocklsn"
     testcase_preamble $testcase
     tranlog_blocklsn
@@ -2246,6 +2298,12 @@ function run_tests
     testcase_finish $testcase
 }
 
+function run_one_test
+{
+	verify_log_cursor_gen
+}
+
+#run_one_test
 run_tests
 cleanup
 
