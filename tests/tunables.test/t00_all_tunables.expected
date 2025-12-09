@@ -730,6 +730,7 @@
 (name='physrep_debug', description='Print extended physrep trace. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_exit_on_invalid_logstream', description='Exit physreps on invalid logstream.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_fanout', description='Maximum number of physical replicants that a node can service (Default: 8)', type='INTEGER', value='8', read_only='N')
+(name='physrep_filter_by_class', description='Filter physrep replication by class. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='physrep_hung_replicant_check_freq_sec', description='Check for hung physical replicant this often. (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='physrep_hung_replicant_threshold', description='Report if the physical replicant has been inactive for this duration. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_i_am_metadb', description='I am physical replication metadb (Default: off)', type='BOOLEAN', value='OFF', read_only='N')

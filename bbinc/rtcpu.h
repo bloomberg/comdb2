@@ -30,5 +30,6 @@ int machine_cluster(const char *host, const char **cluster);
 int machine_my_cluster(const char **cluster);
 int machine_cluster_machs(const char *cluster, int *count, const char ***machs);
 int machine_add_cluster(const char *host, const char *cluster);
+int machine_class_add(const char *host, int c);
 
 #endif

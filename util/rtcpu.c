@@ -222,17 +222,58 @@ static int machine_status_init(void)
 
 extern char *gbl_myhostname;
 
+/* Token implementation allows testing in rr */
+static hash_t *mach_class_hash = NULL;
+struct mach_class_entry {
+    int class;
+    char host[1];
+};
+
+static pthread_mutex_t machine_class_lk = PTHREAD_MUTEX_INITIALIZER;
+
+int machine_class_add(const char *host, int class)
+{
+    Pthread_mutex_lock(&machine_class_lk);
+    if (mach_class_hash == NULL) {
+        mach_class_hash = hash_init_str(offsetof(struct mach_class_entry, host));
+    }
+    struct mach_class_entry *fnd = hash_find(mach_class_hash, host);
+    if (!fnd) {
+        fnd = calloc(offsetof(struct mach_class_entry, host) + strlen(host) + 1, 1);
+        strcpy(fnd->host, host);
+        hash_add(mach_class_hash, fnd);
+    }
+    fnd->class = class;
+
+    Pthread_mutex_unlock(&machine_class_lk);
+    return 0;
+}
+
 /* pthread_once? */
 static int machine_class_default(const char *host)
 {
     static enum mach_class my_class = CLASS_UNKNOWN;
-    static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 
-    Pthread_mutex_lock(&mtx);
+    Pthread_mutex_lock(&machine_class_lk);
+
+    if (mach_class_hash == NULL) {
+        mach_class_hash = hash_init_str(offsetof(struct mach_class_entry, host));
+    }
+    struct mach_class_entry *fnd = hash_find(mach_class_hash, host);
+    if (fnd) {
+        int rtn = fnd->class;
+        Pthread_mutex_unlock(&machine_class_lk);
+        return rtn;
+    }
+
+    if (strcmp(host, gbl_myhostname) != 0) {
+        Pthread_mutex_unlock(&machine_class_lk);
+        return CLASS_PROD;
+    }
 
     if (my_class == CLASS_UNKNOWN) {
-        char *envclass;
 
+        char *envclass;
         envclass = getenv("COMDB2_CLASS");
         if (envclass) {
             my_class = mach_class_name2class(envclass);
@@ -246,10 +287,13 @@ static int machine_class_default(const char *host)
             logmsg(LOGMSG_DEBUG, "Can't find class -- assigning PROD\n");
             my_class = CLASS_PROD;
         }
+        struct mach_class_entry *m = calloc(offsetof(struct mach_class_entry, host) + strlen(gbl_myhostname) + 1, 1);
+        strcpy(m->host, gbl_myhostname);
+        m->class = my_class;
+        hash_add(mach_class_hash, m);
     }
 
-    Pthread_mutex_unlock(&mtx);
-
+    Pthread_mutex_unlock(&machine_class_lk);
     return my_class;
 }
 
