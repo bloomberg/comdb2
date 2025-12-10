@@ -2025,6 +2025,111 @@ function check_metadb_memstat
     fi
 }
 
+# Verify allowed-source behavior
+function physrep_allowed_source
+{
+    local mclass
+    local name
+    local out
+    local cmd
+    local sql
+    local rc
+
+    echo "== physrep_allowed_source =="
+    echo "Verify that the clustered physrep rejects sources within that cluster"
+    for node in $CLUSTER ; do
+        cmd="physrep_allowed_source $DBNAME $node"
+        sql="exec procedure sys.cmd.send(\"$cmd\")"
+        out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+        rc=${out##*=}
+        [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source allowed source within cluster on node $node"
+    done
+
+    echo "Retrieve machine class"
+    cmd="machine_class $firstNode"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+    mclass=${out##* }
+    echo "Machine class is $mclass"
+    [[ "$mclass" != "prod" ]] && cleanFailExit "Expected machine class 'prod', got '$mclass'"
+
+    echo "Set machine class to beta"
+    cmd="machine_class_add $firstNode beta"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "$sql"
+
+    echo "Retrieve machine class again"
+    cmd="machine_class $firstNode"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+    mclass=${out##* }
+    echo "Machine class is $mclass"
+    [[ "$mclass" != "beta" ]] && cleanFailExit "Expected machine class 'beta', got '$mclass'"
+
+    echo "Set machine 'foobar1' to class 'test'"
+    cmd="machine_class_add foobar1 test"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "$sql"
+
+    echo "Verify that foobar1 is not an allowed source"
+    cmd="physrep_allowed_source hello foobar1"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+    rc=${out##*=}
+    [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source allowed test as source for beta"
+
+    echo "Set machine 'foobar1' to class 'uat'"
+    cmd="machine_class_add foobar1 uat"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "$sql"
+
+    echo "Verify that foobar1 is an allowed source"
+    cmd="physrep_allowed_source hello foobar1"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+    rc=${out##*=}
+    [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow uat as source for beta"
+
+    echo "Set machine 'foobar1' to class 'prod'"
+    cmd="machine_class_add foobar1 prod"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "$sql"
+
+    echo "Verify that foobar1 is an allowed source"
+    cmd="physrep_allowed_source hello foobar1"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+    rc=${out##*=}
+    [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow prod as source for beta"
+
+    echo "Set machine 'foobar1' to class 'beta'"
+    cmd="machine_class_add foobar1 beta"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "$sql"
+
+    echo "Verify that foobar1 is an allowed source"
+    cmd="physrep_allowed_source hello foobar1"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
+    rc=${out##*=}
+    [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow beta as source for beta"
+
+    echo "Set machine class back to prod"
+    cmd="machine_class_add $firstNode prod"
+    sql="exec procedure sys.cmd.send(\"$cmd\")"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "$sql"
+
+    echo "All of the standalone instances should refuse themselves as sources"
+    for node in $CLUSTER ; do
+        name=${REPL_DBNAME_PREFIX}_${node}
+        cmd="physrep_allowed_source $name $node"
+        sql="exec procedure sys.cmd.send(\"$cmd\")"
+        out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
+        rc=${out##*=}
+        [[ "$rc" == 0 ]] || cleanFailExit "physrep_allowed_source $name allowed self as source"
+    done
+}
+
 function verify_alt_metadb_system_table 
 {
     out=$($CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "exec procedure sys.cmd.send('physrep_alt_metadb_print')" | grep "$REPL_ALTMETA_DBNAME" | wc -l)
@@ -2296,11 +2401,16 @@ function run_tests
     testcase_preamble $testcase
     verify_alt_metadb_system_table
     testcase_finish $testcase
+
+    testcase="physrep_allowed_source"
+    testcase_preamble $testcase
+    physrep_allowed_source
+    testcase_finish $testcase
 }
 
 function run_one_test
 {
-	verify_log_cursor_gen
+	physrep_allowed_source
 }
 
 #run_one_test
