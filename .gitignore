@@ -27,6 +27,10 @@ contrib/cdb2hibernatedialect/build/**
 contrib/cdb2hibernatedialect/target/**
 contrib/cdb2hibernatedialect/private/**
 
+# test runner
+contrib/dev-util/testrunner
+contrib/dev-util/testrunner.o
+
 
 # generated docs
 _site/
@@ -70,6 +74,7 @@ tests/tools/sqlite_clnt
 tests/*_generated.test
 tests/test_*
 tests/pmux.sqlite
+tests/test.log
 
 # generated images
 docs/site/images/*.gif
