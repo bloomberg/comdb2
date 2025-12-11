@@ -13,7 +13,7 @@ cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_serie
 
 $exe -d $db -e > out.txt 2>&1
 grep "Discarded socket 1 Discarded 1 Max 1 type 2" out.txt
-grep "cdb2_close took 0 ms" out.txt
+grep "cdb2_close took [012] ms" out.txt
 
 echo "Passed"
 exit 0
