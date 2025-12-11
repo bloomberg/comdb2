@@ -45,6 +45,7 @@
 #include "printformats.h"
 #include "phys_rep.h"
 #include "phys_rep_lsn.h"
+#include "truncate_log.h"
 #include <compat.h>
 #include "str0.h"
 #include <thrman.h>
@@ -4317,9 +4318,20 @@ int bdb_am_i_coherent(bdb_state_type *bdb_state)
 int bdb_try_am_i_coherent(bdb_state_type *bdb_state)
 {
     int coherent = 0;
+    int isphysrep = gbl_is_physical_replicant;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
+
+    if (isphysrep) {
+        /* If this is a physrep and log truncation is in progress,
+         * we must be a standalone installation or a physrep master.
+         * These are always coherent. */
+        int rc = truncate_trylock();
+        if (rc != 0) {
+            return 1;
+        }
+    }
 
     /*
      * If we cannot get the bdb-lock, that means the lock is desired,
@@ -4329,6 +4341,10 @@ int bdb_try_am_i_coherent(bdb_state_type *bdb_state)
     if (BDB_TRYREADLOCK("bdb_am_i_coherent") == 0) {
         coherent = bdb_am_i_coherent_int(bdb_state);
         BDB_RELLOCK();
+    }
+
+    if (isphysrep) {
+        truncate_unlock();
     }
 
     return coherent;
