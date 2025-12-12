@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+# add cluster line from secondary db into primary comdb2db cfg to make easier for c++ programs
+cluster_line=$(head -n 1 $DBDIR/comdb2db.cfg)
+echo "db2$cluster_line" >> $DBDIR/comdb2db.cfg
+
 db=${DBNAME}
 tier=default
 CDB2_HOST_NAME=localhost
@@ -54,6 +58,23 @@ if [ $? -ne 0 ]; then
         exit 1
     fi
 fi
+
+cfg=$DBDIR/comdb2db.cfg
+echo 'comdb2_config:max_local_connection_cache_entries=11' >> ${cfg}
+echo 'comdb2_config:max_local_connection_cache_age=10' >> ${cfg}
+echo 'comdb2_config:local_connection_cache_use_sbuf=0' >> ${cfg}
+COMDB2_CONFIG_LOCAL_CONNECTION_CACHE_USE_SBUF=0 ${TESTSBUILDDIR}/cdb2api_localcache ${DBNAME} ${SECONDARY_DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_localcache (sbuf=0) - fail" && exit 1
+echo 'cdb2api_localcache (sbuf=0) - pass'
+
+sed -i 's/comdb2_config:local_connection_cache_use_sbuf=0/comdb2_config:local_connection_cache_use_sbuf=1/' "${cfg}"
+COMDB2_CONFIG_LOCAL_CONNECTION_CACHE_USE_SBUF=1 ${TESTSBUILDDIR}/cdb2api_localcache ${DBNAME} ${SECONDARY_DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_localcache (sbuf=1) - fail" && exit 1
+echo 'cdb2api_localcache (sbuf=1) - pass'
+
+sed -i '/comdb2_config:max_local_connection_cache_entries=11/d' "${cfg}"
+sed -i '/comdb2_config:max_local_connection_cache_age=10/d' "${cfg}"
+sed -i '/comdb2_config:local_connection_cache_use_sbuf=1/d' "${cfg}"
 
 ${TESTSBUILDDIR}/cdb2api_localcache_systable ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_localcache_systable - fail" && exit 1
