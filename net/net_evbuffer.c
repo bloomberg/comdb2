@@ -3192,7 +3192,7 @@ static void do_recvfd(int pmux_fd, short what, void *data)
         rc = write(newfd, "0\n", 2);
     }
     if (rc != 2) {
-        logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:write fd:%d rc:%zd (%s)\n", __func__, newfd, rc, strerror(errno));
         shutdown_close(newfd);
         return;
     }

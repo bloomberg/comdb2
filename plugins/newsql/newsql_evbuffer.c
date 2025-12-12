@@ -420,8 +420,12 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl, int 
 
 static int dispatch_client(struct newsql_appdata_evbuffer *appdata)
 {
-    ATOMIC_ADD64(gbl_nnewsql, 1);
-    return dispatch_sql_query_no_wait(&appdata->clnt);
+    int rc = dispatch_sql_query_no_wait(&appdata->clnt);
+    if (rc == 0) {
+        ATOMIC_ADD64(gbl_nnewsql, 1);
+        appdata->allow_lru = 1;
+    }
+    return rc;
 }
 
 extern pthread_mutex_t buf_lock;
@@ -707,7 +711,6 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         }
     }
     if (appdata->initial && newsql_first_run(clnt, sqlquery) != 0) goto err;
-    appdata->allow_lru = 1;
     appdata->initial = 0;
     newsql_loop_result incoherent = newsql_loop(clnt, sqlquery);
     if (incoherent == NEWSQL_ERROR) goto err;
@@ -1036,7 +1039,16 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
     }
 }
 
-static void rd_payload(int dummyfd, short what, void *arg)
+static void maybe_allow_lru(struct newsql_appdata_evbuffer *appdata, int fd, short what)
+{
+    if (appdata->allow_lru) return;
+    if (fd == -1) return; /* fd == -1 -> evtimer_once, not from timeout we set */
+    if (what & EV_READ) return;
+    if (!(what & EV_TIMEOUT)) return;
+    appdata->allow_lru = 1;
+}
+
+static void rd_payload(int fd, short what, void *arg)
 {
     CDB2QUERY *query = NULL;
     struct newsql_appdata_evbuffer *appdata = arg;
@@ -1047,9 +1059,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
         free_newsql_appdata_evbuffer(appdata);
         return;
     }
-    if (!appdata->allow_lru && (what & EV_TIMEOUT)) {
-        appdata->allow_lru = 1;
-    }
+    maybe_allow_lru(appdata, fd, what);
     if (evbuffer_get_length(appdata->rd_buf) < appdata->hdr.length) {
         add_rd_event(appdata, appdata->rd_payload_ev, NULL);
         return;
@@ -1067,7 +1077,7 @@ payload:
     process_newsql_payload(appdata, query);
 }
 
-static void rd_hdr(int dummyfd, short what, void *arg)
+static void rd_hdr(int fd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
@@ -1078,9 +1088,7 @@ static void rd_hdr(int dummyfd, short what, void *arg)
         free_newsql_appdata_evbuffer(appdata);
         return;
     }
-    if (!appdata->allow_lru && (what & EV_TIMEOUT)) {
-        appdata->allow_lru = 1;
-    }
+    maybe_allow_lru(appdata, fd, what);
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
         add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
         return;
