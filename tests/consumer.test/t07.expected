@@ -32,7 +32,7 @@
 (old='{"a":"nan"}', new='{"a":"nan"}')
 (old='{"a":"-inf"}', new='{"a":"-inf"}')
 (old='{"a":"inf"}', new='{"a":"inf"}')
+(old='{"a":1}', new=NULL)
 (old='{"a":"nan"}', new=NULL)
 (old='{"a":"-inf"}', new=NULL)
 (old='{"a":"inf"}', new=NULL)
-(old='{"a":1}', new=NULL)
