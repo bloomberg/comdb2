@@ -448,6 +448,8 @@ static char *legacy_options[] = {
     "setattr NET_SEND_GBLCONTEXT 1",
     /* Sqlite sorter uses 2 mmap'd files. This sets the total mmap size per sorter to 32MiB */
     "sqlsortermaxmmapsize 16777216",
+    /* 16MiB sorter in-memory array size before spilling to disk. */
+    "sqlsortermem 16777216",
     "unnatural_types 1",
     "wal_osync 1",
     "usenames",
