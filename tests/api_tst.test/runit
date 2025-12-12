@@ -26,6 +26,27 @@ ${TESTSBUILDDIR}/cdb2api_hasql ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_hasql - fail" && exit 1
 echo 'cdb2api_hasql - pass'
 
+set -e
+
+${TESTSBUILDDIR}/cdb2api_rte ${DBNAME}
+
+# EXPECTED_PORTS='5105\|8125'
+EXPECTED_PORTS='5105\|8125\|53'
+if [[ $(uname) = "Linux" ]]; then
+    set +e
+    # what's port 0 on connect?
+    strace ${TESTSBUILDDIR}/cdb2api_rte ${DBNAME} onlyrte 2>&1 | grep -w connect | grep AF_INET | sed "s/.*htons(//; s/).*//" | grep -v "0" | grep -v $EXPECTED_PORTS  > ports
+    if [[ -s ports ]]; then
+        echo 'Unexpected connection to following ports: '
+        cat ports
+        echo 'cdb2api_rte - failed'
+        exit 1
+    fi
+fi
+set +e
+
+echo 'cdb2api_rte - pass'
+
 ${TESTSBUILDDIR}/cdb2api_setoptions ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_setoptions - fail" && exit 1
 echo 'cdb2api_setoptions - pass'
