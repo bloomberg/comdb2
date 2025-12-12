@@ -5850,6 +5850,9 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 
 static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 {
+    while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
+        ;
+/*
     int hardbound = 0;
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
         hardbound++;
@@ -5858,6 +5861,7 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
             break;
         }
     }
+*/
 
     clear_responses(hndl);
     hndl->rows_read = 0;
