@@ -8,11 +8,7 @@ SSH="ssh -x -n -o StrictHostKeyChecking=no"
 SCP="scp -o StrictHostKeyChecking=no"
 PIDS=()
 APPSOX=10000
-#Every connection creates a new eventbase.  Every eventbase creates a
-#socketpair, and creates an epoll file descriptor.  So effectively, 4
-#fds used per connection.  This will be addressed in a subsequent PR.
-#When that is complete, update the following:
-MAXFDS=$(($APPSOX * 5))
+MAXFDS=$(($APPSOX + 256))
 
 function setup_comdb2db_cfg {
     local dir=$(dirname $CDB2_CONFIG)
