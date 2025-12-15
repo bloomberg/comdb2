@@ -15,6 +15,7 @@
 */
 
 #include <errno.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -37,13 +38,13 @@ struct sqlwriter {
     struct sqlclntstate *clnt;
     struct evbuffer *wr_buf;
     pthread_mutex_t wr_lock;
-    struct event *flush_ev;
     struct event *heartbeat_ev;
     struct event *heartbeat_trickle_ev;
     struct event *timeout_ev;
     struct event_base *timer_base;
     pthread_t timer_thd;
-    struct event_base *wr_base;
+    struct pollfd poll_fd;
+    int pollms;
     time_t sent_at;
     int64_t blocked_at;
     sql_pack_fn *pack;
@@ -62,14 +63,13 @@ static void sql_trickle_cb(int fd, short what, void *arg);
 
 static void sql_enable_flush(struct sqlwriter *writer)
 {
-    struct timeval recover_ddlk_timeout = {.tv_sec = 1};
-    event_add(writer->flush_ev, &recover_ddlk_timeout);
+    writer->pollms = 1000; /* 1sec */
 }
 
 static void sql_disable_flush(struct sqlwriter *writer)
 {
     writer->wr_continue = 1;
-    event_del(writer->flush_ev);
+    writer->pollms = 0;
 }
 
 static void sql_timeout_cb(int fd, short what, void *arg)
@@ -218,7 +218,7 @@ static void sql_flush_cb(int fd, short what, void *arg)
             update_writer_state(writer, WRITE_BLOCKED);
         } else {
             writer->bad = 1;
-            event_del(writer->flush_ev);
+            sql_disable_flush(writer);
             update_writer_state(writer, WRITE_FAILED);
         }
     }
@@ -229,7 +229,12 @@ static int sql_flush_int(struct sqlwriter *writer)
 {
     sql_enable_flush(writer);
     update_writer_state(writer, WRITE_BLOCKED);
-    event_base_dispatch(writer->wr_base);
+    do {
+        writer->poll_fd.events = POLLOUT;
+        int rc = poll(&writer->poll_fd, 1, writer->pollms);
+        short event = rc == 0 ? EV_TIMEOUT : EV_WRITE;
+        sql_flush_cb(writer->poll_fd.fd, event, writer);
+    } while (writer->pollms);
     return (writer->wr_continue && !writer->bad) ? 0 : -1;
 }
 
@@ -344,7 +349,7 @@ int sql_write(struct sqlwriter *writer, void *arg, int flush)
     writer->wr_continue = 0;
     int orig_packing = writer->packing;
     writer->packing = 1; /* to skip locking in sql_flush_cb */
-    sql_flush_cb(event_get_fd(writer->flush_ev), EV_WRITE, writer);
+    sql_flush_cb(writer->poll_fd.fd, EV_WRITE, writer);
     writer->packing = orig_packing;
     outstanding = evbuffer_get_length(writer->wr_buf);
     Pthread_mutex_unlock(&writer->wr_lock);
@@ -469,11 +474,6 @@ int sql_done(struct sqlwriter *writer)
     return 0;
 }
 
-struct event_base *sql_wrbase(struct sqlwriter *writer)
-{
-    return writer->wr_base;
-}
-
 struct evbuffer *sql_wrbuf(struct sqlwriter *writer)
 {
     return writer->wr_buf;
@@ -493,17 +493,9 @@ void sqlwriter_free(struct sqlwriter *writer)
         event_free(writer->heartbeat_trickle_ev);
         writer->heartbeat_trickle_ev = NULL;
     }
-    if (writer->flush_ev) {
-        event_free(writer->flush_ev);
-        writer->flush_ev = NULL;
-    }
     if (writer->wr_buf) {
         evbuffer_free(writer->wr_buf);
         writer->wr_buf = NULL;
-    }
-    if (writer->wr_base) {
-        event_base_free(writer->wr_base);
-        writer->wr_base = NULL;
     }
     Pthread_mutex_destroy(&writer->wr_lock);
     free(writer);
@@ -521,13 +513,8 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
     writer->wr_continue = 1;
     writer->wr_buf = evbuffer_new();
 
-    struct event_config *cfg = event_config_new();
-    event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
-    writer->wr_base = event_base_new_with_config(cfg);
-    event_config_free(cfg);
-
     writer->wr_evbuffer_fn = wr_evbuffer_plaintext;
-    writer->flush_ev = event_new(writer->wr_base, arg->fd, EV_WRITE | EV_PERSIST, sql_flush_cb, writer);
+    writer->poll_fd.fd = arg->fd;
     writer->heartbeat_ev = event_new(writer->timer_base, arg->fd, EV_PERSIST, sql_heartbeat_cb, writer);
     writer->heartbeat_trickle_ev = event_new(writer->timer_base, arg->fd, EV_WRITE, sql_trickle_cb, writer);
 

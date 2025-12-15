@@ -8,6 +8,7 @@
 
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)
+#define timeval_to_ms(x) ((x).tv_sec * 1000 + (x).tv_usec / 1000)
 
 struct sqlclntstate;
 
