@@ -14,6 +14,7 @@
    limitations under the License.
 */
 
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -52,12 +53,6 @@ extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
 
-struct ping_pong {
-    int status;
-    struct event *ev;
-    struct timeval start;
-};
-
 struct newsql_appdata_evbuffer;
 
 struct dispatch_sql_arg {
@@ -80,7 +75,6 @@ struct newsql_appdata_evbuffer {
     struct event_base *base;
     struct event *cleanup_ev;
     struct newsqlheader hdr;
-    struct ping_pong *ping;
     struct dispatch_sql_arg *dispatch;
 
     struct evbuffer *rd_buf;
@@ -118,10 +112,6 @@ static void free_newsql_appdata_evbuffer(struct newsql_appdata_evbuffer *appdata
     rem_appsock_connection_evbuffer();
     if (appdata->dispatch) {
         abort(); /* should have been freed by timeout or coherency-lease */
-    }
-    if (appdata->ping) {
-        event_free(appdata->ping->ev);
-        free(appdata->ping);
     }
     if (appdata->cleanup_ev) {
         event_free(appdata->cleanup_ev);
@@ -228,41 +218,8 @@ static int rd_evbuffer(struct newsql_appdata_evbuffer *appdata)
     return appdata->rd_evbuffer_fn(appdata); /* rd_evbuffer_plaintext */
 }
 
-static void ping_pong_cb(int dummyfd, short what, void *arg)
-{
-    struct newsql_appdata_evbuffer *appdata = arg;
-    struct ping_pong *ping = appdata->ping;
-    struct event_base *wrbase = sql_wrbase(appdata->writer);
-    int n = rd_evbuffer(appdata);
-    if (n <= 0 && (what & EV_READ)) {
-        ping->status = -2;
-        event_base_loopbreak(wrbase);
-        return;
-    }
-    struct newsqlheader hdr;
-    if (evbuffer_get_length(appdata->rd_buf) < sizeof(hdr)) {
-        struct timeval now;
-        gettimeofday(&now, NULL);
-        struct timeval timeout;
-        timersub(&now, &ping->start, &timeout);
-        if (timeout.tv_sec) {
-            event_base_loopbreak(wrbase);
-        } else {
-            add_rd_event(appdata, ping->ev, &timeout);
-        }
-        return;
-    }
-    evbuffer_remove(appdata->rd_buf, &hdr, sizeof(hdr));
-    if (ntohl(hdr.type) == RESPONSE_HEADER__SQL_RESPONSE_PONG) {
-        ping->status = 0;
-    } else {
-        ping->status = -3;
-    }
-    event_base_loopbreak(wrbase);
-}
-
 /**
- * Called by `recv_ping_response()` in lua/sp.c
+ * Called by `read_response(RESPONSE_PING_PONG)` in lua/sp.c
  * @retval  0: Received response
  * @retval -1: Timeout (1 second)
  * @retval -2: Read error
@@ -271,19 +228,33 @@ static void ping_pong_cb(int dummyfd, short what, void *arg)
 static int newsql_ping_pong_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    struct event_base *wrbase = sql_wrbase(appdata->writer);
-    if (!appdata->ping) {
-        appdata->ping = malloc(sizeof(struct ping_pong));
-        int flags = EV_READ | EV_TIMEOUT;
-        appdata->ping->ev = event_new(wrbase, appdata->fd, flags, ping_pong_cb, appdata);
+    struct timeval start, elapsed = {0};
+    gettimeofday(&start, NULL);
+    int pollms = 1000;
+    while (pollms > 0) {
+        struct pollfd pfd;
+        pfd.fd = appdata->fd;
+        pfd.events = POLLIN;
+        int rc = poll(&pfd, 1, pollms);
+        if (rc == 0) return -1;
+        if (rc != 1) return -2;
+        int n = rd_evbuffer(appdata);
+        if (n <= 0) return -2;
+        struct newsqlheader hdr;
+        if (evbuffer_get_length(appdata->rd_buf) >= sizeof(hdr)) {
+            evbuffer_remove(appdata->rd_buf, &hdr, sizeof(hdr));
+            if (ntohl(hdr.type) == RESPONSE_HEADER__SQL_RESPONSE_PONG) {
+                return 0;
+            } else {
+                return -3;
+            }
+        }
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        timersub(&now, &start, &elapsed);
+        pollms = 1000 - timeval_to_ms(elapsed);
     }
-    struct ping_pong *ping = appdata->ping;
-    ping->status = -1;
-    gettimeofday(&ping->start, NULL);
-    struct timeval onesec = {.tv_sec = 1};
-    add_rd_event(appdata, ping->ev, &onesec);
-    event_base_dispatch(wrbase);
-    return ping->status;
+    return -1;
 }
 
 static void wr_dbinfo(int dummyfd, short what, void *arg)
@@ -1138,44 +1109,27 @@ static int newsql_close_evbuffer(struct sqlclntstate *clnt)
     return 0;
 }
 
-struct debug_cmd {
-    struct newsql_appdata_evbuffer *appdata;
-    struct event *ev;
-    int need;
-};
-
-static void debug_cmd_cb(int dummyfd, short what, void *arg)
-{
-    struct debug_cmd *cmd = arg;
-    struct newsql_appdata_evbuffer *appdata = cmd->appdata;
-    int rc = rd_evbuffer(appdata);
-    if (rc <= 0 || evbuffer_get_length(appdata->rd_buf) >= cmd->need) {
-        event_base_loopbreak(event_get_base(cmd->ev));
-    } else {
-        add_rd_event(appdata, cmd->ev, NULL);
-    }
-}
-
 /* read interactive cmds for debugging a stored procedure */
 static int newsql_read_evbuffer(struct sqlclntstate *clnt, void *b, int l, int n)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    int need = l * n;
-    int have = evbuffer_get_length(appdata->rd_buf);
-    if (have >= need) goto done;
-    struct event_base *wrbase = sql_wrbase(appdata->writer);
-    struct debug_cmd cmd;
-    cmd.appdata = appdata;
-    cmd.need = need;
-    cmd.ev = event_new(wrbase, appdata->fd, EV_READ, debug_cmd_cb, &cmd);
-    add_rd_event(appdata, cmd.ev, NULL);
-    event_base_dispatch(wrbase);
-    event_free(cmd.ev);
-    have = evbuffer_get_length(appdata->rd_buf);
+    int have, need = l * n;
+    while ((have = evbuffer_get_length(appdata->rd_buf)) < need) {
+        struct pollfd pfd;
+        pfd.fd = appdata->fd;
+        pfd.events = POLLIN;
+        int rc = poll(&pfd, 1, -1);
+        if (rc != 1) {
+            break;
+        }
+        rc = rd_evbuffer(appdata);
+        if (rc <= 0) {
+            break;
+        }
+    }
     if (need > have) {
         need = 0;
     }
-done:
     evbuffer_remove(appdata->rd_buf, b, need);
     return need / l;
 }
@@ -1287,7 +1241,6 @@ static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
                                  const CDB2SQLRESPONSE *resp, int flush)
 {
-    
     int response_len;
 
     if (resp && resp->response_type == RESPONSE_TYPE__RAW_DATA) {
