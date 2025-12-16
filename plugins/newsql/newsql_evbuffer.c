@@ -58,7 +58,6 @@ struct newsql_appdata_evbuffer;
 struct dispatch_sql_arg {
     struct timeval start;
     int wait_time;
-    pthread_t thd;
     int dispatched;
     struct event *ev;
     struct newsql_appdata_evbuffer *appdata;
@@ -72,6 +71,7 @@ struct newsql_appdata_evbuffer {
     NEWSQL_APPDATA_COMMON /* Must be first */
 
     int fd;
+    pthread_t thd;
     struct event_base *base;
     struct event *cleanup_ev;
     struct newsqlheader hdr;
@@ -104,6 +104,8 @@ static int newsql_write_hdr_evbuffer(struct sqlclntstate *, int, int);
 
 static void free_newsql_appdata_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
+    check_thd(appdata->thd);
+
     struct sqlclntstate *clnt = &appdata->clnt;
     int fd = appdata->fd;
 
@@ -509,7 +511,7 @@ static void dispatch_waiting_client(int fd, short what, void *data)
 {
     struct dispatch_sql_arg *d = data;
     struct newsql_appdata_evbuffer *appdata = d->appdata;
-    check_thd(d->thd);
+    check_thd(appdata->thd);
     struct timeval end, diff;
     gettimeofday(&end, NULL);
     timersub(&end, &d->start, &diff);
@@ -582,7 +584,7 @@ static void timed_out_waiting_for_leader(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
     struct dispatch_sql_arg *d = appdata->dispatch;
-    check_thd(d->thd);
+    check_thd(appdata->thd);
     Pthread_mutex_lock(&dispatch_lk);
     TAILQ_REMOVE(&dispatch_list, d, entry);
     Pthread_mutex_unlock(&dispatch_lk);
@@ -605,7 +607,6 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
     }
     struct dispatch_sql_arg *d = calloc(1, sizeof(struct dispatch_sql_arg));
     d->appdata = appdata;
-    d->thd = pthread_self();
     d->ev = event_new(appdata->base, -1, EV_TIMEOUT | EV_PERSIST, dispatch_sql, appdata);
     Pthread_mutex_lock(&dispatch_lk);
     if (bdb_try_am_i_coherent(thedb->bdb_env)) {
@@ -1337,6 +1338,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     clnt->admin = admin;
     clnt->force_readonly = arg->is_readonly;
     clnt->secure = arg->secure;
+    appdata->thd = pthread_self();
     appdata->base = arg->base;
     appdata->initial = 1;
     appdata->local = local;
