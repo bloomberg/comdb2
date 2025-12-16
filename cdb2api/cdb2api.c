@@ -857,40 +857,6 @@ static int is_sql_read(const char *sqlstr)
 #define HAVE_MSGHDR_MSG_CONTROL
 #endif
 
-static int is_api_call_timedout(cdb2_hndl_tp *hndl)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    long long current_time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-    if (hndl->max_call_time && (hndl->max_call_time < current_time)) {
-        return 1;
-    }
-    return 0;
-}
-
-static long long get_call_timeout(const cdb2_hndl_tp *hndl, long long timeout)
-{
-    if (!hndl)
-        return timeout;
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    long long current_time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-    long long time_left = hndl->max_call_time - current_time;
-    if (hndl->max_call_time && time_left <= 0)
-        time_left = 1;
-    if (time_left > 0 && (time_left < timeout))
-        return time_left;
-    return timeout;
-}
-
-static void set_max_call_time(cdb2_hndl_tp *hndl)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    if (hndl)
-        hndl->max_call_time = tv.tv_sec * 1000 + tv.tv_usec / 1000 + hndl->api_call_timeout;
-}
-
 enum {
     PASSFD_SUCCESS = 0,
     PASSFD_RECVMSG = -1, /* error with recvmsg() */
@@ -1021,6 +987,40 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd, int
 #endif
 
     return PASSFD_SUCCESS;
+}
+
+static int is_api_call_timedout(cdb2_hndl_tp *hndl)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long current_time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    if (hndl && hndl->max_call_time && (hndl->max_call_time < current_time)) {
+        return 1;
+    }
+    return 0;
+}
+
+static long long get_call_timeout(const cdb2_hndl_tp *hndl, long long timeout)
+{
+    if (!hndl)
+        return timeout;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long current_time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    long long time_left = hndl->max_call_time - current_time;
+    if (hndl->max_call_time && time_left <= 0)
+        time_left = 1;
+    if (time_left > 0 && (time_left < timeout))
+        return time_left;
+    return timeout;
+}
+
+static void set_max_call_time(cdb2_hndl_tp *hndl)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    if (hndl)
+        hndl->max_call_time = tv.tv_sec * 1000 + tv.tv_usec / 1000 + hndl->api_call_timeout;
 }
 
 /* This wrapper ensures that on error we close any file descriptor that we
@@ -2158,7 +2158,8 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
     if (hndl->socket_timeout > hndl->api_call_timeout)
         hndl->socket_timeout = hndl->api_call_timeout;
 
-    set_max_call_time(hndl);
+    if (!CDB2_ENFORCE_API_CALL_TIMEOUT || !hndl->max_call_time)
+        set_max_call_time(hndl);
 }
 
 /* Read all available comdb2 configuration files.
@@ -7345,7 +7346,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
 
 #ifdef CDB2API_TEST
     if (cdb2_use_bmsd)
-        printf("Going ahead with comdb2db query");
+        printf("Going ahead with comdb2db query\n");
 #endif
     if (!find_shards)
         *dbnum = 0;
