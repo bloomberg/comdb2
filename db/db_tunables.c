@@ -30,6 +30,7 @@
 #include "portmuxapi.h"
 #include "config.h"
 #include "net.h"
+#include "sql.h"
 #include "sql_stmt_cache.h"
 #include "sc_rename_table.h"
 #include <disttxn.h>
@@ -1147,13 +1148,7 @@ int get_commit_lsn_map_switch_value()
 /* Return the value for sql_tranlevel_default. */
 static void *sql_tranlevel_default_value(void *context)
 {
-    switch (gbl_sql_tranlevel_default) {
-    case SQL_TDEF_SOCK: return "BLOCKSOCK";
-    case SQL_TDEF_RECOM: return "RECOM";
-    case SQL_TDEF_SNAPISOL: return "SNAPSHOT ISOLATION";
-    case SQL_TDEF_SERIAL: return "SERIAL";
-    default: return "invalid";
-    }
+    return tranlevel_tostr(gbl_sql_tranlevel_default);
 }
 
 static int sql_tranlevel_default_update(void *context, void *value)
@@ -1176,20 +1171,19 @@ static int sql_tranlevel_default_update(void *context, void *value)
                tokcmp(tok, ltok, "prefer_blocksock") == 0) {
         return 0; /* nop */
     } else if (tokcmp(tok, ltok, "blocksock") == 0) {
-        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+        gbl_sql_tranlevel_default = TRANLEVEL_SOSQL;
     } else if (tokcmp(tok, ltok, "recom") == 0) {
-        gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
+        gbl_sql_tranlevel_default = TRANLEVEL_RECOM;
     } else if (tokcmp(tok, ltok, "snapshot") == 0) {
-        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+        gbl_sql_tranlevel_default = gbl_snapshot_impl;
     } else if (tokcmp(tok, ltok, "serial") == 0) {
-        gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
+        gbl_sql_tranlevel_default = TRANLEVEL_SERIAL;
     } else {
         logmsg(LOGMSG_ERROR, "bad transaction level:%s\n", tok);
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-    logmsg(LOGMSG_USER, "default transaction level:%s\n",
-           (char *)sql_tranlevel_default_value(NULL));
+    logmsg(LOGMSG_USER, "default transaction level:%s\n", tranlevel_tostr(gbl_sql_tranlevel_default));
     return 0;
 }
 
@@ -1918,8 +1912,6 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
 
     return ret;
 }
-
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
 
 /*
   Update the tunable read from lrl file or updated at runtime via

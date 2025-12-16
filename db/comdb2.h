@@ -457,13 +457,19 @@ enum lclop {
 
 enum { DB_COHERENT = 0, DB_INCOHERENT = 1 };
 
-enum SQL_TRANLEVEL_DEFAULT {
-    SQL_TDEF_COMDB2 = 0x00000,   /* "comdb2" */
-    SQL_TDEF_BLOCK = 0x01000,    /* "block" */
-    SQL_TDEF_SOCK = 0x02000,     /* "blocksock" */
-    SQL_TDEF_RECOM = 0x04000,    /* "recom" */
-    SQL_TDEF_SNAPISOL = 0x08000, /* "snapshot isolation" */
-    SQL_TDEF_SERIAL = 0x10000    /* "serial" */
+/* Modern transaction modes, more or less */
+enum transaction_level {
+    TRANLEVEL_INVALID = -1,
+    TRANLEVEL_SOSQL = 9,
+    /* SQL MODE, so-called read-commited:
+       - server-side parsing
+       - transaction-internal updates are visible only inside transaction thread
+       - external (commited) updates are visible inside transaction thread
+    */
+    TRANLEVEL_RECOM = 10,
+    TRANLEVEL_SERIAL = 11,
+    TRANLEVEL_SNAPISOL = 12,
+    TRANLEVEL_MODSNAP = 13 /* server flag, client uses SNAPISOL */
 };
 
 enum RECORD_WRITE_TYPES {
@@ -3440,6 +3446,7 @@ extern int gbl_fk_allow_superset_keys;
 extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
+extern int gbl_snapshot_impl;
 
 void berkdb_iopool_process_message(char *line, int lline, int st);
 void stop_trickle_threads();

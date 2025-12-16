@@ -5144,6 +5144,7 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "do_not_use_modsnap_for_snapshot") == 0) {
         gbl_use_modsnap_for_snapshot = 0;
+        gbl_snapshot_impl = TRANLEVEL_SNAPISOL;
     } else if (tokcmp(tok, ltok, "del_llmeta_comdb2_seqno") == 0) {
         bdb_del_seqno(NULL);
     } else if (tokcmp(tok, ltok, "clear_sc_history") == 0) {

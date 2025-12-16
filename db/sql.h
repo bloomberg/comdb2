@@ -39,21 +39,6 @@
 #include "sqliteInt.h"
 #include "ast.h"
 
-/* Modern transaction modes, more or less */
-enum transaction_level {
-    TRANLEVEL_INVALID = -1,
-    TRANLEVEL_SOSQL = 9,
-    /* SQL MODE, so-called read-commited:
-       - server-side parsing
-       - transaction-internal updates are visible only inside transaction thread
-       - external (commited) updates are visible inside transaction thread
-    */
-    TRANLEVEL_RECOM = 10,
-    TRANLEVEL_SERIAL = 11,
-    TRANLEVEL_SNAPISOL = 12,
-    TRANLEVEL_MODSNAP = 13
-};
-
 /* I'm now splitting handle_fastsql_requests into two functions.  The
  * outer function will maintain state (such as temporary buffers etc) while
  * the inner function will actually run the sql query.  This will allow me
@@ -1698,7 +1683,6 @@ void curtran_assert_nolocks(void);
 
 void curtran_puttran(tran_type *tran);
 int sbuf_is_local(SBUF2 *);
-int tdef_to_tranlevel(int tdef);
 int fdb_access_control_create(struct sqlclntstate *, char *str);
 int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);

@@ -971,7 +971,7 @@
 (name='sql_release_locks_on_slow_reader', description='Release sql locks if a tcp write to the client blocks', type='BOOLEAN', value='ON', read_only='N')
 (name='sql_row_delay_msecs', description='Add this delay before sending back a row, for every row (default: 0)', type='INTEGER', value='0', read_only='N')
 (name='sql_time_threshold', description='Sets the threshold time in ms after which queries are reported as running a long time. (Default: 5000 ms)', type='INTEGER', value='5000', read_only='N')
-(name='sql_tranlevel_default', description='Sets the default SQL transaction level for the database.', type='ENUM', value='BLOCKSOCK', read_only='Y')
+(name='sql_tranlevel_default', description='Sets the default SQL transaction level for the database.', type='ENUM', value='BLOCKSQL', read_only='Y')
 (name='sqlbulksz', description='For index/data scans, the database will retrieve data in bulk instead of singlestepping a cursor. This sets the buffer size for the bulk retrieval.', type='INTEGER', value='2097152', read_only='N')
 (name='sqlenginepool.dump_on_full', description='Dump status on full queue.', type='BOOLEAN', value='ON', read_only='N')
 (name='sqlenginepool.exit_on_error', description='Exit on pthread error.', type='BOOLEAN', value='ON', read_only='N')
