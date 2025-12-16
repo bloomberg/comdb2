@@ -160,6 +160,13 @@ static int cdb2_alarm_unread_socket_data = 0;
 static int cdb2_alarm_unread_socket_data_set_from_env = 0;
 static int cdb2_max_discard_records = 1;
 static int cdb2_max_discard_records_set_from_env = 0;
+/* flattens column values in protobuf structure */
+static int cdb2_flat_col_vals = 1;
+static int cdb2_flat_col_vals_set_from_env = 0;
+/* estimates how much memory protobuf will need, and pre-allocates that much */
+static int CDB2_PROTOBUF_HEURISTIC_INIT_SIZE = 1024;
+static int cdb2_protobuf_heuristic = 1;
+static int cdb2_protobuf_heuristic_set_from_env = 0;
 
 static int CDB2_REQUEST_FP = 0;
 
@@ -177,15 +184,14 @@ static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
     struct cdb2_hndl *hndl = allocator_data;
     void *p = NULL;
     if (hndl->protobuf_data && (size <= hndl->protobuf_size - hndl->protobuf_offset)) {
-        p = (char*)hndl->protobuf_data + hndl->protobuf_offset;
-        if (size % 8) {
-            hndl->protobuf_offset += size + (8 - size % 8);
-        } else {
-            hndl->protobuf_offset += size;
-        }
+        p = hndl->protobuf_data + hndl->protobuf_offset;
+        hndl->protobuf_offset += ((size + 7) & ~7);
         if (hndl->protobuf_offset > hndl->protobuf_size)
             hndl->protobuf_offset = hndl->protobuf_size;
+        LOG_CALL("%s: got %zu bytes from pool max %d current %d\n", __func__, size, hndl->protobuf_size,
+                 hndl->protobuf_offset);
     } else {
+        LOG_CALL("%s: malloc(%zu) max %d current %d\n", __func__, size, hndl->protobuf_size, hndl->protobuf_offset);
         p = malloc(size);
     }
     return p;
@@ -198,6 +204,7 @@ void cdb2_protobuf_free(void *allocator_data, void *ptr)
     char *end = start + hndl->protobuf_size;
     char *p = ptr;
     if (hndl->protobuf_data == NULL || p < start || p >= end) {
+        LOG_CALL("%s: calling system free\n", __func__);
         free(p);
     }
 }
@@ -1639,6 +1646,9 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_int("COMDB2_CONFIG_COMDB2DB_TIMEOUT", &COMDB2DB_TIMEOUT, &cdb2_comdb2db_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_SOCKET_TIMEOUT", &CDB2_SOCKET_TIMEOUT, &cdb2_socket_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PROTOBUF_SIZE", &CDB2_PROTOBUF_SIZE, &cdb2_protobuf_size_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_PROTOBUF_HEURISTIC", &cdb2_protobuf_heuristic,
+                            &cdb2_protobuf_heuristic_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_FLAT_COL_VALS", &cdb2_flat_col_vals, &cdb2_flat_col_vals_set_from_env);
         process_env_var_int("COMDB2_FEATURE_USE_BMSD", &cdb2_use_bmsd, &cdb2_use_bmsd_set_from_env);
         process_env_var_int("COMDB2_FEATURE_COMDB2DB_FALLBACK", &cdb2_comdb2db_fallback,
                             &cdb2_comdb2db_fallback_set_from_env);
@@ -1851,6 +1861,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok && is_valid_int(tok))
                     cdb2_max_discard_records = atoi(tok);
+            } else if (!cdb2_flat_col_vals_set_from_env && strcasecmp("flat_col_vals", tok) == 0) {
+                if ((tok = strtok_r(NULL, " =:,", &last)) != NULL)
+                    cdb2_flat_col_vals = value_on_off(tok, &err);
+            } else if (!cdb2_protobuf_heuristic_set_from_env && strcasecmp("protobuf_heuristic", tok) == 0) {
+                if ((tok = strtok_r(NULL, " =:,", &last)) != NULL)
+                    cdb2_protobuf_heuristic = value_on_off(tok, &err);
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
@@ -4588,7 +4604,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
             features[n_features++] = CDB2_CLIENT_FEATURES__REQUEST_FP;
         /* Request server to send back row data flat, instead of storing it in
            a nested data structure. This helps reduce server's memory footprint. */
-        features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
+        if (cdb2_flat_col_vals)
+            features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         if ((hndl->flags & (CDB2_DIRECT_CPU | CDB2_MASTER)) ||
@@ -5987,6 +6004,39 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     child->context_msgs.has_changed = child->context_msgs.count > 0;
 }
 
+static void pb_alloc_heuristic(cdb2_hndl_tp *hndl)
+{
+    if (!cdb2_protobuf_heuristic)
+        return;
+    if (hndl->first_record_read)
+        return;
+    if (hndl->firstresponse == NULL || hndl->firstresponse->n_value <= 0)
+        return;
+
+    /*
+     * Protobuf-c stores scanned repeated fields in its memory slabs. Each memory slab is
+     * twice the size of the previous slab. There's a 32-byte overhead to scan each repeated field.
+     * So we calculate how many slabs protobuf-c will likely need, multiply it by 32,
+     * and allocate twice as much to also accommodate real unpacked data.
+     */
+    int nrepeated = hndl->firstresponse->n_value;
+    if (cdb2_flat_col_vals) {
+        /* both value and isnull are repeated */
+        nrepeated <<= 1;
+    }
+
+    int nextpow2 = 1;
+    while (nextpow2 < nrepeated)
+        nextpow2 <<= 1;
+    int newsize = 32 * nextpow2 * 2;
+    LOG_CALL("%s: ncolumns %ld, current alloc size %d, new est alloc size %d\n", __func__, hndl->firstresponse->n_value,
+             hndl->protobuf_size, newsize);
+    if (newsize > hndl->protobuf_size) {
+        hndl->protobuf_data = realloc(hndl->protobuf_data, newsize);
+        hndl->protobuf_size = newsize;
+    }
+}
+
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int ntypes, int *types, int line,
                                         int *set_stmt)
 {
@@ -6626,6 +6676,8 @@ read_record:
                 cleanup_query_list(hndl, &commit_query_list, __LINE__);
             PRINT_AND_RETURN(return_value);
         }
+
+        pb_alloc_heuristic(hndl);
         int rc = cdb2_next_record_int(hndl, 1);
         if (rc == CDB2_OK_DONE || rc == CDB2_OK) {
             return_value = cdb2_convert_error_code(hndl->firstresponse->error_code);
@@ -6917,6 +6969,8 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
 {
     if (hndl->fdb_hndl)
         hndl = hndl->fdb_hndl;
+    if (hndl->lastresponse == NULL)
+        return -1;
     CDB2SQLRESPONSE *lastresponse = hndl->lastresponse;
     /* sanity check. just in case. */
     if (lastresponse == NULL)
@@ -6935,6 +6989,9 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
 {
     if (hndl->fdb_hndl)
         hndl = hndl->fdb_hndl;
+    if (hndl->lastresponse == NULL)
+        return NULL;
+
     CDB2SQLRESPONSE *lastresponse = hndl->lastresponse;
     /* sanity check. just in case. */
     if (lastresponse == NULL)
@@ -8929,7 +8986,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
-    if (!hndl->protobuf_size)
+
+    if (cdb2_protobuf_heuristic)
+        hndl->protobuf_size = CDB2_PROTOBUF_HEURISTIC_INIT_SIZE;
+    else if (!hndl->protobuf_size)
         hndl->protobuf_size = CDB2_PROTOBUF_SIZE;
 
     if (hndl->protobuf_size > 0) {
