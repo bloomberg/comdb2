@@ -7,7 +7,7 @@ RUNSQL="$CDB2SQL_EXE --cdb2cfg $CDB2_CONFIG $DBNAME default"
 SSH="ssh -x -n -o StrictHostKeyChecking=no"
 SCP="scp -o StrictHostKeyChecking=no"
 PIDS=()
-APPSOX=10000
+APPSOX=40000
 MAXFDS=$(($APPSOX + 256))
 
 function setup_comdb2db_cfg {
@@ -100,6 +100,8 @@ function check_fds {
     local -r conns=$(<$DBDIR/conns.txt)
     echo "now:${SECONDS}  connections:${conns}  file-descriptors:${fds}"
     if [[ -z $fds ]] || [[ -z $conns ]] || [[ $conns -eq 0 ]] || [[ $fds -eq 0 ]]; then
+        CDB2_LOG_CALLS=1 CDB2_DEBUG=1 $ADMINSQL 'select count(*) from comdb2_connections' 2>&1 >> $DBDIR/error-conn.txt
+        echo >> $DBDIR/error-conn.txt
         return
     fi
     if [[ $conns -gt $(($APPSOX + 101)) ]]; then
@@ -116,9 +118,9 @@ function start_clients {
     for c in ${CLUSTER}; do
         n_hosts=$(($n_hosts + 1))
     done
-    local -r procs=10
-    local -r threads=10
-    local -r connections=100
+    local -r procs=20
+    local -r threads=20
+    local -r connections=200
     echo "max concurrent:$(($n_hosts * $procs * $threads))"
     for ((i=0;i<$procs;++i)); do
         timeout ${time}s $TESTSBUILDDIR/conn $threads $connections $DBNAME default $CDB2_CONFIG > $DBDIR/$HOSTNAME.$i.txt 2>&1 &
@@ -144,6 +146,7 @@ function run_test {
 }
 
 function cleanup {
+    set -x
     echo "peforming cleanup"
     local exit_pids=()
     for h in $CLUSTER; do
