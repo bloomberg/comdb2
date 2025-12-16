@@ -133,11 +133,11 @@ static void free_newsql_appdata_evbuffer(struct newsql_appdata_evbuffer *appdata
         cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         appdata->query = NULL;
     }
-    free_newsql_appdata(clnt);
     sqlwriter_free(appdata->writer);
-    free(appdata);
     shutdown(fd, SHUT_RDWR);
     Close(fd);
+    free_newsql_appdata(clnt);
+    free(appdata);
 }
 
 static void newsql_cleanup(int dummyfd, short what, void *data)
