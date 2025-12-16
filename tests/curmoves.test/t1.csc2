@@ -1,0 +1,12 @@
+schema
+{
+    int c1 null = yes
+    int c2 null = yes
+    int c3 null = yes
+    int c4 null = yes
+}
+keys
+{
+    dup "T1I" = c3
+    dup "t12" = c2
+}
