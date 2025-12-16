@@ -1815,19 +1815,6 @@ static const char *__req_2_str(int req_type)
     return "???";
 }
 
-static const char *__tran_2_str(enum transaction_level lvl)
-{
-    if (lvl == TRANLEVEL_SOSQL)
-        return "SOSQL";
-    if (lvl == TRANLEVEL_RECOM)
-        return "RECOM";
-    if (lvl == TRANLEVEL_MODSNAP)
-        return "MODSNAP";
-    if (lvl == TRANLEVEL_SNAPISOL)
-        return "SNAPISOL";
-    return "???";
-}
-
 void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 {
     unsigned long long t = osql_log_time();
@@ -1845,16 +1832,14 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_TRAN_COMMIT:
     case FDB_MSG_TRAN_ROLLBACK:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%s fl=%x lvl=%s\n", prefix,
-               __req_2_str(msg->hd.type),
-               comdb2uuidstr((unsigned char *)msg->tr.tid, tus), msg->tr.flags,
-               __tran_2_str(msg->tr.lvl));
+        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%s fl=%x lvl=%s\n", prefix, __req_2_str(msg->hd.type),
+               comdb2uuidstr((unsigned char *)msg->tr.tid, tus), msg->tr.flags, tranlevel_tostr(msg->tr.lvl));
         break;
 
     case FDB_MSG_TRAN_2PC_BEGIN:
         logmsg(LOGMSG_USER, "XXXX: %s %s tid=%s version=%d fl=%x lvl=%s\n", prefix, __req_2_str(msg->hd.type),
                comdb2uuidstr((unsigned char *)msg->tv.tid, tus), msg->tv.version, msg->tv.flags,
-               __tran_2_str(msg->tv.lvl));
+               tranlevel_tostr(msg->tv.lvl));
         break;
     case FDB_MSG_TRAN_RC:
 

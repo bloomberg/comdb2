@@ -1772,22 +1772,12 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                         clnt->dbtran.mode = TRANLEVEL_SOSQL;
                     } else if (strncasecmp(sqlstr, "snap", 4) == 0) {
                         sqlstr += 4;
-                        if (gbl_use_modsnap_for_snapshot) {
-                            clnt->dbtran.mode = TRANLEVEL_MODSNAP; 
-                            clnt->verify_retries = 0;
-                            if (clnt->hasql_on == 1) {
-                                newsql_set_high_availability(clnt);
-                                logmsg(LOGMSG_ERROR, "Enabling snapshot (modsnap) isolation "
-                                                     "high availability\n");
-                            }
-                        } else {
-                            clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
-                            clnt->verify_retries = 0;
-                            if (clnt->hasql_on == 1) {
-                                newsql_set_high_availability(clnt);
-                                logmsg(LOGMSG_ERROR, "Enabling snapshot isolation "
-                                                     "high availability\n");
-                            }
+                        clnt->dbtran.mode = gbl_snapshot_impl;
+                        clnt->verify_retries = 0;
+                        if (clnt->hasql_on == 1) {
+                            newsql_set_high_availability(clnt);
+                            logmsg(LOGMSG_ERROR, "Enabling snapshot %s isolation high availability\n",
+                                   gbl_use_modsnap_for_snapshot ? "(modsnap)" : "");
                         }
                     } else if (strncasecmp(sqlstr, "mod", 3) == 0) {
                         sqlstr += 3;
@@ -2379,7 +2369,7 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     }
     clnt->tzname[0] = 0;
     clnt->osql.count_changes = 1;
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.mode = gbl_sql_tranlevel_default;
     newsql_clr_high_availability(clnt);
     return clnt->admin ? 0 : do_query_on_master_check(clnt, sql_query);
 }
@@ -2514,7 +2504,7 @@ void newsql_reset(struct sqlclntstate *clnt)
     clnt->tzname[0] = 0;
     clnt->osql.count_changes = 1;
     clnt->heartbeat = 1;
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.mode = gbl_sql_tranlevel_default;
 }
 
 void free_newsql_appdata(struct sqlclntstate *clnt)

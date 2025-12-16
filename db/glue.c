@@ -4246,7 +4246,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
             gbl_rowlocks = 1;
             gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+            gbl_sql_tranlevel_default = gbl_snapshot_impl;
             logmsg(LOGMSG_INFO, "Rowlocks is *ENABLED*\n");
             break;
         case LLMETA_ROWLOCKS_DISABLED:

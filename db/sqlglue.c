@@ -3763,23 +3763,6 @@ done:
     return rc;
 }
 
-char *tranlevel_toclntstr(int lvl)
-{
-    switch (lvl) {
-    case TRANLEVEL_SOSQL:
-        return "BLOCKSQL";
-    case TRANLEVEL_RECOM:
-        return "READ COMMITTED";
-    case TRANLEVEL_SNAPISOL:
-    case TRANLEVEL_MODSNAP:
-        return "SNAPSHOT";
-    case TRANLEVEL_SERIAL:
-        return "SERIALIZABLE";
-    default:
-        return "???";
-    };
-}
-
 static int modsnap_enabled_correctly()
 {
     return gbl_snapisol && get_commit_lsn_map_switch_value() && gbl_utxnid_log;
@@ -3811,7 +3794,7 @@ static int isolation_level_enabled_correctly(const int mode)
 int sql_set_transaction_mode(sqlite3 *db, struct sqlclntstate *clnt, int mode)
 {
     if (!isolation_level_enabled_correctly(mode)) {
-        logmsg(LOGMSG_ERROR, "%s REQUIRES MODIFICATIONS TO THE LRL FILE\n", tranlevel_toclntstr(mode));
+        logmsg(LOGMSG_ERROR, "%s REQUIRES MODIFICATIONS TO THE LRL FILE\n", tranlevel_tostr(mode));
         return -1;
     }
 

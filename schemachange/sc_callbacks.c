@@ -1098,7 +1098,7 @@ static int scdone_rowlocks(const char tablename[], void *arg, scdone_t type)
         break;
     case 2:
         gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+        gbl_sql_tranlevel_default = gbl_snapshot_impl;
         break;
     }
     if (rc != 0) {

@@ -135,7 +135,6 @@ extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
 extern int gbl_typessql;
 extern int gbl_modsnap_asof;
-extern int gbl_use_modsnap_for_snapshot;
 extern int gbl_2pc;
 
 /* Once and for all:
@@ -612,13 +611,14 @@ char *tranlevel_tostr(int lvl)
 {
     switch (lvl) {
     case TRANLEVEL_SOSQL:
-        return "TRANLEVEL_SOSQL";
+        return "BLOCKSQL";
     case TRANLEVEL_RECOM:
-        return "TRANLEVEL_RECOM";
+        return "READ COMMITTED";
+    case TRANLEVEL_SNAPISOL:
     case TRANLEVEL_MODSNAP:
-        return "TRANLEVEL_MODSNAP";
+        return "SNAPSHOT";
     case TRANLEVEL_SERIAL:
-        return "TRANLEVEL_SERIAL";
+        return "SERIALIZABLE";
     default:
         return "???";
     };
@@ -5192,31 +5192,6 @@ int dispatch_sql_query_no_wait(struct sqlclntstate *clnt)
     return dispatch_sql_query_int(clnt);
 }
 
-int tdef_to_tranlevel(int tdef)
-{
-    switch (tdef) {
-    case SQL_TDEF_COMDB2:
-    case SQL_TDEF_BLOCK:
-    case SQL_TDEF_SOCK:
-        return TRANLEVEL_SOSQL;
-
-    case SQL_TDEF_RECOM:
-        return TRANLEVEL_RECOM;
-
-    case SQL_TDEF_SERIAL:
-        return TRANLEVEL_SERIAL;
-
-    case SQL_TDEF_SNAPISOL:
-        return gbl_use_modsnap_for_snapshot ?
-               TRANLEVEL_MODSNAP : TRANLEVEL_SNAPISOL;
-
-    default:
-        logmsg(LOGMSG_FATAL, "%s: line %d Unknown modedef: %d", __func__, __LINE__,
-                tdef);
-        abort();
-    }
-}
-
 void free_client_info(struct sqlclntstate *clnt)
 {
     if (clnt->argv0) {
@@ -5441,8 +5416,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE)
         clnt->intrans = 0;
 
-    /* start off in comdb2 mode till we're told otherwise */
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    /* start off in the default transaction mode till we're told otherwise */
+    clnt->dbtran.mode = gbl_sql_tranlevel_default;
     clnt->dbtran.nchunks = 0;
     clnt->heartbeat = 0;
     clnt->limits.maxcost = gbl_querylimits_maxcost;

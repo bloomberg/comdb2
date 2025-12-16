@@ -449,8 +449,9 @@ int gbl_goslow = 0; /* set to disable "gofast" */
 
 int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
-int gbl_sql_tranlevel_preserved = SQL_TDEF_SOCK;
-int gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+int gbl_sql_tranlevel_preserved = TRANLEVEL_SOSQL;
+int gbl_sql_tranlevel_default = TRANLEVEL_SOSQL;
+int gbl_snapshot_impl = TRANLEVEL_SNAPISOL;
 int gbl_exit_alarm_sec = 300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
@@ -6453,7 +6454,7 @@ retry_tran:
     case LLMETA_ROWLOCKS_ENABLED:
     case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
         gbl_rowlocks = 1;
-        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+        gbl_sql_tranlevel_default = gbl_snapshot_impl;
     case LLMETA_ROWLOCKS_DISABLED:
         gbl_rowlocks = 0;
         gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
