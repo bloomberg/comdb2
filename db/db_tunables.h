@@ -1887,7 +1887,7 @@ REGISTER_TUNABLE("physrep_filter_by_class", "Filter physrep replication by class
                  &gbl_physrep_filter_by_class, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 0)", TUNABLE_INTEGER,
+REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 50)", TUNABLE_INTEGER,
                  &gbl_physrep_pollms, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
