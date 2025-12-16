@@ -1471,7 +1471,7 @@ static int get_current_lcgen(cdb2_hndl_tp *repl_db, int64_t *lcgen)
     return 0;
 }
 
-int gbl_physrep_pollms = 0;
+int gbl_physrep_pollms = 50;
 static void *physrep_worker(void *args)
 {
     comdb2_name_thread(__func__);
@@ -1487,6 +1487,7 @@ static void *physrep_worker(void *args)
     int last_revconn_check = 0;
     int last_update_registry = 0;
     int pollms;
+    unsigned int file, offset;
     LOG_INFO info;
     LOG_INFO prev_info;
     DB_Connection *repl_db_cnct = NULL;
@@ -1698,6 +1699,18 @@ repl_loop:
             }
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             goto sleep_and_retry;
+        }
+
+        /* If this record is a sentinel, close the connection */
+        char *lsn = (char *)cdb2_column_value(repl_db, 0);
+        if (((rc = char_to_lsn(lsn, &file, &offset)) != 0) || (file == -1 && offset == -1)) {
+            if (gbl_physrep_debug) {
+                physrep_logmsg(LOGMSG_USER, "%s:%d: Got sentinel record, close connection\n", __func__, __LINE__);
+            }
+            close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+            do_truncate = 1;
+            first_lcgen = -1;
+            goto repl_loop;
         }
 
         /* our log matches, so apply each record log received */
