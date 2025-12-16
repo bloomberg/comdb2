@@ -49,14 +49,6 @@
 
 #include "str_util.h" /* QUOTE */
 
-/*
-*******************************************************************************
-** WARNING: If you add any internal configuration state to this file, please
-**          update the reset_the_configuration() function as well to include
-**          it.
-*******************************************************************************
-*/
-
 #ifndef API_DRIVER_NAME
 #define API_DRIVER_NAME open_cdb2api
 #endif
@@ -3209,12 +3201,9 @@ void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, 
             }
         }
 
-        struct sockpool_msg_vers0 msg = {0};
-        if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr))) {
+        if (sockpool_fd != -1) {
             int rc;
-            msg.request = SOCKPOOL_DONATE;
-            msg.dbnum = dbnum;
-            msg.timeout = ttl;
+            struct sockpool_msg_vers0 msg = {.request = SOCKPOOL_DONATE, .dbnum = dbnum, .timeout = ttl};
             strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
             errno = 0;
@@ -3228,13 +3217,7 @@ void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, 
                 close(sockpool_fd);
                 sockpool_fd = -1;
             }
-        } else if (sockpool_fd != -1) {
-            if (log_calls) {
-                fprintf(stderr, "%s: typestr too long to donate to sockpool, length %ld max %ld\n", __func__,
-                        strlen(typestr), sizeof(msg.typestr) - 1);
-            }
         }
-
         if (sockpool_fd != -1) {
             pthread_mutex_lock(&cdb2_sockpool_mutex);
             int closeit = 0;
