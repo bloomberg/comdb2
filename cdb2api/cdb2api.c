@@ -161,11 +161,19 @@ static int cdb2_alarm_unread_socket_data_set_from_env = 0;
 static int cdb2_max_discard_records = 1;
 static int cdb2_max_discard_records_set_from_env = 0;
 /* flattens column values in protobuf structure */
+#ifdef CDB2_LEGACY_DEFAULTS
+static int cdb2_flat_col_vals = 0;
+#else
 static int cdb2_flat_col_vals = 1;
+#endif
 static int cdb2_flat_col_vals_set_from_env = 0;
 /* estimates how much memory protobuf will need, and pre-allocates that much */
 static int CDB2_PROTOBUF_HEURISTIC_INIT_SIZE = 1024;
+#ifdef CDB2_LEGACY_DEFAULTS
+static int cdb2_protobuf_heuristic = 0;
+#else
 static int cdb2_protobuf_heuristic = 1;
+#endif
 static int cdb2_protobuf_heuristic_set_from_env = 0;
 
 static int CDB2_REQUEST_FP = 0;
