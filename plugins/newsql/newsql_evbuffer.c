@@ -517,6 +517,18 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
         comdbg_flags = flibc_intflip(comdbg_flags);
     }
 
+    if (!bdb_am_i_coherent(thedb->bdb_env)) {
+        struct req_hdr hdr;
+        if (req_hdr_get(&hdr, buf, ((uint8_t*)buf) + sz, comdbg_flags) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:failed to unpack req header\n", __func__);
+            return 1;
+        }
+        if (hdr.opcode != OP_DBINFO && hdr.opcode != OP_DBINFO2) {
+            logmsg(LOGMSG_ERROR, "Rejecting tagged request %d %s on incoherent node\n", hdr.opcode, req2a(hdr.opcode));
+            return 1;
+        }
+    }
+
     // This will dispatch to a thread - it's not done inline
     rc = handle_buf_main2(thedb, NULL, p_slock->bigbuf, (uint8_t *)p_slock->bigbuf + 1024 * 64, 0, clnt->origin,
                           clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, comdbg_flags,
