@@ -1008,7 +1008,7 @@ static int bdb_cget_unpack_int(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, D
         if (rc == ENOMEM) {
             /* Secondly, allocate the needed size and get from the current cursor position. */
             if ((data->data = fn_malloc((int)data->size)) == NULL)
-                rc = BDBERR_MALLOC;
+                rc = ENOMEM;
             else {
                 data->ulen = data->size;
                 rc = dbcp->c_get(dbcp, key, data, DB_CURRENT);
