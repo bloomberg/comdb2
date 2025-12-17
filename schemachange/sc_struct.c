@@ -139,110 +139,6 @@ void free_schema_change_type(struct schema_change_type *s)
     }
 }
 
-static size_t dests_field_packed_size(struct schema_change_type *s)
-{
-
-    size_t len = sizeof(s->dests.count);
-    int i;
-    struct dest *d;
-    for (i = 0, d = s->dests.top; d; d = d->lnk.next, i++) {
-        len += sizeof(int);
-        len += strlen(d->dest);
-    }
-    return len;
-}
-
-static size_t _partition_packed_size(struct comdb2_partition *p)
-{
-    switch (p->type) {
-    case PARTITION_NONE:
-    case PARTITION_REMOVE:
-        return sizeof(p->type);
-    case PARTITION_ADD_TIMED:
-    case PARTITION_ADD_MANUAL:
-        return sizeof(p->type) + sizeof(p->u.tpt.period) +
-               sizeof(p->u.tpt.retention) + sizeof(p->u.tpt.start);
-    case PARTITION_MERGE:
-        return sizeof(p->type) + sizeof(p->u.mergetable.tablename) +
-               sizeof(p->u.mergetable.version);
-    case PARTITION_ADD_GENSHARD: {
-        int sz = sizeof(p->type) + sizeof(p->u.genshard.tablename);
-
-        sz += sizeof(p->u.genshard.numdbs);
-        for (int i = 0; i < p->u.genshard.numdbs; i++) {
-            sz += strlen(p->u.genshard.dbnames[i]) + 1;
-        }
-
-        sz += sizeof(p->u.genshard.numcols);
-        for (int i = 0; i < p->u.genshard.numcols; i++) {
-            sz += strlen(p->u.genshard.columns[i]) + 1;
-        }
-        for (int i = 0; i < p->u.genshard.numdbs; i++) {
-            sz += strlen(p->u.genshard.shardnames[i]) + 1;
-        }
-        return sz;
-    }
-    case PARTITION_REM_GENSHARD:
-        return sizeof(p->type);
-    default:
-        logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
-        abort();
-    }
-}
-
-size_t schemachange_packed_size(struct schema_change_type *s)
-{
-    s->tablename_len = strlen(s->tablename) + 1;
-    s->fname_len = strlen(s->fname) + 1;
-    s->aname_len = strlen(s->aname) + 1;
-    s->spname_len = strlen(s->spname) + 1;
-    s->newcsc2_len = (s->newcsc2) ? strlen(s->newcsc2) + 1 : 0;
-
-    s->packed_len =
-        sizeof(s->kind) + sizeof(s->rqid) + sizeof(s->uuid) +
-        sizeof(s->tablename_len) + s->tablename_len + sizeof(s->fname_len) +
-        s->fname_len + sizeof(s->aname_len) + s->aname_len +
-        sizeof(s->avgitemsz) + sizeof(s->newdtastripe) + sizeof(s->blobstripe) +
-        sizeof(s->live) + sizeof(s->newcsc2_len) + s->newcsc2_len +
-        sizeof(s->scanmode) + sizeof(s->delay_commit) +
-        sizeof(s->force_rebuild) + sizeof(s->force_dta_rebuild) +
-        sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
-        sizeof(s->header_change) + sizeof(s->compress) +
-        sizeof(s->compress_blobs) + sizeof(s->persistent_seq) +
-        sizeof(s->ip_updates) + sizeof(s->instant_sc) + sizeof(s->preempted) +
-        sizeof(s->use_plan) + sizeof(s->commit_sleep) +
-        sizeof(s->convert_sleep) + sizeof(s->same_schema) + sizeof(s->dbnum) +
-        sizeof(s->flg) + sizeof(s->rebuild_index) +
-        sizeof(s->index_to_rebuild) + sizeof(s->source_node) +
-        dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
-        sizeof(s->lua_func_flags) + sizeof(s->newtable) +
-        sizeof(s->usedbtablevers) + sizeof(s->qdb_file_ver) +
-        _partition_packed_size(&s->partition) + sizeof(s->preserve_oplog_count);
-
-    return s->packed_len;
-}
-
-static void *buf_put_dests(struct schema_change_type *s, void *p_buf,
-                           void *p_buf_end)
-{
-    int len;
-    struct dest *d;
-    int i;
-
-    p_buf = buf_put(&s->dests.count, sizeof(s->dests.count), p_buf, p_buf_end);
-
-    for (i = 0, d = s->dests.top; d; d = d->lnk.next, i++) {
-        len = strlen(d->dest);
-        p_buf = buf_put(&len, sizeof(len), p_buf, p_buf_end);
-        if (len) {
-            p_buf = buf_no_net_put(d->dest, len, p_buf, p_buf_end);
-        }
-    }
-
-    return p_buf;
-}
-
-int gbl_sc_protobuf = 1;
 int gbl_sc_current_version = SC_VERSION;
 
 int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, size_t *sz)
@@ -594,162 +490,6 @@ void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, v
             __func__, (uintptr_t) p_buf - (uintptr_t) p_buf_end);
         return NULL;
     }
-    return p_buf;
-}
-
-void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
-{
-    if (p_buf >= p_buf_end) return NULL;
-
-    p_buf = buf_put(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
-
-    p_buf = buf_no_net_put(&s->uuid, sizeof(s->uuid), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->tablename_len, sizeof(s->tablename_len), p_buf, p_buf_end);
-
-    p_buf = buf_no_net_put(s->tablename, s->tablename_len, p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->fname_len, sizeof(s->fname_len), p_buf, p_buf_end);
-
-    p_buf = buf_no_net_put(s->fname, s->fname_len, p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->aname_len, sizeof(s->aname_len), p_buf, p_buf_end);
-
-    p_buf = buf_no_net_put(s->aname, s->aname_len, p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->avgitemsz, sizeof(s->avgitemsz), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->newdtastripe, sizeof(s->newdtastripe), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->blobstripe, sizeof(s->blobstripe), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->live, sizeof(s->live), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->newcsc2_len, sizeof(s->newcsc2_len), p_buf, p_buf_end);
-
-    if (s->newcsc2_len) {
-        p_buf = buf_no_net_put(s->newcsc2, s->newcsc2_len, p_buf, p_buf_end);
-    }
-
-    p_buf = buf_put(&s->scanmode, sizeof(s->scanmode), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->delay_commit, sizeof(s->delay_commit), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->force_rebuild, sizeof(s->force_rebuild), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->force_dta_rebuild, sizeof(s->force_dta_rebuild), p_buf,
-                    p_buf_end);
-
-    p_buf = buf_put(&s->force_blob_rebuild, sizeof(s->force_blob_rebuild),
-                    p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->force, sizeof(s->force), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->headers, sizeof(s->headers), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->header_change, sizeof(s->header_change), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->compress, sizeof(s->compress), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->compress_blobs, sizeof(s->compress_blobs), p_buf,
-                    p_buf_end);
-
-    p_buf = buf_put(&s->persistent_seq, sizeof(s->persistent_seq), p_buf,
-                    p_buf_end);
-
-    p_buf = buf_put(&s->ip_updates, sizeof(s->ip_updates), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->instant_sc, sizeof(s->instant_sc), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->preempted, sizeof(s->preempted), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->commit_sleep, sizeof(s->commit_sleep), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->convert_sleep, sizeof(s->convert_sleep), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->same_schema, sizeof(s->same_schema), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->dbnum, sizeof(s->dbnum), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->flg, sizeof(s->flg), p_buf, p_buf_end);
-
-    p_buf =
-        buf_put(&s->rebuild_index, sizeof(s->rebuild_index), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->index_to_rebuild, sizeof(s->index_to_rebuild), p_buf,
-                    p_buf_end);
-
-    p_buf = buf_put(&s->source_node, sizeof(s->source_node), p_buf, p_buf_end);
-
-    p_buf = buf_put_dests(s, p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->spname_len, sizeof(s->spname_len), p_buf, p_buf_end);
-    p_buf = buf_no_net_put(s->spname, s->spname_len, p_buf, p_buf_end);
-    p_buf = buf_put(&s->lua_func_flags, sizeof(s->lua_func_flags), p_buf, p_buf_end);
-
-    p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
-    p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
-                    p_buf_end);
-
-    p_buf = buf_put(&s->qdb_file_ver, sizeof(s->qdb_file_ver), p_buf, p_buf_end);
-
-    p_buf = buf_put(&s->partition.type, sizeof(s->partition.type), p_buf,
-                    p_buf_end);
-    switch (s->partition.type) {
-    case PARTITION_ADD_TIMED:
-    case PARTITION_ADD_MANUAL: {
-        p_buf = buf_put(&s->partition.u.tpt.period,
-                        sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
-        p_buf = buf_put(&s->partition.u.tpt.retention,
-                        sizeof(s->partition.u.tpt.retention), p_buf, p_buf_end);
-        p_buf = buf_put(&s->partition.u.tpt.start,
-                        sizeof(s->partition.u.tpt.start), p_buf, p_buf_end);
-        break;
-    }
-    case PARTITION_MERGE: {
-        p_buf = buf_no_net_put(s->partition.u.mergetable.tablename,
-                        sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
-        p_buf = buf_put(&s->partition.u.mergetable.version,
-                        sizeof(s->partition.u.mergetable.version), p_buf, p_buf_end);
-        break;
-    }
-    case PARTITION_ADD_GENSHARD: {
-        p_buf = buf_no_net_put(s->partition.u.genshard.tablename,
-                        sizeof(s->partition.u.genshard.tablename), p_buf, p_buf_end);
-        p_buf = buf_put(&s->partition.u.genshard.numdbs,
-                        sizeof(s->partition.u.genshard.numdbs), p_buf, p_buf_end);
-        for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
-            p_buf = buf_no_net_put(s->partition.u.genshard.dbnames[i],
-                    strlen(s->partition.u.genshard.dbnames[i]) + 1, p_buf, p_buf_end);
-        }
-        p_buf = buf_put(&s->partition.u.genshard.numcols,
-                        sizeof(s->partition.u.genshard.numcols), p_buf, p_buf_end);
-        for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
-            p_buf = buf_no_net_put(s->partition.u.genshard.columns[i],
-                    strlen(s->partition.u.genshard.columns[i]) + 1, p_buf, p_buf_end);
-        }
-        for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
-            p_buf = buf_no_net_put(s->partition.u.genshard.shardnames[i],
-                    strlen(s->partition.u.genshard.shardnames[i]) + 1, p_buf, p_buf_end);
-        }
-        break;
-    }
-    case PARTITION_REM_GENSHARD: {
-    }
-    }
-
-    p_buf = buf_put(&s->preserve_oplog_count, sizeof(s->preserve_oplog_count), p_buf, p_buf_end);
     return p_buf;
 }
 
@@ -1403,54 +1143,20 @@ void compare_scs(struct schema_change_type *s1, struct schema_change_type *s2)
  * function succeeds */
 int pack_schema_change_type(struct schema_change_type *s, void **packed, size_t *packed_len)
 {
-
-    int is_protobuf = gbl_sc_protobuf;
-
-    if (is_protobuf) {
-        int rc = pack_schema_change_protobuf(s, packed, packed_len);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pack_schema_change_type: failed to pack schema change, rc %d\n", rc);
-            *packed_len = 0;
-        }
+    int rc = pack_schema_change_protobuf(s, packed, packed_len);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "pack_schema_change_type: failed to pack schema change, rc %d\n", rc);
+        *packed_len = 0;
+    }
 #ifdef DEBUG_PROTOBUF_SC
-        else {
-            size_t len = *packed_len;
-            struct schema_change_type ck = {0};
-            unpack_schema_change_protobuf(&ck, *packed, &len);
-            compare_scs(s, &ck);
-        }
+    else {
+        size_t len = *packed_len;
+        struct schema_change_type ck = {0};
+        unpack_schema_change_protobuf(&ck, *packed, &len);
+        compare_scs(s, &ck);
+    }
 #endif
-        return rc;
-    }
-
-    /* compute the length of our buffer */
-    *packed_len = schemachange_packed_size(s);
-
-    /* grab memory for our buffer */
-    *packed = malloc(*packed_len);
-    if (!*packed) {
-        logmsg(LOGMSG_ERROR, "pack_schema_change_type: ran out of memory\n");
-        *packed_len = 0;
-        return -1;
-    }
-
-    /* get the beginning */
-    uint8_t *p_buf = (uint8_t *)(*packed);
-
-    /* get the end */
-    uint8_t *p_buf_end = (p_buf + *packed_len);
-
-    p_buf = buf_put_schemachange(s, p_buf, p_buf_end);
-    if (p_buf != (uint8_t *)((char *)(*packed)) + *packed_len) {
-        logmsg(LOGMSG_ERROR, "pack_schema_change_type: size of data written did not"
-                             " equal precomputed size, this should not happen\n");
-        free(*packed);
-        *packed = NULL;
-        *packed_len = 0;
-        return -1;
-    }
-
-    return 0; /* success */
+    return rc;
 }
 
 /* Unpacks an opaque buffer from the low level meta table into a
@@ -1871,29 +1577,14 @@ int schema_change_headers(struct schema_change_type *s)
 
 struct schema_change_type *clone_schemachange_type(struct schema_change_type *sc)
 {
-    int is_protobuf = gbl_sc_protobuf, rc;
+    int rc;
     struct schema_change_type *newsc;
     size_t sc_len = 0;
-    uint8_t *p_buf = NULL, *p_buf_end = NULL, *buf = NULL;
+    uint8_t *buf = NULL;
 
-    if (is_protobuf) {
-        rc = pack_schema_change_protobuf(sc, (void **)&buf, &sc_len);
-        if (rc != 0) {
-            return NULL;
-        }
-    } else {
-        sc_len = schemachange_packed_size(sc);
-        p_buf = buf = calloc(1, sc_len);
-        if (!p_buf)
-            return NULL;
-
-        p_buf_end = p_buf + sc_len;
-
-        p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
-        if (!p_buf) {
-            free(buf);
-            return NULL;
-        }
+    rc = pack_schema_change_protobuf(sc, (void **)&buf, &sc_len);
+    if (rc != 0) {
+        return NULL;
     }
 
     newsc = new_schemachange_type();
@@ -1902,23 +1593,12 @@ struct schema_change_type *clone_schemachange_type(struct schema_change_type *sc
         return NULL;
     }
 
-    if (is_protobuf) {
-        size_t plen;
-        rc = unpack_schema_change_protobuf(newsc, buf, &plen);
-        if (rc != 0) {
-            free_schema_change_type(newsc);
-            free(buf);
-            return NULL;
-        }
-        p_buf = p_buf_end = buf + plen;
-    } else {
-        p_buf = buf;
-        p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
-        if (!p_buf) {
-            free_schema_change_type(newsc);
-            free(buf);
-            return NULL;
-        }
+    size_t plen;
+    rc = unpack_schema_change_protobuf(newsc, buf, &plen);
+    if (rc != 0) {
+        free_schema_change_type(newsc);
+        free(buf);
+        return NULL;
     }
 
     newsc->nothrevent = sc->nothrevent;
@@ -1932,12 +1612,6 @@ struct schema_change_type *clone_schemachange_type(struct schema_change_type *sc
     newsc->timepartition_version = sc->timepartition_version;
     newsc->partition = sc->partition;
     newsc->usedbtablevers = sc->usedbtablevers;
-
-    if (!p_buf) {
-        free_schema_change_type(newsc);
-        free(buf);
-        return NULL;
-    }
 
     free(buf);
     return newsc;
