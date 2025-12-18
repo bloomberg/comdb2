@@ -41,11 +41,13 @@ function start_pmux {
 }
 
 function start_db {
-    echo $COMDB2_EXE --create $DBNAME -dir $DBDIR --tunable 'do scon' --tunable "setattr maxappsockslimit $APPSOX"
-    echo "$COMDB2_EXE $DBNAME -dir $DBDIR"
     (
         echo "creating database"
-        $COMDB2_EXE --create $DBNAME -dir $DBDIR --tunable 'do scon' --tunable "setattr maxappsockslimit $APPSOX"
+        $COMDB2_EXE --create $DBNAME -dir $DBDIR \
+            --tunable 'setattr SQL_QUEUEING_DISABLE_TRACE 1' \
+            --tunable 'setattr SQL_QUEUEING_CRITICAL_TRACE 100000' \
+            --tunable 'do scon' \
+            --tunable "setattr maxappsockslimit $APPSOX"
         echo " initial ulimit -n: $(ulimit -n)"
         ulimit -n ${MAXFDS}
         echo "adjusted ulimit -n: $(ulimit -n)"
@@ -116,9 +118,9 @@ function start_clients {
     for c in ${CLUSTER}; do
         n_hosts=$(($n_hosts + 1))
     done
-    local -r procs=10
-    local -r threads=10
-    local -r connections=100
+    local -r procs=20
+    local -r threads=20
+    local -r connections=200
     echo "max concurrent:$(($n_hosts * $procs * $threads))"
     for ((i=0;i<$procs;++i)); do
         timeout ${time}s $TESTSBUILDDIR/conn $threads $connections $DBNAME default $CDB2_CONFIG > $DBDIR/$HOSTNAME.$i.txt 2>&1 &
