@@ -6431,6 +6431,12 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     int rc;
     int retro_partition = gbl_retro_tpt && sc->kind == SC_ALTERTABLE && sc->partition.type == PARTITION_ADD_TIMED_RETRO;
 
+    if (sc->partition.type == PARTITION_ADD_TIMED_RETRO && !gbl_retro_tpt) {
+        logmsg(LOGMSG_ERROR, "Retroactively partition disabled %s\n", sc->tablename);
+        sc_errf(sc, "Retroactively partition disabled %s\n", sc->tablename);
+        return ERR_SC;
+    }
+
     if (sc->partition.type == PARTITION_REMOVE) {
         logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
         sc_errf(sc, "Partition %s does not exist\n", sc->tablename);
