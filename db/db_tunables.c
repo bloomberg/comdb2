@@ -58,7 +58,6 @@ extern int gbl_test_badwrite_intvl;
 extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
-extern int gbl_create_default_consumer_atomically;
 extern int gbl_decom;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;

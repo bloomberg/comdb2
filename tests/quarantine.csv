@@ -34,6 +34,5 @@ sc_timepart,UNKNOWN,181186021
 snapshot_during_truncate,UNKNOWN,181344241
 scupdates_logicalsc_generated,UNKNOWN,181484749
 sc_resume_logicalsc_generated,UNKNOWN,181484807
-consumer_non_atomic_default_consumer_generated,DB_BUG,181573461
 unifiedcancel,UNKNOWN,181657289
 autoanalyze,UNKNOWN,181657299
