@@ -519,7 +519,7 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
 
     if (!bdb_am_i_coherent(thedb->bdb_env)) {
         struct req_hdr hdr;
-        if (req_hdr_get(&hdr, buf, ((uint8_t*)buf) + sz, comdbg_flags) == NULL) {
+        if (req_hdr_get(&hdr, buf, ((uint8_t *)buf) + sz, comdbg_flags) == NULL) {
             logmsg(LOGMSG_ERROR, "%s:failed to unpack req header\n", __func__);
             return 1;
         }
