@@ -85,7 +85,8 @@ extern int gbl_sql_logfill;
 
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 0;
-int gbl_inmem_repdb = 1;
+int gbl_disable_repdb = 1;
+int gbl_inmem_repdb = 0;
 int gbl_debug_inmem_repdb = 0;
 int gbl_periodic_rep_report = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -96,6 +97,8 @@ int gbl_inmem_repdb_maxlog = 1000;
 int64_t gbl_inmem_repdb_memory = 0;
 static pthread_mutex_t inmem_repdb_lk = PTHREAD_MUTEX_INITIALIZER;
 int64_t gbl_apply_queue_memory = 0;
+DB_LSN highest_seen_lsn = {0};
+static pthread_mutex_t highest_seen_lsn_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /* Finish a fill if we are within 1.5 logfiles */
 int gbl_finish_fill_threshold = 60000000;
@@ -3139,7 +3142,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
-    uint32_t rep_gen;
+	uint32_t rep_gen;
 	int decoupled;
 {
 	__dbreg_register_args dbreg_args;
@@ -3363,8 +3366,9 @@ gap_check:		use_range = 0;
 			lp->rcvd_recs = 0;
 			ZERO_LSN(lp->max_wait_lsn);
 
-			/* In-memory drop in replacement */
-			if (gbl_inmem_repdb) {
+			if (gbl_disable_repdb) { // shouldn't get here ..
+			} else if (gbl_inmem_repdb) {
+				/* In-memory drop in replacement */
 				repdb_dequeue(&control_dbt, &rec_dbt);
 				rp = (REP_CONTROL *)control_dbt.data;
 				assert(!IS_ZERO_LSN(rp->lsn));
@@ -3434,7 +3438,7 @@ gap_check:		use_range = 0;
 			}
 
 			disable_random_deadlocks = 1;
-			if (!gbl_inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
+			if (!gbl_disable_repdb && !gbl_inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
 				abort();
 				goto err;
 			}
@@ -3465,7 +3469,17 @@ gap_check:		use_range = 0;
 			 * interested in its contents, just in its LSN.
 			 * Optimize by doing a partial get of the data item.
 			 */
-			if (gbl_inmem_repdb) {
+			if (gbl_disable_repdb) {
+				ZERO_LSN(lp->waiting_lsn);
+				Pthread_mutex_lock(&highest_seen_lsn_lk);
+				if (log_compare(&rp->lsn, &highest_seen_lsn) > 0) {
+					highest_seen_lsn = rp->lsn;
+				}
+				Pthread_mutex_unlock(&highest_seen_lsn_lk);
+				if (dbenv->rep_signal_logfill) {
+					dbenv->rep_signal_logfill(dbenv, &lp->waiting_lsn);
+				}
+			} else if (gbl_inmem_repdb) {
 				Pthread_mutex_lock(&inmem_repdb_lk);
 				struct repdb_rec *r = LISTC_TOP(&repdb_queue);
 				ret = 0;
@@ -3679,7 +3693,13 @@ gap_check:		use_range = 0;
 		}
 #endif
 		/* Only add less than the oldest */
-		if (gbl_inmem_repdb) {
+		if (gbl_disable_repdb) {
+			Pthread_mutex_lock(&highest_seen_lsn_lk);
+			if (log_compare(&rp->lsn, &highest_seen_lsn) > 0) {
+				highest_seen_lsn = rp->lsn;
+			}
+			Pthread_mutex_unlock(&highest_seen_lsn_lk);
+		} else if (gbl_inmem_repdb) {
 			repdb_enqueue(rp, rec, decoupled == 1);
 			ret = 0;
 		} else {
@@ -3701,7 +3721,9 @@ gap_check:		use_range = 0;
 
 		if (IS_ZERO_LSN(lp->waiting_lsn) ||
 			log_compare(&rp->lsn, &lp->waiting_lsn) < 0) {
-			lp->waiting_lsn = rp->lsn;
+			if (!gbl_disable_repdb) {
+				lp->waiting_lsn = rp->lsn;
+			}
 			if (dbenv->rep_signal_logfill) {
 				dbenv->rep_signal_logfill(dbenv, &lp->waiting_lsn);
 			}
@@ -4004,7 +4026,8 @@ gap_check:		use_range = 0;
 		goto err;
 	}
 
-	if (gbl_inmem_repdb) {
+	if (gbl_disable_repdb) {
+	} else if (gbl_inmem_repdb) {
 		if (control_dbt.data) 
 			free(control_dbt.data);
 
@@ -8764,6 +8787,11 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_CLR(db_rep->rep_db, DB_AM_RECOVER);
 	}
 
+	if (gbl_disable_repdb) {
+		Pthread_mutex_lock(&highest_seen_lsn_lk);
+		ZERO_LSN(highest_seen_lsn);
+		Pthread_mutex_unlock(&highest_seen_lsn_lk);
+	}
 	if (gbl_inmem_repdb) {
 		__truncate_inmem_repdb(dbenv);
 	}
@@ -8908,7 +8936,13 @@ int *nrecs;
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	*ready_lsn = lp->ready_lsn;
-	*gap_lsn = lp->waiting_lsn;
+	if (gbl_disable_repdb) {
+		Pthread_mutex_lock(&highest_seen_lsn_lk);
+		*gap_lsn = highest_seen_lsn;
+		Pthread_mutex_unlock(&highest_seen_lsn_lk);
+	} else {
+		*gap_lsn = lp->waiting_lsn;
+	}
 	*nrecs = lp->records_last_second;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	return 0;

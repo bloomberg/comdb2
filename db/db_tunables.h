@@ -1429,8 +1429,6 @@ REGISTER_TUNABLE("sql_logfill_debug", "Enable extended trace for sql logfill thr
                  &gbl_debug_sql_logfill, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_logfill_stats", "Print periodic stats from sql logfill thread.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_sql_logfill_stats, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("sql_logfill_only_gaps", "Only request records up to repdb lsn.  (Default: on)", TUNABLE_BOOLEAN,
-                 &gbl_sql_logfill_only_gaps, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_logfill_apply_thread", "Use a dedicated thread to apply sql logfills.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_sql_logfill_dedicated_apply_thread, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_logfill_lookahead_records",

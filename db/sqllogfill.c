@@ -27,8 +27,7 @@
 int gbl_sql_logfill = 1;
 int gbl_debug_sql_logfill = 0;
 int gbl_sql_logfill_stats = 0;
-int gbl_sql_logfill_only_gaps = 1;
-int gbl_sql_logfill_dedicated_apply_thread = 1;
+int gbl_sql_logfill_dedicated_apply_thread = 0;
 int gbl_sql_logfill_lookahead_records = 10000;
 static int sql_logfill_thds_created = 0;
 
@@ -112,6 +111,8 @@ static int connect_to_master(bdb_state_type *bdb_state)
         }
         return 1;
     }
+
+    cdb2_hndl_set_min_retries(hndl, 1);
 
     /* Don't ping-pong here */
     rc = cdb2_run_statement(hndl, "select 1");
@@ -315,12 +316,10 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
         /* No gap */
         if (IS_ZERO_LSN(gap_lsn)) {
             have_gap = 0;
-            if (gbl_sql_logfill_only_gaps) {
-                if (gbl_debug_sql_logfill) {
-                    logmsg(LOGMSG_USER, "%s: no gap, returning\n", __func__);
-                }
-                return;
+            if (gbl_debug_sql_logfill) {
+                logmsg(LOGMSG_USER, "%s: no gap, returning\n", __func__);
             }
+            return;
         }
 
         bdb_get_lsn_node(bdb_state, connected_node, &master_lsn.file, &master_lsn.offset);
@@ -465,7 +464,7 @@ static void *sql_logfill_thread(void *arg)
             request_logs_from_master(bdb_state);
         }
 
-        if (bdb_lock_desired(bdb_state)) {
+        if (bdb_lock_desired(bdb_state) && apply_queue != NULL) {
             Pthread_mutex_lock(&sql_apply_queue_lock);
             apply_queue[apply_queue_tail].file = 0;
             apply_queue_head = apply_queue_tail = 0;

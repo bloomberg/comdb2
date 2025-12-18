@@ -232,7 +232,6 @@ extern int gbl_decoupled_logputs;
 extern int gbl_sql_logfill;
 extern int gbl_debug_sql_logfill;
 extern int gbl_sql_logfill_stats;
-extern int gbl_sql_logfill_only_gaps;
 extern int gbl_sql_logfill_dedicated_apply_thread;
 extern int gbl_sql_logfill_lookahead_records;
 
