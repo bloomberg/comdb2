@@ -3969,8 +3969,8 @@ gap_check:		use_range = 0;
 				}
 
 				/* Always release locks in order.  This is probably too conservative. */
-				if (0 == ret)
-					dbenv->prev_commit_lsn = max_lsn;
+				if (ret != DB_LOCK_DEADLOCK && ret != DB_LOCK_DEADLOCK_CUSTOM)
+					dbenv->prev_commit_lsn = rp->lsn;
 
 				if (ret == DB_LOCK_DEADLOCK) {
 					rep->stat.retry++;

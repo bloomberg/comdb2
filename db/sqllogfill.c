@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <log_info.h>
 #include <comdb2.h>
+#include <assert.h>
 #include <dbinc/rep_types.h>
 #include <build/db_int.h>
 
@@ -35,6 +36,7 @@ struct log_record {
     unsigned int file;
     unsigned int offset;
     int64_t rectype;
+    u_int32_t recgen;
     void *blob;
     int blob_len;
     int blob_memsz;
@@ -44,10 +46,12 @@ struct log_record {
 struct log_record *apply_queue = NULL;
 int apply_queue_head = 0;
 int apply_queue_tail = 0;
+int apply_queue_gen = 0;
 
 /* Apply queue synchronization */
 static pthread_mutex_t sql_apply_queue_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sql_apply_queue_cond = PTHREAD_COND_INITIALIZER;
+static LOG_INFO last_enqueued_lsn = {0};
 
 /* Signal mechanism from berkley */
 static pthread_t sql_logfill_thd;
@@ -144,11 +148,11 @@ static int apply_queue_size()
     return size;
 }
 
-static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype,
-                             void *blob, int blob_len)
+/* Assume caller holds sql_apply_queue_lock */
+static inline int block_apply_queue(bdb_state_type *bdb_state)
 {
-    Pthread_mutex_lock(&sql_apply_queue_lock);
-    if ((apply_queue_head + 1) % gbl_sql_logfill_lookahead_records == apply_queue_tail) {
+    while (((apply_queue_head + 1) % gbl_sql_logfill_lookahead_records) == apply_queue_tail &&
+            !db_is_exiting() && !bdb_lock_desired(bdb_state)) {
         enque_blocks++;
         if (gbl_debug_sql_logfill) {
             static int lastpr = 0;
@@ -159,17 +163,20 @@ static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsig
                 lastpr = now;
             }
         }
-    }
-
-    while (((apply_queue_head + 1) % gbl_sql_logfill_lookahead_records) == apply_queue_tail && !db_is_exiting() &&
-           !bdb_lock_desired(bdb_state)) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
         pthread_cond_timedwait(&sql_apply_queue_cond, &sql_apply_queue_lock, &ts);
     }
+    return db_is_exiting() || bdb_lock_desired(bdb_state);
+}
 
-    if (db_is_exiting() || bdb_lock_desired(bdb_state)) {
+static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsigned int offset,
+        int64_t rectype, u_int32_t recgen, void *blob, int blob_len)
+{
+    Pthread_mutex_lock(&sql_apply_queue_lock);
+
+    if (block_apply_queue(bdb_state) != 0) {
         Pthread_mutex_unlock(&sql_apply_queue_lock);
         return;
     }
@@ -179,6 +186,7 @@ static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsig
     rec->file = file;
     rec->offset = offset;
     rec->rectype = rectype;
+    rec->recgen = recgen;
 
     if (rec->blob_memsz < blob_len) {
         rec->blob = realloc(rec->blob, blob_len);
@@ -187,16 +195,20 @@ static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsig
     memcpy(rec->blob, blob, blob_len);
     rec->blob_len = blob_len;
 
+    last_enqueued_lsn.file = file;
+    last_enqueued_lsn.offset = offset;
+    last_enqueued_lsn.gen = recgen;
+
     apply_queue_head = (apply_queue_head + 1) % gbl_sql_logfill_lookahead_records;
     Pthread_cond_signal(&sql_apply_queue_cond);
     Pthread_mutex_unlock(&sql_apply_queue_lock);
 }
 
-static int handle_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype, void *blob,
-                      int blob_len)
+static int handle_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset,
+        int64_t rectype, u_int32_t recgen, void *blob, int blob_len)
 {
     if (gbl_sql_logfill_dedicated_apply_thread) {
-        enque_log_record(bdb_state, file, offset, rectype, blob, blob_len);
+        enque_log_record(bdb_state, file, offset, rectype, recgen, blob, blob_len);
         return 0;
     }
     int rc = bdb_state->dbenv->apply_log(bdb_state->dbenv, file, offset, rectype, blob, blob_len);
@@ -230,16 +242,25 @@ static void print_record_info(const char *prefix, cdb2_hndl_tp *hndl)
     }
 }
 
+static int gen_okay(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, u_int32_t mygen)
+{
+    int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 2);
+    if (!recgenp) return 1;
+    return *recgenp <= mygen;
+}
+
 static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO *last_lsn, DB_LSN *gap_lsn)
 {
     char *lsn;
     void *blob;
     DB_LSN mylsn = {0};
     int blob_len, rc;
+    int64_t *genp;
 
     lsn = (char *)cdb2_column_value(hndl, 0);
     blob = cdb2_column_value(hndl, 4);
     blob_len = cdb2_column_size(hndl, 4);
+    genp = (int64_t *)cdb2_column_value(hndl, 2);
 
     if ((rc = char_to_lsn(lsn, &mylsn.file, &mylsn.offset)) != 0) {
         if (gbl_debug_sql_logfill) {
@@ -249,7 +270,7 @@ static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO 
     }
 
     if (last_lsn->file < mylsn.file) {
-        rc = handle_log(bdb_state, last_lsn->file, get_next_offset(bdb_state->dbenv, *last_lsn), REP_NEWFILE, NULL, 0);
+        rc = handle_log(bdb_state, last_lsn->file, get_next_offset(bdb_state->dbenv, *last_lsn), REP_NEWFILE, genp ? *genp : 0, NULL, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s error applying newfile log record, %d\n", __func__, rc);
             exit(1);
@@ -262,7 +283,7 @@ static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO 
 
     /* Don't apply the gap: it should be applied already */
     if (!gap_lsn || log_compare(&mylsn, gap_lsn) < 0) {
-        rc = handle_log(bdb_state, mylsn.file, mylsn.offset, REP_LOG, blob, blob_len);
+        rc = handle_log(bdb_state, mylsn.file, mylsn.offset, REP_LOG, genp ? *genp : 0, blob, blob_len);
         if (rc != 0 && rc != DB_REP_ISPERM) {
             logmsg(LOGMSG_FATAL, "%s error applying log record, %d\n", __func__, rc);
             exit(1);
@@ -275,9 +296,9 @@ static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO 
 
 static void request_logs_from_master(bdb_state_type *bdb_state)
 {
-    DB_LSN next_lsn = {0}, gap_lsn = {0}, last_locked = {0}, master_lsn = {0};
+    DB_LSN next_lsn = {0}, gap_lsn = {0}, last_locked = {0}, master_lsn = {0}, rec_lsn = {0};
     LOG_INFO last_lsn = {0};
-    char sql_cmd[SQL_CMD_LEN];
+    char sql_cmd[SQL_CMD_LEN], *lsn = NULL;
     int nrecs = 0, rc;
     u_int32_t gen;
 
@@ -285,7 +306,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
 
         int have_gap = 1;
 
-        /* Check for rep-verify-match */
+        /* Check for rep-verify-match- returns current gen, not commit-gen */
         rc = bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &last_locked, &gen);
 
         /* Returns non-0 before rep-verify-match */
@@ -301,6 +322,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             if (gbl_debug_sql_logfill) {
                 logmsg(LOGMSG_USER, "%s: connect_to_master failed rc=%d\n", __func__, rc);
             }
+            sleep(1);
             return;
         }
 
@@ -332,28 +354,9 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
         /* Need last_lsn to detect newfile */
         if (gbl_sql_logfill_dedicated_apply_thread) {
             Pthread_mutex_lock(&sql_apply_queue_lock);
-            if (apply_queue_head != apply_queue_tail) {
-                int idx =
-                    (apply_queue_head + gbl_sql_logfill_lookahead_records - 1) % gbl_sql_logfill_lookahead_records;
-                struct log_record *rec = &apply_queue[idx];
-                last_lsn.file = rec->file;
-                last_lsn.offset = rec->offset;
-                last_lsn.size = rec->blob_len;
-                Pthread_mutex_unlock(&sql_apply_queue_lock);
-                if (gbl_debug_sql_logfill) {
-                    logmsg(LOGMSG_USER, "%s updated last_lsn from apply queue to {%u:%u}\n", __func__, last_lsn.file,
-                           last_lsn.offset);
-                }
-                DB_LSN last_db_lsn = {last_lsn.file, last_lsn.offset};
-                if (have_gap && log_compare(&last_db_lsn, &gap_lsn) >= 0) {
-                    if (gbl_debug_sql_logfill) {
-                        logmsg(LOGMSG_USER, "%s: gap filled by apply thread, returning\n", __func__);
-                    }
-                    return;
-                }
-            } else {
-                Pthread_mutex_unlock(&sql_apply_queue_lock);
-            }
+            if (last_enqueued_lsn.file != 0)
+                last_lsn = last_enqueued_lsn;
+            Pthread_mutex_unlock(&sql_apply_queue_lock);
         }
 
         /* Afraid this will race with normal replication */
@@ -368,8 +371,8 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             gap_lsn = master_lsn;
         }
 
-        rc = snprintf(sql_cmd, SQL_CMD_LEN, "select * from comdb2_transaction_logs('{%u:%u}')", last_lsn.file,
-                      last_lsn.offset);
+        rc = snprintf(sql_cmd, SQL_CMD_LEN, "select * from comdb2_transaction_logs('{%u:%u}', NULL, 9, 1)", 
+                last_lsn.file, last_lsn.offset);
         if (rc < 0 || rc >= SQL_CMD_LEN) {
             logmsg(LOGMSG_ERROR, "%s: snprintf failed, rc=%d\n", __func__, rc);
             return;
@@ -379,6 +382,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             logmsg(LOGMSG_USER, "%s: requesting logs from master %s: lsn %u:%u\n", __func__, connected_node,
                    last_lsn.file, last_lsn.offset);
         }
+
         if ((rc = cdb2_run_statement(hndl, sql_cmd)) != CDB2_OK) {
             if (gbl_debug_sql_logfill) {
                 logmsg(LOGMSG_ERROR, "%s: cdb2_run_statement failed rc=%d\n", __func__, rc);
@@ -396,6 +400,15 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             return;
         }
 
+        lsn = (char *)cdb2_column_value(hndl, 0);
+        if ((rc = char_to_lsn(lsn, &rec_lsn.file, &rec_lsn.offset)) != 0 || rec_lsn.file == -1) {
+            if (gbl_debug_sql_logfill) {
+                logmsg(LOGMSG_ERROR, "%s: char_to_lsn rc = %d for lsn %s\n", __func__, rc, lsn);
+            }
+            disconnect_from_master();
+            return;
+        }
+
         if (gbl_debug_sql_logfill) {
             print_record_info("first-record (ignored)", hndl);
         }
@@ -408,6 +421,15 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             nexts++;
             if (gbl_debug_sql_logfill) {
                 print_record_info("record", hndl);
+            }
+            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
+            if (!gen_okay(bdb_state, hndl, gen)) {
+                if (gbl_debug_sql_logfill) {
+                    int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 2);
+                    logmsg(LOGMSG_USER, "%s: exiting apply loop, mygen=%u recgen=%" PRId64 "\n", __func__,
+                            gen, recgenp ? *recgenp : 0);
+                }
+                break;
             }
             rc = apply_record(bdb_state, hndl, &last_lsn, have_gap ? &gap_lsn : NULL);
             if (rc != 0) {
@@ -464,11 +486,17 @@ static void *sql_logfill_thread(void *arg)
             request_logs_from_master(bdb_state);
         }
 
-        if (bdb_lock_desired(bdb_state) && apply_queue != NULL) {
+        /* Clear apply-queue */
+        if ((desired = bdb_lock_desired(bdb_state)) && apply_queue != NULL) {
             Pthread_mutex_lock(&sql_apply_queue_lock);
             apply_queue[apply_queue_tail].file = 0;
             apply_queue_head = apply_queue_tail = 0;
+            last_enqueued_lsn.file = 0;
+            apply_queue_gen++;
             Pthread_mutex_unlock(&sql_apply_queue_lock);
+            if (gbl_debug_sql_logfill) {
+                logmsg(LOGMSG_USER, "%s: cleared apply queue due on bdb-lock-desired\n", __func__);
+            }
         }
 
         BDB_RELLOCK();
@@ -494,8 +522,10 @@ static void *apply_thread(void *arg)
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     comdb2_name_thread(__func__);
     bdb_thread_event(bdb_state, COMDB2_THR_EVENT_START_RDONLY);
+    int apply_gen;
 
     struct log_record copy = {0};
+    logmsg(LOGMSG_USER, "%s: starting sql apply thread\n", __func__);
 
     BDB_READLOCK(__func__);
     while (!db_is_exiting()) {
@@ -508,12 +538,24 @@ static void *apply_thread(void *arg)
             pthread_cond_timedwait(&sql_apply_queue_cond, &sql_apply_queue_lock, &ts);
         }
 
+        if (bdb_lock_desired(bdb_state)) {
+            Pthread_mutex_unlock(&sql_apply_queue_lock);
+            BDB_RELLOCK();
+            while (bdb_lock_desired(bdb_state) && !db_is_exiting()) {
+                sleep(1);
+            }
+            BDB_READLOCK(__func__);
+            continue;
+        }
+
+        apply_gen = apply_queue_gen;
+        tail = apply_queue_tail;
         if (apply_queue_head != apply_queue_tail) {
             struct log_record *rec = &apply_queue[apply_queue_tail];
-            tail = apply_queue_tail;
             copy.file = rec->file;
             copy.offset = rec->offset;
             copy.rectype = rec->rectype;
+            copy.recgen = rec->recgen;
             if (copy.blob_memsz < rec->blob_len) {
                 copy.blob = realloc(copy.blob, rec->blob_len);
                 copy.blob_memsz = rec->blob_len;
@@ -525,28 +567,22 @@ static void *apply_thread(void *arg)
 
         Pthread_mutex_unlock(&sql_apply_queue_lock);
 
-        if (bdb_lock_desired(bdb_state)) {
-            BDB_RELLOCK();
-            while (bdb_lock_desired(bdb_state) && !db_is_exiting()) {
-                sleep(1);
-            }
-            BDB_READLOCK(__func__);
-            /* Discard copied record */
-            continue;
-        }
-
         if (apply_log) {
-            bdb_state->dbenv->apply_log(bdb_state->dbenv, copy.file, copy.offset, copy.rectype, copy.blob,
-                                        copy.blob_len);
+            u_int32_t gen;
+            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
+            if (copy.recgen == 0 || gen >= copy.recgen) {
+                bdb_state->dbenv->apply_log(bdb_state->dbenv, copy.file, copy.offset,
+                        copy.rectype, copy.blob, copy.blob_len);
+            } else if (gbl_debug_sql_logfill) {
+                logmsg(LOGMSG_USER, "%s: skipping apply of recgen=%u mygen=%u\n", __func__,
+                        copy.recgen, gen);
+            }
         }
 
         Pthread_mutex_lock(&sql_apply_queue_lock);
-        if (apply_log && (tail == apply_queue_tail) && (apply_queue_tail != apply_queue_head)) {
-            struct log_record *rec = &apply_queue[apply_queue_tail];
-            if (rec->file == copy.file && rec->offset == copy.offset) {
-                /* Mark record as applied */
-                apply_queue_tail = (apply_queue_tail + 1) % gbl_sql_logfill_lookahead_records;
-            }
+        if (apply_gen == apply_queue_gen) {
+            assert(tail == apply_queue_tail);
+            apply_queue_tail = (apply_queue_tail + 1) % gbl_sql_logfill_lookahead_records;
         }
         Pthread_cond_signal(&sql_apply_queue_cond);
         Pthread_mutex_unlock(&sql_apply_queue_lock);
