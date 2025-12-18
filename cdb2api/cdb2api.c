@@ -1206,7 +1206,7 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
     return 0;
 }
 
-static int lclconn(int s, const struct sockaddr *name, int namelen,
+static int lclconn(cdb2_hndl_tp *hndl, int s, const struct sockaddr *name, int namelen,
                    int timeoutms)
 {
 #ifdef CDB2API_TEST
@@ -1248,7 +1248,7 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
             return -1;
         }
     } else if (rc == -1) {
-        /*connect failed?*/
+        debugprint("connect rc:%d err:%s\n", rc, strerror(errno));
         return -1;
     }
     if (fcntl(s, F_SETFL, flags) < 0) {
@@ -1264,7 +1264,7 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
     return 0;
 }
 
-static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
+static int cdb2_do_tcpconnect(cdb2_hndl_tp *hndl, struct in_addr in, int port, int myport,
                               int timeoutms)
 {
 #ifdef CDB2API_TEST
@@ -1338,7 +1338,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
         }
     }
     /* Connect to the server.  */
-    rc = lclconn(sockfd, (struct sockaddr *)&tcp_srv_addr, sizeof(tcp_srv_addr),
+    rc = lclconn(hndl, sockfd, (struct sockaddr *)&tcp_srv_addr, sizeof(tcp_srv_addr),
                  timeoutms);
 
     if (rc < 0) {
@@ -1376,7 +1376,7 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
     if ((rc = cdb2_tcpresolve(host, &in, &port)) != 0)
         goto after_callback;
 
-    rc = cdb2_do_tcpconnect(in, port, myport, timeoutms);
+    rc = cdb2_do_tcpconnect(hndl, in, port, myport, timeoutms);
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_TCP_CONNECT, e)) != NULL) {
