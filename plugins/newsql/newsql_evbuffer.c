@@ -95,7 +95,6 @@ struct newsql_appdata_evbuffer {
     struct sqlclntstate clnt;
 };
 
-static void add_rd_event(struct newsql_appdata_evbuffer *, struct event *, struct timeval *);
 static void rd_hdr(int, short, void *);
 static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *);
 static int rd_evbuffer_ciphertext(struct newsql_appdata_evbuffer *);
@@ -898,12 +897,13 @@ static struct timeval ms_to_timeval(int ms)
     return t;
 }
 
-static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *timeout)
+static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev)
 {
+    struct timeval *timeout = NULL;
     struct timeval new_connection_grace;
     if (appdata->allow_lru) { /* going to wait for read; eligible for shutdown */
         add_lru_evbuffer(&appdata->clnt);
-    } else if (!timeout && gbl_new_connection_grace_ms) { /* new connection */
+    } else if (gbl_new_connection_grace_ms) { /* new connection */
         new_connection_grace = ms_to_timeval(gbl_new_connection_grace_ms);
         timeout = &new_connection_grace;
     }
@@ -1061,7 +1061,7 @@ static void rd_payload(int fd, short what, void *arg)
     }
     maybe_allow_lru(appdata, fd, what);
     if (evbuffer_get_length(appdata->rd_buf) < appdata->hdr.length) {
-        add_rd_event(appdata, appdata->rd_payload_ev, NULL);
+        add_rd_event(appdata, appdata->rd_payload_ev);
         return;
     }
 payload:
@@ -1090,7 +1090,7 @@ static void rd_hdr(int fd, short what, void *arg)
     }
     maybe_allow_lru(appdata, fd, what);
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
-        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
+        add_rd_event(appdata, appdata->rd_hdr_ev);
         return;
     }
 hdr:
