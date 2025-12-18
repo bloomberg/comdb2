@@ -6046,7 +6046,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
         sc->fix_tp_badvers = 1;
     }
 
-    if (((sc->partition.type == PARTITION_ADD_TIMED ||
+    if (((sc->partition.type == PARTITION_ADD_TIMED || sc->partition.type == PARTITION_ADD_TIMED_RETRO ||
           sc->partition.type == PARTITION_ADD_MANUAL) && (arg->pos & FIRST_SHARD)) ||
         (sc->partition.type == PARTITION_REMOVE && (arg->pos & LAST_SHARD))) {
         sc->publish = partition_publish;
@@ -6334,13 +6334,102 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     return rc;
 }
 
+static int _process_partitioning_retro(timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct errstat err = {0};
+    int rc = 0;
+
+    /* determine retroactive time boundaries for the shards */
+    int len = sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*) + sizeof(timepart_retro_ctr_t));
+    arg->retros = malloc(len);
+    if (!arg->retros) {
+        logmsg(LOGMSG_ERROR, "%s malloc %d\n", __func__, len);
+        rc = ERR_SC;
+        goto err;
+    }
+    timepart_retro_t *retros = arg->retros;
+
+    bzero(retros, len);
+    retros->limits = (int*)(((char*)retros) + sizeof(struct timepart_retro));
+    retros->ss = (struct schema_change_type**)((char*)retros + sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * sizeof(int));
+    retros->cs = (timepart_retro_ctr_t*)((char*)retros + sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*)));
+    for(int ii=0; ii < sc->partition.u.tpt.retention; ii++) {
+        pthread_mutex_init(&retros->cs[ii].mtx, 0);
+    }
+    rc = timepart_populate_timelimits(sc->newpartition, retros, &err);
+    if (rc) {
+        timepart_free_view(sc->newpartition);
+        logmsg(LOGMSG_ERROR, "Failed to get time limits rc %d \"%s\"\n",
+               err.errval, err.errstr);
+        sc_errf(sc, "Failed to get time limits rc %d \"%s\"\n",
+                err.errval, err.errstr);
+        rc = ERR_SC;
+        goto err;
+    }
+    timepart_view_t *newpartition = sc->newpartition;
+    sc->newpartition = NULL;
+    /* start by creating the empty shards */
+    sc->timepartition_version = arg->s->db->tableversion + 1; /* next version */
+    sc->kind = SC_ADDTABLE;
+    sc->nothrevent = 1; /* serial */
+    arg->start = 1;
+    arg->pos = 0;
+    arg->clonelast = 1; /* we need a clone of the sc to do the actual alter */
+    rc = timepart_foreach_shard_lockless(
+            newpartition, start_schema_change_tran_wrapper, arg);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "Failed to add shards for existing table %s while "
+               "partitioning rc %d\n",
+               sc->tablename, rc);
+        sc_errf(sc,
+                "Failed to add shards for existing table %s while "
+                "partitioning rc %d",
+                sc->tablename, rc);
+        rc = ERR_SC;
+        goto err;
+    }
+    /* alter existing shard */
+    arg->indx = 0;
+    arg->pos = FIRST_SHARD | LAST_SHARD;
+    arg->clonelast = 0;
+    sc->kind = SC_ALTERTABLE;
+    sc->sharding_arg = retros;
+    sc->sharding_func = timepart_retro_route;
+    sc->newpartition = newpartition;
+    sc->force_rebuild = 1;
+    for( int jj = 0; jj < retros->n; jj++) {
+        logmsg(LOGMSG_USER, "PARTITION %s shard %d time %u name %s\n",
+               arg->part_name, jj, retros->limits[jj],
+               (jj < (retros->n - 1)) ? retros->ss[jj]->tablename : arg->part_name);
+    }
+    /* existing table name matches the partition name */
+    rc = start_schema_change_tran_wrapper(arg->part_name, NULL, arg);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "Failed to alter existing table %s while "
+               "partitioning rc %d\n",
+               sc->tablename, rc);
+        sc_errf(sc,
+                "Failed to alter existing table %s while "
+                "partitioning rc %d",
+                sc->tablename, rc);
+        rc = ERR_SC;
+        goto err;
+    }
+err:
+    return 0;
+}
+
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
+
 
 static int _process_single_table_sc_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    int retro_partition = sc->kind == SC_ALTERTABLE && gbl_retro_tpt;
+    int retro_partition = gbl_retro_tpt && sc->kind == SC_ALTERTABLE && sc->partition.type == PARTITION_ADD_TIMED_RETRO;
 
     if (sc->partition.type == PARTITION_REMOVE) {
         logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
@@ -6348,7 +6437,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         return ERR_SC;
     }
 
-    assert(sc->partition.type == PARTITION_ADD_TIMED || 
+    assert(sc->partition.type == PARTITION_ADD_TIMED || sc->partition.type == PARTITION_ADD_TIMED_RETRO || 
            sc->partition.type == PARTITION_ADD_MANUAL);
 
     /* create a new time partition object */
@@ -6395,82 +6484,9 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
 
     if (retro_partition) {
         /* we want to retroactively populate the shards with existing data */
-
-        /* determine retroactive time boundaries for the shards */
-        int len = sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*) + sizeof(timepart_retro_ctr_t));
-        arg.retros = malloc(len);
-        if (!arg.retros)
-            abort();
-        bzero(arg.retros, len);
-        arg.retros->limits = (int*)(((char*)arg.retros) + sizeof(struct timepart_retro));
-        arg.retros->ss = (struct schema_change_type**)((char*)arg.retros+ sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * sizeof(int));
-        arg.retros->cs = (timepart_retro_ctr_t*)((char*)arg.retros+ sizeof(struct timepart_retro) + sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int*)));
-        for(int ii=0; ii < sc->partition.u.tpt.retention; ii++) {
-            pthread_mutex_init(&arg.retros->cs[ii].mtx, 0);
-        }
-        rc = timepart_populate_timelimits(sc->newpartition, arg.retros, &err);
-        if (rc) {
-            timepart_free_view(sc->newpartition);
-            logmsg(LOGMSG_ERROR, "Failed to get time limits rc %d \"%s\"\n",
-                   err.errval, err.errstr);
-            sc_errf(sc, "Failed to get time limits rc %d \"%s\"\n",
-                    err.errval, err.errstr);
-            free(arg.part_name);          
-            return ERR_SC;
-        }
-        timepart_view_t *newpartition = sc->newpartition;
-        sc->newpartition = NULL;
-        /* start by creating the empty shards */
-        arg.s->timepartition_version = arg.s->db->tableversion + 1; /* next version */
-        arg.s->kind = SC_ADDTABLE;
-        arg.start = 1;
-        arg.pos = 0;
-        arg.s->nothrevent = 1; /* serial */
-        arg.clonelast = 1; /* we need a clone of the sc to do the actual alter */
-        rc = timepart_foreach_shard_lockless(
-                newpartition, start_schema_change_tran_wrapper, &arg);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                    "Failed to add shards for existing table %s while "
-                   "partitioning rc %d\n",
-                   sc->tablename, rc);
-            sc_errf(sc,
-                    "Failed to add shards for existing table %s while "
-                    "partitioning rc %d",
-                    sc->tablename, rc);
-            free(arg.part_name);
-            return ERR_SC;
-        }
-        /* alter existing shard */
-        arg.indx = 0;
-        arg.pos = FIRST_SHARD | LAST_SHARD;
-        arg.clonelast = 0;
-        arg.s->kind = SC_ALTERTABLE;
-        arg.s->sharding_arg = arg.retros;
-        arg.s->sharding_func = timepart_retro_route;
-        arg.s->newpartition = newpartition;
-        arg.s->force_rebuild = 1;
-        for( int jj = 0; jj < arg.retros->n; jj++) {
-            fprintf(stderr, "PARTITION %s shard %d time %u name %s\n",
-                    arg.part_name, jj, arg.retros->limits[jj],
-                    (jj < (arg.retros->n - 1)) ? arg.retros->ss[jj]->tablename : arg.part_name);
-        }
-        /* existing table name matches the partition name */
-        rc = start_schema_change_tran_wrapper(arg.part_name, NULL, &arg);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                    "Failed to alter existing table %s while "
-                   "partitioning rc %d\n",
-                   sc->tablename, rc);
-            sc_errf(sc,
-                    "Failed to alter existing table %s while "
-                    "partitioning rc %d",
-                    sc->tablename, rc);
-            free(arg.part_name);
-            return ERR_SC;
-        }
+        rc = _process_partitioning_retro(&arg);
         free(arg.part_name);
-        return 0;
+        return rc;
     }
 
     /* is this an alter? preserve existing table as first shard */
@@ -6510,7 +6526,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
-    if (!rc&& sc->partition.type == PARTITION_ADD_MANUAL) {
+    if (!rc && sc->partition.type == PARTITION_ADD_MANUAL) {
         if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
             struct schema_change_type *lcsc = _create_logical_cron_systable(LOGICAL_CRON_SYSTABLE);
             if (!lcsc)

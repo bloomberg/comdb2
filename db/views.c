@@ -3393,6 +3393,7 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
     if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
         case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_TIMED_RETRO:
         case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_create_inmem_view(sc->newpartition);
@@ -3428,6 +3429,7 @@ void partition_unpublish(struct schema_change_type *sc)
    if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
         case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_TIMED_RETRO:
         case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_destroy_inmem_view(sc->timepartition_name);

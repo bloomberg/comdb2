@@ -1150,7 +1150,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->handle = old_bdb_handle;
 
     /* if this is an alter to partition an existing table */
-    if ((s->partition.type == PARTITION_ADD_TIMED ||
+    if ((s->partition.type == PARTITION_ADD_TIMED || s->partition.type == PARTITION_ADD_TIMED_RETRO ||
          s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
         struct errstat err = {0};
         assert(s->newpartition);

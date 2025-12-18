@@ -5115,7 +5115,7 @@ void comdb2AlterTableEnd(Parse *pParse)
 
     if (ctx->partition) {
         sc->partition = *ctx->partition;
-        if (sc->partition.type == PARTITION_ADD_TIMED) {
+        if (sc->partition.type == PARTITION_ADD_TIMED || sc->partition.type == PARTITION_ADD_TIMED_RETRO) {
             struct dbtable * tbl = get_dbtable_by_name(sc->tablename);
             if (tbl && tbl->n_rev_constraints > 0) {
 
@@ -7840,7 +7840,7 @@ cleanup:
  *
  */
 void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
-                               Token* start)
+                               Token* start, int retro)
 {
     struct comdb2_partition *partition;
 
@@ -7858,7 +7858,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
     if (!partition)
         return;
 
-    partition->type = PARTITION_ADD_TIMED;
+    partition->type = retro ? PARTITION_ADD_TIMED_RETRO : PARTITION_ADD_TIMED;
 
     if (comdb2GetTimePartitionParams(pParse, period, retention, start,
                                      (int32_t*)&partition->u.tpt.period,
