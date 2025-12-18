@@ -77,6 +77,7 @@ jobs:
       # Note: gcc and clang are pre-installed on Ubuntu runners. 
       - name: Install dependencies
         run: |
+          sudo apt-get update
           sudo apt-get install -y  \
             bison                \
             build-essential      \
