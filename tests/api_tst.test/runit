@@ -86,11 +86,19 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
+cfg=$DBDIR/comdb2db.cfg
+echo 'comdb2_config:api_call_timeout=5000' >> ${cfg}
+echo 'comdb2_config:enforce_api_call_timeout=on' >> ${cfg}
+${TESTSBUILDDIR}/cdb2api_enforce_timeout ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_enforce_timeout - fail" && exit 1
+sed -i '/comdb2_config:api_call_timeout=5000/d' "${cfg}"
+sed -i '/comdb2_config:enforce_api_call_timeout=on/d' "${cfg}"
+echo 'cdb2api_enforce_timeout - pass'
+
 ${TESTSBUILDDIR}/cdb2api_localcache_systable ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_localcache_systable - fail" && exit 1
 echo 'cdb2api_localcache_systable - pass'
 
-cfg=$DBDIR/comdb2db.cfg
 echo 'comdb2_feature:discard_unread_socket_data=on' >> ${cfg}
 ${TESTSBUILDDIR}/cdb2api_unread_data ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_unread_data - fail" && exit 1
