@@ -581,7 +581,8 @@ static void *apply_thread(void *arg)
 
         Pthread_mutex_lock(&sql_apply_queue_lock);
         if (apply_gen == apply_queue_gen) {
-            assert(tail == apply_queue_tail);
+            if(tail != apply_queue_tail)
+                abort();
             apply_queue_tail = (apply_queue_tail + 1) % gbl_sql_logfill_lookahead_records;
         }
         Pthread_cond_signal(&sql_apply_queue_cond);
