@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# args
+# <dbname>
+DBN=$1
+
+OUT="run.log"
+C="cdb2sql ${CDB2_OPTIONS} ${DBN} default"
+CT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} default"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+echo "Inserting the first set"
+echo "Time `${CT} 'select now()'`"
+sleep 5
+$C "insert into t(a) select * from generate_series(1, 1000)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE inserting first set"
+   exit 1
+fi
+
+# no race between insert and rollout, want insert in last shard
+sleep 5
+start=`${CT} "select now() + cast(1 as days)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "Using $start as the rollout edge"
+sleep 5
+
+echo "Inserting the second set"
+echo "Time `${CT} 'select now()'`"
+$C "insert into t(a) select * from generate_series(1001, 2000)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE inserting second set"
+   exit 1
+fi
+
+echo "Partitioning the table"
+$C "ALTER TABLE T PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start}" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to partition retroactively"
+   exit 1
+fi
+
+echo  "Checking the shards"
+$C "select shardname from comdb2_timepartshards" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to get the shards"
+   exit 1
+fi
+$C "select count(*) from t" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to count total rows"
+   exit 1
+fi
+$C "select count(*) from '\$0_F64CD191'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to count first shard rows"
+   exit 1
+fi
+$C "select count(*) from '\$1_A2620AE4'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to count second shard rows"
+   exit 1
+fi
+
+testcase_output=$(cat $OUT)
+expected_output=$(cat output.log)
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+   # print message 
+   echo "  ^^^^^^^^^^^^"
+   echo "The above testcase (${testcase}) has failed!!!" 
+   echo " "
+   echo "Use 'diff <expected-output> <my-output>' to see why:"
+   echo "> diff ${PWD}/{output.log.actual,run.log.actual}"
+   echo " "
+   diff output.log $OUT
+   echo " "
+
+   # quit
+   exit 1
+fi
+
+echo "SUCCESS"

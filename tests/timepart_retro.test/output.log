@@ -1,0 +1,7 @@
+(rows inserted=1000)
+(rows inserted=1000)
+(shardname='$0_F64CD191')
+(shardname='$1_A2620AE4')
+(count(*)=2000)
+(count(*)=1000)
+(count(*)=1000)
