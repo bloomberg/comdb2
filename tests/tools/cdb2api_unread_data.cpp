@@ -3,7 +3,7 @@
 #include <cdb2api.h>
 #include <cdb2api_test.h>
 
-int test_unread_record(char *dbname, char *type)
+int test_unread_record(const char *dbname, const char *type)
 {
     int rc = 0;
 
