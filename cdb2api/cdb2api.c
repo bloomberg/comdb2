@@ -3098,6 +3098,12 @@ static int cdb2_socket_pool_get_ll(cdb2_hndl_tp *hndl, const char *typestr, int 
         if (closeit)
             close(sockpool_fd);
     }
+
+#ifdef CDB2API_TEST
+    if (fd > 0) {
+        ++num_sockpool_fd;
+    }
+#endif
     return fd;
 }
 
