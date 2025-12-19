@@ -85,8 +85,8 @@ extern int gbl_sql_logfill;
 
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 0;
-int gbl_disable_repdb = 1;
-int gbl_inmem_repdb = 0;
+int gbl_disable_repdb = 0;
+int gbl_inmem_repdb = 1;
 int gbl_debug_inmem_repdb = 0;
 int gbl_periodic_rep_report = 1;
 int gbl_max_apply_dequeue = 100000;
