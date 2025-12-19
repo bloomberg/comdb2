@@ -571,16 +571,16 @@ const char *luabb_tostring_noerr(Lua L, int idx)
 static int luabb_toblob_int(Lua lua, int idx, blob_t *ret)
 {
     const char *c;
-    size_t s;
+    size_t s = 0;
     int type = luabb_type(lua, idx);
     if (type == DBTYPES_LSTRING) {
-        c = lua_tostring(lua, idx);
-str:    s = strlen(c);
-        ret->data = strdup(c);
+        c = lua_tolstring(lua, idx, &s);
+str:    ret->data = strdup(c);
         ret->length = s;
         return 0;
     } else if (type == DBTYPES_CSTRING) {
         c = ((lua_cstring_t*)lua_touserdata(lua, idx))->val;
+        s = ((lua_cstring_t*)lua_touserdata(lua, idx))->len;
         goto str;
     } else if (type == DBTYPES_BLOB) {
         const lua_blob_t *blob = lua_topointer(lua, idx);
@@ -725,6 +725,7 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
     dttz_t dt;
     time_t temp_t;
     const char *str;
+    size_t len;
     cdb2_client_datetime_t cdtms;
     cdb2_client_datetimeus_t cdtus;
 
@@ -734,8 +735,8 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
 
     switch (luabb_dbtype(lua, idx)) {
     case LUA_TSTRING:
-        str = lua_tostring(lua, idx);
-        if (str_to_dttz(str, strlen(str), tzname, &dt, precision) != 0)
+        str = lua_tolstring(lua, idx, &len);
+        if (str_to_dttz(str, len, tzname, &dt, precision) != 0)
             goto err;
         break;
     case LUA_TNUMBER:
@@ -765,7 +766,8 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
         return 0;
     case DBTYPES_CSTRING:
         str = ((lua_cstring_t*)lua_topointer(lua, idx))->val;
-        if (str_to_dttz(str, strlen(str), tzname, &dt, precision) != 0)
+        int len = ((lua_cstring_t*)lua_topointer(lua, idx))->len;
+        if (str_to_dttz(str, len, tzname, &dt, precision) != 0)
             goto err;
         break;
     case DBTYPES_REAL:
@@ -1394,6 +1396,7 @@ int l_cstring_new(lua_State *lua) {
     lua_cstring_t *s;
     new_lua_t(s, lua_cstring_t, DBTYPES_CSTRING);
     s->val = NULL;
+    s->len = 0;
     return 1;
 }
 
@@ -1417,7 +1420,7 @@ int l_cstring_free(Lua lua)
 int l_cstring_length(lua_State *lua) {
     const lua_cstring_t *s;
     s = (const lua_cstring_t*) lua_topointer(lua, 1);
-    lua_pushnumber(lua, utf8_bytelen(s->val, strlen(s->val)));
+    lua_pushnumber(lua, utf8_bytelen(s->val, s->len));
     return 1;
 }
 
@@ -2113,6 +2116,7 @@ void luabb_pushcstring(lua_State *lua, const char* cstrval) {
     l_cstring_new(lua);
     lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
     s->val = strdup(cstrval);
+    s->len = strlen(cstrval);
 }
 
 void luabb_pushcstringlen(lua_State *lua, const char* cstrval, int len)
@@ -2120,6 +2124,7 @@ void luabb_pushcstringlen(lua_State *lua, const char* cstrval, int len)
     l_cstring_new(lua);
     lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
     s->val = malloc(len + 1);
+    s->len = len;
     memcpy(s->val, cstrval, len);
     s->val[len] = '\0';
 }
@@ -2130,6 +2135,7 @@ void luabb_pushcstring_dl(lua_State *lua, const char* cstrval)
     l_cstring_new(lua);
     lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
     s->val = (char *)cstrval;
+    s->len = (int)strlen(cstrval);
 }
 
 void luabb_pushblob(lua_State *lua, const blob_t *val)
