@@ -54,6 +54,7 @@ char appsock_unknown_old[] = "-1 #unknown command\n";
 char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
 int32_t active_appsock_conns = 0;
+int32_t evicted_appsock_conns = 0;
 int64_t gbl_denied_appsock_connection_count = 0;
 
 /* HASH of all registered appsock handlers (one handler per appsock type) */

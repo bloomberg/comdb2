@@ -5256,6 +5256,9 @@ void _free_set_commands(struct sqlclntstate *clnt)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    if(clnt->evicted_appsock) {
+        ATOMIC_ADD32(evicted_appsock_conns, -1);
+    }
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(clnt);
     }
@@ -6734,7 +6737,10 @@ static int close_lru_evbuffer_int(struct sqlclntstate *self)
     rem_lru_evbuffer_int(clnt);
     int fd = get_fileno(clnt);
     if (fd != -1) shutdown(fd, SHUT_RDWR);
-    if (self == NULL) clnt->evicted_appsock = 1;
+    if (self == NULL) {
+        clnt->evicted_appsock = 1;
+        ATOMIC_ADD32(evicted_appsock_conns, 1);
+    }
     return 0;
 }
 
@@ -6751,12 +6757,12 @@ int get_max_appsocks_limit(void)
     return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
 }
 
-int check_appsock_limit(int pending, int is_admin)
+int check_appsock_limit(int is_admin)
 {
     ++total_appsock_conns;
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
-    int current = pending + ATOMIC_ADD32(active_appsock_conns, 1);
+    int current = ATOMIC_ADD32(active_appsock_conns, 1);
     time_metric_add(thedb->connections, current);
     if (is_admin) return 0;
     if (warn > max) warn = max;

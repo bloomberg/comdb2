@@ -1264,6 +1264,128 @@ function verify_log_cursor_gen()
     done
 }
 
+function select_from_master()
+{
+    local dbname=$1
+    local node=$2
+    local timeout=$3
+    local end=$(( $(date +%s) + timeout ))
+
+    while [[ $(date +%s) -lt $end ]]; do
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbname --host $node "select comdb2_host()" > /dev/null 2>&1
+    done
+}
+
+# Physrep masters and standalone nodes should never return 'incoherent'
+function incoherent_master()
+{
+    local physrep_master=""
+    local name=""
+    local node=""
+    local logfile=""
+    local cnt=""
+    local timeout=60
+    local foundbad=0
+    local beforecnt=0
+    local aftercnt=0
+    local pids=()
+
+    echo "== Verifying master/standalone does not return incoherent"
+
+    echo "Set default-timeout to 5 seconds on all nodes"
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "put tunable tranlog_default_timeout 5"
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "put tunable tranlog_default_timeout 5"
+        $CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $node "put tunable tranlog_default_timeout 5"
+    done
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table xxx(a int)"
+
+    physrep_master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $firstNode "select host from comdb2_cluster where is_master='Y'")
+
+    # Verify that each physrep has this table
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        while [[ "$cnt" -ne "1" ]]; do
+            sleep 1
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        done
+
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        while [[ "$cnt" -ne "1" ]]; do
+            sleep 1
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        done
+    done
+
+    echo "Getting before-count from current clustered physrep master"
+    logfile=$TESTDIR/logs/${REPL_CLUS_DBNAME}.${physrep_master}.log
+    beforecnt=$(egrep "new query on incoherent node" $logfile | wc -l)
+
+    echo "Spawning select-from-master threads"
+    select_from_master $REPL_CLUS_DBNAME $physrep_master $timeout &
+    pids+=($!)
+
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        select_from_master $name $node $timeout &
+        pids+=($!)
+    done
+
+    echo "Waiting on all spawned pids"
+    for p in "${pids[@]}" ; do
+        wait $p
+    done
+
+    echo "Checking for incoherent trace in output files"
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        logfile=$TESTDIR/logs/${name}.log
+        egrep "new query on incoherent node" $logfile >/dev/null 2>&1
+        if [[ $? -eq 0 ]]; then
+            echo "Found incoherent trace in $logfile"
+            foundbad=1
+        fi
+    done
+
+    logfile=$TESTDIR/logs/${REPL_CLUS_DBNAME}.${physrep_master}.log
+    aftercnt=$(egrep "new query on incoherent node" $logfile | wc -l)
+    if [[ "$beforecnt" -ne "$aftercnt" ]]; then
+        echo "Found additional incoherent in $logfile"
+        foundbad=1
+    fi
+
+    [[ "$foundbad" -eq 1 ]] && cleanFailExit "incoherent_master test failed"
+
+    echo "Drop table xxx"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table xxx"
+
+    # Verify that each physrep has dropped this table
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        while [[ "$cnt" -ne "0" ]]; do
+            sleep 1
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $name --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        done
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        while [[ "$cnt" -ne "0" ]]; do
+            sleep 1
+            cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $node "select count(*) from comdb2_tables where tablename='xxx'")
+        done
+    done
+
+    echo "Set default-timeout back to 30 seconds on all nodes"
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "put tunable tranlog_default_timeout 30"
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "put tunable tranlog_default_timeout 30"
+        $CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $node "put tunable tranlog_default_timeout 30"
+    done
+}
+
 function revconn_latency()
 {
     typeset now=$(date +%s)
@@ -2241,8 +2363,6 @@ function verify_non_ignored_reptype
     [[ -n "$ignored" ]] && cleanFailExit "Found ignored rep-messages after incoherent recovery: $ignored"
 }
 
-# egrep "Ignoring rp->gen" * | egrep "rectype=2\>|rectype=11\>|rectype=10\>"
-
 function announce
 {
     typeset text=$1
@@ -2402,6 +2522,11 @@ function run_tests
     verify_alt_metadb_system_table
     testcase_finish $testcase
 
+    testcase="incoherent_master"
+    testcase_preamble $testcase
+    incoherent_master
+    testcase_finish $testcase
+
     testcase="physrep_allowed_source"
     testcase_preamble $testcase
     physrep_allowed_source
@@ -2410,10 +2535,9 @@ function run_tests
 
 function run_one_test
 {
-	physrep_allowed_source
+    incoherent_master
 }
 
-#run_one_test
 run_tests
 cleanup
 

@@ -12,6 +12,18 @@ extern struct dbenv *thedb;
 LOG_INFO find_match_lsn(void *bdb_state, cdb2_hndl_tp *repl_db,
                         LOG_INFO start_info);
 
+static pthread_mutex_t physrep_truncate_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int truncate_trylock(void)
+{
+    return pthread_mutex_trylock(&physrep_truncate_lock);
+}
+
+void truncate_unlock(void)
+{
+    Pthread_mutex_unlock(&physrep_truncate_lock);
+}
+
 LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info)
 {
     LOG_INFO match_lsn = find_match_lsn(thedb->bdb_env, repl_db, latest_info);
@@ -27,7 +39,9 @@ LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info)
                match_lsn.offset);
     }
 
+    Pthread_mutex_lock(&physrep_truncate_lock);
     truncate_log(match_lsn.file, match_lsn.offset, 1);
+    Pthread_mutex_unlock(&physrep_truncate_lock);
 
     return match_lsn;
 }

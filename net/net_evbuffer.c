@@ -110,6 +110,7 @@
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
+int gbl_accept_headroom = 100;
 int gbl_pb_connectmsg = 1;
 int gbl_libevent_rte_only = 0;
 
@@ -227,6 +228,7 @@ struct net_info;
 static void *rd_worker(void *);
 static void do_add_host(int, short, void *);
 static void do_open(int, short, void *);
+static void do_read(int, short, void *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *);
 static void resume_read(int, short, void *);
@@ -412,7 +414,6 @@ struct net_dispatch_info {
     const char *who;
     struct event_base *base;
     struct timeval *tick;
-    int priority;
 };
 
 struct user_msg_info {
@@ -471,7 +472,6 @@ static void *do_pstack(void *arg)
     return NULL;
 }
 
-#define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
 int gbl_timer_warn_interval = 1500; //msec. To disable check, set to 0.
 int gbl_timer_pstack_threshold =  5000; //msec.
 int gbl_timer_pstack_interval =  0; //sec. To disable pstack, but keep monitoring, set to 0.
@@ -547,7 +547,6 @@ static void *net_dispatch(void *arg)
 
     struct event *ev = event_new(n->base, -1, EV_PERSIST, event_tick, n);
     struct timeval one = {1, 0};
-    if (n->priority) event_priority_set(ev, 0);
     event_add(ev, &one);
 
     if (start_callback) {
@@ -566,25 +565,15 @@ static void *net_dispatch(void *arg)
     return NULL;
 }
 
-static void init_base_priority(pthread_t *t, struct event_base **bb, const char *who, int priority,
-                               struct timeval *tick)
+static void init_base(pthread_t *t, struct event_base **bb, const char *who, struct timeval *tick)
 {
     struct net_dispatch_info *info = calloc(1, sizeof(struct net_dispatch_info));
     *bb = event_base_new();
-    if (priority) {
-        event_base_priority_init(*bb, priority);
-    }
     info->who = who;
     info->base = *bb;
     info->tick = tick;
-    info->priority = priority;
     Pthread_create(t, NULL, net_dispatch, info);
     Pthread_detach(*t);
-}
-
-static void init_base(pthread_t *t, struct event_base **bb, const char *who)
-{
-    init_base_priority(t, bb, who, 0, NULL);
 }
 
 static struct host_info *host_info_new(char *host)
@@ -596,12 +585,12 @@ static struct host_info *host_info_new(char *host)
     if (reader_policy == POLICY_PER_HOST) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "R:%s", h->host);
-        init_base(&h->per_host.rdthd, &h->per_host.rdbase, strdup(thdname));
+        init_base(&h->per_host.rdthd, &h->per_host.rdbase, strdup(thdname), NULL);
     }
     if (writer_policy == POLICY_PER_HOST) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "W:%s", h->host);
-        init_base(&h->per_host.wrthd, &h->per_host.wrbase, strdup(thdname));
+        init_base(&h->per_host.wrthd, &h->per_host.wrbase, strdup(thdname), NULL);
     }
     LIST_INIT(&h->event_list);
     LIST_INSERT_HEAD(&host_list, h, entry);
@@ -639,6 +628,7 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
 {
     check_base_thd();
     struct net_info *n = calloc(1, sizeof(struct net_info));
+    netinfo_ptr->net_info = n;
     n->netinfo_ptr = netinfo_ptr;
     n->service = strdup(netinfo_ptr->service);
     n->instance = strdup(netinfo_ptr->instance);
@@ -650,12 +640,12 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     if (reader_policy == POLICY_PER_NET) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "R:%s", n->service);
-        init_base(&n->per_net.rdthd, &n->per_net.rdbase, strdup(thdname));
+        init_base(&n->per_net.rdthd, &n->per_net.rdbase, strdup(thdname), NULL);
     }
     if (writer_policy == POLICY_PER_NET) {
         char thdname[16];
         snprintf(thdname, sizeof(thdname), "W:%s", n->service);
-        init_base(&n->per_net.wrthd, &n->per_net.wrbase, strdup(thdname));
+        init_base(&n->per_net.wrthd, &n->per_net.wrbase, strdup(thdname), NULL);
     }
     LIST_INIT(&n->event_list);
     LIST_INSERT_HEAD(&net_list, n, entry);
@@ -758,13 +748,13 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
         char thdname[16];
         int x = snprintf(thdname, sizeof(thdname), "R:%s", entry->key);
         (void)x;
-        init_base(&e->per_event.rdthd, &e->per_event.rdbase, strdup(thdname));
+        init_base(&e->per_event.rdthd, &e->per_event.rdbase, strdup(thdname), NULL);
     }
     if (writer_policy == POLICY_PER_EVENT) {
         char thdname[16];
         int x = snprintf(thdname, sizeof(thdname), "W:%s", entry->key);
         (void)x;
-        init_base(&e->per_event.wrthd, &e->per_event.wrbase, strdup(thdname));
+        init_base(&e->per_event.wrthd, &e->per_event.wrbase, strdup(thdname), NULL);
     }
     /* set up rd_worker */
     Pthread_mutex_init(&e->rd_lk, NULL);
@@ -835,22 +825,51 @@ struct accept_info {
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
-static int accept_paused;
+static int accept_paused = 0;
+static struct timeval accept_paused_at;
+static void maybe_enable_accept(int fd, short what, void *data)
+{
+    struct net_info *n = data;
+    int limit = get_max_appsocks_limit();
+    int total = active_appsock_conns + pending_connections + evicted_appsock_conns;
+    if (total <= limit) {
+        accept_paused = 0;
+        evconnlistener_enable(n->listener);
+        event_add(n->unix_ev, NULL);
+        struct timeval now, diff;
+        gettimeofday(&now, NULL);
+        timersub(&now, &accept_paused_at, &diff);
+        if (diff.tv_sec == 0) return;
+        logmsg(LOGMSG_USER, "%s: resuming after %lds.%ldms active:%d pending:%d evicted:%d\n",
+               __func__, diff.tv_sec, diff.tv_usec / 1000,
+               active_appsock_conns, pending_connections, evicted_appsock_conns);
+    } else {
+        struct timeval hundred_ms = {.tv_usec = 100 * 1000};
+        event_base_once(base, -1, EV_TIMEOUT, maybe_enable_accept, n, &hundred_ms);
+    }
+}
 
-static void do_read(int, short, void *);
-static void accept_info_free(struct accept_info *);
+static void maybe_disable_accept(struct net_info *n)
+{
+    if (accept_paused) return;
+    int limit = get_max_appsocks_limit() + gbl_accept_headroom;
+    int total = active_appsock_conns + pending_connections + evicted_appsock_conns;
+    if (total > limit && n->listener && n->unix_ev) {
+        accept_paused = 1;
+        gettimeofday(&accept_paused_at, NULL);
+        evconnlistener_disable(n->listener);
+        event_del(n->unix_ev);
+        struct timeval ten_ms = {.tv_usec = 10 * 1000};
+        event_base_once(base, -1, EV_TIMEOUT, maybe_enable_accept, n, &ten_ms);
+    }
+}
 
 static void accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure,
                                            int badrte, int pmuv)
 {
     check_base_thd();
     ++pending_connections;
-    if (pending_connections >= (get_max_appsocks_limit() / 2)) {
-        accept_paused = 1;
-        struct net_info *n = net_info_find("replication");
-        evconnlistener_disable(n->listener);
-        event_del(n->unix_ev);
-    }
+    maybe_disable_accept(netinfo_ptr->net_info);
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
@@ -866,12 +885,6 @@ static void accept_info_free(struct accept_info *a)
 {
     check_base_thd();
     --pending_connections;
-    if (accept_paused && pending_connections == 0) {
-        accept_paused = 0;
-        struct net_info *n = net_info_find("replication");
-        evconnlistener_enable(n->listener);
-        event_add(n->unix_ev, NULL);
-    }
     if (a->ev) {
         event_free(a->ev);
     }
@@ -2475,17 +2488,6 @@ static void pmux_connect(int dummyfd, short what, void *data)
     }
 }
 
-static struct timeval ms_to_timeval(int ms)
-{
-    struct timeval t = {0};
-    if (ms >= 1000) {
-        t.tv_sec = ms / 1000;
-        ms %= 1000;
-    }
-    t.tv_usec = ms * 1000;
-    return t;
-}
-
 static int accept_host(struct accept_info *a)
 {
     check_base_thd();
@@ -2497,7 +2499,7 @@ static int accept_host(struct accept_info *a)
         host_node_ptr = add_to_netinfo_ll(netinfo_ptr, host, port);
         if (!host_node_ptr) return -1;
     }
-    struct net_info *n = net_info_find(netinfo_ptr->service);
+    struct net_info *n = netinfo_ptr->net_info;
     if (n == NULL) {
         n = net_info_new(netinfo_ptr);
     }
@@ -2876,33 +2878,25 @@ void free_appsock_handler_arg(struct appsock_handler_arg *arg)
 static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd,
                                int is_readonly, int secure, int *pbadrte)
 {
-    struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
-    if (b.pos == -1) {
-        b = evbuffer_search(buf, " ", 1, NULL);
+    if (b.pos == -1) b = evbuffer_search(buf, " ", 1, NULL);
+    if (b.pos == -1) return 1;
+    char key[SBUF2UNGETC_BUF_MAX + 1];
+    evbuffer_copyout(buf, key, b.pos + 1);
+    key[b.pos + 1] = 0;
+    if (secure && strstr(key, "newsql") == NULL) {
+        logmsg(LOGMSG_ERROR, "appsock '%s' disallowed on secure port\n", key);
+        return 1;
     }
-
-    if (b.pos != -1) {
-        char key[b.pos + 2];
-        evbuffer_copyout(buf, key, b.pos + 1);
-        key[b.pos + 1] = 0;
-        if (secure && strstr(key, "newsql") == NULL) {
-            logmsg(LOGMSG_ERROR, "appsock '%s' disallowed on secure port\n", key);
-            return 1;
-        }
-
-        if (strcmp(key, "rte ") == 0) {
-            evbuffer_read(buf, fd, -1);
-            evbuffer_free(buf);
-            ssize_t rc = write(fd, "0\n", 2);
-            if (rc == 2 && pbadrte)
-                *pbadrte = 1;
-            return 1;
-        }
-
-        info = get_appsock_info(key);
+    if (strcmp(key, "rte ") == 0) {
+        evbuffer_read(buf, fd, -1);
+        evbuffer_free(buf);
+        ssize_t rc = write(fd, "0\n", 2);
+        if (rc == 2 && pbadrte)
+            *pbadrte = 1;
+        return 1;
     }
-
+    struct appsock_info *info = get_appsock_info(key);
     if (info == NULL) return 1;
 
     evbuffer_drain(buf, b.pos + 1);
@@ -2913,12 +2907,18 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     arg->is_readonly = is_readonly;
     arg->secure = secure;
     arg->badrte = *pbadrte;
+    arg->admin = key[0] == '@';
 
     static int appsock_counter = 0;
     arg->base = appsock_base[appsock_counter++];
     if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
 
-    evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
+    char *first = key + arg->admin;
+    if (strcmp(first, "newsql\n") == 0) {
+        info->cb(-1, 0, arg); /* -> gethostname_enqueue */
+    } else {
+        evtimer_once(arg->base, info->cb, arg);
+    }
     return 0;
 }
 
@@ -2927,7 +2927,7 @@ static int should_reject_request(uint8_t first_byte)
     if (db_is_exiting() || gbl_exit || !gbl_ready) return 1;
     int is_admin = 0;
     if (first_byte == '@') is_admin = 1;
-    return check_appsock_limit(pending_connections, is_admin);
+    return check_appsock_limit(is_admin);
 }
 
 /* PMUV REQUEST/RESPONSE */
@@ -3090,13 +3090,23 @@ static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, s
     accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1, 0, 0);
 }
 
+static void libevent_fatal_cb(int err)
+{
+    logmsg(LOGMSG_FATAL, "received fatal error %d from libevent, aborting\n", err);
+    logmsg(LOGMSG_FATAL, "max:%d\ncurrent:%d\npending:%d\npending_evicted:%d\n",
+        get_max_appsocks_limit(), active_appsock_conns, pending_connections, evicted_appsock_conns);
+    abort();
+}
+
 static void accept_error_cb(struct evconnlistener *listener, void *data)
 {
     check_base_thd();
     int err = EVUTIL_SOCKET_ERROR();
+    if (err == EMFILE) {
+        libevent_fatal_cb(err);
+    }
     logmsg(LOGMSG_ERROR, "%s err:%d [%s] [outstanding fds:%d] [appsock fds:%d]\n",
            __func__, err, evutil_socket_error_to_string(err), pending_connections, active_appsock_conns);
-    if (err == EMFILE) abort();
 }
 
 static void reopen_unix(int fd, struct net_info *n)
@@ -3207,7 +3217,7 @@ static void do_recvfd(int pmux_fd, short what, void *data)
         rc = write(newfd, "0\n", 2);
     }
     if (rc != 2) {
-        logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:write fd:%d rc:%zd (%s)\n", __func__, newfd, rc, strerror(errno));
         shutdown_close(newfd);
         return;
     }
@@ -3233,7 +3243,10 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     /* Accept connection on unix fd */
     evbuffer_free(n->unix_buf);
     n->unix_buf = NULL;
-    event_free(n->unix_ev);
+    if (n->unix_ev) {
+        logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
+        abort();
+    }
     n->unix_ev = event_new(base, unix_fd, EV_READ | EV_PERSIST, do_recvfd, n);
     logmsg(LOGMSG_USER, "%s: svc:%s accepting on unix socket fd:%d\n",
            __func__, n->service, unix_fd);
@@ -3269,8 +3282,8 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     evconnlistener_set_error_cb(n->listener, accept_error_cb);
     int fd = evconnlistener_get_fd(n->listener);
     update_net_info(n, fd, port);
-    logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
-           n->service, port, fd);
+    logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__, n->service, port, fd);
+    maybe_disable_accept(n);
     return 0;
 }
 
@@ -3278,6 +3291,10 @@ static void unix_reg_reply(int fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
+    if (n->unix_ev) {
+        logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
+        abort();
+    }
     if ((what & EV_READ) == 0) {
         logmsg(LOGMSG_WARN, "%s fd:%d %s%s%s%s\n", __func__, fd,
                (what & EV_TIMEOUT) ? " timeout" : "",
@@ -3322,6 +3339,10 @@ static void unix_reg(int fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
+    if (n->unix_ev) {
+        logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
+        abort();
+    }
     if ((what & EV_WRITE) == 0) {
         logmsg(LOGMSG_WARN, "%s fd:%d %s%s%s%s\n", __func__, fd,
                (what & EV_TIMEOUT) ? " timeout" : "",
@@ -3342,10 +3363,9 @@ static void unix_reg(int fd, short what, void *data)
         return;
     }
     if (evbuffer_get_length(buf) == 0) {
-        struct event *ev = n->unix_ev;
-        event_free(ev);
-        n->unix_ev = event_new(base, fd, EV_READ | EV_PERSIST, unix_reg_reply, n);
-        event_add(n->unix_ev, &one_sec);
+        event_base_once(base, fd, EV_READ | EV_TIMEOUT, unix_reg_reply, n, &one_sec);
+    } else {
+        event_base_once(base, fd, EV_WRITE | EV_TIMEOUT, unix_reg, n, &one_sec);
     }
 }
 
@@ -3353,7 +3373,7 @@ static void unix_connect(int dummyfd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
-    if (n->unix_ev) {
+    if (n->unix_ev || n->unix_buf) {
         logmsg(LOGMSG_FATAL, "%s: LEFTOVER unix_ev for:%s\n", __func__, n->service);
         abort();
     }
@@ -3373,14 +3393,13 @@ static void unix_connect(int dummyfd, short what, void *data)
     }
     n->unix_buf = evbuffer_new();
     evbuffer_add_printf(n->unix_buf, "reg %s/%s/%s\n", n->app, n->service, n->instance);
-    n->unix_ev = event_new(base, fd, EV_WRITE | EV_PERSIST, unix_reg, n);
-    event_add(n->unix_ev, &one_sec);
+    event_base_once(base, fd, EV_WRITE | EV_TIMEOUT, unix_reg, n, &one_sec);
 }
 
 static void net_accept(netinfo_type *netinfo_ptr)
 {
     check_base_thd();
-    struct net_info *n = net_info_find(netinfo_ptr->service);
+    struct net_info *n = netinfo_ptr->net_info;
     if (n) {
         return;
     }
@@ -3413,7 +3432,7 @@ static void do_add_host(int accept_fd, short what, void *data)
     if (strcmp(host, gbl_myhostname) == 0) {
         return;
     }
-    struct net_info *n = net_info_find(netinfo_ptr->service);
+    struct net_info *n = netinfo_ptr->net_info;
     if (n == NULL) {
         n = net_info_new(netinfo_ptr);
     }
@@ -3524,34 +3543,28 @@ static int memcpy_evbuffer(struct evbuffer *flush_buf, struct event_info *e, int
     return 0;
 }
 
-static void libevent_fatal_cb(int err)
-{
-    logmsg(LOGMSG_FATAL, "received fatal error %d from libevent, aborting\n", err);
-    abort();
-}
-
 /* All you base are belong to me.. */
 static void setup_bases(void)
 {
     event_set_fatal_callback(libevent_fatal_cb);
-    init_base(&base_thd, &base, "main");
+    init_base(&base_thd, &base, "main", NULL);
     if (dedicated_timer) {
         gettimeofday(&timer_tick, NULL);
-        init_base_priority(&timer_thd, &timer_base, "timer", 0, &timer_tick);
+        init_base(&timer_thd, &timer_base, "timer", &timer_tick);
     } else {
         timer_thd = base_thd;
         timer_base = base;
     }
     if (dedicated_fdb) {
         gettimeofday(&fdb_tick, NULL);
-        init_base_priority(&fdb_thd, &fdb_base, "fdb", 0, &fdb_tick);
+        init_base(&fdb_thd, &fdb_base, "fdb", &fdb_tick);
     } else {
         fdb_thd = base_thd;
         fdb_base = base;
     }
     if (dedicated_dist) {
         gettimeofday(&dist_tick, NULL);
-        init_base_priority(&dist_thd, &dist_base, "dist", 0, &dist_tick);
+        init_base(&dist_thd, &dist_base, "dist", &dist_tick);
     } else {
         dist_thd = base_thd;
         dist_base = base;
@@ -3561,8 +3574,7 @@ static void setup_bases(void)
             gettimeofday(&appsock_tick[i], NULL);
             char thdname[16];
             snprintf(thdname, sizeof(thdname), "appsock:%d", i);
-            //priorities: 0 => timer-tick;  1 => free-connection;  2 => process-connection; 2 => Default priority
-            init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 4, &appsock_tick[i]);
+            init_base(&appsock_thd[i], &appsock_base[i], strdup(thdname), &appsock_tick[i]);
         }
     } else {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
@@ -3574,14 +3586,14 @@ static void setup_bases(void)
         single.wrthd = base_thd;
         single.wrbase = base;
     } else if (writer_policy == POLICY_SINGLE) {
-        init_base(&single.wrthd, &single.wrbase, "write");
+        init_base(&single.wrthd, &single.wrbase, "write", NULL);
     }
 
     if (reader_policy == POLICY_NONE) {
         single.rdthd = base_thd;
         single.rdbase = base;
     } else if (reader_policy == POLICY_SINGLE) {
-        init_base(&single.rdthd, &single.rdbase, "read");
+        init_base(&single.rdthd, &single.rdbase, "read", NULL);
     }
 
     logmsg(LOGMSG_USER, "Libevent:%s method:%s\n", event_get_version(), event_base_get_method(base));
@@ -3668,16 +3680,10 @@ void add_timer_event(event_callback_fn func, void *data, int ms)
 }
 #endif
 
-struct get_hosts_info {
-    int max_hosts;
-    int num_hosts;
-    host_node_type **hosts;
-};
-
 static void get_hosts_evbuffer_impl(void *arg)
 {
     check_base_thd();
-    struct get_hosts_info *info = arg;
+    struct get_hosts_evbuffer_arg *info = arg;
     struct net_info *n = net_info_find("replication");
     host_node_type *me = get_host_node_by_name_ll(n->netinfo_ptr, gbl_myhostname);
     if (!me) {
@@ -3690,11 +3696,18 @@ static void get_hosts_evbuffer_impl(void *arg)
         if (e->decomissioned || !e->host_node_ptr) continue;
         info->hosts[i] = e->host_node_ptr;
         ++i;
-        if (i == info->max_hosts) {
+        if (i == REPMAX) {
             break;
         }
     }
     info->num_hosts = i;
+}
+
+static void invoke_get_hosts_evbuffer_impl(int dummyfd, short what, void *data)
+{
+    struct get_hosts_evbuffer_arg *arg = data;
+    get_hosts_evbuffer_impl(arg);
+    evtimer_once(arg->base, arg->cb, arg); /* -> process_dbinfo */
 }
 
 struct hosts_metric {
@@ -3871,7 +3884,7 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
             return NET_SEND_FAIL_MALLOC_FAIL;
         }
     }
-    struct net_info *ni = net_info_find(netinfo_ptr->service);
+    struct net_info *ni = netinfo_ptr->net_info;
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
         if (logput && netinfo_ptr->throttle_rtn && (netinfo_ptr->throttle_rtn)(netinfo_ptr, e->host_interned)) {
@@ -3971,11 +3984,14 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     }
 }
 
-int get_hosts_evbuffer(int max_hosts, host_node_type **hosts)
+void get_hosts_evbuffer(struct get_hosts_evbuffer_arg *arg)
 {
-    struct get_hosts_info info = {.max_hosts = max_hosts, .hosts = hosts};
-    run_on_base(base, get_hosts_evbuffer_impl, &info);
-    return info.num_hosts;
+    evtimer_once(base, invoke_get_hosts_evbuffer_impl, arg);
+}
+
+void get_hosts_evbuffer_inline(struct get_hosts_evbuffer_arg *arg)
+{
+    run_on_base(base, get_hosts_evbuffer_impl, arg);
 }
 
 int get_hosts_metric(const char *netname, enum net_metric_type type)
@@ -4031,7 +4047,7 @@ void run_on_base(struct event_base *base, run_on_base_fn func, void *arg)
 
 void net_queue_stat_iterate_evbuffer(netinfo_type *netinfo_ptr, QSTATITERFP func, struct net_get_records *arg)
 {
-    struct net_info *ni = net_info_find(netinfo_ptr->service);
+    struct net_info *ni = netinfo_ptr->net_info;
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
         int type_counts[REP_MAX_TYPE] = {0};
@@ -4118,6 +4134,7 @@ void do_revconn_evbuffer(int fd, short what, void *data)
         return;
     }
     logmsg(LOGMSG_ERROR, "revconn: %s: Failed appsock_evbuffer, badrte=%d\n", __func__, badrte);
+    evbuffer_free(buf);
     shutdown_close(fd);
     return;
 }

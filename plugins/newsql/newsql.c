@@ -2335,7 +2335,7 @@ static int do_query_on_master_check(struct sqlclntstate *clnt, CDB2SQLQUERY *sql
         ATOMIC_ADD32(gbl_masterrejects, 1);
         if (allow_master_dbinfo) {
             struct newsql_appdata *appdata = clnt->appdata;
-            appdata->write_dbinfo(clnt);
+            appdata->write_dbinfo(clnt); /* -> newsql_write_dbinfo_evbuffer */
         }
         logmsg(LOGMSG_DEBUG, "Rejecting query on master\n");
         return 1;
@@ -2472,7 +2472,6 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
     }
 
-    ATOMIC_ADD64(gbl_nnewsql, 1);
     struct newsql_appdata *appdata = clnt->appdata;
     if (appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT)
         ATOMIC_ADD64(gbl_nnewsql_compat, 1);

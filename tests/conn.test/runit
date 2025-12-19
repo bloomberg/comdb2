@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+ADMINSQL="$CDB2SQL_EXE -admin -tabs --cdb2cfg $CDB2_CONFIG $DBNAME default"
+RUNSQL="$CDB2SQL_EXE --cdb2cfg $CDB2_CONFIG $DBNAME default" 
+SSH="ssh -x -n -o StrictHostKeyChecking=no"
+SCP="scp -o StrictHostKeyChecking=no"
+PIDS=()
+APPSOX=10000
+MAXFDS=$(($APPSOX + 256))
+
+function setup_comdb2db_cfg {
+    local dir=$(dirname $CDB2_CONFIG)
+    echo creating dir $dir
+    mkdir -p $dir
+    for h in $CLUSTER; do
+        $SSH $h mkdir -p $dir
+    done
+    echo creating config $CDB2_CONFIG
+    cat <<EOF > $CDB2_CONFIG
+$DBNAME $HOSTNAME 
+comdb2_config:default_type=testsuite
+comdb2_config:allow_pmux_route:true
+comdb2_config:connect_timeout:1000
+EOF
+    for h in $CLUSTER; do
+        $SCP $CDB2_CONFIG $h:$CDB2_CONFIG
+    done
+    echo created config
+    cat $CDB2_CONFIG
+}
+
+function start_pmux {
+    if [[ -z $(pidof pmux) ]]; then
+        echo "starting pmux"
+        $PMUX_EXE
+    else
+        echo "pmux already running"
+    fi
+}
+
+function start_db {
+    echo $COMDB2_EXE --create $DBNAME -dir $DBDIR --tunable 'do scon' --tunable "setattr maxappsockslimit $APPSOX"
+    echo "$COMDB2_EXE $DBNAME -dir $DBDIR"
+    (
+        echo "creating database"
+        $COMDB2_EXE --create $DBNAME -dir $DBDIR --tunable 'do scon' --tunable "setattr maxappsockslimit $APPSOX"
+        echo " initial ulimit -n: $(ulimit -n)"
+        ulimit -n ${MAXFDS}
+        echo "adjusted ulimit -n: $(ulimit -n)"
+        echo "starting database"
+        $COMDB2_EXE $DBNAME -dir $DBDIR --pidfile $DBDIR/my.pid
+    ) > $DBDIR/server.txt 2>&1 &
+    while [ ! -f $DBDIR/my.pid ] ; do
+        sleep 0.1
+    done
+    PID=$(<$DBDIR/my.pid)
+}
+
+function wait_for_db {
+    while :; do
+        $RUNSQL "select '$HOSTNAME' as 'from', comdb2_host() as 'to'" 2> /dev/null
+        if [[ $? -eq 0 ]]; then
+            break
+        fi
+        echo "server is not yet ready"
+        sleep 0.2 
+    done
+    echo 'db is up - can query locally'
+
+    for h in $CLUSTER; do
+        sshsql $h "select '$h' as 'from', comdb2_host() as 'to'"
+        if [[ $? -ne 0 ]]; then
+            failed "could not query from $h"
+        fi
+    done
+    echo 'db is up - can query from cluster nodes'
+}
+
+function sshsql {
+    host=$1
+    shift
+    $SSH $host $RUNSQL '"'"$*"'"'
+}
+
+function check_server {
+    ps -p $PID > /dev/null
+    if [[ $? -ne 0 ]]; then
+        failed "server not found -- pid:${PID}"
+    fi
+}
+
+function check_fds {
+    check_server
+    $ADMINSQL 'select count(*) from comdb2_connections' 2> /dev/null > $DBDIR/conns.txt &
+    local -r conn_pid=$!
+    local -r fds=$(ls -1 /proc/$PID/fd | wc -l)
+    wait $conn_pid
+    local -r conns=$(<$DBDIR/conns.txt)
+    echo "now:${SECONDS}  connections:${conns}  file-descriptors:${fds}"
+    if [[ -z $fds ]] || [[ -z $conns ]] || [[ $conns -eq 0 ]] || [[ $fds -eq 0 ]]; then
+        return
+    fi
+    if [[ $conns -gt $(($APPSOX + 101)) ]]; then
+        failed "max:${APPSOX} current:${conns}"
+    fi
+    if [[ $fds -gt $MAXFDS ]]; then
+        failed "used too many file descriptors:${fds}  max:${MAXFDS}"
+    fi
+}
+
+function start_clients {
+    local -r time=$1
+    local n_hosts=1 #localhost
+    for c in ${CLUSTER}; do
+        n_hosts=$(($n_hosts + 1))
+    done
+    local -r procs=10
+    local -r threads=10
+    local -r connections=100
+    echo "max concurrent:$(($n_hosts * $procs * $threads))"
+    for ((i=0;i<$procs;++i)); do
+        timeout ${time}s $TESTSBUILDDIR/conn $threads $connections $DBNAME default $CDB2_CONFIG > $DBDIR/$HOSTNAME.$i.txt 2>&1 &
+        PIDS+=($!)
+        for h in $CLUSTER; do
+            $SSH $h timeout ${time}s $TESTSBUILDDIR/conn $threads $connections $DBNAME default $CDB2_CONFIG > $DBDIR/$h.$i.txt 2>&1 &
+            PIDS+=($!)
+        done
+    done
+    pstree -a $$
+}
+
+function run_test {
+    local -t time=$((3 * 60))
+    local -r total_time=$(($time + 10))
+    start_clients $time
+    SECONDS=0
+    while [[ $SECONDS -lt $total_time ]]; do
+        check_fds
+        sleep 0.1
+    done
+    wait ${PIDS[*]}
+}
+
+function cleanup {
+    echo "peforming cleanup"
+    local exit_pids=()
+    for h in $CLUSTER; do
+        $SSH $h rm $CDB2_CONFIG &
+        exit_pids+=($!)
+    done
+    $ADMINSQL "@send exit" &
+    exit_pids+=($!)
+    wait ${exit_pids[*]}
+}
+
+function failed {
+    echo "failed - $1"
+    kill -9 ${PIDS[*]}
+    cleanup
+    failexit "conn failED"
+}
+
+setup_comdb2db_cfg
+start_pmux
+start_db
+wait_for_db
+run_test
+cleanup
+
+echo success
+exit 0

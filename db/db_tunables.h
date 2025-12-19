@@ -1887,7 +1887,7 @@ REGISTER_TUNABLE("physrep_filter_by_class", "Filter physrep replication by class
                  &gbl_physrep_filter_by_class, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 0)", TUNABLE_INTEGER,
+REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 50)", TUNABLE_INTEGER,
                  &gbl_physrep_pollms, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
@@ -2580,5 +2580,7 @@ REGISTER_TUNABLE("prefer_non_blocking_coherency_check",
                  "If set, prefer to use `bdb_try_am_i_coherent()` over `bdb_am_i_coherent()` when checking whether we "
                  "are coherent. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_prefer_non_blocking_coherency_check, 0, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("new_connection_grace_ms", "Time (in ms) before new connection is eligible for eviction (Default: 100ms)",
+                 TUNABLE_INTEGER, &gbl_new_connection_grace_ms, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("accept_headroom", "", TUNABLE_INTEGER, &gbl_accept_headroom, INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

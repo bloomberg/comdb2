@@ -51,6 +51,16 @@ ${TESTSBUILDDIR}/cdb2api_setoptions ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_setoptions - fail" && exit 1
 echo 'cdb2api_setoptions - pass'
 
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default 'create procedure sptrace version '"'cdb2api_test'"' {local function main() db:trace('"'hello, world\!'"') end}'
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default 'create procedure spdebug version '"'cdb2api_test'"' {local function main()
+    db:debug(1)
+    db:debug(2)
+    db:debug(3)
+end}'
+${TESTSBUILDDIR}/cdb2api_sptrace ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_sptrace - fail" && exit 1
+echo 'cdb2api_sptrace - pass'
+
 CDB2_LOG_CALLS=1 ${TESTSBUILDDIR}/cdb2api_stmt_return_types ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_stmt_return_types - fail" && exit 1
 echo 'cdb2api_stmt_return_types - pass'
