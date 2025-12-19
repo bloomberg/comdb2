@@ -151,8 +151,8 @@ static int apply_queue_size()
 /* Assume caller holds sql_apply_queue_lock */
 static inline int block_apply_queue(bdb_state_type *bdb_state)
 {
-    while (((apply_queue_head + 1) % gbl_sql_logfill_lookahead_records) == apply_queue_tail &&
-            !db_is_exiting() && !bdb_lock_desired(bdb_state)) {
+    while (((apply_queue_head + 1) % gbl_sql_logfill_lookahead_records) == apply_queue_tail && !db_is_exiting() &&
+           !bdb_lock_desired(bdb_state)) {
         enque_blocks++;
         if (gbl_debug_sql_logfill) {
             static int lastpr = 0;
@@ -171,8 +171,8 @@ static inline int block_apply_queue(bdb_state_type *bdb_state)
     return db_is_exiting() || bdb_lock_desired(bdb_state);
 }
 
-static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsigned int offset,
-        int64_t rectype, u_int32_t recgen, void *blob, int blob_len)
+static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype,
+                             u_int32_t recgen, void *blob, int blob_len)
 {
     Pthread_mutex_lock(&sql_apply_queue_lock);
 
@@ -204,8 +204,8 @@ static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsig
     Pthread_mutex_unlock(&sql_apply_queue_lock);
 }
 
-static int handle_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset,
-        int64_t rectype, u_int32_t recgen, void *blob, int blob_len)
+static int handle_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype,
+                      u_int32_t recgen, void *blob, int blob_len)
 {
     if (gbl_sql_logfill_dedicated_apply_thread) {
         enque_log_record(bdb_state, file, offset, rectype, recgen, blob, blob_len);
@@ -245,7 +245,8 @@ static void print_record_info(const char *prefix, cdb2_hndl_tp *hndl)
 static int gen_okay(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, u_int32_t mygen)
 {
     int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 2);
-    if (!recgenp) return 1;
+    if (!recgenp)
+        return 1;
     return *recgenp <= mygen;
 }
 
@@ -270,7 +271,8 @@ static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO 
     }
 
     if (last_lsn->file < mylsn.file) {
-        rc = handle_log(bdb_state, last_lsn->file, get_next_offset(bdb_state->dbenv, *last_lsn), REP_NEWFILE, genp ? *genp : 0, NULL, 0);
+        rc = handle_log(bdb_state, last_lsn->file, get_next_offset(bdb_state->dbenv, *last_lsn), REP_NEWFILE,
+                        genp ? *genp : 0, NULL, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s error applying newfile log record, %d\n", __func__, rc);
             exit(1);
@@ -371,8 +373,8 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             gap_lsn = master_lsn;
         }
 
-        rc = snprintf(sql_cmd, SQL_CMD_LEN, "select * from comdb2_transaction_logs('{%u:%u}', NULL, 9, 1)", 
-                last_lsn.file, last_lsn.offset);
+        rc = snprintf(sql_cmd, SQL_CMD_LEN, "select * from comdb2_transaction_logs('{%u:%u}', NULL, 9, 1)",
+                      last_lsn.file, last_lsn.offset);
         if (rc < 0 || rc >= SQL_CMD_LEN) {
             logmsg(LOGMSG_ERROR, "%s: snprintf failed, rc=%d\n", __func__, rc);
             return;
@@ -426,8 +428,8 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             if (!gen_okay(bdb_state, hndl, gen)) {
                 if (gbl_debug_sql_logfill) {
                     int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 2);
-                    logmsg(LOGMSG_USER, "%s: exiting apply loop, mygen=%u recgen=%" PRId64 "\n", __func__,
-                            gen, recgenp ? *recgenp : 0);
+                    logmsg(LOGMSG_USER, "%s: exiting apply loop, mygen=%u recgen=%" PRId64 "\n", __func__, gen,
+                           recgenp ? *recgenp : 0);
                 }
                 break;
             }
@@ -571,17 +573,16 @@ static void *apply_thread(void *arg)
             u_int32_t gen;
             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
             if (copy.recgen == 0 || gen >= copy.recgen) {
-                bdb_state->dbenv->apply_log(bdb_state->dbenv, copy.file, copy.offset,
-                        copy.rectype, copy.blob, copy.blob_len);
+                bdb_state->dbenv->apply_log(bdb_state->dbenv, copy.file, copy.offset, copy.rectype, copy.blob,
+                                            copy.blob_len);
             } else if (gbl_debug_sql_logfill) {
-                logmsg(LOGMSG_USER, "%s: skipping apply of recgen=%u mygen=%u\n", __func__,
-                        copy.recgen, gen);
+                logmsg(LOGMSG_USER, "%s: skipping apply of recgen=%u mygen=%u\n", __func__, copy.recgen, gen);
             }
         }
 
         Pthread_mutex_lock(&sql_apply_queue_lock);
         if (apply_gen == apply_queue_gen) {
-            if(tail != apply_queue_tail)
+            if (tail != apply_queue_tail)
                 abort();
             apply_queue_tail = (apply_queue_tail + 1) % gbl_sql_logfill_lookahead_records;
         }
