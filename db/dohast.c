@@ -88,11 +88,13 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         return NULL;
 
     /* handle descending keys */
-    *order_size = lst->nExpr;
-    *order_dir = (int *)malloc((*order_size) * sizeof(int));
-    if (!*order_dir) {
-        sqlite3_free(ret);
-        return NULL;
+    if (*order_size == 0) {
+        *order_size = lst->nExpr;
+        *order_dir = (int *)malloc((*order_size) * sizeof(int));
+        if (!*order_dir) {
+            sqlite3_free(ret);
+            return NULL;
+        }
     }
 
     if (((*order_dir)[0] = lst->a[0].sortOrder) != 0) {
