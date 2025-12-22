@@ -112,6 +112,7 @@
 #include <phys_rep_lsn.h>
 
 #include <log_trigger.h>
+#include <sqllogfill.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -2424,6 +2425,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
+extern int gbl_sql_logfill;
 int gbl_skip_catchup_logic = 0;
 int gbl_debug_downgrade_cluster_at_open = 0;
 
@@ -3091,6 +3093,10 @@ waitformaster:
     }
 
     master_host = bdb_state->repinfo->master_host;
+
+    if (gbl_sql_logfill) {
+        create_sql_logfill_threads(bdb_state);
+    }
 
     if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
         goto waitformaster;

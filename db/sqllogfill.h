@@ -17,7 +17,7 @@
 #ifndef SQLLOGFILL_H
 #define SQLLOGFILL_H
 
-#include <bdb/bdb_int.h>
+#include <bdb_int.h>
 
 void sql_logfill_signal(bdb_state_type *bdb_state);
 
