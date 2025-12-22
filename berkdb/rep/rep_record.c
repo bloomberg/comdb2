@@ -3127,6 +3127,8 @@ __thread DB_LSN commit_lsn = {0};
 
 extern int gbl_always_request_log_req;
 
+__thread char *rep_apply_caller;
+
 /*
  * __rep_apply --
  *
@@ -3271,16 +3273,15 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, rep_gen, decoupled)
 	 * That said, I really don't want to do db operations holding the
 	 * log mutex, so the synchronization here is tricky.
 	 */
-	if (gbl_is_physical_replicant)
-	{
+	if (gbl_is_physical_replicant && F_ISSET(rep, REP_F_MASTER)) {
 		if(cmp != 0) {
 			static uint32_t count=0;
 			count++;
 			physrep_out_of_order = 1;
 			if (gbl_physrep_debug == 1) {
-				logmsg(LOGMSG_USER, "%s out-of-order lsn [%d][%d] instead of [%d][%d], count %u\n",
+				logmsg(LOGMSG_USER, "%s out-of-order lsn [%d][%d] instead of [%d][%d], from %s count %u\n",
 						__func__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file,
-						lp->ready_lsn.offset, count);
+						lp->ready_lsn.offset, rep_apply_caller, count);
 			}
 			/* A master node in a physical replication cluster would not
 			 * have the ability to 'ask' for missing log records.

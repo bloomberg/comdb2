@@ -204,6 +204,8 @@ static void enque_log_record(bdb_state_type *bdb_state, unsigned int file, unsig
     Pthread_mutex_unlock(&sql_apply_queue_lock);
 }
 
+extern __thread char *rep_apply_caller;
+
 static int handle_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype,
                       u_int32_t recgen, void *blob, int blob_len)
 {
@@ -211,7 +213,9 @@ static int handle_log(bdb_state_type *bdb_state, unsigned int file, unsigned int
         enque_log_record(bdb_state, file, offset, rectype, recgen, blob, blob_len);
         return 0;
     }
+    rep_apply_caller = "sqllogfill";
     int rc = bdb_state->dbenv->apply_log(bdb_state->dbenv, file, offset, rectype, blob, blob_len);
+    rep_apply_caller = NULL;
     return rc;
 }
 
@@ -273,7 +277,7 @@ static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO 
     if (last_lsn->file < mylsn.file) {
         rc = handle_log(bdb_state, last_lsn->file, get_next_offset(bdb_state->dbenv, *last_lsn), REP_NEWFILE,
                         genp ? *genp : 0, NULL, 0);
-        if (rc != 0) {
+        if (rc != 0 && rc != DB_REP_ISPERM) {
             logmsg(LOGMSG_FATAL, "%s error applying newfile log record, %d\n", __func__, rc);
             exit(1);
         }
