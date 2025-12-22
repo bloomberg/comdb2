@@ -38,7 +38,7 @@ if (( $? != 0 )) ; then
 fi
 
 echo "Partitioning the table"
-$C "ALTER TABLE T PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start}" >> $OUT
+$C "ALTER TABLE T PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE to partition retroactively"
    exit 1

@@ -1052,7 +1052,7 @@ static int convert_record(struct convert_record_data *data)
                 goto err;
             }
         }
-    
+
         rc = add_record(
             &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
             p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,

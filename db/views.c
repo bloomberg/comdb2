@@ -3560,7 +3560,7 @@ struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned lon
     if (i < retros->n) {
         pthread_mutex_lock(&retros->cs[i].mtx);
         retros->cs[i].counter++;
-        if (retros->cs[i].counter % 1000 == 1)
+    /*    if (retros->cs[i].counter % 1000 == 1)*/
             fprintf(stderr, "FOR %llx found shard %s counter %d\n", genid, ret ? ret->tablename : "NULL", retros->cs[i].counter);
         pthread_mutex_unlock(&retros->cs[i].mtx);
     }

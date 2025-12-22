@@ -6390,10 +6390,13 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
         rc = ERR_SC;
         goto err;
     }
+    retros->ss[sc->partition.u.tpt.retention - 1] = arg->s;
+
     /* alter existing shard */
     arg->indx = 0;
     arg->pos = FIRST_SHARD | LAST_SHARD;
     arg->clonelast = 0;
+    sc = arg->s; 
     sc->kind = SC_ALTERTABLE;
     sc->sharding_arg = retros;
     sc->sharding_func = timepart_retro_route;
