@@ -79,6 +79,7 @@ set(src
   sqlglue.c
   sqlinterfaces.c
   sqllog.c
+  sqllogfill.c
   sqlmaster.c
   sqloffload.c
   sqlpool.c
