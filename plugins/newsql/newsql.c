@@ -1746,9 +1746,18 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                                  sqlstr);
                         rc = ii + 1;
                     } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
-                        snprintf(err, sizeof(err),
-                                 "transaction chunks require SOCKSQL transaction mode");
-                        rc = ii + 1;
+                        int snapshot_by_default =
+                            (clnt->dbtran.mode == TRANLEVEL_MODSNAP && gbl_sql_tranlevel_default == TRANLEVEL_MODSNAP);
+                        if (snapshot_by_default) {
+                            logmsg(LOGMSG_DEBUG, "snapshot is on by default, use socksql instead\n");
+                            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+                            clnt->dbtran.maxchunksize = tmp;
+                            /* in chunked mode, we disable verify retries */
+                            clnt->verifyretry_off = 1;
+                        } else {
+                            snprintf(err, sizeof(err), "transaction chunks require SOCKSQL transaction mode");
+                            rc = ii + 1;
+                        }
                     } else {
                         clnt->dbtran.maxchunksize = tmp;
                         /* in chunked mode, we disable verify retries */
@@ -1792,9 +1801,15 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     if (clnt->dbtran.mode == TRANLEVEL_INVALID) {
                         rc = ii + 1;
                     } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL && clnt->dbtran.maxchunksize) {
-                        snprintf(err, sizeof(err),
-                                 "transaction chunks require SOCKSQL transaction mode");
-                        rc = ii + 1;
+                        int snapshot_by_default =
+                            (clnt->dbtran.mode == TRANLEVEL_MODSNAP && gbl_sql_tranlevel_default == TRANLEVEL_MODSNAP);
+                        if (snapshot_by_default) {
+                            logmsg(LOGMSG_DEBUG, "snapshot is on by default, use socksql instead\n");
+                            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+                        } else {
+                            snprintf(err, sizeof(err), "transaction chunks require SOCKSQL transaction mode");
+                            rc = ii + 1;
+                        }
                     }
                 }
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
