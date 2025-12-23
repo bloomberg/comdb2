@@ -747,26 +747,12 @@ done:
     return rc;
 }
 
-static int scdone_add(const char tablename[], void *arg, scdone_t type)
-{
-    tran_type *tran;
-    uint32_t lid;
+static int scdone_add_int(const char tablename[], void *arg, scdone_t type, tran_type *tran) {
+    char *table_copy = strdup(tablename);
+    char *csc2text = NULL;
     int bdberr;
     int rc;
     struct dbtable *db = NULL;
-
-    if (gbl_assert_systable_locks)
-        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_tables",
-                                        gbl_rep_lockid,
-                                        TABLENAME_LOCKED_WRITE));
-
-    tran = _tran(&lid, &bdberr, __func__, __LINE__);
-    if (!tran)
-        return bdberr;
-
-    char *table_copy = strdup(tablename);
-    char *csc2text = NULL;
-
     if (get_csc2_file_tran(tablename, -1, &csc2text, NULL, tran)) {
         logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
                tablename);
@@ -784,21 +770,6 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
     }
 
     add_dbtable_to_thedb_dbs(db);
-
-    /* this is used by testgenshard, creating a partition name alias for the actual shard */
-    char *sqlalias = NULL;
-    rc = bdb_get_table_sqlalias_tran(db->tablename, tran, &sqlalias);
-    if (sqlalias){
-        hash_sqlalias_db(db, sqlalias);
-    }
-
-    /* 'dbnames' is passed as a string arg while finalizing an add of a generic sharded table */
-    if (arg && strcmp(arg, "dbnames") == 0 && db->sqlaliasname) {
-        rc = gen_shard_update_inmem_db(tran, db, db->sqlaliasname);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "REPLICANT FAILED TO UPDATE GENERIC SHARD INFO\n");
-        }
-    }
 
 
     _master_recs(tran, tablename, type);
@@ -841,12 +812,27 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
     }
 
     rc = _db_dbnum(tran, db, &bdberr);
-    if (rc)
-        goto done;
+    return rc;
+}
 
-done:
+static int scdone_add(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_tables",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+    rc = scdone_add_int(tablename, arg, type, tran);
+
     _untran(tran, lid);
-
     return rc;
 }
 
@@ -926,6 +912,22 @@ static int scdone_addandfastinit(const char tablename[], void *arg,
     return scdone_fastinit(tablename, arg, type);
 }
 
+static int scdone_drop_int(const char tablename[], void *arg, scdone_t type, tran_type *tran) {
+    int rc;
+    rc = _anti_deadlock(tran, tablename);
+    if (rc)
+        return rc;
+
+    logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", tablename);
+    if (delete_table_rep((char *)tablename, tran)) {
+        logmsg(LOGMSG_FATAL, "%s: error deleting table  %s.\n", __func__,
+               tablename);
+        exit(1);
+    }
+    _master_recs(tran, tablename, type);
+    return rc;
+}
+
 static int scdone_drop(const char tablename[], void *arg, scdone_t type)
 {
     tran_type *tran;
@@ -942,20 +944,8 @@ static int scdone_drop(const char tablename[], void *arg, scdone_t type)
     if (!tran)
         return bdberr;
 
-    rc = _anti_deadlock(tran, tablename);
-    if (rc)
-        goto done;
+    rc = scdone_drop_int(tablename, arg, type, tran);
 
-    logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", tablename);
-    if (delete_table_rep((char *)tablename, tran)) {
-        logmsg(LOGMSG_FATAL, "%s: error deleting table  %s.\n", __func__,
-               tablename);
-        exit(1);
-    }
-
-    _master_recs(tran, tablename, type);
-
-done:
     _untran(tran, lid);
     return rc;
 }
@@ -1281,6 +1271,62 @@ static int scdone_alias(const char tablename[], void *arg, scdone_t type)
     _untran(tran, lid);
     return 0;
 }
+
+static int scdone_genshard_add(const char tablename[] , void *arg, scdone_t type) 
+{
+    tran_type *tran = NULL;
+    uint32_t lid = 0;
+    int rc = 0;
+    int bdberr = 0;
+    struct dbtable *tbl = NULL;
+    assert(arg!=NULL);
+    const char *genshard_name = (char *)arg;
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+    rc = scdone_add_int(tablename, arg, type, tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s scdone_add_int failed. rc %d\n", __func__, rc);
+        goto done;
+    }
+    tbl = get_dbtable_by_name(tablename);
+    if (!tbl) {
+        logmsg(LOGMSG_ERROR, "%s unable to find table %s\n", __func__, tablename);
+        abort();
+    }
+    rc = gen_shard_add_inmem_tbl(tran, tbl, genshard_name);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s unable to set table %s shard info\n", __func__, tablename);
+        goto done;
+    }
+done:
+    _untran(tran, lid);
+    return rc;
+}
+
+static int scdone_genshard_drop(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran = NULL;
+    uint32_t lid = 0;
+    int rc = 0;
+    int bdberr = 0;
+    struct dbtable *tbl = get_dbtable_by_name(tablename);
+    if (tbl==NULL) {
+        logmsg(LOGMSG_USER, "%s GOT DBTABLE AS NULL. ABORTING.. \n", __func__);
+        abort();
+    }
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+    
+    gen_shard_rem_inmem_tbl(tbl);
+
+    rc = scdone_drop_int(tablename, arg, type, tran);
+
+    _untran(tran, lid);
+    return rc;
+}
+
 /* keep this in sync with enum scdone */
 int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_alter,         &scdone_addandfastinit, /* fastinit AND add (doh) */
@@ -1292,7 +1338,7 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
     &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
     &scdone_queue_file,    &scdone_rename_table,   &scdone_alias,
-    &scdone_default_cons};
+    &scdone_default_cons, &scdone_genshard_add,  &scdone_genshard_drop};
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
