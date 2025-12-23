@@ -1261,6 +1261,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         gbl_snapisol = 1;
         gbl_use_modsnap_for_snapshot = 1;
+        if (gbl_sql_tranlevel_default == gbl_snapshot_impl)
+            gbl_sql_tranlevel_default = TRANLEVEL_MODSNAP;
         gbl_snapshot_impl = TRANLEVEL_MODSNAP;
         gbl_modsnap_asof = 1;
     } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
