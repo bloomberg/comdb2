@@ -426,6 +426,7 @@
 (name='iam_allow_sp_resource', description='Allow stored-procedure as IAM resource [Default: 0 (off)]', type='INTEGER', value='0', read_only='N')
 (name='iam_base_bri', description='base resource identifier for IAM', type='STRING', value=NULL, read_only='Y')
 (name='iam_dbname', description='override dbname for IAM', type='STRING', value=NULL, read_only='Y')
+(name='iam_decision_history', description='Enable IAM decision history [Default: 0 (off)]', type='INTEGER', value='0', read_only='N')
 (name='iam_usermetric_verbosity', description='IAM user metric verbosity [Default: 0 (off)]', type='INTEGER', value='0', read_only='N')
 (name='ignore_bad_table', description='Allow a database with a corrupt table to come up, without that table.', type='BOOLEAN', value='OFF', read_only='N')
 (name='ignore_datetime_cast_failures', description='ignore_datetime_cast_failures', type='BOOLEAN', value='OFF', read_only='N')
