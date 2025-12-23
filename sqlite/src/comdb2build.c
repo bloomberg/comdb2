@@ -44,7 +44,6 @@ extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
 extern int gbl_transactional_drop_plus_rename;
 extern int gbl_gen_shard_verbose;
-extern int gbl_sc_protobuf;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 
@@ -1754,12 +1753,6 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 {
     if (gbl_disable_sql_table_replacement) {
         setError(pParse, SQLITE_MISUSE, "sql table replacement is disabled");
-        return;
-    }
-
-    if (!gbl_sc_protobuf) {
-        setError(pParse, SQLITE_MISUSE,
-            "sc_protobuf lrl option required for sql table replacement");
         return;
     }
 
