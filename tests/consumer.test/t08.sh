@@ -30,8 +30,7 @@ $cdb2sql <<'EOF'
 DROP LUA CONSUMER batch_consume;
 DROP TABLE nt;
 EOF
-) 2>&1 | grep -v 'Terminated .*EXEC PROCEDURE batch_consume' > t08.output
-set -x
+) > t08.output
 diff -q t08.output t08.expected
 if [[ $? -ne 0 ]]; then
     diff t08.output t08.expected | head -10
