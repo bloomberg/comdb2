@@ -1744,6 +1744,7 @@ extern long n_bad_swapin;
 extern long n_retries;
 extern long n_missed;
 extern long n_dbinfo;
+extern int64_t n_tagged_over_cdb2api;
 extern history *reqhist;
 extern int gbl_sbuftimeout;
 extern int sqldbgflag;
