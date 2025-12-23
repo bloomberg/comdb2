@@ -2264,7 +2264,7 @@ static int dbstmt_bind_int(Lua lua, dbstmt_t *dbstmt)
     return stmt_bind(lua, dbstmt->stmt);
 }
 
-static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
+static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **pstmt,
                                struct sql_state *rec, int flags)
 {
     Lua L = sp->lua;
@@ -2273,6 +2273,7 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
     struct errstat err;
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
+    sqlite3_stmt *stmt;
     rec_ptr->sql = sql;
 
     /* Reset logger. This clears table names (see reqlog_add_table) and
@@ -2299,8 +2300,10 @@ retry:
     }
     if (sp->rc == SQLITE_PERM) sp->rc = SQLITE_SCHEMA; /* R7 compat */
     if (sp->rc == 0) {
-        *stmt = rec_ptr->stmt;
-        rec_ptr->sql = sqlite3_sql(*stmt);
+        stmt = rec_ptr->stmt;
+        rec_ptr->sql = sqlite3_sql(stmt);
+        ((Vdbe*)stmt)->luaStartTime = -1;
+        *pstmt = stmt;
     } else if (sp->rc == SQLITE_SCHEMA) {
         return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
@@ -2348,7 +2351,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
         return;
     }
 
-    if (sp != NULL) {
+    if (sp != NULL && pVdbe->luaStartTime >= 0) {
         const char *zNormSql = sqlite3_normalized_sql(pStmt);
         logger = sp->thd->logger;
 
