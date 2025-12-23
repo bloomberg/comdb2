@@ -5187,7 +5187,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		//		3. txn B is given a start lsn that is less than txn A's commit lsn
 		//		4. txn B doesn't see txn A's updates
 		//
-		// - Must set this is set after acquiring locks. If not:
+		// - Must set this after acquiring locks. If not:
 		// 		1. `set_commit_context` is called for txn A
 		//		2. a new snapshot txn ('B') starts with txn A's commit lsn as its start lsn
 		//		3. txn B doesn't see txn A's updates because txn A hasn't acquired locks yet
