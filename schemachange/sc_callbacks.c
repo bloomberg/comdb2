@@ -143,6 +143,21 @@ unsigned long long get_genid_stripe_pointer(unsigned long long genid,
     return sc_genids[stripe];
 }
 
+struct dbtable * _distribute_rows(struct dbtable *usedb, unsigned long long genid)
+{
+    struct dbtable *table = usedb;
+
+    /* if we want to distribute the data, change the destination table here */
+    if (usedb->sc_from && usedb->sc_from->sharding_func) {
+        table =  usedb->sc_from->sharding_func(usedb->sc_from->sharding_arg, genid);
+        if (!table) {
+            logmsg(LOGMSG_ERROR, "%s failed to get the sharding usedb for %s\n",
+                    __func__, usedb->tablename);
+        }
+    }
+    return table;
+}
+
 /* delete from new btree when genid is older than schemachange position
  */
 int live_sc_post_del_record(struct ireq *iq, void *trans,
@@ -162,6 +177,13 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
        fprintf(stderr, "live 0x%llx cursor 0x%llx :: live is"
        " behind cursor - DELETE\n", genid, sc_genids[stripe]);
      */
+
+    /* if we want to distribute the data, change the destination table here */
+    iq->usedb = _distribute_rows(usedb, genid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        return -1;
+    }
 
     int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs, 1);
     iq->usedb = usedb;
@@ -409,18 +431,15 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
     }
 
     /* if we want to distribute the data, change the destination table here */
-    if (usedb->sc_from && usedb->sc_from->sharding_func) {
-        iq->usedb =  usedb->sc_from->sharding_func(usedb->sc_from->sharding_arg, genid);
-            if (!iq->usedb) {
-                logmsg(LOGMSG_ERROR, "%s failed to get the sharding usedb for %s\n",
-                       __func__, usedb->tablename);
-                rc = -1;
-                goto done;
-            }
-        }
+    iq->usedb = _distribute_rows(usedb, genid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        rc = -1;
+        goto done;
+    }
 
     rc = add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, new_dta,
-                    ((uint8_t*)new_dta) + usedb->sc_to->lrl, NULL, blobs, maxblobs,
+            ((uint8_t*)new_dta) + usedb->sc_to->lrl, NULL, blobs, maxblobs,
                     &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
                     BLOCK2_ADDKL, // opcode
                     0,            // blkpos
@@ -478,6 +497,14 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
     if (iq->debug) {
         reqpushprefixf(iq, "upd_new_record: ");
     }
+
+    /* if we want to distribute the data, change the destination table here */
+    iq->usedb = _distribute_rows(usedb, oldgenid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        return -1;
+    }
+
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
                         oldblobs, newblobs, 1);
