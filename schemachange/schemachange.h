@@ -329,10 +329,6 @@ struct schema_change_type {
     size_t newcsc2_for_default_cons_q_len;
 
     int preserve_oplog_count;
-
-    /* sharding options */
-    struct timepart_retro *sharding_arg;
-    struct dbtable *(*sharding_func)(struct timepart_retro *, unsigned long long);
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);

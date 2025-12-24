@@ -1043,8 +1043,8 @@ static int convert_record(struct convert_record_data *data)
 
         /* if we want to distribute the data, change the destination table here */
         struct dbtable *tbl = data->iq.usedb;
-        if (data->s->sharding_func) {
-            data->iq.usedb =  data->s->sharding_func(data->s->sharding_arg, ngenid);
+        if (data->from && data->from->sharding_func) {
+            data->iq.usedb =  data->from->sharding_func(data->from->sharding_arg, ngenid);
             if (!data->iq.usedb) {
                 logmsg(LOGMSG_ERROR, "%s failed to get the sharding usedb for %s\n",
                        __func__, tbl->tablename);

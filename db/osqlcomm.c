@@ -6398,8 +6398,9 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     arg->clonelast = 0;
     sc = arg->s; 
     sc->kind = SC_ALTERTABLE;
-    sc->sharding_arg = retros;
-    sc->sharding_func = timepart_retro_route;
+    struct dbtable *db = get_dbtable_by_name(arg->part_name);
+    db->sharding_arg = retros;
+    db->sharding_func = timepart_retro_route;
     sc->newpartition = newpartition;
     sc->force_rebuild = 1;
     for( int jj = 0; jj < retros->n; jj++) {

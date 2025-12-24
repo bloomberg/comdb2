@@ -408,6 +408,17 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         addflags |= RECFLAGS_NO_CONSTRAINTS;
     }
 
+    /* if we want to distribute the data, change the destination table here */
+    if (usedb->sc_from && usedb->sc_from->sharding_func) {
+        iq->usedb =  usedb->sc_from->sharding_func(usedb->sc_from->sharding_arg, genid);
+            if (!iq->usedb) {
+                logmsg(LOGMSG_ERROR, "%s failed to get the sharding usedb for %s\n",
+                       __func__, usedb->tablename);
+                rc = -1;
+                goto done;
+            }
+        }
+
     rc = add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, new_dta,
                     ((uint8_t*)new_dta) + usedb->sc_to->lrl, NULL, blobs, maxblobs,
                     &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
