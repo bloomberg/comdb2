@@ -2511,6 +2511,8 @@ REGISTER_TUNABLE("transaction_grace_period",
 
 REGISTER_TUNABLE("partition_sc_reorder", "If the schema change is serialized for a partition, run current shard last",
                  TUNABLE_BOOLEAN, &gbl_partition_sc_reorder, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("partition_retroactively", "Disable/enable time partition syntax to retroactively partition an existing table (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_retro_tpt, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("dohsql_joins", "Enable to support joins in parallel sql execution (default: on)", TUNABLE_BOOLEAN,
                  &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);
