@@ -1898,6 +1898,10 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
         return; /* Do not log consumers */
     }
 
+    if (clnt->blocking_tranlog) {
+        return; /* Don't log blocking tranlog */
+    }
+
     struct string_ref *sql = clnt->sql_ref;
     struct reqlogger logger;
 
@@ -2018,6 +2022,16 @@ void reqlog_log_all_longreqs(void)
 }
 
 pthread_mutex_t reqlog_longreq_log_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static inline int is_excluded(struct reqlogger *logger)
+{
+    if (logger->clnt) {
+        if (can_consume(logger->clnt) == 1 || logger->clnt->blocking_tranlog) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /* End of a request. */
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
@@ -2193,7 +2207,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
         long_request_thresh = gbl_long_request_ms;
     }
 
-    if (logger->durationus >= M2U(long_request_thresh)) {
+    if (logger->durationus >= M2U(long_request_thresh) && !is_excluded(logger)) {
         if (logger->clnt) {
             log_params(logger);
         }
@@ -2215,7 +2229,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                 last_long_request_epoch = comdb2_time_epoch();
 
                 if (long_request_out != default_out && long_request_thresh && logger->clnt &&
-                    !can_consume(logger->clnt) && !logger->clnt->force_readonly) {
+                    !can_consume(logger->clnt) && !logger->clnt->force_readonly && !logger->clnt->blocking_tranlog) {
 
                     if (logger->iq && logger->iq->sorese) {
                         char *sqlinfo = osql_sess_info(logger->iq->sorese);

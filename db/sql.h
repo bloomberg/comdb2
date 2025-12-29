@@ -1075,6 +1075,8 @@ struct sqlclntstate {
 
     // this is not an SQL request, distpatch it elsewhere
     int is_tagged;
+
+    unsigned blocking_tranlog : 1;
 };
 typedef struct sqlclntstate sqlclntstate;
 

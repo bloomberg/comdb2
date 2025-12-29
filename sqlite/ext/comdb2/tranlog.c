@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <string.h>
 #include "comdb2.h"
+#include "sql.h"
 #include "build/db.h"
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/txn_auto.h"
@@ -825,6 +826,10 @@ static int tranlogFilter(
   if( idxNum & 4 ){
     int64_t flags = sqlite3_value_int64(argv[i++]);
     pCur->flags = flags;
+    if (flags & TRANLOG_FLAGS_BLOCK) {
+      struct sql_thread *thd = pthread_getspecific(query_info_key);
+      thd->clnt->blocking_tranlog = 1;
+    }
   }
   pCur->timeout = gbl_tranlog_default_timeout;
   if( idxNum & 8 ){
