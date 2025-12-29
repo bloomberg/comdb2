@@ -1215,6 +1215,15 @@ function tranlog_timeout()
     if [[ $total -lt 29 || $total -gt 35 ]]; then
         cleanFailExit "tranlog timeout test failed, total time $total wanted 30"
     fi
+
+    echo "Make sure there is no LONG REQUEST trace database output"
+    for node in $CLUSTER ; do 
+        logfile=$TESTDIR/logs/${DBNAME}.${node}.db
+        egrep "LONG REQUEST" $logfile
+        if [[ $? -eq 0 ]]; then
+            cleanFailExit "Found LONG REQUEST trace output in $logfile"
+        fi
+    done
 }
 
 function get_log_cursor_gen()
@@ -2535,7 +2544,7 @@ function run_tests
 
 function run_one_test
 {
-    incoherent_master
+    tranlog_timeout
 }
 
 run_tests
