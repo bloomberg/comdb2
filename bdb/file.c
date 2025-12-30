@@ -8967,3 +8967,96 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
     op.data = &endianized;
     return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
 }
+
+#define MAX_LOG_SIZE 100 * 1024 * 1024
+#define FAIL                                                                                                           \
+    do {                                                                                                               \
+        logmsg(LOGMSG_ERROR, "%s: failed at %d rc %d errno %d %s\n", __func__, __LINE__, rc, errno, strerror(errno));  \
+        goto done;                                                                                                     \
+    } while (0)
+
+int bdb_fetch_log(bdb_state_type *bdb_state, uint32_t lognum, void **payload, uint32_t *size)
+{
+    char *name = NULL;
+    int fd = -1;
+    void *logfile_contents = NULL;
+    int rc = __log_name(bdb_state->dbenv->lg_handle, lognum, &name, NULL, 0);
+    if (rc)
+        FAIL;
+    char realname[1024];
+    if (bdb_trans(name, realname) == NULL) {
+        rc = -1;
+        FAIL;
+    }
+
+    printf("log %s -> %s\n", name, realname);
+    fd = open(realname, O_RDONLY);
+    if (fd == -1)
+        FAIL;
+    struct stat st;
+    rc = fstat(fd, &st);
+    if (rc)
+        FAIL;
+    logfile_contents = malloc(st.st_size);
+
+    // quick sanity check?
+    if (st.st_size > MAX_LOG_SIZE) {
+        rc = -1;
+        FAIL;
+    }
+
+    rc = read(fd, logfile_contents, st.st_size);
+    if (rc != st.st_size) {
+        rc = -1;
+        FAIL;
+    }
+    *payload = logfile_contents;
+    *size = st.st_size;
+    rc = 0;
+
+done:
+    if (name)
+        free(name);
+    if (fd != -1)
+        close(fd);
+    if (rc) {
+        if (logfile_contents)
+            free(logfile_contents);
+    }
+    return rc;
+}
+
+int bdb_log_range(bdb_state_type *bdb_state, uint32_t *start_log, uint32_t *end_log)
+{
+    DB_LOGC *logc = NULL;
+    int rc;
+    DB_LSN first = {0}, last = {0};
+    DBT ent = {0};
+    ent.flags = DB_DBT_REALLOC;
+
+    if ((rc = __log_cursor(bdb_state->dbenv, &logc)) != 0)
+        goto done;
+    rc = logc->get(logc, &first, &ent, DB_FIRST);
+    if (rc != 0) {
+        printf("logc get first %d\n", rc);
+        goto done;
+    }
+
+    rc = logc->get(logc, &last, &ent, DB_LAST);
+    if (rc != 0) {
+        printf("logc get last %d\n", rc);
+        goto done;
+    }
+    printf("%u:%u -> %u:%u\n", first.file, first.offset, last.file, last.offset);
+    *start_log = first.file;
+    *end_log = last.file;
+
+done:
+    if (ent.data)
+        free(ent.data);
+    if (logc)
+        logc->close(logc, 0);
+    return rc;
+}
+
+#undef FAIL

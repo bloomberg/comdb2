@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Cursor moves testcase for comdb2
+################################################################################
+
+TMPDIR=${TMPDIR:-/tmp}
+DBNAME=$1
+
+SSH_OPT="-o StrictHostKeyChecking=no"
+export LOGDIR=$TESTDIR/logs
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table if not exists t (a blob);"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "truncate t";
+
+# generate some log volume
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t select randomblob(10000) from generate_series(1, 5000);"
+victim=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select host from comdb2_cluster where is_master='N' limit 1;")
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select host from comdb2_cluster where is_master='Y' limit 1;")
+
+echo "Victim is $victim"
+
+rmtpid=$(cat ${TMPDIR}/${DBNAME}.${victim}.pid)
+
+[[ -z "$rmtpid" ]] && {
+    echo "Could not find pid in ${TMPDIR}/${DBNAME}.${victim}.pid"
+    exit 1
+}
+
+echo "Victim pid is $rmtpid"
+kill -9 $rmtpid
+
+# generate more log volume to force the now down node to be behind
+# by a few dozen logs
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t select randomblob(10000) from generate_series(1, 30000);"
+
+# try to recover by copying the logs
+ssh ${SSH_OPT} $victim ${BUILDDIR}/tools/cdb2_copylogs_start/cdb2_copylogs_start --direct --lrl ${DBDIR}/${DBNAME}.lrl --dbbinary=${COMDB2_EXE} $DBNAME $master 2>&1
+rc=$?
+if [[ $rc -ne 0 ]]; then
+    echo "cdb2_copylogs_start failed with rc=$rc"
+    exit 1
+fi
+
+echo "Starting up db on $victim"
+ssh ${SSH_OPT} -n -tt $victim ${COMDB2_EXE} --no-global-lrl --lrl ${DBDIR}/${DBNAME}.lrl $DBNAME $master --pidfile ${TMPDIR}/${DBNAME}.${victim}.pid >> ${TMPDIR}/${DBNAME}.${victim}.db &> $LOGDIR/${DBNAME}.${victim}.db &
+echo $! > ${TMPDIR}/${DBNAME}.${victim}.pid
+
+sleep 10
+
+# wait until we can query it again (or timeout...)
+out=
+n=1
+while [[ "$out" != "1" ]]; do
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --host $victim --tabs $DBNAME default 'select 1' 2> /dev/null)
+    if [[ "$out" == "1" ]]; then
+        break
+    fi
+    echo "Attempt #$n: waiting for $victim to come up..."
+    sleep 1
+done
+echo "SUCCESS"
+exit 0

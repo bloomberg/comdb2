@@ -3742,6 +3742,10 @@ extern int gbl_server_admin_mode;
 extern int gbl_epoch_time;
 extern int gbl_watchdog_disable_at_start;
 
+extern int gbl_recovery_timestamp;
+extern int gbl_recovery_lsn_file;
+extern int gbl_recovery_lsn_offset;
+
 extern int64_t gbl_legacy_requests;
 
 void csc2_free_all(void);
