@@ -17,6 +17,8 @@
 #include <tohex.h>
 #include <stdlib.h>
 #include <alloca.h>
+#include <ctype.h>
+#include <stddef.h>
 
 #ifndef BUILDING_TOOLS
 #include <mem_util.h>
@@ -56,6 +58,46 @@ char *util_tohex(char *out, const char *in, size_t len)
     *out = 0;
 
     return beginning;
+}
+
+int util_tobytes(char *out, const char *hex, size_t len)
+{
+    if (!hex || !out)
+        return -1;
+
+    /* skip optional 0x / 0X */
+    if (hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X'))
+        hex += 2;
+
+    int hi = -1;
+    size_t n = 0;
+
+    for (; *hex; hex++) {
+        if (isspace((unsigned char)*hex))
+            continue;
+
+        int v;
+        if (*hex >= '0' && *hex <= '9')
+            v = *hex - '0';
+        else if (*hex >= 'a' && *hex <= 'f')
+            v = 10 + (*hex - 'a');
+        else if (*hex >= 'A' && *hex <= 'F')
+            v = 10 + (*hex - 'A');
+        else
+            return -1; /* invalid character */
+
+        if (hi < 0) {
+            hi = v;
+        } else {
+            if (n >= len)
+                return -1;
+            out[n++] = (unsigned char)((hi << 4) | v);
+            hi = -1;
+        }
+    }
+
+    /* odd number of hex digits is invalid */
+    return (hi == -1) ? 0 : -1;
 }
 
 void hexdump(loglvl lvl, const char *key, int keylen)

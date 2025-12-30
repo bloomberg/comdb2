@@ -22,6 +22,7 @@
 #include "sql.h"
 #include <plhash_glue.h>
 #include "tohex.h"
+#include <reqlog.h>
 
 struct fingerprint_track_systbl {
     char *fingerprint;
@@ -32,6 +33,7 @@ struct fingerprint_track_systbl {
     int64_t rows;     /* Cumulative number of rows selected */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
+    char *excluded;    /* 'Y' if excluded from longreqs */
 
     char fp[FINGERPRINTSZ*2+1];
 };
@@ -76,6 +78,11 @@ static int fingerprints_callback(void **data, int *npoints)
                     pFp[copied].time = pEntry->time;
                     pFp[copied].prepTime = pEntry->prepTime;
                     pFp[copied].rows = pEntry->rows;
+                    if (reqlog_fingerprint_is_excluded((char *)pEntry->fingerprint)) {
+                        pFp[copied].excluded = "Y";
+                    } else {
+                        pFp[copied].excluded = "N";
+                    }
                     if (pEntry->zNormSql != NULL) {
                         pFp[copied].zNormSql = strdup(pEntry->zNormSql);
                         pFp[copied].nNormSql = strlen(pEntry->zNormSql);
@@ -124,5 +131,7 @@ int systblFingerprintsInit(sqlite3 *db)
         offsetof(struct fingerprint_track_systbl, rows),
         CDB2_CSTRING, "normalized_sql", -1,
         offsetof(struct fingerprint_track_systbl, zNormSql),
+        CDB2_CSTRING, "excluded_from_longreqs", -1,
+        offsetof(struct fingerprint_track_systbl, excluded),
         SYSTABLE_END_OF_FIELDS);
 }

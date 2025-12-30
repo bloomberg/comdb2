@@ -38,6 +38,7 @@
 #include "db_access.h"
 #include "sqliteInt.h"
 #include "ast.h"
+#include "fingerprint.h"
 
 /* I'm now splitting handle_fastsql_requests into two functions.  The
  * outer function will maintain state (such as temporary buffers etc) while
@@ -46,8 +47,6 @@
  * query part) and the running of the query into different threads.  This way
  * we can have a small pool of sql threads with big stacks, and a large pool
  * of appsock threads with small stacks. */
-
-#define FINGERPRINTSZ 16
 
 #define CHECK_NEXT_QUERIES 20
 

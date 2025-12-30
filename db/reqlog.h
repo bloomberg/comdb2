@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <fingerprint.h>
 
 /* reqlog.c - new logging stuff */
 struct reqlogger;
@@ -45,6 +46,9 @@ void reqlog_process_message(char *line, int st, int lline);
 void reqlog_stat(void);
 void reqlog_help(void);
 void reqlog_free(struct reqlogger *reqlogger);
+void reqlog_exclude_fingerprint(const char fp[FINGERPRINTSZ]);
+void reqlog_unexclude_fingerprint(const char fp[FINGERPRINTSZ]);
+int reqlog_fingerprint_is_excluded(const char fp[FINGERPRINTSZ]);
 void reqlog_reset_logger(struct reqlogger *logger);
 int reqlog_pushprefixv(struct reqlogger *logger, const char *format,
                        va_list args);
