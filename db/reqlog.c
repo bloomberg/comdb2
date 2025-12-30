@@ -800,6 +800,42 @@ void reqlog_process_message(char *line, int st, int lline)
         gbl_long_request_ms = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Long request threshold now %d msec\n",
                gbl_long_request_ms);
+    } else if (tokcmp(tok, ltok, "excludefp") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Usage: excludefp <fp1> <fp2>..\n");
+            return;
+        }
+        while (ltok != 0) {
+            char str[(FINGERPRINTSZ * 2) + 1];
+            char fp[FINGERPRINTSZ] = {0};
+            tokcpy(tok, ltok, str);
+            if (util_tobytes(fp, str, FINGERPRINTSZ)) {
+                logmsg(LOGMSG_ERROR, "Invalid fingerprint format %s\n", str);
+            } else {
+                reqlog_exclude_fingerprint(fp);
+                logmsg(LOGMSG_USER, "Excluded fingerprint %s from longreq log\n", str);
+            }
+            tok = segtok(line, lline, &st, &ltok);
+        }
+    } else if (tokcmp(tok, ltok, "unexcludefp") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Usage: unexcludefp <fp1> <fp2>..\n");
+            return;
+        }
+        while (ltok != 0) {
+            char str[(FINGERPRINTSZ * 2) + 1];
+            char fp[FINGERPRINTSZ] = {0};
+            tokcpy(tok, ltok, str);
+            if (util_tobytes(fp, str, FINGERPRINTSZ)) {
+                logmsg(LOGMSG_ERROR, "Invalid fingerprint format %s\n", str);
+            } else {
+                reqlog_unexclude_fingerprint(fp);
+                logmsg(LOGMSG_USER, "Unexcluded fingerprint %s from longreq log\n", str);
+            }
+            tok = segtok(line, lline, &st, &ltok);
+        }
     } else if (tokcmp(tok, ltok, "longsqlrequest") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         gbl_sql_time_threshold = toknum(tok, ltok);
@@ -1890,8 +1926,59 @@ static int current_long_request_duration_ms = 0;
 static int current_longest_long_request_ms = 0;
 static int current_shortest_long_request_ms = INT_MAX;
 
+static hash_t *exclude_fp_hash = NULL;
+static pthread_mutex_t exclude_fp_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static hash_t *get_exclude_fp_hash()
+{
+    if (!exclude_fp_hash) {
+        exclude_fp_hash = hash_init(FINGERPRINTSZ);
+    }
+    return exclude_fp_hash;
+}
+
+int reqlog_fingerprint_is_excluded(const char fp[FINGERPRINTSZ])
+{
+    Pthread_mutex_lock(&exclude_fp_mutex);
+    hash_t *exclude_hash = get_exclude_fp_hash();
+    char *rtn = (char *)hash_find(exclude_hash, fp);
+    Pthread_mutex_unlock(&exclude_fp_mutex);
+    return rtn ? 1 : 0;
+}
+
+void reqlog_unexclude_fingerprint(const char fp[FINGERPRINTSZ])
+{
+    char *found_fp;
+    Pthread_mutex_lock(&exclude_fp_mutex);
+    hash_t *exclude_hash = get_exclude_fp_hash();
+    if ((found_fp = hash_find(exclude_hash, fp)) != NULL) {
+        hash_del(exclude_hash, found_fp);
+        free(found_fp);
+    }
+    Pthread_mutex_unlock(&exclude_fp_mutex);
+}
+
+void reqlog_exclude_fingerprint(const char fp[FINGERPRINTSZ])
+{
+    Pthread_mutex_lock(&exclude_fp_mutex);
+    hash_t *exclude_hash = get_exclude_fp_hash();
+    if (hash_find(exclude_hash, fp) == NULL) {
+        char *fp_copy = malloc(FINGERPRINTSZ);
+        if (!fp_copy) {
+            Pthread_mutex_unlock(&exclude_fp_mutex);
+            logmsg(LOGMSG_FATAL, "%s: malloc failed\n", __func__);
+            abort();
+        }
+        memcpy(fp_copy, fp, FINGERPRINTSZ);
+        hash_add(exclude_hash, fp_copy);
+    }
+    Pthread_mutex_unlock(&exclude_fp_mutex);
+}
+
 void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 {
+    int have_fingerprint = 0;
+    char fp[FINGERPRINTSZ] = {0};
     if (clnt->done || !clnt->thd || !clnt->sql || !clnt->thd->logger) return;
 
     if (can_consume(clnt) == 1) {
@@ -1900,6 +1987,10 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 
     if (clnt->blocking_tranlog) {
         return; /* Don't log blocking tranlog */
+    }
+
+    if (clnt->thd->logger->have_fingerprint && reqlog_fingerprint_is_excluded(clnt->thd->logger->fingerprint)) {
+        return; /* Excluded fingerprint */
     }
 
     struct string_ref *sql = clnt->sql_ref;
@@ -1939,8 +2030,24 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
         return;
     }
 
-    if (!reqlog_init_off && duration_beyond_thresh_sec >= 0 &&
-        duration_beyond_thresh_sec < gbl_longreq_log_freq_sec) {
+    if (gbl_fingerprint_queries) {
+        size_t unused;
+        const char *normSql = NULL;
+        if (is_stored_proc(clnt)) {
+            normSql = clnt->work.zOrigNormSql;
+        } else {
+            normSql = (clnt->work.zNormSql) ? clnt->work.zNormSql : clnt->work.zOrigNormSql;
+        }
+        if (normSql) {
+            calc_fingerprint(normSql, &unused, (unsigned char *)fp);
+            if (reqlog_fingerprint_is_excluded(fp)) {
+                return;
+            }
+            have_fingerprint = 1;
+        }
+    }
+
+    if (!reqlog_init_off && duration_beyond_thresh_sec >= 0 && duration_beyond_thresh_sec < gbl_longreq_log_freq_sec) {
         /* Only for the first time, also log more information (like sql)
            about this long running query. */
         logger.event_mask |= REQL_INFO;
@@ -1952,21 +2059,8 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
     reqlog_set_origin(&logger, "%s", clnt->origin);
     reqlog_set_vreplays(&logger, clnt->verify_retries);
     reqlog_set_sql(&logger, sql);
-
-    if (gbl_fingerprint_queries) {
-        unsigned char fp[FINGERPRINTSZ];
-        size_t unused;
-        const char *normSql = NULL;
-        if (is_stored_proc(clnt)) {
-            normSql = clnt->work.zOrigNormSql;
-        } else {
-            normSql = (clnt->work.zNormSql) ? clnt->work.zNormSql :
-          clnt->work.zOrigNormSql;
-        }
-        if (normSql) {
-            calc_fingerprint(normSql, &unused, fp);
-            reqlog_set_fingerprint(&logger, (const char *)fp, FINGERPRINTSZ);
-        }
+    if (have_fingerprint) {
+        reqlog_set_fingerprint(&logger, (const char *)fp, FINGERPRINTSZ);
     }
 
     if (logger.vreplays) {
@@ -2027,6 +2121,9 @@ static inline int is_excluded(struct reqlogger *logger)
 {
     if (logger->clnt) {
         if (can_consume(logger->clnt) == 1 || logger->clnt->blocking_tranlog) {
+            return 1;
+        }
+        if (logger->have_fingerprint && reqlog_fingerprint_is_excluded(logger->fingerprint)) {
             return 1;
         }
     }
