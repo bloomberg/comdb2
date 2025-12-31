@@ -2,4 +2,5 @@ d1=$(dirname $COMDB2AR_EXE)
 d2=$(dirname $COMDB2_EXE)
 d3=$(dirname $CDB2SQL_EXE)
 d4=$(dirname $PMUX_EXE)
-paths="$d1:$d2:$d3:$d4"
+d5=$(dirname $CDB2_COPYLOGS_START_EXE)
+paths="$d1:$d2:$d3:$d4:$d5"

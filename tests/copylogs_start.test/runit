@@ -35,7 +35,7 @@ kill -9 $rmtpid
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t select randomblob(10000) from generate_series(1, 30000);"
 
 # try to recover by copying the logs
-ssh ${SSH_OPT} $victim ${BUILDDIR}/tools/cdb2_copylogs_start/cdb2_copylogs_start --direct --lrl ${DBDIR}/${DBNAME}.lrl --dbbinary=${COMDB2_EXE} $DBNAME $master 2>&1
+ssh ${SSH_OPT} $victim $CDB2_COPYLOGS_START_EXE --direct --lrl ${DBDIR}/${DBNAME}.lrl --dbbinary=${COMDB2_EXE} $DBNAME $master 2>&1
 rc=$?
 if [[ $rc -ne 0 ]]; then
     echo "cdb2_copylogs_start failed with rc=$rc"
