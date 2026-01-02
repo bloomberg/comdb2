@@ -19,7 +19,7 @@ sleep 2
 
 
 $cdb2sql \
-  "INSERT INTO nt(i,j,k) SELECT value, value+100, value+200 FROM generate_series(1,10)"
+  "INSERT INTO nt(i,j,k) SELECT value, value+100, value+200 FROM generate_series(1,10)" >/dev/null 2>&1
 
 sleep 2
 
