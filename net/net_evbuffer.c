@@ -841,7 +841,7 @@ static void maybe_enable_accept(int fd, short what, void *data)
         timersub(&now, &accept_paused_at, &diff);
         if (diff.tv_sec == 0) return;
         logmsg(LOGMSG_USER, "%s: resuming after %lds.%ldms active:%d pending:%d evicted:%d\n",
-               __func__, diff.tv_sec, diff.tv_usec / 1000,
+               __func__, diff.tv_sec, (long int)diff.tv_usec / 1000,
                active_appsock_conns, pending_connections, evicted_appsock_conns);
     } else {
         struct timeval hundred_ms = {.tv_usec = 100 * 1000};
