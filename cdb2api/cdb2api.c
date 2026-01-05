@@ -4130,7 +4130,7 @@ retry:
 
     *buf = realloc(*buf, hdr.length);
     if ((*buf) == NULL) {
-        fprintf(stderr, "%s: out of memory realloc(%d)\n", __func__, hdr.length);
+        fprintf(stderr, "%s: out of memory len:%d\n", __func__, hdr.length);
         rc = -1;
         goto after_callback;
     }
@@ -5362,7 +5362,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         /* This is for select queries, we send just the last row. */
         rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
         if (rc) {
-            debugprint("Can't read response from the db node %s\n", host);
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
             free(hndl->first_buf);
             hndl->first_buf = NULL;
             sbuf2close(hndl->sb);
