@@ -2126,6 +2126,8 @@ static int get_config_file(const char *dbname, char *f, size_t s, int use_pkg_pa
 
     if (root == NULL)
         root = QUOTE(COMDB2_ROOT);
+    if (strcmp(root, "/bb") == 0) // TODO: Do this a better way
+        root = "/opt/bb";
     n = snprintf(f, s, "%s%s%s.cfg", root, CDB2DBCONFIG_NOBBENV_PATH, dbname);
     if (n >= s)
         return -1;
