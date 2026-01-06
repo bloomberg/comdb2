@@ -108,7 +108,6 @@ int systblApiHistoryInit(sqlite3 *db);
 int systblDbInfoInit(sqlite3 *db);
 int systblUnusedFilesInit(sqlite3 *db);
 int systblPhysrepAltmetadbInit(sqlite3 *db);
-int systblLogfilesInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

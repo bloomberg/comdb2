@@ -2481,8 +2481,6 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 
 int32_t bdb_get_dbopen_gen(void);
 int is_incoherent(bdb_state_type *, struct interned_string *);
-int bdb_fetch_log(bdb_state_type *bdb_state, uint32_t lognum, void **payload, uint32_t *size);
-int bdb_log_range(bdb_state_type *bdb_state, uint32_t *start_log, uint32_t *end_log);
 
 void fill_dbinfo(CDB2DBINFORESPONSE *, bdb_state_type *);
 void fill_ssl_info(CDB2DBINFORESPONSE *);

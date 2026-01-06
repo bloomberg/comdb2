@@ -30,7 +30,6 @@ add_library(sqlite
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
-  ext/comdb2/logfile.c
   ext/comdb2/logicalops.c
   ext/comdb2/memstats.c
   ext/comdb2/metrics.c
