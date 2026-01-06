@@ -69,6 +69,15 @@ ${TESTSBUILDDIR}/cdb2api_string_escape
 [[ $? -ne 0 ]] && echo "cdb2api_string_escape - fail" && exit 1
 echo 'cdb2api_string_escape - pass'
 
+if [[ -n "$CLUSTER" ]]; then
+    CDB2_HOST_NAME=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs -s ${db} ${tier} "select comdb2_host()")
+    CDB2_CLASS=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs -s ${db} ${tier} "select comdb2_sysinfo('class')")
+    ${TESTSBUILDDIR}/cdb2api_direct ${DBNAME} ${CDB2_CLASS} ${CDB2_HOST_NAME}
+    [[ $? -ne 0 ]] && echo "cdb2api_direct - fail" && exit 1
+fi
+
+echo 'cdb2api_direct - pass'
+
 ${TESTSBUILDDIR}/cdb2api_txn ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_txn - fail" && exit 1
 echo 'cdb2api_txn - pass'
