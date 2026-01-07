@@ -44,6 +44,7 @@ int fail_updater_error = 0;
 int time_is_up = 0;
 int debug_trace = 0;
 int allow_common_errors = 1;
+time_t db_time_at_start = 0;
 
 void usage(FILE *f)
 {
@@ -508,7 +509,7 @@ int intrans_effect_update(cdb2_hndl_tp *db)
 /*
  * POINT-IN-TIME UPDATER THREAD SQL
  *
- * BEGIN TRANSACTION AS OF DATETIME <now - 10 seconds>
+ * BEGIN TRANSACTION AS OF DATETIME <db start time>
  * UPDATE jobinstance SET instid = instdid WHERE state=1 AND
  *          began <= now() limit 15
  * COMMIT
@@ -518,12 +519,12 @@ int point_in_time_update(cdb2_hndl_tp *db)
     int rc;
     int got_error = 0;
     char sql[80];
-    time_t point_in_time = (time(NULL) - 10);
+    const time_t point_in_time = db_time_at_start;
 
     cdb2_clearbindings(db);
     snprintf(sql, sizeof(sql), "BEGIN TRANSACTION AS OF DATETIME %ld", point_in_time);
     if ((rc = cdb2_run_statement(db, sql)) != CDB2_OK) {
-        fprintf(stderr, "line %d error running %s, %d\n", __LINE__, sql, rc);
+        fprintf(stderr, "line %d error running %s, %d %s\n", __LINE__, sql, rc, cdb2_errstr(db));
         exit(1);
     }
 
@@ -765,7 +766,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srandom(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARDh")) != EOF) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:T:faARDh")) != EOF) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
@@ -828,6 +829,10 @@ int main(int argc, char *argv[]) {
                 break;
             case 'D':
                 debug_trace = 1;
+                break;
+            case 'T':
+                db_time_at_start = strtoul(optarg, NULL, 0 );
+                ctime(&db_time_at_start);
                 break;
             case 'h':
                 usage(stdout);
