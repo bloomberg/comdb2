@@ -786,6 +786,7 @@ struct sqlclntstate {
     int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
     struct spversion_t spversion;
+    sqlite3_stmt *spstmt; /* prepared statetment from sp */
 
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/

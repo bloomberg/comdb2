@@ -2343,50 +2343,49 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
     Vdbe *pVdbe = (Vdbe*)pStmt;
     struct reqlogger *logger;
 
-    /* Check whether fingerprint has already been computed. */
-    if ((pVdbe == NULL) || (pVdbe->fingerprint_added == 1)) {
+    if (sp == NULL || pVdbe == NULL || pVdbe->luaStartTime < 0)
         return;
-    }
 
-    if (sp != NULL) {
-        const char *zNormSql = sqlite3_normalized_sql(pStmt);
-        logger = sp->thd->logger;
+    const char *zNormSql = sqlite3_normalized_sql(pStmt);
+    if (zNormSql == NULL)
+        return;
 
-        if (zNormSql != NULL) {
-            double cost = 0.0;
-            int64_t prepMs = 0;
-            int64_t timeMs;
-            int64_t time = comdb2_time_epochms();
+    logger = sp->thd->logger;
 
-            clnt_query_cost(sp->thd, &cost, &prepMs);
-            timeMs = time - pVdbe->luaStartTime + prepMs;
+    double cost = 0.0;
+    int64_t prepMs = 0;
+    int64_t timeMs;
+    int64_t time = comdb2_time_epochms();
 
-            unsigned char fingerprint[FINGERPRINTSZ];
-            struct string_ref *sql_ref = create_string_ref(sqlite3_sql(pStmt));
-            add_fingerprint(clnt, pStmt, sql_ref, zNormSql, cost,
-                            timeMs, prepMs, pVdbe->luaRows, NULL, fingerprint, 1); // TODO: Make work for query plans
-            put_ref(&sql_ref);
-            if (clnt->rawnodestats) {
-                add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, pVdbe->luaRows, timeMs);
-                update_api_history(clnt->rawnodestats->api_history, clnt->api_driver_name, clnt->api_driver_version);
-            }
+    clnt_query_cost(sp->thd, &cost, &prepMs);
+    timeMs = time - pVdbe->luaStartTime + prepMs;
 
-            clnt->spcost.cost += cost;
-            clnt->spcost.time += timeMs;
-            clnt->spcost.prepTime += prepMs;
-            clnt->spcost.rows += pVdbe->luaRows;
-
-            pVdbe->fingerprint_added = 1;
-
-            reqlog_set_path(logger, sp->clnt->query_stats);
-            reqlog_set_cost(logger, cost);
-            reqlog_set_rows(logger, pVdbe->luaRows);
+    /* Check whether fingerprint has already been computed. */
+    if (!pVdbe->fingerprint_added) {
+        unsigned char fingerprint[FINGERPRINTSZ];
+        struct string_ref *sql_ref = create_string_ref(sqlite3_sql(pStmt));
+        add_fingerprint(clnt, pStmt, sql_ref, zNormSql, cost,
+                timeMs, prepMs, pVdbe->luaRows, NULL, fingerprint, 1); // TODO: Make work for query plans
+        put_ref(&sql_ref);
+        if (clnt->rawnodestats) {
+            add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, pVdbe->luaRows, timeMs);
+            update_api_history(clnt->rawnodestats->api_history, clnt->api_driver_name, clnt->api_driver_version);
         }
-
-        reqlog_end_subrequest(sp->thd->logger, sp->rc, __func__, __LINE__);
-        reqlog_set_sql(logger, clnt->sql_ref);
-        restore_thd_cost_and_reset(sp->thd, pVdbe);
+        pVdbe->fingerprint_added = 1;
     }
+
+    clnt->spcost.cost += cost;
+    clnt->spcost.time += timeMs;
+    clnt->spcost.prepTime += prepMs;
+    clnt->spcost.rows += pVdbe->luaRows;
+
+    reqlog_set_path(logger, sp->clnt->query_stats);
+    reqlog_set_cost(logger, cost);
+    reqlog_set_rows(logger, pVdbe->luaRows);
+    reqlog_end_subrequest(sp->thd->logger, pStmt, sp->rc, __func__, __LINE__);
+    reqlog_set_sql(logger, clnt->sql_ref);
+    restore_thd_cost_and_reset(sp->thd, pVdbe);
+    pVdbe->luaStartTime = -1;
 }
 
 static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
@@ -3169,7 +3168,7 @@ static void drop_temp_tables(SP sp)
             expire = 1;
             logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
         }
-        reqlog_end_subrequest(sp->thd->logger, rc, __func__, __LINE__);
+        reqlog_end_subrequest(sp->thd->logger, stmt, rc, __func__, __LINE__);
     }
     clnt->is_readonly = ro;
     clnt->skip_peer_chk = 0;

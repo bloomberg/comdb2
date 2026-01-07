@@ -28,6 +28,8 @@ struct cdb2vec {
   size_t iov_len;
   void *iov_base;
 };
+SQLITE_API int sqlite3_carray_size(void *);
+SQLITE_API int sqlite3_carray_type(void *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Use this interface to bind an array to the single-argument version
