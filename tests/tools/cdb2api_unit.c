@@ -121,20 +121,6 @@ void test_cdb2_hndl_set_max_retries()
 }
 
 
-void test_reset_sockpool()
-{
-    assert(sockpool_fail_time == SOCKPOOL_FAIL_TIME_DEFAULT);
-    assert(sockpool_generation > 0);
-    /* Assume single threaded unit test */
-    for (int i = 0; i < sockpool_fd_count; i++) {
-        struct sockpool_fd_list *sp = &sockpool_fds[i];
-        assert(sp->in_use == 0);
-        assert(sp->sockpool_fd == -1);
-    }
-    assert(sockpool_enabled == SOCKPOOL_ENABLED_DEFAULT);
-}
-
-
 void test_cdb2_set_comdb2db_config()
 {
     cdb2_set_comdb2db_config("anotherconfigfile");
