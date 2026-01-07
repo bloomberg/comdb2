@@ -1530,8 +1530,6 @@ const char *schema_change_kind(struct schema_change_type *s)
     return "UNKNOWN";
 }
 
-extern int gbl_sc_protobuf;
-
 /* all scs part of the same txn -> in a sc_list object;
  * pointer fields are malloced
  */
@@ -1546,16 +1544,12 @@ int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid)
     size_t sizes[scl->count];
     void *packed_scs[scl->count];
     struct schema_change_type *sc;
-    int i = 0, sc_protobuf = gbl_sc_protobuf;
+    int i = 0;
 
     LISTC_FOR_EACH(scs, sc, scs_lnk) {
-        if (sc_protobuf) {
-            int rc = pack_schema_change_protobuf(sc, &packed_scs[i], &sizes[i]);
-            if (rc) {
-                return -1;
-            }
-        } else {
-            sizes[i] = schemachange_packed_size(sc);
+        int rc = pack_schema_change_protobuf(sc, &packed_scs[i], &sizes[i]);
+        if (rc) {
+            return -1;
         }
         scl->ser_scs_len += sizes[i];
         i++;
@@ -1579,12 +1573,8 @@ int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid)
         /* save offset */
         scl->offsets[i] = offset;
         /* save schema change */
-        if (sc_protobuf) {
-            p_buf = buf_no_net_put(packed_scs[i], sizes[i], p_buf, p_buf_end);
-            free(packed_scs[i]);
-        } else {
-            p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
-        }
+        p_buf = buf_no_net_put(packed_scs[i], sizes[i], p_buf, p_buf_end);
+        free(packed_scs[i]);
         if (!p_buf) {
             return -1;
         }
