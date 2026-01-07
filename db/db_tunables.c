@@ -1138,6 +1138,9 @@ int ctrace_set_rollat(void *unused, void *value);
  */
 int get_commit_lsn_map_switch_value()
 {
+    if (gbl_recovery_timestamp || gbl_recovery_lsn_file) {
+        return 0;
+    }
     const int dependencies_are_enabled = gbl_utxnid_log;
     const int enabled_dependent_exists = 
         gbl_test_commit_lsn_map || gbl_use_modsnap_for_snapshot;
