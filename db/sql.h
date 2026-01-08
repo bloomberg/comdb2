@@ -1355,6 +1355,8 @@ struct connection_info {
 extern int gbl_master_swing_osql_verbose;
 /* for testing: sleep in osql_sock_restart when master swings */
 extern int gbl_master_swing_sock_restart_sleep;
+/* allow altering existing tables to retroactively partition data for tpt */
+extern int gbl_retro_tpt;
 
 #define is_sqlite_stat(x) (strncmp((x), "sqlite_stat", sizeof("sqlite_stat") - 1) == 0)
 #define is_stat1(x) (strcmp((x), "sqlite_stat1") == 0)

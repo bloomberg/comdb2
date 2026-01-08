@@ -701,6 +701,8 @@
 (name='parallel_recovery', description='', type='INTEGER', value='0', read_only='Y')
 (name='parallel_sync', description='Run checkpoint/memptrickle code with parallel writes', type='BOOLEAN', value='ON', read_only='N')
 (name='participantid_bits', description='Number of bits allocated for the participant stripe ID (remaining bits are used for the update ID).', type='INTEGER', value='0', read_only='N')
+(name='partition_retroactively', description='Disable/enable time partition syntax to retroactively partition an existing table (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
+(name='partition_retroactively_verbose', description='Disable/enable data routing debugging for retroactively time partitioning (Default: OFF)', type='BOOLEAN', value='OFF', read_only='N')
 (name='partition_sc_reorder', description='If the schema change is serialized for a partition, run current shard last', type='BOOLEAN', value='ON', read_only='N')
 (name='partitioned_table_enabled', description='Allow syntax create/alter table ... partitioned by ...', type='BOOLEAN', value='ON', read_only='N')
 (name='pause_moveto', description='pause_moveto', type='BOOLEAN', value='OFF', read_only='N')

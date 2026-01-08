@@ -32,6 +32,9 @@
 #include "sc_rename_table.h"
 #include "alias.h"
 #include "gen_shard.h"
+
+extern int gbl_retro_tpt_verbose;
+
 extern void free_cached_idx(uint8_t **cached_idx);
 
 static int reload_rename_table(tran_type *tran, const char *name,
@@ -122,13 +125,18 @@ int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                __func__, genid, stripe);
         abort();
     }
+
     if (!sc_genids[stripe]) {
         /* A genid of zero is invalid.  So, if the schema change cursor is at
          * genid zero it means pretty conclusively that it hasn't done anything
          * yet so we cannot possibly be behind the cursor. */
         return 1;
     }
-    return bdb_inplace_cmp_genids(bdb_state, genid, sc_genids[stripe]) > 0;
+    int rc = bdb_inplace_cmp_genids(bdb_state, genid, sc_genids[stripe]) > 0;
+
+    if (gbl_retro_tpt_verbose)
+        logmsg(LOGMSG_USER, "live 0x%llx cursor 0x%llx %s cursor\n", genid, sc_genids[stripe], rc ? "RIGHT" : "LEFT");
+    return rc;
 }
 
 unsigned long long get_genid_stripe_pointer(unsigned long long genid,
@@ -141,6 +149,20 @@ unsigned long long get_genid_stripe_pointer(unsigned long long genid,
         abort();
     }
     return sc_genids[stripe];
+}
+
+struct dbtable *_distribute_rows(struct dbtable *usedb, struct dbtable *usedb_new, unsigned long long genid)
+{
+    struct dbtable *table = usedb_new;
+
+    /* if we want to distribute the data, change the destination table here */
+    if (usedb->sc_from && usedb->sc_from->sharding_func) {
+        table = usedb->sc_from->sharding_func(usedb->sc_from->sharding_arg, genid, __func__, __LINE__);
+        if (!table) {
+            logmsg(LOGMSG_ERROR, "%s failed to get the sharding usedb for %s\n", __func__, usedb->tablename);
+        }
+    }
+    return table;
 }
 
 /* delete from new btree when genid is older than schemachange position
@@ -162,6 +184,13 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
        fprintf(stderr, "live 0x%llx cursor 0x%llx :: live is"
        " behind cursor - DELETE\n", genid, sc_genids[stripe]);
      */
+
+    /* if we want to distribute the data, change the destination table here */
+    iq->usedb = _distribute_rows(usedb, iq->usedb, genid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        return -1;
+    }
 
     int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs, 1);
     iq->usedb = usedb;
@@ -230,11 +259,8 @@ unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
 /* this is called from delayed_key_adds() for adding keys to new btree
  * since adding them not-delayed could cause SC to abort erroneously
  */
-int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
-                                             unsigned long long newgenid,
-                                             const void *od_dta,
-                                             unsigned long long ins_keys,
-                                             int od_len)
+int live_sc_post_update_delayed_key_adds(struct ireq *iq, void *trans, unsigned long long newgenid, const void *od_dta,
+                                         unsigned long long ins_keys, int od_len)
 {
     struct dbtable *usedb = iq->usedb;
     blob_buffer_t *add_idx_blobs = NULL;
@@ -253,8 +279,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     }
 
 #ifdef DEBUG_SC
-    printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
-           newgenid);
+    printf("%s: looking at genid %llx\n", __func__, newgenid);
 #endif
     /* need to check where the cursor is, even tho that check was done once in
      * post_update */
@@ -262,9 +287,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         iq->usedb->handle, newgenid, usedb->sc_to->sc_genids);
     if (is_gen_gt_scptr) {
         if (iq->debug) {
-            reqprintf(iq, "live_sc_post_update_delayed_key_adds_int: skip "
-                          "genid 0x%llx to the right of scptr",
-                      newgenid);
+            reqprintf(iq, "%s: skip genid 0x%llx to the right of scptr", __func__, newgenid);
         }
         return 0;
     }
@@ -308,8 +331,15 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     iq->usedb = usedb->sc_to;
 
     if (iq->debug) {
-        reqpushprefixf(iq, "live_sc_post_update_delayed_key_adds_int: ");
+        reqpushprefixf(iq, "%s: ", __func__);
         reqprintf(iq, "adding to indices genid 0x%llx in new table", newgenid);
+    }
+
+    /* if we want to distribute the data, change the destination table here */
+    iq->usedb = _distribute_rows(usedb, iq->usedb, newgenid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        return -1;
     }
 
     rc = upd_new_record_add2indices(iq, trans, newgenid, new_dta,
@@ -317,10 +347,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                     add_idx_blobs, 0);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_update_delayed_key_adds_int rcode %d for "
-               "add2indices genid 0x%llx\n",
-               rc, newgenid);
+        logmsg(LOGMSG_ERROR, "%s rcode %d for add2indices genid 0x%llx\n", __func__, rc, newgenid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
         iq->usedb->sc_abort = 1;
@@ -408,9 +435,16 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         addflags |= RECFLAGS_NO_CONSTRAINTS;
     }
 
-    rc = add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, new_dta,
-                    ((uint8_t*)new_dta) + usedb->sc_to->lrl, NULL, blobs, maxblobs,
-                    &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
+    /* if we want to distribute the data, change the destination table here */
+    iq->usedb = _distribute_rows(usedb, iq->usedb, genid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        rc = -1;
+        goto done;
+    }
+
+    rc = add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, new_dta, ((uint8_t *)new_dta) + usedb->sc_to->lrl,
+                    NULL, blobs, maxblobs, &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
                     BLOCK2_ADDKL, // opcode
                     0,            // blkpos
                     addflags, 0);
@@ -467,6 +501,14 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
     if (iq->debug) {
         reqpushprefixf(iq, "upd_new_record: ");
     }
+
+    /* if we want to distribute the data, change the destination table here */
+    iq->usedb = _distribute_rows(usedb, iq->usedb, oldgenid);
+    if (!iq->usedb) {
+        iq->usedb = usedb;
+        return -1;
+    }
+
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
                         oldblobs, newblobs, 1);

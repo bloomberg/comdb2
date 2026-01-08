@@ -44,11 +44,8 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
                             int *updCols, blob_buffer_t *blobs, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs);
 
-int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
-                                             unsigned long long newgenid,
-                                             const void *od_dta,
-                                             unsigned long long ins_keys,
-                                             int od_len);
+int live_sc_post_update_delayed_key_adds(struct ireq *iq, void *trans, unsigned long long newgenid, const void *od_dta,
+                                         unsigned long long ins_keys, int od_len);
 
 int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type);
