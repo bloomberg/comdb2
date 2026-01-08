@@ -5240,157 +5240,114 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response, char valid_hos
 static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     debugprint("retry_all %d, intran %d\n", hndl->retry_all, hndl->in_trans);
-
-    if (!hndl->retry_all || !hndl->in_trans)
-        return 0;
-
     int rc = 0;
-    if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
-        debugprint("in_trans=%d snapshot_file=%d query_no=%d\n", hndl->in_trans,
-                   hndl->snapshot_file, hndl->query_no);
-        sprintf(hndl->errstr, "Database disconnected while in transaction.");
-        return CDB2ERR_TRAN_IO_ERROR; /* Fail if disconnect happens in
-                                         transaction which doesn't have snapshot
-                                         info.*/
-    }
-
-    /* Replay all the queries. */
-    char *host = "NOT-CONNECTED";
-    if (hndl->connected_host >= 0)
-        host = hndl->hosts[hndl->connected_host];
-
-    /*Send Begin. */
-    hndl->is_retry = num_retry;
-
-    clear_responses(hndl);
-    hndl->read_intrans_results = 1;
-
-    hndl->in_trans = 0;
-    debugprint("sending 'begin' to %s\n", host);
-    rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, "begin",
-                         hndl->num_set_commands, hndl->num_set_commands_sent,
-                         hndl->commands, 0, NULL, 0, NULL, 1, 0, num_retry, 0,
-                         __LINE__);
-    hndl->in_trans = 1;
-    debugprint("cdb2_send_query rc = %d, setting in_trans to 1\n", rc);
-
-    if (rc != 0) {
-        sbuf2close(hndl->sb);
-        hndl->sb = NULL;
-        debugprint("send_query host=%s rc=%d; returning 1\n", host, rc);
-        return 1;
-    }
-    int len = 0;
-    int type = 0;
-    rc = cdb2_read_record(hndl, &hndl->first_buf, &len, &type);
-    if (rc) {
-        sbuf2close(hndl->sb);
-        hndl->sb = NULL;
-        debugprint("cdb2_read_record from %s rc=%d, returning 1\n", host, rc);
-        return 1;
-    }
-
-    if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
-        if (hndl->flags & CDB2_DIRECT_CPU) {
-            debugprint("directcpu will ignore dbinfo\n");
-            return 1;
-        }
-        /* The master sent info about nodes that might be coherent. */
-        sbuf2close(hndl->sb);
-        hndl->sb = NULL;
-        CDB2DBINFORESPONSE *dbinfo_response = NULL;
-        dbinfo_response =
-            cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
-                         &hndl->master, &hndl->num_hosts,
-                         &hndl->num_hosts_sameroom, hndl->debug_trace,
-                         &hndl->s_sslmode);
-        cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
-        debugprint("type=%d returning 1\n", type);
-
-        /* Clear cached SSL sessions - Hosts may have changed. */
-        if (hndl->sess != NULL) {
-            SSL_SESSION_free(hndl->sess->sessobj);
-            hndl->sess->sessobj = NULL;
-        }
-        return 1;
-    }
-    if (hndl->first_buf != NULL) {
-        hndl->firstresponse =
-            cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
-    } else {
-        fprintf(stderr, "td 0x%p %s:%d: Can't read response from DB\n",
-                (void *)pthread_self(), __func__, __LINE__);
-        sbuf2close(hndl->sb);
-        hndl->sb = NULL;
-        return 1;
-    }
-    while ((rc = cdb2_next_record_int(hndl, 0)) == CDB2_OK)
-        ;
-
-    if (hndl->sb == NULL) {
-        debugprint("sb is NULL, next_record returns %d, returning 1\n", rc);
-        return 1;
-    }
-
-    struct cdb2_query *item;
-    TAILQ_FOREACH(item, &hndl->queries, entry)
-    {
-        /* This is the case when we got disconnected while reading the query.
-           In that case retry all the queries and skip their results,
-           except the last one. */
-        if (!run_last && item == TAILQ_LAST(&hndl->queries, query_list)) {
-            break;
-        }
-
-        struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-                                   .compression = ntohl(0),
-                                   .length = ntohl(item->len)};
-        debugprint("resending '%s' to %s\n", item->sql, host);
-
-        sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-        sbuf2write((char *)item->buf, item->len, hndl->sb);
-        sbuf2flush(hndl->sb);
+    if (!hndl->retry_all)
+        return 0;
+    if (hndl->in_trans && hndl->snapshot_file) { /* Replay all the queries. */
+        /*Send Begin. */
+        hndl->is_retry = num_retry;
 
         clear_responses(hndl);
+        hndl->read_intrans_results = 1;
+        hndl->in_trans = 0;
+        debugprint("sending 'begin'\n");
+        rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, "begin", hndl->num_set_commands,
+                             hndl->num_set_commands_sent, hndl->commands, 0, NULL, 0, NULL, 1, 0, num_retry, 0,
+                             __LINE__);
+        debugprint("cdb2_send_query rc = %d, setting in_trans to 1\n", rc);
 
-        int len = 0;
-
-        if (!hndl->read_intrans_results && !item->is_read) {
-            continue;
-        }
-        /* This is for select queries, we send just the last row. */
-        rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
-        if (rc) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
-            free(hndl->first_buf);
-            hndl->first_buf = NULL;
+        if (rc != 0) {
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
+            debugprint("send_query rc=%d; returning 1\n", rc);
+            return 1;
+        }
+        hndl->in_trans = 1;
+        int len = 0;
+        rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
+        if (rc) {
+            sbuf2close(hndl->sb);
+            hndl->sb = NULL;
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
+            debugprint("cdb2_read_record rc=%d, returning 1\n", rc);
             return 1;
         }
         if (hndl->first_buf != NULL) {
-            hndl->firstresponse =
-                cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
+            hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
         } else {
-            debugprint("Can't read response from the db node %s\n", host);
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db", __func__, __LINE__);
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
-            return 1;
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
+            return -1;
         }
-        int read_rc;
-
-        while ((read_rc = cdb2_next_record_int(hndl, 0)) == CDB2_OK)
+        while ((rc = cdb2_next_record_int(hndl, 0)) == CDB2_OK)
             ;
 
-        if (hndl->sb == NULL) {
-            debugprint("sb is NULL, next_record_int returns "
-                       "%d, returning 1\n",
-                       read_rc);
-            return 1;
+        struct cdb2_query *item;
+        TAILQ_FOREACH(item, &hndl->queries, entry)
+        {
+            /* This is the case when we got disconnected while reading the query.
+            In that case retry all the queries and skip their results,
+            except the last one. */
+            if (!run_last && item == TAILQ_LAST(&hndl->queries, query_list)) {
+                break;
+            }
+
+            struct newsqlheader hdr = {
+                .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY), .compression = ntohl(0), .length = ntohl(item->len)};
+            debugprint("resending '%s'\n", item->sql);
+
+            sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
+            sbuf2write((char *)item->buf, item->len, hndl->sb);
+            sbuf2flush(hndl->sb);
+
+            clear_responses(hndl);
+
+            int len = 0;
+
+            if (!hndl->read_intrans_results && !item->is_read) {
+                continue;
+            }
+            /* This is for select queries, we send just the last row. */
+            rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
+            if (rc) {
+                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db", __func__,
+                         __LINE__);
+                free(hndl->first_buf);
+                hndl->first_buf = NULL;
+                sbuf2close(hndl->sb);
+                hndl->sb = NULL;
+                return -1;
+            }
+            if (hndl->first_buf != NULL) {
+                hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
+            } else {
+                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db", __func__,
+                         __LINE__);
+                sbuf2close(hndl->sb);
+                hndl->sb = NULL;
+                return -1;
+            }
+            int read_rc;
+
+            while ((read_rc = cdb2_next_record_int(hndl, 0)) == CDB2_OK)
+                ;
+
+            if (hndl->sb == NULL) {
+                debugprint("sb is NULL, next_record_int returns "
+                           "%d, returning 1\n",
+                           read_rc);
+                return 1;
+            }
         }
+        clear_responses(hndl);
+    } else if (hndl->in_trans) {
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Database disconnected while in transaction", __func__);
+        return CDB2ERR_TRAN_IO_ERROR; /* Fail if disconnect happens in transaction which doesn't have snapshot info.*/
     }
-    clear_responses(hndl);
     return 0;
 }
 
