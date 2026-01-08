@@ -4062,7 +4062,6 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
     /* Got response */
     SBUF2 *sb = hndl->sb;
     struct newsqlheader hdr = {0};
-    int b_read;
     int rc = 0; /* Make compilers happy. */
 
     void *callbackrc;
@@ -4090,18 +4089,17 @@ retry:
         }
         sbuf2settimeout(sb, socket_timeout, socket_timeout);
     }
-    b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
-    debugprint("READ HDR b_read=%d, sizeof(hdr)=(%zu):\n", b_read, sizeof(hdr));
+    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+    debugprint("READ HDR rc=%d, sizeof(hdr)=(%zu):\n", rc, sizeof(hdr));
 
 #ifdef CDB2API_TEST
     if (fail_read > 0) {
         --fail_read;
-        b_read = -1;
+        rc = -1;
     }
 #endif
-    if (b_read != sizeof(hdr)) {
-        debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%zu):\n",
-                   b_read, sizeof(hdr));
+    if (rc != sizeof(hdr)) {
+        debugprint("bad read or numbytes, rc=%d, sizeof(hdr)=(%zu):\n", rc, sizeof(hdr));
         rc = -1;
         /* In TLS 1.3, client authentication happens after handshake (RFC 8446).
            An invalid client (e.g., a revoked cert) may see a successful
@@ -4192,14 +4190,12 @@ retry:
         goto after_callback;
     }
 
-    b_read = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
-    debugprint("READ MSG b_read(%d) hdr.length(%d) type(%d)\n", b_read,
-               hdr.length, hdr.type);
+    rc = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
+    debugprint("READ MSG rc=%d hdr.length(%d) type(%d)\n", rc, hdr.length, hdr.type);
 
     *len = hdr.length;
-    if (b_read != *len) {
-        debugprint("bad read or numbytes, b_read(%d) != *len(%d) type(%d)\n",
-                   b_read, *len, *type);
+    if (rc != *len) {
+        debugprint("bad read or numbytes, rc=%d != *len(%d) type(%d)\n", rc, *len, *type);
         rc = -1;
         goto after_callback;
     }
@@ -4470,12 +4466,13 @@ retry_read:
         return -1;
     }
 
-    if (hndl->first_buf == NULL) {
+    if (hndl->first_buf != NULL) {
+        hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
+    } else {
         fprintf(stderr, "td 0x%p %s: Can't read response from the db\n",
                 (void *)pthread_self(), __func__);
         return -1;
     }
-    hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     return 0;
 }
 
@@ -4555,7 +4552,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     int features[20]; // Max 20 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
-    CDB2SQLQUERY__Snapshotinfo snapshotinfo;
 
     // This should be sent once right after we connect, not with every query
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
@@ -4577,10 +4573,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     sqlquery.dbname = (char *)dbname;
     cdb2_skipws(sql);
     sqlquery.sql_query = (char *)sql;
+    sqlquery.little_endian = 0;
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
-#else
-    sqlquery.little_endian = 0;
 #endif
 
     sqlquery.n_bindvars = n_bindvars;
@@ -4606,8 +4601,18 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         sqlquery.set_flags = &set_commands[n_set_commands_sent];
 
     /* hndl is NULL when we query comdb2db in comdb2db_get_dbhosts(). */
+    if (hndl && hndl->is_retry) {
+        sqlquery.has_retry = 1;
+        sqlquery.retry = hndl->is_retry;
+    }
+
+    if (hndl && !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
+        features[n_features++] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
+    }
+
     if (hndl) {
         features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         if (hndl->request_fp) /* Request server to send back query fingerprint */
             features[n_features++] = CDB2_CLIENT_FEATURES__REQUEST_FP;
         /* Request server to send back row data flat, instead of storing it in
@@ -4615,13 +4620,19 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         if (cdb2_flat_col_vals)
             features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
 
-        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         if ((hndl->flags & (CDB2_DIRECT_CPU | CDB2_MASTER)) ||
             (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master == hndl->connected_host)) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         }
-        if (retries_done >= hndl->num_hosts) {
+        if (retries_done > hndl->num_hosts + 1) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
+        }
+
+        if ((hndl->flags & CDB2_REQUIRE_FASTSQL) != 0) {
+            features[n_features++] = CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL;
+        }
+        if ((hndl->flags & CDB2_ALLOW_INCOHERENT) != 0) {
+            features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_INCOHERENT;
         }
         features[n_features++] = CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB;
 
@@ -4630,42 +4641,28 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
                    hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host]
                                              : "NOT-CONNECTED",
                    sql, fromline, retries_done, do_append);
-
-        if (hndl->is_retry) {
-            sqlquery.has_retry = 1;
-            sqlquery.retry = hndl->is_retry;
-        }
-
-        if ( !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
-            features[n_features++] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
-        }
-
-        /* Have a query id associated with each transaction/query */
-        sqlquery.has_cnonce = 1;
-        sqlquery.cnonce.data = (uint8_t *)hndl->cnonce.str;
-        sqlquery.cnonce.len = strlen(hndl->cnonce.str);
-
-        if (hndl->snapshot_file) {
-            cdb2__sqlquery__snapshotinfo__init(&snapshotinfo);
-            snapshotinfo.file = hndl->snapshot_file;
-            snapshotinfo.offset = hndl->snapshot_offset;
-            sqlquery.snapshot_info = &snapshotinfo;
-        }
     } else if (retries_done) {
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
-        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
+    }
+
+    if (hndl && hndl->cnonce.len > 0) { /* Have a query id associated with each transaction/query */
+        sqlquery.has_cnonce = 1;
+        sqlquery.cnonce.data = (uint8_t *)hndl->cnonce.str;
+        sqlquery.cnonce.len = hndl->cnonce.len;
+    }
+
+    CDB2SQLQUERY__Snapshotinfo snapshotinfo;
+    if (hndl && hndl->snapshot_file && !hndl->in_trans) { /* This is a retry transaction. */
+        cdb2__sqlquery__snapshotinfo__init(&snapshotinfo);
+        snapshotinfo.file = hndl->snapshot_file;
+        snapshotinfo.offset = hndl->snapshot_offset;
+        sqlquery.snapshot_info = &snapshotinfo;
     }
 
     if (hndl && hndl->flags & CDB2_SQL_ROWS) {
         features[n_features++] = CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT;
-    }
-
-    if (hndl && (hndl->flags & CDB2_REQUIRE_FASTSQL) != 0) {
-        features[n_features++] = CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL;
-    }
-    if (hndl && (hndl->flags & CDB2_ALLOW_INCOHERENT) != 0) {
-        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_INCOHERENT;
     }
 
     if (n_features) {
@@ -5276,6 +5273,7 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
             *(out++) = hex[i & 0x0f];
         }
         *out = 0;
+        c->len = out - c->str;
     }
     return rc;
 }
