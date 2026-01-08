@@ -3493,9 +3493,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     return 0;
 }
 
-static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
-                             const char *app, const char *service,
-                             const char *instance)
+static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host, const char *app, const char *service,
+                             const char *instance, int timeout)
 {
     char name[128];
     char res[32];
@@ -3510,8 +3509,7 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
 
     debugprint("name %s\n", name);
 
-    fd = cdb2_tcpconnecth_to(hndl, remote_host, CDB2_PORTMUXPORT, 0,
-                             hndl->connect_timeout);
+    fd = cdb2_tcpconnecth_to(hndl, remote_host, CDB2_PORTMUXPORT, 0, timeout);
     if (fd < 0)
         return -1;
     ss = sbuf2open(fd, 0);
@@ -3519,8 +3517,6 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
         close(fd);
         return -1;
     }
-    const int timeout = hndl->api_call_timeout < hndl->connect_timeout ? hndl->api_call_timeout : hndl->connect_timeout;
-    sbuf2settimeout(ss, timeout, timeout);
     sbuf2printf(ss, "rte %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
@@ -3606,6 +3602,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int idx)
     SBUF2 *sb = NULL;
     void *callbackrc;
     int overwrite_rc = 0;
+    int max_retries = MAX_RETRIES;
     cdb2_event *e = NULL;
     int use_local_cache;
 
@@ -3629,6 +3626,12 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int idx)
     }
 
 retry_newsql_connect:
+    if (max_retries < 0) {
+        rc = -1;
+        goto after_callback;
+    }
+    max_retries--;
+
     if (!hndl->is_admin && !(hndl->flags & CDB2_MASTER)) {
         if (hndl->num_hosts && hndl->is_rejected && connect_host_on_reject) {
             char host_typestr[TYPESTR_LEN - TYPE_LEN + CDB2HOSTNAME_LEN];
@@ -3661,7 +3664,7 @@ retry_newsql_connect:
         if (!cdb2_allow_pmux_route)
             fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         else
-            fd = cdb2portmux_route(hndl, host, "comdb2", "replication", hndl->dbname);
+            fd = cdb2portmux_route(hndl, host, "comdb2", "replication", hndl->dbname, hndl->connect_timeout);
         LOG_CALL("%s(%s@%s): fd=%d\n", __func__, hndl->dbname, host, fd);
         if (fd < 0) {
             rc = -1;
@@ -3687,19 +3690,13 @@ retry_newsql_connect:
         }
     }
 
-    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
-
+    hndl_set_sbuf(hndl, sb);
     if (try_ssl(hndl, sb) != 0) {
         sbuf2close(sb);
         rc = -1;
         goto after_callback;
     }
 
-    hndl->sb = sb;
-    hndl->num_set_commands_sent = 0;
-    hndl->sent_client_info = 0;
-    hndl->connected_host = idx;
-    hndl->hosts_connected[hndl->connected_host] = 1;
     debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
 
 after_callback:
@@ -4032,8 +4029,10 @@ retry_connect:
          * master.*/
         /* After this retry on other nodes. */
         bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
-        if (newsql_connect(hndl, hndl->master) == 0)
+        if (newsql_connect(hndl, hndl->master) == 0) {
+            hndl->connected_host = hndl->master;
             return 0;
+        }
     }
 
     /* Can't connect to any of the nodes, re-check information about db. */
@@ -7520,8 +7519,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
             fd =
                 cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
-            fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
-                                   comdb2db_name);
+            fd = cdb2portmux_route(hndl, host, "comdb2", "replication", comdb2db_name, hndl->connect_timeout);
         }
         is_sockfd = 0;
 
@@ -7781,7 +7779,7 @@ again:
             fd =
                 cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
-            fd = cdb2portmux_route(hndl, host, "comdb2", "replication", dbname);
+            fd = cdb2portmux_route(hndl, host, "comdb2", "replication", dbname, hndl->connect_timeout);
             debugprint("cdb2portmux_route fd=%d'\n", fd);
             if (fd < 0) {
                 snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Can't route connection to host %s", __func__, host);
