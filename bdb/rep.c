@@ -3852,6 +3852,8 @@ static void rem_rep_mon(struct rep_mon *rm)
     Pthread_mutex_unlock(&rep_mon_lk);
 }
 
+int gbl_abort_on_stale_master = 0;
+
 #if defined _LINUX_SOURCE && !defined __APPLE__
 static __thread pid_t process_berkdb_tid = 0;
 #endif
@@ -4193,6 +4195,11 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         logmsg(LOGMSG_ERROR, "rep_process_message: from %s got %d "
                         "control->size=%d rec->size=%d\n",
                 host, r, control->size, rec->size);
+        bdb_get_rep_master(bdb_state, &master, &gen, &egen);
+        if (master == bdb_state->repinfo->myhost && gbl_abort_on_stale_master) {
+            logmsg(LOGMSG_FATAL, "Master-only message received from %s, but I am the master\n", host);
+            abort();
+        }
         outrc = 0;
         break;
 
