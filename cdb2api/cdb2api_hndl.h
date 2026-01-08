@@ -76,6 +76,7 @@ typedef struct cnonce {
     uint64_t seq;
     int ofs;
     char str[CNONCE_STR_SZ];
+    int len;
 } cnonce_t;
 
 #define MAX_CONTEXTS 10     /* Maximum stack size for storing context messages */
