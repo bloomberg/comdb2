@@ -69,6 +69,10 @@ ${TESTSBUILDDIR}/cdb2api_string_escape
 [[ $? -ne 0 ]] && echo "cdb2api_string_escape - fail" && exit 1
 echo 'cdb2api_string_escape - pass'
 
+${TESTSBUILDDIR}/cdb2api_direct ${DBNAME} ${CDB2_HOST_NAME}
+[[ $? -ne 0 ]] && echo "cdb2api_direct - fail" && exit 1
+echo 'cdb2api_direct - pass'
+
 ${TESTSBUILDDIR}/cdb2api_txn ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_txn - fail" && exit 1
 echo 'cdb2api_txn - pass'
