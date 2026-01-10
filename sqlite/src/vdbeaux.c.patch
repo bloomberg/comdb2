@@ -1,0 +1,1719 @@
+--- sqlite-3.28.0/src/vdbeaux.c	2026-01-09 16:11:01
++++ src/vdbeaux.c	2026-01-09 15:00:03
+@@ -12,9 +12,28 @@
+ ** This file contains code used for creating, destroying, and populating
+ ** a VDBE (or an "sqlite3_stmt" as it is known to the outside world.) 
+ */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include <stdint.h>
++#include <stddef.h>
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #include "sqliteInt.h"
+ #include "vdbeInt.h"
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "comdb2vdbe.h"
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include <sys/types.h>
+ 
++#include "logmsg.h"
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
++
+ /*
+ ** Create a new virtual database engine.
+ */
+@@ -30,6 +49,15 @@
+   }
+   p->pNext = db->pVdbe;
+   p->pPrev = 0;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  p->updCols = 0;
++  p->tbls = NULL;
++  p->numTables = 0;
++  /* due to stat4, we also need tzname, dtprec & now during prepare
++     set this here before starting to build anything */
++  extern void  comdb2_set_sqlite_vdbe_time_info( Vdbe *p);
++  comdb2_set_sqlite_vdbe_time_info(p);  
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   db->pVdbe = p;
+   p->magic = VDBE_MAGIC_INIT;
+   p->pParse = pParse;
+@@ -76,9 +104,17 @@
+     DblquoteStr *pStr = sqlite3DbMallocRawNN(db,
+                             sizeof(*pStr)+n+1-sizeof(pStr->z));
+     if( pStr ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if (!p->dblStrHash) {
++        p->dblStrHash = hash_init_str(0);
++      }
++#endif
+       pStr->pNextStr = p->pDblStr;
+       p->pDblStr = pStr;
+       memcpy(pStr->z, z, n+1);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      hash_add(p->dblStrHash, pStr->z);
++#endif
+     }
+   }
+ }
+@@ -86,19 +122,31 @@
+ 
+ #ifdef SQLITE_ENABLE_NORMALIZE
+ /*
+-** zId of length nId is a double-quoted identifier.  Check to see if
+-** that identifier is really used as a string literal.
++** zId of length nId is a double-quoted identifier. Return non-zero
++** if that identifier is really used as a string literal.
+ */
+ int sqlite3VdbeUsesDoubleQuotedString(
+   Vdbe *pVdbe,            /* The prepared statement */
+   const char *zId         /* The double-quoted identifier, already dequoted */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  ,int iDefDqId           /* Return value when there is no Vdbe. */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ ){
+-  DblquoteStr *pStr;
+   assert( zId!=0 );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( pVdbe==0 ) return iDefDqId;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( pVdbe->pDblStr==0 ) return 0;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if (pVdbe->dblStrHash) {
++    return (hash_find(pVdbe->dblStrHash, zId)) != 0;
++  }
++#else
++  DblquoteStr *pStr;
+   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){
+     if( strcmp(zId, pStr->z)==0 ) return 1;
+   }
++#endif
+   return 0;
+ }
+ #endif
+@@ -109,7 +157,9 @@
+ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
+   Vdbe tmp, *pTmp;
+   char *zTmp;
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   assert( pA->db==pB->db );
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   tmp = *pA;
+   *pA = *pB;
+   *pB = tmp;
+@@ -122,11 +172,19 @@
+   zTmp = pA->zSql;
+   pA->zSql = pB->zSql;
+   pB->zSql = zTmp;
+-#if 0
++#ifdef SQLITE_ENABLE_NORMALIZE
+   zTmp = pA->zNormSql;
+   pA->zNormSql = pB->zNormSql;
+   pB->zNormSql = zTmp;
+ #endif
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  {
++    SWAP(int *, pA->updCols, pB->updCols);
++    SWAP(int, pA->oldColCount, pB->oldColCount);
++    SWAP(char **, pA->oldColNames, pB->oldColNames);
++    SWAP(char **, pA->oldColDeclTypes, pB->oldColDeclTypes);
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   pB->expmask = pA->expmask;
+   pB->prepFlags = pA->prepFlags;
+   memcpy(pB->aCounter, pA->aCounter, sizeof(pB->aCounter));
+@@ -188,6 +246,9 @@
+ static void test_addop_breakpoint(void){
+   static int n = 0;
+   n++;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  UNUSED_PARAMETER(n);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ }
+ #endif
+ 
+@@ -808,7 +869,11 @@
+   pParse->aLabel = 0;
+   pParse->nLabel = 0;
+   *pMaxFuncArgs = nMaxArgs;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  assert( p->bIsReader!=0 || DbMaskAllZero(p->btreeMask, 0) );
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( p->bIsReader!=0 || DbMaskAllZero(p->btreeMask) );
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ }
+ 
+ /*
+@@ -876,7 +941,11 @@
+   assert( aOp && !p->db->mallocFailed );
+ 
+   /* Check that sqlite3VdbeUsesBtree() was not called on this VM */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  assert( DbMaskAllZero(p->btreeMask, 0) );
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( DbMaskAllZero(p->btreeMask) );
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+   resolveP2Values(p, pnMaxArg);
+   *pnOp = p->nOp;
+@@ -1057,6 +1126,12 @@
+       if( db->pnBytesFreed==0 ) sqlite3VtabUnlock((VTable *)p4);
+       break;
+     }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    case P4_OPFUNC: {
++      OpFunc *func = (OpFunc*) p4;
++      freeOpFunc(func);
++    }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+ }
+ 
+@@ -1177,7 +1252,34 @@
+     ** that was cast to a (const char *). */
+     pOp->p4.i = SQLITE_PTR_TO_INT(zP4);
+     pOp->p4type = P4_INT32;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  }else if( zP4==0 ){
++    pOp->p4.p = 0;
++    pOp->p4type = P4_NOTUSED;
++  }else if( n==P4_KEYINFO ){
++    pOp->p4.p = (void*)zP4;
++    pOp->p4type = P4_KEYINFO;
++#ifdef SQLITE_ENABLE_CURSOR_HINTS
++  }else if( n==P4_EXPR ){
++    /* Responsibility for deleting the Expr tree is handed over to the
++    ** VDBE by this operation.  The caller should have already invoked
++    ** sqlite3ExprDup() or whatever other routine is needed to make a 
++    ** private copy of the tree. */
++    pOp->p4.pExpr = (Expr*)zP4;
++    pOp->p4type = P4_EXPR;
++#endif
++  }else if( n==P4_VTAB ){
++    pOp->p4.p = (void*)zP4;
++    pOp->p4type = P4_VTAB;
++    sqlite3VtabLock((VTable *)zP4);
++    assert( ((VTable *)zP4)->db==p->db );
++  }else if( n==P4_OPFUNC ){
++    pOp->p4.comdb2func = (OpFunc*) zP4;
++    pOp->p4type = n;
++  }else{
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }else if( zP4!=0 ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     assert( n<0 );
+     pOp->p4.p = (void*)zP4;
+     pOp->p4type = (signed char)n;
+@@ -1323,6 +1425,9 @@
+ **       "PY..PY"  ->  "r[X..Y]"      or "r[x]" if y<=x
+ */
+ static int displayComment(
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  Vdbe *p,           /* Needed for remote dbs */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   const Op *pOp,     /* The opcode to be commented */
+   const char *zP4,   /* Previously obtained value for P4 */
+   char *zTemp,       /* Write result here */
+@@ -1380,6 +1485,22 @@
+       }
+     }
+     if( !seenCom && jj<nTemp-5 && pOp->zComment ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      /* Note if this is an open table op, and this is a remote table,
++         display the fully qualified name */
++      if( pOp->opcode==OP_OpenRead
++       || pOp->opcode==OP_OpenWrite
++       || pOp->opcode==OP_OpenRead_Record ){
++        /* is this remote db ?*/
++        if( p && pOp->p3>1 && pOp->p3<p->db->nDb ){
++          sqlite3_snprintf(nTemp-jj, zTemp+jj, "; %s.%s",
++                           p->db->aDb[pOp->p3].zDbSName, pOp->zComment);
++        }else{
++          sqlite3_snprintf(nTemp-jj, zTemp+jj, "; %s", pOp->zComment);
++        }
++      }
++      else
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       sqlite3_snprintf(nTemp-jj, zTemp+jj, "; %s", pOp->zComment);
+       jj += sqlite3Strlen30(zTemp+jj);
+     }
+@@ -1576,8 +1697,15 @@
+     }
+     case P4_TABLE: {
+       sqlite3_str_appendf(&x, "%s", pOp->p4.pTab->zName);
++      break;
++    }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    case P4_OPFUNC: {
++      OpFunc *pOpFunc = pOp->p4.comdb2func;
++      sqlite3_str_appendf(&x, "op(%p,%p)", pOpFunc->func, pOpFunc->destructor);
+       break;
+     }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     default: {
+       zP4 = pOp->p4.z;
+       if( zP4==0 ){
+@@ -1636,7 +1764,11 @@
+   sqlite3 *db;
+   Db *aDb;
+   int nDb;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( DbMaskAllZero(p->lockMask, 0) ) return;  /* The common case */
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( DbMaskAllZero(p->lockMask) ) return;  /* The common case */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   db = p->db;
+   aDb = db->aDb;
+   nDb = db->nDb;
+@@ -1684,18 +1816,29 @@
+   if( pOut==0 ) pOut = stdout;
+   zP4 = displayP4(pOp, zPtr, sizeof(zPtr));
+ #ifdef SQLITE_ENABLE_EXPLAIN_COMMENTS
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  displayComment(NULL, pOp, zP4, zCom, sizeof(zCom));
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   displayComment(pOp, zP4, zCom, sizeof(zCom));
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #else
+   zCom[0] = 0;
+ #endif
+   /* NB:  The sqlite3OpcodeName() function is implemented by code created
+   ** by the mkopcodeh.awk and mkopcodec.awk scripts which extract the
+   ** information from the vdbe.c source text */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  logmsgf(LOGMSG_USER, pOut, zFormat1, pc, 
++      sqlite3OpcodeName(pOp->opcode), pOp->p1, pOp->p2, pOp->p3, zP4, pOp->p5,
++      zCom
++  );
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   fprintf(pOut, zFormat1, pc, 
+       sqlite3OpcodeName(pOp->opcode), pOp->p1, pOp->p2, pOp->p3, zP4, pOp->p5,
+       zCom
+   );
+   fflush(pOut);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ }
+ #endif
+ 
+@@ -1707,6 +1850,11 @@
+     p->db = db;
+     p->flags = flags;
+     p->szMalloc = 0;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    p->tz = NULL;
++    p->dtprec = 0;
++    p->z = p->zMalloc = NULL;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_DEBUG
+     p->pScopyFrom = 0;
+ #endif
+@@ -1997,7 +2145,11 @@
+           return SQLITE_ERROR;
+         }
+         pMem->flags = MEM_Str|MEM_Term;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++        pMem->n = displayComment(p, pOp, zP4, pMem->z, 500);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         pMem->n = displayComment(pOp, zP4, pMem->z, 500);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         pMem->enc = SQLITE_UTF8;
+ #else
+         pMem->flags = MEM_Null;                       /* Comment */
+@@ -2232,7 +2384,11 @@
+   p->anExec = allocSpace(&x, 0, p->nOp*sizeof(i64));
+ #endif
+   if( x.nNeeded ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    x.pSpace = p->pFree = sqlite3DbMallocZero(db, x.nNeeded);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     x.pSpace = p->pFree = sqlite3DbMallocRawNN(db, x.nNeeded);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     x.nFree = x.nNeeded;
+     if( !db->mallocFailed ){
+       p->aMem = allocSpace(&x, p->aMem, nMem*sizeof(Mem));
+@@ -2397,8 +2553,52 @@
+   p->aColName = (Mem*)sqlite3DbMallocRawNN(db, sizeof(Mem)*n );
+   if( p->aColName==0 ) return;
+   initMemArray(p->aColName, n, db, MEM_Null);
++}
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++void sqlite3VdbeAddTable(
++  Vdbe *p,
++  Table *pTab
++){
++  Table **pTbls;
++  int numTables;
++  if( !p || !pTab || pTab->iDb==1 ) return;
++  assert( sqlite3_mutex_held(p->db->mutex) );
++  numTables = p->numTables;
++  assert( numTables>=0 );
++  if( !pTab ) return;
++  pTbls = p->tbls;
++  pTbls = sqlite3DbRealloc(p->db, pTbls, (numTables+1)*sizeof(Table*));
++  if( pTbls==0 ) return;
++  pTbls[numTables] = pTab;
++  pTab->nTabRef++;
++  p->tbls = pTbls;
++  p->numTables++;
+ }
+ 
++void sqlite3VdbeTransferTables(
++   Vdbe *pTo,
++   Vdbe *pFrom
++){
++  if (!pTo || !pFrom) return;
++
++  Table **pTbls = pTo->tbls;
++  int numTables = pTo->numTables;
++  assert( numTables>=0 );
++  pTbls = sqlite3DbRealloc(pTo->db, pTbls, (numTables+pFrom->numTables)*sizeof(Table*));
++  if( pTbls==0 ) return;
++  int i;
++  for(i=0; i<pFrom->numTables; i++){
++    pTbls[numTables+i] = pFrom->tbls[i];
++  }
++  pTo->tbls = pTbls;
++  pTo->numTables += pFrom->numTables;
++  pFrom->numTables = 0;
++  sqlite3DbFree(pFrom->db, pFrom->tbls);
++  pFrom->tbls = NULL;
++}
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** Set the name of the idx'th column to be returned by the SQL statement.
+ ** zName must be a pointer to a nul terminated string.
+@@ -2483,6 +2683,9 @@
+       Pager *pPager;   /* Pager associated with pBt */
+       needXcommit = 1;
+       sqlite3BtreeEnter(pBt);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      UNUSED_PARAMETER2(aMJNeeded, pPager);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       pPager = sqlite3BtreePager(pBt);
+       if( db->aDb[i].safety_level!=PAGER_SYNCHRONOUS_OFF
+        && aMJNeeded[sqlite3PagerGetJournalMode(pPager)]
+@@ -2492,6 +2695,7 @@
+         nTrans++;
+       }
+       rc = sqlite3PagerExclusiveLock(pPager);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       sqlite3BtreeLeave(pBt);
+     }
+   }
+@@ -2897,6 +3101,9 @@
+ 
+     /* Check for immediate foreign key violations. */
+     if( p->rc==SQLITE_OK ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      (void)
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       sqlite3VdbeCheckFk(p, 0);
+     }
+   
+@@ -2927,6 +3134,10 @@
+         }
+         if( rc==SQLITE_BUSY && p->readOnly ){
+           sqlite3VdbeLeave(p);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++          logmsg(LOGMSG_ERROR, "%s:%d SQLITE_BUSY\n", __FILE__, __LINE__);
++          cheap_stack_trace();
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+           return SQLITE_BUSY;
+         }else if( rc!=SQLITE_OK ){
+           p->rc = rc;
+@@ -3027,7 +3238,17 @@
+ */
+ void sqlite3VdbeResetStepResult(Vdbe *p){
+   p->rc = SQLITE_OK;
++}
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++/* Reset the tspec before execution of new statement. */
++int sqlite3VdbeResetClock(Vdbe *p){
++  if(p) {
++    clock_gettime(CLOCK_REALTIME, &p->tspec);
++  }
++  return SQLITE_OK;
+ }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** Copy the error code and error message belonging to the VDBE passed
+@@ -3094,6 +3315,21 @@
+   sqlite3 *db;
+   db = p->db;
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( p->crtPartitionLocks>0 ){
++    /* engine has terminated without collecting all system tables that needed a views lock
++     * unlock it here
++     */
++    extern void views_unlock(void);
++    views_unlock();
++    /* any statement that is not cached (like an explain query), will call
++     * sqlite3VdbeReset twice, first time when we check sqlite rc code,
++     * and second when we finalize the stmt, since we do not cache it
++     */
++    p->crtPartitionLocks = 0;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+   /* If the VM did not run to completion or if it encountered an
+   ** error, then it might not have been halted properly.  So halt
+   ** it now.
+@@ -3180,6 +3416,13 @@
+ int sqlite3VdbeFinalize(Vdbe *p){
+   int rc = SQLITE_OK;
+   if( p->magic==VDBE_MAGIC_RUN || p->magic==VDBE_MAGIC_HALT ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    /* this needs to called when we finalize, not on reset */
++    if( p->updCols){
++      sqlite3DbFree(p->db, p->updCols);
++      p->updCols = 0;
++    }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     rc = sqlite3VdbeReset(p);
+     assert( (rc & p->db->errMask)==rc );
+   }
+@@ -3256,6 +3499,13 @@
+       pNext = pThis->pNextStr;
+       sqlite3DbFree(db, pThis);
+     }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    if (p->dblStrHash) {
++      hash_clear(p->dblStrHash);
++      hash_free(p->dblStrHash);
++      p->dblStrHash = NULL;
++    }
++#endif
+   }
+ #endif
+ #ifdef SQLITE_ENABLE_STMT_SCANSTATUS
+@@ -3278,6 +3528,17 @@
+   assert( p!=0 );
+   db = p->db;
+   assert( sqlite3_mutex_held(db->mutex) );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( p->tbls ){
++    int i;
++    for(i=0; i<p->numTables; i++){
++      sqlite3DeleteTable(db, p->tbls[i]);
++    }
++    sqlite3DbFree(db, p->tbls);
++    p->tbls = 0;
++    p->numTables = 0;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   sqlite3VdbeClearObject(db, p);
+   if( p->pPrev ){
+     p->pPrev->pNext = p->pNext;
+@@ -3293,12 +3554,22 @@
+   sqlite3DbFreeNN(db, p);
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++char *sqlite3BtreeGetTblName(BtCursor *pCur);
++int sqlite3BtreeCursorRestore(BtCursor*, int*);
++unsigned long long bdb_genid_to_host_order(unsigned long long genid);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** The cursor "p" has a pending seek operation that has not yet been
+ ** carried out.  Seek the cursor now.  If an error occurs, return
+ ** the appropriate error code.
+ */
+-static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++int gbl_abort_on_dta_lookup_error = 0;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
++int SQLITE_NOINLINE sqlite3VdbeFinishMoveto(VdbeCursor *p){
+   int res, rc;
+ #ifdef SQLITE_TEST
+   extern int sqlite3_search_count;
+@@ -3306,9 +3577,49 @@
+   assert( p->deferredMoveto );
+   assert( p->isTable );
+   assert( p->eCurType==CURTYPE_BTREE );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /* NOTE: this will only be used for table direct lookup, which is not
++     happening for remote cursors */
++  rc = sqlite3BtreeMovetoUnpacked(p->uc.pCursor, 0, p->movetoTarget, 
++                OP_DeferredSeek /* the only OP that gets you in this mode*/,
++                &res);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   rc = sqlite3BtreeMovetoUnpacked(p->uc.pCursor, 0, p->movetoTarget, 0, &res);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( rc ) return rc;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( res!=0 ){
++    char errmsg[256];
++    snprintf(errmsg, sizeof(errmsg),
++             "Dta lookup lost the race for tbl %s genid=%llu (%llx) [new]\n",
++             sqlite3BtreeGetTblName(p->uc.pCursor),
++             bdb_genid_to_host_order(p->movetoTarget), 
++             bdb_genid_to_host_order(p->movetoTarget));
++    logmsg(LOGMSG_ERROR, "%s\n", errmsg);
++    if (gbl_abort_on_dta_lookup_error)
++        abort();
++    return SQLITE_DEADLOCK;
++  }
++  /* this is a direct lookup for a genid;
++   * genid might dissapear because of race or
++   * data corruption
++   * Make sure that what we found is what we're looking for */
++  {
++    i64 genid;
++    sqlite3BtreeKey(p->uc.pCursor, 0, sizeof(i64), &genid);
++    if( p->movetoTarget!=genid ){
++      logmsg(LOGMSG_ERROR, 
++             "Dta lookup lost the race for tbl %s genid=%llu found=%llu\n",
++             sqlite3BtreeGetTblName(p->uc.pCursor),
++             p->movetoTarget, genid);
++      if (gbl_abort_on_dta_lookup_error)
++          abort();
++      return SQLITE_DEADLOCK;
++    }
++  }
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( res!=0 ) return SQLITE_CORRUPT_BKPT;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_TEST
+   sqlite3_search_count++;
+ #endif
+@@ -3365,12 +3676,12 @@
+   assert( p->eCurType==CURTYPE_BTREE || p->eCurType==CURTYPE_PSEUDO );
+   if( p->deferredMoveto ){
+     int iMap;
+-    if( p->aAltMap && (iMap = p->aAltMap[1+*piCol])>0 ){
++    if( p->aAltMap && (iMap = p->aAltMap[1+*piCol])>0 && !p->nullRow ){
+       *pp = p->pAltCursor;
+       *piCol = iMap - 1;
+       return SQLITE_OK;
+     }
+-    return handleDeferredMoveto(p);
++    return sqlite3VdbeFinishMoveto(p);
+   }
+   if( sqlite3BtreeCursorHasMoved(p->uc.pCursor) ){
+     return handleMovedCursor(p);
+@@ -3419,6 +3730,30 @@
+ ** The 8 and 9 types were added in 3.3.0, file format 4.  Prior versions
+ ** of SQLite will not understand those serial types.
+ */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++/*
++**
++** The following changes to the above table were made for use by Comdb2:
++**
++**     10                                  interval
++**     11                                  datetime
++**    SQLITE_MAX_U32-2                     nextsequence
++**    SQLITE_MAX_U32-1                     intervaldsus
++**    SQLITE_MAX_U32                       datetimeus
++**
++** (SQLITE_MAX_U32-2) was added after 7.0, (SQLITE_MAX_U32-1) and SQLITE_MAX_U32
++** were added in R6.  Prior versions of Comdb2 will not understand those serial
++** types.  Note for future expansion: When introducing new serial types greater
++** than 11, please update sqlite3IsFixedLengthSerialType accordingly.
++*/
++#define SIZE_OF_INT_DSMS offsetof(intv_t, u.ds.prec) /* R5 ms-interval type */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** Return the serial-type for the value stored in pMem.
+@@ -3431,8 +3766,18 @@
+   if( flags&MEM_Null ){
+     *pLen = 0;
+     return 0;
++  }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( flags&MEM_Master ) {
++    *pLen = 8;
++    return (SQLITE_MAX_U32-2);
+   }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( flags&MEM_Int ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    *pLen = 8;
++    return 6;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     /* Figure out whether to use 1, 2, 4, 6 or 8 bytes. */
+ #   define MAX_6BYTE ((((i64)0x00008000)<<32)-1)
+     i64 i = pMem->u.i;
+@@ -3457,12 +3802,35 @@
+     if( u<=MAX_6BYTE ){ *pLen = 6; return 5; }
+     *pLen = 8;
+     return 6;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+   if( flags&MEM_Real ){
+     *pLen = 8;
+     return 7;
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( flags&MEM_Interval ){
++    /* use a rezerved serial to specify an interval */
++    if ( pMem->du.tv.type==INTV_DSUS_TYPE ){
++      *pLen = sizeof(intv_t);
++      return (SQLITE_MAX_U32-1);
++    }else{
++      *pLen = SIZE_OF_INT_DSMS;
++      return 10;
++    }
++  }
++  if( flags&MEM_Datetime ){
++    /* use a rezerved serial to specify a datetime */
++    *pLen = sizeof(dttz_t);
++    if( pMem->du.dt.dttz_prec==DTTZ_PREC_USEC ){
++      return SQLITE_MAX_U32;
++    }
++    return 11;
++  }
++  assert( (pMem->db && pMem->db->mallocFailed) || flags&(MEM_Str|MEM_Blob) );
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( pMem->db->mallocFailed || flags&(MEM_Str|MEM_Blob) );
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( pMem->n>=0 );
+   n = (u32)pMem->n;
+   if( flags & MEM_Zero ){
+@@ -3478,7 +3846,11 @@
+ static const u8 sqlite3SmallTypeSizes[] = {
+         /*  0   1   2   3   4   5   6   7   8   9 */   
+ /*   0 */   0,  1,  2,  3,  4,  6,  8,  8,  0,  0,
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++/*  10 */   SIZE_OF_INT_DSMS,  sizeof(dttz_t),  0,  0,  1,  1,  2,  2,  3,  3,
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ /*  10 */   0,  0,  0,  0,  1,  1,  2,  2,  3,  3,
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ /*  20 */   4,  4,  5,  5,  6,  6,  7,  7,  8,  8,
+ /*  30 */   9,  9, 10, 10, 11, 11, 12, 12, 13, 13,
+ /*  40 */  14, 14, 15, 15, 16, 16, 17, 17, 18, 18,
+@@ -3496,8 +3868,17 @@
+ ** Return the length of the data corresponding to the supplied serial-type.
+ */
+ u32 sqlite3VdbeSerialTypeLen(u32 serial_type){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( serial_type==(SQLITE_MAX_U32-1) ){
++    return sizeof(intv_t);
++  }else if( serial_type==SQLITE_MAX_U32 ){
++    return sizeof(dttz_t);
++  }else if( serial_type>=128 ){
++    return (serial_type-12)/2;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( serial_type>=128 ){
+     return (serial_type-12)/2;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }else{
+     assert( serial_type<12 
+             || sqlite3SmallTypeSizes[serial_type]==(serial_type - 12)/2 );
+@@ -3543,6 +3924,9 @@
+ ** verify this, but Frank seems to know what he is talking about
+ ** so we trust him.
+ */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_MIXED_ENDIAN_64BIT_FLOAT
+ static u64 floatSwap(u64 in){
+   union {
+@@ -3562,6 +3946,14 @@
+ # define swapMixedEndianFloat(X)
+ #endif
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include <arpa/inet.h>
++#include <flibc.h>
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** Write the serialized data blob for the value stored in pMem into 
+ ** buf. It is assumed that the caller has allocated sufficient space.
+@@ -3578,6 +3970,13 @@
+ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
+   u32 len;
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( serial_type==6 ){
++    int64_t *p = (int64_t *)buf;
++    *p = flibc_htonll(pMem->u.i);
++    return sizeof(long long);
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* Integer and Real */
+   if( serial_type<=7 && serial_type>0 ){
+     u64 v;
+@@ -3596,8 +3995,137 @@
+       v >>= 8;
+     }while( i );
+     return len;
++  }
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( serial_type==10 ){
++    /* R5 interval */
++    intv_t *p = (intv_t *)buf;
++
++#ifdef _SUN_SOURCE
++    intv_t scratch;
++    p = &scratch;
++#endif
++
++    memset(p, 0, SIZE_OF_INT_DSMS);
++    p->type = htonl(pMem->du.tv.type);
++    p->sign = htonl(pMem->du.tv.sign);
++
++    if( pMem->du.tv.type==INTV_DS_TYPE ){
++      p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
++      p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
++      p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
++      p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
++      p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac );
++    }else if( pMem->du.tv.type==INTV_DSUS_TYPE ){
++      /* For R5 millisecond interval compatiblity. */
++      p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
++      p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
++      p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
++      p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
++      p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac/1000 );
++    }else if( pMem->du.tv.type==INTV_YM_TYPE){
++      p->u.ym.years = htonl( pMem->du.tv.u.ym.years );
++      p->u.ym.months = htonl( pMem->du.tv.u.ym.months );
++    }else{
++      p->u.dec = pMem->du.tv.u.dec; /*TODO LINUX*/
++    }
++
++#ifdef _SUN_SOURCE
++    memcpy(buf, &scratch, SIZE_OF_INT_DSMS);
++#endif
++
++    return SIZE_OF_INT_DSMS;
+   }
+ 
++  if( serial_type==(SQLITE_MAX_U32-1) ){
++    /* R6 variable precision interval */
++    intv_t *p = (intv_t *)buf;
++
++#ifdef _SUN_SOURCE
++    intv_t scratch;
++    p = &scratch;
++#endif
++
++    bzero(p, sizeof(*p));
++    p->type = htonl(pMem->du.tv.type);
++    p->sign = htonl(pMem->du.tv.sign);
++
++    if( pMem->du.tv.type==INTV_DS_TYPE || pMem->du.tv.type==INTV_DSUS_TYPE ){
++      p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
++      p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
++      p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
++      p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
++      p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac );
++      p->u.ds.prec = htons( pMem->du.tv.u.ds.prec );
++      p->u.ds.conv = htons( pMem->du.tv.u.ds.conv );
++    }else if( pMem->du.tv.type==INTV_YM_TYPE ){
++      p->u.ym.years = htonl( pMem->du.tv.u.ym.years );
++      p->u.ym.months = htonl( pMem->du.tv.u.ym.months );
++    }else{
++      p->u.dec = pMem->du.tv.u.dec; /*TODO LINUX*/
++    }
++
++#ifdef _SUN_SOURCE
++    memcpy(buf, &scratch, sizeof(intv_t));
++#endif
++
++    return sizeof(intv_t);
++  }
++
++  if( serial_type==11 ){
++    /* R5 datetime*/
++    dttz_t *p = (dttz_t *)buf;
++
++#ifdef _SUN_SOURCE
++    dttz_t scratch;
++    p = &scratch;
++#endif
++
++    bzero(p, sizeof(*p));
++    p->dttz_sec = flibc_htonll( pMem->du.dt.dttz_sec );
++    if( pMem->du.dt.dttz_prec==DTTZ_PREC_USEC ){
++      /* For R5 millisecond datetime compatiblity. */
++      p->dttz_frac = htonl( pMem->du.dt.dttz_frac/1000 );
++    }else{
++      p->dttz_frac = htonl( pMem->du.dt.dttz_frac );
++    }
++    p->dttz_prec = htons( DTTZ_PREC_MSEC );
++    p->dttz_conv = htons( pMem->du.dt.dttz_conv );
++
++#ifdef _SUN_SOURCE
++    memcpy(buf, &scratch, sizeof(dttz_t));
++#endif
++
++    return sizeof(dttz_t);
++  }
++  if ( serial_type==(SQLITE_MAX_U32-2) ) {
++      pMem->u.i = 0;
++      return sizeof(long long);
++  }
++
++  if( serial_type==SQLITE_MAX_U32 ){
++    /* R6 variable precision datetime*/
++    dttz_t *p = (dttz_t *)buf;
++
++#ifdef _SUN_SOURCE
++    dttz_t scratch;
++    p = &scratch;
++#endif
++
++    bzero(p, sizeof(*p));
++    p->dttz_sec = flibc_htonll( pMem->du.dt.dttz_sec );
++    p->dttz_frac = htonl( pMem->du.dt.dttz_frac );
++    p->dttz_prec = htons( pMem->du.dt.dttz_prec );
++    p->dttz_conv = htons( pMem->du.dt.dttz_conv );
++
++#ifdef _SUN_SOURCE
++    memcpy(buf, &scratch, sizeof(dttz_t));
++#endif
++
++    return sizeof(dttz_t);
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* String or blob */
+   if( serial_type>=12 ){
+     assert( pMem->n + ((pMem->flags & MEM_Zero)?pMem->u.nZero:0)
+@@ -3611,6 +4139,10 @@
+   return 0;
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /* Input "x" is a sequence of unsigned characters that represent a
+ ** big-endian integer.  Return the equivalent native integer
+ */
+@@ -3670,7 +4202,14 @@
+   u32 serial_type,              /* Serial type to deserialize */
+   Mem *pMem                     /* Memory cell to write value into */
+ ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /* pMem->tz may be uninitialized (e.g., when pMem is allocated by
++     sqlite3VdbeAllocUnpackedRecord() from VdbeSorter).
++     Make sure it's not garbage, for pMem may be casted to a Datetime later. */
++  pMem->tz = NULL;
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   switch( serial_type ){
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+     case 10: { /* Internal use only: NULL with virtual table
+                ** UPDATE no-change flag set */
+       pMem->flags = MEM_Null|MEM_Zero;
+@@ -3679,6 +4218,7 @@
+       break;
+     }
+     case 11:   /* Reserved for future use */
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+     case 0: {  /* Null */
+       /* EVIDENCE-OF: R-24078-09375 Value is a NULL. */
+       pMem->flags = MEM_Null;
+@@ -3712,10 +4252,6 @@
+       /* EVIDENCE-OF: R-01849-26079 Value is a big-endian 32-bit
+       ** twos-complement integer. */
+       pMem->u.i = FOUR_BYTE_INT(buf);
+-#ifdef __HP_cc 
+-      /* Work around a sign-extension bug in the HP compiler for HP/UX */
+-      if( buf[0]&0x80 ) pMem->u.i |= 0xffffffff80000000LL;
+-#endif
+       pMem->flags = MEM_Int;
+       testcase( pMem->u.i<0 );
+       return 4;
+@@ -3727,13 +4263,64 @@
+       pMem->flags = MEM_Int;
+       testcase( pMem->u.i<0 );
+       return 6;
++    }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    case 6: { /* 8-byte signed integer */
++#ifdef _SUN_SOURCE
++      memcpy(&pMem->u.i, buf, sizeof(int64_t));
++#else
++      pMem->u.i = *(int64_t *)buf;
++#endif
++      pMem->u.i = flibc_ntohll(pMem->u.i);
++      pMem->flags = MEM_Int;
++      return 8;
+     }
++    case 7: { /* IEEE floating point */
++      /* These use local variables, so do them in a separate routine
++      ** to avoid having to move the frame pointer in the common case 
++      return serialGet(buf,serial_type,pMem); */
++
++#if !defined(NDEBUG) && !defined(SQLITE_OMIT_FLOATING_POINT)
++      /* Verify that integers and floating point values use the same
++      ** byte order.  Or, that if SQLITE_MIXED_ENDIAN_64BIT_FLOAT is
++      ** defined that 64-bit floating point values really are mixed
++      ** endian.
++      */
++      static const u64 t1 = ((u64)0x3ff00000)<<32;
++      static const double r1 = 1.0;
++      u64 t2 = t1;
++      swapMixedEndianFloat(t2);
++      assert( sizeof(r1)==sizeof(t2) && memcmp(&r1, &t2, sizeof(r1))==0 );
++#endif
++      u64 x;
++      u32 y;
++      x = FOUR_BYTE_UINT(buf);
++      y = FOUR_BYTE_UINT(buf+4);
++      x = (x<<32) | y;
++#if 0
++      if( serial_type==6 ){
++        pMem->u.i = *(i64*)&x;
++        pMem->flags = MEM_Int;
++        testcase( pMem->u.i<0 );
++      }else{
++#endif
++      {
++        assert( sizeof(x)==8 && sizeof(pMem->u.r)==8 );
++        swapMixedEndianFloat(x);
++        memcpy(&pMem->u.r, &x, sizeof(x));
++        /* pMem->flags = sqlite3IsNaN(pMem->u.r) ? MEM_Null : MEM_Real; */
++        pMem->flags = MEM_Real;
++      }
++      return 8;
++    }
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     case 6:   /* 8-byte signed integer */
+     case 7: { /* IEEE floating point */
+       /* These use local variables, so do them in a separate routine
+       ** to avoid having to move the frame pointer in the common case */
+       return serialGet(buf,serial_type,pMem);
+     }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     case 8:    /* Integer 0 */
+     case 9: {  /* Integer 1 */
+       /* EVIDENCE-OF: R-12976-22893 Value is the integer 0. */
+@@ -3741,13 +4328,132 @@
+       pMem->u.i = serial_type-8;
+       pMem->flags = MEM_Int;
+       return 0;
++    }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    case 10: {
++      /* R5 millisecond interval */
++      intv_t *p = (intv_t *)buf;
++
++#ifdef _SUN_SOURCE
++      intv_t scratch;
++      memcpy(&scratch, buf, SIZE_OF_INT_DSMS);
++      p = &scratch;
++#endif
++
++      pMem->du.tv.type = ntohl(p->type);
++      pMem->du.tv.sign = ntohl(p->sign);
++
++      if( pMem->du.tv.type==INTV_DS_TYPE ){
++        pMem->du.tv.u.ds.days = ntohl(p->u.ds.days);
++        pMem->du.tv.u.ds.hours = ntohl(p->u.ds.hours);
++        pMem->du.tv.u.ds.mins = ntohl(p->u.ds.mins);
++        pMem->du.tv.u.ds.sec = ntohl(p->u.ds.sec);
++        pMem->du.tv.u.ds.frac = ntohl(p->u.ds.frac);
++        pMem->du.tv.u.ds.prec = DTTZ_PREC_MSEC;
++        pMem->du.tv.u.ds.conv = 1;
++      }else if( pMem->du.tv.type==INTV_DSUS_TYPE ){
++        pMem->du.tv.u.ds.days = ntohl(p->u.ds.days);
++        pMem->du.tv.u.ds.hours = ntohl(p->u.ds.hours);
++        pMem->du.tv.u.ds.mins = ntohl(p->u.ds.mins);
++        pMem->du.tv.u.ds.sec = ntohl(p->u.ds.sec);
++        pMem->du.tv.u.ds.frac = ntohl(p->u.ds.frac) * 1000;
++        pMem->du.tv.u.ds.prec = DTTZ_PREC_USEC;
++        pMem->du.tv.u.ds.conv = 1;
++      }else if( pMem->du.tv.type==INTV_YM_TYPE ){
++        pMem->du.tv.u.ym.years = ntohl(p->u.ym.years);
++        pMem->du.tv.u.ym.months = ntohl(p->u.ym.months);
++      }else{
++        pMem->du.tv.u.dec = p->u.dec;
++      }
++      pMem->flags = MEM_Interval;
++      return SIZE_OF_INT_DSMS;
++    }
++    case (SQLITE_MAX_U32-1): {
++      /* R5 variable precision interval */
++      intv_t *p = (intv_t *)buf;
++
++#ifdef _SUN_SOURCE
++      intv_t scratch;
++      memcpy(&scratch, buf, sizeof(intv_t));
++      p = &scratch;
++#endif
++
++      pMem->du.tv.type = ntohl(p->type);
++      pMem->du.tv.sign = ntohl(p->sign);
++
++      /* ds type */
++      if( pMem->du.tv.type==INTV_DS_TYPE || pMem->du.tv.type==INTV_DSUS_TYPE ){
++        pMem->du.tv.u.ds.days = ntohl(p->u.ds.days);
++        pMem->du.tv.u.ds.hours = ntohl(p->u.ds.hours);
++        pMem->du.tv.u.ds.mins = ntohl(p->u.ds.mins);
++        pMem->du.tv.u.ds.sec = ntohl(p->u.ds.sec);
++        pMem->du.tv.u.ds.frac = ntohl(p->u.ds.frac);
++        pMem->du.tv.u.ds.prec = ntohs(p->u.ds.prec);
++        pMem->du.tv.u.ds.conv = ntohs(p->u.ds.conv);
++      }else if( pMem->du.tv.type==INTV_YM_TYPE ){
++        pMem->du.tv.u.ym.years = ntohl(p->u.ym.years);
++        pMem->du.tv.u.ym.months = ntohl(p->u.ym.months);
++      }else{
++        pMem->du.tv.u.dec = p->u.dec;
++      }
++      pMem->flags = MEM_Interval;
++      return sizeof(intv_t);
++    }
++    case 11: {  /* datetime blob */
++      /* R5 millisecond datetime */
++      dttz_t *p = (dttz_t *)buf;
++
++#ifdef _SUN_SOURCE
++      dttz_t scratch;
++      memcpy(&scratch, buf, sizeof(dttz_t));
++      p = &scratch;
++#endif
++
++      pMem->du.dt.dttz_sec = flibc_ntohll( p->dttz_sec );
++      pMem->du.dt.dttz_frac = ntohl( p->dttz_frac );
++      pMem->du.dt.dttz_prec = ntohs( p->dttz_prec );
++      pMem->du.dt.dttz_conv = ntohs( p->dttz_conv );
++
++      if( pMem->du.dt.dttz_prec!=DTTZ_PREC_MSEC ) /* data from R5 */
++        pMem->du.dt.dttz_conv = 1;
++
++      pMem->flags = MEM_Datetime;
++      return sizeof(dttz_t);
++    }
++    case SQLITE_MAX_U32: {  /* datetime blob */
++      /* R5 variable precision datetime */
++      dttz_t *p = (dttz_t *)buf;
++
++#ifdef _SUN_SOURCE
++      dttz_t scratch;
++      memcpy(&scratch, buf, sizeof(dttz_t));
++      p = &scratch;
++#endif
++
++      /* datetime */
++      pMem->du.dt.dttz_sec = flibc_ntohll( p->dttz_sec );
++      pMem->du.dt.dttz_frac = ntohl( p->dttz_frac );
++      pMem->du.dt.dttz_prec = ntohs( p->dttz_prec );
++      pMem->du.dt.dttz_conv = ntohs( p->dttz_conv );
++      pMem->flags = MEM_Datetime;
++      return sizeof(dttz_t);
+     }
++    case (SQLITE_MAX_U32-2): {
++      pMem->u.i = 0;
++      pMem->flags = MEM_Master;
++      return sizeof(long long);
++    }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     default: {
+       /* EVIDENCE-OF: R-14606-31564 Value is a BLOB that is (N-12)/2 bytes in
+       ** length.
+       ** EVIDENCE-OF: R-28401-00140 Value is a string in the text encoding and
+       ** (N-13)/2 bytes in length. */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      static const u32 aFlag[] = { MEM_Blob|MEM_Ephem, MEM_Str|MEM_Ephem };
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       static const u16 aFlag[] = { MEM_Blob|MEM_Ephem, MEM_Str|MEM_Ephem };
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       pMem->z = (char *)buf;
+       pMem->n = (serial_type-12)/2;
+       pMem->flags = aFlag[serial_type&1];
+@@ -3756,6 +4462,10 @@
+   }
+   return 0;
+ }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_SERIALGET
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** This routine is used to allocate sufficient space for an UnpackedRecord
+ ** structure large enough to be used with sqlite3VdbeRecordUnpack() if
+@@ -3832,6 +4542,107 @@
+   p->nField = u;
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_MEMCOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "logmsg.h"
++
++static int compareDateTimeInterval(
++  int f1,
++  int f2,
++  int combined_flags,
++  const Mem *pMem1,
++  const Mem *pMem2,
++  u8 *err
++){
++  int rc = 0;
++  if( err ){
++    *err = 0;
++  }
++  /* datetime and interval 
++   * since casting from numerics to datetime/interval preserves the numeric
++   * flag, try first to see if these are converted to datetime/interval and
++   * only a afterwards check for numerics */
++  if( combined_flags&MEM_Datetime ){
++    if(!(f1&MEM_Datetime)){
++      if( pMem1->tz == NULL ){
++        const char *tz = pMem2->tz;
++        if(tz == NULL){
++          /* We need a timezone here. However when the Mem objects are
++             deserialized from SerialGet(), neither has a valid tz.
++             In this case we grab tz from clnt. */
++          tz = get_clnt_tz();
++        }
++        /* either embedded in the string, or use the tz of the other member */
++        rc = sqlite3VdbeMemDatetimefyTz((Mem *)pMem1, tz);
++      }else{
++        rc = sqlite3VdbeMemDatetimefy((Mem *)pMem1);
++      }
++    }else if( !(f2&MEM_Datetime) ){
++      if( pMem2->tz==NULL ){
++        const char *tz = pMem1->tz;
++        if(tz == NULL){
++          /* We need a timezone here. However when the Mem objects are
++             deserialized from SerialGet(), neither has a valid tz.
++             In this case we grab tz from clnt. */
++          tz = get_clnt_tz();
++        }
++        /* either embedded in the string, or use the tz of the other member */
++        rc = sqlite3VdbeMemDatetimefyTz((Mem *)pMem2, tz);
++      }else{
++        rc = sqlite3VdbeMemDatetimefy((Mem *)pMem2);
++      }
++    }
++    if( rc ){
++      if( err ){
++        *err = SQLITE_CONV_ERROR;
++      }
++      return 0;
++    }
++    return dttz_cmp(&pMem1->du.dt, &pMem2->du.dt);
++  }
++  if( combined_flags&MEM_Interval ){
++    if( pMem1->du.tv.type==INTV_DECIMAL_TYPE ){
++      decQuad result;
++      decContext ctx;
++
++      dec_ctx_init(&ctx, DEC_INIT_DECQUAD, gbl_decimal_rounding);
++
++      if( decQuadIsZero((decQuad*)&pMem1->du.tv.u.dec)
++       && decQuadIsZero((decQuad*)&pMem2->du.tv.u.dec) ){
++        return 0;
++      }
++
++      decQuadCompare(&result, (decQuad*)&pMem1->du.tv.u.dec,
++                     (decQuad*)&pMem2->du.tv.u.dec, &ctx);
++
++      if( decQuadIsZero(&result) ) return 0;
++      if( decQuadIsSigned(&result) ) return -1;
++      return 1;
++    }else{
++      /* best effort */
++      if( !(f1&MEM_Interval) ){
++        if( sqlite3VdbeMemIntervalfy((Mem *)pMem1,SQLITE_AFF_INTV_MO)!=SQLITE_OK )
++          sqlite3VdbeMemIntervalfy((Mem *)pMem1,SQLITE_AFF_INTV_SE);
++      }else if( !(f2&MEM_Interval) ){
++        if( sqlite3VdbeMemIntervalfy((Mem *)pMem2,SQLITE_AFF_INTV_MO)!=SQLITE_OK )
++          sqlite3VdbeMemIntervalfy((Mem *)pMem2,SQLITE_AFF_INTV_SE);
++      }
++      return interval_cmp(&pMem1->du.tv, &pMem2->du.tv);
++    }
++  }
++  logmsg(LOGMSG_ERROR, "ERROR: called with bad flags\n");
++  return 0;
++}
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_MEMCOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_VDBECOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_DEBUG
+ /*
+ ** This function compares two index or table record keys in the same way
+@@ -3938,6 +4749,13 @@
+ }
+ #endif
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_VDBECOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_MEMCOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ #ifdef SQLITE_DEBUG
+ /*
+ ** Count the number of fields (a.k.a. columns) in the record given by
+@@ -4032,8 +4850,8 @@
+ */
+ SQLITE_NOINLINE int sqlite3BlobCompare(const Mem *pB1, const Mem *pB2){
+   int c;
+-  int n1 = pB1->n;
+-  int n2 = pB2->n;
++  int n1 = pB1->flags&(MEM_Datetime) ? 0 : pB1->n;
++  int n2 = pB2->flags&(MEM_Datetime) ? 0 : pB2->n;
+ 
+   /* It is possible to have a Blob value that has some non-zero content
+   ** followed by zero content.  But that only comes up for Blobs formed
+@@ -4096,6 +4914,9 @@
+ int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
+   int f1, f2;
+   int combined_flags;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  Mem copy;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+   f1 = pMem1->flags;
+   f2 = pMem2->flags;
+@@ -4109,14 +4930,86 @@
+     return (f2&MEM_Null) - (f1&MEM_Null);
+   }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if(combined_flags&MEM_Datetime || combined_flags&MEM_Interval) {
++    if( f1&(MEM_Int|MEM_Real) ){
++      /* If lhs is a number, convert rhs to a real and compare these 2 numbers.
++         This takes care of out-of-range values. */
++      sqlite3VdbeMemInit(&copy, pMem1->db, MEM_Null);
++      sqlite3VdbeMemCopy(&copy, pMem2);
++      sqlite3VdbeMemRealify(&copy);
++
++      f2 = copy.flags;
++      pMem2 = &copy;
++      combined_flags = f1|f2;
++    }else if( f2&(MEM_Int|MEM_Real) ){
++      /* If rhs is a number, convert lhs to a real and compare these 2 numbers.
++         This takes care of out-of-range values. */
++      sqlite3VdbeMemInit(&copy, pMem2->db, MEM_Null);
++      sqlite3VdbeMemCopy(&copy, pMem1);
++      sqlite3VdbeMemRealify(&copy);
++
++      f1 = copy.flags;
++      pMem1 = &copy;
++      combined_flags = f1|f2;
++    }else{
++      u8 err;
++      int rc = compareDateTimeInterval(f1, f2, combined_flags, pMem1, pMem2, &err);
++      if( err==0 )
++        return rc;
++      /* Type error. If one value is a string, convert the other one to
++         a string and then compare. */
++      if( f1&MEM_Str ){
++        sqlite3VdbeMemInit(&copy, pMem1->db, MEM_Null);
++        sqlite3VdbeMemCopy(&copy, pMem2);
++
++        rc = sqlite3VdbeMemStringify(&copy, pColl ? pColl->enc : pMem1->enc, 0);
++        if( rc!=SQLITE_OK )
++          return rc;
++
++        f2 = copy.flags;
++        pMem2 = &copy;
++        combined_flags = f1|f2;
++      }else if( f2&MEM_Str ){
++        sqlite3VdbeMemInit(&copy, pMem2->db, MEM_Null);
++        sqlite3VdbeMemCopy(&copy, pMem1);
++
++        rc = sqlite3VdbeMemStringify(&copy, pColl ? pColl->enc : pMem2->enc, 0);
++        if( rc!=SQLITE_OK )
++          return rc;
++
++        f1 = copy.flags;
++        pMem1 = &copy;
++        combined_flags = f1|f2;
++      }
++    }
++  }
++  /* If one value is a number and the other is not, the number is less.
++  ** If both are numbers, compare as reals if one is a real, or as integers
++  ** if both values are integers.
++  */
++  if( combined_flags&(MEM_Int|MEM_Real|MEM_Small) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* At least one of the two values is a number
+   */
+   if( combined_flags&(MEM_Int|MEM_Real) ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     if( (f1 & f2 & MEM_Int)!=0 ){
+       if( pMem1->u.i < pMem2->u.i ) return -1;
+       if( pMem1->u.i > pMem2->u.i ) return +1;
++      return 0;
++    }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    if( (combined_flags&MEM_Small)!=0 ){
++      float r1 = pMem1->u.r;
++      float r2 = pMem2->u.r;
++      if( f1&MEM_Int ) r1 = pMem1->u.i;
++      if( f2&MEM_Int ) r2 = pMem2->u.i;
++      if( r1<r2 ) return -1;
++      if( r1>r2 ) return +1;
+       return 0;
+     }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     if( (f1 & f2 & MEM_Real)!=0 ){
+       if( pMem1->u.r < pMem2->u.r ) return -1;
+       if( pMem1->u.r > pMem2->u.r ) return +1;
+@@ -4161,16 +5054,38 @@
+     assert( !pColl || pColl->xCmp );
+ 
+     if( pColl ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      int rc = vdbeCompareMemString(pMem1, pMem2, pColl, 0);
++      if( pMem1==&copy || pMem2==&copy ){
++        sqlite3VdbeMemRelease(&copy);
++      }
++      return rc;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       return vdbeCompareMemString(pMem1, pMem2, pColl, 0);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     }
+     /* If a NULL pointer was passed as the collate function, fall through
+     ** to the blob case and use memcmp().  */
+   }
+  
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  int rc = sqlite3BlobCompare(pMem1, pMem2);
++  if( pMem1==&copy || pMem2==&copy ){
++    sqlite3VdbeMemRelease(&copy);
++  }
++  return rc;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* Both values must be blobs.  Compare using memcmp().  */
+   return sqlite3BlobCompare(pMem1, pMem2);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_MEMCOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_VDBECOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** The first argument passed to this function is a serial-type that
+@@ -4249,6 +5164,12 @@
+   const unsigned char *aKey1 = (const unsigned char *)pKey1;
+   Mem mem1;
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  memset(&mem1, 0, sizeof(Mem));
++  /* pass tzname to Mem1 as well, in case it is a datetime that needs conversion */
++  mem1.tz = pRhs->tz;
++  mem1.enc = pPKey2->pKeyInfo->enc;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* If bSkip is true, then the caller has already determined that the first
+   ** two elements in the keys are equal. Fix the various stack variables so
+   ** that this routine begins comparing at the second field. */
+@@ -4278,11 +5199,29 @@
+   do{
+     u32 serial_type;
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    getVarint32(&aKey1[idx1], serial_type);
++    sqlite3VdbeSerialGet(&aKey1[d1], serial_type, &mem1);
++    int  f1 = mem1.flags;
++    int  f2 = pRhs->flags;
++    int  combined_flags = f1|f2;
++    if( combined_flags&MEM_Null ){
++      rc = (f2&MEM_Null) - (f1&MEM_Null);
++    }
++    else if(combined_flags&MEM_Datetime || combined_flags&MEM_Interval) {
++      rc = sqlite3MemCompare(&mem1, pRhs,  pPKey2->pKeyInfo->aColl[i]);
++    }
++    else
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     /* RHS is an integer */
+     if( pRhs->flags & MEM_Int ){
+       serial_type = aKey1[idx1];
+       testcase( serial_type==12 );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if( !sqlite3IsFixedLengthSerialType(serial_type) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       if( serial_type>=10 ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         rc = +1;
+       }else if( serial_type==0 ){
+         rc = -1;
+@@ -4303,11 +5242,15 @@
+     /* RHS is real */
+     else if( pRhs->flags & MEM_Real ){
+       serial_type = aKey1[idx1];
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if( !sqlite3IsFixedLengthSerialType(serial_type) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       if( serial_type>=10 ){
+         /* Serial types 12 or greater are strings and blobs (greater than
+         ** numbers). Types 10 and 11 are currently "reserved for future 
+         ** use", so it doesn't really matter what the results of comparing
+         ** them to numberic values are.  */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         rc = +1;
+       }else if( serial_type==0 ){
+         rc = -1;
+@@ -4329,7 +5272,11 @@
+     else if( pRhs->flags & MEM_Str ){
+       getVarint32(&aKey1[idx1], serial_type);
+       testcase( serial_type==12 );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if( sqlite3IsFixedLengthSerialType(serial_type) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       if( serial_type<12 ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         rc = -1;
+       }else if( !(serial_type & 0x01) ){
+         rc = +1;
+@@ -4363,7 +5310,11 @@
+       assert( (pRhs->flags & MEM_Zero)==0 || pRhs->n==0 );
+       getVarint32(&aKey1[idx1], serial_type);
+       testcase( serial_type==12 );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if( sqlite3IsFixedLengthSerialType(serial_type) || (serial_type & 0x01) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       if( serial_type<12 || (serial_type & 0x01) ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         rc = -1;
+       }else{
+         int nStr = (serial_type - 12) / 2;
+@@ -4430,6 +5381,9 @@
+   return sqlite3VdbeRecordCompareWithSkip(nKey1, pKey1, pPKey2, 0);
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_VDBECOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** This function is an optimized version of sqlite3VdbeRecordCompare() 
+@@ -4545,7 +5499,11 @@
+   assert( pPKey2->aMem[0].flags & MEM_Str );
+   vdbeAssertFieldCountWithinLimits(nKey1, pKey1, pPKey2->pKeyInfo);
+   getVarint32(&aKey1[1], serial_type);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( sqlite3IsFixedLengthSerialType(serial_type) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( serial_type<12 ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     res = pPKey2->r1;      /* (pKey1/nKey1) is a number or a null */
+   }else if( !(serial_type & 0x01) ){ 
+     res = pPKey2->r2;      /* (pKey1/nKey1) is a blob */
+@@ -4655,7 +5613,11 @@
+   ** this code can safely assume that nCellKey is 32-bits  
+   */
+   assert( sqlite3BtreeCursorIsValid(pCur) );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  nCellKey = sqlite3BtreeIntegerKey(pCur);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   nCellKey = sqlite3BtreePayloadSize(pCur);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( (nCellKey & SQLITE_MAX_U32)==(u64)nCellKey );
+ 
+   /* Read in the complete content of the index entry */
+@@ -4669,11 +5631,15 @@
+   (void)getVarint32((u8*)m.z, szHdr);
+   testcase( szHdr==3 );
+   testcase( szHdr==m.n );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /* Raw index optimization will cause this test to fail */
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   testcase( szHdr>0x7fffffff );
+   assert( m.n>=0 );
+   if( unlikely(szHdr<3 || szHdr>(unsigned)m.n) ){
+     goto idx_rowid_corruption;
+   }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+   /* The last field of the index should be an integer - the ROWID.
+   ** Verify that the last entry really is an integer. */
+@@ -4709,6 +5675,10 @@
+   return SQLITE_CORRUPT_BKPT;
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define START_INLINE_VDBECOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** Compare the key of the index entry that cursor pC is pointing to against
+ ** the key string in pUnpacked.  Write into *pRes a number
+@@ -4734,7 +5704,11 @@
+   assert( pC->eCurType==CURTYPE_BTREE );
+   pCur = pC->uc.pCursor;
+   assert( sqlite3BtreeCursorIsValid(pCur) );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  nCellKey = sqlite3BtreeIntegerKey(pCur);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   nCellKey = sqlite3BtreePayloadSize(pCur);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* nCellKey will always be between 0 and 0xffffffff because of the way
+   ** that btreeParseCellPtr() and sqlite3GetVarint32() are implemented */
+   if( nCellKey<=0 || nCellKey>0x7fffffff ){
+@@ -4751,6 +5725,10 @@
+   return SQLITE_OK;
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define END_INLINE_VDBECOMPARE
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** This routine sets the value to be returned by subsequent calls to
+ ** sqlite3_changes() on the database handle 'db'. 
+@@ -4887,6 +5865,113 @@
+ }
+ #endif /* SQLITE_OMIT_VIRTUALTABLE */
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++Mem *sqlite3GetCachedResultRow(
++  sqlite3_stmt *pStmt,
++  int *nColumns
++){
++  Vdbe *p = (Vdbe *)pStmt;
++  if( p ){
++    if (nColumns) *nColumns = p->nResColumn;
++    return p->pResultSet;
++  }
++  return NULL;
++}
++
++char *sqlite3PackedResult(
++  sqlite3_stmt *pStmt,
++  long long *size
++){
++  extern int sqlite3_unpacked_to_packed(Mem *, int nmems, char **, int *);
++  Vdbe *p = (Vdbe*)pStmt;
++  Mem *pCols = p->pResultSet;
++  int nCols = p->nResColumn;
++  int ret_row_len = 0;
++  int rc;
++  char *ret_row;
++
++  rc = sqlite3_unpacked_to_packed(pCols, nCols, &ret_row, &ret_row_len);
++  if (rc)
++    return NULL;
++
++  *size = ret_row_len;
++    
++  return ret_row;
++}
++
++Mem *sqlite3UnpackedResult(
++  sqlite3_stmt *pStmt,
++  int nCols,
++  char *packed, 
++  int packedLen
++){
++  Mem *pCols = NULL;
++  int i;
++
++  pCols = sqlite3_malloc64(sizeof(Mem) * nCols);
++  if (!pCols)
++    return NULL;
++  bzero(pCols, sizeof(Mem) * nCols);
++  for(i=0;i<nCols;i++) {
++    /* default encoding */
++    pCols[i].enc = SQLITE_UTF8;
++  }
++
++  /* distilled from vdbeRecordCompareDebug */
++  const unsigned char *aKey1 = (const unsigned char *)packed;
++  int nKey1 = packedLen;
++  u32 d1;            /* Offset into aKey[] of next data element */
++  u32 idx1;          /* Offset into aKey[] of next header element */
++  u32 szHdr1;        /* Number of bytes in header */
++
++  idx1 = getVarint32(aKey1, szHdr1);
++  if( szHdr1>98307 ) abort();
++  d1 = szHdr1;
++  i = 0;
++  do{
++    u32 serial_type1;
++
++    /* Read the serial types for the next element in each key. */
++    idx1 += getVarint32( aKey1+idx1, serial_type1 );
++
++    /* Verify that there is enough key space remaining to avoid
++    ** a buffer overread.  The "d1+serial_type1+2" subexpression will
++    ** always be greater than or equal to the amount of required key space.
++    ** Use that approximation to avoid the more expensive call to
++    ** sqlite3VdbeSerialTypeLen() in the common case.
++    */
++    if( d1+(u64)serial_type1+2>(u64)nKey1
++     && d1+(u64)sqlite3VdbeSerialTypeLen(serial_type1)>(u64)nKey1 
++    ){
++      break;
++    }
++
++    /* Extract the value
++    */
++    d1 += sqlite3VdbeSerialGet(&aKey1[d1], serial_type1, &pCols[i]);
++
++    i++;
++  }while( idx1<szHdr1 && i<nCols);
++
++  return pCols;
++}
++
++void sqlite3UnpackedResultFree(
++  Mem **ppMem,
++  int nCols
++){
++  int i;
++  Mem *pMem = *ppMem;
++  if( !pMem ) return;
++  for(i=0; i<nCols; i++){
++    sqlite3VdbeMemRelease(&pMem[i]);
++  }
++  sqlite3_free(pMem);
++  *ppMem = 0;
++}
++
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
+ 
+ /*
+@@ -4975,3 +6060,14 @@
+   }
+ }
+ #endif /* SQLITE_ENABLE_PREUPDATE_HOOK */
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++void comdb2SetRecording(Vdbe *v){ v->recording = 1; }
++void comdb2SetReplace(Vdbe *v){ v->oeFlag |= Cdb2_OE_Replace; }
++void comdb2SetUpdate(Vdbe *v) { v->oeFlag |= Cdb2_OE_Update; }
++void comdb2SetIgnore(Vdbe *v) { v->oeFlag |= Cdb2_OE_Ignore; }
++void comdb2SetUpsertIdx(Vdbe *v, int idx){ v->upsertIdx = idx; }
++int comdb2UpsertIdx(Vdbe *v){ return v->upsertIdx; }
++int comdb2ForceVerify(Vdbe *v){ return (v->oeFlag&(Cdb2_OE_Replace|Cdb2_OE_Update)) ? 1 : 0; }
++int comdb2IgnoreFailure(Vdbe *v){ return (v->oeFlag&Cdb2_OE_Ignore) ? 1 : 0; }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

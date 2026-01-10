@@ -1,0 +1,140 @@
+--- sqlite-3.28.0/src/delete.c	2026-01-09 16:11:01
++++ src/delete.c	2025-09-24 15:21:58
+@@ -14,6 +14,11 @@
+ */
+ #include "sqliteInt.h"
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++extern int gbl_update_delete_limit;
++int has_comdb2_index_for_sqlite(Table *pTab);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** While a SrcList can in general represent multiple tables and subqueries
+ ** (as in the FROM clause of a SELECT statement) in this case it contains
+@@ -158,10 +163,22 @@
+   Select *pSelect = NULL;      /* Complete SELECT tree */
+   Table *pTab;
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if (pLimit && gbl_update_delete_limit == 0) {
++    sqlite3ErrorMsg(pParse,
++                    "LIMIT on %s without lrl option: update_delete_limit",
++                    zStmtType);
++    goto limit_where_cleanup;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+   /* Check that there isn't an ORDER BY without a LIMIT clause.
+   */
+   if( pOrderBy && pLimit==0 ) {
+     sqlite3ErrorMsg(pParse, "ORDER BY without LIMIT on %s", zStmtType);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++limit_where_cleanup:
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     sqlite3ExprDelete(pParse->db, pWhere);
+     sqlite3ExprListDelete(pParse->db, pOrderBy);
+     return 0;
+@@ -309,6 +326,12 @@
+ # undef isView
+ # define isView 0
+ #endif
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  v = sqlite3GetVdbe(pParse);
++  if( v==0 ){
++    goto delete_from_cleanup;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+   if( !isView ){
+@@ -338,7 +361,13 @@
+     goto delete_from_cleanup;
+   }
+   assert(!isView || pTrigger);
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  ast_t *ast = ast_init(pParse, __func__);
++  if( ast ) ast_push(ast, AST_TYPE_DELETE, v, (iDb>1) ? pTab : NULL);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
++
+   /* Assign cursor numbers to the table and all its indices.
+   */
+   assert( pTabList->nSrc==1 );
+@@ -429,7 +458,7 @@
+   }else
+ #endif /* SQLITE_OMIT_TRUNCATE_OPTIMIZATION */
+   {
+-    u16 wcf = WHERE_ONEPASS_DESIRED|WHERE_DUPLICATES_OK|WHERE_SEEK_TABLE;
++    u16 wcf = WHERE_ONEPASS_DESIRED|WHERE_DUPLICATES_OK;
+     if( sNC.ncFlags & NC_VarSelect ) bComplex = 1;
+     wcf |= (bComplex ? 0 : WHERE_ONEPASS_MULTIROW);
+     if( HasRowid(pTab) ){
+@@ -465,6 +494,9 @@
+     assert( IsVirtual(pTab)==0 || eOnePass!=ONEPASS_MULTI );
+     assert( IsVirtual(pTab) || bComplex || eOnePass!=ONEPASS_OFF );
+     if( eOnePass!=ONEPASS_SINGLE ) sqlite3MultiWrite(pParse);
++    if( sqlite3WhereUsesDeferredSeek(pWInfo) ){
++      sqlite3VdbeAddOp1(v, OP_FinishSeek, iTabCur);
++    }
+   
+     /* Keep track of the number of rows to be deleted */
+     if( memCnt ){
+@@ -499,6 +531,7 @@
+       if( aiCurOnePass[0]>=0 ) aToOpen[aiCurOnePass[0]-iTabCur] = 0;
+       if( aiCurOnePass[1]>=0 ) aToOpen[aiCurOnePass[1]-iTabCur] = 0;
+       if( addrEphOpen ) sqlite3VdbeChangeToNoop(v, addrEphOpen);
++      addrBypass = sqlite3VdbeMakeLabel(pParse);
+     }else{
+       if( pPk ){
+         /* Add the PK key for this row to the temporary table */
+@@ -512,13 +545,6 @@
+         nKey = 1;  /* OP_DeferredSeek always uses a single rowid */
+         sqlite3VdbeAddOp2(v, OP_RowSetAdd, iRowSet, iKey);
+       }
+-    }
+-  
+-    /* If this DELETE cannot use the ONEPASS strategy, this is the 
+-    ** end of the WHERE loop */
+-    if( eOnePass!=ONEPASS_OFF ){
+-      addrBypass = sqlite3VdbeMakeLabel(pParse);
+-    }else{
+       sqlite3WhereEnd(pWInfo);
+     }
+   
+@@ -533,8 +559,14 @@
+         iAddrOnce = sqlite3VdbeAddOp0(v, OP_Once); VdbeCoverage(v);
+       }
+       testcase( IsVirtual(pTab) );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
+       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
++                                 iTabCur, aToOpen, &iDataCur, &iIdxCur, OE_None,
++                                 0);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++      sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
+                                  iTabCur, aToOpen, &iDataCur, &iIdxCur);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       assert( pPk || IsVirtual(pTab) || iDataCur==iTabCur );
+       assert( pPk || IsVirtual(pTab) || iIdxCur==iDataCur+1 );
+       if( eOnePass==ONEPASS_MULTI ) sqlite3VdbeJumpHere(v, iAddrOnce);
+@@ -548,6 +580,9 @@
+       if( !IsVirtual(pTab) && aToOpen[iDataCur-iTabCur] ){
+         assert( pPk!=0 || pTab->pSelect!=0 );
+         sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, addrBypass, iKey, nKey);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++        sqlite3VdbeChangeP5(v, 1);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         VdbeCoverage(v);
+       }
+     }else if( pPk ){
+@@ -847,6 +882,9 @@
+   Vdbe *v;           /* The prepared statement under construction */
+   Index *pPk;        /* PRIMARY KEY index, or NULL for rowid tables */
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if ( !has_comdb2_index_for_sqlite(pTab) ) return;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   v = pParse->pVdbe;
+   pPk = HasRowid(pTab) ? 0 : sqlite3PrimaryKeyIndex(pTab);
+   for(i=0, pIdx=pTab->pIndex; pIdx; i++, pIdx=pIdx->pNext){

@@ -1,0 +1,143 @@
+--- sqlite-3.28.0/src/update.c	2026-01-09 16:11:01
++++ src/update.c	2025-09-24 15:21:58
+@@ -73,7 +73,12 @@
+     }
+   }
+ #ifndef SQLITE_OMIT_FLOATING_POINT
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( iReg>=0 && (pTab->aCol[i].affinity==SQLITE_AFF_REAL ||
++                  pTab->aCol[i].affinity==SQLITE_AFF_SMALL) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( pTab->aCol[i].affinity==SQLITE_AFF_REAL ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     sqlite3VdbeAddOp1(v, OP_RealAffinity, iReg);
+   }
+ #endif
+@@ -130,6 +135,9 @@
+                                             aXRef, chngRowid);
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++int has_comdb2_index_for_sqlite(Table *pTab);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ /*
+ ** Process an UPDATE statement.
+ **
+@@ -230,6 +238,12 @@
+ # define isView 0
+ #endif
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  v = sqlite3GetVdbe(pParse);
++  if( v==0 ) goto update_cleanup;
++  ast_t *ast = ast_init(pParse, __func__);
++  if( ast ) ast_push(ast, AST_TYPE_UPDATE, v, (iDb>1) ? pTab : NULL);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+   if( !isView ){
+     pWhere = sqlite3LimitWhere(
+@@ -358,6 +372,9 @@
+   for(j=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, j++){
+     int reg;
+     if( chngKey || hasFK>1 || pIdx==pPk
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++     || has_comdb2_index_for_sqlite(pTab)
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      || indexWhereClauseMightChange(pIdx,aXRef,chngRowid)
+     ){
+       reg = ++pParse->nMem;
+@@ -387,6 +404,15 @@
+   /* Begin generating code. */
+   v = sqlite3GetVdbe(pParse);
+   if( v==0 ) goto update_cleanup;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /* create our updCols array. */
++  if( isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
++                        strlen("__hidden__rowid")+1)==0 ){
++    sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
++  } else {
++    sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
+   sqlite3BeginWriteOperation(pParse, pTrigger || hasFK, iDb);
+ 
+@@ -486,10 +512,14 @@
+     ** be deleted as a result of REPLACE conflict handling. Any of these
+     ** things might disturb a cursor being used to scan through the table
+     ** or index, causing a single-pass approach to malfunction.  */
+-    flags = WHERE_ONEPASS_DESIRED|WHERE_SEEK_UNIQ_TABLE;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    flags = 0;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++    flags = WHERE_ONEPASS_DESIRED;
+     if( !pParse->nested && !pTrigger && !hasFK && !chngKey && !bReplace ){
+       flags |= WHERE_ONEPASS_MULTIROW;
+     }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, 0, 0, flags, iIdxCur);
+     if( pWInfo==0 ) goto update_cleanup;
+   
+@@ -562,8 +592,13 @@
+       if( eOnePass==ONEPASS_MULTI && (nIdx-(aiCurOnePass[1]>=0))>0 ){
+         addrOnce = sqlite3VdbeAddOp0(v, OP_Once); VdbeCoverage(v);
+       }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
+       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
++                                 aToOpen, 0, 0, OE_None, 0);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++      sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
+                                  aToOpen, 0, 0);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       if( addrOnce ) sqlite3VdbeJumpHere(v, addrOnce);
+     }
+   
+@@ -585,12 +620,20 @@
+       sqlite3VdbeAddOp2(v, OP_Rewind, iEph, labelBreak); VdbeCoverage(v);
+       addrTop = sqlite3VdbeAddOp2(v, OP_RowData, iEph, regKey);
+       sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, labelContinue, regKey, 0);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      /* use P5 to trigger verify error if not found */
++      sqlite3VdbeChangeP5(v, 1);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       VdbeCoverage(v);
+     }else{
+       labelContinue = sqlite3VdbeAddOp3(v, OP_RowSetRead, regRowSet,labelBreak,
+                                regOldRowid);
+       VdbeCoverage(v);
+       sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue, regOldRowid);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      /* use P5 to trigger verify error if not found */
++      sqlite3VdbeChangeP5(v, 1);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       VdbeCoverage(v);
+     }
+   }
+@@ -728,6 +771,7 @@
+       VdbeCoverageNeverTaken(v);
+     }
+     sqlite3GenerateRowIndexDelete(pParse, pTab, iDataCur, iIdxCur, aRegIdx, -1);
++    sqlite3VdbeAddOp1(v, OP_FinishSeek, iDataCur);
+ 
+     /* If changing the rowid value, or if there are foreign key constraints
+     ** to process, delete the old record. Otherwise, add a noop OP_Delete
+@@ -765,11 +809,19 @@
+     }
+   
+     /* Insert the new index entries and the new record. */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
+     sqlite3CompleteInsertion(
+         pParse, pTab, iDataCur, iIdxCur, regNewRowid, aRegIdx, 
+         OPFLAG_ISUPDATE | (eOnePass==ONEPASS_MULTI ? OPFLAG_SAVEPOSITION : 0), 
++        0, 0, OE_None, 0
++    );
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++    sqlite3CompleteInsertion(
++        pParse, pTab, iDataCur, iIdxCur, regNewRowid, aRegIdx, 
++        OPFLAG_ISUPDATE | (eOnePass==ONEPASS_MULTI ? OPFLAG_SAVEPOSITION : 0), 
+         0, 0
+     );
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+     /* Do any ON CASCADE, SET NULL or SET DEFAULT operations required to
+     ** handle rows (possibly in other tables) that refer via a foreign key

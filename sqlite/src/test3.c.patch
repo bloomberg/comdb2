@@ -1,0 +1,14 @@
+--- sqlite-3.28.0/src/test3.c	2026-01-09 16:11:01
++++ src/test3.c	2025-09-24 15:21:58
+@@ -642,7 +642,11 @@
+ 
+   sqlite3_mutex_enter(pCur->pBtree->db->mutex);
+   sqlite3BtreeEnter(pCur->pBtree);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  rc = sqlite3BtreeInsert(pCur, &x, 0, 0, 0);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   rc = sqlite3BtreeInsert(pCur, &x, 0, 0);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   sqlite3BtreeLeave(pCur->pBtree);
+   sqlite3_mutex_leave(pCur->pBtree->db->mutex);
+ 
