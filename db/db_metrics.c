@@ -27,6 +27,7 @@
 #include <thread_stats.h>
 #include <request_stats.h>
 #include <net_appsock.h>
+#include <sqllogfill.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -112,6 +113,7 @@ struct comdb2_metrics_store {
     int64_t distributed_commits;
     int64_t not_durable_commits;
     int64_t incoherent_slow_skips;
+    int64_t inmem_repdb_memory;
 
     int64_t page_reads;
     int64_t page_writes;
@@ -123,6 +125,13 @@ struct comdb2_metrics_store {
     int64_t page_bytes_written;
     int64_t failed_page_bytes_read;
     int64_t failed_page_bytes_written;
+
+    int64_t sql_logfill_applied_records;
+    int64_t sql_logfill_applied_bytes;
+    int64_t sql_logfill_sql_finds;
+    int64_t sql_logfill_sql_nexts;
+    int64_t sql_logfill_queue_size;
+    int64_t sql_logfill_queue_blocks;
 
     /* Legacy request metrics */
     int64_t fastsql_execute_inline_params;
@@ -310,6 +319,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.not_durable_commits, NULL},
     {"disabled_incoherent_slows", "Disabled incoherent-slow count", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.incoherent_slow_skips, NULL},
+    {"inmem_repdb_memory", "Memory utilized by in-memory repdb", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.inmem_repdb_memory, NULL},
     {"page_reads", "Total page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_reads,
      NULL},
     {"page_writes", "Total page writes", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_writes,
@@ -328,6 +339,18 @@ comdb2_metric gbl_metrics[] = {
      &stats.failed_page_bytes_read, NULL},
     {"failed_page_bytes_written", "Total failed page bytes written", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.failed_page_bytes_written, NULL},
+    {"sql_logfill_applied_records", "Number of sqllogfill applied records", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_logfill_applied_records, NULL},
+    {"sql_logfill_applied_bytes", "Number of sqllogfill applied bytes", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_logfill_applied_bytes, NULL},
+    {"sql_logfill_sql_finds", "Number of sqllogfill sql finds", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.sql_logfill_sql_finds, NULL},
+    {"sql_logfill_sql_nexts", "Number of sqllogfill sql nexts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.sql_logfill_sql_nexts, NULL},
+    {"sql_logfill_queue_size", "Size of the sqllogfill queue", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.sql_logfill_queue_size, NULL},
+    {"sql_logfill_queue_blocks", "Number of blocks in the sqllogfill queue", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_logfill_queue_blocks, NULL},
     {"fastsql_execute_inline_params", "Number of fastsql 'execute' requests", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_execute_inline_params, NULL},
     {"fastsql_set_isolation_level", "Number of fastsql 'set isolation level' requests", STATISTIC_INTEGER,
@@ -422,9 +445,17 @@ int64_t gbl_fastsql_execute_stop;
 extern int64_t gbl_distributed_commit_count;
 extern int64_t gbl_not_durable_commit_count;
 extern int64_t gbl_incoherent_slow_skips;
+extern int64_t gbl_inmem_repdb_memory;
 
+static void update_sqllogfill_metrics()
+{
+    sql_logfill_metrics(&stats.sql_logfill_applied_records, &stats.sql_logfill_applied_bytes,
+                        &stats.sql_logfill_sql_finds, &stats.sql_logfill_sql_nexts, &stats.sql_logfill_queue_size,
+                        &stats.sql_logfill_queue_blocks);
+}
 
-static void update_fastsql_metrics() {
+static void update_fastsql_metrics()
+{
     stats.fastsql_execute_inline_params = gbl_fastsql_execute_inline_params;
     stats.fastsql_set_isolation_level = gbl_fastsql_set_isolation_level;
     stats.fastsql_set_timeout = gbl_fastsql_set_timeout;
@@ -624,6 +655,7 @@ int refresh_metrics(void)
     stats.distributed_commits = gbl_distributed_commit_count;
     stats.not_durable_commits = gbl_not_durable_commit_count;
     stats.incoherent_slow_skips = gbl_incoherent_slow_skips;
+    stats.inmem_repdb_memory = gbl_inmem_repdb_memory;
     struct global_stats gstats = {0};
 
     global_request_stats(&gstats);
@@ -710,6 +742,7 @@ int refresh_metrics(void)
     stats.legacy_requests = gbl_legacy_requests;
     curtran_puttran(trans);
 
+    update_sqllogfill_metrics();
     update_fastsql_metrics();
     stats.max_current_connections = time_metric_max(thedb->connections);
 

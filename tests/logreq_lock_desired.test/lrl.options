@@ -1,3 +1,6 @@
 decoupled_logputs off
 maxosqltransfer 100000000
 req_all_threshold 0
+
+# sql_logfill disables berkdb logfill requests
+sql_logfill 0

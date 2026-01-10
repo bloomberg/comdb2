@@ -677,6 +677,7 @@ int is_valid_lsn(unsigned int file, unsigned int offset)
 }
 
 extern __thread int physrep_out_of_order;
+extern __thread char *rep_apply_caller;
 
 static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
 {
@@ -727,8 +728,10 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
     if (stop_physrep_worker == 0) {
         /* check if we need to call new file flag */
         if (prev_info.file < file) {
+            rep_apply_caller = "physrep-newfile";
             rc = apply_log(thedb->bdb_env, prev_info.file, get_next_offset(thedb->bdb_env->dbenv, prev_info),
                            REP_NEWFILE, NULL, 0);
+            rep_apply_caller = NULL;
             if (rc != 0) {
                 physrep_logmsg(LOGMSG_FATAL, "%s:%d: Something went wrong with applying the logs (rc: %d)\n",
                                __func__, __LINE__, rc);
@@ -736,7 +739,9 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
             }
         }
 
+        rep_apply_caller = "physrep-log";
         rc = apply_log(thedb->bdb_env, file, offset, REP_LOG, blob, blob_len);
+        rep_apply_caller = NULL;
 
         if (is_commit((u_int32_t)*rectype)) {
             if (gbl_physrep_debug) {

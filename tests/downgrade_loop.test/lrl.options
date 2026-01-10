@@ -1,1 +1,2 @@
 logmsg level debug
+sql_logfill_apply_thread 0

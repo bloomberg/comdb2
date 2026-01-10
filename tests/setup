@@ -285,6 +285,8 @@ setup_db() {
         REP_ENV_VARS="${DBDIR}/replicant_env_vars"
         #echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${REP_ENV_VARS}
         echo "export COMDB2_ROOT=$TESTDIR" >> ${REP_ENV_VARS}
+        echo "export CDB2_CONFIG_FILE=$CDB2_CONFIG" >> ${REP_ENV_VARS}
+        echo "export SSL_CERT_PATH=$SSL_CERT_PATH" >> ${REP_ENV_VARS}
         CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
         echo "!$TESTCASE: starting"
         for node in $CLUSTER; do
@@ -301,6 +303,7 @@ setup_db() {
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
                 echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
             else
+                scp $SSH_OPT $CDB2_CONFIG $node:$CDB2_CONFIG
                 scp $SSH_OPT ${REP_ENV_VARS} $node:${REP_ENV_VARS}
                 # could also use connection sharing and close master ssh session in unsetup
                 ssh -n $SSH_OPT -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
