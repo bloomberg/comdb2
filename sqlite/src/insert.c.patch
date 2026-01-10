@@ -1,0 +1,436 @@
+--- sqlite-3.28.0/src/insert.c	2026-01-09 16:11:01
++++ src/insert.c	2025-09-24 15:21:58
+@@ -13,6 +13,13 @@
+ ** to handle INSERT statements in SQLite.
+ */
+ #include "sqliteInt.h"
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "cdb2_constants.h"
++int need_index_checks_for_upsert(Table *pTab, Upsert *pUpsert, int onError, int noConflict);
++int is_comdb2_index_unique(const char *tbl, char *idx);
++int gbl_sqlite_makerecord_for_comdb2 = 1;
++extern struct dbtable *get_dbtable_by_name(const char *name);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** Generate code that will 
+@@ -36,6 +43,15 @@
+   assert( opcode==OP_OpenWrite || opcode==OP_OpenRead );
+   sqlite3TableLock(pParse, iDb, pTab->tnum, 
+                    (opcode==OP_OpenWrite)?1:0, pTab->zName);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /* if we are handling a SELECTV, we generate a new opcode so that we 
++     know to open recording BtCursors at runtime
++  */
++  /* TODO: AZ: is this opcode ok for both parts of the if below? */
++  if( GET_CURSOR_RECORDING(pParse, iCur) ){
++    opcode = OP_OpenRead_Record;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( HasRowid(pTab) ){
+     sqlite3VdbeAddOp4Int(v, opcode, iCur, pTab->tnum, iDb, pTab->nCol);
+     VdbeComment((v, "%s", pTab->zName));
+@@ -47,6 +63,13 @@
+     sqlite3VdbeSetP4KeyInfo(pParse, pPk);
+     VdbeComment((v, "%s", pTab->zName));
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /*
++  ** COMDB2: Open Cursor locks the table, verify cookie after we have
++  ** opened the cursor
++  */
++  sqlite3VdbeAddTable(v, pTab);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ }
+ 
+ /*
+@@ -95,6 +118,7 @@
+       }else{
+         char aff;
+         assert( x==XN_EXPR );
++        assert( pIdx->bHasExpr );
+         assert( pIdx->aColExpr!=0 );
+         aff = sqlite3ExprAffinity(pIdx->aColExpr->a[n].pExpr);
+         if( aff==0 ) aff = SQLITE_AFF_BLOB;
+@@ -175,6 +199,21 @@
+     VdbeOp *pOp = sqlite3VdbeGetOp(v, i);
+     assert( pOp!=0 );
+     if( pOp->opcode==OP_OpenRead && pOp->p3==iDb ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      /*
++       * Make a remote insert that reads from the same remote database always use a temporary table
++       * (eg INSERT INTO remote.t1 SELECT * FROM remote.t2).
++       *
++       * The fdb backend protocol expects all cursors to be closed before committing a transaction.
++       * A chunk remote insert retains a remote read cursor across chunks. Therefore when using a non-temptable
++       * plan, it clearly violates the fdb protocol (it holds onto a read cursor while committing a chunk).
++       * A simple solution to overcome this is to always use a temptable to store results of the SELECT,
++       * such that there will not be outstanding read cursors when tranaction chunks are committed.
++       */
++      if( iDb>1 ){
++        return 1;
++      }
++#endif
+       Index *pIndex;
+       int tnum = pOp->p2;
+       if( tnum==pTab->tnum ){
+@@ -611,6 +650,25 @@
+   */
+   v = sqlite3GetVdbe(pParse);
+   if( v==0 ) goto insert_cleanup;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  /* Set up necessary flag bits to be sent to the master node */
++  if ((onError != OE_None && onError != OE_Default) || pUpsert) {
++    if( onError==OE_Ignore ){       /* INSERT OR IGNORE ... */
++      comdb2SetIgnore(v);
++    }
++
++    if( onError==OE_Replace ){      /* REPLACE INTO ... */
++      comdb2SetReplace(v);
++    }
++    if( pUpsert ){
++      if( pUpsert->pUpsertSet==0 ){ /* INSERT .. ON CONFLICT(..) DO NOTHING */
++        comdb2SetIgnore(v);
++      }else{                        /* INSERT .. ON CONFLICT(..) DO UPDATE .. */
++        comdb2SetUpdate(v);
++      }
++    }
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
+   sqlite3BeginWriteOperation(pParse, pSelect || pTrigger, iDb);
+ 
+@@ -688,6 +746,11 @@
+     }
+   }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  ast_t *ast = ast_init(pParse, __func__);
++  if( ast ) ast_push(ast, AST_TYPE_INSERT, v, (iDb>1) ? pTab : NULL);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+   /* Figure out how many columns of data are supplied.  If the data
+   ** is coming from a SELECT statement, then generate a co-routine that
+   ** produces a single row of the SELECT on each invocation.  The
+@@ -798,7 +861,7 @@
+     sqlite3ErrorMsg(pParse, "%d values for %d columns", nColumn, pColumn->nId);
+     goto insert_cleanup;
+   }
+-    
++
+   /* Initialize the count of rows to be inserted
+   */
+   if( (db->flags & SQLITE_CountRows)!=0
+@@ -812,8 +875,13 @@
+   /* If this is not a view, open the table and and all indices */
+   if( !isView ){
+     int nIdx;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
+     nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
++                                      &iDataCur, &iIdxCur, onError, pUpsert);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++    nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
+                                       &iDataCur, &iIdxCur);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     aRegIdx = sqlite3DbMallocRawNN(db, sizeof(int)*(nIdx+1));
+     if( aRegIdx==0 ){
+       goto insert_cleanup;
+@@ -831,6 +899,14 @@
+               pTab->zName);
+       goto insert_cleanup;
+     }
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    if( unlikely(get_dbtable_by_name(pTab->zName) == NULL) ){
++      sqlite3ErrorMsg(pParse, "UPSERT not supported on partition or view \"%s\"",
++              pTab->zName);
++      goto insert_cleanup;
++    }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     pTabList->a[0].iCursor = iDataCur;
+     pUpsert->pUpsertSrc = pTabList;
+     pUpsert->regData = regData;
+@@ -838,11 +914,18 @@
+     pUpsert->iIdxCur = iIdxCur;
+     if( pUpsert->pUpsertTarget ){
+       sqlite3UpsertAnalyzeTarget(pParse, pTabList, pUpsert);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    } else {
++      comdb2SetUpsertIdx(v, MAXINDEX+1);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  }else if( onError==OE_Ignore || onError==OE_Replace ){
++    comdb2SetUpsertIdx(v, MAXINDEX+1);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+ #endif
+ 
+-
+   /* This is the top of the main insertion loop */
+   if( useTempTable ){
+     /* This block codes the top of loop only.  The complete loop is the
+@@ -1055,9 +1138,15 @@
+       bUseSeek = (isReplace==0 || (pTrigger==0 &&
+           ((db->flags & SQLITE_ForeignKeys)==0 || sqlite3FkReferences(pTab)==0)
+       ));
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      sqlite3CompleteInsertion(pParse, pTab, iDataCur, iIdxCur,
++          regIns, aRegIdx, 0, appendFlag, bUseSeek, onError, pUpsert
++      );
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       sqlite3CompleteInsertion(pParse, pTab, iDataCur, iIdxCur,
+           regIns, aRegIdx, 0, appendFlag, bUseSeek
+       );
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     }
+   }
+ 
+@@ -1086,7 +1175,13 @@
+     sqlite3VdbeJumpHere(v, addrInsTop);
+   }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#ifndef SQLITE_OMIT_XFER_OPT
+ insert_end:
++#endif /* SQLITE_OMIT_XFER_OPT */
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++insert_end:
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* Update the sqlite_sequence table by storing the content of the
+   ** maximum rowid counter values recorded while inserting into
+   ** autoincrement tables.
+@@ -1295,9 +1390,13 @@
+   sqlite3 *db;         /* Database connection */
+   int i;               /* loop counter */
+   int ix;              /* Index loop counter */
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   int nCol;            /* Number of columns */
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   int onError;         /* Conflict resolution strategy */
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   int addr1;           /* Address of jump instruction */
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   int seenReplace = 0; /* True if REPLACE is used to resolve INT PK conflict */
+   int nPkField;        /* Number of fields in PRIMARY KEY. 1 for ROWID tables */
+   Index *pUpIdx = 0;   /* Index to which to apply the upsert */
+@@ -1308,13 +1407,21 @@
+   int ipkTop = 0;        /* Top of the IPK uniqueness check */
+   int ipkBottom = 0;     /* OP_Goto at the end of the IPK uniqueness check */
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( !need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
++    *pbMayReplace = 0;
++    return;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   isUpdate = regOldData!=0;
+   db = pParse->db;
+   v = sqlite3GetVdbe(pParse);
+   assert( v!=0 );
+   assert( pTab->pSelect==0 );  /* This table is not a VIEW */
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   nCol = pTab->nCol;
+-  
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+   /* pPk is the PRIMARY KEY index for WITHOUT ROWID tables and NULL for
+   ** normal rowid tables.  nPkField is the number of key fields in the 
+   ** pPk index or 1 for a rowid table.  In other words, nPkField is the
+@@ -1331,6 +1438,7 @@
+   VdbeModuleComment((v, "BEGIN: GenCnstCks(%d,%d,%d,%d,%d)",
+                      iDataCur, iIdxCur, regNewData, regOldData, pkChng));
+ 
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   /* Test all NOT NULL constraints.
+   */
+   for(i=0; i<nCol; i++){
+@@ -1426,6 +1534,7 @@
+     pParse->iSelfTab = 0;
+   }
+ #endif /* !defined(SQLITE_OMIT_CHECK) */
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+   /* UNIQUE and PRIMARY KEY constraints should be handled in the following
+   ** order:
+@@ -1500,7 +1609,7 @@
+     ** the UNIQUE constraints have run.
+     */
+     if( onError==OE_Replace      /* IPK rule is REPLACE */
+-     && onError!=overrideError   /* Rules for other contraints are different */
++     && onError!=overrideError   /* Rules for other constraints are different */
+      && pTab->pIndex             /* There exist other constraints */
+     ){
+       ipkTop = sqlite3VdbeAddOp0(v, OP_Goto)+1;
+@@ -1605,6 +1714,9 @@
+     }
+   }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   /* Test all UNIQUE constraints by creating entries for each UNIQUE
+   ** index and making sure that duplicate entries do not already exist.
+   ** Compute the revised record entries for indices as we go.
+@@ -1634,7 +1746,6 @@
+     VdbeNoopComment((v, "uniqueness check for %s", pIdx->zName));
+     iThisCur = iIdxCur+ix;
+ 
+-
+     /* Skip partial indices for which the WHERE clause is not true */
+     if( pIdx->pPartIdxWhere ){
+       sqlite3VdbeAddOp2(v, OP_Null, 0, aRegIdx[ix]);
+@@ -1685,6 +1796,30 @@
+ 
+     /* Find out what action to take in case there is a uniqueness conflict */
+     onError = pIdx->onError;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    /* At this point, we only need to perform collison detection for the
++     * following cases:
++     *
++     * (1) INSERT .. ON CONFLICT(idx) DO UPDATE ..
++     * (2) REPLACE INTO ..
++     *
++     */
++    if( (pUpsert && pUpsert->pUpsertSet!=0 && pUpIdx==pIdx) ||         /* Case 1 */
++        (overrideError==OE_Replace &&
++         is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName)) ) { /* Case 2 */
++      /* Go-ahead and check for UNIQUENESS constraint violation */
++      onError = OE_Abort;
++    } else {
++      /* Skip UNIQUENESS constraint violation check */
++      if( pUpIdx==pIdx ){
++        sqlite3VdbeGoto(v, addrUniqueOk);
++        sqlite3VdbeJumpHere(v, upsertBypass);
++      } else {
++        sqlite3VdbeResolveLabel(v, addrUniqueOk);
++      }
++      continue;
++    }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     if( onError==OE_None ){ 
+       sqlite3VdbeResolveLabel(v, addrUniqueOk);
+       continue;  /* pIdx is not a UNIQUE index */
+@@ -1837,6 +1972,9 @@
+     }
+     if( regR!=regIdx ) sqlite3ReleaseTempRange(pParse, regR, nPkField);
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+   /* If the IPK constraint is a REPLACE, run it last */
+   if( ipkTop ){
+@@ -1890,10 +2028,18 @@
+   int update_flags,   /* True for UPDATE, False for INSERT */
+   int appendBias,     /* True if this is likely to be an append */
+   int useSeekResult   /* True to set the USESEEKRESULT flag on OP_[Idx]Insert */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  ,int onError     /* OE_Replace, etc. */
++  ,Upsert *pUpsert /* ON CONFLICT clauses for upsert, or NULL */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ ){
+   Vdbe *v;            /* Prepared statements under construction */
+   Index *pIdx;        /* An index being inserted or updated */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  u16 pik_flags;      /* flag values passed to the btree insert */
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   u8 pik_flags;       /* flag values passed to the btree insert */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   int regData;        /* Content registers (after the rowid) */
+   int regRec;         /* Register holding assembled record for the table */
+   int i;              /* Loop counter */
+@@ -1907,6 +2053,9 @@
+   v = sqlite3GetVdbe(pParse);
+   assert( v!=0 );
+   assert( pTab->pSelect==0 );  /* This table is not a VIEW */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
+     if( aRegIdx[i]==0 ) continue;
+     bAffinityDone = 1;
+@@ -1936,15 +2085,35 @@
+                          pIdx->uniqNotNull ? pIdx->nKeyCol: pIdx->nColumn);
+     sqlite3VdbeChangeP5(v, pik_flags);
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( !HasRowid(pTab) ) return;
+   regData = regNewData + 1;
+   regRec = sqlite3GetTempReg(pParse);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( gbl_sqlite_makerecord_for_comdb2 ){
++    /* Store the cursor in P3 of OP_MakeRecord. */
++    sqlite3VdbeAddOp2(v, OP_Integer, iDataCur, regRec);
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   sqlite3VdbeAddOp3(v, OP_MakeRecord, regData, pTab->nCol, regRec);
+   sqlite3SetMakeRecordP5(v, pTab);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( gbl_sqlite_makerecord_for_comdb2 ){
++    /* Light the OPFLAG_MKREC_COMDB2 flag so that the VDBE knows that it needs to
++       convert Mem structures to comdb2 row data of the table of cursor P3 */
++    sqlite3VdbeChangeP5(v, (sqlite3VdbeGetOp(v, -1)->p5 | OPFLAG_MKREC_COMDB2));
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( !bAffinityDone ){
+     sqlite3TableAffinity(v, pTab, 0);
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( pParse->nested && !pParse->preserve_update ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( pParse->nested ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     pik_flags = 0;
+   }else{
+     pik_flags = OPFLAG_NCHANGE;
+@@ -1956,6 +2125,14 @@
+   if( useSeekResult ){
+     pik_flags |= OPFLAG_USESEEKRESULT;
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if (comdb2ForceVerify(pParse->pVdbe)) {
++    pik_flags |= OPFLAG_FORCE_VERIFY;
++  }
++  if(comdb2IgnoreFailure(pParse->pVdbe)) {
++    pik_flags |= OPFLAG_IGNORE_FAILURE;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   sqlite3VdbeAddOp3(v, OP_Insert, iDataCur, regRec, regNewData);
+   if( !pParse->nested ){
+     sqlite3VdbeAppendP4(v, pTab, P4_TABLE);
+@@ -1993,6 +2170,10 @@
+   u8 *aToOpen,     /* If not NULL: boolean for each table and index */
+   int *piDataCur,  /* Write the database source cursor number here */
+   int *piIdxCur    /* Write the first index cursor number here */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  ,int onError     /* OE_Replace, etc. */
++  ,Upsert *pUpsert /* ON CONFLICT clauses for upsert, or NULL */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ ){
+   int i;
+   int iDb;
+@@ -2020,6 +2201,9 @@
+     sqlite3TableLock(pParse, iDb, pTab->tnum, op==OP_OpenWrite, pTab->zName);
+   }
+   if( piIdxCur ) *piIdxCur = iBase;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
+     int iIdxCur = iBase++;
+     assert( pIdx->pSchema==pTab->pSchema );
+@@ -2034,6 +2218,11 @@
+       VdbeComment((v, "%s", pIdx->zName));
+     }
+   }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  }else{
++    i = 0;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   if( iBase>pParse->nTab ) pParse->nTab = iBase;
+   return i;
+ }

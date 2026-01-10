@@ -1,0 +1,221 @@
+--- sqlite-3.28.0/tool/mkkeywordhash.c	2026-01-09 16:11:01
++++ tool/mkkeywordhash.c	2025-11-06 15:48:32
+@@ -67,11 +67,15 @@
+ #else
+ #  define ATTACH     0x00000008
+ #endif
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#  define AUTOINCR   0x00000010
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_OMIT_AUTOINCREMENT
+ #  define AUTOINCR   0
+ #else
+ #  define AUTOINCR   0x00000010
+ #endif
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_OMIT_CAST
+ #  define CAST       0
+ #else
+@@ -92,11 +96,15 @@
+ #else
+ #  define EXPLAIN    0x00000100
+ #endif
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#  define FKEY       0x00000200
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_OMIT_FOREIGN_KEY
+ #  define FKEY       0
+ #else
+ #  define FKEY       0x00000200
+ #endif
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #ifdef SQLITE_OMIT_PRAGMA
+ #  define PRAGMA     0
+ #else
+@@ -164,7 +172,11 @@
+   { "AFTER",            "TK_AFTER",        TRIGGER                },
+   { "ALL",              "TK_ALL",          ALWAYS                 },
+   { "ALTER",            "TK_ALTER",        ALTER                  },
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  { "ANALYZE",          "TK_ANALYZE",      ALWAYS                 },
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "ANALYZE",          "TK_ANALYZE",      ANALYZE                },
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "AND",              "TK_AND",          ALWAYS                 },
+   { "AS",               "TK_AS",           ALWAYS                 },
+   { "ASC",              "TK_ASC",          ALWAYS                 },
+@@ -180,6 +192,7 @@
+   { "CHECK",            "TK_CHECK",        ALWAYS                 },
+   { "COLLATE",          "TK_COLLATE",      ALWAYS                 },
+   { "COLUMN",           "TK_COLUMNKW",     ALTER                  },
++  { "COLUMNS",          "TK_COLUMNS",      ALWAYS                 },
+   { "COMMIT",           "TK_COMMIT",       ALWAYS                 },
+   { "CONFLICT",         "TK_CONFLICT",     CONFLICT               },
+   { "CONSTRAINT",       "TK_CONSTRAINT",   ALWAYS                 },
+@@ -211,7 +224,11 @@
+   { "FAIL",             "TK_FAIL",         CONFLICT|TRIGGER       },
+   { "FILTER",           "TK_FILTER",       WINDOWFUNC             },
+   { "FOLLOWING",        "TK_FOLLOWING",    WINDOWFUNC             },
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  { "FOR",              "TK_FOR",          ALWAYS                 },
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "FOR",              "TK_FOR",          TRIGGER                },
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "FOREIGN",          "TK_FOREIGN",      FKEY                   },
+   { "FROM",             "TK_FROM",         ALWAYS                 },
+   { "FULL",             "TK_JOIN_KW",      ALWAYS                 },
+@@ -253,20 +270,32 @@
+   { "OTHERS",           "TK_OTHERS",       WINDOWFUNC             },
+   { "OUTER",            "TK_JOIN_KW",      ALWAYS                 },
+   { "OVER",             "TK_OVER",         WINDOWFUNC             },
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  { "PARTITION",        "TK_PARTITION",    ALWAYS                 },
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "PARTITION",        "TK_PARTITION",    WINDOWFUNC             },
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "PLAN",             "TK_PLAN",         EXPLAIN                },
+   { "PRAGMA",           "TK_PRAGMA",       PRAGMA                 },
+   { "PRECEDING",        "TK_PRECEDING",    WINDOWFUNC             },
+   { "PRIMARY",          "TK_PRIMARY",      ALWAYS                 },
+   { "QUERY",            "TK_QUERY",        EXPLAIN                },
+   { "RAISE",            "TK_RAISE",        TRIGGER                },
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  { "RANGE",            "TK_RANGE",        ALWAYS                 },
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "RANGE",            "TK_RANGE",        WINDOWFUNC             },
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "RECURSIVE",        "TK_RECURSIVE",    CTE                    },
+   { "REFERENCES",       "TK_REFERENCES",   FKEY                   },
+   { "REGEXP",           "TK_LIKE_KW",      ALWAYS                 },
+   { "REINDEX",          "TK_REINDEX",      REINDEX                },
+   { "RELEASE",          "TK_RELEASE",      ALWAYS                 },
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  { "RENAME",           "TK_RENAME",       ALWAYS                 },
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "RENAME",           "TK_RENAME",       ALTER                  },
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   { "REPLACE",          "TK_REPLACE",      CONFLICT               },
+   { "RESTRICT",         "TK_RESTRICT",     FKEY                   },
+   { "RIGHT",            "TK_JOIN_KW",      ALWAYS                 },
+@@ -298,6 +327,94 @@
+   { "WINDOW",           "TK_WINDOW",       WINDOWFUNC             },
+   { "WITH",             "TK_WITH",         CTE                    },
+   { "WITHOUT",          "TK_WITHOUT",      ALWAYS                 },
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  { "AGGREGATE",         "TK_AGGREGATE",         ALWAYS           },
++  { "ALIAS",             "TK_ALIAS",             ALWAYS           },
++  { "ANALYZESQLITE",     "TK_ANALYZESQLITE",     ALWAYS           },
++  { "ANALYZEEXPERT",     "TK_ANALYZEEXPERT",     ALWAYS           },
++  { "AUTHENTICATION",    "TK_AUTHENTICATION",    ALWAYS           },
++  { "BLOBFIELD",         "TK_BLOBFIELD",         ALWAYS           },
++  { "BULKIMPORT",        "TK_BULKIMPORT",        ALWAYS           },
++  { "COMMITSLEEP",       "TK_COMMITSLEEP",       ALWAYS           },
++  { "CONSUMER",          "TK_CONSUMER",          ALWAYS           },
++  { "CONVERTSLEEP",      "TK_CONVERTSLEEP",      ALWAYS           },
++  { "COUNTER",           "TK_COUNTER",           ALWAYS           },
++  { "COVERAGE",          "TK_COVERAGE",          ALWAYS           },
++  { "CRLE",              "TK_CRLE",              ALWAYS           },
++  { "DATA",              "TK_DATA",              ALWAYS           },
++  { "DATABLOB",          "TK_DATABLOB",          ALWAYS           },
++  { "DATACOPY",          "TK_DATACOPY",          ALWAYS           },
++  { "DBPAD",             "TK_DBPAD",             ALWAYS           },
++  { "DDL",               "TK_DDL",               ALWAYS           },
++  { "DETERMINISTIC",     "TK_DETERMINISTIC",     ALWAYS           },
++  { "DISABLE",           "TK_DISABLE",           ALWAYS           },
++  { "DISTRIBUTION",      "TK_DISTRIBUTION",      ALWAYS           },
++  { "DRYRUN",            "TK_DRYRUN",            ALWAYS           },
++  { "EXCLUSIVE_ANALYZE", "TK_EXCLUSIVE_ANALYZE", ALWAYS           },
++  { "EXEC",              "TK_EXEC",              ALWAYS           },
++  { "EXECUTE",           "TK_EXECUTE",           ALWAYS           },
++  { "ENABLE",            "TK_ENABLE",            ALWAYS           },
++  { "FORCE",             "TK_FORCE",             ALWAYS           },
++  { "FUNCTION",          "TK_FUNCTION",          ALWAYS           },
++  { "GENID48",           "TK_GENID48",           ALWAYS           },
++  { "GET",               "TK_GET",               ALWAYS           },
++  { "GRANT",             "TK_GRANT",             ALWAYS           },
++  { "INCLUDE",           "TK_INCLUDE",           ALWAYS           },
++  { "INCREMENT",         "TK_INCREMENT",         ALWAYS           },
++  { "IPU",               "TK_IPU",               ALWAYS           },
++  { "ISC",               "TK_ISC",               ALWAYS           },
++  { "KW",                "TK_KW",                ALWAYS           },
++  { "LUA",               "TK_LUA",               ALWAYS           },
++  { "LZ4",               "TK_LZ4",               ALWAYS           },
++  { "MANUAL",            "TK_MANUAL",            ALWAYS           },
++  { "MERGE",             "TK_MERGE",             ALWAYS           },
++  { "NEXTSEQUENCE",      "TK_CTIME_KW",          ALWAYS           },
++  { "NONE",              "TK_NONE",              ALWAYS           },
++  { "ODH",               "TK_ODH",               ALWAYS           },
++  { "OFF",               "TK_OFF",               ALWAYS           },
++  { "OP",                "TK_OP",                ALWAYS           },
++  { "OPTION",            "TK_OPTION",            ALWAYS           },
++  { "OPTIONS",           "TK_OPTIONS",           ALWAYS           },
++  { "PAGEORDER",         "TK_PAGEORDER",         ALWAYS           },
++  { "PARTITIONED",       "TK_PARTITIONED",       ALWAYS           },
++  { "PASSWORD",          "TK_PASSWORD",          ALWAYS           },
++  { "PAUSE",             "TK_PAUSE",             ALWAYS           },
++  { "PERIOD",            "TK_PERIOD",            ALWAYS           },
++  { "PENDING",           "TK_PENDING",           ALWAYS           },
++  { "PROCEDURE",         "TK_PROCEDURE",         ALWAYS           },
++  { "PUT",               "TK_PUT",               ALWAYS           },
++  { "READ",              "TK_READ",              ALWAYS           },
++  { "READONLY",          "TK_READONLY",          ALWAYS           },
++  { "REBUILD",           "TK_REBUILD",           ALWAYS           },
++  { "REC",               "TK_REC",               ALWAYS           },
++  { "RESERVED",          "TK_RESERVED",          ALWAYS           },
++  { "RESUME",            "TK_RESUME",            ALWAYS           },
++  { "RETENTION",         "TK_RETENTION",         ALWAYS           },
++  { "REVOKE",            "TK_REVOKE",            ALWAYS           },
++  { "RLE",               "TK_RLE",               ALWAYS           },
++  { "ROWLOCKS",          "TK_ROWLOCKS",          ALWAYS           },
++  { "SCALAR",            "TK_SCALAR",            ALWAYS           },
++  { "SCHEMACHANGE",      "TK_SCHEMACHANGE",      ALWAYS           },
++  { "SELECTV",           "TK_SELECTV",           ALWAYS           },
++  { "SEQUENCE",          "TK_SEQUENCE",          ALWAYS           },
++  { "SKIPSCAN",          "TK_SKIPSCAN",          ALWAYS           },
++  { "START",             "TK_START",             ALWAYS           },
++  { "SUMMARIZE",         "TK_SUMMARIZE",         ALWAYS           },
++  { "TESTDEFAULT",       "TK_TESTDEFAULT",       ALWAYS           },
++  { "TESTGENSHARD",      "TK_TESTGENSHARD",      ALWAYS           },
++  { "THREADS",           "TK_THREADS",           ALWAYS           },
++  { "THRESHOLD",         "TK_THRESHOLD",         ALWAYS           },
++  { "TIME",              "TK_TIME",              ALWAYS           },
++  { "TRUNCATE",          "TK_TRUNCATE",          ALWAYS           },
++  { "TRUNCOPLOG",        "TK_TRUNCOPLOG",        ALWAYS           },
++  { "TUNABLE",           "TK_TUNABLE",           ALWAYS           },
++  { "TYPE",              "TK_TYPE",              ALWAYS           },
++  { "USERSCHEMA",        "TK_USERSCHEMA",        ALWAYS           },
++  { "VERSION",           "TK_VERSION",           ALWAYS           },
++  { "WRITE",             "TK_WRITE",             ALWAYS           },
++  { "ZLIB",              "TK_ZLIB",              ALWAYS           },
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ };
+ 
+ /* Number of keywords */
+@@ -533,7 +650,7 @@
+   printf("};\n");
+ 
+   printf("/* aKWHash[i] is the hash value for the i-th keyword */\n");
+-  printf("static const unsigned char aKWHash[%d] = {\n", bestSize);
++  printf("static const unsigned short aKWHash[%d] = {\n", bestSize);
+   for(i=j=0; i<bestSize; i++){
+     if( j==0 ) printf("  ");
+     printf(" %3d,", aKWHash[i]);
+@@ -548,7 +665,7 @@
+   printf("/* aKWNext[] forms the hash collision chain.  If aKWHash[i]==0\n");
+   printf("** then the i-th keyword has no more hash collisions.  Otherwise,\n");
+   printf("** the next keyword with the same hash is aKWHash[i]-1. */\n");
+-  printf("static const unsigned char aKWNext[%d] = {\n", nKeyword);
++  printf("static const unsigned short aKWNext[%d] = {\n", nKeyword);
+   for(i=j=0; i<nKeyword; i++){
+     if( j==0 ) printf("  ");
+     printf(" %3d,", aKeywordTable[i].iNext);
+@@ -588,7 +705,7 @@
+   printf("%s};\n", j==0 ? "" : "\n");
+ 
+   printf("/* aKWCode[i] is the parser symbol code for the i-th keyword */\n");
+-  printf("static const unsigned char aKWCode[%d] = {\n", nKeyword);
++  printf("static const unsigned short aKWCode[%d] = {\n", nKeyword);
+   for(i=j=0; i<nKeyword; i++){
+     char *zToken = aKeywordTable[i].zTokenType;
+     if( j==0 ) printf("  ");

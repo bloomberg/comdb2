@@ -1,0 +1,152 @@
+--- sqlite-3.28.0/src/vdbe.h	2026-01-09 16:11:01
++++ src/vdbe.h	2025-09-24 15:21:58
+@@ -18,21 +18,50 @@
+ #ifndef SQLITE_VDBE_H
+ #define SQLITE_VDBE_H
+ #include <stdio.h>
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "fwd_types.h"
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** A single VDBE is an opaque structure named "Vdbe".  Only routines
+ ** in the source file sqliteVdbe.c are allowed to see the insides
+ ** of this structure.
+ */
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+ typedef struct Vdbe Vdbe;
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** The names of the following types declared in vdbeInt.h are required
+ ** for the VdbeOp definition.
+ */
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+ typedef struct sqlite3_value Mem;
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+ typedef struct SubProgram SubProgram;
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define DEFAULT_OPFUNC_BUFLEN 512
++typedef struct OpFunc OpFunc;
++
++typedef  int (*vdbeFunc)(OpFunc* arg); /* To refer to an external function*/
++typedef  int (*vdbeFuncArgFree)(OpFunc* arg);
++
++struct OpFunc {
++  vdbeFunc func;
++  vdbeFuncArgFree destructor;
++  int     int_arg;
++  void*   arg;
++  char*   buf;
++  char*   end;
++  char*   readNext;
++  char*   writeNext;
++  int     len;
++  int     rc;
++  char*   errorMsg;
++};
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** A single instruction of the virtual machine has an opcode
+ ** and as many as three operands.  The instruction is recorded
+@@ -59,6 +88,9 @@
+     KeyInfo *pKeyInfo;     /* Used when p4type is P4_KEYINFO */
+     int *ai;               /* Used when p4type is P4_INTARRAY */
+     SubProgram *pProgram;  /* Used when p4type is P4_SUBPROGRAM */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    OpFunc *comdb2func;    /* Used when p4type is P4_OPFUNC */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     Table *pTab;           /* Used when p4type is P4_TABLE */
+ #ifdef SQLITE_ENABLE_CURSOR_HINTS
+     Expr *pExpr;           /* Used when p4type is P4_EXPR */
+@@ -130,6 +162,10 @@
+ #define P4_FUNCCTX    (-16) /* P4 is a pointer to an sqlite3_context object */
+ #define P4_DYNBLOB    (-17) /* Pointer to memory from sqliteMalloc() */
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define P4_OPFUNC     (-22)  /* P4 is a Comdb2 custom function */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /* Error message codes for OP_Halt */
+ #define P5_ConstraintNotNull 1
+ #define P5_ConstraintUnique  2
+@@ -172,7 +208,11 @@
+ ** Additional non-public SQLITE_PREPARE_* flags
+ */
+ #define SQLITE_PREPARE_SAVESQL  0x80  /* Preserve SQL text */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#define SQLITE_PREPARE_MASK     0x3f  /* Mask of public flags */
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #define SQLITE_PREPARE_MASK     0x0f  /* Mask of public flags */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** Prototypes for the VDBE interface.  See comments on the implementation
+@@ -222,6 +262,10 @@
+ # define sqlite3ExplainBreakpoint(A,B) /*no-op*/
+ #endif
+ void sqlite3VdbeAddParseSchemaOp(Vdbe*,int,char*);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++void sqlite3VdbeAddTable(Vdbe*,Table*);
++void sqlite3VdbeTransferTables(Vdbe*,Vdbe*);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ void sqlite3VdbeChangeOpcode(Vdbe*, u32 addr, u8);
+ void sqlite3VdbeChangeP1(Vdbe*, u32 addr, int P1);
+ void sqlite3VdbeChangeP2(Vdbe*, u32 addr, int P2);
+@@ -250,6 +294,9 @@
+ void sqlite3VdbeResetStepResult(Vdbe*);
+ void sqlite3VdbeRewind(Vdbe*);
+ int sqlite3VdbeReset(Vdbe*);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++int sqlite3VdbeResetClock(Vdbe*);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ void sqlite3VdbeSetNumCols(Vdbe*,int);
+ int sqlite3VdbeSetColName(Vdbe*, int, int, const char *, void(*)(void*));
+ void sqlite3VdbeCountChanges(Vdbe*);
+@@ -258,7 +305,11 @@
+ void sqlite3VdbeSetSql(Vdbe*, const char *z, int n, u8);
+ #ifdef SQLITE_ENABLE_NORMALIZE
+ void sqlite3VdbeAddDblquoteStr(sqlite3*,Vdbe*,const char*);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*,int);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #endif
+ void sqlite3VdbeSwap(Vdbe*,Vdbe*);
+ VdbeOp *sqlite3VdbeTakeOpArray(Vdbe*, int*, int*);
+@@ -267,11 +318,23 @@
+ #ifndef SQLITE_OMIT_TRACE
+   char *sqlite3VdbeExpandSql(Vdbe*, const char*);
+ #endif
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++static inline
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ int sqlite3MemCompare(const Mem*, const Mem*, const CollSeq*);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++static inline
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ int sqlite3BlobCompare(const Mem*, const Mem*);
+ 
+ void sqlite3VdbeRecordUnpack(KeyInfo*,int,const void*,UnpackedRecord*);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++static inline
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ int sqlite3VdbeRecordCompare(int,const void*,UnpackedRecord*);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++static inline
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ int sqlite3VdbeRecordCompareWithSkip(int, const void *, UnpackedRecord *, int);
+ UnpackedRecord *sqlite3VdbeAllocUnpackedRecord(KeyInfo*);
+ 
+@@ -383,4 +446,8 @@
+ void sqlite3VdbePrintOp(FILE*, int, VdbeOp*);
+ #endif
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++void comdb2SetRecording(Vdbe *);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ #endif /* SQLITE_VDBE_H */

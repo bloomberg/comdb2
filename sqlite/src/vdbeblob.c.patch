@@ -1,0 +1,14 @@
+--- sqlite-3.28.0/src/vdbeblob.c	2026-01-09 16:11:01
++++ src/vdbeblob.c	2025-09-24 15:21:58
+@@ -78,7 +78,11 @@
+     u32 type = pC->nHdrParsed>p->iCol ? pC->aType[p->iCol] : 0;
+     testcase( pC->nHdrParsed==p->iCol );
+     testcase( pC->nHdrParsed==p->iCol+1 );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    if( sqlite3IsFixedLengthSerialType(type) ){
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     if( type<12 ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       zErr = sqlite3MPrintf(p->db, "cannot open value of type %s",
+           type==0?"null": type==7?"real": "integer"
+       );

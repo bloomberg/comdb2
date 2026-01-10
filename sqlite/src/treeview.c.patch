@@ -1,0 +1,33 @@
+--- sqlite-3.28.0/src/treeview.c	2026-01-09 16:11:01
++++ src/treeview.c	2025-09-24 15:21:58
+@@ -18,7 +18,10 @@
+ ** with SQLITE_DEBUG.
+ */
+ #include "sqliteInt.h"
+-#ifdef SQLITE_DEBUG
++#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "logmsg.h"
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** Add a new subitem to the tree.  The moreToFollow flag indicates that this
+@@ -70,8 +73,12 @@
+     sqlite3_str_append(&acc, "\n", 1);
+   }
+   sqlite3StrAccumFinish(&acc);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  logmsg(LOGMSG_USER, "%s", zBuf);
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   fprintf(stdout,"%s", zBuf);
+   fflush(stdout);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ }
+ 
+ /*
+@@ -724,4 +731,4 @@
+   sqlite3TreeViewPop(pView);
+ }
+ 
+-#endif /* SQLITE_DEBUG */
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */

@@ -1,0 +1,13 @@
+--- sqlite-3.28.0/tool/mkopcodeh.tcl	2026-01-09 16:11:01
++++ tool/mkopcodeh.tcl	2025-09-24 15:21:58
+@@ -207,8 +207,9 @@
+ for {set g 0} {$g<$nGroup} {incr g} {
+   set gLen [llength $groups($g)]
+   set ok 0; set start -1
++  set seek $cnt
+   while {!$ok} {
+-    set seek $cnt; incr seek
++    incr seek
+     while {[info exists used($seek)]} {incr seek}
+     set ok 1; set start $seek
+     for {set j 0} {$j<$gLen} {incr j} {
