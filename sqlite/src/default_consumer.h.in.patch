@@ -1,0 +1,4 @@
+--- /dev/null	2026-01-09 21:14:31
++++ src/default_consumer.h.in	2025-09-24 15:21:58
+@@ -0,0 +1 @@
++static const char default_consumer[] = "@default_consumer@";

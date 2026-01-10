@@ -1,0 +1,1378 @@
+--- sqlite-3.28.0/src/expr.c	2026-01-09 16:11:01
++++ src/expr.c	2025-11-06 15:48:32
+@@ -12,7 +12,17 @@
+ ** This file contains routines used for analyzing expressions and
+ ** for generating VDBE code that evaluates expressions in SQLite.
+ */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include <alloca.h>
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ #include "sqliteInt.h"
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "logmsg.h"
++
++
++extern int comdb2genidcontainstime(void);
++extern char* fdb_table_name(int iTable);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /* Forward declarations */
+ static void exprCodeBetween(Parse*,Expr*,int,void(*)(Parse*,Expr*,int,int),int);
+@@ -45,7 +55,9 @@
+ char sqlite3ExprAffinity(Expr *pExpr){
+   int op;
+   pExpr = sqlite3ExprSkipCollate(pExpr);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
+   if( pExpr->flags & EP_Generic ) return 0;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   op = pExpr->op;
+   if( op==TK_SELECT ){
+     assert( pExpr->flags&EP_xIsSelect );
+@@ -282,6 +294,10 @@
+     case SQLITE_AFF_TEXT:
+       return idx_affinity==SQLITE_AFF_TEXT;
+     default:
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if (aff < SQLITE_AFF_NUMERIC) return aff==idx_affinity;
++      else
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       return sqlite3IsNumericAffinity(idx_affinity);
+   }
+ }
+@@ -465,7 +481,9 @@
+   }else{
+     if( pVector->op==TK_VECTOR ) pVector = pVector->x.pList->a[iField].pExpr;
+     pRet = sqlite3ExprDup(pParse->db, pVector, 0);
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+     sqlite3RenameTokenRemap(pParse, pRet, pVector);
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+   return pRet;
+ }
+@@ -901,13 +919,13 @@
+ static int exprAlwaysTrue(Expr *p){
+   int v = 0;
+   if( ExprHasProperty(p, EP_FromJoin) ) return 0;
+-  if( !sqlite3ExprIsInteger(p, &v) ) return 0;
++  if( !sqlite3ExprIsInteger(p, &v, 0) ) return 0;
+   return v!=0;
+ }
+ static int exprAlwaysFalse(Expr *p){
+   int v = 0;
+   if( ExprHasProperty(p, EP_FromJoin) ) return 0;
+-  if( !sqlite3ExprIsInteger(p, &v) ) return 0;
++  if( !sqlite3ExprIsInteger(p, &v, 0) ) return 0;
+   return v==0;
+ }
+ 
+@@ -1348,10 +1366,17 @@
+ ** objects found there, assembling them onto the linked list at Select->pWin.
+ */
+ static int gatherSelectWindowsCallback(Walker *pWalker, Expr *pExpr){
+-  if( pExpr->op==TK_FUNCTION && pExpr->y.pWin!=0 ){
+-    assert( ExprHasProperty(pExpr, EP_WinFunc) );
+-    pExpr->y.pWin->pNextWin = pWalker->u.pSelect->pWin;
+-    pWalker->u.pSelect->pWin = pExpr->y.pWin;
++  if( pExpr->op==TK_FUNCTION && ExprHasProperty(pExpr, EP_WinFunc) ){
++    Select *pSelect = pWalker->u.pSelect;
++    Window *pWin = pExpr->y.pWin;
++    assert( pWin );
++    assert( pWin->ppThis==0 );
++    if( pSelect->pWin ){
++      pSelect->pWin->ppThis = &pWin->pNextWin;
++    }
++    pWin->pNextWin = pSelect->pWin;
++    pWin->ppThis = &pSelect->pWin;
++    pSelect->pWin = pWin;
+   }
+   return WRC_Continue;
+ }
+@@ -1517,6 +1542,9 @@
+   for(p=pDup; p; p=p->pPrior){
+     Select *pNew = sqlite3DbMallocRawNN(db, sizeof(*p) );
+     if( pNew==0 ) break;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    pNew->recording = p->recording;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     pNew->pEList = sqlite3ExprListDup(db, p->pEList, flags);
+     pNew->pSrc = sqlite3SrcListDup(db, p->pSrc, flags);
+     pNew->pWhere = sqlite3ExprDup(db, p->pWhere, flags);
+@@ -1670,9 +1698,11 @@
+   }
+ 
+ vector_append_error:
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   if( IN_RENAME_OBJECT ){
+     sqlite3RenameExprUnmap(pParse, pExpr);
+   }
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   sqlite3ExprDelete(db, pExpr);
+   sqlite3IdListDelete(db, pColumns);
+   return pList;
+@@ -1714,9 +1744,11 @@
+     assert( pItem->zName==0 );
+     pItem->zName = sqlite3DbStrNDup(pParse->db, pName->z, pName->n);
+     if( dequote ) sqlite3Dequote(pItem->zName);
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+     if( IN_RENAME_OBJECT ){
+       sqlite3RenameTokenMap(pParse, (void*)pItem->zName, pName);
+     }
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+ }
+ 
+@@ -2078,8 +2110,12 @@
+ ** to fit in a 32-bit integer, return 1 and put the value of the integer
+ ** in *pValue.  If the expression is not an integer or if it is too big
+ ** to fit in a signed 32-bit integer, return 0 and leave *pValue unchanged.
++**
++** If the pParse pointer is provided, then allow the expression p to be
++** a parameter (TK_VARIABLE) that is bound to an integer.
++** But if pParse is NULL, then p must be a pure integer literal.
+ */
+-int sqlite3ExprIsInteger(Expr *p, int *pValue){
++int sqlite3ExprIsInteger(Expr *p, int *pValue, Parse *pParse){
+   int rc = 0;
+   if( p==0 ) return 0;  /* Can only happen following on OOM */
+ 
+@@ -2094,18 +2130,38 @@
+   }
+   switch( p->op ){
+     case TK_UPLUS: {
+-      rc = sqlite3ExprIsInteger(p->pLeft, pValue);
++      rc = sqlite3ExprIsInteger(p->pLeft, pValue, 0);
+       break;
+     }
+     case TK_UMINUS: {
+       int v;
+-      if( sqlite3ExprIsInteger(p->pLeft, &v) ){
++      if( sqlite3ExprIsInteger(p->pLeft, &v, 0) ){
+         assert( v!=(-2147483647-1) );
+         *pValue = -v;
+         rc = 1;
+       }
+       break;
+     }
++    case TK_VARIABLE: {
++      sqlite3_value *pVal;
++      if( pParse==0 ) break;
++      if( NEVER(pParse->pVdbe==0) ) break;
++      if( (pParse->db->flags & SQLITE_EnableQPSG)!=0 ) break;
++      sqlite3VdbeSetVarmask(pParse->pVdbe, p->iColumn);
++      pVal = sqlite3VdbeGetBoundValue(pParse->pReprepare, p->iColumn,
++                                      SQLITE_AFF_BLOB);
++      if( pVal ){
++        if( sqlite3_value_type(pVal)==SQLITE_INTEGER ){
++          sqlite3_int64 vv = sqlite3_value_int64(pVal);
++          if( vv == (vv & 0x7fffffff) ){ /* non-negative numbers only */
++            *pValue = (int)vv;
++            rc = 1;
++          }
++        }
++        sqlite3ValueFree(pVal);
++      }
++      break;
++    }
+     default: break;
+   }
+   return rc;
+@@ -2194,8 +2250,31 @@
+   if( sqlite3StrICmp(z, "_ROWID_")==0 ) return 1;
+   if( sqlite3StrICmp(z, "ROWID")==0 ) return 1;
+   if( sqlite3StrICmp(z, "OID")==0 ) return 1;
++  return 0;
++}
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++int sqlite3IsComdb2Rowid(Table *pTab, const char *z){
++#ifndef SQLITE_OMIT_VIRTUALTABLE
++    if (IsVirtual(pTab))
++        return 0;
++#endif
++  return (sqlite3StrICmp(z, "COMDB2_ROWID") == 0);
++}
++
++int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *z){
++#ifndef SQLITE_OMIT_VIRTUALTABLE
++    if (IsVirtual(pTab))
++        return 0;
++#endif
++  if (comdb2genidcontainstime()){
++      return 
++          (sqlite3StrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
++           sqlite3StrICmp(z, "COMDB2_ROWTIMESTAMP") == 0);
++  }
+   return 0;
+ }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+ /*
+ ** pX is the RHS of an IN operator.  If pX is a SELECT statement 
+@@ -2506,6 +2585,9 @@
+                               "USING INDEX %s FOR IN-OPERATOR",pIdx->zName));
+             sqlite3VdbeAddOp3(v, OP_OpenRead, iTab, pIdx->tnum, iDb);
+             sqlite3VdbeSetP4KeyInfo(pParse, pIdx);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++            sqlite3VdbeAddTable(v, pTab);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+             VdbeComment((v, "%s", pIdx->zName));
+             assert( IN_INDEX_INDEX_DESC == IN_INDEX_INDEX_ASC+1 );
+             eType = IN_INDEX_INDEX_ASC + pIdx->aSortOrder[0];
+@@ -2737,6 +2819,10 @@
+   pKeyInfo = sqlite3KeyInfoAlloc(pParse->db, nVal, 1);
+ 
+   if( ExprHasProperty(pExpr, EP_xIsSelect) ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    ast_t *ast = ast_init(pParse, __func__);
++    if( ast ) ast_push(ast, AST_TYPE_IN, v, NULL);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     /* Case 1:     expr IN (SELECT ...)
+     **
+     ** Generate code to write the results of the select into the temporary
+@@ -2810,6 +2896,7 @@
+       */
+       if( addrOnce && !sqlite3ExprIsConstant(pE2) ){
+         sqlite3VdbeChangeToNoop(v, addrOnce);
++        ExprClearProperty(pExpr, EP_Subrtn);
+         addrOnce = 0;
+       }
+ 
+@@ -2907,6 +2994,7 @@
+   ExplainQueryPlan((pParse, 1, "%sSCALAR SUBQUERY %d",
+         addrOnce?"":"CORRELATED ", pSel->selId));
+   nReg = pExpr->op==TK_SELECT ? pSel->pEList->nExpr : 1;
++
+   sqlite3SelectDestInit(&dest, 0, pParse->nMem+1);
+   pParse->nMem += nReg;
+   if( pExpr->op==TK_SELECT ){
+@@ -3324,7 +3412,21 @@
+     return;
+   }
+   if( iCol<0 || iCol==pTab->iPKey ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    /* add the OP_Rowid with P2=1 to get the proper backend code to
++       be run by the vm. */
++    if( iCol == -1 ){
++      sqlite3VdbeAddOp2(v, OP_Rowid, iTabCur, regOut);
++    }else if( iCol == -2 ){
++      sqlite3VdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 1);
++    }else if( iCol == -3 ){
++      sqlite3VdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 2);
++    }else{
++      sqlite3VdbeAddOp2(v, OP_Rowid, iTabCur, regOut);
++    }
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     sqlite3VdbeAddOp2(v, OP_Rowid, iTabCur, regOut);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }else{
+     int op = IsVirtual(pTab) ? OP_VColumn : OP_Column;
+     int x = iCol;
+@@ -3334,7 +3436,12 @@
+     sqlite3VdbeAddOp3(v, op, iTabCur, x, regOut);
+   }
+   if( iCol>=0 ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    /* register -1 will make it ignore affinity */
++    sqlite3ColumnDefault(v, pTab, iCol, -1); 
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     sqlite3ColumnDefault(v, pTab, iCol, regOut);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+ }
+ 
+@@ -3418,7 +3525,54 @@
+   return iResult;
+ }
+ 
++/*
++** Check to see if pExpr is one of the indexed expressions on pParse->pIdxExpr.
++** If it is, then resolve the expression by reading from the index and
++** return the register into which the value has been read.  If pExpr is
++** not an indexed expression, then return negative.
++*/
++static SQLITE_NOINLINE int sqlite3IndexedExprLookup(
++  Parse *pParse,   /* The parsing context */
++  Expr *pExpr,     /* The expression to potentially bypass */
++  int target       /* Where to store the result of the expression */
++){
++  IndexedExpr *p;
++  Vdbe *v;
++  for(p=pParse->pIdxExpr; p; p=p->pIENext){
++    int iDataCur = p->iDataCur;
++    if( iDataCur<0 ) continue;
++    if( pParse->iSelfTab ){
++      if( p->iDataCur!=pParse->iSelfTab-1 ) continue;
++      iDataCur = -1;
++    }
++    if( sqlite3ExprCompare(0, pExpr, p->pExpr, iDataCur)!=0 ) continue;
++    v = pParse->pVdbe;
++    assert( v!=0 );
++    if( p->bMaybeNullRow ){
++      /* If the index is on a NULL row due to an outer join, then we
++      ** cannot extract the value from the index.  The value must be
++      ** computed using the original expression. */
++      int addr = sqlite3VdbeCurrentAddr(v);
++      sqlite3VdbeAddOp3(v, OP_IfNullRow, p->iIdxCur, addr+3, target);
++      VdbeCoverage(v);
++      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);
++      VdbeComment((v, "%s expr-column %d", p->zIdxName, p->iIdxCol));
++      sqlite3VdbeGoto(v, 0);
++      p = pParse->pIdxExpr;
++      pParse->pIdxExpr = 0;
++      sqlite3ExprCode(pParse, pExpr, target);
++      pParse->pIdxExpr = p;
++      sqlite3VdbeJumpHere(v, addr+2);
++    }else{
++      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);
++      VdbeComment((v, "%s expr-column %d", p->zIdxName, p->iIdxCol));
++    }
++    return target;
++  }
++  return -1;  /* Not found */
++}
+ 
++
+ /*
+ ** Generate code into the current Vdbe to evaluate the given
+ ** expression.  Attempt to store the results in register "target".
+@@ -3449,6 +3603,11 @@
+ expr_code_doover:
+   if( pExpr==0 ){
+     op = TK_NULL;
++  }else if( pParse->pIdxExpr!=0 
++   && !ExprHasProperty(pExpr, EP_Leaf)
++   && (r1 = sqlite3IndexedExprLookup(pParse, pExpr, target))>=0
++  ){
++    return r1;
+   }else{
+     op = pExpr->op;
+   }
+@@ -3478,9 +3637,30 @@
+         int iReg = sqlite3ExprCodeTarget(pParse, pExpr->pLeft,target);
+         int aff = sqlite3TableColumnAffinity(pExpr->y.pTab, pExpr->iColumn);
+         if( aff!=SQLITE_AFF_BLOB ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++          static const char zAff[] = "B\000C\000D\000E"
++                                      "\000F\000G\000H"
++                                      "\000I\000J\000K"
++                                      "\000L\000M\000N";
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+           static const char zAff[] = "B\000C\000D\000E";
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+           assert( SQLITE_AFF_BLOB=='A' );
+           assert( SQLITE_AFF_TEXT=='B' );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++          assert( SQLITE_AFF_DATETIME=='C' );
++          assert( SQLITE_AFF_INTV_YE=='D' );
++          assert( SQLITE_AFF_INTV_MO=='E' );
++          assert( SQLITE_AFF_INTV_DY=='F' );
++          assert( SQLITE_AFF_INTV_HO=='G' );
++          assert( SQLITE_AFF_INTV_MI=='H' );
++          assert( SQLITE_AFF_INTV_SE=='I' );
++          assert( SQLITE_AFF_NUMERIC=='J' );
++          assert( SQLITE_AFF_INTEGER=='K' );
++          assert( SQLITE_AFF_REAL=='L' );
++          assert( SQLITE_AFF_DECIMAL=='M' );
++          assert( SQLITE_AFF_SMALL=='N' );
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+           if( iReg!=target ){
+             sqlite3VdbeAddOp2(v, OP_SCopy, iReg, target);
+             iReg = target;
+@@ -3860,6 +4040,9 @@
+       }else
+ #endif
+       {
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++        stmt_set_has_scalar_func((sqlite3_stmt *)v, 1);
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         sqlite3VdbeAddOp4(v, pParse->iSelfTab ? OP_PureFunc0 : OP_Function0,
+                           constMask, r1, target, (char*)pDef, P4_FUNCDEF);
+         sqlite3VdbeChangeP5(v, (u8)nFarg);
+@@ -4727,6 +4910,10 @@
+   sqlite3ExprDelete(db, pCopy);
+ }
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include <memcompare.c>
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** Expression pVar is guaranteed to be an SQL variable. pExpr may be any
+ ** type of expression.
+@@ -4814,7 +5001,13 @@
+     if( pB->op==TK_COLLATE && sqlite3ExprCompare(pParse, pA,pB->pLeft,iTab)<2 ){
+       return 1;
+     }
+-    return 2;
++    if( pA->op==TK_AGG_COLUMN && pB->op==TK_COLUMN 
++     && pB->iTable<0 && pA->iTable==iTab
++    ){
++      /* fall through */
++    }else{
++      return 2;
++    }
+   }
+   if( pA->op!=TK_COLUMN && pA->op!=TK_AGG_COLUMN && pA->u.zToken ){
+     if( pA->op==TK_FUNCTION ){
+@@ -5430,7 +5623,961 @@
+   pParse->nTempReg = 0;
+   pParse->nRangeReg = 0;
+ }
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include "vdbeInt.h"
+ 
++char *print_mem(Mem *m){
++  int flg = m->flags & MEM_TypeMask;
++  char *hex = "0123456789ABCDEF";
++
++  switch (flg){
++    case MEM_Null:
++      return sqlite3_mprintf("null");
++    case MEM_Str: 
++      return sqlite3_mprintf("'%.*q'", m->n, m->z);
++    case MEM_Int:
++      return  sqlite3_mprintf("%lld", m->u.i);
++    case MEM_Real:
++      return sqlite3_mprintf("%f", m->u.r);
++    case MEM_Interval: {
++      switch ( m->du.tv.type ){
++        case INTV_YM_TYPE: {
++          return sqlite3_mprintf("'%s%u-%2.2u'",
++            (m->du.tv.sign==-1)?"- ":"",
++            m->du.tv.u.ym.years, m->du.tv.u.ym.months);
++        }
++        case INTV_DS_TYPE: {
++          return sqlite3_mprintf("'%s%u %2.2u:%2.2u:%2.2u.%3.3u'",
++            (m->du.tv.sign==-1)?"- ":"",
++            m->du.tv.u.ds.days,
++            m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
++            m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
++        }
++        case INTV_DSUS_TYPE: {
++          return sqlite3_mprintf("'%s%u %2.2u:%2.2u:%2.2u.%6.6u' ",
++            (m->du.tv.sign==-1)?"- ":"",
++            m->du.tv.u.ds.days,
++            m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
++            m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
++        }
++        case INTV_DECIMAL_TYPE: {
++          char tmp[128];
++          if( sqlite3DecimalToString( &m->du.tv.u.dec, tmp, sizeof(tmp)) ){
++            logmsg(LOGMSG_ERROR, "Error converting decimal to string");
++            return sqlite3_mprintf("???");
++          }
++          return sqlite3_mprintf("'%.*q'", strlen(tmp), tmp);
++        }
++        default: {
++          logmsg(LOGMSG_ERROR, "%s unknown interval type, %d\n", __func__, m->du.tv.type);
++          return sqlite3_mprintf("???");
++        }
++      }
++    }
++    case MEM_Blob: {
++      char * key = alloca(2*m->n+1);
++      int  i;
++
++      for(i=0;i<m->n;i++){
++        key[2*i] = hex[((unsigned char)m->z[i])/16];
++        key[2*i+1] = hex[((unsigned char)m->z[i])%16];
++      }
++      key[2*m->n] = '\0';
++
++      return sqlite3_mprintf("x'%q'", key);
++    }
++    case MEM_Datetime: {
++      char tmp[256];
++      int ltmp;
++      if( dttz_to_str(&m->du.dt, tmp, sizeof(tmp), &ltmp, "UTC") ){
++        return sqlite3_mprintf("???");
++      }
++
++      return sqlite3_mprintf("'%q'", tmp);
++    }
++  }
++  /** TODO: should I return NULL here? */
++  return sqlite3_mprintf("???");
++}
++
++char * binary_op(int op){
++  switch( op ){
++    case TK_SEMI:
++    case TK_EXPLAIN:
++    case TK_QUERY:
++    case TK_PLAN:
++    case TK_BEGIN:
++    case TK_TRANSACTION:
++    case TK_DEFERRED:
++    case TK_IMMEDIATE:
++    case TK_EXCLUSIVE:
++    case TK_COMMIT:
++    case TK_END:
++    case TK_ROLLBACK:
++    case TK_SAVEPOINT:
++    case TK_RELEASE:
++    case TK_TO:
++    case TK_TABLE:
++    case TK_CREATE:
++    case TK_IF:
++    case TK_NOT:
++    case TK_EXISTS:
++    case TK_TEMP:
++    case TK_LP:
++    case TK_RP:
++    case TK_AS:
++    case TK_COMMA:
++    case TK_ID:
++    case TK_INDEXED:
++    case TK_ABORT:
++    case TK_ACTION:
++    case TK_AFTER:
++    case TK_ANALYZE:
++    case TK_ASC:
++    case TK_ATTACH:
++    case TK_BEFORE:
++    case TK_BY:
++    case TK_CASCADE:
++    case TK_CAST:
++    case TK_COLUMNKW:
++    case TK_CONFLICT:
++    case TK_DATABASE:
++    case TK_DESC:
++    case TK_DETACH:
++    case TK_EACH:
++    case TK_FAIL:
++    case TK_FOR:
++    case TK_IGNORE:
++    case TK_INITIALLY:
++    case TK_INSTEAD:
++    case TK_LIKE_KW:
++    case TK_MATCH:
++    case TK_NO:
++    case TK_KEY:
++    case TK_OF:
++    case TK_OFFSET:
++    case TK_PRAGMA:
++    case TK_RAISE:
++    case TK_REPLACE:
++    case TK_RESTRICT:
++    case TK_ROW:
++    case TK_TRIGGER:
++    case TK_VACUUM:
++    case TK_VIEW:
++    case TK_VIRTUAL:
++    case TK_REINDEX:
++    case TK_RENAME:
++    case TK_CTIME_KW:
++    case TK_ANY: {
++      break;
++    }
++    case TK_OR :
++      return "OR";
++    case TK_AND :
++      return "AND";
++    case TK_IS :
++      return "IS";
++    case TK_BETWEEN:
++    case TK_IN:
++    case TK_ISNULL:
++    case TK_NOTNULL: {
++      break;
++    }
++    case TK_NE :
++      return "!=";
++    case TK_EQ:
++      return "=";
++    case TK_GT :
++      return ">";
++    case TK_LE :
++      return "<=";
++    case TK_LT :
++      return "<";
++    case TK_GE :
++      return ">=";
++    case TK_ESCAPE: break;
++    case TK_BITAND :
++      return "&";
++    case TK_BITOR :
++      return "|";
++    case TK_LSHIFT:
++      return "<<";
++    case TK_RSHIFT:
++      return ">>";
++    case TK_PLUS :
++      return "+";
++    case TK_MINUS :
++      return "-";
++    case TK_STAR :
++      return "*";
++    case TK_SLASH :
++      return "/";
++    case TK_REM :
++      return "%";
++    case TK_CONCAT:
++      return "||";
++    case TK_COLLATE:
++    case TK_BITNOT:
++    case TK_STRING:
++    case TK_JOIN_KW:
++    case TK_DEFAULT:
++    case TK_NULL:
++    case TK_PRIMARY:
++    case TK_UNIQUE:
++    case TK_REFERENCES:
++    case TK_ON:
++    case TK_INSERT:
++    case TK_DELETE:
++    case TK_UPDATE:
++    case TK_SET:
++    case TK_DEFERRABLE:
++    case TK_FOREIGN:
++    case TK_DROP:
++    case TK_UNION:
++    case TK_ALL:
++    case TK_EXCEPT:
++    case TK_INTERSECT:
++    case TK_SELECT:
++    case TK_DISTINCT:
++    case TK_DOT:
++    case TK_FROM:
++    case TK_JOIN:
++    case TK_USING:
++    case TK_ORDER:
++    case TK_GROUP:
++    case TK_HAVING:
++    case TK_LIMIT:
++    case TK_WHERE:
++    case TK_INTO:
++    case TK_VALUES:
++    case TK_INTEGER:
++    case TK_FLOAT:
++    case TK_BLOB:
++    case TK_REGISTER:
++    case TK_VARIABLE:
++    case TK_CASE:
++    case TK_WHEN:
++    case TK_THEN:
++    case TK_ELSE:
++    case TK_INDEX:
++    case TK_TO_TEXT:
++    case TK_TO_DATETIME:
++    case TK_TO_INTERVAL_YE:
++    case TK_TO_INTERVAL_MO:
++    case TK_TO_INTERVAL_DY:
++    case TK_TO_INTERVAL_HO:
++    case TK_TO_INTERVAL_MI:
++    case TK_TO_INTERVAL_SE:
++    case TK_TO_BLOB:
++    case TK_TO_NUMERIC:
++    case TK_TO_INT:
++    case TK_TO_REAL:
++    case TK_TO_DECIMAL:
++    case TK_ISNOT:
++    case TK_ILLEGAL:
++    case TK_SPACE:
++    case TK_FUNCTION:
++    case TK_COLUMN:
++    case TK_AGG_FUNCTION:
++    case TK_AGG_COLUMN:
++    case TK_UMINUS:
++    case TK_UPLUS: {
++      break;
++    }
++  }
++
++  return "???????";
++}
++
++#include "comdb2.h"
++#include "dohsql.h"
++
++static char* sqlite3ExprDescribe_inner(
++  Vdbe *v,
++  const Expr *pExpr,
++  int atRuntime,
++  struct params_info **pParamsOut,
++  SrcList *srcs 
++/*  int forJoins*/
++){
++  int op = pExpr->op;
++  switch( op ){
++    case TK_SEMI:
++    case TK_EXPLAIN:
++    case TK_QUERY:
++    case TK_PLAN:
++    case TK_BEGIN:
++    case TK_TRANSACTION:
++    case TK_DEFERRED:
++    case TK_IMMEDIATE:
++    case TK_EXCLUSIVE:
++    case TK_COMMIT:
++    case TK_END:
++    case TK_ROLLBACK:
++    case TK_SAVEPOINT:
++    case TK_RELEASE:
++    case TK_TO:
++    case TK_TABLE:
++    case TK_CREATE:
++    case TK_IF: {
++      break;
++    }
++    case TK_NOT: {
++      char *expr = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if ( !expr ){
++        return NULL;
++      }
++
++      char *ret = sqlite3_mprintf("NOT %s", expr);
++
++      sqlite3_free(expr);
++
++      return ret;
++    }
++    case TK_EXISTS:
++    case TK_TEMP:
++    case TK_LP:
++    case TK_RP:
++    case TK_AS:
++    case TK_COMMA:
++        break;
++    case TK_ID:
++        return sqlite3_mprintf("\"%w\"", pExpr->u.zToken);
++    case TK_INDEXED:
++    case TK_ABORT:
++    case TK_ACTION:
++    case TK_AFTER:
++    case TK_ANALYZE:
++    case TK_ASC:
++    case TK_ATTACH:
++    case TK_BEFORE:
++    case TK_BY:
++    case TK_CASCADE: {
++      break;
++    }
++    case TK_CAST: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if (!left) return NULL;
++
++      char *ret = sqlite3_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
++        
++      sqlite3_free(left);
++
++      return ret;
++    }
++    case TK_COLUMNKW:
++    case TK_CONFLICT:
++    case TK_DATABASE:
++    case TK_DESC:
++    case TK_DETACH:
++    case TK_EACH:
++    case TK_FAIL:
++    case TK_FOR:
++    case TK_IGNORE:
++    case TK_INITIALLY:
++    case TK_INSTEAD:
++    case TK_LIKE_KW:
++    case TK_MATCH:
++    case TK_NO:
++    case TK_KEY:
++    case TK_OF:
++    case TK_OFFSET:
++    case TK_PRAGMA:
++    case TK_RAISE:
++    case TK_REPLACE:
++    case TK_RESTRICT:
++    case TK_ROW:
++    case TK_TRIGGER:
++    case TK_VACUUM:
++    case TK_VIEW:
++    case TK_VIRTUAL:
++    case TK_REINDEX:
++    case TK_RENAME:
++    case TK_CTIME_KW:
++    case TK_ANY: {
++      break;
++    }
++    case TK_AND:
++    case TK_OR:
++    case TK_IS: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if( !left ){
++        return NULL;
++      }
++      char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
++              pParamsOut, srcs);
++      if( !right ){
++        sqlite3_free(left);
++        return NULL;
++      }
++
++      char *ret = sqlite3_mprintf("( %s %s %s )",
++                        left, binary_op(pExpr->op), right);
++      sqlite3_free(left);
++      sqlite3_free(right);
++
++      return ret;
++    }
++    case TK_BETWEEN: {
++        if (pExpr->x.pList->nExpr != 2) {
++            return NULL;
++        }
++        char *col = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++                pParamsOut, srcs);
++        if (!col) {
++            return NULL;
++        }
++        char *left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
++                atRuntime, pParamsOut, srcs);
++        if (!left) {
++            sqlite3DbFree(v->db, col);
++            return NULL;
++        }
++        char *right = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[1].pExpr,
++                atRuntime, pParamsOut, srcs);
++        if (!right) {
++            sqlite3DbFree(v->db, left);
++            sqlite3DbFree(v->db, col);
++            return NULL;
++        }
++        char *ret = sqlite3_mprintf("((%s) between (%s) and (%s))",
++            col, left, right);
++    
++        sqlite3DbFree(v->db, right);
++        sqlite3DbFree(v->db, left);
++        sqlite3DbFree(v->db, col);
++
++        return ret;
++    }
++    case TK_IN: {
++      int  i;
++      char *left, *ret = NULL;
++
++      if(!(pExpr->flags & EP_Subquery)) {
++        if( pExpr->x.pList->nExpr == 0 ){
++          break;
++        }
++
++        left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++                pParamsOut, srcs);
++        if( !left ){
++          return NULL;
++        }
++
++        StrAccum acc;
++        char zBuf[512];
++        sqlite3StrAccumInit(&acc, 0, zBuf, sizeof(zBuf), SQLITE_MAX_LENGTH);
++
++        sqlite3_str_appendall(&acc, " ");
++        sqlite3_str_appendall(&acc, left);
++        sqlite3_str_appendall(&acc, " IN ");
++        sqlite3_free(left);
++
++        for(i =0; i< pExpr->x.pList->nExpr; i++){
++          left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
++                  atRuntime, pParamsOut, srcs);
++          if( !left ){
++            sqlite3_free(ret);
++            return NULL;
++          }
++          sqlite3_str_appendall(&acc, (i)?", ":"( ");
++          sqlite3_str_appendall(&acc, left);
++          sqlite3_str_appendall(&acc, (i==pExpr->x.pList->nExpr-1)?" )":"");
++          sqlite3_free(left);
++        }
++        ret = sqlite3StrAccumFinish(&acc);
++      }
++
++      return ret;
++    }
++    case TK_ISNULL: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if( !left ){
++        return NULL;
++      }
++      char *ret = sqlite3_mprintf("( %s IS NULL )", left);
++
++      sqlite3_free(left);
++
++      return ret;
++    }
++    case TK_NOTNULL: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if( !left ){
++        return NULL;
++      }
++      char *ret = sqlite3_mprintf("( %s NOT NULL )", left);
++
++      sqlite3_free(left);
++
++      return ret;
++    }
++    case TK_NE :
++    case TK_EQ:
++    case TK_GT :
++    case TK_LE :
++    case TK_LT :
++    case TK_GE: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if( !left ){
++        return NULL;
++      }
++      char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
++              pParamsOut, srcs);
++      if( !right ){
++        sqlite3_free(left);
++        return NULL;
++      }
++      char *ret = sqlite3_mprintf("( %s %s %s )", left,
++       binary_op(pExpr->op), right);
++
++      sqlite3_free(left);
++      sqlite3_free(right);
++
++      return ret;
++    }
++    case TK_ESCAPE:{
++      break;
++    }
++    case TK_BITAND:
++    case TK_BITOR: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if( !left ){
++        return NULL;
++      }
++      char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
++              pParamsOut, srcs);
++      if( !right ){
++        sqlite3_free(left);
++        return NULL;
++      }
++
++      char *ret = sqlite3_mprintf("( %s %s %s )", left, binary_op(pExpr->op),
++       right);
++
++      sqlite3_free(left);
++      sqlite3_free(right);
++
++      return ret;
++    }
++    case TK_LSHIFT:
++    case TK_RSHIFT:
++    case TK_PLUS :
++    case TK_MINUS :
++    case TK_STAR :
++    case TK_SLASH :
++    case TK_REM:
++    case TK_CONCAT: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if( !left ){
++        return NULL;
++      }
++      char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
++              pParamsOut, srcs);
++      if( !right ){
++        sqlite3_free(left);
++        return NULL;
++      }
++      char *ret = sqlite3_mprintf("( %s %s %s )", left, binary_op(pExpr->op),
++       right);
++
++      sqlite3_free(left);
++      sqlite3_free(right);
++
++      return ret;
++    }
++    case TK_COLLATE: {
++      break;
++    }
++    case TK_BITNOT: {
++      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++              pParamsOut, srcs);
++      if (!left)
++        return NULL;
++      char *ret = sqlite3_mprintf("( ~ %s )", left);
++
++      sqlite3_free(left);
++
++      return ret;
++    }
++    case TK_STRING: {
++      return sqlite3_mprintf("'%q'", pExpr->u.zToken);
++    }
++    case TK_JOIN_KW:
++    case TK_DEFAULT: {
++      break;
++    }
++    case TK_NULL : {
++      return sqlite3_mprintf("NULL");
++    }
++    case TK_SELECT: {
++      return NULL; /* ignore subqueries */
++    }
++    case TK_PRIMARY:
++    case TK_UNIQUE:
++    case TK_REFERENCES:
++    case TK_ON:
++    case TK_INSERT:
++    case TK_DELETE:
++    case TK_UPDATE:
++    case TK_SET:
++    case TK_DEFERRABLE:
++    case TK_FOREIGN:
++    case TK_DROP:
++    case TK_UNION:
++    case TK_ALL:
++    case TK_EXCEPT:
++    case TK_INTERSECT:
++    case TK_DISTINCT:
++    case TK_DOT:
++    case TK_FROM:
++    case TK_JOIN:
++    case TK_USING:
++    case TK_ORDER: {
++      break;
++    }
++    case TK_GROUP: {
++#if 0
++      char *expr = sqlite3ExprDescribe(v, pExpr->x.pEList);
++
++      return sqlite3_mprintf(" GROUP BY %s", expr);
++#endif
++
++      break;
++    }
++    case TK_HAVING:
++    case TK_LIMIT:
++    case TK_WHERE:
++    case TK_INTO:
++    case TK_VALUES: {
++      break;
++    }
++    case TK_INTEGER: {
++      if ( pExpr->flags & EP_IntValue ){
++        /* get pExpr->u.iValue */
++        return sqlite3_mprintf("%d", pExpr->u.iValue);
++      }else{
++        /* get pExpr->u.zToken */
++        return sqlite3_mprintf("%s", pExpr->u.zToken);
++      }
++      break;
++    }
++    case TK_FLOAT: {
++      return sqlite3_mprintf("%s", pExpr->u.zToken);
++    }
++    case TK_BLOB: {
++      return sqlite3_mprintf("%s", pExpr->u.zToken);
++    }
++    case TK_REGISTER: {
++      if( atRuntime ){
++        /* look into register pExpr->iTable */
++        Mem *m;
++        m = &v->aMem[pExpr->iTable];
++
++        return print_mem(m);
++      }else{
++        /* probably an explain request */
++        return sqlite3_mprintf("R%d", pExpr->iTable);
++      }
++    }
++    case TK_VARIABLE: {
++      int iBindVar = pExpr->iColumn;
++      if (atRuntime) {
++          Mem *m = &v->aVar[iBindVar-1];
++          return print_mem(m);
++      }else{
++        if (pParamsOut) {
++            *pParamsOut = dohsql_params_append(pParamsOut, pExpr->u.zToken,
++                    pExpr->iColumn);
++            if (!*pParamsOut) {
++                /* something wrong with parameters, revert to 
++                single-threaded execution */
++                return NULL;
++            }
++
++            if (pExpr->u.zToken[0] == '?') {
++                /* Wildcard of the form "?".  Convert to ?nnn and save */
++                return sqlite3_mprintf("?%d", (*pParamsOut)->nparams/*pExpr->iColumn*/);
++            } 
++            /* fall-through, need to save @ parameters as such */
++        }
++        return sqlite3_mprintf("%s", pExpr->u.zToken);
++      }
++    }
++    case TK_CASE: {
++      char *ret = NULL;
++      char *tmp = NULL;
++      int i = 0;
++      int nelem = pExpr->x.pList->nExpr;
++      if (pExpr->pLeft) {
++        tmp = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++                pParamsOut, srcs);
++        if (!tmp)
++            return NULL;
++        ret = sqlite3_mprintf("case %s ", tmp);
++        sqlite3_free(tmp);
++      } else {
++        ret = sqlite3_mprintf("case ");
++      }
++      if (!ret) 
++        return NULL;
++
++      do { 
++        char *c = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr,
++                atRuntime, pParamsOut, srcs);
++        if (!c) {
++          sqlite3_free(ret);
++          return NULL;
++        }
++        if (i == nelem) {
++            assert(i>1);
++            tmp = sqlite3_mprintf("%s else %s", ret, c);
++            sqlite3_free(c);
++            sqlite3_free(ret);
++            ret = tmp;
++            break;
++        } else {
++          char *d = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr,
++                  atRuntime, pParamsOut, srcs);
++          if (!d) {
++            sqlite3_free(c);
++            sqlite3_free(ret);
++            return NULL;
++          }
++          tmp = sqlite3_mprintf("%s when %s then %s", ret, c, d);
++          sqlite3_free(ret);
++          sqlite3_free(c);
++          sqlite3_free(d);
++          if(!tmp)
++            return NULL;
++
++          ret = tmp;
++          if (i == nelem) break;
++        }
++      } while(1);
++
++      return ret;
++    }
++    case TK_WHEN:
++    case TK_THEN:
++    case TK_ELSE:
++    case TK_INDEX:
++    case TK_TO_TEXT:
++    case TK_TO_DATETIME:
++    case TK_TO_INTERVAL_YE:
++    case TK_TO_INTERVAL_MO:
++    case TK_TO_INTERVAL_DY:
++    case TK_TO_INTERVAL_HO:
++    case TK_TO_INTERVAL_MI:
++    case TK_TO_INTERVAL_SE:
++    case TK_TO_BLOB:
++    case TK_TO_NUMERIC:
++    case TK_TO_INT:
++    case TK_TO_REAL:
++    case TK_TO_DECIMAL:
++    case TK_ISNOT:
++    case TK_ILLEGAL:
++    case TK_SPACE: {
++      break;
++    }
++    case TK_FUNCTION: {
++      char *ret, *ret2;
++      int i;
++      /* dh: not all the functions can be blindely passed remotely! */
++      if(strncasecmp(pExpr->u.zToken, "now", 3) == 0)
++      { 
++        if(atRuntime)
++        {
++          dttz_t dt;
++          int prec;
++        
++          prec = v->dtprec;
++          if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
++            if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
++              DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
++                                prec, 0, goto default_prec);
++            } else if( pExpr->x.pList->a[0].pExpr->op == TK_INTEGER
++                    && (pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_MSEC 
++                       ||
++                       pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_USEC)) {
++              prec = pExpr->x.pList->a[0].pExpr->u.iValue;
++            }
++          }
++default_prec:
++          timespec_to_dttz(&v->tspec, &dt, prec);
++
++          return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
++                                 dt.dttz_sec, prec, prec, dt.dttz_frac);
++        }
++        else
++        {   
++            if(pExpr->x.pList) 
++            {
++                assert(pExpr->x.pList->nExpr == 1);
++                return sqlite3_mprintf("now('%q')", 
++                                       pExpr->x.pList->a[0].pExpr->u.zToken);
++            }
++            else
++                return sqlite3_mprintf("now()");
++        }
++      }
++      /* default, pass the function remotely */
++      if( !pExpr->x.pList ) {
++        /* no arguments */
++        return sqlite3_mprintf(" %s() ", pExpr->u.zToken);
++      } else {
++        if( pExpr->x.pList->nExpr <= 0 )
++          return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
++        char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
++                                              atRuntime, pParamsOut,
++                                              srcs);
++        if( !arg )
++          return NULL;
++        ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
++        sqlite3_free(arg);
++        arg = NULL;
++        for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
++          arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
++                                        atRuntime, pParamsOut,
++                                        srcs);
++          if( !arg ){
++            sqlite3_free(ret);
++            return NULL;
++          }
++          ret2 = sqlite3_mprintf("%s, %s", ret, arg);
++          sqlite3_free(arg);
++          sqlite3_free(ret);
++          ret = ret2;
++          arg = NULL;
++          ret2 = NULL;
++        }
++        ret2 = sqlite3_mprintf("%s ) ", ret);
++        sqlite3_free(ret);
++        ret = ret2;
++        return ret;
++      }
++    }
++    case TK_COLUMN: {
++      char *name;
++      if (!pExpr->y.pTab) /* windows function? */
++        return NULL;
++
++      assert(pExpr->y.pTab &&
++        (pExpr->iColumn >= -3 && pExpr->y.pTab->nCol > pExpr->iColumn));
++      switch(pExpr->iColumn) {
++      case -3:
++        name = "comdb2_rowtimestamp";
++        break;
++      case -2:
++        name = "comdb2_rowid";
++        break;
++      case -1:
++        name = "rowid";
++        break;
++      default:
++        name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
++        break;
++      }
++      if (srcs) {
++        /* we cannot just grab the table name here, we need to make sure we are
++         * not aliased, and this can only be done by looking at SrcList list
++         * of sources
++         * */
++        int src_ix;
++        for(src_ix = 0; src_ix<srcs->nSrc; src_ix++){
++          if( srcs->a[src_ix].iCursor == pExpr->iTable ){
++            if( srcs->a[src_ix].zAlias )
++              return sqlite3_mprintf("\"%w\".\"%w\"", srcs->a[src_ix].zAlias, name);
++            assert(pExpr->y.pTab == srcs->a[src_ix].pTab);
++            return sqlite3_mprintf("\"%w\".\"%w\"", pExpr->y.pTab->zName, name);
++          }
++        }
++        return NULL; /* an earlier parsing error will prevent this, but jic */
++      } else {
++        return sqlite3_mprintf("\"%w\"", name);
++      }
++    }
++    case TK_AGG_FUNCTION: /* fallthrough */
++    case TK_AGG_COLUMN:
++      break;
++    case TK_UMINUS : {
++       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++               pParamsOut, srcs);
++       if( !left ) return NULL;
++       char *ret = sqlite3_mprintf("( - ( %s ) )", left);
++
++       sqlite3_free(left);
++
++       return ret;
++    }
++    case TK_UPLUS : {
++       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
++               pParamsOut, srcs);
++       if( !left ) return NULL;
++       char *ret = sqlite3_mprintf("( + ( %s ) )", left);
++
++       sqlite3_free(left);
++
++       return ret;
++    }
++  }
++  {
++    static int last;
++
++    if( last != pExpr->op ){
++      v->fdb_warn_this_op = last = pExpr->op;
++    }
++  }
++  if (op == TK_AGG_FUNCTION) {
++      if (pParamsOut /* comes from dohsql */ &&
++              !strcasecmp(pExpr->u.zToken, "count")) {
++        if (!pExpr->x.pList) {
++          return sqlite3_mprintf("count(*)");
++        } else if (pExpr->x.pList->nExpr == 1) {
++            char *arguments = sqlite3ExprDescribe_inner(v,
++                    pExpr->x.pList->a[0].pExpr, atRuntime, pParamsOut,
++                    srcs);
++            if (arguments) {
++                char *ret = sqlite3_mprintf("count(%s)", arguments);
++                sqlite3_free(arguments);
++                return ret;
++            }
++        }
++      }
++  }
++  return NULL;
++}
++
++char* sqlite3ExprDescribe(Vdbe *v, const Expr *pExpr){
++  return sqlite3ExprDescribe_inner(v, pExpr, 0, NULL, 0);
++}
++
++char *sqlite3ExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr){
++  return sqlite3ExprDescribe_inner(v, pExpr, 1, NULL, 0);
++}
++
++/** used by dohsql to generate string representations of pExpr
++ *  it supports parameters (remote sql still does not)
++ *  In addition, generating column names (TK_COLUMN):
++ *   - require a tablename in case when they are returned by a join 
++ *   - require NOT use a tablename in the case they are used for order by columns
++ */
++char *sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, struct params_info **pParamsOut,
++        SrcList *srcs){
++  return sqlite3ExprDescribe_inner(v, pExpr, 0, pParamsOut, srcs);
++}
++
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** Validate that no temporary register falls within the range of
+ ** iFirst..iLast, inclusive.  This routine is only call from within assert()

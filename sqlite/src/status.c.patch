@@ -1,0 +1,58 @@
+--- sqlite-3.28.0/src/status.c	2026-01-09 16:11:01
++++ src/status.c	2025-09-24 15:21:58
+@@ -70,8 +70,10 @@
+   wsdStatInit;
+   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
+   assert( op>=0 && op<ArraySize(statMutex) );
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                            : sqlite3MallocMutex()) );
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   return wsdStat.nowValue[op];
+ }
+ 
+@@ -90,8 +92,10 @@
+   wsdStatInit;
+   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
+   assert( op>=0 && op<ArraySize(statMutex) );
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                            : sqlite3MallocMutex()) );
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   wsdStat.nowValue[op] += N;
+   if( wsdStat.nowValue[op]>wsdStat.mxValue[op] ){
+     wsdStat.mxValue[op] = wsdStat.nowValue[op];
+@@ -101,8 +105,10 @@
+   wsdStatInit;
+   assert( N>=0 );
+   assert( op>=0 && op<ArraySize(statMutex) );
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                            : sqlite3MallocMutex()) );
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
+   wsdStat.nowValue[op] -= N;
+ }
+@@ -118,8 +124,10 @@
+   newValue = (sqlite3StatValueType)X;
+   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
+   assert( op>=0 && op<ArraySize(statMutex) );
++#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+   assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                            : sqlite3MallocMutex()) );
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( op==SQLITE_STATUS_MALLOC_SIZE
+           || op==SQLITE_STATUS_PAGECACHE_SIZE
+           || op==SQLITE_STATUS_PARSER_STACK );
+@@ -145,7 +153,11 @@
+ #ifdef SQLITE_ENABLE_API_ARMOR
+   if( pCurrent==0 || pHighwater==0 ) return SQLITE_MISUSE_BKPT;
+ #endif
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  pMutex = sqlite3MallocMutex();
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   pMutex = statMutex[op] ? sqlite3Pcache1Mutex() : sqlite3MallocMutex();
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   sqlite3_mutex_enter(pMutex);
+   *pCurrent = wsdStat.nowValue[op];
+   *pHighwater = wsdStat.mxValue[op];

@@ -1,0 +1,718 @@
+--- sqlite-3.28.0/src/where.c	2026-01-09 16:11:01
++++ src/where.c	2025-09-24 15:21:58
+@@ -38,11 +38,38 @@
+ static int whereLoopResize(sqlite3*, WhereLoop*, int);
+ 
+ /* Test variable that can be set to enable WHERE tracing */
+-#if defined(SQLITE_TEST) || defined(SQLITE_DEBUG)
++#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_TEST) || defined(SQLITE_DEBUG)
+ /***/ int sqlite3WhereTrace = 0;
+-#endif
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_TEST) || defined(SQLITE_DEBUG) */
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++int gbl_disable_seekscan_optimization = 1;
++int gbl_sqlite_stat4_scan = 0;
+ 
++int shard_check_parallelism(int iTable);
++int comdb2_shard_table_constraints(Parse *pParse, 
++        const char *zName, const char *zDatabase, Expr **pWhere);
++int is_comdb2_index_unique(const char *tbl, char *idx);
++int comdb2_get_planner_effort();
++
++static char *comdb2IndexName(char *src, char *dest)
++{
++/* remove leading $ and trailing hash value */
++  if( src[0]!='$' ){
++    return src;
++  }
++  int len = strlen(src);
++  while( src[--len]!='_' )
++    ;
++  dest[--len] = '\0';
++  while( len ){
++    dest[len - 1] = src[len];
++    --len;
++  }
++  return dest;
++}
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++
+ /*
+ ** Return the estimated number of output rows from a WHERE clause
+ */
+@@ -148,6 +175,14 @@
+ }
+ 
+ /*
++** Return TRUE if the WHERE loop uses the OP_DeferredSeek opcode to move
++** the data cursor to the row selected by the index cursor.
++*/
++int sqlite3WhereUsesDeferredSeek(WhereInfo *pWInfo){
++  return pWInfo->bDeferredSeek;
++}
++
++/*
+ ** Move the content of pSrc into pDest
+ */
+ static void whereOrMove(WhereOrSet *pDest, WhereOrSet *pSrc){
+@@ -531,7 +566,12 @@
+   **      contain a "col=X" term are subject to a NOT NULL constraint.
+   */
+   for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    int is_unique = is_comdb2_index_unique(pTabList->a[0].zName, pIdx->zName);
++    if( !IsUniqueIndex(pIdx) && !is_unique ) continue;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     if( !IsUniqueIndex(pIdx) ) continue;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     for(i=0; i<pIdx->nKeyCol; i++){
+       if( 0==sqlite3WhereFindTerm(pWC, iBase, i, ~(Bitmask)0, WO_EQ, pIdx) ){
+         if( findIndexCol(pParse, pDistinct, iBase, pIdx, i)<0 ) break;
+@@ -1079,6 +1119,9 @@
+ #endif /* !defined(SQLITE_OMIT_VIRTUALTABLE) */
+ 
+ #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++#include <vdbecompare.c>
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ /*
+ ** Estimate the location of a particular key among all keys in an
+ ** index.  Store the results in aStat as follows:
+@@ -1248,7 +1291,7 @@
+     ** is larger than all samples in the array. */
+     tRowcnt iUpper, iGap;
+     if( i>=pIdx->nSample ){
+-      iUpper = sqlite3LogEstToInt(pIdx->aiRowLogEst[0]);
++      iUpper = pIdx->nRowEst0;
+     }else{
+       iUpper = aSample[i].anLt[iCol];
+     }
+@@ -1942,7 +1985,8 @@
+ /*
+ ** Return TRUE if all of the following are true:
+ **
+-**   (1)  X has the same or lower cost that Y
++**   (1)  X has the same or lower cost, or returns the same or fewer rows, 
++**        than Y.
+ **   (2)  X uses fewer WHERE clause terms than Y
+ **   (3)  Every WHERE clause term used by X is also used by Y
+ **   (4)  X skips at least as many columns as Y
+@@ -1965,11 +2009,8 @@
+   if( pX->nLTerm-pX->nSkip >= pY->nLTerm-pY->nSkip ){
+     return 0; /* X is not a subset of Y */
+   }
++  if( pX->rRun>pY->rRun && pX->nOut>pY->nOut ) return 0;
+   if( pY->nSkip > pX->nSkip ) return 0;
+-  if( pX->rRun >= pY->rRun ){
+-    if( pX->rRun > pY->rRun ) return 0;    /* X costs more than Y */
+-    if( pX->nOut > pY->nOut ) return 0;    /* X costs more than Y */
+-  }
+   for(i=pX->nLTerm-1; i>=0; i--){
+     if( pX->aLTerm[i]==0 ) continue;
+     for(j=pY->nLTerm-1; j>=0; j--){
+@@ -1985,8 +2026,8 @@
+ }
+ 
+ /*
+-** Try to adjust the cost of WhereLoop pTemplate upwards or downwards so
+-** that:
++** Try to adjust the cost and number of output rows of WhereLoop pTemplate
++** upwards or downwards so that:
+ **
+ **   (1) pTemplate costs less than any other WhereLoops that are a proper
+ **       subset of pTemplate
+@@ -2007,16 +2048,20 @@
+       /* Adjust pTemplate cost downward so that it is cheaper than its 
+       ** subset p. */
+       WHERETRACE(0x80,("subset cost adjustment %d,%d to %d,%d\n",
+-                       pTemplate->rRun, pTemplate->nOut, p->rRun, p->nOut-1));
+-      pTemplate->rRun = p->rRun;
+-      pTemplate->nOut = p->nOut - 1;
++                       pTemplate->rRun, pTemplate->nOut, 
++                       MIN(p->rRun, pTemplate->rRun),
++                       MIN(p->nOut - 1, pTemplate->nOut)));
++      pTemplate->rRun = MIN(p->rRun, pTemplate->rRun);
++      pTemplate->nOut = MIN(p->nOut - 1, pTemplate->nOut);
+     }else if( whereLoopCheaperProperSubset(pTemplate, p) ){
+       /* Adjust pTemplate cost upward so that it is costlier than p since
+       ** pTemplate is a proper subset of p */
+       WHERETRACE(0x80,("subset cost adjustment %d,%d to %d,%d\n",
+-                       pTemplate->rRun, pTemplate->nOut, p->rRun, p->nOut+1));
+-      pTemplate->rRun = p->rRun;
+-      pTemplate->nOut = p->nOut + 1;
++                       pTemplate->rRun, pTemplate->nOut, 
++                       MAX(p->rRun, pTemplate->rRun),
++                       MAX(p->nOut + 1, pTemplate->nOut)));
++      pTemplate->rRun = MAX(p->rRun, pTemplate->rRun);
++      pTemplate->nOut = MAX(p->nOut + 1, pTemplate->nOut);
+     }
+   }
+ }
+@@ -2292,7 +2337,7 @@
+         if( pTerm->eOperator&(WO_EQ|WO_IS) ){
+           Expr *pRight = pTerm->pExpr->pRight;
+           testcase( pTerm->pExpr->op==TK_IS );
+-          if( sqlite3ExprIsInteger(pRight, &k) && k>=(-1) && k<=1 ){
++          if( sqlite3ExprIsInteger(pRight, &k, 0) && k>=(-1) && k<=1 ){
+             k = 10;
+           }else{
+             k = 20;
+@@ -2437,6 +2482,14 @@
+   assert( pNew->u.btree.nEq<pProbe->nColumn );
+ 
+   saved_nEq = pNew->u.btree.nEq;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  if(pProbe->azColl!=0
++   && pProbe->azColl[saved_nEq]!=0
++   && sqlite3_stricmp(pProbe->azColl[saved_nEq],"DATACOPY")==0
++  ){
++    return rc;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   saved_nBtm = pNew->u.btree.nBtm;
+   saved_nTop = pNew->u.btree.nTop;
+   saved_nSkip = pNew->nSkip;
+@@ -2518,8 +2571,8 @@
+         assert( nIn>0 );  /* RHS always has 2 or more terms...  The parser
+                           ** changes "x IN (?)" into "x=?". */
+       }
+-      if( pProbe->hasStat1 ){
+-        LogEst M, logK, safetyMargin;
++      if( pProbe->hasStat1 && rLogSize>=10 ){
++        LogEst M, logK, x;
+         /* Let:
+         **   N = the total number of rows in the table
+         **   K = the number of entries on the RHS of the IN operator
+@@ -2537,20 +2590,36 @@
+         ** a safety margin of 2 (LogEst: 10) that favors using the IN operator
+         ** with the index, as using an index has better worst-case behavior.
+         ** If we do not have real sqlite_stat1 data, always prefer to use
+-        ** the index.
++        ** the index.  Do not bother with this optimization on very small
++        ** tables (less than 2 rows) as it is pointless in that case.
+         */
+         M = pProbe->aiRowLogEst[saved_nEq];
+         logK = estLog(nIn);
+-        safetyMargin = 10;  /* TUNING: extra weight for indexed IN */
+-        if( M + logK + safetyMargin < nIn + rLogSize ){
++        /* TUNING      v-----  10 to bias toward indexed IN */
++        x = M + logK + 10 - (nIn + rLogSize);
++        if( x>=0 ){
+           WHERETRACE(0x40,
+-            ("Scan preferred over IN operator on column %d of \"%s\" (%d<%d)\n",
+-             saved_nEq, pProbe->zName, M+logK+10, nIn+rLogSize));
+-          continue;
++            ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d) "
++             "prefers indexed lookup\n",
++             saved_nEq, M, logK, nIn, rLogSize, x));
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++        /* NC: Skip SEEKSCAN for remote tables */
++        }else if( gbl_disable_seekscan_optimization == 0 && nInMul<2 &&
++                  pProbe->pTable->iDb <= 1 ){
++#else /* SQLITE_BUILDING_FOR_COMDB2 */
++        }else if( nInMul<2 ){
++#endif /* SQLITE_BUILDING_FOR_COMDB2 */
++          WHERETRACE(0x40,
++            ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d"
++             " nInMul=%d) prefers skip-scan\n",
++             saved_nEq, M, logK, nIn, rLogSize, x, nInMul));
++          pNew->wsFlags |= WHERE_IN_SEEKSCAN;
+         }else{
+           WHERETRACE(0x40,
+-            ("IN operator preferred on column %d of \"%s\" (%d>=%d)\n",
+-             saved_nEq, pProbe->zName, M+logK+10, nIn+rLogSize));
++            ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d"
++             " nInMul=%d) prefers normal scan\n",
++             saved_nEq, M, logK, nIn, rLogSize, x, nInMul));
++          continue;
+         }
+       }
+       pNew->wsFlags |= WHERE_COLUMN_IN;
+@@ -2581,7 +2650,7 @@
+       pBtm = pTerm;
+       pTop = 0;
+       if( pTerm->wtFlags & TERM_LIKEOPT ){
+-        /* Range contraints that come from the LIKE optimization are
++        /* Range constraints that come from the LIKE optimization are
+         ** always used in pairs. */
+         pTop = &pTerm[1];
+         assert( (pTop-(pTerm->pWC->a))<pTerm->pWC->nTerm );
+@@ -2966,7 +3035,19 @@
+      && !whereUsablePartialIndex(pSrc->iCursor, pWC, pProbe->pPartIdxWhere) ){
+       testcase( pNew->iTab!=pSrc->iCursor );  /* See ticket [98d973b8f5] */
+       continue;  /* Partial index inappropriate for this query */
++    }
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    /* if index looks like COMDB2_DISABLED_xxx then skip */
++    if( pProbe->zName && strncmp(pProbe->zName, "$COMDB2_DISABLED_", 17)==0 ){
++#ifdef WHERETRACE_ENABLED /* 0x4 */
++      if( sqlite3WhereTrace&0x4 ){
++        sqlite3DebugPrintf("Not using disabled index %s:%s\n",
++                           pProbe->pTable->zName, pProbe->zName);
++      }
++#endif
++      continue;
+     }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     if( pProbe->bNoQuery ) continue;
+     rSize = pProbe->aiRowLogEst[0];
+     pNew->u.btree.nEq = 0;
+@@ -2988,8 +3069,31 @@
+ 
+       /* Full table scan */
+       pNew->iSortIdx = b ? iSortIdx : 0;
+-      /* TUNING: Cost of full table scan is (N*3.0). */
++      /* TUNING: Cost of full table scan is 3.0*N.  The 3.0 factor is an
++      ** extra cost designed to discourage the use of full table scans,
++      ** since index lookups have better worst-case performance if our
++      ** stat guesses are wrong.  Reduce the 3.0 penalty slightly
++      ** (to 2.75) if we have valid STAT4 information for the table.
++      ** At 2.75, a full table scan is preferred over using an index on
++      ** a column with just two distinct values where each value has about
++      ** an equal number of appearances.  Without STAT4 data, we still want
++      ** to use an index in that case, since the constraint might be for
++      ** the scarcer of the two values, and in that case an index lookup is
++      ** better.
++      */
++#ifdef SQLITE_ENABLE_STAT4
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if( gbl_sqlite_stat4_scan ){
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++      pNew->rRun = rSize + 16 - 2*((pTab->tabFlags & TF_HasStat4)!=0);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      }else{
+       pNew->rRun = rSize + 16;
++      }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
++#else
++      pNew->rRun = rSize + 16;
++#endif
+       ApplyCostMultiplier(pNew->rRun, pTab->costMult);
+       whereLoopOutputAdjust(pWC, pNew, rSize);
+       rc = whereLoopInsert(pBuilder, pNew);
+@@ -3145,6 +3249,7 @@
+   pIdxInfo->estimatedRows = 25;
+   pIdxInfo->idxFlags = 0;
+   pIdxInfo->colUsed = (sqlite3_int64)pSrc->colUsed;
++  pIdxInfo->zTable = pSrc->pTab->zName;
+ 
+   /* Invoke the virtual table xBestIndex() method */
+   rc = vtabBestIndex(pParse, pSrc->pTab, pIdxInfo);
+@@ -3968,6 +4073,10 @@
+   ** The (Y/X) term is implemented using stack variable rScale
+   ** below.  */
+   LogEst rScale, rSortCost;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  extern int gbl_sqlite_sortermult;
++  nRow *= gbl_sqlite_sortermult;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( nOrderBy>0 && 66==sqlite3LogEst(100) );
+   rScale = sqlite3LogEst((nOrderBy-nSorted)*100/nOrderBy) - 66;
+   rSortCost = nRow + rScale + 16;
+@@ -3976,6 +4085,9 @@
+   ** Use the LIMIT for M if it is smaller */
+   if( (pWInfo->wctrlFlags & WHERE_USE_LIMIT)!=0 && pWInfo->iLimit<nRow ){
+     nRow = pWInfo->iLimit;
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++    nRow *= gbl_sqlite_sortermult;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   }
+   rSortCost += estLog(nRow);
+   return rSortCost;
+@@ -4022,6 +4134,27 @@
+   ** For 2-way joins, the 5 best paths are followed.
+   ** For joins of 3 or more tables, track the 10 best paths */
+   mxChoice = (nLoop<=1) ? 1 : (nLoop==2 ? 5 : 10);
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  {
++    int planner_effort = comdb2_get_planner_effort();
++    WHERETRACE(0x002, ("Planner Effort %d\n", planner_effort));
++#ifdef SQLDEBUG
++    printf("Using planner effort %d\n", planner_effort);
++#endif
++  /* planner_effort level 1 is the default */
++    if( planner_effort>1 ){
++      if( planner_effort<8 ){
++        mxChoice += nLoop * planner_effort;
++      }else if( planner_effort<9 ){
++        mxChoice += nLoop * nLoop;
++      }else if( planner_effort<10 ){
++        mxChoice += nLoop * nLoop * nLoop;
++      }else{
++        mxChoice += nLoop * nLoop * nLoop * nLoop;
++      }
++    }
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( nLoop<=pWInfo->pTabList->nSrc );
+   WHERETRACE(0x002, ("---- begin solver.  (nRowEst=%d)\n", nRowEst));
+ 
+@@ -4127,7 +4260,12 @@
+           ** extra encouragment to the query planner to select a plan
+           ** where the rows emerge in the correct order without any sorting
+           ** required. */
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++          extern int gbl_sqlite_sorterpenalty;
++          rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + gbl_sqlite_sorterpenalty;
++#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+           rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + 5;
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+ 
+           WHERETRACE(0x002,
+               ("---- sort cost=%-3d (%d/%d) increases cost %3d to %-3d\n",
+@@ -4367,6 +4505,83 @@
+   /* Free temporary memory and return success */
+   sqlite3DbFreeNN(db, pSpace);
+   return SQLITE_OK;
++}
++
++/*
++** This routine implements a heuristic designed to improve query planning.
++** This routine is called in between the first and second call to
++** wherePathSolver().  Hence the name "Interstage" "Heuristic".
++**
++** The first call to wherePathSolver() (hereafter just "solver()") computes
++** the best path without regard to the order of the outputs.  The second call
++** to the solver() builds upon the first call to try to find an alternative
++** path that satisfies the ORDER BY clause.
++**
++** This routine looks at the results of the first solver() run, and for
++** every FROM clause term in the resulting query plan that uses an equality
++** constraint against an index, disable other WhereLoops for that same
++** FROM clause term that would try to do a full-table scan.  This prevents
++** an index search from being converted into a full-table scan in order to
++** satisfy an ORDER BY clause, since even though we might get slightly better
++** performance using the full-scan without sorting if the output size
++** estimates are very precise, we might also get severe performance
++** degradation using the full-scan if the output size estimate is too large.
++** It is better to err on the side of caution.
++**
++** Except, if the first solver() call generated a full-table scan in an outer
++** loop then stop this analysis at the first full-scan, since the second
++** solver() run might try to swap that full-scan for another in order to
++** get the output into the correct order.  In other words, we allow a
++** rewrite like this:
++**
++**     First Solver()                      Second Solver()
++**       |-- SCAN t1                         |-- SCAN t2
++**       |-- SEARCH t2                       `-- SEARCH t1
++**       `-- SORT USING B-TREE
++**
++** The purpose of this routine is to disallow rewrites such as:
++**
++**     First Solver()                      Second Solver()
++**       |-- SEARCH t1                       |-- SCAN t2     <--- bad!
++**       |-- SEARCH t2                       `-- SEARCH t1
++**       `-- SORT USING B-TREE
++**
++** See test cases in test/whereN.test for the real-world query that
++** originally provoked this heuristic.
++*/
++static SQLITE_NOINLINE void whereInterstageHeuristic(WhereInfo *pWInfo){
++  int i;
++#ifdef WHERETRACE_ENABLED
++  int once = 0;
++#endif
++  for(i=0; i<pWInfo->nLevel; i++){
++    WhereLoop *p = pWInfo->a[i].pWLoop;
++    if( p==0 ) break;
++    if( (p->wsFlags & WHERE_VIRTUALTABLE)!=0 ) continue;
++    if( (p->wsFlags & (WHERE_COLUMN_EQ|WHERE_COLUMN_NULL|WHERE_COLUMN_IN))!=0 ){
++      u8 iTab = p->iTab;
++      WhereLoop *pLoop;
++      for(pLoop=pWInfo->pLoops; pLoop; pLoop=pLoop->pNextLoop){
++        if( pLoop->iTab!=iTab ) continue;
++        if( (pLoop->wsFlags & (WHERE_CONSTRAINT|WHERE_AUTO_INDEX))!=0 ){
++          /* Auto-index and index-constrained loops allowed to remain */
++          continue;
++        }
++#ifdef WHERETRACE_ENABLED
++        if( sqlite3WhereTrace & 0x80 ){
++          if( once==0 ){
++            sqlite3DebugPrintf("Loops disabled by interstage heuristic:\n");
++            once = 1;
++          }
++          whereLoopPrint(pLoop, &pWInfo->sWC);
++        }
++#endif /* WHERETRACE_ENABLED */
++        pLoop->prereq = ALLBITS;  /* Prevent 2nd solver() from using this one */
++      }
++    }else{
++      break;
++    }
++  }
+ }
+ 
+ /*
+@@ -4486,6 +4701,50 @@
+ }
+ 
+ /*
++** The index pIdx is used by a query and contains one or more expressions.
++** In other words pIdx is an index on an expression.  iIdxCur is the cursor
++** number for the index and iDataCur is the cursor number for the corresponding
++** table.
++**
++** This routine adds IndexedExpr entries to the Parse->pIdxExpr field for
++** each of the expressions in the index so that the expression code generator
++** will know to replace occurrences of the indexed expression with
++** references to the corresponding column of the index.
++*/
++static SQLITE_NOINLINE void whereAddIndexedExpr(
++  Parse *pParse,     /* Add IndexedExpr entries to pParse->pIdxExpr */
++  Index *pIdx,       /* The index-on-expression that contains the expressions */
++  int iIdxCur,       /* Cursor number for pIdx */
++  struct SrcList_item *pTabItem  /* The FROM clause entry for the table */
++){
++  int i;
++  IndexedExpr *p;
++  assert( pIdx->bHasExpr );
++  for(i=0; i<pIdx->nColumn; i++){
++    Expr *pExpr;
++    int j = pIdx->aiColumn[i];
++    if( j==XN_EXPR ){
++      pExpr = pIdx->aColExpr->a[i].pExpr;
++    }else{
++      continue;
++    }
++    if( sqlite3ExprIsConstant(pExpr) ) continue;
++    p = sqlite3DbMallocRaw(pParse->db,  sizeof(IndexedExpr));
++    if( p==0 ) break;
++    p->pIENext = pParse->pIdxExpr;
++    p->pExpr = sqlite3ExprDup(pParse->db, pExpr, 0);
++    p->iDataCur = pTabItem->iCursor;
++    p->iIdxCur = iIdxCur;
++    p->iIdxCol = i;
++    p->bMaybeNullRow = (pTabItem->fg.jointype & JT_LEFT)!=0;
++#ifdef SQLITE_ENABLE_EXPLAIN_COMMENTS
++    p->zIdxName = pIdx->zName;
++#endif
++    pParse->pIdxExpr = p;
++  }
++}
++
++/*
+ ** Generate the beginning of the loop used for WHERE clause processing.
+ ** The return value is a pointer to an opaque structure that contains
+ ** information needed to terminate the loop.  Later, the calling routine
+@@ -4597,6 +4856,14 @@
+   int rc;                    /* Return code */
+   u8 bFordelete = 0;         /* OPFLAG_FORDELETE or zero, as appropriate */
+ 
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++  Expr *pNewExpr = pWhere;
++  if( pTabList->nSrc>0 &&
++      comdb2_shard_table_constraints(pParse, pTabList->a[0].zName,
++                                     pTabList->a[0].zDatabase, &pNewExpr) ){
++    pWhere = pNewExpr;
++  }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+   assert( (wctrlFlags & WHERE_ONEPASS_MULTIROW)==0 || (
+         (wctrlFlags & WHERE_ONEPASS_DESIRED)!=0 
+      && (wctrlFlags & WHERE_OR_SUBCLAUSE)==0 
+@@ -4792,6 +5059,7 @@
+     wherePathSolver(pWInfo, 0);
+     if( db->mallocFailed ) goto whereBeginError;
+     if( pWInfo->pOrderBy ){
++       whereInterstageHeuristic(pWInfo);
+        wherePathSolver(pWInfo, pWInfo->nRowOut+1);
+        if( db->mallocFailed ) goto whereBeginError;
+     }
+@@ -4904,6 +5172,13 @@
+       }
+       pWInfo->nLevel--;
+       nTabList--;
++
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if (!(IsVirtual(pItem->pTab) || pItem->pTab->pSelect)) {
++        // add all tables referenced in query even if not needed to execute query
++        sqlite3VdbeAddTable(v, pItem->pTab);
++      }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+     }
+   }
+   WHERETRACE(0xffff,("*** Optimizer Finished ***\n"));
+@@ -4968,6 +5243,11 @@
+       const char *pVTab = (const char *)sqlite3GetVTable(db, pTab);
+       int iCur = pTabItem->iCursor;
+       sqlite3VdbeAddOp4(v, OP_VOpen, iCur, 0, 0, pVTab, P4_VTAB);
++#ifdef SQLITE_BUILDING_FOR_COMDB2
++      const char *lockname = ((VTable*)pVTab)->pVtab->pModule->systable_lock;
++      if( lockname && !strncasecmp(lockname, "comdb2_tables", sizeof("comdb2_tables")) )
++        v->numPartitionLocks++;
++#endif
+     }else if( IsVirtual(pTab) ){
+       /* noop */
+     }else
+@@ -5033,15 +5313,34 @@
+         op = OP_ReopenIdx;
+       }else{
+         iIndexCur = pParse->nTab++;
++        if( pIx->bHasExpr ){
++          whereAddIndexedExpr(pParse, pIx, iIndexCur, pTabItem);
++        }
+       }
+       pLevel->iIdxCur = iIndexCur;
+       assert( pIx->pSchema==pTab->pSchema );
+       assert( iIndexCur>=0 );
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++      if( op!=OP_ReopenIdx && GET_CURSOR_RECORDING(pParse, pLevel->iTabCur) ){
++        op = OP_OpenRead_Record;
++      }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+       if( op ){
++#if defined(SQLITE_BUILDING_FOR_COMDB2)
++        sqlite3VdbeAddTable(v, pTab);
++        /* we are encoding an index access; for the outer most index scan, 
++           try to parallelize the access */
++        if( shard_check_parallelism(pIx->tnum) ){
++          pParse->rc = SQLITE_SCHEMA;
++          pParse->nErr++;
++          goto whereBeginError;
++        }
++#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+         sqlite3VdbeAddOp3(v, op, iIndexCur, pIx->tnum, iDb);
+         sqlite3VdbeSetP4KeyInfo(pParse, pIx);
+         if( (pLoop->wsFlags & WHERE_CONSTRAINT)!=0
+          && (pLoop->wsFlags & (WHERE_COLUMN_RANGE|WHERE_SKIPSCAN))==0
++         && (pLoop->wsFlags & WHERE_IN_SEEKSCAN)==0
+          && (pWInfo->wctrlFlags&WHERE_ORDERBY_MIN)==0
+          && pWInfo->eDistinct!=WHERE_DISTINCT_ORDERED
+         ){
+@@ -5099,6 +5398,7 @@
+ 
+   /* Done. */
+   VdbeModuleComment((v, "Begin WHERE-core"));
++  pWInfo->iEndWhere = sqlite3VdbeCurrentAddr(v);
+   return pWInfo;
+ 
+   /* Jump here if malloc fails */
+@@ -5142,6 +5442,7 @@
+   WhereLoop *pLoop;
+   SrcList *pTabList = pWInfo->pTabList;
+   sqlite3 *db = pParse->db;
++  int iEnd = sqlite3VdbeCurrentAddr(v);
+ 
+   /* Generate loop termination code.
+   */
+@@ -5197,11 +5498,28 @@
+         sqlite3VdbeJumpHere(v, pIn->addrInTop+1);
+         if( pIn->eEndLoopOp!=OP_Noop ){
+           if( pIn->nPrefix ){
+-            assert( pLoop->wsFlags & WHERE_IN_EARLYOUT );
+-            sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
+-                              sqlite3VdbeCurrentAddr(v)+2,
+-                              pIn->iBase, pIn->nPrefix);
+-            VdbeCoverage(v);
++            int bEarlyOut = 
++                (pLoop->wsFlags & WHERE_VIRTUALTABLE)==0
++                 && (pLoop->wsFlags & WHERE_IN_EARLYOUT)!=0;
++            if( pLevel->iLeftJoin ){
++              /* For LEFT JOIN queries, cursor pIn->iCur may not have been
++              ** opened yet. This occurs for WHERE clauses such as
++              ** "a = ? AND b IN (...)", where the index is on (a, b). If
++              ** the RHS of the (a=?) is NULL, then the "b IN (...)" may
++              ** never have been coded, but the body of the loop run to
++              ** return the null-row. So, if the cursor is not open yet,
++              ** jump over the OP_Next or OP_Prev instruction about to
++              ** be coded.  */
++              sqlite3VdbeAddOp2(v, OP_IfNotOpen, pIn->iCur, 
++                  sqlite3VdbeCurrentAddr(v) + 2 + bEarlyOut);
++              VdbeCoverage(v);
++            }
++            if( bEarlyOut ){
++              sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
++                  sqlite3VdbeCurrentAddr(v)+2,
++                  pIn->iBase, pIn->nPrefix);
++              VdbeCoverage(v);
++            }
+           }
+           sqlite3VdbeAddOp2(v, pIn->eEndLoopOp, pIn->iCur, pIn->addrInTop);
+           VdbeCoverage(v);
+@@ -5218,13 +5536,13 @@
+       sqlite3VdbeJumpHere(v, pLevel->addrSkip);
+       sqlite3VdbeJumpHere(v, pLevel->addrSkip-2);
+     }
+-#ifndef SQLITE_LIKE_DOESNT_MATCH_BLOBS
++#if !defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS)
+     if( pLevel->addrLikeRep ){
+       sqlite3VdbeAddOp2(v, OP_DecrJumpZero, (int)(pLevel->iLikeRepCntr>>1),
+                         pLevel->addrLikeRep);
+       VdbeCoverage(v);
+     }
+-#endif
++#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS) */
+     if( pLevel->iLeftJoin ){
+       int ws = pLoop->wsFlags;
+       addr = sqlite3VdbeAddOp1(v, OP_IfPos, pLevel->iLeftJoin); VdbeCoverage(v);
+@@ -5257,7 +5575,7 @@
+   assert( pWInfo->nLevel<=pTabList->nSrc );
+   for(i=0, pLevel=pWInfo->a; i<pWInfo->nLevel; i++, pLevel++){
+     int k, last;
+-    VdbeOp *pOp;
++    VdbeOp *pOp, *pLastOp;
+     Index *pIdx = 0;
+     struct SrcList_item *pTabItem = &pTabList->a[pLevel->iFrom];
+     Table *pTab = pTabItem->pTab;
+@@ -5315,20 +5633,41 @@
+       pIdx = pLevel->u.pCovidx;
+     }
+     if( pIdx
+-     && (pWInfo->eOnePass==ONEPASS_OFF || !HasRowid(pIdx->pTable))
+      && !db->mallocFailed
+     ){
+-      last = sqlite3VdbeCurrentAddr(v);
+-      k = pLevel->addrBody;
++      if( pWInfo->eOnePass==ONEPASS_OFF || !HasRowid(pIdx->pTable) ){
++        last = iEnd;
++      }else{
++        last = pWInfo->iEndWhere;
++      }
++      if( pIdx->bHasExpr ){
++        IndexedExpr *p = pParse->pIdxExpr;
++        while( p ){
++          if( p->iIdxCur==pLevel->iIdxCur ){
++            p->iDataCur = -1;
++            p->iIdxCur = -1;
++          }
++          p = p->pIENext;
++        }
++      }
++      k = pLevel->addrBody + 1;
+ #ifdef SQLITE_DEBUG
+       if( db->flags & SQLITE_VdbeAddopTrace ){
+         printf("TRANSLATE opcodes in range %d..%d\n", k, last-1);
+       }
++      /* Proof that the "+1" on the k value above is safe */
++      pOp = sqlite3VdbeGetOp(v, k - 1);
++      assert( pOp->opcode!=OP_Column || pOp->p1!=pLevel->iTabCur );
++      assert( pOp->opcode!=OP_Rowid  || pOp->p1!=pLevel->iTabCur );
++      assert( pOp->opcode!=OP_IfNullRow || pOp->p1!=pLevel->iTabCur );
+ #endif
+       pOp = sqlite3VdbeGetOp(v, k);
+-      for(; k<last; k++, pOp++){
+-        if( pOp->p1!=pLevel->iTabCur ) continue;
+-        if( pOp->opcode==OP_Column
++      pLastOp = pOp + (last - k);
++      assert( pOp<pLastOp );
++      do{
++        if( pOp->p1!=pLevel->iTabCur ){
++          /* no-op */
++        }else if( pOp->opcode==OP_Column
+ #ifdef SQLITE_ENABLE_OFFSET_SQL_FUNC
+          || pOp->opcode==OP_Offset
+ #endif
+@@ -5356,8 +5695,11 @@
+           pOp->p1 = pLevel->iIdxCur;
+           OpcodeRewriteTrace(db, k, pOp);
+         }
+-      }
+ #ifdef SQLITE_DEBUG
++        k++;
++#endif
++      }while( (++pOp)<pLastOp );
++#ifdef SQLITE_DEBUG
+       if( db->flags & SQLITE_VdbeAddopTrace ) printf("TRANSLATE complete\n");
+ #endif
+     }
