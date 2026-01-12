@@ -1645,6 +1645,7 @@ extern int gbl_allow_old_authn;
 extern int gbl_uses_password;
 extern int gbl_unauth_tag_access;
 extern int gbl_uses_externalauth;
+extern int gbl_uses_simpleauth;
 extern int gbl_uses_externalauth_connect;
 extern int gbl_externalauth_warn;
 extern int gbl_identity_cache_max;

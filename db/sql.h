@@ -391,6 +391,16 @@ enum {
 enum WriteResponsesEnum { RESPONSE_TYPES };
 #undef XRESPONSE
 
+inline static char *xresponse_type_str(int c)
+{
+#define XRESPONSE(x)                                                                                                   \
+    if (c == x)                                                                                                        \
+        return #x;
+    RESPONSE_TYPES
+#undef XRESPONSE
+    return "???";
+}
+
 /* read response */
 enum {
     RESPONSE_PING_PONG,

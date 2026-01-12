@@ -410,12 +410,15 @@ int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
     int rc = 0;
 
     if (gbl_uses_externalauth && iq->authdata && externalComdb2AuthenticateUserRead) {
-        return externalComdb2AuthenticateUserWrite(iq->authdata, iq->usedb->tablename, iq->corigin);
+        rc = externalComdb2AuthenticateUserWrite(iq->authdata, iq->usedb->tablename, iq->corigin);
+        if (rc)
+            rc = ERR_ACCESS;
+        return rc;
     }
 
     rc = check_tag_access(iq);
     if (rc)
-        return rc;
+        return ERR_ACCESS;
 
     return 0;
 }
@@ -425,12 +428,15 @@ int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
     int rc = 0;
 
     if (gbl_uses_externalauth && iq->authdata && externalComdb2AuthenticateUserRead && iq->usedb) {
-        return externalComdb2AuthenticateUserRead(iq->authdata, iq->usedb->tablename, iq->corigin);
+        rc = externalComdb2AuthenticateUserRead(iq->authdata, iq->usedb->tablename, iq->corigin);
+        if (rc)
+            rc = ERR_ACCESS;
+        return rc;
     }
 
     rc = check_tag_access(iq);
     if (rc)
-        return rc;
+        return ERR_ACCESS;
 
     return 0;
 }
