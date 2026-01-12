@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+# Verify that if a datacenter is down, we connect to a random node in the other data center
+
+bash -n "$0" | exit 1
+
+dbnm=$1
+auxdbnm="aux$dbnm"
+
+cp $DBDIR/comdb2db.cfg $DBDIR/comdb2db.addl.cfg
+
+echo "$dbnm:additional_cfg=$DBDIR/$dbnm.badpmux.cfg" >>$DBDIR/comdb2db.addl.cfg
+echo "$auxdbnm:additional_cfg=$DBDIR/$auxdbnm.badpmux.cfg" >>$DBDIR/comdb2db.addl.cfg
+
+echo "comdb2_config:portmuxport=8888" > $DBDIR/$dbnm.badpmux.cfg
+echo "comdb2_config:portmuxport=9999" > $DBDIR/$auxdbnm.badpmux.cfg
+
+set -e
+# verify that first db connects to 8888, as specified in its additional config
+strace cdb2sql --cdb2cfg $DBDIR/comdb2db.addl.cfg $dbnm default "SELECT 1" 2>&1 | grep 'sin_port=htons(8888)'
+# verify that second db connects to 9999, as specified in its addtional config
+strace cdb2sql --cdb2cfg $DBDIR/comdb2db.addl.cfg $auxdbnm default "SELECT 1" 2>&1 | grep 'sin_port=htons(9999)'
