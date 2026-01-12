@@ -79,6 +79,8 @@ static int COMDB2DB_NUM_OVERRIDE = 0;
 
 static char *SOCKPOOL_OTHER_NAME = NULL;
 static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
+/* Per-database additional config path */
+static char CDB2DBCONFIG_ADDL_PATH[512] = "";
 
 /* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
 static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/"; /* READ-ONLY */
@@ -1727,6 +1729,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
     int err = 0;
+    char *addl_cfg;
 
     bzero(line, sizeof(line));
     debugprint("entering\n");
@@ -1751,16 +1754,24 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 *comdb2db_found = 1;
             }
         } else if (dbname && (strcasecmp(dbname, tok) == 0)) {
-            tok = strtok_r(NULL, " :,", &last);
-            if (tok && is_valid_int(tok)) {
-                *dbnum = atoi(tok);
-                tok = strtok_r(NULL, " :,", &last);
-            }
-            while (tok != NULL) {
-                strncpy(db_hosts[*num_db_hosts], tok, CDB2HOSTNAME_LEN - 1);
-                tok = strtok_r(NULL, " :,", &last);
-                (*num_db_hosts)++;
-                *dbname_found = 1;
+            tok = strtok_r(NULL, " =:,", &last);
+            if (tok != NULL && strcasecmp("additional_cfg", tok) == 0) {
+                addl_cfg = strtok_r(NULL, " =:,", &last);
+                if (addl_cfg != NULL) { /* copy out the path. it'll be parsed in the very end. */
+                    strncpy(CDB2DBCONFIG_ADDL_PATH, addl_cfg, sizeof(CDB2DBCONFIG_ADDL_PATH) - 1);
+                    CDB2DBCONFIG_ADDL_PATH[sizeof(CDB2DBCONFIG_ADDL_PATH) - 1] = '\0';
+                }
+            } else { /* host list */
+                if (tok && is_valid_int(tok)) {
+                    *dbnum = atoi(tok);
+                    tok = strtok_r(NULL, " :,", &last);
+                }
+                while (tok != NULL) {
+                    strncpy(db_hosts[*num_db_hosts], tok, CDB2HOSTNAME_LEN - 1);
+                    tok = strtok_r(NULL, " :,", &last);
+                    (*num_db_hosts)++;
+                    *dbname_found = 1;
+                }
             }
         } else if (num_shards && strcasecmp("partition", tok) == 0) {
             tok = strtok_r(NULL, " :,", &last);
@@ -2308,6 +2319,18 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
                                   num_shards);
                 sbuf2close(s);
             }
+
+        /* Process additional_cfg if specified */
+        if (CDB2DBCONFIG_ADDL_PATH[0] != '\0') {
+            if ((s = cdb2_sbuf2openread(CDB2DBCONFIG_ADDL_PATH)) != NULL) {
+                read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
+                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
+                                  num_shards);
+                sbuf2close(s);
+            }
+            CDB2DBCONFIG_ADDL_PATH[0] = '\0';
+        }
+
         if (cdb2_use_env_vars) {
             read_comdb2db_environment_cfg(hndl, comdb2db_name, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                           db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
