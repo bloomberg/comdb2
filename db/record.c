@@ -1309,6 +1309,47 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         ERR("upd master columns error %d", rc);
     }
 
+    if (iq->usedb->n_check_constraints > 0) {
+        int need_blob_fetch = 0;
+        for (int i = 0; i < maxblobs; i++) {
+            if (blobs[i].exists && blobs[i].data == NULL && blobs[i].length == OSQL_BLOB_FILLER_LENGTH) {
+                need_blob_fetch = 1;
+                break;
+            }
+        }
+        if (need_blob_fetch) {
+            int blobnums[MAXBLOBS];
+            size_t blobsizes[MAXBLOBS];
+            size_t bloboffs[MAXBLOBS];
+            void *blobptrs[MAXBLOBS];
+
+            int numblobs = iq->usedb->schema->numblobs;
+            for (int i = 0; i < numblobs; i++) {
+                blobnums[i] = i;
+            }
+
+            rc = ix_find_blobs_by_rrn_and_genid_tran(iq, trans, rrn, vgenid, numblobs, blobnums, blobsizes, bloboffs,
+                                                     blobptrs);
+
+            if (rc != 0) {
+                *opfailcode = ERR_INTERNAL;
+                retrc = ERR_INTERNAL;
+                ERR("failed to fetch blobs for CHECK constraint verification rc %d", rc);
+            }
+
+            // Update blobs array with fetched data
+            for (int i = 0; i < numblobs; i++) {
+                if (blobs[i].exists && blobs[i].data == NULL) {
+                    blobs[i].data = blobptrs[i];
+                    blobs[i].length = blobsizes[i];
+                    blobs[i].collected = blobsizes[i];
+                } else if (blobs[i].exists) {
+                    free(blobptrs[i]);
+                }
+            }
+        }
+    }
+
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);
     if (rc < 0) {
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");

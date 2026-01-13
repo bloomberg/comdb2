@@ -1,0 +1,76 @@
+[create table t1 
+{
+schema {
+    int id
+    int regular_col
+    vutf8 metadata[500] null=yes
+}
+keys
+{
+    "PK" = id
+}
+constraints
+{
+    check "JSON_CHECK" = { where metadata IS NULL OR JSON_VALID(metadata) }
+}
+}] rc 0
+JSON length: 611
+=== Test 1: Insert row with JSON longer than 500 chars ===
+Executing query: INSERT INTO t1 (id, regular_col, metadata) VALUES (1, 100, '{"key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}')
+(rows inserted=1)
+Insert result: 0
+=== Verify the insert ===
+(id=1, regular_col=100, json_len=611)
+JSON length: 611
+=== Test 2: Update row with JSON longer than 500 chars ===
+(rows updated=1)
+Update result: 0
+=== Verify the update ===
+(id=1, regular_col=100, json_len=611)
+select result: 0
+=== Test 3: Update regular_col (BUG: fails if metadata > 500 chars) ===
+(rows updated=1)
+Update regular_col result: 0
+(id=1, regular_col=200, json_len=611)
+
+=== Test 4: Reduce metadata to < 500, then update regular_col (should work) ===
+(rows updated=1)
+Reduced metadata result: 0
+(rows updated=1)
+Update regular_col after reducing metadata result: 0
+
+[create table t1 
+{
+schema {
+    int id
+    int regular_col
+    vutf8 metadata[500] null=yes        
+}
+}] rc 0
+JSON length: 611
+=== Test 1: Insert row with JSON longer than 500 chars ===
+Executing query: INSERT INTO t1 (id, regular_col, metadata) VALUES (1, 100, '{"key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}')
+(rows inserted=1)
+Insert result: 0
+=== Verify the insert ===
+(id=1, regular_col=100, json_len=611)
+JSON length: 611
+=== Test 2: Update row with JSON longer than 500 chars ===
+(rows updated=1)
+Update result: 0
+=== Verify the update ===
+(id=1, regular_col=100, json_len=611)
+select result: 0
+=== Test 3: Update regular_col (BUG: fails if metadata > 500 chars) ===
+(rows updated=1)
+Update regular_col result: 0
+(id=1, regular_col=200, json_len=611)
+
+=== Test 4: Reduce metadata to < 500, then update regular_col (should work) ===
+(rows updated=1)
+Reduced metadata result: 0
+(rows updated=1)
+Update regular_col after reducing metadata result: 0
+
+=== Final state ===
+(id=1, regular_col=300, json_len=16, metadata='{"key": "short"}')
