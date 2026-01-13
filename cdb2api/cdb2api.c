@@ -5372,7 +5372,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             /* This is for select queries, we send just the last row. */
             rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
             if (rc) {
-                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__,
+                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db", __func__,
                          __LINE__);
                 free(hndl->first_buf);
                 hndl->first_buf = NULL;
@@ -5383,7 +5383,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             if (hndl->first_buf != NULL) {
                 hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
             } else {
-                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__,
+                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db", __func__,
                          __LINE__);
                 sbuf2close(hndl->sb);
                 hndl->sb = NULL;
@@ -5403,7 +5403,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         }
         clear_responses(hndl);
     } else if (hndl->in_trans) {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Database disconnected while in transaction\n", __func__);
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Database disconnected while in transaction", __func__);
         return CDB2ERR_TRAN_IO_ERROR; /* Fail if disconnect happens in transaction which doesn't have snapshot info.*/
     }
     return 0;
