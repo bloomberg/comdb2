@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 dbnm=$1
 
 for sql in `ls *.sql`; do
 
-cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnm default 2>&1 | diff "$sql.expected" -
-if [ "$?" != "0" ]; then
-  echo 'Failed.'
-  exit 1
-fi
+  cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnm default 2>&1 | diff "$sql.expected" -
+  if [ "$?" != "0" ]; then
+    echo 'Failed.'
+    exit 1
+  fi
 
 done
+
+./t01.sh $dbnm 2>&1 | tee t01.out | diff "t01.exp" -
+if [ "$?" != "0" ]; then
+  echo 'Failed!!.'
+  exit 1
+fi
 
 echo 'Passed.'
 exit 0
