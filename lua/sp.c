@@ -2301,6 +2301,12 @@ retry:
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
         rec_ptr->sql = sqlite3_sql(*stmt);
+        /* Initialize luaStartTime to current time to avoid uninitialized value bugs.
+           If lua_begin_step is called, it will be updated to the actual start time. */
+        Vdbe *pVdbe = (Vdbe*)*stmt;
+        if (pVdbe != NULL) {
+            pVdbe->luaStartTime = comdb2_time_epochms();
+        }
     } else if (sp->rc == SQLITE_SCHEMA) {
         return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
