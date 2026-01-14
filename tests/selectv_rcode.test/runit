@@ -80,6 +80,24 @@ function debug_flags
     fi
 }
 
+function get_max_db_time
+{
+    local maxtime=0
+    if [[ -z $CLUSTER ]]; then
+        maxtime=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select max(timestamp) from comdb2_transaction_logs")
+    else
+        for node in $CLUSTER; do
+            local time
+            time=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME default "select max(timestamp) from comdb2_transaction_logs")
+            if (( time > maxtime )); then
+                maxtime=$time
+            fi
+        done
+    fi
+
+    echo $maxtime
+}
+
 function run_tests
 {
     [[ $debug == "1" ]] && set -x
@@ -89,28 +107,31 @@ function run_tests
     typeset dbug_flags=$(debug_flags)
     typeset isolation=""
 
+    local db_time_at_start
+    db_time_at_start=$(get_max_db_time)
+
     start=$(date +%s)
     isolation=socksql
     echo "$isolation test"
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
+    $selectv_rcode -d $DBNAME -T $db_time_at_start -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
     [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 
     isolation=reccom
     echo "$isolation test"
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
+    $selectv_rcode -d $DBNAME -T $db_time_at_start -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
     [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 
     isolation=snapshot
     echo "$isolation test"
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
+    $selectv_rcode -d $DBNAME -T $db_time_at_start -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
     [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 
     isolation=serial
     echo "$isolation test"
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
+    $selectv_rcode -d $DBNAME -T $db_time_at_start -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
     [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 }

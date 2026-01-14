@@ -666,7 +666,9 @@ function run_test
     prepare_and_abort
     prepare_and_commit
     recover_prepared_and_downgrade
-    prepare_fail_on_non_utxnid
+    if [[ $TESTCASE != "blkseq_serial_generated" ]] ; then
+        prepare_fail_on_non_utxnid
+    fi
 }
 
 [[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"

@@ -192,6 +192,8 @@ function test2
 
     if [ $recom -ne 0 ] ; then
         echo "set transaction read committed" >&${COPROC[1]}
+    else
+        echo "set transaction blocksql" >&${COPROC[1]}
     fi
     echo "begin" >&${COPROC[1]}
     echo "update t1 set c=c+100000 where a = 300000" >&${COPROC[1]}

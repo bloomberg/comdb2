@@ -46,6 +46,7 @@ create table t1 {
 
 insert into t1 select 1, value from generate_series(1, 10000);
 
+set transaction blocksql
 set transaction chunk 100
 begin;
 delete from t1;

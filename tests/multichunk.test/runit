@@ -4,6 +4,7 @@ bash -n "$0" | exit 1
 cdb2="cdb2sql --tabs -s ${CDB2_OPTIONS} $1 default "
 
 function multi_chunk {
+    echo "set transaction blocksql"
     echo "set transaction chunk $chunk"
     echo 'begin'
     from=1
