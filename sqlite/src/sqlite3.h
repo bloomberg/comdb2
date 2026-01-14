@@ -4226,6 +4226,7 @@ SQLITE_API int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t *it);
 ** [sqlite3_bind_parameter_index()].
 */
 SQLITE_API int sqlite3_bind_parameter_count(sqlite3_stmt*);
+SQLITE_API int sqlite3_bind_param_value(sqlite3_stmt*, int i, struct param_data *);
 
 /*
 ** CAPI3REF: Name Of A Host Parameter
@@ -4282,6 +4283,11 @@ SQLITE_API int sqlite3_bind_parameter_index(sqlite3_stmt*, const char *zName);
 ** ^Use this routine to reset all host parameters to NULL.
 */
 SQLITE_API int sqlite3_clear_bindings(sqlite3_stmt*);
+
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API int sqlite3_bind_parameter_strval(sqlite3_stmt* pStmt, int i, char *out, int outlen);
+#endif
 
 /*
 ** CAPI3REF: Number Of Columns In A Result Set

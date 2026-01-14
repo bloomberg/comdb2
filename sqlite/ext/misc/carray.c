@@ -433,6 +433,21 @@ static void carrayBindDel(void *pPtr){
   sqlite3_free(p);
 }
 
+
+SQLITE_API int sqlite3_carray_size(
+  void *pPtr
+){
+  carray_bind *pBind = (carray_bind *)pPtr;
+  return pBind->nData;
+}
+
+SQLITE_API int sqlite3_carray_type(
+  void *pPtr
+){
+  carray_bind *pBind = (carray_bind *)pPtr;
+  return pBind->mFlags&0x07;
+}
+
 /*
 ** Invoke this interface in order to bind to the single-argument
 ** version of CARRAY().
