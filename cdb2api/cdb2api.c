@@ -3383,6 +3383,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     int rc, dossl = 0;
     cdb2_ssl_sess *p;
 
+    if (sslio_has_ssl(sb))
+        return 0;
+
     if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
         switch (hndl->s_sslmode) {
         case PEER_SSL_UNSUPPORTED:
@@ -3473,7 +3476,11 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
                      &hndl->key, &hndl->ca, &hndl->crl, hndl->num_hosts, NULL,
                      hndl->min_tls_ver, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
-        hndl->sslerr = 1;
+        if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
+            hndl->sslerr = 1;
+        } else {
+            hndl->c_sslmode = SSL_ALLOW;
+        }
         return -1;
     }
 
@@ -3484,6 +3491,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     SSL_CTX_free(ctx);
     if (rc != 1) {
         hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+        /* Don't leave an incomplete SSL connection here. Shut it down and reset sbuf.
+           Caller will reconnect upon a null `hndl->sb'. */
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sessobj = NULL;
@@ -3692,9 +3701,19 @@ retry_newsql_connect:
 
     hndl_set_sbuf(hndl, sb);
     if (try_ssl(hndl, sb) != 0) {
-        sbuf2close(sb);
-        rc = -1;
-        goto after_callback;
+        if (hndl->sb)
+            sbuf2close(sb);
+        fd = -1;
+        sb = NULL;
+        hndl->sb = NULL;
+        /* We're downgraded to plaintext, reconnect without SSL now. */
+        if (!hndl->sslerr && !SSL_IS_PREFERRED(hndl->c_sslmode)) {
+            rc = 0;
+            goto retry_newsql_connect;
+        } else {
+            rc = -1;
+            goto after_callback;
+        }
     }
 
     debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
