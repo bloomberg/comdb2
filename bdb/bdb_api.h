@@ -1755,11 +1755,10 @@ int bdb_newsc_del_redo_genid(tran_type *t, const char *tablename, uint64_t genid
 
 int bdb_newsc_del_all_redo_genids(tran_type *t, const char *tablename, int *bdberr);
 
-int bdb_set_high_genid(tran_type *input_trans, const char *tablename,
-                       unsigned long long genid, int *bdberr);
-int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
-                              int stripe, unsigned long long genid,
-                              int *bdberr);
+int bdb_set_high_genid(tran_type *input_trans, const char *tablename, unsigned long long genid, int *bdberr,
+                       const char *f, int l);
+int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name, int stripe, unsigned long long genid,
+                              int *bdberr, const char *f, int l);
 int bdb_clear_high_genid(tran_type *input_trans, const char *db_name,
                          int num_stripes, int *bdberr);
 int bdb_get_high_genid(const char *db_name, int stripe,
