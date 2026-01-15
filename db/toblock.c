@@ -156,6 +156,10 @@ static int block_state_offset_from_ptr(block_state_t *p_blkstate,
 int gbl_blockop_count_xrefs[BLOCK_MAXOPCODE];
 const char *gbl_blockop_name_xrefs[NUM_BLOCKOP_OPCODES];
 
+pthread_mutex_t transaction_notifier_lock = PTHREAD_MUTEX_INITIALIZER;
+transaction_notifier_list transaction_notifiers = {
+    .top = NULL, .bot = NULL, .count = 0, .diff = offsetof(struct transaction_notifier, lnk)};
+
 static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
                        struct packedreq_qadd *buf, blob_buffer_t *blobs)
 {
@@ -6401,6 +6405,13 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct i
     if (rc == 0) {
         osql_postcommit_handle(iq);
         handle_postcommit_bpfunc(iq);
+        struct transaction_notifier *n;
+        Pthread_mutex_lock(&transaction_notifier_lock);
+        LISTC_FOR_EACH(&transaction_notifiers, n, lnk)
+        {
+            n->simple_notify();
+        }
+        Pthread_mutex_unlock(&transaction_notifier_lock);
     } else {
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
