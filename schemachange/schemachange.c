@@ -894,7 +894,6 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 {
     struct dbtable *db;
     struct dbtable *newdb;
-    int bdberr;
     int rc;
 
     db = get_dbtable_by_name(s->tablename);
@@ -913,8 +912,6 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
         return -1;
     }
-
-    char new_prefix[32];
 
     if (s->headers != db->odh) {
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
@@ -943,9 +940,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
-    bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
-
-    rc = open_temp_db_resume(iq, newdb, new_prefix, 1, 0, NULL);
+    rc = open_temp_newdb_resume(iq, newdb, 1);
     if (rc) {
         backout_schemas(newdb->tablename);
         abort();
@@ -953,6 +948,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 
     return 0;
 }
+
 /* Make sure that logical recovery has tables to work with */
 int add_schema_change_tables()
 {

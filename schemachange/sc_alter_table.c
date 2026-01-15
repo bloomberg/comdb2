@@ -399,7 +399,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int datacopy_odh = 0;
     int changed;
     int i;
-    char new_prefix[32];
     struct scinfo scinfo;
     struct errstat err = {0};
 
@@ -523,18 +522,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/
-
-    /* create temporary tables.  to try to avoid strange issues always
-     * use a unqiue prefix.  this avoids multiple histories for these
-     * new. files in our logs.
-     *
-     * since the prefix doesn't matter and bdb needs to be able to unappend
-     * it, we let bdb choose the prefix */
-    /* ignore failures, there shouln't be any and we'd just have a
-     * truncated prefix anyway */
-    bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
-
-    rc = open_temp_db_resume(iq, newdb, new_prefix, s->resume, 0, tran);
+    rc = open_temp_newdb_resume(iq, newdb, s->resume);
     if (rc) {
         if (rc == BDBERR_EXCEEDED_BLOBS) {
             sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
@@ -608,6 +596,29 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         change_schemas_recover(s->tablename);
         decrement_sc_yet_to_resume_counter();
         return -1;
+    }
+
+    if (s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
+        /* we have more shards here where we put data,
+         * update newdb->sc_genids with the max of all shard stripes
+         */
+        assert(db->sharding_arg);
+        assert(db->sharding_func);
+        for (i = 0; i < newdb->dtastripe; i++) {
+            for (int shard = 0; shard < db->sharding_arg->n - 1; shard++) {
+                if (newdb->sc_genids[i] < db->sharding_arg->cs[shard].resume_genids[i]) {
+                    logmsg(LOGMSG_INFO, "%s updating %s stripe %d sc_genid from %llx (%lld) to %llx (%lld) using %s\n",
+                           __func__, s->tablename, i, newdb->sc_genids[i], newdb->sc_genids[i],
+                           db->sharding_arg->cs[shard].resume_genids[i], db->sharding_arg->cs[shard].resume_genids[i],
+                           db->sharding_arg->ss[shard]->tablename);
+                    newdb->sc_genids[i] = db->sharding_arg->cs[shard].resume_genids[i];
+                }
+            }
+        }
+    }
+    for (i = 0; i < newdb->dtastripe; i++) {
+        logmsg(LOGMSG_INFO, "%s: %s stripe %d result resume genid %llx (%lld)\n", __func__, s->tablename, i,
+               newdb->sc_genids[i], newdb->sc_genids[i]);
     }
 
     Pthread_rwlock_wrlock(&db->sc_live_lk);

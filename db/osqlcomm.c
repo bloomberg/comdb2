@@ -6024,6 +6024,35 @@ static inline int is_write_request(int type)
 
 void free_cached_idx(uint8_t **cached_idx);
 
+int dbtable_get_highest_genid(struct dbtable *table, unsigned long long *genids)
+{
+    int rc;
+    void *rec;
+    int i;
+    int orglen = MAXLRL;
+    int bdberr;
+
+    rec = alloca(orglen);
+
+    /* get max genid for each stripe */
+    for (i = 0; i < table->dtastripe; ++i) {
+        uint8_t ver;
+        int dtalen = orglen;
+
+        rc = bdb_find_newest_genid(table->handle, NULL, i, rec, &dtalen, dtalen, &genids[i], &ver, &bdberr);
+        if (rc == IX_FND)
+            logmsg(LOGMSG_INFO, "%s: LOOKING FOR %s STRIPE %d found genid %llx (%lld)\n", __func__, table->tablename, i,
+                   genids[i], genids[i]);
+        else if (rc == 1)
+            logmsg(LOGMSG_INFO, "%s: LOOKING FOR %s STRIPE %d empty stripe, genid will be 0\n", __func__,
+                   table->tablename, i);
+        else if (rc < 0 || bdberr != BDBERR_NOERROR) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int gbl_disable_tpsc_tblvers = 0;
 static int start_schema_change_tran_wrapper(const char *tblname,
                                             timepart_view_t **pview,
@@ -6116,7 +6145,17 @@ static int start_schema_change_tran_wrapper(const char *tblname,
         rc = populate_db_with_alt_schema(thedb, sc->newdb, sc->newcsc2, &err);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: populate_db_with_alt_schema failed with rc %d %s\n", __func__, rc, err.errstr);
+            sc_errf(sc, "%s: populate_db_with_alt_schema failed with rc %d %s\n", __func__, rc, err.errstr);
             return VIEW_ERR_SC;
+        }
+
+        /* we also need to retrieve the highest genid */
+        if (arg->indx > 0) {
+            rc = dbtable_get_highest_genid(sc->newdb, arg->retros->cs[arg->indx - 1].resume_genids);
+            if (rc) {
+                sc_errf(sc, "%s: failed to find newest genid for shard %s\n", __func__, sc->tablename);
+                return VIEW_ERR_SC;
+            }
         }
     }
 
@@ -6352,6 +6391,7 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     struct schema_change_type *sc = arg->s;
     struct errstat err = {0};
     int rc = 0;
+    int ii;
 
     /* determine retroactive time boundaries for the shards */
     int len = sizeof(struct timepart_retro) +
@@ -6370,7 +6410,7 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
                                                 sc->partition.u.tpt.retention * sizeof(int));
     retros->cs = (timepart_retro_ctr_t *)((char *)retros + sizeof(struct timepart_retro) +
                                           sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int *)));
-    for (int ii = 0; ii < sc->partition.u.tpt.retention; ii++) {
+    for (ii = 0; ii < sc->partition.u.tpt.retention; ii++) {
         pthread_mutex_init(&retros->cs[ii].mtx, 0);
     }
     rc = timepart_populate_timelimits(sc->newpartition, retros, &err);
@@ -6405,6 +6445,20 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     }
     retros->ss[sc->partition.u.tpt.retention - 1] = arg->s;
 
+    /* set the maximum genid for each stripe */
+    for (int stripe = 0; stripe < sc->newdb->dtastripe; stripe++) {
+        for (ii = 0; ii < sc->partition.u.tpt.retention; ii++) {
+            unsigned long long genid = retros->cs[ii].resume_genids[stripe];
+            if (genid > retros->resume_genids[stripe]) {
+                logmsg(LOGMSG_INFO,
+                       "%s: increased stripe %d resume genid from %llx (%lld) to %llx (%lld) per shard %s\n", __func__,
+                       stripe, retros->resume_genids[stripe], retros->resume_genids[stripe], genid, genid,
+                       sc->tablename);
+                retros->resume_genids[stripe] = genid;
+            }
+        }
+    }
+
     /* alter existing shard */
     arg->indx = 0;
     arg->pos = FIRST_SHARD | LAST_SHARD;
@@ -6416,6 +6470,8 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     db->sharding_func = timepart_retro_route;
     sc->newpartition = newpartition;
     sc->force_rebuild = 1;
+    /* run this async, this can be in upgrade thread */
+    sc->nothrevent = 0;
     for (int jj = 0; jj < retros->n; jj++) {
         logmsg(LOGMSG_USER, "PARTITION %s shard %d time %u name %s\n", arg->part_name, jj, retros->limits[jj],
                (jj < (retros->n - 1)) ? retros->ss[jj]->tablename : arg->part_name);

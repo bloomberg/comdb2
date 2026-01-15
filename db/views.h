@@ -77,6 +77,7 @@ enum views_trigger_op {
 typedef struct timepart_retro_ctr {
     pthread_mutex_t mtx;
     int counter;
+    unsigned long long resume_genids[MAXDTASTRIPE];
 } timepart_retro_ctr_t;
 
 typedef struct timepart_retro {
@@ -84,6 +85,7 @@ typedef struct timepart_retro {
     int *limits;
     struct schema_change_type **ss;
     timepart_retro_ctr_t *cs;
+    unsigned long long resume_genids[MAXDTASTRIPE];
 } timepart_retro_t;
 
 enum shard_pos { /* keep them bits */
