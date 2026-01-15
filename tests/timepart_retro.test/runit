@@ -19,15 +19,22 @@ delayed_writes()
 {
     $CM "exec procedure sys.cmd.send('debg 500')"
     $CM "exec procedure sys.cmd.send('ndebg 500')"
-    echo "Sleeping 10 seconds"
+    echo "Sleeping 10 seconds for deletes"
     sleep 10
     $C "delete from t where a between 1 and 10 or a between 101 and 110"
-    echo "Sleeping 10 more seconds"
+    echo "Sleeping 10 more seconds for updates"
     sleep 10
     $C "update t set a = a + 1000 where a between 11 and 15 or a between 111 and 115"
+    echo "Sleeping 10 more seconds for inserts"
     sleep 10
-    echo "Sleeping 10 more seconds finally"
     $C "insert into t(a) select * from generate_series(2001, 2010)"
+    if [[ -z "${CLUSTER}" ]] ; then
+        echo "Skipping master downgrade test since we are single node"
+    else
+        echo "Sleeping 10 more seconds finally for master downgrade ${master}"
+        sleep 10
+        $CM "exec procedure sys.cmd.send('downgrade')"
+    fi
 }
 
 echo "Inserting the first set"
@@ -70,11 +77,23 @@ echo "Launching delayed writes"
 delayed_writes &
 
 echo "Partitioning the table"
-$C "ALTER TABLE T PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" >> $OUT
-if (( $? != 0 )) ; then
-   echo "FAILURE to partition retroactively"
-   exit 1
+output=`$C "ALTER TABLE T PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY"`
+echo ${output} >> $OUT
+if [[ ! -z "${output}" ]] ; then
+    echo "Received error ${output}"
+    if [[ "${output}" == *"Master node downgrading"* ]] ; then
+        echo "Master downgrading error, ignoring, we'll check resume results"
+    else
+        echo "FAILURE to partition retroactively"
+        exit 1
+    fi
 fi
+
+echo "make sure subprocess is gone"
+wait
+
+echo "waiting 30 seconds to allow schema to finish"
+sleep 30
 
 echo  "Checking the shards"
 $C "select shardname from comdb2_timepartshards" >> $OUT

@@ -195,6 +195,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
  * If the schema change is not resuming it sets them all to zero
  * If success it returns 0, if failure it returns <0 */
 int gbl_debug_stall_in_oplog_seed = 0;
+
 int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
 {
     void *rec;
@@ -275,8 +276,14 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
-            if (rc == 1)
+            if (rc == IX_FND)
+                logmsg(LOGMSG_DEBUG, "%s: LOOKING FOR %s STRIPE %d found genid %llx (%lld)\n", __func__, db->tablename,
+                       stripe, sc_genids[stripe], sc_genids[stripe]);
+            if (rc == 1) {
+                logmsg(LOGMSG_DEBUG, "%s: LOOKING FOR %s STRIPE %d reset to genid 0\n", __func__, db->tablename,
+                       stripe);
                 sc_genids[stripe] = 0ULL;
+            }
         } else
             rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);
@@ -812,14 +819,12 @@ static int convert_record(struct convert_record_data *data)
             rc = 0;
             if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
                 int bdberr;
-                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename,
-                                               data->stripe, -1ULL, &bdberr);
+                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename, data->stripe, -1ULL, &bdberr, __func__,
+                                               __LINE__);
                 if (rc != 0) rc = -1; // convert_record expects -1
+                sc_printf(data->s, "[%s] finished stripe %d, setting genid %llx, rc %d\n", data->from->tablename,
+                          data->stripe, data->sc_genids[data->stripe], rc);
             }
-            sc_printf(data->s,
-                      "[%s] finished stripe %d, setting genid %llx, rc %d\n",
-                      data->from->tablename, data->stripe,
-                      data->sc_genids[data->stripe], rc);
             return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
@@ -1061,6 +1066,10 @@ static int convert_record(struct convert_record_data *data)
             0,            /* blkpos */
             addflags, 0);
 
+        if (rc)
+            logmsg(LOGMSG_ERROR, "Failed to add record %llx (%lld) in migration %s->%s rc %d\n", ngenid, ngenid,
+                   tbl->tablename, data->iq.usedb->tablename, rc);
+
         data->iq.usedb = tbl;
 
         if (rc)
@@ -1073,8 +1082,7 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
-                                &bdberr);
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid, &bdberr, __func__, __LINE__);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
@@ -2705,8 +2713,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
 
     if (!is_dta_being_rebuilt(data->to->plan)) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
-                                &bdberr);
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid, &bdberr, __func__, __LINE__);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
