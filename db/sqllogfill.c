@@ -328,7 +328,7 @@ static void print_record_info(const char *prefix, cdb2_hndl_tp *hndl)
 
 static int gen_okay(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, u_int32_t mygen)
 {
-    int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 2);
+    int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 1);
     if (!recgenp)
         return 1;
     return *recgenp <= mygen;
@@ -344,9 +344,9 @@ static int apply_record(bdb_state_type *bdb_state, cdb2_hndl_tp *hndl, LOG_INFO 
     int64_t *genp;
 
     lsn = (char *)cdb2_column_value(hndl, 0);
-    blob = cdb2_column_value(hndl, 4);
-    blob_len = cdb2_column_size(hndl, 4);
-    genp = (int64_t *)cdb2_column_value(hndl, 2);
+    blob = cdb2_column_value(hndl, 2);
+    blob_len = cdb2_column_size(hndl, 2);
+    genp = (int64_t *)cdb2_column_value(hndl, 1);
 
     /* Validate blob pointer */
     if (!blob && blob_len > 0) {
@@ -408,7 +408,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
 
         /* Copy master name under bdb-lock */
         BDB_READLOCK(__func__);
-        if (!thedb->master) {
+        if (!thedb->master || thedb->master == gbl_myhostname) {
             BDB_RELLOCK();
             sleep(1);
             return;
@@ -480,7 +480,8 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
         timeout = timeout > 0 ? timeout : 10;
 
         /* Query transaction log with BLOCK and SENTINEL flags */
-        rc = snprintf(sql_cmd, SQL_CMD_LEN, "select * from comdb2_transaction_logs('{%u:%u}', NULL, %d, %d)",
+        rc = snprintf(sql_cmd, SQL_CMD_LEN,
+                      "select lsn, generation, payload from comdb2_transaction_logs('{%u:%u}', NULL, %d, %d)",
                       last_lsn.file, last_lsn.offset, TRANLOG_FLAGS_BLOCK | TRANLOG_FLAGS_SENTINEL, timeout);
 
         if (rc < 0 || rc >= SQL_CMD_LEN) {
@@ -540,7 +541,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             /* Verify gen before applying record */
             if (firstgen != gen || !gen_okay(bdb_state, hndl, gen)) {
                 if (gbl_debug_sql_logfill) {
-                    int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 2);
+                    int64_t *recgenp = (int64_t *)cdb2_column_value(hndl, 1);
                     logmsg(LOGMSG_USER, "%s: exiting apply loop, firstgen=%u gen=%u recgen=%" PRId64 "\n", __func__,
                            firstgen, gen, recgenp ? *recgenp : 0);
                 }
