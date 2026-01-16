@@ -6085,6 +6085,12 @@ static inline int ascii2num(int a)
     return isdigit(a) ? a - '0' : isalpha(a) ? 0x0a + a - 'a' : 0xff;
 }
 
+static void warn_deprecated_quoted_param(void) {
+    logmsg(LOGMSG_WARN,
+           "Warning: passing bind parameters inside quotes is "
+           "deprecated. Use exec procedure proc(@param) instead of exec procedure proc('@param').\n");
+}
+
 static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
 {
     arg->mbuf = NULL;
@@ -6114,9 +6120,8 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
             break;
         } else {
             // deprecating: exec proc('@param') usage, instead use exec proc(@param)
-            logmsg(LOGMSG_WARN,
-                   "Warning: passing bind parameters inside quotes and it is "
-                   "deprecated. Use exec procedure estr(@x) instead of exec procedure estr('@x')\n");
+            static pthread_once_t warn_once = PTHREAD_ONCE_INIT;
+            pthread_once(&warn_once, warn_deprecated_quoted_param);
             // lose the quotes
             ++a;
             --b;
