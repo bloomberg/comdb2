@@ -386,7 +386,7 @@ MAKE_CDB2API_TEST_COUNTER(num_sockpool_send_timeouts)
 // managed by the caller - I could strdup locally, but don't want to be
 // flagged by valgrind.
 #define MAKE_CDB2API_TEST_TUNABLE(name)                                                                                \
-    static const char *cdb2api_test_##name;                                                                            \
+    static const char *cdb2api_test_##name = "";                                                                       \
     void set_cdb2api_test_##name(const char *value)                                                                    \
     {                                                                                                                  \
         cdb2api_test_##name = value;                                                                                   \
