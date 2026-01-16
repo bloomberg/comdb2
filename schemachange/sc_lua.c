@@ -14,7 +14,6 @@
 #include "logmsg.h"
 
 int gbl_fail_to_create_default_cons = 0;
-int gbl_create_default_consumer_atomically = 1;
 
 struct sp_file_t {
     char name[128]; // MAX_SPNAME
