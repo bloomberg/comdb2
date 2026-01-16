@@ -907,7 +907,6 @@
 (name='sc_logical_save_lsn_every_n', description='Save schema change redo lsn to llmeta every n-th transactions.', type='INTEGER', value='10', read_only='N')
 (name='sc_no_rebuild_thr_sleep', description='Sleep this many microsec when conversion threads count is at max.', type='INTEGER', value='10', read_only='N')
 (name='sc_pause_redo', description='Pauses the newsc asychronous redo-thread for testing.', type='BOOLEAN', value='OFF', read_only='N')
-(name='sc_protobuf', description='Enable protobuf schema change object (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='sc_restart_sec', description='Delay restarting schema change for this many seconds after startup/new master election.', type='INTEGER', value='0', read_only='N')
 (name='sc_resume_autocommit', description='Always resume autocommit schemachange if possible.', type='BOOLEAN', value='ON', read_only='N')
 (name='sc_resume_watchdog_timer', description='sc_resuming_watchdog timer', type='INTEGER', value='60', read_only='N')
