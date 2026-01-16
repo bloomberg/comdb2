@@ -30,14 +30,14 @@ longoremptystringTest() {
 
 
 sp=$(cat << 'EOF'
-CREATE PROCEDURE foo VERSION 'test' { 
+CREATE PROCEDURE foo VERSION 'test' {
 local function main(x, input)
     db:setmaxinstructions(10000000)
     local t = {}
     local s = nil
     if input ~= nil then
         s = input
-    else 
+    else
         s = string.format("%s%s", string.rep('a,', 999999), 'a')
     end
     if x == 'cstring' then s = db:cast(s, 'cstring') end
@@ -59,9 +59,9 @@ time ${CDB2SQL_EXE} -r 1 ${CDB2_OPTIONS} $DBNAME $tier "exec procedure foo('cstr
 
 bindparamTest() {
 
-$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME $tier - <<EOF 
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME $tier - <<EOF
 drop table if exists bindt
-create table bindt { 
+create table bindt {
 schema {
     cstring i[32] null=yes
     cstring j[32] null=yes
@@ -70,7 +70,7 @@ EOF
 
 sp_bind_pos=$(cat << 'EOF'
 CREATE PROCEDURE bind_sp VERSION 'test' {
-local function main() 
+local function main()
     local t, r
     t = db:prepare("INSERT INTO bindt(i, j) values(?,?)")
     t:bind(1, "1") -- bind by pos
@@ -83,7 +83,7 @@ EOF
 
 sp_bind_name=$(cat << 'EOF'
 CREATE PROCEDURE bind_sp_named VERSION 'test' {
-local function main() 
+local function main()
     local t, r, a, b
     t = db:prepare("INSERT INTO bindt(i, j) values(@a, @b)")
     t:bind("a", "5") -- bind by name
@@ -158,11 +158,55 @@ fi
 $CDB2SQL_EXE -r 1 ${CDB2_OPTIONS} $DBNAME $tier "select a from t where id=1" >> t2.out 2>&1
 [ $? -eq 0 ] || exit 1
 
-if ! diff -q t2.out t2.exp > /dev/null 2>&1 ; then
-    echo "diff:"
-    diff t2.out t2.exp | head -10
-    failexit "t2.sql output diff from expected"
-fi
+checkdiff t2.out t2.exp
+
+$CDB2SQL_EXE -r 1 -s ${CDB2_OPTIONS} $DBNAME $tier <<-'EOF' >/dev/null  2>&1
+create procedure estr version 'test' {
+    local function main(x)
+        return 0
+    end
+}$$
+EOF
+[ $? -eq 0 ] || exit 1
+
+for i in {1..100}; do
+    $CDB2SQL_EXE -r 1 -s ${CDB2_OPTIONS} $DBNAME $tier <<-'EOF' >/dev/null  2>&1
+    @bind CDB2_CSTRING x "test"
+    exec procedure estr('@x')
+EOF
+    [ $? -eq 0 ] || exit 1
+done
+
+increment_warn_count() {
+    warnmsg="Warning: passing bind parameters inside quotes is deprecated"
+    logfile="$1"
+    count=$2
+    if [ -f "$logfile" ]; then
+        c=$(grep "$warnmsg" "$logfile" | wc -l)
+        count=$((count + c))
+    fi
+    echo $count
+}
+
+check_for_spew_in_logs() {
+    count=0
+    if [[ -z $CLUSTER ]]; then
+        logfile="${TESTDIR}/logs/$DBNAME.db"
+        count=$(increment_warn_count "$logfile" $count)
+        [[ $count -gt 1 ]] && failexit "expected to warn once, but found count:$count"
+    else
+        node_count=$(echo $CLUSTER | wc -w)
+        for node in $CLUSTER; do
+            logfile="${TESTDIR}/logs/${DBNAME}.${node}.db"
+            count=$(increment_warn_count "$logfile" $count)
+        done
+        [[ $count -gt $node_count ]] && failexit "expected to warn once per node, but found count:$count"
+    fi
+    echo "Total warning count: $count"
+}
+
+check_for_spew_in_logs
+
 echo "Testcase passed."
 
 exit 0
