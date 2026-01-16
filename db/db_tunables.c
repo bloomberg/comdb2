@@ -201,6 +201,7 @@ extern int gbl_abort_during_downgrade_if_scs_dont_stop;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_abort_on_unfound_txn;
 extern int gbl_abort_on_ufid_mismatch;
+extern int gbl_abort_on_stale_master;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
