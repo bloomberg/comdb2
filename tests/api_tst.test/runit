@@ -99,6 +99,10 @@ ${TESTSBUILDDIR}/cdb2api_localcache_systable ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_localcache_systable - fail" && exit 1
 echo 'cdb2api_localcache_systable - pass'
 
+${TESTSBUILDDIR}/cdb2api_sockpooltimeout ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_sockpooltimeout - fail" && exit 1
+echo 'cdb2api_sockpooltimeout - pass'
+
 echo 'comdb2_feature:discard_unread_socket_data=on' >> ${cfg}
 ${TESTSBUILDDIR}/cdb2api_unread_data ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_unread_data - fail" && exit 1
