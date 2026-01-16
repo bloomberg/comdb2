@@ -11,6 +11,12 @@ if [ "$?" != "0" ]; then
   exit 1
 fi
 
+./t01.sh $dbnm 2>&1 | diff "t01.exp" -
+if [ "$?" != "0" ]; then
+  echo 'Failed.'
+  exit 1
+fi
+
 done
 
 echo 'Passed.'
