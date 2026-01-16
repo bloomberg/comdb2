@@ -431,6 +431,8 @@ void live_sc_off(struct dbtable *db)
     Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_to = NULL;
     db->sc_from = NULL;
+    db->sharding_func = NULL;
+    db->sharding_arg = NULL;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
     db->sc_adds = 0;

@@ -810,6 +810,9 @@ typedef struct dbtable {
     uint32_t numcols;
     char **columns;
     char **shardnames;
+    struct timepart_retro *sharding_arg;
+    struct dbtable *(*sharding_func)(struct timepart_retro *, unsigned long long, const char *, int);
+
 } dbtable;
 
 struct dbview {
