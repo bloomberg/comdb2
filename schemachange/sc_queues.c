@@ -412,6 +412,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
             sbuf2printf(sb, "FAILED\n");
             goto done;
         }
+        ltran->no_distributed_commit = 1;
     }
 
     bdb_ltran_get_schema_lock(ltran);
@@ -873,6 +874,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                __func__, rc);
         goto done;
     }
+    sc_logical_tran->no_distributed_commit = 1;
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
@@ -941,6 +943,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                __func__, rc);
         goto done;
     }
+    sc_logical_tran->no_distributed_commit = 1;
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",

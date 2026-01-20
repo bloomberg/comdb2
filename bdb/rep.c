@@ -3161,6 +3161,7 @@ int gbl_ignore_final_non_durable_retry = 1;
 
 int gbl_replicant_retry_on_not_durable = 0;
 int gbl_debug_force_non_durable = 0;
+int gbl_assert_no_schemalk_in_distributed_commit = 1;
 
 int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final)
 {
@@ -3207,6 +3208,9 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     /* short ciruit if we are waiting on lsn 0:0  */
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
+
+    if (gbl_assert_no_schemalk_in_distributed_commit)
+        assert_no_schema_lk();
 
     /*
     logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__,

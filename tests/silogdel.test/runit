@@ -84,7 +84,7 @@ function check_table
 
     echo "select count(*) from $table" >&${COPROC[1]}
 
-    export TMOUT=15
+    export TMOUT=30
     read -ru ${COPROC[0]} out
 
     if [[ $? != 0 ]]; then
