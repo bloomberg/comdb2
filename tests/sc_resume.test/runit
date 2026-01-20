@@ -214,6 +214,10 @@ function wait_for_sc
         echo "Schema is still running on master $master"
         sleep 5
     done
+
+    # Was always racy: replicant_poll_on_sc makes it fail more often.
+    # Sleep a bit
+    sleep 5
 }
 
 echo "Test with insert, SC should not fail"

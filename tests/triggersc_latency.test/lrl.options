@@ -9,3 +9,6 @@ debug_add_replication_latency on
 # from being dispatched.  This causes spurious & 
 # incorrect failures
 disable_writer_penalty_deadlock 1
+
+# Disable- this is a latency test
+replicant_poll_on_sc 0

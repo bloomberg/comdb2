@@ -68,6 +68,9 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, const char *tbl, int tbllen, int *bdberr);
 int bdb_llog_scdone(bdb_state_type *, scdone_t, const char *tablename,
                     int tablenamelen, int wait, int *bdberr);
+enum scdone_flags { NO_DISTRIBUTED_COMMIT = 1 };
+int bdb_llog_scdone_flags(bdb_state_type *, scdone_t, const char *tablename, int tablenamelen, int wait, int *bdberr,
+                          uint32_t flags);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_analyze(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait,

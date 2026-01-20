@@ -530,7 +530,7 @@ static int do_add_sp_int(struct schema_change_type *sc, struct ireq *iq, tran_ty
         ++gbl_lua_version;
         if (sc->kind != SC_DEFAULTCONS) {
             int bdberr;
-            bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+            bdb_llog_luareload(thedb->bdb_env, 0, &bdberr);
         }
         if (iq) {
             if (sc->fname[0] == 0) {
@@ -555,7 +555,7 @@ static int do_del_sp_int(struct schema_change_type *sc, struct ireq *iq)
     }
     if (rc == 0) {
         int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+        bdb_llog_luareload(thedb->bdb_env, 0, &bdberr);
     }
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
@@ -571,7 +571,7 @@ static int do_default_sp_int(struct schema_change_type *sc, struct ireq *iq, tra
     }
     if (rc == 0 && sc->kind != SC_DEFAULTCONS) {
         int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+        bdb_llog_luareload(thedb->bdb_env, 0, &bdberr);
     }
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
@@ -691,6 +691,7 @@ int do_default_cons(struct schema_change_type *sc, struct ireq *iq)
         goto done;
     }
 
+    ltran->no_distributed_commit = 1;
     bdb_ltran_get_schema_lock(ltran);
 
     tran_type *tran = NULL;
@@ -766,14 +767,16 @@ int reload_lua_afuncs()
     reload_lua_funcs(lua_afunc, a);
 }
 
+// clang-format off
 #define finalize_lua_func(pfx)                                                 \
     do {                                                                       \
         int rc = reload_lua_##pfx##funcs();                                    \
         if (rc != 0) return rc;                                                \
         int bdberr;                                                            \
-        return bdb_llog_luafunc(thedb->bdb_env, lua_##pfx##func, 1, &bdberr);  \
+        return bdb_llog_luafunc(thedb->bdb_env, lua_##pfx##func, 0, &bdberr);  \
     } while (0)
 
+// clang-format on
 int finalize_lua_sfunc(struct schema_change_type *unused)
 {
     finalize_lua_func(s);
