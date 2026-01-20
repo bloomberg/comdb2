@@ -150,6 +150,9 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
  */
 void create_sqlite_master()
 {
+    //thedb->bdb_env->dbenv->log_flush(thedb->bdb_env->dbenv, NULL);
+    int err;
+    bdb_flush(thedb->bdb_env, &err);
     assert_wrlock_schema_lk();
     master_entry_t *new_arr = NULL;
     int local_nentries = 0;

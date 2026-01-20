@@ -227,9 +227,14 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     return rc;
 }
 
+enum scdone_flags {
+    NO_DISTRIBUTED_COMMIT = 1,
+    RELEASE_SCHEMA_LOCK_AFTER_COMMIT = 2
+};
+
 // Must be done a transaction by itself so this func creates a trans internally
-int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t sctype, const char *tbl,
-                   int tbllen, int wait, int *bdberr)
+int bdb_llog_scdone_flags(bdb_state_type *bdb_state, scdone_t sctype, const char *tbl,
+                   int tbllen, int wait, int *bdberr, uint32_t flags)
 {
     int retries = 0;
 
@@ -269,6 +274,14 @@ retry:
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;
 
+    if (flags & RELEASE_SCHEMA_LOCK_AFTER_COMMIT) {
+        ltran->release_schema_lock_after_commit = 1;
+    }
+
+    if (flags & NO_DISTRIBUTED_COMMIT) {
+        ltran->no_distributed_commit = 1;
+    }
+
     rc = bdb_llog_scdone_tran(bdb_state, sctype, tran, tbl, tbllen, bdberr);
 
     if (rc) {
@@ -293,6 +306,12 @@ retry:
         }
     }
     return rc;
+}
+
+int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t sctype, const char *tbl,
+                   int tbllen, int wait, int *bdberr)
+{
+    return bdb_llog_scdone_flags(bdb_state, sctype, tbl, tbllen, wait, bdberr, 0);
 }
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
@@ -341,7 +360,7 @@ int bdb_llog_analyze(bdb_state_type *bdb_state, int wait, int *bdberr)
 int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait, int *bdberr)
 {
     ++gbl_views_gen;
-    return bdb_llog_scdone(bdb_state, views, name, strlen(name) + 1, wait, bdberr);
+    return bdb_llog_scdone_flags(bdb_state, views, name, strlen(name) + 1, wait, bdberr, NO_DISTRIBUTED_COMMIT  );
 }
 
 int bdb_llog_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
@@ -353,13 +372,13 @@ int bdb_llog_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
 }
 int bdb_llog_luareload(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
-    return bdb_llog_scdone(bdb_state, luareload, NULL, 0, wait, bdberr);
+    return bdb_llog_scdone_flags(bdb_state, luareload, NULL, 0, wait, bdberr, NO_DISTRIBUTED_COMMIT);
 }
 
 int bdb_llog_luafunc(bdb_state_type *bdb_state, scdone_t type, int wait,
                      int *bdberr)
 {
-    return bdb_llog_scdone(bdb_state, type, NULL, 0, wait, bdberr);
+    return bdb_llog_scdone_flags(bdb_state, type, NULL, 0, wait, bdberr, NO_DISTRIBUTED_COMMIT);
 }
 
 extern int gbl_rowlocks;

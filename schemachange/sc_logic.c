@@ -41,6 +41,7 @@
 #include "comdb2_atomic.h"
 #include "sc_callbacks.h"
 #include "views.h"
+#include "bdb_int.h"
 #include <debug_switches.h>
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -347,6 +348,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to start finalize transaction %d\n", -rc);
             return -1;
         }
+        ltran->no_distributed_commit = 1;
     }
     uint64_t sc_nrecs = 0;
     if (s->db)

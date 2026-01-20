@@ -530,7 +530,7 @@ static int do_add_sp_int(struct schema_change_type *sc, struct ireq *iq, tran_ty
         ++gbl_lua_version;
         if (sc->kind != SC_DEFAULTCONS) {
             int bdberr;
-            bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+            bdb_llog_luareload(thedb->bdb_env, 0, &bdberr);
         }
         if (iq) {
             if (sc->fname[0] == 0) {
@@ -555,7 +555,7 @@ static int do_del_sp_int(struct schema_change_type *sc, struct ireq *iq)
     }
     if (rc == 0) {
         int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+        bdb_llog_luareload(thedb->bdb_env, 0, &bdberr);
     }
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
@@ -571,7 +571,7 @@ static int do_default_sp_int(struct schema_change_type *sc, struct ireq *iq, tra
     }
     if (rc == 0 && sc->kind != SC_DEFAULTCONS) {
         int bdberr;
-        bdb_llog_luareload(thedb->bdb_env, 1, &bdberr);
+        bdb_llog_luareload(thedb->bdb_env, 0, &bdberr);
     }
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
@@ -624,7 +624,7 @@ int do_add_sp_tran(struct schema_change_type *sc, struct ireq *iq, tran_type *tr
     if (lock_schema_lk) { wrlock_schema_lk(); }
     int rc = do_add_sp_int(sc, iq, tran);
     ++gbl_lua_version;
-    if (lock_schema_lk) { unlock_schema_lk(); }
+    if (lock_schema_lk && have_schema_lock()) { unlock_schema_lk(); }
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
 }
 
@@ -656,7 +656,8 @@ int do_del_sp(struct schema_change_type *sc, struct ireq *iq)
     wrlock_schema_lk();
     int rc = do_del_sp_int(sc, iq);
     ++gbl_lua_version;
-    unlock_schema_lk();
+    if (have_schema_lock())
+        unlock_schema_lk();
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
 }
 
@@ -670,7 +671,7 @@ int do_default_sp_tran(struct schema_change_type *sc, struct ireq *iq, tran_type
     if (lock_schema_lk) { wrlock_schema_lk(); }
     int rc = do_default_sp_int(sc, iq, tran);
     ++gbl_lua_version;
-    if (lock_schema_lk) { unlock_schema_lk(); }
+    if (lock_schema_lk && have_schema_lock()) { unlock_schema_lk(); }
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
 }
 
@@ -729,7 +730,8 @@ done:
     if (ltran) { trans_abort(iq, ltran); }
     else if (tran) { trans_abort(iq, tran); }
 
-    unlock_schema_lk();
+    if (have_schema_lock()) 
+        unlock_schema_lk();
     javasp_splock_unlock();
 
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
@@ -771,7 +773,7 @@ int reload_lua_afuncs()
         int rc = reload_lua_##pfx##funcs();                                    \
         if (rc != 0) return rc;                                                \
         int bdberr;                                                            \
-        return bdb_llog_luafunc(thedb->bdb_env, lua_##pfx##func, 1, &bdberr);  \
+        return bdb_llog_luafunc(thedb->bdb_env, lua_##pfx##func, 0, &bdberr);  \
     } while (0)
 
 int finalize_lua_sfunc(struct schema_change_type *unused)
