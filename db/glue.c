@@ -828,6 +828,9 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
         }
     }
 
+    if (nowait)
+        bdb_trans_set_nowait(trans);
+
     int startms = comdb2_time_epochms();
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical, blkseq, blklen, blkkey, blkkeylen);
     int endms = comdb2_time_epochms();
@@ -890,13 +893,16 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
 int trans_commit_logical(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, void *blkseq,
                          int blklen, void *blkkey, int blkkeylen)
 {
-    return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1, blkseq, blklen, blkkey, blkkeylen, 0, 0);
+    int wait = bdb_trans_should_wait(trans);
+    return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1, blkseq, blklen, blkkey, blkkeylen, 0,
+                            !wait);
 }
 
 /* XXX i made this be the same as trans_commit_adaptive */
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 0, 0);
+    int wait = bdb_trans_should_wait(trans);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 0, !wait);
 }
 
 int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host, int timeoutms)
@@ -906,7 +912,8 @@ int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host, int ti
 
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 1, 0);
+    int wait = bdb_trans_should_wait(trans);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 1, !wait);
 }
 
 int trans_commit_nowait(struct ireq *iq, void *trans, char *source_host)
