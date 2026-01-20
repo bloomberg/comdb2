@@ -187,8 +187,8 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
                                         TABLENAME_LOCKED_WRITE));
     }
 
-    if (sctype == rename_table || sctype == alias_table ||
-        (sctype == add && (strlen(table) + 1 < scdoneop->table.size))) {
+    if (sctype == rename_table || sctype == alias_table || sctype == genshard_add || sctype == genshard_drop) {
+        assert(strlen(table) + 1 < scdoneop->table.size);
         strarg = &table[strlen(table) + 1];
     }
 

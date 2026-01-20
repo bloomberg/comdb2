@@ -209,7 +209,6 @@ static void *purge_old_files_thread(void *arg);
 static int lrllinecmp(char *lrlline, char *cmpto);
 static void ttrap(struct timer_parm *parm);
 int clear_temp_tables(void);
-
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
@@ -1978,6 +1977,8 @@ void cleanup_newdb(dbtable *tbl)
     if (tbl->dbtype == DBTYPE_QUEUEDB)
         Pthread_rwlock_destroy(&tbl->consumer_lk);
 
+    gen_shard_rem_inmem_tbl(tbl);
+
     free(tbl);
 }
 
@@ -2309,6 +2310,59 @@ err:
     return rc;
 }
 
+int llmeta_load_genshards(struct dbenv *dbenv, void *tran)
+{
+    int bdberr = 0;
+    /* allow as many generic sharded tables as regular tables (?) */
+    char **tablenames = (char **)alloca(sizeof(char*) * thedb->num_dbs);
+    char *shard_info = NULL, *genshard_name = NULL;
+    char **dbnames = NULL, **columns = NULL, **shardnames = NULL;
+    int table_count = 0, size = 0;
+    uint32_t numdbs=0, numcols=0;
+    struct dbtable *tbl = NULL;
+    /* load the tables from the low level metatable */
+    if (bdb_get_genshard_names(tran, (char **)tablenames, &table_count)) {
+        logmsg(
+            LOGMSG_ERROR,
+            "couldn't load generic shard names from low level meta table (bdberr: %d)\n",
+            bdberr);
+        return 1;
+    }
+
+    for (int i = 0; i < table_count; i++) {
+        if (bdb_get_genshard(tran, tablenames[i], &shard_info, &size, &bdberr)) {
+            logmsg(LOGMSG_ERROR,
+                   "missing partition info in llmeta for %s bdberr %d\n", tablenames[i], bdberr);
+            continue;
+        }
+
+        if (gen_shard_deserialize_shard(&genshard_name, &numdbs, &dbnames, &shardnames, &numcols, &columns, shard_info)) {
+            logmsg(LOGMSG_ERROR, "Failed to deserialize llmeta str for generic shard %s\n", tablenames[i]);
+            continue;
+        }
+
+        for(int i=0;i<numdbs;i++){
+            if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname)) == 0) {
+                /* note only one shard will be found */
+                tbl = get_dbtable_by_name(shardnames[i]);
+                if (tbl) {
+                    /*update the table object*/
+                    tbl->partition.genshard_name = genshard_name;
+                    tbl->partition.numdbs = numdbs;
+                    tbl->partition.dbnames = dbnames;
+                    tbl->partition.numcols = numcols;
+                    tbl->partition.columns = columns;
+                    tbl->partition.shardnames = shardnames;
+                } else {
+                    logmsg(LOGMSG_FATAL, "%s failed to find local shard %s\n", __func__, shardnames[i]);
+                    abort();
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 static inline int db_get_alias(void *tran, dbtable *tbl)
 {
     char *sqlalias = NULL;
@@ -2427,15 +2481,6 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
             break;
         }
 
-        /* A shard of a partitioned table has the partition name as an alias.
-         * Read the sharded table metadata. 
-         */
-        if (tbl->sqlaliasname) {
-            rc = gen_shard_update_inmem_db(tran, tbl, tbl->sqlaliasname);
-            if (rc) {
-                logmsg(LOGMSG_USER, "NOT UPDATING SHARD METADATA FOR TABLE %s\n", tbl->tablename);
-            }
-        }
         /* We only want to load older schema versions for ODH databases.  ODH
          * information is stored in the meta table (not the llmeta table), so
          * it's not loaded yet.
@@ -4245,6 +4290,7 @@ static int init(int argc, char **argv)
             return -1;
         }
 
+
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
             unlock_schema_lk();
@@ -4386,6 +4432,13 @@ static int init(int argc, char **argv)
     load_auto_analyze_counters(); /* on starting, need to load counters */
     if (gbl_create_mode && verify_deferred_dbstore_clientfuncs() != 0) {
         logmsg(LOGMSG_FATAL, "invalid client function for dbstore\n");
+        return -1;
+    }
+
+    if (llmeta_load_genshards(thedb, NULL)) {
+        logmsg(LOGMSG_FATAL, "could not load generic shards from the low level meta "
+                        "table\n");
+        unlock_schema_lk();
         return -1;
     }
     unlock_schema_lk();

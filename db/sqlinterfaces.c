@@ -99,7 +99,7 @@
 #include <net_appsock.h>
 #include <typessql.h>
 #include <sqlwriter.h>
-
+#include "gen_shard.h"
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
 **          indexes into the array of meta-command names contained in
@@ -4426,6 +4426,12 @@ check_version:
                 }
             }
 
+            rc = gen_shard_update_sqlite(thd->sqldb, &xerr);
+            if (rc) {
+                logmsg(LOGMSG_FATAL, "Failed to create views for generic shards."
+                        "rc=%d errstr=%s\n", xerr.errval, xerr.errstr);
+                abort();
+            }
             /* save the views generation number */
             thd->views_gen = gbl_views_gen;
         }

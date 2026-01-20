@@ -293,31 +293,38 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     char *mashup = NULL;
     int oldlen = 0;
     int newlen = 0;
+    char *dst = NULL;
 
+    /* alias passes tablename + alias name */
     if (s->db) {
         mashup = s->tablename;
         oldlen = strlen(s->tablename) + 1;
 
         /* embed new name after old name if rename */
         if (s->done_type == rename_table || s->done_type == alias_table) {
-            char *dst;
             if (s->done_type == alias_table && s->db->sqlaliasname) {
                 dst = s->db->sqlaliasname;
             } else {
                 dst = s->db->tablename;
             }
-            newlen = strlen(dst) + 1;
-            mashup = alloca(oldlen + newlen);
-            memcpy(mashup, s->tablename, oldlen); /* old */
-            memcpy(mashup + oldlen, dst, newlen); /* new */
-        } else if (s->done_type == add && s->partition.type == PARTITION_ADD_GENSHARD) {
-            char *key = "dbnames";
-            newlen = strlen(key) + 1;
-            mashup = alloca(oldlen + newlen);
-            memcpy(mashup, s->tablename, oldlen);
-            memcpy(mashup + oldlen, key, newlen);
         }
     }
+    /* sharding passes tablename + partition name */
+    if (s->done_type == add && s->partition.type == PARTITION_ADD_GENSHARD) {
+        s->done_type = genshard_add;
+        dst = s->partition.u.genshard.tablename;
+    } else if (s->done_type == drop && s->partition.type == PARTITION_REM_GENSHARD) {
+        s->done_type = genshard_drop;
+    }
+
+    /* extern mashup if we have extra name */
+    if (dst) {
+        newlen = strlen(dst) + 1;
+        mashup = alloca(oldlen + newlen);
+        memcpy(mashup, s->tablename, oldlen); /* old */
+        memcpy(mashup + oldlen, dst, newlen); /* new */
+    }
+
     if (!tran)
         rc = bdb_llog_scdone(bdb_state, s->done_type, mashup, oldlen + newlen,
                              1, bdberr);
@@ -381,7 +388,6 @@ static int do_finalize(ddl_t func, struct ireq *iq,
                    "Forcing replication error table %s '%s' for tran %p\n",
                    bdb_get_scdone_str(s->done_type), s->tablename, tran);
         }
-
         rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
@@ -456,7 +462,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr = 0;
-
     if (s->resume == SC_OSQL_RESUME) {
         return s->sc_rc;
     }
@@ -1828,15 +1833,19 @@ int scdone_abort_cleanup(struct ireq *iq)
             bdb_lock_tablename_read(thedb->bdb_env, s->tablename, lock_trans);
             if (is_tablename_queue(s->tablename)) {
                 db = getqueuebyname(s->tablename);
-            } else {
-                db = get_dbtable_by_name(s->tablename);
-            }
-            if (db) {
-                if (s->kind == SC_ADDTABLE) {
-                    delete_temp_table(iq, db);
-                    cleanup_newdb(db);
-                } else {
+                if (db) {
                     sc_del_unused_files(db);
+                }
+            } else {
+                /* tables newly created are removed from array before this call */
+                if (s->kind == SC_ADDTABLE) {
+                    delete_temp_table(iq, s->db);
+                    cleanup_newdb(s->db);
+                } else {
+                    db = get_dbtable_by_name(s->tablename);
+                    if (db) {
+                        sc_del_unused_files(db);
+                    }
                 }
             }
             trans_abort(iq, lock_trans);

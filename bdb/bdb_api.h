@@ -2505,3 +2505,6 @@ typedef int (*collect_unused_files_f)(void *args, int lognum, char *filename);
 void oldfile_hash_collect(collect_unused_files_f func, void *arg);
 void bdb_tran_set_is_sc_rebuild(tran_type *tran, int is_sc_rebuild);
 #endif
+int bdb_set_genshard(tran_type *, const char *, char *, int *);
+int bdb_get_genshard(tran_type *, const char *, char **, int *, int *);
+int bdb_get_genshard_names(tran_type *t, char **names, int *num);

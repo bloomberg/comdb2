@@ -452,8 +452,7 @@ static void __fdb_add_user(fdb_t *fdb, int noTrace)
     fdb->users++;
 
     if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
-
+        logmsg(LOGMSG_USER, "%s %p %s %s users %d\n",__func__, (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
     assert(fdb->users > 0);
     Pthread_mutex_unlock(&fdb->users_mtx);
 }
@@ -468,7 +467,7 @@ static void __fdb_rem_user(fdb_t *fdb, int noTrace)
     fdb->users--;
 
     if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
+        logmsg(LOGMSG_USER, "%s %p %s %s users %d\n",__func__, (void *)pthread_self(), __func__, fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
     Pthread_mutex_unlock(&fdb->users_mtx);
@@ -1600,8 +1599,9 @@ static int __lock_wrlock_exclusive(char *dbname)
                for a bdb write lock to be processed */
 
             struct sql_thread *thd = pthread_getspecific(query_info_key);
-            if (!thd)
+            if (!thd) {
                 continue;
+            }
 
             rc = clnt_check_bdb_lock_desired(thd->clnt);
             if (rc) {
@@ -6327,7 +6327,6 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
                    tblname, rc, err.errval, err.errstr);
             return NULL;
     }
-
     fdb_push_connector_t * push = fdb_push_create(dbname, class, override, local, type);
     return push;
 }
@@ -6389,7 +6388,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     snprintf(numcols_str, 3, "%d", numcols);
 
     str[0] = "SET PARTITION NAME ";
-    strl[0] = strlen(str[0]) + strlen(sc->tablename) + 1;
+    strl[0] = strlen(str[0]) + strlen(sc->partition.u.genshard.tablename) + 1;
 
     str[1] = "SET PARTITION NUMDBS ";
     strl[1] = strlen(str[1]) + strlen(numdbs_str) + 1;
@@ -6420,7 +6419,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     extra_set[5] = alloca(strl[5]);
 
     /* SET PARTITION NAME <tblname>*/
-    snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->tablename);
+    snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->partition.u.genshard.tablename);
 
     /* SET PARTITION NUMDBS <numdbs>*/
     snprintf(extra_set[1], strl[1], "%s%s", str[1], numdbs_str);
@@ -6477,6 +6476,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     /* commit the transaction */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
+
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
         *errmsg = "failed to commit";
@@ -6506,7 +6506,7 @@ setup_error:
 /**
  * Run a distributed schema change to create a test generic sharding
  */
-int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
+int osql_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
                               char **dbnames, uint32_t numcols, char **columns, char **shardnames)
 {
     char **sqls = (char**)alloca(nshards * sizeof(char*));
@@ -6540,11 +6540,11 @@ setup_error:
 /**
  * Run a distributed schema change to remove a test generic sharding
  */
-int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
+int osql_remove_genshard(struct schema_change_type *sc, char **errmsg)
 {
     dbtable *tbl = get_dbtable_by_name(sc->tablename);
     assert(tbl);
-    uint32_t nshards = tbl->numdbs;
+    uint32_t nshards = tbl->partition.numdbs;
     char **sqls = (char**)alloca(nshards * sizeof(char*));
     int i;
 
@@ -6571,7 +6571,8 @@ int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
 
     /* this is not passed through syntax, it is retrieved from dbtable object */
 
-    return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, 0, NULL, tbl->shardnames, sqls, AST_TYPE_DROP);
+    return _running_dist_ddl(sc, errmsg, tbl->partition.numdbs, tbl->partition.dbnames, 0, NULL,
+                             tbl->partition.shardnames, sqls, AST_TYPE_DROP);
 
 setup_error:
     for (i = 0; i < nshards && sqls[i]; i++) {
