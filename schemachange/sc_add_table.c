@@ -173,7 +173,7 @@ int add_table_to_environment(char *table, const char *csc2,
 
 err:
     newdb->iq = NULL;
-    backout_schemas(newdb->tablename);
+    delete_schema(newdb->tablename);
     cleanup_newdb(newdb);
     return rc;
 }

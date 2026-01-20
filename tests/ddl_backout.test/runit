@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+dbnm=$1
+
+# do everything against master
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"'`
+
+for f in `ls *.sql`; do
+    cdb2sql -s -f $f --tabs $dbnm --host $master >$f.actual
+    diff $f.actual $f.expected
+done
