@@ -485,7 +485,10 @@ static char *ctrace_tstr(void)
         struct tm tm;
         localtime_r(&now, &tm);
 
+#       pragma GCC diagnostic push
+#       pragma GCC diagnostic ignored "-Wformat-y2k"
         strftime(tstr, LENGTH, "%D %T", &tm);
+#       pragma GCC diagnostic pop
 
         last_time = now;
     }
