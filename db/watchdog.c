@@ -233,7 +233,7 @@ static void *watchdog_thread(void *arg)
                    we run this for each 10 iterations of watchdog
                  */
                 if (counter % 10 == 0) {
-                    char *master = thedb->master;
+                    char *master = bdb_whoismaster(thedb->bdb_env);
                     /* testing slow event time */
                     its_bad_slow = 0;
 
