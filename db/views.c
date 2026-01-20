@@ -2175,6 +2175,10 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
     int cast_val = 0;
     struct errstat err = {0};
 
+    struct tm tm_start, tm_adjusted;
+    time_t timecopy = startTime, currentepoch = 0;
+    char *first_shard_time = "SELECT MAX(%d, CAST((CAST(%d AS DATETIME) - CAST((%d - 1)*%d AS %s)) AS INT))";
+
     fmt = (back_in_time) ? fmt_backward : fmt_forward;
 
     /* time reference */
@@ -2182,8 +2186,23 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
         /* if this is the first shard incompassing all records, starttime tells
            us where we shard this in two */
         assert(nshards == 1);
+        time(&currentepoch);
+        if (startTime >= currentepoch) /* short-circuit if it starts now or in the future */
+            return startTime;
 
-        return startTime;
+        /* If start time is in the past, advance it if needed. The 1st
+           shard should happen at the start time or the oldest shard time,
+           whichever occurs later. (eg for a TPT that rolls out monthly, retains
+           6 months of data, and is configured to start on 1970-01-01, we really
+           only need to partition from 5 months ago. */
+        localtime_r(&timecopy, &tm_start);
+        localtime_r(&currentepoch, &tm_adjusted);
+        tm_start.tm_year = tm_adjusted.tm_year;
+        tm_start.tm_mon = tm_adjusted.tm_mon;
+        tm_start.tm_mday = tm_adjusted.tm_mday;
+        mktime(&tm_start);
+        /* Take yyyy-mm-dd from today and HH:MM:SS from the start time, and form a new time */
+        currentepoch = mktime(&tm_start);
     } else if (retention == 1) {
         /* for retention 1, the startTime moves forward, since there is no other
         persistent info about rollouts */
@@ -2223,7 +2242,10 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
         return INT_MAX;
     }
 
-    snprintf(query, sizeof(query), fmt, crtTime, cast_val, cast_str);
+    if (crtTime == INT_MIN && retention > 1)
+        snprintf(query, sizeof(query), first_shard_time, startTime, currentepoch, retention, cast_val, cast_str);
+    else
+        snprintf(query, sizeof(query), fmt, crtTime, cast_val, cast_str);
 
     /* note: this is run when a new rollout is decided.  It doesn't have
     to be fast, or highly optimized (like running directly datetime functions */
