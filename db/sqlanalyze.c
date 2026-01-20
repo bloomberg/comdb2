@@ -296,12 +296,25 @@ static int sample_index_int(index_descriptor_t *ix_des)
     return 0;
 }
 
+static inline void set_low_sched_priority() {
+#ifdef _LINUX_SOURCE
+    errno = 0;
+    int rc = nice(20); // set thread low priority -- same as pthread_setschedparam()
+    if (rc < 0 && errno != 0) {
+        logmsg(LOGMSG_WARN, "%s:failed to set nice value:'%s'\n", __func__, strerror(errno));
+        return;
+    }
+#endif
+}
+
+
 /* spawn a thread to sample an index */
 static void *sampling_thread(void *arg)
 {
     comdb2_name_thread(__func__);
     int rc;
     index_descriptor_t *ix_des = (index_descriptor_t *)arg;
+    set_low_sched_priority();
 
     /* register thread */
     thrman_register(THRTYPE_ANALYZE);
@@ -891,6 +904,7 @@ static void *analyze_thread(void *arg)
     int rc;
     table_descriptor_t *td = (table_descriptor_t *)arg;
     struct thr_handle *thd_self;
+    set_low_sched_priority();
 
     /* register thread */
     thd_self = thrman_register(THRTYPE_ANALYZE);
