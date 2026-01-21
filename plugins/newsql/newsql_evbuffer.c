@@ -723,15 +723,15 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         sql_enable_timeout(appdata->writer, clnt->query_timeout);
     }
     sql_enable_heartbeat(appdata->writer);
-    if (incoherent) {
-        wait_for_leader(appdata, incoherent);
-    } else if (clnt->is_tagged) {
+    if (clnt->is_tagged) {
         if (dispatch_tagged(clnt) != 0) {
             goto err;
         }
+    } else if (incoherent) {
+        wait_for_leader(appdata, incoherent);
     } else if (dispatch_client(appdata) != 0) {
 err:    free_newsql_appdata_evbuffer(appdata);
-    }
+}
 }
 
 static void process_disttxn(struct newsql_appdata_evbuffer *appdata, CDB2DISTTXN *disttxn)
