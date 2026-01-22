@@ -40,7 +40,7 @@ static void free_cluster(void *data, int num_points) {
 }
 
 sqlite3_module systblClusterModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_ALL,
 };
 
 int systblClusterInit(sqlite3 *db) {
