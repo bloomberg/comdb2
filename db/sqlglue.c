@@ -959,6 +959,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
         genid = rrn;
 
     if (genid) {
+        memset(&m[fnum], 0, sizeof(Mem));
         m[fnum].u.i = genid;
         m[fnum].flags = MEM_Int;
 
