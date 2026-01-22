@@ -80,7 +80,7 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "\n");
 
-    const char *cdb2_config = getenv("CDB2_CONFIG");
+    char *cdb2_config = getenv("CDB2_CONFIG");
     if (cdb2_config) {
         fprintf(stderr, "cdb2_config:%s\n", cdb2_config);
         cdb2_set_comdb2db_config(cdb2_config);

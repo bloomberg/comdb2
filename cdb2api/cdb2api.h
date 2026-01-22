@@ -208,8 +208,9 @@ typedef struct cdb2_effects_type cdb2_effects_tp;
 typedef struct cdb2_effects_type effects_tp;
 #endif
 
-void cdb2_set_comdb2db_config(const char *cfg_file);
-void cdb2_set_comdb2db_info(const char *cfg_info);
+void cdb2_set_comdb2db_config(char *cfg_file);
+void cdb2_set_comdb2db_info(char *cfg_info);
+void cdb2_set_sockpool(const char *sp_path);
 void cdb2_set_identity(cdb2_hndl_tp *hndl, const void *identity);
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
@@ -222,8 +223,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
 int cdb2_close(cdb2_hndl_tp *hndl);
 
 int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql);
-int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
-                             int *types);
+int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes, const int *types);
 
 int cdb2_numcolumns(cdb2_hndl_tp *hndl);
 const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col);

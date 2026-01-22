@@ -1454,7 +1454,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
     }
 }
 
-void cdb2_set_comdb2db_config(const char *cfg_file)
+void cdb2_set_comdb2db_config(char *cfg_file)
 {
     pthread_mutex_lock(&cdb2_cfg_lock);
     do_init_once();
@@ -1467,7 +1467,7 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
-void cdb2_set_comdb2db_info(const char *cfg_info)
+void cdb2_set_comdb2db_info(char *cfg_info)
 {
     LOG_CALL("%s(\"%s\")\n", __func__, cfg_info);
     int len;
@@ -4477,13 +4477,10 @@ static int wait_for_write(SBUF2 *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hnd
     return -1;
 }
 
-static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
-                           SBUF2 *sb, const char *dbname, const char *sql,
-                           int n_set_commands, int n_set_commands_sent,
-                           char **set_commands, int n_bindvars,
-                           CDB2SQLQUERY__Bindvalue **bindvars, int ntypes,
-                           int *types, int is_begin, int skip_nrows,
-                           int retries_done, int do_append, int fromline)
+static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *sb, const char *dbname, const char *sql,
+                           int n_set_commands, int n_set_commands_sent, char **set_commands, int n_bindvars,
+                           CDB2SQLQUERY__Bindvalue **bindvars, int ntypes, const int *types, int is_begin,
+                           int skip_nrows, int retries_done, int do_append, int fromline)
 {
     int rc = 0;
     void *callbackrc;
@@ -4534,7 +4531,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
     sqlquery.n_types = ntypes;
-    sqlquery.types = types;
+    sqlquery.types = (int *)types; // TODO: Is this ok? bb is able to assign without casting
     sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
     sqlquery.mach_class = cdb2_default_cluster;
 
@@ -5956,7 +5953,7 @@ static void pb_alloc_heuristic(cdb2_hndl_tp *hndl)
     }
 }
 
-static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int ntypes, int *types, int line,
+static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int ntypes, const int *types, int line,
                                         int *set_stmt)
 {
     int return_value;
@@ -6649,8 +6646,7 @@ read_record:
     PRINT_AND_RETURN(-1);
 }
 
-int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
-                             int *types)
+int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes, const int *types)
 {
     int rc = 0;
 
