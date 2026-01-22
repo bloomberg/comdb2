@@ -3116,13 +3116,13 @@ static inline void repdb_dequeue(DBT *control_dbt, DBT *rec_dbt)
 	else
 		assert(gbl_inmem_repdb_memory > 0);
 
-	free(r);
-
 	if (gbl_debug_inmem_repdb) {
 		struct repdb_rec *top = LISTC_TOP(&repdb_queue);
 		logmsg(LOGMSG_USER, "Dequeued LSN %u:%u new top is %u:%u\n", r->repctl->lsn.file, r->repctl->lsn.offset, top ? top->repctl->lsn.file : 0, top ? top->repctl->lsn.offset : 0);
 		fflush(stdout); fflush(stderr);
 	}
+
+	free(r);
 	Pthread_mutex_unlock(&inmem_repdb_lk);
 }
 
