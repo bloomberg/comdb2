@@ -420,7 +420,7 @@ source ${TESTSROOTDIR}/test-utils/inject_systables.sh
 inject_systables_in_expected_files
 
 testdb_note "test start"
-timeout --kill-after=5s ${TEST_TIMEOUT} stdbuf -oL -eL bash -c "./runit ${DBNAME} 2>&1 | gawk '{ print strftime(\"%H:%M:%S>\"), \$0; fflush(); }'" &> ${TESTDIR}/logs/${DBNAME}.testcase
+timeout --kill-after=5s ${TEST_TIMEOUT} stdbuf -oL -eL bash -c "set -o pipefail; ./runit ${DBNAME} 2>&1 | gawk '{ print strftime(\"%H:%M:%S>\"), \$0; fflush(); }'" &> ${TESTDIR}/logs/${DBNAME}.testcase
 rc=${PIPESTATUS[0]}
 testdb_note "test end"
 
