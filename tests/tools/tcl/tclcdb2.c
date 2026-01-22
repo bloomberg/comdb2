@@ -2256,7 +2256,7 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_CONFIGURE: {
-	    const char *config;
+	    char *config;
 	    int useFile = 0, reset = 0;
 
 	    if ((objc < 3) || (objc > 5)) {
