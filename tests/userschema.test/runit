@@ -13,7 +13,7 @@ for testreq in `ls t*.req` ; do
     # First drop the table (its ok if this fails,
     # the table probably doesn't exist).
     # Then add the table.
-    testname=`echo $testreq | cut -d "." -f 1`
+    testname=${testreq%.*}
     echo preparing db for $testname
     for schema in `ls $testname.*.csc2 2> /dev/null` ; do
         table=`echo $schema | cut -d "." -f2`

@@ -1,0 +1,6 @@
+set user ""
+set password ""
+select 1
+set user "
+set password "
+select 1
