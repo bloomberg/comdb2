@@ -58,3 +58,5 @@
 (name='allow_negative_column_size')
 (value='1000')
 (value='2000')
+(value='ON')
+(value='OFF')
