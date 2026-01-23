@@ -267,6 +267,9 @@ static int cdb2_iam_identity_set_from_env = 0;
 
 static int donate_unused_connections = 1; /* on by default */
 static int cdb2_donate_unused_connections_set_from_env = 0;
+/* Fix last set repeat, disable if this breaks anything */
+static int disable_fix_last_set = 0;
+static int cdb2_disable_fix_last_set_set_from_env = 0;
 
 /* Skip dbinfo query if sockpool provides connection */
 static int get_dbinfo = 0;
@@ -1618,6 +1621,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
         process_env_var_str_on_off("COMDB2_FEATURE_IAM_IDENTITY", &iam_identity, &cdb2_iam_identity_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_DONATE_UNUSED_CONNECTIONS", &donate_unused_connections,
                                    &cdb2_donate_unused_connections_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_DISABLE_FIX_LAST_SET", &disable_fix_last_set,
+                                   &cdb2_disable_fix_last_set_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_USE_FTRUNCATE", &cdb2_use_ftruncate,
                                    &cdb2_use_ftruncate_set_from_env);
         process_env_var_str("COMDB2_CONFIG_ROOM", (char *)&cdb2_machine_room, sizeof(cdb2_machine_room),
@@ -1788,6 +1793,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     donate_unused_connections = value_on_off(tok, &err);
+            } else if (!cdb2_disable_fix_last_set_set_from_env && (strcasecmp("disable_fix_last_set", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                disable_fix_last_set = value_on_off(tok, &err);
             } else if (!cdb2_use_ftruncate_set_from_env && (strcasecmp("use_ftruncate", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
@@ -5552,8 +5560,12 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
         p += sizeof("TRANSACTION");
         cdb2_skipws(p);
         // only set is chunk to true, don't set to false here
-        if (strncasecmp(p, "chunk", 5) == 0)
-            hndl->is_chunk = CHUNK_IN_PROGRESS;
+        if (strncasecmp(p, "chunk", 5) == 0) {
+            p += sizeof("CHUNK");
+            cdb2_skipws(p);
+            if (strncasecmp(p, "throttle", 8) != 0)
+                hndl->is_chunk = CHUNK_IN_PROGRESS;
+        }
         return;
     }
 }
@@ -5769,8 +5781,6 @@ static int process_set_stmt_return_types(cdb2_hndl_tp *hndl, const char *sql)
 
 static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
-    int i, j, k;
-
     hndl->is_set = 1;
     if (hndl->in_trans) {
         sprintf(hndl->errstr, "Can't run set query inside transaction.");
@@ -5785,73 +5795,31 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     if ((rc = process_set_stmt_return_types(hndl, sql)) >= 0)
         return rc;
 
+    int i, j, k;
     i = hndl->num_set_commands;
     if (i > 0) {
-        int skip_len = 4;
-        char *dup_sql = strdup(sql + skip_len);
-        char *rest = NULL;
-        char *set_tok = strtok_r(dup_sql, " ", &rest);
-        if (set_tok) {
-            /* special case for spversion */
-            if (strcasecmp(set_tok, "spversion") == 0) {
-                skip_len += 10;
-                set_tok = strtok_r(rest, " ", &rest);
-            /* special case for transaction chunk */
-            } else if (strncasecmp(set_tok, "transaction", 11) == 0) {
-                char *set_tok2 = strtok_r(rest, " ", &rest);
-                if (set_tok2 && strncasecmp(set_tok2, "chunk", 5) == 0) {
-                    /* skip "transaction" if chunk, set we can set
-                     * both transaction and chunk mode
-                     */
-                    skip_len += 12;
-                    set_tok = set_tok2;
-                    set_tok2 = NULL;
-                    hndl->is_chunk = CHUNK_IN_PROGRESS;
-                }
-            } else if (strncasecmp(set_tok, "partition", 9) == 0) {
-                skip_len += 10;
-                set_tok = strtok_r(rest, " ", &rest);
-            }
-        }
-        if (!set_tok) {
-            free(dup_sql);
-            return 0;
-        }
-        int len = strlen(set_tok);
-
         for (j = 0; j < i; j++) {
             /* If this matches any of the previous commands. */
-            if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) ==
-                 0) &&
-                (hndl->commands[j][len + skip_len] == ' ')) {
-                free(dup_sql);
+            if ((strcmp(hndl->commands[j], sql) == 0)) {
                 if (j == (i - 1)) {
-                    if (strcmp(hndl->commands[j], sql) == 0) {
-                        /* Do Nothing. */
-                    } else {
-                        hndl->commands[i - 1] =
-                            realloc(hndl->commands[i - 1], strlen(sql) + 1);
-                        strcpy(hndl->commands[i - 1], sql);
+                    /* Do Nothing; But send the set again!. */
+                    if (!disable_fix_last_set) {
+                        if (hndl->num_set_commands_sent)
+                            hndl->num_set_commands_sent--;
                     }
-                } else {
-                    char *cmd = hndl->commands[j];
-                    /* Move all the commands down the array. */
-                    for (k = j; k < i - 1; k++) {
-                        hndl->commands[k] = hndl->commands[k + 1];
-                    }
-                    if (strcmp(cmd, sql) == 0) {
-                        hndl->commands[i - 1] = cmd;
-                    } else {
-                        hndl->commands[i - 1] = realloc(cmd, strlen(sql) + 1);
-                        strcpy(hndl->commands[i - 1], sql);
-                    }
+                    return 0;
                 }
+                char *cmd = hndl->commands[j];
+                /* Move all the commands down the array. */
+                for (k = j; k < i - 1; k++) {
+                    hndl->commands[k] = hndl->commands[k + 1];
+                }
+                hndl->commands[i - 1] = cmd;
                 if (hndl->num_set_commands_sent)
                     hndl->num_set_commands_sent--;
                 return 0;
             }
         }
-        free(dup_sql);
     }
     hndl->num_set_commands++;
     hndl->commands =
