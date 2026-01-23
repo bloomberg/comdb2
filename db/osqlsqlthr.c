@@ -1407,6 +1407,8 @@ static int osql_send_insidx_logic(struct BtCursor *pCur,
         if (gbl_partial_indexes && pCur->db->ix_partial &&
             !(clnt->ins_keys & (1ULL << i)))
             continue;
+        if (!clnt->idxInsert[i] && (getkeysize(pCur->db, i) > 0))
+            continue;
         rc = osql_send_index(&osql->target, osql->rqid, osql->uuid, pCur->genid,
                              0, i, (char *)clnt->idxInsert[i],
                              getkeysize(pCur->db, i), nettype);

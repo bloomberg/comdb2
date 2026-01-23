@@ -9094,6 +9094,11 @@ int sqlite3BtreeInsert(
             if (likely(pCur->cursor_class != CURSORCLASS_STAT24) &&
                 likely(pCur->bt == NULL || pCur->bt->is_remote == 0) &&
                 gbl_expressions_indexes && pCur->db->ix_expr) {
+                if (gbl_replicate_local && pCur->db->ixschema[pCur->ixnum]->member &&
+                    pCur->db->ixschema[pCur->ixnum]->member->name &&
+                    strcasecmp(pCur->db->ixschema[pCur->ixnum]->member->name, "comdb2_seqno") == 0) {
+                    goto done;
+                }
                 rc = sqlite_to_ondisk(pCur->db->ixschema[pCur->ixnum], pKey, nKey, pCur->ondisk_key, clnt->tzname,
                                       pblobs, MAXBLOBS, &thd->clnt->fail_reason, pCur);
                 if (rc != getkeysize(pCur->db, pCur->ixnum)) {

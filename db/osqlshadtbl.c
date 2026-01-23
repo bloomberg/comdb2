@@ -1278,6 +1278,8 @@ int osql_save_index(struct BtCursor *pCur, struct sql_thread *thd,
         if (gbl_partial_indexes && pCur->db->ix_partial &&
             !(dirty_key & (1ULL << i)))
             continue;
+        if (!index[i] && getkeysize(pCur->db, i) > 0)
+            continue;
         rc = bdb_temp_table_put(tbl->env->bdb_env, tmp_tbl->table, &key,
                                 sizeof(key), index[i], getkeysize(pCur->db, i),
                                 NULL, &bdberr);
@@ -1935,6 +1937,9 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
         if (gbl_partial_indexes && tbl->ix_partial && !(dk & (1ULL << i)))
             continue;
 
+        if (gbl_expressions_indexes && tbl->ix_expr && !is_delete && clnt->idxInsert && !clnt->idxInsert[i])
+            continue;
+
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tmp_cur, &key,
                                        sizeof(key), bdberr);
         if (rc != IX_FND) {
@@ -2232,7 +2237,7 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             !(thd->clnt->ins_keys & (1ULL << ix)))
             continue;
 
-        if (gbl_expressions_indexes && pCur->db->ix_expr) {
+        if (gbl_expressions_indexes && pCur->db->ix_expr && thd->clnt->idxInsert[ix]) {
             memcpy(key, thd->clnt->idxInsert[ix],
                    pCur->db->ix_keylen[ix]);
         } else {
