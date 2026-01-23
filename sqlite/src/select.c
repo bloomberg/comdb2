@@ -4603,6 +4603,13 @@ int sqlite3IndexedByLookup(Parse *pParse, struct SrcList_item *pFrom){
         pIdx && sqlite3StrICmp(pIdx->zName, zIndexedBy); 
         pIdx=pIdx->pNext
     );
+    if (pIdx == NULL) {
+        for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext) {
+            if (pIdx->zCsc2Name && sqlite3StrICmp(pIdx->zCsc2Name, zIndexedBy) == 0)
+                break;
+        }
+    }
+
     if( !pIdx ){
       sqlite3ErrorMsg(pParse, "no such index: %s", zIndexedBy, 0);
       pParse->checkSchema = 1;

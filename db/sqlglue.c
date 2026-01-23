@@ -2009,8 +2009,11 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
         /* We lie to sqlite about the uniqueness of the indexes. */
         strbuf_append(sql, "create index ");
+        strbuf_appendf(sql, "\"%s\" ", namebuf);
+        if (tbl->schema->ix[ixnum]->csctag)
+            strbuf_appendf(sql, "alias \"%s\" ", tbl->schema->ix[ixnum]->csctag);
 
-        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tablename);
+        strbuf_appendf(sql, "on \"%s\" (", tablename);
         for (field = 0; field < schema->nmembers; field++) {
             if (field > 0)
                 strbuf_append(sql, ", ");
