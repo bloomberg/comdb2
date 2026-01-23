@@ -2,6 +2,9 @@
 # This is required for where_comdb2 functionality
 
 # =============== default user (unauthenticated) ===============
+set user 'other'
+
+set password 'secret'
 
 select " can access comdb2_cluster for cluster discovery " as " default user "
 
