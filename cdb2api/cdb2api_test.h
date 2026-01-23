@@ -81,6 +81,7 @@ void set_cdb2api_test_dbname_cfg(const char *);
 struct cdb2_hndl;
 const char *get_default_cluster(void);
 const char *get_default_cluster_hndl(struct cdb2_hndl *);
+int get_gbl_event_version(void);
 
 void cdb2_set_max_retries(int max_retries);
 void cdb2_set_min_retries(int min_retries);
