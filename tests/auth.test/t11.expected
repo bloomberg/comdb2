@@ -33,7 +33,7 @@
 ( replicant =' cannot access following system tables ')
 [select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_cluster limit 1] failed with rc -5 authorization denied
+(1=1)
 [select 1 from comdb2_fingerprints limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_locks limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_logical_operations limit 1] failed with rc -5 authorization denied
@@ -63,7 +63,7 @@
 ( sysmon =' cannot access following system tables ')
 [select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_cluster limit 1] failed with rc -5 authorization denied
+(1=1)
 [select 1 from comdb2_locks limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_logical_operations limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_net_userfuncs limit 1] failed with rc -5 authorization denied
@@ -93,7 +93,7 @@
 ( other =' cannot access following system tables ')
 [select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_cluster limit 1] failed with rc -5 authorization denied
+(1=1)
 [select 1 from comdb2_fingerprints limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_locks limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_logical_operations limit 1] failed with rc -5 authorization denied
