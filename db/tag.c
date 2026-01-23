@@ -6239,7 +6239,14 @@ void freedb_int(dbtable *db, dbtable *replace)
     }
 
     if (replace) {
+        pthread_rwlock_t lk_copy;
+        // Make a copy of original sc_live_lk
+        memcpy(&lk_copy, &db->sc_live_lk, sizeof(pthread_rwlock_t));
+
         memcpy(db, replace, sizeof(dbtable));
+
+        // Restore sc_live_lk
+        memcpy(&db->sc_live_lk, &lk_copy, sizeof(pthread_rwlock_t));
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
