@@ -443,6 +443,10 @@ void set_protobuf_size(int size)
     CDB2_PROTOBUF_SIZE = size;
 }
 
+int get_gbl_event_version(void)
+{
+    return cdb2_gbl_event_version;
+}
 #endif /* CDB2API_TEST */
 
 #define PROCESS_EVENT_CTRL_BEFORE(h, e, rc, callbackrc, ovwrrc)                \
@@ -5064,18 +5068,12 @@ static inline void free_query_list_on_handle(cdb2_hndl_tp *hndl)
 static void free_events(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;
-    if (!hndl->events)
-        return;
-    curre = hndl->events->next;
+    curre = hndl->events.next;
     while (curre != NULL) {
         preve = curre;
         curre = curre->next;
         free(preve);
     }
-    free(hndl->events);
-    hndl->events = NULL;
-    free(hndl->gbl_event_version);
-    hndl->gbl_event_version = NULL;
 }
 
 int cdb2_close(cdb2_hndl_tp *hndl)
@@ -8702,8 +8700,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     pthread_mutex_unlock(&cdb2_cfg_lock);
 
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
-    hndl->events = calloc(1, sizeof(*hndl->events));
-    hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
     TAILQ_INIT(&hndl->queries);
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
     strncpy(hndl->type, type, sizeof(hndl->type) - 1);
@@ -9024,7 +9020,7 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
     int i;
 
     /* Allocate an event object. */
-    ret = malloc(sizeof(cdb2_event) + nargs * sizeof(cdb2_event_arg));
+    ret = calloc(1, sizeof(cdb2_event) + nargs * sizeof(cdb2_event_arg));
     if (ret == NULL)
         return NULL;
 
@@ -9052,13 +9048,8 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
         ++cdb2_gbl_event_version;
         pthread_mutex_unlock(&cdb2_event_mutex);
     } else {
-        if (!hndl->events) {
-            assert(!hndl->gbl_event_version);
-            hndl->events = calloc(1, sizeof(*hndl->events));
-            hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
-        }
         ret->global = 0;
-        for (curr = hndl->events; curr->next != NULL; curr = curr->next)
+        for (curr = &hndl->events; curr->next != NULL; curr = curr->next)
             ;
         curr->next = ret;
     }
@@ -9085,15 +9076,13 @@ int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
         prev->next = curr->next;
         ++cdb2_gbl_event_version;
         pthread_mutex_unlock(&cdb2_event_mutex);
-    } else if (hndl->events) {
-        for (prev = hndl->events, curr = prev->next;
-             curr != NULL && curr != event; prev = curr, curr = curr->next)
+    } else {
+        for (prev = &hndl->events, curr = prev->next; curr != NULL && curr != event; prev = curr, curr = curr->next)
             ;
         if (curr != event)
             return EINVAL;
         prev->next = curr->next;
-    } else
-        return EINVAL;
+    }
     free(event);
     return 0;
 }
@@ -9107,7 +9096,7 @@ static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *hndl, cdb2_event_type type,
         /* Refresh once on new iteration. */
         if (refresh_gbl_events_on_hndl(hndl) != 0)
             return NULL;
-        e = hndl->events->next;
+        e = hndl->events.next;
     }
     for (; e != NULL && !(e->types & type); e = e->next)
         ;
@@ -9248,21 +9237,15 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     cdb2_event *gbl, *lcl, *tmp, *knot;
     size_t elen;
 
-    if (!hndl->events) {
-        assert(!hndl->gbl_event_version);
-        hndl->events = calloc(1, sizeof(*hndl->events));
-        hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
-    }
-
     /* Fast return if the version has not changed. */
-    if (*hndl->gbl_event_version == cdb2_gbl_event_version)
+    if (hndl->gbl_event_version == cdb2_gbl_event_version)
         return 0;
 
     /* Otherwise we must recopy the global events to the handle. */
     pthread_mutex_lock(&cdb2_event_mutex);
 
     /* Clear cached global events. */
-    gbl = hndl->events->next;
+    gbl = hndl->events.next;
     while (gbl != NULL && gbl->global) {
         tmp = gbl;
         gbl = gbl->next;
@@ -9273,8 +9256,7 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     knot = gbl;
 
     /* Clone and append global events to the handle. */
-    for (gbl = cdb2_gbl_events.next, lcl = hndl->events; gbl != NULL;
-         gbl = gbl->next) {
+    for (gbl = cdb2_gbl_events.next, lcl = &hndl->events; gbl != NULL; gbl = gbl->next) {
         elen = sizeof(cdb2_event) + gbl->argc * sizeof(cdb2_event_arg);
         tmp = malloc(elen);
         if (tmp == NULL) {
@@ -9291,7 +9273,7 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     lcl->next = knot;
 
     /* Latch the global version. */
-    *hndl->gbl_event_version = cdb2_gbl_event_version;
+    hndl->gbl_event_version = cdb2_gbl_event_version;
 
     pthread_mutex_unlock(&cdb2_event_mutex);
     return 0;

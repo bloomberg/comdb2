@@ -176,8 +176,8 @@ struct cdb2_hndl {
     int socket_timeout;
     int sockpool_send_timeoutms;
     int sockpool_recv_timeoutms;
-    int *gbl_event_version; /* Cached global event version */
-    cdb2_event *events;
+    int gbl_event_version; /* Cached global event version */
+    cdb2_event events;     /* event linkedlist head */
     pid_t pid;
     int got_dbinfo;
     int is_admin;
