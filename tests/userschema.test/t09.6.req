@@ -1,0 +1,14 @@
+set user mohit
+set password mohit
+select comdb2_user();
+
+put password '1234567890123456789' for '1234567890123456'
+put password '1234567890123456789' for '123456789012345'
+put password '123456789012345678' for '1234567890123456'
+put password '123456789012345678' for '123456789012345'
+grant op to '123456789012345'
+select * from comdb2_users;
+
+set user '1234567890123456'
+set password '1234567890123456789'
+select 1;
