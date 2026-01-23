@@ -1,0 +1,4 @@
+set user user1
+set password password1
+select 'query1' as src, id, name from LOCAL_REMOTEDB.t where id=1 union all select 'query2' as src, id, name from LOCAL_REMOTEDB.t where id=2 union all select 'query3' as src, id, name from LOCAL_REMOTEDB.t where id=3 order by src;
+put authentication off

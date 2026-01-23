@@ -247,11 +247,16 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     }
 
     const char *table_name = NULL;
-    if (pCur->db)
+
+    if (pCur && pCur->db)
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
                                                   : pCur->db->tablename;
 
-    if (clnt->authz_write_tables && table_name && hash_find_readonly(clnt->authz_write_tables, table_name)) {
+    /* For remote cursors (no local db), skip local access checks */
+    if (!table_name)
+        return 0;
+
+    if (clnt->authz_write_tables && hash_find_readonly(clnt->authz_write_tables, table_name)) {
         return 0;
     }
 
@@ -284,7 +289,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     } else {
         /* Check read access if its not user schema. */
         /* Check it only if engine is open already. */
-        if (gbl_uses_password &&  !clnt->current_user.bypass_auth && (thd->clnt->in_sqlite_init == 0)) {
+        if (gbl_uses_password && !clnt->current_user.bypass_auth && (thd->clnt->in_sqlite_init == 0)) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_WRITE, &bdberr);
@@ -304,7 +309,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     }
     ATOMIC_ADD64(gbl_num_auth_allowed, 1);
     pCur->permissions |= ACCESS_WRITE;
-    if (clnt->authz_write_tables && table_name) {
+    if (clnt->authz_write_tables) {
         hash_add(clnt->authz_write_tables, strdup(table_name));
     }
     return 0;
@@ -332,7 +337,11 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
     else if (rscName)
         table_name = rscName;
 
-    if (clnt->authz_read_tables && table_name && hash_find_readonly(clnt->authz_read_tables, table_name)) {
+    /* For remote cursors (no local db), skip local access checks */
+    if (!table_name)
+        return 0;
+
+    if (clnt->authz_read_tables && hash_find_readonly(clnt->authz_read_tables, table_name)) {
         return 0;
     }
     /* Check read access if its not user schema. */
@@ -364,7 +373,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
             return SQLITE_ABORT;
         }
     } else {
-        if (gbl_uses_password && !clnt->current_user.bypass_auth && pCur && thd->clnt->in_sqlite_init == 0) {
+        if (gbl_uses_password && !clnt->current_user.bypass_auth && pCur && pCur->db &&
+            thd->clnt->in_sqlite_init == 0) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_READ, &bdberr);
@@ -385,7 +395,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
     if (pCur)
         pCur->permissions |= ACCESS_READ;
     ATOMIC_ADD64(gbl_num_auth_allowed, 1);
-    if (clnt->authz_read_tables && table_name) {
+    if (clnt->authz_read_tables) {
         hash_add(clnt->authz_read_tables, strdup(table_name));
     }
     return 0;
