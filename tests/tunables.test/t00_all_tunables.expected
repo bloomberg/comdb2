@@ -930,6 +930,7 @@
 (name='shadows_nonblocking', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='shalloc_timing', description='Berkeley DB will keep stats on time spent in shallocs and shalloc_frees', type='BOOLEAN', value='ON', read_only='N')
 (name='show_cost_in_longreq', description='Show query cost in the database long requests log.', type='BOOLEAN', value='ON', read_only='N')
+(name='simpleauth', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='simulate_find_deadlock', description='simulate_find_deadlock', type='BOOLEAN', value='OFF', read_only='N')
 (name='simulate_find_deadlock_retry', description='simulate_find_deadlock_retry', type='BOOLEAN', value='OFF', read_only='N')
 (name='simulate_rowlock_deadlock', description='', type='INTEGER', value='0', read_only='N')
