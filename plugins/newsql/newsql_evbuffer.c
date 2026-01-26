@@ -723,12 +723,17 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         sql_enable_timeout(appdata->writer, clnt->query_timeout);
     }
     sql_enable_heartbeat(appdata->writer);
-    if (clnt->is_tagged) {
+
+    if (incoherent) {
+        if (clnt->is_tagged) {
+            goto err;
+        } else {
+            wait_for_leader(appdata, incoherent);
+        }
+    } else if (clnt->is_tagged) {
         if (dispatch_tagged(clnt) != 0) {
             goto err;
         }
-    } else if (incoherent) {
-        wait_for_leader(appdata, incoherent);
     } else if (dispatch_client(appdata) != 0) {
 err:    free_newsql_appdata_evbuffer(appdata);
     }
