@@ -88,6 +88,7 @@ enum cdb2_errors {
     CDB2ERR_ACCESS = -106,
 
     CDB2ERR_QUERYLIMIT = -107,
+    CDB2ERR_TRAN_MODE_UNSUPPORTED = -107, /* deprecated */
 
     CDB2ERR_SCHEMA = -110,
 
