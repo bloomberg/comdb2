@@ -22,7 +22,6 @@ struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 extern int gbl_create_default_consumer_atomically;
-extern int gbl_sc_protobuf;
 
 #define MAX_SPNAME_FOR_TRIGGER (MAX_SPNAME-(sizeof(Q_TAG)-1)) // includes null terminator
 #define COMDB2_DEFAULT_CONSUMER 2
@@ -137,7 +136,7 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables, SrcL
 
 static int can_create_default_consumer_atomically()
 {
-    return gbl_create_default_consumer_atomically && gbl_sc_protobuf;
+    return gbl_create_default_consumer_atomically;
 }
 
 void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2TrigTables *tbl)
