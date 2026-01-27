@@ -84,10 +84,6 @@ REGISTER_TUNABLE("archive_on_init",
                  "at the time of init. (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_archive_on_init, READONLY, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("create_default_consumer_atomically",
-                 "Create default consumers atomically (default on)",
-                 TUNABLE_BOOLEAN, &gbl_create_default_consumer_atomically, 1, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
                  &gbl_test_badwrite_intvl, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bbenv", NULL, TUNABLE_BOOLEAN, &gbl_bbenv,
@@ -2458,8 +2454,6 @@ REGISTER_TUNABLE("wal_osync", "Open WAL files using the O_SYNC flag (Default: of
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_headroom", "Percentage threshold for low headroom calculation. (Default: 10)", TUNABLE_DOUBLE,
                  &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("sc_protobuf", "Enable protobuf schema change object (Default: on)", TUNABLE_BOOLEAN, &gbl_sc_protobuf,
-                 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_current_version", "Current schema-change version (Default: " STR(SC_VERSION) ")", TUNABLE_INTEGER,
                  &gbl_sc_current_version, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_incoherence_percentage", "Generate random incoherent errors in remsql", TUNABLE_INTEGER,
