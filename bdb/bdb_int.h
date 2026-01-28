@@ -413,6 +413,8 @@ struct tran_tag {
     signed char wrote_begin_record;
     signed char committed_begin_record;
     signed char get_schema_lock;
+    signed char release_schema_lock_after_commit;
+    signed char no_distributed_commit;
     signed char single_physical_transaction;
 
     /* log support */

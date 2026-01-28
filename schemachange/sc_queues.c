@@ -20,6 +20,7 @@
 #include "sc_schema.h"
 #include "logmsg.h"
 #include "sc_callbacks.h"
+#include "bdb_int.h"
 
 #define BDB_TRAN_MAYBE_ABORT_OR_FATAL(a,b,c) do {                             \
     (c) = 0;                                                                  \
@@ -412,6 +413,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
             sbuf2printf(sb, "FAILED\n");
             goto done;
         }
+        ltran->no_distributed_commit = 1;
     }
 
     bdb_ltran_get_schema_lock(ltran);

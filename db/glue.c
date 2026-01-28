@@ -890,13 +890,15 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
 int trans_commit_logical(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, void *blkseq,
                          int blklen, void *blkkey, int blkkeylen)
 {
-    return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1, blkseq, blklen, blkkey, blkkeylen, 0, 0);
+    int wait = bdb_trans_should_wait(trans);
+    return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1, blkseq, blklen, blkkey, blkkeylen, 0, !wait);
 }
 
 /* XXX i made this be the same as trans_commit_adaptive */
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 0, 0);
+    int wait = bdb_trans_should_wait(trans);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 0, !wait);
 }
 
 int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host, int timeoutms)
