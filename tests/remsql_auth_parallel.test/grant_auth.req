@@ -1,0 +1,4 @@
+set user user1
+set password password1
+grant op to user1
+put authentication on

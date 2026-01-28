@@ -1,0 +1,9 @@
+schema
+{
+   int  id
+   cstring name[32]
+}
+keys
+{
+   "ID"  = id
+}
