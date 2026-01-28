@@ -1,0 +1,15 @@
+set user 'test'
+set password 'test'
+select 1
+set user t'est
+set password t'est
+select 1
+set user t"est
+set password t"est
+select 1
+set user test'
+set password test'
+select 1
+set user test"
+set password test"
+select 1

@@ -1,0 +1,3 @@
+set user 'test
+set password 'test
+select 1
