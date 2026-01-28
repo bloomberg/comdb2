@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+set -e
+
+readonly db_name=$1
+readonly tier="default"
+
+run_test() {
+    local -r table_name="test_table"
+    local fail=0
+    cdb2sql ${CDB2_OPTIONS} ${db_name} ${tier} "drop table if exists ${table_name}"
+    cdb2sql ${CDB2_OPTIONS} ${db_name} ${tier} "create table ${table_name} (id int)"
+    cdb2sql ${CDB2_OPTIONS} ${db_name} ${tier} "insert into ${table_name} select 1 from generate_series(1, 1000)"
+
+    local -r num_processes=2200
+    local -r timeout_secs=60
+    local pids=()
+    for i in $(seq 1 $num_processes); do
+        ${TESTSBUILDDIR}/undrained_connection_test ${db_name} ${tier} ${table_name} ${timeout_secs} 0 &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do
+        if ! wait $pid; then
+            echo "Process $pid failed"
+            fail=1
+        fi
+    done
+    return $fail
+}
+
+run_test
