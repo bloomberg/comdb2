@@ -52,6 +52,7 @@
 #include "util.h"
 #include "logmsg.h"
 #include <bbhrtime.h>
+#include "cdb2api_int.h"
 
 #include "ssl_support.h"
 #include "ssl_io.h"
