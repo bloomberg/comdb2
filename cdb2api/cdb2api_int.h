@@ -36,6 +36,8 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
 SBUF2 *cdb2_sbuf2openread(const char *filename);
 int cdb2_read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno);
 
+void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id);
+
 #ifndef WITH_DL_LIBS
 #define WITH_DL_LIBS 0
 #endif
