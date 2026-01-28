@@ -145,7 +145,7 @@ struct cdb2_hndl {
     char *sql;
     char partial_sql[64];
     int ntypes;
-    int *types;
+    const int *types;
     unsigned char *last_buf;
     CDB2SQLRESPONSE *lastresponse;
     unsigned char *first_buf;

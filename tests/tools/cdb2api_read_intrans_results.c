@@ -7,7 +7,7 @@
 int main(int argc, char **argv)
 {
     cdb2_hndl_tp *hndl = NULL;
-    const char *conf = getenv("CDB2_CONFIG");
+    char *conf = getenv("CDB2_CONFIG");
     const char *db, *tier;
     int rc;
 
