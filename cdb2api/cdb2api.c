@@ -5303,6 +5303,8 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     if (rc) {
         sbuf2close(hndl->sb);
         hndl->sb = NULL;
+        free(hndl->first_buf);
+        hndl->first_buf = NULL;
         debugprint("cdb2_read_record from %s rc=%d, returning 1\n", host, rc);
         return 1;
     }
@@ -5336,8 +5338,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     } else {
-        fprintf(stderr, "td 0x%p %s:%d: Can't read response from DB\n",
-                (void *)pthread_self(), __func__, __LINE__);
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
         sbuf2close(hndl->sb);
         hndl->sb = NULL;
         return 1;
@@ -5390,7 +5391,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             hndl->firstresponse =
                 cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
         } else {
-            debugprint("Can't read response from the db node %s\n", host);
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
             return 1;
@@ -6097,8 +6098,12 @@ retry_queries:
     if (hndl->sslerr != 0)
         PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
 
+    if (hndl->max_retries < hndl->num_hosts * 3) {
+        hndl->max_retries = hndl->num_hosts * 3;
+    }
+
     if ((retries_done > 1) && ((retries_done > hndl->max_retries) || (is_api_call_timedout(hndl)))) {
-        sprintf(hndl->errstr, "%s: Maximum number of retries done.", __func__);
+        sprintf(hndl->errstr, "%s: Maximum number of retries done num_retries:%d.", __func__, retries_done);
         if (is_hasql_commit) {
             cleanup_query_list(hndl, &commit_query_list, __LINE__);
         }
@@ -6484,9 +6489,7 @@ read_record:
         for (int i = 0; i < hndl->num_hosts; i++) {
             hndl->ports[i] = -1;
         }
-        if (retries_done < MAX_RETRIES) {
-            GOTO_RETRY_QUERIES();
-        }
+        GOTO_RETRY_QUERIES();
     }
 
     if ((hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
