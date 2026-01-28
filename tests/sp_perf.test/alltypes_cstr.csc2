@@ -1,0 +1,27 @@
+schema
+{
+    cstring     alltypes_short[32]              null=yes
+    cstring     alltypes_u_short[32]            null=yes
+    cstring     alltypes_int[32]                null=no
+    cstring     alltypes_u_int[32]              null=yes
+    cstring     alltypes_longlong[64]           null=yes
+    cstring     alltypes_float[64]              null=yes
+    cstring     alltypes_double[64]             null=yes
+    cstring     alltypes_byte[64]               null=yes
+    cstring     alltypes_cstring[16]            null=yes
+    cstring     alltypes_pstring[16]            null=yes
+    cstring     alltypes_blob[256]              null=yes
+    cstring     alltypes_datetime[64]           null=yes
+    cstring     alltypes_datetimeus[64]         null=yes
+    cstring     alltypes_vutf8[16]              null=yes
+    cstring     alltypes_intervalym[64]         null=yes
+    cstring     alltypes_intervalds[64]         null=yes
+    cstring     alltypes_intervaldsus[64]       null=yes
+    cstring     alltypes_decimal32[64]          null=yes
+    cstring     alltypes_decimal64[64]          null=yes
+    cstring     alltypes_decimal128[128]        null=yes
+}
+
+keys {
+    "PK"=alltypes_short
+}
