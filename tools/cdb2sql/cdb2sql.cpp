@@ -1524,13 +1524,6 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
     *run_time = 0;
 
     if (cdb2h == NULL) {
-        if (maxretries) {
-            cdb2_set_max_retries(maxretries);
-        }
-        if (minretries) {
-            cdb2_set_min_retries(minretries);
-        }
-
         verbose_print("calling cdb2_open\n");
 
         int flags = 0;
