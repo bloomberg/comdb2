@@ -952,7 +952,7 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
 
     tran_reset_rowlist(tran->logical_tran);
 
-    if (lsn->file && (flags & DB_TXN_REP_ACK) && !tran->logical_tran->no_distributed_commit) {
+    if (lsn->file && (flags & DB_TXN_REP_ACK) && (!tran->logical_tran->no_distributed_commit || !have_schema_lock())) {
         int timeoutms = -1;
         seqnum_type seqnum = {{0}};
         memcpy(&seqnum.lsn, lsn, sizeof(*lsn));
@@ -2912,7 +2912,7 @@ int bdb_trans_track(bdb_state_type *bdb_state, tran_type *trans)
 
 int bdb_trans_should_wait(tran_type *trans)
 {
-    return !(trans->no_distributed_commit);
+    return !(trans->no_distributed_commit) || !have_schema_lock();
 }
 
 void bdb_trans_set_nowait(tran_type *trans)

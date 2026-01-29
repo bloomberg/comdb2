@@ -691,7 +691,6 @@ int do_default_cons(struct schema_change_type *sc, struct ireq *iq)
         goto done;
     }
 
-    ltran->no_distributed_commit = 1;
     bdb_ltran_get_schema_lock(ltran);
 
     tran_type *tran = NULL;

@@ -216,8 +216,6 @@ static void free_sc(struct schema_change_type *s)
     csc2_free_all();
 }
 
-__thread int gbl_is_comdb2sc = 0;
-
 static void stop_and_free_sc(struct ireq *iq, int rc,
                              struct schema_change_type *s, int do_free)
 {
@@ -231,7 +229,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
              *    queuedb_cron_event (which holds schema-lk)
              *    comdb2sc.tsk (does not hold schema-lk here)
              */
-            if (gbl_is_comdb2sc || s->is_comdb2sc) {
+            if (s->is_comdb2sc) {
                 assert_no_schema_lk();
                 trans_wait_for_last_seqnum(iq, gbl_myhostname);
             }
@@ -360,7 +358,6 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to start finalize transaction %d\n", -rc);
             return -1;
         }
-        ltran->no_distributed_commit = 1;
     }
     uint64_t sc_nrecs = 0;
     if (s->db)
@@ -1682,8 +1679,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
     tran = NULL;
 
     int bdberr = 0;
-    if ((rc = bdb_llog_scdone_flags(thedb->bdb_env, setcompr, db->tablename, strlen(db->tablename) + 1, 0, &bdberr,
-                                    NO_DISTRIBUTED_COMMIT)) != 0) {
+    if ((rc = bdb_llog_scdone(thedb->bdb_env, setcompr, db->tablename, strlen(db->tablename) + 1, 0, &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "%s -- bdb_llog_scdone rc:%d bdberr:%d\n", __func__, rc, bdberr);
     }
 

@@ -2286,6 +2286,10 @@ REGISTER_TUNABLE("assert_no_schemalk_in_distributed_commit",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_assert_no_schemalk_in_distributed_commit, INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("replicant_poll_on_sc",
+                 "Replicant polls on sc to tease out reads-follows-writes issues.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_replicant_poll_on_sc, INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("track_curtran_gettran_locks", "Stack-trace curtran_gettran threads at lock-get.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_track_curtran_gettran_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
