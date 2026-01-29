@@ -472,6 +472,7 @@ extern int eventlog_nkeep;
 extern int gbl_debug_systable_locks;
 extern int gbl_assert_systable_locks;
 extern int gbl_assert_no_schemalk_in_distributed_commit;
+extern int gbl_replicant_poll_on_sc;
 extern int gbl_track_curtran_gettran_locks;
 extern int gbl_permit_small_sequences;
 extern int gbl_debug_sleep_in_sql_tick;

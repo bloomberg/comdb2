@@ -344,12 +344,18 @@ static int trans_start_int(struct ireq *iq, tran_type *parent_trans,
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int(iq, NULL, out_trans, 1, 1, NULL, 0);
+    int rc = trans_start_int(iq, NULL, out_trans, 1, 1, NULL, 0);
+    if (!rc)
+        (*out_trans)->no_distributed_commit = 1;
+    return rc;
 }
 
 int trans_start_logical_sc_with_force(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int(iq, NULL, out_trans, 1, 1, NULL, 1);
+    int rc = trans_start_int(iq, NULL, out_trans, 1, 1, NULL, 1);
+    if (!rc)
+        (*out_trans)->no_distributed_commit = 1;
+    return rc;
 }
 
 int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans)

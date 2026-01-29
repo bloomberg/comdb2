@@ -83,6 +83,7 @@ extern int gbl_physrep_debug;
 extern int gbl_dumptxn_at_commit;
 extern int gbl_sql_logfill;
 
+int gbl_replicant_poll_on_sc = 0;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 0;
 int gbl_disable_repdb = 0;
@@ -5071,6 +5072,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 		if (!dontlock) {
 			if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+				if (gbl_replicant_poll_on_sc)
+					poll(NULL, 0, 100);
 				wrlock_schema_lk();
 			}
 		}
@@ -5150,6 +5153,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		if (lflags & DB_TXN_SCHEMA_LOCK) {
 			if (lockid == 0) {
+				if (gbl_replicant_poll_on_sc)
+					poll(NULL, 0, 100);
 				wrlock_schema_lk();
 			} else {
 				assert_wrlock_schema_lk();
@@ -6134,6 +6139,8 @@ bad_resize:	;
 			goto err;
 #endif
 		}
+		if (gbl_replicant_poll_on_sc)
+			poll(NULL, 0, 100);
 		wrlock_schema_lk();
 		got_schema_lk = 1;
 	}
