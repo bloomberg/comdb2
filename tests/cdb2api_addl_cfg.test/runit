@@ -9,6 +9,8 @@ auxdbnm="aux$dbnm"
 
 cp $DBDIR/comdb2db.cfg $DBDIR/comdb2db.addl.cfg
 
+[[ -n $CLUSTER ]] && { echo "$auxdbnm $CLUSTER" >> $DBDIR/comdb2db.addl.cfg; }
+
 echo "$dbnm:additional_cfg=$DBDIR/$dbnm.badpmux.cfg" >>$DBDIR/comdb2db.addl.cfg
 echo "$auxdbnm:additional_cfg=$DBDIR/$auxdbnm.badpmux.cfg" >>$DBDIR/comdb2db.addl.cfg
 
