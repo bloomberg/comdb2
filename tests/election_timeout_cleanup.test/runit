@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Test for election timeout cleanup fix
+
+set -x
+db=$1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+# Get list of all nodes
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 2 ]]; then
+    echo "This test requires at least 2 nodes"
+    exit 0
+fi
+
+master=$(getmaster)
+echo "Initial master: $master"
+
+replicant=""
+for node in ${nodes[@]}; do
+    if [[ "$node" != "$master" ]]; then
+        replicant=$node
+        break
+    fi
+done
+echo "Target replicant: $replicant"
+
+for node in ${nodes[@]}; do
+    cdb2sql --admin --host $node ${CDB2_OPTIONS} $db "put tunable incoherent_clnt_wait 2"
+done
+
+echo "Downgrading all nodes to trigger election..."
+for node in ${nodes[@]}; do
+    cdb2sql --admin ${CDB2_OPTIONS} --host $node $db "exec procedure sys.cmd.send('downgrade')" &
+done
+wait
+
+echo "Sending queries during election..."
+for i in $(seq 1 10); do
+    for node in ${nodes[@]}; do
+        # Use short maxquerytime so we timeout while waiting for leader
+        timeout 5 cdb2sql --host $node ${CDB2_OPTIONS} $db "set maxquerytime 1" "select 1" 2>&1 &
+    done
+done
+wait
+
+echo "Waiting for cluster to stabilize..."
+sleep 5
+
+echo "Verifying all nodes are still running..."
+all_up=1
+for node in ${nodes[@]}; do
+    if ! cdb2sql ${CDB2_OPTIONS} --host $node $db "select 1" >/dev/null 2>&1; then
+        echo "Node $node is DOWN!"
+        all_up=0
+    else
+        echo "Node $node is UP"
+    fi
+done
+
+if [[ $all_up -eq 0 ]]; then
+    echo "FAILED: Some nodes crashed during test"
+    exit 1
+fi
+
+echo "Verifying database is functional..."
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t values(1)"
+cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select count(*) from t")
+if [[ "$cnt" != "1" ]]; then
+    echo "FAILED: Database not functional after test"
+    exit 1
+fi
+
+echo "Testcase passed."
+exit 0
