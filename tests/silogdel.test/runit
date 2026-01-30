@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
 # Runs the register linearizability test
 debug=1
+test_abort_cluster=0
 #debug_trace="-D"
 db=$1
 cpid=0
@@ -82,10 +85,17 @@ function check_table
     echo "select * from $table order by id" >&${COPROC[1]}
     echo "@redirect" >&${COPROC[1]}
 
+    # Wait until redirect file contains all records
+    cnt=$(wc -l $tmpfile | awk '{print $1}')
+    while [[ "$cnt" -lt $initrecs ]]; do
+        sleep 1
+        cnt=$(wc -l $tmpfile | awk '{print $1}')
+    done
+
     echo "select count(*) from $table" >&${COPROC[1]}
 
-    export TMOUT=30
-    read -ru ${COPROC[0]} out
+    read -t 15 -ru "${COPROC[0]}" out
+    rc=$?
 
     if [[ $? != 0 ]]; then
         errquit "Error reading select count (*) from $table"
@@ -167,6 +177,10 @@ function runtest
 
     return 0
 }
+
+if [[ "$test_abort_cluster" == "1" ]]; then
+    abort_cluster
+fi
 
 createtables
 runtest
