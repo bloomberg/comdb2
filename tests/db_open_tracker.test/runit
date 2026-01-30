@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default "SELECT host FROM comdb2_cluster WHERE is_master='Y'"`
+
+if [ -z "$CLUSTER" ] ; then
+    dbpid=`pgrep -a comdb2 | grep $dbnm | awk '{print $1}'`
+    echo DB pid is $dbpid
+    baseaddr=`pmap $dbpid | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
+else
+    dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
+    echo DB pid is $dbpid
+    baseaddr=`ssh $host "pmap $dbpid" | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
+fi
+echo base address is $baseaddr
+
+cdb2sql $dbnm --host $host "CREATE TABLE tbl_1 (i INTEGER)"
+
+stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep tbl_1`
+if [ -z "$stacks" ] ; then
+    echo 'No output from bdb dumpopendbs???' >&2
+    exit 1
+fi
+
+nooffset=$(for n in `echo "$stacks"|awk '{for(i=2; i<=NF; ++i) {print $i}}'`; do printf "0x%x " $(($n-$baseaddr)); done)
+addr2line -fsp -e $COMDB2_EXE $nooffset
+# verify that we open this btree in add table code path
+addr2line -fsp -e $COMDB2_EXE $nooffset | grep -q add_table
+
+cdb2sql $dbnm --host $host "ALTER TABLE tbl_1 ADD COLUMN j INTEGER"
+
+stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep tbl_1`
+if [ -z "$stacks" ] ; then
+    echo 'No output from bdb dumpopendbs???' >&2
+    exit 1
+fi
+
+nooffset=$(for n in `echo "$stacks"|awk '{for(i=2; i<=NF; ++i) {print $i}}'`; do printf "0x%x " $(($n-$baseaddr)); done)
+addr2line -fsp -e $COMDB2_EXE $nooffset
+# verify that we close previous btree from add_table code path,
+# and we open this btree in alter_table code path
+! addr2line -fsp -e $COMDB2_EXE $nooffset | grep -q add_table
+addr2line -fsp -e $COMDB2_EXE $nooffset | grep -q alter_table
+
+cdb2sql $dbnm --host $host "DROP TABLE tbl_1"
+# verify that we do not keep the btree around after it's dropped
+! cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep -q tbl_1

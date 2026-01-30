@@ -2607,5 +2607,6 @@ REGISTER_TUNABLE("new_connection_grace_ms", "Time (in ms) before new connection 
                  TUNABLE_INTEGER, &gbl_new_connection_grace_ms, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("accept_headroom", "", TUNABLE_INTEGER, &gbl_accept_headroom, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("simpleauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_simpleauth, NOARG | READEARLY, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("track_db_open", "Track berkdb open DB handles", TUNABLE_INTEGER, &gbl_db_track_open, INTERNAL, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

@@ -219,6 +219,7 @@ __db_init(dbp, flags)
 	    DB_OK_BTREE | DB_OK_HASH | DB_OK_QUEUE | DB_OK_RECNO);
 
 	dbp->associate = __db_associate_pp;
+	dbp->clear_ufid_hash = __db_clear_ufid_hash;
 	dbp->close = __db_close_pp;
 	dbp->closetxn = __db_closetxn_pp;
 	dbp->cursor = __db_cursor_pp;

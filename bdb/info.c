@@ -1267,6 +1267,8 @@ static char *tokdup_hostname(char *tok, int ltok)
     return host;
 }
 
+extern void __db_dump_open(FILE *);
+
 void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
                               int st)
 {
@@ -1911,6 +1913,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         pgno = toknum(tok, ltok);
 
         __pgtrash(bdb_state->dbenv, fileid, pgno);
+    } else if (tokcmp(tok, ltok, "dumpopendbs") == 0) {
+        __db_dump_open(out);
     } else {
         logmsg(LOGMSG_ERROR, "backend engine unknown cmd <%.*s>. try help\n", ltok,
                 tok);
