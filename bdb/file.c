@@ -158,6 +158,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
 
 enum {
     BDB_CLOSE_FLAGS_FLUSH = 1,
+    BDB_CLOSE_FLAGS_CLR_UFID = 2,
 };
 static int bdb_close_only_flags(bdb_state_type *, DB_TXN *, int *bdberr, int flags);
 
@@ -1411,13 +1412,14 @@ static void net_stopthread_rtn(void *arg)
  * Hence this function will now never fail - although it may spit out errors.
  * After this is called, the db is closed.
  */
-static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
+static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags, int bdb_close_flags)
 {
     int rc;
     int i;
     int dtanum, strnum;
     u_int8_t fileid[21] = {0};
     char fid_str[41] = {0};
+    DB *dbp;
 
     if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name)) {
         return 0;
@@ -1440,14 +1442,17 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
         for (strnum = 0; strnum < MAXDTASTRIPE; strnum++) {
-            if (bdb_state->dbp_data[dtanum][strnum]) {
-                bdb_state->dbp_data[dtanum][strnum]->get_fileid(
-                    bdb_state->dbp_data[dtanum][strnum], fileid);
+            if ((dbp = bdb_state->dbp_data[dtanum][strnum]) != NULL) {
+                dbp->get_fileid(dbp, fileid);
                 fileid_str(fileid, fid_str);
-                logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__,
-                       __LINE__, fid_str);
-                rc = bdb_state->dbp_data[dtanum][strnum]->closetxn(
-                    bdb_state->dbp_data[dtanum][strnum], tid, flags);
+                logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__, __LINE__, fid_str);
+                rc = dbp->clear_ufid_hash(dbp, tid, flags);
+                if (rc != 0) {
+                    logmsg(LOGMSG_WARN, "%s: error closing %s[%d][%d]: %d %s\n", __func__, bdb_state->name, dtanum,
+                           strnum, rc, db_strerror(rc));
+                    /* do not fail */
+                }
+                rc = dbp->closetxn(dbp, tid, flags);
                 if (0 != rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s: error closing %s[%d][%d]: %d %s\n", __func__,
@@ -1467,13 +1472,19 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
         logmsg(LOGMSG_DEBUG, "%s:%d  looking through table %s numix %d\n",
                __func__, __LINE__, bdb_state->name, bdb_state->numix);
         for (i = 0; i < bdb_state->numix; i++) {
-            /*fprintf(stderr, "closing ix %d\n", i);*/
-            bdb_state->dbp_ix[i]->get_fileid(bdb_state->dbp_ix[i], fileid);
+            dbp = bdb_state->dbp_ix[i];
+            dbp->get_fileid(dbp, fileid);
             fileid_str(fileid, fid_str);
             logmsg(LOGMSG_DEBUG, "%s:%d closing fileid %s\n", __func__,
                    __LINE__, fid_str);
-            rc = bdb_state->dbp_ix[i]->closetxn(bdb_state->dbp_ix[i], tid,
-                                                flags);
+
+            rc = dbp->clear_ufid_hash(dbp, tid, flags);
+            if (rc != 0) {
+                logmsg(LOGMSG_WARN, "%s: error closing %s->dbp_ix[%d] %d %s\n", __func__, bdb_state->name, i, rc,
+                       db_strerror(rc));
+                /* don't fail */
+            }
+            rc = dbp->closetxn(bdb_state->dbp_ix[i], tid, flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
                        __func__, bdb_state->name, i, rc, db_strerror(rc));
@@ -1494,17 +1505,17 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
 static int close_dbs(bdb_state_type *bdb_state)
 {
-    return close_dbs_int(bdb_state, NULL, DB_NOSYNC);
+    return close_dbs_int(bdb_state, NULL, DB_NOSYNC, 0);
 }
 
 static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *txn)
 {
-    return close_dbs_int(bdb_state, txn, DB_NOSYNC);
+    return close_dbs_int(bdb_state, txn, DB_NOSYNC, 0);
 }
 
 static int close_dbs_flush(bdb_state_type *bdb_state)
 {
-    return close_dbs_int(bdb_state, NULL, 0);
+    return close_dbs_int(bdb_state, NULL, 0, 0);
 }
 
 int bdb_isopen(bdb_state_type *bdb_handle) { return bdb_handle->isopen; }
@@ -6539,7 +6550,6 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr)
 {
     DB_ENV *dbenv;
-    DB *dbp;
     char transname[PATH_MAX];
     char *pname = bdb_trans(filename, transname);
     int rc = 0;
@@ -6550,14 +6560,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
         dbenv = bdb_state->dbenv;
 
     if ((rc = access(pname, F_OK)) == 0) {
-        int rc;
-
-        if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
-            (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, DB_CLR_UFID, 0666)) == 0) {
-            dbp->close(dbp, DB_NOSYNC);
-        }
-
-        rc = dbenv->dbremove(dbenv, tid, filename, NULL, 0);
+        int rc = dbenv->dbremove(dbenv, tid, filename, NULL, 0);
         if (rc) {
            logmsg(LOGMSG_ERROR, "bdb_del_file: dbremove %s failed: %d %s\n", filename, rc,
                    db_strerror(rc));
@@ -6978,8 +6981,10 @@ static int bdb_close_only_flags(bdb_state_type *bdb_state, DB_TXN *tid, int *bdb
     /* close doesn't fail */
     if (flags & BDB_CLOSE_FLAGS_FLUSH) {
        close_dbs_flush(bdb_state);
+    } else if (flags & BDB_CLOSE_FLAGS_CLR_UFID) {
+        close_dbs_int(bdb_state, NULL, DB_NOSYNC, BDB_CLOSE_FLAGS_CLR_UFID);
     } else {
-       close_dbs(bdb_state);
+        close_dbs(bdb_state);
     }
 
     /* now remove myself from my parents list of children */
@@ -7013,7 +7018,7 @@ int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 
     BDB_READLOCK("bdb_close_only_sc");
 
-    rc = bdb_close_only_int(bdb_state, tran ? tran->tid : NULL, bdberr);
+    rc = bdb_close_only_flags(bdb_state, tran ? tran->tid : NULL, bdberr, BDB_CLOSE_FLAGS_CLR_UFID);
 
     BDB_RELLOCK();
 

@@ -208,7 +208,6 @@ struct txn_properties;
 #define	DB_USE_ENVIRON	      0x0000400	/* Use the environment. */
 #define	DB_USE_ENVIRON_ROOT   0x0000800	/* Use the environment if root. */
 #define DB_RECOVERY_CKP       0x0001000 /* Do recovery checkpoint */
-#define	DB_CLR_UFID           0x0002000	/* Clear open handle in ufid-hash */
 
 /*
  * Common flags --
@@ -1556,6 +1555,23 @@ typedef struct __db_cq_hash_list {
 extern DB_CQ_HASH_LIST gbl_all_cursors;
 extern pthread_key_t tlcq_key;
 
+typedef struct __db_walkback {
+	/* walkback info */
+	struct __db *dbp;
+	struct {
+		struct __db_walkback *le_next;
+		struct __db_walkback **le_prev;
+	} lnk;
+	unsigned int nframes;
+	void *frames[1];
+} DB_WALKBACK;
+
+typedef struct __db_open_list {
+	struct __db_walkback *lh_first;
+	pthread_mutex_t lk;
+} DB_OPEN_LIST;
+extern DB_OPEN_LIST gbl_db_open_list;
+
 /* Database handle. */
 struct __db {
 	/*******************************************************
@@ -1713,6 +1729,7 @@ struct __db {
 	int  (*associate) __P((DB *, DB_TXN *, DB *, int (*)(DB *, const DBT *,
 		const DBT *, DBT *), u_int32_t));
 	int  (*get_fileid) __P((DB *, u_int8_t *fileid));
+	int  (*clear_ufid_hash) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*close) __P((DB *, u_int32_t));
 	int  (*closetxn) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
@@ -1894,6 +1911,8 @@ struct __db {
 	int offset_bias;
 	uint8_t olcompact;
 	struct __db_trigger_subscription *trigger_subscription;
+
+    DB_WALKBACK *wb;
 };
 
 /*

@@ -624,6 +624,7 @@ int gbl_nudge_replication_when_idle = 100;
 
 extern int gbl_new_connection_grace_ms;
 extern int gbl_accept_headroom;
+extern int gbl_db_track_open;
 
 int parse_int64(const char *value, int64_t *num);
 

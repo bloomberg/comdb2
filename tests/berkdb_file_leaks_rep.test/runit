@@ -22,8 +22,9 @@ source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 dbnm=$1
 
-replicant=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
+replicant=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
+the_other_replicant=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT host FROM comdb2_cluster WHERE host <> '$master' AND host <> '$replicant'"`
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (i integer, b blob)"
 sleep 2 # wait for the checkpoint thread to do its 1st checkpoint
@@ -45,65 +46,46 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "Restarting the other node $the_other_replicant ..."
+kill_restart_node $the_other_replicant 10 1
+cdb2sql $dbnm --host $the_other_replicant "SELECT 1"
+if [ $? -ne 0 ]; then
+    echo 'db not up?' >&2
+    exit 1
+fi
+
 echo 'Before truncate ...'
 cdb2sql $dbnm --host $replicant "EXEC PROCEDURE sys.cmd.send('bdb cachestatall')" | grep -A1 blobs0
 cdb2sql $dbnm --host $master "TRUNCATE TABLE t1"
 echo 'After truncate ...'
 cdb2sql $dbnm --host $replicant "EXEC PROCEDURE sys.cmd.send('bdb cachestatall')" | grep -A1 blobs0
 
-echo "Waiting for $replicant to become new master"
-while true; do
-    is_replicant_new_master=`cdb2sql --tabs $dbnm --host $replicant "SELECT comdb2_host() = (select host from comdb2_cluster where is_master='Y')"`
-    if [ "$is_replicant_new_master" = "1" ]; then
-        master=$replicant
-        break
+for host in $CLUSTER; do
+    echo --- BEGIN WALKBACKS for $host ---
+    dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
+    echo DB pid is $dbpid
+    baseaddr=`ssh $host "pmap $dbpid" | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
+    cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep XXX.t1 | grep blob
+    stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep XXX.t1 | grep blob`
+    nooffset=$(for n in `echo "$stacks"| awk '{for(i=2; i<=NF; ++i) {print $i}}'`; do printf "0x%x " $(($n-$baseaddr)); done)
+    addr2line -fsp -e $COMDB2_EXE $nooffset
+    echo --- END WALKBACKS for $host ---
+done
+
+cdb2sql -tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('delfiles t1')"
+
+# None of the replicants should have deleted files after master delfiles
+for host in $CLUSTER; do
+    dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
+    echo DB pid is $dbpi
+    echo '--- BEGIN LSOF (deleted) for $host ---'
+    ssh $host "lsof -p $dbpid | grep deleted"
+    echo '--- END LSOF (deleted) for $host ---'
+    cnt=`ssh $host "lsof -p $dbpid | grep -c deleted"`
+    if [ "$cnt" != 0 ]; then
+	echo 'Replicant has deleted files! DB handles leaked!' >&2
+	exit 1
     fi
-
-    master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
-    cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('upgrade $replicant')"
-    sleep 5
-    master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
-    echo "Master swung to $master"
-
-    while true; do
-        cdb2sql $dbnm --host $replicant "SELECT 1" >/dev/null
-        if [ $? -eq 0 ]; then
-            break;
-        fi
-        sleep 1
-    done
-done
-
-echo BEFORE delfiles
-for host in $CLUSTER; do
-    echo --- BEGIN WALKBACKS for $host ---
-    dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
-    echo DB pid is $dbpid
-    baseaddr=`ssh $host "pmap $dbpid" | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
-    cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep XXX.t1 | grep blob
-    stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep XXX.t1 | grep blob`
-    nooffset=$(for n in `echo "$stacks"| awk '{for(i=2; i<=NF; ++i) {print $i}}'`; do printf "0x%x " $(($n-$baseaddr)); done)
-    addr2line -fsp -e $COMDB2_EXE $nooffset
-    echo --- END WALKBACKS for $host ---
-done
-
-cdb2sql -tabs $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('delfiles t1')" | grep 'DB_FILEOPEN: Rename or remove while file is open'
-if [ $? -eq 0 ]; then
-    echo "DB handles leaked" >&2
-    exit 1
-fi
-
-echo AFTER delfiles
-for host in $CLUSTER; do
-    echo --- BEGIN WALKBACKS for $host ---
-    dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
-    echo DB pid is $dbpid
-    baseaddr=`ssh $host "pmap $dbpid" | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
-    cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep XXX.t1 | grep blob
-    stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")' | grep XXX.t1 | grep blob`
-    nooffset=$(for n in `echo "$stacks"| awk '{for(i=2; i<=NF; ++i) {print $i}}'`; do printf "0x%x " $(($n-$baseaddr)); done)
-    addr2line -fsp -e $COMDB2_EXE $nooffset
-    echo --- END WALKBACKS for $host ---
 done
 
 echo "Success!"
