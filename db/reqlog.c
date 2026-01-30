@@ -1989,10 +1989,6 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
         return; /* Don't log blocking tranlog */
     }
 
-    if (clnt->thd->logger->have_fingerprint && reqlog_fingerprint_is_excluded(clnt->thd->logger->fingerprint)) {
-        return; /* Excluded fingerprint */
-    }
-
     struct string_ref *sql = clnt->sql_ref;
     struct reqlogger logger;
 
@@ -2045,6 +2041,9 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
             }
             have_fingerprint = 1;
         }
+    }
+    if (have_fingerprint && reqlog_fingerprint_is_excluded(fp)) {
+        return; /* Excluded fingerprint */
     }
 
     if (!reqlog_init_off && duration_beyond_thresh_sec >= 0 && duration_beyond_thresh_sec < gbl_longreq_log_freq_sec) {
