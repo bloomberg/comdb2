@@ -101,6 +101,41 @@ function bounce_database
     fi
 }
 
+function abort_by_pidfile() {
+    local pidfile=$1
+    local node=$2
+    local pid=0
+
+    if [[ -n "$node" ]]; then
+        pid=$(ssh -n -o StrictHostKeyChecking=no $node "cat $pidfile")
+    else
+        pid=$(cat $pidfile)
+    fi
+
+    if [[ -n "$pid" ]]; then
+        if [[ -n "$node" ]]; then
+            echo "ssh $node kill -6 $pid"
+            ssh -n -o StrictHostKeyChecking=no $node "kill -6 $pid"
+        else
+            echo "kill -6 $pid"
+            kill -6 $pid
+        fi
+    else
+        failexit "abort_by_pidfile: could not read pid from pidfile $pidfile"
+    fi
+}
+
+function abort_cluster() {
+    TMPDIR=${TMPDIR:-${TESTDIR}/tmp}
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER ; do
+            abort_by_pidfile ${TMPDIR}/${DBNAME}.pid $node
+        done
+    else
+        abort_by_pidfile ${TMPDIR}/${DBNAME}.pid
+    fi
+}
+
 function kill_by_pidfile() {
     pidfile=$1
     if [[ -f $pidfile ]]; then
