@@ -606,7 +606,8 @@ static void timed_out_waiting_for_leader(struct sqlclntstate *clnt)
     logmsg(LOGMSG_USER, "%s: query timeout waiting for election waited:%lds fd:%d\n",
            __func__, diff.tv_sec, appdata->fd);
     free_dispatch_sql_arg(d);
-    free_newsql_appdata_evbuffer(appdata);
+    appdata->cleanup_ev = event_new(appdata->base, -1, 0, newsql_cleanup, appdata);
+    event_active(appdata->cleanup_ev, 0, 0);
 }
 
 static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop_result incoherent)
