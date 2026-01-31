@@ -4,5 +4,7 @@
 [ANALYZE t15] rc 0
 (count(*)=2)
 (count(*)=48)
+[exec procedure sys.cmd.send('setsqlattr analyze_empty_tables off')] rc 0
+[ANALYZE t15] rc 0
 (count(*)=1)
 (count(*)=24)

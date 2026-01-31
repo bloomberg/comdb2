@@ -729,14 +729,8 @@ int analyze_regular_table(const char *tablename, table_descriptor_t *td,
     else
         strncpy0(sqltablename, tablename, sizeof(sqltablename));
 
-    if (table->sqlaliasname) {
-        rc = analyze_rename_table_for_backup_stats(sqltablename, clnt, err);
-        if (rc) 
-            goto err;
-    }
-    /* we need to this is either way */
-    rc = analyze_rename_table_for_backup_stats(tablename, clnt, err);
-    if (rc)
+    rc = analyze_rename_table_for_backup_stats(sqltablename, clnt, err);
+    if (rc) 
         goto err;
 
     /* grab the size of the table */

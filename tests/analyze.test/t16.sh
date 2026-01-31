@@ -40,6 +40,11 @@ EOF
 
 count_stats
 
+#test analyzing again, so that backing up stats also gets checked
+${CDB2SQL_EXE} ${CDB2_OPTIONS} --host ${host} ${DBNAME} <<EOF
+exec procedure sys.cmd.send('setsqlattr analyze_empty_tables off')
+ANALYZE t15
+EOF
 
 #test analyzeing individual shard
 SHARDNAME=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} ${DBNAME} default "select shardname from comdb2_timepartshards where name='t15' limit 1")
