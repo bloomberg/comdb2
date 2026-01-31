@@ -126,7 +126,8 @@ static int authenticateSC(const char *table, Parse *pParse);
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                                   size_t name_len, enum table_chk_flags error_flag,
                                   int check_shard, int *table_exists,
-                                  char **partition_first_shard, int check_for_illegal_chars)
+                                  char **partition_first_shard, int check_for_illegal_chars,
+                                  int preserve_name)
 {
     int rc = 0;
     char *table_name;
@@ -221,7 +222,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             goto cleanup;
         }
 
-        if (db) {
+        if (db && ! preserve_name) {
             /* use original tablename */
             strncpy0(dst, db->tablename, MAXTABLELEN);
         }
@@ -302,7 +303,24 @@ static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
         return rc;
 
     if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, error_flag, check_shard,
-                              table_exists, partition_first_shard, check_for_illegal_chars))) {
+                              table_exists, partition_first_shard, check_for_illegal_chars, 0))) {
+        return rc;
+    }
+
+    return SQLITE_OK;
+}
+
+static inline int chkAndCopyTableTokensAnalyze(Parse *pParse, char *dst, Token *t1, Token *t2)
+{
+    int rc;
+
+    if (t1 == NULL)
+        return SQLITE_OK;
+
+    if (t2 && (rc = isRemote(pParse, &t1, &t2)))
+        return rc;
+
+    if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, ERROR_ON_TBL_NOT_FOUND, 0, NULL, NULL, 0, 1))) {
         return rc;
     }
 
@@ -1873,8 +1891,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc, int on
         if (!tablename)
             goto err;
 
-        if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                                  ERROR_ON_TBL_NOT_FOUND, 0, 0, NULL, /* check_for_illegal_chars */ 0)) {
+        if (chkAndCopyTableTokensAnalyze(pParse, tablename, nm, lnm)) {
             free(tablename);
             goto err;
         }
@@ -6263,7 +6280,7 @@ void comdb2CreateIndex(
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
                          strlen(ctx->schema->name), ERROR_ON_TBL_NOT_FOUND, 1, 0,
-                         &ctx->partition_first_shardname, /* check_for_illegal_chars */ 0)))
+                         &ctx->partition_first_shardname, /* check_for_illegal_chars */ 0, 0)))
         goto cleanup;
 
     /*
@@ -6951,7 +6968,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         sqlite3Dequote(tbl_name);
 
         if ((chkAndCopyTable(pParse, sc->tablename, tbl_name, strlen(tbl_name),
-                             ERROR_ON_TBL_NOT_FOUND, 1, 0, &ctx->partition_first_shardname, /* check_for_illegal_chars */ 0)))
+                             ERROR_ON_TBL_NOT_FOUND, 1, 0, &ctx->partition_first_shardname, /* check_for_illegal_chars */ 0, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
@@ -7015,7 +7032,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         }
 
         if ((chkAndCopyTable(pParse, sc->tablename, table->tablename,
-                             strlen(table->tablename), ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, /* check_for_illegal_chars */ 0)))
+                             strlen(table->tablename), ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, /* check_for_illegal_chars */ 0, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
