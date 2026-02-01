@@ -3645,12 +3645,8 @@ int sqlite3BtreeReopen(
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER, "XXXXXXXXXXXXX ReOpening \"%s\"\n", zFilename);
 
-    pBtree->fdb = get_fdb(zFilename);
-    if (!pBtree->fdb) {
-        logmsg(LOGMSG_ERROR, "%s: fdb not available for %s ?\n", __func__,
-               zFilename);
-        rc = SQLITE_ERROR;
-    }
+    pBtree->fdb = get_fdb(zFilename, FDB_GET_NOLOCK);
+    assert(pBtree->fdb);
 
     reqlog_logf(pBtree->reqlogger, REQL_TRACE,
                 "ReOpen(file %s, tree %d)     = %s\n",
@@ -3724,23 +3720,21 @@ int sqlite3BtreeOpen(
         thd->bttmp = bt;
         *ppBtree = bt;
     } else if (zFilename) {
-        /* TODO: maybe we should enforce unicity ? when attaching same dbs from
-         * multiple sql threads */
-
         /* remote database */
-
         bt->reqlogger = logger;
         bt->btreeid = id++;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         bt->is_remote = 1;
-        /* NOTE: this is a lockless pointer; at the time of setting this, we got
-        a lock in sqlite3AddAndLockTable, so it should be good. The sqlite
-        engine will keep this structure around after fdb tables are changed.
-        While fdb will NOT go away, its tables can dissapear or change schema.
-        Cached schema in Table object needs to be matched against fdb->tbl and
-        make sure they are consistent before doing anything on the attached fdb
-        */
-        bt->fdb = get_fdb(zFilename);
+        /* NOTE: this is done during attaching a new fdb to populate schema
+         * of sqlite with remote tables (inside comdb2_dynamic_attach)
+         * At this point we do have a live read lock acquired by sqlite3AddAndLockTable.
+         * It is safe to use this bt->fdb pointer until we call fdbUnlock
+         * During query execution, when we get table locks, a live lock is acquired again
+         * and at that point we update this link, which will be valid until table locks
+         * are released
+         *
+         */
+        bt->fdb = get_fdb(zFilename, FDB_GET_NOLOCK);
         if (!bt->fdb) {
             logmsg(LOGMSG_ERROR, "%s: fdb not available for %s ?\n", __func__,
                     zFilename);
@@ -7710,18 +7704,8 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     return rc;
 }
 
-static int rootpcompare(const void *p1, const void *p2)
+static int tablenamecompare(const void *p1, const void *p2)
 {
-#if 0
-    int i = *(int *)p1;
-    int j = *(int *)p2;
-
-    if (i>j)
-        return 1;
-    if (i<j)
-        return -1;
-    return 0;
-#endif
     Table *tp1 = *(Table **)p1;
     Table *tp2 = *(Table **)p2;
 
@@ -7822,7 +7806,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         return 0;
 
     /* sort and dedup */
-    qsort(tbls, nTables, sizeof(Table *), rootpcompare);
+    qsort(tbls, nTables, sizeof(Table *), tablenamecompare);
 
     prev = -1;
     nRemoteTables = 0;
@@ -7853,7 +7837,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
-            if (after_recovery && !fdb_table_exists(iTable)) {
+            if (after_recovery && !(clnt->remoteFdbCache && fdb_clnt_cache_get_ent(clnt, iTable))) {
                 logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
                        tab->zName);
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
@@ -8147,7 +8131,7 @@ int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt)
             continue;
 
         /* this is a remote table; we need to release remote locks */
-        rc = fdb_unlock_table(clnt->dbtran.lockedRemTables[i]);
+        rc = fdb_unlock_table(clnt, clnt->dbtran.lockedRemTables[i]);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to unlock remote table cache for \"%s\"\n",
                     fdb_table_entry_tblname(clnt->dbtran.lockedRemTables[i]));
@@ -8181,12 +8165,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
 
     /* this doesn't get a lock, by this time we have acquired a table lock here
      */
-    fdb = get_fdb(pBt->zFilename);
-    if (!pBt->fdb) {
-        logmsg(LOGMSG_ERROR, "%s: failed to retrieve db \"%s\"\n", __func__,
-                pBt->zFilename);
-        return SQLITE_INTERNAL;
-    }
+    fdb = get_fdb(pBt->zFilename, FDB_GET_NOLOCK);
+    assert(fdb);
     assert(fdb == pBt->fdb);
 
     cur->cursor_class = CURSORCLASS_REMOTE;
@@ -8205,7 +8185,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     }
 
     /* set a transaction id if none is set yet */
-    if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(fdb, cur->rootpage)) {
+    if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(clnt, cur->rootpage)) {
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
@@ -8869,7 +8849,10 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
              */
             rdlock_schema_lk();
             assert(pCur->vdbe == (Vdbe*)clnt->dbtran.pStmt);
-            /* remote table locks aren't berkeleydb locks. release them here */
+            /* remote table locks aren't berkeleydb locks. release them here
+             * TODO: why are we releasing remote locks, these are needed
+             * to protect remote access further calls
+             */
             if (clnt->dbtran.nLockedRemTables > 0)
                 newlocks_rc = sqlite3UnlockStmtTablesRemotes(clnt);
             if (newlocks_rc == 0)
