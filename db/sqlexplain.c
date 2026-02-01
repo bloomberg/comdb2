@@ -78,8 +78,7 @@ static char opcode_to_sign(int opcode)
 static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
 {
     if (cinfo->remote) {
-        sprintf(buf, "%s", fdb_sqlexplain_get_field_name(v, cinfo->rootpage,
-                                                         cinfo->ix, num));
+        sprintf(buf, "%s", fdb_sqlexplain_get_field_name(v, cinfo->rootpage, cinfo->ix, num));
         return;
     }
 
@@ -165,14 +164,14 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
     }
 }
 
-int print_cursor_description(strbuf *out, struct cursor_info *cinfo, int append_space)
+int print_cursor_description(Vdbe *v, strbuf *out, struct cursor_info *cinfo, int append_space)
 {
     struct schema *sc;
     char scname[100];
     int is_index = 0;
 
     if (cinfo->remote == 1) {
-        char *desc = fdb_sqlexplain_get_name(cinfo->rootpage);
+        char *desc = fdb_sqlexplain_get_name(v, cinfo->rootpage);
         strbuf_appendf(out, "remote %s", (desc) ? desc : "???");
         free(desc);
     } else if (cinfo->istemp && cinfo->rootpage == 1) {
@@ -392,6 +391,8 @@ void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
         /* remote */
         cur->rootpage = op->p2;
         cur->remote = 1;
+        cur->dbid = op->p3;
+        snprintf(cur->dbname, sizeof(cur->dbname), v->db->aDbs[cur->dbid].zDbSName);
     }
 }
 

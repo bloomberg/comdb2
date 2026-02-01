@@ -198,12 +198,29 @@ typedef struct fdb_cursor_if {
 int fdb_cache_init(int n);
 
 /**
- * Retrieve a foreign db object
- * The callers of this function should make sure a table lock is acquired
- * Such by calling fdb_lock_table().
+ * Retrieve a fdb object
+ * Protected by the fdbs array mutex
+ * If found, the object returned is read locked
  *
  */
 fdb_t *get_fdb(const char *dbname);
+
+/**
+ * This remove the read lock on a fdb object
+ * Protected by the fdbs array mutex
+ * Flag controls the removal;
+ * - NOFREE: the fdb is read unlocked and left in the fdbs array to be reused
+ * - TRYFREE: we try to write lock the fdb; if we succeed, this is the only reader 
+ *   so it will be unlinked from cache and freed
+ * - FORCEFREE: under fdbs array mutex we block until a write lock is acquired
+ *   !!!CAUTION this blocks new access to fdbs until the write lock is acquired
+ */
+enum fdb_put_flag {
+    FDB_PUT_NOFREE = 0,
+    FDB_PUT_TRYFREE = 1,
+    FDB_PUT_FORCEFREE = 2
+};
+void put_fdb(fdb_t *fdb, enum fdb_put_flag flag);
 
 /**
  * Move a cursor on sqlite_master table
@@ -228,15 +245,14 @@ void *fdb_get_sqlite_master_entry(fdb_t *fdb, fdb_tbl_ent_t *ent);
  * Caller must free the returned pointer
  *
  */
-char *fdb_sqlexplain_get_name(int rootpage);
+char *fdb_sqlexplain_get_name(Vdbe *v, int rootpage);
 
 /**
  * Retrieve the field name for the table identified by "rootpage", index
  * "ixnum",
  * field "fieldnum"
  */
-char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
-                                    int fieldnum);
+char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum, int fieldnum);
 
 /**
  * Create a connection to fdb
@@ -260,12 +276,12 @@ const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent);
 const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 
 /**
- * Retrieve entry for table|index given a fdb and name
+ * Retrieve entry for table|index given a vdbe and name
+ * These are cached in sqlite engine
  *
  */
-fdb_tbl_ent_t *fdb_table_entry_by_name(fdb_t *fdb, const char *name);
-
-int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
+fdb_tbl_ent_t *fdb_sqlite_cache_get_ent_by_rootpage(Vdbe *vdbe, int rootpage);
+fdb_tbl_ent_t *fdb_sqlite_cache_get_ent_by_name(Vdbe *vdbe, char *name);
 
 /* transactional api */
 fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
@@ -366,8 +382,6 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
 
 /* return if ssl is needed */
 int fdb_cursor_need_ssl(fdb_cursor_if_t *cur);
-
-int fdb_table_exists(int rootpage);
 
 int fdb_set_genid_deleted(fdb_tran_t *, unsigned long long);
 int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);

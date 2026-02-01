@@ -597,8 +597,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
 
     /* begin/join the transaction */
     fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
-    if (!tran)
-        return -1;
+    if (!tran) {
+        rc = -1;
+        goto put;
+    }
     assert(tran->is_cdb2api);
 
     if (created) {
@@ -728,7 +730,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     if (!clnt->in_client_trans) 
         goto free;
 
-    return 0;
+    rc = 0;
+    goto put;
 
 hndl_err:
     errstr = cdb2_errstr(hndl);
@@ -771,6 +774,9 @@ free_push:
         }
 
     }
+
+put:
+    put_fdb(fdb, FDB_PUT_NOFREE); /* this could be reused */
     return rc;
 }
 

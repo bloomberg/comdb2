@@ -7710,18 +7710,8 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     return rc;
 }
 
-static int rootpcompare(const void *p1, const void *p2)
+static int tablenamecompare(const void *p1, const void *p2)
 {
-#if 0
-    int i = *(int *)p1;
-    int j = *(int *)p2;
-
-    if (i>j)
-        return 1;
-    if (i<j)
-        return -1;
-    return 0;
-#endif
     Table *tp1 = *(Table **)p1;
     Table *tp2 = *(Table **)p2;
 
@@ -7822,7 +7812,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         return 0;
 
     /* sort and dedup */
-    qsort(tbls, nTables, sizeof(Table *), rootpcompare);
+    qsort(tbls, nTables, sizeof(Table *), tablenamecompare);
 
     prev = -1;
     nRemoteTables = 0;
@@ -7853,7 +7843,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
-            if (after_recovery && !fdb_table_exists(iTable)) {
+            if (after_recovery && !fdb_sqlite_cache_get_ent(p, iTable)) {
                 logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
                        tab->zName);
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
@@ -8205,7 +8195,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     }
 
     /* set a transaction id if none is set yet */
-    if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(fdb, cur->rootpage)) {
+    if ((iTable >= RTPAGE_START) && !fdb_sqlite_cache_get_ent(cur->vdbe, cur->rootpage)) {
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {

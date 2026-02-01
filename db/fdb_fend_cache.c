@@ -652,7 +652,7 @@ static fdb_tbl_ent_t *fdb_sqlstat_cursor_table_entry(BtCursor *pCur)
 {
     fdb_sqlstat_cursor_t *fdbc = (fdb_sqlstat_cursor_t *)pCur->fdbc->impl;
 
-    return fdb_table_entry_by_name(fdbc->fdb, fdbc->name);
+    return fdb_sqlite_cache_get_ent_by_name(pCur->vdbe, fdbc->name);
 }
 
 static int fdb_sqlstat_cursor_access(BtCursor *pCur, int how) { return 0; }
