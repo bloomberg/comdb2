@@ -34,7 +34,7 @@
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
-int fdb_validate_existing_table(const char *zDatabase);
+int fdb_validate_existing(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
 int comdb2_check_parallel(Parse*);
 int comdb2_check_push_remote(Parse*);
@@ -491,7 +491,7 @@ retry_after_fdb_creation:
     if( unlikely(zDatabase) && !db->init.busy ){
       /* we need to validate class here, before
          shortcutting to "local table" mode */
-      if( fdb_validate_existing_table(zDatabase) ){
+      if( fdb_validate_existing(zDatabase) ){
         logmsg(LOGMSG_USER,
                "Remote db table exists and class mismatches \"%s:%s\"\n",
                fqDbname, zName);
@@ -551,8 +551,9 @@ retry_after_fdb_creation:
     }
 
     int lvl, local, lvl_override;
-    rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-          in_analysis_load, &lvl, &local, &lvl_override, &server_version);
+    /* this will get us a read lock fdb object */
+    rc = sqlite3AddAndLockTable(&db->init, fqDbname, zName, &version,
+          &lvl, &local, &lvl_override, &server_version);
     if( rc ){
         if( gbl_fdb_track )
             logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
@@ -574,10 +575,7 @@ retry_after_fdb_creation:
     rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
         &zErrDyn, version, lvl, local, lvl_override, server_version);
 
-    if( sqlite3UnlockTable(dbName, zName) ){
-      logmsg(LOGMSG_ERROR, "%s: failed to unlock %s.%s\n", __func__,
-          fqDbname, zName);
-    }
+    fdbUnlock(&db->init);
 
     if( rc || zErrDyn ) {
       logmsg(LOGMSG_ERROR, "%s: failed to find table %s rc=%d %s\n",

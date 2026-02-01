@@ -75,11 +75,10 @@ static char opcode_to_sign(int opcode)
     }
 }
 
-static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
+static void print_field(struct sqlclntstate *clnt, Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
 {
     if (cinfo->remote) {
-        sprintf(buf, "%s", fdb_sqlexplain_get_field_name(v, cinfo->rootpage,
-                                                         cinfo->ix, num));
+        sprintf(buf, "%s", fdb_sqlexplain_get_field_name(clnt, v, cinfo->rootpage, cinfo->ix, num));
         return;
     }
 
@@ -165,14 +164,14 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
     }
 }
 
-int print_cursor_description(strbuf *out, struct cursor_info *cinfo, int append_space)
+int print_cursor_description(struct sqlclntstate *clnt, strbuf *out, struct cursor_info *cinfo, int append_space)
 {
     struct schema *sc;
     char scname[100];
     int is_index = 0;
 
     if (cinfo->remote == 1) {
-        char *desc = fdb_sqlexplain_get_name(cinfo->rootpage);
+        char *desc = fdb_sqlexplain_get_name(clnt, cinfo->rootpage);
         strbuf_appendf(out, "remote %s", (desc) ? desc : "???");
         free(desc);
     } else if (cinfo->istemp && cinfo->rootpage == 1) {
@@ -392,6 +391,7 @@ void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
         /* remote */
         cur->rootpage = op->p2;
         cur->remote = 1;
+        cur->dbid = op->p3;
     }
 }
 
@@ -521,9 +521,8 @@ void explain_data_delete(IndentInfo *p)
     p->nIndent = 0;
 }
 
-void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
-                          int largestwidth, int pc, struct cursor_info *cur,
-                          int *pSkipCount)
+void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out, Vdbe *v, int indent, int largestwidth,
+                          int pc, struct cursor_info *cur, int *pSkipCount)
 {
     char str[2];
     Op *op = &v->aOp[pc];
@@ -751,10 +750,10 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
             strbuf_appendf(out, "%3d [%*s]: ", pc, largestwidth,
                            sqlite3OpcodeName(op->opcode));
             strbuf_appendf(out, "%*s", indent * 4, "");
-            print_field(v, &cur[op->p1], op->p2, buf); /* field name into buf */
+            print_field(clnt, v, &cur[op->p1], op->p2, buf); /* field name into buf */
             strbuf_appendf(out, "R%d = %s from cursor [%d] on ", op->p3, buf,
                            op->p1);
-            print_cursor_description(out, &cur[op->p1], 1);
+            print_cursor_description(clnt, out, &cur[op->p1], 1);
         } else {
             Op *colOp = &v->aOp[pc];
             op = &v->aOp[pc_];
@@ -774,7 +773,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                     strbuf_appendf(out, " (from cursor %d)", cursor);
                     cursor = op->p1;
                 }
-                print_field(v, &cur[op->p1], op->p2, buf);
+                print_field(clnt, v, &cur[op->p1], op->p2, buf);
                 strbuf_appendf(out, "%s", buf);
                 if (pc < pc_ - 1) {
                     strbuf_append(out, ", ");
@@ -805,7 +804,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_Count:
         strbuf_appendf(out, "R%d = select count(*) from cursor [%d] on ",
                        op->p2, op->p1);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         break;
     case OP_Savepoint:
         strbuf_appendf(
@@ -835,7 +834,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         describe_cursor(v, pc, &cur[op->p1]);
         strbuf_appendf(out, "Open read cursor [%d] if not already open on ",
                        op->p1);
-        int is_index = print_cursor_description(out, &cur[op->p1], 1);
+        int is_index = print_cursor_description(clnt, out, &cur[op->p1], 1);
         if (is_index && op->opcode == OP_OpenRead) {
             if (op->p5 == 0xff) {
                 strbuf_append(out, "(not a covering index)");
@@ -850,7 +849,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         describe_cursor(v, pc, &cur[op->p1]);
         strbuf_appendf(out, "Open %s cursor [%d] on ",
                        (op->opcode != OP_OpenWrite ? "read" : "write"), op->p1);
-        is_index = print_cursor_description(out, &cur[op->p1], 1);
+        is_index = print_cursor_description(clnt, out, &cur[op->p1], 1);
         if (is_index && op->opcode == OP_OpenRead) {
             if (op->p5 == 0xff) {
                 strbuf_append(out, "(not a covering index)");
@@ -963,13 +962,13 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_Insert:
         strbuf_appendf(out, "Write record in R%d into ", op->p2);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         strbuf_appendf(out, " using cursor [%d]", op->p1);
         break;
     case OP_Delete:
         strbuf_appendf(out, "Delete current record from cursor [%d] on",
                        op->p1);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         break;
     case OP_ResetCount:
         strbuf_append(
@@ -978,7 +977,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_RowData:
         strbuf_appendf(out, "R%d = key or data from cursor [%d] on ", op->p2,
                        op->p1);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         break;
     case OP_Rowid:
         strbuf_appendf(out, "R%d = genid of row pointed by cursor [%d]", op->p2,
@@ -989,7 +988,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_Last:
         strbuf_appendf(out, "Move cursor [%d] on ", op->p1);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         strbuf_append(out, "to last entry. ");
         if (op->p2)
             strbuf_appendf(out, "If no entries exist, go to %d", op->p2);
@@ -1020,7 +1019,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_IdxInsert:
         strbuf_appendf(out, "Write key in R%d into ", op->p2);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         strbuf_appendf(out, "using cursor [%d]", op->p1);
         break;
     case OP_IdxDelete:
@@ -1031,7 +1030,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
             strbuf_appendf(out, "R%d", op->p2);
         }
         strbuf_appendf(out, " from ");
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         strbuf_appendf(out, "using cursor [%d]", op->p1);
         break;
     case OP_IdxRowid:
@@ -1054,11 +1053,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_Destroy:
         strbuf_append(out, "Destroy ");
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         break;
     case OP_Clear:
         strbuf_append(out, "Delete all rows from ");
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         break;
     case OP_RowSetAdd:
         strbuf_appendf(out, "Insert R%d into boolean index in R%d", op->p2,
@@ -1118,7 +1117,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_CursorHint:
         strbuf_appendf(out, "Cursor [%d] table ", op->p1);
-        print_cursor_description(out, &cur[op->p1], 1);
+        print_cursor_description(clnt, out, &cur[op->p1], 1);
         char *descr = sqlite3ExprDescribe(hndl->pVdbe, op->p4.pExpr);
         strbuf_appendf(out, " hint \"%s\"",
                        (descr) ? descr : "(expression not parseable, see 592)");
@@ -1313,9 +1312,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         if (indent < 0)
             indent = 0;
         int skipCount = 0;
-        get_one_explain_line(
-            hndl, out, v, indent, maxwidth, pc, cur, &skipCount
-        );
+        get_one_explain_line(clnt, hndl, out, v, indent, maxwidth, pc, cur, &skipCount);
         if (skipCount != 0) pc += skipCount;
         char *row[] = {(char*)strbuf_buf(out)};
         write_response(clnt, RESPONSE_ROW_STR, row, 1);
