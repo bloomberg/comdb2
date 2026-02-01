@@ -23,14 +23,14 @@ if [[ ! "$?" -eq "0" ]] ; then
     echo "Failed to run the query on t2"
     failed=1
 fi
-if [[ ! "$found_cnt" -eq "60" ]] ; then
+if (( $found_cnt != 60 )) ; then
     echo "Failed to return all rows"
     failed=1
 fi
 
 wait
 
-if [[ "$failed" = "1" ]] ; then
+if (( $failed == 1 )) ; then
    echo "FAILURE"
    exit 1
 fi

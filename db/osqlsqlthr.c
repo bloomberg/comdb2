@@ -221,7 +221,14 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
         comdb2uuid(osql->uuid);
         if (gbl_debug_disttxn_trace) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s starting uuid %s\n", __func__, comdb2uuidstr(osql->uuid, us));
+            logmsg(LOGMSG_USER, "DISTTXN REPL %s %s starting uuid %s\n", __func__,
+                   clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(osql->uuid, us));
+        }
+    } else {
+        if (gbl_debug_disttxn_trace) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "DISTTXN REPL %s %s reusing uuid %s\n", __func__,
+                   clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(osql->uuid, us));
         }
     }
 
@@ -407,7 +414,8 @@ static int osql_wait(struct sqlclntstate *clnt)
     int endms = comdb2_time_epochms();
     if (gbl_debug_disttxn_trace) {
         uuidstr_t us;
-        logmsg(LOGMSG_USER, "%s took %d ms to commit rqid=%llu uuid=%s\n", __func__, (endms - startms), osql->rqid,
+        logmsg(LOGMSG_USER, "DISTTXN REPL %s %s took %d ms to commit rqid=%llu uuid=%s\n", __func__,
+               clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", (endms - startms), osql->rqid,
                comdb2uuidstr(osql->uuid, us));
     }
     return rc;
@@ -871,8 +879,8 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
     int sentops = 0;
 
     if (gbl_debug_disttxn_trace) {
-        logmsg(LOGMSG_USER, "%s restarting rqid=%llx uuid=%s keep-session=%d\n", __func__, clnt->osql.rqid,
-               comdb2uuidstr(clnt->osql.uuid, us), keep_session);
+        logmsg(LOGMSG_USER, "DISTTXN REPL %s %s restarting uuid=%s keep-session=%d\n", __func__,
+               clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(clnt->osql.uuid, us), keep_session);
     }
 
     if (!thd) {
@@ -1009,6 +1017,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     int rcout = 0;
     int retries = 0;
     int bdberr = 0;
+    int is_distributed = 0;
 
     if (gbl_debug_disttxn_trace) {
         uuidstr_t us;
@@ -1017,8 +1026,15 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
                clnt->dbtran.dtran ? " has remote writes" : " no remote writes", comdb2uuidstr(clnt->osql.uuid, us));
     }
 
-    /* temp hook for sql transactions */
+    if (gbl_debug_disttxn_trace) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "DISTTXN REPL %s %s use_2pc %d %s uuid=%s\n", __func__,
+               clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", clnt->use_2pc,
+               clnt->dbtran.dtran ? " has remote writes" : " no remote writes", comdb2uuidstr(clnt->osql.uuid, us));
+    }
+
     /* is it distributed? */
+
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
     {
         if (gbl_is_physical_replicant) {
@@ -1027,7 +1043,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
             return SQLITE_READONLY;
         }
 
-        rc = fdb_trans_commit(clnt, sideeffects);
+        rc = fdb_trans_commit(clnt, sideeffects, &is_distributed);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
 
@@ -1040,6 +1056,16 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
 
             return SQLITE_ABORT;
         }
+    }
+    if (!is_distributed) {
+        /* we have no remote writes, disable 2pc */
+        clnt->use_2pc = 0;
+    }
+
+    if (gbl_debug_disttxn_trace) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "DISTTXN REPL %s %s after fdb_commit use_2pc %d uuid=%s\n", __func__,
+               clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", clnt->use_2pc, comdb2uuidstr(clnt->osql.uuid, us));
     }
 
     osql->timings.commit_start = osql_log_time();
@@ -1220,6 +1246,12 @@ err:
     }
 
 done:
+    if (gbl_debug_disttxn_trace) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "DISTTXN REPL %s %s rc %d uuid=%s\n", __func__,
+               clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", rc, comdb2uuidstr(clnt->osql.uuid, us));
+    }
+
     osql->timings.commit_end = osql_log_time();
 
     /* mark socksql as non-retriable if seletv are present
@@ -1268,6 +1300,19 @@ done:
     clnt->effects.num_deleted += clnt->remote_effects.num_deleted;
     clnt->effects.num_updated += clnt->remote_effects.num_updated;
     bzero(&clnt->remote_effects, sizeof(clnt->remote_effects));
+
+    /* lets reset here the dist txn info so it will not be reused with partial
+     * next info
+     */
+    free(clnt->dist_txnid);
+    clnt->dist_txnid = NULL;
+    free(clnt->coordinator_dbname);
+    clnt->coordinator_dbname = NULL;
+    free(clnt->coordinator_tier);
+    clnt->coordinator_tier = NULL;
+    free(clnt->coordinator_master);
+    clnt->coordinator_master = NULL;
+    clnt->dist_timestamp = 0ULL;
 
     return rcout;
 }
@@ -1339,6 +1384,12 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
         free(clnt->osql.tablename);
         clnt->osql.tablename = NULL;
         clnt->osql.tablenamelen = 0;
+    }
+
+    if (gbl_debug_disttxn_trace) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "DISTTXN REPL %s %s rc %d uuid=%s\n", __func__,
+               clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", rc, comdb2uuidstr(clnt->osql.uuid, us));
     }
 
     return rcout;
@@ -1559,7 +1610,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int ne
     do {
         rc = 0;
 
-        if (clnt->use_2pc && clnt->dist_txnid && clnt->sent_fdb_commit) {
+        if (clnt->use_2pc && clnt->dist_txnid) {
             assert((clnt->is_coordinator + clnt->is_participant) == 1);
             if (clnt->is_coordinator) {
                 struct participant *p;
