@@ -1804,6 +1804,8 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" new transaction\n",
                 (clnt->sql) ? clnt->sql : "(???.)");
 
+    clnt->use_2pc = gbl_2pc;
+
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
     if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (populate_modsnap_state(clnt) != 0)) {
@@ -3352,7 +3354,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->in_sqlite_init = 0;
         if (rc == SQLITE_OK) {
             if (!prepareOnly) rc = sqlite3LockStmtTables(rec->stmt);
-        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
+        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas(clnt)) {
             sqlite3ResetFdbSchemas(thd->sqldb);
             return SQLITE_SCHEMA_REMOTE;
         }

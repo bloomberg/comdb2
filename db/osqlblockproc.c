@@ -574,6 +574,12 @@ static int _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
         get_dist_txnid_from_dist_txn_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid, &sess->dist_timestamp);
         assert(sess->dist_timestamp > 0);
         sess->is_coordinator = 1;
+        extern int gbl_debug_disttxn_trace;
+        if (gbl_debug_disttxn_trace) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "DISTTXN %s %s new coordinator from %s uuid=%s\n", __func__, sess->dist_txnid,
+                   sess->target.host ? sess->target.host : "(nohost)", comdb2uuidstr(sess->uuid, us));
+        }
         break;
     case OSQL_PARTICIPANT:
         sess_save_participant(sess, tran->is_uuid, rpl, rplen);
