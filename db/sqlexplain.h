@@ -39,7 +39,7 @@ typedef struct {
 void explain_data_prepare(IndentInfo *p, Vdbe *v);
 void explain_data_delete(IndentInfo *p);
 
-int print_cursor_description(strbuf *out, struct cursor_info *cinfo, int append_space);
+int print_cursor_description(struct sqlclntstate *clnt, strbuf *out, struct cursor_info *cinfo, int append_space);
 void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur);
 
 #endif /* _SQLEXPLAIN_H_ */
