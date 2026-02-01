@@ -354,8 +354,17 @@ done_with_open:
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       Table *p;
       int savedBusy = db->init.busy;
+      void *savedLockedtable = db->init.locked_table;
+      void *savedLockedstat1 = db->init.locked_stat1;
+      void *savedLockedstat4 = db->init.locked_stat4;
+      void *savedfdb = db->init.fdb;
 
       db->init.busy = 0; /* TODO: prevent assert (?) */
+      db->init.locked_table = NULL;
+      db->init.locked_stat1 = NULL;
+      db->init.locked_stat4 = NULL;
+      db->init.fdb = NULL;
+
       char *zTmp = (char*)zName;
       /* we need to take care of override and local */
       if (local) {
@@ -366,6 +375,10 @@ done_with_open:
       }
       rc = sqlite3InitTable(db, &zErrDyn, zTmp);
       db->init.busy = savedBusy;
+      db->init.locked_table = savedLockedtable;
+      db->init.locked_stat1 = savedLockedstat1;
+      db->init.locked_stat4 = savedLockedstat4;
+      db->init.fdb = savedfdb;
       if (zTmp != zName)
         sqlite3DbFree(db, zTmp);
 
