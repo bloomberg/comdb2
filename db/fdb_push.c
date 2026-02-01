@@ -20,6 +20,7 @@
 
 extern char *gbl_cdb2api_policy_override;
 extern int gbl_fdb_auth_enabled;
+extern int gbl_debug_disttxn_trace;
 
 struct fdb_push_connector {
     enum ast_type type; /* what type of request we override */
@@ -572,6 +573,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     int created;
     int rc;
     int set_intrans = 0;
+    const char *noverify = "SET VeRiFyReTRy OFF";
 
     if (!push)
         return -2;
@@ -579,7 +581,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     /* this was handled back here through an "error"; clear it */
     clnt->had_errors = 0;
 
-    fdb = get_fdb(push->remotedb);
+    fdb = get_fdb(push->remotedb, FDB_GET_LOCK);
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "FDB push missing fdb %s\n", push->remotedb);
         rc = -2;
@@ -592,18 +594,24 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         rc = -2;
         goto free_push;
     }
-
     /* fdb is the remote db we want, and it supports remote writes */
 
     /* begin/join the transaction */
     fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
-    if (!tran)
-        return -1;
+    if (!tran) {
+        rc = -1;
+        goto put;
+    }
     assert(tran->is_cdb2api);
 
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
+
+        if (!n_extra_sets) {
+            n_extra_sets = 1;
+            sets = &noverify;
+        }
         tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err,
                                             n_extra_sets, sets);
         if (!tran->fcon.hndl) {
@@ -634,6 +642,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             if (rc != CDB2_OK_DONE) {
                 goto hndl_err;
             }
+            tran->writes_status = FDB_TRAN_BEGIN;
         }
     }
     hndl = tran->fcon.hndl;
@@ -644,8 +653,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     rc = _run_statement(clnt, hndl, err);
     if (rc != CDB2_OK) {
         goto hndl_err;
-    } else {
-        tran->nwrites++;
     }
 
     /* drain the socket */
@@ -655,12 +662,38 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         goto hndl_err;
     }
 
-    cdb2_effects_tp effects;
-    if (!clnt->in_client_trans || clnt->verifyretry_off) {
-        if ((rc = cdb2_get_effects(hndl, &effects))) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n",
-                   __func__, __LINE__, rc, clnt->sql);
+    cdb2_effects_tp effects = {0};
+    if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
+        rc = cdb2_get_effects(hndl, &effects);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n", __func__, __LINE__, rc, clnt->sql);
             goto hndl_err;
+        }
+        tran->nwrites += effects.num_inserted + effects.num_deleted + effects.num_updated;
+        if (tran->nwrites)
+            tran->writes_status = FDB_TRAN_WRITES;
+
+        if (gbl_debug_disttxn_trace) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER,
+                   "DISTTXN %s:%d %s use_2pc %d uuid=%s status %d writes %d ins %d del %d upd %d sel %d aff %d\n",
+                   __func__, __LINE__, clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", clnt->use_2pc,
+                   comdb2uuidstr(clnt->osql.uuid, us), tran->writes_status, tran->nwrites, effects.num_inserted,
+                   effects.num_deleted, effects.num_updated, effects.num_selected, effects.num_affected);
+        }
+    } else {
+        /* this is non-2pc statements that are in a client transaction and have verify retry on
+         * we do not know if we have writes, we only marked the status as FDB_TRAN_BEGIN so we
+         * know we need to send back a commit/rollback
+         */
+    }
+
+    if (clnt->use_2pc && tran->writes_status == FDB_TRAN_WRITES) {
+        /* if this is 2pc, make sure we have a local transaction to coordinate remote writes */
+        int rc = osql_sock_start_deferred(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to start sosql, rc=%d\n", __func__, rc);
+            return rc;
         }
     }
 
@@ -718,6 +751,14 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     }
 
+    if (gbl_debug_disttxn_trace) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "DISTTXN %s:%d %s use_2pc %d uuid=%s ins %d del %d upd %d sel %d aff %d\n", __func__,
+               __LINE__, clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", clnt->use_2pc,
+               comdb2uuidstr(clnt->osql.uuid, us), clnt->effects.num_inserted, clnt->effects.num_deleted,
+               clnt->effects.num_updated, clnt->effects.num_selected, clnt->effects.num_affected);
+    }
+
     if (clnt->get_cost) {
         rc = _get_remote_cost(clnt, hndl, 1);
         if (rc) {
@@ -725,10 +766,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
     }
 
-    if (!clnt->in_client_trans) 
+    if (!clnt->in_client_trans) {
         goto free;
+    }
 
-    return 0;
+    rc = 0;
+    goto put;
 
 hndl_err:
     errstr = cdb2_errstr(hndl);
@@ -745,8 +788,8 @@ hndl_err:
         goto free;
     }
     errstat_set_rcstrf(err, rc, "%s", errstr);
-    rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
-    if (rc) {
+    int irc = write_response(clnt, RESPONSE_ERROR, (void *)errstr, rc);
+    if (irc) {
         logmsg(LOGMSG_DEBUG, "Failed to write error to client");
     }
 free:
@@ -769,8 +812,10 @@ free_push:
              */
             clnt->intrans = 0;
         }
-
     }
+
+put:
+    put_fdb(fdb, FDB_PUT_NOFREE); /* this could be reused */
     return rc;
 }
 
