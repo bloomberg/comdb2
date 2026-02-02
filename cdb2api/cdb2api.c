@@ -1377,10 +1377,6 @@ static int cdb2_do_tcpconnect(cdb2_hndl_tp *hndl, struct in_addr in, int port, i
     return (sockfd); /* all OK */
 }
 
-/* Forward declarations. */
-static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl);
-static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
-
 static cdb2_ssl_sess cdb2_ssl_sess_cache;
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
@@ -4640,14 +4636,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
         sqlquery.skip_rows = skip_nrows;
     }
 
-    if (hndl && hndl->context_msgs.has_changed == 1 &&
-        hndl->context_msgs.count > 0) {
-        sqlquery.n_context = hndl->context_msgs.count;
-        sqlquery.context = hndl->context_msgs.message;
-        /* Reset the has_changed flag. */
-        hndl->context_msgs.has_changed = 0;
-    }
-
     uint8_t trans_append = hndl && hndl->in_trans && do_append;
     CDB2SQLQUERY__Reqinfo req_info = CDB2__SQLQUERY__REQINFO__INIT;
     req_info.timestampus = (hndl ? hndl->timestampus : 0);
@@ -5153,7 +5141,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     cdb2_clearbindings(hndl);
     free_query_list_on_handle(hndl);
-    cdb2_free_context_msgs(hndl);
     free(hndl->sslpath);
     free(hndl->cert);
     free(hndl->key);
@@ -5907,7 +5894,7 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 /*
 Make newly opened child handle have same settings (references) as parent
 NOTE: ONLY WORKS CURRENTLY FOR PERIOD OF TIME
-      WHERE NUM BIND VARS, SET COMMANDS, AND CONTEXT MSGS
+      WHERE NUM BIND VARS AND SET COMMANDS
       DO NOT CHANGE IN PARENT HANDLE
 */
 static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
@@ -5969,10 +5956,6 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
         child->got_dbinfo = 1;
         cdb2_get_dbhosts(child);
     }
-
-    memcpy(&child->context_msgs, &parent->context_msgs, sizeof(child->context_msgs));
-    // this is a new handle so send if non-empty
-    child->context_msgs.has_changed = child->context_msgs.count > 0;
 }
 
 static void pb_alloc_heuristic(cdb2_hndl_tp *hndl)
@@ -8781,9 +8764,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->env_tz == NULL)
         hndl->env_tz = DB_TZNAME_DEFAULT;
 
-
-    cdb2_init_context_msgs(hndl);
-
     if (cdb2_use_env_vars) {
         hndl->db_default_type_override_env = 0;
         hndl->sockpool_enabled = 0;
@@ -8984,85 +8964,6 @@ out:
         LOG_CALL("cdb2_open success %p fd %d\n", *handle, sbuf2fileno(hndl->sb));
     }
     return rc;
-}
-
-/*
-  Initialize the context messages object.
-*/
-static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl)
-{
-    memset((void *)&hndl->context_msgs, 0, sizeof(struct context_messages));
-}
-
-/*
-  Free the alloc-ed context messages.
-*/
-static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl)
-{
-    int i = 0;
-
-    while (i < hndl->context_msgs.count) {
-        if (!hndl->is_child_hndl) // parent handle will free
-            free(hndl->context_msgs.message[i]);
-        hndl->context_msgs.message[i] = 0;
-        i++;
-    }
-
-    hndl->context_msgs.count = 0;
-    hndl->context_msgs.has_changed = 1;
-
-    return 0;
-}
-
-/*
-  Store the specified message in the handle. Return error if
-  MAX_CONTEXTS number of messages have already been stored.
-
-  @param hndl [IN]   Connection handle
-  @param msg  [IN]   Context message
-
-  @return
-    0                Success
-    1                Error
-*/
-int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg)
-{
-    /* Check for overflow. */
-    if (hndl->context_msgs.count >= MAX_CONTEXTS) {
-        return 1;
-    }
-
-    hndl->context_msgs.message[hndl->context_msgs.count] =
-        strndup(msg, MAX_CONTEXT_LEN);
-    hndl->context_msgs.count++;
-    hndl->context_msgs.has_changed = 1;
-    return 0;
-}
-
-/*
-  Remove the last stored context message.
-*/
-int cdb2_pop_context(cdb2_hndl_tp *hndl)
-{
-    /* Check for underflow. */
-    if (hndl->context_msgs.count == 0) {
-        return 1;
-    }
-
-    hndl->context_msgs.count--;
-    free(hndl->context_msgs.message[hndl->context_msgs.count]);
-    hndl->context_msgs.message[hndl->context_msgs.count] = 0;
-    hndl->context_msgs.has_changed = 1;
-
-    return 0;
-}
-
-/*
-  Clear/free all the stored context messages.
-*/
-int cdb2_clear_contexts(cdb2_hndl_tp *hndl)
-{
-    return cdb2_free_context_msgs(hndl);
 }
 
 cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,

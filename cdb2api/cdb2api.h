@@ -257,10 +257,6 @@ const char *cdb2_host(cdb2_hndl_tp *hndl);
 void cdb2_enable_sockpool(void);
 void cdb2_disable_sockpool(void);
 
-int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg);
-int cdb2_pop_context(cdb2_hndl_tp *hndl);
-int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
-
 int cdb2_init_ssl(int init_libssl, int init_libcrypto);
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 

@@ -104,6 +104,7 @@ message CDB2_SQLQUERY {
   }
   optional cinfo client_info = 15;
   repeated string context    = 16; // Client context messages.
+  // ^ leaving this in for now since server references this
   message reqinfo {
       required int64 timestampus = 1; // client timestamp of this message.
       required int32 num_retries = 2; // client retry count including hops to other nodes
