@@ -1552,7 +1552,6 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
 
         rc = cdb2_open(&cdb2h, dbname, type, flags);
 
-        cdb2_push_context(cdb2h, "cdb2sql");
         if (rc) {
             fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
             cdb2_close(cdb2h);

@@ -79,15 +79,6 @@ typedef struct cnonce {
     int len;
 } cnonce_t;
 
-#define MAX_CONTEXTS 10     /* Maximum stack size for storing context messages */
-#define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
-
-struct context_messages {
-    char *message[MAX_CONTEXTS];
-    int count;
-    int has_changed;
-};
-
 struct cdb2_stmt_types;
 
 struct cdb2_query {
@@ -225,7 +216,6 @@ struct cdb2_hndl {
 
     /* X509 attribute to check database name against */
     int nid_dbname;
-    struct context_messages context_msgs;
     char *env_tz;
     char stack[MAX_STACK];
     int send_stack;
