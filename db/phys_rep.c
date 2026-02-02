@@ -74,7 +74,8 @@ int gbl_physrep_revconn_check_interval = 60;
 int gbl_physrep_update_registry_interval = 60;
 int gbl_physrep_shuffle_host_list = 0;
 int gbl_physrep_i_am_metadb = 0;
-int gbl_physrep_filter_by_class = 1;
+int gbl_physrep_filter_by_class = 0;
+int gbl_physrep_filter_by_class_warn = 0;
 int gbl_started_physrep_threads = 0;
 
 unsigned int physrep_min_logfile;
@@ -805,16 +806,13 @@ static int physrep_class_allow_source(const char *hostname)
         CLASS_PROD = 5,
     */
     int rtn = (my_class <= src_class);
-    if (!rtn) {
-        physrep_logmsg(LOGMSG_INFO, "%s discarding source %s class %s (my class is %s)\n", __func__, hostname,
-                       mach_class_class2tier(src_class), mach_class_class2tier(my_class));
-    }
     return rtn;
 }
 
 int physrep_allowed_source(const char *dbname, const char *hostname)
 {
     bdb_state_type *bdb_state = gbl_bdb_state;
+    int filter_by_class = gbl_physrep_filter_by_class;
 
     /* Exclude anything which is part of this cluster */
     if (!strcmp(dbname, gbl_dbname)) {
@@ -831,13 +829,14 @@ int physrep_allowed_source(const char *dbname, const char *hostname)
         }
     }
 
-    /* Exclude any lower tier */
-    if (gbl_physrep_filter_by_class && !physrep_class_allow_source(hostname)) {
-        if (gbl_physrep_debug) {
-            enum mach_class class = get_mach_class(hostname);
-            physrep_logmsg(LOGMSG_USER, "%s: discard lower-tier source, %s\n", __func__, mach_class_class2tier(class));
+    /* Exclude or warn on lower tier source */
+    if (filter_by_class || gbl_physrep_filter_by_class_warn) {
+        int rtn = physrep_class_allow_source(hostname);
+        if (rtn == 0) {
+            logmsg(LOGMSG_ERROR, "%s: %s physrep source in lower tier, %s/%s\n",
+                    __func__, filter_by_class ? "Blocking" : "Warning", dbname, hostname);
         }
-        return 0;
+        return filter_by_class ? rtn : 1;
     }
     return 1;
 }
