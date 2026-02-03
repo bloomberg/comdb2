@@ -1856,10 +1856,6 @@ REGISTER_TUNABLE("physrep_max_candidates",
                  "new physical replicant during registration. (Default: 6)",
                  TUNABLE_INTEGER, &gbl_physrep_max_candidates, 0, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_max_pending_replicants",
-                 "There can be no more than this many physical replicants in "
-                 "pending state. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_max_pending_replicants, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb cluster hosts.", TUNABLE_STRING,
                  &gbl_physrep_metadb_host, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster name.",

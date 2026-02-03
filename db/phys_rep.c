@@ -62,7 +62,6 @@ int gbl_physrep_reconnect_penalty = 0;
 int gbl_blocking_physrep = 1;
 int gbl_physrep_fanout = 8;
 int gbl_physrep_max_candidates = 6;
-int gbl_physrep_max_pending_replicants = 10;
 int gbl_deferred_phys_flag = 0;
 int gbl_physrep_source_nodes_refresh_freq_sec = 10;
 int gbl_physrep_slow_replicant_check_freq_sec = 10;

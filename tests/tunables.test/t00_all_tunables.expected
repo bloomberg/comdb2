@@ -744,7 +744,6 @@
 (name='physrep_keepalive_freq_sec', description='Periodically send lsn to source node after this interval. (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='physrep_keepalive_v2', description='Use version 2 of keepalive which includes first lsn. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_max_candidates', description='Maximum number of candidates that should be returned to a new physical replicant during registration. (Default: 6)', type='INTEGER', value='6', read_only='N')
-(name='physrep_max_pending_replicants', description='There can be no more than this many physical replicants in pending state. (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='physrep_max_rollback', description='Maximum logs physrep can rollback. (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='physrep_metadb_host', description='List of physical replication metadb cluster hosts.', type='STRING', value=NULL, read_only='Y')
 (name='physrep_metadb_name', description='Physical replication metadb cluster name.', type='STRING', value=NULL, read_only='Y')
