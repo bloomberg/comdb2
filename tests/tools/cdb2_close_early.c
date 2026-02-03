@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 #include <gettimeofday_ms.h>
 
 static char *argv0 = NULL;

@@ -19,6 +19,7 @@
 #include <string.h>
 #include <sys_wrap.h>
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 #include <machcache.h>
 
 struct class_machs {

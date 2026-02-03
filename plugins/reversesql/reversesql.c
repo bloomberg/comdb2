@@ -42,6 +42,9 @@
 #include "phys_rep.h"
 #include "reversesql.h"
 
+#include "cdb2api.h"
+#include "cdb2api_int.h"
+
 extern int gbl_revsql_debug;
 extern int gbl_revsql_cdb2_debug;
 extern int gbl_revsql_allow_command_exec;

@@ -213,7 +213,6 @@ void cdb2_set_comdb2db_config(char *cfg_file);
 void cdb2_set_comdb2db_info(char *cfg_info);
 void cdb2_set_sockpool(const char *sp_path);
 void cdb2_set_identity(cdb2_hndl_tp *hndl, const void *identity);
-int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type, int flags);
 
@@ -232,16 +231,6 @@ int cdb2_column_type(cdb2_hndl_tp *hndl, int col);
 int cdb2_column_size(cdb2_hndl_tp *hndl, int col);
 void *cdb2_column_value(cdb2_hndl_tp *hndl, int col);
 const char *cdb2_errstr(cdb2_hndl_tp *hndl);
-const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
-void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
-void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
-void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max, int *count);
-int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
-void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql);
-void cdb2_set_max_retries(int max_retries);
-void cdb2_set_min_retries(int min_retries);
-void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
-void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
 
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
                     const void *varaddr, int length);
@@ -251,18 +240,14 @@ int cdb2_bind_array(cdb2_hndl_tp *, const char *, cdb2_coltype, const void *, si
 int cdb2_bind_array_index(cdb2_hndl_tp *, int, cdb2_coltype, const void *, size_t, size_t);
 int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
+/* SOCKPOOL CLIENT APIS */
+void cdb2_enable_sockpool();
+void cdb2_disable_sockpool();
+
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 const char *cdb2_host(cdb2_hndl_tp *hndl);
 
-void cdb2_enable_sockpool(void);
-void cdb2_disable_sockpool(void);
-
-int cdb2_init_ssl(int init_libssl, int init_libcrypto);
-int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
-
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
-
-char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *str);
 
 // on success, `*value` points to dynamically allocated memory
 // that must be freed by the caller.
@@ -334,6 +319,10 @@ int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f);
 void cdb2_identity_create();
 void cdb2_identity_destroy(int is_task_exit);
 int cdb2_identity_valid();
+int cdb2_init_ssl(int init_libssl, int init_libcrypto);
+int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
+
+char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *str);
 
 struct cdb2_identity {
     void  (*resetIdentity_start)();

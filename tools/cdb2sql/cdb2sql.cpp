@@ -41,6 +41,10 @@
 #include <algorithm> // find_if_not; min
 
 #include "cdb2api.h"
+#ifdef CDB2API_TEST
+#include "cdb2api_test.h"
+#include "cdb2api_int.h"
+#endif
 #include "cdb2_constants.h"
 
 static char *dbname = NULL;
@@ -85,11 +89,13 @@ const char *col_type_names[] = {
 #define MIN_COL_TYPE_NAME (1)
 #define MAX_COL_TYPE_NAME (10)
 
+#ifdef CDB2API_TEST
 static int show_ports = 0;
 static int debug_trace = 0;
+static int verbose = 0;
+#endif
 static int pausemode = 0;
 static int printmode = DISP_CLASSIC;
-static int verbose = 0;
 static int scriptmode = 0;
 static int error = 0;
 static cdb2_hndl_tp *cdb2h = NULL;
@@ -101,8 +107,10 @@ static int show_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
 static int return_long_column_names = 0;
+#ifdef CDB2API_TEST
 static int maxretries = 0;
 static int minretries = 0;
+#endif
 static FILE *redirect = NULL;
 static int hold_stdout = -1;
 static char *history_file = NULL;
@@ -163,12 +171,14 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
+#ifdef CDB2API_TEST
 #define verbose_print(fmt, args...)                                            \
     do {                                                                       \
         if (verbose)                                                           \
             fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
                     __func__, __LINE__, ##args);                               \
     } while (0);
+#endif
 
 static const char *usage_text = "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
                                 "\n"
@@ -176,7 +186,9 @@ static const char *usage_text = "Usage: cdb2sql [options] dbname [sql [type1 [ty
                                 " -c, --cdb2cfg FL        Set the config file to FL\n"
                                 "     --coltype           Prefix column output with associated type\n"
                                 "     --cost              Log the cost of query in db trace files\n"
+#ifdef CDB2API_TEST
                                 "     --debugtrace        Set debug trace flag on api handle\n"
+#endif
                                 " -d, --delim str         Set string used to separate two sql statements read "
                                 "from a file or input stream\n"
                                 " -f, --file FL           Read queries from the specified file FL\n"
@@ -190,7 +202,9 @@ static const char *usage_text = "Usage: cdb2sql [options] dbname [sql [type1 [ty
                                 "     --tabular           Display result in tabular format\n"
                                 " -t, --type TYPE         Type of database or tier ('dev' or 'prod',"
                                 " default 'local')\n"
+#ifdef CDB2API_TEST
                                 " -v, --verbose           Verbose debug output, implies --debugtrace\n"
+#endif
                                 " -i, --allow-incoherent  Allow SQL to run on an incoherent node\n"
                                 "     --long-columns      Allow SQL to return long column names\n"
                                 "Examples: \n"
@@ -379,15 +393,19 @@ static char *db_generator(const int state, const char *sql)
 
         rc = cdb2_open(&cdb2h_2, dbname, type, flags);
         if (rc) {
+#ifdef CDB2API_TEST
             if (debug_trace)
                 fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
+#endif
             cdb2_close(cdb2h_2);
             return ((char *) NULL);
         }
         rc = cdb2_run_statement(cdb2h_2, sql);
         if (rc) {
+#ifdef CDB2API_TEST
             if (debug_trace)
                 fprintf(stderr, "failed to run sql '%s'\n", sql);
+#endif
             return ((char *) NULL);
         }
 
@@ -1462,7 +1480,9 @@ int process_bind(const char *sql)
         return process_escape(sql);
 
     const char *copy_sql = sql;
+#ifdef CDB2API_TEST
     verbose_print("setting bind parameter\n");
+#endif
     //@bind BINDTYPE parameter value
     sql += 5;
 
@@ -1493,9 +1513,11 @@ int process_bind(const char *sql)
         return -1;
     }
 
+#ifdef CDB2API_TEST
     if (debug_trace)
         fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
                 parameter, sql /* sql now points to the actual value. */);
+#endif
     if (isdigit(parameter[0])) {
         int index = atoi(parameter);
         if (index <= 0)
@@ -1524,6 +1546,7 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
     *run_time = 0;
 
     if (cdb2h == NULL) {
+#ifdef CDB2API_TEST
         if (maxretries) {
             cdb2_set_max_retries(maxretries);
         }
@@ -1532,6 +1555,7 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
         }
 
         verbose_print("calling cdb2_open\n");
+#endif
 
         int flags = 0;
         char *type = dbtype;
@@ -1596,12 +1620,14 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
             }
         }
 
+#ifdef CDB2API_TEST
         if (debug_trace) {
             cdb2_set_debug_trace(cdb2h);
         }
         if (show_ports) {
             cdb2_dump_ports(cdb2h, stderr);
         }
+#endif
         if (docost) {
             rc = cdb2_run_statement(cdb2h, "set getcost on");
             if (rc) {
@@ -1627,9 +1653,11 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
         int retries = 0;
         while (retries < 10) {
             rc = cdb2_run_statement_typed(cdb2h, sql, ntypes, types);
+#ifdef CDB2API_TEST
             verbose_print(
                 "run_statement_typed rc=%d, retries=%d, sql='%.30s...'\n", rc,
                 retries, sql);
+#endif
             if (rc != CDB2ERR_IO_ERROR)
                 break;
             retries++;
@@ -1775,7 +1803,9 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
 static int run_raw_statement(const char * const sql, int ntypes, int *types,
                             int *start_time, int *run_time)
 {
+#ifdef CDB2API_TEST
     verbose_print("processing line sql '%.30s...'\n", sql);
+#endif
 
     int start_time_ms, run_time_ms;
     gbl_in_stmt = 1;
@@ -1912,7 +1942,9 @@ void save_readline_history()
 
 static int *process_typed_statement_args(int ntypes, char **args)
 {
+#ifdef CDB2API_TEST
     verbose_print("processing typed statement arguments\n");
+#endif
     int *types = NULL;
 
     if (ntypes > 0)
@@ -2158,7 +2190,9 @@ private:
         }
 
         while (_sql.is_delimited()) {
+#ifdef CDB2API_TEST
             verbose_print("Processing %s\n", _sql.c_str());
+#endif
             int rc = run_raw_statement(_sql.c_str(), 0, NULL, 0, 0);
             if (rc) { 
                 if (rc != CDB2ERR_INCOMPLETE ) { _sql.clear(); }
@@ -2235,7 +2269,9 @@ static void process_sql_given_in_argv(char * const sql, const int ntypes, int * 
     } else {
         // Interpret string as a single sql statement
         preprocess_and_run_statement(sql, ntypes, types, 0, 0);
+#ifdef CDB2API_TEST
         verbose_print("preprocess_and_run_statement error=%d\n", error);
+#endif
     }
 }
 
@@ -2261,10 +2297,14 @@ int main(int argc, char *argv[])
                                            {"tabular", no_argument, &printmode, DISP_TABULAR},
                                            {"coltype", no_argument, &printcoltype, 1},
                                            {"stderr", no_argument, &printtostderr, 1},
+#ifdef CDB2API_TEST
                                            {"verbose", no_argument, &verbose, 1},
+#endif
                                            {"strblobs", no_argument, &string_blobs, 1},
+#ifdef CDB2API_TEST
                                            {"debugtrace", no_argument, &debug_trace, 1},
                                            {"showports", no_argument, &show_ports, 1},
+#endif
                                            {"showeffects", no_argument, &show_effects, 1},
                                            {"cost", no_argument, &docost, 1},
                                            {"long-columns", no_argument, &return_long_column_names, 1},
@@ -2274,7 +2314,10 @@ int main(int argc, char *argv[])
                                            {"admin", no_argument, &isadmin, 1},
                                            {"help", no_argument, NULL, 'h'},
                                            {"script", no_argument, NULL, 's'},
+#ifdef CDB2API_TEST
                                            {"maxretries", required_argument, NULL, 'r'},
+                                           {"minretries", required_argument, NULL, 'R'},
+#endif
                                            {"precision", required_argument, NULL, 'p'},
                                            {"cdb2cfg", required_argument, NULL, 'c'},
                                            {"file", required_argument, NULL, 'f'},
@@ -2282,13 +2325,15 @@ int main(int argc, char *argv[])
                                            {"delim", required_argument, NULL, 'd'},
                                            {"type", required_argument, NULL, 't'},
                                            {"host", required_argument, NULL, 'n'},
-                                           {"minretries", required_argument, NULL, 'R'},
                                            {"connect-to-master", no_argument, NULL, 'm'},
                                            {"multiline", no_argument, NULL, 'l'},
                                            {"allow-incoherent", no_argument, NULL, 'i'},
                                            {0, 0, 0, 0}};
-
+#ifdef CDB2API_TEST
     while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mMl", long_options, &opt_indx)) != -1) {
+#else
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsp:d:c:f:g:t:n:mMl", long_options, &opt_indx)) != -1) {
+#endif
         switch (c) {
         case 0:
             break;
@@ -2298,6 +2343,7 @@ int main(int argc, char *argv[])
         case 's':
             scriptmode = 1;
             break;
+#ifdef CDB2API_TEST
         case 'v':
             setenv("CDB2_DEBUG", "1", 1);
             setenv("CDB2_LOG_CALLS", "1", 1);
@@ -2309,6 +2355,7 @@ int main(int argc, char *argv[])
         case 'R':
             minretries = atoi(optarg);
             break;
+#endif
         case 'p':
             precision = atoi(optarg);
             break;
@@ -2391,8 +2438,10 @@ int main(int argc, char *argv[])
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
         return 1;
     }
+#ifdef CDB2API_TEST
     if (verbose)
         debug_trace = 1;
+#endif
 
     optind++;
     if (dbtype == NULL && dbtype_valid(argv[optind])) {

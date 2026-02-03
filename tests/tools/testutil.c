@@ -9,6 +9,8 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <cdb2api.h>
+#include <cdb2api_test.h>
 
 #define FMTSZ 512
 

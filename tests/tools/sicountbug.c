@@ -4,6 +4,7 @@
 #include <string.h>
 #include <strings.h>
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 #include <epochlib.h>
 #include <errno.h>
 #include <assert.h>

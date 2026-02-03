@@ -15,6 +15,7 @@
  */
 #include <sqllogfill.h>
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 #include <sys_wrap.h>
 #include <parse_lsn.h>
 #include <unistd.h>

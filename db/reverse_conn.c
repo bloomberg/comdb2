@@ -25,6 +25,7 @@
 #include "cdb2_constants.h"
 #include "comdb2.h"
 #include "cdb2api.h"
+#include "cdb2api_int.h"
 #include "list.h"
 #include "logmsg.h"
 #include "net_int.h"

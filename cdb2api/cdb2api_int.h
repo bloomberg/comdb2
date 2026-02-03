@@ -25,6 +25,10 @@
 #include <sbuf2.h>
 #include "cdb2api.h"
 
+#if defined __cplusplus
+extern "C" {
+#endif
+
 SBUF2 *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port, int *was_from_local_cache);
 // use this one for fastsql since client_sbuf and server_sbuf are different
 int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
@@ -38,6 +42,13 @@ int cdb2_read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno
 
 void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id);
 
+void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
+void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
+
+int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
+
+void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
+
 #ifndef WITH_DL_LIBS
 #define WITH_DL_LIBS 0
 #endif
@@ -45,6 +56,10 @@ void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id);
 #if WITH_DL_LIBS
 void cdb2_set_install_libs(void (*ptr)(const char *));
 void cdb2_set_uninstall_libs(void (*ptr)(const char *));
+#endif
+
+#if defined __cplusplus
+}
 #endif
 
 #endif

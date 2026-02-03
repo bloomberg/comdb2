@@ -4,6 +4,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <cdb2api.h>
+#include <cdb2api_test.h>
 #include <unistd.h>
 #include <time.h>
 #include <sstream>

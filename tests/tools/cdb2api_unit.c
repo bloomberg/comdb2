@@ -23,6 +23,8 @@
 #include <assert.h>
 #include <bb_oscompat.h>
 #include <cdb2api.c>
+#include <cdb2api_test.h>
+#include <cdb2api_int.h>
 
 void test_is_sql_read()
 {

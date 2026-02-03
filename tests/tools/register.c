@@ -18,6 +18,8 @@
 #include "testutil.h"
 #include "nemesis.h"
 #include <cdb2api.h>
+#include <cdb2api_int.h>
+#include <cdb2api_test.h>
 
 enum eventtypes {
     PARTITION_EVENT = 0x00000001,
