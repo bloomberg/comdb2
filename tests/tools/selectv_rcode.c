@@ -16,6 +16,7 @@
 #include <sys/wait.h>
 
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 
 char *dbname = NULL;
 char *stage = "default";

@@ -23,6 +23,8 @@
 #include "tcl.h"
 #include "tclcdb2.h"
 #include "cdb2api.h"
+#include "cdb2api_int.h"
+#include "cdb2api_test.h"
 
 /*
  * NOTE: Flag values for the <pkg>_Unload callback function (Tcl 8.5+).

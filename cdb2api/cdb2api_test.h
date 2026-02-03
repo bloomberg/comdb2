@@ -82,6 +82,14 @@ struct cdb2_hndl;
 const char *get_default_cluster(void);
 const char *get_default_cluster_hndl(struct cdb2_hndl *);
 
+void cdb2_set_max_retries(int max_retries);
+void cdb2_set_min_retries(int min_retries);
+
+void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max, int *count);
+const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
+int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
+void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
+
 #if defined __cplusplus
 }
 #endif /* __cplusplus */

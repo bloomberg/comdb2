@@ -1421,6 +1421,7 @@ struct newsqlheader {
     int length;
 };
 
+#ifdef CDB2API_TEST
 void cdb2_set_min_retries(int min_retries)
 {
     if (min_retries > 0) {
@@ -1434,6 +1435,7 @@ void cdb2_set_max_retries(int max_retries)
         MAX_RETRIES = max_retries;
     }
 }
+#endif
 
 void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries)
 {
@@ -6817,6 +6819,7 @@ const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
     return ret;
 }
 
+#ifdef CDB2API_TEST
 int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
                        int *snapshot_offset)
 {
@@ -6830,18 +6833,14 @@ int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
     (*snapshot_offset) = hndl->snapshot_offset;
     return 0;
 }
-
-void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql)
-{
-    (*intrans) = hndl->in_trans;
-    (*hasql) = hndl->is_hasql;
-}
+#endif
 
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 1;
 }
 
+#ifdef CDB2API_TEST
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out)
 {
     int i;
@@ -6875,6 +6874,7 @@ const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
 
     return hndl->cnonce.str;
 }
+#endif
 
 const char *cdb2_errstr(cdb2_hndl_tp *hndl)
 {

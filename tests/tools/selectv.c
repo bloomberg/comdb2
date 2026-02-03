@@ -11,6 +11,8 @@
 #include <signal.h>
 
 #include <cdb2api.h>
+#include <cdb2api_int.h>
+#include <cdb2api_test.h>
 
 static char *argv0 = NULL;
 

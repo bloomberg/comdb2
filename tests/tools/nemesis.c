@@ -6,6 +6,7 @@
 #include <strings.h>
 #include <alloca.h>
 #include <cdb2api.h>
+#include <cdb2api_test.h>
 #include <signal.h>
 #include "testutil.h"
 #include "nemesis.h"

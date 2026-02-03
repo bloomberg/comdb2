@@ -16,6 +16,7 @@
 
 #include "phys_rep.h"
 #include <cdb2api.h>
+#include <cdb2api_int.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
