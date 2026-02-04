@@ -82,6 +82,9 @@ struct cdb2_hndl;
 const char *get_default_cluster(void);
 const char *get_default_cluster_hndl(struct cdb2_hndl *);
 
+// Defined in Bloomberg plugins, not used in OSS builds/tests.
+void list_installed_addons(const char ***installed, int *ninstalls);
+
 #if defined __cplusplus
 }
 #endif /* __cplusplus */

@@ -1644,14 +1644,26 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                                    &check_hb_on_blocked_write_set_from_env);
 
         char *arg = getenv("COMDB2_CONFIG_INSTALL_STATIC_LIBS");
-        if ((cdb2_install != NULL) && arg != NULL) {
-            (*cdb2_install)(arg);
+        if (cdb2_install != NULL && arg != NULL) {
+            char *libs = strdup(arg), *lib = NULL, *lib_last = NULL;
+            lib = strtok_r(libs, " ", &lib_last);
+            while (lib != NULL) {
+                (*cdb2_install)(lib);
+                lib = strtok_r(NULL, " ", &lib_last);
+            }
+            free(libs);
             cdb2_install_set_from_env = 1;
         }
 
         arg = getenv("COMDB2_CONFIG_UNINSTALL_STATIC_LIBS");
-        if ((cdb2_uninstall != NULL) && arg != NULL) {
-            (*cdb2_uninstall)(arg);
+        if (cdb2_uninstall != NULL && arg != NULL) {
+            char *libs = strdup(arg), *lib = NULL, *lib_last = NULL;
+            lib = strtok_r(libs, " ", &lib_last);
+            while (lib != NULL) {
+                (*cdb2_uninstall)(lib);
+                lib = strtok_r(NULL, " ", &lib_last);
+            }
+            free(libs);
             cdb2_uninstall_set_from_env = 1;
         }
 
@@ -1940,18 +1952,30 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 }
             } else if (!cdb2_uninstall_set_from_env && (strcasecmp("uninstall_static_libs_v4", tok) == 0 ||
                                                         strcasecmp("disable_static_libs", tok) == 0)) {
-                /* Provide a way to disable statically installed (via
-                 * CDB2_INSTALL_LIBS) libraries. */
-                tok = strtok_r(NULL, " :,", &last);
-                if (cdb2_uninstall != NULL)
-                    (*cdb2_uninstall)(tok);
+                /* Provide a way to disable statically linked libraries. */
+                tok = strtok_r(NULL, ":,", &last);
+                if (cdb2_uninstall != NULL && tok != NULL) {
+                    char *libs = strdup(tok), *lib = NULL, *lib_last = NULL;
+                    lib = strtok_r(libs, " ", &lib_last);
+                    while (lib != NULL) {
+                        (*cdb2_uninstall)(lib);
+                        lib = strtok_r(NULL, " ", &lib_last);
+                    }
+                    free(libs);
+                }
             } else if (!cdb2_install_set_from_env &&
                        (strcasecmp("install_static_libs_v4", tok) == 0 || strcasecmp("enable_static_libs", tok) == 0)) {
-                /* Provide a way to enable statically installed (via
-                 * CDB2_INSTALL_LIBS) libraries. */
-                tok = strtok_r(NULL, " :,", &last);
-                if (cdb2_install != NULL)
-                    (*cdb2_install)(tok);
+                /* Provide a way to enable statically linked libraries. */
+                tok = strtok_r(NULL, ":,", &last);
+                if (cdb2_install != NULL && tok != NULL) {
+                    char *libs = strdup(tok), *lib = NULL, *lib_last = NULL;
+                    lib = strtok_r(libs, " ", &lib_last);
+                    while (lib != NULL) {
+                        (*cdb2_install)(lib);
+                        lib = strtok_r(NULL, " ", &lib_last);
+                    }
+                    free(libs);
+                }
 #if WITH_DL_LIBS
             } else if (strcasecmp("lib", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -7239,7 +7263,7 @@ static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, co
     }
 #ifdef CDB2API_TEST
     for (int i = 0; i < *num_hosts; i++) {
-        printf("FINAL NODE no:%d host:%s near nodes:%d\n", i, hosts[i], near_nodes);
+        fprintf(stderr, "FINAL NODE no:%d host:%s near nodes:%d\n", i, hosts[i], near_nodes);
     }
 #endif
     if (num_same_room)
@@ -7324,7 +7348,7 @@ no_roomresult:
     }
 #ifdef CDB2API_TEST
     for (int i = 0; i < *num_hosts; i++) {
-        printf("FINAL NODE no:%d host:%s near nodes:%d\n", i, hosts[i], start_count);
+        fprintf(stderr, "FINAL NODE no:%d host:%s near nodes:%d\n", i, hosts[i], start_count);
     }
 #endif
     return 0;
@@ -8049,7 +8073,7 @@ retry:
             // comment out for now. Extra output fails ssl_dbname and ssl_set_cmd test.
             // #ifdef CDB2API_TEST
             //             if (cdb2_use_bmsd)
-            //                 printf("Try node %d name %s master %d\n", try_node, hndl->hosts[try_node], hndl->master);
+            //                 fprintf(stderr, "Try node %d name %s master %d\n", try_node, hndl->hosts[try_node], hndl->master);
             // #endif
             rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
                                    hndl->hosts[try_node], hndl->hosts,
@@ -8767,6 +8791,14 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
            for it so we can fit longer hostnames in the sockpool type string which is
            merely 48 chars. */
         strcpy(hndl->policy, (hndl->flags & CDB2_DIRECT_CPU) ? "dc" : "random_room");
+    }
+
+    /* Install the distributed trace plugin by default. Configs are loaded later,
+     * so users still have a way to disable it, if so desired. */
+    if (cdb2_install != NULL) {
+        pthread_mutex_lock(&cdb2_sockpool_mutex);
+        (*cdb2_install)("dt");
+        pthread_mutex_unlock(&cdb2_sockpool_mutex);
     }
 
     int rc = 0;
