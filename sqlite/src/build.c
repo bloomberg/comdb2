@@ -551,10 +551,9 @@ retry_after_fdb_creation:
     }
 
     int lvl, local, lvl_override;
-    void *fdb;
     /* this will get us a read lock fdb object */
     rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-          in_analysis_load, &lvl, &local, &lvl_override, &server_version, &fdb);
+          &lvl, &local, &lvl_override, &server_version);
     if( rc ){
         if( gbl_fdb_track )
             logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
@@ -576,7 +575,7 @@ retry_after_fdb_creation:
     rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
         &zErrDyn, version, lvl, local, lvl_override, server_version);
 
-    fdbUnlock(fdb);
+    fdbUnlock(db);
 
     if( rc || zErrDyn ) {
       logmsg(LOGMSG_ERROR, "%s: failed to find table %s rc=%d %s\n",

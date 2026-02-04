@@ -367,6 +367,32 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   assert( db->init.busy );
   {
     char *zSql;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    Table *pTabStat1, *pTabStat4;
+    if (db->init.zTblName[0]) {
+        pTabStat1 = sqlite3FindTableCheckOnly(db, zMasterName, "sqlite_stat1");
+        if (!pTabStat1) {
+            /* no stat tables yet */
+            zSql = sqlite3MPrintf(db,
+                "SELECT name, rootpage, sql FROM \"%w\".%s where name = '%s' or name = 'sqlite_stat1' or name = 'sqlite_stat4' ORDER BY rowid",
+                db->aDb[iDb].zDbSName, zMasterName);
+
+        } else {
+            pTabStat4 = sqlite3FindTableCheckOnly(db, zMasterName, "sqlite_stat1");
+            if (!pTabStat4) {
+                /* stat1 but no stat4 */
+                zSql = sqlite3MPrintf(db,
+                    "SELECT name, rootpage, sql FROM \"%w\".%s where name = '%s' or name = 'sqlite_stat4' ORDER BY rowid",
+                    db->aDb[iDb].zDbSName, zMasterName);
+            } else  {
+                /* we only want the table */
+                zSql = sqlite3MPrintf(db,
+                    "SELECT name, rootpage, sql FROM \"%w\".%s where name = '%s' ORDER BY rowid",
+                    db->aDb[iDb].zDbSName, zMasterName);
+            }
+        }
+    } else /*otherwise, get all the tables */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     zSql = sqlite3MPrintf(db, 
         "SELECT name, rootpage, sql FROM \"%w\".%s ORDER BY rowid",
         db->aDb[iDb].zDbSName, zMasterName);

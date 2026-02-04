@@ -185,8 +185,6 @@ typedef struct fdb_cursor_if {
                   int datalen, char *data);
     int (*create_tran)(sqlclntstate *clnt, fdb_t *fdb, int use_ssl);
 
-    fdb_tbl_ent_t *(*table_entry)(BtCursor *pCur);
-
     int (*access)(BtCursor *pCur, int how);
 
 } fdb_cursor_if_t;
@@ -262,10 +260,10 @@ fdb_cursor_if_t *fdb_cursor_open(sqlclntstate *clnt, BtCursor *pCur,
                                  int rootpage, fdb_tran_t *trans, int *ixnum,
                                  int need_ssl);
 
-/*
-   This returns the sqlstats table under a mutex
+/**
+ * Release lock on fdb sqlstats_mtx
+ *
  */
-fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb);
 void fdb_sqlstats_put(fdb_t *fdb);
 
 /**
@@ -276,12 +274,10 @@ const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent);
 const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 
 /**
- * Retrieve entry for table|index given a vdbe and name
- * These are cached in sqlite engine
+ * Get table entries from sqlite vdbe cache
  *
  */
-fdb_tbl_ent_t *fdb_sqlite_cache_get_ent_by_rootpage(Vdbe *vdbe, int rootpage);
-fdb_tbl_ent_t *fdb_sqlite_cache_get_ent_by_name(Vdbe *vdbe, char *name);
+fdb_tbl_ent_t *fdb_sqlite_cache_get_ent(Vdbe *v, int rootpage);
 
 /* transactional api */
 fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
@@ -377,8 +373,7 @@ void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats);
  * Change association of a cursor to a table (see body note)
  *
  */
-void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
-                          const char *tblname);
+void fdb_cursor_use_table(fdb_cursor_t *cur, fdb_tbl_ent_t *stat);
 
 /* return if ssl is needed */
 int fdb_cursor_need_ssl(fdb_cursor_if_t *cur);
@@ -440,6 +435,17 @@ fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class,
  *
  */
 const char *fdb_retry_callback(void *arg);
+
+/**
+ * Populate temp tables with stats from remote db
+ * The fdb sqlstats_mtx is acquired at this point
+ *
+ */
+int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, Vdbe *vdbe, fdb_t *fdb,
+                               /* out */ struct temp_table *stat1,
+                               /* out */ struct temp_table *stat4,
+                               /* out */ int *nrows_stat1,
+                               /* out */ int *nrows_stat4);
 
 #endif
 

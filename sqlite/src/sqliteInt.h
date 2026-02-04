@@ -1488,6 +1488,10 @@ struct sqlite3 {
     unsigned orphanTrigger : 1; /* Last statement is orphaned TEMP trigger */
     unsigned imposterTable : 1; /* Building an imposter table */
     unsigned reopenMemdb : 1;   /* ATTACH is really a reopen using MemDB */
+    void *locked_table;         /* transient transfer info from sqlite3AddAndLockTable to fdbUnlock */
+    void *locked_stat1;
+    void *locked_stat4;
+    void *fdb;
   } init;
   int nVdbeActive;              /* Number of VDBEs currently running */
   int nVdbeRead;                /* Number of active VDBEs that read or write */
@@ -1582,7 +1586,6 @@ struct sqlite3 {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
   u8 isTimepartView;                    /* Time partition view */
-  hash_t remote
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -5037,11 +5040,11 @@ void sqlite3_tunables_init(void);
 void sqlite3_dump_tunables(void);
 void sqlite3_set_tunable_by_name(char *tname, char *val);
 
-extern void fdbUnlock(void * fdb);
+extern void fdbUnlock(sqlite3 *db);
 extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
-      const char *table, int *version, int in_analysis_load,
+      const char *table, int *version,
       int *out_class, int *out_local, int *out_class_override,
-      int *proto_version, void **fdb);
+      int *proto_version);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, int argc, sqlite3_value **argv,
       const char *zName, const char *zFile, char **pzErrDyn, int version,
       int class, int local, int class_override, int proto_version);

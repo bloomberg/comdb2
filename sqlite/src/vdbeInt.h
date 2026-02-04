@@ -500,6 +500,8 @@ struct DblquoteStr {
 #define Cdb2_OE_Ignore 1
 #define Cdb2_OE_Replace 2
 #define Cdb2_OE_Update 4
+
+struct sqlite_fdb_cache;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -610,6 +612,7 @@ struct Vdbe {
   int oldColCount;        /* Column count (refer: sqlitex)*/
   u8 fingerprint_added;   /* Whether fingerprint was added? Only used in SP code */
   int fdb_warn_this_op;   /* Warn about this opcode which is ineligible for cursor hint */
+  struct sqlite_fdb_cache *remoteFdbCache; /* cached version of remote tables used by vdbe */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
