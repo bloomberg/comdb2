@@ -26,7 +26,6 @@
 
 /* open a cursor to the sqlite_stat cache */
 fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
-                                               Vdbe *vdbe, /* gives us fdb_tbl locals */
                                                fdb_t *fdb, const char *name,
                                                fdb_sqlstat_cache_t *cache);
 
@@ -35,7 +34,7 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
 
    NOTE: this function is not reentrant and it is protected by caller mutex
  */
-int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, Vdbe *vdbe, fdb_t *fdb,
+int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
                              const char *fdbname, fdb_sqlstat_cache_t **pcache);
 
 /**

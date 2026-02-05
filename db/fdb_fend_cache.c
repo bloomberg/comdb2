@@ -112,7 +112,7 @@ static int __fdb_sqlstat_table_init(fdb_sqlstat_table_t *tbl, const char *name)
  * Create the local cache, we are under a mutex
  *
  */
-int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, Vdbe *vdbe, fdb_t *fdb,
+int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
                              const char *fdbname, fdb_sqlstat_cache_t **pcache)
 {
     fdb_sqlstat_cache_t *cache;
@@ -150,7 +150,7 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, Vdbe *vdbe, fdb_t *fdb,
         goto done;
     }
 
-    rc = fdb_sqlstat_cache_populate(clnt, vdbe, fdb, cache->arr[0].tbl, cache->arr[1].tbl,
+    rc = fdb_sqlstat_cache_populate(clnt, fdb, cache->arr[0].tbl, cache->arr[1].tbl,
                                     &cache->arr[0].nrows, &cache->arr[1].nrows);
     if (rc) {
         logmsg(LOGMSG_ERROR,
@@ -231,7 +231,6 @@ void fdb_sqlstat_cache_destroy(fdb_sqlstat_cache_t **pcache)
  */
 /* NOTE: It locks access to sqlstat (for now) until closed */
 fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
-                                               Vdbe *vdbe,  /* gives us fdb_tbl locals */
                                                fdb_t *fdb, const char *name,
                                                fdb_sqlstat_cache_t *cache)
 {

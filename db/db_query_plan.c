@@ -31,7 +31,7 @@ extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
 // return NULL if no plan
-struct string_ref *form_query_plan(sqlite3_stmt *stmt)
+struct string_ref *form_query_plan(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     struct string_ref *query_plan_ref;
     Op *op;
@@ -61,7 +61,7 @@ struct string_ref *form_query_plan(sqlite3_stmt *stmt)
 
         strbuf_appendf(query_plan_buf, "open %s cursor on ", operation);
         describe_cursor(v, pc, &c);
-        print_cursor_description(v, query_plan_buf, &c, 0);
+        print_cursor_description(clnt, query_plan_buf, &c, 0);
     }
 
     query_plan_ref = strbuf_len(query_plan_buf) > 0 ? create_string_ref((char *)strbuf_buf(query_plan_buf)) : NULL;

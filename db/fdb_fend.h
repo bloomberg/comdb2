@@ -204,11 +204,11 @@ int fdb_cache_init(int n);
 fdb_t *get_fdb(const char *dbname);
 
 /**
- * This remove the read lock on a fdb object
+ * Remove the read lock on a fdb object
  * Protected by the fdbs array mutex
  * Flag controls the removal;
  * - NOFREE: the fdb is read unlocked and left in the fdbs array to be reused
- * - TRYFREE: we try to write lock the fdb; if we succeed, this is the only reader 
+ * - TRYFREE: we try to write lock the fdb; if we succeed, this is the only reader
  *   so it will be unlinked from cache and freed
  * - FORCEFREE: under fdbs array mutex we block until a write lock is acquired
  *   !!!CAUTION this blocks new access to fdbs until the write lock is acquired
@@ -243,14 +243,13 @@ void *fdb_get_sqlite_master_entry(fdb_t *fdb, fdb_tbl_ent_t *ent);
  * Caller must free the returned pointer
  *
  */
-char *fdb_sqlexplain_get_name(Vdbe *v, int rootpage);
+char *fdb_sqlexplain_get_name(struct sqlclntstate *clnt, int rootpage);
 
 /**
  * Retrieve the field name for the table identified by "rootpage", index
- * "ixnum",
- * field "fieldnum"
+ * "ixnum", field "fieldnum"
  */
-char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum, int fieldnum);
+char *fdb_sqlexplain_get_field_name(struct sqlclntstate *clnt, Vdbe *v, int rootpage, int ixnum, int fieldnum);
 
 /**
  * Create a connection to fdb
@@ -277,7 +276,7 @@ const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
  * Get table entries from sqlite vdbe cache
  *
  */
-fdb_tbl_ent_t *fdb_sqlite_cache_get_ent(Vdbe *v, int rootpage);
+fdb_tbl_ent_t *fdb_clnt_cache_get_ent(sqlclntstate *clnt, int rootpage);
 
 /* transactional api */
 fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
@@ -355,7 +354,7 @@ int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
  * This matches fdb_lock_table, allowing again exclusive access to that table
  *
  */
-int fdb_unlock_table(fdb_tbl_ent_t *ent);
+int fdb_unlock_table(sqlclntstate *clnt, fdb_tbl_ent_t *ent);
 
 /**
  * Send heartbeats to remote dbs in a distributed transaction
@@ -368,12 +367,6 @@ int fdb_heartbeats(fdb_hbeats_type *hbeats);
  *
  */
 void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats);
-
-/**
- * Change association of a cursor to a table (see body note)
- *
- */
-void fdb_cursor_use_table(fdb_cursor_t *cur, fdb_tbl_ent_t *stat);
 
 /* return if ssl is needed */
 int fdb_cursor_need_ssl(fdb_cursor_if_t *cur);
@@ -441,7 +434,7 @@ const char *fdb_retry_callback(void *arg);
  * The fdb sqlstats_mtx is acquired at this point
  *
  */
-int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, Vdbe *vdbe, fdb_t *fdb,
+int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
                                /* out */ struct temp_table *stat1,
                                /* out */ struct temp_table *stat4,
                                /* out */ int *nrows_stat1,

@@ -7843,7 +7843,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
-            if (after_recovery && !fdb_sqlite_cache_get_ent(p, iTable)) {
+            if (after_recovery && !fdb_clnt_cache_get_ent(clnt, iTable)) {
                 logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
                        tab->zName);
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
@@ -8137,7 +8137,7 @@ int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt)
             continue;
 
         /* this is a remote table; we need to release remote locks */
-        rc = fdb_unlock_table(clnt->dbtran.lockedRemTables[i]);
+        rc = fdb_unlock_table(clnt, clnt->dbtran.lockedRemTables[i]);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to unlock remote table cache for \"%s\"\n",
                     fdb_table_entry_tblname(clnt->dbtran.lockedRemTables[i]));
@@ -8195,7 +8195,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     }
 
     /* set a transaction id if none is set yet */
-    if ((iTable >= RTPAGE_START) && !fdb_sqlite_cache_get_ent(cur->vdbe, cur->rootpage)) {
+    if ((iTable >= RTPAGE_START) && !fdb_clnt_cache_get_ent(clnt, cur->rootpage)) {
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
@@ -8859,7 +8859,10 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
              */
             rdlock_schema_lk();
             assert(pCur->vdbe == (Vdbe*)clnt->dbtran.pStmt);
-            /* remote table locks aren't berkeleydb locks. release them here */
+            /* remote table locks aren't berkeleydb locks. release them here
+             * TODO: why are we releasing remote locks, these are needed
+             * to protect remote access further calls
+             */
             if (clnt->dbtran.nLockedRemTables > 0)
                 newlocks_rc = sqlite3UnlockStmtTablesRemotes(clnt);
             if (newlocks_rc == 0)
