@@ -802,13 +802,22 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                         iq->sb = NULL;
                     }
                 }
-                pool_relablk(p_reqs, iq);
+                if (!iq->ipc_sndbak) {
+                    pool_relablk(p_reqs, iq);
+                    iq = NULL;
+                }
             }
         }
         UNLOCK(&lock);
     }
     if (iq && iq->ipc_sndbak) {
         iq->ipc_sndbak(iq, rc, iq->p_buf_out_end - iq->p_buf_out_start);
+        LOCK(&lock)
+        {
+            pool_relablk(p_reqs, iq);
+        }
+        UNLOCK(&lock);
+
     }
     else if (comdb2_ipc_sndbak && curswap) {
         /* curswap is just a pointer to the buffer */
