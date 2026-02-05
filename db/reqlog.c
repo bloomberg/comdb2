@@ -2508,10 +2508,11 @@ void release_clientstats_lock()
     Pthread_rwlock_unlock(&clientstats_lk);
 }
 
-static void init_clientstats(nodestats_t *entry, int task_len, char *host, int fd)
+static void init_clientstats(nodestats_t *entry, int task_len, int stack_len, char *host, int fd)
 {
     entry->task = entry->mem;
     entry->stack = entry->mem + task_len;
+    entry->identity = entry->mem + task_len + stack_len;
     entry->host = host;
     entry->ref = 1;
     entry->rawtotals.api_history = init_api_history(); 
@@ -2549,18 +2550,17 @@ static void update_clientstats_cache(nodestats_t *entry) {
     Pthread_mutex_unlock(&clientstats_cache_mtx);
 }
 
-static nodestats_t *add_clientstats(unsigned checksum,
-                                    const char *task_and_stack, int task_len,
-                                    int stack_len, char *host, int node, int fd)
+static nodestats_t *add_clientstats(unsigned checksum, const char *whoami, int task_len, int stack_len, int id_len,
+                                    char *host, int node, int fd)
 {
-    nodestats_t *entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
+    nodestats_t *entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len + id_len);
     if (entry == NULL) {
         logmsg(LOGMSG_ERROR, "%s: out of memory!\n", __func__);
         return NULL;
     }
 
     /* hashtable key is the checksum: crc32c(task + stack) + intern->ix. */
-    memcpy(entry->mem, task_and_stack, task_len + stack_len);
+    memcpy(entry->mem, whoami, task_len + stack_len + id_len);
     entry->checksum = checksum;
     entry->node = node;
 
@@ -2606,7 +2606,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
         goto done;
     }
 
-    init_clientstats(entry, task_len, host, fd);
+    init_clientstats(entry, task_len, stack_len, host, fd);
     hash_add(clientstats, entry);
 
 done:
@@ -2692,12 +2692,12 @@ nodestats_t *get_next_clientstats_entry(void **curr, unsigned int *iter)
     return entry;
 }
 
-struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
-                                        char *host, int fd, int is_ssl)
+struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, const char *id, char *host, int fd,
+                                        int is_ssl)
 {
     unsigned checksum;
     int namelen, node;
-    int task_len, stack_len = 0;
+    int task_len = 0, stack_len = 0, id_len = 0;
     char *tmp;
     struct interned_string *host_interned = intern_ptr(host);
 
@@ -2705,8 +2705,9 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
 
     GET_NAME_AND_LEN(task, task_len);
     GET_NAME_AND_LEN(stack, stack_len);
+    GET_NAME_AND_LEN(id, id_len);
 
-    namelen = task_len + stack_len;
+    namelen = task_len + stack_len + id_len;
     if (namelen < 1024)
         tmp = alloca(namelen);
     else
@@ -2715,13 +2716,16 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return NULL;
     }
+    namelen = task_len + stack_len;
+
     memcpy(tmp, task, task_len);
     memcpy(tmp + task_len, stack, stack_len);
+    memcpy(tmp + namelen, id, id_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
     
     nodestats_t *nodestats = find_clientstats(checksum, node, fd);
     if (!nodestats) {
-        nodestats = add_clientstats(checksum, tmp, task_len, stack_len, host, node, fd);
+        nodestats = add_clientstats(checksum, tmp, task_len, stack_len, id_len, host, node, fd);
     }
 
     if (nodestats) {
@@ -2743,7 +2747,7 @@ int release_node_stats(const char *task, const char *stack, char *host)
 {
     unsigned checksum;
     int namelen;
-    int task_len, stack_len = 0;
+    int task_len = 0, stack_len = 0;
     char *tmp;
     struct interned_string *host_interned = intern_ptr(host);
     host = host_interned->str;
@@ -2940,6 +2944,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
         summaries[ii].stack = strcmp(nodestats->stack, UNKNOWN_NAME)
                                   ? strdup(nodestats->stack)
                                   : NULL;
+        summaries[ii].identity = strcmp(nodestats->identity, UNKNOWN_NAME) ? strdup(nodestats->identity) : NULL;
         summaries[ii].ref = nodestats->ref;
         summaries[ii].is_ssl = nodestats->is_ssl;
 
