@@ -2,13 +2,43 @@ This is Comdb2 documentation.  If you're going to work on it, and want
 to preview changes before you commit, you'll need to set up a few
 things.  This'll tell you how.
 
-Instructions for Debian-based systems follow.  Instructions for
-Redhat-based systems would be welcome.
+Debian-based systems (Ubuntu, etc.):
 
 0) install a sane build environment (sudo apt-get install build-essential zlib1g-dev)
 1) cd docs
 2) Install jekyll (sudo apt install jekyll)
 3) Start server (jekyll serve --watch --host your_ip --port your_port)
+
+RHEL-based systems (RHEL 9, etc.):
+
+0) Install build tools:
+   ```
+   sudo dnf groupinstall -y "Development Tools"
+   sudo dnf install -y zlib-devel
+   ```
+1) Install Ruby development dependencies:
+   ```
+   sudo dnf install -y ruby ruby-devel rubygems \
+     zlib-devel openssl-devel readline-devel \
+     libyaml-devel libffi-devel gdbm-devel ncurses-devel
+   ```
+2) Install bundler to user path:
+   ```
+   gem install --user-install bundler
+   ```
+3) Add user gem bin directory to PATH (add to ~/.bashrc for persistence):
+   ```
+   export PATH="$HOME/.local/share/gem/ruby/bin:$PATH"
+   ```
+4) cd docs
+5) Install Gemfile dependencies to user path:
+   ```
+   bundle install --path ~/.local/share/gem
+   ```
+6) Start server:
+   ```
+   bundle exec jekyll serve --watch --host your_ip --port your_port
+   ```
 
 The docs are in pages/*.md. The table of contents on the left is in
 _data/sidebars/mydoc_sidebar.yml When you save files, jekyll should
