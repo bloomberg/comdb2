@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
     const char *table = argv[3];
     const char *spname = argv[4];
     const char *args = argv[5];
-    const char *cfg = argc == 7 ? argv[6] : NULL;
+    char *cfg = argc == 7 ? argv[6] : NULL;
 
     if (cfg) {
         cdb2_set_comdb2db_config(cfg);
