@@ -64,15 +64,15 @@ main() {
     extra_cdb2sql_opts_for_test="-tabular"
     run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
-    file_extension_for_test=".multiline-fileonly"
-    extra_cdb2sql_opts_for_test="-l"
-    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
+    # file_extension_for_test=".multiline-fileonly"
+    # extra_cdb2sql_opts_for_test="-l"
+    # run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
-    file_extension_for_test=".multiline"
-    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
+    # file_extension_for_test=".multiline"
+    # run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
-    pass_sql_via_file=0
-    run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
+    # pass_sql_via_file=0
+    # run_tests "${file_extension_for_test}" "${extra_cdb2sql_opts_for_test}" "${pass_sql_via_file}"
 
     file_extension_for_test=".long-columns"
     extra_cdb2sql_opts_for_test="-long-columns"

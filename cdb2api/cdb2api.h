@@ -249,10 +249,6 @@ const char *cdb2_host(cdb2_hndl_tp *hndl);
 
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 
-// on success, `*value` points to dynamically allocated memory
-// that must be freed by the caller.
-int cdb2_get_property(cdb2_hndl_tp *hndl, const char *key, char **value);
-
 typedef enum cdb2_event_ctrl {
     CDB2_OVERWRITE_RETURN_VALUE = 1,
     CDB2_AS_HANDLE_SPECIFIC_ARG = 1 << 1

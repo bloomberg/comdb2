@@ -1676,22 +1676,22 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
 
     if (rc != CDB2_OK) {
         const char *err = cdb2_errstr(cdb2h);
-        if (allow_multiline_stmts) {
-            char *tailstr;
-            int tailoff;
-            int prc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
-            if (prc == 0) {
-                tailoff = atoi(tailstr);
-                free(tailstr);
+        // if (allow_multiline_stmts) {
+        //     char *tailstr;
+        //     int tailoff;
+        //     int prc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
+        //     if (prc == 0) {
+        //         tailoff = atoi(tailstr);
+        //         free(tailstr);
 
-                // Cut off trailing newline for readability
-                const int num_chars_to_print = std::min(tailoff, (int) strlen(sql)-1);
+        //         // Cut off trailing newline for readability
+        //         const int num_chars_to_print = std::min(tailoff, (int) strlen(sql)-1);
 
-                fprintf(stderr, "[%.*s] failed with rc %d %s\n", num_chars_to_print, 
-                    sql, rc, err ? err : "");
-                return rc;
-            }
-        }
+        //         fprintf(stderr, "[%.*s] failed with rc %d %s\n", num_chars_to_print,
+        //             sql, rc, err ? err : "");
+        //         return rc;
+        //     }
+        // }
         /* cdb2tcm mode needs to pass this info through stdout */
         fprintf(stderr, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
         return rc;
@@ -2115,20 +2115,20 @@ private:
             this->trim_junk();
         }
 
-        int trim_lhs_stmt()
-        {
-            char *tailstr;
-            const int rc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
-            if (rc) { return 1; }
+        // int trim_lhs_stmt()
+        // {
+        //     char *tailstr;
+        //     const int rc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
+        //     if (rc) { return 1; }
 
-            const int tailoff = atoi(tailstr);
-            free(tailstr);
-            _sql_str.erase(0, tailoff);
+        //     const int tailoff = atoi(tailstr);
+        //     free(tailstr);
+        //     _sql_str.erase(0, tailoff);
 
-            this->trim_junk();
+        //     this->trim_junk();
 
-            return 0;
-        }
+        //     return 0;
+        // }
 
         bool is_delimited()
         {
@@ -2199,8 +2199,8 @@ private:
                 break;
             }
 
-            rc = _sql.trim_lhs_stmt();
-            if (rc) { break; }
+            // rc = _sql.trim_lhs_stmt();
+            // if (rc) { break; }
         }
 
         _processed_incomplete_stmt = !_sql.empty();
@@ -2383,7 +2383,7 @@ int main(int argc, char *argv[])
             connect_to_master = 1;
             break;
         case 'l':
-            allow_multiline_stmts = 1;
+            // allow_multiline_stmts = 1;
             break;
         case 'M':
             cdb2_master = 1;
