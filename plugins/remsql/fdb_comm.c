@@ -2731,7 +2731,8 @@ static void _fdb_extract_source_id(struct sqlclntstate *clnt, COMDB2BUF *sb, fdb
     }
 
     if (clnt->rawnodestats == NULL)
-        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin, cdb2buf_fileno(sb), msg->co.ssl);
+        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->plugin.get_identity(clnt), clnt->origin,
+                                                cdb2buf_fileno(sb), msg->co.ssl);
 }
 
 int fdb_bend_cursor_open(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)

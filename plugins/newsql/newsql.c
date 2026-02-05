@@ -2455,9 +2455,8 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         newsql_set_client_info(clnt, sql_query, 0);
     }
     if (clnt->rawnodestats == NULL) {
-        clnt->rawnodestats =
-            get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin,
-                               clnt->plugin.get_fileno(clnt), clnt->plugin.has_ssl(clnt));
+        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->plugin.get_identity(clnt), clnt->origin,
+                                                clnt->plugin.get_fileno(clnt), clnt->plugin.has_ssl(clnt));
     }
     if (process_set_commands(clnt, sql_query)) {
         return NEWSQL_ERROR;
