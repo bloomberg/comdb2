@@ -1537,6 +1537,10 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
             }
             snap_info_p = &snap_info;
         }
+    } else {
+        // SP transaction: send a dummy snap_info (keylen=0) so the master
+        // tracks query effects as it applies bplog changes under OSQL_DONE_SNAP.
+        snap_info_p = &zero_snap_info;
     }
 
     do {

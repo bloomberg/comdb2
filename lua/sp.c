@@ -2760,6 +2760,11 @@ static void reset_stmts(SP sp)
 static int db_begin(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
+
+    // Reset effects counters for this transaction
+    SP sp = getsp(L);
+    reset_query_effects(sp->clnt, 0, 0);
+
     int rc;          // begin rc
     const char *err; // logic err - terminate lua prog
     if ((err = db_begin_int(L, &rc)) == NULL) return push_and_return(L, rc);
@@ -2769,6 +2774,21 @@ static int db_begin(Lua L)
 static int db_commit(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
+
+    int nargs = lua_gettop(L);
+    luaL_argcheck(L, nargs <= 2, 2, "too many arguments");
+
+    int with_effects = 0;
+
+    if (nargs == 2) {
+        luaL_argcheck(L, lua_istable(L, 2), 2, "table expected");
+        lua_getfield(L, 2, "with_effects");
+        lua_remove(L, -2);
+        luaL_argcheck(L, lua_isboolean(L, -1), 2, "with_effects must be a boolean");
+        with_effects = lua_toboolean(L, -1);
+    }
+
+    // Commit
     SP sp = getsp(L);
     reset_consumer_cursor(sp);
     if (sp->in_parent_trans) { // explicit commit w/o begin
@@ -2776,8 +2796,30 @@ static int db_commit(Lua L)
     }
     int rc;          // commit rc
     const char *err; // logic err - terminate lua prog
-    if ((err = db_commit_int(L, &rc)) == NULL) return push_and_return(L, rc);
-    return luaL_error(L, err);
+    if ((err = db_commit_int(L, &rc)) != NULL) {
+        return luaL_error(L, err);
+    }
+    lua_pushinteger(L, rc);
+
+    // Create effect table
+    if (with_effects) {
+        struct query_effects *eff = &sp->clnt->effects;
+        int num_affected = eff->num_inserted + eff->num_updated + eff->num_deleted;
+        lua_createtable(L, 0, 5);
+        lua_pushinteger(L, num_affected);
+        lua_setfield(L, -2, "num_affected");
+        lua_pushinteger(L, eff->num_selected);
+        lua_setfield(L, -2, "num_selected");
+        lua_pushinteger(L, eff->num_updated);
+        lua_setfield(L, -2, "num_updated");
+        lua_pushinteger(L, eff->num_deleted);
+        lua_setfield(L, -2, "num_deleted");
+        lua_pushinteger(L, eff->num_inserted);
+        lua_setfield(L, -2, "num_inserted");
+        return 2;
+    }
+
+    return 1;
 }
 
 static int db_rollback(Lua L)
@@ -3529,7 +3571,12 @@ static int dbstmt_fetch(Lua lua)
     }
     setup_first_sqlite_step(sp, dbstmt, 1);
     int rc = stmt_sql_step(lua, dbstmt);
-    if (rc == SQLITE_ROW) return 1;
+    if (rc == SQLITE_ROW) {
+        sp->clnt->effects.num_selected++;
+        sp->clnt->log_effects.num_selected++;
+        sp->clnt->nrows++;
+        return 1;
+    }
     donate_stmt(sp, dbstmt);
     return 0;
 }

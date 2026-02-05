@@ -425,6 +425,13 @@ while [[ $j -lt $numsp ]]; do
 done
 wait
 
+echo "Testing db:commit with with_effects"
+cdb2sql $SP_OPTIONS - <<EOF
+create table commitsp_with_effects {$(cat commitsp.csc2)}\$\$
+create procedure commitsp_with_effects {$(cat commitsp_with_effects.lua)}\$\$
+exec procedure commitsp_with_effects()
+drop table commitsp_with_effects
+EOF
 
 cdb2sql $SP_OPTIONS - <<EOF
 create table transactions {$(cat transactions.csc2)}\$\$
