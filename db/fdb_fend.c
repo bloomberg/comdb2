@@ -735,7 +735,6 @@ fdb_tbl_t *_fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
 
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER, "Linking %s to %s\n", stat_tbl->name, fdb->dbname);
-    hash_add(fdb->h_tbls_name, stat_tbl);
 
     return stat_tbl;
 }
@@ -922,7 +921,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
                 rc = FDB_ERR_GENERIC;
                 goto done;
             }
-            link_stat1 = 4;
+            link_stat4 = 1;
         }
     }
 
@@ -954,9 +953,11 @@ done:
             /* get stat1 too */
             get_stat1 = 1;
         } else {
-            /* we need stat1 and stat4 */
-            get_stat1 = 1;
-            get_stat4 = 1;
+            /* we need stat1 and stat4 if we do not have them already */
+            if (!stat1)
+                get_stat1 = 1;
+            if (!stat4)
+                get_stat4 = 1;
         }
         if (get_stat1 && fdb->has_sqlstat1)
             stat1 = hash_find_readonly(fdb->h_tbls_name, &sqlite_stat1);
@@ -1483,17 +1484,21 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
  */
 void fdbUnlock(sqlite3 *db)
 {
-    /* if we got lock tables for table and any stats, free them here */
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    sqlclntstate *clnt = thd->clnt;
+
+    /* if we got lock tables for table and any stats, unlock them here */
     if (db->init.locked_table) {
-        Pthread_rwlock_unlock(&((fdb_tbl_t*)db->init.locked_table)->table_lock);
+
+        fdb_unlock_table(clnt, ((fdb_tbl_t*)db->init.locked_table)->ents.top);
         db->init.locked_table = NULL;
     }
     if (db->init.locked_stat1) {
-        Pthread_rwlock_unlock(&((fdb_tbl_t*)db->init.locked_stat1)->table_lock);
+        fdb_unlock_table(clnt, ((fdb_tbl_t*)db->init.locked_stat1)->ents.top);
         db->init.locked_stat1 = NULL;
     }
     if (db->init.locked_stat4) {
-        Pthread_rwlock_unlock(&((fdb_tbl_t*)db->init.locked_stat4)->table_lock);
+        fdb_unlock_table(clnt, ((fdb_tbl_t*)db->init.locked_stat4)->ents.top);
         db->init.locked_stat4 = NULL;
     }
 
@@ -4933,42 +4938,6 @@ int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
 }
 
 /**
- * We are trying to free a table
- * First, check if the table is still linked in fdb
- * If it is, it means it is current we 
- *
- *
- * NOTE: needs a live read lock on fdb
- */
-static void _last_reader_free_fdb_tbl(fdb_t *fdb, fdb_tbl_t *our_table)
-{
-    Pthread_mutex_lock(&fdb->tables_mtx);
-
-    fdb_tbl_t *shared_table = hash_find_readonly(fdb->h_tbls_name, &our_table->name);
-    if (our_table == shared_table) {
-        /* we still point to the current table; unlink it */
-        _unlink_fdb_table(fdb, our_table);
-    }
-    Pthread_mutex_unlock(&fdb->tables_mtx);
-
-    /* at this point the table exists only in our vdbe, and maybe a few others;
-     * check if we the last reader, and free if so
-     */
-    if (pthread_rwlock_trywrlock(&our_table->table_lock) == 0) {
-        /* we are the last user */
-        Pthread_rwlock_unlock(&our_table->table_lock);
-        _free_fdb_tbl(fdb, our_table);
-    }
-}
-
-/* for hash_for */
-static int _last_reader_free_fdb_tbl_callback(void *fdb, void *table)
-{
-    _last_reader_free_fdb_tbl((fdb_t*)fdb, (fdb_tbl_t*)table);
-    return FDB_NOERR;
-}
-
-/**
  * Unlock a remote table schema cache
  *
  */
@@ -6381,29 +6350,6 @@ static clnt_fdb_cache_t *_clnt_cache_create(void)
     }
     return cache;
 }
-
-/* this is called for cases when tbl->fdb is not reliable;
- * get fdb live lock first
- */
-static int _free_cached_tbl(void *unused, void *pTbl)
-{
-    return -1;
-}
-
-int fdb_clnt_cache_free(sqlclntstate *clnt)
-{
-    if (!clnt->remoteFdbCache)
-        return 0;
-
-    /* TODO: the fdb_tbl cached point to fdbs, but we do not expect
-     * to have locks at this point; once we released all the remote
-     * table locks, we lose the live lock on the fdbs; we do need
-     * to recollect
-     */
-    hash_for(clnt->remoteFdbCache->tbl_by_name, (int (*)(void *, void *))_free_cached_tbl, NULL);
-    return FDB_NOERR;
-}
-
 
 /* add an entry; we have tables_mtx locked, and table read locked */
 static int _clnt_cache_add_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl)
