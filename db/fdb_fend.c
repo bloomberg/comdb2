@@ -527,8 +527,9 @@ static void _init_fdb(fdb_t * fdb, const char * dbname, enum mach_class class, i
     fdb->server_version = gbl_fdb_default_ver;
     fdb->dbname_len = strlen(dbname);
     fdb->local = local;
-    Pthread_mutex_init(&fdb->tables_mtx, NULL);
     Pthread_rwlock_init(&fdb->inuse_rwlock, NULL);
+    Pthread_mutex_init(&fdb->tables_mtx, NULL);
+    listc_init(&fdb->tables, offsetof(struct fdb_tbl, lnk));
     fdb->h_ents_rootp = hash_init_i4(0);
     fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
     fdb->h_tbls_name = hash_init_strptr(0);
@@ -6357,7 +6358,7 @@ void _clnt_cache_rem_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl)
             hash_del(clnt->remoteFdbCache->tbl_ent_by_rootp, ent);
         }
         /* remove the tables itself */
-        hash_del(clnt->remoteFdbCache->tbl_by_name, ent->tbl);
+        hash_del(clnt->remoteFdbCache->tbl_by_name, tbl);
     }
 }
 
