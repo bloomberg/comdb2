@@ -2376,6 +2376,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
             from_8 = flibc_dblflip(from_8);
         }
 
+        if (inopts->roundup)
+            from_8 = ceil(from_8);
+
         switch (outlen) {
         case 8:
             if (from_8 > FLIBC_DBL_ULLONG_MAX)
@@ -2429,6 +2432,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
         if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
+
+        if (inopts->roundup)
+            from_4 = ceilf(from_4);
 
         switch (outlen) {
         case 8:
@@ -2516,6 +2522,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
             from_8 = flibc_dblflip(from_8);
         }
 
+        if (inopts->roundup)
+            from_8 = ceil(from_8);
+
         switch (outlen) {
         case 8:
             if (from_8 > FLIBC_DBL_LLONG_MAX)
@@ -2569,6 +2578,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
         if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
+
+        if (inopts->roundup)
+            from_4 = ceilf(from_4);
 
         switch (outlen) {
         case 8:

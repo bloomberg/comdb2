@@ -813,6 +813,7 @@ int sqlite3VdbeCheckFk(Vdbe *, int);
 int convMem2ClientDatetime(Mem *pMem, void *out);
 int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz);
 int convDttz2ClientDatetime(const dttz_t *, const char *tzname, void *out, int sqltype);
+void next_milliseconds(dttz_t *in);
 const char *get_clnt_tz();
 
 int sqliteVdbeMemDecimalBasicArithmetics(Mem *a, Mem *b, int opcode, Mem * res, int flipped);

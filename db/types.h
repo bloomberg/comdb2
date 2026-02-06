@@ -143,7 +143,8 @@ enum {
 #define FIELD_CONV_OPTS_COMMON                                                 \
     unsigned flags;                                                            \
     int dbpad;                                                                 \
-    int step;
+    int step;                                                                  \
+    int roundup;
 
 struct field_conv_opts {
     FIELD_CONV_OPTS_COMMON
