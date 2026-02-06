@@ -793,6 +793,14 @@ static enum mach_class normalize_class(enum mach_class class)
     return class;
 }
 
+int test_allowed_class(const char *physrep_host, const char *source_host)
+{
+    enum mach_class src_class = normalize_class(get_mach_class(source_host));
+    enum mach_class phys_class = normalize_class(get_mach_class(physrep_host));
+    int rtn = (phys_class <= src_class);
+    return rtn;
+}
+
 static int physrep_class_allow_source(const char *hostname)
 {
     enum mach_class src_class = normalize_class(get_mach_class(hostname));
@@ -914,6 +922,8 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
                 if (physrep_allowed_source(dbname, hostname)) {
                     add_replicant_host(hostname, dbname);
                     ++candidate_leaders_count;
+                } else {
+                    physrep_logmsg(LOGMSG_USER, "%s:%d blocking source %s/%s\n", __func__, __LINE__, dbname, hostname);
                 }
             }
             last_register = time(NULL);
@@ -924,9 +934,8 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
                 }
                 return 0;
             }
-            if (gbl_physrep_debug)
-                physrep_logmsg(LOGMSG_USER, "%s:%d: No candidate leaders! retrying registration in a second\n",
-                               __func__, __LINE__);
+            physrep_logmsg(LOGMSG_USER, "%s:%d: No candidate leaders! retrying registration in a second\n", __func__,
+                           __LINE__);
         } else {
             physrep_logmsg(LOGMSG_ERROR, "%s:%d Query statement returned %d\n", __func__, __LINE__, rc);
             return rc;
