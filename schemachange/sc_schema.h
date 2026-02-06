@@ -75,8 +75,7 @@ int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 
 int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type *s);
 
-int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
-                      struct dbtable *newdb);
+int check_sc_headroom(struct schema_change_type *s, struct dbtable *db);
 
 int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname);
 

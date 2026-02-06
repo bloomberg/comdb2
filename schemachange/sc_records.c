@@ -466,7 +466,7 @@ static int report_sc_progress(struct convert_record_data *data, int now)
         /* now do global sc data */
         int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
-        if (res && check_sc_headroom(data->s, data->from, data->to)) {
+        if (res && check_sc_headroom(data->s, data->from)) {
             if (data->s->force) {
                 sc_printf(data->s, "Proceeding despite low disk headroom\n");
             } else {
@@ -1915,7 +1915,7 @@ static int upgrade_records(struct convert_record_data *data)
         /* now do global sc data */
         int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
-        if (res && check_sc_headroom(data->s, data->from, data->to)) {
+        if (res && check_sc_headroom(data->s, data->from)) {
             if (data->s->force) {
                 sc_printf(data->s, "Proceeding despite low disk headroom\n");
             } else {

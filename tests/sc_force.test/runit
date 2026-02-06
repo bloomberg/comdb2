@@ -3,11 +3,12 @@
 bash -n "$0" | exit 1
 dbnm=$1
 
-fixednode=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+[[ "$debug" == "1" ]] && set -x
 
+fixednode=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $fixednode 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1`
 
-### create and populate the table 
+### Create and populate the table 
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >actual 2>&1 
 drop table if exists t
 create table t {`cat t1.csc2`}\$\$
@@ -17,32 +18,68 @@ insert into t select * from generate_series(1,1000000)
 COMMIT
 EOF
 
-### set env to delay sc and increase sc status reporting frequency 
+### Set env to increase sc status reporting frequency 
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $master - >>actual 2>&1
 exec procedure sys.cmd.send('screportfreq 1')
 EOF
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" 
 
-### try to schemachange without force
+# Calculate free space percentage after populating
+dbdir="${TESTDIR}/${dbnm}"
+df_output=$(df -P "$dbdir" | tail -1)
+total_blocks=$(echo "$df_output" | awk '{print $2}')
+avail_blocks=$(echo "$df_output" | awk '{print $4}')
+pct_free=$((avail_blocks * 100 / total_blocks))
+
+### TEST 1: Set headroom to current_free% - 5 (should SUCCEED - have more space than required)
+required_pct=$((pct_free - 5))
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE sc_headroom ${required_pct}" >/dev/null 2>&1
+
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
 alter table t {`cat t2.csc2`}
 EOF
 
-### verify that schemachange failed
+# Verify schema changed to int b (success)
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
 select csc2 from sqlite_master where tbl_name='t'
 EOF
 
-### try to schemachange with force
+### Reset table back to int a for next test
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+alter table t {`cat t1.csc2`}
+EOF
+
+### TEST 2: Set headroom to current_free% + 5 (should FAIL - need more space than we have)
+required_pct=$((pct_free + 5))
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE sc_headroom ${required_pct}" >/dev/null 2>&1
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+alter table t {`cat t2.csc2`}
+EOF
+
+# Verify schema is still int a (failure as expected)
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+select csc2 from sqlite_master where tbl_name='t'
+EOF
+
+### TEST 3: Try with force option (should SUCCEED despite low disk space)
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
 alter table t options force {`cat t2.csc2`}
 EOF
 
-
-### verify that schemachange succeeded
+# Verify schema changed to int b (force succeeded)
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
 select csc2 from sqlite_master where tbl_name='t'
 EOF
 
-diff actual expected 
+if diff -q actual expected; then 
+    echo "test passed"
+else
+    echo "first 10 diff:"
+    diff actual expected | head -10
+    echo "test failed"
+    exit 1
+fi 
+
+exit 0

@@ -1,4 +1,7 @@
 schema change report frequency is now 1 seconds
+tag ondisk {
+    int b null = yes
+}
 [alter table t {tag ondisk {
     int b null = yes
 }}] failed with rc 240 server is running low on disk space

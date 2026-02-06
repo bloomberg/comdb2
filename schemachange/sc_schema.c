@@ -1245,98 +1245,32 @@ int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type
     return 0;
 }
 
-int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
-                      struct dbtable *newdb)
+int check_sc_headroom(struct schema_change_type *s, struct dbtable *db)
 {
-    uint64_t avail, wanted;
     struct statvfs st;
     int rc;
-    uint64_t headroom = gbl_sc_headroom; /* percent */
-    uint64_t oldsize, newsize, diff;
-    char b1[32], b2[32], b3[32], b4[32];
+    uint64_t headroom = gbl_sc_headroom; /* minimum percent free space required */
+    char b1[32], b2[32];
 
-    /* 1 if using the entire table size to estimate disk space needed.
-       0 if using the following formula:
-            disk_space_needed = index_width / table_width * table_size / In(2)
-       This assumes that the table is 100% filled and the index is randomly
-       inserted into and thus has a fill factor of In(2) (~0.693). So in reality
-       the actual disk space used should be lower than the estimate. */
-    int conservative = 0;
-    double pct = 0;
-    struct scplan *theplan = newdb->plan;
-
-    if (theplan == NULL /* if not using a plan */ || (theplan->dta_plan == -1) /* if rebuilding data */ ||
-        !theplan->plan_blobs /* if rebuilding all blobs */)
-        conservative = 1;
-    else {
-        /* if rebuilding any blobs (could be expanding inline portion in which case
-           data size increases and blob size decreases, or shrinking inline portion
-           in which case data size decreases and blob size increases), just estimate
-           disk requirement the old way. */
-        for (int iblb = 0, nblb = newdb->numblobs; iblb != nblb; ++iblb) {
-            if (theplan->blob_plan[iblb] == -1) {
-                conservative = 1;
-                break;
-            }
-        }
-
-        if (!conservative) {
-            int iix, nix, lrl;
-            struct schema *ix;
-            for (iix = 0, nix = newdb->nix, lrl = newdb->lrl; iix != nix; ++iix) {
-                if (theplan->ix_plan[iix] == -1) {
-                    ix = newdb->ixschema[iix];
-                    /* If an index has a blob field or is datacopy, the size
-                       will rise based on the blob size or data size. So still
-                       use the old way here. */
-                    if (!ix->ix_blob && !(ix->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)))
-                        pct += get_size_of_schema(ix) / (double)lrl;
-                }
-            }
-
-            /* Neither an instant schema change, nor rebuilding data, indexes and blobs.
-               How can this happen? */
-            if (pct == 0)
-                conservative = 1;
-        }
-    }
-
-    oldsize = calc_table_size(olddb, 0);
-    newsize = calc_table_size(newdb, 0);
-
-    if (conservative) {
-        if (newsize > oldsize)
-            diff = oldsize / 3; /* newdb already larger; assume 33% growth */
-        else
-            diff = oldsize - newsize;
-    } else {
-        /* In case there's a miscalculation. */
-        if (newsize > oldsize)
-            diff = oldsize / 3;
-        else if ((pct * oldsize) / 0.693 > newsize)
-            diff = (pct * oldsize) / 0.693 - newsize;
-        else
-            diff = oldsize - newsize;
-    }
-
-    wanted = (diff * (uint64_t)(100 + headroom)) / 100ULL;
-
-    rc = statvfs(olddb->dbenv->basedir, &st);
+    rc = statvfs(db->dbenv->basedir, &st);
     if (rc == -1) {
-        sc_errf(s, "cannot get file system data for %s: %d %s\n",
-                olddb->dbenv->basedir, errno, strerror(errno));
+        sc_errf(s, "cannot get file system data for %s: %d %s\n", db->dbenv->basedir, errno, strerror(errno));
         return -1;
     }
 
-    avail = (uint64_t)st.f_bavail * (uint64_t)st.f_frsize;
+    uint64_t total = (uint64_t)st.f_blocks * (uint64_t)st.f_frsize;
+    uint64_t avail = (uint64_t)st.f_bavail * (uint64_t)st.f_frsize;
+    uint64_t pct_free = total > 0 ? (avail * 100) / total : 0;
 
-    sc_printf(
-        s, "Table %s, old %s, new %s, reqd. %s, avail %s\n", olddb->tablename,
-        fmt_size(b1, sizeof(b1), oldsize), fmt_size(b2, sizeof(b2), newsize),
-        fmt_size(b3, sizeof(b3), wanted), fmt_size(b4, sizeof(b4), avail));
+    sc_printf(s, "total disk space %s, available disk space %s, %llu%% free (threshold %llu%%)\n",
+              fmt_size(b1, sizeof(b1), total), fmt_size(b2, sizeof(b2), avail), (unsigned long long)pct_free,
+              (unsigned long long)headroom);
 
-    if (wanted > avail) {
-        sc_errf(s, "DANGER low headroom for schema change\n");
+    if (pct_free < headroom) {
+        sc_errf(s,
+                "DANGER low disk space for schema change: "
+                "%llu%% free, need %llu%%\n",
+                (unsigned long long)pct_free, (unsigned long long)headroom);
         sc_client_error(s, "server is running low on disk space");
         return -1;
     }
