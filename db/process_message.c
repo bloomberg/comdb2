@@ -2168,6 +2168,26 @@ clipper_usage:
         int mclass = machine_class(hostname);
         const char *clstr = mach_class_class2name(mclass);
         logmsg(LOGMSG_USER, "machine_class for %s is %s\n", hostname, clstr);
+    } else if (tokcmp(tok, ltok, "test_allowed_class") == 0) {
+        char *physrep_host = NULL;
+        char *source_host = NULL;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "test_allowed_class requires physrep_host & src_host\n");
+            return -1;
+        }
+        physrep_host = alloca(ltok + 1);
+        tokcpy(tok, ltok, physrep_host);
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "test_allowed_class requires physrep_host & src_host\n");
+            return -1;
+        }
+        source_host = alloca(ltok + 1);
+        tokcpy(tok, ltok, source_host);
+        int test_allowed_class(const char *physrep_host, const char *source_host);
+        int rtn = test_allowed_class(physrep_host, source_host);
+        logmsg(LOGMSG_USER, "test_allowed_class physrep=%s source=%s returns %d\n", physrep_host, source_host, rtn);
     } else if (tokcmp(tok, ltok, "physrep_allowed_source") == 0) {
         char *dbname = NULL;
         char *hostname = NULL;

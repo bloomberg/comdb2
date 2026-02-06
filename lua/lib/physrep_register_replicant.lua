@@ -23,22 +23,6 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
     -- from the comdb2_physrep_connections table.
     db:exec("DELETE FROM comdb2_physrep_connections WHERE dbname = '" ..  dbname .. "' AND host = '" .. hostname .. "'")
 
-    -- Try not to allow more than 'physrep_max_pending_replicants' replicant registrations in flight.
-    -- The following check is not perfect as it might not work if many requests show up at the same time.
-    -- In which case they all could get the same list of potential leader hosts that they can connect
-    -- against. And if they have 'physrep_shuffle_host_list' turned off, then the first host in the
-    -- list might end up supporting all the replicants.
-    -- We try to alleviate this by adding the following sleep for a random duration to spread out
-    -- these requests.
-    db:exec("SELECT sleep(abs(random()%10))")
-
-    local rs, rc = db:exec("SELECT COUNT(*) AS cnt FROM comdb2_physreps WHERE state='Pending'")
-    local row = rs:fetch()
-    if row.cnt > tunables["physrep_max_pending_replicants"] then
-        db:commit()
-        return
-    end
-
     local physrep_fanout = tunables["physrep_fanout"]
     local physrep_max_candidates = tunables["physrep_max_candidates"]
     local firstfile = tunables["firstfile"]

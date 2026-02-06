@@ -586,7 +586,7 @@ static int db_comdb_physrep_tunables(Lua L)
         return luaL_error(L, "Requires sourcedb");
     }
 
-    int tunables_count = 4;
+    int tunables_count = 3;
 
     lua_createtable(L, tunables_count, 0);
 
@@ -596,10 +596,6 @@ static int db_comdb_physrep_tunables(Lua L)
 
     lua_pushstring(L, "physrep_max_candidates");
     lua_pushinteger(L, gbl_physrep_max_candidates);
-    lua_settable(L, -3);
-
-    lua_pushstring(L, "physrep_max_pending_replicants");
-    lua_pushinteger(L, gbl_physrep_max_pending_replicants);
     lua_settable(L, -3);
 
     int firstfile = 0;
