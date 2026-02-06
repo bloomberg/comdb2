@@ -49,14 +49,6 @@
 
 #include "str_util.h" /* QUOTE */
 
-/*
-*******************************************************************************
-** WARNING: If you add any internal configuration state to this file, please
-**          update the reset_the_configuration() function as well to include
-**          it.
-*******************************************************************************
-*/
-
 #ifndef API_DRIVER_NAME
 #define API_DRIVER_NAME open_cdb2api
 #endif
@@ -7336,7 +7328,7 @@ no_roomresult:
 
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, int comdb2db_num, const char *host,
                                 int port, char hosts[][CDB2HOSTNAME_LEN], int *num_hosts, const char *dbname,
-                                char *cluster, int *dbnum, int *num_same_room, int num_retries, int use_bmsd,
+                                char *cluster, int *dbnum, int *num_same_room, int retries_done, int use_bmsd,
                                 char shards[][DBNAME_LEN], int *num_shards, int *num_shards_same_room)
 {
     int find_shards =
@@ -7501,8 +7493,8 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
             goto free_vars;
         }
     }
-    rc = cdb2_send_query(NULL, hndl, ss, comdb2db_name, sql_query, 0, 0, NULL,
-                         3, bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
+    rc = cdb2_send_query(NULL, hndl, ss, comdb2db_name, sql_query, 0, 0, NULL, 3, bindvars, 0, NULL, 0, 0, retries_done,
+                         0, __LINE__);
     if (rc)
         debugprint("cdb2_send_query rc = %d\n", rc);
 
@@ -7529,20 +7521,21 @@ free_vars:
     int len;
     CDB2SQLRESPONSE *sqlresponse = NULL;
     cdb2_hndl_tp tmp = {.sb = ss};
-    rc = cdb2_read_record(&tmp, &p, &len, NULL);
+    int type;
+    rc = cdb2_read_record(&tmp, &p, &len, &type);
 #ifdef CDB2API_TEST
     if (fail_dbhosts_invalid_response) {
         --fail_dbhosts_invalid_response;
         rc = -1;
     }
 #endif
+    /* `tmp' will inherit global events, if any. Make sure free_events() is called before exiting the function. */
     if (rc) {
         debugprint("cdb2_read_record rc = %d\n", rc);
         cdb2buf_close(ss);
-        snprintf(hndl->errstr, sizeof(hndl->errstr),
-                 "%s:%d  Invalid sql response from db %s \n", __func__,
-                 __LINE__, comdb2db_name);
         free_events(&tmp);
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d  Invalid sql response from db %s \n", __func__, __LINE__,
+                 comdb2db_name);
 #ifdef CDB2API_TEST_DEBUG
         printf("*** %s", hndl->errstr);
 #endif
@@ -7561,11 +7554,21 @@ free_vars:
         (sqlresponse->response_type != RESPONSE_TYPE__COLUMN_NAMES &&
          sqlresponse->n_value != 1 && sqlresponse->value[0]->has_type != 1 &&
          sqlresponse->value[0]->type != 3)) {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Got bad response for %s query. Reply len: %d\n", __func__,
-                 comdb2db_name, len);
+        if (sqlresponse) {
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s: Got bad response for %s query. Host:%s len:%d Err:%d type:%d resp_type:%d retry:%d pool:%d\n",
+                     __func__, comdb2db_name, host, len, sqlresponse->error_code, type, sqlresponse->response_type,
+                     retries_done, is_sockfd);
+        } else {
+            /* This could be dbinfo? */
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s: Got bad response for %s query. Host:%s len: %d type:%d retry:%d pool:%d\n", __func__,
+                     comdb2db_name, host, len, type, retries_done, is_sockfd);
+        }
 #ifdef CDB2API_TEST_DEBUG
         printf("*** %s", hndl->errstr);
 #endif
+        free(p);
         cdb2buf_close(ss);
         free_events(&tmp);
         return -1;
@@ -7598,6 +7601,7 @@ free_vars:
 #ifdef CDB2API_TEST_DEBUG
             printf("*** %s", hndl->errstr);
 #endif
+            free(p);
             free_events(&tmp);
             return -1;
         }
@@ -7638,9 +7642,9 @@ free_vars:
     }
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
-    int timeoutms = 10 * 1000;
     if (cdb2buf_free(ss) == 0)
-        cdb2_socket_pool_donate_ext(hndl, newsql_typestr, fd, timeoutms / 1000, comdb2db_num);
+        cdb2_socket_pool_donate_ext(hndl, newsql_typestr, fd, 10, comdb2db_num);
+
     free_events(&tmp);
     return 0;
 }
