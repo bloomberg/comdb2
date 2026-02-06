@@ -75,6 +75,11 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt);
  */
 int dohsql_is_parallel_shard(void);
 
+int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i);
+
+#define DOHSQL_CLIENT                                                          \
+    (clnt->plugin.state && clnt->plugin.write_response == dohsql_write_response)
+
 /**
  * Retrieve error from a distributed execution plan, if any
  *

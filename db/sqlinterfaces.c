@@ -5321,8 +5321,11 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     clear_session_tbls(clnt);
-    free_authdata(clnt);
-    clnt->authdata = NULL;
+    /* Don't free authdata on parallel SQL shards */
+    if (clnt->authdata && !(clnt->conns || DOHSQL_CLIENT)) {
+        free_authdata(clnt);
+        clnt->authdata = NULL;
+    }
 
     free_client_adj_col_names(clnt);
 
@@ -5517,7 +5520,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         free(clnt->context[i]);
     }
     free(clnt->context);
-    if (clnt->authdata) {
+    /* Don't free authdata on parallel SQL shards */
+    if (clnt->authdata && !(clnt->conns || DOHSQL_CLIENT)) {
         free_authdata(clnt);
         clnt->authdata = NULL;
     }
