@@ -140,7 +140,8 @@ struct fdb_tbl {
     pthread_mutex_t ents_mtx; /* entries add/rm lock */ /*TODO: review this
                                                            mutex, we need
                                                            something else */
-    LINKC_T(struct fdb_tbl) lnk; /* link for tables cached from a fdb */
+    LINKC_T(struct fdb_tbl) lnk; /* link for tables for a fdb */
+    LINKC_T(struct fdb_tbl) lnk_cache; /* link for tables cached in clnt for a fdb; only valid with a read lock */
     pthread_rwlock_t table_lock; /* use to lock the table, by sqlite engines or cleanup */
 
     int need_version; /* a remote op detected that local is stale, and this
@@ -748,6 +749,7 @@ fdb_tbl_t *_fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
  *
  * NOTE: all work is done under tables_mtx, except for initial remote version check
  * NOTE2: obviously there is a read live lock for fdb (obtained by _new_fdb())
+ * NOTE3: need to handle special cases when the query asks for sqlite_master or stats
  *
  */
 static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb, const char *table_name, int *version)
@@ -759,12 +761,18 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
     fdb_tbl_t *tbl = NULL, *stat1 = NULL, *stat4 = NULL;
     int initial;
     fdb_tbl_ent_t *found_ent;
-    int link_new_tables = 0;
-    int is_sqlite_master; /* corner case when sqlite_master is the first query
-                             remote;
-                             there is no "sqlite_master" entry for
-                             sqlite_master, but
+    int link_table = 0, link_stat1 = 0, link_stat4 = 0;
+    int is_sqlite_master; /* corner case when sqlite_master is the first query remote;
+                             there is no "sqlite_master" entry for sqlite_master, but
                              that doesn't make the case here to fail */
+    int is_sqlite_stat1;
+    int is_sqlite_stat4;
+    const char *sqlite_stat1 = "sqlite_stat1"; /* hash keys */
+    const char *sqlite_stat4 = "sqlite_stat4";
+
+    is_sqlite_master = (strcasecmp(table_name, "sqlite_master") == 0);
+    is_sqlite_stat1 = (strcasecmp(table_name, "sqlite_stat1") == 0);
+    is_sqlite_stat4 = (strcasecmp(table_name, "sqlite_stat4") == 0);
 
     /* when attaching a new table (and possible stats), we save them in the sqlite.
      * table and stats will be read locked; once sqlite is done setting up the new
@@ -776,9 +784,9 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
     db->init.fdb = NULL;
 
     /* we need the remote version of the table to be attached, do it now before
-     * mutexes are acquired
+     * mutexes are acquired (ignore sqlite_master)
      */
-    if (comdb2_get_verify_remote_schemas()) {
+    if (comdb2_get_verify_remote_schemas() && !is_sqlite_master) {
         /* this is a retry for an already */
         rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class,
                 fdb->loc == NULL, &remote_version, &err);
@@ -807,6 +815,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
          */
         assert(remtbl);
         tbl = remtbl;
+        /* collect stats tables also */
         goto done;
     }
 
@@ -820,6 +829,9 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
             rc = FDB_NOERR;
             *version = remtbl->version;
             Pthread_mutex_unlock(&remtbl->need_version_mtx);
+
+            tbl = remtbl;
+            /* collect stats tables also */
             goto done;
         }
 
@@ -844,10 +856,21 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
     }
 
     /* we will generate new tables */
-    link_new_tables = 1;
+    link_table = 1;
 
     /* is this the first table? grab sqlite_stats too */
     initial = _num_entries(fdb) == 0;
+
+    if (!initial) {
+        /* corner case: it is possible that initially the remote
+         * db had no stats tables; check if we have sqlite_stat1
+         * local, and if it is not, we consider this case
+         * initial
+         */
+        if (hash_find_readonly(fdb->h_tbls_name, &sqlite_stat1) == NULL) {
+            initial = 1;
+        }
+    }
 
     /* create the table object */
     tbl = _alloc_fdb_tbl(table_name);
@@ -859,7 +882,6 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
     /* this COULD be taken out of tbls_mtx, but I want to clear table
        under lock so I don't add garbage table structures when mispelling
      */
-    is_sqlite_master = (strcasecmp(table_name, "sqlite_master") == 0);
     found_ent = NULL;
     rc = _retrieve_fdb_tbl(fdb, tbl, initial, &found_ent, is_sqlite_master);
 
@@ -890,6 +912,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
                 rc = FDB_ERR_GENERIC;
                 goto done;
             }
+            link_stat1 = 1;
         }
 
         if (fdb->has_sqlstat4 &&
@@ -899,6 +922,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
                 rc = FDB_ERR_GENERIC;
                 goto done;
             }
+            link_stat1 = 4;
         }
     }
 
@@ -914,6 +938,31 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
 
 done:
     if (!rc) {
+        /* do we need to cache stats locally ?
+         * handle corner cases when tbl is a stat actually
+         */
+        int get_stat1 = 0;
+        int get_stat4 = 0;
+        if (is_sqlite_stat1) {
+            stat1 = tbl;
+            tbl = NULL;
+            /* get stat4 too */
+            get_stat4 = 1;
+        } else if (is_sqlite_stat4) {
+            stat4 = tbl;
+            tbl = NULL;
+            /* get stat1 too */
+            get_stat1 = 1;
+        } else {
+            /* we need stat1 and stat4 */
+            get_stat1 = 1;
+            get_stat4 = 1;
+        }
+        if (get_stat1 && fdb->has_sqlstat1)
+            stat1 = hash_find_readonly(fdb->h_tbls_name, &sqlite_stat1);
+        if (get_stat4 && fdb->has_sqlstat4)
+            stat4 = hash_find_readonly(fdb->h_tbls_name, &sqlite_stat4);
+
         /* cache the entries in clnt */
         if (tbl) {
             rc = _clnt_cache_add_tbl(clnt, tbl);
@@ -950,13 +999,14 @@ done:
         db->init.fdb = fdb;
 
         /* we are all set, all we have to do is to link the read locked tables to fdb */
-        if (link_new_tables) { 
-            if (tbl)
-                _link_fdb_table(fdb, tbl);
-            if (stat1)
-                _link_fdb_table(fdb, stat1);
-            if (stat4)
-                _link_fdb_table(fdb, stat4);
+        if (link_table && tbl) { 
+            _link_fdb_table(fdb, tbl);
+        }
+        if (link_stat1 && stat1) {
+            _link_fdb_table(fdb, stat1);
+        }
+        if (link_stat4 && stat4) {
+            _link_fdb_table(fdb, stat4);
         }
     }
     /* done here, tables are visible and read locked */
@@ -1646,6 +1696,8 @@ void *fdb_get_sqlite_master_entry(fdb_t *fdb, fdb_tbl_ent_t *ent)
  * NOTE3: there were some issues with sqlitex and table names in the past,
  * when we validate columns for remote queries;  the sqlitex does not
  * have a cache, and we will be relying on sqlite engine cache for the data
+ * NOTE4: we need to be aware that we might not have stats tables; if no stat1
+ * we assume automatically no stat4
  *
  */
 int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
@@ -1653,6 +1705,12 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
     sqlite3 *db = pCur->sqlite;
     fdb_t *fdb = pCur->bt->fdb;
     fdb_tbl_t *tbl = NULL;
+    /* to walk up to three tables, we use step to tell which table we need
+     * order is
+     * 0 - table (no stats table)
+     * 1 - stat1
+     * 2 - stat2
+     */
     int step = 0;
 
     const char *zTblName;
@@ -1674,8 +1732,9 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
 
     pCur->eof = 0;
 
-    /* are we walking the sqlite_stats? */
+    /* is this not the first row we try to get? */
     if (pCur->crt_sqlite_master_row) {
+        /* first row, check if we are walking the sqlite_stats */
         if (strncasecmp(pCur->crt_sqlite_master_row->name, "sqlite_stat1",
                         12) == 0) {
             goto sqlite_stat1;
@@ -1685,21 +1744,23 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
             goto sqlite_stat4;
         }
     } else {
-        /* this is the first time we step and locate a table; we
-        will need to position on the current table; given the order
-        chosen {table, stat1, stat4, done}, if table is stat4, we
-        end up skipping stat1.  To fix this, we replace stat4 with
-        stat1 since we will get stat4 after this.
-        */
-        if (strncasecmp(zTblName, "sqlite_stat4", 12) == 0)
-            zTblName = "sqlite_stat1";
-        /* In addition, if the first remote table from this fdb
-        is sqlite_master, we only get stats tables, and the follow-up
-        hash_find_readonly returns no entry, since we don't have an
-        entry for sqlite_master;  fix this by pointing to sqlite_stat1
-        as well */
-        if (strncasecmp(zTblName, "sqlite_master", 13) == 0)
-            zTblName = "sqlite_stat1";
+        /* this is the first row we are getting;
+         * preserve the order {table, stat1, stat4, done}
+         */
+        /* if table is stat4, we
+         *  end up skipping stat1.  To fix this, we replace stat4 with
+         *  stat1 since we will get stat4 after this.
+         */
+        if (strncasecmp(zTblName, "sqlite_stat4", 12) == 0) {
+            goto sqlite_stat1;
+        } else {
+            /* In addition, if the first remote table from this fdb
+             * is sqlite_master, we only get stats tables stat1 and stat4
+             */
+            if (strncasecmp(zTblName, "sqlite_master", 13) == 0) {
+                goto sqlite_stat1;
+            }
+        }
     }
 
 search:
@@ -1711,6 +1772,10 @@ search:
         assert(pCur->crt_sqlite_master_row);
     } else {
         if (!pCur->crt_sqlite_master_row->lnk.next) {
+            /* we consumed last row from the current table,
+             * "step" will tell us if there is a followup
+             * table we need to consider
+             */
             switch (step) {
             case 0:
                 pCur->crt_sqlite_master_row = NULL;
@@ -1727,25 +1792,41 @@ search:
     }
 
     if (!pCur->crt_sqlite_master_row) {
-        pCur->eof = 1;
-        *pRes = 1;
-        return SQLITE_OK;
+        goto done;
     }
 
+    /* we have a row ! */
     *pRes = 0;
     return SQLITE_OK;
 
 sqlite_stat1:
+    if (!fdb->has_sqlstat1) {
+        /* we are trying to get stats,
+         * but no stats, done
+         */
+        goto done;
+    }
     zTblName = "sqlite_stat1";
     step = 1;
 
     goto search;
 
 sqlite_stat4:
+    if (!fdb->has_sqlstat4) {
+        /* we are trying to get stat4,
+         * but no stat4, done
+         */
+        goto done;
+    }
     zTblName = "sqlite_stat4";
     step = 2;
 
     goto search;
+
+done:
+    pCur->eof = 1;
+    *pRes = 1;
+    return SQLITE_OK;
 }
 
 /**
@@ -6286,6 +6367,7 @@ struct clnt_fdb_cache
 {
     hash_t *tbl_ent_by_rootp;
     hash_t *tbl_by_name;
+    LISTC_T(struct fdb_tbl) tbls;
 };
 typedef struct clnt_fdb_cache clnt_fdb_cache_t;
 
@@ -6295,6 +6377,7 @@ static clnt_fdb_cache_t *_clnt_cache_create(void)
     if (cache) {
         cache->tbl_ent_by_rootp = hash_init_i4(0);
         cache->tbl_by_name = hash_init_strptr(0);
+        listc_init(&cache->tbls, offsetof(struct fdb_tbl, lnk_cache));
     }
     return cache;
 }
@@ -6343,6 +6426,7 @@ static int _clnt_cache_add_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl)
         hash_add(cache->tbl_ent_by_rootp, ent);
     }
     hash_add(cache->tbl_by_name, tbl);
+    listc_abl(&cache->tbls, tbl);
     return 0;
 }
 
@@ -6359,6 +6443,7 @@ void _clnt_cache_rem_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl)
         }
         /* remove the tables itself */
         hash_del(clnt->remoteFdbCache->tbl_by_name, tbl);
+        listc_rfl(&clnt->remoteFdbCache->tbls, tbl);
     }
 }
 
