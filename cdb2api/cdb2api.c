@@ -5262,7 +5262,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         return 0;
 
     int rc = 0;
-    if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
+    if (!(hndl->snapshot_file || hndl->query_no <= 0)) {
         debugprint("in_trans=%d snapshot_file=%d query_no=%d\n", hndl->in_trans,
                    hndl->snapshot_file, hndl->query_no);
         sprintf(hndl->errstr, "Database disconnected while in transaction.");
