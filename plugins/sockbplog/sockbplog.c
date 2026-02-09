@@ -99,7 +99,7 @@ err_nomsg:
 
 int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
 {
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     char *host = "localhost";
     char line[128];
     int rc = 0;

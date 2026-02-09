@@ -3788,7 +3788,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 int handle_remsql_request(comdb2_appsock_arg_t *arg)
 {
     struct dbenv *dbenv;
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     char line[128];
     int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
@@ -3857,7 +3857,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
 
 int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
 {
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     fdb_msg_tran_t open_msg;
     fdb_msg_t msg;
     int rc = 0;
@@ -3963,7 +3963,7 @@ done:
 
 int handle_remtran_request(comdb2_appsock_arg_t *arg)
 {
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     fdb_msg_tran_t open_msg;
     fdb_msg_t msg;
     int rc = 0;
@@ -4096,7 +4096,7 @@ static int _is_tablename_unique(const char *name)
 int handle_alias_request(comdb2_appsock_arg_t *arg)
 {
     struct dbenv *dbenv;
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     char *op = NULL;
     char *aliasname = NULL;
     char *url = NULL;

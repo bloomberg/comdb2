@@ -18,7 +18,7 @@
 #define __INCLUDED_COMDB2_APPSOCK_H
 
 #include <inttypes.h>
-struct sbuf2;
+#include <sbuf2.h>
 
 /* Return codes */
 enum {
@@ -33,7 +33,7 @@ struct comdb2_appsock_arg {
     char *table_name;       /* Changed on the execution of 'use' */ 
     int table_num;          /* Also for 'use' */
     int conv_flags;      /* Changed on the execution of 'lendian' */
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     char *cmdline;
     int *keepsocket;
     int error; /* internal error code */
