@@ -793,6 +793,7 @@ static enum mach_class normalize_class(enum mach_class class)
     return class;
 }
 
+#ifdef COMDB2_TEST
 int test_allowed_class(const char *physrep_host, const char *source_host)
 {
     enum mach_class src_class = normalize_class(get_mach_class(source_host));
@@ -800,6 +801,7 @@ int test_allowed_class(const char *physrep_host, const char *source_host)
     int rtn = (phys_class <= src_class);
     return rtn;
 }
+#endif
 
 static int physrep_class_allow_source(const char *hostname)
 {
