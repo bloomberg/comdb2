@@ -2391,6 +2391,67 @@ function verify_non_ignored_reptype
     [[ -n "$ignored" ]] && cleanFailExit "Found ignored rep-messages after incoherent recovery: $ignored"
 }
 
+function test_intermediate_physrep_active_status()
+{
+    echo "== Testing alternate physrep advertises as Active in alternate metadb =="
+
+    local alt_state=""
+    local alt_host=""
+    local retry_count=0
+    local max_retries=100
+
+    # Verify that REPL_ALT_DBNAME is registered in the alternate metadb with state='Active'
+    # Since REPL_ALT_DBNAME uses the alternate metadb (REPL_ALTMETA_DBNAME) as its default metadb,
+    # it should register there as 'Active' when it's running
+
+    echo "Checking that $REPL_ALT_DBNAME is registered as Active in alternate metadb"
+    while [[ $retry_count -lt $max_retries ]]; do
+        alt_state=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST \
+            "select state from comdb2_physreps where dbname='$REPL_ALT_DBNAME' limit 1" 2>/dev/null)
+
+        if [[ "$alt_state" == "Active" ]]; then
+            echo "$REPL_ALT_DBNAME is Active in alternate metadb"
+            break
+        fi
+
+        echo "Waiting for $REPL_ALT_DBNAME to be Active (current: $alt_state), retry $retry_count/$max_retries"
+        sleep 2
+        let retry_count=retry_count+1
+    done
+
+    [[ "$alt_state" != "Active" ]] && cleanFailExit "$REPL_ALT_DBNAME not Active in alternate metadb (state: $alt_state)"
+
+    # Create a test table and verify it replicates to the alternate physrep
+    echo "Creating test table for alternate physrep replication"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table tier_test(a int, b cstring(32))"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into tier_test select *, 'tier_data' from generate_series(1, 100)"
+
+    # Wait for alternate physrep (using alternate metadb) to catch up
+    echo "Waiting for alternate physrep ($REPL_ALT_DBNAME) to replicate"
+    local cnt=0
+    retry_count=0
+    while [[ "$cnt" -ne "100" && $retry_count -lt $max_retries ]]; do
+        sleep 1
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALT_DBNAME --host $REPL_ALT_HOST \
+            "select count(*) from tier_test" 2>/dev/null)
+        let retry_count=retry_count+1
+    done
+    [[ "$cnt" -ne "100" ]] && cleanFailExit "Alternate physrep didn't replicate tier_test"
+
+    echo "Replication to alternate physrep successful"
+
+    # Cleanup
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table tier_test"
+
+    # Wait for drops to propagate
+    cnt=1
+    while [[ "$cnt" -ne "0" ]]; do
+        sleep 1
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALT_DBNAME --host $REPL_ALT_HOST \
+            "select count(*) from comdb2_tables where tablename='tier_test'" 2>/dev/null)
+    done
+}
+
 function announce
 {
     typeset text=$1
@@ -2563,6 +2624,11 @@ function run_tests
     testcase="physrep_allowed_source"
     testcase_preamble $testcase
     physrep_allowed_source
+    testcase_finish $testcase
+
+    testcase="test_intermediate_physrep_active_status"
+    testcase_preamble $testcase
+    test_intermediate_physrep_active_status
     testcase_finish $testcase
 }
 
