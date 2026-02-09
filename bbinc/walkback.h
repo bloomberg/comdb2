@@ -17,8 +17,6 @@
 #ifndef INCLUDED_WALKBACK_H
 #define INCLUDED_WALKBACK_H
 
-#include <ucontext.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,15 +33,13 @@ int walkback_initialize_module(void);
 
 int /* rcode */
     stack_pc_getlist(
-        ucontext_t *context,  /* or NULL for current context */
         void **pcArray,       /* output array of program counters */
         unsigned pcArraySize, /* number of elements in pcArray */
         unsigned *pcOutCount  /* number of program counters returned */
         );
 
 int                                        /* rcode */
-    stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
-                      unsigned maxframes,
+    stack_pc_walkback(unsigned maxframes,
                       void (*handler)(void *returnaddr, void *handlerarg),
                       void *handlerarg);
 

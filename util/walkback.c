@@ -323,7 +323,7 @@ static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
 *
 ******************************************************************************/
 
-static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
+static int __linux_stack_walkback(unsigned maxframes,
                                   void (*handler)(void *returnaddr,
                                                   void *handlerarg),
                                   void *handlerarg)
@@ -331,13 +331,10 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
     unw_cursor_t cursor;
     unsigned int i;
     unw_word_t ip;
-    ucontext_t uc;
+    unw_context_t context;
 
-    if (context == 0) {
-        context = &uc;
-        unw_getcontext(context);
-    }
-    unw_init_local(&cursor, context);
+    unw_getcontext(&context);
+    unw_init_local(&cursor, &context);
     for (i = 0; i < maxframes; ++i) {
         unw_get_reg(&cursor, UNW_REG_IP, &ip);
         (*handler)((void *)ip, handlerarg);
@@ -350,7 +347,7 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
 #endif
 
 #if defined(__APPLE__)
-static int __apple_stack_walkback(ucontext_t *context, unsigned maxframes,
+static int __apple_stack_walkback(unsigned maxframes,
                                   void (*handler)(void *returnaddr,
                                                   void *handlerarg),
                                   void *handlerarg)
@@ -366,18 +363,17 @@ static int __apple_stack_walkback(ucontext_t *context, unsigned maxframes,
 *
 ******************************************************************************/
 
-int stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
-                      unsigned maxframes,
+int stack_pc_walkback(unsigned maxframes,
                       void (*handler)(void *returnaddr, void *handlerarg),
                       void *handlerarg)
 {
 
 #if defined(__sparc)
-    return __sparc_stack_walkback(context, maxframes, handler, handlerarg);
+    return __sparc_stack_walkback(maxframes, handler, handlerarg);
 #elif defined(__linux__)
-    return __linux_stack_walkback(context, maxframes, handler, handlerarg);
+    return __linux_stack_walkback(maxframes, handler, handlerarg);
 #elif defined(__APPLE__)
-    return __apple_stack_walkback(context, maxframes, handler, handlerarg);
+    return __apple_stack_walkback(maxframes, handler, handlerarg);
 #else
 
 #error Unsupported architecture
@@ -504,7 +500,6 @@ static void pclist_add(void *address, void *arg)
 
 int /* rcode */
     stack_pc_getlist(
-        ucontext_t *context,  /* or NULL for current context */
         void **pcArray,       /* output array of program counters */
         unsigned pcArraySize, /* number of elements in pcArray */
         unsigned *pcOutCount  /* number of program counters returned */
@@ -519,7 +514,7 @@ int /* rcode */
     arg.pcOutCount = 0;
 
     if (gbl_walkback_enabled) {
-        rcode = stack_pc_walkback(context, pcArraySize, pclist_add, &arg);
+        rcode = stack_pc_walkback(pcArraySize, pclist_add, &arg);
     }
 
     *pcOutCount = arg.pcOutCount;
@@ -537,7 +532,7 @@ void comdb2_cheapstack(FILE *f)
     unsigned int nframes;
     int i;
 
-    if (stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (stack_pc_getlist(stack, MAXFRAMES, &nframes)) {
         fprintf(f, "Can't get stack trace\n");
         return;
     }
@@ -556,7 +551,7 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
     char *p;
     int i, ccount, first = 1;
 
-    if (maxln <= 0 || stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (maxln <= 0 || stack_pc_getlist(stack, MAXFRAMES, &nframes)) {
         return -1;
     }
     p = str;

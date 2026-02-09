@@ -236,7 +236,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 #ifndef TESTSUITE
 #ifndef __linux__
 	if (gbl_berk_track_cursors)
-		stack_pc_getlist(NULL, dbc->stackinfo.stack, MAXSTACKDEPTH,
+		stack_pc_getlist(dbc->stackinfo.stack, MAXSTACKDEPTH,
 		    &dbc->stackinfo.nframes);
 	else
 #else

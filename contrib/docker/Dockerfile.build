@@ -5,8 +5,10 @@ RUN apt-get update && \
     bc \
     bison \
     build-essential \
+    cmake \
     flex \
     gawk \
+    libevent-dev \
     liblz4-dev \
     libprotobuf-c-dev \
     libreadline-dev \
@@ -17,7 +19,7 @@ RUN apt-get update && \
     make \
     ncurses-dev \
     protobuf-c-compiler \
-    tcl \
+    tcl-dev \
     uuid-dev \
     libz1 \
     liblz4-tool \
@@ -29,6 +31,6 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/*
 
 COPY . /comdb2.build
-RUN cd /comdb2.build && make clean
+RUN cd /comdb2.build && mkdir build && cd build && cmake .. && make
 
 VOLUME /comdb2
