@@ -323,9 +323,7 @@ static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
 *
 ******************************************************************************/
 
-static int __linux_stack_walkback(unsigned maxframes,
-                                  void (*handler)(void *returnaddr,
-                                                  void *handlerarg),
+static int __linux_stack_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg),
                                   void *handlerarg)
 {
     unw_cursor_t cursor;
@@ -347,9 +345,7 @@ static int __linux_stack_walkback(unsigned maxframes,
 #endif
 
 #if defined(__APPLE__)
-static int __apple_stack_walkback(unsigned maxframes,
-                                  void (*handler)(void *returnaddr,
-                                                  void *handlerarg),
+static int __apple_stack_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg),
                                   void *handlerarg)
 {
     return 0;
@@ -363,9 +359,7 @@ static int __apple_stack_walkback(unsigned maxframes,
 *
 ******************************************************************************/
 
-int stack_pc_walkback(unsigned maxframes,
-                      void (*handler)(void *returnaddr, void *handlerarg),
-                      void *handlerarg)
+int stack_pc_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg), void *handlerarg)
 {
 
 #if defined(__sparc)

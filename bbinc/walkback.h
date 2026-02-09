@@ -38,10 +38,8 @@ int /* rcode */
         unsigned *pcOutCount  /* number of program counters returned */
         );
 
-int                                        /* rcode */
-    stack_pc_walkback(unsigned maxframes,
-                      void (*handler)(void *returnaddr, void *handlerarg),
-                      void *handlerarg);
+int /* rcode */
+stack_pc_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg), void *handlerarg);
 
 void stack_pc_walkback_print(void *returnaddr, void *arg);
 
