@@ -72,6 +72,7 @@ extern int gbl_expressions_indexes;
 
 int gbl_fdb_default_ver = FDB_VER;
 int gbl_fdb_track = 0;
+int gbl_fdb_track_locking = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
 int gbl_fdb_push_remote = 1;
@@ -487,6 +488,8 @@ fdb_t *get_fdb(const char *dbname)
 void put_fdb(fdb_t *fdb, enum fdb_put_flag flag)
 {
     Pthread_mutex_lock(&fdbs.arr_mtx);
+    if (gbl_fdb_track_locking)
+        logmsg(LOGMSG_USER, "Unlocking fdb %s with flag %d\n", fdb->dbname, flag);
     Pthread_rwlock_unlock(&fdb->inuse_rwlock);
     if (flag == FDB_PUT_TRYFREE) {
         /* try to get a wrlock on the fdb;
@@ -494,6 +497,8 @@ void put_fdb(fdb_t *fdb, enum fdb_put_flag flag)
          * it is safe to remove; otherwise, there is a
          * reader that will take over
          */
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Trywrlock fdb %s with flag %d\n", fdb->dbname, flag);
         if (pthread_rwlock_trywrlock(&fdb->inuse_rwlock) == 0) {
             _cache_unlink_fdb(fdb);
             /* after this, the fdb is not foundable anymore */
@@ -501,12 +506,16 @@ void put_fdb(fdb_t *fdb, enum fdb_put_flag flag)
             flag = FDB_PUT_NOFREE; /* do not free, there are readers */
         }
     } else if (flag == FDB_PUT_FORCEFREE) {
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Writelock fdb %s with flag %d\n", fdb->dbname, flag);
         Pthread_rwlock_wrlock(&fdb->inuse_rwlock);
         _cache_unlink_fdb(fdb);
     }
     Pthread_mutex_unlock(&fdbs.arr_mtx);
 
     if (flag != FDB_PUT_NOFREE) {
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Unlocking fdb %s checked flag %d\n", fdb->dbname, flag);
         Pthread_rwlock_unlock(&fdb->inuse_rwlock);
         _free_fdb(fdb);
     }
@@ -551,6 +560,9 @@ static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class,
     if (fdb) {
         assert(class == fdb->class && local == fdb->local);
 
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Locking existing fdb %s\n", fdb->dbname);
+
         Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
 
         *created = 0;
@@ -566,11 +578,17 @@ static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class,
 
     _init_fdb(fdb, dbname, class, local, class_override);
 
+    if (gbl_fdb_track_locking)
+        logmsg(LOGMSG_USER, "Locking new fdb %s\n", fdb->dbname);
+
     Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
 
     rc = _cache_link_fdb(fdb);
     if (rc) {
         /* this was not visible, free it here */
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Unlocking new fdb %s due to link error\n", fdb->dbname);
+
         Pthread_rwlock_unlock(&fdb->inuse_rwlock);
         _free_fdb(fdb);
         fdb = NULL;
@@ -733,6 +751,30 @@ fdb_tbl_t *_fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
         logmsg(LOGMSG_USER, "Linking %s to %s\n", stat_tbl->name, fdb->dbname);
 
     return stat_tbl;
+}
+
+/**
+ * Delete one of the entries from table
+ * one use: if stat1 does no exists remotely, but stat4 exists, ignore it and deleted it
+ */
+void _remove_table_stat(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
+{
+    fdb_tbl_ent_t *stat_ent;
+
+    LISTC_FOR_EACH(&tbl->ents, stat_ent, lnk)
+    {
+        if (strncasecmp(stat_name, stat_ent->name, strlen(stat_name)) == 0) {
+            break;
+        }
+    }
+    if (stat_ent) {
+        listc_rfl(&tbl->ents, stat_ent);
+        free(stat_ent->ent);
+        free(stat_ent->name);
+        free(stat_ent);
+    }
+
+    fdb->has_sqlstat4 = 0;
 }
 
 /**
@@ -912,12 +954,17 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
 
         if (fdb->has_sqlstat4 &&
             strncasecmp(table_name, "sqlite_stat4", 13) != 0) {
-            stat4 = _fix_table_stats(fdb, tbl, "sqlite_stat4");
-            if (!stat4) {
-                rc = FDB_ERR_GENERIC;
-                goto done;
+            if (fdb->has_sqlstat1) {
+                stat4 = _fix_table_stats(fdb, tbl, "sqlite_stat4");
+                if (!stat4) {
+                    rc = FDB_ERR_GENERIC;
+                    goto done;
+                }
+                link_stat4 = 1;
+            } else {
+                /* artificial corner case: no stat1 but stat4 */
+                _remove_table_stat(fdb, tbl, "sqlite_stat4");
             }
-            link_stat4 = 1;
         }
     }
 
@@ -980,16 +1027,25 @@ done:
         /* get the table locks before returning; do this before linking to fdb */
         if (tbl) {
             /* this will let us access tbl ents during sqlite3InitTable call */
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Locking fdb %s for setup %s\n", fdb->dbname, tbl->name);
+            Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
             Pthread_rwlock_rdlock(&tbl->table_lock);
             db->init.locked_table = tbl;
         }
         if (stat1) {
             /* this lets us collect sqlite_stat1 ents as well during sqlite3InitTable call */
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Locking fdb %s for setup %s\n", fdb->dbname, stat1->name);
+            Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
             Pthread_rwlock_rdlock(&stat1->table_lock);
             db->init.locked_stat1 = stat1;
         }
         if (stat4) {
             /* this lets us collect sqlite_stat4 ents as well during sqlite3InitTable call */
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Locking fdb %s for setup %s\n", fdb->dbname, stat4->name);
+            Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
             Pthread_rwlock_rdlock(&stat4->table_lock);
             db->init.locked_stat4 = stat4;
         }
@@ -4485,6 +4541,8 @@ static void _fdb_clear_schema(const char *dbname, const char *tblname,
     }
 
     /* are there any readers of this fdb */
+    if (gbl_fdb_track_locking)
+        logmsg(LOGMSG_USER, "Trywrlock fdb %s schema clean\n", fdb->dbname);
     if (pthread_rwlock_trywrlock(&fdb->inuse_rwlock) != 0) {
         logmsg(LOGMSG_ERROR, "there are still readers for this fdb, cancel clear");
         goto done;
@@ -4504,6 +4562,8 @@ static void _fdb_clear_schema(const char *dbname, const char *tblname,
         _free_fdb_tbl(fdb, tbl);
     }
 unlock:
+    if (gbl_fdb_track_locking)
+        logmsg(LOGMSG_USER, "Unlock fdb %s schema clean\n", fdb->dbname);
     pthread_rwlock_unlock(&fdb->inuse_rwlock);
 done:
     Pthread_mutex_unlock(&fdbs.arr_mtx);
@@ -4639,12 +4699,15 @@ static void _info_fdb(const char *dbname, fdb_systable_info_t *info)
             if (!fdb)
                 continue;
 
-            /* get an fdb read lock, for consistency */
-            fdb = get_fdb(fdb->dbname);
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Locking fdb %s schema info\n", fdb->dbname);
+            Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
 
             _info_tables(fdb, info);
 
-            put_fdb(fdb, FDB_PUT_NOFREE);
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Unlock fdb %s schema info\n", fdb->dbname);
+            Pthread_rwlock_unlock(&fdb->inuse_rwlock);
         }
         Pthread_mutex_unlock(&fdbs.arr_mtx);
     } else {
