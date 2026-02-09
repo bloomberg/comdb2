@@ -1,11 +1,35 @@
 # TODO
 
+
+## Questions / Decisions
+
+### Monday, Feb 9th, 2026
+
+- [ ] Decimal: Keep using ours?
+  - My vote: yes. `decNumber` is more space-efficient, performance-oriented, and
+    supports a wider variety of operations, implementing the full IEEE 754
+    decimal arithmetic specification. It is also tied to the storage format now
+    since we store these types natively (not converting to text like SQLite).
+
+## Done
+
+- [x] 4   ./src/default_consumer.h.in.patch
+  - Comdb2-specific, leave as-is.
+- [x] 10  ./src/comdb2Int.h.patch
+  - Comdb2-specific, leave as-is.
+- [x] 10  ./src/decimal.h.patch
+  - Comdb2-specific, leave as-is. SQLite has a decimal extension now but
+    choosing not to pull it in, we'll stick with our implementation.
+- [x] 14  ./src/hash.h.patch
+- [x]     ./src/hash.c
+  - We added a declaration for `sqlite3HashFindN`, which was for finding a key
+    with a known number of bytes. The definition has since been removed from
+    `src/hash.c` in commit `07ce98afc` as part of the SQLite 3.27.2 upgrade, but
+    seems like the declaration lingered. Removed the declaration and pulled in
+    latest changes.
+
 ## Headers
 
-- [ ] 4   ./src/default_consumer.h.in.patch
-- [ ] 10  ./src/comdb2Int.h.patch
-- [ ] 10  ./src/decimal.h.patch
-- [ ] 14  ./src/hash.h.patch
 - [ ] 14  ./src/os.h.patch
 - [ ] 15  ./src/sqlite_tunables.h.patch
 - [ ] 27  ./src/md5.h.patch
