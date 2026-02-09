@@ -190,7 +190,7 @@ set(sqlite_comdb2_sources
 
 add_library(sqlite
   ${sqlite_generated_sources}
-  ${sqlite_sources}
+  ${sqlite_core_sources}
   ${sqlite_extension_sources}
   ${sqlite_comdb2_sources}
 )
