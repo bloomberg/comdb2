@@ -613,6 +613,25 @@ static int send_reset_nodes_int(cdb2_hndl_tp *hndl, const char *state)
     return rc;
 }
 
+static int send_reset_nodes_altmeta(const char *state)
+{
+    cdb2_hndl_tp *metadb;
+    int rc, altcnt = gbl_altmetadb_count, badrc = 0;
+
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
+            badrc++;
+            continue;
+        }
+        if ((send_reset_nodes_int(metadb, state)) != 0) {
+            badrc++;
+        }
+        cdb2_close(metadb);
+    }
+    return badrc ? -1 : 0;
+}
+
 static int send_reset_nodes(const char *state, int doalt)
 {
     cdb2_hndl_tp *metadb;
@@ -631,19 +650,8 @@ static int send_reset_nodes(const char *state, int doalt)
     if (doalt == 0 || altcnt == 0)
         return badrc ? -1 : 0;
 
-    for (int i = 0; i < altcnt; i++) {
-        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
-            badrc++;
-            continue;
-        }
-        if ((send_reset_nodes_int(metadb, state)) != 0) {
-            badrc++;
-        }
-        cdb2_close(metadb);
-    }
-
-    return badrc ? -1 : 0;
+    rc = send_reset_nodes_altmeta(state);
+    return (badrc || rc) ? -1 : 0;
 }
 
 char *physrep_master_cached = NULL;
@@ -1969,7 +1977,7 @@ static void *physrep_watcher(void *args) {
                 if ((now - physrep_source_nodes_last_refreshed) >= gbl_physrep_source_nodes_refresh_freq_sec) {
                     // Add/update information about nodes in the current cluster in comdb2_physreps table.
                     // Note that the table could either be local or in 'replication meta db'.
-                    int rc = send_reset_nodes("Active", 1);
+                    int rc = send_reset_nodes("Active", 0);
                     if (rc != 0) {
                         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                                        __func__, __LINE__, rc);
@@ -2070,6 +2078,9 @@ int start_physrep_threads() {
         return 0;
     }
 
+    // Mark as 'Active' in altmeta
+    send_reset_nodes_altmeta("Active");
+
     // If this is a 'physical replication' source, we would need to actively
     // try and connect to the replicants in the lower tier. (See db/reverse_conn.c)
     // This task is done by 'Reverse connections' manager thread.
@@ -2132,7 +2143,7 @@ void physrep_cleanup() {
         return;
     }
 
-    int rc = send_reset_nodes("Inactive", 0);
+    int rc = send_reset_nodes("Inactive", 1);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                        __func__, __LINE__, rc);
