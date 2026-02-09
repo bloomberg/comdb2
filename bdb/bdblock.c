@@ -454,13 +454,9 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
     if (lk->lockref == 0) {
         lk->line = line;
         if (lk->stack) {
-            rc =
-                stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+            rc = stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
             if (rc) {
-/* stack_pc_getlist isn't implemented yet on linux */
-#ifndef _LINUX_SOURCE
                 logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
-#endif
                 lk->nstack = 0;
             }
         }
@@ -536,12 +532,9 @@ int bdb_get_readlock(bdb_state_type *bdb_state, int trylock, const char *idstr, 
     if (lk->lockref == 0) {
         lk->line = line;
         if (lk->stack) {
-            rc =
-                stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+            rc = stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
             if (rc) {
-#ifndef _LINUX_SOURCE
                 logmsg(LOGMSG_INFO, "%s: failed to get stack %d\n", __func__, rc);
-#endif
                 lk->nstack = 0;
             }
         }
@@ -760,11 +753,9 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
             free(lk);
             exit(1);
         }
-        rc = stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+        rc = stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
         if (rc) {
-#ifndef _LINUX_SOURCE
             logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
-#endif
             free(lk->stack);
             lk->stack = NULL;
         }
