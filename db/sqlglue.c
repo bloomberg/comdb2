@@ -8195,7 +8195,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     }
 
     /* set a transaction id if none is set yet */
-    if ((iTable >= RTPAGE_START) && !fdb_clnt_cache_get_ent(clnt, cur->rootpage)) {
+    if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(clnt, cur->rootpage)) {
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {

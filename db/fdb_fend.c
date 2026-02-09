@@ -136,10 +136,7 @@ struct fdb_tbl {
     int ix_partial; /* is there partial index */
     int ix_expr;    /* is there expressions index */
 
-    LISTC_T(struct fdb_tbl_ent) ents;
-    pthread_mutex_t ents_mtx; /* entries add/rm lock */ /*TODO: review this
-                                                           mutex, we need
-                                                           something else */
+    LISTC_T(struct fdb_tbl_ent) ents; /* protected by table_lock */
     LINKC_T(struct fdb_tbl) lnk; /* link for tables for a fdb */
     LINKC_T(struct fdb_tbl) lnk_cache; /* link for tables cached in clnt for a fdb; only valid with a read lock */
     pthread_rwlock_t table_lock; /* use to lock the table, by sqlite engines or cleanup */
@@ -628,7 +625,6 @@ static fdb_tbl_t *_alloc_fdb_tbl(const char *tblname)
     tbl->name_len = strlen(tblname);
     Pthread_rwlock_init(&tbl->table_lock, NULL);
     listc_init(&tbl->ents, offsetof(struct fdb_tbl_ent, lnk));
-    Pthread_mutex_init(&tbl->ents_mtx, NULL);
     Pthread_mutex_init(&tbl->need_version_mtx, NULL);
 
     return tbl;
@@ -690,13 +686,13 @@ static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name,
 
 /**
  * Handling sqlite_stats; they have been temporarely added but linked
- * to original table tbl; (I did that to run only a query first time)
+ * to original table tbl.
  * They really belong to the fdb, lets properly link them now
  * This is done with fdb live lock and tables_mtx acquired
+ * The table is not yet linked in fdb (not visible)
  *
  * Returns -1 for ENOMEM or if cannot find stat_name
  *
- * TODO: check the stats indexes, do I get them? do I move from one fdb_tbl to the other
  */
 fdb_tbl_t *_fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
 {
@@ -4398,7 +4394,6 @@ static int _free_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl)
 
     /* free table itself */
     free(tbl->name);
-    Pthread_mutex_destroy(&tbl->ents_mtx);
     Pthread_rwlock_destroy(&tbl->table_lock);
     Pthread_mutex_destroy(&tbl->need_version_mtx);
 
@@ -6598,4 +6593,15 @@ close:
     }
 done:
     return rc;
+}
+
+int fdb_is_sqlite_stat(sqlclntstate *clnt, int rootpage)
+{
+    fdb_tbl_ent_t *ent;
+
+    ent = fdb_clnt_cache_get_ent(clnt, rootpage);
+    if (!ent)
+        return 1;
+
+    return strncasecmp(ent->tbl->name, "sqlite_stat", strlen("sqlite_stat")) == 0;
 }

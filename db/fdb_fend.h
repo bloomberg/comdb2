@@ -440,5 +440,12 @@ int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
                                /* out */ int *nrows_stat1,
                                /* out */ int *nrows_stat4);
 
+/**
+ * Return 1 if rootpage is for a sqlite_state table,
+ * or if no table exists for that rootpage 
+ *
+ */
+int fdb_is_sqlite_stat(sqlclntstate *clnt, int rootpage);
+
 #endif
 
