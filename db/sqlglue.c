@@ -7843,7 +7843,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
-            if (after_recovery && !fdb_clnt_cache_get_ent(clnt, iTable)) {
+            if (after_recovery && !(clnt->remoteFdbCache && fdb_clnt_cache_get_ent(clnt, iTable))) {
                 logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
                        tab->zName);
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
