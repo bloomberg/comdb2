@@ -27,10 +27,12 @@
     `src/hash.c` in commit `07ce98afc` as part of the SQLite 3.27.2 upgrade, but
     seems like the declaration lingered. Removed the declaration and pulled in
     latest changes.
+- [x] 14  ./src/os.h.patch
+- [x]     ./src/os.c
+  - Kept our patch, added comment on temp file naming convention.
 
 ## Headers
 
-- [ ] 14  ./src/os.h.patch
 - [ ] 15  ./src/sqlite_tunables.h.patch
 - [ ] 27  ./src/md5.h.patch
 - [ ] 37  ./src/fwd_types.h.patch
