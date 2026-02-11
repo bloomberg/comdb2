@@ -1,5 +1,17 @@
 # NOTES
 
+## Wednesday, Feb 11th, 2026
+
+- `sqlite_tunables.{h,c}`: we have defined some of our own tunables for SQLite.
+- `sqlite_btree.{h,c}`: we have completely replaced the B-Tree routines with our
+  own to interact with BerkeleyDB instead. The functions are defined in
+  `db/sqlglue.c`.
+- `md5.{h,c}`: Adapted from SQLite's implementation in `src/test_md5.c`. Seems
+  that SQLite does not expose this by default, maybe only when built with test
+  flags.
+- `fwd_types.h`: I guess we need to be able to refer to some SQLite structures in
+  `db/` code.
+
 ## Tuesday, Feb 10th, 2026
 
 - `sqliteInt.h`

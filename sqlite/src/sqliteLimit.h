@@ -9,7 +9,7 @@
 **    May you share freely, never taking more than you give.
 **
 *************************************************************************
-** 
+**
 ** This file defines various limits of what SQLite can process.
 */
 
@@ -23,6 +23,7 @@
 #ifndef SQLITE_MAX_LENGTH
 # define SQLITE_MAX_LENGTH 1000000000
 #endif
+#define SQLITE_MIN_LENGTH 30   /* Minimum value for the length limit */
 
 /*
 ** This is the maximum number of
@@ -35,14 +36,22 @@
 **    * Terms in the GROUP BY or ORDER BY clauses of a SELECT statement.
 **    * Terms in the VALUES clause of an INSERT statement
 **
-** The hard upper limit here is 32676.  Most database people will
+** The hard upper limit here is 32767.  Most database people will
 ** tell you that in a well-normalized database, you usually should
 ** not have more than a dozen or so columns in any table.  And if
 ** that is the case, there is no point in having more than a few
 ** dozen values in any of the other situations described above.
+**
+** An index can only have SQLITE_MAX_COLUMN columns from the user
+** point of view, but the underlying b-tree that implements the index
+** might have up to twice as many columns in a WITHOUT ROWID table,
+** since must also store the primary key at the end.  Hence the
+** column count for Index is u16 instead of i16.
 */
-#ifndef SQLITE_MAX_COLUMN
+#if !defined(SQLITE_MAX_COLUMN)
 # define SQLITE_MAX_COLUMN 2000
+#elif SQLITE_MAX_COLUMN>32767
+# error SQLITE_MAX_COLUMN may not exceed 32767
 #endif
 
 /*
@@ -57,14 +66,10 @@
 #endif
 
 /*
-** The maximum depth of an expression tree. This is limited to 
-** some extent by SQLITE_MAX_SQL_LENGTH. But sometime you might 
-** want to place more severe limits on the complexity of an 
-** expression.
-**
-** A value of 0 used to mean that the limit was not enforced.
-** But that is no longer true.  The limit is now strictly enforced
-** at all times.
+** The maximum depth of an expression tree. This is limited to
+** some extent by SQLITE_MAX_SQL_LENGTH. But sometime you might
+** want to place more severe limits on the complexity of an
+** expression. A value of 0 means that there is no limit.
 */
 #ifndef SQLITE_MAX_EXPR_DEPTH
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -80,7 +85,7 @@
 ** level of recursion for each term.  A stack overflow can result
 ** if the number of terms is too large.  In practice, most SQL
 ** never has more than 3 or 4 terms.  Use a value of 0 to disable
-** any limit on the number of terms in a compount SELECT.
+** any limit on the number of terms in a compound SELECT.
 */
 #ifndef SQLITE_MAX_COMPOUND_SELECT
 # define SQLITE_MAX_COMPOUND_SELECT 500
@@ -96,9 +101,13 @@
 
 /*
 ** The maximum number of arguments to an SQL function.
+**
+** This value has a hard upper limit of 32767 due to storage
+** constraints (it needs to fit inside a i16).  We keep it
+** lower than that to prevent abuse.
 */
 #ifndef SQLITE_MAX_FUNCTION_ARG
-# define SQLITE_MAX_FUNCTION_ARG 127
+# define SQLITE_MAX_FUNCTION_ARG 1000
 #endif
 
 /*
@@ -130,6 +139,10 @@
 */
 #ifndef SQLITE_MAX_ATTACHED
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** {81305538}: increase so we can attach to more than 10 remote databases
+** in a query.
+*/
 # define SQLITE_MAX_ATTACHED 100
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 # define SQLITE_MAX_ATTACHED 10
@@ -139,14 +152,18 @@
 
 /*
 ** The maximum value of a ?nnn wildcard that the parser will accept.
+** If the value exceeds 32767 then extra space is required for the Expr
+** structure.  But otherwise, we believe that the number can be as large
+** as a signed 32-bit integer can hold.
+**
+** Comdb2 notes:
+** - {26281279}: need at least 1024 vars because Oracle has 1000 and DB2
+**   has 1012.
+** - {28269065}: upped again from 1024 -> 2048.
+** - Upgrading to SQLite 3.51.2 brought it up to 32766.
 */
 #ifndef SQLITE_MAX_VARIABLE_NUMBER
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-/* COMPAT: Needs 1024 vars because Oracle has 1000 and DB2 has 1012. */
-# define SQLITE_MAX_VARIABLE_NUMBER 2048
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-# define SQLITE_MAX_VARIABLE_NUMBER 999
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+# define SQLITE_MAX_VARIABLE_NUMBER 32766
 #endif
 
 /* Maximum page size.  The upper bound on this value is 65536.  This a limit
@@ -154,10 +171,10 @@
 **
 ** Earlier versions of SQLite allowed the user to change this value at
 ** compile time. This is no longer permitted, on the grounds that it creates
-** a library that is technically incompatible with an SQLite library 
-** compiled with a different limit. If a process operating on a database 
-** with a page-size of 65536 bytes crashes, then an instance of SQLite 
-** compiled with the default page-size limit will not be able to rollback 
+** a library that is technically incompatible with an SQLite library
+** compiled with a different limit. If a process operating on a database
+** with a page-size of 65536 bytes crashes, then an instance of SQLite
+** compiled with the default page-size limit will not be able to rollback
 ** the aborted transaction. This could lead to database corruption.
 */
 #ifdef SQLITE_MAX_PAGE_SIZE
@@ -197,11 +214,11 @@
 ** Maximum number of pages in one database file.
 **
 ** This is really just the default value for the max_page_count pragma.
-** This value can be lowered (or raised) at run-time using that the
+** This value can be lowered (or raised) at run-time using the
 ** max_page_count macro.
 */
 #ifndef SQLITE_MAX_PAGE_COUNT
-# define SQLITE_MAX_PAGE_COUNT 1073741823
+# define SQLITE_MAX_PAGE_COUNT 0xfffffffe /* 4294967294 */
 #endif
 
 /*
@@ -216,7 +233,7 @@
 ** Maximum depth of recursion for triggers.
 **
 ** A value of 1 means that a trigger program will not be able to itself
-** fire any triggers. A value of 0 means that no trigger programs at all 
+** fire any triggers. A value of 0 means that no trigger programs at all
 ** may be executed.
 */
 #ifndef SQLITE_MAX_TRIGGER_DEPTH
