@@ -104,6 +104,7 @@ typedef struct cdb2_ssl_sess cdb2_ssl_sess;
 struct cdb2_hndl {
     char dbname[DBNAME_LEN];
     char type[TYPE_LEN];
+    int resolv_def; /* 1 if type argument is "default" */
     char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];

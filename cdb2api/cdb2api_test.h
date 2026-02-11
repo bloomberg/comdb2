@@ -17,6 +17,7 @@ int get_num_sockpool_recv(void);
 int get_num_sockpool_send(void);
 int get_num_sockpool_send_timeouts(void);
 int get_num_sockpool_recv_timeouts(void);
+int get_gbl_event_version(void);
 
 void set_fail_dbhosts_invalid_response(int);
 void set_fail_dbhosts_bad_response(int);
@@ -81,7 +82,6 @@ void set_cdb2api_test_dbname_cfg(const char *);
 struct cdb2_hndl;
 const char *get_default_cluster(void);
 const char *get_default_cluster_hndl(struct cdb2_hndl *);
-int get_gbl_event_version(void);
 
 void cdb2_set_max_retries(int max_retries);
 void cdb2_set_min_retries(int min_retries);
@@ -91,6 +91,7 @@ const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
 int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
 
+void reprocess_env_vars(void);
 #if defined __cplusplus
 }
 #endif /* __cplusplus */
