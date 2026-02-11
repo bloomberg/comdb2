@@ -49,6 +49,20 @@ int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
 
+struct cdb2_identity {
+    void (*resetIdentity_start)();
+    void (*resetIdentity_end)(int);
+    void *(*getIdentity)(cdb2_hndl_tp *, int);
+    void (*set_identity)(cdb2_hndl_tp *, const void *);
+    void (*identity_create)();
+    void (*identity_destroy)(int);
+    int (*identity_valid)();
+};
+
+struct cdb2_publish_event {
+    int (*publish_event)(char *, char *, int, char *, char *, char *, char *);
+};
+
 #ifndef WITH_DL_LIBS
 #define WITH_DL_LIBS 0
 #endif

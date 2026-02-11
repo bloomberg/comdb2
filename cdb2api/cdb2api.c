@@ -3742,7 +3742,8 @@ static int cdb2_discard_unread_data(cdb2_hndl_tp *hndl)
 #endif
     sbuf2setnowait(hndl->sb, 0);
 
-    if (cdb2_alarm_unread_socket_data && publish_event_cb && type != RESPONSE_TYPE__LAST_ROW && count > 0)
+    if (cdb2_alarm_unread_socket_data && publish_event_cb && publish_event_cb->publish_event &&
+        type != RESPONSE_TYPE__LAST_ROW && count > 0)
         publish_event_cb->publish_event("Unread rows", _ARGV0, _PID, hndl->dbname, hndl->type, hndl->partial_sql,
                                         "Unread records for the task");
 
