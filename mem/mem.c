@@ -112,6 +112,21 @@
 extern int malloc_trim (size_t pad);
 #endif
 
+int gbl_use_sys_malloc = 0;
+
+#if defined(__GNUC__)
+#define USE_SYS_MALLOC(...) do {                        \
+    if (__builtin_expect(!!gbl_use_sys_malloc, 0)) {    \
+        return __VA_ARGS__;                             \
+    }                                                   \
+} while (0)
+#else
+#define USE_SYS_MALLOC(...) do {                        \
+    if (!!gbl_use_sys_malloc) {                         \
+        return __VA_ARGS__;                             \
+    }                                                   \
+} while (0)
+#endif
 // macros$
 
 static comdb2ma COMDB2_STATIC_MAS[COMDB2MA_COUNT];
@@ -646,6 +661,7 @@ int comdb2_mallopt(int opt, int val) { return mspace_mallopt(opt, val); }
 
 size_t comdb2_malloc_usable_size(void *ptr)
 {
+    USE_SYS_MALLOC(0); /* not portable */
     return (ptr == NULL)
                ? 0
                : (dlmalloc_usable_size((void **)ptr + COMDB2MA_SENTINEL_OFS) -
@@ -782,6 +798,8 @@ static void get_stack_frames(void **fp, mspace m)
  */
 void *comdb2_malloc(comdb2ma cm, size_t size)
 {
+    USE_SYS_MALLOC(malloc(size));
+
     void **out = NULL;
 
     /* Make a copy on stack in case that debugging is toggled
@@ -819,6 +837,8 @@ void *comdb2_malloc(comdb2ma cm, size_t size)
 
 void *comdb2_malloc0(comdb2ma cm, size_t size)
 {
+    USE_SYS_MALLOC(calloc(1, size));
+
     void *out = comdb2_malloc(cm, size);
     if (out != NULL)
         memset(out, 0, size);
@@ -828,6 +848,8 @@ void *comdb2_malloc0(comdb2ma cm, size_t size)
 
 void *comdb2_calloc(comdb2ma cm, size_t n, size_t size)
 {
+    USE_SYS_MALLOC(calloc(n, size));
+
     void **out = NULL;
     size_t nb;
 
@@ -901,6 +923,8 @@ static void *comdb2_realloc_int(comdb2ma cm, void *ptr, size_t n)
 
 void *comdb2_realloc(comdb2ma cm, void *ptr, size_t n)
 {
+    USE_SYS_MALLOC(realloc(ptr, n));
+
     void **out = NULL;
 
     if (ptr == NULL) {
@@ -928,6 +952,7 @@ void *comdb2_realloc(comdb2ma cm, void *ptr, size_t n)
 /* This function is a clone of comdb2_realloc except it invokes mspace_resize(). */
 void *comdb2_resize(comdb2ma cm, void *ptr, size_t n)
 {
+    USE_SYS_MALLOC(realloc(ptr, n));
     void **out = NULL;
     int d;
     char *fp;
@@ -1031,6 +1056,8 @@ void comdb2_free(void *ptr)
     comdb2ma cm;
     void **p = (void **)ptr;
 
+    USE_SYS_MALLOC();
+
     if (p != NULL) {
         if (!COMDB2MA_OK_SENTINEL(p)) {
             /* sentinel corruption. possible reasons-
@@ -1051,6 +1078,8 @@ void comdb2_free(void *ptr)
 
 char *comdb2_strdup(comdb2ma cm, const char *s)
 {
+    USE_SYS_MALLOC(strdup(s));
+
     size_t len = strlen(s) + 1;
     char *copy;
 
@@ -1061,6 +1090,7 @@ char *comdb2_strdup(comdb2ma cm, const char *s)
 
 char *comdb2_strndup(comdb2ma cm, const char *s, size_t n)
 {
+    USE_SYS_MALLOC(strndup(s, n));
     /*
     ** Don't want to call strlen, Input may not be null terminated.
     ** Don't have portable strnlen.
@@ -1169,18 +1199,21 @@ char *comdb2_strndup_static(int indx, const char *s, size_t n)
 
 struct mallinfo comdb2_mallinfo_static(int indx)
 {
+    USE_SYS_MALLOC((struct mallinfo){0}); /* not portable */
     STATIC_RANGE_CHECK(indx, (struct mallinfo){0});
     return comdb2_mallinfo(get_area(indx));
 }
 
 int comdb2_malloc_stats_static(int indx, int verbose, int hr, int toctrc)
 {
+    USE_SYS_MALLOC(-1); /* not portable */
     STATIC_RANGE_CHECK(indx, EINVAL);
     return comdb2_malloc_stats(get_area(indx), verbose, hr, toctrc);
 }
 
 int comdb2_malloc_trim_static(int indx, size_t pad)
 {
+    USE_SYS_MALLOC(-1); /* not portable */
     STATIC_RANGE_CHECK(indx, EINVAL);
     return comdb2_malloc_trim(get_area(indx), pad);
 }
