@@ -137,10 +137,10 @@ struct fdb_tbl {
     int ix_partial; /* is there partial index */
     int ix_expr;    /* is there expressions index */
 
-    LISTC_T(struct fdb_tbl_ent) ents; /* protected by table_lock */
-    LINKC_T(struct fdb_tbl) lnk; /* link for tables for a fdb */
+    LISTC_T(struct fdb_tbl_ent) ents;  /* protected by table_lock */
+    LINKC_T(struct fdb_tbl) lnk;       /* link for tables for a fdb */
     LINKC_T(struct fdb_tbl) lnk_cache; /* link for tables cached in clnt for a fdb; only valid with a read lock */
-    pthread_rwlock_t table_lock; /* use to lock the table, by sqlite engines or cleanup */
+    pthread_rwlock_t table_lock;       /* use to lock the table, by sqlite engines or cleanup */
 
     int need_version; /* a remote op detected that local is stale, and this
                          hints to the new version */
@@ -159,16 +159,16 @@ struct fdb {
     int dbnum; /* cache dbnum for db, needed by current dbt_handl_alloc* */
 
     /* this controls the life of a fdb object (and only protects against fdb removal)
-    * readers acquire this lock during get_fdb/new_fdb;
-    * removing this fdb requires write mode
-    */
+     * readers acquire this lock during get_fdb/new_fdb;
+     * removing this fdb requires write mode
+     */
     pthread_rwlock_t inuse_rwlock;
 
     /* this protects the table list and hashes for them, and it is short them lock;
      * the tables are protected using table locks; we cache the table in clnt
      * and use mvcc to update them
      */
-    pthread_mutex_t tables_mtx; /* protect the tables list */
+    pthread_mutex_t tables_mtx;     /* protect the tables list */
     LISTC_T(struct fdb_tbl) tables; /* list of tables */
     hash_t *
         h_ents_rootp;    /* FDB_TBL_ENT_T data and index entries, by rootpage */
@@ -264,12 +264,9 @@ static int _clnt_cache_add_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl);
 void _clnt_cache_rem_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl);
 fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name);
 
-static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl,
-                                               char *row, int rowlen,
-                                               fdb_tbl_ent_t **found_ent,
-                                               int versioned);
-static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                             fdb_tbl_ent_t **found_ent, int is_sqlite_master);
+static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl, char *row, int rowlen,
+                                               fdb_tbl_ent_t **found_ent, int versioned);
+static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial, fdb_tbl_ent_t **found_ent, int is_sqlite_master);
 
 static int _num_entries(fdb_t *fdb);
 
@@ -473,7 +470,7 @@ fdb_t *get_fdb_int(const char *dbname, enum fdb_get_flag flag, const char *f, in
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
     fdb = _cache_fnd_fdb(dbname, NULL);
-    if(fdb && flag == FDB_GET_LOCK) {
+    if (fdb && flag == FDB_GET_LOCK) {
         if (gbl_fdb_track_locking)
             logmsg(LOGMSG_USER, "Locking fdb %s get_fdb at %s:%d\n", fdb->dbname, f, l);
         Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
@@ -523,7 +520,7 @@ void put_fdb_int(fdb_t *fdb, enum fdb_put_flag flag, const char *f, int l)
     }
 }
 
-static void _init_fdb(fdb_t * fdb, const char * dbname, enum mach_class class, int local, int class_override)
+static void _init_fdb(fdb_t *fdb, const char *dbname, enum mach_class class, int local, int class_override)
 {
     fdb->dbname = strdup(dbname);
     fdb->class = class;
@@ -551,8 +548,7 @@ static void _init_fdb(fdb_t * fdb, const char * dbname, enum mach_class class, i
  * The return fdb is read locked.  Check/add is done under lock arr_mtx
  *
  */
-static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class,
-                       int local, int class_override)
+static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class, int local, int class_override)
 {
     int rc = 0;
     fdb_t *fdb;
@@ -667,9 +663,8 @@ enum table_status {
  *
  * !!NOTE!!: only calls this when tables_mtx is acquired
  */
-static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name,
-                                 enum table_status *status, int *version,
-                                 unsigned long long remote_version)
+static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name, enum table_status *status, int *version,
+                                unsigned long long remote_version)
 {
     fdb_tbl_t *table;
 
@@ -688,10 +683,10 @@ static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name,
             *status = TABLE_STALE;
         } else {
             if (table->version != remote_version) {
-                logmsg(LOGMSG_WARN, "Remote table %s.%s new version is "
+                logmsg(LOGMSG_WARN,
+                       "Remote table %s.%s new version is "
                        "%lld, cached %lld\n",
-                       fdb->dbname, table_name, remote_version,
-                       table->version);
+                       fdb->dbname, table_name, remote_version, table->version);
                 table->need_version = remote_version + 1;
                 *status = TABLE_STALE;
             } else {
@@ -793,7 +788,7 @@ void _remove_table_stat(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
  */
 static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb, const char *table_name, int *version)
 {
-    unsigned long long remote_version =  0ULL;
+    unsigned long long remote_version = 0ULL;
     struct errstat err = {0};
     enum table_status status;
     int rc = FDB_NOERR;
@@ -827,14 +822,12 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
      */
     if (comdb2_get_verify_remote_schemas() && !is_sqlite_master) {
         /* this is a retry for an already */
-        rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class,
-                fdb->loc == NULL, &remote_version, &err);
+        rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class, fdb->loc == NULL, &remote_version, &err);
         if (rc != FDB_NOERR) {
             if (strncasecmp(err.errstr, "table not found", strlen(err.errstr)) == 0) {
                 return FDB_ERR_FDB_TBL_NOTFOUND;
             } else {
-                logmsg(LOGMSG_ERROR, "Lookup table %s failed \"%s\"\n",
-                        table_name, err.errstr);
+                logmsg(LOGMSG_ERROR, "Lookup table %s failed \"%s\"\n", table_name, err.errstr);
                 return FDB_ERR_GENERIC;
             }
         }
@@ -862,8 +855,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
         /* status was TABLE_STALE */
 
         Pthread_mutex_lock(&remtbl->need_version_mtx);
-        if (!remtbl->need_version ||
-                ((remtbl->need_version - 1) == remtbl->version)) {
+        if (!remtbl->need_version || ((remtbl->need_version - 1) == remtbl->version)) {
             /* table was fixed in the meantime!, drop exclusive lock */
             rc = FDB_NOERR;
             *version = remtbl->version;
@@ -876,11 +868,8 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3 *db, fdb_t *fdb,
 
         /* table is still stale, remove */
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER,
-                   "Detected stale table \"%s.%s\" version %llu required %d\n",
-                   remtbl->fdb->dbname, remtbl->name, remtbl->version,
-                   remtbl->need_version - 1);
-
+            logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" version %llu required %d\n", remtbl->fdb->dbname,
+                   remtbl->name, remtbl->version, remtbl->need_version - 1);
 
         /* this is done under fdb tables_mutex lock */
         _unlink_fdb_table(fdb, remtbl);
@@ -1054,7 +1043,7 @@ done:
         db->init.fdb = fdb;
 
         /* we are all set, all we have to do is to link the read locked tables to fdb */
-        if (link_table && tbl) { 
+        if (link_table && tbl) {
             _link_fdb_table(fdb, tbl);
         }
         if (link_stat1 && stat1) {
@@ -1087,8 +1076,7 @@ static int _num_entries(fdb_t *fdb)
  *
  * NOTE: we have tables_mtx locked when calling this
  */
-static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                             fdb_tbl_ent_t **found_ent, int is_sqlite_master)
+static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial, fdb_tbl_ent_t **found_ent, int is_sqlite_master)
 {
     BtCursor *cur;
     int rc = FDB_NOERR;
@@ -1241,8 +1229,7 @@ run:
             goto close;
         }
 
-        irc = _add_fdb_tbl_ent_from_packedksqlite(fdb, tbl, row, rowlen,
-                                                  found_ent, versioned);
+        irc = _add_fdb_tbl_ent_from_packedksqlite(fdb, tbl, row, rowlen, found_ent, versioned);
         if (irc) {
             rc = irc;
             goto close;
@@ -1324,8 +1311,7 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local,
     return remote_lvl;
 }
 
-static int _failed_AddAndLockTable(sqlclntstate *clnt, const char *dbname, int errcode,
-                                   const char *prefix)
+static int _failed_AddAndLockTable(sqlclntstate *clnt, const char *dbname, int errcode, const char *prefix)
 {
     logmsg(LOGMSG_WARN, "Error rc %d \"%s\" for db \"%s\"\n", errcode, prefix,
            dbname);
@@ -1375,10 +1361,8 @@ int create_local_fdb(const char *fdb_name, fdb_t **fdb) {
  *       and returns SQLITE_ERROR so that sql can rollback
  *
  */
-int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
-                           int *version,
-                           int *out_class, int *out_local,
-                           int *out_class_override, int *out_proto_version)
+int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table, int *version, int *out_class,
+                           int *out_local, int *out_class_override, int *out_proto_version)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     sqlclntstate *clnt = thd->clnt;
@@ -1391,14 +1375,11 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     char *perrstr;
     int lvl_override;
 
-
     lvl = get_fdb_class(&dbname, &local, &lvl_override);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
-        return _failed_AddAndLockTable(
-            clnt, dbname,
-            (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN
-                                   : FDB_ERR_CLASS_DENIED,
-            (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
+        return _failed_AddAndLockTable(clnt, dbname,
+                                       (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN : FDB_ERR_CLASS_DENIED,
+                                       (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 
     /* try to find or create the fdb;
@@ -1408,8 +1389,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     fdb = _new_fdb(dbname, &created, lvl, local, lvl_override);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
-        return _failed_AddAndLockTable(clnt, dbname, FDB_ERR_MALLOC,
-                                       "OOM allocating fdb object");
+        return _failed_AddAndLockTable(clnt, dbname, FDB_ERR_MALLOC, "OOM allocating fdb object");
     }
     if (!created) {
         /* we need to validate requested class to existing class */
@@ -1503,7 +1483,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
         }
 
     error:
-        put_fdb(fdb, created ? FDB_PUT_TRYFREE: FDB_PUT_NOFREE);
+        put_fdb(fdb, created ? FDB_PUT_TRYFREE : FDB_PUT_NOFREE);
         return _failed_AddAndLockTable(clnt, dbname, rc, perrstr);
     }
 
@@ -1518,7 +1498,6 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
 
     return SQLITE_OK; /* speaks sqlite */
 }
-
 
 /**
  * Release the read locks used by sqlite engine initial setup
@@ -1544,15 +1523,15 @@ void fdbUnlock(sqlite3 *db)
     /* if we got lock tables for table and any stats, unlock them here */
     if (db->init.locked_table) {
 
-        fdb_unlock_table(clnt, ((fdb_tbl_t*)db->init.locked_table)->ents.top);
+        fdb_unlock_table(clnt, ((fdb_tbl_t *)db->init.locked_table)->ents.top);
         db->init.locked_table = NULL;
     }
     if (db->init.locked_stat1) {
-        fdb_unlock_table(clnt, ((fdb_tbl_t*)db->init.locked_stat1)->ents.top);
+        fdb_unlock_table(clnt, ((fdb_tbl_t *)db->init.locked_stat1)->ents.top);
         db->init.locked_stat1 = NULL;
     }
     if (db->init.locked_stat4) {
-        fdb_unlock_table(clnt, ((fdb_tbl_t*)db->init.locked_stat4)->ents.top);
+        fdb_unlock_table(clnt, ((fdb_tbl_t *)db->init.locked_stat4)->ents.top);
         db->init.locked_stat4 = NULL;
     }
 
@@ -1595,10 +1574,8 @@ char *fdb_sqlexplain_get_name(struct sqlclntstate *clnt, int rootpage)
  * insert an entry using a packed sqlite row ; no locking here, table is not yet
  * visible
  */
-static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl,
-                                               char *row, int rowlen,
-                                               fdb_tbl_ent_t **found_ent,
-                                               int versioned)
+static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl, char *row, int rowlen,
+                                               fdb_tbl_ent_t **found_ent, int versioned)
 {
     fdb_tbl_ent_t *ent = (fdb_tbl_ent_t *)calloc(sizeof(fdb_tbl_ent_t), 1);
     char *etype, *name, *tbl_name, *sql, *csc2;
@@ -2606,19 +2583,16 @@ fdb_cursor_if_t *fdb_cursor_open(sqlclntstate *clnt, BtCursor *pCur,
         if (!cache) {
             logmsg(LOGMSG_ERROR, "%s: failed to retrieve sqlite stats cache\n", __func__);
             clnt->fdb_state.preserve_err = 1;
-            errstat_set_rcstrf(&clnt->fdb_state.xerr, FDB_ERR_GENERIC,
-                               "failed to open sqlite stats");
+            errstat_set_rcstrf(&clnt->fdb_state.xerr, FDB_ERR_GENERIC, "failed to open sqlite stats");
             goto done;
         }
 
-        pCur->fdbc = fdbc_if =
-            fdb_sqlstat_cache_cursor_open(clnt, fdb, ent->name, cache);
+        pCur->fdbc = fdbc_if = fdb_sqlstat_cache_cursor_open(clnt, fdb, ent->name, cache);
         if (!fdbc_if) {
             logmsg(LOGMSG_ERROR, "%s: failed to open fdb cursor\n", __func__);
 
             clnt->fdb_state.preserve_err = 1;
-            errstat_set_rcstrf(&clnt->fdb_state.xerr, FDB_ERR_BUG,
-                     "failed to open fdb cursor for stats");
+            errstat_set_rcstrf(&clnt->fdb_state.xerr, FDB_ERR_BUG, "failed to open fdb cursor for stats");
             fdb_sqlstats_put(fdb);
 
             goto done;
@@ -4473,7 +4447,7 @@ static void _try_free_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl)
         _free_fdb_tbl(fdb, tbl);
     } else {
         /* there are sqlite engines reading this; last to unlock
-         * this table will free it 
+         * this table will free it
          */
     }
 }
@@ -4527,8 +4501,7 @@ static void _unlink_fdb_table(fdb_t *fdb, fdb_tbl_t *tbl)
  * new read access to this fdb
  *
  */
-static void _clear_schema(const char *dbname, const char *tblname,
-                          int force)
+static void _clear_schema(const char *dbname, const char *tblname, int force)
 {
     fdb_t *fdb;
     fdb_tbl_t *tbl;
@@ -4771,13 +4744,13 @@ int fdb_process_message(const char *line, int lline)
     } else if (tokcmp(tok, ltok, "force") == 0) {
         force = 1;
         tok = segtok((char *)line, lline, &st, &ltok);
-        if (ltok == 0 || tokcmp(tok, ltok, "clear"))  {
+        if (ltok == 0 || tokcmp(tok, ltok, "clear")) {
             logmsg(LOGMSG_ERROR, "fdb schema error: missing clear\n");
             return FDB_ERR_GENERIC;
         }
         goto clear;
     } else if (tokcmp(tok, ltok, "clear") == 0) {
-clear:
+    clear:
         tok = segtok((char *)line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "fdb schema error: missing command\n");
@@ -4946,7 +4919,7 @@ int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
     fdb_tbl_ent_t *ent;
     int rootpage = tab->tnum;
     int version = tab->version;
-    Db *db = &((Vdbe*)pStmt)->db->aDb[tab->iDb];
+    Db *db = &((Vdbe *)pStmt)->db->aDb[tab->iDb];
 
     /* this ensures live fdb object */
     fdb_t *fdb = get_fdb(db->zDbSName, FDB_GET_LOCK);
@@ -4984,9 +4957,8 @@ int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
     if (!ent || ent->tbl->version != tab->version) {
         clnt->osql.error_is_remote = 1;
 
-        errstat_set_rcstrf(&clnt->osql.xerr, CDB2ERR_ASYNCERR,
-                         "schema change table \"%s\" from db \"%s\"",
-                         tab->zName, db->zDbSName);
+        errstat_set_rcstrf(&clnt->osql.xerr, CDB2ERR_ASYNCERR, "schema change table \"%s\" from db \"%s\"", tab->zName,
+                           db->zDbSName);
 
         if (gbl_fdb_track) {
             if (ent) {
@@ -6419,8 +6391,7 @@ setup_error:
  * NOTE: the object is per clnt, so per thread;
  * add/rem/find do not need mutexes
  */
-struct clnt_fdb_cache
-{
+struct clnt_fdb_cache {
     hash_t *tbl_ent_by_rootp;
     hash_t *tbl_by_name;
     LISTC_T(struct fdb_tbl) tbls;
@@ -6501,12 +6472,10 @@ fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name)
     return hash_find_readonly(clnt->remoteFdbCache->tbl_by_name, &name);
 }
 
-
 #define RETRY_GET_STATS_PER_STAT 3
-static int _sqlstat_populate_table(fdb_t *fdb, BtCursor *cur, const char *tblname,
-                                    const char *sql,
-                                    /* out */ struct temp_table *tbl,
-                                    /* out */ int *pnrows)
+static int _sqlstat_populate_table(fdb_t *fdb, BtCursor *cur, const char *tblname, const char *sql,
+                                   /* out */ struct temp_table *tbl,
+                                   /* out */ int *pnrows)
 {
     fdb_cursor_if_t *fdbc_if;
     int bdberr = 0;
@@ -6537,11 +6506,9 @@ static int _sqlstat_populate_table(fdb_t *fdb, BtCursor *cur, const char *tblnam
                 /* TODO: downgrade protocol */
                 abort();
             }
-            if (rc != IX_EMPTY/* && rc != IX_PASTEOF*/) {
-                logmsg(
-                    LOGMSG_ERROR,
-                    "%s: failed to read first row from %s.%s rc=%d retry %d\n",
-                    __func__, fdb->dbname, tblname, rc, retry);
+            if (rc != IX_EMPTY /* && rc != IX_PASTEOF*/) {
+                logmsg(LOGMSG_ERROR, "%s: failed to read first row from %s.%s rc=%d retry %d\n", __func__, fdb->dbname,
+                       tblname, rc, retry);
                 /* error, try again, tbl untouched */
                 if (cur->fdbc)
                     goto retry_io;
@@ -6561,14 +6528,11 @@ static int _sqlstat_populate_table(fdb_t *fdb, BtCursor *cur, const char *tblnam
 
             key = nrows; /* there use to be some shenanigans with the keys and temp tables,
                             probably still there, use a copy of nrows as index for stats */
-            irc = bdb_temp_table_put(thedb->bdb_env, tbl, &key, sizeof(key), row,
-                                     rowlen, NULL, &bdberr);
+            irc = bdb_temp_table_put(thedb->bdb_env, tbl, &key, sizeof(key), row, rowlen, NULL, &bdberr);
             nrows++;
             if (irc) {
-                logmsg(
-                    LOGMSG_ERROR,
-                    "%s: failed temp table insert for %s.%s rc=%d bdberr=%d\n",
-                    __func__, fdb->dbname, tblname, rc, bdberr);
+                logmsg(LOGMSG_ERROR, "%s: failed temp table insert for %s.%s rc=%d bdberr=%d\n", __func__, fdb->dbname,
+                       tblname, rc, bdberr);
                 rc = irc;
                 goto retry_io;
             }
@@ -6588,9 +6552,8 @@ static int _sqlstat_populate_table(fdb_t *fdb, BtCursor *cur, const char *tblnam
         /* fall-through if error to retry */
     retry_io:
         if (nrows > 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: failed to read all rows from %s.%s rc=%d retry %d\n",
-                   __func__, fdb->dbname, tblname, rc, retry);
+            logmsg(LOGMSG_ERROR, "%s: failed to read all rows from %s.%s rc=%d retry %d\n", __func__, fdb->dbname,
+                   tblname, rc, retry);
 
             irc = bdb_temp_table_truncate(thedb->bdb_env, tbl, &bdberr);
             if (irc) {
@@ -6616,7 +6579,6 @@ close:
     return 0;
 }
 
-
 /**
  * Populate temp tables with stats from remote db
  * The fdb sqlstats_mtx is acquired at this point
@@ -6630,8 +6592,8 @@ int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     BtCursor *cur;
     fdb_cursor_if_t *fdbc_if;
-    /* NOTE: at this point, we collect ALL the stats; this eliminates the need 
-     * to selectively update local cache, at the expense of a higher latency on 
+    /* NOTE: at this point, we collect ALL the stats; this eliminates the need
+     * to selectively update local cache, at the expense of a higher latency on
      * initial remote db access; to be reviewed
      */
     char *sql_stat1 = "select * from sqlite_stat1";
@@ -6652,11 +6614,9 @@ int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     cur->rootpage = -1; /*not really used for sqlite_stats*/
     assert(cur->clnt == clnt);
 
-    fdbc_if =
-        fdb_cursor_open(clnt, cur, cur->rootpage, NULL, NULL, 0 /* TODO */);
+    fdbc_if = fdb_cursor_open(clnt, cur, cur->rootpage, NULL, NULL, 0 /* TODO */);
     if (!fdbc_if) {
-        logmsg(LOGMSG_ERROR, "%s: failed to connect remote to get stats\n",
-               __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to connect remote to get stats\n", __func__);
         rc = -1;
         goto done;
     }
@@ -6664,15 +6624,13 @@ int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     /* retrieve records */
     rc = _sqlstat_populate_table(fdb, cur, "sqlite_stat1", sql_stat1, stat1, nrows_stat1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to populate sqlite_stat1 rc=%d\n",
-               __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to populate sqlite_stat1 rc=%d\n", __func__, rc);
         goto close;
     }
 
     rc = _sqlstat_populate_table(fdb, cur, "sqlite_stat4", sql_stat4, stat4, nrows_stat4);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to populate sqlite_stat4 rc=%d\n",
-               __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to populate sqlite_stat4 rc=%d\n", __func__, rc);
         goto close;
     }
 
@@ -6680,8 +6638,7 @@ close:
     /* close cursor */
     irc = fdbc_if->close(cur);
     if (irc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__,
-               rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__, rc);
     }
 done:
     return rc;

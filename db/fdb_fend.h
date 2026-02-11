@@ -201,10 +201,7 @@ int fdb_cache_init(int n);
  * If found, the object returned is read locked
  *
  */
-enum fdb_get_flag {
-    FDB_GET_NOLOCK = 0,
-    FDB_GET_LOCK = 1
-};
+enum fdb_get_flag { FDB_GET_NOLOCK = 0, FDB_GET_LOCK = 1 };
 fdb_t *get_fdb_int(const char *dbname, enum fdb_get_flag flag, const char *f, int l);
 #define get_fdb(dbname, flag) get_fdb_int(dbname, flag, __func__, __LINE__)
 
@@ -218,13 +215,9 @@ fdb_t *get_fdb_int(const char *dbname, enum fdb_get_flag flag, const char *f, in
  * - FORCEFREE: under fdbs array mutex we block until a write lock is acquired
  *   !!!CAUTION this blocks new access to fdbs until the write lock is acquired
  */
-enum fdb_put_flag {
-    FDB_PUT_NOFREE = 0,
-    FDB_PUT_TRYFREE = 1,
-    FDB_PUT_FORCEFREE = 2
-};
+enum fdb_put_flag { FDB_PUT_NOFREE = 0, FDB_PUT_TRYFREE = 1, FDB_PUT_FORCEFREE = 2 };
 void put_fdb_int(fdb_t *fdb, enum fdb_put_flag flag, const char *f, int l);
-#define put_fdb(dbname, flag) put_fdb_int(dbname, flag,  __func__, __LINE__)
+#define put_fdb(dbname, flag) put_fdb_int(dbname, flag, __func__, __LINE__)
 
 /**
  * Move a cursor on sqlite_master table
@@ -448,7 +441,7 @@ int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
 
 /**
  * Return 1 if rootpage is for a sqlite_state table,
- * or if no table exists for that rootpage 
+ * or if no table exists for that rootpage
  *
  */
 int fdb_is_sqlite_stat(sqlclntstate *clnt, int rootpage);

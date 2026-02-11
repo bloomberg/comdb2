@@ -92,7 +92,6 @@ static int fdb_sqlstat_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
                                      unsigned long long genid, int datalen,
                                      char *data);
 
-
 static int __fdb_sqlstat_table_init(fdb_sqlstat_table_t *tbl, const char *name)
 {
     int bdberr = 0;
@@ -150,8 +149,8 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
         goto done;
     }
 
-    rc = fdb_sqlstat_cache_populate(clnt, fdb, cache->arr[0].tbl, cache->arr[1].tbl,
-                                    &cache->arr[0].nrows, &cache->arr[1].nrows);
+    rc = fdb_sqlstat_cache_populate(clnt, fdb, cache->arr[0].tbl, cache->arr[1].tbl, &cache->arr[0].nrows,
+                                    &cache->arr[1].nrows);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to populate sqlite_stat tables, rc=%d\n", __func__,
@@ -168,7 +167,6 @@ done:
     return rc;
 }
 
-
 static int __sqlstat_table_destroy(fdb_sqlstat_table_t *tbl)
 {
     int bdberr = 0;
@@ -177,8 +175,7 @@ static int __sqlstat_table_destroy(fdb_sqlstat_table_t *tbl)
     if (tbl->tbl) {
         rc = bdb_temp_table_close(thedb->bdb_env, tbl->tbl, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
-                    __func__, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n", __func__, bdberr);
         }
 
         free(tbl->name);
@@ -230,8 +227,7 @@ void fdb_sqlstat_cache_destroy(fdb_sqlstat_cache_t **pcache)
  *
  */
 /* NOTE: It locks access to sqlstat (for now) until closed */
-fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
-                                               fdb_t *fdb, const char *name,
+fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt, fdb_t *fdb, const char *name,
                                                fdb_sqlstat_cache_t *cache)
 {
     fdb_sqlstat_table_t *tbl;

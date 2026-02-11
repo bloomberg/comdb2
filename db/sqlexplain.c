@@ -521,9 +521,8 @@ void explain_data_delete(IndentInfo *p)
     p->nIndent = 0;
 }
 
-void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
-                          int largestwidth, int pc, struct cursor_info *cur,
-                          int *pSkipCount)
+void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out, Vdbe *v, int indent, int largestwidth,
+                          int pc, struct cursor_info *cur, int *pSkipCount)
 {
     char str[2];
     Op *op = &v->aOp[pc];
@@ -1313,9 +1312,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         if (indent < 0)
             indent = 0;
         int skipCount = 0;
-        get_one_explain_line(
-            clnt, hndl, out, v, indent, maxwidth, pc, cur, &skipCount
-        );
+        get_one_explain_line(clnt, hndl, out, v, indent, maxwidth, pc, cur, &skipCount);
         if (skipCount != 0) pc += skipCount;
         char *row[] = {(char*)strbuf_buf(out)};
         write_response(clnt, RESPONSE_ROW_STR, row, 1);

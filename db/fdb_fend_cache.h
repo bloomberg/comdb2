@@ -25,8 +25,7 @@
  */
 
 /* open a cursor to the sqlite_stat cache */
-fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
-                                               fdb_t *fdb, const char *name,
+fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt, fdb_t *fdb, const char *name,
                                                fdb_sqlstat_cache_t *cache);
 
 /*
