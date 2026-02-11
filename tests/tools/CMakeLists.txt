@@ -17,10 +17,13 @@ include_directories(
   ${READLINE_INCLUDE_DIR}
 )
 
-add_definitions(-DSBUF2_SERVER=0)
+add_definitions(
+  -DSBUF2_SERVER=0
+  -DCDB2API_TEST
+)
 
 macro(add_exe exe)
-    add_executable(${exe} ${ARGN})
+    add_executable(${exe} ${ARGN} ${PROJECT_SOURCE_DIR}/cdb2api/cdb2api.c)
     list(APPEND test-tools ${exe})
 endmacro()
 

@@ -18,7 +18,6 @@ endif()
 option(COMDB2_TEST "Turn ON to compile with testing features" OFF)
 if(COMDB2_TEST)
   add_definitions(-DCOMDB2_TEST)
-  add_definitions(-DCDB2API_TEST)
 endif()
 
 option(WITH_TINFO "Turn ON on platforms where tinfo library is required for cdb2sql" OFF)
