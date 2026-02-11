@@ -218,9 +218,7 @@ static struct frame *nextFrame(struct frame *f)
 #endif
 }
 
-static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
-                                  void (*handler)(void *returnaddr,
-                                                  void *handlerarg),
+static int __sparc_stack_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg),
                                   void *handlerarg)
 {
 
@@ -235,47 +233,25 @@ static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
 
     flushWindow();
 
-    if (context != NULL) {
-        firstframe.fr_savpc = context->uc_mcontext.gregs[REG_PC];
-        firstframe.fr_savfp =
-            (struct frame *)context->uc_mcontext.gregs[REG_O6];
+    __sparc_get_pc_and_sp(&firstframe.fr_savpc, &firstframe.fr_savfp);
 
-        if (&thr_probe_getfunc_addr == 0) {
-            /* Single threaded - libptrhead not linked in. */
-            min_stack_address = (char *)context->uc_stack.ss_sp;
-            max_stack_address = min_stack_address + context->uc_stack.ss_size;
-        } else {
-            /* libptrhead linked in */
-            stack_t thrstack;
-            if (thr_stksegment(&thrstack) != 0) {
-                return ENOCONTEXT;
-            }
-            max_stack_address = (char *)thrstack.ss_sp;
-            min_stack_address = max_stack_address - thrstack.ss_size;
-        }
+    if (&thr_probe_getfunc_addr == 0) {
+        /* Single threaded - libpthread not linked in. */
+        /* System puts environment pointers and strings at top of main
+         * program stack.  Global variable _environ points to the
+         * environment
+         * pointers.  This gives us an approximate max stack address.
+         */
+        min_stack_address = (char *)nextFrame(&firstframe);
+        max_stack_address = (char *)_environ;
     } else {
-        /* No passed in context. */
-
-        __sparc_get_pc_and_sp(&firstframe.fr_savpc, &firstframe.fr_savfp);
-
-        if (&thr_probe_getfunc_addr == 0) {
-            /* Single threaded - libpthread not linked in. */
-            /* System puts environment pointers and strings at top of main
-             * program stack.  Global variable _environ points to the
-             * environment
-             * pointers.  This gives us an approximate max stack address.
-             */
-            min_stack_address = (char *)nextFrame(&firstframe);
-            max_stack_address = (char *)_environ;
-        } else {
-            /* libpthread linked in */
-            stack_t thrstack;
-            if (thr_stksegment(&thrstack) != 0) {
-                return ENOCONTEXT;
-            }
-            max_stack_address = thrstack.ss_sp;
-            min_stack_address = max_stack_address - thrstack.ss_size;
+        /* libpthread linked in */
+        stack_t thrstack;
+        if (thr_stksegment(&thrstack) != 0) {
+            return ENOCONTEXT;
         }
+        max_stack_address = thrstack.ss_sp;
+        min_stack_address = max_stack_address - thrstack.ss_size;
     }
 
     max_frame_address = (max_stack_address - MIN_FRAME_SIZE);
