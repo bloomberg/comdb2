@@ -201,7 +201,12 @@ int fdb_cache_init(int n);
  * If found, the object returned is read locked
  *
  */
-fdb_t *get_fdb(const char *dbname);
+enum fdb_get_flag {
+    FDB_GET_NOLOCK = 0,
+    FDB_GET_LOCK = 1
+};
+fdb_t *get_fdb_int(const char *dbname, enum fdb_get_flag flag, const char *f, int l);
+#define get_fdb(dbname, flag) get_fdb_int(dbname, flag, __func__, __LINE__)
 
 /**
  * Remove the read lock on a fdb object
@@ -218,7 +223,8 @@ enum fdb_put_flag {
     FDB_PUT_TRYFREE = 1,
     FDB_PUT_FORCEFREE = 2
 };
-void put_fdb(fdb_t *fdb, enum fdb_put_flag flag);
+void put_fdb_int(fdb_t *fdb, enum fdb_put_flag flag, const char *f, int l);
+#define put_fdb(dbname, flag) put_fdb_int(dbname, flag,  __func__, __LINE__)
 
 /**
  * Move a cursor on sqlite_master table

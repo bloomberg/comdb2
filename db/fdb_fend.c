@@ -467,13 +467,15 @@ void _free_fdb(fdb_t *fdb)
  * If found, return the fdb read locked
  *
  */
-fdb_t *get_fdb(const char *dbname)
+fdb_t *get_fdb_int(const char *dbname, enum fdb_get_flag flag, const char *f, int l)
 {
     fdb_t *fdb = NULL;
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
     fdb = _cache_fnd_fdb(dbname, NULL);
-    if(fdb) {
+    if(fdb && flag == FDB_GET_LOCK) {
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Locking fdb %s get_fdb at %s:%d\n", fdb->dbname, f, l);
         Pthread_rwlock_rdlock(&fdb->inuse_rwlock);
     }
     Pthread_mutex_unlock(&fdbs.arr_mtx);
@@ -485,11 +487,11 @@ fdb_t *get_fdb(const char *dbname)
  * It releases the lock, and possibly unlink and free
  * the structure if flag specifies that
  */
-void put_fdb(fdb_t *fdb, enum fdb_put_flag flag)
+void put_fdb_int(fdb_t *fdb, enum fdb_put_flag flag, const char *f, int l)
 {
     Pthread_mutex_lock(&fdbs.arr_mtx);
     if (gbl_fdb_track_locking)
-        logmsg(LOGMSG_USER, "Unlocking fdb %s with flag %d\n", fdb->dbname, flag);
+        logmsg(LOGMSG_USER, "Unlocking fdb %s with flag %d at %s:%d\n", fdb->dbname, flag, f, l);
     Pthread_rwlock_unlock(&fdb->inuse_rwlock);
     if (flag == FDB_PUT_TRYFREE) {
         /* try to get a wrlock on the fdb;
@@ -4525,8 +4527,8 @@ static void _unlink_fdb_table(fdb_t *fdb, fdb_tbl_t *tbl)
  * new read access to this fdb
  *
  */
-static void _fdb_clear_schema(const char *dbname, const char *tblname,
-                               int need_update)
+static void _clear_schema(const char *dbname, const char *tblname,
+                          int force)
 {
     fdb_t *fdb;
     fdb_tbl_t *tbl;
@@ -4541,16 +4543,27 @@ static void _fdb_clear_schema(const char *dbname, const char *tblname,
     }
 
     /* are there any readers of this fdb */
-    if (gbl_fdb_track_locking)
-        logmsg(LOGMSG_USER, "Trywrlock fdb %s schema clean\n", fdb->dbname);
-    if (pthread_rwlock_trywrlock(&fdb->inuse_rwlock) != 0) {
-        logmsg(LOGMSG_ERROR, "there are still readers for this fdb, cancel clear");
-        goto done;
+    if (force) {
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Writelock fdb %s schema clean\n", fdb->dbname);
+        Pthread_rwlock_wrlock(&fdb->inuse_rwlock);
+    } else {
+        if (gbl_fdb_track_locking)
+            logmsg(LOGMSG_USER, "Trywrlock fdb %s schema clean\n", fdb->dbname);
+        if (pthread_rwlock_trywrlock(&fdb->inuse_rwlock) != 0) {
+            logmsg(LOGMSG_ERROR, "there are still readers for this fdb, cancel clear");
+            goto done;
+        }
     }
 
+    /* all ours, lets clear the entries */
     if (tblname == NULL) {
-        /* all ours, lets clear the entries */
-        hash_for(fdb->h_tbls_name, (int (*)(void *, void *))_free_fdb_tbl, fdb);
+        fdb_tbl_t *tmp;
+        LISTC_FOR_EACH_SAFE(&fdb->tables, tbl, tmp, lnk)
+        {
+            _unlink_fdb_table(fdb, tbl);
+            _free_fdb_tbl(fdb, tbl);
+        }
     } else {
         tbl = hash_find_readonly(fdb->h_tbls_name, &tblname);
         if (tbl == NULL) {
@@ -4558,7 +4571,7 @@ static void _fdb_clear_schema(const char *dbname, const char *tblname,
                     dbname);
             goto unlock;
         }
-
+        _unlink_fdb_table(fdb, tbl);
         _free_fdb_tbl(fdb, tbl);
     }
 unlock:
@@ -4711,7 +4724,7 @@ static void _info_fdb(const char *dbname, fdb_systable_info_t *info)
         }
         Pthread_mutex_unlock(&fdbs.arr_mtx);
     } else {
-        fdb = get_fdb(dbname);
+        fdb = get_fdb(dbname, FDB_GET_LOCK);
 
         if (!fdb) {
             logmsg(LOGMSG_ERROR, "fdb info db: unknown dbname \"%s\"\n", dbname);
@@ -4733,6 +4746,7 @@ int fdb_process_message(const char *line, int lline)
     int st = 0;
     int ltok = 0;
     char *tok;
+    int force = 0;
 
     tok = segtok((char *)line, lline, &st, &ltok);
     if (ltok == 0) {
@@ -4754,7 +4768,16 @@ int fdb_process_message(const char *line, int lline)
                         "tables names and their versions in db \"dbname\"\n");
     } else if (tokcmp(tok, ltok, "init") == 0) {
         fdb_init();
+    } else if (tokcmp(tok, ltok, "force") == 0) {
+        force = 1;
+        tok = segtok((char *)line, lline, &st, &ltok);
+        if (ltok == 0 || tokcmp(tok, ltok, "clear"))  {
+            logmsg(LOGMSG_ERROR, "fdb schema error: missing clear\n");
+            return FDB_ERR_GENERIC;
+        }
+        goto clear;
     } else if (tokcmp(tok, ltok, "clear") == 0) {
+clear:
         tok = segtok((char *)line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "fdb schema error: missing command\n");
@@ -4779,7 +4802,7 @@ int fdb_process_message(const char *line, int lline)
                     wrlock_schema_lk();
 
                     /* clear all tables for db "dbname" */
-                    _fdb_clear_schema(dbname, NULL, 0);
+                    _clear_schema(dbname, NULL, force);
 
                     unlock_schema_lk();
                 } else {
@@ -4794,7 +4817,7 @@ int fdb_process_message(const char *line, int lline)
                     wrlock_schema_lk();
 
                     /* clear table "tblname for db "dbname" */
-                    _fdb_clear_schema(dbname, tblname, 0);
+                    _clear_schema(dbname, tblname, force);
 
                     unlock_schema_lk();
 
@@ -4926,7 +4949,7 @@ int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
     Db *db = &((Vdbe*)pStmt)->db->aDb[tab->iDb];
 
     /* this ensures live fdb object */
-    fdb_t *fdb = get_fdb(db->zDbSName);
+    fdb_t *fdb = get_fdb(db->zDbSName, FDB_GET_LOCK);
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "%s fdb %s removed!\n", __func__, db->zDbSName);
         /* we are returning here version mismatch, so that the upper
@@ -4944,7 +4967,13 @@ int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
      *
      * NOTE: we remove local clnt cache when we lose locks, so we need
      * to get again table from the fdb object
+     * NOTE2: once fdb live lock is gone, fdb can be destroyed and another
+     * can be created in its place; need to set the proper pointer here
+     * which will be valid until the table locks are unlocked
+     *
      */
+    db->pBt->fdb = fdb;
+
     Pthread_mutex_lock(&fdb->tables_mtx);
 
     ent = hash_find_readonly(fdb->h_ents_rootp, &rootpage);
@@ -6270,7 +6299,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
             goto abort;
         }  else if (pushes[i]) {
             /* need to mark the create as a remote write */
-            fdb_t *fdb = get_fdb(dbnames[i]);
+            fdb_t *fdb = get_fdb(dbnames[i], FDB_GET_LOCK);
             fdb_tran_t * tran = fdb_get_subtran(clnt->dbtran.dtran, fdb);
             tran->nwrites += 1;
             put_fdb(fdb, FDB_PUT_NOFREE);

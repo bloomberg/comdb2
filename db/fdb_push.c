@@ -579,7 +579,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     /* this was handled back here through an "error"; clear it */
     clnt->had_errors = 0;
 
-    fdb = get_fdb(push->remotedb);
+    fdb = get_fdb(push->remotedb, FDB_GET_LOCK);
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "FDB push missing fdb %s\n", push->remotedb);
         rc = -2;

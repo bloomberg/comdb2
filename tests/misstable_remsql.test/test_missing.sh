@@ -80,7 +80,7 @@ output=run.2.out
 
 #purge local information
 #comdb2sc $a_dbname send fdb clear schema $a_remdbname > $output 2>&1
-cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb clear schema $a_remdbname\")" > $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb force clear schema $a_remdbname\")" > $output 2>&1
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
