@@ -2261,6 +2261,25 @@ function physrep_allowed_source
     done
 }
 
+function physrep_block_writes_correct_rcode
+{
+    # Make sure that physreps block writes & return the correct rcode when they do
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "create table should_fail(a int)" 2>&1)
+    if [[ "$out" != *"failed with rc -21 attempt to write a readonly database"* ]]; then
+        cleanFailExit "Expected error code -21 when creating table on physrep, got: $out"
+    fi
+    # Make sure that 'readwrite' message trap returns appropriate rcode for physreps
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "exec procedure sys.cmd.send('readwrite')" 2>&1)
+    if [[ "$out" != *"Physical-replicants are read-only"* ]]; then
+        cleanFailExit "Expected error message 'Physical-replicants are read-only' when sending 'readwrite' trap to physrep, got: $out"
+    fi
+    # Make sure that 'stat' message shows the physrep is readonly
+    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "exec procedure sys.cmd.send('stat')" 2>&1 | egrep readonly)
+    if [[ "$out" != *"readonly                Y"* ]]; then
+        cleanFailExit "Expected 'readonly Y' in 'stat' output from physrep, got: $out"
+    fi
+}
+
 function verify_alt_metadb_system_table 
 {
     out=$($CDB2SQL_EXE $CDB2_OPTIONS $REPL_CLUS_DBNAME --host $REPL_CLUS_HOST "exec procedure sys.cmd.send('physrep_alt_metadb_print')" | grep "$REPL_ALTMETA_DBNAME" | wc -l)
@@ -2536,6 +2555,11 @@ function run_tests
     incoherent_master
     testcase_finish $testcase
 
+    testcase="physrep_block_writes_correct_rcode"
+    testcase_preamble $testcase
+    physrep_block_writes_correct_rcode
+    testcase_finish $testcase
+
     testcase="physrep_allowed_source"
     testcase_preamble $testcase
     physrep_allowed_source
@@ -2544,10 +2568,11 @@ function run_tests
 
 function run_one_test
 {
-    tranlog_timeout
+    physrep_block_writes_correct_rcode
 }
 
 run_tests
+#run_one_test
 cleanup
 
 exit 0

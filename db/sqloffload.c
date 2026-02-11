@@ -349,11 +349,11 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         /* close the block processor session and retrieve the result */
         sql_debug_logf(clnt, __func__, __LINE__, "committing\n");
         rc = osql_sock_commit(clnt, osqlreq_type, TRANS_CLNTCOMM_NORMAL);
-        if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
-            rc != SQLITE_BUSY && rc != SQLITE_CLIENT_CHANGENODE) {
+        if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK && rc != SQLITE_BUSY && rc != SQLITE_READONLY &&
+            rc != SQLITE_CLIENT_CHANGENODE) {
             // XXX HERE IS THE BUG .. SQLITE_ERROR IS 1 - THE SAME AS DUP
-            logmsg(LOGMSG_ERROR, "%s line %d: rc is set to %d, changing rc to CLIENT_CHANGENODE\n", 
-                    __func__, __LINE__, rc);
+            logmsg(LOGMSG_DEBUG, "%s line %d: rc is set to %d, changing rc to CLIENT_CHANGENODE\n", __func__, __LINE__,
+                   rc);
             rc = SQLITE_CLIENT_CHANGENODE;
             //rc = SQLITE_ERROR;
         }
