@@ -1,5 +1,22 @@
 # NOTES
 
+## Tuesday, Feb 10th, 2026
+
+- `sqliteInt.h`
+  - We define additional affinity types for new datatypes like datetime, interval,
+    etc.
+  - We had a cool Lingzhi patch to make `SQLITE_KEEPNULL` work in spite of our
+    additional affinity types. Latest SQLite doesn't have `SQLITE_KEEPNULL` at
+    all, removed the patch. **This means we have one less
+    `#ifdef SQLITE_BUILDING_FOR_COMDB2` block now** (127 vs. 128).
+  - `struct Index` - `nAlloc` vs. `mxSample`. Seems like we have rewritten some
+    parts of `analyze.c`, feels like it makes sense to keep both.
+  - `SF_ASTIncluded`. We have added a `selFlag` related to parallel SQL execution
+    that now conflicts with SQLite's own `SF_PushDown`. My only concern would be
+    if changing the flag would break like fdb queries or something, but I don't
+    think the AST itself is serialized, so maybe the actual flag value doesn't
+    matter? In that case it should be safe to just pick a different flag value...
+
 ## Monday, Feb 9th, 2026
 
 - Decimal
