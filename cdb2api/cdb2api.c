@@ -1596,6 +1596,13 @@ static void parse_dbhosts_from_env(int *dbnum, int *num_hosts, char hosts[][CDB2
     return;
 }
 
+#ifdef CDB2API_TEST
+void reprocess_env_vars(void)
+{
+    have_read_env = 0;
+}
+#endif
+
 static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2db_name,
                                           char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                                           const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
@@ -1691,8 +1698,13 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     }
 
     if (hndl) {
-        if ((strcasecmp(hndl->type, "default") == 0) && cdb2_default_cluster_set_from_env)
+        if (hndl->resolv_def && cdb2_default_cluster_set_from_env) {
+            /* Default tier envvar tier takes the 2nd highest priority.
+               If we've resolved the actual tier from the envvar,
+               we can stop resolving "default" further */
             strcpy(hndl->type, cdb2_default_cluster);
+            hndl->resolv_def = (strcasecmp(hndl->type, "default") == 0);
+        }
         if (cdb2_connect_timeout_set_from_env)
             hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
         if (cdb2_sockpool_send_timeoutms_set_from_env)
@@ -1731,7 +1743,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
     int err = 0;
-    char *addl_cfg;
 
     bzero(line, sizeof(line));
     debugprint("entering\n");
@@ -1758,9 +1769,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
         } else if (dbname && (strcasecmp(dbname, tok) == 0)) {
             tok = strtok_r(NULL, " =:,", &last);
             if (tok != NULL && strcasecmp("additional_cfg", tok) == 0) {
-                addl_cfg = strtok_r(NULL, " =:,", &last);
-                if (addl_cfg != NULL) { /* copy out the path. it'll be parsed in the very end. */
-                    strncpy(CDB2DBCONFIG_ADDL_PATH, addl_cfg, sizeof(CDB2DBCONFIG_ADDL_PATH) - 1);
+                char *cfg_path = strtok_r(NULL, " =:,", &last);
+                if (cfg_path != NULL) { /* copy out the path. it'll be parsed in the very end. */
+                    cdb2_skipws(cfg_path);
+                    strncpy(CDB2DBCONFIG_ADDL_PATH, cfg_path, sizeof(CDB2DBCONFIG_ADDL_PATH) - 1);
                     CDB2DBCONFIG_ADDL_PATH[sizeof(CDB2DBCONFIG_ADDL_PATH) - 1] = '\0';
                 }
             } else { /* host list */
@@ -1899,7 +1911,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
             if (!cdb2_default_cluster_set_from_env && strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    if (hndl && (strcasecmp(hndl->type, "default") == 0)) {
+                    if (hndl && hndl->resolv_def) {
                         strncpy(hndl->type, tok, sizeof(cdb2_default_cluster) - 1);
                     } else if (!hndl) {
                         strncpy(cdb2_default_cluster, tok, sizeof(cdb2_default_cluster) - 1);
@@ -2789,6 +2801,21 @@ static COMDB2BUF *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, cons
         nexpired = 0;
         TAILQ_FOREACH_SAFE(cc, &local_connection_cache, local_cache_lnk, tmp)
         {
+            /* Found a connection in local cache, use it. */
+            if (strcmp(cc->typestr, typestr) == 0) {
+                sb = cc->sb;
+                cc->sb = NULL;
+                cc->typestr[0] = 0;
+                TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
+                TAILQ_INSERT_TAIL(&free_local_connection_cache, cc, local_cache_lnk);
+                connection_cache_entries--;
+#ifdef CDB2API_TEST
+                ++num_cache_hits;
+#endif
+                break;
+            }
+
+            /* Otherwise check if the connection should be spilled to sockpool */
             if (max_local_connection_cache_age > 0 && now - cc->when >= max_local_connection_cache_age) {
                 ptr = &expired[nexpired];
                 ptr->sb = cc->sb;
@@ -2800,16 +2827,6 @@ static COMDB2BUF *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, cons
                 TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
                 TAILQ_INSERT_TAIL(&free_local_connection_cache, cc, local_cache_lnk);
                 connection_cache_entries--;
-            } else if (sb == NULL && strcmp(cc->typestr, typestr) == 0) {
-                sb = cc->sb;
-                cc->sb = NULL;
-                cc->typestr[0] = 0;
-                TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
-                TAILQ_INSERT_TAIL(&free_local_connection_cache, cc, local_cache_lnk);
-                connection_cache_entries--;
-#ifdef CDB2API_TEST
-                ++num_cache_hits;
-#endif
             }
         }
 #ifdef CDB2API_TEST
@@ -2819,9 +2836,10 @@ static COMDB2BUF *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, cons
         pthread_mutex_unlock(&local_connection_cache_lock);
     }
     while (nexpired-- > 0) {
-        /* closes expired inactive connections.
-           don't donate them, because server may have already closed them. */
-        cdb2buf_close(expired[nexpired].sb);
+        ptr = &expired[nexpired];
+        int fd = cdb2buf_fileno(ptr->sb);
+        if (cdb2buf_free(ptr->sb) == 0) /* the function closes fd on error */
+            cdb2_socket_pool_donate_ext(hndl, ptr->typestr, fd, 10, 0);
     }
     return sb;
 }
@@ -2987,19 +3005,12 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
         }
         pthread_mutex_unlock(&local_connection_cache_lock);
         if (evict_this.sb != NULL) {
-            time_t now = time(NULL);
-            if (now - evict_this.when >= max_local_connection_cache_age) {
-                LOG_CALL("closing rather than donating because connection has been inactive for %d secs\n",
-                         (int)(now - evict_this.when));
-                cdb2buf_close(evict_this.sb);
+            fd = cdb2buf_fileno(evict_this.sb);
+            if (cdb2buf_free(evict_this.sb) == 0) {
+                /* the function closes fd on error */
+                cdb2_socket_pool_donate_ext(hndl, evict_this.typestr, fd, 10, 0);
             } else {
-                int fd = cdb2buf_fileno(evict_this.sb);
-                if (cdb2buf_free(evict_this.sb) == 0) {
-                    /* the function closes fd on error */
-                    cdb2_socket_pool_donate_ext(hndl, evict_this.typestr, fd, 10, 0);
-                } else {
-                    LOG_CALL("not donating %d because cdb2buf_free failed\n", fd);
-                }
+                LOG_CALL("not donating %d because cdb2buf_free failed\n", fd);
             }
         }
     }
@@ -7917,7 +7928,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DISCOVERY, e)) != NULL) {
         int unused;
         (void)unused;
-        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        /* return unresolved tier name (eg "default") on CDB2_BEFORE_DISCOVERY */
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_DBTYPE, (hndl->resolv_def ? "default" : hndl->type));
         PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
 
@@ -8172,7 +8184,7 @@ static void before_discovery(cdb2_hndl_tp *hndl)
         int unused;
         (void)unused;
         /* return unresolved tier name (eg "default") on CDB2_BEFORE_DISCOVERY */
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_DBTYPE, hndl->type);
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_DBTYPE, (hndl->resolv_def ? "default" : hndl->type));
         PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
 }
@@ -8734,6 +8746,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     TAILQ_INIT(&hndl->queries);
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
     strncpy(hndl->type, type, sizeof(hndl->type) - 1);
+    hndl->resolv_def = (strcasecmp(type, "default") == 0);
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
@@ -8765,13 +8778,13 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         snprintf(COMDB2_CONFIG_DB_DEFAULT_TYPE, sizeof(COMDB2_CONFIG_DB_DEFAULT_TYPE), "%s_%s", DEFAULT_TYPE_PREFIX,
                  dbname);
         char *db_default_type = getenv(COMDB2_CONFIG_DB_DEFAULT_TYPE);
-        if (db_default_type && strcasecmp(type, "default") == 0) {
-            if (strcmp(db_default_type, "") == 0) {
-                fprintf(stderr, "WARNING: %s:Value of %s is not valid. Using value '%s'.\n", __func__,
-                        COMDB2_CONFIG_DB_DEFAULT_TYPE, db_default_type);
-            }
+        if (db_default_type && hndl->resolv_def) {
             strncpy(hndl->type, db_default_type, sizeof(hndl->type) - 1);
             hndl->db_default_type_override_env = 1;
+            /* Per-database envvar tier takes the highest priority.
+               If we've resolved the actual tier from the envvar,
+               we can stop resolving "default" further */
+            hndl->resolv_def = (strcasecmp(hndl->type, "default") == 0);
         }
     }
 
