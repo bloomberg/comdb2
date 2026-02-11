@@ -320,20 +320,6 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 
 char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *str);
 
-struct cdb2_identity {
-    void  (*resetIdentity_start)();
-    void  (*resetIdentity_end)(int);
-    void *(*getIdentity)(cdb2_hndl_tp *, int);
-    void (*set_identity)(cdb2_hndl_tp *, const void *);
-    void (*identity_create)();
-    void (*identity_destroy)(int);
-    int (*identity_valid)();
-};
-
-struct cdb2_publish_event {
-    int (*publish_event)(char *, char *, int, char *, char *, char *, char *);
-};
-
 #if defined __cplusplus
 }
 #endif
