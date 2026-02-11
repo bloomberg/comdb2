@@ -3,6 +3,14 @@
 
 ## Questions / Decisions
 
+### Wednesday, Feb 11th, 2026
+
+- [ ] Might need to add some declarations/definitions from `btree.h` to
+  `sqlite_btree.h` so things continue to compile.
+- [x] Check if we might need to update the MD5 implementation in `md5.{h,c}`
+  from `src/test_md5.c`.
+  - Confirmed that implementation has not changed.
+
 ### Tuesday, Feb 10th, 2026
 
 - [ ] Need to review affinity definitions / mask in `sqliteInt.h`
@@ -40,21 +48,35 @@
   - Kept our patch, added comment on temp file naming convention.
 - [x] 1003 ./src/sqliteInt.h.patch
   - But with questions...
+- [x] 15  ./src/sqlite_tunables.h.patch
+- [x] 82  ./src/sqlite_tunables.c.patch
+  - Nothing to do, new files.
+- [x]     ./src/btree.h
+- [x]     ./src/btreeInt.h
+- [x]     ./src/btree.c
+  - Copy over from SQLite.
+- [x] 402 ./src/sqlite_btree.h.patch
+  - Comdb2-specific, leave as-is.
+- [x] 27  ./src/md5.h.patch
+- [x] 260 ./src/md5.c.patch
+  - Comdb2-specific, leave as-is.
+- [x] 58  ./src/comdb2vdbe.h.patch
+- [x] 169 ./src/comdb2build.h.patch
+- [x] 394  ./src/comdb2vdbe.c.patch
+- [x] 469  ./src/comdb2lua.c.patch
+- [x] 8063 ./src/comdb2build.c.patch
+  - Leaving as-is for now, will revisit to see how we hook into SQLite.
+- [x] 37  ./src/fwd_types.h.patch
+  - Comdb2-specific, leave as-is.
+- [x] 39  ./src/sqliteLimit.h.patch
 
 
 ## Headers
 
-- [ ] 15  ./src/sqlite_tunables.h.patch
-- [ ] 27  ./src/md5.h.patch
-- [ ] 37  ./src/fwd_types.h.patch
-- [ ] 39  ./src/sqliteLimit.h.patch
-- [ ] 58  ./src/comdb2vdbe.h.patch
 - [ ] 65  ./src/whereInt.h.patch
 - [ ] 152 ./src/vdbe.h.patch
-- [ ] 169 ./src/comdb2build.h.patch
 - [ ] 252 ./src/sqlite.h.in.patch
 - [ ] 368 ./src/vdbeInt.h.patch
-- [ ] 402 ./src/sqlite_btree.h.patch
 
 ## Source Files
 
@@ -79,7 +101,6 @@
 - [ ] 59   ./src/callback.c.patch
 - [ ] 61   ./src/malloc.c.patch
 - [ ] 62   ./src/upsert.c.patch
-- [ ] 82   ./src/sqlite_tunables.c.patch
 - [ ] 100  ./src/trigger.c.patch
 - [ ] 106  ./src/test_vfs.c.patch
 - [ ] 136  ./src/os_unix.c.patch
@@ -90,15 +111,12 @@
 - [ ] 221  ./src/util.c.patch
 - [ ] 221  ./tool/mkkeywordhash.c.patch
 - [ ] 258  ./src/resolve.c.patch
-- [ ] 260  ./src/md5.c.patch
 - [ ] 334  ./src/attach.c.patch
 - [ ] 359  ./src/prepare.c.patch
-- [ ] 394  ./src/comdb2vdbe.c.patch
 - [ ] 417  ./src/dttz.c.patch
 - [ ] 427  ./src/tokenize.c.patch
 - [ ] 436  ./src/insert.c.patch
 - [ ] 451  ./src/main.c.patch
-- [ ] 469  ./src/comdb2lua.c.patch
 - [ ] 480  ./src/wherecode.c.patch
 - [ ] 593  ./src/select.c.patch
 - [ ] 612  ./src/vdbeapi.c.patch
@@ -110,7 +128,6 @@
 - [ ] 1719 ./src/vdbeaux.c.patch
 - [ ] 1805 ./src/vdbemem.c.patch
 - [ ] 2332 ./src/vdbe.c.patch
-- [ ] 8063 ./src/comdb2build.c.patch
 
 ## Miscellaneous
 
