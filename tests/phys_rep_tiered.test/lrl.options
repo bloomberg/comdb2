@@ -11,6 +11,7 @@ ctrace_dbdir 1
 allow_lua_print 1
 reverse_hosts_v2 1
 physrep_keepalive_v2 1
+enable_snapshot_isolation
 
 # Reproduced 'incoherent-physrep' bug with this removed.
 # Actually could not start physrep-cluster at all.

@@ -1878,7 +1878,8 @@ clipper_usage:
             extern int gbl_starttime;
             logmsg(LOGMSG_USER, "uptime                  %ds\n",
                    gbl_epoch_time - gbl_starttime);
-            logmsg(LOGMSG_USER, "readonly                %c\n", gbl_readonly ? 'Y' : 'N');
+            logmsg(LOGMSG_USER, "readonly                %c\n",
+                   (gbl_readonly || gbl_is_physical_replicant) ? 'Y' : 'N');
             logmsg(LOGMSG_USER, "num sql queries         %"PRId64"\n", gbl_nsql);
             logmsg(LOGMSG_USER, "num new sql queries     %"PRId64"\n", gbl_nnewsql);
             logmsg(LOGMSG_USER, "num ssl sql queries     %"PRId64"\n", gbl_nnewsql_ssl);
@@ -2680,7 +2681,11 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "readonly") == 0) {
         gbl_readonly = 1;
     } else if (tokcmp(tok, ltok, "readwrite") == 0) {
-        gbl_readonly = 0;
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_ERROR, "Physical-replicants are read-only\n");
+        } else {
+            gbl_readonly = 0;
+        }
     } else if (tokcmp(tok, ltok, "machine_cache") == 0) {
 
         /* machine_cache find <dbname> <class>
