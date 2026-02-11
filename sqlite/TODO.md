@@ -3,6 +3,14 @@
 
 ## Questions / Decisions
 
+### Tuesday, Feb 10th, 2026
+
+- [ ] Need to review affinity definitions / mask in `sqliteInt.h`
+  - I think `SQLITE_AFF_MASK` is correct...
+- [ ] In `struct Index`, our `nAlloc` and SQLite's `mxSample` sound oddly similar,
+  is one redundant with the other? See usage of `nAlloc` in `analyze.c`
+- [ ] Safe to change value of `SF_ASTIncluded`?
+
 ### Monday, Feb 9th, 2026
 
 - [ ] Decimal: Keep using ours?
@@ -30,6 +38,9 @@
 - [x] 14  ./src/os.h.patch
 - [x]     ./src/os.c
   - Kept our patch, added comment on temp file naming convention.
+- [x] 1003 ./src/sqliteInt.h.patch
+  - But with questions...
+
 
 ## Headers
 
@@ -44,7 +55,6 @@
 - [ ] 252 ./src/sqlite.h.in.patch
 - [ ] 368 ./src/vdbeInt.h.patch
 - [ ] 402 ./src/sqlite_btree.h.patch
-- [ ] 1003 ./src/sqliteInt.h.patch
 
 ## Source Files
 
