@@ -877,6 +877,7 @@ char *sqlite3Normalize_alternate(
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
   int useStrId = 0;  /* Treat string token as identifier */
+  int isProcedure = 0; /* Non-zero if SQL is an EXEC PROCEDURE statement */
 
   db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
   tokenType = -1;
@@ -889,6 +890,14 @@ char *sqlite3Normalize_alternate(
     }
     n = sqlite3GetToken((unsigned char*)zSql+i, &tokenType);
     if( NEVER(n<=0) ) break;
+    
+    /* If the SQL string is an EXEC PROCEDURE statement and the first "(" 
+    ** is encountered, append "()" and stop parsing */
+    if (isProcedure && tokenType == TK_LP && nParen == 0) {
+      sqlite3_str_append(pStr, "()", 2);
+      break;
+    }
+
     switch( tokenType ){
       case TK_SPACE: {
         break;
@@ -995,6 +1004,12 @@ char *sqlite3Normalize_alternate(
         iStartIN = 0;
         /* fall through */
       }
+      case TK_PROCEDURE: {
+        if (prevType == TK_EXECUTE || prevType == TK_EXEC) {
+          isProcedure = 1;
+        }
+        /* fall through */
+      }
       default: {
         if( sqlite3IsIdChar(zSql[i]) ) addSpaceSeparator(pStr);
         j = pStr->nChar;
@@ -1037,6 +1052,9 @@ char *sqlite3Normalize(
   int nParenAtIN;    /* Value of nParent at start of RHS of IN operator */
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int isProcedure = 0; /* Non-zero if SQL is an EXEC PROCEDURE statement */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
@@ -1053,6 +1071,14 @@ char *sqlite3Normalize(
     }
     n = sqlite3GetToken((unsigned char*)zSql+i, &tokenType);
     if( NEVER(n<=0) ) break;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* If the SQL string is executing a procedure and the first "("
+    is encountered, append "()" and stop parsing */
+    if (isProcedure && tokenType == TK_LP && nParen == 0) {
+      sqlite3_str_append(pStr, "()", 2);
+      break;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     switch( tokenType ){
       case TK_SPACE: {
         break;
@@ -1143,6 +1169,14 @@ char *sqlite3Normalize(
         iStartIN = 0;
         /* fall through */
       }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      case TK_PROCEDURE: {
+        if (prevType == TK_EXECUTE || prevType == TK_EXEC) {
+          isProcedure = 1;
+        }
+        /* fall through */
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       default: {
         if( sqlite3IsIdChar(zSql[i]) ) addSpaceSeparator(pStr);
         j = pStr->nChar;

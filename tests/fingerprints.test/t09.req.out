@@ -1,0 +1,4 @@
+(version='test')
+[EXEC PROCEDURE fp_proc(fun())] failed with rc -3 bad argument -> fun())
+(unique_fps=1)
+(normalized_sql='EXEC PROCEDURE fp_proc();')
