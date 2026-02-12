@@ -129,16 +129,6 @@ For example, for this configuration file:
 Comdb2 API will try to find the Comdb2 configuration database (called metadb) on machines returned by resolving the
 hostname prod-metadb.dyndns.example.com.
 
-#### lib
-
-This expects a path to a shared object file, which will be loaded into the application memory.
-
-Note that the API must be compiled with `WITH_DL_LIBS` and the application must link with `-ldl`.
-
-The API looks for `cdb2_lib_init()` in the shared object file. The function takes no arguments and returns void.
-It will be called immediately after the shared object is loaded.
-
-
 ## comdb2db
 
 Comdb2db manages 3 types of resources: databases, machines, and clusters.  At the minimum, it should contains the

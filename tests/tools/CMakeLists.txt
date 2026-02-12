@@ -49,6 +49,7 @@ add_exe(cdb2api_sptrace cdb2api_sptrace.cpp)
 add_exe(cdb2api_stmt_return_types cdb2api_stmt_return_types.cpp)
 add_exe(cdb2api_string_escape cdb2api_string_escape.cpp)
 add_exe(cdb2api_txn cdb2api_txn.cpp)
+add_exe(cdb2api_unit cdb2api_unit.c)
 add_exe(cdb2api_unread_data cdb2api_unread_data.cpp)
 add_exe(cdb2bind cdb2bind.c)
 add_exe(cldeadlock cldeadlock.c)
@@ -98,6 +99,7 @@ add_exe(ssl_multi_certs_one_process ssl_multi_certs_one_process.c)
 add_exe(stepper stepper.c stepper_client.c)
 add_exe(test_threadpool test_threadpool.c)
 add_exe(test_compare_semver test_compare_semver.c)
+add_exe(test_get_comdb2db_hosts test_get_comdb2db_hosts.c)
 add_exe(test_str_util test_str_util.c)
 add_exe(test_consistent_hash test_consistent_hash.c)
 add_exe(test_consistent_hash_bench test_consistent_hash_bench.c)
@@ -135,11 +137,6 @@ list(APPEND common-deps
   m
 )
 
-if (NOT COMDB2_SKIP_CDB2API_SO)
-  add_library(api_hello_world_lib SHARED api_hello_world_lib.c)
-  list(APPEND test-tools api_hello_world_lib)
-endif()
-
 foreach(executable ${test-tools})
   if (COMDB2_BBCMAKE)
     target_link_libraries(${executable} opencdb2api ${common-deps})
@@ -147,20 +144,6 @@ foreach(executable ${test-tools})
     target_link_libraries(${executable} cdb2api ${common-deps})
   endif()
 endforeach()
-
-if(NOT COMDB2_SKIP_CDB2API_SO)
-  add_exe(api_libs api_libs.c)
-  target_link_libraries(api_libs cdb2api_shared ${common-deps})
-
-  add_exe(cdb2_client cdb2_client.c)
-  target_link_libraries(cdb2_client cdb2api_shared ${common-deps})
-
-  add_exe(cdb2api_unit cdb2api_unit.c)
-  target_link_libraries(cdb2api_unit cdb2api_shared ${common-deps})
-
-  add_exe(test_get_comdb2db_hosts test_get_comdb2db_hosts.c)
-  target_link_libraries(test_get_comdb2db_hosts cdb2api_shared ${common-deps})
-endif()
 
 add_subdirectory(tcl)
 list(APPEND test-tools tclcdb2)
