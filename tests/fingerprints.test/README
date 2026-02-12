@@ -9,7 +9,7 @@ result set (i.e. via the WHERE clause):
 
     4f16a8ec9db90f803e406659938b2602: "SELECT 1" ==> "SELECT?;"
     69d1558c950bbb908f4b8df0d63e2cf4: "SELECT comdb2_host();"
-    812bdde365a22a61bcd52bf005990c37: "EXEC PROCEDURE sys.cmd.send(?);"
+    ba65a98635122c91120d37676cbfc1ef: "EXEC PROCEDURE sys.cmd.send();"
 
 The corresponding SQL statements are excluded because these are (sometimes?)
 used by the test suite itself at various stages.  Since the exact quantity

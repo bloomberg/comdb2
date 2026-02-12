@@ -1,0 +1,33 @@
+-- Create a dummy procedure
+CREATE PROCEDURE fp_proc VERSION 'test' {local function main() end}$$
+
+-- Call it with different argument counts
+EXEC PROCEDURE fp_proc()
+EXEC PROCEDURE fp_proc(1)
+EXEC PROCEDURE fp_proc(1,2,3)
+EXEC PROCEDURE fp_proc(1, 'hello', x'DEADBEEF', 3.14, NULL)
+EXECUTE PROCEDURE fp_proc('a','b','c',4,5,6)
+EXECUTE PROCEDURE fp_proc('()','fun()')
+EXECUTE PROCEDURE fp_proc('-47', '1', x'DEADBEEF')
+
+-- Call with bound parameters
+@bind CDB2_INTEGER myint 42
+EXEC PROCEDURE fp_proc(@myint)
+@bind CDB2_CSTRING mystr hello
+@bind CDB2_INTEGER myint 99
+EXEC PROCEDURE fp_proc(@myint, @mystr)
+@bind CDB2_REAL myreal 2.718
+@bind CDB2_INTEGER myint 1
+@bind CDB2_CSTRING mystr world
+EXEC PROCEDURE fp_proc(@myint, @mystr, @myreal)
+
+-- Mix bound parameters with literals
+@bind CDB2_INTEGER myint 7
+EXEC PROCEDURE fp_proc(@myint, 'literal', 3.14, NULL)
+
+-- Syntax error but still has the same fingerprint
+EXEC PROCEDURE fp_proc(fun())
+
+-- All should produce the same fingerprint
+SELECT COUNT(DISTINCT fingerprint) as 'unique_fps' FROM comdb2_fingerprints WHERE normalized_sql LIKE 'EXEC PROCEDURE fp_proc%'
+SELECT normalized_sql FROM comdb2_fingerprints WHERE normalized_sql LIKE 'EXEC PROCEDURE fp_proc%'
