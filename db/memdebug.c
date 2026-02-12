@@ -302,7 +302,7 @@ static struct call* get_call() {
         rc = -1;
     }
 #else
-    rc = stack_pc_getlist((void**) tmp->ip, MAXSTACKDEPTH,
+    rc = comdb2_stack_pc_getlist((void**) tmp->ip, MAXSTACKDEPTH,
             (unsigned*) &tmp->nframes);
 #endif
     if (rc) return NULL; /* shouldn't happen */

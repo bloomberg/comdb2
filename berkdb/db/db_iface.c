@@ -475,7 +475,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 #ifndef __linux__
 					unsigned int nframes;
 					void *stack[MAXSTACKDEPTH];
-					rc = stack_pc_getlist(stack, MAXSTACKDEPTH, &nframes);
+					rc = comdb2_stack_pc_getlist(stack, MAXSTACKDEPTH, &nframes);
 					if (!rc) {
 						fprintf(stderr,
 						    "Second stack:\n");
@@ -495,7 +495,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			vptr->nframes = 0;
 			/* save the first stack */
 #ifndef __linux__
-			stack_pc_getlist(vptr->stack, MAXSTACKDEPTH, &vptr->nframes);
+			comdb2_stack_pc_getlist(vptr->stack, MAXSTACKDEPTH, &vptr->nframes);
 #endif
 			Pthread_setspecific(comdb2_open_key, vptr);
 		}
@@ -978,7 +978,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 #ifndef __linux__
             unsigned int nframes;
             void *stack[MAXSTACKDEPTH];
-            int rc = stack_pc_getlist(stack, MAXSTACKDEPTH, &nframes);
+            int rc = comdb2_stack_pc_getlist(stack, MAXSTACKDEPTH, &nframes);
 			if (!rc) {
 				fprintf(stderr, "Second stack:\n");
 				for (i = SKIPFRAMES; i < nframes; i++)

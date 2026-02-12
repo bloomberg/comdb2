@@ -332,7 +332,7 @@ stack_me(char *location)
 
 	bzero(msg, sizeof(msg));
 
-	rc = stack_pc_getlist(stack, MAXSTKDEPTH, &nframes);
+	rc = comdb2_stack_pc_getlist(stack, MAXSTKDEPTH, &nframes);
 
 	if (rc) {
 		ctrace("Can't get stack trace\n");

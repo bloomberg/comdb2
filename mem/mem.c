@@ -747,7 +747,7 @@ int comdb2ma_attach(comdb2ma parent, comdb2ma child)
 static void get_stack_frames(void **fp, mspace m)
 {
     unsigned int n = 0;
-    stack_pc_getlist(fp + 1, COMDB2MA_NFRAMES, &n);
+    comdb2_stack_pc_getlist(fp + 1, COMDB2MA_NFRAMES, &n);
     *fp = (void *)(uintptr_t)n;
 }
 #else

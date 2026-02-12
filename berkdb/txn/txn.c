@@ -843,7 +843,7 @@ __txn_track_stack_info(sinfo)
 {
 	int ret;
 
-	ret = stack_pc_getlist(sinfo->stack, 100, &sinfo->nframes);
+	ret = comdb2_stack_pc_getlist(sinfo->stack, 100, &sinfo->nframes);
 
 	sinfo->tid = pthread_self();
 	sinfo->time = time(NULL);

@@ -454,7 +454,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
     if (lk->lockref == 0) {
         lk->line = line;
         if (lk->stack) {
-            rc = stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+            rc = comdb2_stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
             if (rc) {
                 logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
                 lk->nstack = 0;
@@ -532,7 +532,7 @@ int bdb_get_readlock(bdb_state_type *bdb_state, int trylock, const char *idstr, 
     if (lk->lockref == 0) {
         lk->line = line;
         if (lk->stack) {
-            rc = stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+            rc = comdb2_stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
             if (rc) {
                 logmsg(LOGMSG_INFO, "%s: failed to get stack %d\n", __func__, rc);
                 lk->nstack = 0;
@@ -753,7 +753,7 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
             free(lk);
             exit(1);
         }
-        rc = stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+        rc = comdb2_stack_pc_getlist(lk->stack, BDB_DEBUG_STACK, &lk->nstack);
         if (rc) {
             logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
             free(lk->stack);
