@@ -106,7 +106,7 @@ void thread_add_resource(int type, void *resource)
     hash_add(info->resource_hash, r);
 
     r->nframes = 0;
-    rc = stack_pc_getlist(r->stack, MAXSTACKDEPTH, &r->nframes);
+    rc = comdb2_stack_pc_getlist(r->stack, MAXSTACKDEPTH, &r->nframes);
     if (rc)
         printf("stack_pc_getlist rc %d\n", rc);
 }
