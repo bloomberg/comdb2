@@ -287,7 +287,7 @@ end
 Description:
 
 This is a reference to an SQL table. A dbtable can represent a "base table" that exists in your schema, or a temporary SQL table.
-* A dbtable from base tables is produced by the `db:table()`. A dbtable provides various methods documented in [Methods on dbtable](#operating-on-a-dbstmt). A dbtable is the only way to pass SQL temp tables from main thread to children threads. These can then be worked on concurrently.
+* A dbtable from base tables is produced by the `db:table()`. A dbtable provides various methods documented in [Methods on dbtable](#operating-on-a-dbtable). A dbtable is the only way to pass SQL temp tables from main thread to child threads. These can then be worked on concurrently.
 * `db:table("t")` produces a dbtable on underlying Comdb2 table "t".
 * `db:table("tmp", {<schema>})` produces a dbtable on a temporary SQL table.
 
@@ -341,8 +341,8 @@ dbthread = db:create_thread(func, ...)
 
 Description:
 
-This method is used to create a new thread by invoking the function given as the first parameter, and rest of 
-the parameters as the parameter to the function.  The result is a dbthread which supports join method.
+This method is used to create a new thread by invoking the function given as the first parameter, and the rest of 
+the parameters as parameters to the function.  The result is a dbthread which supports join method.
 
 Return Values:
 
@@ -450,7 +450,6 @@ Parameters:
 
 |  Name          |  Description               |   Notes
 |----------------|----------------------------|------------------------------------------------------------
-|  *name*        |  name of the column        |                                                 
 |  *query*       | The SQL string             |   *?* used to specify placeholder for replaceable parameter              
 
 
@@ -594,13 +593,13 @@ num = dbstmt:rows_changed()
 
 Description:
 
-This method give the number of rows changed by a query.
+This method gives the number of rows changed by a query.
 
 Return Values:
 
 |Name                | Description                       
 |--------------------| -----------------------------------
-|*num*        | number of rows change              
+|*num*        | number of rows changed              
 
 Parameters:
 none
@@ -719,7 +718,7 @@ Parameters:
 
 |  Name               |  Description          
 |---------------------|-----------------------
-|  *name*        |  name of the column                                                         
+|  *name*        |  name of the table                                                         
 
 
 ### db:table with name and schema
@@ -730,7 +729,7 @@ dbtable, rc = db:table(name, {schema})
 
 Description:
 
-This method creates a new SQL temporary table. The schema for this table is specified by passing in a Lua array which has one element for each column in the temp table. Each of these is itself an array of two elements which specifies column name and column type. `{ {'name1', 'type1'}, {'name2', 'type2'}, ...}`. The type can be any of the SQL types listed <a href="#lua-data-types">here</a>. The lifespan is the scope of the store procedure execution.
+This method creates a new SQL temporary table. The schema for this table is specified by passing in a Lua array which has one element for each column in the temp table. Each of these is itself an array of two elements which specifies column name and column type. `{ {'name1', 'type1'}, {'name2', 'type2'}, ...}`. The type can be any of the SQL types listed <a href="#lua-data-types">here</a>. The lifespan is the scope of the stored procedure execution.
 
 The temporary tables are not transactional - `db:begin()`, `db:commit()`, `db:rollback()` do not apply to operations performed on temporary tables. These allow concurrent access and are effective way to transfer data between threads in a stored procedure. The `main` thread creates temporary tables, and passes the `dbtable` handle to several threads. The threads perform concurrent operations on the temporary tables and will see each others' side effects (as will the main thread.)
 
@@ -745,7 +744,7 @@ Parameters:
 
 |  Name               |  Description               |                           Notes
 |---------------------|----------------------------|--------------------------------
-|  *name*        |  name of the column        |
+|  *name*        |  name of the table        |
 |  *schema array*    |  schema as a Lua array |  array of arrays
 
 Example:
@@ -760,7 +759,7 @@ Running this yields:
 
 ```
 $ cdb2sql testdb default "exec procedure temp()"
-(isss=5, j=55)
+(id=5, j=55)
 ```
 
 
@@ -877,7 +876,7 @@ Parameters:
 | int                  |  integer       |  short, u_short, int, u_int, longlong  
 | cstring              |  text          |  cstring, vutf8                        
 | blob                 |  blob          |  byte[], blob                          
-| decimal              |  decimal       |  decimal32, decimal64, decimal64       
+| decimal              |  decimal       |  decimal32, decimal64, decimal128       
 | datetime             |  datetime      |  datetime, datetimeus                              
 | intervalym           |  intervalym    |  intervalym                            
 | intervalds           |  intervalds    |  intervalds, intervaldsus                            
@@ -911,7 +910,7 @@ Parameters:
 |`timezone` |
 
 
-Following sample show using datetimes
+The following sample shows using datetimes
 
     local function main()
         declare n 'datetime'
@@ -1108,10 +1107,10 @@ Compare `rc` with the following named values to determine why `db:commit` failed
 | Lua value            | Error |
 |----------------------|-------|
 |db.err_dup            | Unique key constraint violation (duplicate key)
-db.err_verify          | Verify failure - transaction tried to modify a record that was modified by another transaction
-db.err_fkey            | Foreign key constraint violation
-db.err_null_constraint | Null constraint violation
-db.err_selectv         | Records touched by ```SELECTV``` modified by other transactions
+|db.err_verify          | Verify failure - transaction tried to modify a record that was modified by another transaction
+|db.err_fkey            | Foreign key constraint violation
+|db.err_null_constraint | Null constraint violation
+|db.err_selectv         | Records touched by ```SELECTV``` modified by other transactions
 
 Parameters:
 none
@@ -1126,7 +1125,7 @@ rc = db:rollback()
 Description:
 
 This method aborts a transaction that was started inside the same stored procedure with the
-db:begin method.  It is an error to attempt to commit any transaction not begun in that manner.
+db:begin method.  It is an error to attempt to rollback any transaction not begun in that manner.
 
 Return Values:
 
@@ -1257,7 +1256,7 @@ db:setmaxinstructions(num)
 Description:
 
 Stored procedure execution is halted after its quota of instructions is exhausted. By default the quota is set 
-to 10000 Lua instruction. This can be changed to any number in the range [100, 1000000000]. Use 
+to 10000 Lua instructions. This can be changed to any number in the range [100, 1000000000]. Use 
 `db:getinstructioncount` to determine how many instructions are used by your procedure and tune this number 
 accordingly. This can be set to 20000 by calling `db:setmaxinstructions(20000)`
 
@@ -1418,7 +1417,7 @@ This will output:
 6
 ```
 
-In all examples above, the resulting Lua array contain strings.
+In all examples above, the resulting Lua array contains strings.
 
 ### db:table_to_json()
 
@@ -1506,7 +1505,7 @@ Output:
 ### db:json_to_table()
 
 ```
-lua-table = db:csv_to_table(json-string, optional lua-table)
+lua-table = db:json_to_table(json-string, optional lua-table)
 ```
 
 Parse input json string and produce corresponding Lua table. Supports objects, arrays, null, bool, integer, double and string. There is no representation for undefined, NaN or Infinity. Additionally, JSON does not have encoding for datetime, interval or decimal values. If required, these types can be encoded as strings or numbers and converted to desired type in the procedure. Pass in a lua-table with `type_annotate=true` to process JSON string which has type hints (as produced by `db:table_to_json`)
@@ -1598,7 +1597,7 @@ be passed to the stored procedure and this depends on the business logic it impl
 
 The stored procedure name must match the SQL function name. Additionally, it must implement a function 
 which matches the SQL function name. The stored procedure is not required to have a `main`. This is convenient 
-during development; stored procedure can be executed as usual and `main` can be used to simulate calls SQL 
+during development; stored procedure can be executed as usual and `main` can be used to simulate calls the SQL 
 engine would have performed.
 
 ```
@@ -1641,7 +1640,7 @@ The stored procedure name must match the SQL function name. Additionally, it mus
 named `step` and `final`. SQL engine will call `step` once per matching row and `final` at the end of processing 
 all rows. `final` returns a single value which is the result of aggregate logic. Any return value from `step` is 
 ignored. Stored procedure doesn't need to have `main`. Stored procedure will need to maintain state during 
-calls to `step` and `final`. The sever will ensure that same Lua VM is provided during these calls so state 
+calls to `step` and `final`. The server will ensure that the same Lua VM is provided during these calls so state 
 can be maintained. This is illustrated in the example below where we provide a simplistic implementation for `median`.
 
 ```
