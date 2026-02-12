@@ -1193,6 +1193,11 @@ extern u32 sqlite3TreeTrace;
 ** Macros for "wheretrace"
 */
 extern u32 sqlite3WhereTrace;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* Want wheretrace but don't want to enable SQLITE_DEBUG. */
+# define WHERETRACE(K,X)  if(sqlite3WhereTrace&(K)) sqlite3DebugPrintf X
+# define WHERETRACE_ENABLED 1
+#else
 #if defined(SQLITE_DEBUG) \
     && (defined(SQLITE_TEST) || defined(SQLITE_ENABLE_WHERETRACE))
 # define WHERETRACE(K,X)  if(sqlite3WhereTrace&(K)) sqlite3DebugPrintf X
@@ -1200,6 +1205,7 @@ extern u32 sqlite3WhereTrace;
 #else
 # define WHERETRACE(K,X)
 #endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Bits for the sqlite3WhereTrace mask:
