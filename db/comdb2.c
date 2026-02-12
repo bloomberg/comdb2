@@ -764,6 +764,7 @@ int gbl_allow_incoherent_sql = 0;
 
 char *gbl_iam_dbname = NULL;
 char *gbl_iam_base_bri = NULL;
+char *gbl_iam_metrics_namespace = "comdb2-iam";
 char *gbl_dbdir = NULL;
 int gbl_backup_logfiles = 0;
 static int gbl_backend_opened = 0;
