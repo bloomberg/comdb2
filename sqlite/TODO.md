@@ -10,6 +10,8 @@
 - [x] Check if we might need to update the MD5 implementation in `md5.{h,c}`
   from `src/test_md5.c`.
   - Confirmed that implementation has not changed.
+- [x] `WHERETRACE` macros moved from `whereInt.h` to `sqliteInt.h`, moved
+  our patch to enable wheretrace in comdb2 builds.
 
 ### Tuesday, Feb 10th, 2026
 
@@ -26,6 +28,11 @@
     supports a wider variety of operations, implementing the full IEEE 754
     decimal arithmetic specification. It is also tied to the storage format now
     since we store these types natively (not converting to text like SQLite).
+- [x] `src/hash.h`: We added a declaration for `sqlite3HashFindN`, which was for
+  finding a key with a known number of bytes. The definition has since been
+  removed from `src/hash.c` in commit `07ce98afc` as part of the SQLite 3.27.2
+  upgrade, but seems like the declaration lingered. Removed the declaration and
+  pulled in latest changes.
 
 ## Done
 
@@ -38,11 +45,6 @@
     choosing not to pull it in, we'll stick with our implementation.
 - [x] 14  ./src/hash.h.patch
 - [x]     ./src/hash.c
-  - We added a declaration for `sqlite3HashFindN`, which was for finding a key
-    with a known number of bytes. The definition has since been removed from
-    `src/hash.c` in commit `07ce98afc` as part of the SQLite 3.27.2 upgrade, but
-    seems like the declaration lingered. Removed the declaration and pulled in
-    latest changes.
 - [x] 14  ./src/os.h.patch
 - [x]     ./src/os.c
   - Kept our patch, added comment on temp file naming convention.
@@ -69,11 +71,11 @@
 - [x] 37  ./src/fwd_types.h.patch
   - Comdb2-specific, leave as-is.
 - [x] 39  ./src/sqliteLimit.h.patch
+- [x] 65  ./src/whereInt.h.patch
 
 
 ## Headers
 
-- [ ] 65  ./src/whereInt.h.patch
 - [ ] 152 ./src/vdbe.h.patch
 - [ ] 252 ./src/sqlite.h.in.patch
 - [ ] 368 ./src/vdbeInt.h.patch
