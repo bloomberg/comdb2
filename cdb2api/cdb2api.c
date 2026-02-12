@@ -501,22 +501,6 @@ void (*cdb2_uninstall)(const char *) = CDB2_UNINSTALL_LIBS;
     struct cdb2_publish_event *publish_event_cb = &CDB2_PUBLISH_EVENT_CALLBACKS;
 #endif
 
-#ifndef WITH_DL_LIBS
-#define WITH_DL_LIBS 0
-#endif
-
-#if WITH_DL_LIBS
-#include <dlfcn.h>
-    void cdb2_set_install_libs(void (*ptr)(const char *))
-    {
-        cdb2_install = ptr;
-    }
-    void cdb2_set_uninstall_libs(void (*ptr)(const char *))
-    {
-        cdb2_uninstall = ptr;
-    }
-#endif
-
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define MAX_SOCKPOOL_FDS 8
 
@@ -2005,25 +1989,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 if (cdb2_install != NULL)
                     (*cdb2_install)(tok);
-#if WITH_DL_LIBS
-            } else if (strcasecmp("lib", tok) == 0) {
-                tok = strtok_r(NULL, " :,", &last);
-                if (tok) {
-                    void *handle = dlopen(tok, RTLD_NOLOAD | RTLD_NOW | RTLD_GLOBAL);
-                    if (handle == NULL) {
-                        handle = dlopen(tok, RTLD_NOW | RTLD_GLOBAL);
-                        if (handle == NULL)
-                            fprintf(stderr, "dlopen(%s) failed: %s\n", tok, dlerror());
-                        else {
-                            cdb2_init_t libinit = (cdb2_init_t)dlsym(handle, "cdb2_lib_init");
-                            if (libinit == NULL)
-                                fprintf(stderr, "dlsym(cdb2_lib_init) failed: %s\n", dlerror());
-                            else
-                                (*libinit)();
-                        }
-                    }
-                }
-#endif
             } else if (strcasecmp("stack_at_open", tok) == 0 && stack_at_open) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {

@@ -63,15 +63,6 @@ struct cdb2_publish_event {
     int (*publish_event)(char *, char *, int, char *, char *, char *, char *);
 };
 
-#ifndef WITH_DL_LIBS
-#define WITH_DL_LIBS 0
-#endif
-
-#if WITH_DL_LIBS
-void cdb2_set_install_libs(void (*ptr)(const char *));
-void cdb2_set_uninstall_libs(void (*ptr)(const char *));
-#endif
-
 #if defined __cplusplus
 }
 #endif

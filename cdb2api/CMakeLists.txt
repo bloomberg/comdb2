@@ -48,19 +48,4 @@ install(FILES
   DESTINATION lib/pkgconfig
 )
 
-if(NOT COMDB2_SKIP_CDB2API_SO)
-  add_library(cdb2api_shared SHARED ${src})
-  add_dependencies(cdb2api_shared proto)
-  set_target_properties(cdb2api_shared PROPERTIES OUTPUT_NAME cdb2api)
-  target_compile_definitions(cdb2api_shared PRIVATE WITH_DL_LIBS=1)
-  target_link_libraries(cdb2api_shared PUBLIC
-       ${OPENSSL_LIBRARIES}
-       ${ZLIB_LIBRARIES}
-       ${PROTOBUF-C_LIBRARY}
-       ${UNWIND_LIBRARY}
-       resolv
-  )
-  install(TARGETS cdb2api_shared LIBRARY DESTINATION lib)
-endif()
-
 endif(COMDB2_BBCMAKE)
