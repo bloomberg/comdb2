@@ -24,26 +24,25 @@ extern "C" {
 /*
   Initialization makes the walkback available from signal handlers.
 */
-int walkback_initialize_module(void);
+int comdb2_walkback_initialize_module(void);
 
 /*
   Invokes the handler for up to maxframes of run time stack frames with the
   program counter (pc) as argument.
 */
 
-int /* rcode */
-    stack_pc_getlist(
-        void **pcArray,       /* output array of program counters */
-        unsigned pcArraySize, /* number of elements in pcArray */
-        unsigned *pcOutCount  /* number of program counters returned */
-        );
+int                                           /* rcode */
+comdb2_stack_pc_getlist(void **pcArray,       /* output array of program counters */
+                        unsigned pcArraySize, /* number of elements in pcArray */
+                        unsigned *pcOutCount  /* number of program counters returned */
+);
 
 int /* rcode */
-stack_pc_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg), void *handlerarg);
+comdb2_stack_pc_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg), void *handlerarg);
 
-void stack_pc_walkback_print(void *returnaddr, void *arg);
+void comdb2_stack_pc_walkback_print(void *returnaddr, void *arg);
 
-void walkback_strerror(int rcode, char *errormsg, unsigned maxerrormsgsize);
+void comdb2_walkback_strerror(int rcode, char *errormsg, unsigned maxerrormsgsize);
 
 #ifdef __cplusplus
 }
