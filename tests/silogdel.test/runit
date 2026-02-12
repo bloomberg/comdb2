@@ -97,8 +97,13 @@ function check_table
     read -t 15 -ru "${COPROC[0]}" out
     rc=$?
 
-    if [[ $? != 0 ]]; then
-        errquit "Error reading select count (*) from $table"
+    if [[ $rc != 0 ]]; then
+        if [[ $rc == 142 ]]; then
+            abort_cluster
+            errquit "Timeout reading count(*) from $table"
+        else
+            errquit "Error reading select count (*) from $table"
+        fi
     fi
 
     if [[ "$out" != "(count(*)=$initrecs)" ]]; then
