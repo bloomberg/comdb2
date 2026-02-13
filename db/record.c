@@ -1309,6 +1309,25 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         ERR("upd master columns error %d", rc);
     }
 
+    if (iq->usedb->n_check_constraints > 0) {
+        for (int i = 0; i < maxblobs; i++) {
+            if (blobs[i].exists && blobs[i].data == NULL && blobs[i].length == OSQL_BLOB_FILLER_LENGTH) {
+                size_t bloboffs = 0, blobsizes = 0;
+                logmsg(LOGMSG_DEBUG, "%s: fetching blob %d for check constraint verification\n", __func__, i);
+                rc = ix_find_blobs_by_rrn_and_genid_tran(iq, trans, rrn, vgenid, 1, &i, &blobsizes, &bloboffs,
+                                                         (void **)&blobs[i].data);
+
+                if (rc != 0) {
+                    *opfailcode = ERR_INTERNAL;
+                    retrc = ERR_INTERNAL;
+                    ERR("failed to fetch blobs for CHECK constraint verification rc %d", rc);
+                }
+
+                blobs[i].collected = blobs[i].length = blobsizes;
+            }
+        }
+    }
+
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);
     if (rc < 0) {
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
