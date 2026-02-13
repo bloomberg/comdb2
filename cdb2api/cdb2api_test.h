@@ -91,6 +91,9 @@ const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
 int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
 
+// Defined in Bloomberg plugins, not used in OSS builds/tests.
+void list_installed_addons(const char ***installed, int *ninstalls);
+
 #if defined __cplusplus
 }
 #endif /* __cplusplus */
