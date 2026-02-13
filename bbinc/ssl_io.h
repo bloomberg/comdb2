@@ -25,6 +25,11 @@
 int SBUF2_FUNC(sslio_close)(SBUF2 *, int reuse);
 #define sslio_close SBUF2_FUNC(sslio_close)
 
+/* Does not shut down, simply frees. Use this for fatal SSL errors
+   such as SSL_ERROR_SYSCALL or SSL_ERROR_SSL */
+void SBUF2_FUNC(sslio_free)(SBUF2 *);
+#define sslio_free SBUF2_FUNC(sslio_free)
+
 int SBUF2_FUNC(sslio_read)(SBUF2 *, char *cc, int len);
 #define sslio_read SBUF2_FUNC(sslio_read)
 int SBUF2_FUNC(sslio_write)(SBUF2 *, const char *cc, int len);

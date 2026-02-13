@@ -105,6 +105,7 @@ setup_db() {
 
     if [[ -z "${SKIPSSL}" && $DBNAME != *"nossl"* ]] ; then
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
+        echo "ssl_print_io_errors 1" >> ${LRL}
     fi
 
     if [[ -z "${SKIPDEBUG}" ]] ; then
@@ -145,6 +146,16 @@ setup_db() {
     # Configure client SSL
     echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
     echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
+
+    # Be a little more generous on connect timeout if running a stress test
+    if [ "${IS_STRESS_TEST}" = "1" ]; then
+        if [ "${SKIPSSL}" = "1" ]; then
+            echo "comdb2_config:connect_timeout:1000" >> $CDB2_CONFIG
+        else
+            # SSL handshakes are expensive!
+            echo "comdb2_config:connect_timeout:10000" >> $CDB2_CONFIG
+        fi
+    fi
 
     set +e
 
