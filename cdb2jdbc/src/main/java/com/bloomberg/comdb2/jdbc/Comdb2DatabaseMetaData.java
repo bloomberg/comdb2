@@ -85,13 +85,22 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     public String getDatabaseProductVersion() throws SQLException {
-        String ret;
-        ResultSet rs = stmt.executeQuery("select comdb2_version()");
-        ret = "UNKNOWN";
-        while (rs.next())
-            ret = rs.getString(1);
-        rs.close();
-        return ret;
+        Comdb2Connection versionConn = conn.duplicate();
+        try {
+            /* Use a dedicated handle so metadata version reads do not invalidate
+             * active result sets returned by getTables()/other prepared metadata calls.
+             */
+            versionConn.lookup();
+            try (Statement versionStmt = versionConn.createStatement();
+                    ResultSet rs = versionStmt.executeQuery("select comdb2_version()")) {
+                String ret = "UNKNOWN";
+                while (rs.next())
+                    ret = rs.getString(1);
+                return ret;
+            }
+        } finally {
+            versionConn.close();
+        }
     }
 
     public String getDriverName() throws SQLException {
