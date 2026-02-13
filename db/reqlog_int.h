@@ -217,6 +217,7 @@ typedef struct nodestats {
     struct in_addr addr;
     char *task;
     char *stack;
+    char *identity;
     int is_ssl;
 
     int ref;
