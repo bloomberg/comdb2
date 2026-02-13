@@ -167,12 +167,15 @@ static void dump_stack(void *min_stack_address, size_t nwords)
 #endif
 
 /******************************************************************************
-*
-* Function: walkback_initialize_module
-*
-******************************************************************************/
+ *
+ * Function: comdb2_walkback_initialize_module
+ *
+ ******************************************************************************/
 
-int walkback_initialize_module(void) { return 0; }
+int comdb2_walkback_initialize_module(void)
+{
+    return 0;
+}
 
 #if defined(__sparc)
 /******************************************************************************
@@ -218,9 +221,7 @@ static struct frame *nextFrame(struct frame *f)
 #endif
 }
 
-static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
-                                  void (*handler)(void *returnaddr,
-                                                  void *handlerarg),
+static int __sparc_stack_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg),
                                   void *handlerarg)
 {
 
@@ -235,47 +236,25 @@ static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
 
     flushWindow();
 
-    if (context != NULL) {
-        firstframe.fr_savpc = context->uc_mcontext.gregs[REG_PC];
-        firstframe.fr_savfp =
-            (struct frame *)context->uc_mcontext.gregs[REG_O6];
+    __sparc_get_pc_and_sp(&firstframe.fr_savpc, &firstframe.fr_savfp);
 
-        if (&thr_probe_getfunc_addr == 0) {
-            /* Single threaded - libptrhead not linked in. */
-            min_stack_address = (char *)context->uc_stack.ss_sp;
-            max_stack_address = min_stack_address + context->uc_stack.ss_size;
-        } else {
-            /* libptrhead linked in */
-            stack_t thrstack;
-            if (thr_stksegment(&thrstack) != 0) {
-                return ENOCONTEXT;
-            }
-            max_stack_address = (char *)thrstack.ss_sp;
-            min_stack_address = max_stack_address - thrstack.ss_size;
-        }
+    if (&thr_probe_getfunc_addr == 0) {
+        /* Single threaded - libpthread not linked in. */
+        /* System puts environment pointers and strings at top of main
+         * program stack.  Global variable _environ points to the
+         * environment
+         * pointers.  This gives us an approximate max stack address.
+         */
+        min_stack_address = (char *)nextFrame(&firstframe);
+        max_stack_address = (char *)_environ;
     } else {
-        /* No passed in context. */
-
-        __sparc_get_pc_and_sp(&firstframe.fr_savpc, &firstframe.fr_savfp);
-
-        if (&thr_probe_getfunc_addr == 0) {
-            /* Single threaded - libpthread not linked in. */
-            /* System puts environment pointers and strings at top of main
-             * program stack.  Global variable _environ points to the
-             * environment
-             * pointers.  This gives us an approximate max stack address.
-             */
-            min_stack_address = (char *)nextFrame(&firstframe);
-            max_stack_address = (char *)_environ;
-        } else {
-            /* libpthread linked in */
-            stack_t thrstack;
-            if (thr_stksegment(&thrstack) != 0) {
-                return ENOCONTEXT;
-            }
-            max_stack_address = thrstack.ss_sp;
-            min_stack_address = max_stack_address - thrstack.ss_size;
+        /* libpthread linked in */
+        stack_t thrstack;
+        if (thr_stksegment(&thrstack) != 0) {
+            return ENOCONTEXT;
         }
+        max_stack_address = thrstack.ss_sp;
+        min_stack_address = max_stack_address - thrstack.ss_size;
     }
 
     max_frame_address = (max_stack_address - MIN_FRAME_SIZE);
@@ -318,26 +297,21 @@ static int __sparc_stack_walkback(ucontext_t *context, unsigned maxframes,
 #if defined(__linux__)
 
 /******************************************************************************
-*
-* Function: __linux_stack_walkback
-*
-******************************************************************************/
+ *
+ * Function: __linux_stack_walkback
+ *
+ ******************************************************************************/
 
-static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
-                                  void (*handler)(void *returnaddr,
-                                                  void *handlerarg),
+static int __linux_stack_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg),
                                   void *handlerarg)
 {
     unw_cursor_t cursor;
     unsigned int i;
     unw_word_t ip;
-    ucontext_t uc;
+    unw_context_t context;
 
-    if (context == 0) {
-        context = &uc;
-        unw_getcontext(context);
-    }
-    unw_init_local(&cursor, context);
+    unw_getcontext(&context);
+    unw_init_local(&cursor, &context);
     for (i = 0; i < maxframes; ++i) {
         unw_get_reg(&cursor, UNW_REG_IP, &ip);
         (*handler)((void *)ip, handlerarg);
@@ -350,61 +324,55 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
 #endif
 
 #if defined(__APPLE__)
-static int __apple_stack_walkback(ucontext_t *context, unsigned maxframes,
-                                  void (*handler)(void *returnaddr,
-                                                  void *handlerarg),
+static int __apple_stack_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg),
                                   void *handlerarg)
 {
     return 0;
 }
 #endif
 
-
 /******************************************************************************
-*
-* Function: stack_pc_walkback
-*
-******************************************************************************/
+ *
+ * Function: comdb2_stack_pc_walkback
+ *
+ ******************************************************************************/
 
-int stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
-                      unsigned maxframes,
-                      void (*handler)(void *returnaddr, void *handlerarg),
-                      void *handlerarg)
+int comdb2_stack_pc_walkback(unsigned maxframes, void (*handler)(void *returnaddr, void *handlerarg), void *handlerarg)
 {
 
 #if defined(__sparc)
-    return __sparc_stack_walkback(context, maxframes, handler, handlerarg);
+    return __sparc_stack_walkback(maxframes, handler, handlerarg);
 #elif defined(__linux__)
-    return __linux_stack_walkback(context, maxframes, handler, handlerarg);
+    return __linux_stack_walkback(maxframes, handler, handlerarg);
 #elif defined(__APPLE__)
-    return __apple_stack_walkback(context, maxframes, handler, handlerarg);
+    return __apple_stack_walkback(maxframes, handler, handlerarg);
 #else
 
 #error Unsupported architecture
 
 #endif
 
-} /*    end of stack_pc_walkback()    */
+} /*    end of comdb2_stack_pc_walkback()    */
 
 /******************************************************************************
-*
-* Function: stack_pc_walkback_print
-*
-******************************************************************************/
+ *
+ * Function: comdb2_stack_pc_walkback_print
+ *
+ ******************************************************************************/
 
-void stack_pc_walkback_print(void *returnaddr, void *arg)
+void comdb2_stack_pc_walkback_print(void *returnaddr, void *arg)
 {
 
     fprintf(stderr, "0x%p\n", returnaddr);
-} /*    end of stack_pc_walkback_print()    */
+} /*    end of comdb2_stack_pc_walkback_print()    */
 
 /******************************************************************************
-*
-* Function: walkback_strerror
-*
-******************************************************************************/
+ *
+ * Function: comdb2_walkback_strerror
+ *
+ ******************************************************************************/
 
-void walkback_strerror(int rcode, char *errormsg, unsigned maxerrormsgsize)
+void comdb2_walkback_strerror(int rcode, char *errormsg, unsigned maxerrormsgsize)
 {
 
     const char *msg;
@@ -476,7 +444,7 @@ void walkback_strerror(int rcode, char *errormsg, unsigned maxerrormsgsize)
         strncat(errormsg, msg, maxerrormsgsize - 1);
     }
 
-} /*    end of walkback_strerror()    */
+} /*    end of comdb2_walkback_strerror()    */
 
 /******************************************************************************
 *
@@ -497,18 +465,16 @@ static void pclist_add(void *address, void *arg)
 } /*    end of pclist_add()    */
 
 /******************************************************************************
-*
-* Function: stack_pc_getlist
-*
-******************************************************************************/
+ *
+ * Function: comdb2_stack_pc_getlist
+ *
+ ******************************************************************************/
 
-int /* rcode */
-    stack_pc_getlist(
-        ucontext_t *context,  /* or NULL for current context */
-        void **pcArray,       /* output array of program counters */
-        unsigned pcArraySize, /* number of elements in pcArray */
-        unsigned *pcOutCount  /* number of program counters returned */
-        )
+int                                           /* rcode */
+comdb2_stack_pc_getlist(void **pcArray,       /* output array of program counters */
+                        unsigned pcArraySize, /* number of elements in pcArray */
+                        unsigned *pcOutCount  /* number of program counters returned */
+)
 {
 
     struct pclist_add_arg_t arg;
@@ -519,7 +485,7 @@ int /* rcode */
     arg.pcOutCount = 0;
 
     if (gbl_walkback_enabled) {
-        rcode = stack_pc_walkback(context, pcArraySize, pclist_add, &arg);
+        rcode = comdb2_stack_pc_walkback(pcArraySize, pclist_add, &arg);
     }
 
     *pcOutCount = arg.pcOutCount;
@@ -527,7 +493,7 @@ int /* rcode */
     stackmin = pcArraySize < arg.pcOutCount ? pcArraySize : arg.pcOutCount;
     trace_pc_getlist(pcArray, stackmin, stderr);
     return rcode;
-} /*    end of stack_pc_getlist()    */
+} /*    end of comdb2_stack_pc_getlist()    */
 
 #define MAXFRAMES 100
 
@@ -537,7 +503,7 @@ void comdb2_cheapstack(FILE *f)
     unsigned int nframes;
     int i;
 
-    if (stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (comdb2_stack_pc_getlist(stack, MAXFRAMES, &nframes)) {
         fprintf(f, "Can't get stack trace\n");
         return;
     }
@@ -556,7 +522,7 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
     char *p;
     int i, ccount, first = 1;
 
-    if (maxln <= 0 || stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (maxln <= 0 || comdb2_stack_pc_getlist(stack, MAXFRAMES, &nframes)) {
         return -1;
     }
     p = str;
