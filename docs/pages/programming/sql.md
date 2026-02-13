@@ -804,7 +804,41 @@ two options:
 
 ### SET EXPERT
 
-Suggest recommended indexes for the query
+Enables expert mode, which analyzes queries and suggests optimal indexes to improve performance. Instead of
+executing a query, the database analyzes it and returns CREATE INDEX statements for recommended indexes.
+
+**Syntax:**
+```sql
+SET EXPERT ON     -- Enable expert mode with full statistics
+SET EXPERT FAST   -- Enable expert mode without scanning data for statistics
+SET EXPERT OFF    -- Disable expert mode
+```
+
+**Modes:**
+- `ON` - Generates complete sqlite_stat1 data by scanning and sorting table contents for each candidate index.
+  This provides more accurate index recommendations but can be slow on large tables.
+- `FAST` - Generates index recommendations based on the database schema only, without scanning table data.
+  This is faster but may produce less accurate statistics.
+- `OFF` - Disables expert mode and resumes normal query execution.
+
+**Example:**
+```sql
+cdb2sql testdb local 'set expert on'
+cdb2sql testdb local 'select * from t1 where i = 1'
+```
+
+**Output:**
+```
+---------- Recommended Indexes --------------
+
+CREATE INDEX t1_idx_00000069 ON t1(i); -- stat1: 16 1
+
+---------------------------------------------
+```
+
+Expert mode works both outside transactions and within explicit `BEGIN`/`COMMIT` blocks. When used inside a
+transaction, writes performed in the same transaction are not committed (the transaction is rolled back after
+the expert analysis).
 
 ### SET USER
 
