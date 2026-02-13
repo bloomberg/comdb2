@@ -788,9 +788,9 @@ disabled.
 
 ### SET TIMEZONE
 
-Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone
-values received from the application without an explicit timezone specified are taken to be from this timezone.
-Please see [datetime types](datetime.html) for more information.
+Sets the timezone for the current connection.  For reads, all datetime values are returned in this timezone.  For
+writes, all datetime values received from the application without an explicit timezone specified are assumed to be in
+this timezone.  Please see [datetime types](datetime.md) for more information.
 
 ### SET DATETIME PRECISION
 
