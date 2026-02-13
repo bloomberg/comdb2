@@ -32,13 +32,13 @@ int grab_dbglog_file(unsigned long long cookie, struct sqlclntstate *clnt)
     return 0;
 }
 
-struct sbuf2 *open_dbglog_file(unsigned long long cookie)
+SBUF2 *open_dbglog_file(unsigned long long cookie)
 {
     if (impl.open_dbglog_file)
         return impl.open_dbglog_file(cookie);
     return 0;
 }
-void append_debug_logs_from_master(struct sbuf2 *sb, unsigned long long cookie)
+void append_debug_logs_from_master(SBUF2 *sb, unsigned long long cookie)
 {
     if (impl.append_debug_logs_from_master)
         impl.append_debug_logs_from_master(sb, cookie);
@@ -56,13 +56,13 @@ void dbglog_record_db_write(struct ireq *iq, char *c)
         impl.dbglog_record_db_write(iq, c);
 }
 
-void dump_client_query_stats(struct sbuf2 *sb, struct client_query_stats *stats)
+void dump_client_query_stats(SBUF2 *sb, struct client_query_stats *stats)
 {
     if (impl.dump_client_query_stats)
         impl.dump_client_query_stats(sb, stats);
 }
 
-void dump_client_query_stats_packed(struct sbuf2 *sb, const uint8_t *pakd)
+void dump_client_query_stats_packed(SBUF2 *sb, const uint8_t *pakd)
 {
     if (impl.dump_client_query_stats_packed)
         impl.dump_client_query_stats_packed(sb, pakd);

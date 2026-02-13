@@ -166,7 +166,7 @@ static int execute_rev_command(const char *dbname, const char *fd, const char *c
 }
 
 static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     int rc = 0;
     int fd;
     cdb2_hndl_tp *hndl;

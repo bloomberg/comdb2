@@ -25,8 +25,6 @@
   comdb2_appsock_handlers: list of registered appsock handlers.
 */
 
-typedef struct sbuf2 SBUF2;
-
 #include <assert.h>
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"

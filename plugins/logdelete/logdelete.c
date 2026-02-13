@@ -29,7 +29,7 @@ comdb2_appsock_t logdelete3_plugin;
 static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
 {
     struct thr_handle *thr_self;
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     struct log_delete_state log_delete_state;
     char recovery_command[200] = {0};
     char recovery_lsn[100] = {0};

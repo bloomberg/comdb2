@@ -23,7 +23,7 @@ int gbl_forbid_remote_repopnewlrl = 1;
 
 static int handle_repopnewlrl_request(comdb2_appsock_arg_t *arg)
 {
-    struct sbuf2 *sb;
+    SBUF2 *sb;
     char lrl_fname_out[256];
     int rc;
 

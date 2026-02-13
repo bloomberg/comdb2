@@ -23,7 +23,6 @@
  */
 
 struct osql_target;
-struct sbuf2;
 struct sqlclntstate;
 
 /**
@@ -33,13 +32,13 @@ struct sqlclntstate;
  *
  */
 void init_bplog_socket(struct sqlclntstate *clnt);
-void init_bplog_socket_master(struct osql_target *, struct sbuf2 *);
+void init_bplog_socket_master(struct osql_target *, SBUF2 *);
 
 /**
  * Read buffer over the socket with timeout and default timeout
  *
  */
-int osql_read_buffer(char *p_buf, size_t p_buf_len, struct sbuf2 *, int *timeoutms, int deltams);
-int osql_read_buffer_default(char *buf, int buflen, struct sbuf2 *);
+int osql_read_buffer(char *p_buf, size_t p_buf_len, SBUF2 *, int *timeoutms, int deltams);
+int osql_read_buffer_default(char *buf, int buflen, SBUF2 *);
 
 #endif
