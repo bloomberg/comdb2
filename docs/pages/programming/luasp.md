@@ -1089,31 +1089,51 @@ Return Values:
 
 ```
 rc = db:commit()
+rc, effects = db:commit({ with_effects = true })
 ```
 
 Description:
 
-This method commits a transaction that was started inside the same stored procedure with the db:begin method.  It is an error to attempt to commit any transaction not begun in that manner. db:error() should give the failure message on commit.
+This method commits a transaction that was started inside the same stored procedure with the `db:begin` method.
+It is an error to attempt to commit any transaction not begun in that manner. `db:error()` should give the
+failure message on commit.
+
+`db:commit()` accepts an optional Lua table argument with a single field `with_effects`. If `with_effects` is
+`true`, `db:commit` returns two values: the return code and an effects table describing the work done by the
+transaction. This matches the fields and values of `struct cdb2_effects_type` from the C API.
 
 Return Values:
 
-|Name    |   Description
-|--------|----------------
-|*rc*    |   non zero is failure
+| Name      | Description                                                                       |
+|-----------|-----------------------------------------------------------------------------------|
+| *rc*      | Non-zero indicates failure.                                                       |
+| *effects* | A Lua table with transaction effects (only returned when `with_effects = true`).  |
+
+The *effects* table has the following fields:
+
+| Field            | Description                                                     |
+|------------------|-----------------------------------------------------------------|
+| `num_affected`   | Total rows affected (sum of inserted + updated + deleted).      |
+| `num_selected`   | Number of rows selected (via `stmt:fetch()`) during the transaction. |
+| `num_inserted`   | Number of rows inserted.                                        |
+| `num_updated`    | Number of rows updated.                                         |
+| `num_deleted`    | Number of rows deleted.                                         |
 
 Compare `rc` with the following named values to determine why `db:commit` failed:
 
-
-| Lua value            | Error |
-|----------------------|-------|
-|db.err_dup            | Unique key constraint violation (duplicate key)
-|db.err_verify          | Verify failure - transaction tried to modify a record that was modified by another transaction
-|db.err_fkey            | Foreign key constraint violation
-|db.err_null_constraint | Null constraint violation
-|db.err_selectv         | Records touched by ```SELECTV``` modified by other transactions
+| Lua value             | Error                                                                               |
+|-----------------------|-------------------------------------------------------------------------------------|
+| db.err_dup            | Unique key constraint violation (duplicate key)                                     |
+| db.err_verify         | Verify failure - transaction tried to modify a record modified by another transaction |
+| db.err_fkey           | Foreign key constraint violation                                                    |
+| db.err_null_constraint | Null constraint violation                                                          |
+| db.err_selectv        | Records touched by `SELECTV` modified by other transactions                         |
 
 Parameters:
-none
+
+| Name           | Description                                                                              |
+|----------------|------------------------------------------------------------------------------------------|
+| *with_effects* | Optional. When `true`, causes `db:commit` to return an effects table as a second value.  |
 
 
 ### db:rollback
