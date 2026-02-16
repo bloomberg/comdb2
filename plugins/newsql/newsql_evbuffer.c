@@ -1347,6 +1347,7 @@ static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
     reset_clnt(clnt, 1);
     char *origin = arg->origin;
     clnt->origin = origin ? origin : intern("???");
+    clnt->addr = arg->addr;
     if (arg->badrte)
         logmsg(LOGMSG_ERROR, "misused rte from host %s\n", clnt->origin);
     clnt->appdata = appdata;

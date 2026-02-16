@@ -2508,7 +2508,7 @@ void release_clientstats_lock()
     Pthread_rwlock_unlock(&clientstats_lk);
 }
 
-static void init_clientstats(nodestats_t *entry, int task_len, char *host, int fd)
+static void init_clientstats(nodestats_t *entry, int task_len, char *host, struct sockaddr_in *addr)
 {
     entry->task = entry->mem;
     entry->stack = entry->mem + task_len;
@@ -2521,21 +2521,10 @@ static void init_clientstats(nodestats_t *entry, int task_len, char *host, int f
     Pthread_mutex_init(&entry->mtx, 0);
     Pthread_mutex_init(&entry->rawtotals.lk, NULL);
 
-    if (fd < 0) {
+    if (addr == NULL) {
         bzero(&(entry->addr), sizeof(struct in_addr));
     } else {
-        struct sockaddr_in peeraddr;
-        socklen_t len = sizeof(peeraddr);
-        bzero(&peeraddr, sizeof(peeraddr));
-        if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-            if (errno != ENOTCONN)
-                logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
-                        strerror(errno));
-            bzero(&(entry->addr), sizeof(struct in_addr));
-        } else {
-            memcpy(&(entry->addr), &peeraddr.sin_addr,
-                    sizeof(struct in_addr));
-        }
+        memcpy(&(entry->addr), &addr->sin_addr, sizeof(struct in_addr));
     }
 }
 
@@ -2549,9 +2538,8 @@ static void update_clientstats_cache(nodestats_t *entry) {
     Pthread_mutex_unlock(&clientstats_cache_mtx);
 }
 
-static nodestats_t *add_clientstats(unsigned checksum,
-                                    const char *task_and_stack, int task_len,
-                                    int stack_len, char *host, int node, int fd)
+static nodestats_t *add_clientstats(unsigned checksum, const char *task_and_stack, int task_len, int stack_len,
+                                    char *host, int node, struct sockaddr_in *addr)
 {
     nodestats_t *entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
     if (entry == NULL) {
@@ -2606,7 +2594,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
         goto done;
     }
 
-    init_clientstats(entry, task_len, host, fd);
+    init_clientstats(entry, task_len, host, addr);
     hash_add(clientstats, entry);
 
 done:
@@ -2614,7 +2602,7 @@ done:
     return entry;
 }
 
-static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
+static nodestats_t *find_clientstats(unsigned checksum, int node, struct sockaddr_in *addr)
 {
     nodestats_t key;
     key.checksum = checksum;
@@ -2630,19 +2618,8 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
     entry->ref++;
     update_clientstats_cache(entry);
 
-    if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
-        struct sockaddr_in peeraddr;
-        socklen_t len = sizeof(peeraddr);
-        bzero(&peeraddr, sizeof(peeraddr));
-        if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-            if (errno != ENOTCONN)
-                logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
-                        strerror(errno));
-            bzero(&(entry->addr), sizeof(struct in_addr));
-        } else {
-            memcpy(&(entry->addr), &peeraddr.sin_addr,
-                    sizeof(struct in_addr));
-        }
+    if (*(unsigned *)&(entry->addr) == 0 && addr != NULL) {
+        memcpy(&(entry->addr), &addr->sin_addr, sizeof(struct in_addr));
     }
     Pthread_mutex_unlock(&entry->mtx);
 
@@ -2692,8 +2669,8 @@ nodestats_t *get_next_clientstats_entry(void **curr, unsigned int *iter)
     return entry;
 }
 
-struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
-                                        char *host, int fd, int is_ssl)
+struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, char *host, struct sockaddr_in *addr,
+                                        int is_ssl)
 {
     unsigned checksum;
     int namelen, node;
@@ -2718,10 +2695,10 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     memcpy(tmp, task, task_len);
     memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
-    
-    nodestats_t *nodestats = find_clientstats(checksum, node, fd);
+
+    nodestats_t *nodestats = find_clientstats(checksum, node, addr);
     if (!nodestats) {
-        nodestats = add_clientstats(checksum, tmp, task_len, stack_len, host, node, fd);
+        nodestats = add_clientstats(checksum, tmp, task_len, stack_len, host, node, addr);
     }
 
     if (nodestats) {

@@ -843,6 +843,7 @@ struct sqlclntstate {
     int authgen;
 
     char *origin;
+    struct sockaddr_in addr;
 
     TAILQ_HEAD(, session_tbl) session_tbls;
 

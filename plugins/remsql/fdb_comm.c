@@ -2723,6 +2723,8 @@ static void _fdb_extract_source_id(struct sqlclntstate *clnt, COMDB2BUF *sb, fdb
     clnt->origin = get_origin_mach_by_buf(sb);
     if (clnt->origin == NULL)
         clnt->origin = intern("???");
+    socklen_t len = sizeof(clnt->addr);
+    getpeername(cdb2buf_fileno(sb), (struct sockaddr *)&clnt->addr, &len);
 
     if (msg->co.authdta && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
         int rc = externalComdb2DeSerializeIdentity(&clnt->authdata, msg->co.authdtalen, msg->co.authdta);
@@ -2731,7 +2733,7 @@ static void _fdb_extract_source_id(struct sqlclntstate *clnt, COMDB2BUF *sb, fdb
     }
 
     if (clnt->rawnodestats == NULL)
-        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin, cdb2buf_fileno(sb), msg->co.ssl);
+        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin, &clnt->addr, msg->co.ssl);
 }
 
 int fdb_bend_cursor_open(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
