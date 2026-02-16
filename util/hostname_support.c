@@ -15,6 +15,7 @@
  */
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,15 +24,19 @@
 #include <sys/types.h>
 
 #include <hostname_support.h>
-#include <errno.h>
+#include <logmsg.h>
 
+int gbl_get_peer_fqdn = 1;
 static int get_hostname_by_addr(struct sockaddr_in *addr, char *host, socklen_t hostlen)
 {
+    int rc;
+    int flags = gbl_get_peer_fqdn ? 0 : NI_NOFQDN;
     socklen_t addrlen = sizeof(*addr);
-    if (getnameinfo((struct sockaddr *)addr, addrlen, host, hostlen, NULL, 0, 0)) {
-        if (!inet_ntop(addr->sin_family, &addr->sin_addr, host, hostlen)) {
-            return -1;
-        }
+    if ((rc = getnameinfo((struct sockaddr *)addr, addrlen, host, hostlen, NULL, 0, flags)) != 0) {
+#ifndef DISABLE_HOSTADDR_CACHE
+        logmsg(LOGMSG_WARN, "getnameinfo: %s\n", gai_strerror(rc));
+#endif
+        return -1;
     }
     return 0;
 }
