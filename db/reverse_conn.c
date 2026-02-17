@@ -82,7 +82,7 @@ reverse_conn_host_list_tp reverse_conn_hosts;
 
 int db_is_exiting();
 int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
-                SBUF2 *sb, void *inptr, int maxbytes);
+                COMDB2BUF *sb, void *inptr, int maxbytes);
 
 enum {
     REVERSE_CONN_WORKER_NEW = 0,
@@ -102,13 +102,13 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
         revconn_logmsg(LOGMSG_USER, "%s:%d Sending reversesql request to %s@%s\n", __func__, __LINE__, dbname, host);
     }
 
-    SBUF2 *sb = connect_remote_db_flags(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte, SBUF2_NO_SSL_CLOSE|SBUF2_NO_CLOSE_FD);
+    COMDB2BUF *sb = connect_remote_db_flags(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte, CDB2BUF_NO_SSL_CLOSE|CDB2BUF_NO_CLOSE_FD);
     if (!sb) {
         revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s:%s\n", __func__, __LINE__, dbname, host);
         return 1;
     }
 
-    int new_fd = sbuf2fileno(sb);
+    int new_fd = cdb2buf_fileno(sb);
     make_server_socket(new_fd);
 
     if (db_is_exiting()) {
@@ -121,7 +121,7 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
 
     char msg[512];
     size_t len = snprintf(msg, sizeof(msg), "reversesql\n%s\n%s\n%s\n", gbl_dbname, gbl_myhostname, command);
-    if (sbuf2write(msg, len, sb) != len || sbuf2flush(sb) != len) {
+    if (cdb2buf_write(msg, len, sb) != len || cdb2buf_flush(sb) != len) {
         revconn_logmsg(LOGMSG_USER, "%s:%d Failed to send reversesql request fd:%d len:%zu\n",
                        __func__, __LINE__, new_fd, len);
         rc = -1;
@@ -132,14 +132,14 @@ int send_reversesql_request(const char *dbname, const char *host, const char *co
         revconn_logmsg(LOGMSG_USER, "%s:%d Sent '%s' through fd:%d\n", __func__, __LINE__, msg, new_fd);
     }
 
-    sbuf2close(sb);
+    cdb2buf_close(sb);
 
     int rdtimeout = gbl_revconn_rdtimeout > 0 ? gbl_revconn_rdtimeout : 100;
     struct timeval timeout = {.tv_usec = rdtimeout * 1000};
     return event_base_once(get_main_event_base(), new_fd, EV_READ, do_revconn_evbuffer, NULL, &timeout);
 
 cleanup:
-    sbuf2close(sb);
+    cdb2buf_close(sb);
     Close(new_fd);
     return rc;
 }

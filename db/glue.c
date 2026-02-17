@@ -55,7 +55,7 @@
 #include "util.h"
 
 #include "sql.h"
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <bdb_api.h>
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
@@ -3100,7 +3100,7 @@ static int threaddump_callback(void)
 }
 
 /* callback to accept application socket */
-static int appsock_callback(void *bdb_handle, SBUF2 *sb)
+static int appsock_callback(void *bdb_handle, COMDB2BUF *sb)
 {
     struct dbenv *dbenv;
 
@@ -3110,7 +3110,7 @@ static int appsock_callback(void *bdb_handle, SBUF2 *sb)
     return 0;
 }
 
-static int admin_appsock_callback(void *bdb_handle, SBUF2 *sb)
+static int admin_appsock_callback(void *bdb_handle, COMDB2BUF *sb)
 {
     struct dbenv *dbenv;
 

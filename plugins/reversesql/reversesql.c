@@ -166,14 +166,14 @@ static int execute_rev_command(const char *dbname, const char *fd, const char *c
 }
 
 static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
-    struct sbuf2 *sb;
+    struct comdb2buf *sb;
     int rc = 0;
     int fd;
     cdb2_hndl_tp *hndl;
     char fd_str[100];
 
     sb = arg->sb;
-    fd = sbuf2fileno(sb);
+    fd = cdb2buf_fileno(sb);
     snprintf(fd_str, sizeof(fd_str), "%d", fd);
 
     if (arg->keepsocket)
@@ -185,7 +185,7 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
     char command[120] = {0};
 
     int read_bytes;
-    read_bytes = sbuf2gets(remote_dbname, sizeof(remote_dbname), sb);
+    read_bytes = cdb2buf_gets(remote_dbname, sizeof(remote_dbname), sb);
     if (read_bytes <= 1) {
         logmsg(LOGMSG_ERROR, "%s:%d No dbname in the request\n", __func__, __LINE__);
         rc = -1;
@@ -193,7 +193,7 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
     }
     remote_dbname[read_bytes-1] = 0; // discard trailing '\n'
 
-    read_bytes = sbuf2gets(remote_host, sizeof(remote_host), sb);
+    read_bytes = cdb2buf_gets(remote_host, sizeof(remote_host), sb);
     if (read_bytes <= 1) {
         logmsg(LOGMSG_ERROR, "%s:%d No host info in the request\n", __func__, __LINE__);
         rc = -1;
@@ -201,7 +201,7 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
     }
     remote_host[read_bytes-1] = 0; // discard trailing '\n'
 
-    read_bytes = sbuf2gets(command, sizeof(command), sb);
+    read_bytes = cdb2buf_gets(command, sizeof(command), sb);
     if (read_bytes >= 1)           // Safety
         command[read_bytes-1] = 0; // discard trailing '\n'
 

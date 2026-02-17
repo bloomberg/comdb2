@@ -180,7 +180,7 @@ static int db_comdb_analyze(Lua L) {
                 __FILE__, __LINE__);
         clean_exit();
     }
-    SBUF2 *sb = sbuf2open( fileno(f), SBUF2_NO_CLOSE_FD); /* sbuf pointed at f */
+    COMDB2BUF *sb = cdb2buf_open( fileno(f), CDB2BUF_NO_CLOSE_FD); /* sbuf pointed at f */
 
     int rownum = 1;
 
@@ -194,7 +194,7 @@ static int db_comdb_analyze(Lua L) {
                          bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT),
                          0);
     }
-    sbuf2close(sb);
+    cdb2buf_close(sb);
 
     rewind(f);
     char buf[1024] = {0};

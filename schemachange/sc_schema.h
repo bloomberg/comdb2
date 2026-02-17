@@ -36,7 +36,7 @@ int check_option_coherency(struct schema_change_type *s, struct dbtable *db,
 int check_option_queue_coherency(struct schema_change_type *s,
                                  struct dbtable *db);
 
-int sc_request_disallowed(SBUF2 *sb);
+int sc_request_disallowed(COMDB2BUF *sb);
 
 int sc_cmp_fileids(unsigned long long a, unsigned long long b);
 

@@ -37,7 +37,7 @@ int dump_user_version_spfile(const char *file)
     int has_sp = 0;
 
     int fd_out = -1;
-    SBUF2 *sb_out = NULL;
+    COMDB2BUF *sb_out = NULL;
 
     bdb_get_versioned_sps_tran(NULL, &cname, &ccnt);
     if (ccnt <= 0) {
@@ -50,7 +50,7 @@ int dump_user_version_spfile(const char *file)
         logmsg(LOGMSG_USER, "%s: cannot open '%s' for writing %d %s\n", __func__, file, errno, strerror(errno));
         goto cleanup;
     }
-    sb_out = sbuf2open(fd_out, 0);
+    sb_out = cdb2buf_open(fd_out, 0);
     if (!sb_out) {
         Close(fd_out);
         goto cleanup;
@@ -76,8 +76,8 @@ int dump_user_version_spfile(const char *file)
                 sp_ver_f.is_default = 1;
             }
             sp_ver_f.size = size;
-            sbuf2write((char *)&sp_ver_f, sizeof(sp_ver_f), sb_out);
-            sbuf2write(src, size, sb_out);
+            cdb2buf_write((char *)&sp_ver_f, sizeof(sp_ver_f), sb_out);
+            cdb2buf_write(src, size, sb_out);
             free(src);
             free(cvers[j]);
         }
@@ -92,7 +92,7 @@ cleanup:
     free(cname);
 
     if (sb_out) {
-        sbuf2close(sb_out);
+        cdb2buf_close(sb_out);
     }
 
     return has_sp;
@@ -105,7 +105,7 @@ int read_user_version_spfile(const char *file)
         return -1;
     }
 
-    SBUF2 *sb_in = sbuf2open(fd_in, 0);
+    COMDB2BUF *sb_in = cdb2buf_open(fd_in, 0);
     if (!sb_in) {
         Close(fd_in);
         return -1;
@@ -113,15 +113,15 @@ int read_user_version_spfile(const char *file)
 
     while (1) {
         struct sp_versioned_file_t sp_ver_f = {0};
-        if (sizeof(sp_ver_f) != sbuf2fread((char *)&sp_ver_f, 1, sizeof(sp_ver_f), sb_in)) {
-            sbuf2close(sb_in);
+        if (sizeof(sp_ver_f) != cdb2buf_fread((char *)&sp_ver_f, 1, sizeof(sp_ver_f), sb_in)) {
+            cdb2buf_close(sb_in);
             return 0;
         }
         if (sp_ver_f.size) {
             char *src = malloc(sp_ver_f.size);
-            if (sp_ver_f.size != sbuf2fread(src, 1, sp_ver_f.size, sb_in)) {
+            if (sp_ver_f.size != cdb2buf_fread(src, 1, sp_ver_f.size, sb_in)) {
                 free(src);
-                sbuf2close(sb_in);
+                cdb2buf_close(sb_in);
                 return -1;
             }
             bdb_add_versioned_sp(NULL, sp_ver_f.name, sp_ver_f.version, src);
@@ -131,7 +131,7 @@ int read_user_version_spfile(const char *file)
             free(src);
         }
     }
-    sbuf2close(sb_in);
+    cdb2buf_close(sb_in);
     return 0;
 }
 
@@ -143,12 +143,12 @@ int dump_spfile(const char *file)
     int bdberr, rc = 0;
     int has_sp = 0;
     int fd_out = -1;
-    SBUF2 *sb_out = NULL;
+    COMDB2BUF *sb_out = NULL;
 
     while (rc == 0) {
         rc = bdb_get_sp_name(NULL, old_sp, new_sp, &bdberr);
         if (rc || (strcmp(old_sp, new_sp) <= 0)) {
-            sbuf2close(sb_out);
+            cdb2buf_close(sb_out);
             if (has_sp) return 1;
 
             return 0;
@@ -165,7 +165,7 @@ int dump_spfile(const char *file)
                 return 0;
             }
 
-            sb_out = sbuf2open(fd_out, 0);
+            sb_out = cdb2buf_open(fd_out, 0);
             if (!sb_out) {
                 Close(fd_out);
                 return 0;
@@ -190,8 +190,8 @@ int dump_spfile(const char *file)
                 sp_f->default_version = 0;
                 sp_f->version = lua_ver;
                 sp_f->size = size;
-                sbuf2write((char *)sp_f, sizeof(struct sp_file_t), sb_out);
-                sbuf2write(lua_file, size, sb_out);
+                cdb2buf_write((char *)sp_f, sizeof(struct sp_file_t), sb_out);
+                cdb2buf_write(lua_file, size, sb_out);
                 version = lua_ver;
             }
             struct sp_file_t *sp_f = malloc(sizeof(struct sp_file_t));
@@ -199,11 +199,11 @@ int dump_spfile(const char *file)
             sp_f->default_version = default_version;
             sp_f->version = 0;
             sp_f->size = 0;
-            sbuf2write((char *)sp_f, sizeof(struct sp_file_t), sb_out);
+            cdb2buf_write((char *)sp_f, sizeof(struct sp_file_t), sb_out);
         }
         strcpy(old_sp, new_sp);
     }
-    sbuf2close(sb_out);
+    cdb2buf_close(sb_out);
     return 1;
 }
 
@@ -215,7 +215,7 @@ int read_spfile(const char *file)
         return -1;
     }
 
-    SBUF2 *sb_in = sbuf2open(fd_in, 0);
+    COMDB2BUF *sb_in = cdb2buf_open(fd_in, 0);
     if (!sb_in) {
         Close(fd_in);
         return -1;
@@ -223,22 +223,22 @@ int read_spfile(const char *file)
 
     while (1) {
         struct sp_file_t sp_f;
-        if (sizeof(sp_f) != sbuf2fread((char *)&sp_f, 1, sizeof(sp_f), sb_in)) {
-            sbuf2close(sb_in);
+        if (sizeof(sp_f) != cdb2buf_fread((char *)&sp_f, 1, sizeof(sp_f), sb_in)) {
+            cdb2buf_close(sb_in);
             return 0;
         }
         if (sp_f.size) {
             char *lua_file = malloc(sp_f.size);
-            if (sp_f.size != sbuf2fread(lua_file, 1, sp_f.size, sb_in)) {
+            if (sp_f.size != cdb2buf_fread(lua_file, 1, sp_f.size, sb_in)) {
                 free(lua_file);
-                sbuf2close(sb_in);
+                cdb2buf_close(sb_in);
                 return -1;
             }
 
             if (bdb_set_sp_lua_source(NULL, NULL, sp_f.name, lua_file,
                                       sp_f.size, sp_f.version, &bdberr)) {
                 free(lua_file);
-                sbuf2close(sb_in);
+                cdb2buf_close(sb_in);
                 return -1;
             }
 
@@ -247,12 +247,12 @@ int read_spfile(const char *file)
         } else {
             if (bdb_set_sp_lua_default(NULL, NULL, sp_f.name,
                                        sp_f.default_version, &bdberr)) {
-                sbuf2close(sb_in);
+                cdb2buf_close(sb_in);
                 return -1;
             }
         }
     }
-    sbuf2close(sb_in);
+    cdb2buf_close(sb_in);
     return 0;
 }
 
@@ -269,7 +269,7 @@ int read_spfile(const char *file)
 // ------------------
 static void show_all_versioned_sps(struct schema_change_type *sc)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     char **names;
     int count;
     if (bdb_get_default_versioned_sps(&names, &count) != 0) return;
@@ -278,7 +278,7 @@ static void show_all_versioned_sps(struct schema_change_type *sc)
         int vnum, bdberr;
         vnum = bdb_get_sp_get_default_version(names[i], &bdberr);
         if (vnum < 0 && bdb_get_default_versioned_sp(names[i], &vstr) == 0) {
-            sbuf2printf(sb,
+            cdb2buf_printf(sb,
                         ">SP name: %s             Default Version is: '%s'\n",
                         names[i], vstr);
             free(vstr);
@@ -289,7 +289,7 @@ static void show_all_versioned_sps(struct schema_change_type *sc)
 }
 static void show_versioned_sp(struct schema_change_type *sc, int *num)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     char *name = sc->tablename;
     char **versions = NULL;
     int rc;
@@ -297,7 +297,7 @@ static void show_versioned_sp(struct schema_change_type *sc, int *num)
         goto out;
     if (*num == 0) goto out;
     for (int i = 0; i < *num; ++i) {
-        sbuf2printf(sb, ">Version: '%s'\n", versions[i]);
+        cdb2buf_printf(sb, ">Version: '%s'\n", versions[i]);
     }
 out:
     for (int i = 0; i < *num; ++i) {
@@ -308,7 +308,7 @@ out:
 }
 static int show_versioned_sp_src(struct schema_change_type *sc)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     char *name = sc->tablename;
     char *version = sc->newcsc2;
     char *src;
@@ -318,7 +318,7 @@ static int show_versioned_sp_src(struct schema_change_type *sc)
     char *sav = NULL, *line;
     line = strtok_r(src, "\n", &sav);
     while (line) {
-        sbuf2printf(sb, ">%s\n", line);
+        cdb2buf_printf(sb, ">%s\n", line);
         line = strtok_r(NULL, "\n", &sav);
     }
     free(src);
@@ -378,7 +378,7 @@ static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq, 
 // ----------------
 static int show_all_sps(struct schema_change_type *sc)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     char old_sp[MAX_SPNAME];
     char new_sp[MAX_SPNAME];
     old_sp[0] = 127;
@@ -386,28 +386,28 @@ static int show_all_sps(struct schema_change_type *sc)
         int bdberr;
         int rc = bdb_get_sp_name(NULL, old_sp, new_sp, &bdberr);
         if (rc || (strcmp(old_sp, new_sp) <= 0)) {
-            sbuf2printf(sb, "SUCCESS\n");
+            cdb2buf_printf(sb, "SUCCESS\n");
             return 0;
         }
         char *vstr;
         int vnum = bdb_get_sp_get_default_version(new_sp, &bdberr);
         if (vnum >= 0) {
-            sbuf2printf(sb, ">SP name: %s             Default Version is: %d\n",
+            cdb2buf_printf(sb, ">SP name: %s             Default Version is: %d\n",
                         new_sp, vnum);
         } else if (bdb_get_default_versioned_sp(new_sp, &vstr) == 0) {
-            sbuf2printf(sb,
+            cdb2buf_printf(sb,
                         ">SP name: %s             Default Version is: '%s'\n",
                         new_sp, vstr);
             free(vstr);
         }
         strcpy(old_sp, new_sp);
     }
-    sbuf2printf(sb, "SUCCESS\n");
+    cdb2buf_printf(sb, "SUCCESS\n");
     return 0;
 }
 static void show_sp(struct schema_change_type *sc, int *num, int *has_default)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     int version = INT_MAX;
     int lua_ver;
     int bdberr;
@@ -417,18 +417,18 @@ static void show_sp(struct schema_change_type *sc, int *num, int *has_default)
         bdb_get_lua_highest(NULL, sc->tablename, &lua_ver, version, &bdberr);
         if (lua_ver < 1) break;
         ++(*num);
-        sbuf2printf(sb, ">Version: %d\n", lua_ver);
+        cdb2buf_printf(sb, ">Version: %d\n", lua_ver);
         version = lua_ver;
     }
     if (*num) {
         *has_default = bdb_get_sp_get_default_version(sc->tablename, &bdberr);
         if (*has_default > 0)
-            sbuf2printf(sb, ">Default version is: %d\n", *has_default);
+            cdb2buf_printf(sb, ">Default version is: %d\n", *has_default);
     }
 }
 static int show_sp_src(struct schema_change_type *sc)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     int version = atoi(sc->newcsc2);
     char *src;
     int size, bdberr;
@@ -439,7 +439,7 @@ static int show_sp_src(struct schema_change_type *sc)
     char *sav = NULL, *line;
     line = strtok_r(src, "\n", &sav);
     while (line) {
-        sbuf2printf(sb, ">%s\n", line);
+        cdb2buf_printf(sb, ">%s\n", line);
         line = strtok_r(NULL, "\n", &sav);
     }
     free(src);
@@ -451,26 +451,26 @@ static int show_sp_src(struct schema_change_type *sc)
 // ---------------------------
 static int add_sp(struct schema_change_type *sc, int *version, tran_type *tran)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     char *schemabuf = sc->newcsc2;
     int rc, bdberr;
     if ((rc = bdb_set_sp_lua_source(NULL, tran, sc->tablename, schemabuf,
                                     strlen(schemabuf) + 1, 0, &bdberr)) != 0) {
-        sbuf2printf(sb, "!Unable to add lua source. \n");
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "!Unable to add lua source. \n");
+        cdb2buf_printf(sb, "FAILED\n");
         return rc;
     }
     bdb_get_lua_highest(tran, sc->tablename, version, INT_MAX, &bdberr);
-    sbuf2printf(sb, "!Added stored procedure: %s \t version %d.\n",
+    cdb2buf_printf(sb, "!Added stored procedure: %s \t version %d.\n",
                 sc->tablename, *version);
-    sbuf2printf(sb, "SUCCESS\n");
+    cdb2buf_printf(sb, "SUCCESS\n");
     return rc;
 }
 static int del_sp(struct schema_change_type *sc)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     if (sc->newcsc2 == NULL) {
-        sbuf2printf(sb, "!missing sp version number\n");
+        cdb2buf_printf(sb, "!missing sp version number\n");
         goto fail;
     }
     int version = atoi(sc->newcsc2);
@@ -478,40 +478,40 @@ static int del_sp(struct schema_change_type *sc)
     sc->newcsc2 = NULL;
     int bdberr;
     if (bdb_delete_sp_lua_source(NULL, NULL, sc->tablename, version, &bdberr)) {
-        sbuf2printf(sb, "!bad sp version number:%d\n", version);
+        cdb2buf_printf(sb, "!bad sp version number:%d\n", version);
         goto fail;
     }
-    sbuf2printf(sb, "!Deleted stored procedure.\n");
-    sbuf2printf(sb, "SUCCESS\n");
+    cdb2buf_printf(sb, "!Deleted stored procedure.\n");
+    cdb2buf_printf(sb, "SUCCESS\n");
     return 0;
 fail:
-    sbuf2printf(sb, "FAILED\n");
+    cdb2buf_printf(sb, "FAILED\n");
     return -1;
 }
 static int default_sp(struct schema_change_type *sc, tran_type *tran)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     if (sc->newcsc2 == NULL) {
-        sbuf2printf(sb, "!missing sp version number\n");
+        cdb2buf_printf(sb, "!missing sp version number\n");
         goto fail;
     }
     int version = atoi(sc->newcsc2);
     free(sc->newcsc2);
     sc->newcsc2 = NULL;
     if (version == 0) {
-        sbuf2printf(sb, "!bad sp version number\n");
+        cdb2buf_printf(sb, "!bad sp version number\n");
         goto fail;
     }
     int bdberr;
     if (bdb_set_sp_lua_default(NULL, tran, sc->tablename, version, &bdberr)) {
-        sbuf2printf(sb, "!version not found number %d\n", version);
+        cdb2buf_printf(sb, "!version not found number %d\n", version);
         goto fail;
     }
-    sbuf2printf(sb, "!Set the default procedure to version %d.\n", version);
-    sbuf2printf(sb, "SUCCESS\n");
+    cdb2buf_printf(sb, "!Set the default procedure to version %d.\n", version);
+    cdb2buf_printf(sb, "SUCCESS\n");
     return 0;
 fail:
-    sbuf2printf(sb, "FAILED\n");
+    cdb2buf_printf(sb, "FAILED\n");
     return -1;
 }
 
@@ -583,18 +583,18 @@ static int do_default_sp_int(struct schema_change_type *sc, struct ireq *iq, tra
 // ----------------
 int do_show_sp(struct schema_change_type *sc, struct ireq *unused)
 {
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
     if (sc->tablename[0] == 0) {
         show_all_versioned_sps(sc);
         show_all_sps(sc);
     } else if (sc->newcsc2[0] == 0) {
         int num0, num1, def;
-        sbuf2printf(sb, ">Available versions are:\n");
+        cdb2buf_printf(sb, ">Available versions are:\n");
         show_versioned_sp(sc, &num0);
         show_sp(sc, &num1, &def);
         if (num0 == 0 && num1 == 0) {
-            sbuf2printf(sb, "!Stored procedure not found %s\n", sc->tablename);
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "!Stored procedure not found %s\n", sc->tablename);
+            cdb2buf_printf(sb, "FAILED\n");
             return -1;
         }
         if (def == -1) {
@@ -602,20 +602,20 @@ int do_show_sp(struct schema_change_type *sc, struct ireq *unused)
             char *def_version;
             if (bdb_get_default_versioned_sp(sc->tablename, &def_version) ==
                 0) {
-                sbuf2printf(sb, ">Default version is: '%s'\n", def_version);
+                cdb2buf_printf(sb, ">Default version is: '%s'\n", def_version);
                 free(def_version);
             } else {
-                sbuf2printf(sb, ">Default version is: %d\n", def);
+                cdb2buf_printf(sb, ">Default version is: %d\n", def);
             }
         }
     } else {
         if (show_versioned_sp_src(sc) != 0 && show_sp_src(sc) != 0) {
-            sbuf2printf(sb, "!version not found:%s\n", sc->newcsc2);
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "!version not found:%s\n", sc->newcsc2);
+            cdb2buf_printf(sb, "FAILED\n");
             return -1;
         }
     }
-    sbuf2printf(sb, "SUCCESS\n");
+    cdb2buf_printf(sb, "SUCCESS\n");
     return 0;
 }
 

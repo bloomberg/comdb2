@@ -394,7 +394,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
     int bdberr = 0;
     struct ireq iq;
     scdone_t scdone_type = sc->kind == SC_DEFAULTCONS ? default_cons : llmeta_queue_add;
-    SBUF2 *sb = sc->sb;
+    COMDB2BUF *sb = sc->sb;
 
     const int should_add_trigger = sc->kind == SC_ADD_TRIGGER ||
                                   sc->kind == SC_DEFAULTCONS;
@@ -407,9 +407,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
     if (!ltran) {
         rc = trans_start_logical_sc(&iq, &ltran);
         if (rc) {
-            sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
+            cdb2buf_printf(sb, "!Error %d creating logical transaction for %s.\n",
                         rc, sc->tablename);
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "FAILED\n");
             goto done;
         }
     }
@@ -417,60 +417,60 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
     bdb_ltran_get_schema_lock(ltran);
     rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
     if (rc != 0 || tran == NULL) {
-        sbuf2printf(sb, "!Error %d creating physical transaction for %s.\n",
+        cdb2buf_printf(sb, "!Error %d creating physical transaction for %s.\n",
                     rc, sc->tablename);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
         goto done;
     }
 
     rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
     if (rc != 0) {
-        sbuf2printf(sb, "!Error %d getting tablelock for comdb2_queues.\n", rc, tablename);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "!Error %d getting tablelock for comdb2_queues.\n", rc, tablename);
+        cdb2buf_printf(sb, "FAILED\n");
         goto done;
     }
 
     rc = bdb_lock_tablename_write(thedb->bdb_env, tablename, tran);
     if (rc) {
-        sbuf2printf(sb, "!Error %d getting tablelock for %s.\n", rc,
+        cdb2buf_printf(sb, "!Error %d getting tablelock for %s.\n", rc,
                     tablename);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
         goto done;
     }
 
     db = get_dbtable_by_name(tablename);
     if (db) {
-        sbuf2printf(sb, "!Trigger name %s clashes with existing table.\n",
+        cdb2buf_printf(sb, "!Trigger name %s clashes with existing table.\n",
                     tablename);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
         goto done;
     }
     db = getqueuebyname(tablename);
 
     /* dropping/altering a queue that doesn't exist? */
     if ((sc->kind == SC_DEL_TRIGGER) && db == NULL) {
-        sbuf2printf(sb, "!Trigger %s doesn't exist.\n", tablename);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "!Trigger %s doesn't exist.\n", tablename);
+        cdb2buf_printf(sb, "FAILED\n");
         rc = -1;
         goto done;
     }
     /* adding a queue that already exists? */
     else if (should_add_trigger && db != NULL) {
-        sbuf2printf(sb, "!Trigger %s already exists.\n", tablename);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "!Trigger %s already exists.\n", tablename);
+        cdb2buf_printf(sb, "FAILED\n");
         rc = -1;
         goto done;
     }
     if (should_add_trigger) {
         if (javasp_exists(tablename)) {
-            sbuf2printf(sb, "!Procedure %s already exists.\n", tablename);
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "!Procedure %s already exists.\n", tablename);
+            cdb2buf_printf(sb, "FAILED\n");
             rc = -1;
             goto done;
         }
         if (thedb->num_qdbs >= MAX_NUM_QUEUES) {
-            sbuf2printf(sb, "!Too many queues.\n");
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "!Too many queues.\n");
+            cdb2buf_printf(sb, "FAILED\n");
             rc = -1;
             goto done;
         }
@@ -485,7 +485,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
     if (should_add_trigger) {
         char **dests = calloc(sc->dests.count, sizeof(char *));
         if (dests == NULL) {
-            sbuf2printf(sb, "!Can't allocate memory for destination list\n");
+            cdb2buf_printf(sb, "!Can't allocate memory for destination list\n");
             logmsg(LOGMSG_ERROR,
                    "Can't allocate memory for destination list\n");
             goto done;
@@ -497,8 +497,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
 
         /* check first - backing things out gets difficult once we've done things */
         if (dbqueuedb_check_consumer(dests[0])) {
-            sbuf2printf(sb, "!Can't load procedure - check config/destinations?\n");
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "!Can't load procedure - check config/destinations?\n");
+            cdb2buf_printf(sb, "FAILED\n");
             rc = -1;
             goto done;
         }
@@ -558,8 +558,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
         rc = javasp_do_procedure_op(JAVASP_OP_LOAD, tablename, NULL, config);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n", __func__, rc);
-            sbuf2printf(sb, "!Can't load procedure - check config/destinations?\n");
-            sbuf2printf(sb, "FAILED\n");
+            cdb2buf_printf(sb, "!Can't load procedure - check config/destinations?\n");
+            cdb2buf_printf(sb, "FAILED\n");
             goto done;
         }
 
@@ -634,14 +634,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc, tran_type *
     rc = bdb_llog_scdone_tran(thedb->bdb_env, scdone_type, tran, tablename,
                             strlen(tablename) + 1, &bdberr);
     if (rc) {
-        sbuf2printf(sb, "!Failed to write scdone , rc=%d\n", rc);
+        cdb2buf_printf(sb, "!Failed to write scdone , rc=%d\n", rc);
         goto done;
     }
     rc = trans_commit(&iq, ltran, gbl_myhostname);
     tran = NULL;
     ltran = NULL;
     if (rc || bdberr != BDBERR_NOERROR) {
-        sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
+        cdb2buf_printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
         goto done;
     }
 
@@ -743,7 +743,7 @@ done:
 static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
-    SBUF2 *sb = s->sb;
+    COMDB2BUF *sb = s->sb;
     /* NOTE: The file number is hard-coded to 1 here because a queuedb is
     **       limited to having either one or two files -AND- we are adding
     **       a file, which implies there should only be one file for this
@@ -754,7 +754,7 @@ static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
                __func__, s->tablename);
-        sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
+        cdb2buf_printf(sb, "!No such queuedb %s\n", s->tablename);
         rc = -1;
         goto done;
     }
@@ -767,7 +767,7 @@ static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
              "%s: bdb_get_file_version_qdb rc %d name %s num %d ver %lld "
              "bdberr %d\n", __func__, rc, s->tablename, file_num, file_version,
              bdberr);
-        sbuf2printf(sb,
+        cdb2buf_printf(sb,
              "!Should not find qdb %s file version %lld for file #%d\n",
              s->tablename, file_version, file_num);
         goto done;
@@ -781,7 +781,7 @@ static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
              "%s: bdb_new_file_version_qdb rc %d name %s num %d ver %lld "
              "bdberr %d\n", __func__, rc, s->tablename, file_num, file_version,
              bdberr);
-        sbuf2printf(sb, "!Failed add qdb %s file num %d file version %lld\n",
+        cdb2buf_printf(sb, "!Failed add qdb %s file num %d file version %lld\n",
                     s->tablename, file_num, file_version);
         goto done;
     }
@@ -797,13 +797,13 @@ static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
     struct dbtable *db;
-    SBUF2 *sb = s->sb;
+    COMDB2BUF *sb = s->sb;
 
     db = getqueuebyname(s->tablename);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
                __func__, s->tablename);
-        sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
+        cdb2buf_printf(sb, "!No such queuedb %s\n", s->tablename);
         rc = -1;
         goto done;
     }
@@ -819,7 +819,7 @@ static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
                  "%s: bdb_get_file_version_qdb rc %d name %s num %d ver %lld "
                  "bdberr %d\n", __func__, rc, s->tablename, file_num,
                  file_versions[file_num], bdberr);
-            sbuf2printf(sb,
+            cdb2buf_printf(sb,
                  "!Bad or missing qdb %s file version %lld for file #%d\n",
                  s->tablename, file_versions[file_num], file_num);
             goto done;
@@ -832,7 +832,7 @@ static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_new_file_version_qdb rc %d err %d\n",
                __func__, rc, bdberr);
-        sbuf2printf(sb, "!Failed to reset file version\n");
+        cdb2buf_printf(sb, "!Failed to reset file version\n");
         goto done;
     }
 
@@ -841,7 +841,7 @@ static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_del_file_version rc %d err %d\n",
                __func__, rc, bdberr);
-        sbuf2printf(sb, "!Failed to delete file version\n");
+        cdb2buf_printf(sb, "!Failed to delete file version\n");
         goto done;
     }
 

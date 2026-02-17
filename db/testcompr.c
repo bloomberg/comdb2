@@ -36,7 +36,7 @@
 #include <math.h>
 
 #include <comdb2.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <sql.h>
 #include <bdb_api.h>
 #include <bdb_fetch.h>
@@ -57,7 +57,7 @@ int gbl_testcompr_percent = 10;
 int gbl_testcompr_max = 300000;
 
 typedef struct {
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     const char *table;
     int rc;
 } CompArg;
@@ -68,7 +68,7 @@ typedef struct {
 } SizeEst;
 
 typedef struct {
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     unsigned long long genid;
     int fndlen;
     char fnddta[MAXLRL];
@@ -261,7 +261,7 @@ static void print_compr_stat(CompStruct *comp, const char *prefix, SizeEst *est)
     snprintf(buf, sizeof(buf) - 1, "Using %s: Data: %.2f%% Blobs %.2f%%\n",
              prefix, sav_dta, sav_blob);
     logmsg(LOGMSG_USER, "%s", buf);
-    sbuf2printf(comp->sb, ">%s", buf);
+    cdb2buf_printf(comp->sb, ">%s", buf);
 }
 
 static void compr_stat(CompStruct *comp)
@@ -270,7 +270,7 @@ static void compr_stat(CompStruct *comp)
     snprintf(buf, sizeof(buf) - 1, "Percentage of original size for: %s\n",
              comp->db->tablename);
     logmsg(LOGMSG_USER, "%s", buf);
-    sbuf2printf(comp->sb, ">%s", buf);
+    cdb2buf_printf(comp->sb, ">%s", buf);
 
     print_compr_stat(comp, "CRLE", &comp->crle);
     if (comp->just_crle)
@@ -399,20 +399,20 @@ static void *handle_comptest_thd(void *_arg)
         }
         compr_stat(&comp);
     }
-    sbuf2flush(arg->sb);
+    cdb2buf_flush(arg->sb);
     backend_thread_event(thedb, BDBTHR_EVENT_DONE_RDONLY);
     return NULL;
 }
 
-void handle_testcompr(SBUF2 *sb, const char *table)
+void handle_testcompr(COMDB2BUF *sb, const char *table)
 {
     CompArg arg;
     pthread_t t;
     void *rc;
 
     if (get_schema_change_in_progress(__func__, __LINE__)) {
-        sbuf2printf(sb, ">Schema change already running\n");
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, ">Schema change already running\n");
+        cdb2buf_printf(sb, "FAILED\n");
         return;
     }
 
@@ -425,9 +425,9 @@ void handle_testcompr(SBUF2 *sb, const char *table)
     pthread_join(t, &rc);
 
     if (arg.rc == 0) {
-        sbuf2printf(sb, "SUCCESS\n");
+        cdb2buf_printf(sb, "SUCCESS\n");
     } else {
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
     }
 }
 

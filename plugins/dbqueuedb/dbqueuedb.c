@@ -48,7 +48,7 @@
 #include <rtcpu.h>
 
 #include <bdb_api.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <bb_oscompat.h>
 #include "comdb2.h"
 

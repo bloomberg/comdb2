@@ -30,7 +30,7 @@
 
 #include <rtcpu.h>
 #include <list.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <ctrace.h>
 
 #include <gettimeofday_ms.h>
@@ -154,7 +154,7 @@ struct fdb {
     pthread_rwlock_t h_rwlock; /* hash lock */
 
     fdb_location_t *loc; /* where is the db located? */
-    SBUF2 *dbcon;        /* cached db connection */
+    COMDB2BUF *dbcon;        /* cached db connection */
     pthread_mutex_t dbcon_mtx;
 
     Schema *schema; /* shared schema for fdb tables */
@@ -181,7 +181,7 @@ struct fdb_cache {
 };
 
 typedef struct fcon_sock {
-    SBUF2 *sb;
+    COMDB2BUF *sb;
 } fcon_sock_t;
 
 typedef struct fcon_cdb2api {
@@ -2157,9 +2157,9 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
     return pCol->zName;
 }
 
-static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_cache)
+static int _fdb_remote_reconnect(fdb_t *fdb, COMDB2BUF **psb, char *host, int use_cache)
 {
-    SBUF2 *sb = *psb;
+    COMDB2BUF *sb = *psb;
     static uint64_t old = 0ULL;
     uint64_t now = 0, then;
 
@@ -2169,7 +2169,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_ca
 
     if (sb) {
         logmsg(LOGMSG_ERROR, "%s socket opened already???", __func__);
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         *psb = sb = NULL;
     }
 
@@ -2200,7 +2200,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_ca
     }
 
     /* we don't want timeouts so we can cache sockets on the source side...  */
-    sbuf2settimeout(sb, 0, 0);
+    cdb2buf_settimeout(sb, 0, 0);
 
     return FDB_NOERR;
 }
@@ -2261,7 +2261,7 @@ static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
     int lcl_nodes;
     int rc = FDB_NOERR;
     int was_bad;
-    SBUF2 **psb = NULL;
+    COMDB2BUF **psb = NULL;
     int tried_refresh = 0; /* ultimate resort, comdb2db */
     int tran_flags = 0;
     sqlite3 *db;
@@ -2369,10 +2369,10 @@ static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
         if (rc == FDB_NOERR) {
             /* successfull connection */
             if (use_ssl) {
-                rc = sbuf2flush(*psb);
+                rc = cdb2buf_flush(*psb);
                 if (rc != FDB_NOERR)
                     goto failed;
-                rc = sbuf2getc(*psb);
+                rc = cdb2buf_getc(*psb);
                 if (rc != 'Y')
                     goto failed;
                 rc = FDB_NOERR;
@@ -2381,7 +2381,7 @@ static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
                 if (sslio_connect(*psb, gbl_ssl_ctx, fdb->ssl, NULL,
                                   gbl_nid_dbname, 1) != 1) {
                 failed:
-                    sbuf2close(*psb);
+                    cdb2buf_close(*psb);
                     *psb = NULL;
 #if 0
                     LETS TRY ANOTHER NODE HERE INSTEAD OF FAILING
@@ -2400,7 +2400,7 @@ static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
 
         /* send failed, close sbuf */
         if (*psb) {
-            sbuf2close(*psb);
+            cdb2buf_close(*psb);
             *psb = NULL;
         }
 
@@ -2881,7 +2881,7 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
                                      "remsql", fdbc->node,
                                      &fdbc->fcon.sock.sb);
             } else {
-                sbuf2close(fdbc->fcon.sock.sb);
+                cdb2buf_close(fdbc->fcon.sock.sb);
                 fdbc->fcon.sock.sb = NULL;
             }
             fdb_msg_clean_message(fdbc->msg);
@@ -4134,7 +4134,7 @@ static fdb_tran_t *_dtran_get_subtran(sqlclntstate *clnt, fdb_t *fdb, int use_ss
 
     /* need hbeats */
     Pthread_mutex_init(&tran->hbeats.sb_mtx, NULL);
-    sbuf2setuserptr(tran->fcon.sb, tran);
+    cdb2buf_setuserptr(tran->fcon.sb, tran);
     tran->hbeats.tran = tran;
     enable_fdb_heartbeats(&tran->hbeats);
 
@@ -5253,7 +5253,7 @@ int fdb_heartbeats(fdb_hbeats_type *hbeats)
 void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats)
 {
     if (hbeats->tran->fcon.sb) {
-        sbuf2close(hbeats->tran->fcon.sb);
+        cdb2buf_close(hbeats->tran->fcon.sb);
     }
     Pthread_mutex_destroy(&hbeats->sb_mtx);
     free(hbeats->tran);

@@ -64,20 +64,20 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum);
 /**
  * Scale and analyze this table.  Write the results to sqlite_stat1.
  */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
+int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta,
                   int bypass_auth);
 
 /**
  * Scale and analyze all tables in the database.  Write the results to
  * sqlite_stat1.
  */
-int analyze_database(SBUF2 *sb, int scale, int override_llmeta);
+int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta);
 
 /**
  * Backout to the previous analysis for table(s), or to no-analysis if there
  * is none.
  */
-void handle_backout(SBUF2 *sb, char *table);
+void handle_backout(COMDB2BUF *sb, char *table);
 
 /* rename idx old to new for table tbl */
 void add_idx_stats(const char *tbl, const char *oldname, const char *newname);
@@ -121,7 +121,7 @@ int analyze_is_running(void);
 /**
  * Cleanup stale stats, delete all entries that don't have a valid table/index
  */
-void cleanup_stats(SBUF2 *sb);
+void cleanup_stats(COMDB2BUF *sb);
 
 int do_analyze(char *tbl, int percent);
 

@@ -29,7 +29,7 @@
 
 #include <list.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <bdb_api.h>
 
 #include "comdb2.h"
@@ -43,9 +43,9 @@
 #include <logmsg.h>
 #include <net_appsock.h>
 
-extern int sbuf2write(char *ptr, int nbytes, SBUF2 *sb);
+extern int cdb2buf_write(char *ptr, int nbytes, COMDB2BUF *sb);
 
-static int send_ack_reply(SBUF2 *sb, int rcode, u_char *buf, int buflen);
+static int send_ack_reply(COMDB2BUF *sb, int rcode, u_char *buf, int buflen);
 
 static const uint8_t *sockreq_type_get(sockreq_t *p_sockreq,
                                        const uint8_t *p_buf,
@@ -90,7 +90,7 @@ static uint8_t *sockrsp_type_put(const sockrsp_t *p_sockrsp, uint8_t *p_buf,
     return p_buf;
 }
 
-static int send_ack_reply(SBUF2 *sb, int rcode, u_char *buf, int buflen)
+static int send_ack_reply(COMDB2BUF *sb, int rcode, u_char *buf, int buflen)
 {
     uint8_t rspbf[SOCKRSP_LEN];
     uint8_t *p_hdr_buf;
@@ -131,21 +131,21 @@ static int send_ack_reply(SBUF2 *sb, int rcode, u_char *buf, int buflen)
         return -1;
     }
 
-    rc = sbuf2write((char *)&rspbf, sizeof(rspbf), sb);
+    rc = cdb2buf_write((char *)&rspbf, sizeof(rspbf), sb);
     if (rc != sizeof(rrsp)) {
         return -1;
     }
     if (buflen > 0) {
-        rc = sbuf2write((char *)buf, buflen, sb);
+        rc = cdb2buf_write((char *)buf, buflen, sb);
         if (rc != buflen) {
             return -1;
         }
     }
-    rc = sbuf2flush(sb);
+    rc = cdb2buf_flush(sb);
     return 0;
 }
 
-int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
+int sndbak_socket(COMDB2BUF *sb, u_char *buf, int buflen, int rc)
 {
     int rcd = 0;
     rcd = send_ack_reply(sb, rc, buf, buflen);
@@ -153,7 +153,7 @@ int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
     return rcd;
 }
 
-int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
+int sndbak_open_socket(COMDB2BUF *sb, u_char *buf, int buflen, int rc)
 {
     return send_ack_reply(sb, rc, buf, buflen);
 }

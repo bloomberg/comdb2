@@ -28,16 +28,16 @@
 
 #ifndef SBUF2_SERVER
 #  define SBUF2_SERVER 1
-#  ifndef SBUF2_UNGETC
-#    define SBUF2_UNGETC 1
+#  ifndef CDB2BUF_UNGETC
+#    define CDB2BUF_UNGETC 1
 #  endif
 #endif
 
-#ifndef SBUF2_FUNC
+#ifndef CDB2BUF_FUNC
 #  if SBUF2_SERVER
-#    define SBUF2_FUNC(func) SERVER_ ## func
+#    define CDB2BUF_FUNC(func) SERVER_ ## func
 #  else
-#    define SBUF2_FUNC(func) CLIENT_ ## func
+#    define CDB2BUF_FUNC(func) CLIENT_ ## func
 #  endif
 #endif
 
@@ -200,10 +200,10 @@ struct ssl_no_protocols {
  * RETURN VALUES
  * 0 upon success
  */
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
+int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
                             char **cert, char **key, char **ca, char **crl,
                             long sesssz, const char *ciphers, double mintlsver,
                             char *err, size_t n);
-#define ssl_new_ctx SBUF2_FUNC(ssl_new_ctx)
+#define ssl_new_ctx CDB2BUF_FUNC(ssl_new_ctx)
 
 #endif

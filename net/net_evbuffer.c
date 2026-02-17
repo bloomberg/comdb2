@@ -84,7 +84,7 @@
 #  endif
 #endif
 
-#define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
+#define CDB2BUF_UNGETC_BUF_MAX 8 /* See also, util/comdb2buf.c */
 #define MAX_DISTRESS_COUNT 3
 
 #define hprintf_lvl LOGMSG_USER
@@ -2827,9 +2827,9 @@ static int handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int
     evbuffer_copyout(buf, req, -1);
     evbuffer_free(buf);
     make_socket_blocking(fd);
-    SBUF2 *sb = sbuf2open(fd, 0);
+    COMDB2BUF *sb = cdb2buf_open(fd, 0);
     for (int i = n - 1; i > 0; --i) {
-        sbuf2ungetc(req[i], sb);
+        cdb2buf_ungetc(req[i], sb);
     }
     return do_appsock(netinfo_ptr, ss, sb, first_byte);
 }
@@ -2881,7 +2881,7 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
     if (b.pos == -1) b = evbuffer_search(buf, " ", 1, NULL);
     if (b.pos == -1) return 1;
-    char key[SBUF2UNGETC_BUF_MAX + 1];
+    char key[CDB2BUF_UNGETC_BUF_MAX + 1];
     evbuffer_copyout(buf, key, b.pos + 1);
     key[b.pos + 1] = 0;
     if (secure && strstr(key, "newsql") == NULL) {
@@ -3004,7 +3004,7 @@ static void do_read(int fd, short what, void *data)
     check_base_thd();
     struct accept_info *a = data;
     struct evbuffer *buf = evbuffer_new();
-    ssize_t n = evbuffer_read(buf, fd, SBUF2UNGETC_BUF_MAX);
+    ssize_t n = evbuffer_read(buf, fd, CDB2BUF_UNGETC_BUF_MAX);
     if (n <= 0) {
         evbuffer_free(buf);
         accept_info_free(a);
@@ -4004,7 +4004,7 @@ int get_hosts_metric(const char *netname, enum net_metric_type type)
 int add_appsock_handler(const char *key, event_callback_fn cb)
 {
     size_t keylen = strlen(key);
-    if (keylen > SBUF2UNGETC_BUF_MAX) {
+    if (keylen > CDB2BUF_UNGETC_BUF_MAX) {
         /* Sanity check: If appsock type is unknown, we need to fallback to sbuf2
          * and put data back into its ungetc buffer. */
         logmsg(LOGMSG_ERROR, "bad appsock parameter:%s\n", key);

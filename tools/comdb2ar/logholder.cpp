@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 #include <portmuxapi.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 
 

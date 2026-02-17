@@ -1539,7 +1539,7 @@ static int bdb_flush_cache(bdb_state_type *bdb_state)
 int bdb_dump_cache_to_file(bdb_state_type *bdb_state, int max_pages)
 {
     int rc, fd;
-    SBUF2 *s;
+    COMDB2BUF *s;
     char *filetmp = NULL;
     char *file = NULL;
     if (asprintf(&filetmp, "%s/pagelist.tmp", bdb_state->txndir) == -1) {
@@ -1551,7 +1551,7 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, int max_pages)
         return -1;
     }
     if ((fd = open(filetmp, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
-        (s = sbuf2open(fd, 0)) == NULL) {
+        (s = cdb2buf_open(fd, 0)) == NULL) {
         if (fd >= 0)
             Close(fd);
         logmsg(LOGMSG_ERROR, "%s error opening %s: %d\n", __func__, file,
@@ -1561,7 +1561,7 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, int max_pages)
         return -1;
     }
     rc = bdb_state->dbenv->memp_dump(bdb_state->dbenv, s, max_pages);
-    sbuf2close(s);
+    cdb2buf_close(s);
     rc = rename(filetmp, file);
     free(filetmp);
     free(file);
@@ -1571,21 +1571,21 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, int max_pages)
 int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
 {
     int rc, fd;
-    SBUF2 *s;
+    COMDB2BUF *s;
     fd = open(file, O_RDONLY, 0);
     if (fd < 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to open \"%s\"?\n", __func__, file);
         return 1;
     }
     if (fd >= 0)
-        s = sbuf2open(fd, 0);
+        s = cdb2buf_open(fd, 0);
     if (fd < 0 || s == NULL) {
         if (fd >= 0)
             Close(fd);
         return -1;
     }
     rc = bdb_state->dbenv->memp_load(bdb_state->dbenv, s);
-    sbuf2close(s);
+    cdb2buf_close(s);
     return rc;
 }
 
@@ -2212,7 +2212,7 @@ static void print_ourlsn(bdb_state_type *bdb_state)
 }
 */
 
-static void bdb_admin_appsock(netinfo_type *netinfo, SBUF2 *sb)
+static void bdb_admin_appsock(netinfo_type *netinfo, COMDB2BUF *sb)
 {
     bdb_state_type *bdb_state;
     bdb_state = net_get_usrptr(netinfo);
@@ -2221,7 +2221,7 @@ static void bdb_admin_appsock(netinfo_type *netinfo, SBUF2 *sb)
         (bdb_state->callback->admin_appsock_rtn)(bdb_state, sb);
 }
 
-static void bdb_appsock(netinfo_type *netinfo, SBUF2 *sb)
+static void bdb_appsock(netinfo_type *netinfo, COMDB2BUF *sb)
 {
     bdb_state_type *bdb_state;
     bdb_state = net_get_usrptr(netinfo);

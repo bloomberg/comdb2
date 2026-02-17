@@ -106,9 +106,9 @@ struct watchlist_node_tag;
 typedef struct watchlist_node_tag {
     char magic[4]; /* should be "WLST" */
 
-    SBUF2 *sb;
-    sbuf2readfn readfn;
-    sbuf2writefn writefn;
+    COMDB2BUF *sb;
+    cdb2buf_readfn readfn;
+    cdb2buf_writefn writefn;
 
     int write_age;
     int read_age;
@@ -338,14 +338,14 @@ uint8_t *net_wire_header_put(const wire_header_type *, uint8_t *, const uint8_t 
 
 void add_host(host_node_type *);
 void dispatch_decom(char *);
-int do_appsock(netinfo_type *, struct sockaddr_in *, SBUF2 *, uint8_t);
+int do_appsock(netinfo_type *, struct sockaddr_in *, COMDB2BUF *, uint8_t);
 int findpeer(int, char *, int);
 int get_dedicated_conhost(host_node_type *, struct in_addr *);
 host_node_type *get_host_node_by_name_ll(netinfo_type *, const char *);
 host_node_type *add_to_netinfo_ll(netinfo_type *, const char hostname[], int portnum);
 int net_flush_evbuffer(host_node_type *);
 int net_send_all_evbuffer(netinfo_type *, int, void **, int *, int *, int *);
-int write_connect_message(netinfo_type *, host_node_type *, SBUF2 *);
+int write_connect_message(netinfo_type *, host_node_type *, COMDB2BUF *);
 int write_connect_message_evbuffer(host_node_type *, const struct iovec *, int);
 int write_decom(netinfo_type *, host_node_type *, const char *, int, const char *);
 int write_heartbeat(netinfo_type *, host_node_type *);

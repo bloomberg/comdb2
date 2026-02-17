@@ -17,7 +17,7 @@
 #ifndef _FDB_COMM_H_
 #define _FDB_COMM_H_
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include "comdb2.h"
 #include "sql.h"
 #include "fdb_fend.h"
@@ -53,14 +53,14 @@ union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
 
 int fdb_send_open(struct sqlclntstate *clnt, fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp, int flags,
-                  int version, SBUF2 *sb);
-int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int seq, SBUF2 *sb);
+                  int version, COMDB2BUF *sb);
+int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int seq, COMDB2BUF *sb);
 
 int fdb_send_run_sql(fdb_msg_t *msg, char *cid, int sqllen, char *sql,
                      int version, int keylen, char *key,
-                     enum run_sql_flags flags, SBUF2 *sb);
+                     enum run_sql_flags flags, COMDB2BUF *sb);
 
-int fdb_recv_row_int(fdb_msg_t *msg, char *cid, SBUF2 *sb, const char *func, int line);
+int fdb_recv_row_int(fdb_msg_t *msg, char *cid, COMDB2BUF *sb, const char *func, int line);
 #define fdb_recv_row(msg, cid, sb) \
     fdb_recv_row_int(msg, cid, sb, __func__, __LINE__);
 
@@ -72,39 +72,39 @@ unsigned long long fdb_msg_genid(fdb_msg_t *msg);
 int fdb_msg_datalen(fdb_msg_t *msg);
 char *fdb_msg_data(fdb_msg_t *msg);
 
-int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
+int fdb_bend_send_row(COMDB2BUF *sb, fdb_msg_t *msg, char *cid,
                       unsigned long long genid, char *data, int datalen,
                       char *datacopy, int datacopylen, int ret);
 
 int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, int flags,
-                   SBUF2 *sb);
+                   COMDB2BUF *sb);
 int fdb_send_2pc_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl,
                        int flags, char *dist_txnid, char *coordinator_dbname, char *coordinator_tier, int64_t timestamp,
-                       SBUF2 *sb);
+                       COMDB2BUF *sb);
 int fdb_send_commit(fdb_msg_t *msg, fdb_tran_t *trans,
-                    enum transaction_level lvl, SBUF2 *sb);
+                    enum transaction_level lvl, COMDB2BUF *sb);
 int fdb_send_rollback(fdb_msg_t *msg, fdb_tran_t *trans,
-                      enum transaction_level lvl, SBUF2 *sb);
-int fdb_send_rc(fdb_msg_t *msg, char *tid, int rc, int errstrlen, char *errstr, SBUF2 *sb);
+                      enum transaction_level lvl, COMDB2BUF *sb);
+int fdb_send_rc(fdb_msg_t *msg, char *tid, int rc, int errstrlen, char *errstr, COMDB2BUF *sb);
 int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long genid,
                     unsigned long long ins_keys, int datalen, char *data,
-                    int seq, SBUF2 *sb);
+                    int seq, COMDB2BUF *sb);
 int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long genid,
                     unsigned long long del_keys, int seq,
-                    SBUF2 *sb);
+                    COMDB2BUF *sb);
 int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long oldgenid,
                     unsigned long long genid, unsigned long long ins_keys,
                     unsigned long long del_keys, int datalen, char *data,
-                    int seq, SBUF2 *sb);
+                    int seq, COMDB2BUF *sb);
 int fdb_send_index(fdb_msg_t *msg, char *cid, int version, int rootpage,
                    unsigned long long genid, int is_delete, int ixnum,
-                   int ixlen, char *ix, int seq, SBUF2 *sb);
-int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, SBUF2 *sb);
+                   int ixlen, char *ix, int seq, COMDB2BUF *sb);
+int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, COMDB2BUF *sb);
 
-void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
+void fdb_msg_print_message(COMDB2BUF *sb, fdb_msg_t *msg, char *prefix);
 void fdb_msg_clean_message(fdb_msg_t *msg);
 
 #endif

@@ -17,7 +17,7 @@
 #ifndef SCHEMACHANGE_H
 #define SCHEMACHANGE_H
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <comdb2.h>
 #include <util.h>
 #include <locks.h>
@@ -225,7 +225,7 @@ struct schema_change_type {
     int already_locked; /* already holding schema lock */
     int keep_locked; /* don't release schema lock upon commit */
     int pagesize; /* pagesize override to use */
-    SBUF2 *sb; /* socket to sponsoring program */
+    COMDB2BUF *sb; /* socket to sponsoring program */
     int must_close_sb;
     int use_old_blobs_on_rebuild;
     int partialuprecs; /* count updated records in partial table upgrade */
@@ -511,12 +511,12 @@ int add_schema_change_tables();
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
 extern unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 
-void handle_setcompr(SBUF2 *sb);
+void handle_setcompr(COMDB2BUF *sb);
 
-void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
+void vsb_printf(loglvl lvl, COMDB2BUF *sb, const char *sb_prefix,
                 const char *prefix, const char *fmt, va_list args);
-void sb_printf(SBUF2 *sb, const char *fmt, ...);
-void sb_errf(SBUF2 *sb, const char *fmt, ...);
+void sb_printf(COMDB2BUF *sb, const char *fmt, ...);
+void sb_errf(COMDB2BUF *sb, const char *fmt, ...);
 
 void sc_printf(struct schema_change_type *s, const char *fmt, ...);
 void sc_errf(struct schema_change_type *s, const char *fmt, ...);

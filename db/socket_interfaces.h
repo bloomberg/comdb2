@@ -29,7 +29,7 @@
 
 #include <list.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <bdb_api.h>
 
 #include <compile_time_assert.h>
@@ -70,11 +70,11 @@ enum { SOCKREQ_LEN = 4 + 4 + 4 + 4 + 4 + (2 * 4) + 4 };
 
 BB_COMPILE_TIME_ASSERT(sockreq_len, sizeof(sockreq_t) == SOCKREQ_LEN);
 
-int handle_socket_txbuf(struct thr_handle *thr_self, SBUF2 *sb, struct dbtable *db,
+int handle_socket_txbuf(struct thr_handle *thr_self, COMDB2BUF *sb, struct dbtable *db,
                         int *keepsock);
 /*int reterr_socket(struct thd * thd, struct ireq* iq, int rc);*/
-int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
-int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
+int sndbak_socket(COMDB2BUF *sb, u_char *buf, int buflen, int rc);
+int sndbak_open_socket(COMDB2BUF *sb, u_char *buf, int buflen, int rc);
 
 /* Free all resources allocated in the lock buffer. */
 void cleanup_lock_buffer(struct buf_lock_t *);

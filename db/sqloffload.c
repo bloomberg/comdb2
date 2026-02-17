@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include <poll.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <plhash_glue.h>
 #include <list.h>
 #include <queue.h>

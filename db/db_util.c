@@ -32,7 +32,7 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <segstr.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <str0.h>
 
 #include "comdb2.h"
@@ -178,8 +178,8 @@ char *load_text_file(const char *filename)
 int rewrite_lrl_remove_tables(const char *lrlname)
 {
     int fdnew, fdold;
-    SBUF2 *sbnew;
-    SBUF2 *sbold;
+    COMDB2BUF *sbnew;
+    COMDB2BUF *sbold;
     char newlrlname[256];
     char savlrlname[256];
     char line[1024];
@@ -210,21 +210,21 @@ int rewrite_lrl_remove_tables(const char *lrlname)
         return -1;
     }
 
-    sbnew = sbuf2open(fdnew, 0);
+    sbnew = cdb2buf_open(fdnew, 0);
     if (!sbnew) {
-        logmsg(LOGMSG_ERROR, "rewrite_lrl_remove_tables: sbuf2open fdnew failed\n");
+        logmsg(LOGMSG_ERROR, "rewrite_lrl_remove_tables: cdb2buf_open fdnew failed\n");
         Close(fdnew);
         Close(fdold);
     }
-    sbold = sbuf2open(fdold, 0);
+    sbold = cdb2buf_open(fdold, 0);
     if (!sbold) {
-        logmsg(LOGMSG_ERROR, "rewrite_lrl_remove_tables: sbuf2open fdold failed\n");
-        sbuf2close(sbnew);
+        logmsg(LOGMSG_ERROR, "rewrite_lrl_remove_tables: cdb2buf_open fdold failed\n");
+        cdb2buf_close(sbnew);
         Close(fdold);
     }
 
     /* phew!  ready to go */
-    while (sbuf2gets(line, sizeof(line), sbold) > 0) {
+    while (cdb2buf_gets(line, sizeof(line), sbold) > 0) {
         int st = 0, ltok;
         char *tok;
 
@@ -256,11 +256,11 @@ int rewrite_lrl_remove_tables(const char *lrlname)
             continue;
 
         /* echo the line back out unchanged */
-        sbuf2printf(sbnew, "%s", line);
+        cdb2buf_printf(sbnew, "%s", line);
     }
 
-    sbuf2close(sbold);
-    sbuf2close(sbnew);
+    cdb2buf_close(sbold);
+    cdb2buf_close(sbnew);
 
     if (rename(lrlname, savlrlname) == -1) {
         logmsg(LOGMSG_ERROR, 
@@ -282,12 +282,12 @@ int rewrite_lrl_remove_tables(const char *lrlname)
     do {                                                                       \
         int num = listc_size(&thedb->lua_##pfx##funcs);                        \
         if (num) {                                                             \
-            sbuf2printf(sb_out, #pfx "funcs %d", num);                         \
+            cdb2buf_printf(sb_out, #pfx "funcs %d", num);                         \
             struct lua_func_t * func;                                          \
             LISTC_FOR_EACH(&thedb->lua_##pfx##funcs, func, lnk) {              \
-                sbuf2printf(sb_out, " %s", func->name);                        \
+                cdb2buf_printf(sb_out, " %s", func->name);                        \
             }                                                                  \
-            sbuf2printf(sb_out, "\n");                                         \
+            cdb2buf_printf(sb_out, "\n");                                         \
         }                                                                      \
     } while (0)
 
@@ -300,8 +300,8 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in, const char *p_lrl_fname_ou
     unsigned i;
     int fd_out;
     int fd_in;
-    SBUF2 *sb_out;
-    SBUF2 *sb_in;
+    COMDB2BUF *sb_out;
+    COMDB2BUF *sb_in;
     char line[1024];
 
     fd_in = open(p_lrl_fname_in, O_RDONLY);
@@ -319,21 +319,21 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in, const char *p_lrl_fname_ou
         return -1;
     }
 
-    sb_out = sbuf2open(fd_out, 0);
+    sb_out = cdb2buf_open(fd_out, 0);
     if (!sb_out) {
-        logmsg(LOGMSG_ERROR, "%s: sbuf2open fd_out failed\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: cdb2buf_open fd_out failed\n", __func__);
         Close(fd_out);
         Close(fd_in);
     }
-    sb_in = sbuf2open(fd_in, 0);
+    sb_in = cdb2buf_open(fd_in, 0);
     if (!sb_in) {
-        logmsg(LOGMSG_ERROR, "%s: sbuf2open fd_in failed\n", __func__);
-        sbuf2close(sb_out);
+        logmsg(LOGMSG_ERROR, "%s: cdb2buf_open fd_in failed\n", __func__);
+        cdb2buf_close(sb_out);
         Close(fd_in);
     }
 
     /* phew!  ready to go, copy the contents of the in lrl file */
-    while (sbuf2gets(line, sizeof(line), sb_in) > 0) {
+    while (cdb2buf_gets(line, sizeof(line), sb_in) > 0) {
         int st = 0, ltok;
         char *tok;
         tok = segtok(line, sizeof(line), &st, &ltok);
@@ -342,45 +342,45 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in, const char *p_lrl_fname_ou
                     __func__, line);
             continue;
         }
-        sbuf2printf(sb_out, "%s", line);
+        cdb2buf_printf(sb_out, "%s", line);
     }
 
     /* add table definitions */
     for (i = 0; i < num_tables; ++i) {
-        sbuf2printf(sb_out, "table %s %s", p_table_names[i], p_csc2_paths[i]);
+        cdb2buf_printf(sb_out, "table %s %s", p_table_names[i], p_csc2_paths[i]);
 
         if (table_nums[i])
-            sbuf2printf(sb_out, " %d", table_nums[i]);
+            cdb2buf_printf(sb_out, " %d", table_nums[i]);
 
-        sbuf2printf(sb_out, "\n");
+        cdb2buf_printf(sb_out, "\n");
     }
 
     if (has_sp) {
-        sbuf2printf(sb_out, "spfile %s/%s_%s", out_lrl_dir, thedb->envname,
+        cdb2buf_printf(sb_out, "spfile %s/%s_%s", out_lrl_dir, thedb->envname,
                     SP_FILE_NAME);
-        sbuf2printf(sb_out, "\n");
+        cdb2buf_printf(sb_out, "\n");
     }
 
     if (has_user_vers_sp) {
-        sbuf2printf(sb_out, "version_spfile %s/%s_%s", out_lrl_dir, thedb->envname, SP_VERS_FILE_NAME);
-        sbuf2printf(sb_out, "\n");
+        cdb2buf_printf(sb_out, "version_spfile %s/%s_%s", out_lrl_dir, thedb->envname, SP_VERS_FILE_NAME);
+        cdb2buf_printf(sb_out, "\n");
     }
 
     if (has_timepartitions) {
-        sbuf2printf(sb_out, "timepartitions %s/%s_%s", out_lrl_dir, thedb->envname, TIMEPART_FILE_NAME);
-        sbuf2printf(sb_out, "\n");
+        cdb2buf_printf(sb_out, "timepartitions %s/%s_%s", out_lrl_dir, thedb->envname, TIMEPART_FILE_NAME);
+        cdb2buf_printf(sb_out, "\n");
     }
 
     for (int i = 0;
          i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i)
-        sbuf2printf(sb_out, "queuedb " REPOP_QDB_FMT "\n", out_lrl_dir,
+        cdb2buf_printf(sb_out, "queuedb " REPOP_QDB_FMT "\n", out_lrl_dir,
                     thedb->envname, i);
 
     print_lua_funcs(s);
     print_lua_funcs(a);
 
-    sbuf2close(sb_in);
-    sbuf2close(sb_out);
+    cdb2buf_close(sb_in);
+    cdb2buf_close(sb_out);
     return 0;
 }
 
@@ -389,8 +389,8 @@ int rewrite_lrl_table(const char *lrlname, const char *tablename,
                       const char *csc2path)
 {
     int fdnew, fdold;
-    SBUF2 *sbnew;
-    SBUF2 *sbold;
+    COMDB2BUF *sbnew;
+    COMDB2BUF *sbold;
     char newlrlname[256];
     char savlrlname[256];
     char line[1024];
@@ -417,21 +417,21 @@ int rewrite_lrl_table(const char *lrlname, const char *tablename,
         return -1;
     }
 
-    sbnew = sbuf2open(fdnew, 0);
+    sbnew = cdb2buf_open(fdnew, 0);
     if (!sbnew) {
-        logmsg(LOGMSG_ERROR, "rewrite_lrl_table: sbuf2open fdnew failed\n");
+        logmsg(LOGMSG_ERROR, "rewrite_lrl_table: cdb2buf_open fdnew failed\n");
         Close(fdnew);
         Close(fdold);
     }
-    sbold = sbuf2open(fdold, 0);
+    sbold = cdb2buf_open(fdold, 0);
     if (!sbold) {
-        logmsg(LOGMSG_ERROR, "rewrite_lrl_table: sbuf2open fdold failed\n");
-        sbuf2close(sbnew);
+        logmsg(LOGMSG_ERROR, "rewrite_lrl_table: cdb2buf_open fdold failed\n");
+        cdb2buf_close(sbnew);
         Close(fdold);
     }
 
     /* phew!  ready to go */
-    while (sbuf2gets(line, sizeof(line), sbold) > 0) {
+    while (cdb2buf_gets(line, sizeof(line), sbold) > 0) {
         int st = 0, ltok;
         char *tok;
         tok = segtok(line, sizeof(line), &st, &ltok);
@@ -443,23 +443,23 @@ int rewrite_lrl_table(const char *lrlname, const char *tablename,
 
                 /* Rewrite this table line, preserving the database number
                  * field if present. */
-                sbuf2printf(sbnew, "table %s %s%s", tablename, csc2path,
+                cdb2buf_printf(sbnew, "table %s %s%s", tablename, csc2path,
                             tok + ltok);
                 ntables++;
                 continue;
             }
         }
-        sbuf2printf(sbnew, "%s", line);
+        cdb2buf_printf(sbnew, "%s", line);
     }
 
     /* If no tables written then add it */
     if (ntables == 0) {
-        sbuf2printf(sbnew, "table %s %s\n", tablename, csc2path);
+        cdb2buf_printf(sbnew, "table %s %s\n", tablename, csc2path);
         ntables++;
     }
 
-    sbuf2close(sbold);
-    sbuf2close(sbnew);
+    cdb2buf_close(sbold);
+    cdb2buf_close(sbnew);
 
     if (ntables != 1) {
         logmsg(LOGMSG_ERROR, "rewrite_lrl_table: something confused me because I "

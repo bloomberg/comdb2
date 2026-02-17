@@ -26,7 +26,7 @@
 #define _FDB_FEND_H_
 
 #include "list.h"
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include "comdb2.h"
 #include "sql.h"
@@ -114,7 +114,7 @@ struct fdb_tran {
     cdb2_effects_tp last_effects; /* only set in handle_fdb_push_write  */
     int is_cdb2api;
     union {
-        SBUF2 *sb;     /* connection to this fdb */
+        COMDB2BUF *sb;     /* connection to this fdb */
         cdb2_hndl_tp *hndl; /* cdb2api connection, iff is_cdb2api == 1 */
     } fcon;
 

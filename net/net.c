@@ -118,20 +118,20 @@ static unsigned long long gettmms(void)
            ((unsigned long long)tm.tv_usec) / 1000;
 }
 
-static int sbuf2read_wrapper(SBUF2 *sb, char *buf, int nbytes)
+static int cdb2buf_read_wrapper(COMDB2BUF *sb, char *buf, int nbytes)
 {
     if (debug_switch_verbose_sbuf())
         logmsg(LOGMSG_USER, "reading, reading %llu\n", gettmms());
 
-    return sbuf2unbufferedread(sb, buf, nbytes);
+    return cdb2buf_unbufferedread(sb, buf, nbytes);
 }
 
-static int sbuf2write_wrapper(SBUF2 *sb, const char *buf, int nbytes)
+static int cdb2buf_write_wrapper(COMDB2BUF *sb, const char *buf, int nbytes)
 {
     if (debug_switch_verbose_sbuf())
         logmsg(LOGMSG_USER, "writing, writing %llu\n", gettmms());
 
-    return sbuf2unbufferedwrite(sb, buf, nbytes);
+    return cdb2buf_unbufferedwrite(sb, buf, nbytes);
 }
 
 /* Help me build the test program... - Sam J */
@@ -147,12 +147,12 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
 
-static int net_writes(SBUF2 *sb, const char *buf, int nbytes);
-static int net_reads(SBUF2 *sb, char *buf, int nbytes);
+static int net_writes(COMDB2BUF *sb, const char *buf, int nbytes);
+static int net_reads(COMDB2BUF *sb, char *buf, int nbytes);
 
-static watchlist_node_type *get_watchlist_node(SBUF2 *, const char *funcname);
+static watchlist_node_type *get_watchlist_node(COMDB2BUF *, const char *funcname);
 
-int sbuf2ungetc(char c, SBUF2 *sb);
+int cdb2buf_ungetc(char c, COMDB2BUF *sb);
 
 /* Endian manipulation routines */
 static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
@@ -487,7 +487,7 @@ extern ssl_mode gbl_rep_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
 
 int write_connect_message(netinfo_type *netinfo_ptr,
-                          host_node_type *host_node_ptr, SBUF2 *sb)
+                          host_node_type *host_node_ptr, COMDB2BUF *sb)
 {
     connect_message_type connect_message;
     uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN] = {0}, *p_buf, *p_buf_end;
@@ -2603,17 +2603,17 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 int gbl_forbid_remote_admin = 1;
 
 extern char *gbl_myhostname;
-int is_connection_local(SBUF2 *sb) {
+int is_connection_local(COMDB2BUF *sb) {
     struct sockaddr_in peeraddr;
     socklen_t pl = sizeof(struct sockaddr_in);
 
-    int rc = getpeername(sbuf2fileno(sb), (struct sockaddr *)&peeraddr, &pl);
+    int rc = getpeername(cdb2buf_fileno(sb), (struct sockaddr *)&peeraddr, &pl);
     if (rc) {
         // default to not local on error
         return 0;
     }
     char fromaddr[64];
-    findpeer(sbuf2fileno(sb), fromaddr, sizeof(fromaddr));
+    findpeer(cdb2buf_fileno(sb), fromaddr, sizeof(fromaddr));
     // allow loopback or same address as us
     if (peeraddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
         return 1;
@@ -2642,13 +2642,13 @@ int is_connection_local(SBUF2 *sb) {
 }
 
 int do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
-                SBUF2 *sb, uint8_t firstbyte)
+                COMDB2BUF *sb, uint8_t firstbyte)
 {
     if (firstbyte == '@' || gbl_server_admin_mode) {
         /* admin connections are handled by exclusively by newsql - should never get here */
         goto err;
-    } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
-        logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s\n", __func__);
+    } else if (firstbyte != cdb2buf_ungetc(firstbyte, sb)) {
+        logmsg(LOGMSG_ERROR, "cdb2buf_ungetc failed %s\n", __func__);
         goto err;
     }
 
@@ -2667,11 +2667,11 @@ int do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
     watchlist_node->in_watchlist = 0;
     watchlist_node->netinfo_ptr = netinfo_ptr;
     watchlist_node->sb = sb;
-    watchlist_node->readfn = sbuf2getr(sb);
-    watchlist_node->writefn = sbuf2getw(sb);
+    watchlist_node->readfn = cdb2buf_getr(sb);
+    watchlist_node->writefn = cdb2buf_getw(sb);
     watchlist_node->addr = *cliaddr;
-    sbuf2setrw(sb, net_reads, net_writes);
-    sbuf2setuserptr(sb, watchlist_node);
+    cdb2buf_setrw(sb, net_reads, net_writes);
+    cdb2buf_setuserptr(sb, watchlist_node);
 
     /* call user specified app routine */
     /* this doesn't read- it just farms this off to a thread */
@@ -2679,13 +2679,13 @@ int do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
     return 0;
 
 err:
-    sbuf2close(sb);
+    cdb2buf_close(sb);
     return -1;
 }
 
-static watchlist_node_type *get_watchlist_node(SBUF2 *sb, const char *funcname)
+static watchlist_node_type *get_watchlist_node(COMDB2BUF *sb, const char *funcname)
 {
-    watchlist_node_type *watchlist_node = sbuf2getuserptr(sb);
+    watchlist_node_type *watchlist_node = cdb2buf_getuserptr(sb);
     if (!watchlist_node) {
         logmsg(LOGMSG_ERROR, "%s: sbuf2 %p has no user pointer\n", funcname, sb);
         return NULL;
@@ -2698,7 +2698,7 @@ static watchlist_node_type *get_watchlist_node(SBUF2 *sb, const char *funcname)
     }
 }
 
-static int net_writes(SBUF2 *sb, const char *buf, int nbytes)
+static int net_writes(COMDB2BUF *sb, const char *buf, int nbytes)
 {
     int outrc;
     watchlist_node_type *watchlist_node = get_watchlist_node(sb, __func__);
@@ -2710,7 +2710,7 @@ static int net_writes(SBUF2 *sb, const char *buf, int nbytes)
     return outrc;
 }
 
-static int net_reads(SBUF2 *sb, char *buf, int nbytes)
+static int net_reads(COMDB2BUF *sb, char *buf, int nbytes)
 {
     int outrc;
     watchlist_node_type *watchlist_node = get_watchlist_node(sb, __func__);
@@ -2725,7 +2725,7 @@ static int net_reads(SBUF2 *sb, char *buf, int nbytes)
 void net_timeout_watchlist(netinfo_type *netinfo_ptr)
 {
     watchlist_node_type *watchlist_ptr;
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     int fd;
 
     Pthread_mutex_lock(&(netinfo_ptr->watchlk));
@@ -2733,7 +2733,7 @@ void net_timeout_watchlist(netinfo_type *netinfo_ptr)
     LISTC_FOR_EACH(&(netinfo_ptr->watchlist), watchlist_ptr, lnk)
     {
         sb = watchlist_ptr->sb;
-        fd = sbuf2fileno(sb);
+        fd = cdb2buf_fileno(sb);
 
         int write_age = watchlist_ptr->write_age;
         int read_age = watchlist_ptr->read_age;
@@ -2781,7 +2781,7 @@ void net_timeout_watchlist(netinfo_type *netinfo_ptr)
     Pthread_mutex_unlock(&(netinfo_ptr->watchlk));
 }
 
-void net_end_appsock(SBUF2 *sb)
+void net_end_appsock(COMDB2BUF *sb)
 {
     watchlist_node_type *watchlist_node;
     netinfo_type *netinfo_ptr;
@@ -2799,15 +2799,15 @@ void net_end_appsock(SBUF2 *sb)
             listc_rfl(&(netinfo_ptr->watchlist), watchlist_node);
         }
 
-        /* Restore original read/write functions so that if sbuf2close does a
+        /* Restore original read/write functions so that if cdb2buf_close does a
          * flush it won't be trying to update the watchlist node. */
-        sbuf2setrw(sb, watchlist_node->readfn, watchlist_node->writefn);
+        cdb2buf_setrw(sb, watchlist_node->readfn, watchlist_node->writefn);
 
         free(watchlist_node);
         Pthread_mutex_unlock(&(netinfo_ptr->watchlk));
     }
 
-    sbuf2close(sb);
+    cdb2buf_close(sb);
 }
 
 /* call this under netinfo_ptr lock ! */
@@ -3112,7 +3112,7 @@ int get_host_port(netinfo_type *netinfo)
     return port;
 }
 
-int net_appsock_get_addr(SBUF2 *sb, struct sockaddr_in *addr)
+int net_appsock_get_addr(COMDB2BUF *sb, struct sockaddr_in *addr)
 {
     watchlist_node_type *watchlist_node;
 

@@ -509,28 +509,28 @@ int do_dryrun(struct schema_change_type *s)
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         if (IS_ALTERTABLE(s)) {
-            sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
+            cdb2buf_printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;
         } else if (IS_FASTINIT(s)) {
-            sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
+            cdb2buf_printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;
         }
     } else {
         if (s->kind == SC_ADDTABLE) {
-            sbuf2printf(s->sb, ">Table %s already exists\n", s->tablename);
+            cdb2buf_printf(s->sb, ">Table %s already exists\n", s->tablename);
             rc = -1;
             goto done;
         } else if (IS_FASTINIT(s)) {
-            sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
+            cdb2buf_printf(s->sb, ">Table %s will be truncated\n", s->tablename);
             goto done;
         } else if (s->kind == SC_DROPTABLE) {
             if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
                 sc_client_error(s, "Can't drop a table referenced by a foreign key");
                 rc = -1;
             } else {
-                sbuf2printf(s->sb, ">Table %s will be dropped\n", s->tablename);
+                cdb2buf_printf(s->sb, ">Table %s will be dropped\n", s->tablename);
             }
             goto done;
         }
@@ -546,7 +546,7 @@ int do_dryrun(struct schema_change_type *s)
     }
 
     if (db == NULL && newdb) {
-        sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
+        cdb2buf_printf(s->sb, ">Table %s will be added.\n", s->tablename);
         goto done;
     }
     set_schemachange_options(s, db, &scinfo);
@@ -563,9 +563,9 @@ int do_dryrun(struct schema_change_type *s)
 
 done:
     if (rc == 0) {
-        sbuf2printf(s->sb, "SUCCESS\n");
+        cdb2buf_printf(s->sb, "SUCCESS\n");
     } else {
-        sbuf2printf(s->sb, "FAILED\n");
+        cdb2buf_printf(s->sb, "FAILED\n");
     }
     if (newdb) {
         backout_schemas(newdb->tablename);
@@ -1335,7 +1335,7 @@ static const char *delims = " \n\r\t";
 int gbl_commit_sleep;
 int gbl_convert_sleep;
 
-void handle_setcompr(SBUF2 *sb)
+void handle_setcompr(COMDB2BUF *sb)
 {
     int rc;
     struct dbtable *db;
@@ -1344,12 +1344,12 @@ void handle_setcompr(SBUF2 *sb)
     char *tok, *saveptr;
     const char *tbl = NULL, *rec = NULL, *blob = NULL;
 
-    if ((rc = sbuf2gets(line, sizeof(line), sb)) < 0) {
-        fprintf(stderr, "%s -- sbuf2gets rc: %d\n", __func__, rc);
+    if ((rc = cdb2buf_gets(line, sizeof(line), sb)) < 0) {
+        fprintf(stderr, "%s -- cdb2buf_gets rc: %d\n", __func__, rc);
         return;
     }
     if ((tok = strtok_r(line, delims, &saveptr)) == NULL) {
-        sbuf2printf(sb, ">Bad arguments\n");
+        cdb2buf_printf(sb, ">Bad arguments\n");
         goto out;
     }
     do {
@@ -1360,21 +1360,21 @@ void handle_setcompr(SBUF2 *sb)
         else if (strcmp(tok, "blob") == 0)
             blob = strtok_r(NULL, delims, &saveptr);
         else {
-            sbuf2printf(sb, ">Bad arguments\n");
+            cdb2buf_printf(sb, ">Bad arguments\n");
             goto out;
         }
     } while ((tok = strtok_r(NULL, delims, &saveptr)) != NULL);
 
     if (rec == NULL && blob == NULL) {
-        sbuf2printf(sb, ">No compression operation specified\n");
+        cdb2buf_printf(sb, ">No compression operation specified\n");
         goto out;
     }
     if ((db = get_dbtable_by_name(tbl)) == NULL) {
-        sbuf2printf(sb, ">Table not found: %s\n", tbl);
+        cdb2buf_printf(sb, ">Table not found: %s\n", tbl);
         goto out;
     }
     if (!db->odh) {
-        sbuf2printf(sb, ">Table isn't ODH\n");
+        cdb2buf_printf(sb, ">Table isn't ODH\n");
         goto out;
     }
 
@@ -1387,15 +1387,15 @@ void handle_setcompr(SBUF2 *sb)
     unlock_schema_lk();
 
     if (rc == 0)
-        sbuf2printf(sb, "SUCCESS\n");
+        cdb2buf_printf(sb, "SUCCESS\n");
     else
     out:
-    sbuf2printf(sb, "FAILED\n");
+    cdb2buf_printf(sb, "FAILED\n");
 
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
 }
 
-void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
+void vsb_printf(loglvl lvl, COMDB2BUF *sb, const char *sb_prefix,
                 const char *prefix, const char *fmt, va_list args)
 {
     char line[1024];
@@ -1408,8 +1408,8 @@ void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
         *next = 0;
 
         if (sb) {
-            sbuf2printf(sb, "%s%s\n", sb_prefix, s);
-            sbuf2flush(sb);
+            cdb2buf_printf(sb, "%s%s\n", sb_prefix, s);
+            cdb2buf_flush(sb);
         }
         logmsg(lvl, "%s%s\n", prefix, s);
         ctrace("%s%s\n", prefix, s);
@@ -1418,8 +1418,8 @@ void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
     }
     if (*s) {
         if (sb) {
-            sbuf2printf(sb, "%s%s", sb_prefix, s);
-            sbuf2flush(sb);
+            cdb2buf_printf(sb, "%s%s", sb_prefix, s);
+            cdb2buf_flush(sb);
         }
 
         printf("%s%s\n", prefix, s);
@@ -1427,7 +1427,7 @@ void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
     }
 }
 
-void sb_printf(SBUF2 *sb, const char *fmt, ...)
+void sb_printf(COMDB2BUF *sb, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -1437,7 +1437,7 @@ void sb_printf(SBUF2 *sb, const char *fmt, ...)
     va_end(args);
 }
 
-void sb_errf(SBUF2 *sb, const char *fmt, ...)
+void sb_errf(COMDB2BUF *sb, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);

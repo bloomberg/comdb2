@@ -29,7 +29,7 @@ comdb2_appsock_t logdelete3_plugin;
 static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
 {
     struct thr_handle *thr_self;
-    struct sbuf2 *sb;
+    struct comdb2buf *sb;
     struct log_delete_state log_delete_state;
     char recovery_command[200] = {0};
     char recovery_lsn[100] = {0};
@@ -70,8 +70,8 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     }
 
     /* respond so that comdb2logdel.tsk knows it got through. */
-    sbuf2printf(sb, "log file deletion disabled\n");
-    sbuf2flush(sb);
+    cdb2buf_printf(sb, "log file deletion disabled\n");
+    cdb2buf_flush(sb);
 
     if (strncmp(logdelete3_plugin.name, arg->cmdline,
                 strlen(logdelete3_plugin.name)) == 0) {
@@ -88,8 +88,8 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     }
 
     /* read from socket until it closes */
-    sbuf2settimeout(sb, 0, 0);
-    while (sbuf2gets(line, sizeof(line), sb) > 0) {
+    cdb2buf_settimeout(sb, 0, 0);
+    while (cdb2buf_gets(line, sizeof(line), sb) > 0) {
         static const char *delims = " \r\t\n";
         char *lasts;
         char *tok;
@@ -111,15 +111,15 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
             } else {
                 logmsg(LOGMSG_ERROR, "logdelete2 thread got bad filenum <%s>\n",
                        tok);
-                sbuf2printf(sb, "expected +ve filenum\n");
-                sbuf2flush(sb);
+                cdb2buf_printf(sb, "expected +ve filenum\n");
+                cdb2buf_flush(sb);
                 continue;
             }
         } else if (strcmp(tok, "recovery_options") == 0) {
             logmsg(LOGMSG_DEBUG, "sent recovery options: %s\n",
                    recovery_command);
-            sbuf2printf(sb, "%s\n", recovery_command);
-            sbuf2flush(sb);
+            cdb2buf_printf(sb, "%s\n", recovery_command);
+            cdb2buf_flush(sb);
         } else {
             logmsg(LOGMSG_ERROR, "logdelete2 thread got unknown token <%s>\n",
                    tok);
@@ -145,18 +145,18 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
         /* If the master node changed during that then report that too
          */
         if (before_master != after_master) {
-            sbuf2printf(sb, "Alert: master changed during operation\n");
+            cdb2buf_printf(sb, "Alert: master changed during operation\n");
         }
 
         /* If we committed a schema change then that's ruined it too...
          */
         if (before_sc != after_sc) {
-            sbuf2printf(sb,
+            cdb2buf_printf(sb,
                         "Alert: schema changes committed during operation\n");
         }
 
-        sbuf2printf(sb, ".\n");
-        sbuf2flush(sb);
+        cdb2buf_printf(sb, ".\n");
+        cdb2buf_flush(sb);
     }
     return APPSOCK_RETURN_OK;
 }

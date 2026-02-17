@@ -22,7 +22,7 @@
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
-#include "sbuf2.h"
+#include "comdb2buf.h"
 #include "tohex.h"
 
 #define RULESET_MIN_BUF   (300)
@@ -979,7 +979,7 @@ int comdb2_load_ruleset(
   size_t nLine;
   int lineNo = 0;
   int fd = -1;
-  SBUF2 *sb = NULL;
+  COMDB2BUF *sb = NULL;
   struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
@@ -994,15 +994,15 @@ int comdb2_load_ruleset(
              zFileName, lineNo, errno);
     goto failure;
   }
-  sb = sbuf2open(fd, 0);
+  sb = cdb2buf_open(fd, 0);
   if( sb==NULL ){
-    snprintf(zError, sizeof(zError), "%s:%d, sbuf2open failed errno=%d",
+    snprintf(zError, sizeof(zError), "%s:%d, cdb2buf_open failed errno=%d",
              zFileName, lineNo, errno);
     goto failure;
   }
   while( 1 ){
     memset(zLine, 0, sizeof(zLine));
-    if( sbuf2gets(zLine, sizeof(zLine), sb)<=0 ) break;
+    if( cdb2buf_gets(zLine, sizeof(zLine), sb)<=0 ) break;
     nLine = strlen(zLine);
     if( zLine[nLine-1]=='\n' || zLine[nLine-1]=='\r' ){
       zLine[nLine-1] = '\0';
@@ -1355,7 +1355,7 @@ failure:
 
 done:
     if (sb != NULL)
-        sbuf2close(sb);
+        cdb2buf_close(sb);
     else if (fd != -1)
         Close(fd);
     return rc;
@@ -1370,7 +1370,7 @@ int comdb2_save_ruleset(
   char zBuf[RULESET_MIN_BUF];
   const char *zStr;
   int fd = -1;
-  SBUF2 *sb = NULL;
+  COMDB2BUF *sb = NULL;
 
   if( rules==NULL ){
     snprintf(zError, sizeof(zError), "%s, cannot save an invalid ruleset",
@@ -1383,15 +1383,15 @@ int comdb2_save_ruleset(
              zFileName, errno);
     goto failure;
   }
-  sb = sbuf2open(fd, 0);
+  sb = cdb2buf_open(fd, 0);
   if( sb==NULL ){
-    snprintf(zError, sizeof(zError), "%s, sbuf2open failed errno=%d",
+    snprintf(zError, sizeof(zError), "%s, cdb2buf_open failed errno=%d",
              zFileName, errno);
     goto failure;
   }
-  sbuf2printf(sb, "version %lld\n\n", rules->version);
+  cdb2buf_printf(sb, "version %lld\n\n", rules->version);
   if( rules->version>=2 && list_all_sql_pools(sb)>0 ){
-    sbuf2printf(sb, "\n");
+    cdb2buf_printf(sb, "\n");
   }
   for(int i=0; i<rules->nRule; i++){
     struct ruleset_item *rule = &rules->aRule[i];
@@ -1401,56 +1401,56 @@ int comdb2_save_ruleset(
     if( rule->action!=RULESET_A_INVALID ){
       zStr = comdb2_ruleset_action_to_str(rule->action, NULL, 0, 1);
       if( zStr!=NULL ){
-        if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule %d action %s\n", ruleNo, zStr);
+        if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+        cdb2buf_printf(sb, "rule %d action %s\n", ruleNo, zStr);
       }
     }
     if( rules->version>=2 && rule->zPool!=NULL ){
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d pool %s\n", ruleNo, rule->zPool);
+      if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+      cdb2buf_printf(sb, "rule %d pool %s\n", ruleNo, rule->zPool);
     }
     if( rule->flags!=RULESET_F_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
       comdb2_ruleset_flags_to_str(rule->flags, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
-        if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule %d flags {%s}\n", ruleNo, zBuf);
+        if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+        cdb2buf_printf(sb, "rule %d flags {%s}\n", ruleNo, zBuf);
       }
     }
     if( rule->mode!=RULESET_MM_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
       comdb2_ruleset_match_mode_to_str(rule->mode, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
-        if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule %d mode {%s}\n", ruleNo, zBuf);
+        if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+        cdb2buf_printf(sb, "rule %d mode {%s}\n", ruleNo, zBuf);
       }
     }
     struct ruleset_item_criteria *criteria = &rule->criteria;
     if( criteria->zOriginHost!=NULL ){
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(
+      if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+      cdb2buf_printf(
         sb, "rule %d originHost %s\n", ruleNo, criteria->zOriginHost
       );
     }
     if( criteria->zOriginTask!=NULL ){
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(
+      if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+      cdb2buf_printf(
         sb, "rule %d originTask %s\n", ruleNo, criteria->zOriginTask
       );
     }
     if( criteria->zUser!=NULL ){
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d user %s\n", ruleNo, criteria->zUser);
+      if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+      cdb2buf_printf(sb, "rule %d user %s\n", ruleNo, criteria->zUser);
     }
     if( criteria->zSql!=NULL ){
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d sql %s\n", ruleNo, criteria->zSql);
+      if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+      cdb2buf_printf(sb, "rule %d sql %s\n", ruleNo, criteria->zSql);
     }
     if( criteria->pFingerprint!=NULL ){
       memset(zBuf, 0, sizeof(zBuf));
       util_tohex(zBuf, (char *)criteria->pFingerprint, FPSZ);
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d fingerprint X'%s'\n", ruleNo, zBuf);
+      if( i>0 && mayNeedLf ){ cdb2buf_printf(sb, "\n"); mayNeedLf = 0; }
+      cdb2buf_printf(sb, "rule %d fingerprint X'%s'\n", ruleNo, zBuf);
     }
   }
   rc = 0;
@@ -1462,7 +1462,7 @@ failure:
 
 done:
     if (sb != NULL)
-        sbuf2close(sb);
+        cdb2buf_close(sb);
     else if (fd != -1)
         Close(fd);
     return rc;

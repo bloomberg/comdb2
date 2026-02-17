@@ -38,7 +38,7 @@
 #include <unistd.h>
 
 #include <passfd.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <tcputil.h>
 #include <sizeof_helpers.h>
 #include <epochlib.h>
@@ -166,7 +166,7 @@ int portmux_cmd(const char *cmd, const char *app, const char *service,
     char name[strlen(app) + strlen(service) + strlen(instance) + 3 +
               MAX_DBNAME_LENGTH];
     char res[32];
-    SBUF2 *ss;
+    COMDB2BUF *ss;
     int rc, fd, port;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
@@ -181,19 +181,19 @@ int portmux_cmd(const char *cmd, const char *app, const char *service,
         return -1;
     }
 
-    ss = sbuf2open(fd, SBUF2_WRITE_LINE);
+    ss = cdb2buf_open(fd, CDB2BUF_WRITE_LINE);
     if (ss == 0) {
         close(fd);
-        logmsg(LOGMSG_ERROR, "%s: sbuf2open error\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: cdb2buf_open error\n", __func__);
         return -1;
     }
-    sbuf2printf(ss, "%s %s%s\n", cmd, name, post);
+    cdb2buf_printf(ss, "%s %s%s\n", cmd, name, post);
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
-    sbuf2close(ss);
+    cdb2buf_gets(res, sizeof(res), ss);
+    cdb2buf_close(ss);
 
     if (res[0] == 0) {
-        logmsg(LOGMSG_ERROR, "%s: sbuf2gets read 0\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: cdb2buf_gets read 0\n", __func__);
         return -1;
     }
     if (strcmp(res, "-1 service already active") == 0) {
@@ -228,7 +228,7 @@ int portmux_deregister(const char *app, const char *service,
 {
     char name[NAMELEN * 2];
     char res[32];
-    SBUF2 *ss;
+    COMDB2BUF *ss;
     int rc, fd;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
@@ -238,15 +238,15 @@ int portmux_deregister(const char *app, const char *service,
     fd = tcpconnecth("localhost", get_portmux_port(), 0);
     if (fd < 0)
         return -1;
-    ss = sbuf2open(fd, SBUF2_WRITE_LINE);
+    ss = cdb2buf_open(fd, CDB2BUF_WRITE_LINE);
     if (ss == 0) {
         close(fd);
         return -1;
     }
-    sbuf2printf(ss, "del %s\n", name);
+    cdb2buf_printf(ss, "del %s\n", name);
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
-    sbuf2close(ss);
+    cdb2buf_gets(res, sizeof(res), ss);
+    cdb2buf_close(ss);
     if (res[0] == 0) {
         return -1;
     }
@@ -329,26 +329,26 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
         }
     }
 
-    SBUF2 *ss = sbuf2open(fd, SBUF2_WRITE_LINE);
+    COMDB2BUF *ss = cdb2buf_open(fd, CDB2BUF_WRITE_LINE);
     if (ss == 0) {
         close(fd);
         return -1;
     }
 
-    sbuf2settimeout(ss, portmux_default_timeout, portmux_default_timeout);
+    cdb2buf_settimeout(ss, portmux_default_timeout, portmux_default_timeout);
 
     bool echo_get = PORTMUX_USE_ECHO_GET();
     if (echo_get) {
         strrtrims(name, NULL);
-        sbuf2printf(ss, "get /echo %s\n", name);
+        cdb2buf_printf(ss, "get /echo %s\n", name);
     } else {
-        sbuf2printf(ss, "get %s\n", name);
+        cdb2buf_printf(ss, "get %s\n", name);
     }
 
     /* Read back result and close the connection, it's not needed any more. */
     char res[NAMELEN * 2];
-    sbuf2gets(res, sizeof(res), ss);
-    sbuf2close(ss);
+    cdb2buf_gets(res, sizeof(res), ss);
+    cdb2buf_close(ss);
 
     /* First token on line should be port number */
     static const char *delims = " \t\r\n";
@@ -391,7 +391,7 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
     }
     char name[NAMELEN * 2];
     char res[32];
-    SBUF2 *ss;
+    COMDB2BUF *ss;
     int rc, fd, port;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
@@ -400,15 +400,15 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
                         portmux_default_timeout);
     if (fd < 0)
         return -1;
-    ss = sbuf2open(fd, SBUF2_WRITE_LINE);
+    ss = cdb2buf_open(fd, CDB2BUF_WRITE_LINE);
     if (ss == 0) {
         close(fd);
         return -1;
     }
-    sbuf2printf(ss, "get %s\n", name);
+    cdb2buf_printf(ss, "get %s\n", name);
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
-    sbuf2close(ss);
+    cdb2buf_gets(res, sizeof(res), ss);
+    cdb2buf_close(ss);
     if (res[0] == 0) {
         return -1;
     }
@@ -427,7 +427,7 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
     }
     char name[NAMELEN * 2];
     char res[32];
-    SBUF2 *ss;
+    COMDB2BUF *ss;
     int rc, fd, port;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
@@ -435,18 +435,18 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
     fd = tcpconnect_to(in, get_portmux_port(), 0, portmux_default_timeout);
     if (fd < 0)
         return -1;
-    ss = sbuf2open(fd, SBUF2_WRITE_LINE);
+    ss = cdb2buf_open(fd, CDB2BUF_WRITE_LINE);
     if (ss == 0) {
         close(fd);
         return -1;
     }
 
-    sbuf2settimeout(ss, portmux_default_timeout, portmux_default_timeout);
+    cdb2buf_settimeout(ss, portmux_default_timeout, portmux_default_timeout);
 
-    sbuf2printf(ss, "get %s\n", name);
+    cdb2buf_printf(ss, "get %s\n", name);
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
-    sbuf2close(ss);
+    cdb2buf_gets(res, sizeof(res), ss);
+    cdb2buf_close(ss);
     if (res[0] == 0) {
         return -1;
     }
@@ -475,7 +475,7 @@ static int portmux_register_route(const char *app, const char *service,
 {
     char name[NAMELEN * 2];
     char res[32];
-    SBUF2 *ss;
+    COMDB2BUF *ss;
     int rc, listenfd;
     char sock_name[128];
 
@@ -503,28 +503,28 @@ static int portmux_register_route(const char *app, const char *service,
         return -1;
     }
 
-    ss = sbuf2open(listenfd, SBUF2_WRITE_LINE);
+    ss = cdb2buf_open(listenfd, CDB2BUF_WRITE_LINE);
     if (ss == 0) {
         close(listenfd);
         return -1;
     }
 
-    sbuf2settimeout(ss, portmux_default_timeout, portmux_default_timeout);
+    cdb2buf_settimeout(ss, portmux_default_timeout, portmux_default_timeout);
 
     /*register with portmux using unix socket*/
     if ((options & PORTMUX_PORT_SUPPRESS) != 0) {
-        sbuf2printf(ss, "reg %s n\n", name);
+        cdb2buf_printf(ss, "reg %s n\n", name);
     } else {
-        sbuf2printf(ss, "reg %s\n", name);
+        cdb2buf_printf(ss, "reg %s\n", name);
     }
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
+    cdb2buf_gets(res, sizeof(res), ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         return -1;
     }
     rc = atoi(res);
-    sbuf2free(ss);
+    cdb2buf_free(ss);
 
     if (rc < 0) {
         /*error*/
@@ -1846,15 +1846,15 @@ int portmux_hello(char *host, char *name, int *fdout)
     if (fd == -1) return 1;
     portmux_denagle(fd);
 
-    SBUF2 *sb = sbuf2open(fd, SBUF2_WRITE_LINE | SBUF2_NO_CLOSE_FD);
-    sbuf2printf(sb, "hello %s\n", name);
-    rc = sbuf2flush(sb);
+    COMDB2BUF *sb = cdb2buf_open(fd, CDB2BUF_WRITE_LINE | CDB2BUF_NO_CLOSE_FD);
+    cdb2buf_printf(sb, "hello %s\n", name);
+    rc = cdb2buf_flush(sb);
     if (rc < 0) return 2;
     char line[10];
     /* The reponse is always ok. We read it to make sure
      * pmux had a chance to register us. */
-    sbuf2gets(line, sizeof(line), sb);
-    sbuf2close(sb);
+    cdb2buf_gets(line, sizeof(line), sb);
+    cdb2buf_close(sb);
     if (fdout) *fdout = fd;
     return 0;
 }

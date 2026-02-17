@@ -27,7 +27,7 @@
 
 #include <cdb2_constants.h>
 #include <perf.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <event2/buffer.h>
 #include <intern_strings.h>
 
@@ -53,7 +53,7 @@ typedef struct sanc_node_tag sanc_node_type;
 
 typedef void HELLOFP(struct netinfo_struct *netinfo, char name[]);
 
-typedef void APPSOCKFP(struct netinfo_struct *netinfo, SBUF2 *sb);
+typedef void APPSOCKFP(struct netinfo_struct *netinfo, COMDB2BUF *sb);
 
 typedef void NETFP(void *ack_handle, void *usr_ptr, char *fromhost,
                    struct interned_string *frominterned, int usertype,
@@ -318,7 +318,7 @@ void net_set_usrptr(netinfo_type *netinfo_ptr, void *usrptr);
 void net_sleep_with_lock(netinfo_type *netinfo_ptr, int nseconds);
 
 void net_timeout_watchlist(netinfo_type *netinfo_ptr);
-void net_end_appsock(SBUF2 *sb);
+void net_end_appsock(COMDB2BUF *sb);
 
 /* get information about our network nodes.  fills in up to max_nodes array
  * elements and then returns the number of nodes in total (which could be
@@ -374,7 +374,7 @@ typedef struct {
 void print_netdelay(void);
 void net_delay(const char *host);
 
-int net_appsock_get_addr(SBUF2 *db, struct sockaddr_in *addr);
+int net_appsock_get_addr(COMDB2BUF *db, struct sockaddr_in *addr);
 int net_listen(int port);
 
 void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records *);
@@ -411,6 +411,6 @@ int disable_fdb_heartbeats_and_free(struct fdb_hbeats *);
 int enable_dist_heartbeats(struct dist_hbeats *);
 int disable_dist_heartbeats(struct dist_hbeats *);
 int disable_dist_heartbeats_and_free(struct dist_hbeats *);
-int is_connection_local(SBUF2 *sb);
+int is_connection_local(COMDB2BUF *sb);
 
 #endif

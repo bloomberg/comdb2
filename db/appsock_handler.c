@@ -45,7 +45,7 @@ struct appsock_thd_state {
 };
 
 typedef struct appsock_work_args {
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     int admin;
 } appsock_work_args_t;
 
@@ -68,7 +68,7 @@ static unsigned long long total_appsock_rejections = 0;
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
 
-void close_appsock(SBUF2 *sb)
+void close_appsock(COMDB2BUF *sb)
 {
     if (sb != NULL) {
         net_end_appsock(sb);
@@ -139,7 +139,7 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
 static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
                              struct thr_handle *thr_self)
 {
-    SBUF2 *sb = w->sb;
+    COMDB2BUF *sb = w->sb;
     comdb2_appsock_t *appsock;
     comdb2_appsock_arg_t arg;
     char line[128];
@@ -150,7 +150,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
 
     *keepsocket = 0; /* Safety */
 
-    sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
+    cdb2buf_settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
     if (!thedb->dbs) {
         logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
@@ -165,7 +165,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         thrman_where(thr_self, NULL);
 
         /* Read a line until and including '\n' */
-        rc = sbuf2gets(line, sizeof(line), sb);
+        rc = cdb2buf_gets(line, sizeof(line), sb);
 
         if (rc <= 0)
             break;
@@ -186,8 +186,8 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         if (!appsock) {
             /* No handler found for the received appsock request. */
             logmsg(LOGMSG_ERROR, "appsock '%s' not supported\n", ptr);
-            sbuf2printf(sb, appsock_unknown);
-            sbuf2flush(sb);
+            cdb2buf_printf(sb, appsock_unknown);
+            cdb2buf_flush(sb);
             num_bad_toks++;
             break;
         }
@@ -236,7 +236,7 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
     struct appsock_thd_state *state = thddata;
     appsock_work_args_t *w = (appsock_work_args_t *)work;
     int keepsocket = 0;
-    thrman_setfd(state->thr_self, sbuf2fileno(w->sb));
+    thrman_setfd(state->thr_self, cdb2buf_fileno(w->sb));
     thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
@@ -278,7 +278,7 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
+void appsock_handler_start(struct dbenv *dbenv, COMDB2BUF *sb, int admin)
 {
     /*START HANDLER THREAD*/
     static int last_thread_dump_time = 0;

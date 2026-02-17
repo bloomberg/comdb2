@@ -41,7 +41,7 @@
 
 #include <mem.h>
 #include <cdb2_constants.h>
-#include <sbuf2.c>
+#include <comdb2buf.c>
 #include <cdb2api.c>
 
 /*#warning dbg started*/

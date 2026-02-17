@@ -20,7 +20,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 struct ireq;
-struct sbuf2;
+struct comdb2buf;
 struct dbglog_hdr;
 struct sql_thread;
 struct sqlclntstate;
@@ -28,12 +28,12 @@ struct client_query_stats;
 
 int dbglog_init_write_counters(struct ireq *);
 int grab_dbglog_file(unsigned long long, struct sqlclntstate *);
-struct sbuf2 *open_dbglog_file(unsigned long long);
-void append_debug_logs_from_master(struct sbuf2 *, unsigned long long);
+struct comdb2buf *open_dbglog_file(unsigned long long);
+void append_debug_logs_from_master(struct comdb2buf *, unsigned long long);
 void dbglog_dump_write_stats(struct ireq *);
 void dbglog_record_db_write(struct ireq *, char *);
-void dump_client_query_stats(struct sbuf2 *, struct client_query_stats *);
-void dump_client_query_stats_packed(struct sbuf2 *, const uint8_t *);
+void dump_client_query_stats(struct comdb2buf *, struct client_query_stats *);
+void dump_client_query_stats_packed(struct comdb2buf *, const uint8_t *);
 int dbglog_process_debug_pragma(struct sqlclntstate *, const char *);
 int dbglog_mmap_dbglog_file(unsigned long long, void **, size_t *, int *);
 int dbglog_munmap_dbglog_file(unsigned long long, void *, size_t, int);
@@ -41,12 +41,12 @@ int dbglog_munmap_dbglog_file(unsigned long long, void *, size_t, int);
 struct dbglog_impl {
     int (*dbglog_init_write_counters)(struct ireq *);
     int (*grab_dbglog_file)(unsigned long long, struct sqlclntstate *);
-    struct sbuf2 *(*open_dbglog_file)(unsigned long long);
-    void (*append_debug_logs_from_master)(struct sbuf2 *, unsigned long long);
+    struct comdb2buf *(*open_dbglog_file)(unsigned long long);
+    void (*append_debug_logs_from_master)(struct comdb2buf *, unsigned long long);
     void (*dbglog_dump_write_stats)(struct ireq *);
     void (*dbglog_record_db_write)(struct ireq *, char *);
-    void (*dump_client_query_stats)(struct sbuf2 *, struct client_query_stats *);
-    void (*dump_client_query_stats_packed)(struct sbuf2 *, const uint8_t *);
+    void (*dump_client_query_stats)(struct comdb2buf *, struct client_query_stats *);
+    void (*dump_client_query_stats_packed)(struct comdb2buf *, const uint8_t *);
     int (*process_debug_pragma)(struct sqlclntstate *, const char *);
     int (*mmap_dbglog_file)(unsigned long long, void **, size_t *, int *);
     int (*munmap_dbglog_file)(unsigned long long, void *, size_t, int);

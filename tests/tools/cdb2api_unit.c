@@ -138,7 +138,7 @@ void test_read_comdb2db_cfg()
     cdb2_hndl_tp hndl;
     char comdb2db_hosts[10][CDB2HOSTNAME_LEN];
     char db_hosts[10][CDB2HOSTNAME_LEN];
-    SBUF2 *s = NULL;
+    COMDB2BUF *s = NULL;
     char *comdb2db_name = NULL;
     int num_hosts = 0;
     int comdb2db_num = 0;

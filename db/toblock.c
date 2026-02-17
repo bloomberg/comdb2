@@ -6247,7 +6247,7 @@ add_blkseq:
         iq->dbenv->txns_committed++;
         if (iq->dbglog_file) {
             dbglog_dump_write_stats(iq);
-            sbuf2close(iq->dbglog_file);
+            cdb2buf_close(iq->dbglog_file);
             iq->dbglog_file = NULL;
         }
     } else {

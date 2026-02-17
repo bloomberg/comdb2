@@ -51,7 +51,7 @@
 
 #include <str0.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include "logmsg.h"
 #include "thread_stats.h"
 
@@ -120,7 +120,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
 static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                                   void *databuf, size_t buffer_length);
 
-static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
+static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, COMDB2BUF *sb,
                                      size_t sendrecsz,
                                      bdb_fstdumpdta_callback_t convert_callback,
                                      int callback_flags, void *userptr,
@@ -663,7 +663,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
     return 0;
 }
 
-static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
+static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, COMDB2BUF *sb,
                                      size_t sendrecsz,
                                      bdb_fstdumpdta_callback_t convert_callback,
                                      int callback_flags, void *userptr,
@@ -682,8 +682,8 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
 
     bzero(&fstdump, sizeof(fstdump));
 
-    sbuf2flush(sb);
-    sockfd = sbuf2fileno(sb);
+    cdb2buf_flush(sb);
+    sockfd = cdb2buf_fileno(sb);
 
     /* turn nagel back on ... */
     flag = 0;
@@ -880,11 +880,11 @@ done:
     }
 
     *bdberr = fstdump.bdberr;
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
     return 0;
 }
 
-int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, SBUF2 *sb,
+int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, COMDB2BUF *sb,
                           size_t sendrecsz,
                           bdb_fstdumpdta_callback_t convert_callback,
                           int callback_flags, void *userptr, void *userptr2,
@@ -1387,7 +1387,7 @@ int bdb_close_fstdump(bulk_dump *dmp)
     return 0;
 }
 
-int bdb_fstdumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
+int bdb_fstdumpdta(bdb_state_type *bdb_state, COMDB2BUF *sb, int *bdberr)
 {
     int fndrrn, fndlen, rc, rrn, flag = 0;
     unsigned char *fnddta;
@@ -1428,14 +1428,14 @@ int bdb_fstdumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
     key.size = sizeof(int);
     key.ulen = sizeof(int);
 
-    sbuf2flush(sb);
-    sockfd = sbuf2fileno(sb);
+    cdb2buf_flush(sb);
+    sockfd = cdb2buf_fileno(sb);
 
     /* turn nagel back on ... */
     setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
 
     if (bdb_state->attr->sbuftimeout)
-        sbuf2settimeout(sb, 0, bdb_state->attr->sbuftimeout);
+        cdb2buf_settimeout(sb, 0, bdb_state->attr->sbuftimeout);
 
     for (;;) {
         /*
@@ -1512,11 +1512,11 @@ done:
     } else {
         rc = -1;
     }
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
     return rc;
 }
 /* dump dta contents of bdb_handle to stream sb */
-int bdb_dumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
+int bdb_dumpdta(bdb_state_type *bdb_state, COMDB2BUF *sb, int *bdberr)
 {
     int fndrrn, fndlen, ii, rc, rrn;
     unsigned char *fnddta;
@@ -1558,7 +1558,7 @@ int bdb_dumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
     key.ulen = sizeof(int);
 
     if (bdb_state->attr->sbuftimeout)
-        sbuf2settimeout(sb, 0, bdb_state->attr->sbuftimeout);
+        cdb2buf_settimeout(sb, 0, bdb_state->attr->sbuftimeout);
 
     for (;;) {
         /*
@@ -1609,18 +1609,18 @@ int bdb_dumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
              */
             rc = 0;
 
-            if (sbuf2printf(sb, "%d rrn %d len %d ", rc, fndrrn, fndlen) < 0)
+            if (cdb2buf_printf(sb, "%d rrn %d len %d ", rc, fndrrn, fndlen) < 0)
                 goto done;
 
             for (ii = 0; ii < fndlen; ii++) {
                 u = fnddta[ii];
-                if (sbuf2putc(sb, hexchars[(u >> 4) & 0xf]) < 0)
+                if (cdb2buf_putc(sb, hexchars[(u >> 4) & 0xf]) < 0)
                     goto done;
 
-                if (sbuf2putc(sb, hexchars[u & 0xf]) < 0)
+                if (cdb2buf_putc(sb, hexchars[u & 0xf]) < 0)
                     goto done;
             }
-            sbuf2putc(sb, '\n');
+            cdb2buf_putc(sb, '\n');
         }
     }
 
@@ -1634,8 +1634,8 @@ done:
 
     free(data.data);
 
-    sbuf2printf(sb, "%d #done\n", 3); /* simulate FINDNEXT rc of 3 for EOF */
-    sbuf2flush(sb);
+    cdb2buf_printf(sb, "%d #done\n", 3); /* simulate FINDNEXT rc of 3 for EOF */
+    cdb2buf_flush(sb);
 
     return 0;
 }

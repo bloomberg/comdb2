@@ -37,7 +37,7 @@
 #define BPLOG_APPSOCK "sockbplog"
 
 int gbl_sockbplog_debug = 0;
-extern int osql_recv_commit_rc(SBUF2 *sb, int timeoutms, int timeoutdeltams,
+extern int osql_recv_commit_rc(COMDB2BUF *sb, int timeoutms, int timeoutdeltams,
                                int *nops, struct errstat *err);
 
 int gbl_sockbplog = 0;
@@ -60,7 +60,7 @@ void init_bplog_socket(struct sqlclntstate *clnt)
     clnt->wait = osql_wait_socket;
 }
 
-void init_bplog_socket_master(osql_target_t *target, SBUF2 *sb)
+void init_bplog_socket_master(osql_target_t *target, COMDB2BUF *sb)
 {
     target->type = OSQL_OVER_SOCKET;
     target->sb = sb;
@@ -69,7 +69,7 @@ void init_bplog_socket_master(osql_target_t *target, SBUF2 *sb)
 
 static int osql_begin_socket(struct sqlclntstate *clnt, int type, int keep_rqid)
 {
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
     int rc;
 
     if (thedb->master == gbl_myhostname) {
@@ -107,7 +107,7 @@ static int osql_begin_socket(struct sqlclntstate *clnt, int type, int keep_rqid)
         return -1;
     }
     /* keep alive */
-    int fd = sbuf2fileno(sb);
+    int fd = cdb2buf_fileno(sb);
     int flag = 1;
 
     if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &flag, sizeof(flag)) != 0)
@@ -115,12 +115,12 @@ static int osql_begin_socket(struct sqlclntstate *clnt, int type, int keep_rqid)
                strerror(errno));
 
     /* come for air every gbl_sockbplog_poll msecond */
-    sbuf2settimeout(sb, gbl_sockbplog_poll, gbl_sockbplog_poll);
+    cdb2buf_settimeout(sb, gbl_sockbplog_poll, gbl_sockbplog_poll);
 
     /* appsock id */
-    sbuf2printf(sb, BPLOG_APPSOCK);
-    sbuf2printf(sb, "\n");
-    sbuf2flush(sb);
+    cdb2buf_printf(sb, BPLOG_APPSOCK);
+    cdb2buf_printf(sb, "\n");
+    cdb2buf_flush(sb);
 
     return 0;
 }
@@ -138,7 +138,7 @@ static int osql_end_socket(struct sqlclntstate *clnt)
 static int _socket_send(osql_target_t *target, int usertype, void *data,
                         int datalen, int nodelay, void *tail, int tailen)
 {
-    SBUF2 *sb = target->sb;
+    COMDB2BUF *sb = target->sb;
     int totallen = datalen + tailen;
     int rc;
 
@@ -154,14 +154,14 @@ static int _socket_send(osql_target_t *target, int usertype, void *data,
     }
 
     totallen = htonl(totallen);
-    rc = sbuf2fwrite((char *)&totallen, 1, sizeof(totallen), sb);
+    rc = cdb2buf_fwrite((char *)&totallen, 1, sizeof(totallen), sb);
     if (rc != sizeof(totallen)) {
         logmsg(LOGMSG_ERROR, "%s: failed to write header rc=%d\n", __func__,
                rc);
         return -1;
     }
 
-    rc = sbuf2fwrite((char *)data, 1, datalen, sb);
+    rc = cdb2buf_fwrite((char *)data, 1, datalen, sb);
     if (rc != datalen) {
         logmsg(LOGMSG_ERROR, "%s: failed to write packet rc=%d\n", __func__,
                rc);
@@ -169,7 +169,7 @@ static int _socket_send(osql_target_t *target, int usertype, void *data,
     }
 
     if (tail && tailen > 0) {
-        rc = sbuf2fwrite((char *)tail, 1, tailen, sb);
+        rc = cdb2buf_fwrite((char *)tail, 1, tailen, sb);
         if (rc != tailen) {
             logmsg(LOGMSG_ERROR, "%s: failed to write packet tail rc=%d\n",
                    __func__, rc);
@@ -178,7 +178,7 @@ static int _socket_send(osql_target_t *target, int usertype, void *data,
     }
 
     if (nodelay)
-        sbuf2flush(sb);
+        cdb2buf_flush(sb);
 
     return 0;
 }
@@ -211,7 +211,7 @@ static int osql_wait_socket(struct sqlclntstate *clnt, int timeout,
     return rc;
 }
 
-int osql_read_buffer(char *p_buf, size_t p_buf_len, SBUF2 *sb, int *timeoutms,
+int osql_read_buffer(char *p_buf, size_t p_buf_len, COMDB2BUF *sb, int *timeoutms,
                      int deltams)
 {
     int rc = 0;
@@ -222,7 +222,7 @@ int osql_read_buffer(char *p_buf, size_t p_buf_len, SBUF2 *sb, int *timeoutms,
 
     while (*timeoutms > 0) {
         start = comdb2_time_epochms();
-        rc = sbuf2fread(p_buf, p_buf_len, 1, sb);
+        rc = cdb2buf_fread(p_buf, p_buf_len, 1, sb);
         end = comdb2_time_epochms();
         /* sbuf2 does not tell us if it was timeout or socket closed; we do not
         want to loop here if socket closed; measure the time to discriminate,
@@ -255,7 +255,7 @@ int osql_read_buffer(char *p_buf, size_t p_buf_len, SBUF2 *sb, int *timeoutms,
     return -1;
 }
 
-int osql_read_buffer_default(char *buf, int buflen, SBUF2 *sb)
+int osql_read_buffer_default(char *buf, int buflen, COMDB2BUF *sb)
 {
     int timeout = gbl_sockbplog_timeout;
     return osql_read_buffer(buf, buflen, sb, &timeout, gbl_sockbplog_poll);
@@ -279,7 +279,7 @@ int osql_read_buffer_default(char *buf, int buflen, SBUF2 *sb)
         }                                                                                                              \
     } while (0)
 
-int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
+int osqlcomm_req_socket(COMDB2BUF *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
                         int *type, uuid_t uuid, int *flags)
 {
     int rqlen, sqlqlen;
@@ -323,7 +323,7 @@ done:
  * Read the bplog body, coming from a socket
  *
  */
-int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
+int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess)
 {
     void *buf = NULL, *reallocated;
     int buflen = 0, oldbuflen = -1;

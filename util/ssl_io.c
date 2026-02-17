@@ -26,22 +26,22 @@
 #include <hostname_support.h>
 #include <ssl_glue.h>
 
-SSL *SBUF2_FUNC(sslio_get_ssl)(SBUF2 *sb)
+SSL *CDB2BUF_FUNC(sslio_get_ssl)(COMDB2BUF *sb)
 {
     return sb->ssl;
 }
 
-int SBUF2_FUNC(sslio_has_ssl)(SBUF2 *sb)
+int CDB2BUF_FUNC(sslio_has_ssl)(COMDB2BUF *sb)
 {
     return (sb != NULL && sb->ssl != NULL);
 }
 
-int SBUF2_FUNC(sslio_has_x509)(SBUF2 *sb)
+int CDB2BUF_FUNC(sslio_has_x509)(COMDB2BUF *sb)
 {
     return (sb != NULL && sb->cert != NULL);
 }
 
-static int sslio_pollin(SBUF2 *sb)
+static int sslio_pollin(COMDB2BUF *sb)
 {
     int rc;
     struct pollfd pol;
@@ -65,7 +65,7 @@ static int sslio_pollin(SBUF2 *sb)
     return 1;
 }
 
-static int sslio_pollout(SBUF2 *sb)
+static int sslio_pollout(COMDB2BUF *sb)
 {
     int rc;
     struct pollfd pol;
@@ -86,14 +86,14 @@ static int sslio_pollout(SBUF2 *sb)
     return 1;
 }
 
-int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len)
+int CDB2BUF_FUNC(sslio_x509_attr)(COMDB2BUF *sb, int nid, char *out, size_t len)
 {
     if (sb == NULL || sb->cert == NULL)
         return EINVAL;
     return ssl_x509_get_attr(sb->cert, nid, out, len);
 }
 
-static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid)
+static int ssl_verify(COMDB2BUF *sb, ssl_mode mode, const char *dbname, int nid)
 {
     int rc = 0;
 #if SBUF2_SERVER
@@ -164,7 +164,7 @@ static void my_apps_ssl_info_callback(const SSL *s, int where, int ret)
 }
 #endif
 
-static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
+static int sslio_accept_or_connect(COMDB2BUF *sb, SSL_CTX *ctx,
                                    int (*SSL_func)(SSL *), ssl_mode verify,
                                    const char *dbname, int nid,
                                    SSL_SESSION *sess, int close_on_verify_error)
@@ -194,7 +194,7 @@ static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
     }
 
     /* Set fd. */
-    fd = sbuf2fileno(sb);
+    fd = cdb2buf_fileno(sb);
     if ((flags = fcntl(fd, F_GETFL, 0)) < 0 ||
         (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)) {
         ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
@@ -291,7 +291,7 @@ re_accept_or_connect:
     return rc;
 }
 
-int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
+int CDB2BUF_FUNC(sslio_accept)(COMDB2BUF *sb, SSL_CTX *ctx, ssl_mode mode,
                              const char *dbname, int nid,
                              int close_on_verify_error)
 {
@@ -300,7 +300,7 @@ int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
 }
 
 #if SBUF2_SERVER
-int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
+int CDB2BUF_FUNC(sslio_connect)(COMDB2BUF *sb, SSL_CTX *ctx, ssl_mode mode,
                               const char *dbname, int nid,
                               int close_on_verify_error)
 {
@@ -308,7 +308,7 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
                                    NULL, close_on_verify_error);
 }
 #else
-int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
+int CDB2BUF_FUNC(sslio_connect)(COMDB2BUF *sb, SSL_CTX *ctx, ssl_mode mode,
                               const char *dbname, int nid, SSL_SESSION *sess)
 {
     return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid,
@@ -316,7 +316,7 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
 }
 #endif
 
-int SBUF2_FUNC(sslio_read)(SBUF2 *sb, char *cc, int len)
+int CDB2BUF_FUNC(sslio_read)(COMDB2BUF *sb, char *cc, int len)
 {
     int n, ioerr, wantread;
 
@@ -383,7 +383,7 @@ reread:
     return n;
 }
 
-int SBUF2_FUNC(sslio_write)(SBUF2 *sb, const char *cc, int len)
+int CDB2BUF_FUNC(sslio_write)(COMDB2BUF *sb, const char *cc, int len)
 {
     int n, ioerr, wantwrite;
 
@@ -449,7 +449,7 @@ rewrite:
     return n;
 }
 
-int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
+int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *sb, int reuse)
 {
     /* Upon success, the 1st call to SSL_shutdown
        returns 0, and the 2nd returns 1. */
@@ -477,7 +477,7 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
     return rc;
 }
 
-int SBUF2_FUNC(sslio_pending)(SBUF2 *sb)
+int CDB2BUF_FUNC(sslio_pending)(COMDB2BUF *sb)
 {
     return SSL_pending(sb->ssl);
 }

@@ -24,7 +24,7 @@
 #include <ltypes.h>
 
 #include <types.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <comdb2.h>
 #include <sp.h>
 

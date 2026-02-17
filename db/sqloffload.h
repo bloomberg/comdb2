@@ -17,7 +17,7 @@
 #ifndef _SQLOFFLOAD_H_
 #define _SQLOFFLOAD_H_
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include "comdb2.h"
 #include "errstat.h"
