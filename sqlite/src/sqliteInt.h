@@ -3049,6 +3049,7 @@ struct Select {
 #define SF_Converted      0x10000  /* By convertCompoundSelectToSubquery() */
 #define SF_IncludeHidden  0x20000  /* Include hidden columns in output */
 #define SF_ComplexResult  0x40000  /* Result contains subquery or function */
+#define SF_View          0x0800000 /* SELECT statement is a view */
 #define SF_NoopOrderBy   0x0400000 /* ORDER BY is ignored for this query */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SF_ASTIncluded  0x1000000  /* AST Generated */
