@@ -133,6 +133,7 @@ static void free_newsql_appdata_evbuffer(struct newsql_appdata_evbuffer *appdata
     if (appdata->query) {
         cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         appdata->query = NULL;
+        clnt->externalAuthUser = NULL;
     }
     sqlwriter_free(appdata->writer);
     shutdown(fd, SHUT_RDWR);
@@ -170,6 +171,7 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
             cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         }
         appdata->query = NULL;
+        clnt->externalAuthUser = NULL;
         evtimer_once(appdata->base, rd_hdr, appdata);
     } else {
         appdata->cleanup_ev = event_new(appdata->base, -1, 0, newsql_cleanup, appdata);

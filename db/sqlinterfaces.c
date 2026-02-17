@@ -6554,7 +6554,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->is_admin = clnt->admin;
     c->is_ssl = clnt->plugin.has_ssl(clnt);
     c->has_cert = clnt->plugin.has_x509(clnt);
-    c->identity = clnt->externalAuthUser;
+    c->identity = clnt->externalAuthUser ? strdup(clnt->externalAuthUser) : NULL;
     if (!c->has_cert) {
         c->common_name = NULL;
     } else {
@@ -6613,6 +6613,7 @@ void free_connection_info(struct connection_info *info, int num_connections)
         free(info[i].sql);
         free(info[i].fingerprint);
         free(info[i].uuid);
+        free(info[i].identity);
         /* state is static, don't free */
     }
     free(info);
