@@ -278,7 +278,7 @@ typedef struct {
 } sampled_idx_t;
 
 typedef struct sqlclntstate_fdb {
-    SBUF2 *remote_sql_sb; /* IN REMOTE DB: set if this is on behalf of a remote
+    COMDB2BUF *remote_sql_sb; /* IN REMOTE DB: set if this is on behalf of a remote
                              sql session */
     int flags; /* requester flags, like is this a sqlite_master special request
                   ?*/
@@ -801,7 +801,7 @@ struct sqlclntstate {
                                    "set debug bdb"*/
     struct client_query_stats *query_stats;
 
-    SBUF2 *dbglog;
+    COMDB2BUF *dbglog;
     int queryid;
     unsigned long long dbglog_cookie;
     unsigned long long master_dbglog_cookie;
@@ -1535,7 +1535,7 @@ struct thdpool *get_sql_pool(struct sqlclntstate *);
 struct thdpool *get_named_sql_pool(const char *, int, int);
 
 int64_t get_all_sql_pool_timeouts(void);
-int list_all_sql_pools(SBUF2 *);
+int list_all_sql_pools(COMDB2BUF *);
 void print_all_sql_pool_stats(FILE *);
 void foreach_all_sql_pools(thdpool_foreach_fn, void *);
 void stop_all_sql_pools(void);
@@ -1695,7 +1695,7 @@ tran_type *curtran_gettran(void);
 void curtran_assert_nolocks(void);
 
 void curtran_puttran(tran_type *tran);
-int sbuf_is_local(SBUF2 *);
+int sbuf_is_local(COMDB2BUF *);
 int fdb_access_control_create(struct sqlclntstate *, char *str);
 int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);

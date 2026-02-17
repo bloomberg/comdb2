@@ -34,7 +34,7 @@
 #include <ctype.h>
 #include <netinet/in.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include "sqliteInt.h"
 #include "os.h"
 #include "vdbeInt.h"

@@ -18,7 +18,7 @@
 #define _OSQL_COMM_H_
 
 #include "comdb2.h"
-#include "sbuf2.h"
+#include "comdb2buf.h"
 #include "osqlsession.h"
 #include "sqloffload.h"
 #include "block_internal.h"
@@ -410,21 +410,21 @@ uint8_t *client_query_stats_put(const struct client_query_stats *p_stats,
  * Timeoutms limits total amount of waiting for a commit
  *
  */
-int osql_recv_commit_rc(SBUF2 *sb, int timeoutms, int timeoutdeltams, int *nops,
+int osql_recv_commit_rc(COMDB2BUF *sb, int timeoutms, int timeoutdeltams, int *nops,
                         struct errstat *err);
 
 /**
  * Read the bplog request, coming from a socket
  *
  */
-int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
+int osqlcomm_req_socket(COMDB2BUF *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
                         int *type, uuid_t uuid, int *flags);
 
 /**
  * Read the bplog body, coming from a socket
  *
  */
-int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess);
+int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess);
 
 /* check if we need to get tpt lock */
 int need_views_lock(char *msg, int msglen, int use_uuid);

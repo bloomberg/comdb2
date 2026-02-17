@@ -41,7 +41,7 @@
 #include <unistd.h>
 #include <stddef.h>
 #include <pthread.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <fcntl.h>
 
 #include <ctrace.h>

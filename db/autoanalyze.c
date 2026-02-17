@@ -117,7 +117,7 @@ void *auto_analyze_table(void *arg)
     }
 
     logmsg(LOGMSG_WARN, "%s: STARTING %s\n", __func__, tblname);
-    SBUF2 *sb = sbuf2open(fileno(stdout), 0);
+    COMDB2BUF *sb = cdb2buf_open(fileno(stdout), 0);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     int percent = bdb_attr_get(thedb->bdb_attr, 
                                BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
@@ -130,7 +130,7 @@ void *auto_analyze_table(void *arg)
     }
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-    sbuf2free(sb);
+    cdb2buf_free(sb);
     free(tblname);
     if (gbl_debug_aa) {
         ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",

@@ -31,7 +31,7 @@
 
 #include <list.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <bdb_api.h>
 
 #include "comdb2.h"

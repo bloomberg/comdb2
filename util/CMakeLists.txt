@@ -37,7 +37,7 @@ set(src
   queuetest.c
   roll_file.c
   rtcpu.c
-  sbuf2.c
+  comdb2buf.c
   schema_lk.c
   segstring.c
   stackutil.c

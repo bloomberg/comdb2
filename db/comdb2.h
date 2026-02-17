@@ -54,7 +54,7 @@ typedef long long tranid_t;
 #include <stdio.h>
 #include <pthread.h>
 #include <bb_stdint.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <netinet/in.h>
 
 #include <flibc.h>
@@ -1252,7 +1252,7 @@ struct osql_target {
     enum osql_target_type type;
     unsigned is_ondisk;
     const char *host;
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     int (*send)(struct osql_target *target, int usertype, void *data,
                 int datalen, int nodelay, void *tail, int tailen);
 };
@@ -1395,7 +1395,7 @@ struct ireq {
      * which other subsystems (i.e. queues) may need to wait for. */
     struct repl_object *repl_list;
 
-    SBUF2 *sb; /*NULL, or valid for socket requests */
+    COMDB2BUF *sb; /*NULL, or valid for socket requests */
 
     /* if this is not NULL then we might want logging for this request.. */
     struct reqlogger *reqlogger;
@@ -1413,7 +1413,7 @@ struct ireq {
     osql_bp_timings_t timings;
 
     /* Support for //DBSTATS. */
-    SBUF2 *dbglog_file;
+    COMDB2BUF *dbglog_file;
     int *nwrites;
 
     /* List of indices that we've written to detect uncommittable upsert txns */
@@ -1984,9 +1984,9 @@ const char *req2a(int opcode);
 int a2req(const char *s);
 
 /* request processing */
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int is_admin);
+void appsock_handler_start(struct dbenv *dbenv, COMDB2BUF *sb, int is_admin);
 void appsock_coalesce(struct dbenv *dbenv);
-void close_appsock(SBUF2 *sb);
+void close_appsock(COMDB2BUF *sb);
 void thd_stats(void);
 void thd_dbinfo2_stats(struct db_info2_stats *stats);
 void thd_coalesce(struct dbenv *dbenv);
@@ -2005,14 +2005,14 @@ enum comdb2_queue_types {
 };
 
 int handle_buf_main(
-    struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
+    struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
     const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
     char *fromtask, osql_sess_t *sorese, int qtype,
     void *data_hndl, // handle to data that can be used according to request
                      // type
     int luxref, unsigned long long rqid, void (*iq_setup_func)(struct ireq*, void *setup_data));
 
-int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
+int handle_buf_main2(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
                      const uint8_t *p_buf_end, int debug, char *frommach,
                      int frompid, char *fromtask, osql_sess_t *sorese,
                      int qtype, void *data_hndl, int luxref,
@@ -2022,7 +2022,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 
 int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach); /* 040307dh: 64bits */
-int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
+int handle_socket_long_transaction(struct dbenv *dbenv, COMDB2BUF *sb,
                                    uint8_t *p_buf, const uint8_t *p_buf_end,
                                    int debug, char *frommach, int frompid,
                                    char *fromtask);
@@ -2049,7 +2049,7 @@ struct buf_lock_t {
     int len;
     int reply_state; /* See REPLY_STATE_* macros above */
     uint8_t *bigbuf;
-    SBUF2 *sb;
+    COMDB2BUF *sb;
 };
 
 #define MAX_BUFFER_SIZE 65536
@@ -2130,8 +2130,8 @@ void backend_get_iostats(int *n_reads, int *l_reads, int *n_writes,
 
 void *open_fstblk(struct dbenv *dbenv, int create_override);
 int open_auxdbs(struct dbtable *db, int force_create);
-void sb_printf(SBUF2 *sb, const char *fmt, ...);
-void sb_errf(SBUF2 *sb, const char *fmt, ...);
+void sb_printf(COMDB2BUF *sb, const char *fmt, ...);
+void sb_errf(COMDB2BUF *sb, const char *fmt, ...);
 
 void sc_status(struct dbenv *dbenv);
 int close_all_dbs(void);
@@ -3027,7 +3027,7 @@ int release_node_stats(const char *task, const char *stack, char *host);
 struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
 
-int peer_dropped_connection_sbuf(SBUF2 *);
+int peer_dropped_connection_sbuf(COMDB2BUF *);
 int peer_dropped_connection(struct sqlclntstate *);
 
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
@@ -3466,7 +3466,7 @@ void create_watchdog_thread(struct dbenv *);
 int get_max_reclen(struct dbenv *);
 
 void testrep(int niter, int recsz);
-int sc_request_disallowed(SBUF2 *sb);
+int sc_request_disallowed(COMDB2BUF *sb);
 int dump_spfile(const char *file);
 int dump_user_version_spfile(const char *file);
 int read_spfile(const char *file);
@@ -3494,11 +3494,11 @@ extern int __slow_write_ns;
 
 #include "dbglog.h"
 
-void handle_testcompr(SBUF2 *sb, const char *table);
-void handle_setcompr(SBUF2 *);
-void handle_rowlocks_enable(SBUF2 *);
-void handle_rowlocks_enable_master_only(SBUF2 *);
-void handle_rowlocks_disable(SBUF2 *);
+void handle_testcompr(COMDB2BUF *sb, const char *table);
+void handle_setcompr(COMDB2BUF *);
+void handle_rowlocks_enable(COMDB2BUF *);
+void handle_rowlocks_enable_master_only(COMDB2BUF *);
+void handle_rowlocks_disable(COMDB2BUF *);
 
 extern int gbl_decimal_rounding;
 extern int gbl_report_sqlite_numeric_conversion_errors;
@@ -3520,11 +3520,11 @@ extern int gbl_debug_memp_alloc_size;
 extern int gbl_max_sql_hint_cache;
 
 /* Remote cursor support */
-/* use portmux to open an SBUF2 to local db or proxied db */
-SBUF2 *connect_remote_db_flags(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+/* use portmux to open an COMDB2BUF to local db or proxied db */
+COMDB2BUF *connect_remote_db_flags(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
                          int force_rte, int sbflags);
 
-SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+COMDB2BUF *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
                          int force_rte);
 int get_rootpage_numbers(int nums);
 
@@ -3653,10 +3653,10 @@ int find_constraint(struct dbtable *db, constraint_t *ct);
  * Disconnect a socket and tries to save it in sockpool
  */
 void disconnect_remote_db(const char *protocol, const char *dbname, const char *service, char *host,
-                          SBUF2 **psb);
+                          COMDB2BUF **psb);
 
-void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);
-int sbuf2fread_timeout(char *ptr, int size, int nitems, SBUF2 *sb, int *was_timeout);
+void cdb2buf_gettimeout(COMDB2BUF *sb, int *read, int *write);
+int cdb2buf_fread_timeout(char *ptr, int size, int nitems, COMDB2BUF *sb, int *was_timeout);
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter);

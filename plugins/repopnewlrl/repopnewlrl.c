@@ -23,7 +23,7 @@ int gbl_forbid_remote_repopnewlrl = 1;
 
 static int handle_repopnewlrl_request(comdb2_appsock_arg_t *arg)
 {
-    struct sbuf2 *sb;
+    struct comdb2buf *sb;
     char lrl_fname_out[256];
     int rc;
 
@@ -36,7 +36,7 @@ static int handle_repopnewlrl_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_ERR;
     }
 
-    if (((rc = sbuf2gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
+    if (((rc = cdb2buf_gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
         (lrl_fname_out[rc - 1] != '\n')) {
         logmsg(LOGMSG_ERROR, "%s: I/O error reading out lrl fname\n", __func__);
         arg->error = -1;
@@ -50,7 +50,7 @@ static int handle_repopnewlrl_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_ERR;
     }
 
-    if (sbuf2printf(sb, "OK\n") < 0 || sbuf2flush(sb) < 0) {
+    if (cdb2buf_printf(sb, "OK\n") < 0 || cdb2buf_flush(sb) < 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to send done ack text\n", __func__);
         arg->error = -1;
         return APPSOCK_RETURN_ERR;

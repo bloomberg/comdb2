@@ -17,7 +17,7 @@
 #ifndef __SQLTHDPOOL_H__
 #define __SQLTHDPOOL_H__
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <pthread.h>
 #include <queue.h>
 
@@ -50,7 +50,7 @@ typedef struct sqlpool {
 } sqlpool_t;
 
 int init_sqlthread_pool(sqlpool_t *stpool);
-int add_sqlthread_req(struct dbtable *db, SBUF2 *sb, sqlpool_t *stpool);
+int add_sqlthread_req(struct dbtable *db, COMDB2BUF *sb, sqlpool_t *stpool);
 int signal_sqlthread_pool(sqlpool_t *stpool);
 void add_dbstat_fsql_open(sqlpool_t *stpool, int ms);
 void add_dbstat_enginepool_open(sqlpool_t *stpool, int ms);

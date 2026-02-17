@@ -38,7 +38,7 @@
 #include <plhash_glue.h>
 #include <segstr.h>
 #include <list.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <bdb_api.h>
 #include <bdb_int.h>
 #include <bdbglue.h>
@@ -5254,7 +5254,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     osql_clean_sqlclntstate(clnt);
     clnt_try_enable_logdel(clnt);
     if (clnt->dbglog) {
-        sbuf2close(clnt->dbglog);
+        cdb2buf_close(clnt->dbglog);
         clnt->dbglog = NULL;
     }
     if (clnt->saved_errstr) {
@@ -5567,7 +5567,7 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
     }
 }
 
-int sbuf_is_local(SBUF2 *sb)
+int sbuf_is_local(COMDB2BUF *sb)
 {
     struct sockaddr_in addr;
 

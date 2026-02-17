@@ -580,13 +580,13 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
                 __FILE__, __LINE__);
         exit(1);
     }
-    SBUF2 *sb = sbuf2open( fileno(fl), SBUF2_NO_CLOSE_FD); /* sbuf pointed at f */
+    COMDB2BUF *sb = cdb2buf_open( fileno(fl), CDB2BUF_NO_CLOSE_FD); /* sbuf pointed at f */
     s->sb = sb;
     int sv_onstack = s->onstack;
     s->onstack = 1;
     f->rc = do_dryrun(s);
     s->onstack = sv_onstack;
-    sbuf2close(sb);
+    cdb2buf_close(sb);
 
     rewind(fl);
     char buf[1024] = {0};

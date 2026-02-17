@@ -21,7 +21,7 @@
 
 #ifndef INCLUDED_CDB2API_HNDL_H
 #define INCLUDED_CDB2API_HNDL_H
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include <sys/types.h>
 #include <sys/queue.h>
@@ -111,7 +111,7 @@ struct cdb2_hndl {
     char shards[MAX_NODES][DBNAME_LEN];
     char cached_host[CDB2HOSTNAME_LEN]; /* hostname of a sockpool connection */
     int cached_port;                    /* port of a sockpool connection */
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     int num_set_commands;
     int num_set_commands_sent;
     char **commands;

@@ -1171,7 +1171,7 @@ clipper_usage:
 
     /* Temporary message-trap to delete the stale backup stats from llmeta. */
     else if (tokcmp(tok, ltok, "delstalestats") == 0) {
-        SBUF2 *sb = sbuf2open(fileno(stdout), 0);
+        COMDB2BUF *sb = cdb2buf_open(fileno(stdout), 0);
         cleanup_stats(sb);
     } else if (tokcmp(tok, ltok, "mallocstats") == 0) {
 #if defined(_LINUX_SOURCE) && !defined(__APPLE__)
@@ -3293,7 +3293,7 @@ clipper_usage:
             char * table = NULL;
             if (ltok > 0)
                 table = tokdup(tok, ltok);
-            SBUF2 *sb = sbuf2open(fileno(stdout), 0);
+            COMDB2BUF *sb = cdb2buf_open(fileno(stdout), 0);
             handle_backout(sb, table);
             if(table) free(table);
         } else if(tokcmp(tok,ltok,"abort") == 0) {
@@ -4486,7 +4486,7 @@ clipper_usage:
             tok = segtok(line, lline, &st, &ltok);
             tokcpy0(tok, ltok, table, sizeof(table));
             FILE *f = io_override_get_std();
-            SBUF2 *sb = sbuf2open(fileno((f?f:stdout)), 0);
+            COMDB2BUF *sb = cdb2buf_open(fileno((f?f:stdout)), 0);
             handle_testcompr(sb, table);
         } else {
             logmsg(LOGMSG_USER,

@@ -12,7 +12,7 @@
 #include <cstring>
 #include <strings.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include <netdb.h>
 #include <sys/socket.h>
@@ -65,7 +65,7 @@ struct Appsock_impl {
     int m_fd;
     // File descriptor for the socket connection, or -1 if not connected
 
-    SBUF2 *m_sb;
+    COMDB2BUF *m_sb;
     // sbuf2 object used for stream io on the connection
 
     Appsock_impl(const std::string& dbname);
@@ -252,7 +252,7 @@ static int cdb2portmux_route(const char *remote_host, const char *app,
 {
     char name[64] = {0};
     char res[32];
-    SBUF2 *ss = NULL;
+    COMDB2BUF *ss = NULL;
     int rc, fd;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
@@ -260,20 +260,20 @@ static int cdb2portmux_route(const char *remote_host, const char *app,
     fd = cdb2_tcpconnecth_to(remote_host, 5105, 0, -1);
     if (fd < 0)
         return -1;
-    ss = sbuf2open(fd, 0);
+    ss = cdb2buf_open(fd, 0);
     if (ss == 0) {
         close(fd);
         return -1;
     }
-    sbuf2printf(ss, "rte %s\n", name);
-    sbuf2flush(ss);
+    cdb2buf_printf(ss, "rte %s\n", name);
+    cdb2buf_flush(ss);
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
+    cdb2buf_gets(res, sizeof(res), ss);
     if (res[0] != '0') {
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         return -1;
     }
-    sbuf2free(ss);
+    cdb2buf_free(ss);
     return fd;
 }
 
@@ -287,11 +287,11 @@ Appsock::Appsock(const std::string& dbname, const std::string& req) :
         throw Error("cdb2portmux_route to " + dbname + " failed");
     }
 
-    impl->m_sb = sbuf2open(impl->m_fd, 0);
+    impl->m_sb = cdb2buf_open(impl->m_fd, 0);
     if(!impl->m_sb) {
         ::close(impl->m_fd);
         impl->m_fd = -1;
-        throw Error("sbuf2open to " + dbname + " failed");
+        throw Error("cdb2buf_open to " + dbname + " failed");
     }
 
     request(req);
@@ -308,7 +308,7 @@ Appsock::~Appsock()
 void Appsock::close()
 {
     if(impl->m_sb) {
-        sbuf2close(impl->m_sb);
+        cdb2buf_close(impl->m_sb);
         impl->m_sb = NULL;
         impl->m_fd = -1;
     } else if(impl->m_fd != -1) {
@@ -321,8 +321,8 @@ void Appsock::request(const std::string& req)
 {
     SigPipeBlocker block_sigpipe;
 
-    sbuf2printf(impl->m_sb, const_cast<char*>(req.c_str()));
-    sbuf2flush(impl->m_sb);
+    cdb2buf_printf(impl->m_sb, const_cast<char*>(req.c_str()));
+    cdb2buf_flush(impl->m_sb);
 }
 
 bool Appsock::response(const std::string& rsp)
@@ -330,9 +330,9 @@ bool Appsock::response(const std::string& rsp)
     SigPipeBlocker block_sigpipe;
 
     // Get the response - we expect "log file deletion disable"
-    sbuf2settimeout(impl->m_sb, 10 * 1000, 10 * 1000);
+    cdb2buf_settimeout(impl->m_sb, 10 * 1000, 10 * 1000);
     char line[256];
-    if(sbuf2gets(line, sizeof(line), impl->m_sb) <= 0) {
+    if(cdb2buf_gets(line, sizeof(line), impl->m_sb) <= 0) {
         std::clog << "no response from " << impl->m_dbname << " expected " 
             << rsp << std::endl;
         return false;
@@ -349,14 +349,14 @@ std::string Appsock::read_response()
 {
     SigPipeBlocker block_sigpipe;
 
-    sbuf2settimeout(impl->m_sb, 10 * 1000, 10 * 1000);
+    cdb2buf_settimeout(impl->m_sb, 10 * 1000, 10 * 1000);
 
     char line[256] = {0};
     char *eol;
 
     /* there's no response for unknown requests, so this becomes a 5 second timeout
      * until a new database rolls out */
-    if (sbuf2gets(line, sizeof(line), impl->m_sb) < 0)
+    if (cdb2buf_gets(line, sizeof(line), impl->m_sb) < 0)
         throw Error("can't read response");
     if ((eol = strchr(line, '\n')) != NULL)
         *eol = 0;

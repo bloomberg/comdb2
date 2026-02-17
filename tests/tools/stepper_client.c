@@ -8,7 +8,7 @@
 #include <cdb2api.h>
 #include <sys/socket.h>
 #include <cdb2api.c>
-#include <sbuf2.c>
+#include <comdb2buf.c>
 #include "stepper_client.h"
 
 /* storing clients (i.e. comm pipes) */

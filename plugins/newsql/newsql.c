@@ -17,7 +17,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <comdb2_atomic.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <str0.h>
 #include <timer_util.h>
 

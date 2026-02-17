@@ -5708,19 +5708,19 @@ int osql_comm_check_bdb_lock(const char *func, int line)
     return rc;
 }
 
-static int offload_socket_send(SBUF2 *sb, int usertype, void *data, int datalen,
+static int offload_socket_send(COMDB2BUF *sb, int usertype, void *data, int datalen,
                                int nodelay, void *tail, int tailen)
 {
     int rc;
 
-    rc = sbuf2fwrite((char *)data, 1, datalen, sb);
+    rc = cdb2buf_fwrite((char *)data, 1, datalen, sb);
     if (rc != datalen) {
         logmsg(LOGMSG_ERROR, "%s: failed to packet rc=%d\n", __func__, rc);
         return -1;
     }
 
     if (tail && tailen > 0) {
-        rc = sbuf2fwrite((char *)tail, 1, tailen, sb);
+        rc = cdb2buf_fwrite((char *)tail, 1, tailen, sb);
         if (rc != tailen) {
             logmsg(LOGMSG_ERROR, "%s: failed to write packet tail rc=%d\n",
                    __func__, rc);
@@ -8625,7 +8625,7 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
  * Timeoutms limits total amount of waiting for a commit
  *
  */
-int osql_recv_commit_rc(SBUF2 *sb, int timeoutms, int timeoutdeltams, int *nops,
+int osql_recv_commit_rc(COMDB2BUF *sb, int timeoutms, int timeoutdeltams, int *nops,
                         struct errstat *err)
 {
     char hdr_buf[OSQLCOMM_UUID_RPL_TYPE_LEN];

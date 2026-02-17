@@ -571,7 +571,7 @@ inline int check_option_queue_coherency(struct schema_change_type *s,
     return check_option_coherency(s, db, NULL);
 }
 
-int sc_request_disallowed(SBUF2 *sb)
+int sc_request_disallowed(COMDB2BUF *sb)
 {
     char *from = get_origin_mach_by_buf(sb);
     /* Allow if we can't figure out where it came from - don't want this
@@ -743,7 +743,7 @@ int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,
 #define scprint(s, i, args...)                                                 \
     do {                                                                       \
         if (s->dryrun)                                                         \
-            sbuf2printf(s->sb, i, ##args);                                     \
+            cdb2buf_printf(s->sb, i, ##args);                                     \
         else                                                                   \
             sc_printf(s, i + 1, ##args);                                       \
     } while (0)
@@ -1379,7 +1379,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                     if (compat_chg(olddb, newsc, key) == 0) continue;
                     char *info = ">%s:%s -> %s:%s\n";
                     if (s && s->dryrun) {
-                        sbuf2printf(s->sb, info, db->tablename, ct->lclkeyname,
+                        cdb2buf_printf(s->sb, info, db->tablename, ct->lclkeyname,
                                     dbname, ct->keynm[k]);
                     } else if (out) {
                         logmsgf(LOGMSG_USER, out, info + 1, db->tablename,

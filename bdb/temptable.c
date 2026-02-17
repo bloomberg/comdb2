@@ -28,7 +28,7 @@
 
 #include <build/db.h> /* berk db.h */
 #include <net.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include "bdb_int.h"
 #include <list.h>
 #include <plhash_glue.h>

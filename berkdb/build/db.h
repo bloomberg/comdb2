@@ -31,7 +31,7 @@
 #include <thdpool.h>
 #include <mem_berkdb.h>
 #include <sys/time.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <sys_wrap.h>
 
 #ifndef COMDB2AR
@@ -2587,8 +2587,8 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
-	int  (*memp_dump) __P((DB_ENV *, SBUF2 *, u_int64_t maxpages));
-	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
+	int  (*memp_dump) __P((DB_ENV *, COMDB2BUF *, u_int64_t maxpages));
+	int  (*memp_load) __P((DB_ENV *, COMDB2BUF *));
 	int  (*memp_dump_default) __P((DB_ENV *, u_int32_t));
 	int  (*memp_load_default) __P((DB_ENV *));
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));

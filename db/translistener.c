@@ -30,7 +30,7 @@
 
 #include <segstr.h>
 #include <list.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include "comdb2.h"
 #include "translistener.h"
@@ -1196,7 +1196,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
     int fd;
 
     char line[1024];
-    SBUF2 *config = NULL;
+    COMDB2BUF *config = NULL;
 
     LISTC_FOR_EACH(&stored_procs, p, lnk)
     {
@@ -1259,7 +1259,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
             rc = -1;
             goto done;
         }
-        config = sbuf2open(fd, 0);
+        config = cdb2buf_open(fd, 0);
         if (config == NULL) {
             rc = -1;
             goto done;
@@ -1281,7 +1281,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
         fprintf(f, "%s", paramvalue);
         rewind(f);
         fd = dup(fd);
-        config = sbuf2open(fd, 0);
+        config = cdb2buf_open(fd, 0);
         fclose(f);
         if (config == NULL) {
             logmsg(LOGMSG_ERROR, "%s: can't open temp file for queue config %d %s\n",
@@ -1291,7 +1291,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
         }
     }
 
-    while (sbuf2gets(line, sizeof(line), config) >= 0) {
+    while (cdb2buf_gets(line, sizeof(line), config) >= 0) {
         char *s;
 
         s = strtok_r(line, toksep, &endp);
@@ -1431,7 +1431,7 @@ done:
     if (paramcpy)
         free(paramcpy);
     if (config)
-        sbuf2close(config);
+        cdb2buf_close(config);
     return rc;
 }
 

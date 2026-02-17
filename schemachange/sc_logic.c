@@ -189,9 +189,9 @@ static int master_downgrading(struct schema_change_type *s)
         if (!s->nothrevent)
             backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
         if (s->sb) {
-            sbuf2printf(s->sb, "!Master node downgrading - new master will "
+            cdb2buf_printf(s->sb, "!Master node downgrading - new master will "
                                "resume schemachange\n");
-            sbuf2close(s->sb);
+            cdb2buf_close(s->sb);
             s->sb = NULL;
         }
         logmsg(
@@ -222,7 +222,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
     if (s->kind != SC_PARTIALUPRECS) {
         if (rc != 0) {
             logmsg(LOGMSG_INFO, "Schema change returning FAILED\n");
-            sbuf2printf(s->sb, "FAILED\n");
+            cdb2buf_printf(s->sb, "FAILED\n");
         } else {
 
             /* stop_and_free_sc is called by:
@@ -235,7 +235,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
             }
 
             logmsg(LOGMSG_INFO, "Schema change returning SUCCESS\n");
-            sbuf2printf(s->sb, "SUCCESS\n");
+            cdb2buf_printf(s->sb, "SUCCESS\n");
         }
     }
     if (rc && iq->sc->kind == SC_ADDTABLE && rc != SC_TABLE_ALREADY_EXIST) {
@@ -492,7 +492,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DETACHED)) {
         sc_printf(s, "Starting Schema Change with seed 0x%llx\n",
                   flibc_htonll(iq->sc_seed));
-        sbuf2printf(s->sb, "SUCCESS\n");
+        cdb2buf_printf(s->sb, "SUCCESS\n");
         s->sc_rc = SC_DETACHED;
     }
 
@@ -1655,7 +1655,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
     int rc;
     tran_type *tran = NULL;
     if ((rc = trans_start(iq, NULL, &tran)) != 0) {
-        sbuf2printf(iq->sb, ">%s -- trans_start rc:%d\n", __func__, rc);
+        cdb2buf_printf(iq->sb, ">%s -- trans_start rc:%d\n", __func__, rc);
         return rc;
     }
     tran->no_distributed_commit = 1;
@@ -1674,7 +1674,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
         logmsg(LOGMSG_USER, "%s -- TABLE:%s  REC COMP:%s  BLOB COMP:%s\n",
                __func__, db->tablename, bdb_algo2compr(ra), bdb_algo2compr(ba));
     } else {
-        sbuf2printf(iq->sb, ">%s -- trans_commit rc:%d\n", __func__, rc);
+        cdb2buf_printf(iq->sb, ">%s -- trans_commit rc:%d\n", __func__, rc);
     }
     tran = NULL;
 
@@ -1700,29 +1700,29 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
 
     if (scinfo->olddb_inplace_updates && !s->ip_updates && !s->force_rebuild) {
-        sbuf2printf(s->sb,
+        cdb2buf_printf(s->sb,
                     ">Cannot remove inplace updates without rebuilding.\n");
         return -1;
     }
 
     if (scinfo->olddb_instant_sc && !s->instant_sc) {
-        sbuf2printf(
+        cdb2buf_printf(
             s->sb,
             ">Cannot remove instant schema-change without rebuilding.\n");
         return -1;
     }
 
     if (s->force_rebuild) {
-        sbuf2printf(s->sb, ">Forcing table rebuild\n");
+        cdb2buf_printf(s->sb, ">Forcing table rebuild\n");
         goto out;
     }
 
     if (s->force_dta_rebuild) {
-        sbuf2printf(s->sb, ">Forcing data file rebuild\n");
+        cdb2buf_printf(s->sb, ">Forcing data file rebuild\n");
     }
 
     if (s->force_blob_rebuild) {
-        sbuf2printf(s->sb, ">Forcing blob file rebuild\n");
+        cdb2buf_printf(s->sb, ">Forcing blob file rebuild\n");
     }
 
     if (verify_constraints_exist(NULL, newdb, newdb, s)) {
@@ -1758,21 +1758,21 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
     }
 
     if (create_schema_change_plan(s, db, newdb, &plan) != 0) {
-        sbuf2printf(s->sb, ">Error in plan module.\n");
-        sbuf2printf(s->sb, ">Will need to rebuild table\n");
+        cdb2buf_printf(s->sb, ">Error in plan module.\n");
+        cdb2buf_printf(s->sb, ">Will need to rebuild table\n");
         return 0;
     }
 
     if (changed == SC_NO_CHANGE) {
         if (db->n_constraints && newdb->n_constraints == 0) {
-            sbuf2printf(s->sb, ">All table constraints will be dropped\n");
+            cdb2buf_printf(s->sb, ">All table constraints will be dropped\n");
         } else {
-            sbuf2printf(s->sb, ">There is no change in the schema\n");
+            cdb2buf_printf(s->sb, ">There is no change in the schema\n");
         }
     } else if (db->schema_version >= MAXVER && newdb->instant_schema_change) {
-        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n",
+        cdb2buf_printf(s->sb, ">Table is at version: %d MAXVER: %d\n",
                     db->schema_version, MAXVER);
-        sbuf2printf(s->sb, ">Will need to rebuild table\n");
+        cdb2buf_printf(s->sb, ">Will need to rebuild table\n");
     }
 
 out:

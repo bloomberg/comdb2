@@ -26,7 +26,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include <net.h>
 #include <bb_stdint.h>
@@ -375,7 +375,7 @@ typedef int (*REPFAILFP)(bdb_state_type *bdb_handle, char *host, int reason);
   this routine must return immediately, and should create it's own
   thread if extended processing is needed.
   */
-typedef int (*BDBAPPSOCKFP)(bdb_state_type *bdb_handle, SBUF2 *sb);
+typedef int (*BDBAPPSOCKFP)(bdb_state_type *bdb_handle, COMDB2BUF *sb);
 
 /*
   pass in a routine that will return the current election preferences.
@@ -988,7 +988,7 @@ void bdb_queue_get_found_info(const void *fnd, size_t *dtaoff, size_t *dtalen);
 const struct bdb_queue_stats *bdb_queue_get_stats(bdb_state_type *bdb_state);
 
 /* dump dta contents of bdb_handle to stream sb */
-int bdb_dumpdta(bdb_state_type *bdb_handle, SBUF2 *sb, int *bdberr);
+int bdb_dumpdta(bdb_state_type *bdb_handle, COMDB2BUF *sb, int *bdberr);
 
 /* debug dump routines */
 void bdb_dumpit(bdb_state_type *bdb_state);
@@ -1293,7 +1293,7 @@ int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
 bulk_dump *bdb_start_fstdump(bdb_state_type *bdb_state, int *bdberr);
 int bdb_next_fstdump(bulk_dump *dmp, void *buf, int sz, int *bdberr);
 int bdb_close_fstdump(bulk_dump *dmp);
-int bdb_fstdumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr);
+int bdb_fstdumpdta(bdb_state_type *bdb_state, COMDB2BUF *sb, int *bdberr);
 
 /* fast dump and callback to convert records from ondisk to requested tag.
  * callback returns 0 for ok, -1 for could not convert. */
@@ -1302,7 +1302,7 @@ typedef int (*bdb_fstdumpdta_callback_t)(void *rec, size_t reclen,
                                          void *userptr, void *userptr2,
                                          const char *tzname, uint8_t ver,
                                          int flags);
-int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, SBUF2 *sb,
+int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, COMDB2BUF *sb,
                           size_t sendrecsz,
                           bdb_fstdumpdta_callback_t convert_callback,
                           int callback_flags, void *userptr, void *userptr2,

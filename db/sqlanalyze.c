@@ -120,7 +120,7 @@ struct table_descriptor {
     pthread_t thread_id;
     int table_state;
     char table[MAXTABLELEN];
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     int scale;
     int override_llmeta;
     index_descriptor_t index[MAXINDEX];
@@ -182,21 +182,21 @@ static int run_sql_part_trans(sqlite3 *sqldb, struct sqlclntstate *client,
     return rc;
 }
 
-static int check_stat1_and_flag(SBUF2 *sb)
+static int check_stat1_and_flag(COMDB2BUF *sb)
 {
     /* verify sqlite_stat1 */
     if (NULL == get_dbtable_by_name("sqlite_stat1")) {
-        sbuf2printf(sb, "?%s: analyze requires sqlite_stat1 to run\n",
+        cdb2buf_printf(sb, "?%s: analyze requires sqlite_stat1 to run\n",
                     __func__);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
         logmsg(LOGMSG_ERROR, "%s: analyze requires sqlite_stat1 to run\n", __func__);
         return -1;
     }
 
     /* check if its already running */
     if (analyze_running_flag) {
-        sbuf2printf(sb, "?%s: analyze is already running\n", __func__);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "?%s: analyze is already running\n", __func__);
+        cdb2buf_printf(sb, "FAILED\n");
         logmsg(LOGMSG_ERROR, "%s: analyze is already running\n", __func__);
         return -1;
     }
@@ -204,7 +204,7 @@ static int check_stat1_and_flag(SBUF2 *sb)
     return 0;
 }
 
-void cleanup_stats(SBUF2 *sb)
+void cleanup_stats(COMDB2BUF *sb)
 {
     if (!get_dbtable_by_name("sqlite_stat1")) return;
     char *final = "rollback";
@@ -374,7 +374,7 @@ static int wait_for_index(index_descriptor_t *ix_des)
 
 /* sample all indexes in this table */
 static int sample_indexes(index_descriptor_t *indexes, struct sqlclntstate *client, 
-                          struct dbtable *tbl, int sampling_pct, SBUF2 *sb)
+                          struct dbtable *tbl, int sampling_pct, COMDB2BUF *sb)
 {
     int i;
     int err = 0;
@@ -719,7 +719,7 @@ int analyze_regular_table(const char *tablename, table_descriptor_t *td,
     char sqltablename[MAXTABLELEN];
     struct dbtable *table = get_dbtable_by_name(tablename);
     if (!table) {
-        sbuf2printf(td->sb, "?Cannot find table '%s'\n", tablename);
+        cdb2buf_printf(td->sb, "?Cannot find table '%s'\n", tablename);
         return -1;
     }
 
@@ -817,7 +817,7 @@ static int analyze_thread_int(table_descriptor_t *td, struct thr_handle *thr_sel
     if (!isPartition) {
         struct dbtable *tbl = get_dbtable_by_name(td->table);
         if (!tbl) {
-            sbuf2printf(td->sb, "?Cannot find table or partition '%s'\n", td->table);
+            cdb2buf_printf(td->sb, "?Cannot find table or partition '%s'\n", td->table);
             return -1;
         }
     }
@@ -826,7 +826,7 @@ static int analyze_thread_int(table_descriptor_t *td, struct thr_handle *thr_sel
         get_saved_scale(td->table, &td->scale);
 
     if (td->scale == 0) {
-        sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n", td->table);
+        cdb2buf_printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n", td->table);
         logmsg(LOGMSG_INFO, "coverage for table '%s' is 0, skipping analyze\n", td->table);
         return TABLE_SKIPPED;
     }
@@ -860,10 +860,10 @@ static int analyze_thread_int(table_descriptor_t *td, struct thr_handle *thr_sel
 
 cleanup:
     if (rc) { // send error to client
-        sbuf2printf(td->sb, "?Analyze table %s. Error occurred with rc %d %s\n",
+        cdb2buf_printf(td->sb, "?Analyze table %s. Error occurred with rc %d %s\n",
                     td->table, err.errval, err.errstr);
     } else {
-        sbuf2printf(td->sb, "?Analyze completed table %s\n", td->table);
+        cdb2buf_printf(td->sb, "?Analyze completed table %s\n", td->table);
         logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
@@ -1000,11 +1000,11 @@ static int wait_for_table(table_descriptor_t *td)
 
     rc = 0;
     if (TABLE_COMPLETE == td->table_state) {
-        sbuf2printf(td->sb, ">Analyze table '%s' is complete\n", td->table);
+        cdb2buf_printf(td->sb, ">Analyze table '%s' is complete\n", td->table);
     } else if (TABLE_SKIPPED == td->table_state) {
-        sbuf2printf(td->sb, ">Analyze table '%s' skipped\n", td->table);
+        cdb2buf_printf(td->sb, ">Analyze table '%s' skipped\n", td->table);
     } else {
-        sbuf2printf(td->sb, ">Analyze table '%s' failed\n", td->table);
+        cdb2buf_printf(td->sb, ">Analyze table '%s' failed\n", td->table);
         rc = -1;
     }
 
@@ -1014,13 +1014,13 @@ static int wait_for_table(table_descriptor_t *td)
 /* check for existence of stat1 table -- make sure it exists
  * because without stat1 it is pointless to run analyze.
  */
-static inline int check_stat1(SBUF2 *sb)
+static inline int check_stat1(COMDB2BUF *sb)
 {
     /* verify sqlite_stat1 */
     if (NULL == get_dbtable_by_name("sqlite_stat1")) {
-        sbuf2printf(sb, ">%s: analyze requires sqlite_stat1 to run\n",
+        cdb2buf_printf(sb, ">%s: analyze requires sqlite_stat1 to run\n",
                     __func__);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
         logmsg(LOGMSG_ERROR, "%s: analyze requires sqlite_stat1 to run\n", __func__);
         return -1;
     }
@@ -1032,14 +1032,14 @@ static inline int check_stat1(SBUF2 *sb)
  * this makes sure two analyze requests don't race past
  * each-other both setting the flag.
  */
-static inline int set_analyze_running(SBUF2 *sb)
+static inline int set_analyze_running(COMDB2BUF *sb)
 {
     analyze_abort_requested = 0; 
     uint32_t old = XCHANGE32(analyze_running_flag, 1); // set analyze_running_flag
     if (1 == old) // analyze_running_flag was already 1, so bail out
     {
-        sbuf2printf(sb, ">%s: analyze is already running\n", __func__);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, ">%s: analyze is already running\n", __func__);
+        cdb2buf_printf(sb, "FAILED\n");
         logmsg(LOGMSG_ERROR, "%s: analyze is already running\n", __func__);
         return -1;
     }
@@ -1061,7 +1061,7 @@ int get_analyze_abort_requested()
     return analyze_abort_requested;
 }
 
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta, int bypass_auth)
+int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, int bypass_auth)
 {
 
     if (set_analyze_running(sb))
@@ -1095,17 +1095,17 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta, int by
     int rc = wait_for_table(&td);
 
     if (rc == 0)
-        sbuf2printf(sb, "SUCCESS\n");
+        cdb2buf_printf(sb, "SUCCESS\n");
     else
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
 
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
     analyze_running_flag = 0;
     return rc;
 }
 
 /* Analyze all tables in this database */
-int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
+int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta)
 {
     int rc = 0;
     int i;
@@ -1165,13 +1165,13 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
 
     /* tell comdb2sc the results */
     if (failed) {
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "FAILED\n");
         rc = -1;
     } else {
-        sbuf2printf(sb, "SUCCESS\n");
+        cdb2buf_printf(sb, "SUCCESS\n");
         cleanup_stats(sb);
     }
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
 
     /* free descriptor */
     free(td);
@@ -1295,10 +1295,10 @@ int analyze_is_running(void) { return analyze_running_flag; }
 /* analyze message-trap thread */
 void *message_trap_td(void *args)
 {
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
 
     /* open an sbuf pointed at stdout */
-    sb = sbuf2open(1, 0);
+    sb = cdb2buf_open(1, 0);
 
     /* analyze the database */
     analyze_database(sb, 
@@ -1306,10 +1306,10 @@ void *message_trap_td(void *args)
          0); //override llmeta scale 0 (false)
 
     /* flush sbuf */
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
 
     /* free sbuf */
-    sbuf2free(sb);
+    cdb2buf_free(sb);
 
     return NULL;
 }
@@ -1341,7 +1341,7 @@ error:
     return rc;
 }
 
-void handle_backout(SBUF2 *sb, char *table)
+void handle_backout(COMDB2BUF *sb, char *table)
 {
     if (check_stat1_and_flag(sb))
         return;
@@ -1364,13 +1364,13 @@ void handle_backout(SBUF2 *sb, char *table)
     unlock_schema_lk();
 
     if (rc == 0)
-        sbuf2printf(sb, "SUCCESS\n");
+        cdb2buf_printf(sb, "SUCCESS\n");
     else {
-        sbuf2printf(sb, "?Error occured with query: '%s'\n", clnt.sql);
-        sbuf2printf(sb, "FAILED\n");
+        cdb2buf_printf(sb, "?Error occured with query: '%s'\n", clnt.sql);
+        cdb2buf_printf(sb, "FAILED\n");
     }
 
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
     end_internal_sql_clnt(&clnt);
 }
 
@@ -1407,7 +1407,7 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
 
 int do_analyze(char *tbl, int percent)
 {
-    SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
+    COMDB2BUF *sb2 = cdb2buf_open(fileno(stdout), 0);
 
     if (gbl_is_physical_replicant) {
         logmsg(LOGMSG_ERROR, "%s: Analyze invalid on physical replicant\n", __func__);
@@ -1434,7 +1434,7 @@ int do_analyze(char *tbl, int percent)
         rc = analyze_database(sb2, percent, overwrite_llmeta);
     else
         rc = analyze_table(tbl, sb2, percent, overwrite_llmeta, 0);
-    sbuf2flush(sb2);
-    sbuf2free(sb2);
+    cdb2buf_flush(sb2);
+    cdb2buf_free(sb2);
     return rc;
 }

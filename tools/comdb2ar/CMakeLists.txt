@@ -18,7 +18,7 @@ add_executable(comdb2ar
   tar_header.cpp
   util.cpp
   ${PROJECT_SOURCE_DIR}/util/hostname_support.c
-  ${PROJECT_SOURCE_DIR}/util/sbuf2.c
+  ${PROJECT_SOURCE_DIR}/util/comdb2buf.c
   ${PROJECT_SOURCE_DIR}/util/ssl_glue.c
 )
 include_directories(

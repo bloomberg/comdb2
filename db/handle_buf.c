@@ -617,7 +617,7 @@ void *thd_req(void *vthd)
             thd->iq->ixstepcnt = 0;
 
             if (thd->iq->dbglog_file) {
-                sbuf2close(thd->iq->dbglog_file);
+                cdb2buf_close(thd->iq->dbglog_file);
                 thd->iq->dbglog_file = NULL;
             }
             if (thd->iq->nwrites) {
@@ -891,7 +891,7 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
     return rc;
 }
 
-int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
+int handle_socket_long_transaction(struct dbenv *dbenv, COMDB2BUF *sb,
                                    uint8_t *p_buf, const uint8_t *p_buf_end,
                                    int debug, char *frommach, int frompid,
                                    char *fromtask)
@@ -931,7 +931,7 @@ int handled_queue;
 
 int q_reqs_len(void) { return q_reqs.count; }
 
-static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, COMDB2BUF *sb,
                             uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                             char *frommach, int frompid, char *fromtask,
                             osql_sess_t *sorese, int qtype, void *data_hndl,
@@ -1067,7 +1067,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
 int gbl_handle_buf_add_latency_ms = 0;
 
-int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
+int handle_buf_main2(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
                      const uint8_t *p_buf_end, int debug, char *frommach,
                      int frompid, char *fromtask, osql_sess_t *sorese,
                      int qtype, void *data_hndl, int luxref,
@@ -1360,7 +1360,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
     return 0;
 }
 
-int handle_buf_main(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
+int handle_buf_main(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
                     const uint8_t *p_buf_end, int debug, char *frommach,
                     int frompid, char *fromtask, osql_sess_t *sorese, int qtype,
                     void *data_hndl, int luxref, unsigned long long rqid, 

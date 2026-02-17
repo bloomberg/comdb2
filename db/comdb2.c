@@ -72,7 +72,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <net.h>
 #include <bdb_api.h>
 #include <disttxn.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include "quantize.h"
 #include "timers.h"
 
@@ -926,7 +926,7 @@ int get_max_reclen(struct dbenv *dbenv)
     int max = -1;
     char *fname, fname_tail[] = "_file_vers_map";
     int file, fnamelen;
-    SBUF2 *sbfile;
+    COMDB2BUF *sbfile;
     char line[256];
     char tablename[64];
     int reclen;
@@ -964,14 +964,14 @@ int get_max_reclen(struct dbenv *dbenv)
     }
     free(fname);
 
-    sbfile = sbuf2open(file, 0);
+    sbfile = cdb2buf_open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "get_max_reclen: failed to open sbuf2\n");
         Close(file);
         return -1;
     }
 
-    while (sbuf2gets(line, 256, sbfile) > 0) {
+    while (cdb2buf_gets(line, 256, sbfile) > 0) {
         reclen = 0;
         sscanf(line, "table %s %d\n", tablename, &reclen);
         if (reclen) {
@@ -982,7 +982,7 @@ int get_max_reclen(struct dbenv *dbenv)
         }
     }
 
-    sbuf2close(sbfile);
+    cdb2buf_close(sbfile);
 
     return max;
 }
@@ -2520,7 +2520,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
     int i, rc;
     char *fname, fname_tail[] = "_file_vers_map";
     int file, fnamelen;
-    SBUF2 *sbfile;
+    COMDB2BUF *sbfile;
 
     /* get the mem we need for fname */
     fnamelen = strlen(dbenv->basedir) + strlen(dbenv->envname) +
@@ -2552,7 +2552,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
         return -1;
     }
     free(fname);
-    sbfile = sbuf2open(file, 0);
+    sbfile = cdb2buf_open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open sbuf2\n");
         Close(file);
@@ -2577,7 +2577,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
             goto done;
         }
 
-        sbuf2printf(sbfile,
+        cdb2buf_printf(sbfile,
                     "table %s %d\n\tdata files: %016" PRIx64 "\n\tblob files\n",
                     dbenv->dbs[i]->tablename, dbenv->dbs[i]->lrl,
                     flibc_htonll(version_num));
@@ -2596,12 +2596,12 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                 goto done;
             }
 
-            sbuf2printf(sbfile, "\t\tblob num %d: %016" PRIx64 "\n", j,
+            cdb2buf_printf(sbfile, "\t\tblob num %d: %016" PRIx64 "\n", j,
                         flibc_htonll(version_num));
         }
 
         /* print the indicies' version numbers */
-        sbuf2printf(sbfile, "\tindex files\n");
+        cdb2buf_printf(sbfile, "\tindex files\n");
         for (j = 0; j < dbenv->dbs[i]->nix; ++j) {
             if (bdb_get_file_version_index(dbenv->dbs[i]->handle, tran,
                                            j /*dtanum*/, &version_num,
@@ -2615,13 +2615,13 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                 goto done;
             }
 
-            sbuf2printf(sbfile, "\t\tindex num %d: %016" PRIx64 "\n", j,
+            cdb2buf_printf(sbfile, "\t\tindex num %d: %016" PRIx64 "\n", j,
                         flibc_htonll(version_num));
         }
     }
 
 done:
-    sbuf2close(sbfile);
+    cdb2buf_close(sbfile);
     return rc;
 }
 

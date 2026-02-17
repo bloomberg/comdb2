@@ -1549,7 +1549,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         info = ">Table does not support odh.\n";
 
     if (s->dryrun)
-        sbuf2printf(s->sb, info);
+        cdb2buf_printf(s->sb, info);
     else
         sc_printf(s, info + 1);
 
@@ -1564,7 +1564,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         info = ">Table records are not compressed.\n";
 
     if (s->dryrun)
-        sbuf2printf(s->sb, info);
+        cdb2buf_printf(s->sb, info);
     else
         sc_printf(s, info + 1);
 
@@ -1580,7 +1580,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         info = ">Table blobs are not compressed.\n";
 
     if (s->dryrun)
-        sbuf2printf(s->sb, info);
+        cdb2buf_printf(s->sb, info);
     else
         sc_printf(s, info + 1);
 
@@ -1596,7 +1596,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         info = ">Table does not support in-place updates.\n";
 
     if (s->dryrun)
-        sbuf2printf(s->sb, info);
+        cdb2buf_printf(s->sb, info);
     else
         sc_printf(s, info + 1);
 
@@ -1610,7 +1610,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         info = ">Table does not support instant schema change.\n";
 
     if (s->dryrun)
-        sbuf2printf(s->sb, info);
+        cdb2buf_printf(s->sb, info);
     else
         sc_printf(s, info + 1);
 

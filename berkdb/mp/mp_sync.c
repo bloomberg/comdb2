@@ -1751,7 +1751,7 @@ retry:	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 	return (0);
 }
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -1759,12 +1759,12 @@ retry:	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
  * __memp_load_pp --
  *	DB_ENV->memp_load pre/post processing.
  *
- * PUBLIC: int __memp_load_pp __P((DB_ENV *, SBUF2 *));
+ * PUBLIC: int __memp_load_pp __P((DB_ENV *, COMDB2BUF *));
  */
 int
 __memp_load_pp(dbenv, s)
 	DB_ENV *dbenv;
-	SBUF2 *s;
+	COMDB2BUF *s;
 {
 	int rep_check, ret;
 	u_int32_t lines;
@@ -1787,12 +1787,12 @@ __memp_load_pp(dbenv, s)
  * __memp_dump_pp --
  *	DB_ENV->memp_dump pre/post processing.
  *
- * PUBLIC: int __memp_dump_pp __P((DB_ENV *, SBUF2 *, u_int64_t));
+ * PUBLIC: int __memp_dump_pp __P((DB_ENV *, COMDB2BUF *, u_int64_t));
  */
 int
 __memp_dump_pp(dbenv, s, max_pages)
 	DB_ENV *dbenv;
-	SBUF2 *s;
+	COMDB2BUF *s;
 	u_int64_t max_pages;
 {
 	int rep_check, ret;
@@ -1859,11 +1859,11 @@ __memp_dump_default_pp(dbenv, force)
 	return (ret);
 }
 
-static int getcpage(SBUF2 *s, char *cpage, int cpagesz, int *endofline)
+static int getcpage(COMDB2BUF *s, char *cpage, int cpagesz, int *endofline)
 {
 	(*endofline) = 0;
 	for (int i = 0; i < cpagesz; i++) {
-		char c = sbuf2getc(s);
+		char c = cdb2buf_getc(s);
 		if (c <= 0 || c == '\n')
 			(*endofline) = 1;
 		if (c <= 0 || c == '\n' || c == ' ') {
@@ -1991,7 +1991,7 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 struct sbuf_env {
 	DB_ENV *dbenv;
-	SBUF2 *s;
+	COMDB2BUF *s;
 };
 
 static int
@@ -1999,7 +1999,7 @@ output_fileid_page(void *obj, void *arg)
 {
 	struct sbuf_env *sbenv = (struct sbuf_env *)arg;
 	u_int8_t *p;
-	SBUF2 *s = sbenv->s;
+	COMDB2BUF *s = sbenv->s;
 	fileid_page_list_t *pagelist = (fileid_page_list_t *)obj;
 	qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
 	p = pagelist->fileid;
@@ -2007,17 +2007,17 @@ output_fileid_page(void *obj, void *arg)
 	if (pagelist->cnt == 0)
 		return 0;
 	for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
-		sbuf2printf(s, "%2.2x", (u_int)*p);
+		cdb2buf_printf(s, "%2.2x", (u_int)*p);
 	}
 	for (u_int64_t pages = 0; pages < pagelist->cnt; pages++) {
-		sbuf2printf(s, " %"PRIu32, pagelist->pages[pages]);
+		cdb2buf_printf(s, " %"PRIu32, pagelist->pages[pages]);
 	}
-	sbuf2printf(s, "\n");
+	cdb2buf_printf(s, "\n");
 	return 0;
 }
 
 static int
-output_fileid_page_hash(DB_ENV *dbenv, hash_t *hash, SBUF2 *s)
+output_fileid_page_hash(DB_ENV *dbenv, hash_t *hash, COMDB2BUF *s)
 {
 	struct sbuf_env sbenv = { .dbenv = dbenv, .s = s };
 	hash_for(hash, output_fileid_page, &sbenv);
@@ -2115,12 +2115,12 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
  *	Load bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_load
- * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int64_t *, u_int32_t *));
+ * PUBLIC:	 __P((DB_ENV *, COMDB2BUF *, u_int64_t *, u_int32_t *));
  */
 int
 __memp_load(dbenv, s, pagecount, lines)
 	DB_ENV *dbenv;
-	SBUF2 *s;
+	COMDB2BUF *s;
 	u_int64_t *pagecount;
 	u_int32_t *lines;
 {
@@ -2157,7 +2157,7 @@ __memp_load(dbenv, s, pagecount, lines)
 	char cfileid[DB_FILE_ID_LEN*2+1];
 	cfileid[DB_FILE_ID_LEN*2] = 0;
 	while ((!max_pages || (*pagecount) < max_pages) && (ret =
-				sbuf2fread(cfileid, DB_FILE_ID_LEN * 2, 1, s)) == 1) {
+				cdb2buf_fread(cfileid, DB_FILE_ID_LEN * 2, 1, s)) == 1) {
 		lineno++;
 		char *p = cfileid;
 		for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
@@ -2165,12 +2165,12 @@ __memp_load(dbenv, s, pagecount, lines)
 			fileid[j] = hx;
 		}
 
-		if ((c = sbuf2getc(s)) != ' ') {
+		if ((c = cdb2buf_getc(s)) != ' ') {
 #if PAGELIST_DEBUG
 			logmsg(LOGMSG_USER, "%s line %u, invalid format\n",
 					__func__, lineno);
 #endif
-			sbuf2nextline(s);
+			cdb2buf_nextline(s);
 			continue;
 		}
 
@@ -2232,7 +2232,7 @@ __memp_load(dbenv, s, pagecount, lines)
 			fileid_env = NULL;
 		}
 		if (!endofline)
-			sbuf2nextline(s);
+			cdb2buf_nextline(s);
 	}
 	if (fileid_env) {
 		load_fileids_thdpool(fileid_env);
@@ -2257,12 +2257,12 @@ done:
  *	Write bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_dump
- * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int64_t, u_int64_t *));
+ * PUBLIC:	 __P((DB_ENV *, COMDB2BUF *, u_int64_t, u_int64_t *));
  */
 int
 __memp_dump(dbenv, s, max_pages, pagecount)
 	DB_ENV *dbenv;
-	SBUF2 *s;
+	COMDB2BUF *s;
 	u_int64_t max_pages;
 	u_int64_t *pagecount;
 {
@@ -2370,7 +2370,7 @@ __memp_load_default(dbenv)
 	u_int32_t lines;
 	u_int64_t cnt = 0;
 	int fd, ret;
-	SBUF2 *s;
+	COMDB2BUF *s;
 
 	Pthread_mutex_lock(&page_flush_lk);
 
@@ -2381,7 +2381,7 @@ __memp_load_default(dbenv)
 			rpath);
 #endif
 	if ((fd = open(rpath, O_RDONLY, gbl_file_permissions)) < 0 ||
-			(s = sbuf2open(fd, 0)) == NULL) {
+			(s = cdb2buf_open(fd, 0)) == NULL) {
 #if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
 				__LINE__, rpath, errno);
@@ -2404,7 +2404,7 @@ __memp_load_default(dbenv)
 				"lines, ret=%d\n", __func__, cnt, lines, ret);
 #endif
 	}
-	sbuf2close(s);
+	cdb2buf_close(s);
 
 done:
 	memp_pagecount = cnt;
@@ -2435,7 +2435,7 @@ __memp_dump_default(dbenv, force)
 #if PAGELIST_DEBUG
 	char rnpath[PATH_MAX], rnpathbuf[PATH_MAX], *rrnpath;
 #endif
-	SBUF2 *s;
+	COMDB2BUF *s;
 
 	if (!force && thresh > 0) {
 		u_int64_t target = ((memp_pagecount * thresh) / 100);
@@ -2457,7 +2457,7 @@ __memp_dump_default(dbenv, force)
 			PAGELISTTEMP);
 	rtmppath = bdb_trans(tmppath, tmppathbuf);
 	if ((fd = open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, gbl_file_permissions)) < 0 ||
-			(s = sbuf2open(fd, 0)) == NULL) {
+			(s = cdb2buf_open(fd, 0)) == NULL) {
 #if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
 				__LINE__, rtmppath, errno);
@@ -2468,7 +2468,7 @@ __memp_dump_default(dbenv, force)
 		goto done;
 	}
 	__memp_dump(dbenv, s, gbl_dump_cache_max_pages, &cnt);
-	sbuf2close(s);
+	cdb2buf_close(s);
 
 #if PAGELIST_DEBUG
 	snprintf(rnpath, sizeof(rnpath), "%s/%s.%d", dbenv->db_home, PAGELIST,

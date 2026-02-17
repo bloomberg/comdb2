@@ -56,7 +56,7 @@
 #include <ctrace.h>
 #include <epochlib.h>
 
-#include <sbuf2.h>
+#include <comdb2buf.h>
 
 #include <bdb_api.h>
 #include <bdb_cursor.h>
@@ -506,14 +506,14 @@ int authenticate_cursor(BtCursor *pCur, int how)
     return 0;
 }
 
-int peer_dropped_connection_sbuf(SBUF2 *sb)
+int peer_dropped_connection_sbuf(COMDB2BUF *sb)
 {
     if (!sb)
         return 0;
 
     int rc;
     struct pollfd fd = {0};
-    fd.fd = sbuf2fileno(sb);
+    fd.fd = cdb2buf_fileno(sb);
     fd.events = POLLIN;
     if ((rc = poll(&fd, 1, 0)) >= 0) {
         if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -11463,21 +11463,21 @@ static int _sockpool_get(const char *protocol, const char *dbname, const char *s
 }
 
 void disconnect_remote_db(const char *protocol, const char *dbname, const char *service, char *host,
-                          SBUF2 **psb)
+                          COMDB2BUF **psb)
 {
     char socket_type[512];
     int fd;
-    SBUF2 *sb = *psb;
+    COMDB2BUF *sb = *psb;
 
     if (unlikely(
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SERVER_SOCKPOOL))) {
         /* don't use pool */
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         *psb = NULL;
         return;
     }
 
-    fd = sbuf2fileno(sb);
+    fd = cdb2buf_fileno(sb);
 
     _sockpool_socket_type(protocol, dbname, service, host, socket_type,
                           sizeof(socket_type));
@@ -11486,7 +11486,7 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
         logmsg(LOGMSG_ERROR, "%p: Donating socket for %s\n", (void *)pthread_self(), socket_type);
 
     /* this is used by fdb sql for now */
-    if (sbuf2free(sb) == 0)
+    if (cdb2buf_free(sb) == 0)
         socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0, 0, NULL, NULL);
 
     /*fprintf(stderr, "%s: donated socket %d to sockpool %s\n", __func__, fd,
@@ -11497,17 +11497,17 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
 
 int gbl_connect_remote_rte = 0;
 
-/* use portmux to open an SBUF2 to local db or proxied db
+/* use portmux to open an COMDB2BUF to local db or proxied db
    it is trying to use sockpool
  */
 int gbl_fdb_socket_timeout_ms;
 
 int gbl_debug_fake_rte_failure = 0;
 
-SBUF2 *connect_remote_db_flags(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+COMDB2BUF *connect_remote_db_flags(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
                          int force_rte, int sbflags)
 {
-    SBUF2 *sb;
+    COMDB2BUF *sb;
     int port;
     int retry;
     int sockfd;
@@ -11561,23 +11561,23 @@ retry:
     (void)setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
 sbuf:
-    sb = sbuf2open(sockfd, sbflags);
+    sb = cdb2buf_open(sockfd, sbflags);
     if (!sb) {
         logmsg(LOGMSG_ERROR, "%s: failed to open sbuf\n", __func__);
         Close(sockfd);
         return NULL;
     }
 
-    sbuf2settimeout(sb, gbl_fdb_socket_timeout_ms, gbl_fdb_socket_timeout_ms);
+    cdb2buf_settimeout(sb, gbl_fdb_socket_timeout_ms, gbl_fdb_socket_timeout_ms);
 
     /* Tell portmux to pass connection to database */
     if (use_rte) {
         char name[128];
         char res[32] = {0};
         snprintf(name, sizeof(name), "comdb2/replication/%s", dbname);
-        sbuf2printf(sb, "rte %s\n", name);
-        sbuf2flush(sb);
-        sbuf2gets(res, sizeof(res), sb);
+        cdb2buf_printf(sb, "rte %s\n", name);
+        cdb2buf_flush(sb);
+        cdb2buf_gets(res, sizeof(res), sb);
 
         int debug_fake_failure = (gbl_debug_fake_rte_failure && (rand() % 2) == 0);
         if (debug_fake_failure) {
@@ -11586,8 +11586,8 @@ sbuf:
 
         if (res[0] != '0' || debug_fake_failure) {
             logmsg(LOGMSG_ERROR, "%s: rte failed to machine %s\n", __func__, host);
-            sbuf2close(sb);
-            if (sbflags & SBUF2_NO_CLOSE_FD) {
+            cdb2buf_close(sb);
+            if (sbflags & CDB2BUF_NO_CLOSE_FD) {
                 Close(sockfd);
             }
             return NULL;
@@ -11597,7 +11597,7 @@ sbuf:
     return sb;
 }
 
-SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+COMDB2BUF *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
                          int force_rte)
 {
     return connect_remote_db_flags(protocol, dbname, service, host, use_cache, force_rte, 0);

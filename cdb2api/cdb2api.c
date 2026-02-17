@@ -17,7 +17,7 @@
 #include <inttypes.h>
 #include <alloca.h>
 #include <stdarg.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
@@ -225,7 +225,7 @@ void cdb2_protobuf_free(void *allocator_data, void *ptr)
 struct local_cached_connection {
     union {
         int fd;
-        SBUF2 *sb;
+        COMDB2BUF *sb;
     };
     char typestr[TYPESTR_LEN];
     time_t when;
@@ -326,8 +326,8 @@ static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *, cdb2_event_type, cdb2_even
 static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, int, ...);
 static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 static int cdb2_get_dbhosts(cdb2_hndl_tp *);
-static void hndl_set_sbuf(cdb2_hndl_tp *, SBUF2 *);
-static int send_reset(SBUF2 *sb, int localcache);
+static void hndl_set_comdb2buf(cdb2_hndl_tp *, COMDB2BUF *);
+static int send_reset(COMDB2BUF *sb, int localcache);
 
 static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
 static int check_hb_on_blocked_write_set_from_env = 0;
@@ -538,13 +538,13 @@ static char *cdb2_type_str(int type)
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
-SBUF2 *cdb2_sbuf2openread(const char *filename)
+COMDB2BUF *cdb2_cdb2buf_openread(const char *filename)
 {
     int fd;
-    SBUF2 *s;
+    COMDB2BUF *s;
 
     if ((fd = open(filename, O_RDONLY, 0)) < 0 ||
-        (s = sbuf2open(fd, 0)) == NULL) {
+        (s = cdb2buf_open(fd, 0)) == NULL) {
         if (fd >= 0)
             close(fd);
         return NULL;
@@ -575,21 +575,21 @@ static char *proc_cmdline_getargv0(void)
     static char argv0[PATH_MAX];
 
     snprintf(procname, sizeof(procname), "/proc/self/cmdline");
-    SBUF2 *s = cdb2_sbuf2openread(procname);
+    COMDB2BUF *s = cdb2_cdb2buf_openread(procname);
     if (s == NULL) {
         fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
                 strerror(errno));
         return NULL;
     }
 
-    if ((sbuf2gets(argv0, PATH_MAX, s)) < 0) {
+    if ((cdb2buf_gets(argv0, PATH_MAX, s)) < 0) {
         fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname,
                 strerror(errno));
-        sbuf2close(s);
+        cdb2buf_close(s);
         return NULL;
     }
 
-    sbuf2close(s);
+    cdb2buf_close(s);
     return argv0;
 }
 #endif
@@ -720,11 +720,11 @@ void set_cdb2api_test_single_cfg(const char *cfg_file)
 }
 #endif
 
-static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
+static inline int get_char(COMDB2BUF *s, const char *buf, int *chrno)
 {
     int ch;
     if (s) {
-        ch = sbuf2getc(s);
+        ch = cdb2buf_getc(s);
     } else {
         ch = buf[*chrno];
         *chrno += 1;
@@ -732,7 +732,7 @@ static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
     return ch;
 }
 
-int cdb2_read_line(char *line, int maxlen, SBUF2 *s, const char *buf, int *chrno)
+int cdb2_read_line(char *line, int maxlen, COMDB2BUF *s, const char *buf, int *chrno)
 {
     int ch = get_char(s, buf, chrno);
     while (ch == ' ' || ch == '\n')
@@ -1720,7 +1720,7 @@ static int cdb2_max_room_num = 0;
 static int cdb2_has_room_distance = 0;
 static int *cdb2_room_distance = NULL;
 
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db_name, const char *buf,
+static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
                               int *dbname_found, int *comdb2db_found, int *stack_at_open, char shards[][DBNAME_LEN],
@@ -2223,7 +2223,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
                                            const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
                                            int *dbnum, char shards[][DBNAME_LEN], int *num_shards)
 {
-    SBUF2 *s = NULL;
+    COMDB2BUF *s = NULL;
     char filename[PATH_MAX];
     int comdb2db_found = 0;
     int dbname_found = 0;
@@ -2244,16 +2244,16 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 
 #ifdef CDB2API_TEST
     if (cdb2cfg_override_all_config_paths) {
-        if ((s = cdb2_sbuf2openread(cdb2dbconfig_singleconfig)) != NULL) {
+        if ((s = cdb2_cdb2buf_openread(cdb2dbconfig_singleconfig)) != NULL) {
             read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
-            sbuf2close(s);
+            cdb2buf_close(s);
         }
 
-        if ((s = cdb2_sbuf2openread(cdb2dbconfig_singleconfig)) != NULL) {
+        if ((s = cdb2_cdb2buf_openread(cdb2dbconfig_singleconfig)) != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
-            sbuf2close(s);
+            cdb2buf_close(s);
         }
 
         if (cdb2_use_env_vars) {
@@ -2265,10 +2265,10 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 #endif
 
 #ifdef CDB2API_TEST
-        if ((s = cdb2_sbuf2openread(cdb2api_test_comdb2db_cfg)) != NULL) {
+        if ((s = cdb2_cdb2buf_openread(cdb2api_test_comdb2db_cfg)) != NULL) {
             read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
-            sbuf2close(s);
+            cdb2buf_close(s);
             fallback_on_bb_bin = 0;
         } else
 #endif /* CDB2API_TEST */
@@ -2278,11 +2278,11 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
                                   dbname, db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack,
                                   shards, num_shards);
                 fallback_on_bb_bin = 0;
-            } else if (*CDB2DBCONFIG_NOBBENV != '\0' && (s = cdb2_sbuf2openread(CDB2DBCONFIG_NOBBENV)) != NULL) {
+            } else if (*CDB2DBCONFIG_NOBBENV != '\0' && (s = cdb2_cdb2buf_openread(CDB2DBCONFIG_NOBBENV)) != NULL) {
                 read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                   db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
                                   num_shards);
-                sbuf2close(s);
+                cdb2buf_close(s);
                 fallback_on_bb_bin = 0;
             }
 
@@ -2292,43 +2292,43 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
          * can't find the file in any standard location, look at /bb/bin
          * Once deployment details for comdb2db.cfg solidify, this will go away. */
         if (fallback_on_bb_bin) {
-            if ((s = cdb2_sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN)) != NULL) {
+            if ((s = cdb2_cdb2buf_openread(CDB2DBCONFIG_TEMP_BB_BIN)) != NULL) {
                 read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                   db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
                                   num_shards);
-                sbuf2close(s);
+                cdb2buf_close(s);
             }
         }
 
 #ifdef CDB2API_TEST
-        if ((s = cdb2_sbuf2openread(cdb2api_test_dbname_cfg)) != NULL) {
+        if ((s = cdb2_cdb2buf_openread(cdb2api_test_dbname_cfg)) != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
-            sbuf2close(s);
+            cdb2buf_close(s);
         } else
 #endif /* CDB2API_TEST */
 
             if (get_config_file(dbname, filename, sizeof(filename), 0) == 0 &&
-                (s = cdb2_sbuf2openread(filename)) != NULL) {
+                (s = cdb2_cdb2buf_openread(filename)) != NULL) {
                 read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                   db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
                                   num_shards);
-                sbuf2close(s);
+                cdb2buf_close(s);
             } else if (get_config_file(dbname, filename, sizeof(filename), 1) == 0 &&
-                       (s = cdb2_sbuf2openread(filename)) != NULL) {
+                       (s = cdb2_cdb2buf_openread(filename)) != NULL) {
                 read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                   db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
                                   num_shards);
-                sbuf2close(s);
+                cdb2buf_close(s);
             }
 
         /* Process additional_cfg if specified */
         if (CDB2DBCONFIG_ADDL_PATH[0] != '\0') {
-            if ((s = cdb2_sbuf2openread(CDB2DBCONFIG_ADDL_PATH)) != NULL) {
+            if ((s = cdb2_cdb2buf_openread(CDB2DBCONFIG_ADDL_PATH)) != NULL) {
                 read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                                   db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
                                   num_shards);
-                sbuf2close(s);
+                cdb2buf_close(s);
             }
             CDB2DBCONFIG_ADDL_PATH[0] = '\0';
         }
@@ -2690,7 +2690,7 @@ void dump_cached_connections(void)
     TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
     {
         if (local_connection_cache_use_sbuf)
-            printf("%p %s %d\n", cc, cc->typestr, sbuf2fileno(cc->sb));
+            printf("%p %s %d\n", cc, cc->typestr, cdb2buf_fileno(cc->sb));
         else
             printf("%p %s %d\n", cc, cc->typestr, cc->fd);
     }
@@ -2698,7 +2698,7 @@ void dump_cached_connections(void)
     TAILQ_FOREACH(cc, &free_local_connection_cache, local_cache_lnk)
     {
         if (local_connection_cache_use_sbuf)
-            printf("%p %d\n", cc, sbuf2fileno(cc->sb));
+            printf("%p %d\n", cc, cdb2buf_fileno(cc->sb));
         else
             printf("%p %d\n", cc, cc->fd);
     }
@@ -2767,9 +2767,9 @@ static int local_connection_cache_get_fd(const cdb2_hndl_tp *hndl, const char *t
     return fd;
 }
 
-static SBUF2 *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, const char *typestr)
+static COMDB2BUF *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, const char *typestr)
 {
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
     struct local_cached_connection *ptr = NULL, *expired = NULL;
     int nexpired = 0;
     time_t now;
@@ -2817,28 +2817,28 @@ static SBUF2 *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, const ch
     while (nexpired-- > 0) {
         /* closes expired inactive connections.
            don't donate them, because server may have already closed them. */
-        sbuf2close(expired[nexpired].sb);
+        cdb2buf_close(expired[nexpired].sb);
     }
     return sb;
 }
 
-static SBUF2 *local_connection_cache_get(const cdb2_hndl_tp *hndl, const char *typestr)
+static COMDB2BUF *local_connection_cache_get(const cdb2_hndl_tp *hndl, const char *typestr)
 {
     int fd;
-    SBUF2 *rv = NULL;
+    COMDB2BUF *rv = NULL;
     if (local_connection_cache_use_sbuf) {
         rv = local_connection_cache_get_sbuf(hndl, typestr);
     } else if ((fd = local_connection_cache_get_fd(hndl, typestr)) != -1) {
-        rv = sbuf2open(fd, 0);
+        rv = cdb2buf_open(fd, 0);
     }
-    LOG_CALL("%s(%s): fd=%d\n", __func__, typestr, sbuf2fileno(rv));
+    LOG_CALL("%s(%s): fd=%d\n", __func__, typestr, cdb2buf_fileno(rv));
     return rv;
 }
 
-static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *typestr, SBUF2 *sb)
+static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *typestr, COMDB2BUF *sb)
 {
     int donated = 0;
-    int fd = sb ? sbuf2fileno(sb) : -1;
+    int fd = sb ? cdb2buf_fileno(sb) : -1;
 
     if (max_local_connection_cache_entries && fd != -1) {
         struct local_cached_connection *cc;
@@ -2847,7 +2847,7 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
         int rc = send_reset(sb, 1);
         if (rc)
             return 0;
-        rc = sbuf2flush(sb);
+        rc = cdb2buf_flush(sb);
         if (rc == -1)
             return 0;
 
@@ -2860,7 +2860,7 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
         /* The fd can't be shut down cleanly. Don't donate it.
            Also return a fake good rcode to prevent caller from donating it to sockpool */
         if (rc != 0) {
-            sbuf2free(sb);
+            cdb2buf_free(sb);
             return 1;
         }
 
@@ -2905,7 +2905,7 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
             if (!found)
                 abort();
 #endif
-            sbuf2free(sb);
+            cdb2buf_free(sb);
             donated = 1;
         }
         pthread_mutex_unlock(&local_connection_cache_lock);
@@ -2914,10 +2914,10 @@ static int local_connection_cache_put_fd(const cdb2_hndl_tp *hndl, const char *t
     return donated;
 }
 
-static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char *typestr, SBUF2 *sb)
+static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char *typestr, COMDB2BUF *sb)
 {
     int donated = 0;
-    int fd = sb ? sbuf2fileno(sb) : -1;
+    int fd = sb ? cdb2buf_fileno(sb) : -1;
 
     if (max_local_connection_cache_entries && fd != -1) {
         if (local_connection_cache_check_pid && getpid() != local_connection_cache_owner_pid) {
@@ -2932,12 +2932,12 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
         int rc = send_reset(sb, 1);
         if (rc)
             return 0;
-        rc = sbuf2flush(sb);
+        rc = cdb2buf_flush(sb);
         if (rc == -1)
             return 0;
 
         pthread_mutex_lock(&local_connection_cache_lock);
-        LOG_CALL("%s placing fd %d to localcache current size %d max %d\n", __func__, sbuf2fileno(sb),
+        LOG_CALL("%s placing fd %d to localcache current size %d max %d\n", __func__, cdb2buf_fileno(sb),
                  connection_cache_entries, max_local_connection_cache_entries);
         if (connection_cache_entries >= max_local_connection_cache_entries) {
             /* lru an entry if we've reached the max number we want to cache */
@@ -2987,10 +2987,10 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
             if (now - evict_this.when >= max_local_connection_cache_age) {
                 LOG_CALL("closing rather than donating because connection has been inactive for %d secs\n",
                          (int)(now - evict_this.when));
-                sbuf2close(evict_this.sb);
+                cdb2buf_close(evict_this.sb);
             } else {
-                int fd = sbuf2fileno(evict_this.sb);
-                if (sbuf2free(evict_this.sb) == 0) {
+                int fd = cdb2buf_fileno(evict_this.sb);
+                if (cdb2buf_free(evict_this.sb) == 0) {
                     /* the function closes fd on error */
                     cdb2_socket_pool_donate_ext(hndl, evict_this.typestr, fd, 10, 0);
                 } else {
@@ -3003,7 +3003,7 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
     return donated;
 }
 
-static int local_connection_cache_put(const cdb2_hndl_tp *hndl, const char *typestr, SBUF2 *sb)
+static int local_connection_cache_put(const cdb2_hndl_tp *hndl, const char *typestr, COMDB2BUF *sb)
 {
     if (local_connection_cache_use_sbuf)
         return local_connection_cache_put_sbuf(hndl, typestr, sb);
@@ -3021,7 +3021,7 @@ static
         TAILQ_REMOVE(&local_connection_cache, cc, local_cache_lnk);
         if (do_close) {
             if (local_connection_cache_use_sbuf && cc->sb != NULL)
-                sbuf2close(cc->sb);
+                cdb2buf_close(cc->sb);
             else if (!local_connection_cache_use_sbuf && cc->fd != -1)
                 close(cc->fd);
             free(cc);
@@ -3184,15 +3184,15 @@ static int typestr_type_is_default(const char *typestr)
 /* Get the sbuf of a socket matching the given type string from
  * the pool.  Returns NULL if none is available or the sbuf on
  * success. */
-SBUF2 *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port, int *was_from_local_cache)
+COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port, int *was_from_local_cache)
 {
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
 
 #ifdef CDB2API_TEST
     if (fail_sockpool) {
         --fail_sockpool;
         LOG_CALL("%s(%s,%d,%p,%p[%d]): fd=%d\n", __func__, typestr, dbnum, port, was_from_local_cache,
-                 (was_from_local_cache ? *was_from_local_cache : 0), sbuf2fileno(sb));
+                 (was_from_local_cache ? *was_from_local_cache : 0), cdb2buf_fileno(sb));
         return NULL;
     }
 #endif
@@ -3210,7 +3210,7 @@ SBUF2 *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, 
         if (sb != NULL) {
             *was_from_local_cache = 1;
             LOG_CALL("%s(%s,%d,%p,%p[%d]): fd=%d\n", __func__, typestr, dbnum, port, was_from_local_cache,
-                     (was_from_local_cache ? *was_from_local_cache : 0), sbuf2fileno(sb));
+                     (was_from_local_cache ? *was_from_local_cache : 0), cdb2buf_fileno(sb));
             return sb;
         }
     }
@@ -3218,7 +3218,7 @@ SBUF2 *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, 
     int fd = cdb2_socket_pool_get_ll(hndl, typestr, dbnum, port);
     LOG_CALL("%s(%s,%d,%p,%p[%d]): fd=%d\n", __func__, typestr, dbnum, port, was_from_local_cache,
              (was_from_local_cache ? *was_from_local_cache : 0), fd);
-    return ((fd > 0) ? sbuf2open(fd, 0) : NULL);
+    return ((fd > 0) ? cdb2buf_open(fd, 0) : NULL);
 }
 
 void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum)
@@ -3317,19 +3317,19 @@ typedef enum {
 
 typedef enum { NEWSQL_SERVER_STATE_NONE } newsql_server_state;
 
-static int send_reset(SBUF2 *sb, int localcache)
+static int send_reset(COMDB2BUF *sb, int localcache)
 {
     int rc = 0;
     int state = localcache ? NEWSQL_STATE_LOCALCACHE : NEWSQL_STATE_NONE;
     struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__RESET), .state = ntohl(state)};
-    rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
+    rc = cdb2buf_fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1) {
         return -1;
     }
     return 0;
 }
 
-static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
+static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
 {
     /*
      *                   |<----------------------- CLIENT ----------------------->|
@@ -3403,13 +3403,13 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
 
     /* If negotiation fails, let API retry. */
     struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN)};
-    rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
+    rc = cdb2buf_fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1)
         return -1;
 #ifdef CDB2API_TEST
-    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0 || fail_ssl_negotiation_once) {
+    if ((rc = cdb2buf_flush(sb)) < 0 || (rc = cdb2buf_getc(sb)) < 0 || fail_ssl_negotiation_once) {
 #else
-    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
+    if ((rc = cdb2buf_flush(sb)) < 0 || (rc = cdb2buf_getc(sb)) < 0) {
 #endif
         /* If SSL is optional (this includes ALLOW and PREFER), change
            my mode to ALLOW so that we can reconnect in plaintext. */
@@ -3455,7 +3455,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
 
     SSL_CTX_free(ctx);
     if (rc != 1) {
-        hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+        hndl->sslerr = cdb2buf_lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sessobj = NULL;
@@ -3471,7 +3471,7 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
 {
     char name[128];
     char res[32];
-    SBUF2 *ss = NULL;
+    COMDB2BUF *ss = NULL;
     int rc, fd;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
@@ -3486,30 +3486,30 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
                              hndl->connect_timeout);
     if (fd < 0)
         return -1;
-    ss = sbuf2open(fd, 0);
+    ss = cdb2buf_open(fd, 0);
     if (ss == 0) {
         close(fd);
         return -1;
     }
     const int timeout = hndl->api_call_timeout < hndl->connect_timeout ? hndl->api_call_timeout : hndl->connect_timeout;
-    sbuf2settimeout(ss, timeout, timeout);
-    sbuf2printf(ss, "rte %s\n", name);
-    sbuf2flush(ss);
+    cdb2buf_settimeout(ss, timeout, timeout);
+    cdb2buf_printf(ss, "rte %s\n", name);
+    cdb2buf_flush(ss);
     res[0] = '\0';
-    sbuf2gets(res, sizeof(res), ss);
+    cdb2buf_gets(res, sizeof(res), ss);
     debugprint("rte '%s' returns res=%s", name, res);
     if (res[0] != '0') { // character '0' is indication of success
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         return -1;
     }
-    sbuf2free(ss);
+    cdb2buf_free(ss);
     return fd;
 }
 
 static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
 {
     int rc = 0;
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
     void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
@@ -3527,18 +3527,18 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
     if (*endptr != 0 || fd < 3) { /* shouldn't be stdin, stdout, stderr */
         debugprint("ERROR: %s:%d invalid fd:%s", __func__, __LINE__, hndl->type);
     } else {
-        if ((sb = sbuf2open(fd, SBUF2_NO_CLOSE_FD)) == 0) {
+        if ((sb = cdb2buf_open(fd, CDB2BUF_NO_CLOSE_FD)) == 0) {
             rc = -1;
             goto after_callback;
         }
-        sbuf2printf(sb, hndl->is_admin ? "@newsql\n" : "newsql\n");
-        sbuf2flush(sb);
+        cdb2buf_printf(sb, hndl->is_admin ? "@newsql\n" : "newsql\n");
+        cdb2buf_flush(sb);
     }
 
-    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
+    cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         rc = -1;
         goto after_callback;
     }
@@ -3575,7 +3575,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int idx)
     int fd = -1;
     int rc = 0;
     int nprinted;
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
     void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
@@ -3609,7 +3609,7 @@ retry_newsql_connect:
         } else {
             sb = cdb2_socket_pool_get(hndl, hndl->newsql_typestr, hndl->dbnum, NULL, &use_local_cache);
         }
-        fd = sbuf2fileno(sb);
+        fd = cdb2buf_fileno(sb);
         get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     }
 
@@ -3639,19 +3639,19 @@ retry_newsql_connect:
             rc = -1;
             goto after_callback;
         }
-        sb = sbuf2open(fd, 0);
+        sb = cdb2buf_open(fd, 0);
         if (sb == 0) {
             close(fd);
             rc = -1;
             goto after_callback;
         }
         if (hndl->is_admin)
-            sbuf2printf(sb, "@");
-        sbuf2printf(sb, "newsql\n");
-        sbuf2flush(sb);
+            cdb2buf_printf(sb, "@");
+        cdb2buf_printf(sb, "newsql\n");
+        cdb2buf_flush(sb);
     } else {
         if (send_reset(sb, 0) != 0) {
-            sbuf2close(sb);
+            cdb2buf_close(sb);
             if (hndl->is_admin)
                 fd = -1;
             sb = NULL;
@@ -3659,10 +3659,10 @@ retry_newsql_connect:
         }
     }
 
-    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
+    cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         rc = -1;
         goto after_callback;
     }
@@ -3684,11 +3684,11 @@ after_callback:
 
 static int cdb2_read_record_ignore_data(cdb2_hndl_tp *hndl, uint8_t **buf, int *count, int *type)
 {
-    SBUF2 *sb = hndl->sb;
+    COMDB2BUF *sb = hndl->sb;
     struct newsqlheader hdr = {0};
     int rc;
 reread:
-    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+    rc = cdb2buf_fread((char *)&hdr, 1, sizeof(hdr), sb);
     if (rc != sizeof(hdr))
         return -1;
     hdr.type = ntohl(hdr.type);
@@ -3699,7 +3699,7 @@ reread:
     if (hdr.type != RESPONSE_HEADER__SQL_RESPONSE)
         return -1;
     *buf = realloc(*buf, hdr.length);
-    rc = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
+    rc = cdb2buf_fread((char *)(*buf), 1, hdr.length, sb);
     if (rc != hdr.length)
         return -1;
     if (hdr.state == NEWSQL_SERVER_STATE_NONE) {
@@ -3724,7 +3724,7 @@ static int cdb2_discard_unread_data(cdb2_hndl_tp *hndl)
     int count = 0;
     if (!cdb2_discard_unread_socket_data)
         return 1;
-    sbuf2setnowait(hndl->sb, 1); // Will be reset when we get it back from pool
+    cdb2buf_setnowait(hndl->sb, 1); // Will be reset when we get it back from pool
     while ((rc = cdb2_read_record_ignore_data(hndl, &hndl->last_buf, &count, &type)) == 0 &&
            (type != RESPONSE_TYPE__LAST_ROW) && count < cdb2_max_discard_records)
         ;
@@ -3734,7 +3734,7 @@ static int cdb2_discard_unread_data(cdb2_hndl_tp *hndl)
     printf("Discarded socket %d Discarded %d Max %d type %d\n", (type != RESPONSE_TYPE__LAST_ROW), count,
            cdb2_max_discard_records, type);
 #endif
-    sbuf2setnowait(hndl->sb, 0);
+    cdb2buf_setnowait(hndl->sb, 0);
 
     if (cdb2_alarm_unread_socket_data && publish_event_cb && publish_event_cb->publish_event &&
         type != RESPONSE_TYPE__LAST_ROW && count > 0)
@@ -3744,14 +3744,14 @@ static int cdb2_discard_unread_data(cdb2_hndl_tp *hndl)
     return (type != RESPONSE_TYPE__LAST_ROW);
 }
 
-static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
+static int newsql_disconnect(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int line)
 {
     if (sb == NULL)
         return 0;
 
     debugprint("disconnecting from %s, line %d\n",
                hndl->hosts[hndl->connected_host], line);
-    int fd = sbuf2fileno(sb);
+    int fd = cdb2buf_fileno(sb);
 
     int timeoutms = 10 * 1000;
     if (hndl->is_admin || hndl->is_rejected ||
@@ -3766,10 +3766,10 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
                  fd, hndl->is_admin, hndl->is_rejected, hndl->firstresponse,
                  (hndl->lastresponse ? hndl->lastresponse->response_type : -1), hndl->sent_client_info,
                  donate_unused_connections, hndl->in_trans, hndl->pid);
-        sbuf2close(sb);
+        cdb2buf_close(sb);
     } else {
         int donated = local_connection_cache_put(hndl, hndl->newsql_typestr, sb);
-        if (!donated && (sbuf2free(sb) == 0)) {
+        if (!donated && (cdb2buf_free(sb) == 0)) {
             cdb2_socket_pool_donate_ext(hndl, hndl->newsql_typestr, fd, timeoutms / 1000, hndl->dbnum);
         }
     }
@@ -3784,7 +3784,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
 {
     char name[128]; /* app/service/dbname */
     char res[32];
-    SBUF2 *ss = NULL;
+    COMDB2BUF *ss = NULL;
     int rc, fd, port = -1;
     bzero(name, sizeof(name));
     void *callbackrc;
@@ -3842,12 +3842,12 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
         port = -1;
         goto after_callback;
     }
-    ss = sbuf2open(fd, 0);
+    ss = cdb2buf_open(fd, 0);
     if (ss == 0) {
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n",
                  __func__, __LINE__);
         close(fd);
-        debugprint("sbuf2open returned 0\n");
+        debugprint("cdb2buf_open returned 0\n");
         port = -1;
         goto after_callback;
     }
@@ -3862,14 +3862,14 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
         }
         connect_timeout = get_call_timeout(hndl, connect_timeout);
     }
-    sbuf2settimeout(ss, connect_timeout, connect_timeout);
-    sbuf2printf(ss, "get %s\n", name);
-    sbuf2flush(ss);
+    cdb2buf_settimeout(ss, connect_timeout, connect_timeout);
+    cdb2buf_printf(ss, "get %s\n", name);
+    cdb2buf_flush(ss);
     res[0] = 0;
-    sbuf2gets(res, sizeof(res), ss);
+    cdb2buf_gets(res, sizeof(res), ss);
     debugprint("get '%s' returns res='%s'\n", name, res);
     if (res[0] == '\0') {
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
         port = -1;
@@ -3881,7 +3881,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
                  "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
         port = -1;
     }
-    sbuf2close(ss);
+    cdb2buf_close(ss);
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_PMUX, e)) != NULL) {
@@ -4026,14 +4026,14 @@ static inline void ack(cdb2_hndl_tp *hndl)
     struct newsqlheader hdr = {.type =
                                    htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)};
 
-    sbuf2write((void *)&hdr, sizeof(hdr), hndl->sb);
-    sbuf2flush(hndl->sb);
+    cdb2buf_write((void *)&hdr, sizeof(hdr), hndl->sb);
+    cdb2buf_flush(hndl->sb);
 }
 
 static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *type)
 {
     /* Got response */
-    SBUF2 *sb = hndl->sb;
+    COMDB2BUF *sb = hndl->sb;
     struct newsqlheader hdr = {0};
     int rc = 0; /* Make compilers happy. */
 
@@ -4060,9 +4060,9 @@ retry:
                      __LINE__);
             rc = -1;
         }
-        sbuf2settimeout(sb, socket_timeout, socket_timeout);
+        cdb2buf_settimeout(sb, socket_timeout, socket_timeout);
     }
-    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+    rc = cdb2buf_fread((char *)&hdr, 1, sizeof(hdr), sb);
     debugprint("READ HDR rc=%d, sizeof(hdr)=(%zu):\n", rc, sizeof(hdr));
 
 #ifdef CDB2API_TEST
@@ -4078,8 +4078,8 @@ retry:
            An invalid client (e.g., a revoked cert) may see a successful
            handshake but encounter an error when reading data from the server.
            Catch the error here. */
-        if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
-            sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+        if ((hndl->sslerr = cdb2buf_lasterror(sb, NULL, 0)))
+            cdb2buf_lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         goto after_callback;
     }
 
@@ -4163,7 +4163,7 @@ retry:
         goto after_callback;
     }
 
-    rc = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
+    rc = cdb2buf_fread((char *)(*buf), 1, hdr.length, sb);
     debugprint("READ MSG rc=%d hdr.length(%d) type(%d)\n", rc, hdr.length, hdr.type);
 
     *len = hdr.length;
@@ -4202,10 +4202,10 @@ retry:
                                        .compression = ntohl(0),
                                        .length = ntohl(loc_len)};
 
-            sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-            sbuf2write((char *)locbuf, loc_len, hndl->sb);
+            cdb2buf_write((char *)&hdr, sizeof(hdr), hndl->sb);
+            cdb2buf_write((char *)locbuf, loc_len, hndl->sb);
 
-            int rc = sbuf2flush(hndl->sb);
+            int rc = cdb2buf_flush(hndl->sb);
             free(locbuf);
             if (rc < 0) {
                 rc = -1;
@@ -4228,7 +4228,7 @@ retry:
 after_callback:
     // reset here
     if (CDB2_ENFORCE_API_CALL_TIMEOUT) {
-        sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
+        cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
     }
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
         callbackrc =
@@ -4316,15 +4316,15 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
     struct newsqlheader hdr = {
         .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY), .compression = ntohl(0), .length = ntohl(len)};
 
-    sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-    sbuf2write((char *)buf, len, hndl->sb);
+    cdb2buf_write((char *)&hdr, sizeof(hdr), hndl->sb);
+    cdb2buf_write((char *)buf, len, hndl->sb);
 
-    int rc = sbuf2flush(hndl->sb);
+    int rc = cdb2buf_flush(hndl->sb);
     free(buf);
 
     if (rc < 0) {
         sprintf(hndl->errstr, "%s: Error writing to other master", __func__);
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         return -1;
     }
@@ -4333,9 +4333,9 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
         return 0;
     }
 
-    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), hndl->sb);
+    rc = cdb2buf_fread((char *)&hdr, 1, sizeof(hdr), hndl->sb);
     if (rc != sizeof(hdr)) {
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         return -1;
     }
@@ -4344,10 +4344,10 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
     char *p = malloc(hdr.length);
-    rc = sbuf2fread(p, 1, hdr.length, hndl->sb);
+    rc = cdb2buf_fread(p, 1, hdr.length, hndl->sb);
 
     if (rc != hdr.length) {
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         free(p);
         return -1;
@@ -4355,7 +4355,7 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
     CDB2DISTTXNRESPONSE *disttxn_response = cdb2__disttxnresponse__unpack(NULL, hdr.length, (const unsigned char *)p);
 
     if (disttxn_response == NULL) {
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         free(p);
         return -1;
@@ -4400,10 +4400,10 @@ static int cdb2_effects_request(cdb2_hndl_tp *hndl)
                                .compression = ntohl(0),
                                .length = ntohl(len)};
 
-    sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-    sbuf2write((char *)buf, len, hndl->sb);
+    cdb2buf_write((char *)&hdr, sizeof(hdr), hndl->sb);
+    cdb2buf_write((char *)buf, len, hndl->sb);
 
-    int rc = sbuf2flush(hndl->sb);
+    int rc = cdb2buf_flush(hndl->sb);
     free(buf);
     if (rc < 0)
         return -1;
@@ -4415,7 +4415,7 @@ retry_read:
     if (rc) {
         free((void *)hndl->first_buf);
         hndl->first_buf = NULL;
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         return -1;
     }
@@ -4449,16 +4449,16 @@ retry_read:
     return 0;
 }
 
-static int wait_for_write(SBUF2 *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl)
+static int wait_for_write(COMDB2BUF *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl)
 {
-    int fd = sbuf2fileno(sb);
+    int fd = cdb2buf_fileno(sb);
     if (fd < 0)
         return -1;
     if (read(fd, NULL, 0) != 0)
         return -1;
 
     while (1) {
-        if (!sbuf2rd_pending(sb)) {
+        if (!cdb2buf_rd_pending(sb)) {
             struct pollfd p = {.fd = fd, .events = POLLIN | POLLOUT};
             int rc = poll(&p, 1, hndl->socket_timeout);
             if (rc != 1) {
@@ -4467,7 +4467,7 @@ static int wait_for_write(SBUF2 *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hnd
                 break;
             }
             if (p.revents & POLLOUT) {
-                return sbuf2flush(sb);
+                return cdb2buf_flush(sb);
             }
             if ((p.revents & POLLIN) == 0) {
                 fprintf(stderr, "%s: Unexpected poll event\n", __func__);
@@ -4475,7 +4475,7 @@ static int wait_for_write(SBUF2 *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hnd
             }
         }
         struct newsqlheader hdr = {0};
-        int rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+        int rc = cdb2buf_fread((char *)&hdr, 1, sizeof(hdr), sb);
         if (rc != sizeof(hdr)) {
             fprintf(stderr, "%s: Failed to read heartbeat rc:%d\n", __func__, rc);
             break;
@@ -4497,7 +4497,7 @@ static int wait_for_write(SBUF2 *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hnd
     return -1;
 }
 
-static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *sb, const char *dbname, const char *sql,
+static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2BUF *sb, const char *dbname, const char *sql,
                            int n_set_commands, int n_set_commands_sent, char **set_commands, int n_bindvars,
                            CDB2SQLQUERY__Bindvalue **bindvars, int ntypes, const int *types, int is_begin,
                            int skip_nrows, int retries_done, int do_append, int fromline)
@@ -4669,22 +4669,22 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
                                .length = ntohl(len)};
 
     // finally send header and query
-    rc = sbuf2write((char *)&hdr, sizeof(hdr), sb);
+    rc = cdb2buf_write((char *)&hdr, sizeof(hdr), sb);
     if (rc != sizeof(hdr))
-        debugprint("sbuf2write rc = %d\n", rc);
+        debugprint("cdb2buf_write rc = %d\n", rc);
 
-    rc = sbuf2write((char *)buf, len, sb);
+    rc = cdb2buf_write((char *)buf, len, sb);
     if (rc != len)
-        debugprint("sbuf2write rc = %d (len = %d)\n", rc, len);
+        debugprint("cdb2buf_write rc = %d (len = %d)\n", rc, len);
 
     struct timeval start;
     if (check_hb_on_blocked_write)
         gettimeofday(&start, NULL);
 
-    rc = sbuf2flush(sb);
+    rc = cdb2buf_flush(sb);
 
     if (check_hb_on_blocked_write && rc < 0) {
-        // Failed writing to server. Don't know if sbuf2flush failed due to
+        // Failed writing to server. Don't know if cdb2buf_flush failed due to
         // a timeout. Make a best effort guess:
         struct timeval end;
         gettimeofday(&end, NULL);
@@ -4698,7 +4698,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
     }
 
     if (rc < 0) {
-        debugprint("sbuf2flush rc = %d\n", rc);
+        debugprint("cdb2buf_flush rc = %d\n", rc);
         if (on_heap)
             free(buf);
         rc = -1;
@@ -5285,7 +5285,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     debugprint("cdb2_send_query rc = %d, setting in_trans to 1\n", rc);
 
     if (rc != 0) {
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         debugprint("send_query host=%s rc=%d; returning 1\n", host, rc);
         return 1;
@@ -5294,7 +5294,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     int type = 0;
     rc = cdb2_read_record(hndl, &hndl->first_buf, &len, &type);
     if (rc) {
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         free(hndl->first_buf);
         hndl->first_buf = NULL;
@@ -5308,7 +5308,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             return 1;
         }
         /* The master sent info about nodes that might be coherent. */
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         CDB2DBINFORESPONSE *dbinfo_response = NULL;
         dbinfo_response =
@@ -5332,7 +5332,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     } else {
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
-        sbuf2close(hndl->sb);
+        cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
         return 1;
     }
@@ -5359,9 +5359,9 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                                    .length = ntohl(item->len)};
         debugprint("resending '%s' to %s\n", item->sql, host);
 
-        sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-        sbuf2write((char *)item->buf, item->len, hndl->sb);
-        sbuf2flush(hndl->sb);
+        cdb2buf_write((char *)&hdr, sizeof(hdr), hndl->sb);
+        cdb2buf_write((char *)item->buf, item->len, hndl->sb);
+        cdb2buf_flush(hndl->sb);
 
         clear_responses(hndl);
 
@@ -5376,7 +5376,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
             free(hndl->first_buf);
             hndl->first_buf = NULL;
-            sbuf2close(hndl->sb);
+            cdb2buf_close(hndl->sb);
             hndl->sb = NULL;
             return 1;
         }
@@ -5385,7 +5385,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                 cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
         } else {
             snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Can't read response from the db\n", __func__, __LINE__);
-            sbuf2close(hndl->sb);
+            cdb2buf_close(hndl->sb);
             hndl->sb = NULL;
             return 1;
         }
@@ -5990,7 +5990,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql, int
     } else if (hndl->ack) {
         hndl->ack = 0;
         if (hndl->sb) {
-            int fd = sbuf2fileno(hndl->sb);
+            int fd = cdb2buf_fileno(hndl->sb);
             shutdown(fd, SHUT_RDWR);
         }
     } else {
@@ -6138,7 +6138,7 @@ after_delay:
     if (fail_sb) {
         --fail_sb;
         if (hndl->sb)
-            sbuf2close(hndl->sb);
+            cdb2buf_close(hndl->sb);
         hndl->sb = NULL;
     }
 #endif
@@ -6612,7 +6612,7 @@ read_record:
               ((hndl->in_trans && hndl->snapshot_file) || commit_file)))) {
 
             if (hndl->sb)
-                sbuf2close(hndl->sb);
+                cdb2buf_close(hndl->sb);
 
             hndl->sb = NULL;
 
@@ -7421,8 +7421,8 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
             comdb2db_name, cluster, hndl->policy);
     }
 
-    SBUF2 *ss = cdb2_socket_pool_get(hndl, newsql_typestr, comdb2db_num, NULL, NULL);
-    int fd = sbuf2fileno(ss);
+    COMDB2BUF *ss = cdb2_socket_pool_get(hndl, newsql_typestr, comdb2db_num, NULL, NULL);
+    int fd = cdb2buf_fileno(ss);
     get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
@@ -7450,7 +7450,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
             snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Can't connect to host %s port %d", __func__, host, port);
             return -1;
         }
-        ss = sbuf2open(fd, 0);
+        ss = cdb2buf_open(fd, 0);
         if (ss == 0) {
             close(fd);
             if (find_shards) {
@@ -7470,12 +7470,12 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
             return -1;
         }
     }
-    sbuf2settimeout(ss, hndl->socket_timeout, hndl->socket_timeout);
+    cdb2buf_settimeout(ss, hndl->socket_timeout, hndl->socket_timeout);
     if (is_sockfd == 0) {
         if (hndl->is_admin)
-            sbuf2printf(ss, "@");
-        sbuf2printf(ss, "newsql\n");
-        sbuf2flush(ss);
+            cdb2buf_printf(ss, "@");
+        cdb2buf_printf(ss, "newsql\n");
+        cdb2buf_flush(ss);
     } else {
         rc = send_reset(ss, 0);
         if (rc != 0) {
@@ -7503,7 +7503,7 @@ free_vars:
 
     if (rc != 0) {
         sprintf(hndl->errstr, "%s: Can't send query to comdb2db", __func__);
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         return -1;
     }
     uint8_t *p = NULL;
@@ -7519,7 +7519,7 @@ free_vars:
 #endif
     if (rc) {
         debugprint("cdb2_read_record rc = %d\n", rc);
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "%s:%d  Invalid sql response from db %s \n", __func__,
                  __LINE__, comdb2db_name);
@@ -7547,7 +7547,7 @@ free_vars:
 #ifdef CDB2API_TEST_DEBUG
         printf("*** %s", hndl->errstr);
 #endif
-        sbuf2close(ss);
+        cdb2buf_close(ss);
         free_events(&tmp);
         return -1;
     }
@@ -7575,7 +7575,7 @@ free_vars:
             snprintf(hndl->errstr, sizeof(hndl->errstr),
                      "%s: Can't read dbinfo response from %s \n", __func__,
                      comdb2db_name);
-            sbuf2close(ss);
+            cdb2buf_close(ss);
 #ifdef CDB2API_TEST_DEBUG
             printf("*** %s", hndl->errstr);
 #endif
@@ -7620,7 +7620,7 @@ free_vars:
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
     int timeoutms = 10 * 1000;
-    if (sbuf2free(ss) == 0)
+    if (cdb2buf_free(ss) == 0)
         cdb2_socket_pool_donate_ext(hndl, newsql_typestr, fd, timeoutms / 1000, comdb2db_num);
     free_events(&tmp);
     return 0;
@@ -7635,7 +7635,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
                              int *num_valid_hosts, int *num_valid_sameroom_hosts)
 {
     char newsql_typestr[TYPESTR_LEN];
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
     int fd = -1;
     int rc = 0; /* Make compilers happy. */
     int port = 0;
@@ -7668,7 +7668,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
 again:
     connection_was_cached = 0;
     sb = cdb2_socket_pool_get(hndl, newsql_typestr, dbnum, NULL, &connection_was_cached);
-    fd = sbuf2fileno(sb);
+    fd = cdb2buf_fileno(sb);
     get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     debugprint("cdb2_socket_pool_get fd %d, host '%s'\n", fd, host);
     if (fd < 0) {
@@ -7705,7 +7705,7 @@ again:
             rc = -1;
             goto after_callback;
         }
-        sb = sbuf2open(fd, 0);
+        sb = cdb2buf_open(fd, 0);
         if (sb == 0) {
             snprintf(hndl->errstr, sizeof(hndl->errstr),
                      "%s:%d out of memory\n", __func__, __LINE__);
@@ -7714,12 +7714,12 @@ again:
             goto after_callback;
         }
         if (hndl->is_admin)
-            sbuf2printf(sb, "@");
-        sbuf2printf(sb, "newsql\n");
-        sbuf2flush(sb);
+            cdb2buf_printf(sb, "@");
+        cdb2buf_printf(sb, "newsql\n");
+        cdb2buf_flush(sb);
     }
 
-    sbuf2settimeout(sb, hndl->comdb2db_timeout, hndl->comdb2db_timeout);
+    cdb2buf_settimeout(sb, hndl->comdb2db_timeout, hndl->comdb2db_timeout);
 
     CDB2QUERY query = CDB2__QUERY__INIT;
 
@@ -7735,13 +7735,13 @@ again:
                                .compression = ntohl(0),
                                .length = ntohl(len)};
 
-    sbuf2write((char *)&hdr, sizeof(hdr), sb);
-    sbuf2write((char *)buf, len, sb);
+    cdb2buf_write((char *)&hdr, sizeof(hdr), sb);
+    cdb2buf_write((char *)buf, len, sb);
 
-    sbuf2flush(sb);
+    cdb2buf_flush(sb);
     free(buf);
 
-    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+    rc = cdb2buf_fread((char *)&hdr, 1, sizeof(hdr), sb);
 #ifdef CDB2API_TEST
     if (fail_dbinfo_invalid_header) {
         --fail_dbinfo_invalid_header;
@@ -7749,12 +7749,12 @@ again:
     }
 #endif
     if (rc != sizeof(hdr)) {
-        LOG_CALL("%s: failed reading hdr fd %d rc %d\n", __func__, sbuf2fileno(sb), rc);
+        LOG_CALL("%s: failed reading hdr fd %d rc %d\n", __func__, cdb2buf_fileno(sb), rc);
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d  Invalid header from db %s \n", __func__, __LINE__, dbname);
 #ifdef CDB2API_TEST_DEBUG
         printf("*** %s", hndl->errstr);
 #endif
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         rc = -1;
         if (connection_was_cached && retry_dbinfo_on_cached_connection_failure)
             goto again;
@@ -7770,13 +7770,13 @@ again:
     p = malloc(hdr.length);
     if (!p) {
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory", __func__, __LINE__);
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         free(p);
         rc = -1;
         goto after_callback;
     }
 
-    rc = sbuf2fread(p, 1, hdr.length, sb);
+    rc = cdb2buf_fread(p, 1, hdr.length, sb);
 #ifdef CDB2API_TEST
     if (fail_dbinfo_invalid_response) {
         --fail_dbinfo_invalid_response;
@@ -7790,7 +7790,7 @@ again:
 #ifdef CDB2API_TEST_DEBUG
         printf("*** %s", hndl->errstr);
 #endif
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         free(p);
         rc = -1;
         goto after_callback;
@@ -7809,7 +7809,7 @@ again:
 #ifdef CDB2API_TEST_DEBUG
         printf("*** %s", hndl->errstr);
 #endif
-        sbuf2close(sb);
+        cdb2buf_close(sb);
         free(p);
         rc = -1;
         goto after_callback;
@@ -7826,7 +7826,7 @@ again:
     int timeoutms = 10 * 1000;
 
     int donated = local_connection_cache_put(hndl, newsql_typestr, sb);
-    if (!donated && (sbuf2free(sb) == 0)) {
+    if (!donated && (cdb2buf_free(sb) == 0)) {
         cdb2_socket_pool_donate_ext(hndl, newsql_typestr, fd, timeoutms / 1000, dbnum);
     }
 
@@ -8101,38 +8101,38 @@ struct db_info {
     int num;
 };
 
-static void hndl_set_sbuf(cdb2_hndl_tp *hndl, SBUF2 *sb)
+static void hndl_set_comdb2buf(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
 {
-    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
+    cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
 }
 
-static int init_connection(cdb2_hndl_tp *hndl, SBUF2 *buf)
+static int init_connection(cdb2_hndl_tp *hndl, COMDB2BUF *buf)
 {
-    LOG_CALL("%s: init fd %d\n", __func__, sbuf2fileno(buf));
+    LOG_CALL("%s: init fd %d\n", __func__, cdb2buf_fileno(buf));
     if (send_reset(buf, 0) != 0) {
-        sbuf2close(buf);
+        cdb2buf_close(buf);
         return -1;
     }
     set_cdb2_timeouts(hndl);
-    hndl_set_sbuf(hndl, buf);
+    hndl_set_comdb2buf(hndl, buf);
 #ifdef CDB2API_TEST
     ++num_skip_dbinfo;
 #endif
     return 0;
 }
 
-static SBUF2 *sockpool_get(cdb2_hndl_tp *hndl)
+static COMDB2BUF *sockpool_get(cdb2_hndl_tp *hndl)
 {
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
     int use_local_cache;
     set_cdb2_timeouts(hndl);
     snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr), "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type,
              hndl->policy);
     sb = cdb2_socket_pool_get(hndl, hndl->newsql_typestr, hndl->dbnum, NULL, &use_local_cache);
-    get_host_and_port_from_fd(sbuf2fileno(sb), hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
+    get_host_and_port_from_fd(cdb2buf_fileno(sb), hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     return sb;
 }
 
@@ -8167,7 +8167,7 @@ static int get_connection_int(cdb2_hndl_tp *hndl, int *err)
     if (get_dbinfo || *err)
         return -1;
     before_discovery(hndl);
-    SBUF2 *sb = sockpool_get(hndl);
+    COMDB2BUF *sb = sockpool_get(hndl);
     after_discovery(hndl);
     if (sb == NULL)
         return -1;
@@ -8933,7 +8933,7 @@ out:
         hndl->is_invalid = 1;
     LOG_CALL("cdb2_open(dbname: \"%s\", type: \"%s\", flags: %x) = %d => %p\n", dbname, type, hndl->flags, rc, *handle);
     if (rc == 0 && hndl->sb != NULL) {
-        LOG_CALL("cdb2_open success %p fd %d\n", *handle, sbuf2fileno(hndl->sb));
+        LOG_CALL("cdb2_open success %p fd %d\n", *handle, cdb2buf_fileno(hndl->sb));
     }
     return rc;
 }

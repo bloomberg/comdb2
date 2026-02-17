@@ -131,7 +131,7 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
         sc_printf(s, "exhausted versions. forcing rebuild at %d\n",
                   newdb->schema_version);
         if (s->dryrun)
-            sbuf2printf(s->sb, ">table version: %d. will have to rebuild.\n",
+            cdb2buf_printf(s->sb, ">table version: %d. will have to rebuild.\n",
                         newdb->schema_version);
         s->force_rebuild = 1;
         changed = SC_TAG_CHANGE;

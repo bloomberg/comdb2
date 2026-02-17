@@ -30,14 +30,14 @@
 #include <unistd.h>
 
 #include <hostname_support.h>
-#include <sbuf2.h>
+#include <comdb2buf.h>
 #if SBUF2_SERVER
 #include <sys_wrap.h>
 #endif
 
 #if SBUF2_SERVER
-#  ifndef SBUF2_DFL_SIZE
-#    define SBUF2_DFL_SIZE 1024ULL
+#  ifndef CDB2BUF_DFL_SIZE
+#    define CDB2BUF_DFL_SIZE 1024ULL
 #  endif
 #  ifdef PER_THREAD_MALLOC
 #    include "mem_util.h"
@@ -46,13 +46,13 @@
 #    define free comdb2_free
 #  endif
 #else /* SBUF2_SERVER */
-#  ifndef SBUF2_DFL_SIZE
-#    define SBUF2_DFL_SIZE (1024ULL * 128ULL)
+#  ifndef CDB2BUF_DFL_SIZE
+#    define CDB2BUF_DFL_SIZE (1024ULL * 128ULL)
 #  endif
 #endif /* !SBUF2_SERVER */
 
-#if SBUF2_UNGETC
-#  define SBUF2UNGETC_BUF_MAX 8 /* see also net/net_evbuffer.c */
+#if CDB2BUF_UNGETC
+#  define CDB2BUF_UNGETC_BUF_MAX 8 /* see also net/net_evbuffer.c */
 #endif
 
 #ifdef my_ssl_println
@@ -61,11 +61,11 @@
 #ifdef my_ssl_eprintln
 #undef my_ssl_eprintln
 #endif
-#define my_ssl_println(fmt, ...) ssl_println("SBUF2", fmt, ##__VA_ARGS__)
+#define my_ssl_println(fmt, ...) ssl_println("COMDB2BUF", fmt, ##__VA_ARGS__)
 #define my_ssl_eprintln(fmt, ...)                                              \
-    ssl_eprintln("SBUF2", "%s: " fmt, __func__, ##__VA_ARGS__)
+    ssl_eprintln("COMDB2BUF", "%s: " fmt, __func__, ##__VA_ARGS__)
 
-struct sbuf2 {
+struct comdb2buf {
     int fd;
     int flags;
 
@@ -76,14 +76,14 @@ struct sbuf2 {
     int rhd, rtl;
     int whd, wtl;
 
-#if SBUF2_UNGETC
+#if CDB2BUF_UNGETC
     /* Server always has these. */
-    int ungetc_buf[SBUF2UNGETC_BUF_MAX];
+    int ungetc_buf[CDB2BUF_UNGETC_BUF_MAX];
     int ungetc_buf_len;
 #endif
 
-    sbuf2writefn write;
-    sbuf2readfn read;
+    cdb2buf_writefn write;
+    cdb2buf_readfn read;
 
     unsigned int lbuf;
     unsigned char *rbuf;
@@ -107,15 +107,15 @@ struct sbuf2 {
     char sslerr[120];
 };
 
-int SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_fileno)(COMDB2BUF *sb)
 {
     if (sb == NULL)
         return -1;
     return sb->fd;
 }
 
-/*just free SBUF2.  don't flush or close fd*/
-int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
+/*just free COMDB2BUF.  don't flush or close fd*/
+int CDB2BUF_FUNC(cdb2buf_free)(COMDB2BUF *sb)
 {
     if (sb == 0)
         return -1;
@@ -123,7 +123,7 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     int rc = 0;
     /* Gracefully shutdown SSL to make the
        fd re-usable. Close the fd if it fails. */
-    if (!(sb->flags & SBUF2_NO_SSL_CLOSE)) {
+    if (!(sb->flags & CDB2BUF_NO_SSL_CLOSE)) {
         rc = sslio_close(sb, 1);
         if (rc) {
 #if SBUF2_SERVER
@@ -161,23 +161,23 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     return rc;
 }
 
-/* flush output, close fd, and free SBUF2.*/
-int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
+/* flush output, close fd, and free COMDB2BUF.*/
+int CDB2BUF_FUNC(cdb2buf_close)(COMDB2BUF *sb)
 {
     if (sb == 0)
         return -1;
     if (sb->fd < 0)
         return -1;
 
-    if (!(sb->flags & SBUF2_NO_FLUSH))
-        sbuf2flush(sb);
+    if (!(sb->flags & CDB2BUF_NO_FLUSH))
+        cdb2buf_flush(sb);
 
     /* We need to send "close notify" alert
        before closing the underlying fd. */
-    if (!(sb->flags & SBUF2_NO_SSL_CLOSE))
-        sslio_close(sb, (sb->flags & SBUF2_NO_CLOSE_FD));
+    if (!(sb->flags & CDB2BUF_NO_SSL_CLOSE))
+        sslio_close(sb, (sb->flags & CDB2BUF_NO_CLOSE_FD));
 
-    if (!(sb->flags & SBUF2_NO_CLOSE_FD)) {
+    if (!(sb->flags & CDB2BUF_NO_CLOSE_FD)) {
 #if SBUF2_SERVER
         Close(sb->fd);
 #else
@@ -185,11 +185,11 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 #endif
     }
 
-    return sbuf2free(sb);
+    return cdb2buf_free(sb);
 }
 
 /* flush output */
-int SBUF2_FUNC(sbuf2flush)(SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb)
 {
     int cnt = 0, rc, len;
 
@@ -228,7 +228,7 @@ ssl_downgrade:
     return cnt;
 }
 
-int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
+int CDB2BUF_FUNC(cdb2buf_putc)(COMDB2BUF *sb, char c)
 {
     int rc;
     if (sb == 0)
@@ -242,7 +242,7 @@ int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
     }
 
     if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) || (sb->whd == sb->wtl - 1)) {
-        rc = sbuf2flush(sb);
+        rc = cdb2buf_flush(sb);
         if (rc < 0)
             return rc;
     }
@@ -250,25 +250,25 @@ int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
     sb->whd++;
     if (sb->whd >= sb->lbuf)
         sb->whd = 0;
-    if ((sb->flags & SBUF2_WRITE_LINE) && c == '\n') {
-        rc = sbuf2flush(sb);
+    if ((sb->flags & CDB2BUF_WRITE_LINE) && c == '\n') {
+        rc = cdb2buf_flush(sb);
         if (rc < 0)
             return rc;
     }
     return 1;
 }
 
-int SBUF2_FUNC(sbuf2puts)(SBUF2 *sb, char *string)
+int CDB2BUF_FUNC(cdb2buf_puts)(COMDB2BUF *sb, char *string)
 {
     int rc, ii;
     if (sb == 0)
         return -1;
     for (ii = 0; string[ii]; ii++) {
-        rc = sbuf2putc(sb, string[ii]);
+        rc = cdb2buf_putc(sb, string[ii]);
         if (rc < 0)
             return rc;
     }
-    if (sb->flags & SBUF2_DEBUG_LAST_LINE) {
+    if (sb->flags & CDB2BUF_DEBUG_LAST_LINE) {
         if (sb->dbgout)
             free(sb->dbgout);
         sb->dbgout = strdup(string);
@@ -277,7 +277,7 @@ int SBUF2_FUNC(sbuf2puts)(SBUF2 *sb, char *string)
 }
 
 /* returns num items written || <0 for error*/
-int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_write)(char *ptr, int nbytes, COMDB2BUF *sb)
 {
     int rc, off, left, written = 0;
     if (sb == 0)
@@ -295,7 +295,7 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
 
         if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) ||
             (sb->whd == sb->wtl - 1)) {
-            rc = sbuf2flush(sb);
+            rc = cdb2buf_flush(sb);
             if (rc < 0)
                 return written;
         }
@@ -328,18 +328,18 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
 }
 
 /* returns num items written || <0 for error*/
-int SBUF2_FUNC(sbuf2fwrite)(char *ptr, int size, int nitems, SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_fwrite)(char *ptr, int size, int nitems, COMDB2BUF *sb)
 {
     int rc, ii, jj, off;
     if (sb == 0)
         return -1;
     off = 0;
-    if (!(sb->flags & SBUF2_WRITE_LINE))
-        sbuf2write(ptr, size * nitems, sb);
+    if (!(sb->flags & CDB2BUF_WRITE_LINE))
+        cdb2buf_write(ptr, size * nitems, sb);
     else {
         for (ii = 0; ii < nitems; ii++) {
             for (jj = 0; jj < size; jj++) {
-                rc = sbuf2putc(sb, ptr[off++]);
+                rc = cdb2buf_putc(sb, ptr[off++]);
                 if (rc < 0)
                     return ii;
             }
@@ -348,7 +348,7 @@ int SBUF2_FUNC(sbuf2fwrite)(char *ptr, int size, int nitems, SBUF2 *sb)
     return nitems;
 }
 
-int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_getc)(COMDB2BUF *sb)
 {
     int rc, cc;
     if (sb == 0)
@@ -360,7 +360,7 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
         if (sb->rbuf == NULL)
             return -1;
     }
-#if SBUF2_UNGETC
+#if CDB2BUF_UNGETC
     if (sb->ungetc_buf_len > 0) {
         sb->ungetc_buf_len--;
         return sb->ungetc_buf[sb->ungetc_buf_len];
@@ -393,15 +393,15 @@ ssl_downgrade:
     return cc;
 }
 
-#if SBUF2_UNGETC
-int SBUF2_FUNC(sbuf2ungetc)(char c, SBUF2 *sb)
+#if CDB2BUF_UNGETC
+int CDB2BUF_FUNC(cdb2buf_ungetc)(char c, COMDB2BUF *sb)
 {
     int i;
     if (sb == NULL)
         return -1;
 
     i = c;
-    if (i == EOF || (sb->ungetc_buf_len == SBUF2UNGETC_BUF_MAX))
+    if (i == EOF || (sb->ungetc_buf_len == CDB2BUF_UNGETC_BUF_MAX))
         return EOF;
 
     sb->ungetc_buf[sb->ungetc_buf_len] = c;
@@ -411,14 +411,14 @@ int SBUF2_FUNC(sbuf2ungetc)(char c, SBUF2 *sb)
 #endif
 
 /*return null terminated string and len (or <0 if error)*/
-int SBUF2_FUNC(sbuf2gets)(char *out, int lout, SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_gets)(char *out, int lout, COMDB2BUF *sb)
 {
     int cc, ii;
     if (sb == 0)
         return -1;
     lout--;
     for (ii = 0; ii < lout;) {
-        cc = sbuf2getc(sb);
+        cc = cdb2buf_getc(sb);
         if (cc < 0) {
             if (ii == 0)
                 return cc; /*return error if first char*/
@@ -430,7 +430,7 @@ int SBUF2_FUNC(sbuf2gets)(char *out, int lout, SBUF2 *sb)
             break;
     }
     out[ii] = 0;
-    if (sb->flags & SBUF2_DEBUG_LAST_LINE) {
+    if (sb->flags & CDB2BUF_DEBUG_LAST_LINE) {
         if (sb->dbgin)
             free(sb->dbgin);
         sb->dbgin = strdup(out);
@@ -438,7 +438,7 @@ int SBUF2_FUNC(sbuf2gets)(char *out, int lout, SBUF2 *sb)
     return ii; /*return string len*/
 }
 
-int SBUF2_FUNC(sbuf2rd_pending)(SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_rd_pending)(COMDB2BUF *sb)
 {
     if (!sb || !sb->ssl)
         return 0;
@@ -446,8 +446,8 @@ int SBUF2_FUNC(sbuf2rd_pending)(SBUF2 *sb)
 }
 
 /* returns num items read || <0 for error*/
-static int sbuf2fread_int(char *ptr, int size, int nitems,
-                          SBUF2 *sb, int *was_timeout)
+static int cdb2buf_fread_int(char *ptr, int size, int nitems,
+                          COMDB2BUF *sb, int *was_timeout)
 {
     int need = size * nitems;
     int done = 0;
@@ -459,7 +459,7 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
             return -1;
     }
 
-#if SBUF2_UNGETC
+#if CDB2BUF_UNGETC
     if (sb->ungetc_buf_len > 0) {
         int from = sb->ungetc_buf_len;
         while (from && (done < need)) {
@@ -516,22 +516,22 @@ ssl_downgrade:
 }
 
 /* returns num items read || <0 for error*/
-int SBUF2_FUNC(sbuf2fread)(char *ptr, int size, int nitems, SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_fread)(char *ptr, int size, int nitems, COMDB2BUF *sb)
 {
-    return sbuf2fread_int(ptr, size, nitems, sb, NULL);
+    return cdb2buf_fread_int(ptr, size, nitems, sb, NULL);
 }
 
 /* returns num items read || <0 for error*/
-int SBUF2_FUNC(sbuf2fread_timeout)(char *ptr, int size, int nitems, SBUF2 *sb,
+int CDB2BUF_FUNC(cdb2buf_fread_timeout)(char *ptr, int size, int nitems, COMDB2BUF *sb,
                                    int *was_timeout)
 {
-    return sbuf2fread_int(ptr, size, nitems, sb, was_timeout);
+    return cdb2buf_fread_int(ptr, size, nitems, sb, was_timeout);
 }
 
-int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...)
+int CDB2BUF_FUNC(cdb2buf_printf)(COMDB2BUF *sb, const char *fmt, ...)
 {
     /*just do sprintf to local buf (limited to 1k),
-      and then emit through sbuf2*/
+      and then emit through comdb2buf*/
     char lbuf[1024];
     va_list ap;
     if (sb == 0)
@@ -539,10 +539,10 @@ int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
     va_end(ap);
-    return sbuf2puts(sb, lbuf);
+    return cdb2buf_puts(sb, lbuf);
 }
 
-int SBUF2_FUNC(sbuf2printfx)(SBUF2 *sb, char *buf, int lbuf, char *fmt, ...)
+int CDB2BUF_FUNC(cdb2buf_printfx)(COMDB2BUF *sb, char *buf, int lbuf, char *fmt, ...)
 {
     /*do sprintf to user supplied buffer*/
     int rc;
@@ -554,12 +554,12 @@ int SBUF2_FUNC(sbuf2printfx)(SBUF2 *sb, char *buf, int lbuf, char *fmt, ...)
     va_end(ap);
     if (rc < 0)
         return rc;
-    return sbuf2puts(sb, buf);
+    return cdb2buf_puts(sb, buf);
 }
 
 /* default read/write functions for sbuf, which implement timeouts and
  * retry on EINTR. */
-static int swrite_unsecure(SBUF2 *sb, const char *cc, int len)
+static int swrite_unsecure(COMDB2BUF *sb, const char *cc, int len)
 {
     int rc;
     struct pollfd pol;
@@ -587,7 +587,7 @@ static int swrite_unsecure(SBUF2 *sb, const char *cc, int len)
     return write(sb->fd, cc, len);
 }
 
-static int swrite(SBUF2 *sb, const char *cc, int len)
+static int swrite(COMDB2BUF *sb, const char *cc, int len)
 {
     int rc;
     if (sb->ssl == NULL)
@@ -597,7 +597,7 @@ static int swrite(SBUF2 *sb, const char *cc, int len)
     return rc;
 }
 
-int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len)
+int CDB2BUF_FUNC(cdb2buf_unbufferedwrite)(COMDB2BUF *sb, const char *cc, int len)
 {
     int n;
 ssl_downgrade:
@@ -659,7 +659,7 @@ ssl_downgrade:
     return n;
 }
 
-static int sread_unsecure(SBUF2 *sb, char *cc, int len)
+static int sread_unsecure(COMDB2BUF *sb, char *cc, int len)
 {
     int rc;
     struct pollfd pol;
@@ -681,7 +681,7 @@ static int sread_unsecure(SBUF2 *sb, char *cc, int len)
     return read(sb->fd, cc, len);
 }
 
-static int sread(SBUF2 *sb, char *cc, int len)
+static int sread(COMDB2BUF *sb, char *cc, int len)
 {
     int rc;
     if (sb->ssl == NULL)
@@ -691,7 +691,7 @@ static int sread(SBUF2 *sb, char *cc, int len)
     return rc;
 }
 
-int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len)
+int CDB2BUF_FUNC(cdb2buf_unbufferedread)(COMDB2BUF *sb, char *cc, int len)
 {
     int n;
 ssl_downgrade:
@@ -753,51 +753,51 @@ ssl_downgrade:
     return n;
 }
 
-void SBUF2_FUNC(subf2setnowait)(SBUF2 *sb, int value)
+void CDB2BUF_FUNC(cdb2buf_setnowait)(COMDB2BUF *sb, int value)
 {
     sb->nowait = value;
 }
 
-void SBUF2_FUNC(sbuf2settimeout)(SBUF2 *sb, int readtimeout, int writetimeout)
+void CDB2BUF_FUNC(cdb2buf_settimeout)(COMDB2BUF *sb, int readtimeout, int writetimeout)
 {
     sb->readtimeout = readtimeout;
     sb->writetimeout = writetimeout;
     sb->nowait = 0;
 }
 
-void SBUF2_FUNC(sbuf2gettimeout)(SBUF2 *sb, int *readtimeout, int *writetimeout)
+void CDB2BUF_FUNC(cdb2buf_gettimeout)(COMDB2BUF *sb, int *readtimeout, int *writetimeout)
 {
     *readtimeout = sb->readtimeout;
     *writetimeout = sb->writetimeout;
 }
 
-void SBUF2_FUNC(sbuf2setrw)(SBUF2 *sb, sbuf2readfn read, sbuf2writefn write)
+void CDB2BUF_FUNC(cdb2buf_setrw)(COMDB2BUF *sb, cdb2buf_readfn read, cdb2buf_writefn write)
 {
     sb->read = read;
     sb->write = write;
 }
 
-void SBUF2_FUNC(sbuf2setr)(SBUF2 *sb, sbuf2readfn read)
+void CDB2BUF_FUNC(cdb2buf_setr)(COMDB2BUF *sb, cdb2buf_readfn read)
 {
     sb->read = read;
 }
 
-void SBUF2_FUNC(sbuf2setw)(SBUF2 *sb, sbuf2writefn write)
+void CDB2BUF_FUNC(cdb2buf_setw)(COMDB2BUF *sb, cdb2buf_writefn write)
 {
     sb->write = write;
 }
 
-sbuf2readfn SBUF2_FUNC(sbuf2getr)(SBUF2 *sb)
+cdb2buf_readfn CDB2BUF_FUNC(cdb2buf_getr)(COMDB2BUF *sb)
 {
     return sb->read;
 }
 
-sbuf2writefn SBUF2_FUNC(sbuf2getw)(SBUF2 *sb)
+cdb2buf_writefn CDB2BUF_FUNC(cdb2buf_getw)(COMDB2BUF *sb)
 {
     return sb->write;
 }
 
-int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
+int CDB2BUF_FUNC(cdb2buf_setbufsize)(COMDB2BUF *sb, unsigned int size)
 {
     if (size < 1024)
         size = 1024;
@@ -810,37 +810,37 @@ int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
     return 0;
 }
 
-void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags)
+void CDB2BUF_FUNC(cdb2buf_setflags)(COMDB2BUF *sb, int flags)
 {
     sb->flags |= flags;
 }
 
-void SBUF2_FUNC(sbuf2setisreadonly)(SBUF2 *sb)
+void CDB2BUF_FUNC(cdb2buf_setisreadonly)(COMDB2BUF *sb)
 {
-    sb->flags |= SBUF2_IS_READONLY;
+    sb->flags |= CDB2BUF_IS_READONLY;
 }
 
-int SBUF2_FUNC(sbuf2getisreadonly)(SBUF2 *sb)
+int CDB2BUF_FUNC(cdb2buf_getisreadonly)(COMDB2BUF *sb)
 {
-    return (sb->flags & SBUF2_IS_READONLY) ? 1 : 0;
+    return (sb->flags & CDB2BUF_IS_READONLY) ? 1 : 0;
 }
 
-SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
+COMDB2BUF *CDB2BUF_FUNC(cdb2buf_open)(int fd, int flags)
 {
     if (fd < 0) {
         return NULL;
     }
-    SBUF2 *sb = NULL;
+    COMDB2BUF *sb = NULL;
 #if SBUF2_SERVER && defined(PER_THREAD_MALLOC)
     comdb2ma alloc = comdb2ma_create(0, 0, "sbuf2", 0);
     if (alloc == NULL) {
         goto error;
     }
     /* get malloc to work in server-mode */
-    SBUF2 dummy = {.allocator = alloc};
+    COMDB2BUF dummy = {.allocator = alloc};
     sb = &dummy;
 #endif
-    sb = calloc(1, sizeof(SBUF2));
+    sb = calloc(1, sizeof(COMDB2BUF));
     if (sb == NULL) {
         goto error;
     }
@@ -853,14 +853,14 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     sb->clnt = NULL;
 #endif
 
-#if SBUF2_UNGETC
+#if CDB2BUF_UNGETC
     sb->ungetc_buf_len = 0;
     memset(sb->ungetc_buf, EOF, sizeof(sb->ungetc_buf));
 #endif
     /* default writer/reader */
     sb->write = swrite;
     sb->read = sread;
-    if (sbuf2setbufsize(sb, SBUF2_DFL_SIZE) == 0) {
+    if (cdb2buf_setbufsize(sb, CDB2BUF_DFL_SIZE) == 0) {
         return sb;
     }
 error:
@@ -875,22 +875,22 @@ error:
     return NULL;
 }
 
-char *SBUF2_FUNC(sbuf2dbgin)(SBUF2 *sb)
+char *CDB2BUF_FUNC(cdb2buf_dbgin)(COMDB2BUF *sb)
 {
     if (sb->dbgin != 0)
         return sb->dbgin;
     return "";
 }
 
-char *SBUF2_FUNC(sbuf2dbgout)(SBUF2 *sb)
+char *CDB2BUF_FUNC(cdb2buf_dbgout)(COMDB2BUF *sb)
 {
     if (sb->dbgout != 0)
         return sb->dbgout;
     return "";
 }
 
-#if SBUF2_UNGETC
-int SBUF2_FUNC(sbuf2eof)(SBUF2 *sb)
+#if CDB2BUF_UNGETC
+int CDB2BUF_FUNC(cdb2buf_eof)(COMDB2BUF *sb)
 {
     int i;
 
@@ -898,10 +898,10 @@ int SBUF2_FUNC(sbuf2eof)(SBUF2 *sb)
         return -2;
 
     errno = 0;
-    i = sbuf2getc(sb);
+    i = cdb2buf_getc(sb);
 
     if (i >= 0) {
-        sbuf2ungetc(i, sb);
+        cdb2buf_ungetc(i, sb);
         return 0;
     } else {
         if (errno == 0)
@@ -913,35 +913,35 @@ int SBUF2_FUNC(sbuf2eof)(SBUF2 *sb)
 #endif
 
 #if SBUF2_SERVER
-void SBUF2_FUNC(sbuf2setclnt)(SBUF2 *sb, struct sqlclntstate *clnt)
+void CDB2BUF_FUNC(cdb2buf_setclnt)(COMDB2BUF *sb, struct sqlclntstate *clnt)
 {
     sb->clnt = clnt;
 }
 
-struct sqlclntstate *SBUF2_FUNC(sbuf2getclnt)(SBUF2 *sb)
+struct sqlclntstate *CDB2BUF_FUNC(cdb2buf_getclnt)(COMDB2BUF *sb)
 {
     return sb->clnt;
 }
 #endif
 
-void SBUF2_FUNC(sbuf2setuserptr)(SBUF2 *sb, void *userptr)
+void CDB2BUF_FUNC(cdb2buf_setuserptr)(COMDB2BUF *sb, void *userptr)
 {
     sb->userptr = userptr;
 }
 
-void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb)
+void *CDB2BUF_FUNC(cdb2buf_getuserptr)(COMDB2BUF *sb)
 {
     return sb->userptr;
 }
 
-void SBUF2_FUNC(sbuf2nextline)(SBUF2 *sb)
+void CDB2BUF_FUNC(cdb2buf_nextline)(COMDB2BUF *sb)
 {
     char c;
-    while ((c = sbuf2getc(sb)) >= 0 && c != '\n')
+    while ((c = cdb2buf_getc(sb)) >= 0 && c != '\n')
         ;
 }
 
-char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
+char *CDB2BUF_FUNC(get_origin_mach_by_buf)(COMDB2BUF *sb)
 {
     if (sb == NULL || sb->fd == -1) {
         return NULL;
@@ -949,7 +949,7 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     return get_hostname_by_fileno(sb->fd);
 }
 
-int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n)
+int CDB2BUF_FUNC(cdb2buf_lasterror)(COMDB2BUF *sb, char *err, size_t n)
 {
     if (err != NULL)
         strncpy(err, sb->sslerr,

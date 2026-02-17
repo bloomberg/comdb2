@@ -25,13 +25,13 @@
  */
 int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
                      enum run_sql_flags flags, char *sql, int sqllen,
-                     char *trim_key, int trim_keylen, SBUF2 *sb);
+                     char *trim_key, int trim_keylen, COMDB2BUF *sb);
 
 /**
  * Send back a streamed row with return code (marks also eos)
  *
  */
-int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int rc);
+int fdb_svc_sql_row(COMDB2BUF *sb, char *cid, char *row, int rowlen, int rc);
 
 /**
  * For requests where we want to avoid a dedicated genid lookup socket, this

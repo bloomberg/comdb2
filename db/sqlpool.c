@@ -27,7 +27,7 @@ extern void rcache_destroy(void);
 typedef struct pool_foreach_data {
     thdpool_foreach_fn callback; /* in: foreach_all_sql_pools */
     void *user;  /* in: foreach_all_sql_pools */
-    SBUF2 *sb;   /* in: list_all_sql_pools */
+    COMDB2BUF *sb;   /* in: list_all_sql_pools */
     int64_t sum; /* out: list_all_sql_pools, get_all_sql_pool_timeouts */
 } pool_foreach_data_t;
 
@@ -263,17 +263,17 @@ static int list_all_sql_pools_func(void *obj, void *arg)
     if (entry == NULL) return 0;
     struct thdpool *pool = entry->pPool;
     pool_foreach_data_t *data = (pool_foreach_data_t *)arg;
-    SBUF2 *sb = (data != NULL) ? data->sb : NULL;
+    COMDB2BUF *sb = (data != NULL) ? data->sb : NULL;
     if (sb != NULL) {
         /* NOTE: Being called from comdb2_save_ruleset(), use SBUF. */
         /* NOTE: Also, skip emitting the "default" SQL engine pool. */
         if ((entry->zName != NULL) &&
             (pool != get_default_sql_pool(0))) {
-            sbuf2printf(sb, "pool %s", entry->zName);
+            cdb2buf_printf(sb, "pool %s", entry->zName);
             if (entry->nThreads != 0) {
-                sbuf2printf(sb, " threads %lld", entry->nThreads);
+                cdb2buf_printf(sb, " threads %lld", entry->nThreads);
             }
-            sbuf2printf(sb, "\n");
+            cdb2buf_printf(sb, "\n");
             data->sum++;
         }
     } else {
@@ -289,7 +289,7 @@ static int list_all_sql_pools_func(void *obj, void *arg)
     return 0;
 }
 
-int list_all_sql_pools(SBUF2 *sb)
+int list_all_sql_pools(COMDB2BUF *sb)
 {
     pool_foreach_data_t data = {0};
     Pthread_mutex_lock(&sqlengine_pool_mutex);

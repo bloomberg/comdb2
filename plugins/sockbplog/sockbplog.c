@@ -31,7 +31,7 @@ comdb2_appsock_t sockbplog_plugin = {
     handle_sockbplog_request /* Handler function */
 };
 
-static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
+static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
 {
     osql_sess_t *sess = NULL;
     char *sql = NULL;
@@ -58,8 +58,8 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
                                    flags & OSQL_FLAGS_FINAL);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "Malloc failure for new ireq\n");
-        sbuf2printf(sb, "Error: Out of memory");
-        sbuf2flush(sb);
+        cdb2buf_printf(sb, "Error: Out of memory");
+        cdb2buf_flush(sb);
         rc = APPSOCK_RETURN_ERR;
         goto err;
     }
@@ -99,7 +99,7 @@ err_nomsg:
 
 int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
 {
-    struct sbuf2 *sb;
+    struct comdb2buf *sb;
     char *host = "localhost";
     char line[128];
     int rc = 0;
@@ -116,7 +116,7 @@ int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
 
         /* wait for next request */
         /* TODO: wait longer than 10 seconds */
-        rc = sbuf2gets(line, sizeof(line), sb);
+        rc = cdb2buf_gets(line, sizeof(line), sb);
         if (rc < 0) {
             if (gbl_sockbplog_debug)
                 logmsg(LOGMSG_ERROR,

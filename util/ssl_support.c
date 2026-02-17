@@ -57,7 +57,7 @@
 static unsigned char sid_ctx[8];
 #endif
 
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
+int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
                             char **pcert, char **pkey, char **pca, char **pcrl,
                             long sess_sz, const char *ciphers, double mintlsver,
                             char *err, size_t n)
