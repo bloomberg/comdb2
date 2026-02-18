@@ -74,6 +74,35 @@ function initialinserts
     cdb2sql -s ${CDB2_OPTIONS} $db default "select * from t3 order by id" > $t3
 }
 
+# Cores show database still executing 'count', but in various parts
+# of berkley .. no smoking gun
+# 
+# Maybe 'overloaded system' .. ?  Hoping this will provide more info
+
+function log_proc_pressure
+{
+    local ts=$(date -u +"%Y-%m-%dT%H:%M:%S.%3N")
+    local psilog=psi.$$.log
+    echo "$ts == " >> $psilog
+    for p in cpu io memory; do
+        if [ -r "/proc/pressure/$p" ] ; then
+            echo "$ts $p $(cat /proc/pressure/$p)"
+            echo "$ts $p $(cat /proc/pressure/$p)" >> $psilog
+        fi
+    done
+}
+
+function get_system_pressure
+{
+    local repeats=${1:-3}
+    local n=0
+
+    while [[ "$n" -lt "$repeats" ]]; do
+        log_proc_pressure
+        let n=n+1
+        [[ "$n" -lt "$repeats" ]] && sleep 1
+    done
+}
 
 function check_table
 {
@@ -99,6 +128,7 @@ function check_table
 
     if [[ $rc != 0 ]]; then
         if [[ $rc == 142 ]]; then
+            get_system_pressure
             abort_cluster
             errquit "Timeout reading count(*) from $table"
         else
