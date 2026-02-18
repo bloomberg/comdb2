@@ -2198,8 +2198,9 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
         tran =
             bdb_tran_begin_logical_norowlocks_int(bdb_state, 0ULL, 0, bdberr);
         if (!tran) {
-            logmsg(LOGMSG_ERROR, "bdb_fetch_int couldnt make temp tran\n");
+            logmsg(LOGMSG_ERROR, "bdb_fetch_int couldnt make temp tran. rc: %d\n",*bdberr);
         }
+        return -1;
     }
 
     if (!args->for_write) {
