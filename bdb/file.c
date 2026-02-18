@@ -616,11 +616,6 @@ static int form_file_name_ex(
         buflen -= offset;
     }
 
-    if (is_data_file)
-        bdb_state->dtavers[file_num] = version_num;
-    else
-        bdb_state->ixvers[file_num] = version_num;
-
     return orig_buflen - buflen;
 }
 
@@ -736,7 +731,6 @@ static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
         }
     }
     if (file_version != NULL) *file_version = local_file_version;
-    bdb_state->qvers[file_num] = local_file_version;
     return 0;
 }
 
@@ -773,7 +767,6 @@ static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
     if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver,
                                  &bdberr) == 0) {
         /* success, do nothing yet. */
-        bdb_state->qvers[file_num] = ver;
     } else {
         /* no version -AND- do fallback to versionless */
         ver = 0;

@@ -2764,18 +2764,22 @@ int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long *version_num,
                               int *bdberr)
 {
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
-                                bdberr);
+    int rc;
+    rc = bdb_get_file_version(tran, bdb_state->name, LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num, bdberr);
+    if (rc == 0 && *bdberr == BDBERR_NOERROR)
+        bdb_state->dtavers[dtanum] = *version_num;
+    return rc;
 }
 
 int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int ixnum, unsigned long long *version_num,
                                int *bdberr)
 {
-    return bdb_get_file_version(tran, (bdb_state)->name,
-                                LLMETA_FVER_FILE_TYPE_IX, ixnum, version_num,
-                                bdberr);
+    int rc;
+    rc = bdb_get_file_version(tran, (bdb_state)->name, LLMETA_FVER_FILE_TYPE_IX, ixnum, version_num, bdberr);
+    if (rc == 0 && *bdberr == BDBERR_NOERROR)
+        bdb_state->ixvers[ixnum] = *version_num;
+    return rc;
 }
 
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
@@ -2790,9 +2794,11 @@ int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
                              int file_num, unsigned long long *version_num,
                              int *bdberr)
 {
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, file_num,
-                                version_num, bdberr);
+    int rc;
+    rc = bdb_get_file_version(tran, bdb_state->name, LLMETA_FVER_FILE_TYPE_QDB, file_num, version_num, bdberr);
+    if (rc == 0 && *bdberr == BDBERR_NOERROR)
+        bdb_state->qvers[file_num] = *version_num;
+    return rc;
 }
 
 int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
