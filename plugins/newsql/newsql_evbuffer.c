@@ -995,6 +995,7 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         evtimer_once(appdata->base, rd_hdr, appdata);
         return;
     }
+
     appdata->ssl_data = ssl_data_new(appdata->fd, clnt->origin);
     accept_ssl_evbuffer(appdata->ssl_data, appdata->base, newsql_accept_ssl_error, newsql_accept_ssl_success, appdata);
     return;
