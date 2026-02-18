@@ -5063,6 +5063,14 @@ WhereInfo *sqlite3WhereBegin(
        wherePathSolver(pWInfo, pWInfo->nRowOut+1);
        if( db->mallocFailed ) goto whereBeginError;
     }
+	/* TUNING:  Assume that a DISTINCT clause on a subquery reduces
+    ** the output size by a factor of 8 (LogEst -30).
+    */
+    if( (pWInfo->wctrlFlags & WHERE_WANT_DISTINCT)!=0 ){
+      WHERETRACE(0x0080,("nRowOut reduced from %d to %d due to DISTINCT\n",
+                         pWInfo->nRowOut, pWInfo->nRowOut-30));
+      pWInfo->nRowOut -= 30;
+    }
   }
   if( pWInfo->pOrderBy==0 && (db->flags & SQLITE_ReverseOrder)!=0 ){
      pWInfo->revMask = ALLBITS;
