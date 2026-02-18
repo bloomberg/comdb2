@@ -4271,6 +4271,7 @@ static void clear_responses(cdb2_hndl_tp *hndl)
     }
 }
 
+#ifdef SBUF2_SERVER
 int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *cmaster, unsigned int op,
                   char *dist_txnid, int rcode, int outrc, char *errmsg, int async)
 {
@@ -4367,6 +4368,7 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
 
     return response_rcode;
 }
+#endif
 
 enum { CHUNK_NO = 0, CHUNK_IN_PROGRESS = 1, CHUNK_COMPLETE = 2 };
 
