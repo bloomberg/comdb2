@@ -3506,6 +3506,7 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     return fd;
 }
 
+#ifdef CDB2API_SERVER
 static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
 {
     int rc = 0;
@@ -3557,6 +3558,7 @@ after_callback:
     }
     return rc;
 }
+#endif
 
 static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *remote_host, const char *app,
                            const char *service, const char *instance);
@@ -3753,6 +3755,11 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int line)
                hndl->hosts[hndl->connected_host], line);
     int fd = cdb2buf_fileno(sb);
 
+#ifdef CDB2API_SERVER
+    int fd_condition = ((hndl->flags & CDB2_TYPE_IS_FD) != 0);
+#else
+    int fd_condition = 0;
+#endif
     int timeoutms = 10 * 1000;
     if (hndl->is_admin || hndl->is_rejected ||
         (!hndl->firstresponse && (hndl->sent_client_info || !donate_unused_connections)) || hndl->in_trans ||
@@ -3760,7 +3767,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int line)
         (hndl->firstresponse &&
          ((!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW)) &&
           cdb2_discard_unread_data(hndl))) ||
-        ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
+        fd_condition) {
         LOG_CALL("newsql_disconnect: not donating fd %d because is_admin %d, is_rejected %d, firstresponse %p,"
                  "lastresponse->type %d, sent_client_info %d, donate_unused_connections %d, in_trans %d, pid %d\n",
                  fd, hndl->is_admin, hndl->is_rejected, hndl->firstresponse,
@@ -3960,9 +3967,11 @@ static int getRandomExclude(int min, int max, int exclude)
 
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
+#ifdef CDB2API_SERVER
     if (hndl->flags & CDB2_TYPE_IS_FD) {
         return newsql_connect_via_fd(hndl);
     }
+#endif
 
     if (hndl->sb) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -4271,6 +4280,7 @@ static void clear_responses(cdb2_hndl_tp *hndl)
     }
 }
 
+#ifdef CDB2API_SERVER
 int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *cmaster, unsigned int op,
                   char *dist_txnid, int rcode, int outrc, char *errmsg, int async)
 {
@@ -4367,6 +4377,7 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
 
     return response_rcode;
 }
+#endif
 
 enum { CHUNK_NO = 0, CHUNK_IN_PROGRESS = 1, CHUNK_COMPLETE = 2 };
 
@@ -4497,6 +4508,15 @@ static int wait_for_write(COMDB2BUF *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event
     return -1;
 }
 
+static int requesting_sql_rows(const cdb2_hndl_tp *hndl)
+{
+#ifdef CDB2API_SERVER
+    return hndl->flags & CDB2_SQL_ROWS;
+#else
+    return 0;
+#endif
+}
+
 static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2BUF *sb, const char *dbname, const char *sql,
                            int n_set_commands, int n_set_commands_sent, char **set_commands, int n_bindvars,
                            CDB2SQLQUERY__Bindvalue **bindvars, int ntypes, const int *types, int is_begin,
@@ -4557,7 +4577,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
-    } else if (iam_identity && identity_cb && (hndl && (hndl->flags & CDB2_SQL_ROWS) == 0)) {
+    } else if (iam_identity && identity_cb && (hndl && requesting_sql_rows(hndl) == 0)) {
         id_blob = identity_cb->getIdentity(hndl, cdb2_use_optional_identity);
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
@@ -4631,7 +4651,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         sqlquery.snapshot_info = &snapshotinfo;
     }
 
-    if (hndl && hndl->flags & CDB2_SQL_ROWS) {
+    if (hndl && requesting_sql_rows(hndl)) {
         features[n_features++] = CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT;
     }
 
@@ -4872,8 +4892,7 @@ retry_next_record:
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
-    if (hndl->flags & CDB2_SQL_ROWS &&
-        hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW &&
+    if (requesting_sql_rows(hndl) && hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW &&
         !hndl->lastresponse->has_sqlite_row) {
         debugprint("received regular row when asked for sqlite format\n");
         sprintf(hndl->errstr, "remote is R7 or lower");

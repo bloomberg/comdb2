@@ -34,8 +34,10 @@ COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbn
 int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
 void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
 
+#ifdef CDB2API_SERVER
 int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
                   char *dist_txnid, int rcode, int outrc, char *errmsg, int async);
+#endif
 
 COMDB2BUF *cdb2_cdb2buf_openread(const char *filename);
 int cdb2_read_line(char *line, int maxlen, COMDB2BUF *s, const char *buf, int *chrno);
