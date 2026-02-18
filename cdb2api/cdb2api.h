@@ -36,8 +36,10 @@ enum cdb2_hndl_alloc_flags {
     CDB2_RANDOMROOM = 16,
     CDB2_ROOM = 32,
     CDB2_ADMIN = 64,
+#ifdef CDB2API_SERVER
     CDB2_SQL_ROWS = 128,
     CDB2_TYPE_IS_FD = 256,
+#endif
     CDB2_REQUIRE_FASTSQL = 512,
     CDB2_MASTER = 1024,
     CDB2_ALLOW_INCOHERENT = 2048

@@ -20,6 +20,7 @@ if(COMDB2_TEST)
   add_definitions(-DCOMDB2_TEST)
   add_definitions(-DCDB2API_TEST)
 endif()
+add_definitions(-DCDB2API_SERVER)
 
 option(WITH_TINFO "Turn ON on platforms where tinfo library is required for cdb2sql" OFF)
 if(WITH_TINFO)
