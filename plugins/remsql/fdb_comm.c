@@ -2731,7 +2731,8 @@ static void _fdb_extract_source_id(struct sqlclntstate *clnt, SBUF2 *sb, fdb_msg
     }
 
     if (clnt->rawnodestats == NULL)
-        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin, sbuf2fileno(sb), msg->co.ssl);
+        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->plugin.get_identity(clnt), clnt->origin,
+                                                sbuf2fileno(sb), msg->co.ssl);
 }
 
 int fdb_bend_cursor_open(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)

@@ -39,6 +39,7 @@ typedef struct {
 enum {
     COLUMN_TASK,
     COLUMN_STACK,
+    COLUMN_IDENTITY,
     COLUMN_HOST,
     COLUMN_IP,
     COLUMN_FINDS,
@@ -69,7 +70,7 @@ static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
     int rc;
 
     rc = sqlite3_declare_vtab(
-        db, "CREATE TABLE comdb2_clientstats(\"task\", \"stack\", \"node\", "
+        db, "CREATE TABLE comdb2_clientstats(\"task\", \"stack\", \"identity\", \"node\", "
             "\"ip\", \"finds\" INTEGER, \"rngexts\" INTEGER, "
             "\"writes\" INTEGER, \"other_fstsnds\" INTEGER, \"adds\" INTEGER, "
             "\"upds\" INTEGER, \"dels\" INTEGER, \"bsql\" INTEGER, \"recom\" "
@@ -126,6 +127,8 @@ static int systblClientStatsClose(sqlite3_vtab_cursor *cur)
             free(pCur->summaries[i].task);
         if (pCur->summaries[i].stack)
             free(pCur->summaries[i].stack);
+        if (pCur->summaries[i].identity)
+            free(pCur->summaries[i].identity);
     }
     free(pCur->summaries);
     sqlite3_free(cur);
@@ -170,6 +173,9 @@ static int systblClientStatsColumn(sqlite3_vtab_cursor *cur,
         break;
     case COLUMN_STACK:
         sqlite3_result_text(ctx, summaries[ii].stack, -1, NULL);
+        break;
+    case COLUMN_IDENTITY:
+        sqlite3_result_text(ctx, summaries[ii].identity, -1, NULL);
         break;
     case COLUMN_HOST:
         sqlite3_result_text(ctx, summaries[ii].host, -1, NULL);
