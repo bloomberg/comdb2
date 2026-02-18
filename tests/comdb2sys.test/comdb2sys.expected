@@ -372,3 +372,9 @@
 [SELECT COUNT(*) FROM comdb2_keys WHERE tablename = 'tpt1'] rc 0
 (COUNT(*)=1)
 [SELECT COUNT(*) FROM comdb2_keycomponents WHERE tablename = 'tpt1'] rc 0
+[CREATE TABLE t_str(str cstring(22) PRIMARY KEY)] rc 0
+[CREATE TABLE t(a int PRIMARY KEY)] rc 0
+(tablename='t_str', keyname='COMDB2_PK', columnnumber=0, columnname='str', isdescending='N')
+[SELECT * FROM comdb2_keycomponents WHERE tablename='t_str' and keyname=(SELECT keyname FROM comdb2_keys WHERE tablename='t_str' AND keynumber=0)] rc 0
+(tablename='t', keyname='COMDB2_PK', columnnumber=0, columnname='a', isdescending='N')
+[SELECT * FROM comdb2_keycomponents WHERE tablename='t' and keyname=(SELECT keyname FROM comdb2_keys WHERE tablename='t' AND keynumber=0)] rc 0

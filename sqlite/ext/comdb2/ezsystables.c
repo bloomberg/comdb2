@@ -205,12 +205,12 @@ static int systbl_column(
         }
         case CDB2_CSTRING: {
             char *strval = *((char**)(rec + t->fields[i].offset));
-            sqlite3_result_text(ctx, strval, -1, NULL);
+            sqlite3_result_text(ctx, strval, -1, SQLITE_TRANSIENT);
             break;
         }
         case CDB2_BLOB: {
             systable_blobtype *blob = (systable_blobtype*) field;
-            sqlite3_result_blob(ctx, blob->value, blob->size, NULL);
+            sqlite3_result_blob(ctx, blob->value, blob->size, SQLITE_TRANSIENT);
             break;
         }
         case CDB2_DATETIME:
