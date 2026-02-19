@@ -417,7 +417,7 @@ int reject_anon_id(struct sqlclntstate *);
 int (*externalComdb2AuthenticateUserDDL)(void*, const char *tablename) = NULL;
 int (*externalComdb2CheckOpAccess)(void *) = 0;
 
-static int comdb2AuthenticateUserDDL(const char *tablename)
+static int comdb2AuthenticateUserDDL(Parse *pParse, const char *tablename)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
 
@@ -435,6 +435,13 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
          }  else if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename)) {
              ATOMIC_ADD64(gbl_num_auth_denied, 1);
+             if (pParse) {
+                 char errstr[1024];
+                 snprintf(errstr, sizeof(errstr),
+                         "User %s isn't allowed to make DDL for table %s",
+                         clnt->externalAuthUser ? clnt->externalAuthUser : "", tablename);
+                 setError(pParse, SQLITE_AUTH, errstr);
+             }
              return SQLITE_AUTH;
          }
          ATOMIC_ADD64(gbl_num_auth_allowed, 1);
@@ -490,7 +497,7 @@ static int comdb2CheckOpAccess(void) {
          ATOMIC_ADD64(gbl_num_auth_allowed, 1);
          return SQLITE_OK;
     }
-    if (comdb2AuthenticateUserDDL(""))
+    if (comdb2AuthenticateUserDDL(NULL, ""))
         return SQLITE_AUTH;
     return SQLITE_OK;
 }
@@ -781,9 +788,9 @@ static int authenticateSC(const char * table,  Parse *pParse)
     struct sqlclntstate *clnt = get_sql_clnt();
     if (username && strcmp(username+1, clnt->current_user.name) == 0) {
         return 0;
-    } else if (comdb2AuthenticateUserDDL(table) == 0) {
+    } else if (comdb2AuthenticateUserDDL(pParse, table) == 0) {
         return 0;
-    } else if (comdb2AuthenticateUserOp(pParse) == 0) {
+    } else if (!gbl_uses_externalauth && comdb2AuthenticateUserOp(pParse) == 0) {
         return 0;
     }
     return -1;
@@ -1863,7 +1870,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc, int on
     }
 #endif
 
-    if (comdb2AuthenticateUserOp(pParse))
+    if (nm == NULL && comdb2AuthenticateUserOp(pParse))
         return;
 
     comdb2WriteTransaction(pParse);
@@ -2572,7 +2579,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         goto clean_arg;
     }
 
-    if (comdb2AuthenticateUserDDL(""))
+    if (comdb2AuthenticateUserDDL(NULL, ""))
     {
         struct sqlclntstate *clnt = get_sql_clnt();
         /* Check if its password change request */
