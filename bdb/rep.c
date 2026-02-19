@@ -2572,6 +2572,9 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                          * delay commits (the last downgrade) */
                         if ((!nodeup && is_drtest) ||
                             (downgrade_penalty && (gettimeofday_ms() - h->last_downgrade_time) <= downgrade_penalty)) {
+                            logmsg(LOGMSG_DEBUG, "%s line %d -> incoh-wait, nodeup=%d is_drtest=%d downgrade_penalty=%d last_downgrade_time=%" PRIu64 "\n",
+                                   __func__, __LINE__, nodeup, is_drtest,
+                                   downgrade_penalty, h->last_downgrade_time);
                             set_coherent_state(bdb_state, hostinterned, STATE_INCOHERENT_WAIT, __func__, __LINE__);
                         } else {
                             /* dont send here under lock */
