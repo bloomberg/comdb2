@@ -27,11 +27,31 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob);
 int delete_temp_table(struct ireq *iq, struct dbtable *newdb);
 
 int verify_new_temp_sc_db(struct dbtable *p_db, struct dbtable *p_newdb, tran_type *tran);
-/****** This function is inside constraints.c and it was used by schemachange.c,
- * before it was declared extern in the c files I am putting the definition here
- * to move a step towards a proper header file. */
-int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
-                             struct dbtable *new_db, struct schema_change_type *s);
+
+
+/*
+ * Verifies constraints that refer to `target_db`.
+ *
+ * `is_updated` should be 1 if `target_db` refers to the new btree for
+ * an existing table.
+ *
+ * Logs each failure and returns the number of failed verifications.
+ */
+int verify_constraints_to_and_from_dbtable(struct dbtable *target_db,
+                                           int is_updated,
+                                           struct schema_change_type *s);
+
+/*
+ * Verifies constraints that originate from `source_db`
+ *
+ * `is_updated` should be 1 if `source_db` refers to the new btree for
+ * an existing table.
+ *
+ * Logs each failure and returns the number of failed verifications.
+ */
+int verify_constraints_from_dbtable(struct dbtable *source_db,
+                                    int is_updated,
+                                    struct schema_change_type *s);
 
 int do_schema_change_tran(sc_arg_t *);
 int do_schema_change_tran_thd(sc_arg_t *);
