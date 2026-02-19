@@ -710,7 +710,8 @@ err:
        We never log comdb2_oplog table inserts (see above) so it won't loop. */
     savedb = iq->usedb;
     iq->usedb = get_dbtable_by_name("comdb2_oplog");
-    rc = add_oplog_entry(iq, trans, LCL_OP_ADD, serialize_buf, sz);
+    if (rc == 0)
+        rc = add_oplog_entry(iq, trans, LCL_OP_ADD, serialize_buf, sz);
     iq->usedb = savedb;
     /* don't need this anymore whether or not we failed */
     free(serialize_buf);
@@ -754,7 +755,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     /* from comdb2_oplog.csc2 -> cmdb2h */
     db = get_dbtable_by_name("comdb2_oplog");
     if (db == NULL)
-        return 0;
+        return -1;
 
     blobs[0].data = logrec;
     blobs[0].length = logsz;
