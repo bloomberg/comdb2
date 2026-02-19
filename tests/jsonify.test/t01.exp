@@ -1,0 +1,45 @@
+[create table t1 
+{
+schema {
+    int id
+    int regular_col
+    vutf8 metadata[10] null=yes
+    vutf8 extra_col[2] dbstore="temp" null=yes
+}
+keys
+{
+    "PK" = id
+}
+constraints
+{
+    check "JSON_CHECK" = { where metadata IS NULL OR JSON_VALID(metadata) }
+}
+}] rc 0
+JSON length: 21
+(rows inserted=1)
+(rows inserted=1)
+(id=1, regular_col=100, metadata='{"key": "aaaaaaaaaa"}', extra_col='temp')
+(id=2, regular_col=150, metadata=NULL, extra_col='{"key": "aaaaaaaaaa"}')
+JSON length: 21
+(rows updated=1)
+(id=1, regular_col=100, metadata='{"key": "aaaaaaaaaa"}', json_len='temp')
+(rows updated=1)
+(id=1, regular_col=200, metadata='{"key": "aaaaaaaaaa"}', json_len='temp')
+(rows updated=1)
+(id=1, extra_col='test', metadata='{"key": "aaaaaaaaaa"}', json_len='test')
+(rows updated=1)
+(rows updated=1)
+[create table t1 { 
+    schema { 
+        int id 
+        vutf8 metadata[10] dbstore="verylongrandomstr" 
+    } 
+    constraints { 
+        check "length_check" = { where length(metadata) > 0} 
+    }
+}] rc 0
+(rows inserted=1)
+(id=1, json_len=11, metadata='{key:value}')
+(rows inserted=1)
+(id=2, json_len=17, metadata='verylongrandomstr')
+t01 passed!
