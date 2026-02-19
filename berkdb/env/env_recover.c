@@ -1680,10 +1680,8 @@ done:
 msgerr:	__db_err(dbenv,
 			"Recovery function for LSN %lu %lu failed on %s pass",
 			(u_long) lsn.file, (u_long) lsn.offset, pass);
-#if defined (DEBUG_ABORT_ON_RECOVERY_FAILURE)
 		__log_flush(dbenv, NULL);
 		abort();
-#endif
 	}
 
 err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
