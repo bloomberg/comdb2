@@ -1,7 +1,0 @@
-round_robin_stripes
-ssl_allow_remsql 1
-fdbdebg 1
-nowatch
-notimeout
-foreign_db_push_remote 0
-foreign_db_push_redirect 0

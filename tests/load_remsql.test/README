@@ -1,1 +1,0 @@
-This test make sure we don't fail remote sql when remote node is overloaded.

@@ -1,8 +1,0 @@
-set transaction blocksql
-create lua consumer cons_with_sequence_epoch with sequence on (table foraudit for insert and update and delete)
-insert into foraudit values(1)
-select * from foraudit
-exec procedure cons_with_sequence_epoch()
-insert into foraudit values(1)
-select * from foraudit
-exec procedure cons_with_sequence_epoch()

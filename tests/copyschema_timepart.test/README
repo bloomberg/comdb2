@@ -1,1 +1,0 @@
-Test copying schema only of a database with a timepartition, and make sure we can recreate a proper db based on it.

@@ -1,9 +1,0 @@
-# don't let watchdogs' SELECT-1 intervene
-nowatch
-
-# these settings below make the only sql thread to exit immediately and
-# gets respawned. It makes sure that we don't race with done_sql_thread()
-
-sqlenginepool maxt 1
-sqlenginepool mint 0
-sqlenginepool linger 0

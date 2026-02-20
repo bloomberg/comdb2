@@ -1,1 +1,0 @@
-This test is checking failure to add a table that adds a foreign constraint on a time partition shard.

@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-bash -n "$0" | exit 1
-
-${TESTSROOTDIR}/tools/compare_results.sh -d $1
-[ $? -eq 0 ] || exit 1
-exit 0

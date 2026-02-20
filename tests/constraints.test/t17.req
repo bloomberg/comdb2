@@ -1,8 +1,0 @@
-drop table if exists foo
-drop table if exists bar
-drop table if exists baz
-create table bar {schema{int i int j} keys{"pk" = i+j}} $$
-begin
-create table foo {schema{int i int j} keys{dup "key" = i+j} constraints{"key" -> "bar":"pk" on delete cascade }} $$
-alter table bar rename to baz$$
-commit

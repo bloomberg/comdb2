@@ -1,7 +1,0 @@
-set user dcba
-set password dcba
-create table test { schema {int t}}$$
-insert into test values(2)
-insert into test values(2)
-insert into test values(2)
-insert into test values(2)

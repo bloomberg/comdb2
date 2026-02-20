@@ -1,7 +1,0 @@
-This test verifies that si-snapshots work correctly against 'big' berkley operations
-
-Will test the following:
-      Update from a normal record to a big record
-      Update from a big record to another big record
-      Update from a big record to a normal record
-

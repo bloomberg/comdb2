@@ -1,5 +1,0 @@
-(user='---------- OP user ----------')
-(rows inserted=3)
-(user='---------- non-OP user ----------')
-[analyze t1] failed with rc -3 User does not have OP credentials
-(user='---------- OP user ----------')

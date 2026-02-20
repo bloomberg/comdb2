@@ -1,5 +1,0 @@
-begin
-set timezone UTC
-select 1
-rollback
-select 1

@@ -1,9 +1,0 @@
-insert into t1 (id, b1) values(1, x'11'); 
-insert into t1 (id, b1) values(2, x'22'); 
-insert into t1 (id, b1) values(3, x'33'); 
-insert into t1 (id, b1) values(4, x'44'); 
-insert into t1 (id, b1) values(5, x'55'); 
-insert into t1 (id, b1) values(6, x'66'); 
-insert into t1 (id, b1) values(7, x'77'); 
-insert into t2 selectv id from t1;
-update t2 set id=id+3 where 1;

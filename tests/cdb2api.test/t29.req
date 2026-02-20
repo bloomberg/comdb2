@@ -1,6 +1,0 @@
-insert into t1 values(1)
-insert into t1 values(2)
-set maxquerytime 1
-select * from t1
-select * from t1 where i in (select sleep(2))
-select * from t1

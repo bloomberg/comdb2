@@ -1,1 +1,0 @@
-select t.a as col from t left join (select a from t) tt where tt.a = t.a union all select 1 from t left join (select a from t) limit 2

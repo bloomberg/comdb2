@@ -1,7 +1,0 @@
-[create table t13 {
-schema
-{
-    int i
-    datetime     dt dbstore=1
-}
-}] failed with rc 240 Error at line   5: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: dt

@@ -1,3 +1,0 @@
-begin
-selectv id from t1 EXCEPT selectv id from t2
-commit

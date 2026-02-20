@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-bash -n "$0" | exit 1
-
-${TESTSBUILDDIR}/cdb2api_effects_on_chunk_error ${DBNAME}

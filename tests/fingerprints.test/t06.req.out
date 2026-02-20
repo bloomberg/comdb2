@@ -1,3 +1,0 @@
-Non-registered tunable 'hi'.
-[ERROR] Unknown command <hi>
-(fingerprint='c4fe7ad6cc25bb59daf8101f2196edf6', count=1, normalized_sql='SELECT*FROM t;')

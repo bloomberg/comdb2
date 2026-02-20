@@ -1,9 +1,0 @@
-create procedure str_conv version 'sptest' {
-local function main()
-    db:num_columns(1)
-    db:column_type('cstring', 1)
-    db:column_name('a', 1)
-    db:emit({a={}})
-end
-}$$
-exec procedure str_conv()

@@ -1,4 +1,0 @@
-(tablename='t', keyname='A', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
-(tablename='t', keyname='A', columnname='b')
-(rows inserted=1)
-[insert into t values (1,2,1)] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0

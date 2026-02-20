@@ -1,9 +1,0 @@
-This tests the ability to insert new records during the time of performing
-SC by adding an extra field -- normally this is an instant SC but we make 
-it do work by adding a new index on an existing field. 
-The error involves mismatched size:
-
-BAD DTA LEN 42 TAG .NEW..ONDISK EXPECTS DTALEN 47
-live_sc_post_add_int rcode 199, genid 0x3000d00490e4658
-Aborting schema change due to unexpected error
-

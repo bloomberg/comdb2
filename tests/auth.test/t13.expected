@@ -1,9 +1,0 @@
-("no-OP sets tunables"='no-OP sets tunables')
-[put genid48 enable] failed with rc -3 User does not have OP credentials
-[put genid48 disable] failed with rc -3 User does not have OP credentials
-[put rowlocks enable] failed with rc -3 User does not have OP credentials
-[put rowlocks disable] failed with rc -3 User does not have OP credentials
-[put schemachange convertsleep 10] failed with rc -3 User does not have OP credentials
-[put schemachange commitsleep 10] failed with rc -3 User does not have OP credentials
-[put tunable sc_async 1] failed with rc -3 User does not have OP credentials
-[put tunable sc_async 0] failed with rc -3 User does not have OP credentials

@@ -1,6 +1,0 @@
-replicate_local
-table comdb2_oplog comdb2_oplog.csc2
-
-debug_stall_in_oplog_seed 1
-keycompr 0
-nowatch

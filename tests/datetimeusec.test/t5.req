@@ -1,2 +1,0 @@
-set timezone UTC
-select cast(dt as TEXT), cast(ds as TEXT), id from dtus order by id

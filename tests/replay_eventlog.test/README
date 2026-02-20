@@ -1,2 +1,0 @@
-This test exercises the ability to replay the sql log recorded from one db, 
-onto another db with same schema. 

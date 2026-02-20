@@ -1,2 +1,0 @@
-Test to verify the automatic creation of 'dba' user (create_dba_user)
-and ensure that the user properties cannot be altered (lock_dba_user).

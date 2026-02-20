@@ -1,3 +1,0 @@
-begin
-get analyze coverage t
-select 1

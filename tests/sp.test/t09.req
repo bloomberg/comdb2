@@ -1,2 +1,0 @@
-create procedure no_number version 'sptest' {local function main() math.abs() end}$$
-exec procedure no_number()

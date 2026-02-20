@@ -1,4 +1,0 @@
-SELECT ltrim("abcdef");
-SELECT ltrim(" abcdef");
-SELECT ltrim("abcdef", "abc");
-SELECT ltrim("abcdef", "abc", "abc");

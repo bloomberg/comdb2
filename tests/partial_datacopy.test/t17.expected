@@ -1,3 +1,0 @@
-[CREATE INDEX a ON t(a) INCLUDE ()] failed with rc -3 near ")": syntax error
-[CREATE INDEX a ON t(a) INCLUDE] failed with rc -3 Expected partial datacopy columns or 'ALL' keyword after 'INCLUDE'.
-[CREATE INDEX a ON t(a) INCLUDE WHERE (b > 10)] failed with rc -3 Expected partial datacopy columns or 'ALL' keyword after 'INCLUDE'.

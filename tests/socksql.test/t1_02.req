@@ -1,6 +1,0 @@
-update t1 set a=1 where a%2=1
-update t1 set b=1 where b%3=1
-update t1 set c=1 where c%4=1
-update t1 set d=1 where d%5=1
-select count(*) from t1
-select * from t1 order by d

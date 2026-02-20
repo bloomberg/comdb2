@@ -1,2 +1,0 @@
-replicant_retry_on_not_durable 1
-survive_n_master_swings 100

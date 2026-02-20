@@ -1,7 +1,0 @@
-cdb2sql --cdb2cfg /tmp/test_9866/timepartfrgncnst52729/comdb2db.cfg timepartfrgncnst52729 default exec procedure sys.cmd.send('partitions')
-[]
-
-cdb2sql --cdb2cfg /tmp/test_9866/timepartfrgncnst52729/comdb2db.cfg timepartfrgncnst52729 default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
-cdb2sql --cdb2cfg /tmp/test_9866/timepartfrgncnst52729/comdb2db.cfg timepartfrgncnst52729 default select name, shardname from comdb2_timepartshards
-cdb2sql --cdb2cfg /tmp/test_9866/timepartfrgncnst52729/comdb2db.cfg timepartfrgncnst52729 default select name, arg1, arg2, arg3 from comdb2_timepartevents
-cdb2sql --cdb2cfg /tmp/test_9866/timepartfrgncnst52729/comdb2db.cfg timepartfrgncnst52729 default exec procedure sys.cmd.send('partitions')

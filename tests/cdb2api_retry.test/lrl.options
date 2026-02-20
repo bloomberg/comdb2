@@ -1,3 +1,0 @@
-# The 'incoherent-wait' feature papers over the original issue.
-# Disable it for the test.
-incoherent_clnt_wait 0

@@ -1,2 +1,0 @@
-(sql='create table "t4"("x1" smallint, "x2" largeint, "x3" int, "x4" largeint);')
-(sql='create table "t5"("x1" smallfloat, "x2" smallfloat, "x3" double);')

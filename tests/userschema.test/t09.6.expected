@@ -1,9 +1,0 @@
-(comdb2_user()='mohit')
-[put password '1234567890123456789' for '1234567890123456'] failed with rc -3 Password is too long
-[put password '1234567890123456789' for '123456789012345'] failed with rc -3 Password is too long
-[put password '123456789012345678' for '1234567890123456'] failed with rc -3 User name is too long
-(username='123456789012345', isOP='Y')
-(username='abcd', isOP='N')
-(username='dcba', isOP='N')
-(username='mohit', isOP='Y')
-[select 1] failed with rc -3 set user: '1234567890123456' exceeds 15 characters

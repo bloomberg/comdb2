@@ -1,4 +1,0 @@
-set transaction snapisol
-begin transaction as of datetime 1469204471
-select max(id) from t1
-rollback
