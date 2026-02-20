@@ -70,6 +70,7 @@
 extern int gbl_fdb_resolve_local;
 extern char *gbl_fdb_resolve_tier;
 extern int gbl_fdb_class_override_spew_limit;
+extern int gbl_2pc;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_disttxn_trace;
@@ -4113,8 +4114,7 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
     if (tran->is_cdb2api) {
         rc = cdb2_close(tran->fcon.hndl);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n",
-                   rc);
+            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n", rc);
         }
         free(tran);
     } else {
@@ -6269,8 +6269,9 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Fix this, for now disable 2pc if its a DDL */
-    clnt->use_2pc = 0;
+    /* Mark this as DDL 2PC: uses push-write coordination (not standard prepare/commit),
+     * but participates in 2PC-aware recovery via disttxn_resolve_ddl_prepared() */
+    clnt->use_2pc_ddl = 1;
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
@@ -6278,8 +6279,11 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     /* create create sql statements */
     for(i = 0; i < nshards; i++) {
         if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname))) {
-            pushes[i] = fdb_push_connector_create(
-                dbnames[i], type == AST_TYPE_CREATE ? shardnames[i] : sc->partition.u.genshard.tablename, type);
+            pushes[i] = fdb_push_connector_create(dbnames[i],
+                                                  (type == AST_TYPE_CREATE || type == AST_TYPE_ALTER)
+                                                      ? shardnames[i]
+                                                      : sc->partition.u.genshard.tablename,
+                                                  type);
             if (!pushes[i]) {
                 logmsg(LOGMSG_ERROR, "%s malloc shard push %d\n", __func__, i);
                 goto setup_error;
@@ -6383,23 +6387,22 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
                 logmsg(LOGMSG_ERROR, "Failed run create ddl %s rc %d err %s\n",
                        dbnames[i], rc, err.errstr);
             goto abort;
-        }  else if (pushes[i]) {
-            /* need to mark the create as a remote write */
-            fdb_t *fdb = get_fdb(dbnames[i], FDB_GET_LOCK);
-            fdb_tran_t * tran = fdb_get_subtran(clnt->dbtran.dtran, fdb);
-            /* ddl has no rows writes */
-            tran->nwrites += 1;
-            tran->writes_status = FDB_TRAN_WRITES;
-            put_fdb(fdb, FDB_PUT_NOFREE);
         }
     }
 
-    /* commit the transaction */
+    /* commit the local shard's schema change */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
         *errmsg = "failed to commit";
         goto setup_error;
+    }
+
+    for (i = 0; i < nshards; i++) {
+        if (pushes[i]) {
+            _clear_schema(dbnames[i], NULL, 0);
+            fdb_push_free(&pushes[i]);
+        }
     }
 
     return 0;
@@ -6416,6 +6419,7 @@ setup_error:
         *errmsg = "malloc error shard push";
     for (i = 0; i < nshards; i++) {
         if (pushes[i]) {
+            _clear_schema(dbnames[i], NULL, 0);
             fdb_push_free(&pushes[i]);
         }
     }
@@ -6493,6 +6497,44 @@ int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
     return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, 0, NULL, tbl->shardnames, sqls, AST_TYPE_DROP);
 
 setup_error:
+    for (i = 0; i < nshards && sqls[i]; i++) {
+        free(sqls[i]);
+    }
+    return -1;
+}
+
+int osql_test_alter_genshard(struct schema_change_type *sc, char **errmsg)
+{
+    dbtable *tbl = get_dbtable_by_name(sc->tablename);
+    if (!tbl || tbl->numdbs == 0) {
+        *errmsg = "ALTER: table is not a genshard partition";
+        return -1;
+    }
+
+    assert(sc->partition.type == PARTITION_ALTER_GENSHARD_COORD);
+    sc->partition.type = PARTITION_ALTER_GENSHARD;
+
+    snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename), "%s", sc->tablename);
+
+    uint32_t nshards = tbl->numdbs;
+    char **sqls = (char **)alloca(nshards * sizeof(char *));
+    int i;
+
+    bzero(sqls, nshards * sizeof(char *));
+    for (i = 0; i < nshards; i++) {
+        int len = strlen(tbl->shardnames[i]) + strlen(sc->newcsc2) + 32;
+        sqls[i] = malloc(len);
+        if (!sqls[i]) {
+            logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
+            goto alter_error;
+        }
+        snprintf(sqls[i], len, "alter table '%s' {%s}", tbl->shardnames[i], sc->newcsc2);
+    }
+
+    return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, tbl->numcols, tbl->columns, tbl->shardnames, sqls,
+                             AST_TYPE_ALTER);
+
+alter_error:
     for (i = 0; i < nshards && sqls[i]; i++) {
         free(sqls[i]);
     }

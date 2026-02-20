@@ -665,8 +665,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
                 set_intrans = 1;
             }
 
-            /* if this is 2pc, we need to send additional info to the participant */
-            if (clnt->use_2pc) {
+            /* if this is standard 2pc (not DDL), send additional info to the participant */
+            if (clnt->use_2pc && !clnt->use_2pc_ddl) {
                 fdb_init_disttxn(clnt);
 
                 rc = fdb_2pc_set(clnt, fdb, tran->fcon.hndl);

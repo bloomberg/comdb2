@@ -1806,6 +1806,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     clnt->use_2pc = gbl_2pc;
+    clnt->use_2pc_ddl = 0;
 
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
@@ -4362,8 +4363,10 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (rc)
         return rc;
 
-    if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt))
+    if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt)) {
         clnt->use_2pc = gbl_2pc;
+        clnt->use_2pc_ddl = 0;  /* Not a DDL transaction */
+    }
 
     /* is this a snapshot? special processing */
     rc = get_high_availability(clnt);
@@ -5595,6 +5598,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->early_retry = 0;
 
     clnt->use_2pc = gbl_2pc;
+    clnt->use_2pc_ddl = 0;
     clnt->is_coordinator = 0;
     clnt->is_participant = 0;
     clear_participants(clnt);
