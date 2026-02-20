@@ -4184,7 +4184,6 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
     char *allocd_str = NULL;
-    uuidstr_t us;
 
     do {
 retry_legacy_remote:
