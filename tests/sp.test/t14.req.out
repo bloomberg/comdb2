@@ -1,2 +1,0 @@
-(version='sptest')
-[exec procedure str_conv()] failed with rc -3 [db:emit({a={}})...]:6: conversion to:string failed from:table

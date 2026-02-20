@@ -1,5 +1,0 @@
-Add a large number of tables to a DB and perform inserts and 
-truncaties at the same time. 
-We want to make sure we can add a large number of tables to
-the db, and also that the time for truncating one table does
-not depend on the total number of tables (btrees) that we have.

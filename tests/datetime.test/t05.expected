@@ -1,6 +1,0 @@
-(cast(0 as datetime)="1969-12-31T190000.000 EST")
-(cast(0 as datetime)="1970-01-01T000000.000 UTC")
-(cast(0 as datetime)="1969-12-31T190000.000 EST")
-[select cast("1970-01-01T000000.000 MARS" as datetime)] failed with rc 113 cast to datetime failed
-(cast(0 as datetime)="1969-12-31T190000.000 EST")
-(cast(0 as datetime)="1969-12-31T190000.000 EST")

@@ -1,3 +1,0 @@
-always_reload_analyze 1
-sqlenginepool linger 0
-sqlenginepool mint 0

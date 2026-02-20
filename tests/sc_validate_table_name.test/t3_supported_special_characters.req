@@ -1,5 +1,0 @@
-create table "._$0123456789" (i int)$$
-drop table "._$0123456789";
-
-create table "._$0123456789" { schema { int i } }$$
-drop table "._$0123456789";

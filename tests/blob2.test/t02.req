@@ -1,3 +1,0 @@
-insert into t2 values(NULL, x'abcdefabcdef', NULL)
-insert into t2 values(NULL, x'abcdefabcdefabcdefabcdefabcdefabcdef', NULL)
-exec procedure sys.cmd.verify('t2')

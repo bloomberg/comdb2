@@ -1,7 +1,0 @@
-Test limits of table name length, index name length, and index size:
-
-We should disallow tables with names longer than limit, 
-indices with names longer than limit, and indices with size larger 
-than limit.
-
-Also test insert/update/delete on table with a large index size.

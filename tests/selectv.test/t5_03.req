@@ -1,4 +1,0 @@
-1 begin
-1 selectv id from t1 UNION select id from t2
-2 update t1 set b1 = x'deadbeef' where id = 1
-1 commit

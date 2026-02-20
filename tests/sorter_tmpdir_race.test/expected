@@ -1,1 +1,0 @@
-[SELECT randomblob(1024*512) AS b FROM generate_series(1,1024) ORDER BY b] failed with rc -5 unable to open database file

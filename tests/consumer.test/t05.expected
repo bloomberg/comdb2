@@ -1,9 +1,0 @@
-(version='sample')
-(version='sample')
-(version='sample')
-[create procedure len_is_32_______________________ version 'sample' {
-        local function main()
-        end
-}] failed with rc -3 procedure name must not exceed 31 characters
-[create lua consumer len_is_29____________________ on (table t for update of i)] failed with rc -3 procedure name must not exceed 28 characters
-(name='len_is_28___________________', type='consumer', tbl_name='t', event='upd', col='i', seq='N')

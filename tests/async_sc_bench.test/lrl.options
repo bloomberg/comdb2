@@ -1,6 +1,0 @@
-dtastripe 1
-disable_ckp on
-enable_snapshot_isolation
-ssl_client_mode OPTIONAL
-cache 1000 mb
-maxosqltransfer 2000000

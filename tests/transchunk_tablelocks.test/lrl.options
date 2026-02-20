@@ -1,4 +1,0 @@
-dbnum 123
-table t t.csc2
-maxosqltransfer 10
-throttle_txn_chunks_msec 20000

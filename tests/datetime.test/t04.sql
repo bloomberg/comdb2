@@ -1,5 +1,0 @@
-select cast('20170816 qqqqqqq' as datetime)
-select cast('20170816 qqqqqqq' as datetime)
-select cast('20170816 qqqqqqq' as datetime)
-select cast('20170816 qqqqqqq' as datetime)
-select cast('20170816 qqqqqqq' as datetime)

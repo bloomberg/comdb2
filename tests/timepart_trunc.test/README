@@ -1,9 +1,0 @@
-Test time partition in truncate rollout mode.
-Tests:
-1. create new partition in past, make sure start is in the future
-2. create dup partition
-3. check rollout: insert old shard; insert into tpt; check rows; wait for rollout; check rows again and make sure old shard is truncated
-4. create table with same name and check proper failure
-5. create old tpt together 
-6. create dup old tpt
-7. restart node, check partition read and events generation

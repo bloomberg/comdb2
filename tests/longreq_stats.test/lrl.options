@@ -1,3 +1,0 @@
-setattr REP_WORKERS 0
-setattr REP_PROCESSORS 0
-decoupled_logputs off

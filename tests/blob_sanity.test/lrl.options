@@ -1,6 +1,0 @@
-table t1 t1.csc2
-dtastripe 16
-
-enable_inplace_blobs
-enable_inplace_blob_optimization
-enable_osql_blob_optimization

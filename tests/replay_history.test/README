@@ -1,9 +1,0 @@
-This testcase reproduces a "Timeout while reading response from server" error
-reported by a customer.  The test does a 'selectv', and then an update on the
-same handle- neither of these is protected by a transaction.  Database trace
-shows that a replicant is attempting to replay a verify-retry, but that the
-sql-history is NULL.
-
-clnt->has_recording stays lit, and this prevents us from saving history.  I
-modified run_stmt_setup to overwrite clnt->has_recording with the vdbe 
-recording flag if the handle is not currently in a transaction.

@@ -1,3 +1,0 @@
-delete from t1 where a%2=0
-select count(*) from t1
-select * from t1 order by d

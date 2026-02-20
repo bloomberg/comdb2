@@ -1,5 +1,0 @@
-(rows inserted=1)
-[insert into t1 values (1234, 1234, 1234, 1234)] rc 0
-[insert into t1 values (1234, 1234, 1234, 1234) -- Unique key contraint.] failed with rc 299 add key constraint duplicate key 'UID' on table 't1' index 0
-(uid=1234, value=1234, dup_value=1234, allowed_null_value=1234)
-[select * from t1] rc 0

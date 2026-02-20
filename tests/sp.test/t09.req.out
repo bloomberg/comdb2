@@ -1,2 +1,0 @@
-(version='sptest')
-[exec procedure no_number()] failed with rc -3 [local function main() math.abs(...]:1: bad argument #1 to 'abs' (number expected, got no value)

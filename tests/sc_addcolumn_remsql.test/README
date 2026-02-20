@@ -1,6 +1,0 @@
-This test is exercising the ability to recover from incompatible remote schema
-changes, like adding a column.  In this case, the new sql will fail with the 
-cached old schema.  Instead of sending a syntax error back to the client, the
-source db needs to try to double-check the versions of all remote tables 
-involved in the statement and refresh if stale schemas are detected.
-

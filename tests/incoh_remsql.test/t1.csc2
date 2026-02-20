@@ -1,7 +1,0 @@
-schema {
-    int n
-}
-
-keys {
-    "n" = n 
-}

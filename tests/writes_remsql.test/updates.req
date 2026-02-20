@@ -1,4 +1,0 @@
-update t set id=id
-update t set id=id+1 where id < 20
-update t set b1=x'33' where id =2
-update t set id=id-1 where id>100000

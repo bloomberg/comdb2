@@ -1,8 +1,0 @@
-1 set transaction snapshot
-2 set transaction snapshot
-1 drop table if exists foo
-1 create table foo(i int)
-1 insert into foo values(1)
-1 begin
-2 alter table foo add column j int
-1 select * from foo

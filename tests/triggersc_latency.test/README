@@ -1,2 +1,0 @@
-Demonstrates the effect of slow-replication on adding and removing triggers
-This is fixed by the javasp_early_release tunable (which is defaulted to 'on')

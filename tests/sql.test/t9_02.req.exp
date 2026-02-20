@@ -1,4 +1,0 @@
-(ltrim("abcdef")='abcdef')
-(ltrim(" abcdef")='abcdef')
-(ltrim("abcdef", "abc")='def')
-[SELECT ltrim("abcdef", "abc", "abc")] failed with rc -3 wrong number of arguments to function ltrim()

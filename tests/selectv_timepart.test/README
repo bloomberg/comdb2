@@ -1,1 +1,0 @@
-Test flattening optimization fix for selectv, which impacts views and therefore time partitions.

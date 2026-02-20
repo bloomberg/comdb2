@@ -1,1 +1,0 @@
-select i, sum(j), sum(k) from t1 where i in (select i from t1 where i>= 4) group by i order by sum(k) desc

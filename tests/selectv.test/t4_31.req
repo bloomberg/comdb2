@@ -1,3 +1,0 @@
-begin; 
-insert into t2 selectv id from t1 UNION select id from t2;
-rollback;

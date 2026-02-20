@@ -1,3 +1,0 @@
-[create index "" on t12(i)] failed with rc 240 Key name cannot be empty
-[create index "s p a c e" on t12(i)] failed with rc 240 Key 'S P A C E' cannot contain spaces
-[create index "a_loooooooooooooooooooooooooooooooooooooooooooooooooong_name" on t12(i)] failed with rc 240 Length of key 'A_LOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOONG_NAME' cannot exceed 53 characters

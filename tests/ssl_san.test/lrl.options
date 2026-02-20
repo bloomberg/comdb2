@@ -1,2 +1,0 @@
-ssl_cert ${TESTDIR}/san.crt
-ssl_key ${TESTDIR}/san.key

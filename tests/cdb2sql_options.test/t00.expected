@@ -1,8 +1,0 @@
-('abc"efg'='abc"efg')
-('abc''efg'='abc'efg')
-('abc
-efg'='abc
-efg')
-('abc"efg'='abc"efg')
-('abc''efg'='abc'efg')
-('abc;efg'='abc;efg')
