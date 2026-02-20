@@ -151,6 +151,8 @@ __txn_dbenv_create(dbenv)
 		dbenv->txn_discard_all_recovered = __txn_discard_all_recovered_pp;
 		dbenv->txn_upgrade_all_prepared = __txn_upgrade_all_prepared;
 		dbenv->txn_recover_all_prepared = __txn_recover_all_prepared;
+		dbenv->txn_collect_ddl_prepared = __txn_collect_ddl_prepared;
+		dbenv->txn_mark_prepared_resolved = __txn_mark_prepared_resolved;
 		dbenv->txn_abort_prepared_waiters = __txn_abort_prepared_waiters;
 	}
 
