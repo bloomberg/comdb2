@@ -1156,6 +1156,7 @@ struct sqlclntstate {
 
     // fdb 2pc
     int use_2pc;
+    int use_2pc_ddl;  // DDL transactions use different coordination (no prepare phase)
     int is_participant;
     int is_coordinator;
 
@@ -1875,6 +1876,7 @@ void wait_for_transactions(void);
 int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
                               char **dbnames, uint32_t numcols, char **columns, char **shardnames);
 int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg);
+int osql_test_alter_genshard(struct schema_change_type *sc, char **errmsg);
 
 void cancel_connections(int only_queued, uuid_t uuid, char *fp);
 
