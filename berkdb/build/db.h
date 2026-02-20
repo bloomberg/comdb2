@@ -1132,7 +1132,8 @@ typedef enum {
 	DB_DIST_INFLIGHT    = 0x00000010,
 	DB_DIST_RECOVERED   = 0x00000020,
 	DB_DIST_UPDSHADOWS  = 0x00000040,
-	DB_DIST_DISCARDED   = 0x00000080
+	DB_DIST_DISCARDED   = 0x00000080,
+	DB_DIST_NEEDS_SCHEMA_LK = 0x00000100
 } db_dist_state;
 
 struct __db_txn_prepared_child {
@@ -1147,6 +1148,7 @@ struct __db_txn_prepared {
 	char *dist_txnid;
 	u_int64_t utxnid;
 	u_int32_t flags;
+	u_int32_t lflags;
 	DB_LSN prepare_lsn;
 	DB_LSN prev_lsn;
 	DB_LSN begin_lsn;
@@ -2644,6 +2646,8 @@ struct __db_env {
 	int  (*txn_discard_all_recovered) __P((DB_ENV *));
 	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
 	int  (*txn_recover_all_prepared) __P((DB_ENV *));
+	int  (*txn_collect_ddl_prepared) __P((DB_ENV *, char ***, char ***, char ***, int *));
+	int  (*txn_mark_prepared_resolved) __P((DB_ENV *, const char *, int));
 	int  (*txn_abort_prepared_waiters) __P((DB_ENV *));
 	int  (*set_recover_prepared_callback) __P((DB_ENV *, void (*)(const char *, const char *, const char *)));
 	void  (*recover_prepared_callback)(const char *, const char *, const char *);

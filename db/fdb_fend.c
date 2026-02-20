@@ -67,6 +67,7 @@
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
+extern int gbl_2pc;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
@@ -6353,8 +6354,11 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Fix this, for now disable 2pc if its a DDL */
-    clnt->use_2pc = 0;
+    /* Enable 2pc for distributed DDL when configured */
+    if (gbl_2pc) {
+        clnt->use_2pc = 1;
+        fdb_init_disttxn(clnt);
+    }
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));

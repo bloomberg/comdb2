@@ -1,0 +1,36 @@
+foreign_db_resolve_local 1
+foreign_db_push_remote_writes 1
+enable_2pc
+
+# 2pc requires utxnid & ufid log
+utxnid_log on
+ufid_log on
+
+# Required for 2PC consistency
+flush_on_prepare 1
+flush_replicant_on_prepare 1
+wait_for_prepare_seqnum 1
+coordinator_sync_on_commit 1
+
+# Async messages for 2PC
+disttxn_async_messages 1
+
+# Use local machine class for single-node testing
+machine_class local
+
+# Disable decoupled-logputs
+decoupled_logputs off
+
+# Single data stripe for predictable prepare behavior
+dtastripe 1
+
+# Disable parallel rep for predictable behavior
+setattr REP_WORKERS 0
+setattr REP_PROCESSORS 0
+
+# Verbose logging for debugging
+logmsg level debug
+logmsg.epochms 1
+debug_disttxn_trace 1
+verbose_toblock_backouts 1
+fdbdebg 1

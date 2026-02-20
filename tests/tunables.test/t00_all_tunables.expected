@@ -266,6 +266,7 @@
 (name='disable_writer_penalty_deadlock', description='If set, won't shrink max #writers on deadlock.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disallow_portmux_route', description='Disables 'allow_portmux_route'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disttxn_async_messages', description='Send disttxn messages asynchronously.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='disttxn_ddl_resolve_fatal', description='Abort startup if DDL prepared txn cannot be resolved.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='disttxn_handle_cache', description='Enable the disttxn handle-cache.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='disttxn_handle_linger_time', description='Time that unused handles persist.  (Default: 60s)', type='INTEGER', value='60', read_only='N')
 (name='disttxn_random_retry_poll', description='Poll up to this many ms on dist-retry.  (Default: 500)', type='INTEGER', value='500', read_only='N')

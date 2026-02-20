@@ -5760,14 +5760,124 @@ add_blkseq:
                             iq->sc_close_tran = NULL;
                         }
 
-                        irc = trans_commit(iq, iq->sc_tran, source_host);
-                        if (irc != 0) { /* this shouldnt happen */
-                            logmsg(LOGMSG_FATAL,
-                                   "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
-                                   __LINE__, irc);
-                            comdb2_die(0);
+                        /* 2PC DDL: commit sc_tran into parent_trans, release
+                         * schema lock, then prepare parent_trans.  The schema
+                         * lock must be released before prepare because the
+                         * seqnum wait asserts no locks are held. */
+                        if (iq->sorese && iq->sorese->dist_txnid && outrc == 0) {
+                            int bdberr, prepare_rc;
+                            char *cname = iq->sorese->is_coordinator ? gbl_dbname : iq->sorese->coordinator_dbname;
+                            char *ctier =
+                                iq->sorese->is_coordinator ? "_coordinator_local" : iq->sorese->coordinator_tier;
+
+                            irc = trans_commit(iq, iq->sc_tran, source_host);
+                            if (irc != 0) {
+                                logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d", __func__, __LINE__, irc);
+                                comdb2_die(0);
+                            }
+                            iq->sc_tran = NULL;
+
+                            if (iq->sc_locked) {
+                                unlock_schema_lk();
+                                iq->sc_locked = 0;
+                            }
+
+                            prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, iq->sorese->dist_txnid, cname,
+                                                          ctier, 0, bskey, bskeylen, &bdberr);
+                            if (prepare_rc != 0) {
+                                logmsg(LOGMSG_ERROR, "DDL Failed to prepare %s from %s:%s: %d\n",
+                                       iq->sorese->dist_txnid, cname, ctier, prepare_rc);
+                                if (iq->sorese->is_participant) {
+                                    participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                           iq->sorese->coordinator_master, ERR_NOT_DURABLE,
+                                                           ERR_BLOCK_FAILED, "DDL Prepare was not durable");
+                                } else {
+                                    coordinator_failed(iq->sorese->dist_txnid);
+                                }
+                                dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                                trans_abort(iq, parent_trans);
+                                parent_trans = NULL;
+                                backout_and_abort_tranddl(iq, NULL, 0);
+                                outrc = ERR_BLOCK_FAILED;
+                                rc = BDBERR_NOT_DURABLE;
+                                goto cleanup;
+                            }
+
+                            Pthread_mutex_lock(&blklk);
+                            prepared_count++;
+                            Pthread_mutex_unlock(&blklk);
+
+                            int waitrc = -1, should_wait = (can_retry || gbl_debug_wait_on_verify_off);
+                            if (iq->sorese->is_coordinator) {
+                                waitrc = coordinator_wait(iq->sorese->dist_txnid, should_wait, &err.errcode, &outrc,
+                                                          iq->errstat.errstr, ERRSTAT_STR_SZ, 0);
+                            } else {
+                                assert(iq->sorese->is_participant);
+                                waitrc = participant_wait(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                          iq->sorese->coordinator_tier, iq->sorese->coordinator_master);
+                            }
+
+                            if (waitrc == HAS_COMMITTED) {
+                                Pthread_mutex_lock(&blklk);
+                                prepared_count--;
+                                Pthread_mutex_unlock(&blklk);
+
+                                /* sc_tran already committed before prepare */
+                                irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                                parent_trans = NULL;
+                                if (iq->sorese->is_coordinator) {
+                                    if (gbl_coordinator_wait_propagate)
+                                        coordinator_wait_propagate(iq->sorese->dist_txnid);
+                                    else
+                                        coordinator_resolve(iq->sorese->dist_txnid);
+                                }
+                                if (iq->sorese->is_participant) {
+                                    participant_has_propagated(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                               iq->sorese->coordinator_master);
+                                }
+                            } else if (waitrc == HAS_ABORTED) {
+                                Pthread_mutex_lock(&blklk);
+                                prepared_count--;
+                                Pthread_mutex_unlock(&blklk);
+                                if (iq->sorese->is_coordinator) {
+                                    if (!should_rewrite_rcode(outrc))
+                                        iq->sorese->rcout = outrc;
+                                    else {
+                                        outrc = ERR_BLOCK_FAILED;
+                                        iq->sorese->rcout = outrc + err.errcode;
+                                    }
+                                }
+                                dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                                trans_abort(iq, parent_trans);
+                                parent_trans = NULL;
+                                backout_and_abort_tranddl(iq, NULL, 0);
+                                goto cleanup;
+                            } else {
+                                /* LOCK_DESIRED or other failure */
+                                Pthread_mutex_lock(&blklk);
+                                while (prepared_count < blkcnt) {
+                                    struct timespec waittime;
+                                    clock_gettime(CLOCK_REALTIME, &waittime);
+                                    waittime.tv_sec += 1;
+                                    pthread_cond_timedwait(&blkcd, &blklk, &waittime);
+                                }
+                                prepared_count--;
+                                Pthread_mutex_unlock(&blklk);
+                                trans_discard_prepared(iq, parent_trans);
+                                parent_trans = NULL;
+                                backout_and_abort_tranddl(iq, NULL, 0);
+                                outrc = ERR_BLOCK_FAILED;
+                                goto cleanup;
+                            }
+                        } else {
+                            /* Non-2PC DDL: commit sc_tran directly */
+                            irc = trans_commit(iq, iq->sc_tran, source_host);
+                            if (irc != 0) {
+                                logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d", __func__, __LINE__, irc);
+                                comdb2_die(0);
+                            }
+                            iq->sc_tran = NULL;
                         }
-                        iq->sc_tran = NULL;
                     }
                     if (iq->sc_locked) {
                         unlock_schema_lk();
