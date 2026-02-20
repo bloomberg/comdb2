@@ -3918,9 +3918,6 @@ int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t 
     if (rc)
         logmsg(LOGMSG_ERROR, "%s target->send returns rc=%d\n", __func__, rc);
 
-    fprintf(stderr, "!!!! Sending txnid %s tsstamp %"PRId64" !!!!\n",
-            dist_txnid, timestamp);
-
     return rc;
 }
 
@@ -3971,9 +3968,6 @@ int osql_send_participant(osql_target_t *target, unsigned long long rqid, uuid_t
 
     if (rc)
         logmsg(LOGMSG_ERROR, "%s target->send returns rc=%d\n", __func__, rc);
-
-    fprintf(stderr, "!!!! Sending participant %s tier %s !!!!\n",
-            participant_dbname, participant_tier);
 
     return rc;
 }

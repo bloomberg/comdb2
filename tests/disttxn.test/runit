@@ -2638,15 +2638,6 @@ commit
     echo "Allow $SECONDARY_DBNAME and $DBNAME to act as coordinator"
     send_message_cluster "allow-coordinator $SECONDARY_DBNAME/prod $DBNAME/prod" "$QUATERNARY_DBNAME" "$QUATERNARY_CDB2_OPTIONS"
 
-    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default 'exec procedure sys.cmd.send("show-allowed-coordinators")' 2>&1)
-    echo "!!!ALLOWED $DBNAME $x !!!"
-    x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("show-allowed-coordinators")' 2>&1)
-    echo "!!!ALLOWED $SECONDARY_DBNAME $x !!!"
-    x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default 'exec procedure sys.cmd.send("show-allowed-coordinators")' 2>&1)
-    echo "!!!ALLOWED $TERTIARY_DBNAME $x !!!"
-    x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default 'exec procedure sys.cmd.send("show-allowed-coordinators")' 2>&1)
-    echo "!!!ALLOWED $QUATERNARY_DBNAME $x !!!"
-
     echo "begin
 insert into t1(a) values(1)
 insert into $SECONDARY_DBNAME.t1(a) values (1)

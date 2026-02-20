@@ -1049,7 +1049,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     }
     if (!is_distributed) {
         /* we have no remote writes, disable 2pc */
-        fprintf(stderr, "!!!! setting clnt->use_2pc to 0 !!!!\n");
         clnt->use_2pc = 0;
     }
 

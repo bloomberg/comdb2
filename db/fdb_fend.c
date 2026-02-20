@@ -4072,6 +4072,9 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
     fdb_msg_t *msg;
     int rc = 0;
     uuidstr_t tus;
+
+    *is_distributed = 0;
+
     if (!dtran)
         return 0;
 
@@ -5975,9 +5978,6 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
 int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr, char *err,
                                 int errlen)
 {
-
-    fprintf(stderr, "!!!!%lu %s: processing %s\n", pthread_self(), __func__, sqlstr);
-
     if (sqlstr)
         sqlstr = skipws(sqlstr);
 
@@ -6035,11 +6035,15 @@ int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr, char *err,
         }    
         clnt->use_2pc = 1;
         clnt->is_participant = 1;
-        fprintf(stderr, "!!!! New participant db %s tier %s txnid %s tsstamp %"PRId64" !!!!\n",
-            clnt->coordinator_dbname, 
-            clnt->coordinator_tier,
-            clnt->dist_txnid,
-            clnt->dist_timestamp);
+        extern int gbl_debug_disttxn_trace;
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "DISTTXN REPL %s New participant db %s tier %s txnid %s tsstamp %"PRId64"\n",
+                   __func__,
+                   clnt->coordinator_dbname, 
+                   clnt->coordinator_tier,
+                   clnt->dist_txnid,
+                   clnt->dist_timestamp);
+        }
     }
 
     return 0;

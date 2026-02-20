@@ -1401,10 +1401,6 @@ after_callback:
                                  port, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
-
-    if (rc > 0) {
-        //fprintf(stderr, "!!!! CONNECTED TO %s !!!\n", host ? host : "(nohost)");
-    }
     return rc;
 }
 
@@ -4482,8 +4478,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
     CDB2SQLQUERY__IdentityBlob *id_blob = NULL;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
-
-    //fprintf(stderr, "!!!! sending query '%s' to %s !!!\n", sql ? sql : "(nosql)", dbname ? dbname : "(nodbname)");
 
     while ((e = cdb2_next_callback(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
            NULL) {

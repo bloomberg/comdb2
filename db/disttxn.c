@@ -1860,7 +1860,6 @@ void disable_heartbeats_before_dispatch(const char *dist_txnid)
 
 void reenable_participant_heartbeats(const char *dist_txnid)
 {
-    fprintf(stderr, "!!!! %s partitipant %s !!!!\n", __func__, dist_txnid);
     sanctioned_t *sanc;
     Pthread_mutex_lock(&sanc_lk);
     sanc = hash_find(sanctioned_hash, &dist_txnid);
