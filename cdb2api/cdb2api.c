@@ -1427,6 +1427,7 @@ void cdb2_set_max_retries(int max_retries)
 }
 #endif
 
+#ifdef CDB2API_SERVER
 void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries)
 {
     if (min_retries > 0) {
@@ -1440,6 +1441,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
         hndl->max_retries = max_retries;
     }
 }
+#endif
 
 void cdb2_set_comdb2db_config(char *cfg_file)
 {
@@ -2349,6 +2351,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     return 0;
 }
 
+#ifdef CDB2API_SERVER
 int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
 {
     if (!strlen(cdb2_comdb2dbname)) {
@@ -2358,6 +2361,7 @@ int cdb2_get_comdb2db(char **comdb2dbname, char **comdb2dbclass)
     (*comdb2dbclass) = strdup((strcmp(cdb2_comdb2dbname, "comdb3db") == 0) ? "dev" : "prod");
     return 0;
 }
+#endif
 
 /* populate comdb2db_hosts based on hostname info of comdb2db_name
  * returns -1 if error or no hosts were found
@@ -3157,6 +3161,7 @@ static int cdb2_socket_pool_get_ll(cdb2_hndl_tp *hndl, const char *typestr, int 
     return fd;
 }
 
+#ifdef CDB2API_SERVER
 /* Get the file descriptor of a socket matching the given type string from
  * the pool.  Returns -1 if none is available or the file descriptor on
  * success. Don't support local cache since it may not return fd */
@@ -3166,6 +3171,7 @@ int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, 
     LOG_CALL("%s(%s,%d,%p): fd=%d\n", __func__, typestr, dbnum, port, fd);
     return fd;
 }
+#endif
 
 static int typestr_type_is_default(const char *typestr)
 {
@@ -3184,7 +3190,8 @@ static int typestr_type_is_default(const char *typestr)
 /* Get the sbuf of a socket matching the given type string from
  * the pool.  Returns NULL if none is available or the sbuf on
  * success. */
-COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port, int *was_from_local_cache)
+static COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port,
+                                       int *was_from_local_cache)
 {
     COMDB2BUF *sb = NULL;
 
@@ -6818,10 +6825,12 @@ int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
 }
 #endif
 
+#ifdef CDB2API_SERVER
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 1;
 }
+#endif
 
 #ifdef CDB2API_TEST
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out)
@@ -8616,10 +8625,12 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
     return hndl->sb == NULL ? 0 : sslio_has_ssl(hndl->sb);
 }
 
+#ifdef CDB2API_SERVER
 void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id)
 {
     hndl->id_blob = (CDB2SQLQUERY__IdentityBlob *)id;
 }
+#endif
 
 static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
 {
