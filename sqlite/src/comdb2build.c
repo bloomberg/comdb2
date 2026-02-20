@@ -48,6 +48,7 @@ extern int gbl_sc_protobuf;
 extern int gbl_retro_tpt_start;
 extern int gbl_legacy_tpt;
 extern int gbl_allow_shard_truncate;
+extern int gbl_2pc;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 extern int gbl_enable_bulk_import;
@@ -672,10 +673,20 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
         if (!db) {
             logmsg(LOGMSG_ERROR, "Couldn't find table %s\n", s->tablename);
             f->errorMsg = "DDL Error: Table not found\n";
-            f->rc = SQLITE_ABORT; 
+            f->rc = SQLITE_ABORT;
             return f->rc;
         }
         f->rc = osql_test_remove_genshard(s, &f->errorMsg);
+        return f->rc;
+    } else if (s->partition.type == PARTITION_ALTER_GENSHARD_COORD) {
+        struct dbtable *db = get_dbtable_by_name(s->tablename);
+        if (!db) {
+            logmsg(LOGMSG_ERROR, "Couldn't find table %s\n", s->tablename);
+            f->errorMsg = "DDL Error: Table not found\n";
+            f->rc = SQLITE_ABORT;
+            return f->rc;
+        }
+        f->rc = osql_test_alter_genshard(s, &f->errorMsg);
         return f->rc;
     }
 
@@ -5187,6 +5198,15 @@ void comdb2AlterTableEnd(Parse *pParse)
         /* An error must have been set. */
         assert(pParse->rc != 0);
         goto cleanup;
+    }
+
+    /* Detect ALTER TABLE on a generic-shard partitioned table and distribute
+     * the schema change to all shards via 2PC. Only applies when 2PC is enabled
+     * and the table is a genshard partition (numdbs > 0 with dbnames set). */
+    if (sc->partition.type == PARTITION_NONE && gbl_2pc) {
+        struct dbtable *gtbl = get_dbtable_by_name(sc->tablename);
+        if (gtbl && gtbl->numdbs > 0 && gtbl->dbnames)
+            sc->partition.type = PARTITION_ALTER_GENSHARD_COORD;
     }
 
     if (sc->dryrun)

@@ -206,6 +206,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
         return sz;
     }
     case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD:
         return sizeof(p->type);
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
@@ -770,7 +771,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
         }
         break;
     }
-    case PARTITION_REM_GENSHARD: {
+    case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD: {
     }
     }
 
@@ -1275,7 +1277,8 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         }
         break;
     }
-    case PARTITION_REM_GENSHARD: {
+    case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD: {
     }
     }
 

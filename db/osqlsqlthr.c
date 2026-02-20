@@ -392,7 +392,8 @@ static int osql_wait(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     errstat_t dummy = {0};
 
-    /* if this is a 2pc participant, we don't need to wait here */
+    /* 2pc participants don't wait here; the coordinator handles synchronization
+     * via participant_wait/coordinator_wait in toblock.c. */
     if (clnt->is_participant)
         return 0;
 
@@ -1903,13 +1904,15 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
     }
 
     if (clnt->remsql_set.is_remsql == IS_REMCREATE) {
-        /* this is a distributed create for a partition, creating individual shard here, info passed from
+        /* this is a distributed DDL for a partition, info passed from
          * SET OPTIONS through clnt struct
          */
-        if (sc->kind == SC_ADDTABLE) { 
+        if (sc->kind == SC_ADDTABLE) {
             sc->partition.type = PARTITION_ADD_GENSHARD;
-        } else {
+        } else if (sc->kind == SC_DROPTABLE) {
             sc->partition.type = PARTITION_REM_GENSHARD;
+        } else {
+            sc->partition.type = PARTITION_ALTER_GENSHARD;
         }
         snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename),
                  "%s", clnt->remsql_set.tablename);
