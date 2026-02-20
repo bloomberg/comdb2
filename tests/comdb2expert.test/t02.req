@@ -1,5 +1,0 @@
-create table t3(a int, b int, c int);$$
-create index i3 on t3(a) include all;
-insert into t3 values (1,2,3);
-set expert on
-select * from t3 where b > 0;

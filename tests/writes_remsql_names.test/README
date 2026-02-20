@@ -1,2 +1,0 @@
-This test checks the robustness of remote writes when remote
-db changes with a table drop (which redristributes rootpage numbers).

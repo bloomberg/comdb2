@@ -1,4 +1,0 @@
-Tests cdb2api mode to allow SQL on incoherent nodes
-
-Generally a bad idea, but useful for tools that need to
-get the status of all the nodes, etc.

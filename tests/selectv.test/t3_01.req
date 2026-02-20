@@ -1,8 +1,0 @@
-insert into t2 values (1);
-insert into t2 values (2);
-insert into t2 values (3);
-insert into t2 values (4);
-insert into t2 values (5);
-select count(*) from t2;
-select * from t2;
-

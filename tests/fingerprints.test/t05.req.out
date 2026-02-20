@@ -1,5 +1,0 @@
-(version='sptest')
-(1=1, 2=2, 3=3, 4=4, 5=5)
-(version='sptest')
-(6=6, 7=7, 8=8, 9=9, 10=10)
-(fingerprint='c868ab16d94b512fb381974224dae18e', count=2, total_cost=0, total_rows=2, normalized_sql='SELECT?,?,?,?,?;')

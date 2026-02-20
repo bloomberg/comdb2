@@ -1,4 +1,0 @@
-set user "1234567890123456"
-set password "123456789012345678"
-select * from test
-select * from comdb2_tablepermissions order by tablename

@@ -1,6 +1,0 @@
-Simple test to make sure table locks are acquired after an
-sql recovery phase.  Sql recovery is triggered by a master swing.
-The table is dropped after the sql recovery.  If the table locks
-are properly re-acquired, the drop operation pauses and waits for 
-sql to finish.  Otherwise table is dropped and the replicant running
-the sql crashes.

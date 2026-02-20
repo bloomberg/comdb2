@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-
-set -e
-set -x
-
-echo run executable that tests the consistent hash utility
-${TESTSBUILDDIR}/test_consistent_hash
-

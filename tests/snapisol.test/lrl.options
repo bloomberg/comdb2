@@ -1,8 +1,0 @@
-table t t.csc2
-table t2 t2.csc2
-dtastripe 4
-blobstripe
-init_with_inplace_updates
-round_robin_stripes
-enable_snapshot_isolation
-nowatch

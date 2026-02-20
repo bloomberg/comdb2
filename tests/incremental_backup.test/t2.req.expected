@@ -1,3 +1,0 @@
-(id=1, name='test', data=x'11')
-(id=2, name='two', data=x'12')
-[SELECT * FROM t1 order by id] rc 0

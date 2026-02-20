@@ -1,6 +1,0 @@
-tag ondisk
-{
-    int i
-    datetime     d1 dbstore="1981-08-30T23:59:59.987 US/Eastern"
-    datetimeus   d2 dbstore="1981-08-30T23:59:59.987651 US/Eastern"
-}

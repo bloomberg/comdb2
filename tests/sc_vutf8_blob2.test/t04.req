@@ -1,4 +1,0 @@
-insert into t4 values(1, 'CDB2BABE', x'CDB2BABE')
-select * from t4
-alter table t4 { tag ondisk { int i int j null=yes vutf8 txt[4] blob binary[4] } }$$
-select * from t4

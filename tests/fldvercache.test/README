@@ -1,8 +1,0 @@
-This test exercises the ability to quickly fetch default dbstore values for 
-previous versions of a table:
- - inserts records to a table with 1000 columns, 999 of which have dbstore
- - alters table so 999 columns have a different dbstore
- - perform several selects with a where condition on table
-
-Using the field version cache allows for the selects to be very fast, 
-older code was very inneficient and would timeout on this test.

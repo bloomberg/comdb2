@@ -1,1 +1,0 @@
-This checks foreign constraints code when a time partition depends on a non-partitioned table.

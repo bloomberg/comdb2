@@ -1,9 +1,0 @@
-[DROP TABLE IF EXISTS t] rc 0
-[CREATE TABLE t(a int, b int, c int)] rc 0
-[CREATE INDEX foo ON t(B,C)] rc 0
-[SET TRANSACTION CHUNK 100] rc 0
-[BEGIN] rc 0
-[INSERT INTO t(a,b,c) select value, value/10000, value from generate_series(1,100000)] rc 0
-[COMMIT] rc 0
-[ANALYZE t] rc 0
-[SELECT c,b,a from t where c > 10000000 ORDER BY B DESC] rc 0

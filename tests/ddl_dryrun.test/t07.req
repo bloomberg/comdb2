@@ -1,7 +1,0 @@
-drop table if exists t07
-create table t07 { tag ondisk {int i int j} keys {"KEY_0"=i "KEY_1"=j} }$$
-dryrun alter table t07 { tag ondisk {int i int j} keys {"KEY_0"=i dup "KEY_1"=j}}
-dryrun alter table t07 { tag ondisk {int i int j} keys {"KEY_0"=i "KEY_1"=j "KEY_2"=i+j}}
-dryrun alter table t07 { tag ondisk {int i int j} keys {"KEY_0"=i}}
-dryrun alter table t07 { tag ondisk {int i int j} keys {"KEY_0"=i "KEY_1"=j+i}}
-dryrun alter table t07 { tag ondisk {int i int j} keys {"KEY_0"=i+j "KEY_1"=i+j}}

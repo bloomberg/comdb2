@@ -1,8 +1,0 @@
-create table t12 (c1 cstring(32), c2 datetime)$$
-insert into t12 values ("alice", "2021-09-24T00:00:00.000")
-@bind CDB2_DATETIME a 2021-09-24T00:00:00.000
-@bind CDB2_DATETIME b 2021-09-24T00:00:00.000
-select * from t12 where c1="alice" and c2 >= cast(@a as datetime) and c2<=cast(@b as number)
-@bind CDB2_DATETIME a 2021-09-24T00:00:00.000
-@bind CDB2_DATETIME b 2021-09-24T00:00:00.000
-select * from t12 where c1="alice" and c2 >= cast(@a as datetime) and c2<=cast(@b as number) -- one more time to make VDBE reuse aVar

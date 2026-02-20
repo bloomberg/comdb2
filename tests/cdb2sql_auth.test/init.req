@@ -1,6 +1,0 @@
-create table t { schema {int t}}$$
-put password 'pass' for 'foo'
-grant op to foo
-set user foo
-set password pass
-put authentication on

@@ -1,1 +1,0 @@
-This test makes sure accessing a missing table doesn't deadlock the db.

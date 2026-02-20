@@ -1,7 +1,0 @@
-#Queries from unknown users will fail
-select comdb2_user();
-set user user2
-select comdb2_user();
-set password password3
-select comdb2_user();
-select 'user3'

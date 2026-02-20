@@ -1,1 +1,0 @@
-This tests SET READONLY ON option during partition rollout and impact on view schema updates.

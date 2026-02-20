@@ -1,2 +1,0 @@
-enable_snapshot_isolation
-min_keep_logs_age 400

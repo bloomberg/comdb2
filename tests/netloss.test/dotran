@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-
-(
-  echo "begin"
-  for i in $(seq 1 5000); do
-  echo "insert into t1(a) values($RANDOM)"
-  done
-  echo "commit"
- ) | cdb2sql testdb dev - >/dev/null

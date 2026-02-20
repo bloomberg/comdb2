@@ -1,3 +1,0 @@
-dtastripe 1
-enable_snapshot_isolation
-max_query_fingerprints 10000

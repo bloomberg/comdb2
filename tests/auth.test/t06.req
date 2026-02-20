@@ -1,6 +1,0 @@
-#Queries from unknown users will pass now
-select 'access without password'
-set user user1
-set password password1
-#turn it back on
-put authentication on

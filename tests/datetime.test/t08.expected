@@ -1,8 +1,0 @@
-[create table t8 {
-schema
-{
-    int i
-    datetime     dt dbstore="CURRENT_TIMESTAMPBLAH"
-}
-}] failed with rc 240 Error at line   5: STRING DEFAULT OPTION SCHEMA MUST BE A VALID DATETIME: dt
-

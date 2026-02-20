@@ -1,4 +1,0 @@
-This test runs interesting queries against remote databases.
-
-Initially, it was designed to exercise quoted identifier handling;
-however, it may be expanded upon in the future.

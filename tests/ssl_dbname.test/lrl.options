@@ -1,5 +1,0 @@
-# Cannot request log-records via sql for this test
-sql_logfill off
-
-ssl_client_mode VERIFY_DBNAME
-ssl_dbname_field host

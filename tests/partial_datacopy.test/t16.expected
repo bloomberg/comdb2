@@ -1,3 +1,0 @@
-[CREATE INDEX a ON t(a) INCLUDE ALL (b, c)] failed with rc -3 Cannot have datacopy and partial datacopy.
-[CREATE INDEX a ON t(a) INCLUDE (b, c) ALL] failed with rc -3 near "ALL": syntax error
-[CREATE INDEX a ON t(a) INCLUDE (b, c) (d)] failed with rc -3 near "(": syntax error

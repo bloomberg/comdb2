@@ -1,2 +1,0 @@
-(table_name='metricstest', num_queries=2, num_index_used=0, num_records_read=0, num_records_inserted=2, num_records_updated=0, num_records_deleted=0)
-(table_name='metricstest', num_queries=4, num_index_used=2, num_records_read=5, num_records_inserted=0, num_records_updated=0, num_records_deleted=0)

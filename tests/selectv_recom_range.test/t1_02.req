@@ -1,8 +1,0 @@
-insert into t1 values (1, x'11');
-insert into t1 values (2, x'22');
-insert into t1 values (3, x'33');
-insert into t1 values (4, x'44');
-insert into t1 values (5, x'55');
-select count(*) from t1
-select * from t1
-

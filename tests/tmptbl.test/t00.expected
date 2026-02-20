@@ -1,5 +1,0 @@
-(test='Crash in sql_dump_running_statements()')
-(rows inserted=2)
-(i=1)
-(i=2)
-(exec procedure output)

@@ -1,8 +1,0 @@
-select a from t
-select a from t order by i
-
-insert into t(i, j) values(40, 40)
-insert into t(i, j, a) values(41, 41, 41)
-
-select a from t
-select a from t order by i

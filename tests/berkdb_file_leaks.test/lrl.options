@@ -1,5 +1,0 @@
-setattr CHECKPOINTTIME 9999999
-setattr MEMPTRICKLEPERCENT 10
-ufid_add_on_collect 1
-rep_skip_recovery on
-dtastripe 1

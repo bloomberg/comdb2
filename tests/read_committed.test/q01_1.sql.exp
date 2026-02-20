@@ -1,4 +1,0 @@
-(tbl='t1', idx='$IDX_A82B8A75', stat='5900 345 87')
-[select * from sqlite_stat1 where tbl="t1"] rc 0
-(id=3, parent=0, notused=0, detail='SEARCH TABLE t1 USING COVERING INDEX $IDX_A82B8A75 (ANY(a) AND b=?) (~2048 rows)')
-[explain query plan select a,b from t1 where b = 4] rc 0

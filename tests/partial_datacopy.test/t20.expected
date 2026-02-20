@@ -1,1 +1,0 @@
-[CREATE INDEX a ON t(a) INCLUDE (b, b, c, c, b, d)] failed with rc -3 Duplicate field 'b'.

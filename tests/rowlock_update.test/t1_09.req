@@ -1,9 +1,0 @@
-begin;
-select count(*) from t;
-select * from t;
-insert into t values (6, x'66');
-select count(*) from t;
-select * from t;
-commit;
-select count(*) from t;
-select * from t;

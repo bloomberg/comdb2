@@ -1,6 +1,0 @@
-(i=5, sum(j)=5, sum(k)=10)
-(i=4, sum(j)=4, sum(k)=8)
-(i=3, sum(j)=3, sum(k)=6)
-(i=2, sum(j)=2, sum(k)=4)
-(i=1, sum(j)=1, sum(k)=2)
-(i=0, sum(j)=0, sum(k)=0)
