@@ -4382,7 +4382,11 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
                 rc = 0;
             }
         } else {
-            rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+            if (tran->nwrites || !clnt->use_2pc) {
+                rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+                if (clnt->use_2pc)
+                    clnt->sent_fdb_commit = 1;
+            }
         }
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to commit %s rc %d\n",
@@ -4396,7 +4400,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             clnt->osql.error_is_remote = 1;
         }
 
-        if (clnt->use_2pc) {
+        if (clnt->use_2pc && (tran->nwrites > 0)) {
             const char *tier = fdb_dbname_class_routing(tran->fdb);
             if ((rc = add_participant(clnt, tran->fdb->dbname, tier)) != 0) {
                 tran->errstr = strdup("multiple participants with same dbname");

@@ -1546,7 +1546,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     do {
         rc = 0;
 
-        if (clnt->use_2pc && clnt->dist_txnid) {
+        if (clnt->use_2pc && clnt->dist_txnid && clnt->sent_fdb_commit) {
             assert((clnt->is_coordinator + clnt->is_participant) == 1);
             if (clnt->is_coordinator) {
                 struct participant *p;

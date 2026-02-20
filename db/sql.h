@@ -1060,6 +1060,7 @@ struct sqlclntstate {
     int use_2pc;
     int is_participant;
     int is_coordinator;
+    int sent_fdb_commit;
 
     char *dist_txnid;
     int64_t dist_timestamp;

@@ -409,6 +409,7 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         }
     }
 
+    is_distributed_tran = (is_distributed_tran && clnt->sent_fdb_commit);
     return rese_commit(clnt, thd, tzname, OSQL_RECOM_REQ, is_distributed_tran);
 }
 

@@ -639,11 +639,105 @@ commit
     done
 }
 
+function verify_no_distcommit
+{
+    echo "verify_no_distcommit"
+    typeset beforecnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from comdb2_distributed_transactions")
+    typeset aftercnt=""
+    j=0
+    while [[ $j -lt 10 ]]; do
+        echo "begin
+update t1 set a = a+1 where a = 100000
+update $SECONDARY_DBNAME.t1 set a = a+1 where a = 100000
+update $TERTIARY_DBNAME.t1 set a = a+1 where a = 100000
+update $QUATERNARY_DBNAME.t1 set a = a+1 where a = 100000
+update $QUINARY_DBNAME.t1 set a = a+1 where a = 100000
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" != "0" ]] && fail_exit "got bad rcode for empty update iteration $j"
+        let j=j+1
+    done
+    aftercnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from comdb2_distributed_transactions")
+    [[ "$beforecnt" == "$aftercnt" ]] || fail_exit "expected no distributed transactions, but found $aftercnt - $beforecnt"
+}
+
+function no_coordinator_writes
+{
+    echo "no_coordinator_writes"
+    j=0
+    while [[ $j -lt 10 ]]; do
+        echo "begin
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+        let j=j+1
+    done
+
+    # Verify that there are 10 records in each participant database, and no records locally
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$x" != "0" ]] && fail_exit "$DBNAME should not have any record, it has $x records"
+
+    x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$SECONDARY_DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$TERTIARY_DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$QUATERNARY_DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$QUINARY_DBNAME has only $x records"
+
+    # Do it again.. this time we should fail with a constraint violation because records 
+    # are already there
+    #
+    j=0
+    while [[ $j -lt 10 ]]; do
+        typeset d2=11
+        typeset d3=11
+        typeset d4=11
+        typeset d5=11
+        typeset r=$(( RANDOM % 4 ))
+        case $r in
+            0)
+                d2=1
+                ;;
+            1)
+                d3=1
+                ;;
+            2)
+                d4=1
+                ;;
+            3)
+                d5=1
+                ;;
+        esac
+        echo "begin
+insert into $SECONDARY_DBNAME.t1(a) values($d2)
+insert into $TERTIARY_DBNAME.t1(a) values($d3)
+insert into $QUATERNARY_DBNAME.t1(a) values($d4)
+insert into $QUINARY_DBNAME.t1(a) values($d5)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" != "0" ]] || fail_exit "expected failure inserting iteration $j"
+        let j=j+1
+    done
+
+    delete_records
+}
+
 function insert_records_to_normalize
 {
     echo "insert_records_to_normalize"
     j=0
-    startms=$(timems)
     while [[ $j -lt 10 ]]; do
         echo "begin
 insert into t1(a) values($j)
@@ -1193,7 +1287,6 @@ function tertiary_coordinator_nodist_insert
     typeset st=$(( j - 100 ))
     typeset ed=$(( j + 100 ))
     typeset back=$(( RANDOM % 2 ))
-    startms=$(timems)
     if [[ "$back" == "1" ]]; then
         echo "begin
 insert into $tbl select * from generate_series($ed, $st, -1)
@@ -3510,6 +3603,17 @@ function run_test
     basic_test
     testcase_finish $testcase
 
+    # No coordinator writes
+    testcase="no_coordinator_writes"
+    testcase_preamble $testcase
+    no_coordinator_writes
+    testcase_finish $testcase
+
+    testcase="verify_no_distcommit"
+    testcase_preamble $testcase
+    verify_no_distcommit
+    testcase_finish $testcase
+
     # Writes to comdb2_distributed_transactions
     testcase="allow_write_to_disttxn_table"
     testcase_preamble $testcase
@@ -3601,12 +3705,25 @@ function run_test
     testcase_finish $testcase
 }
 
+function run_some_tests
+{
+    testcase="no_coordinator_writes"
+    testcase_preamble $testcase
+    no_coordinator_writes
+    testcase_finish $testcase
+
+    testcase="verify_no_distcommit"
+    testcase_preamble $testcase
+    verify_no_distcommit
+    testcase_finish $testcase
+}
+
 rm $stopfile >/dev/null 2>&1 
 [[ -z "$CLUSTER" ]] && fail_exit "This test requires a 3-node cluster"
 
 setup
+#run_some_tests
 run_test
-#test_update_same_records
 stop_all_databases
 
 if [[ -f $stopfile ]]; then
