@@ -116,4 +116,7 @@ void disttxn_init();
 
 /* Initialize recover-prepared callback */
 void disttxn_init_recover_prepared();
+
+/* Resolve DDL prepared transactions before schema lock acquisition */
+void disttxn_resolve_ddl_prepared(void);
 #endif

@@ -1140,7 +1140,8 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         }
         break;
     }
-    case PARTITION_REM_GENSHARD: {
+    case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD: {
     }
     }
 
