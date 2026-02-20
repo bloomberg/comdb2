@@ -68,6 +68,7 @@
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
+extern int gbl_2pc;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_disttxn_trace;
@@ -4097,10 +4098,11 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
     free(tran->errstr);
 
     if (tran->is_cdb2api) {
-        rc = cdb2_close(tran->fcon.hndl);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n",
-                   rc);
+        if (tran->fcon.hndl) { /* may be NULL if background thread owns it for 2PC */
+            rc = cdb2_close(tran->fcon.hndl);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n", rc);
+            }
         }
         free(tran);
     } else {
@@ -4155,6 +4157,23 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
     }
 }
 
+/* For 2PC cdb2api commits, run in a background thread to avoid deadlock.
+ * participant_wait() blocks until coordinator signals via disttxn protocol,
+ * but cdb2_run_statement("commit") also blocks waiting for the participant
+ * to respond, creating a circular deadlock. The background thread breaks it. */
+struct fdb_bg_commit_arg {
+    cdb2_hndl_tp *hndl;
+};
+
+static void *fdb_bg_commit_thread(void *varg)
+{
+    struct fdb_bg_commit_arg *arg = (struct fdb_bg_commit_arg *)varg;
+    cdb2_run_statement(arg->hndl, "commit");
+    cdb2_close(arg->hndl);
+    free(arg);
+    return NULL;
+}
+
 int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *is_distributed)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
@@ -4206,27 +4225,44 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
             if (tran->writes_status >= FDB_TRAN_BEGIN) {
                 assert(tran->fcon.hndl);
                 fdb_client_set_identityBlob(clnt, tran->fcon.hndl);
-                rc = cdb2_run_statement(tran->fcon.hndl, "commit");
-                if (!rc) {
-                    cdb2_effects_tp effects;
-                    int irc;
-                    if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
-                        logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n", __func__, irc,
-                               cdb2_errstr(tran->fcon.hndl));
-                    } else {
-                        clnt->remote_effects.num_affected += effects.num_affected;
-                        clnt->remote_effects.num_selected += effects.num_selected;
-                        clnt->remote_effects.num_updated += effects.num_updated;
-                        clnt->remote_effects.num_deleted += effects.num_deleted;
-                        clnt->remote_effects.num_inserted += effects.num_inserted;
-                    }
-                    /* 2pc case; if the remote did no generate any writes, there is no
-                     * remote bplog, so do not include this fdb as a participant
-                     */
-                    tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
-                    if (tran->nwrites) {
-                        tran->writes_status = FDB_TRAN_WRITES;
-                        *is_distributed = 1;
+                if (clnt->use_2pc && !clnt->osql.running_ddl) {
+                    /* 2PC: commit asynchronously to break coordinator-participant deadlock.
+                     * participant_wait() blocks until coordinator signals via disttxn,
+                     * but a synchronous cdb2_run_statement("commit") would block waiting
+                     * for the participant -- circular deadlock. Background thread breaks it.
+                     * Errors are reported via CDB2_DIST__FAILED_PREPARE, not cdb2api rc.
+                     * For DDL: participant_wait() is not called (toblock takes the tranddl
+                     * branch which commits directly), so commit synchronously to ensure all
+                     * remote schema changes complete before the coordinator returns success. */
+                    struct fdb_bg_commit_arg *bgarg = calloc(1, sizeof(*bgarg));
+                    bgarg->hndl = tran->fcon.hndl;
+                    tran->fcon.hndl = NULL; /* background thread owns handle */
+                    pthread_t tid;
+                    pthread_create(&tid, NULL, fdb_bg_commit_thread, bgarg);
+                    pthread_detach(tid);
+                } else {
+                    rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+                    if (!rc) {
+                        cdb2_effects_tp effects;
+                        int irc;
+                        if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
+                            logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n", __func__, irc,
+                                   cdb2_errstr(tran->fcon.hndl));
+                        } else {
+                            clnt->remote_effects.num_affected += effects.num_affected;
+                            clnt->remote_effects.num_selected += effects.num_selected;
+                            clnt->remote_effects.num_updated += effects.num_updated;
+                            clnt->remote_effects.num_deleted += effects.num_deleted;
+                            clnt->remote_effects.num_inserted += effects.num_inserted;
+                        }
+                        /* 2pc case; if the remote did no generate any writes, there is no
+                         * remote bplog, so do not include this fdb as a participant
+                         */
+                        tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
+                        if (tran->nwrites) {
+                            tran->writes_status = FDB_TRAN_WRITES;
+                            *is_distributed = 1;
+                        }
                     }
                 }
                 if (gbl_debug_disttxn_trace)
@@ -6267,8 +6303,11 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Fix this, for now disable 2pc if its a DDL */
-    clnt->use_2pc = 0;
+    /* Enable 2pc for distributed DDL when configured */
+    if (gbl_2pc) {
+        clnt->use_2pc = 1;
+        fdb_init_disttxn(clnt);
+    }
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
@@ -6294,9 +6333,12 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
         goto setup_error;
     }
 
+    /* extra_set[0] is "SET VeRiFyReTRy OFF" so that cdb2_get_effects works on
+     * the DDL connection; indices 1..6 are the SET PARTITION commands */
     const char *str[6];
     int strl[6];
-    char *extra_set[6];
+    char *extra_set[7];
+    extra_set[0] = (char *)"SET VERIFYRETRY OFF"; /* verifyretry off so cdb2_get_effects works */
 
     char numdbs_str[3];
     char numcols_str[3];
@@ -6327,35 +6369,35 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     for (i = 0; i < nshards; i++)
         strl[5] += strlen(shardnames[i]) + 1;
 
-    extra_set[0] = alloca(strl[0]);
-    extra_set[1] = alloca(strl[1]);
-    extra_set[2] = alloca(strl[2]);
-    extra_set[3] = alloca(strl[3]);
-    extra_set[4] = alloca(strl[4]);
-    extra_set[5] = alloca(strl[5]);
+    extra_set[1] = alloca(strl[0]);
+    extra_set[2] = alloca(strl[1]);
+    extra_set[3] = alloca(strl[2]);
+    extra_set[4] = alloca(strl[3]);
+    extra_set[5] = alloca(strl[4]);
+    extra_set[6] = alloca(strl[5]);
 
     /* SET PARTITION NAME <tblname>*/
-    snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->tablename);
+    snprintf(extra_set[1], strl[0], "%s%s", str[0], sc->tablename);
 
     /* SET PARTITION NUMDBS <numdbs>*/
-    snprintf(extra_set[1], strl[1], "%s%s", str[1], numdbs_str);
+    snprintf(extra_set[2], strl[1], "%s%s", str[1], numdbs_str);
 
     /* SET PARTITION DBS <numdbs>*/
-    int pos = snprintf(extra_set[2], strl[2], "%s", str[2]);
+    int pos = snprintf(extra_set[3], strl[2], "%s", str[2]);
     for (i = 0; i < nshards; i++)
-        pos += snprintf(&extra_set[2][pos], strl[2] - pos, "%s ", dbnames[i]);
+        pos += snprintf(&extra_set[3][pos], strl[2] - pos, "%s ", dbnames[i]);
 
     /* SET PARTITION NUMCOLS <numcols>*/
-    snprintf(extra_set[3], strl[3], "%s%s", str[3], numcols_str);
+    snprintf(extra_set[4], strl[3], "%s%s", str[3], numcols_str);
     /* SET PARTITION COLS <cols>*/
-    pos = snprintf(extra_set[4], strl[4], "%s", str[4]);
+    pos = snprintf(extra_set[5], strl[4], "%s", str[4]);
     for (i = 0; i < numcols; i++)
-        pos += snprintf(&extra_set[4][pos], strl[4] - pos, "%s", columns[i]);
+        pos += snprintf(&extra_set[5][pos], strl[4] - pos, "%s", columns[i]);
 
     /* SET PARTITION SHARDS <shards>*/
-    pos = snprintf(extra_set[5], strl[5], "%s", str[5]);
+    pos = snprintf(extra_set[6], strl[5], "%s", str[5]);
     for (i = 0; i < nshards; i++)
-        pos += snprintf(&extra_set[5][pos], strl[5] - pos, "%s ", shardnames[i]);
+        pos += snprintf(&extra_set[6][pos], strl[5] - pos, "%s ", shardnames[i]);
 
     /* start the transaction */
     for(i = 0; i < nshards; i++) {
@@ -6370,7 +6412,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
                 rc = osql_schemachange_logic(sc, 0);
             } else {
                 /* remote */
-                rc = handle_fdb_push_write(clnt, &err, 6, (const char **)&extra_set);
+                rc = handle_fdb_push_write(clnt, &err, 7, (const char **)&extra_set);
             }
         } while (0);
         clnt->sql = sql;

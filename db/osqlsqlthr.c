@@ -392,8 +392,12 @@ static int osql_wait(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     errstat_t dummy = {0};
 
-    /* if this is a 2pc participant, we don't need to wait here */
-    if (clnt->is_participant)
+    /* For DML 2pc participants: don't wait here; the coordinator will handle
+     * synchronization via participant_wait/coordinator_wait in toblock.c.
+     * For DDL participants: participant_wait is NOT called in the tranddl path
+     * (toblock.c commits directly), so wait normally to ensure the schema
+     * change completes before the "commit" response is returned to the caller. */
+    if (clnt->is_participant && !osql->running_ddl)
         return 0;
 
     /* If an error is set (e.g., selectv error from range check), latch it. */
@@ -1922,7 +1926,21 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
                 usedb = 0;
         }
 
+        /* For DDL 2pc participants (IS_REMCREATE), skip OSQL_PREPARE so the block
+         * processor dispatches immediately without waiting for coordinator sanction.
+         * The tranddl path in toblock.c commits schema changes directly (bypassing
+         * participant_wait), so the coordinator never sends CDB2_DIST__PREPARE to
+         * sanction the participant — causing an indefinite wait if OSQL_PREPARE is sent. */
+        int saved_is_participant = 0;
+        if (clnt->remsql_set.is_remsql == IS_REMCREATE && clnt->is_participant) {
+            saved_is_participant = clnt->is_participant;
+            clnt->is_participant = 0;
+        }
+
         START_SOCKSQL;
+
+        if (saved_is_participant)
+            clnt->is_participant = saved_is_participant;
 
         sc->rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(sc->uuid, osql->uuid);

@@ -1,6 +1,7 @@
 #include <disttxn.h>
 #include <sqlquery.pb-c.h>
 #include <pthread.h>
+#include <poll.h>
 #include <epochlib.h>
 #include <plhash_glue.h>
 #include <stdlib.h>
@@ -176,6 +177,8 @@ int gbl_disttxn_async_messages = 1;
 int gbl_coordinator_sync_on_commit = 1;
 int gbl_coordinator_block_until_durable = 1;
 
+int gbl_disttxn_ddl_resolve_fatal = 1;
+
 /* Debug tunables */
 int gbl_debug_exit_participant_after_prepare = 0;
 int gbl_debug_exit_coordinator_before_commit = 0;
@@ -219,6 +222,16 @@ void disttxn_verify_table(void)
     char *conf = getenv("CDB2_CONFIG");
     if (conf) {
         cdb2_set_comdb2db_config(conf);
+    } else {
+        /* Fall back to the database's own comdb2db.cfg so internal cdb2api
+         * connections (send_prepare_message, etc.) can resolve peer databases
+         * even when CDB2_CONFIG is not set in the server's environment. */
+        extern char *gbl_dbdir;
+        if (gbl_dbdir) {
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path), "%s/comdb2db.cfg", gbl_dbdir);
+            cdb2_set_comdb2db_config(path);
+        }
     }
 
     if (get_dbtable_by_name(DISTRIBUTED_TRANSACTIONS_TABLE) == NULL) {
@@ -2366,6 +2379,124 @@ static int coord_cmp(const char *key1, const char *key2, int len)
     if ((cmp = strcmp(c1->dbname, c2->dbname)))
         return cmp;
     return strcmp(c1->tier, c2->tier);
+}
+
+/* Synchronously resolve DDL prepared transactions before schema lock acquisition.
+ * This prevents deadlock during bdb_upgrade_all_prepared() when a recovered
+ * prepared DDL transaction needs the schema lock.
+ */
+#define DDL_RESOLVE_TIMEOUT_SEC 30
+#define DDL_RESOLVE_RETRY_MS 1000
+#define DDL_RESOLVE_POLL_MS 100
+
+void disttxn_resolve_ddl_prepared(void)
+{
+    char **dist_txnids = NULL, **coordinator_names = NULL, **coordinator_tiers = NULL;
+    int count = 0;
+
+    int rc = bdb_collect_ddl_prepared(thedb->bdb_env, &dist_txnids, &coordinator_names, &coordinator_tiers, &count);
+    if (rc != 0 || count == 0)
+        return;
+
+    logmsg(LOGMSG_INFO, "%s: found %d DDL prepared transactions to resolve\n", __func__, count);
+
+    for (int i = 0; i < count; i++) {
+        const char *dist_txnid = dist_txnids[i];
+        const char *coord_name = coordinator_names[i];
+        const char *coord_tier = coordinator_tiers[i];
+
+        logmsg(LOGMSG_INFO, "%s: resolving DDL prepared txn %s coordinator %s/%s\n", __func__, dist_txnid, coord_name,
+               coord_tier);
+
+        if (!strcmp(coord_tier, COORDINATOR_LOCAL)) {
+            /* Local coordinator: check in-memory hash for commit status.
+             * If committed, recovery would have seen the dist-commit record.
+             * If not committed, coordinator crashed before deciding = abort. */
+            int is_committed = bdb_is_dist_committed(thedb->bdb_env, dist_txnid);
+            bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnid, is_committed);
+            logmsg(LOGMSG_INFO, "%s: local DDL txn %s resolved as %s\n", __func__, dist_txnid,
+                   is_committed ? "committed" : "aborted");
+            continue;
+        }
+
+        /* Remote coordinator: contact synchronously with retry */
+        int resolved = 0;
+        int start_time = comdb2_time_epoch();
+
+        while (!resolved && (comdb2_time_epoch() - start_time) < DDL_RESOLVE_TIMEOUT_SEC) {
+            cdb2_hndl_tp *hndl = NULL;
+            int flags = CDB2_MASTER;
+
+            if ((rc = cdb2_open(&hndl, coord_name, coord_tier, flags)) != 0) {
+                logmsg(LOGMSG_INFO, "%s: error opening handle to %s:%s for %s, rc=%d, retrying\n", __func__, coord_name,
+                       coord_tier, dist_txnid, rc);
+                poll(NULL, 0, DDL_RESOLVE_RETRY_MS);
+                continue;
+            }
+
+            char *pname = gbl_dbname;
+            char *ptier = gbl_machine_class ? gbl_machine_class : gbl_myhostname;
+
+            rc = cdb2_send_2pc(hndl, (char *)coord_name, pname, ptier, gbl_myhostname, CDB2_DIST__PREPARED,
+                               (char *)dist_txnid, 0, 0, NULL, 0 /* synchronous */);
+
+            cdb2_close(hndl);
+
+            if (rc != 0) {
+                logmsg(LOGMSG_INFO, "%s: error sending to %s:%s for %s, rc=%d, retrying\n", __func__, coord_name,
+                       coord_tier, dist_txnid, rc);
+                poll(NULL, 0, DDL_RESOLVE_RETRY_MS);
+                continue;
+            }
+
+            /* Wait for coordinator response via participant_hash */
+            int wait_start = comdb2_time_epochms();
+            while ((comdb2_time_epochms() - wait_start) < 5000) {
+                Pthread_mutex_lock(&part_lk);
+                participant_t *p = hash_find(participant_hash, &dist_txnid);
+                if (p) {
+                    int committed = (p->state == I_AM_COMMITTED);
+                    Pthread_mutex_unlock(&part_lk);
+                    bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnid, committed);
+                    logmsg(LOGMSG_INFO, "%s: remote DDL txn %s resolved as %s\n", __func__, dist_txnid,
+                           committed ? "committed" : "aborted");
+                    resolved = 1;
+                    break;
+                }
+                Pthread_mutex_unlock(&part_lk);
+                poll(NULL, 0, DDL_RESOLVE_POLL_MS);
+            }
+
+            if (!resolved) {
+                logmsg(LOGMSG_INFO, "%s: no response from coordinator for %s, retrying\n", __func__, dist_txnid);
+            }
+        }
+
+        if (!resolved) {
+            if (gbl_disttxn_ddl_resolve_fatal) {
+                logmsg(LOGMSG_FATAL,
+                       "%s: unable to resolve DDL prepared txn %s "
+                       "after %d seconds, aborting startup\n",
+                       __func__, dist_txnid, DDL_RESOLVE_TIMEOUT_SEC);
+                abort();
+            } else {
+                logmsg(LOGMSG_WARN,
+                       "%s: unable to resolve DDL prepared txn %s "
+                       "after %d seconds, aborting transaction\n",
+                       __func__, dist_txnid, DDL_RESOLVE_TIMEOUT_SEC);
+                bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnid, 0 /* abort */);
+            }
+        }
+    }
+
+    for (int i = 0; i < count; i++) {
+        free(dist_txnids[i]);
+        free(coordinator_names[i]);
+        free(coordinator_tiers[i]);
+    }
+    free(dist_txnids);
+    free(coordinator_names);
+    free(coordinator_tiers);
 }
 
 void disttxn_cleanup(void)
