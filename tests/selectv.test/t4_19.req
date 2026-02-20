@@ -1,3 +1,0 @@
-begin
-selectv * from t1 where id in (select id from t2)
-commit

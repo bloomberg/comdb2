@@ -1,3 +1,0 @@
-schema {
-    cstring s[33] dbstore={hex(GUID())}
-}

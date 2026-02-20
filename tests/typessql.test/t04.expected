@@ -1,7 +1,0 @@
-(rows inserted=1)
-(i=NULL, r=NULL, s=NULL, v=NULL, byt=NULL, b=NULL, d=NULL, d2=NULL)
-(i=1, r=1.000000, s='hi', v='hello', byt=x'deadbeef', b=x'deadbeef', d="2023-09-13T000000.000 America/New_York", d2="2023-09-13T000000.000001 America/New_York")
-(interval=NULL)
-(interval="0 00:00:00.000001")
-(i=NULL, r=NULL, s=NULL, v=NULL, byt=NULL, b=NULL, d=NULL, d2=NULL)
-(i=1, r=1.000000, s='hi', v='hello', byt=x'deadbeef', b=x'deadbeef', d="2023-09-13T130000.000 Asia/Tokyo", d2="2023-09-13T130000.000001 Asia/Tokyo")

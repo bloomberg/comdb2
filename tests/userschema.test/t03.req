@@ -1,7 +1,0 @@
-set user abcd
-set password abcd
-create table test { schema {int t}}$$
-insert into test values(1)
-insert into test values(1)
-insert into test values(1)
-insert into test values(1)

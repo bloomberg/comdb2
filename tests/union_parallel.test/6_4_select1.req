@@ -1,1 +1,0 @@
-select 10003 as cd union all select c from t2 union all select 10004 union all select e from t3

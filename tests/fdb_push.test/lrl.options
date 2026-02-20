@@ -1,5 +1,0 @@
-table t t.csc2
-table t2 t2.csc2
-ssl_allow_remsql 1
-foreign_db_push_remote 1
-foreign_db_push_redirect 0

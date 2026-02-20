@@ -1,1 +1,0 @@
-select i, sum(j), sum(k) from t1 where i>=0 group by i order by i

@@ -1,5 +1,0 @@
-This test checks simple remote sql writes
-1) single insert/update/delete
-2) batch insert/update/delete
-3) insert/update/delete based on select subquery
-4) multiple remote db target error

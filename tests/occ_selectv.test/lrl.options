@@ -1,4 +1,0 @@
-table jobs t.csc2
-table schedule t.csc2
-maxosqltransfer 200000
-enable_selectv_range_check

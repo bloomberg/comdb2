@@ -1,5 +1,0 @@
-schema
-{
-    int a
-    int b null=yes
-}

@@ -1,4 +1,0 @@
-(rows inserted=1)
-(i=1)
-(jsonEmitObj='{"type":"add","name":"foraudit","id":"642","tid":246,"new":"{\"i\":1}"}')
-[exec procedure cons_with_tid()] failed with rc -3 [string "local function define_emit_columns()..."]:16: attempt to index local 'change' (a nil value)

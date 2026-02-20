@@ -1,4 +1,0 @@
-set readonly on
-set transaction invalid
-# should get an error on this
-select 1

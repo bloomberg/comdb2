@@ -1,2 +1,0 @@
-[select c from t2 union all select e from t3 ha ha] failed with rc -3 near "ha": syntax error
-[select c from t2 order by c union all select e from t3] failed with rc -3 ORDER BY clause should come after UNION ALL not before

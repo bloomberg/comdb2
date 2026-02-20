@@ -1,5 +1,0 @@
-This test runs record distribution benchmark against the consistent hash utility
-It creates 5 tables ( to simulate 5 shards) and inserts a million records into these 5 tables.
-The table in which a record goes is decided by the consistent hash and the value of the field in the record
-being inserted. Next, one of the tables(shards) is dropped, which causes a certain number of records to be 
-re-distributed. This test checks the distribution before dropping a table and after dropping a table

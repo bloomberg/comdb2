@@ -1,3 +1,0 @@
-init_with_rowlocks
-table t1 t1.csc2
-round_robin_stripes

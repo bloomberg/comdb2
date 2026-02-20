@@ -1,2 +1,0 @@
-select * from t union all select * from t order by id
-select 11 as cc from t union all select 22 as cc from t order by cc

@@ -1,4 +1,0 @@
-table t t.csc2
-logmsg level user
-setattr DEBUG_TIMEPART_CRON 1
-setattr VIEWS_DFT_PREEMPT_ROLL_SECS 30

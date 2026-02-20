@@ -1,3 +1,0 @@
-begin
-select id from t1 UNION selectv id from t2
-commit

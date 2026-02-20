@@ -1,6 +1,0 @@
-schema
-{
-    blob b1 null = yes
-    blob b2[8]
-    blob b3 null = yes
-}

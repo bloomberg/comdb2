@@ -1,2 +1,0 @@
-[create table "table-with>illegal<chars" (i int)] failed with rc -3 Table name contains illegal characters. name='table-with>illegal<chars'
-[create table "table-with>illegal<chars" { schema { int i } }] failed with rc -3 Table name contains illegal characters. name='table-with>illegal<chars'

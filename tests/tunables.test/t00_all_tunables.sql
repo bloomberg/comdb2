@@ -1,1 +1,0 @@
-SELECT name, description, type, CASE WHEN name IN ('dir', 'hostname', 'appsockpool.stacksz','i_am_master', 'directio') THEN '***' ELSE value END AS value, read_only FROM comdb2_tunables WHERE name NOT IN ('name') ORDER BY name;

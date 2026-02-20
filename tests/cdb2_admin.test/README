@@ -1,6 +1,0 @@
-This test verifies cdb2api connections made in admin mode. 
-
-Main Idea: 
-1.) Establish an admin connection
-2.) Test if it's recorded in comdb2_connections under the 'is_admin' column 
-

@@ -1,3 +1,0 @@
-This test case will be used to add a certain number of records into a db, 
-several times. Do this while schemachange is rebuilding in background
-continuously to detect any issues with schemachange.

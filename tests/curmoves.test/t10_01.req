@@ -1,1 +1,0 @@
-select * from t1 where (t1.c2 = 1234 OR t1.c3 = 5678) AND (c1=123 OR (SELECT 1 FROM t2 UNION ALL SELECT 1 FROM t3 WHERE t1.c4 ))

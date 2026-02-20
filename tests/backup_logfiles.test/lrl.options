@@ -1,3 +1,0 @@
-private_blkseq_maxage 20
-debug_log_deletion on
-location backup_logfiles_dir ${TESTDIR}/backup_logs_%dbname

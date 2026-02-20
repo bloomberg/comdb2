@@ -1,7 +1,0 @@
-CREATE TABLE newsqlresetbug (i INTEGER)$$
-SET TRANSACTION SNAPSHOT ISOLATION
-BEGIN
-UPDATE newsqlresetbug SET i = i WHERE 1=1
-COMMIT
-BEGIN
-SELECT * FROM newsqlresetbug

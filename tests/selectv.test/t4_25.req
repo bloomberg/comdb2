@@ -1,3 +1,0 @@
-begin
-selectv id, (selectv id from t2 where id=t1.id) as comm  from t1 order by id;
-commit

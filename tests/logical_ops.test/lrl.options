@@ -1,3 +1,0 @@
-logmsg level info
-ssl_client_mode OPTIONAL
-enable_logical_logging

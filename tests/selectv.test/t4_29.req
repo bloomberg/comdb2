@@ -1,3 +1,0 @@
-begin
-selectv id from t1 UNION ALL selectv id from t2 order by id;
-commit

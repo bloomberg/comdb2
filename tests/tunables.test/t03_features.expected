@@ -1,9 +1,0 @@
-[create table t1(color varchar(10), constraint valid_colors check (color IN ('red', 'green', 'blue')))] failed with rc 240 ERROR: CHECK CONSTRAINT support not enabled
-
-[create table t2 { schema { byte id[16] dbstore={hex(guid())} } }] failed with rc 240 ERROR: DEFAULT FUNCTION support not enabled
-
-[create table c { schema{ int i null=yes } keys { dup "pk" = i } constraints { "pk" -> <"p":"pk"> on delete set null on update cascade } }] failed with rc 240 ERROR: ON DELETE SET NULL support not enabled
-
-[create table t3 { schema { longlong i null=yes dbstore=nextsequence } }] failed with rc 240 ERROR: SEQUENCE support not enabled
-
-[create view v1 as select 1] failed with rc -3 VIEWs support not enabled

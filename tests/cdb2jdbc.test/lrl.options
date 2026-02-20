@@ -1,3 +1,0 @@
-ssl_client_mode VERIFY_CA
-ssl_dbname_field street
-ssl_cert_path ${TESTDIR}/certs

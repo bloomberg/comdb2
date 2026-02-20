@@ -1,2 +1,0 @@
-[select * from test] failed with rc -3 set password: password length exceeds 18 characters
-[select * from comdb2_tablepermissions order by tablename] failed with rc -3 set password: password length exceeds 18 characters

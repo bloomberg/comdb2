@@ -1,2 +1,0 @@
-set transaction read committed
-UPDATE t1 SET a=11

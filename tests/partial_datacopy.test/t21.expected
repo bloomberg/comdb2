@@ -1,7 +1,0 @@
-(tablename='t', keyname='A', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
-(tablename='t', keyname='A', columnname='a')
-(tablename='t2', keyname='A', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
-(tablename='t2', keyname='A', columnname='a')
-(tablename='t2', keyname='A', columnname='b')
-(tablename='t2', keyname='A', columnname='c')
-(tablename='t2', keyname='A', columnname='d')

@@ -1,1 +1,0 @@
-./compress_alter.sh

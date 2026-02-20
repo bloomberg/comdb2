@@ -1,4 +1,0 @@
-enable_snapshot_isolation
-
-# To reproduce newsi-on-master bug, uncomment this line
-#enable_new_snapshot

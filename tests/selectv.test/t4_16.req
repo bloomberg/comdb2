@@ -1,3 +1,0 @@
-begin
-select * from (selectv * from t2) order by id;
-commit

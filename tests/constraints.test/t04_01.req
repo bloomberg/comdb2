@@ -1,8 +1,0 @@
-insert into t1 values (1234, 1234, 1234, 1234)
-insert into t1 values (4321, 4321, 1234, 1234)
-insert into t1 values (1321, 1321, 1234, null) -- Non default, no NULL contraint.
-insert into t3 values (1234, 1121)
-delete from t1 where value = 1234 -- Foreign key contraint, cascade delete.
-select * from t1 order by uid
-select * from t3 order by uid -- should have no record.
-
