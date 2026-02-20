@@ -387,7 +387,7 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 				if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
-								&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
+								&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier, argp->lflags)) != 0)
 					abort();
 			}
 		}
@@ -399,7 +399,7 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		} else {
 			logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
 			if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
-				&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
+				&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier, argp->lflags)) != 0)
 				abort();
 		}
 	}

@@ -67,6 +67,7 @@
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
+extern int gbl_2pc;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
@@ -4256,10 +4257,11 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
     free(tran->errstr);
 
     if (tran->is_cdb2api) {
-        rc = cdb2_close(tran->fcon.hndl);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n",
-                   rc);
+        if (tran->fcon.hndl) { /* may be NULL if background thread owns it for 2PC */
+            rc = cdb2_close(tran->fcon.hndl);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n", rc);
+            }
         }
         free(tran);
     } else {
@@ -4314,6 +4316,23 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
     }
 }
 
+/* For 2PC cdb2api commits, run in a background thread to avoid deadlock.
+ * participant_wait() blocks until coordinator signals via disttxn protocol,
+ * but cdb2_run_statement("commit") also blocks waiting for the participant
+ * to respond, creating a circular deadlock. The background thread breaks it. */
+struct fdb_bg_commit_arg {
+    cdb2_hndl_tp *hndl;
+};
+
+static void *fdb_bg_commit_thread(void *varg)
+{
+    struct fdb_bg_commit_arg *arg = (struct fdb_bg_commit_arg *)varg;
+    cdb2_run_statement(arg->hndl, "commit");
+    cdb2_close(arg->hndl);
+    free(arg);
+    return NULL;
+}
+
 int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
@@ -4363,19 +4382,33 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
                 assert(tran->fcon.hndl);
 
                 fdb_client_set_identityBlob(clnt, tran->fcon.hndl);
-                rc = cdb2_run_statement(tran->fcon.hndl, "commit");
-                if (!rc) {
-                    cdb2_effects_tp effects;
-                    int irc;
-                    if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
-                        logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n",
-                               __func__, irc, cdb2_errstr(tran->fcon.hndl));
-                    } else {
-                        clnt->remote_effects.num_affected += effects.num_affected;
-                        clnt->remote_effects.num_selected += effects.num_selected;
-                        clnt->remote_effects.num_updated += effects.num_updated;
-                        clnt->remote_effects.num_deleted += effects.num_deleted;
-                        clnt->remote_effects.num_inserted += effects.num_inserted;
+                if (clnt->use_2pc) {
+                    /* 2PC: commit asynchronously to break coordinator-participant deadlock.
+                     * participant_wait() blocks until coordinator signals via disttxn,
+                     * but a synchronous cdb2_run_statement("commit") would block waiting
+                     * for the participant -- circular deadlock. Background thread breaks it.
+                     * Errors are reported via CDB2_DIST__FAILED_PREPARE, not cdb2api rc. */
+                    struct fdb_bg_commit_arg *bgarg = calloc(1, sizeof(*bgarg));
+                    bgarg->hndl = tran->fcon.hndl;
+                    tran->fcon.hndl = NULL; /* background thread owns handle */
+                    pthread_t tid;
+                    pthread_create(&tid, NULL, fdb_bg_commit_thread, bgarg);
+                    pthread_detach(tid);
+                } else {
+                    rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+                    if (!rc) {
+                        cdb2_effects_tp effects;
+                        int irc;
+                        if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
+                            logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n", __func__, irc,
+                                   cdb2_errstr(tran->fcon.hndl));
+                        } else {
+                            clnt->remote_effects.num_affected += effects.num_affected;
+                            clnt->remote_effects.num_selected += effects.num_selected;
+                            clnt->remote_effects.num_updated += effects.num_updated;
+                            clnt->remote_effects.num_deleted += effects.num_deleted;
+                            clnt->remote_effects.num_inserted += effects.num_inserted;
+                        }
                     }
                 }
             } else {
@@ -6353,8 +6386,11 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Fix this, for now disable 2pc if its a DDL */
-    clnt->use_2pc = 0;
+    /* Enable 2pc for distributed DDL when configured */
+    if (gbl_2pc) {
+        clnt->use_2pc = 1;
+        fdb_init_disttxn(clnt);
+    }
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
