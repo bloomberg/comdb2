@@ -29,9 +29,10 @@
 extern "C" {
 #endif
 
-COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port, int *was_from_local_cache);
+#ifdef CDB2API_SERVER
 // use this one for fastsql since client_sbuf and server_sbuf are different
 int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
+#endif
 void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
 
 #ifdef CDB2API_SERVER
@@ -42,6 +43,7 @@ int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, ch
 COMDB2BUF *cdb2_cdb2buf_openread(const char *filename);
 int cdb2_read_line(char *line, int maxlen, COMDB2BUF *s, const char *buf, int *chrno);
 
+#ifdef CDB2API_SERVER
 void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id);
 
 void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
@@ -50,6 +52,7 @@ void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
+#endif
 
 struct cdb2_identity {
     void (*resetIdentity_start)();
