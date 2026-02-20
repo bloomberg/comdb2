@@ -870,7 +870,7 @@ got_row:
     return SQLITE_ROW;
 }
 
-static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
+int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%p %s type %d code %d\n", (void *)pthread_self(),
@@ -1353,9 +1353,6 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
 done:
     return rc;
 }
-
-#define DOHSQL_CLIENT                                                          \
-    (clnt->plugin.state && clnt->plugin.write_response == dohsql_write_response)
 
 void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
 {
