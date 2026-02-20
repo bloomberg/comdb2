@@ -281,7 +281,7 @@ fdb_tbl_ent_t *fdb_clnt_cache_get_ent(sqlclntstate *clnt, int rootpage);
 fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
                                     int use_ssl, int *created);
 fdb_tran_t *fdb_trans_join(sqlclntstate *clnt, fdb_t *fdb);
-int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects);
+int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *is_distributed);
 int fdb_trans_rollback(sqlclntstate *clnt);
 char *fdb_trans_id(fdb_tran_t *trans);
 

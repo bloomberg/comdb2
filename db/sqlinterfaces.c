@@ -1795,6 +1795,8 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     rc = SQLITE_OK;
 
+    fprintf(stderr, "!!!! %s %s !!!!\n", __func__, clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)");
+
     Pthread_mutex_lock(&clnt->wait_mutex);
     /* if this is a new chunk, do not stop the hearbeats.*/
     if (sideeffects != TRANS_CLNTCOMM_CHUNK)
@@ -2364,6 +2366,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     int rc = 0;
     int outrc = 0;
+
+    fprintf(stderr, "!!!! %s %s !!!!\n", __func__, clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)");
 
     if (clnt->modsnap_in_progress) {
         clear_modsnap_state(clnt);
@@ -4184,6 +4188,11 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
     char *allocd_str = NULL;
+    uuidstr_t us;
+
+    fprintf(stderr, "!!!! %s %s uuid %s sql %s !!!!\n", __func__,
+            clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(clnt->osql.uuid, us),
+            clnt->sql ? clnt->sql : "(nosql)");
 
     do {
 retry_legacy_remote:
@@ -4193,6 +4202,9 @@ retry_legacy_remote:
         /* get an sqlite engine */
         assert(rec.stmt == NULL);
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err, PREPARE_NONE);
+        fprintf(stderr, "!!!! %s %s Prepared uuid %s sql %s !!!!\n", __func__,
+                clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(clnt->osql.uuid, us),
+                clnt->sql ? clnt->sql : "(nosql)");
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
         if (rc == SQLITE_SCHEMA_DOHSQL) {
@@ -4242,6 +4254,9 @@ retry_legacy_remote:
 
         /* run the engine */
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err);
+        fprintf(stderr, "!!!! %s %s Ran uuid %s sql %s !!!!\n", __func__,
+                clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(clnt->osql.uuid, us),
+                clnt->sql ? clnt->sql : "(nosql)");
         if (rc) {
             int irc = errstat_get_rc(&err);
             switch(irc) {

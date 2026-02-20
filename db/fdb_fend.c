@@ -4065,7 +4065,7 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
     }
 }
 
-int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
+int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *is_distributed)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
@@ -4129,10 +4129,12 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
                         clnt->remote_effects.num_inserted += effects.num_inserted;
                     }
                 }
+                *is_distributed = 1;
             } else {
                 rc = 0;
             }
         } else {
+            *is_distributed = 1;
             rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
         }
         if (rc) {
@@ -4147,7 +4149,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             clnt->osql.error_is_remote = 1;
         }
 
-        if (clnt->use_2pc) {
+        if (clnt->use_2pc && tran->nwrites) {
             const char *tier = fdb_dbname_class_routing(tran->fdb);
             if ((rc = add_participant(clnt, tran->fdb->dbname, tier)) != 0) {
                 tran->errstr = strdup("multiple participants with same dbname");
@@ -5973,6 +5975,9 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
 int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr, char *err,
                                 int errlen)
 {
+
+    fprintf(stderr, "!!!!%lu %s: processing %s\n", pthread_self(), __func__, sqlstr);
+
     if (sqlstr)
         sqlstr = skipws(sqlstr);
 
@@ -6030,6 +6035,11 @@ int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr, char *err,
         }    
         clnt->use_2pc = 1;
         clnt->is_participant = 1;
+        fprintf(stderr, "!!!! New participant db %s tier %s txnid %s tsstamp %"PRId64" !!!!\n",
+            clnt->coordinator_dbname, 
+            clnt->coordinator_tier,
+            clnt->dist_txnid,
+            clnt->dist_timestamp);
     }
 
     return 0;

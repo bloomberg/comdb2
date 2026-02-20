@@ -572,6 +572,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     int created;
     int rc;
     int set_intrans = 0;
+    const char *noverify = "SET VeRiFyReTRy OFF";
 
     if (!push)
         return -2;
@@ -598,23 +599,33 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     /* begin/join the transaction */
     fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
     if (!tran) {
+        fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
         rc = -1;
         goto put;
     }
+    fprintf(stderr, "%s:%d trans %s\n", __func__, __LINE__, created ? "created" : "joined");
     assert(tran->is_cdb2api);
 
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
+
+        if (!n_extra_sets) {
+            n_extra_sets = 1;
+            sets = &noverify;
+        }
         tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err,
                                             n_extra_sets, sets);
         if (!tran->fcon.hndl) {
             rc = -2;
+            fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
             goto free;
         }
+        fprintf(stderr, "%s:%d in_client_trans %d\n", __func__, __LINE__, clnt->in_client_trans);
         if (clnt->in_client_trans) {
             /* if not standalone, and this is the first reachout to this fdb, send begin */
             if (!clnt->intrans) {
+                fprintf(stderr, "%s:%d set intrans\n", __func__, __LINE__);
                 clnt->intrans = 1;
                 set_intrans = 1;
             }
@@ -623,8 +634,11 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             if (clnt->use_2pc) {
                 fdb_init_disttxn(clnt);
 
+                fprintf(stderr, "%s:%d use 2pc\n", __func__, __LINE__);
+
                 rc = fdb_2pc_set(clnt, fdb, tran->fcon.hndl);
                 if (rc) {
+                    fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
                     goto hndl_err;
                 }
             }
@@ -634,8 +648,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
                 rc = cdb2_next_record(tran->fcon.hndl);
             }
             if (rc != CDB2_OK_DONE) {
+                fprintf(stderr, "%s:%d error rc %d\n", __func__, __LINE__, rc);
                 goto hndl_err;
             }
+            fprintf(stderr, "%s:%d sent begin\n", __func__, __LINE__);
         }
     }
     hndl = tran->fcon.hndl;
@@ -646,24 +662,46 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     rc = _run_statement(clnt, hndl, err);
     if (rc != CDB2_OK) {
         goto hndl_err;
-    } else {
-        tran->nwrites++;
     }
 
     /* drain the socket */
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
 
     if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
         goto hndl_err;
     }
+    fprintf(stderr, "%s:%d ran statement\n", __func__, __LINE__);
 
-    cdb2_effects_tp effects;
-    if (!clnt->in_client_trans || clnt->verifyretry_off) {
-        if ((rc = cdb2_get_effects(hndl, &effects))) {
+    cdb2_effects_tp effects = {0};
+    /* we need to know if we did if 2pc;
+     * so that we do not prepare a zero writes statement
+     * that will not generate a bplog 
+     */
+    if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
+        rc = cdb2_get_effects(hndl, &effects);
+        fprintf(stderr, "%s:%d ran get_effects %d %d %d %d\n", __func__, __LINE__,
+            effects.num_affected, effects.num_deleted, effects.num_inserted, effects.num_updated);
+        if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n",
-                   __func__, __LINE__, rc, clnt->sql);
+                    __func__, __LINE__, rc, clnt->sql);
             goto hndl_err;
         }
+    } else {
+        fprintf(stderr, "%s:%d skipped get_effects %d %d %d %d\n", __func__, __LINE__,
+            effects.num_affected, effects.num_deleted, effects.num_inserted, effects.num_updated);
+    }
+
+    /* non-empty bplog */
+    int empty = effects.num_affected == 0;
+    if (!empty)
+        tran->nwrites++;
+
+    fprintf(stderr, "!!!! Current tran %p has %d writes\n", tran, tran->nwrites);
+
+    /* do not rely for non-2pc */
+    if (!(!clnt->in_client_trans || clnt->verifyretry_off)) {
+        bzero(&effects, sizeof(effects));
     }
 
     int ncols = cdb2_numcolumns(hndl);
@@ -673,10 +711,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         /* write columns info */
         rc = write_response(clnt, RESPONSE_COLUMNS_FDB_PUSH, hndl, ncols);
         if (rc) {
+            fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
             errstat_set_rcstrf(err, -1, "failed to write columns");
             rc = -1;
             goto free;
         }
+        fprintf(stderr, "%s:%d write columns fdb push\n", __func__, __LINE__);
 
         clnt->effects.num_affected = effects.num_affected;
         clnt->effects.num_selected = effects.num_selected;
@@ -694,18 +734,22 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
         rc = write_response(clnt, RESPONSE_ROW_REMTRAN, NULL, val);
         if (rc) {
+            fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
             errstat_set_rcstrf(err, -1, "failed to write counter");
             rc = -1;
             goto free;
         }
+        fprintf(stderr, "%s:%d write row remtran\n", __func__, __LINE__);
 
         /* write answer */
         rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
         if (rc) {
+            fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
             errstat_set_rcstrf(err, -1, "failed to write last row");
             rc = -1;
             goto free;
         }
+        fprintf(stderr, "%s:%d write last row\n", __func__, __LINE__);
     } else {
         if (clnt->verifyretry_off) {
             // take difference since effects in transaction are cumulative
@@ -718,6 +762,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             tran->last_effects = effects;
         }
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
+        fprintf(stderr, "%s:%d in_client_trans\n", __func__, __LINE__);
     }
 
     if (clnt->get_cost) {
@@ -727,8 +772,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
     }
 
-    if (!clnt->in_client_trans) 
+    if (!clnt->in_client_trans)  {
+        fprintf(stderr, "%s: going to free fdb_trans %d\n", __func__, __LINE__);
         goto free;
+    }
 
     rc = 0;
     goto put;
@@ -736,6 +783,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
 hndl_err:
     errstr = cdb2_errstr(hndl);
     extern const char *err_pre2pc;
+    fprintf(stderr, "%s:%d error rc %d '%s'\n", __func__, __LINE__, rc, errstr ? errstr : "(no error)");
     /* fallback if this is a not supported 2pc error */
     if (errstr && !strncasecmp(errstr, err_pre2pc, strlen(err_pre2pc))) {
         if (!created) {
@@ -745,16 +793,18 @@ hndl_err:
             abort();
         }
         rc = -2; /* lets try a non-2pc version  */
+        fprintf(stderr, "%s:%d error\n", __func__, __LINE__);
         goto free;
     }
     errstat_set_rcstrf(err, rc, "%s", errstr);
-    rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
-    if (rc) {
+    int irc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
+    if (irc) {
         logmsg(LOGMSG_DEBUG, "Failed to write error to client");
     }
 free:
     /* remote the fdb_tran_t */
     fdb_free_tran(clnt, tran);
+    fprintf(stderr, "%s:%d freed fdb_tran\n", __func__, __LINE__);
 free_push:
     if (rc == -2) {
         logmsg(LOGMSG_ERROR, "FDB push returning -2\n");
@@ -772,11 +822,11 @@ free_push:
              */
             clnt->intrans = 0;
         }
-
     }
 
 put:
     put_fdb(fdb, FDB_PUT_NOFREE); /* this could be reused */
+    fprintf(stderr, "%s:%d returning %d\n", __func__, __LINE__, rc);
     return rc;
 }
 
