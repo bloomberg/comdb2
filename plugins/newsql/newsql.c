@@ -1704,14 +1704,12 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     struct newsql_appdata *appdata = clnt->appdata;
     int num_commands = 0;
     char *sqlstr = NULL;
-    char *origsqlstr = NULL;
     char *endp;
     int rc = 0;
     int tmp;
     num_commands = sql_query->n_set_flags;
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
-        origsqlstr = sqlstr;
         sqlstr = skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
@@ -2242,7 +2240,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             if (rc) {
                 if (err[0] == '\0')
                     snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
-                             origsqlstr);
+                             sqlstr);
                 newsql_write_response(clnt, RESPONSE_ERROR_PREPARE, err, 0);
             }
         }
