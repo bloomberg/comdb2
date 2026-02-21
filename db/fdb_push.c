@@ -572,6 +572,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     int created;
     int rc;
     int set_intrans = 0;
+    const char *noverify = "SET VeRiFyReTRy OFF";
 
     if (!push)
         return -2;
@@ -579,7 +580,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     /* this was handled back here through an "error"; clear it */
     clnt->had_errors = 0;
 
-    fdb = get_fdb(push->remotedb);
+    fdb = get_fdb(push->remotedb, FDB_GET_LOCK);
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "FDB push missing fdb %s\n", push->remotedb);
         rc = -2;
@@ -597,13 +598,20 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
 
     /* begin/join the transaction */
     fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
-    if (!tran)
-        return -1;
+    if (!tran) {
+        rc = -1;
+        goto put;
+    }
     assert(tran->is_cdb2api);
 
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
+
+        if (!n_extra_sets) {
+            n_extra_sets = 1;
+            sets = &noverify;
+        }
         tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err,
                                             n_extra_sets, sets);
         if (!tran->fcon.hndl) {
@@ -644,8 +652,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     rc = _run_statement(clnt, hndl, err);
     if (rc != CDB2_OK) {
         goto hndl_err;
-    } else {
-        tran->nwrites++;
     }
 
     /* drain the socket */
@@ -655,13 +661,28 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         goto hndl_err;
     }
 
-    cdb2_effects_tp effects;
-    if (!clnt->in_client_trans || clnt->verifyretry_off) {
-        if ((rc = cdb2_get_effects(hndl, &effects))) {
+    cdb2_effects_tp effects = {0};
+    /* we need to know if we did if 2pc;
+     * so that we do not prepare a zero writes statement
+     * that will not generate a bplog 
+     */
+    if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
+        rc = cdb2_get_effects(hndl, &effects);
+        if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n",
-                   __func__, __LINE__, rc, clnt->sql);
+                    __func__, __LINE__, rc, clnt->sql);
             goto hndl_err;
         }
+    }
+
+    /* non-empty bplog */
+    int empty = effects.num_affected == 0;
+    if (!empty)
+        tran->nwrites++;
+
+    /* do not rely for non-2pc */
+    if (!(!clnt->in_client_trans || clnt->verifyretry_off)) {
+        bzero(&effects, sizeof(effects));
     }
 
     int ncols = cdb2_numcolumns(hndl);
@@ -725,10 +746,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         }
     }
 
-    if (!clnt->in_client_trans) 
+    if (!clnt->in_client_trans)  {
         goto free;
+    }
 
-    return 0;
+    rc = 0;
+    goto put;
 
 hndl_err:
     errstr = cdb2_errstr(hndl);
@@ -745,8 +768,8 @@ hndl_err:
         goto free;
     }
     errstat_set_rcstrf(err, rc, "%s", errstr);
-    rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
-    if (rc) {
+    int irc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
+    if (irc) {
         logmsg(LOGMSG_DEBUG, "Failed to write error to client");
     }
 free:
@@ -769,8 +792,10 @@ free_push:
              */
             clnt->intrans = 0;
         }
-
     }
+
+put:
+    put_fdb(fdb, FDB_PUT_NOFREE); /* this could be reused */
     return rc;
 }
 

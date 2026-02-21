@@ -402,7 +402,7 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* temp hook for sql transactions */
     if (clnt->dbtran.dtran) {
-        rc = fdb_trans_commit(clnt, TRANS_CLNTCOMM_NORMAL);
+        rc = fdb_trans_commit(clnt, TRANS_CLNTCOMM_NORMAL, &is_distributed_tran);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
             return rc;
