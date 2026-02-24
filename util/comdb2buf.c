@@ -452,6 +452,9 @@ static int cdb2buf_fread_int(char *ptr, int size, int nitems,
     int need = size * nitems;
     int done = 0;
 
+    if (sb == 0)
+        return -1;
+
     if (sb->rbuf == NULL) {
         /* lazily establish read buffer */
         sb->rbuf = malloc(sb->lbuf);
