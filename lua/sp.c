@@ -543,13 +543,13 @@ static int dbtype_to_client_type(lua_dbtypes_t *t)
 
 static int lua_to_client_type(Lua lua, int idx)
 {
-    if (lua_isnumber(lua, idx)) {
+    if (lua_type(lua, idx) == LUA_TUSERDATA) {
+        lua_dbtypes_t *t = lua_touserdata(lua, idx);
+        return dbtype_to_client_type(t);
+    } else if (lua_isnumber(lua, idx)) {
         return SQLITE_FLOAT;
     } else if (lua_isstring(lua, idx)) {
         return SQLITE_TEXT;
-    } else if (lua_type(lua, idx) == LUA_TUSERDATA) {
-        lua_dbtypes_t *t = lua_touserdata(lua, idx);
-        return dbtype_to_client_type(t);
     } else {
         return -1;
     }
