@@ -18,6 +18,7 @@
 #define _API_HISTORY_H_
 
 #include <sys/time.h>
+#include <plhash_glue.h>
 
 typedef struct api_driver {
     char *name;
@@ -25,14 +26,14 @@ typedef struct api_driver {
     time_t last_seen;
 } api_driver_t;
 
-typedef struct api_history api_history_t;
+typedef hash_t api_history_t; // holds api_driver_t entries, keyed by name+version
 
-void acquire_api_history_lock(api_history_t*, int);
-void release_api_history_lock(api_history_t*);
+struct sqlclntstate;
+struct rawnodestats;
+
 api_history_t *init_api_history();
-int free_api_history(api_history_t*);
-api_driver_t *get_next_api_history_entry(api_history_t*, void**, unsigned int*);
-int get_num_api_history_entries(api_history_t*);
-int update_api_history(api_history_t*, char*, char*);
+void free_api_history(api_history_t *);
+int get_num_api_history_entries(struct rawnodestats *);
+int update_api_history(struct sqlclntstate *);
 
 #endif

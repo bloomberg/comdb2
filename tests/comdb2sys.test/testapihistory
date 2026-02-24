@@ -1,18 +1,112 @@
 #!/bin/bash
 
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 a_dbn=$1
 
-replicant=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="N" limit 1')
+if [[ "x${DEBUGGER}" != "x" ]] ; then
+    cdb2sql="$DEBUG_PREFIX ${CDB2SQL_EXE}" 
+else 
+    cdb2sql="${CDB2SQL_EXE}"
+fi
+
+TMPDIR=${TMPDIR:-${TESTDIR}/tmp}
+
+export DUMPLOCK_ON_TIMEOUT=1
+export CORE_ON_TIMEOUT=1
+
+master=$($cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="Y" limit 1')
+master=$(echo $master | grep -oP \'\(.*?\)\')
+master=${master:1:-1}
+
+replicant=$($cdb2sql ${CDB2_OPTIONS} $a_dbn default "select host from comdb2_cluster where is_master='N' limit 1")
 replicant=$(echo $replicant | grep -oP \'\(.*?\)\')
 replicant=${replicant:1:-1}
 
-cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT 1"
-cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT CASE WHEN length(host) > 0 THEN 'hostname' ELSE '' END AS host, task, api_driver_name, api_driver_version FROM comdb2_api_history WHERE task='cdb2sql'" > testapihistory.out
+if [[ -z "$replicant" ]]; then
+    echo "Failed to find replicant host for test, requires cluster!"
+    exit 1
+fi
+
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT 1"
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT CASE WHEN length(host) > 0 THEN 'hostname' ELSE '' END AS host, task, api_driver_name, api_driver_version FROM comdb2_api_history WHERE task='cdb2sql'" > testapihistory.out
 diff testapihistory.out testapihistory.expected >/dev/null
 rc=$?
 if [[ $rc -ne 0 ]]; then
     echo "Failed systable comdb2_api_history test"
-    echo diff $(pwd)/testapihistory.out $(pwd)/testapihistory.expected
+    echo $(diff $(pwd)/testapihistory.out $(pwd)/testapihistory.expected)
 fi
 
-exit $rc
+echo "Running concurrent api_history access regression test..."
+
+
+end=$(( $(date +%s) + 5 )) 
+
+(   
+    $cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "drop table if exists t" >/dev/null 2>&1
+    $cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "create table t (i int)" >/dev/null 2>&1
+    i=1
+    while [[ $(date +%s) -lt $end ]]; do
+        $cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t select * from generate_series( $(( $i+1 )) , $(( $i+1000 )) );" >/dev/null 2>&1
+        [[ $? -ne 0 ]] && echo "Error inserting into t1" && exit 1
+        i=$((i+1000))
+    done
+    echo "rows inserted into t: $i"
+
+) 
+
+
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "EXEC PROCEDURE sys.cmd.send('memstat util')" >> testapihistory.out 2>&1
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT SUM(used) FROM comdb2_memstats WHERE name='util'" >> testapihistory.out 2>&1
+
+select_1_in_loop() {
+
+    for i in $(seq 1 5000); do
+        ln -sf "$cdb2sql" /tmp/client_$i
+        /tmp/client_$i ${CDB2_OPTIONS} $a_dbn default "SELECT 1" > /dev/null 2>&1
+    done
+    rm -f /tmp/client_{1..5000}
+
+}
+
+echo "Checking clientstats count..."
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT count(*) FROM comdb2_clientstats"
+
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "EXEC PROCEDURE sys.cmd.send('memstat util')" >> testapihistory.out 2>&1
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant "SELECT SUM(used) FROM comdb2_memstats WHERE name='util'" >> testapihistory.out 2>&1
+
+echo "selecting from comdb2_api_history"
+
+select_1_in_loop
+wait $!
+
+$cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "select count(*) from comdb2_api_history" &
+$cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "select count(*) from comdb2_api_history" &
+
+wait 
+
+select_1_in_loop &
+
+$cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "select distinct api_driver_name from comdb2_api_history" &
+$cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "select count(*) from comdb2_api_history" &
+
+wait
+if [[ $? -ne 0 ]]; then
+    echo "couldn't select from comdb2_api_history"
+    exit 1
+fi
+
+wait
+
+$cdb2sql ${CDB2_OPTIONS} $a_dbn --host $replicant default "select * from comdb2_locks where object=''" >> testapihistory.out 2>&1
+$cdb2sql ${CDB2_OPTIONS} $a_dbn default "select 1" >> testapihistory.out 2>&1
+for node in $CLUSTER; do
+    $cdb2sql ${CDB2_OPTIONS} $a_dbn default "select 1" >> testapihistory.out 2>&1
+    if [[ $? -ne 0 ]]; then
+        echo "couldn't select 1"
+        exit 1
+    fi
+done
+
+echo "PASSED: Concurrent api_history test"
+exit 0

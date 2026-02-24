@@ -80,6 +80,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "sql.h"
 #include "logmsg.h"
 #include "reqlog.h"
+#include "reqlog_int.h"
 
 #include "comdb2_trn_intrl.h"
 #include "history.h"
@@ -1800,6 +1801,7 @@ void clean_exit(void)
 
     backend_cleanup(thedb);
     net_cleanup();
+    cleanup_clientstats();
 
     if (gbl_ssl_ctx != NULL) {
         SSL_CTX_free(gbl_ssl_ctx);

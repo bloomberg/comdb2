@@ -1354,7 +1354,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         if (have_fingerprint)
             add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost,
                                         rows, time);
-        update_api_history(clnt->rawnodestats->api_history, clnt->api_driver_name, clnt->api_driver_version);
+        update_api_history(clnt);
     }
 
     reset_sql_steps(thd);
