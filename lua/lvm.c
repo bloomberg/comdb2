@@ -24,14 +24,15 @@
 #include "lstring.h"
 #include "ltable.h"
 #include "ltm.h"
+#include "ltypes.h"
 #include "lvm.h"
 
 #include "luaglue.h"
+#include "luautil.h"
 
 
 /* limit for table tag-method chains (to avoid loops) */
 #define MAXTAGLOOP	100
-
 
 const TValue *luaV_tonumber (const TValue *obj, TValue *n) {
   lua_Number num;
@@ -40,8 +41,21 @@ const TValue *luaV_tonumber (const TValue *obj, TValue *n) {
     setnvalue(n, num);
     return n;
   }
-  else
-    return NULL;
+
+  if (ttisuserdata(obj)) {
+    const lua_dbtypes_t *bb = luabb_todbpointer(obj);
+    if (bb->is_null) return NULL;
+    switch (bb->dbtype) {
+    case DBTYPES_INTEGER:
+      setnvalue(n, (lua_Number)(((lua_int_t *)bb)->val));
+      return n;
+    case DBTYPES_REAL:
+      setnvalue(n, (lua_Number)(((lua_real_t *)bb)->val));
+      return n;
+    }
+  }
+
+  return NULL;
 }
 
 
@@ -360,7 +374,8 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
                    const TValue *rc, TMS op) {
   TValue tempb, tempc;
   const TValue *b, *c;
-  if ((b = luaV_tonumber(rb, &tempb)) != NULL &&
+  if (!ttisuserdata(rb) && !ttisuserdata(rc) && 
+      (b = luaV_tonumber(rb, &tempb)) != NULL &&
       (c = luaV_tonumber(rc, &tempc)) != NULL) {
     lua_Number nb = nvalue(b), nc = nvalue(c);
     switch (op) {
