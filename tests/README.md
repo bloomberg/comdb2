@@ -2,33 +2,38 @@
 
 This is the comdb2 test suite.
 
+### Prerequisites
+
 Some of the tests require non standard tools to be installed, so here is a 
 list of packages needed to run all the tests:
 
 `apt-get install bash coreutils jq tcl-dev`
 
-Clustered tests also need ssh-client and ssh-server setup.
+Clustered tests also need `ssh-client` and `ssh-server` setup.
+
+### Build and Run
 
 To run the test suite you need to:
 
 1) Build comdb2 by doing the following from the top level dir:
-  mkdir build
-  cmake ..
-  make -j$(nproc) && make -j$(nproc) test-tools
-
+```
+mkdir build && cd build
+cmake ..
+make -j$(nproc) && make -j$(nproc) test-tools
+```
 2) To run tests manually, go to the `tests/` directory where each test resides
-in its own directory with a `.test` ending.
+in its own directory with the `.test` extension.
 To run a specific test, run `make testname`. For example `make
-cdb2api` will run the cdb2api test, which is stored in `cdb2api.test`.
+cdb2api` will run the cdb2api test, which is stored in the `cdb2api.test` directory.
 
-To run all tests in the `tests/` directory just rn `make` -- any failure will
-stop the run, instead `make -k` will allow other tests to run.  `make -j5` will
+To run all tests in the `tests/` directory just run `make` -- any failure will
+stop the run. Alternatively, `make -k` will allow the other tests to run.  `make -j5` will
 let 5 tests to run in parallel. `make -kj5` is a good setting, experiment with
 the number depending on your available hardware.
 
 By default, tests run on the current machine and the databases are brought up
-locally.  To test against a clustered database, export variable `CLUSTER` with
-the list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will
+locally.  To test against a clustered database, export the variable `CLUSTER` with
+the list of machines to use, e.g.: `CLUSTER="m1 m2 m3"` make cdb2api will
 build a cluster on m1/m2/m3 and run the test there. Make can take argumests so
 the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
 are torn down after the test is over.
