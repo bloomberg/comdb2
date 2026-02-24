@@ -1317,10 +1317,16 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 rc = ix_find_blobs_by_rrn_and_genid_tran(iq, trans, rrn, vgenid, 1, &i, &blobsizes, &bloboffs,
                                                          (void **)&blobs[i].data);
 
-                if (rc != 0) {
-                    *opfailcode = ERR_INTERNAL;
-                    retrc = ERR_INTERNAL;
-                    ERR("failed to fetch blobs for CHECK constraint verification rc %d", rc);
+                if (rc) {
+                    if (iq->debug)
+                        reqprintf(iq, "FIND BLOBS RRN %d GENID 0x%llx RC %d", rrn, vgenid, rc);
+                    if (rc == RC_INTERNAL_RETRY)
+                        retrc = rc;
+                    else {
+                        *opfailcode = ERR_INTERNAL;
+                        retrc = ERR_INTERNAL;
+                    }
+                    ERR("failed to fetch blobs for CHECK constraint verification rc: %d", rc);
                 }
 
                 blobs[i].collected = blobs[i].length = blobsizes;
