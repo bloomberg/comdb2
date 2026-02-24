@@ -1794,12 +1794,12 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                        constraint is satisfied */
                     currdb = iq->usedb;
                     iq->usedb = ftable;
+                    unsigned long long fnd_genid = 0ULL;
 
                     if (skip_lookup_for_nullfkey(iq->usedb, fixnum, nulls))
                         rc = IX_FND;
                     else
-                        rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key,
-                                                 &fndrrn, &genid, NULL, NULL, 0,
+                        rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key, &fndrrn, &fnd_genid, NULL, NULL, 0,
                                                  trans);
 
                     iq->usedb = currdb;
