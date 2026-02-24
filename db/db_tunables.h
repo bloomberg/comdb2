@@ -1422,7 +1422,7 @@ REGISTER_TUNABLE("apply_pollms",
                  "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_apply_thread_pollms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("sql_logfill", "Request transaction logs via sql thread.  (Default: off)", TUNABLE_BOOLEAN,
+REGISTER_TUNABLE("sql_logfill", "Request transaction logs via sql thread.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_sql_logfill, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_logfill_debug", "Enable extended trace for sql logfill thread.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sql_logfill, 0, NULL, NULL, NULL, NULL);
