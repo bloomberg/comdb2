@@ -1446,11 +1446,13 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags, int 
                 dbp->get_fileid(dbp, fileid);
                 fileid_str(fileid, fid_str);
                 logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__, __LINE__, fid_str);
-                rc = dbp->clear_ufid_hash(dbp, tid, flags);
-                if (rc != 0) {
-                    logmsg(LOGMSG_WARN, "%s: error closing %s[%d][%d]: %d %s\n", __func__, bdb_state->name, dtanum,
-                           strnum, rc, db_strerror(rc));
-                    /* do not fail */
+                if (bdb_close_flags & BDB_CLOSE_FLAGS_CLR_UFID) {
+                    rc = dbp->clear_ufid_hash(dbp, tid, flags);
+                    if (rc != 0) {
+                        logmsg(LOGMSG_WARN, "%s: error cleaning ufid %s[%d][%d]: %d %s\n", __func__, bdb_state->name,
+                               dtanum, strnum, rc, db_strerror(rc));
+                        /* do not fail */
+                    }
                 }
                 rc = dbp->closetxn(dbp, tid, flags);
                 if (0 != rc) {
@@ -1478,11 +1480,13 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags, int 
             logmsg(LOGMSG_DEBUG, "%s:%d closing fileid %s\n", __func__,
                    __LINE__, fid_str);
 
-            rc = dbp->clear_ufid_hash(dbp, tid, flags);
-            if (rc != 0) {
-                logmsg(LOGMSG_WARN, "%s: error closing %s->dbp_ix[%d] %d %s\n", __func__, bdb_state->name, i, rc,
-                       db_strerror(rc));
-                /* don't fail */
+            if (bdb_close_flags & BDB_CLOSE_FLAGS_CLR_UFID) {
+                rc = dbp->clear_ufid_hash(dbp, tid, flags);
+                if (rc != 0) {
+                    logmsg(LOGMSG_WARN, "%s: error closing %s->dbp_ix[%d] %d %s\n", __func__, bdb_state->name, i, rc,
+                           db_strerror(rc));
+                    /* don't fail */
+                }
             }
             rc = dbp->closetxn(bdb_state->dbp_ix[i], tid, flags);
             if (rc != 0) {
