@@ -42,6 +42,7 @@
 
 #include "cdb2api.h"
 #include "cdb2api_hndl.h"
+#include "cdb2_identity.h"
 #include "cdb2api_int.h"
 
 #include "sqlquery.pb-c.h"
@@ -169,6 +170,8 @@ static int cdb2_protobuf_heuristic = 0;
 static int cdb2_protobuf_heuristic = 1;
 #endif
 static int cdb2_protobuf_heuristic_set_from_env = 0;
+static int cdb2_non_threaded_identity = 0;
+static int cdb2_non_threaded_identity_from_env = 0;
 
 static int CDB2_REQUEST_FP = 0;
 
@@ -1642,6 +1645,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                             &cdb2_api_call_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_ENFORCE_API_CALL_TIMEOUT", &CDB2_ENFORCE_API_CALL_TIMEOUT,
                             &cdb2_enforce_api_call_timeout_set_from_env);
+        process_env_var_int("COMDB2_CONFIG_NON_THREADED_IDENTITY", &cdb2_non_threaded_identity,
+                            &cdb2_non_threaded_identity);
         process_env_var_int("COMDB2_CONFIG_COMDB2DB_TIMEOUT", &COMDB2DB_TIMEOUT, &cdb2_comdb2db_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_SOCKET_TIMEOUT", &CDB2_SOCKET_TIMEOUT, &cdb2_socket_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PROTOBUF_SIZE", &CDB2_PROTOBUF_SIZE, &cdb2_protobuf_size_set_from_env);
@@ -1918,6 +1923,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     CDB2_PORTMUXPORT = atoi(tok);
+            } else if (!cdb2_non_threaded_identity_from_env && (strcasecmp("non_threaded_identity", tok) == 0)) {
+                tok = strtok_r(NULL, " :,", &last);
+                cdb2_non_threaded_identity = value_on_off(tok, &err);
             } else if (!cdb2_connect_timeout_set_from_env && strcasecmp("connect_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (hndl && tok)
@@ -4588,7 +4596,12 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
     } else if (iam_identity && identity_cb && (hndl && requesting_sql_rows(hndl) == 0)) {
-        id_blob = identity_cb->getIdentity(hndl, cdb2_use_optional_identity);
+        int flags = 0;
+        if (cdb2_use_optional_identity)
+            flags |= CDB2_USE_OPTIONAL_IDENTITY;
+        if (cdb2_non_threaded_identity)
+            flags |= CDB2_NON_THREADED_IDENTITY;
+        id_blob = identity_cb->getIdentity(hndl, flags);
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
         }
