@@ -21,14 +21,11 @@
 #include <pthread.h>
 #include <string.h>
 
+#include "comdb2.h"
 #include "logmsg.h"
+#include "sql.h"
 
 #include "api_history.h"
-
-struct api_history {
-    hash_t *entries;
-    pthread_rwlock_t lock;
-};
 
 static int hash_entry(api_driver_t *entry, int len)
 {
@@ -73,101 +70,55 @@ static int free_entry(api_driver_t *entry, void *arg)
     return 0;
 }
 
-void acquire_api_history_lock(api_history_t *api_history, int write) 
-{
-    if (write) {
-        Pthread_rwlock_wrlock(&api_history->lock);
-    } else {
-        Pthread_rwlock_rdlock(&api_history->lock);
-    }
-}
-
-void release_api_history_lock(api_history_t *api_history) 
-{
-    Pthread_rwlock_unlock(&api_history->lock);
-}
-
 api_history_t *init_api_history()
 {
-    api_history_t *api_history = malloc(sizeof(api_history_t));
-    assert(api_history);
-    Pthread_rwlock_init(&api_history->lock, NULL);
-    
-    api_history->entries = hash_init_user((hashfunc_t *)hash_entry, (cmpfunc_t *)compare_entries, 0, 0);
-    if (!api_history->entries) {
+    api_history_t *api_history = hash_init_user((hashfunc_t *)hash_entry, (cmpfunc_t *)compare_entries, 0, 0);
+    if (!api_history) {
         logmsg(LOGMSG_FATAL, "Unable to initialize api history.\n");
         abort();
     }
-    
+
     return api_history;
 }
 
-int free_api_history(api_history_t *api_history)
+void free_api_history(api_history_t *api_history)
 {
     assert(api_history);
-    acquire_api_history_lock(api_history, 1);
-    
-    int rc = hash_for(api_history->entries, (hashforfunc_t *)free_entry, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "Unable to free api history entries.\n");
-        release_api_history_lock(api_history);
-        return rc;
-    }
-
-    hash_free(api_history->entries);
-    release_api_history_lock(api_history);
-    Pthread_rwlock_destroy(&api_history->lock);
-    free(api_history);
-    return 0;
+    hash_for(api_history, (hashforfunc_t *)free_entry, NULL);
+    hash_free(api_history);
 }
 
-api_driver_t *get_next_api_history_entry(api_history_t *api_history, void **curr, unsigned int *iter)
+int get_num_api_history_entries(struct rawnodestats *stats)
 {
-    assert(api_history);
-    acquire_api_history_lock(api_history, 0);
-    api_driver_t *entry;
-    
-    if (!*curr && !*iter) {
-        entry = (api_driver_t *)hash_first(api_history->entries, curr, iter);
-    } else {
-        entry = (api_driver_t *)hash_next(api_history->entries, curr, iter);
-    }
-    
-    release_api_history_lock(api_history);
-    return entry;
-}
-
-int get_num_api_history_entries(api_history_t *api_history) {
-    assert(api_history);
-    acquire_api_history_lock(api_history, 0);
-    
-    int num = hash_get_num_entries(api_history->entries);
-    
-    release_api_history_lock(api_history);
+    assert(stats);
+    Pthread_mutex_lock(&stats->lk);
+    int num = stats->api_history ? hash_get_num_entries(stats->api_history) : 0;
+    Pthread_mutex_unlock(&stats->lk);
     return num;
 }
 
-int update_api_history(api_history_t *api_history, char *api_driver_name, char *api_driver_version)
+int update_api_history(struct sqlclntstate *clnt)
 {
-    assert(api_history);
-    acquire_api_history_lock(api_history, 1);
-    
-    api_driver_t *search_entry = create_entry(api_driver_name, api_driver_version);
-    api_driver_t *found_entry = hash_find(api_history->entries, search_entry);
-    
+    assert(clnt && clnt->rawnodestats);
+    struct rawnodestats *stats = clnt->rawnodestats;
+
+    Pthread_mutex_lock(&stats->lk);
+    api_driver_t *search_entry = create_entry(clnt->api_driver_name, clnt->api_driver_version);
+    api_driver_t *found_entry = hash_find(stats->api_history, search_entry);
+
     if (found_entry) {
         time(&found_entry->last_seen);
         free_entry(search_entry, NULL);
     } else {
         time(&search_entry->last_seen);
-        int rc = hash_add(api_history->entries, search_entry);
+        int rc = hash_add(stats->api_history, search_entry);
         if (rc) {
+            Pthread_mutex_unlock(&stats->lk);
             logmsg(LOGMSG_FATAL, "Unable to add api history entry.\n");
-            release_api_history_lock(api_history);
             return rc;
         }
     }
 
-    release_api_history_lock(api_history);
+    Pthread_mutex_unlock(&stats->lk);
     return 0;
 }

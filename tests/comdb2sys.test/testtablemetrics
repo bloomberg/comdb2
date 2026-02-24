@@ -6,9 +6,21 @@ master=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster
 master=$(echo $master | grep -oP \'\(.*?\)\')
 master=${master:1:-1}
 
+echo "master: $master"
+if [[ -z "$master" ]]; then
+    echo "Failed to find master host for test, requires cluster!"
+    exit 1
+fi
+
 replicant=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="N" limit 1')
 replicant=$(echo $replicant | grep -oP \'\(.*?\)\')
 replicant=${replicant:1:-1}
+
+echo "replicant: $replicant"
+if [[ -z "$replicant" ]]; then
+    echo "Failed to find replicant host for test, requires cluster!"
+    exit 1
+fi
 
 cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $master - <<EOF
 create table metricstest (a int unique, b int); \$\$

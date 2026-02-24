@@ -2550,6 +2550,7 @@ static void update_clientstats_cache(nodestats_t *entry) {
     Pthread_mutex_unlock(&clientstats_cache_mtx);
 }
 
+static int free_nodestats_entry(void *elem, void *unused);
 static nodestats_t *add_clientstats(unsigned checksum, const char *whoami, int task_len, int stack_len, int id_len,
                                     char *host, int node, int fd)
 {
@@ -2582,15 +2583,7 @@ static nodestats_t *add_clientstats(unsigned checksum, const char *whoami, int t
         nodestats_t *old_entry = listc_rtl(&clientstats_cache);
         if (old_entry) {
             hash_del(clientstats, old_entry);
-            if (old_entry->rawtotals.fingerprints) {
-                hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
-                hash_free(old_entry->rawtotals.fingerprints);
-            }
-            free_api_history(old_entry->rawtotals.api_history);
-            time_metric_free(old_entry->rawtotals.svc_time);
-            Pthread_mutex_destroy(&old_entry->mtx);
-            Pthread_mutex_destroy(&old_entry->rawtotals.lk);
-            free(old_entry);
+            free_nodestats_entry(old_entry, NULL);
         } else {
             break;
         }
@@ -2664,7 +2657,6 @@ static int release_clientstats(unsigned checksum, int node)
         rc = -1;
         goto done;
     }
-
     Pthread_mutex_lock(&entry->mtx);
     entry->ref--;
     update_clientstats_cache(entry);
@@ -2676,20 +2668,34 @@ done:
     return rc;
 }
 
-nodestats_t *get_next_clientstats_entry(void **curr, unsigned int *iter)
+static int free_nodestats_entry(void *elem, void *unused)
+{
+    nodestats_t *entry = (nodestats_t *)elem;
+    if (entry->rawtotals.fingerprints) {
+        hash_for(entry->rawtotals.fingerprints, hash_free_element, NULL);
+        hash_free(entry->rawtotals.fingerprints);
+    }
+    free_api_history(entry->rawtotals.api_history);
+    time_metric_free(entry->rawtotals.svc_time);
+    Pthread_mutex_destroy(&entry->mtx);
+    Pthread_mutex_destroy(&entry->rawtotals.lk);
+    free(entry);
+    return 0;
+}
+
+void cleanup_clientstats(void)
+{
+    acquire_clientstats_lock(1);
+    hash_for(clientstats, free_nodestats_entry, NULL);
+    hash_free(clientstats);
+    clientstats = NULL;
+    release_clientstats_lock();
+}
+
+int hash_for_clientstats(hashforfunc_t *func, void *arg)
 {
     assert(clientstats);
-    acquire_clientstats_lock(0);
-    nodestats_t *entry;
-    
-    if (!*curr && !*iter) {
-        entry = (nodestats_t *)hash_first(clientstats, curr, iter);
-    } else {
-        entry = (nodestats_t *)hash_next(clientstats, curr, iter);
-    }
-    
-    release_clientstats_lock();
-    return entry;
+    return hash_for(clientstats, func, arg);
 }
 
 struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, const char *id, char *host, int fd,

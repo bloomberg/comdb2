@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "reqlog_int.h"
@@ -37,58 +38,99 @@ typedef struct systable_api_history {
     cdb2_client_datetime_t last_seen;
 } systable_api_history_t;
 
-static void append_entries(systable_api_history_t **data, int *nrecords, api_history_t *api_history, const char *host, const char *task)
+typedef struct api_history_collect_ctx {
+    systable_api_history_t *base;
+    const char *host;
+    const char *task;
+    int nrecords;
+    int nalloc;
+} api_history_collect_ctx_t;
+
+void free_api_history_data(void *data, int nrecords);
+
+static int collect_api_history_rows(void *obj, void *arg)
 {
-    acquire_api_history_lock(api_history, 0);
-    int num_entries = get_num_api_history_entries(api_history);
-    assert(num_entries > -1);
-    if (!num_entries) {
-        release_api_history_lock(api_history);
-        return;
+    api_driver_t *entry = (api_driver_t *)obj;
+    api_history_collect_ctx_t *ctx = (api_history_collect_ctx_t *)arg;
+    if (ctx->nrecords >= ctx->nalloc) {
+        
+        size_t new_size = ctx->nalloc * 2 * sizeof(systable_api_history_t);
+        systable_api_history_t *new_block = realloc(ctx->base, new_size);
+        if (!new_block) {
+            free_api_history_data(ctx->base, ctx->nrecords);
+            ctx->base = NULL;
+            ctx->nrecords = 0;
+            return SQLITE_NOMEM;
+        }
+        ctx->base = new_block;
+        ctx->nalloc = ctx->nalloc * 2;
     }
+    systable_api_history_t *row = &ctx->base[ctx->nrecords];
+    row->host = strdup(ctx->host ? ctx->host : "unknown");
+    row->task = strdup(ctx->task ? ctx->task : "unknown");
+    row->api_driver_name = strdup(entry->name ? entry->name : "unknown");
+    row->api_driver_version = strdup(entry->version ? entry->version : "unknown");
+    dttz_t dt = (dttz_t){.dttz_sec = entry->last_seen ? entry->last_seen : time(NULL)};
+    dttz_to_client_datetime(&dt, "UTC", &row->last_seen);
+    ctx->nrecords++;
+    return 0;
+}
 
-    int prev = *nrecords;
-    *nrecords += num_entries;
-    systable_api_history_t *buffer = realloc(*data, *nrecords * sizeof(systable_api_history_t));
-    
-    void *curr = NULL;
-    unsigned int iter = 0;
-    for (unsigned int i = prev; i < *nrecords; i++) {
-        api_driver_t *entry = get_next_api_history_entry(api_history, &curr, &iter);
-        assert(entry);
+static int count_api_entries(void *obj, void *arg)
+{
+    nodestats_t *entry = (nodestats_t *)obj;
+    int *total = (int *)arg;
+    *total += get_num_api_history_entries(&entry->rawtotals);
+    return 0;
+}
 
-        buffer[i].host = strdup(host);
-        buffer[i].task = strdup(task);
-        buffer[i].api_driver_name = strdup(entry->name);
-        buffer[i].api_driver_version = strdup(entry->version);
-
-        dttz_t dt = (dttz_t){.dttz_sec = entry->last_seen};
-        dttz_to_client_datetime(&dt, "UTC", &buffer[i].last_seen); 
+static int collect_node_api_history(void *obj, void *arg)
+{
+    nodestats_t *entry = (nodestats_t *)obj;
+    api_history_collect_ctx_t *ctx = (api_history_collect_ctx_t *)arg;
+    ctx->host = entry->host;
+    ctx->task = entry->task;
+    if (entry->rawtotals.api_history) {
+        Pthread_mutex_lock(&entry->rawtotals.lk);
+        int rc = hash_for(entry->rawtotals.api_history, collect_api_history_rows, ctx);
+        Pthread_mutex_unlock(&entry->rawtotals.lk);
+        if (rc) return rc;
     }
-
-    *data = buffer;
-    release_api_history_lock(api_history); 
+    return 0;
 }
 
 int init_api_history_data(void **data, int *nrecords)
 {
     *nrecords = 0;
-    systable_api_history_t *systable = calloc(*nrecords, sizeof(systable_api_history_t));
+    *data = NULL;
+
     acquire_clientstats_lock(0);
-   
-    void *curr = NULL;
-    unsigned int iter = 0;
-    nodestats_t *entry = get_next_clientstats_entry(&curr, &iter);
-    
-    while (entry) {
-        assert(entry->rawtotals.api_history);
-        Pthread_mutex_lock(&entry->rawtotals.lk);
-        append_entries(&systable, nrecords, entry->rawtotals.api_history, entry->host, entry->task);
-        Pthread_mutex_unlock(&entry->rawtotals.lk);
-        entry = get_next_clientstats_entry(&curr, &iter);
+
+    int total_entries = 0;
+    hash_for_clientstats(count_api_entries, &total_entries);
+
+    if (total_entries == 0) { //no clientstats so no api history entries
+        release_clientstats_lock();
+        return 0;
     }
 
-    *data = systable;
+    systable_api_history_t *systable = calloc(total_entries, sizeof(systable_api_history_t));
+    if (!systable) {
+        logmsg(LOGMSG_ERROR, "%s: out of memory for %d entries\n", __func__, total_entries);
+        release_clientstats_lock();
+        return SQLITE_NOMEM;
+    }
+
+    api_history_collect_ctx_t ctx = { .base = systable, .host = NULL, .task = NULL, .nrecords = 0, .nalloc = total_entries };
+    int rc = hash_for_clientstats(collect_node_api_history, &ctx);
+    if (rc) {
+        if (ctx.base) free_api_history_data(ctx.base, ctx.nrecords);
+        release_clientstats_lock();
+        return rc;
+    }
+
+    *nrecords = ctx.nrecords;
+    *data = ctx.base;
     release_clientstats_lock();
     return 0;
 }

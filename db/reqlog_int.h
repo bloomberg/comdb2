@@ -6,6 +6,7 @@
 #include "cson.h"
 #include "sql.h"
 #include "reqlog.h"
+#include <plhash_glue.h>
 
 /* This used to be private to reqlog.  Moving to a shared header since
    eventlog also needs access to reqlog internals.  I am not sure
@@ -242,7 +243,8 @@ typedef struct nodestats {
 
 void acquire_clientstats_lock(int);
 void release_clientstats_lock();
-nodestats_t *get_next_clientstats_entry(void**, unsigned int*);
+void cleanup_clientstats(void);
+int hash_for_clientstats(hashforfunc_t *func, void *arg);
 
 extern int gbl_time_fdb;
 
