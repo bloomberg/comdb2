@@ -29,6 +29,7 @@
 
 LUAI_FUNC int luaV_lessthan (lua_State *L, const TValue *l, const TValue *r);
 LUAI_FUNC int luaV_equalval (lua_State *L, const TValue *t1, const TValue *t2);
+/* Converts obj to a number: handles Lua number, numeric strings, and userdata numbers. */
 LUAI_FUNC const TValue *luaV_tonumber (const TValue *obj, TValue *n);
 LUAI_FUNC int luaV_tostring (lua_State *L, StkId obj);
 LUAI_FUNC void luaV_gettable (lua_State *L, const TValue *t, TValue *key,
