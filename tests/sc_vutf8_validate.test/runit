@@ -41,3 +41,9 @@ pid=$!
 sleep 5
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values(1, 'charlie brown', 'sally brown', 2, x'00112233445566')"
 wait $pid
+
+./t01.sh $dbnm
+if [ $? != 0 ]; then
+    echo "t01.sh failed"
+    exit 1
+fi
