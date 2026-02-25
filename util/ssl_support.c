@@ -61,10 +61,8 @@ static unsigned char sid_ctx[8];
 static int gbl_ssl_ctx_new_failure_warned = 0;
 #endif
 
-int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
-                              char **pcert, char **pkey, char **pca, char **pcrl,
-                              long sess_sz, const char *ciphers, double mintlsver,
-                              char *err, size_t n)
+int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, char **pcert, char **pkey, char **pca,
+                              char **pcrl, long sess_sz, const char *ciphers, double mintlsver, char *err, size_t n)
 {
     SSL_CTX *myctx;
     char *buffer, *cert, *key, *ca, *crl;

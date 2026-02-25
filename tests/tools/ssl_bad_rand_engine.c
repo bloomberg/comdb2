@@ -1,5 +1,6 @@
 /* This test verifies that the API behaves as expected
  * even when a broken RAND engine is in the system */
+#define OPENSSL_API_COMPAT 0x10020000L
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

@@ -8,6 +8,7 @@
 #include <stdarg.h> // For va_list, va_start, va_end
 
 #include <cdb2api.h>
+#include <cdb2api_test.h>
 
 pthread_mutex_t print_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -127,7 +128,8 @@ err:
     return rc;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     if (argc < 3) {
         concurrent_fprintf(stderr, "Usage: %s <dbname> <tier> <table_name> <timeout>\n", argv[0]);
         return 1;
@@ -139,7 +141,7 @@ int main(int argc, char *argv[]) {
     cdb2_set_max_retries(100);
     cdb2_set_min_retries(100);
 
-    const char *conf = getenv("CDB2_CONFIG");
+    char *conf = getenv("CDB2_CONFIG");
     if (conf) { cdb2_set_comdb2db_config(conf); }
 
     gbl_dbname = argv[1];
