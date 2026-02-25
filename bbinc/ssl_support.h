@@ -143,18 +143,15 @@ typedef enum ssl_mode {
     SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
 } ssl_mode;
 
-#define SSL_IS_ABLE(mode) ((mode) >= SSL_ALLOW)
-#define SSL_IS_REQUIRED(mode) ((mode) >= SSL_REQUIRE)
-#define SSL_IS_OPTIONAL(mode) ((mode) < SSL_REQUIRE)
-#define SSL_IS_PREFERRED(mode) ((mode) >= SSL_PREFER)
-#define SSL_NEEDS_VERIFICATION(mode) ((mode) > SSL_PREFER && (mode) != SSL_REQUIRE)
+#define SSL_IS_ABLE(mode) ((int)(mode) >= (int)SSL_ALLOW)
+#define SSL_IS_REQUIRED(mode) ((int)(mode) >= (int)SSL_REQUIRE)
+#define SSL_IS_OPTIONAL(mode) ((int)(mode) < (int)SSL_REQUIRE)
+#define SSL_IS_PREFERRED(mode) ((int)(mode) >= (int)SSL_PREFER)
+#define SSL_NEEDS_VERIFICATION(mode) ((int)(mode) > (int)SSL_PREFER && (int)(mode) != (int)SSL_REQUIRE)
 
-typedef enum {
-    PEER_SSL_UNSUPPORTED,
-    PEER_SSL_ALLOW,
-    PEER_SSL_REQUIRE
-} peer_ssl_mode;
-
+#if !SBUF2_SERVER
+typedef enum { PEER_SSL_UNSUPPORTED, PEER_SSL_ALLOW = 2, PEER_SSL_REQUIRE = 7 } peer_ssl_mode;
+#endif /* !SBUF2_SERVER */
 struct ssl_no_protocols {
     double tlsver;
     long opensslver;

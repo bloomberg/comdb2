@@ -3468,8 +3468,14 @@ static int try_ssl(cdb2_hndl_tp *hndl, COMDB2BUF *sb)
                      &hndl->key, &hndl->ca, &hndl->crl, hndl->num_hosts, NULL,
                      hndl->min_tls_ver, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
-        hndl->sslerr = 1;
-        return -1;
+        /* We'll fallback to cleartext if we can. Otherwise, light the error flag. */
+        if (SSL_IS_REQUIRED(hndl->c_sslmode) || SSL_IS_REQUIRED(hndl->s_sslmode)) {
+            hndl->sslerr = 1;
+        } else {
+            hndl->c_sslmode = SSL_ALLOW;
+        }
+        rc = -1;
+        goto out;
     }
 
     p = hndl->sess;
@@ -8588,8 +8594,12 @@ static int ssl_init(int init_openssl, int init_crypto)
     }
 
     /* Initialize OpenSSL only once. */
-#ifndef CRYPTO_num_locks
     if (init_crypto) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+        /* Disable openssl's atexit handler. */
+        OPENSSL_init_crypto(OPENSSL_INIT_NO_ATEXIT, NULL);
+#else
+#ifndef CRYPTO_num_locks
         /* Configure SSL locking.
            This is only required for OpenSSL < 1.1.0. */
         int nlocks = CRYPTO_num_locks();
@@ -8620,8 +8630,9 @@ static int ssl_init(int init_openssl, int init_crypto)
         CRYPTO_set_id_callback(ssl_threadid_deprecated);
 #endif /* OPENSSL_NO_DEPRECATED */
         CRYPTO_set_locking_callback(ssl_lock);
-    }
 #endif /* CRYPTO_num_locks */
+#endif /* OPENSSL_VERSION_NUMBER >= 0x10100000L */
+    }
 
     /* Configure the library. */
     if (init_openssl) {
