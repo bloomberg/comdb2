@@ -41,6 +41,7 @@
 #include "printformats.h"
 #include "crc32c.h"
 #include <timer_util.h>
+#include <hostname_support.h>
 
 #undef UDP_DEBUG
 #undef UDP_TRACE
@@ -200,33 +201,23 @@ void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t commit_gen, uint32
 char *print_addr(struct sockaddr_in *addr, char *buf)
 {
     buf[0] = '\0';
+    short port = ntohs(addr->sin_port);
     if (addr == NULL) {
         return buf;
     }
     if(addr->sin_addr.s_addr == htonl(INADDR_ANY)) {
-        sprintf(buf, "[0.0.0.0 0.0.0.0:%d ]", ntohs(addr->sin_port));
+        sprintf(buf, "[0.0.0.0 0.0.0.0:%d ]", port);
         return buf;
     }
     char ip[32] = {0};
-    char name[256] = {0};
-    char service[256] = {0};
+    const char *name;
     char errbuf[256] = {0};
-    socklen_t len;
 
-    len = sizeof(*addr);
-    int rc = getnameinfo((struct sockaddr *)addr, len, name, sizeof(name),
-                         service, sizeof(service), 0);
-    if (rc) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
-        strerror_r(errno, errbuf, sizeof(errbuf));
-#pragma GCC diagnostic pop
-        sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, errbuf);
+    if ((name = get_cached_hostname_by_addr(addr)) == NULL)
         return buf;
-    }
 
     if (inet_ntop(addr->sin_family, &addr->sin_addr.s_addr, ip, sizeof(ip))) {
-        sprintf(buf, "[%s %s:%s] ", name, ip, service);
+        sprintf(buf, "[%s %s:%hd] ", name, ip, port);
     } else {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-result"
