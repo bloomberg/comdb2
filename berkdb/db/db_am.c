@@ -27,7 +27,7 @@ static const char revid[] = "$Id: db_am.c,v 11.112 2003/09/13 19:23:42 bostic Ex
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
 
-#include <walkback.h>
+#include <comdb2_walkback.h>
 #include <pthread.h>
 #include <stdlib.h>
 #if defined (UFID_HASH_DEBUG)

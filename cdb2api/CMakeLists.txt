@@ -6,7 +6,7 @@ set(src
   ${PROJECT_SOURCE_DIR}/util/comdb2buf.c
   ${PROJECT_SOURCE_DIR}/util/ssl_glue.c
   ${PROJECT_SOURCE_DIR}/util/ssl_support.c
-  ${PROJECT_SOURCE_DIR}/util/walkback.c
+  ${PROJECT_SOURCE_DIR}/util/comdb2_walkback.c
 )
 
 set_source_files_properties(

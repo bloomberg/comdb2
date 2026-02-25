@@ -23,7 +23,7 @@
 #include <stddef.h>
 #include <inttypes.h>
 
-#include <walkback.h>
+#include <comdb2_walkback.h>
 
 #include <plhash_glue.h>
 #include "list.h"

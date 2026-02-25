@@ -26,7 +26,7 @@
 #include <unistd.h>
 
 #include <list.h>
-#include <walkback.h>
+#include <comdb2_walkback.h>
 
 #include "bdb_int.h"
 #include "locks.h"

@@ -29,7 +29,7 @@
 
 #include <plhash_glue.h>
 #include <list.h>
-#include <walkback.h>
+#include <comdb2_walkback.h>
 #include <lockmacros.h>
 #include <logmsg.h>
 

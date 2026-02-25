@@ -14,8 +14,8 @@
    limitations under the License.
  */
 
-#ifndef INCLUDED_WALKBACK_H
-#define INCLUDED_WALKBACK_H
+#ifndef INCLUDED_COMDB2_WALKBACK_H
+#define INCLUDED_COMDB2_WALKBACK_H
 
 #ifdef __cplusplus
 extern "C" {

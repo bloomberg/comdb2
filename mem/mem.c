@@ -743,7 +743,7 @@ int comdb2ma_attach(comdb2ma parent, comdb2ma child)
 }
 
 #ifndef COMDB2MA_OMIT_DEBUG
-#include <walkback.h>
+#include <comdb2_walkback.h>
 static void get_stack_frames(void **fp, mspace m)
 {
     unsigned int n = 0;
