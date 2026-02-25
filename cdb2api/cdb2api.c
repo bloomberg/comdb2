@@ -6850,7 +6850,7 @@ int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
 }
 #endif
 
-#ifdef CDB2API_SERVER
+#if defined(CDB2API_SERVER) || defined(CDB2API_TEST)
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 1;
