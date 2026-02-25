@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+c1="cdb2sql --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default"
+ct1="cdb2sql --tabs --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default"
+c2="cdb2sql --cdb2cfg ${SECONDARY_CDB2_CONFIG} ${SECONDARY_DBNAME} default"
+
+echo "Inserting rows into t"
+$c2 "insert into t select * from generate_series(1, 60)"
+echo "Inserting rows into t2"
+$c2 "insert into t2 select * from generate_series(1, 60)"
+
+echo "Running async 60 second remote query on table t"
+$c1 "select *, sleep(1) from LOCAL_${SECONDARY_DBNAME}.t order by 1" &
+
+echo "Sleeping 5 to let query actually run"
+sleep 5
+
+
+failed=0
+echo "Try to access a secondary db on same db with a 10 seconds timeout; it will timeout on old locking"
+found_cnt=`timeout -k 1 10 $ct1 "select * from LOCAL_${SECONDARY_DBNAME}.t2 order by 1"`
+if [[ ! "$?" -eq "0" ]] ; then
+    echo "Failed to run the query on t2"
+    failed=1
+fi
+if [[ ! "$found_cnt" -eq "60" ]] ; then
+    echo "Failed to return all rows"
+    failed=1
+fi
+
+wait
+
+if [[ "$failed" = "1" ]] ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"
