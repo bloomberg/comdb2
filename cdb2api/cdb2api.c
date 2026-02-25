@@ -2004,10 +2004,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                                                       strcasecmp("disable_static_libs", tok) == 0)) {
                 /* Provide a way to disable statically linked libraries. */
                 tok = strtok_r(NULL, ":,", &last);
-                if (cdb2_uninstall != NULL && tok == NULL) {
-                    /* By convention, this should uninstall all static libs. */
-                    cdb2_uninstall(NULL);
-                } else if (cdb2_uninstall != NULL && tok != NULL) {
+                if (cdb2_uninstall != NULL && tok != NULL) {
                     char *libs = strdup(tok), *lib = NULL, *lib_last = NULL;
                     lib = strtok_r(libs, " ", &lib_last);
                     while (lib != NULL) {
@@ -2020,10 +2017,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                        (strcasecmp("install_static_libs_v4", tok) == 0 || strcasecmp("enable_static_libs", tok) == 0)) {
                 /* Provide a way to enable statically linked libraries. */
                 tok = strtok_r(NULL, ":,", &last);
-                if (cdb2_install != NULL && tok == NULL) {
-                    /* By convention, this should install all static libs. */
-                    cdb2_install(NULL);
-                } else if (cdb2_install != NULL && tok != NULL) {
+                if (cdb2_install != NULL && tok != NULL) {
                     char *libs = strdup(tok), *lib = NULL, *lib_last = NULL;
                     lib = strtok_r(libs, " ", &lib_last);
                     while (lib != NULL) {
