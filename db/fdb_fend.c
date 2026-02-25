@@ -87,6 +87,10 @@ int gbl_fdb_io_error_retries_phase_2_poll = 100;
 int gbl_fdb_auth_enabled = 1;
 int gbl_fdb_remsql_cdb2api = 1;
 int gbl_fdb_emulate_old = 0;
+int gbl_fdb_watchdog_debug = 0;         /* keep fdbs mutex blocked for this many seconds for watchdog testing */
+int gbl_fdb_watchdog_alerts = 0;        /* keep count of how many alerts were generated */
+int gbl_fdb_watchdog_secs = 60;         /* run watched every this number of seconds */
+int gbl_fdb_watchdog_latency_secs = 59; /* alert if ping takes longer */
 
 struct fdb_tbl;
 struct fdb;
@@ -564,6 +568,15 @@ static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class, 
     fdb_t *fdb;
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
+
+    if (gbl_fdb_watchdog_debug > 0) {
+        /* tick individual seconds so we detect a tunable reset */
+        int cntr = 0;
+        while (cntr < gbl_fdb_watchdog_debug) {
+            poll(NULL, 0, 1000); /* one second */
+            cntr++;
+        }
+    }
 
     /* there is no more exclusive long term lock for fdb, only read lock
      * we are using the exclusive mutex to progress the dlock1 test
@@ -4407,16 +4420,6 @@ char *fdb_get_alias(const char **p_tablename)
 void fdb_stat_alias(void) { dump_alias_info(); }
 
 /**
-* This function will check some critical regions
-* hanging if something is wrong
-*
-*/
-void fdb_sanity_check(void)
-{
-    /* hook for future watcher enabled checks and stats */
-}
-
-/**
  * Check access control for this cursor
  * Returns -1 if access control enabled and access denied
  *         0 otherwise
@@ -6823,4 +6826,113 @@ int fdb_is_sqlite_stat(sqlclntstate *clnt, int rootpage)
         return 1;
 
     return strncasecmp(ent->tbl->name, "sqlite_stat", strlen("sqlite_stat")) == 0;
+}
+
+static int _run_ping(char *query)
+{
+    struct sqlclntstate clnt;
+    int rc;
+    start_internal_sql_clnt(&clnt);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.admin = 1;
+    clnt.skip_eventlog = 1;
+    rc = run_internal_sql_clnt(&clnt, query);
+    end_internal_sql_clnt(&clnt);
+    return rc;
+}
+
+/* we have read livelock on this fdb */
+int _ping_fdb(fdb_t *fdb)
+{
+    fdb_tbl_t *tbl;
+    char *query;
+    char dbname[256];
+    int rc;
+
+    /* get the first table, get the table lock */
+    Pthread_mutex_lock(&fdb->tables_mtx);
+    tbl = fdb->tables.top;
+    if (!tbl) {
+        /* corner case, fdb is being added but still busy locating the
+         * nodes, so no tables yet here, just return
+         */
+        Pthread_mutex_unlock(&fdb->tables_mtx);
+        return 0;
+    }
+    Pthread_rwlock_rdlock(&tbl->table_lock); /* table lock */
+    Pthread_mutex_unlock(&fdb->tables_mtx);
+
+    if (fdb->local) {
+        snprintf(dbname, sizeof(dbname), "LOCAL_%s", fdb->dbname);
+    } else if (fdb->class_override) {
+        snprintf(dbname, sizeof(dbname), "%s_%s", mach_class_class2tier(fdb->class), fdb->dbname);
+    } else {
+        snprintf(dbname, sizeof(dbname), "%s", fdb->dbname);
+    }
+    query = sqlite3_mprintf("select 1 from \"%w\".\"%w\" limit 1", dbname, tbl->name);
+
+    rc = _run_ping(query);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to ping fdb %s rc %d\n", fdb->dbname, rc);
+    }
+
+    /* unlock table */
+    Pthread_rwlock_unlock(&tbl->table_lock);
+
+    sqlite3_free(query);
+
+    return rc;
+}
+
+void _alert_maybe(const char *dbname, unsigned long long start_rpc, unsigned long long end_rpc)
+{
+    if (end_rpc - start_rpc > gbl_fdb_watchdog_latency_secs * 1000) {
+        logmsg(LOGMSG_ERROR, "Fdb %s watcher ping takes too long time %lld > %d\n", dbname, end_rpc - start_rpc,
+               gbl_fdb_watchdog_latency_secs * 1000);
+        gbl_fdb_watchdog_alerts++;
+    }
+}
+
+/* the watchdog will run every gbl_fdb_watchdog_secs seconds
+ * and it will connect to the first table of each fdb
+ * it is run from watcher thread and detect cases when access
+ * is blocked
+ *
+ */
+void fdb_watchdog(void)
+{
+    fdb_t *fdb = NULL;
+    int i = 0;
+    unsigned long long start_rpc;
+    unsigned long long end_rpc;
+
+    start_rpc = osql_log_time();
+    Pthread_mutex_lock(&fdbs.arr_mtx);
+    end_rpc = osql_log_time();
+    _alert_maybe("fdbs_mtx", start_rpc, end_rpc);
+
+    for (i = 0; i < fdbs.nused; i++) {
+        fdb = fdbs.arr[i];
+        Pthread_rwlock_rdlock(&fdb->inuse_rwlock); /* fdb live lock */
+        Pthread_mutex_unlock(&fdbs.arr_mtx);
+
+        start_rpc = osql_log_time();
+
+        /* ping the remote fdb */
+        _ping_fdb(fdb);
+
+        end_rpc = osql_log_time();
+
+        _alert_maybe(fdb->dbname, start_rpc, end_rpc);
+
+        start_rpc = osql_log_time();
+        Pthread_mutex_lock(&fdbs.arr_mtx);
+        end_rpc = osql_log_time();
+        _alert_maybe("fdbs_mtx", start_rpc, end_rpc);
+        Pthread_rwlock_unlock(&fdb->inuse_rwlock);
+        /* note, at this point fdbs can move around in the array
+         * it is ok to ping twice or skip an fdb if we drop some fdb entries
+         */
+    }
+    Pthread_mutex_unlock(&fdbs.arr_mtx);
 }
