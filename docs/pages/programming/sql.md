@@ -786,6 +786,12 @@ the legacy comdb2del tool. This mode currently requires the statements to be enc
 block. Also, in this mode transactions are executed with [```VERIFYRETRY```](sql.html#set-verifyretry) implicitly
 disabled.
 
+### SET TRANSACTION CHUNK THROTTLE
+
+This statement adds a sleep between each transaction chunk, specified in milliseconds. This statement is helpful if there is a lot of database contention as a result of a chunked transaction and you need to slow the chunks down.
+
+By default chunks are not throttled. If a chunk transaction is slowing your database down, you should first try to reduce the chunk size to a smaller size, like 50. If there are still problems, then you can also run this statement, with a value like 100 ms.
+
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  For reads, all datetime values are returned in this timezone.  For
