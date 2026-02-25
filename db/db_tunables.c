@@ -402,7 +402,7 @@ extern unsigned long long rollat;
 extern int thread_debug;
 extern int dump_resources_on_thread_exit;
 
-/* util/walkback.c */
+/* util/comdb2_walkback.c */
 extern int gbl_walkback_enabled;
 extern int gbl_warnthresh;
 

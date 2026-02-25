@@ -835,7 +835,7 @@ __txn_check_applied_lsns(DB_ENV *dbenv, DB_TXN *txnp)
 }
 
 #ifdef LTRANS_DEBUG
-#include <walkback.h>
+#include <comdb2_walkback.h>
 
 static int
 __txn_track_stack_info(sinfo)

@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 #include <sysutil_compilerdefs.h>
-#include <walkback.h>
+#include <comdb2_walkback.h>
 #include <logmsg.h>
 
 /*

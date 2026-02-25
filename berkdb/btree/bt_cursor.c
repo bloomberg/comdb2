@@ -20,7 +20,7 @@ static const char revid[] = "$Id: bt_cursor.c,v 11.169 2003/11/19 18:41:06 bosti
 #include <string.h>
 #include <strings.h>
 #endif
-#include <walkback.h>
+#include <comdb2_walkback.h>
 #include <pthread.h>
 
 #include "db_int.h"

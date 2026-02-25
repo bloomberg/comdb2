@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-#include <walkback.h>
+#include <comdb2_walkback.h>
 #include <inttypes.h>
 
 #ifdef DUMP_STACK

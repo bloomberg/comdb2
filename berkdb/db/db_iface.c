@@ -33,7 +33,7 @@ static const char revid[] = "$Id: db_iface.c,v 11.106 2003/10/02 02:57:46 margo 
 #include <stdlib.h>
 #include <pthread.h>
 
-#include <walkback.h>
+#include <comdb2_walkback.h>
 
 #include <debug_switches.h>
 #include <sys_wrap.h>

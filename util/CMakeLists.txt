@@ -57,7 +57,7 @@ set(src
   tohex.c
   utilmisc.c
   version_util.c
-  walkback.c
+  comdb2_walkback.c
   import_util.c
 )
 if(COMDB2_LEGACY_DEFAULTS)
