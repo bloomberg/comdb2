@@ -557,8 +557,19 @@ REGISTER_TUNABLE("fdb_default_version",
                  "Override the default fdb version",
                  TUNABLE_INTEGER, &gbl_fdb_default_ver, 0, NULL, NULL,
                  fdb_default_ver_update, NULL);
-REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdbdebg", "Spew debug information for fdb", TUNABLE_INTEGER, &gbl_fdb_track, 0, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("fdbtrackhints", "Track hint usage for fdb cursors", TUNABLE_INTEGER, &gbl_fdb_track_hints, READONLY,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_watchdog_sec", "How often fdb watchdog runs, in seconds (Default: 60)", TUNABLE_INTEGER,
+                 &gbl_fdb_watchdog_secs, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_watchdog_latency_sec",
+                 "Spew if a fdb ping takes longer than this value, in seconds (Default: 59)", TUNABLE_INTEGER,
+                 &gbl_fdb_watchdog_latency_secs, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_watchdog_debug", "Introduces a long lock wait for fdb array to test fdb watchdog",
+                 TUNABLE_INTEGER, &gbl_fdb_watchdog_debug, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_watchdog_alerts", "Output only, reports how many fdb watchdog alerts were reported",
+                 TUNABLE_INTEGER, &gbl_fdb_watchdog_alerts, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)", TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
                  NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("force_highslot", NULL, TUNABLE_BOOLEAN, &gbl_force_highslot, READONLY | NOARG, NULL, NULL, NULL,
