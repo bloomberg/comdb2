@@ -1085,6 +1085,7 @@ struct sqlclntstate {
 
     // this is not an SQL request, distpatch it elsewhere
     int is_tagged;
+    char *origin_argv0;
 
     unsigned blocking_tranlog : 1;
 };

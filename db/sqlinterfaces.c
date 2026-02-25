@@ -5348,6 +5348,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->modsnap_in_progress) {
         clear_modsnap_state(clnt);
     }
+    free(clnt->origin_argv0);
+    clnt->origin_argv0 = NULL;
 
     reset_authz_hash(clnt, 1);
 }

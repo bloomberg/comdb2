@@ -428,8 +428,8 @@ int handle_ireq(struct ireq *iq)
                        req2a(iq->opcode));
 
     if (!iq->sorese) /* don't count osql */
-        iq->rawnodestats =
-            get_raw_node_stats(NULL, NULL, iq->frommach, cdb2buf_fileno(iq->sb), 0 /* tag does not support ssl */);
+        iq->rawnodestats = get_raw_node_stats(iq->origin_argv0 ? iq->origin_argv0 : NULL, NULL, iq->frommach,
+                                              cdb2buf_fileno(iq->sb), 0 /* tag does not support ssl */);
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles && IQ_HAS_SNAPINFO(iq))

@@ -455,6 +455,7 @@ static void legacy_iq_setup(struct ireq *iq, void *setup_data)
     iq->setup_data = setup_data;
     iq->has_ssl = clnt->plugin.has_ssl(clnt);
     iq->identity = clnt->plugin.get_identity(clnt);
+    iq->origin_argv0 = clnt->origin_argv0;
     get_client_origin(iq->corigin, sizeof(iq->corigin), clnt);
 }
 
@@ -468,6 +469,12 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
     p_slock = pool_getablk(p_slocks);
     Pthread_mutex_unlock(&buf_lock);
 
+    if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL ||
+        appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[1]->value.len != sizeof(int) ||
+        appdata->sqlquery->bindvars[2] == NULL || appdata->sqlquery->bindvars[2]->value.len != sizeof(int)) {
+        return 1;
+    }
+
     void *buf = appdata->sqlquery->bindvars[0]->value.data;
     int sz = appdata->sqlquery->bindvars[0]->value.len;
 
@@ -479,10 +486,18 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
     p_slock->reply_state = REPLY_STATE_NA;
 
     clnt->authdata = get_authdata(clnt);
-    if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL ||
-        appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[1]->value.len != sizeof(int) ||
-        appdata->sqlquery->bindvars[2] == NULL || appdata->sqlquery->bindvars[2]->value.len != sizeof(int)) {
-        return 1;
+
+    if (appdata->sqlquery->n_bindvars > 3 && appdata->sqlquery->bindvars[3] &&
+        appdata->sqlquery->bindvars[3]->value.data) {
+        // note - we specifically don't override clnt->argv0 here - we want
+        // the original sender (typically the proxy) there, and we save on whose behalf we're
+        // proxying elsewhere.
+        if (clnt->origin_argv0) {
+            free(clnt->origin_argv0);
+            clnt->origin_argv0 = NULL;
+        }
+        clnt->origin_argv0 =
+            strndup((char *)appdata->sqlquery->bindvars[3]->value.data, appdata->sqlquery->bindvars[3]->value.len);
     }
 
     int luxref;
