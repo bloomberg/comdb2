@@ -101,15 +101,20 @@
 #define ssl_eprintln(pfx, fmt, ...) \
     loge(pfx " SSL Error: " fmt "\n", ##__VA_ARGS__)
 
-#define SSL_ERRSTR() ERR_reason_error_string(ERR_get_error())
-#define SSL_ERRSTR_MT(buf) ERR_error_string(ERR_get_error(), buf)
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#define SSL_ERRSTR_LEN 256
+#else
+#define SSL_ERRSTR_LEN 120
+#endif
 
-#define PRINT_SSL_ERRSTR_MT(cb, msg)            \
-do {                                            \
-    char *__b = alloca(120);                    \
-    ERR_error_string(ERR_get_error(), __b);     \
-    cb(msg ": %s", __b);                        \
-} while (0)
+#define SSL_ERRSTR(e, buf) ERR_error_string((e), (buf))
+
+#define PRINT_SSL_ERRSTR_MT(cb, msg, e)                                                                                \
+    do {                                                                                                               \
+        char *__b = alloca(SSL_ERRSTR_LEN);                                                                            \
+        ERR_error_string((e), __b);                                                                                    \
+        cb(msg ": %s", __b);                                                                                           \
+    } while (0)
 
 #define ssl_sfeprint(err, n, cb, fmt, ...)                      \
     do {                                                        \
@@ -122,10 +127,11 @@ do {                                            \
 #define ssl_sfliberrprint(err, n, cb, msg)                                                                             \
     do {                                                                                                               \
         unsigned long __err = ERR_get_error();                                                                         \
+        char *__b = alloca(SSL_ERRSTR_LEN);                                                                            \
         if (err != NULL)                                                                                               \
-            snprintf(err, n, "SSL Error: %s: (%lu) %s", msg, __err, ERR_reason_error_string(__err));                   \
+            snprintf(err, n, "SSL Error: %s: (%lu) %s", msg, __err, SSL_ERRSTR(__err, __b));                           \
         else                                                                                                           \
-            PRINT_SSL_ERRSTR_MT(cb, msg);                                                                              \
+            PRINT_SSL_ERRSTR_MT(cb, msg, __err);                                                                       \
     } while (0)
 
 /* XXX Don't change the order of the enum types */

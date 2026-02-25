@@ -128,14 +128,14 @@ static int sslio_pollin(COMDB2BUF *sb)
 
     do {
         pol.fd = sb->fd;
-        pol.events = POLLIN;
+        pol.events = (POLLIN | POLLPRI);
         /* Don't wait for remote if the flag is set */
         rc = poll(&pol, 1, sb->nowait ? 0 : (sb->readtimeout == 0 ? -1 : sb->readtimeout));
     } while (rc == -1 && errno == EINTR);
 
     if (rc <= 0) /* timedout or error. */
         return rc;
-    if ((pol.revents & POLLIN) == 0)
+    if ((pol.revents & (POLLIN | POLLPRI)) == 0)
         return -100000 + pol.revents;
 
     /* Can read. */
@@ -266,7 +266,7 @@ static int sslio_accept_or_connect(COMDB2BUF *sb, SSL_CTX *ctx,
     if (sb->ssl == NULL) {
         ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                           "Failed to create SSL connection");
-        rc = ERR_get_error();
+        rc = -1;
         goto error;
     }
 
@@ -413,7 +413,7 @@ rewrite:
     return n;
 }
 
-int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *sb, int reuse)
+int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *sb, int wait_for_peer)
 {
     /* Upon success, the 1st call to SSL_shutdown
        returns 0, and the 2nd returns 1. */
@@ -421,7 +421,7 @@ int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *sb, int reuse)
     if (sb->ssl == NULL)
         return 0;
 
-    if (!reuse)
+    if (!wait_for_peer)
         SSL_set_shutdown(sb->ssl, SSL_SENT_SHUTDOWN);
     else {
         rc = SSL_shutdown(sb->ssl);
