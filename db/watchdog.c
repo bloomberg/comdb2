@@ -178,9 +178,6 @@ static void *watchdog_thread(void *arg)
                 its_bad = 1;
             }
 
-            /* simple test to check a few fdb */
-            fdb_sanity_check();
-
             /* find out if we're trying to stop threads */
             LOCK(&stop_thds_time_lk) { stop_thds_time = gbl_stop_thds_time; }
             UNLOCK(&stop_thds_time_lk);
@@ -394,6 +391,10 @@ static void *watchdog_thread(void *arg)
         reqlog_log_all_longreqs();
 
         sc_alter_latency(counter);
+
+        if (gbl_fdb_watchdog_secs && (counter % gbl_fdb_watchdog_secs == 0)) {
+            fdb_watchdog();
+        }
 
         /* we use counter to downsample the run events for lower frequence
            tasks, like deadlock detector */
