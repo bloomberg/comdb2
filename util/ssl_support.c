@@ -271,7 +271,7 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
             gbl_ssl_ctx_new_failure_warned = 1;
         }
 #endif
-        rc = ERR_get_error();
+        rc = -1;
         goto error;
     }
 
@@ -315,7 +315,7 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
         if (RAND_bytes(sid_ctx, sizeof(sid_ctx)) != 1) {
             ssl_sfliberrprint(err, n, my_ssl_eprintln,
                               "Failed to get random bytes");
-            rc = ERR_get_error();
+            rc = -1;
             goto error;
         }
         SSL_CTX_set_session_id_context(myctx, sid_ctx, sizeof(sid_ctx));
