@@ -1505,6 +1505,7 @@ struct ireq {
     // in an inline call to handle_buf
     void *authdata;
     char *argv0;
+    char *origin_argv0;
     int has_ssl;
     void *setup_data;
     char *identity;
