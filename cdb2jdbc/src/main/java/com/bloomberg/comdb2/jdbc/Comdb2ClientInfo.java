@@ -20,6 +20,37 @@ import java.io.*;
 
 public class Comdb2ClientInfo {
     private static Logger logger = LoggerFactory.getLogger(Comdb2ClientInfo.class);
+    private static final String driverName;
+    private static final String driverVersion;
+
+    static {
+        String name = Comdb2ClientInfo.class.getPackage().getImplementationTitle();
+        String version = Comdb2ClientInfo.class.getPackage().getImplementationVersion();
+        if (name == null || version == null) {
+            /* If we're in junit integration test, get the cdb2jdbc jar
+               and handle its manifest manually. Ignore errors. */
+            try {
+                JarFile jar = new JarFile(Comdb2ClientInfo.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+                Manifest manifest = jar.getManifest();
+                if (manifest != null) {
+                    Attributes attributes = manifest.getMainAttributes();
+                    name = attributes.getValue("Implementation-Title");
+                    version = attributes.getValue("Implementation-Version");
+                }
+            } catch (IOException e) {
+                logger.info("Unable to parse driver class manifest", e);
+            }
+        }
+
+        /* Defaults to cdb2jdbc.source */
+        if (name == null)
+            name = "Unknown cdb2jdbc build";
+        if (version == null)
+            version = "Unknown cdb2jdbc version";
+
+        driverName = name;
+        driverVersion = version;
+    }
     
     public static String getCallerClass() {
         String pkg = Comdb2ClientInfo.class.getPackage().getName() + ".";
@@ -48,33 +79,11 @@ public class Comdb2ClientInfo {
     }
     
     public static String getDriverName() {
-        String name = Driver.class.getPackage().getImplementationTitle();
-        if (name == null) {
-            try { 
-                JarFile jar = new JarFile(Driver.class.getProtectionDomain().getCodeSource().getLocation().getPath());
-                Manifest manifest = new Manifest(jar.getInputStream(jar.getEntry("META-INF/MANIFEST.MF")));
-                Attributes attributes = manifest.getMainAttributes();
-                name = attributes.getValue("Implementation-Title");
-            } catch (IOException e) {
-                logger.info("Unable to parse driver class manifest");
-            }
-        }
-        return name == null ? "cdb2jdbc" : name;
+        return driverName;
     }
 
     public static String getDriverVersion() {
-        String version = Driver.class.getPackage().getImplementationVersion();
-        if (version == null) {
-            try { 
-                JarFile jar = new JarFile(Driver.class.getProtectionDomain().getCodeSource().getLocation().getPath());
-                Manifest manifest = new Manifest(jar.getInputStream(jar.getEntry("META-INF/MANIFEST.MF")));
-                Attributes attributes = manifest.getMainAttributes();
-                version = attributes.getValue("Implementation-Version");
-            } catch (IOException e) {
-                logger.info("Unable to parse driver class manifest");
-            }
-        }
-        return version == null ? "1.0" : version;
+        return driverVersion;
     }
 
     public static int getDriverMajorVersion() {
