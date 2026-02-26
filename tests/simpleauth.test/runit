@@ -127,6 +127,90 @@ run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
     "clean up user-specific rules"
 
 #---------------------------------------------------------------
+echo "Test: vtab access control with externalauth (CDB2_ALLOW_ALL)"
+#---------------------------------------------------------------
+# CDB2_ALLOW_ALL vtabs should be accessible to any authenticated user
+# regardless of specific permissions, since comdb2_check_vtab_access
+# returns SQLITE_OK immediately for these modules.
+run_expect_success "$MOHIT" "select 1 from comdb2_tables limit 1" \
+    "mohit can access comdb2_tables (CDB2_ALLOW_ALL)"
+run_expect_success "$MIKE" "select 1 from comdb2_columns limit 1" \
+    "mike can access comdb2_columns (CDB2_ALLOW_ALL)"
+run_expect_success "$MARK" "select 1 from comdb2_keywords limit 1" \
+    "mk can access comdb2_keywords (CDB2_ALLOW_ALL)"
+run_expect_success "$MOHIT" "select 1 from comdb2_cluster limit 1" \
+    "mohit can access comdb2_cluster (CDB2_ALLOW_ALL)"
+
+#---------------------------------------------------------------
+echo "Test: vtab access control with externalauth (CDB2_ALLOW_USER, wildcard)"
+#---------------------------------------------------------------
+# CDB2_ALLOW_USER vtabs should be accessible when a wildcard
+# permission rule is in place.
+run_expect_success "$MOHIT" "select 1 from comdb2_tunables limit 1" \
+    "mohit can access comdb2_tunables (wildcard allows)"
+run_expect_success "$MIKE" "select 1 from comdb2_metrics limit 1" \
+    "mike can access comdb2_metrics (wildcard allows)"
+run_expect_success "$MARK" "select 1 from comdb2_connections limit 1" \
+    "mk can access comdb2_connections (wildcard allows)"
+run_expect_success "$MOHIT" "select 1 from comdb2_files limit 1" \
+    "mohit can access comdb2_files (wildcard allows)"
+
+#---------------------------------------------------------------
+echo "Test: vtab access denied without matching permission"
+#---------------------------------------------------------------
+# Remove wildcard rule and verify CDB2_ALLOW_USER vtabs are denied
+# for users without specific permission.
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op write on auth table (vtab test)"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op read on auth table (vtab test)"
+run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+    "remove wildcard rule (vtab test)"
+
+# CDB2_ALLOW_USER vtabs should now be denied
+run_expect_failure "$MOHIT" "select 1 from comdb2_tunables limit 1" \
+    "mohit cannot access comdb2_tunables (no matching rule)"
+run_expect_failure "$MIKE" "select 1 from comdb2_metrics limit 1" \
+    "mike cannot access comdb2_metrics (no matching rule)"
+run_expect_failure "$MARK" "select 1 from comdb2_connections limit 1" \
+    "mk cannot access comdb2_connections (no matching rule)"
+run_expect_failure "$MOHIT" "select 1 from comdb2_files limit 1" \
+    "mohit cannot access comdb2_files (no matching rule)"
+
+# CDB2_ALLOW_ALL vtabs should still be accessible without any permission
+run_expect_success "$MOHIT" "select 1 from comdb2_tables limit 1" \
+    "mohit can still access comdb2_tables (CDB2_ALLOW_ALL, no wildcard)"
+run_expect_success "$MIKE" "select 1 from comdb2_keywords limit 1" \
+    "mike can still access comdb2_keywords (CDB2_ALLOW_ALL, no wildcard)"
+
+#---------------------------------------------------------------
+echo "Test: vtab access granted with specific permission"
+#---------------------------------------------------------------
+# Grant mohit specific Read access to comdb2_tunables
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mohit', '*', 'Read', 'table', 'comdb2_tunables') on conflict do nothing" \
+    "grant mohit Read on comdb2_tunables"
+run_expect_success "$MOHIT" "select 1 from comdb2_tunables limit 1" \
+    "mohit can access comdb2_tunables (specific rule)"
+# mike still denied (no rule for him)
+run_expect_failure "$MIKE" "select 1 from comdb2_tunables limit 1" \
+    "mike still cannot access comdb2_tunables (no rule)"
+
+# Grant mike specific Read access to comdb2_files
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mike', '*', 'Read', 'table', 'comdb2_files') on conflict do nothing" \
+    "grant mike Read on comdb2_files"
+run_expect_success "$MIKE" "select 1 from comdb2_files limit 1" \
+    "mike can access comdb2_files (specific rule)"
+# mohit still denied (no rule for him)
+run_expect_failure "$MOHIT" "select 1 from comdb2_files limit 1" \
+    "mohit still cannot access comdb2_files (no rule)"
+
+# Restore wildcard and clean up vtab-specific rules
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "restore wildcard rule (vtab test)"
+run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
+    "clean up user-specific rules (vtab test)"
+
+#---------------------------------------------------------------
 echo "Test: cleanup"
 #---------------------------------------------------------------
 run_expect_success "$OP" "drop table if exists t1" \
