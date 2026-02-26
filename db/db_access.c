@@ -455,7 +455,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
 {
     HashElem *current;
 
-    if (!gbl_uses_password) {
+    if (!gbl_uses_password && !gbl_uses_externalauth) {
         return 0;
     }
 
@@ -503,7 +503,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                 return SQLITE_ABORT;
             }
             return SQLITE_OK;
-        } else {
+        } else if (gbl_uses_password) {
             rc = bdb_check_user_tbl_access(
                 thedb->bdb_env, thd->clnt->current_user.name,
                 (char *)mod->zName, ACCESS_READ, &bdberr);
