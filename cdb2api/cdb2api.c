@@ -116,7 +116,9 @@ static int MIN_RETRIES = 16;
 static int CDB2_CONNECT_TIMEOUT = 100;
 static int cdb2_connect_timeout_set_from_env = 0;
 
+#ifdef CDB2API_SERVER
 static int CDB2_MAX_AUTO_CONSUME_ROWS = 10;
+#endif
 
 static int COMDB2DB_TIMEOUT = 2000;
 static int cdb2_comdb2db_timeout_set_from_env = 0;
@@ -1941,10 +1943,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
             } else if (!cdb2_api_call_timeout_set_from_env && (strcasecmp("enforce_api_call_timeout", tok) == 0)) {
                 tok = strtok_r(NULL, " :,", &last);
                 CDB2_ENFORCE_API_CALL_TIMEOUT = value_on_off(tok, &err);
+#ifdef CDB2API_SERVER
             } else if (strcasecmp("max_auto_consume_rows", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     CDB2_MAX_AUTO_CONSUME_ROWS = atoi(tok);
+#endif
             } else if (!cdb2_comdb2db_timeout_set_from_env && strcasecmp("comdb2db_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (hndl && tok)
@@ -2207,8 +2211,10 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
         hndl->sockpool_recv_timeoutms = CDB2_SOCKPOOL_RECV_TIMEOUTMS;
     if (!hndl->sockpool_send_timeoutms)
         hndl->sockpool_send_timeoutms = CDB2_SOCKPOOL_SEND_TIMEOUTMS;
+#ifdef CDB2API_SERVER
     if (!hndl->max_auto_consume_rows)
         hndl->max_auto_consume_rows = CDB2_MAX_AUTO_CONSUME_ROWS;
+#endif
     if (!hndl->api_call_timeout)
         hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
 
@@ -5872,17 +5878,18 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 
 static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 {
+#ifdef CDB2API_SERVER
     int hardbound = 0;
+#endif
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
+#ifdef CDB2API_SERVER
         hardbound++;
         if (hardbound > hndl->max_auto_consume_rows) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             break;
         }
+#endif
     }
-
-    clear_responses(hndl);
-    hndl->rows_read = 0;
 }
 
 #define GOTO_RETRY_QUERIES()                                                                                           \
