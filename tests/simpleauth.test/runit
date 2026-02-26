@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+SA="${TESTSBUILDDIR}/simpleauth_test ${dbnm}"
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+MOHIT="bpi:procauth:cluster:testcluster:user:mohit:bpkg:myapp"
+MIKE="bpi:procauth:cluster:prod:user:mike:bpkg:cdb2sql"
+MARK="bpi:procauth:cluster:test:user:mk:bpkg:myapp"
+
+passed=0
+failed=0
+
+run_expect_success() {
+    local principal="$1"
+    local sql="$2"
+    local desc="$3"
+    if $SA "$principal" "$sql" > /dev/null 2>&1; then
+        echo "  PASS: $desc"
+        passed=$((passed + 1))
+    else
+        echo "  FAIL: $desc"
+        failed=$((failed + 1))
+    fi
+}
+
+run_expect_failure() {
+    local principal="$1"
+    local sql="$2"
+    local desc="$3"
+    if $SA "$principal" "$sql" > /dev/null 2>&1; then
+        echo "  FAIL: $desc (expected failure but succeeded)"
+        failed=$((failed + 1))
+    else
+        echo "  PASS: $desc"
+        passed=$((passed + 1))
+    fi
+}
+
+#---------------------------------------------------------------
+echo "Test: setup comdb2_simple_auth table"
+#---------------------------------------------------------------
+run_expect_success "$OP" "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" \
+    "create auth table"
+run_expect_success "$OP" "create unique index if not exists comdb2_simple_auth_ix on comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)" \
+    "create auth index"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "insert wildcard rule"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" \
+    "insert Connect rule"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "insert Read rule for auth table"
+
+#---------------------------------------------------------------
+echo "Test: principal parsing with different identities"
+#---------------------------------------------------------------
+run_expect_success "$OP" "create table if not exists t1(i int)" \
+    "create test table t1"
+run_expect_success "$OP" "insert into t1 values(1)" \
+    "insert into t1"
+run_expect_success "$MOHIT" "select * from t1" \
+    "mohit can read t1 (wildcard allows)"
+run_expect_success "$MIKE" "select * from t1" \
+    "mike can read t1 (wildcard allows)"
+
+#---------------------------------------------------------------
+echo "Test: restricted access after removing wildcard"
+#---------------------------------------------------------------
+# Grant op access to auth table before removing wildcard
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op write on auth table"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op read on auth table"
+run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+    "remove wildcard rule"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mohit', '*', 'Read', 'table', 't1') on conflict do nothing" \
+    "add mohit Read rule for t1"
+
+run_expect_success "$MOHIT" "select * from t1" \
+    "mohit can read t1 (specific rule)"
+run_expect_failure "$MIKE" "select * from t1" \
+    "mike cannot read t1 (no matching rule)"
+
+# Restore
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "restore wildcard rule"
+run_expect_success "$OP" "delete from comdb2_simple_auth where user = 'op' or user = 'mohit'" \
+    "clean up user-specific rules"
+
+#---------------------------------------------------------------
+echo "Test: verb-specific permissions (Read vs Write)"
+#---------------------------------------------------------------
+# Grant op access to auth table before removing wildcard
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op write on auth table"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op read on auth table"
+run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+    "remove wildcard rule"
+
+# mk gets Read-only on t1
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Read', 'table', 't1') on conflict do nothing" \
+    "add mk Read rule for t1"
+run_expect_success "$MARK" "select * from t1" \
+    "mk can read t1"
+run_expect_failure "$MARK" "insert into t1 values(2)" \
+    "mk cannot write t1 (no Write rule)"
+
+# Now grant mk Write
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Write', 'table', 't1') on conflict do nothing" \
+    "add mk Write rule for t1"
+run_expect_success "$MARK" "insert into t1 values(2)" \
+    "mk can write t1 (Write rule added)"
+
+# Restore
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "restore wildcard rule"
+run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
+    "clean up user-specific rules"
+
+#---------------------------------------------------------------
+echo "Test: cleanup"
+#---------------------------------------------------------------
+run_expect_success "$OP" "drop table if exists t1" \
+    "drop test table"
+
+echo ""
+echo "Results: $passed passed, $failed failed"
+
+if [ $failed -gt 0 ] ; then
+    failexit "$failed tests failed"
+fi
+
+echo "Success"
+exit 0

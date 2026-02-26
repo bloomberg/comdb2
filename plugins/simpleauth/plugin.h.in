@@ -1,0 +1,13 @@
+struct comdb2_plugin @PLUGIN_SYM@[] = {
+    {
+        "simpleauthcomdb2",               /* Plugin identifier */
+        "simple auth comdb2 plugin",       /* Plugin description */
+        COMDB2_PLUGIN_INITIALIZER, /* Plugin type */
+        1,                         /* Plugin version */
+        1,                         /* Plugin interface version */
+        0,                         /* Plugin flags */
+        0,                         /* Initialization function */
+        simpleauth_destroy,              /* Destroy function */
+        &simpleauth_comdb2_plugin         /* Plugin-specific data */
+    },
+    {0, 0, 0, 0, 0, 0, 0, 0, 0}};
