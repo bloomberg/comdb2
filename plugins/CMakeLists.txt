@@ -24,6 +24,7 @@ add_subdirectory(newsql)
 add_subdirectory(remsql)
 add_subdirectory(repopnewlrl)
 add_subdirectory(reversesql)
+add_subdirectory(simpleauth)
 add_subdirectory(sockbplog)
 
 set(COMDB2_EXTRA_PLUGINS ${EXTRA_PLUGINS} CACHE PATH "Path to additional plugins")
