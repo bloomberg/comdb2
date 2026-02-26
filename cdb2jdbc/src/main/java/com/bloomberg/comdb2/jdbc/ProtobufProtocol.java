@@ -174,11 +174,14 @@ public class ProtobufProtocol implements Protocol {
                     .setTzname(cdb2SqlQuery.tzName)
                     .setMachClass(cdb2SqlQuery.machClass);
 
-            if (cdb2SqlQuery.cinfo != null)
+            Cdb2ClientInfo cinfo = cdb2SqlQuery.cinfo;
+            if (cinfo != null) {
                 _sqlquery.setClientInfo(CDB2_SQLQUERY.cinfo.newBuilder().
-                        setPid(cdb2SqlQuery.cinfo.pid).setThId(cdb2SqlQuery.cinfo.tid).
-                        setHostId(cdb2SqlQuery.cinfo.host_id).setArgv0(cdb2SqlQuery.cinfo.argv0).
-                        setStack(cdb2SqlQuery.cinfo.stack));
+                        setPid(cinfo.pid).setThId(cinfo.tid).
+                        setHostId(cinfo.host_id).setArgv0(cinfo.argv0).
+                        setStack(cinfo.stack).setApiDriverName(cinfo.api_driver_name).
+                        setApiDriverVersion(cinfo.api_driver_version));
+            }
 
             if (cdb2SqlQuery.cnonce != null)
                 _sqlquery.setCnonce(ByteString.copyFrom(cdb2SqlQuery.cnonce));
