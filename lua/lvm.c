@@ -417,15 +417,6 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
 
 #define Protect(x)	{ L->savedpc = pc; {x;}; base = L->base; }
 
-#define assign_op(op) { \
-        TValue *rb = RKB(i); \
-        TValue *rc = RKC(i); \
-        const TValue *tm = luaT_gettmbyobj(L, rc, TM_TYPE); \
-        if (ttisuserdata(rc) && !ttisnil(tm)) { \
-           Protect(Arith(L, ra, rc, rb, TM_TYPE)); \
-        } else \
-          setobjs2s(L, ra, RB(i));\
-    }
 
 #define arith_op(op,tm) { \
         TValue *rb = RKB(i); \
@@ -471,17 +462,11 @@ void luaV_execute (lua_State *L, int nexeccalls) {
     lua_assert(L->top == L->ci->top || luaG_checkopenop(i));
     switch (GET_OPCODE(i)) {
       case OP_MOVE: {
-        assign_op(GET_OPCODE(i));
+        setobjs2s(L, ra, RB(i));
         continue;
       }
       case OP_LOADK: {
-        TValue *rb = RKB(i);
-        const TValue *tm = luaT_gettmbyobj(L, rb, TM_TYPE);
-        if (ttisuserdata(rb) && !ttisnil(tm)) {
-           Protect(Arith(L, ra, rb, KBx(i), TM_TYPE));
-        } else {
-          setobj2s(L, ra, KBx(i));
-        }
+        setobj2s(L, ra, KBx(i));
         continue;
       }
       case OP_LOADBOOL: {
