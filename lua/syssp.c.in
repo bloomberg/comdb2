@@ -571,7 +571,6 @@ static int db_comdb_delete_sc_history(Lua L)
 }
 
 extern int gbl_physrep_fanout;
-extern int gbl_physrep_max_pending_replicants;
 extern int gbl_physrep_max_candidates;
 
 static int db_comdb_physrep_tunables(Lua L)

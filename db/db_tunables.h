@@ -1884,8 +1884,10 @@ REGISTER_TUNABLE("query_comdb2db_for_absent_physrep_source_dbnum",
                  &gbl_query_comdb2db_for_absent_physrep_source_dbnum, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOOLEAN, &gbl_physrep_ignore_queues,
                  READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_filter_by_class", "Filter physrep replication by class. (Default: on)", TUNABLE_BOOLEAN,
+REGISTER_TUNABLE("physrep_filter_by_class", "Filter physrep replication by class. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_physrep_filter_by_class, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_filter_by_class_warn", "Print warning message when told to replicate from lower tier.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_filter_by_class_warn, 1, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_pollms", "Physical replicant poll interval in milliseconds. (Default: 50)", TUNABLE_INTEGER,
