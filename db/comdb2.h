@@ -89,6 +89,7 @@ typedef long long tranid_t;
 #include "shard_range.h"
 #include "tunables.h"
 #include "comdb2_plugin.h"
+#include "transaction_notifier.h"
 
 #ifndef LUASP
 #include <mem_uncategorized.h>
@@ -3775,5 +3776,8 @@ void get_disable_skipscan_all();
 void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt);
 void log_legacy_request(struct ireq *iq, struct sqlclntstate *clnt);
 extern void (*gbl_tagged_request_callback)(struct ireq *iq);
+
+extern pthread_mutex_t transaction_notifier_lock;
+extern transaction_notifier_list transaction_notifiers;
 
 #endif /* !INCLUDED_COMDB2_H */
