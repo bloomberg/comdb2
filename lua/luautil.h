@@ -32,6 +32,7 @@ int luabb_istype(lua_State *lua, int index, dbtypes_enum);
 int luabb_error(lua_State *lua, struct stored_proc *sp, const char *fmt, ...);
 int luabb_issql_type(lua_State *lua, int index, int sql_type);
 void luabb_typeconvert_int(struct lua_State *, int from_pos, dbtypes_enum to, const char *to_str);
+#define luabb_todbpointer(x) ((lua_dbtypes_t *)(rawuvalue(x) + 1))
 void lua_datetime_to_client(lua_datetime_t *ld, cdb2_client_datetime_t *val);
 void client_datetime_to_lua(cdb2_client_datetime_t *val, lua_datetime_t *ld);
 int precompile_lua(char *lua_buffer, void **compiled_data, int *size);

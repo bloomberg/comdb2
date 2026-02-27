@@ -1,0 +1,24 @@
+(rows inserted=1)
+(rows inserted=1)
+(version='sptest')
+($0=5.000000)
+($0=6.000000)
+($0=7.000000)
+(version='sptest')
+($0=2.500000)
+($0=3.500000)
+($0=4.500000)
+(version='sptest')
+[exec procedure tonumber_null_int()] failed with rc -3 [string "..."]:5: 'for' initial value must be a number
+(version='sptest')
+[exec procedure tonumber_null_real()] failed with rc -3 [string "..."]:5: 'for' initial value must be a number
+(version='sptest')
+($0=15.000000)
+(version='sptest')
+($0=5.000000)
+(version='sptest')
+($0=7.500000)
+(version='sptest')
+[exec procedure tonumber_arith_null_int()] failed with rc -3 [db:emit(row.i + 10)...]:4: attempt to perform arithmetic on a NULL value
+(version='sptest')
+[exec procedure tonumber_arith_null_real()] failed with rc -3 [db:emit(row.r * 2)...]:4: attempt to perform arithmetic on a NULL value
