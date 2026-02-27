@@ -157,6 +157,7 @@ struct comdb2_metrics_store {
     int64_t fastsql_sslconn;
     int64_t fastsql_execute_stop;
     int64_t legacy_requests;
+    int64_t tagged_cdb2api;
 };
 
 static struct comdb2_metrics_store stats;
@@ -401,6 +402,9 @@ comdb2_metric gbl_metrics[] = {
      &stats.legacy_requests, NULL},
     {"max_current_connections", "Max current connections for sampled interval", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.max_current_connections, NULL},
+    {"tagged_over_cdb2api", "Number of tagged requests over cdb2api", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.tagged_cdb2api, NULL},
+
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -745,6 +749,7 @@ int refresh_metrics(void)
     update_sqllogfill_metrics();
     update_fastsql_metrics();
     stats.max_current_connections = time_metric_max(thedb->connections);
+    stats.tagged_cdb2api = n_tagged_over_cdb2api;
 
     return 0;
 }

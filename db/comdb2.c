@@ -515,6 +515,7 @@ long n_bad_swapin;
 long n_retries;
 long n_missed;
 long n_dbinfo;
+int64_t n_tagged_over_cdb2api = 0;
 
 int n_commits;
 long long n_commit_time; /* in micro seconds.*/

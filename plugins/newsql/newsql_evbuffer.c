@@ -687,7 +687,9 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     int have_sqlite_fmt = clnt->features.have_sqlite_fmt;
     clnt->sqlite_row_format = have_sqlite_fmt;
     clnt->is_tagged = sqlquery->has_is_tagged && sqlquery->is_tagged;
-    if (!clnt->is_tagged)
+    if (clnt->is_tagged)
+        ++n_tagged_over_cdb2api;
+    else
         ++clnt->sqltick;
 
     /* If the connection is forwarded from a secure pmux port,
