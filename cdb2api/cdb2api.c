@@ -6989,13 +6989,7 @@ static void cdb2_bind_param_helper(cdb2_hndl_tp *hndl, int type, const void *var
         bindval->value.len = 0;
         bindval->has_isnull = 1;
         bindval->isnull = 1;
-    } else if (type == CDB2_CSTRING && length == 0) {
-        /* R6 and old R7 ignore isnull for cstring and treat a 0-length string
-           as NULL. So we send 1 dummy byte here to be backward compatible with
-           an old backend. */
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 1;
-    } else if (type == CDB2_BLOB && length == 0) {
+    } else if ((type == CDB2_BLOB || type == CDB2_CSTRING) && length == 0) {
         bindval->value.data = (unsigned char *)"";
         bindval->value.len = 0;
         bindval->has_isnull = 1;

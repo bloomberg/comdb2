@@ -142,11 +142,6 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
         byte[] data;
         if (x == null)
             data = null;
-        else if (x.length() == 0)
-            /* R6 and old R7 ignore the isnull flag for cstring and hence always
-               treat a 0-length string as NULL. We have to send a zero byte here
-               to be backward compatible. */
-            data = new byte[1];
         else
             data = x.getBytes();
         bindParameter(parameterIndex, Constants.Types.CDB2_CSTRING, data);

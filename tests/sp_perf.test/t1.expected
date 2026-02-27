@@ -2,12 +2,14 @@
 [create table t (b blob)] rc 0
 (version='t')
 [create procedure p version 't' {
-    local function main()
+    local function main(str)
         local t = db:table("t")
-        local b = db:cast("text", 'blob')
+        local b = db:cast(str, 'blob')
         return t:insert({b=b})
     end
 }] rc 0
-[exec procedure p()] rc 0
+[exec procedure p("text")] rc 0
+[exec procedure p("")] rc 0
 (b=x'74657874')
+(b=x'')
 [select * from t] rc 0

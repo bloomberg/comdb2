@@ -2123,11 +2123,6 @@ void luabb_pushcstringlen(lua_State *lua, const char* cstrval, int len)
 {
     l_cstring_new(lua);
     lua_cstring_t *s = (lua_cstring_t *) lua_topointer(lua, -1);
-    if (len == 1 && strcmp(cstrval, "") == 0) {
-        s->val = strdup("");
-        s->len = 0; 
-        return;
-    }
     s->val = malloc(len + 1);
     s->len = len;
     memcpy(s->val, cstrval, len);
