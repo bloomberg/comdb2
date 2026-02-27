@@ -613,6 +613,25 @@ static int send_reset_nodes_int(cdb2_hndl_tp *hndl, const char *state)
     return rc;
 }
 
+static int send_reset_nodes_altmeta(const char *state)
+{
+    cdb2_hndl_tp *metadb;
+    int rc, altcnt = gbl_altmetadb_count, badrc = 0;
+
+    for (int i = 0; i < altcnt; i++) {
+        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
+            badrc++;
+            continue;
+        }
+        if ((send_reset_nodes_int(metadb, state)) != 0) {
+            badrc++;
+        }
+        cdb2_close(metadb);
+    }
+    return badrc ? -1 : 0;
+}
+
 static int send_reset_nodes(const char *state, int doalt)
 {
     cdb2_hndl_tp *metadb;
@@ -631,19 +650,8 @@ static int send_reset_nodes(const char *state, int doalt)
     if (doalt == 0 || altcnt == 0)
         return badrc ? -1 : 0;
 
-    for (int i = 0; i < altcnt; i++) {
-        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
-            badrc++;
-            continue;
-        }
-        if ((send_reset_nodes_int(metadb, state)) != 0) {
-            badrc++;
-        }
-        cdb2_close(metadb);
-    }
-
-    return badrc ? -1 : 0;
+    rc = send_reset_nodes_altmeta(state);
+    return (badrc || rc) ? -1 : 0;
 }
 
 char *physrep_master_cached = NULL;
@@ -1330,15 +1338,14 @@ static int update_min_logfile_int(cdb2_hndl_tp *metadb)
         return 1;
     }
 
-    bytes_written +=
-        snprintf(buf+bytes_written, buf_len-bytes_written,
-                "     ) "
-                "     UNION "
-                "     SELECT p.dbname, p.host, p.file FROM comdb2_physreps p, "
-                "         comdb2_physrep_connections c, replication_tree t "
-                "         WHERE p.state = 'ACTIVE' AND p.file <> 0 AND "
-                "             t.dbname = c.source_dbname AND c.dbname = p.dbname) "
-                "    SELECT file FROM replication_tree WHERE file IS NOT NULL ORDER BY file LIMIT 1");
+    bytes_written += snprintf(buf + bytes_written, buf_len - bytes_written,
+                              "     ) "
+                              "     UNION "
+                              "     SELECT p.dbname, p.host, p.file FROM comdb2_physreps p, "
+                              "         comdb2_physrep_connections c, replication_tree t "
+                              "         WHERE p.state = 'Active' AND p.file <> 0 AND "
+                              "             t.dbname = c.source_dbname AND c.dbname = p.dbname) "
+                              "    SELECT file FROM replication_tree WHERE file IS NOT NULL ORDER BY file LIMIT 1");
     if (bytes_written >= buf_len) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
         return 1;
@@ -1947,7 +1954,6 @@ static void am_i_hung(time_t cur_time) {
 }
 
 static void *physrep_watcher(void *args) {
-    static int physrep_source_nodes_last_refreshed;
     static int physrep_slow_replicant_last_checked;
     static int physrep_keepalive_last_sent;
     static int physrep_hung_replicant_last_checked;
@@ -1959,25 +1965,6 @@ static void *physrep_watcher(void *args) {
         time_t now = time(NULL);
 
         if (gbl_physrep_source_dbname == NULL) {
-            // Physical replicantion source nodes:
-            //   1) Periodically refresh the member information in the source cluster
-            //   2) Dectect and log about slow replicants
-
-            // Refresh 'source nodes' list in the replication metadb
-            if ((gbl_physrep_metadb_name != NULL || get_dbtable_by_name("comdb2_physreps") != NULL) &&
-                thedb->master == gbl_myhostname) {
-                if ((now - physrep_source_nodes_last_refreshed) >= gbl_physrep_source_nodes_refresh_freq_sec) {
-                    // Add/update information about nodes in the current cluster in comdb2_physreps table.
-                    // Note that the table could either be local or in 'replication meta db'.
-                    int rc = send_reset_nodes("Active", 1);
-                    if (rc != 0) {
-                        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
-                                       __func__, __LINE__, rc);
-                    }
-                    physrep_source_nodes_last_refreshed = now;
-                }
-            }
-
             // Log about slow physical replicants.
             if ((now - physrep_slow_replicant_last_checked) >= gbl_physrep_slow_replicant_check_freq_sec) {
                 check_and_log_slow_replicants();
@@ -2070,6 +2057,18 @@ int start_physrep_threads() {
         return 0;
     }
 
+    // Sources are 'Active' or 'InActive'
+    if (gbl_physrep_source_dbname == NULL) {
+        send_reset_nodes("Active", 0);
+        // Physreps are 'InActive' until they begin replicating
+    } else {
+        send_reset_nodes("InActive", 0);
+    }
+
+    // Treat altmeta like a source: physreps which list it as primary meta
+    // should only see 'Active' or 'InActive'
+    send_reset_nodes_altmeta("Active");
+
     // If this is a 'physical replication' source, we would need to actively
     // try and connect to the replicants in the lower tier. (See db/reverse_conn.c)
     // This task is done by 'Reverse connections' manager thread.
@@ -2132,7 +2131,7 @@ void physrep_cleanup() {
         return;
     }
 
-    int rc = send_reset_nodes("Inactive", 0);
+    int rc = send_reset_nodes("Inactive", 1);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                        __func__, __LINE__, rc);
