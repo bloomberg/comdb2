@@ -3,3 +3,8 @@ rep_processors 0
 rep_workers 0
 set_seqnum_trace 1
 setattr WAIT_FOR_SEQNUM_TRACE 1
+catchup_window 0
+
+# This causes a failure because of the 'downgrade_penalty'.
+# I've added instrumentation so that we can understand this failure 
+# incoherent_clnt_wait 0
