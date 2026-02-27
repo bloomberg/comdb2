@@ -1813,6 +1813,8 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" new transaction\n",
                 (clnt->sql) ? clnt->sql : "(???.)");
 
+    clnt->use_2pc = gbl_2pc;
+
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
     if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (populate_modsnap_state(clnt) != 0)) {
