@@ -217,7 +217,6 @@ struct cdb2_hndl {
 
     /* X509 attribute to check database name against */
     int nid_dbname;
-    char *env_tz;
     char stack[MAX_STACK];
     int send_stack;
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */

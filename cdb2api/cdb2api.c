@@ -768,6 +768,7 @@ static void process_env_vars(void)
     char *do_log = getenv("CDB2_LOG_CALLS");
     if (do_log)
         log_calls = 1;
+#ifdef CDB2API_TEST
     char *config = getenv("CDB2_CONFIG_FILE");
     if (config) {
         /* can't call back cdb2_set_comdb2db_config from do_init_once */
@@ -785,6 +786,7 @@ static void process_env_vars(void)
     if (min_retries) {
         MIN_RETRIES = atoi(min_retries);
     }
+#endif
 }
 
 #ifdef CDB2API_TEST
@@ -4583,8 +4585,19 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
     sqlquery.n_types = ntypes;
-    sqlquery.types = (int *)types; // TODO: Is this ok? bb is able to assign without casting
-    sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
+    sqlquery.types = (int *)types;
+    char *env_tz = getenv("COMDB2TZ");
+
+    if (env_tz == NULL) {
+        env_tz = getenv("TZ");
+    }
+
+    if (env_tz == NULL) {
+        env_tz = DB_TZNAME_DEFAULT;
+    }
+
+    sqlquery.tzname = env_tz;
+
     sqlquery.mach_class = cdb2_default_cluster;
 
     if (hndl && hndl->id_blob) {
@@ -8079,10 +8092,10 @@ retry:
     int node_seq = 0;
     if ((hndl->flags & CDB2_RANDOM) ||
         ((hndl->flags & CDB2_RANDOMROOM) && (hndl->num_hosts_sameroom == 0))) {
-        node_seq = rand() % hndl->num_hosts;
+        node_seq = cdb2_random_int() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) &&
                (hndl->num_hosts_sameroom > 0)) {
-        node_seq = rand() % hndl->num_hosts_sameroom;
+        node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* Try dbinfo on same room first */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
@@ -8104,7 +8117,7 @@ retry:
 
         /* If there's another datacenter, choose a random starting point from there. */
         if (hndl->num_hosts > hndl->num_hosts_sameroom)
-            node_seq = rand() % (hndl->num_hosts - hndl->num_hosts_sameroom) + hndl->num_hosts_sameroom;
+            node_seq = cdb2_random_int() % (hndl->num_hosts - hndl->num_hosts_sameroom) + hndl->num_hosts_sameroom;
     }
 
     /* Try everything now */
@@ -8772,14 +8785,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
 
-    hndl->env_tz = getenv("COMDB2TZ");
     hndl->is_admin = (flags & CDB2_ADMIN);
-
-    if (hndl->env_tz == NULL)
-        hndl->env_tz = getenv("TZ");
-
-    if (hndl->env_tz == NULL)
-        hndl->env_tz = DB_TZNAME_DEFAULT;
 
     if (cdb2_use_env_vars) {
         hndl->db_default_type_override_env = 0;
@@ -9299,6 +9305,7 @@ char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src)
     return out;
 }
 
+#if 0
 int cdb2_get_property(cdb2_hndl_tp *hndl, const char *key, char **value) {
     if (hndl == NULL) {
         return CDB2ERR_NOSTATEMENT;
@@ -9315,6 +9322,7 @@ int cdb2_get_property(cdb2_hndl_tp *hndl, const char *key, char **value) {
         return 0;
     }
 }
+#endif
 
 int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f)
 {
