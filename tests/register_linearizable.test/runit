@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 
 # Runs the register linearizability test
+export debug=1
 [[ "$debug" == 1 ]] && set -x
 #debug_trace="-D"
 db=$1
 
 regtest=${TESTSBUILDDIR}/register
+export LEIN="${LEIN:=$TESTSROOTDIR/tools/lein}"
 
 if [[ -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
@@ -30,7 +32,7 @@ function checkforerrors
     knosout=$2
     (
         cd ${TESTSROOTDIR}/tools/linearizable/filetest
-        lein run $clojout > $knosout 2>&1 < /dev/null
+        $LEIN run $clojout > $knosout 2>&1 < /dev/null
     )
 
     egrep "^{:valid\? false" $knosout >/dev/null 2>&1 

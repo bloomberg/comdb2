@@ -1,0 +1,15 @@
+Jepsen notes for RR
+
+sudo apt-get install openjdk-11-jdk
+sudo apt-get install maven
+sudo apt-get install iptables (on all nodes)
+
+export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+cd comdb2/cdb2jdbc
+make install
+
+# on all nodes
+sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sudo systemctl restart sshd
+echo 'root:cdb2test' | sudo chpasswd
