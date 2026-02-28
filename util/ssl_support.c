@@ -57,10 +57,12 @@
 static unsigned char sid_ctx[8];
 #endif
 
-int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
-                            char **pcert, char **pkey, char **pca, char **pcrl,
-                            long sess_sz, const char *ciphers, double mintlsver,
-                            char *err, size_t n)
+#if !SBUF2_SERVER
+static int gbl_ssl_ctx_new_failure_warned = 0;
+#endif
+
+int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, char **pcert, char **pkey, char **pca,
+                              char **pcrl, long sess_sz, const char *ciphers, double mintlsver, char *err, size_t n)
 {
     SSL_CTX *myctx;
     char *buffer, *cert, *key, *ca, *crl;
@@ -254,7 +256,20 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     if (myctx == NULL) {
         ssl_sfliberrprint(err, n, my_ssl_eprintln,
                           "Failed to create SSL context");
-        rc = ERR_get_error();
+#if !SBUF2_SERVER
+        if (!gbl_ssl_ctx_new_failure_warned) {
+            /*
+             * XXX There was a bug in s2n-tls (amazon's tls implementation)
+             * that after cleanup, it may leave behind a broken RAND engine
+             * in libcrypto. The broken RAND engine would cause RAND_bytes
+             * to fail which would subsequently cause SSL_CTX_new to fail.
+             * Warn once.
+             */
+            fprintf(stderr, "[cdb2api] ssl may not work: %s\n", err);
+            gbl_ssl_ctx_new_failure_warned = 1;
+        }
+#endif
+        rc = -1;
         goto error;
     }
 
@@ -298,7 +313,7 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
         if (RAND_bytes(sid_ctx, sizeof(sid_ctx)) != 1) {
             ssl_sfliberrprint(err, n, my_ssl_eprintln,
                               "Failed to get random bytes");
-            rc = ERR_get_error();
+            rc = -1;
             goto error;
         }
         SSL_CTX_set_session_id_context(myctx, sid_ctx, sizeof(sid_ctx));

@@ -104,7 +104,7 @@ struct comdb2buf {
     SSL *ssl;
     X509 *cert;
     int protocolerr;
-    char sslerr[120];
+    char sslerr[SSL_ERRSTR_LEN];
 };
 
 int CDB2BUF_FUNC(cdb2buf_fileno)(COMDB2BUF *sb)

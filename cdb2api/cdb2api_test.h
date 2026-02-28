@@ -90,6 +90,8 @@ void cdb2_cluster_info(struct cdb2_hndl *hndl, char **cluster, int *ports, int m
 const char *cdb2_cnonce(struct cdb2_hndl *hndl);
 int cdb2_snapshot_file(struct cdb2_hndl *hndl, int *file, int *offset);
 void cdb2_dump_ports(struct cdb2_hndl *hndl, FILE *out);
+void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
+void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl);
 
 // Defined in Bloomberg plugins, not used in OSS builds/tests.
 void list_installed_addons(const char ***installed, int *ninstalls);

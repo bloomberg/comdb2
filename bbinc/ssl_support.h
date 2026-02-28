@@ -101,15 +101,20 @@
 #define ssl_eprintln(pfx, fmt, ...) \
     loge(pfx " SSL Error: " fmt "\n", ##__VA_ARGS__)
 
-#define SSL_ERRSTR() ERR_reason_error_string(ERR_get_error())
-#define SSL_ERRSTR_MT(buf) ERR_error_string(ERR_get_error(), buf)
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#define SSL_ERRSTR_LEN 256
+#else
+#define SSL_ERRSTR_LEN 120
+#endif
 
-#define PRINT_SSL_ERRSTR_MT(cb, msg)            \
-do {                                            \
-    char *__b = alloca(120);                    \
-    ERR_error_string(ERR_get_error(), __b);     \
-    cb(msg ": %s", __b);                        \
-} while (0)
+#define SSL_ERRSTR(e, buf) ERR_error_string((e), (buf))
+
+#define PRINT_SSL_ERRSTR_MT(cb, msg, e)                                                                                \
+    do {                                                                                                               \
+        char *__b = alloca(SSL_ERRSTR_LEN);                                                                            \
+        ERR_error_string((e), __b);                                                                                    \
+        cb(msg ": %s", __b);                                                                                           \
+    } while (0)
 
 #define ssl_sfeprint(err, n, cb, fmt, ...)                      \
     do {                                                        \
@@ -119,14 +124,14 @@ do {                                            \
             cb(fmt, ##__VA_ARGS__);                             \
     } while (0)
 
-#define ssl_sfliberrprint(err, n, cb, msg)                      \
-    do {                                                        \
-        if (err != NULL)                                        \
-            snprintf(err, n,                                    \
-                     "SSL Error: %s: (%lu) %s",                 \
-                     msg, ERR_get_error(), SSL_ERRSTR());       \
-        else                                                    \
-            PRINT_SSL_ERRSTR_MT(cb, msg);                       \
+#define ssl_sfliberrprint(err, n, cb, msg)                                                                             \
+    do {                                                                                                               \
+        unsigned long __err = ERR_get_error();                                                                         \
+        char *__b = alloca(SSL_ERRSTR_LEN);                                                                            \
+        if (err != NULL)                                                                                               \
+            snprintf(err, n, "SSL Error: %s: (%lu) %s", msg, __err, SSL_ERRSTR(__err, __b));                           \
+        else                                                                                                           \
+            PRINT_SSL_ERRSTR_MT(cb, msg, __err);                                                                       \
     } while (0)
 
 /* XXX Don't change the order of the enum types */
@@ -144,18 +149,15 @@ typedef enum ssl_mode {
     SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
 } ssl_mode;
 
-#define SSL_IS_ABLE(mode) ((mode) >= SSL_ALLOW)
-#define SSL_IS_REQUIRED(mode) ((mode) >= SSL_REQUIRE)
-#define SSL_IS_OPTIONAL(mode) ((mode) < SSL_REQUIRE)
-#define SSL_IS_PREFERRED(mode) ((mode) >= SSL_PREFER)
-#define SSL_NEEDS_VERIFICATION(mode) ((mode) > SSL_PREFER && (mode) != SSL_REQUIRE)
+#define SSL_IS_ABLE(mode) ((int)(mode) >= (int)SSL_ALLOW)
+#define SSL_IS_REQUIRED(mode) ((int)(mode) >= (int)SSL_REQUIRE)
+#define SSL_IS_OPTIONAL(mode) ((int)(mode) < (int)SSL_REQUIRE)
+#define SSL_IS_PREFERRED(mode) ((int)(mode) >= (int)SSL_PREFER)
+#define SSL_NEEDS_VERIFICATION(mode) ((int)(mode) > (int)SSL_PREFER && (int)(mode) != (int)SSL_REQUIRE)
 
-typedef enum {
-    PEER_SSL_UNSUPPORTED,
-    PEER_SSL_ALLOW,
-    PEER_SSL_REQUIRE
-} peer_ssl_mode;
-
+#if !SBUF2_SERVER
+typedef enum { PEER_SSL_UNSUPPORTED, PEER_SSL_ALLOW = 2, PEER_SSL_REQUIRE = 7 } peer_ssl_mode;
+#endif /* !SBUF2_SERVER */
 struct ssl_no_protocols {
     double tlsver;
     long opensslver;

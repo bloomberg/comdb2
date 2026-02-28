@@ -22,8 +22,13 @@
 
 /* Gracefully shutdown an SSL connection. The fd remains resuable.
    Return 0 upon success. */
-int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *, int reuse);
+int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *, int wait_for_peer);
 #define sslio_close CDB2BUF_FUNC(sslio_close)
+
+/* Does not shut down, simply frees. Use this for fatal SSL errors
+   such as SSL_ERROR_SYSCALL or SSL_ERROR_SSL */
+void CDB2BUF_FUNC(sslio_free)(COMDB2BUF *);
+#define sslio_free CDB2BUF_FUNC(sslio_free)
 
 int CDB2BUF_FUNC(sslio_read)(COMDB2BUF *, char *cc, int len);
 #define sslio_read CDB2BUF_FUNC(sslio_read)
