@@ -122,6 +122,9 @@ static int connect_to_master = 0;
 static int cdb2_master = 0;
 int allow_multiline_stmts = 0;
 static int allow_incoherent = 0;
+static int single_transaction = 0;
+static int transaction_started = 0;
+static std::vector<std::string> set_options;
 
 static int now_ms(void)
 {
@@ -183,30 +186,36 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 static const char *usage_text = "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
                                 "\n"
                                 "Options:\n"
-                                " -c, --cdb2cfg FL        Set the config file to FL\n"
-                                "     --coltype           Prefix column output with associated type\n"
-                                "     --cost              Log the cost of query in db trace files\n"
+                                " -c, --cdb2cfg FL         Set the config file to FL\n"
+                                "     --chunk N            Set transaction chunk size N (implies --single-transaction)\n"
+                                "     --coltype            Prefix column output with associated type\n"
+                                "     --cost               Log the cost of query in db trace files\n"
 #ifdef CDB2API_TEST
-                                "     --debugtrace        Set debug trace flag on api handle\n"
+                                "     --debugtrace         Set debug trace flag on api handle\n"
 #endif
-                                " -d, --delim str         Set string used to separate two sql statements read "
+                                " -d, --delim str          Set string used to separate two sql statements read "
                                 "from a file or input stream\n"
-                                " -f, --file FL           Read queries from the specified file FL\n"
-                                " -h, --help              Help on usage \n"
-                                " -n, --host HOST         Host to connect to and run query.\n"
-                                " -p, --precision #       Set precision for floation point outputs\n"
-                                " -s, --script            Script mode (less verbose output)\n"
-                                "     --showeffects       Show the effects of query at the end\n"
-                                "     --strblobs          Display blobs as strings\n"
-                                "     --tabs              Set column separator to tabs rather than commas\n"
-                                "     --tabular           Display result in tabular format\n"
-                                " -t, --type TYPE         Type of database or tier ('dev' or 'prod',"
+                                " -f, --file FL            Read queries from the specified file FL\n"
+                                " -h, --help               Help on usage \n"
+                                " -n, --host HOST          Host to connect to and run query.\n"
+                                " -p, --precision #        Set precision for floation point outputs\n"
+                                " -s, --script             Script mode (less verbose output)\n"
+                                "     --set OPTION         Execute 'SET OPTION' before user statements (can be used multiple times)\n"
+                                "     --showeffects        Show the effects of query at the end\n"
+                                "     --single-transaction Executes all statements in a single transaction\n"
+                                "     --strblobs           Display blobs as strings\n"
+                                "     --tabs               Set column separator to tabs rather than commas\n"
+                                "     --tabular            Display result in tabular format\n"
+                                " -t, --type TYPE          Type of database or tier ('dev' or 'prod',"
                                 " default 'local')\n"
-#ifdef CDB2API_TEST
                                 " -v, --verbose           Verbose debug output, implies --debugtrace\n"
-#endif
                                 " -i, --allow-incoherent  Allow SQL to run on an incoherent node\n"
                                 "     --long-columns      Allow SQL to return long column names\n"
+#ifdef CDB2API_TEST
+                                " -v, --verbose            Verbose debug output, implies --debugtrace\n"
+#endif
+                                " -i, --allow-incoherent   Allow SQL to run on an incoherent node\n"
+                                "     --long-columns       Allow SQL to return long column names\n"
                                 "Examples: \n"
                                 " * Querying db with name mydb on local server \n"
                                 "     cdb2sql mydb 'select 1'\n"
@@ -833,6 +842,23 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     return NULL;
 }
 
+static void commit_transaction()
+{
+    int rc;
+    if (!cdb2h || !transaction_started)
+        return;
+
+    rc = cdb2_run_statement(cdb2h, "COMMIT");
+    if (rc) {
+        fprintf(stderr, "[COMMIT] failed with rc %d %s\n", rc, cdb2_errstr(cdb2h));
+    } else {
+        while ((rc = cdb2_next_record(cdb2h)) == CDB2_OK);
+        if (rc != CDB2_OK_DONE)
+            fprintf(stderr, "[COMMIT] failed with rc %d %s\n", rc, cdb2_errstr(cdb2h));
+    }
+    transaction_started = 0;
+}
+
 static int run_statement_int(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time);
 
@@ -901,6 +927,7 @@ static int process_escape(const char *cmdstr)
         return 0;
 
     if (strcasecmp(tok, "cdb2_close") == 0) {
+        commit_transaction();
         cdb2_close(cdb2h);
         cdb2h = NULL;
     } else if (strcasecmp(tok, "redirect") == 0) {
@@ -1642,6 +1669,27 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
                 return 1;
             }
         }
+
+        if (!set_options.empty()) {
+            for (const auto& set_opt : set_options) {
+                char set_sql[1024];
+                snprintf(set_sql, sizeof(set_sql), "SET %s", set_opt.c_str());
+                rc = cdb2_run_statement(cdb2h, set_sql);
+                if (rc) {
+                    fprintf(stderr, "[%s] failed with rc %d %s\n", set_sql, rc, cdb2_errstr(cdb2h));
+                    return 1;
+                }
+            }
+        }
+
+        if (single_transaction && !transaction_started) {
+            transaction_started = 1;
+            rc = cdb2_run_statement(cdb2h, "BEGIN");
+            if (rc) {
+                fprintf(stderr, "[BEGIN] failed with rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                return 1;
+            }
+        }
     }
 
     /* Bind parameter ability */
@@ -2328,6 +2376,9 @@ int main(int argc, char *argv[])
                                            {"connect-to-master", no_argument, NULL, 'm'},
                                            {"multiline", no_argument, NULL, 'l'},
                                            {"allow-incoherent", no_argument, NULL, 'i'},
+                                           {"single-transaction", no_argument, NULL, 128},
+                                           {"set", required_argument, NULL, 129},
+                                           {"chunk", required_argument, NULL, 130},
                                            {0, 0, 0, 0}};
 #ifdef CDB2API_TEST
     while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mMl", long_options, &opt_indx)) != -1) {
@@ -2391,6 +2442,18 @@ int main(int argc, char *argv[])
         case 'i':
             allow_incoherent = 1;
             break;
+        case 128:
+            single_transaction = 1;
+            break;
+        case 129:
+            set_options.push_back(optarg);
+            break;
+        case 130: {
+            single_transaction = 1;
+            std::string chunk_opt = "TRANSACTION CHUNK ";
+            set_options.push_back(chunk_opt + optarg);
+            break;
+        }
         case '?':
             cdb2sql_usage(EXIT_FAILURE);
             break;
@@ -2402,6 +2465,9 @@ int main(int argc, char *argv[])
 
     if (printcoltype)
         printmode |= DISP_COLTYPE;
+
+    if (single_transaction)
+        setenv("COMDB2_CONFIG_CHECK_HB_ON_BLOCKED_WRITE", "1", 1);
 
     if (getenv("COMDB2_IOLBF")) {
         setvbuf(stdout, 0, _IOLBF, 0);
@@ -2461,8 +2527,9 @@ int main(int argc, char *argv[])
 
     const int sql_given_in_argv = sql && *sql != '-';
     if (sql_given_in_argv) {
-        process_sql_given_in_argv(sql, ntypes, types); 
+        process_sql_given_in_argv(sql, ntypes, types);
 
+        commit_transaction();
         if (cdb2h) { cdb2_close(cdb2h); }
         if (report_costs != NULL) { (*report_costs)(); }
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -2497,6 +2564,7 @@ int main(int argc, char *argv[])
     if (istty)
         save_readline_history();
 
+    commit_transaction();
     if (cdb2h) {
         cdb2_close(cdb2h);
         cdb2h = NULL;

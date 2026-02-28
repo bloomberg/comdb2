@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (i INTEGER)"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 SELECT value FROM generate_series(1,100)" >actual 2>&1
+cdb2sql --tabs --chunk 10 ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 SELECT value FROM generate_series(1,100)" >>actual 2>&1
+
+# Will fail since can't update a row twice in the same txn
+cdb2sql --tabs ${CDB2_OPTIONS} --single-transaction --set 'TRANSACTION BLOCKSQL' $dbnm default - >> actual 2>&1 << EOF
+UPDATE t1 SET i = i WHERE i = 1
+UPDATE t1 SET i = i WHERE i = 1
+EOF
+
+# Will fail since the 2nd update will encounter a verify-error
+cdb2sql --tabs ${CDB2_OPTIONS} --chunk 1 $dbnm default - >> actual 2>&1 << EOF
+UPDATE t1 SET i = i WHERE i = 1
+UPDATE t1 SET i = i WHERE i = 1
+EOF
+
+# Will succeed
+cdb2sql --tabs ${CDB2_OPTIONS} --single-transaction --set 'TRANSACTION READ COMMITTED' $dbnm default - >> actual 2>&1 << EOF
+UPDATE t1 SET i = i WHERE i = 1
+UPDATE t1 SET i = i WHERE i = 1
+EOF
+
+set -e
+diff expected actual
