@@ -1,0 +1,9 @@
+[INSERT INTO t1 SELECT value FROM generate_series(1,100)] failed with rc 202 transaction too big
+[COMMIT] failed with rc 2 uncommittable txn on upd genid=150001 rc=404
+[UPDATE t1 SET i = i WHERE i = 1] rc 0
+[UPDATE t1 SET i = i WHERE i = 1] rc 0
+[COMMIT] failed with rc 2 find old record failed unable to update record rc = 4
+[UPDATE t1 SET i = i WHERE i = 1] rc 0
+[UPDATE t1 SET i = i WHERE i = 1] rc 0
+[UPDATE t1 SET i = i WHERE i = 1] rc 0
+[UPDATE t1 SET i = i WHERE i = 1] rc 0
