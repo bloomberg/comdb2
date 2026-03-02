@@ -325,6 +325,7 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 static int cdb2_get_dbhosts(cdb2_hndl_tp *);
 static void hndl_set_comdb2buf(cdb2_hndl_tp *, COMDB2BUF *);
 static int send_reset(COMDB2BUF *sb, int localcache);
+static void free_raw_response(cdb2_hndl_tp *hndl);
 
 static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
 static int check_hb_on_blocked_write_set_from_env = 0;
@@ -4281,6 +4282,7 @@ static int cdb2_convert_error_code(int rc)
 
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
+    free_raw_response(hndl);
     if (hndl->lastresponse) {
         cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
         if (hndl->protobuf_size)
@@ -4585,6 +4587,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
 #endif
+    if (hndl) {
+        sqlquery.has_is_tagged = 1;
+        sqlquery.is_tagged = hndl->is_tagged;
+    }
 
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
@@ -4686,6 +4692,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     if (skip_nrows) {
         sqlquery.has_skip_rows = 1;
         sqlquery.skip_rows = skip_nrows;
+    }
+    if (hndl) {
+        sqlquery.is_tagged = hndl->is_tagged;
     }
 
     uint8_t trans_append = hndl && hndl->in_trans && do_append;
@@ -5151,7 +5160,9 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         newsql_disconnect(hndl, hndl->sb, __LINE__);
 
     if (hndl->firstresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+        free_raw_response(hndl);
+        if (hndl->firstresponse)
+            cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
         hndl->firstresponse = NULL;
         free((void *)hndl->first_buf);
         hndl->first_buf = NULL;
@@ -5962,6 +5973,22 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     if (child->c_sslmode >= SSL_REQUIRE && (child->num_hosts == 0 && child->got_dbinfo == 0)) {
         child->got_dbinfo = 1;
         cdb2_get_dbhosts(child);
+    }
+}
+
+static void free_raw_response(cdb2_hndl_tp *hndl)
+{
+    // Tagged requests receive a RESPONSE_HEADER__SQL_RESPONSE_RAW response that
+    // contains both the "header" and the row data.  So the first response is
+    // also the last response and we only need to free one.
+    if (hndl->is_tagged && hndl->firstresponse && hndl->firstresponse == hndl->lastresponse) {
+        free(hndl->firstresponse->value[0]->value.data);
+        free(hndl->firstresponse->value[1]->value.data);
+        free(hndl->firstresponse->value[0]);
+        free(hndl->firstresponse->value[1]);
+        free(hndl->firstresponse->value);
+        free(hndl->firstresponse);
+        hndl->firstresponse = hndl->lastresponse = NULL;
     }
 }
 
@@ -8227,6 +8254,11 @@ static int get_connection_int(cdb2_hndl_tp *hndl, int *err)
     before_discovery(hndl);
     COMDB2BUF *sb = sockpool_get(hndl);
     after_discovery(hndl);
+    if (sb == NULL && strcmp(hndl->type, "configured") == 0 && hndl->num_hosts > 0) {
+        // Special setting of "configured" means the proxy generated a list of hosts in its config and we should·
+        // use that.  Don't try discovery - use what's in the proxy config.
+        return 0;
+    }
     if (sb == NULL)
         return -1;
     return init_connection(hndl, sb);
@@ -8781,6 +8813,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->env_tz = getenv("COMDB2TZ");
     hndl->is_admin = (flags & CDB2_ADMIN);
+    hndl->is_tagged = (flags & CDB2_SET_TAGGED);
 
     if (hndl->env_tz == NULL)
         hndl->env_tz = getenv("TZ");
