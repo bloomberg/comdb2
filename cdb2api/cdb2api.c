@@ -3376,6 +3376,9 @@ static int try_ssl(cdb2_hndl_tp *hndl)
     cdb2_ssl_sess *p;
     COMDB2BUF *sb = hndl->sb;
 
+    if (sslio_has_ssl(sb))
+        return 0;
+
     if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
         switch (hndl->s_sslmode) {
         case PEER_SSL_UNSUPPORTED:
@@ -3432,7 +3435,7 @@ static int try_ssl(cdb2_hndl_tp *hndl)
     struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN)};
     rc = cdb2buf_fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1) {
-        return -1;
+        rc = -1;
         goto out;
     }
 #ifdef CDB2API_TEST
@@ -3707,8 +3710,16 @@ retry_newsql_connect:
 
     hndl_set_comdb2buf(hndl, sb, idx);
     if (try_ssl(hndl) != 0) {
-        rc = -1;
-        goto after_callback;
+        fd = -1;
+        sb = NULL;
+        /* We're downgraded to plaintext, reconnect without SSL now. */
+        if (!hndl->sslerr && !SSL_IS_PREFERRED(hndl->c_sslmode)) {
+            rc = 0;
+            goto retry_newsql_connect;
+        } else {
+            rc = -1;
+            goto after_callback;
+        }
     }
 
 after_callback:
