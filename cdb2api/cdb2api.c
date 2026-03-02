@@ -340,6 +340,7 @@ static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef CDB2API_TEST
 #include "cdb2api_test.h"
+#include "cdb2api_ssl_test.h"
 #define MAKE_CDB2API_TEST_SWITCH(name)                                                                                 \
     static int name;                                                                                                   \
     void set_##name(int num)                                                                                           \
@@ -8766,7 +8767,12 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
         hndl->sess->sessobj = NULL;
 
         /* Append it to our internal linkedlist. */
-        rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
+#ifdef CDB2API_TEST
+        if (fail_mutex_lock_in_add_ssl_session)
+            rc = EINVAL;
+        else
+#endif
+            rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
         if (rc != 0) {
             /* If we fail to lock (which is quite rare), don't error out.
                we lose the caching ability, and that's it. */

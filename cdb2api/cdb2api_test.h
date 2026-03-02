@@ -1,6 +1,8 @@
 #ifndef INCLUDED_CDB2API_TEST_H
 #define INCLUDED_CDB2API_TEST_H
 
+#include <stdio.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -64,7 +66,7 @@ void set_fail_sslio_others(int);
 void set_fail_key_ownership(int);
 void set_fake_root_key(int);
 void set_override_dbname_in_cert(int);
-// void set_override_hostname_in_cert(int);
+void set_override_hostname_in_cert(int);
 void set_fail_reverse_dns(int);
 void set_fail_forward_dns(int);
 void set_fail_null_server_cert(int);
@@ -90,8 +92,8 @@ void cdb2_cluster_info(struct cdb2_hndl *hndl, char **cluster, int *ports, int m
 const char *cdb2_cnonce(struct cdb2_hndl *hndl);
 int cdb2_snapshot_file(struct cdb2_hndl *hndl, int *file, int *offset);
 void cdb2_dump_ports(struct cdb2_hndl *hndl, FILE *out);
-void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
-void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl);
+void cdb2_set_debug_trace(struct cdb2_hndl *hndl);
+void cdb2_unset_debug_trace(struct cdb2_hndl *hndl);
 
 // Defined in Bloomberg plugins, not used in OSS builds/tests.
 void list_installed_addons(const char ***installed, int *ninstalls);

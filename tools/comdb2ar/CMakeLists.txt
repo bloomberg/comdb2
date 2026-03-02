@@ -29,6 +29,9 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${OPENSSL_INCLUDE_DIR}
 )
+if(COMDB2_TEST)
+  include_directories(${PROJECT_SOURCE_DIR}/cdb2api)
+endif()
 target_link_libraries(comdb2ar
   ${OPENSSL_LIBRARIES}
   ${ZLIB_LIBRARIES}
@@ -36,6 +39,9 @@ target_link_libraries(comdb2ar
   cdb2archive
   crc32c
 )
+if(COMDB2_TEST)
+  target_link_libraries(comdb2ar cdb2api)
+endif()
 
 if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")

@@ -26,6 +26,10 @@
 #include <hostname_support.h>
 #include <ssl_glue.h>
 
+#ifdef CDB2API_TEST
+#include "cdb2api_ssl_test.h"
+#endif
+
 static int is_certificate_error(unsigned long err)
 {
     int sslerrreason = ERR_GET_REASON(err);
@@ -133,10 +137,15 @@ static int sslio_pollin(COMDB2BUF *sb)
         rc = poll(&pol, 1, sb->nowait ? 0 : (sb->readtimeout == 0 ? -1 : sb->readtimeout));
     } while (rc == -1 && errno == EINTR);
 
-    if (rc <= 0) /* timedout or error. */
+    if (rc <= 0) { /* timedout or error. */
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "failed to poll rc %d errno %d", rc, errno);
         return rc;
-    if ((pol.revents & (POLLIN | POLLPRI)) == 0)
+    }
+    if ((pol.revents & (POLLIN | POLLPRI)) == 0) {
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "unexpected poll revents %d",
+                     -100000 + pol.revents);
         return -100000 + pol.revents;
+    }
 
     /* Can read. */
     return 1;
@@ -154,10 +163,15 @@ static int sslio_pollout(COMDB2BUF *sb)
         rc = poll(&pol, 1, sb->writetimeout == 0 ? -1 : sb->writetimeout);
     } while (rc == -1 && errno == EINTR);
 
-    if (rc <= 0) /* timedout or error. */
+    if (rc <= 0) { /* timedout or error. */
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "failed to poll rc %d errno %d", rc, errno);
         return rc;
-    if ((pol.revents & POLLOUT) == 0)
+    }
+    if ((pol.revents & POLLOUT) == 0) {
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "unexpected poll revents %d",
+                     -100000 + pol.revents);
         return -100000 + pol.revents;
+    }
 
     /* Can write. */
     return 1;
@@ -190,6 +204,10 @@ static int ssl_verify(COMDB2BUF *sb, ssl_mode mode, const char *dbname, int nid)
         if (SSL_IS_OPTIONAL(mode))
             mode += (SSL_REQUIRE - SSL_PREFER);
         sb->cert = SSL_get_peer_certificate(sb->ssl);
+#ifdef CDB2API_TEST
+        if (fail_null_server_cert)
+            sb->cert = NULL;
+#endif
         if (sb->cert == NULL) {
             ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Could not get peer certificate.");
@@ -248,6 +266,13 @@ static int sslio_accept_or_connect(COMDB2BUF *sb, SSL_CTX *ctx,
 {
     int rc, ioerr, fd, flags;
 
+#ifdef CDB2API_TEST
+    if (fail_null_ssl_ctx)
+        ctx = NULL;
+    else if (fail_ssl_accept_twice)
+        sb->ssl = (SSL *)0x1;
+#endif
+
     /* If SSL does not exist, return an error. */
     if (ctx == NULL) {
         ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
@@ -258,11 +283,20 @@ static int sslio_accept_or_connect(COMDB2BUF *sb, SSL_CTX *ctx,
     if (sb->ssl != NULL) {
         ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "SSL connection has been established already.");
+#ifdef CDB2API_TEST
+        if (fail_ssl_accept_twice)
+            sb->ssl = NULL;
+#endif
         return EPERM;
     }
 
-    /* Create an SSL connection. */
-    sb->ssl = SSL_new(ctx);
+#ifdef CDB2API_TEST
+    if (fail_ssl_new)
+        sb->ssl = NULL;
+    else
+#endif
+        /* Create an SSL connection. */
+        sb->ssl = SSL_new(ctx);
     if (sb->ssl == NULL) {
         ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                           "Failed to create SSL connection");
@@ -296,16 +330,41 @@ static int sslio_accept_or_connect(COMDB2BUF *sb, SSL_CTX *ctx,
     /* accept/connect SSL connection. */
 re_accept_or_connect:
     ERR_clear_error();
-    rc = SSL_func(sb->ssl);
+#ifdef CDB2API_TEST
+    if (fail_sslio_connect && (fail_sslio_zero_return || fail_sslio_syscall || fail_sslio_others))
+        rc = 0;
+    else
+#endif
+        rc = SSL_func(sb->ssl);
     if (rc != 1) {
         /* Handle SSL error code. */
         ioerr = SSL_get_error(sb->ssl, rc);
 
+#ifdef CDB2API_TEST
+        if (fail_sslio_zero_return) {
+            ioerr = SSL_ERROR_ZERO_RETURN;
+            fail_sslio_zero_return = 0;
+        } else if (fail_sslio_syscall) {
+            ioerr = SSL_ERROR_SYSCALL;
+            fail_sslio_syscall = 0;
+        } else if (fail_sslio_others) {
+            ioerr = SSL_ERROR_NONE;
+            fail_sslio_others = 0;
+        }
+#endif
+
         switch (ioerr) {
         case SSL_ERROR_WANT_READ: /* Renegotiate */
-            rc = sslio_pollin(sb);
-            if (rc > 0)
-                goto re_accept_or_connect;
+#ifdef CDB2API_TEST
+            /* This forces an incomplete SSL handshake */
+            if (!fail_ssl_poll) {
+#endif
+                rc = sslio_pollin(sb);
+                if (rc > 0)
+                    goto re_accept_or_connect;
+#ifdef CDB2API_TEST
+            }
+#endif
             sb->protocolerr = 0;
             break;
         case SSL_ERROR_WANT_WRITE: /* Renegotiate */
@@ -383,9 +442,20 @@ reread:
     if (n <= 0)
         return n;
 
-    n = SSL_read(sb->ssl, cc, len);
+#ifdef CDB2API_TEST
+    if (fail_sslio_read)
+        n = 0;
+    else
+#endif
+        n = SSL_read(sb->ssl, cc, len);
     if (n <= 0) {
         ioerr = SSL_get_error(sb->ssl, n);
+#ifdef CDB2API_TEST
+        if (fail_sslio_read) {
+            ioerr = SSL_ERROR_NONE;
+            fail_sslio_read = 0;
+        }
+#endif
         if (handle_sslio_rw_errors(sb, ioerr, n, &wantread, NULL) == 0)
             goto reread;
     }
@@ -404,9 +474,20 @@ rewrite:
     if (n <= 0)
         return n;
 
-    n = SSL_write(sb->ssl, cc, len);
+#ifdef CDB2API_TEST
+    if (fail_sslio_write)
+        n = 0;
+    else
+#endif
+        n = SSL_write(sb->ssl, cc, len);
     if (n <= 0) {
         ioerr = SSL_get_error(sb->ssl, n);
+#ifdef CDB2API_TEST
+        if (fail_sslio_write) {
+            ioerr = SSL_ERROR_SYSCALL;
+            fail_sslio_write = 0;
+        }
+#endif
         if (handle_sslio_rw_errors(sb, ioerr, n, NULL, &wantwrite) == 0)
             goto rewrite;
     }
