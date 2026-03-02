@@ -34,6 +34,10 @@
 #include <openssl/opensslv.h>
 #include <openssl/crypto.h>
 
+#ifdef CDB2API_TEST
+#include "cdb2api_ssl_test.h"
+#endif
+
 /* bb */
 #if SBUF2_SERVER
 #  include <openssl/rand.h> /* RAND_pseudo_bytes() */
@@ -199,6 +203,12 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, ch
         }
 
         /* Key must to be owned by either us or root. */
+#ifdef CDB2API_TEST
+        if (fail_key_ownership)
+            buf.st_uid = 1;
+        else if (fake_root_key)
+            buf.st_uid = 0;
+#endif
         if (buf.st_uid != geteuid() && buf.st_uid != 0) {
             ssl_sfeprint(err, n, my_ssl_eprintln,
                          "Key %s must be owned by root or "
@@ -253,6 +263,13 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, ch
 #else
     myctx = SSL_CTX_new(SSLv23_method());
 #endif
+
+#ifdef CDB2API_TEST
+    if (fail_ssl_ctx_new) {
+        myctx = NULL;
+    }
+#endif
+
     if (myctx == NULL) {
         ssl_sfliberrprint(err, n, my_ssl_eprintln,
                           "Failed to create SSL context");

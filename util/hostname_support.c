@@ -25,6 +25,10 @@
 #include <hostname_support.h>
 #include <errno.h>
 
+#ifdef CDB2API_TEST
+#include <cdb2api_ssl_test.h>
+#endif
+
 static int get_hostname_by_addr(struct sockaddr_in *addr, char *host, socklen_t hostlen)
 {
     socklen_t addrlen = sizeof(*addr);
@@ -132,6 +136,10 @@ char *get_hostname_by_fileno_err(int fd, int *err)
 
 int get_hostname_by_fileno_v2(int fd, char *out, size_t sz)
 {
+#ifdef CDB2API_TEST
+    if (fail_reverse_dns)
+        return -1;
+#endif
     struct sockaddr_in saddr;
     socklen_t len = sizeof(saddr);
     if (getpeername(fd, (struct sockaddr *)&saddr, &len)) return -1;

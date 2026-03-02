@@ -26,6 +26,10 @@
 #include <hostname_support.h>
 #include <ssl_glue.h>
 
+#ifdef CDB2API_TEST
+#include "cdb2api_ssl_test.h"
+#endif
+
 static int dbname_wildcard_match(const char *s, const char *p)
 {
     const char *asterisk = NULL;
@@ -135,6 +139,11 @@ static int ssl_verify_san(const char *hostname, const X509 *cert)
     }
 
     sk_GENERAL_NAME_pop_free(peersan, GENERAL_NAME_free);
+#ifdef CDB2API_TEST
+    if (ignore_san)
+        return -1;
+#endif
+
     return rc;
 }
 
@@ -196,6 +205,12 @@ int ssl_verify_dbname(X509 *cert, const char *dbname, int nid)
         return rc;
     if (strncasecmp(dbname_in_cert, dbname, sz) == 0)
         return 0;
+
+#ifdef CDB2API_TEST
+    if (override_dbname_in_cert)
+        strcpy(dbname_in_cert, "cd*b*");
+#endif
+
     dbname_in_cert[sz - 1] = 0;
     return dbname_wildcard_match(dbname, dbname_in_cert);
 }
@@ -248,6 +263,11 @@ int ssl_verify_hostname(X509 *cert, int fd)
     hp = gethostbyname(peerhost);
 #   endif
 
+#ifdef CDB2API_TEST
+    if (fail_forward_dns)
+        hp = NULL;
+#endif
+
     if (hp == NULL) {
         return 1;
     }
@@ -274,6 +294,10 @@ int ssl_verify_hostname(X509 *cert, int fd)
 
     /* Per RFC 6125, If SANs are presented, they must be used and
        the Comman Name must be ignored. */
+#ifdef CDB2API_TEST
+    if (override_hostname_in_cert)
+        strcpy(peerhost, "hello");
+#endif
     rc = ssl_verify_san(peerhost, cert);
     if (rc == -1) {
         rc = ssl_verify_cn(peerhost, cert);

@@ -1,5 +1,6 @@
 set(src
   cdb2api.c
+  cdb2api_ssl_test.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
   ${PROJECT_SOURCE_DIR}/util/hostname_support.c
