@@ -8544,6 +8544,7 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
         hndl->cache_ssl_sess = !!atoi(sslenv);
     else
         hndl->cache_ssl_sess = cdb2_cache_ssl_sess;
+
     if (hndl->cache_ssl_sess)
         cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
@@ -8551,8 +8552,6 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
         hndl->min_tls_ver = atof(sslenv);
     else
         hndl->min_tls_ver = cdb2_min_tls_ver;
-    if (hndl->cache_ssl_sess)
-        cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
     /* Reset for next cdb2_open() */
     cdb2_c_ssl_mode = SSL_ALLOW;
