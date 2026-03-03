@@ -964,7 +964,7 @@ __db_dbenv_mpool(dbp, fname, flags)
  *
  * PUBLIC: int __db_clear_ufid_hash __P((DB *, DB_TXN *, u_int32_t));
  */
-	int
+int
 __db_clear_ufid_hash(dbp, txn, flags)
 	DB *dbp;
 	DB_TXN *txn;
@@ -980,7 +980,12 @@ __db_clear_ufid_hash(dbp, txn, flags)
 	ZERO_LSN(dummy_lsn);
 	ufid_dbp = NULL;
 
-	ret = __ufid_find_db_noabort(dbenv, txn, &ufid_dbp, dbp->fileid, &dummy_lsn);
+	ret = __ufid_find_db_for_removal(dbenv, txn, &ufid_dbp, dbp->fileid, &dummy_lsn);
+	if (ufid_dbp == dbp) {
+		/* prevent double-close */
+		return 0;
+	}
+
 	if (ret != 0 || ufid_dbp == NULL || !F_ISSET(ufid_dbp, DB_AM_RECOVER)) {
 		/* Ignore this file if its fileid is deleted, missing, or not opened by recovery */
 		return 0;
