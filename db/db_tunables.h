@@ -2609,4 +2609,6 @@ REGISTER_TUNABLE("accept_headroom", "", TUNABLE_INTEGER, &gbl_accept_headroom, I
 REGISTER_TUNABLE("simpleauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_simpleauth, NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("track_db_open", "Track berkdb open DB handles", TUNABLE_INTEGER, &gbl_db_track_open, INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("clear_ufid_on_db_close", "Clear ufid hash on db->close", TUNABLE_INTEGER, &gbl_clear_ufid_on_db_close,
+                 INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

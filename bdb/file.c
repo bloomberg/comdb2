@@ -6967,6 +6967,7 @@ int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
     return found;
 }
 
+int gbl_clear_ufid_on_db_close = 1;
 static int bdb_close_only_flags(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr, int flags)
 {
     int i;
@@ -6985,8 +6986,8 @@ static int bdb_close_only_flags(bdb_state_type *bdb_state, DB_TXN *tid, int *bdb
     /* close doesn't fail */
     if (flags & BDB_CLOSE_FLAGS_FLUSH) {
        close_dbs_flush(bdb_state);
-    } else if (flags & BDB_CLOSE_FLAGS_CLR_UFID) {
-        close_dbs_int(bdb_state, NULL, DB_NOSYNC, BDB_CLOSE_FLAGS_CLR_UFID);
+    } else if ((flags & BDB_CLOSE_FLAGS_CLR_UFID) && gbl_clear_ufid_on_db_close) {
+        close_dbs_int(bdb_state, NULL, DB_NOSYNC, flags);
     } else {
         close_dbs(bdb_state);
     }

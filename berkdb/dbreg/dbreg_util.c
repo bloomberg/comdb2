@@ -545,7 +545,7 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 int gbl_abort_on_missing_ufid = 0;
 
 static int
-__ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_not_found)
+__ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_not_found, remove_on_found)
 	DB_ENV *dbenv;
 	DB_TXN *txn;
 	DB **dbpp;
@@ -554,6 +554,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 	void **is_trigger;
 	int create;
 	int abort_on_not_found;
+	int remove_on_found;
 {
 	struct __ufid_to_db_t *ufid;
 	int ret = 0;
@@ -583,6 +584,10 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 		}
 		ret = ret ? ret : (ufid->ignore ? DB_IGNORED : 0);
 		(*dbpp) = ufid->dbp;
+		if (remove_on_found) {
+			/* caller is going to close the dbp */
+			ufid->dbp = NULL;
+		}
 	} else {
 		if (abort_on_not_found && gbl_abort_on_missing_ufid) {
 			abort();
@@ -612,7 +617,7 @@ __ufid_to_db(dbenv, txn, dbpp, inufid, is_trigger, lsnp)
 	void **is_trigger;
 	DB_LSN *lsnp;
 {
-	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, 1, 1);
+	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, 1, 1, 0);
 }
 
 // PUBLIC: int __ufid_find_db __P(( DB_ENV *, DB_TXN *, DB **, u_int8_t *, DB_LSN *));
@@ -624,19 +629,19 @@ __ufid_find_db(dbenv, txn, dbpp, inufid, lsnp)
 	u_int8_t *inufid;
 	DB_LSN *lsnp;
 {
-	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, NULL, 0, 1);
+	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, NULL, 0, 1, 0);
 }
 
-// PUBLIC: int __ufid_find_db_noabort __P(( DB_ENV *, DB_TXN *, DB **, u_int8_t *, DB_LSN *));
+// PUBLIC: int __ufid_find_db_for_removal __P(( DB_ENV *, DB_TXN *, DB **, u_int8_t *, DB_LSN *));
 int
-__ufid_find_db_noabort(dbenv, txn, dbpp, inufid, lsnp)
+__ufid_find_db_for_removal(dbenv, txn, dbpp, inufid, lsnp)
 	DB_ENV *dbenv;
 	DB_TXN *txn;
 	DB **dbpp;
 	u_int8_t *inufid;
 	DB_LSN *lsnp;
 {
-	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, NULL, 0, 0);
+	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, NULL, 0, 0, 1);
 }
 
 // PUBLIC: int __ufid_to_fname __P(( DB_ENV *, char **, u_int8_t *));
