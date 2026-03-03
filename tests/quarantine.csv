@@ -38,3 +38,4 @@ consumer_non_atomic_default_consumer_generated,DB_BUG,181573461
 unifiedcancel,UNKNOWN,181657289
 autoanalyze,UNKNOWN,181657299
 remsql_locks,DB_BUG,182504318
+remsql_locks_rte_connect_generated,DB_BUG,182504318
