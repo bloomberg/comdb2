@@ -1731,7 +1731,21 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-static void only_read_config(cdb2_hndl_tp *, int *); /* FORWARD */
+struct db_info {
+    char name[DBNAME_LEN];
+    char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
+    int ports[MAX_NODES];
+    int n_hosts;
+    int found;
+    int num;
+};
+
+struct cluster_info {
+    struct db_info metadb;
+    struct db_info db;
+};
+
+static void only_read_config(cdb2_hndl_tp *, struct cluster_info *, int *); /* FORWARD */
 
 static int cdb2_max_room_num = 0;
 static int cdb2_has_room_distance = 0;
@@ -7962,9 +7976,14 @@ after_callback:
     return rc;
 }
 
-static inline void only_read_config(cdb2_hndl_tp *hndl, int *default_err)
+static inline void only_read_config(cdb2_hndl_tp *hndl, struct cluster_info *c, int *default_err)
 {
-    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    char *dbname = hndl->dbname;
+    strcpy(c->db.name, dbname);
+    strcpy(c->metadb.name, COMDB2DB);
+
+    read_available_comdb2db_configs(hndl, c->metadb.hosts, c->metadb.name, &c->metadb.n_hosts, &c->metadb.num,
+                                    c->db.name, c->db.hosts, &c->db.n_hosts, &c->db.num, NULL, NULL);
     if (default_err && strcasecmp(hndl->type, "default") == 0) {
         if (cdb2_default_cluster[0] != '\0') {
             strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type) - 1);
@@ -8213,15 +8232,6 @@ const char *cdb2_dbname(cdb2_hndl_tp *hndl)
     return NULL;
 }
 
-struct db_info {
-    char name[DBNAME_LEN];
-    char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
-    int ports[MAX_NODES];
-    int n_hosts;
-    int found;
-    int num;
-};
-
 static void hndl_set_comdb2buf(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int idx)
 {
     cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
@@ -8285,9 +8295,9 @@ static void after_discovery(cdb2_hndl_tp *hndl)
     }
 }
 
-static int get_connection_int(cdb2_hndl_tp *hndl, int *err)
+static int get_connection_int(cdb2_hndl_tp *hndl, struct cluster_info *c, int *err)
 {
-    only_read_config(hndl, err);
+    only_read_config(hndl, c, err);
     if (get_dbinfo || *err)
         return -1;
     before_discovery(hndl);
@@ -8332,9 +8342,13 @@ static int get_connection(cdb2_hndl_tp *hndl, int *err)
     } else if (get_dbinfo || sockpool_enabled == -1 || cdb2cfg_override) {
         return -1;
     }
+    struct cluster_info *c = calloc(1, sizeof(struct cluster_info));
+    if (!c)
+        return -1;
     LOG_CALL("%s: calling get_connection_int\n", __func__);
-    int rc = get_connection_int(hndl, err);
+    int rc = get_connection_int(hndl, c, err);
     LOG_CALL("%s: get_connection_int returned rc %d\n", __func__, rc);
+    free(c);
     return rc;
 }
 
@@ -8391,7 +8405,9 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    only_read_config(hndl, NULL); // don't care about default here
+    struct cluster_info *c = calloc(1, sizeof(struct cluster_info));
+    only_read_config(hndl, c, NULL); // don't care about default here
+    free(c);
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -8921,7 +8937,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if ((hndl->flags & CDB2_DIRECT_CPU) || (hndl->flags & CDB2_ADMIN)) {
         /* Get defaults from comdb2db.cfg */
-        only_read_config(hndl, &rc);
+        struct cluster_info *c = calloc(1, sizeof(struct cluster_info));
+        only_read_config(hndl, c, &rc);
+        free(c);
         if (rc)
             goto out;
         hndl->got_dbinfo = 1;
