@@ -87,37 +87,23 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (s)
         s->newdb = newdb = NULL;
-    if (!csc2) {
-        logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
-        return -1;
+
+    /* do we already have newdb created by resuming code ? */
+    if (s && s->resume && s->partition.type == PARTITION_MERGE && s->partition.newdb) {
+        newdb = s->partition.newdb;
+        assert(newdb->handle);
+    } else {
+        newdb = do_add_table_newdb(table, csc2, s, iq, timepartition_name);
+        if (!newdb)
+            return SC_CSC2_ERROR;
     }
 
-    struct errstat err = {0};
-    newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/,
-                               0 /*no altname*/,
-                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */,
-                               0 /* side effects */, &err);
-    if (!newdb) {
-        sc_client_error(s, "%s", err.errstr);
-        sc_errf(s, "error adding new table locally\n");
-        logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
-        logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
-
-        return SC_CSC2_ERROR;
-    }
-
-    newdb->iq = iq;
-    newdb->timepartition_name = timepartition_name;
-
-    if ((iq == NULL || iq->tranddl <= 1) &&
-        verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
+    if ((iq == NULL || iq->tranddl <= 1) && verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
         rc = -1;
         goto err;
     }
-
-    if ((iq == NULL || iq->tranddl <= 1) &&
-        populate_reverse_constraints(newdb)) {
+    if ((iq == NULL || iq->tranddl <= 1) && populate_reverse_constraints(newdb)) {
         logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
         rc = -1;
         goto err;
@@ -128,31 +114,33 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if (s && s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
-        /* this is adding a shard, we need to try to open an existing shard, which may have data */
-        if (gbl_debug_retro_resume_fail_shard) {
-            logmsg(LOGMSG_WARN, "%s: failing shard %s, debug_retro_resume_fail_shard is set\n", __func__,
-                   newdb->tablename);
-            rc = -1;
-        } else {
-            rc = open_temp_db_resume(newdb, newdb->tablename, s->resume);
+    if (!newdb->handle) {
+        if (s && s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
+            /* this is adding a shard, we need to try to open an existing shard, which may have data */
+            if (gbl_debug_retro_resume_fail_shard) {
+                logmsg(LOGMSG_WARN, "%s: failing shard %s, debug_retro_resume_fail_shard is set\n", __func__,
+                       newdb->tablename);
+                rc = -1;
+            } else {
+                rc = open_temp_db_resume(newdb, newdb->tablename, 1);
+            }
+            if (rc) {
+                sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
+                reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
+            }
+        } else if ((rc = get_db_handle(newdb, trans))) {
+            if (rc == BDBERR_EXCEEDED_BLOBS) {
+                sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
+                reqerrstr(iq, ERR_SC, "Maximum number of vutf8/blob fields exceeded\n");
+            } else if (rc == BDBERR_EXCEEDED_INDEXES) {
+                sc_errf(s, "Maximum number of indexes exceeded\n");
+                reqerrstr(iq, ERR_SC, "Maximum number of indexes exceeded\n");
+            }
         }
         if (rc) {
-            sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
-            reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
+            rc = SC_BDB_ERROR;
+            goto err;
         }
-    } else if ((rc = get_db_handle(newdb, trans))) {
-        if (rc == BDBERR_EXCEEDED_BLOBS){
-            sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
-            reqerrstr(iq, ERR_SC, "Maximum number of vutf8/blob fields exceeded\n");
-        } else if (rc == BDBERR_EXCEEDED_INDEXES){
-            sc_errf(s, "Maximum number of indexes exceeded\n");
-            reqerrstr(iq, ERR_SC, "Maximum number of indexes exceeded\n");
-        }
-    }
-    if (rc) {
-        rc = SC_BDB_ERROR;
-        goto err;
     }
 
     if (newdb->dbenv->master == gbl_myhostname) {
@@ -190,6 +178,36 @@ err:
     backout_schemas(newdb->tablename);
     cleanup_newdb(newdb);
     return rc;
+}
+
+/* create a new dbtable to be added as a new table */
+struct dbtable *do_add_table_newdb(const char *table, const char *csc2, struct schema_change_type *s, struct ireq *iq,
+                                   const char *timepartition_name)
+{
+    struct dbtable *newdb;
+
+    if (!csc2) {
+        logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
+        return NULL;
+    }
+
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/, 0 /*no altname*/,
+                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */, 0 /* side effects */, &err);
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
+        sc_errf(s, "error adding new table locally\n");
+        logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
+        logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
+
+        return NULL;
+    }
+
+    newdb->dtastripe = gbl_dtastripe;
+    newdb->iq = iq;
+    newdb->timepartition_name = timepartition_name;
+
+    return newdb;
 }
 
 static inline void set_empty_options(struct schema_change_type *s)
@@ -261,6 +279,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = bdb_lock_tablename_write(db->handle, "comdb2_tables", tran)) != 0) {
         sc_errf(s, "failed to lock comdb2_tables (%s:%d)\n", __func__, __LINE__);
+        logmsg(LOGMSG_ERROR, "failed to lock comdb2_tables (%s:%d)\n", __func__, __LINE__);
         return -1;
     }
     if (iq && iq->tranddl > 1 && verify_constraints_exist(db, NULL, NULL, s) != 0) {
@@ -273,6 +292,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
     if (thedb->num_dbs >= MAX_NUM_TABLES) {
         sc_client_error(s, "error too many tables");
+        logmsg(LOGMSG_ERROR, "error too many tables");
         return -1;
     }
 
@@ -280,18 +300,21 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     rc = load_new_table_schema_tran(thedb, tran, s->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "error recording new table schema\n");
+        logmsg(LOGMSG_ERROR, "error recording new table schema\n");
         return rc;
     }
 
     rc = init_table_sequences(iq, tran, db);
     if (rc) {
         sc_errf(s, "error initializing table sequences\n");
+        logmsg(LOGMSG_ERROR, "error initializing table sequences\n");
         return -1;
     }
 
     rc = create_datacopy_array(db);
     if (rc) {
         sc_errf(s, "error initializing datacopy array\n");
+        logmsg(LOGMSG_ERROR, "error initializing datacopy array\n");
         return -1;
     }
 
@@ -301,15 +324,20 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     rc = add_dbtable_to_thedb_dbs(db);
     if (rc) {
         sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);
+        logmsg(LOGMSG_ERROR, "Failed to add db to thedb->dbs, rc %d\n", rc);
         return rc;
     }
     s->already_finalized = 1; /* done adding to thedb->dbs */
 
-    if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
+    if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash))) {
+        sc_errf(s, "Failed to set header rc %d\n", rc);
+        logmsg(LOGMSG_ERROR, "Failed to set header rc %d\n", rc);
         return rc;
+    }
 
     if ((rc = llmeta_set_tables(tran, thedb))) {
         sc_errf(s, "Failed to set table names in low level meta\n");
+        logmsg(LOGMSG_ERROR, "Failed to set table names in low level meta\n");
         return rc;
     }
 
@@ -319,8 +347,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                                            s->tablename,
                                            s->timepartition_version);
         if (rc) {
-            sc_errf(s, "Failed to clone access rigghts for time partition %s\n",
-                    s->timepartition_name);
+            sc_errf(s, "Failed to clone access rights for time partition %s\n", s->timepartition_name);
+            logmsg(LOGMSG_ERROR, "Failed to clone access rights for time partition %s\n", s->timepartition_name);
             return rc;
         }
     }
@@ -328,6 +356,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                                   &bdberr);
     if (rc) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;
     }
 
@@ -379,6 +408,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         struct errstat err = {0};
         if (partition_llmeta_delete(tran, s->timepartition_name, &err)) {
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            logmsg(LOGMSG_ERROR, "Failed to remove partition llmeta %d\n", err.errval);
             return SC_INTERNAL_ERROR;
         }
     } else if (s->partition.type == PARTITION_ADD_GENSHARD) {
@@ -414,6 +444,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                     s->partition.u.genshard.dbnames, s->partition.u.genshard.numcols, s->partition.u.genshard.columns,
                     s->partition.u.genshard.shardnames, &err)) {
             sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
+            logmsg(LOGMSG_ERROR, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n",
+                   s->partition.u.genshard.tablename, rc, err.errstr);
             hash_sqlalias_db(db, NULL);
             return -1;
         }

@@ -126,8 +126,6 @@ static int _views_rollout_phase3(const char *oldShardName, struct errstat *err);
 static int _view_restart(timepart_view_t *view, struct errstat *err);
 static int _view_restart_new_rollout(timepart_view_t *view,
                                      struct errstat *err);
-int views_cron_restart(timepart_views_t *views);
-
 static int _view_get_next_rollout(enum view_partition_period period,
                                   int retention, int startTime, int crtTime,
                                   int nshards, int back_in_time);

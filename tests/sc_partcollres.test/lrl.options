@@ -1,0 +1,3 @@
+multitable_ddl 1
+setattr SC_RESTART_SEC 10
+setattr DURABLE_LSNS 1

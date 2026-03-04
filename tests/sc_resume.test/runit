@@ -516,11 +516,16 @@ while true ; do
     rc=$?
     if [ $in_schema_change -eq 1 ] && [ $rc -ne 1 ] ; then
         echo "break out since sc was running and now is stopped"
-        break; 
+        break;
     fi
     in_schema_change=$rc
-done 
+done
 
+# sc_set_running(0) fires before trans_commit_logical completes so stat can
+# clear before the new tableversion is visible on replicants; sleep to avoid
+# a race on assert_vers below (proper fix: defer sc_set_running(0) until after
+# trans_commit_logical, tracked for a separate PR)
+sleep 5
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "select * from t1 order by c" > allrows_post2.out
 cnt=`wc -l allrows_post2.out | awk '{print $1}'`
