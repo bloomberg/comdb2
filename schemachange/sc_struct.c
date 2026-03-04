@@ -1710,7 +1710,6 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *c
 
     newdb->dbnum = db->dbnum;
     newdb->meta = db->meta;
-    newdb->dtastripe = gbl_dtastripe;
 
     changed = ondisk_schema_changed(table, newdb, NULL, NULL);
     /* let this fly, which will be ok for fastinit;

@@ -472,7 +472,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return SC_INTERNAL_ERROR;
     }
 
-    newdb->dtastripe = gbl_dtastripe; // we have only one setting currently
     newdb->odh = s->headers;
     /* don't lose precious flags like this */
     newdb->instant_schema_change = s->headers && s->instant_sc;
