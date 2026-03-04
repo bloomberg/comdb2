@@ -2876,7 +2876,6 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         struct dbtable * db = dbenv->dbs[ii];
-        db->dtastripe = 1;
 
         for (jj = 0; jj < dbenv->num_dbs; jj++) {
             if (jj != ii) {

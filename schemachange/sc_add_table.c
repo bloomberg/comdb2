@@ -106,7 +106,6 @@ int add_table_to_environment(char *table, const char *csc2,
         return SC_CSC2_ERROR;
     }
 
-    newdb->dtastripe = gbl_dtastripe;
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
 

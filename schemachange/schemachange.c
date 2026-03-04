@@ -932,7 +932,6 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     }
     db->sc_to = newdb;
 
-    newdb->dtastripe = gbl_dtastripe;
     newdb->odh = s->headers;
     /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;

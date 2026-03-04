@@ -63,6 +63,7 @@ struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
 
     newtable->csc2_schema = strdup(csc2);
     newtable->csc2_schema_len = strlen(csc2);
+    newtable->dtastripe = gbl_dtastripe;
 
     rc = add_cmacc_stmt(newtable, sc_alt_tablename, allow_ull, no_side_effects,
                         err);

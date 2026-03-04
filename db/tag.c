@@ -6374,7 +6374,6 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     newdb->schema_version = version;
     newdb->dbnum = db->dbnum;
     newdb->meta = db->meta;
-    newdb->dtastripe = gbl_dtastripe;
 
     extern int gbl_rowlocks;
     tran_type *arg_tran = gbl_rowlocks ? NULL : tran;
