@@ -19,7 +19,7 @@
 #include "dynschematypes.h"
 #include "dynschemaload.h"
 
-static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum);
+static dbtable *newdb_from_schema(struct dbenv *env, const char *tblname, int dbnum);
 static int init_check_constraints(dbtable *tbl);
 static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
                           int no_side_effects, struct errstat *err);
@@ -28,10 +28,8 @@ extern int gbl_max_key_size_new;
 
 char gbl_ver_temp_table[] = ".COMDB2.TEMP.VER.";
 
-struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int sc_alt_tablename,
-                                   int allow_ull, int no_side_effects,
-                                   struct errstat *err)
+struct dbtable *create_new_dbtable(struct dbenv *dbenv, const char *tablename, char *csc2, int dbnum,
+                                   int sc_alt_tablename, int allow_ull, int no_side_effects, struct errstat *err)
 {
     struct dbtable *newtable = NULL;
     int rc;
@@ -123,7 +121,7 @@ done:
     return rc;
 }
 
-static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum)
+static dbtable *newdb_from_schema(struct dbenv *env, const char *tblname, int dbnum)
 {
     dbtable *tbl;
     int ii;

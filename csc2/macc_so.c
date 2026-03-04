@@ -2633,8 +2633,7 @@ int macc_ferror(FILE *fh)
  *  in order to initialize the global structure on which this and other dyns_
  *  functions rely.
  */
-static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
-                                char *tablename)
+static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname, const char *tablename)
 {
     int fhopen = 0;
     extern FILE *yyin; /* lexer's input file           */
@@ -2688,12 +2687,12 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     return 0;
 }
 
-int dyns_load_schema_string(char *schematxt, char *dbname, char *tablename)
+int dyns_load_schema_string(char *schematxt, char *dbname, const char *tablename)
 {
     return dyns_load_schema_int(NULL, schematxt, dbname, tablename);
 }
 
-int dyns_load_schema(char *filename, char *dbname, char *tablename)
+int dyns_load_schema(char *filename, char *dbname, const char *tablename)
 {
     return dyns_load_schema_int(filename, NULL, dbname, tablename);
 }

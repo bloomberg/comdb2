@@ -1293,7 +1293,7 @@ struct osql_sess {
 
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
-    LISTC_T(struct schema_change_type) scs; /* schema changes in session */
+    LISTC_T(struct schema_change_type) scs; /* schema changes in this transaction */
     int is_tptlock;   /* needs tpt locking */
     int is_cancelled; /* 1 if session is cancelled */
 
@@ -1441,8 +1441,9 @@ struct ireq {
     tran_type *sc_tran;
     tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
-    LISTC_T(struct schema_change_type) scs; /* all schema changes in this txn */
+    pthread_mutex_t sc_pending_mtx;         /* protects sc_pending list prepends from async merge threads */
     uuid_t scs_uuid;                        /* on resume, there is no sorese, but we need to know uuid for scs */
+    LISTC_T(struct schema_change_status) scs_status; /* status of schema changes in this transaction */
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;
@@ -3657,6 +3658,7 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
 int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct dbtable *db, char *tablename, int resume);
 int open_temp_newdb_resume(struct dbtable *db, int resume);
+void *open_temp_db_resume_early(struct dbtable *db, char *tablename);
 int find_constraint(struct dbtable *db, constraint_t *ct);
 
 /* END OF SCHEMACHANGE DECLARATIONS*/

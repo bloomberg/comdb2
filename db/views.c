@@ -126,8 +126,6 @@ static int _views_rollout_phase3(const char *oldShardName, struct errstat *err);
 static int _view_restart(timepart_view_t *view, struct errstat *err);
 static int _view_restart_new_rollout(timepart_view_t *view,
                                      struct errstat *err);
-int views_cron_restart(timepart_views_t *views);
-
 static int _view_get_next_rollout(enum view_partition_period period,
                                   int retention, int startTime, int crtTime,
                                   int nshards, int back_in_time);
@@ -1937,6 +1935,9 @@ int views_cron_restart(timepart_views_t *views)
        we will requeue them */
     cron_clear_queue(timepart_sched);
 
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+    BDB_READLOCK(__func__);
+
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock
        if this is the case, abort the schema change */
@@ -1952,9 +1953,6 @@ int views_cron_restart(timepart_views_t *views)
     } else if (rc) {
         abort();
     }
-
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
-    BDB_READLOCK(__func__);
 
     if (thedb->master == gbl_myhostname && !gbl_is_physical_replicant) {
         /* queue all the events required for this */
