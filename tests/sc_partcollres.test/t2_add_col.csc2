@@ -1,0 +1,11 @@
+schema
+{
+    int   a
+    cstring b[64]
+    int   c null=yes dbstore=0
+}
+
+keys
+{
+    "A" = a
+}
