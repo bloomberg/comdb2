@@ -234,15 +234,6 @@ int CDB2BUF_FUNC(cdb2buf_putc)(COMDB2BUF *sb, char c)
     if (sb == 0)
         return -1;
 
-#ifdef CDB2BUF_DELAY_MALLOC
-    if (sb->wbuf == NULL) {
-        /* lazily establish write buffer */
-        sb->wbuf = malloc(sb->lbuf);
-        if (sb->wbuf == NULL)
-            return -1;
-    }
-#endif
-
     if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) || (sb->whd == sb->wtl - 1)) {
         rc = cdb2buf_flush(sb);
         if (rc < 0)
@@ -284,14 +275,6 @@ int CDB2BUF_FUNC(cdb2buf_write)(char *ptr, int nbytes, COMDB2BUF *sb)
     int rc, off, left, written = 0;
     if (sb == 0)
         return -1;
-#ifdef CDB2BUF_DELAY_MALLOC
-    if (sb->wbuf == NULL) {
-        /* lazily establish write buffer */
-        sb->wbuf = malloc(sb->lbuf);
-        if (sb->wbuf == NULL)
-            return -1;
-    }
-#endif
     off = 0;
     left = nbytes;
     while (left > 0) {
@@ -358,14 +341,6 @@ int CDB2BUF_FUNC(cdb2buf_getc)(COMDB2BUF *sb)
     if (sb == 0)
         return -1;
 
-#ifdef CDB2BUF_DELAY_MALLOC
-    if (sb->rbuf == NULL) {
-        /* lazily establish read buffer */
-        sb->rbuf = malloc(sb->lbuf);
-        if (sb->rbuf == NULL)
-            return -1;
-    }
-#endif
 #if CDB2BUF_UNGETC
     if (sb->ungetc_buf_len > 0) {
         sb->ungetc_buf_len--;
@@ -460,15 +435,6 @@ static int cdb2buf_fread_int(char *ptr, int size, int nitems,
 
     if (sb == 0)
         return -1;
-
-#ifdef CDB2BUF_DELAY_MALLOC
-    if (sb->rbuf == NULL) {
-        /* lazily establish read buffer */
-        sb->rbuf = malloc(sb->lbuf);
-        if (sb->rbuf == NULL)
-            return -1;
-    }
-#endif
 
 #if CDB2BUF_UNGETC
     if (sb->ungetc_buf_len > 0) {
@@ -814,12 +780,11 @@ int CDB2BUF_FUNC(cdb2buf_setbufsize)(COMDB2BUF *sb, unsigned int size)
         size = 1024;
     free(sb->rbuf);
     free(sb->wbuf);
-#ifdef CDB2BUF_DELAY_MALLOC
-    sb->rbuf = sb->wbuf = 0;
-#endif
     sb->rhd = sb->rtl = 0;
     sb->whd = sb->wtl = 0;
     sb->lbuf = size;
+    sb->rbuf = malloc(size);
+    sb->wbuf = malloc(size);
     return 0;
 }
 
@@ -876,14 +841,12 @@ COMDB2BUF *CDB2BUF_FUNC(cdb2buf_open)(int fd, int flags)
     if (cdb2buf_setbufsize(sb, CDB2BUF_DFL_SIZE) == 0) {
         return sb;
     }
-#ifndef CDB2BUF_DELAY_MALLOC
     if (sb->rbuf == NULL || sb->wbuf == NULL) {
         free(sb->rbuf);
         free(sb->wbuf);
         free(sb);
         return NULL;
     }
-#endif
 error:
     if (sb) {
         free(sb);
