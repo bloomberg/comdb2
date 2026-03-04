@@ -785,11 +785,13 @@ int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *c, int l)
 
     comdb2uuidcpy(scl.uuid, uuid);
 
-    int rc = 0;
-    uint8_t key[sizeof(int) + sizeof(uuid_t)];
-
     uuidstr_t us;
     comdb2uuidstr(uuid, us);
+
+    logmsg(LOGMSG_ERROR, "%s deleting uuid %s %s:%d\n", __func__, us, c, l);
+
+    int rc = 0;
+    uint8_t key[sizeof(int) + sizeof(uuid_t)];
 
     osqlcomm_scl_put_key(&scl, key, key + sizeof(key));
 

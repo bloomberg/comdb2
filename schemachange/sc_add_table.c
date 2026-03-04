@@ -87,27 +87,15 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (s)
         s->newdb = newdb = NULL;
-    if (!csc2) {
-        logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
-        return -1;
+
+    /* do we already have newdb created by resuming code ? */
+    if (s && s->resume && s->partition.type == PARTITION_MERGE && s->partition.newdb) {
+        newdb = s->partition.newdb;
+    } else {
+        newdb = do_add_table_newdb(table, csc2, s, iq, timepartition_name);
+        if (!newdb)
+            return SC_CSC2_ERROR;
     }
-
-    struct errstat err = {0};
-    newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/,
-                               0 /*no altname*/,
-                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */,
-                               0 /* side effects */, &err);
-    if (!newdb) {
-        sc_client_error(s, "%s", err.errstr);
-        sc_errf(s, "error adding new table locally\n");
-        logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
-        logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
-
-        return SC_CSC2_ERROR;
-    }
-
-    newdb->iq = iq;
-    newdb->timepartition_name = timepartition_name;
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
@@ -130,7 +118,7 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (s && s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
         /* this is adding a shard, we need to try to open an existing shard, which may have data */
-        if ((rc = open_temp_db_resume(iq, newdb, newdb->tablename, s->resume))) {
+        if ((rc = open_temp_db_resume(iq, newdb, newdb->tablename, 1))) {
             sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
             reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
         }
@@ -183,6 +171,36 @@ err:
     backout_schemas(newdb->tablename);
     cleanup_newdb(newdb);
     return rc;
+}
+
+/* create a new dbtable to be added as a new table */
+struct dbtable *do_add_table_newdb(char *table, const char *csc2, struct schema_change_type *s, struct ireq *iq,
+                                   const char *timepartition_name)
+{
+    struct dbtable *newdb;
+
+    if (!csc2) {
+        logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
+        return NULL;
+    }
+
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/, 0 /*no altname*/,
+                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */, 0 /* side effects */, &err);
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
+        sc_errf(s, "error adding new table locally\n");
+        logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
+        logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
+
+        return NULL;
+    }
+
+    newdb->dtastripe = gbl_dtastripe;
+    newdb->iq = iq;
+    newdb->timepartition_name = timepartition_name;
+
+    return newdb;
 }
 
 static inline void set_empty_options(struct schema_change_type *s)

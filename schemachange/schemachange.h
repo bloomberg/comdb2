@@ -99,6 +99,7 @@ struct comdb2_partition {
             char **shardnames;
         } genshard;
     } u;
+    struct dbtable *newdb;
 };
 
 struct timepart_view;
@@ -152,6 +153,8 @@ enum schema_change_kind {
     (((s)->kind == SC_FULLUPRECS) || ((s)->kind == SC_PARTIALUPRECS))
 #define IS_ALTERTABLE(s)                                                       \
     (((s)->kind >= SC_ALTERTABLE) && ((s)->kind <= SC_REBUILDTABLE_INDEX))
+
+enum async_sc_flag { ASYNC_SC_NONE = 0, ASYNC_SC_START = 1, ASYNC_SC_END = 2 };
 
 struct schema_change_type {
     /*  ==========    persistent members ========== */
@@ -244,14 +247,14 @@ struct schema_change_type {
     pthread_mutex_t mtx; /* mutex for thread sync */
     pthread_mutex_t mtxStart; /* mutex for thread start */
     pthread_cond_t condStart; /* condition var for thread sync */
-    int started;
+    enum async_sc_flag async_status; /* is it started? is the async done? */
     int sc_rc;
 
     struct ireq *iq;
     void *tran; /* transactional schemachange */
 
     struct schema_change_type *sc_next;
-    LINKC_T(struct schema_change_type) scs_lnk; /* all the schema changess in a txn  */
+    LINKC_T(struct schema_change_type) scs_lnk; /* all the schema changes in a txn  */
 
     int usedbtablevers;
     int fix_tp_badvers;
@@ -545,5 +548,21 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
                            tran_type **ptran, tran_type **tran);
 
 const char *schema_change_kind(struct schema_change_type *s);
+
+/* create a new dbtable to be added as a new table */
+struct dbtable *do_add_table_newdb(char *table, const char *csc2, struct schema_change_type *s, struct ireq *iq,
+                                   const char *timepartition_name);
+
+/* create a new dbtable to replace existing table */
+struct dbtable *do_alter_table_newdb(char *tablename, const char *csc2, int dbnum, struct schema_change_type *s,
+                                     struct ireq *iq);
+
+/* mark a table in a data rebuild schema change, and register newdb as the new version */
+void dbtable_set_alter_fields(struct dbtable *db, struct dbtable *newdb);
+
+void wait_for_schema_change_start(struct schema_change_type *s, enum async_sc_flag flag);
+
+/* add the alter prefix and return a malloced string */
+char *get_prefixed_tablename(const char *tablename);
 
 #endif

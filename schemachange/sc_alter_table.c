@@ -389,18 +389,64 @@ static void decrement_sc_yet_to_resume_counter()
     }
 }
 
+void dbtable_set_alter_fields(struct dbtable *db, struct dbtable *newdb)
+{
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    db->sc_to = newdb;
+    db->sc_from = db;
+    db->sc_to = newdb;
+    db->sc_abort = 0;
+    db->sc_downgrading = 0;
+    db->doing_conversion = 1; /* live_sc_off will unset it */
+    Pthread_rwlock_unlock(&db->sc_live_lk);
+}
+struct dbtable *do_alter_table_newdb(char *tablename, const char *csc2, int dbnum, struct schema_change_type *s,
+                                     struct ireq *iq)
+{
+    struct dbtable *newdb;
+    int rc;
+
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, tablename, (char *)csc2, dbnum, 1 /* sc_alt_name */, (s->same_schema) ? 1 : 0, 0,
+                               &err);
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
+        return NULL;
+    }
+
+    newdb->odh = s->headers;
+    /* don't lose precious flags like this */
+    newdb->instant_schema_change = s->headers && s->instant_sc;
+    newdb->inplace_updates = s->headers && s->ip_updates;
+    newdb->iq = iq;
+
+    newdb->schema_version = get_csc2_version(newdb->tablename);
+
+    if ((rc = sql_syntax_check(iq, newdb))) {
+        sc_errf(s, "Sqlite syntax check failed\n");
+        backout(newdb);
+        cleanup_newdb(newdb);
+        return NULL;
+    } else {
+        sc_printf(s, "Sqlite syntax check succeeded\n");
+    }
+    newdb->ix_blob = newdb->schema->ix_blob;
+    return newdb;
+}
+
+#define USE_NEWDB_FOR_SC_GENIDS (is_dta_being_rebuilt(db->plan) && s->partition.type != PARTITION_MERGE)
+
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
     struct dbtable *db;
     int rc;
     int bdberr = 0;
-    struct dbtable *newdb;
+    struct dbtable *newdb = NULL;
     int datacopy_odh = 0;
     int changed;
     int i;
     struct scinfo scinfo;
-    struct errstat err = {0};
 
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
@@ -457,42 +503,22 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         wrlock_schema_lk();
         local_lock = 1;
     }
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
 
-    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum,
-                               1 /* sc_alt_name */,
-                               (s->same_schema) ? 1 : 0, 0, &err);
-
+    if (s->resume && s->partition.type == PARTITION_MERGE) {
+        newdb = s->partition.newdb;
+    }
     if (!newdb) {
-        sc_client_error(s, "%s", err.errstr);
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
+        newdb = do_alter_table_newdb(s->tablename, s->newcsc2, db->dbnum, s, iq);
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        if (local_lock)
-            unlock_schema_lk();
-        return SC_INTERNAL_ERROR;
+
+        if (!newdb) {
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            if (local_lock)
+                unlock_schema_lk();
+            return SC_CSC2_ERROR;
+        }
     }
-
-    newdb->odh = s->headers;
-    /* don't lose precious flags like this */
-    newdb->instant_schema_change = s->headers && s->instant_sc;
-    newdb->inplace_updates = s->headers && s->ip_updates;
-    newdb->iq = iq;
-
-    newdb->schema_version = get_csc2_version(newdb->tablename);
-
-    if ((rc = sql_syntax_check(iq, newdb))) {
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        if (local_lock)
-            unlock_schema_lk();
-        backout(newdb);
-        cleanup_newdb(newdb);
-        sc_errf(s, "Sqlite syntax check failed\n");
-        return SC_CSC2_ERROR;
-    } else {
-        sc_printf(s, "Sqlite syntax check succeeded\n");
-    }
-    newdb->ix_blob = newdb->schema->ix_blob;
-
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
@@ -521,7 +547,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/
-    rc = open_temp_newdb_resume(iq, newdb, s->resume);
+    if (!newdb->handle) {
+        rc = open_temp_newdb_resume(iq, newdb, s->resume);
+    } else
+        rc = 0;
     if (rc) {
         if (rc == BDBERR_EXCEEDED_BLOBS) {
             sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
@@ -589,7 +618,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(s, db->tablename, db->dtastripe, USE_NEWDB_FOR_SC_GENIDS ? newdb->handle : NULL,
+                       &db->sc_genids)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -605,28 +635,24 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         assert(db->sharding_func);
         for (i = 0; i < newdb->dtastripe; i++) {
             for (int shard = 0; shard < db->sharding_arg->n - 1; shard++) {
-                if (newdb->sc_genids[i] < db->sharding_arg->cs[shard].resume_genids[i]) {
+                if (db->sc_genids[i] < db->sharding_arg->cs[shard].resume_genids[i]) {
                     logmsg(LOGMSG_INFO, "%s updating %s stripe %d sc_genid from %llx (%lld) to %llx (%lld) using %s\n",
-                           __func__, s->tablename, i, newdb->sc_genids[i], newdb->sc_genids[i],
+                           __func__, s->tablename, i, db->sc_genids[i], db->sc_genids[i],
                            db->sharding_arg->cs[shard].resume_genids[i], db->sharding_arg->cs[shard].resume_genids[i],
                            db->sharding_arg->ss[shard]->tablename);
-                    newdb->sc_genids[i] = db->sharding_arg->cs[shard].resume_genids[i];
+                    db->sc_genids[i] = db->sharding_arg->cs[shard].resume_genids[i];
                 }
             }
         }
     }
     for (i = 0; i < newdb->dtastripe; i++) {
         logmsg(LOGMSG_INFO, "%s: %s stripe %d result resume genid %llx (%lld)\n", __func__, s->tablename, i,
-               newdb->sc_genids[i], newdb->sc_genids[i]);
+               db->sc_genids[i], db->sc_genids[i]);
     }
 
-    Pthread_rwlock_wrlock(&db->sc_live_lk);
-    db->sc_from = s->db = db;
-    db->sc_to = s->newdb = newdb;
-    db->sc_abort = 0;
-    db->sc_downgrading = 0;
-    db->doing_conversion = 1; /* live_sc_off will unset it */
-    Pthread_rwlock_unlock(&db->sc_live_lk);
+    s->newdb = newdb;
+    s->db = db;
+    dbtable_set_alter_fields(s->db, s->newdb);
 
 convert_records:
     assert(db->sc_from == db && s->db == db);
@@ -675,7 +701,7 @@ convert_records:
         changed == SC_CONSTRAINT_CHANGE) {
         if (!s->live)
             gbl_readonly_sc = 1;
-        rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+        rc = convert_all_records(db, newdb, db->sc_genids, s);
         if (rc == 1) rc = 0;
     } else
         rc = 0;
@@ -719,8 +745,7 @@ errout:
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
@@ -798,7 +823,8 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(s, db->tablename, db->dtastripe, USE_NEWDB_FOR_SC_GENIDS ? newdb->handle : NULL,
+                       &db->sc_genids)) {
         sc_client_error(s, "Failed to initialize sc_genids");
         return -1;
     }
@@ -848,7 +874,7 @@ convert_records:
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    rc = convert_all_records(db, newdb, db->sc_genids, s);
     if (rc == 1) rc = 0;
 
     remove_ongoing_alter(s);
@@ -886,8 +912,7 @@ convert_records:
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
@@ -1259,7 +1284,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         sc_printf(s, "Starting FULL table upgrade.\n");
     }
 
-    if (init_sc_genids(db, s)) {
+    if (init_sc_genids(s, db->tablename, db->dtastripe, NULL, &db->sc_genids)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         return SC_LLMETA_ERR;
     }

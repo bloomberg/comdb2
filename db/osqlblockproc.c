@@ -1292,8 +1292,6 @@ int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
         iq->sc = sc;
         iq->sc->iq = iq;
         rc = osql_process_schemachange(sc, uuid);
-        /* remove this from session, cleanup will be done by bp writer */
-        listc_rfl(scs, sc);
         if (rc)
             break;
     }
@@ -1306,13 +1304,19 @@ int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
 }
 
 /* wait for all schema changes to finish */
-int bplog_schemachange_wait(struct ireq *iq, int rc)
+int bplog_schemachange_wait(struct ireq *iq, void *pscs, int rc)
 {
-    struct schema_change_type *sc;
+    LISTC_T(struct schema_change_type) *scs = pscs;
+    struct schema_change_type *sc, *tmp;
+
+    /* unlink sclists from iq->sorese */
+    LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk)
+    {
+        listc_rfl(scs, sc);
+    }
 
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
-
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
@@ -1430,7 +1434,7 @@ int bplog_schemachange(struct ireq *iq)
 
     rc = bplog_schemachange_run(iq, iq->sorese->uuid, &iq->sorese->scs);
 
-    return bplog_schemachange_wait(iq, rc);
+    return bplog_schemachange_wait(iq, &iq->sorese->scs, rc);
 }
 
 int get_schema_change_txns(struct ireq *iq, tran_type **logi,
@@ -1457,16 +1461,13 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
     return 0;
 }
 
-void *resume_sc_multiddl_txn_finalize(void *p)
+int resume_sc_multiddl_txn_finalize(struct ireq *iq)
 {
-    comdb2_name_thread(__func__);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-
-    struct ireq *iq = (struct ireq*)p;
     struct schema_change_type *sc;
     tran_type *parent_trans = NULL;
     int error = 0;
     uuid_t uuid;
+    int rc = 0;
 
     comdb2uuidcpy(uuid, iq->sc_pending->uuid);
 
@@ -1500,16 +1501,14 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     if (error) {
         logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
                __func__);
+        rc = ERR_SC;
         goto abort_sc;
     }
 
-    int rc;
     if ((rc = get_schema_change_txns(iq, &iq->sc_logical_tran, &parent_trans,
                                      &iq->sc_tran))) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               -rc);
-        rc = -1;
+        logmsg(LOGMSG_ERROR, "%s:%d failed to start schema change transaction\n", __func__, rc);
+        rc = ERR_SC;
         goto abort_sc;
     }
 
@@ -1538,9 +1537,8 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     iq->sc_logical_tran = NULL;
 
     osql_postcommit_handle(iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
-    return NULL;
+    return 0;
 
 abort_sc:
     logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
@@ -1561,7 +1559,42 @@ abort_sc:
     }
 
     osql_postabort_handle(iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+
+    return rc;
+}
+
+void *resume_sc_multiddl_txn_finalize_thd(void *arg)
+{
+    struct ireq *iq = (struct ireq *)arg;
+    struct schema_change_type *sc;
+
+    comdb2_name_thread(__func__);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+
+    if (!(sc = iq->scs)) {
+        logmsg(LOGMSG_ERROR, "%s NULL sc list?\n", __func__);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+        return NULL;
+    }
+
+    /* the schemas are async resumed; wait here for them
+     * to finish
+     */
+    while (sc) {
+        /* wait for this scs to finish */
+        wait_for_schema_change_start(sc, ASYNC_SC_END);
+        sc = sc->scs_lnk.next;
+    }
+
+    /* at this point, the schema changes have ran and are linked in sc_pending;
+     * run the regular finalize routine
+     */
+    int rc = resume_sc_multiddl_txn_finalize(iq);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to finalize rc %d\n", __func__, rc);
+    }
+
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     return NULL;
 }
@@ -1608,22 +1641,23 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     struct ireq *iq = calloc(1, sizeof(struct ireq));
     init_fake_ireq(thedb, iq);
 
-    /* this starts schema changeas;
+    /* this starts schema changes;
      * the alters have to register themselves inline,
-     * but the rest of the execution is done in parallel
-     * waiting is done by a separate thread that will finalize 
-     * the schema change
-     * NOTE: schema changes will be queued in iq->sc_pending
+     * but the rest of the execution is done in a parallel thread,
+     * which is also responsible for finalizing the transaction
      *
      */
     rc = bplog_schemachange_run(iq, scl->uuid, &scs);
     if (rc) {
+        /* TODO: free the scs */
         free(iq);
         return -1;
     }
 
+    /* prepare the wait for scs */
+    iq->scs = scs.top;
+
     pthread_t tid;
-    Pthread_create(&tid, &gbl_pthread_attr_detached,
-                        resume_sc_multiddl_txn_finalize, iq);
+    Pthread_create(&tid, &gbl_pthread_attr_detached, resume_sc_multiddl_txn_finalize_thd, iq);
     return 0;
 }

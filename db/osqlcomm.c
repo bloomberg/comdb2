@@ -58,6 +58,7 @@
 #include "sc_logic.h"
 #include "eventlog.h"
 #include <disttxn.h>
+#include "sc_records.h"
 
 #define MAX_CLUSTER REPMAX
 
@@ -6179,6 +6180,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
 static int _process_single_table_sc(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
+    struct schema_change_type *orig_sc = sc;
     int rc;
 
     /* schema change for a regular table */
@@ -6186,13 +6188,19 @@ static int _process_single_table_sc(struct ireq *iq)
     if (rc != SC_OK || sc->preempted == SC_ACTION_RESUME || sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
         /* mark scdone so that cleanup removes llmeta */
-        if (rc != SC_OK && rc != SC_MASTER_DOWNGRADE)
+        if (rc != SC_OK && rc != SC_MASTER_DOWNGRADE) {
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        }
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
         iq->osql_flags |= OSQL_FLAGS_SCDONE;
     }
+
+    Pthread_mutex_lock(&orig_sc->mtxStart);
+    orig_sc->async_status = ASYNC_SC_END;
+    Pthread_cond_signal(&orig_sc->condStart);
+    Pthread_mutex_unlock(&orig_sc->mtxStart);
     return rc;
 }
 
@@ -6264,6 +6272,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 static int _process_single_table_sc_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
+    struct schema_change_type *orig_sc = sc;
     int rc;
 
     assert(sc->partition.type == PARTITION_MERGE);
@@ -6293,7 +6302,8 @@ static int _process_single_table_sc_merge(struct ireq *iq)
             /* potential downgrade during the last shard processing */
             iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
         }
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
     /* at this point we have created the future btree, launch an alter
@@ -6312,14 +6322,23 @@ static int _process_single_table_sc_merge(struct ireq *iq)
             sc->partition.u.mergetable.tablename, NULL, &arg);
     sc->partition.type = old_part_type;
 
+done:
+    Pthread_mutex_lock(&orig_sc->mtxStart);
+    orig_sc->async_status = ASYNC_SC_END;
+    Pthread_cond_signal(&orig_sc->condStart);
+    Pthread_mutex_unlock(&orig_sc->mtxStart);
     return rc;
 }
+
+static int _do_process_partitioned_table_merge(struct ireq *iq);
+static void *_partitioned_table_merge_resume_thd(void *arg);
+static int _shard_set_sc_genids(const char *tblname, timepart_view_t **pview, timepart_sc_arg_t *arg);
 
 static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    timepart_sc_arg_t arg = {0};
+    pthread_t tid;
 
     assert(sc->kind == SC_ALTERTABLE);
 
@@ -6338,13 +6357,126 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
     sc->newdb_borrowed = 0;
 
-    /* 
-    * The first shard sc always needs to run synchronously.
-    * The later shard scs can theoretically run asynchronously but
-    * it doesn't work right now.
-    */
-    sc->nothrevent = 1; 
+    if (sc->resume) {
+        /* we are trying to open the existing table;
+         * 1) if new table does not exist, dispatch this to a separate thread
+         * 2) if new table exists
+         *  2.1) for each shard, collect llmeta entry for sc_genids
+         *  2.2) for each shard, set the schema change alter fields (sc_to, sc_genids)
+         *  2.3) dispatch to a separate thread
+         */
+        int local_sc = 0;
+        if (!sc->iq->sc_locked) {
+            wrlock_schema_lk();
+            local_sc = 1;
+        }
+        char *prefixed_tblname = get_prefixed_tablename(first_shard->tablename);
+        void *newdb_handle = open_temp_db_resume_early(first_shard, prefixed_tblname);
+        free(prefixed_tblname);
+        if (newdb_handle) {
+            /* we have state, for each shard collect sc_genids and set alter fields */
+            struct dbtable *newdb;
+            Pthread_mutex_lock(&csc2_subsystem_mtx);
+            if (!first_shard->sqlaliasname) {
+                /* this is a "create table partitioned" partition */
+                newdb = do_add_table_newdb(first_shard->tablename, first_shard->csc2_schema, sc, iq,
+                                           first_shard->timepartition_name);
+            } else {
+                /* this is a "alter table partitioned" partition */
+                newdb =
+                    do_alter_table_newdb(first_shard->tablename, first_shard->csc2_schema, first_shard->dbnum, sc, iq);
+            }
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            if (!newdb) {
+                abort();
+            }
+            newdb->handle = newdb_handle;
+            sc->partition.newdb = newdb;
+            if (local_sc) {
+                unlock_schema_lk();
+                local_sc = 0;
+            }
 
+            /* need to set the sc_genids for each shard */
+            timepart_sc_arg_t arg = {0};
+            arg.s = sc;
+            arg.s->iq = iq;
+            arg.part_name = strdup(sc->tablename);
+            if (!arg.part_name)
+                return VIEW_ERR_MALLOC;
+            rc = timepart_foreach_shard(_shard_set_sc_genids, &arg);
+            free(arg.part_name);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: %s failed to retrieve sc_genids rc %d\n", __func__, sc->tablename, rc);
+                return -1;
+            }
+        }
+
+        if (local_sc) {
+            unlock_schema_lk();
+            local_sc = 0;
+        }
+
+        /* no state, merging start from the beginning, do not keep the master upgrade waiting */
+        Pthread_create(&tid, &gbl_pthread_attr_detached, _partitioned_table_merge_resume_thd, iq);
+        return 0;
+    }
+
+    return _do_process_partitioned_table_merge(iq);
+}
+
+static int _shard_set_sc_genids(const char *tablename, timepart_view_t **pview, timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    int rc = 0;
+    /*
+    int i;
+    int bdberr;*/
+
+    struct dbtable *shard = get_dbtable_by_name(tablename);
+    if (!shard) {
+        logmsg(LOGMSG_ERROR, "%s: failed to find shard %s\n", __func__, tablename);
+        abort();
+    }
+
+    rc = init_sc_genids(sc, shard->tablename, shard->dtastripe, NULL /* use llmeta */, &shard->sc_genids);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get high genids for shard %s\n", __func__, shard->tablename);
+        /*TODO rollback this gracefully */
+        abort();
+    }
+
+    /*
+        // set sc_genids for the shard
+        for( i = 0; i < shard->dtastripe; i++) {
+            rc = bdb_get_high_genid(shard->tablename, i, &shard->sc_genids[i], &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: %s failed to get high genid for stripe %d\n",
+                       __func__, shard->tablename, i);
+            }
+        }
+    */
+
+    /* link the newdb into db so live writes to target it */
+    dbtable_set_alter_fields(shard, sc->partition.newdb);
+
+    return rc;
+}
+
+static int _do_process_partitioned_table_merge(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    struct schema_change_type *orig_sc = sc;
+    int rc = SC_OK;
+
+    /* run on shard at a time */
+    sc->nothrevent = 1;
+
+    char *first_shard_name = timepart_shard_name(sc->tablename, 0, 0, NULL);
+    struct dbtable *first_shard = get_dbtable_by_name(first_shard_name);
+    free(first_shard_name);
+
+    timepart_sc_arg_t arg = {0};
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition
@@ -6360,7 +6492,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
                 iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-            return ERR_SC;
+            rc = ERR_SC;
+            goto done;
         }
 
         iq->sc->sc_next = iq->sc_pending;
@@ -6381,7 +6514,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
                 iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-            return ERR_SC;
+            rc = ERR_SC;
+            goto done;
         }
 
         iq->sc->sc_next = iq->sc_pending;
@@ -6399,8 +6533,10 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     arg.s = sc;
     arg.s->iq = iq;
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
-    if (!arg.part_name)
-        return VIEW_ERR_MALLOC;
+    if (!arg.part_name) {
+        rc = VIEW_ERR_MALLOC;
+        goto done;
+    }
     arg.lockless = 1;   
 
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
@@ -6411,7 +6547,33 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         sc->publish = partition_publish;
         sc->unpublish = partition_unpublish;
     }
+done:
+    Pthread_mutex_lock(&orig_sc->mtxStart);
+    orig_sc->async_status = ASYNC_SC_END;
+    Pthread_cond_signal(&orig_sc->condStart);
+    Pthread_mutex_unlock(&orig_sc->mtxStart);
     return rc;
+}
+
+static void *_partitioned_table_merge_resume_thd(void *iq)
+{
+    comdb2_name_thread(__func__);
+    int rc;
+
+    thread_started("partition_merge");
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    rc = _do_process_partitioned_table_merge((struct ireq *)iq);
+    if (rc == SC_COMMIT_PENDING) {
+        rc = SC_OK;
+    }
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+
+    /* NOTE: the finalizing is done in a separate thread, which commits
+     * all scs in this list atomically
+     */
+
+    long long out_rc = rc;
+    return (void *)out_rc;
 }
 
 static int _process_partitioning_retro(timepart_sc_arg_t *arg)
@@ -6533,13 +6695,15 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     if (sc->partition.type == PARTITION_ADD_TIMED_RETRO && !gbl_retro_tpt) {
         logmsg(LOGMSG_ERROR, "Retroactively partition disabled %s\n", sc->tablename);
         sc_errf(sc, "Retroactively partition disabled %s\n", sc->tablename);
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
     if (sc->partition.type == PARTITION_REMOVE) {
         logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
         sc_errf(sc, "Partition %s does not exist\n", sc->tablename);
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
     assert(sc->partition.type == PARTITION_ADD_TIMED || sc->partition.type == PARTITION_ADD_TIMED_RETRO ||
@@ -6562,7 +6726,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         sc_errf(sc, "Creating a new time partition failed rc %d \"%s\"",
                 err.errval, err.errstr);
         rc = ERR_SC;
-        goto out;
+        goto done;
     }
 
     /* create shards for the partition */
@@ -6576,22 +6740,25 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         sc_errf(sc, "Failed to pre-populate the shards rc %d \"%s\"",
                 err.errval, err.errstr);
         rc = ERR_SC;
-        goto out;
+        goto done;
     }
 
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
     arg.part_name = strdup(sc->tablename);
-    if (!arg.part_name)
-        return ERR_SC;
+    if (!arg.part_name) {
+        rc = ERR_SC;
+        goto done;
+    }
     arg.lockless = 0; /* the partition does not exist */
 
     if (retro_partition) {
         /* we want to retroactively populate the shards with existing data */
         rc = _process_partitioning_retro(&arg);
         free(arg.part_name);
-        return rc;
+        rc = ERR_SC;
+        goto done;
     }
 
     /* is this an alter? preserve existing table as first shard */
@@ -6616,7 +6783,8 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
                     "partitioning rc %d",
                     sc->tablename, rc);
             free(arg.part_name);
-            return ERR_SC;
+            rc = ERR_SC;
+            goto done;
         }
         /* we need to  generate retention-1 table adds, with schema provided
          * by previous alter; we need to convert an alter to a add sc
@@ -6625,16 +6793,21 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.start = 1; /* first shard is already there */
         arg.pos = 0; /* reset this so we do not set publish on additional shards */
     }
-    /* should we serialize ? */
-    arg.s->nothrevent = sc->partition.u.tpt.retention > gbl_dohsql_sc_max_threads;
+    /* since we use sc_seed for multiple tables, they will race to set it which can
+       result in the write sc_seed failing (deadlocks), which will break resume;
+       we could retry the write, but at this PIT we prefer to run the partition changes serial
+       */
+    arg.s->nothrevent = 1;
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
     if (!rc && sc->partition.type == PARTITION_ADD_MANUAL) {
         if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
             struct schema_change_type *lcsc = _create_logical_cron_systable(LOGICAL_CRON_SYSTABLE);
-            if (!lcsc)
-                return -1;
+            if (!lcsc) {
+                rc = ERR_SC;
+                goto done;
+            }
 
             iq->sc = lcsc;
             iq->sc->iq = iq;
@@ -6654,7 +6827,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         }
     }
     free(arg.part_name);
-out:
+done:
     return rc;
 }
 
@@ -6699,7 +6872,7 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
         logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
         sc_errf(sc, "Duplicate partition %s!", sc->tablename);
         rc = SC_TABLE_ALREADY_EXIST;
-        goto out;
+        goto done;
     }
 
     int nshards = timepart_get_num_shards(sc->tablename);
@@ -6709,29 +6882,32 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
                sc->tablename);
         sc_errf(sc, "Failed to retrieve nshards in sc for %s",
                sc->tablename);
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
-    /* should we serialize ? */
-    sc->nothrevent = nshards > gbl_dohsql_sc_max_threads;
 
     if (sc->partition.type == PARTITION_MERGE) {
         return _process_partitioned_table_merge(iq);
     }
+
+    sc->nothrevent = nshards > gbl_dohsql_sc_max_threads;
 
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
     arg.check_extra_shard = 1;
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
-    if (!arg.part_name)
-        return VIEW_ERR_MALLOC;
+    if (!arg.part_name) {
+        rc = VIEW_ERR_MALLOC;
+        goto done;
+    }
     arg.cur_last = gbl_partition_sc_reorder ?  sc->nothrevent : 0;
     arg.lockless = 1;
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper, &arg);
     free(arg.part_name);
 
-out:
+done:
     return rc;
 }
 

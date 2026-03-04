@@ -1441,8 +1441,8 @@ struct ireq {
     tran_type *sc_tran;
     tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
-    LISTC_T(struct schema_change_type) scs; /* all schema changes in this txn */
     uuid_t scs_uuid;                        /* on resume, there is no sorese, but we need to know uuid for scs */
+    struct schema_change_type *scs;         /* during resume there is no osqlsess; this points to the scs list */
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;
@@ -3648,6 +3648,7 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
 int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, int resume);
 int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume);
+void *open_temp_db_resume_early(struct dbtable *db, char *tablename);
 int find_constraint(struct dbtable *db, constraint_t *ct);
 
 /* END OF SCHEMACHANGE DECLARATIONS*/

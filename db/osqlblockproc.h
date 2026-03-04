@@ -115,4 +115,10 @@ void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq);
  */
 void osql_bplog_time_done(osql_bp_timings_t *tms);
 
+/**
+ * Finalize a multiddl txn
+ *
+ */
+int resume_sc_multiddl_txn_finalize(struct ireq *iq);
+
 #endif
