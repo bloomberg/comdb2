@@ -21,14 +21,6 @@
 
 /* comdb2buf.h -  simple buffering for stream. stupid fopen can't handle fd>255 */
 
-/* Define this to check/allocate for buffer on every read/write.
- * Undef to do it once in cdb2buf_setbufsize */
-#ifdef CDB2API_SERVER
-#define CDB2BUF_DELAY_MALLOC
-#else
-#undef CDB2BUF_DELAY_MALLOC
-#endif
-
 /* Server comdb2buf uses dlmalloc. Client does not. The simplest approach
    to avoid adding dlmalloc dependency to client API is to compile
    server and client version separately. */
