@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+mach=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()")
+
+if [ "$mach" = "" ]; then
+   echo "could not retrieve hostname" >&2
+   exit 1
+fi
+
+r="cdb2sql -s ${CDB2_OPTIONS} $dbnm default --host $mach"
+
+if [ -n "$CLUSTER" ] ; then
+    logfile="$TESTDIR/logs/$dbnm.$mach.db"
+else
+    logfile="$TESTDIR/logs/$dbnm.db"
+fi
+
+$r << "EOF" >/dev/null
+@send reql longreqfile <stdout>
+@send reql longsqlrequest 1
+put tunable longreq_log_freq_sec 1
+EOF
+
+$r "create table if not exists tlr (id int, v int)" >/dev/null
+
+$r << "EOF" >/dev/null
+set maxtransize 200000
+insert into tlr select value, value from generate_series(1, 100000)
+EOF
+
+
+# Use a FIFO to control pid1's transaction timing:
+# pid1: begin + update, then wait for pid2 to commit a conflicting update, then commit.
+# This forces a verify retry on pid1's commit.
+fifo=$(mktemp -u)
+outfile=$(mktemp)
+mkfifo $fifo
+
+$r < $fifo > $outfile 2>&1 &
+pid1=$!
+exec 3> $fifo
+
+echo "set maxtransize 200000" >&3
+echo "begin" >&3
+echo "update tlr set v=v+1" >&3
+echo "select 'update_done'" >&3
+while ! grep -q 'update_done' $outfile; do sleep 0.1; done
+
+$r << "EOF"
+set maxtransize 200000
+update tlr set v=v-1
+EOF
+
+echo "commit" >&3
+exec 3>&-
+wait $pid1
+rm -f $fifo $outfile
+
+sleep 2
+
+# ---- Test 1: begin/commit should not have fingerprint ----
+echo "Test 1: begin/commit should not have fingerprint"
+
+if awk '/LONG REQUEST/{hdr=$0} /sql=(begin|commit)/ && hdr ~ /for fingerprint/{found=1} END{exit !found}' $logfile; then
+    echo "FAIL: begin or commit has fingerprint" >&2
+    exit 1
+fi
+
+echo "Test 1 passed"
+
+# ---- Test 2: begin/commit should not have negative rc ----
+echo "Test 2: no negative rc on begin/commit"
+
+if awk '/LONG REQUEST/{hdr=$0} /sql=(begin|commit)/ && hdr ~ /rc -/{found=1} END{exit !found}' $logfile; then
+    echo "FAIL: begin or commit has negative rc" >&2
+    exit 1
+fi
+
+echo "Test 2 passed"
+
+# ---- Test 3: **running** logs appear during verify retry with replay count ----
+echo "Test 3: running logs have verify replays during retry"
+
+if ! grep -q 'verify replays=.*\*\*running\*\*' $logfile; then
+    echo "FAIL: no **running** log with verify replays found" >&2
+    exit 1
+fi
+
+echo "Test 3 passed"
+
+# ---- Test 4: at least one **running** log has rqid ----
+echo "Test 4: at least one running log has rqid"
+
+# rqid may be empty after watchdog kicks off for a long running transaction 
+# but before osql session starts and assigns an uuid.
+# Check that at least one running log has a non-empty rqid.
+if ! grep '\*\*running\*\*' $logfile | grep -q 'rqid [0-9a-f]'; then
+    echo "FAIL: no **running** log has rqid" >&2
+    exit 1
+fi
+
+echo "Test 4 passed"
+
+# ---- Test 5: final commit completion log has rqid ----
+echo "Test 5: commit completion has rqid"
+
+if awk '/LONG REQUEST/{hdr=$0} /sql=commit,/ && hdr ~ /rqid  from/{found=1} END{exit !found}' $logfile; then
+    echo "FAIL: commit completion log has empty rqid" >&2
+    exit 1
+fi
+
+echo "Test 5 passed"
+
+# ---- Test 6: verify replays do not leak across transactions ----
+echo "Test 6: verify replays do not leak to next transaction"
+
+# Run another long transaction after the replay test
+$r << "EOF"
+set maxtransize 200000
+update tlr set v=v+2
+EOF
+
+# Check that the most recent update log does not have verify replays
+if tail -20 $logfile | grep 'sql=UPDATE tlr SET v = v + 2' | grep -q 'verify replays'; then
+    echo "FAIL: verify replays leaked to subsequent transaction" >&2
+    exit 1
+fi
+
+echo "Test 6 passed"
+
+echo "All tests passed."
+exit 0
