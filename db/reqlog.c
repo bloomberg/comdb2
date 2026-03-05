@@ -1921,6 +1921,16 @@ inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
     logger->have_id = 1;
 }
 
+void reqlog_set_rqid_from_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
+{
+    unsigned long long rqid = clnt->osql.rqid;
+    if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(logger, &rqid, sizeof(rqid));
+    else if (!comdb2uuid_is_zero(clnt->osql.uuid))
+        /* have an "id_set" instead? */
+        reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+}
+
 static int current_long_request_count = 0;
 static int current_long_request_duration_ms = 0;
 static int current_longest_long_request_ms = 0;
@@ -2018,6 +2028,8 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
     }
 
     logger.rc = 0;
+
+    reqlog_set_rqid_from_clnt(&logger, clnt);
 
     /* Should this long running statement be reported at this instant? */
 

@@ -89,6 +89,7 @@ uint64_t reqlog_get_queue_time(const struct reqlogger *logger);
 void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
+void reqlog_set_rqid_from_clnt(struct reqlogger *logger, struct sqlclntstate *clnt);
 void reqlog_set_event(struct reqlogger *logger, evtype_t evtype);
 evtype_t reqlog_get_event(struct reqlogger *logger);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
