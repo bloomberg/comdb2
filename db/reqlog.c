@@ -1603,7 +1603,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
     struct reqlog_print_callback_args args;
 
     if (out == long_request_out) {
-        dumpf(logger, out, "LONG REQUEST %d msec ", U2M(logger->durationus));
+        dumpf(logger, out, "LONG REQUEST %d msec", U2M(logger->durationus));
     } else {
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               U2M(logger->durationus));
@@ -1614,8 +1614,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
     if (gbl_fingerprint_queries && logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        dumpf(logger, out, "for fingerprint %.*s", FINGERPRINTSZ * 2,
-                    expanded_fp);
+        dumpf(logger, out, " for fingerprint %.*s", FINGERPRINTSZ * 2, expanded_fp);
     }
 
     struct sqlclntstate *clnt = logger->clnt;
@@ -1628,6 +1627,10 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
 
     if (logger->api_type) {
         dumpf(logger, out, " clntapi %s", logger->api_type);
+    }
+
+    if (logger->vreplays) {
+        dumpf(logger, out, " verify replays=%d", logger->vreplays);
     }
 
     if (out == long_request_out && is_running) {
@@ -1921,6 +1924,16 @@ inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
     logger->have_id = 1;
 }
 
+void reqlog_set_rqid_from_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
+{
+    unsigned long long rqid = clnt->osql.rqid;
+    if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(logger, &rqid, sizeof(rqid));
+    else if (!comdb2uuid_is_zero(clnt->osql.uuid))
+        /* have an "id_set" instead? */
+        reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+}
+
 static int current_long_request_count = 0;
 static int current_long_request_duration_ms = 0;
 static int current_longest_long_request_ms = 0;
@@ -2019,6 +2032,8 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 
     logger.rc = 0;
 
+    reqlog_set_rqid_from_clnt(&logger, clnt);
+
     /* Should this long running statement be reported at this instant? */
 
     int duration_beyond_thresh_sec = (duration_ms - gbl_sql_time_threshold) / 1000;
@@ -2060,10 +2075,6 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
     reqlog_set_sql(&logger, sql);
     if (have_fingerprint) {
         reqlog_set_fingerprint(&logger, (const char *)fp, FINGERPRINTSZ);
-    }
-
-    if (logger.vreplays) {
-        reqlog_logf(&logger, REQL_INFO, "verify replays=%d", logger.vreplays);
     }
 
     flushdump(&logger, NULL);

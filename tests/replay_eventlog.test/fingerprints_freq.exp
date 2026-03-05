@@ -15,7 +15,6 @@
    1000 7b3aa6d46d54b8a092b8c3e74a1fc7d0 insert into t1(  alltype
     100 8b048737cee209884c0eb5b86f9815f7 insert into t1(alltypes_
       1 8be5e8c404c7e6c72b3a5d926cc150fd create table t1  { // th
-      2 8d589afa4dfaeeed85fff5aa78e5ff6a begin
     500 92e6e3090f8f99f9ed0b9015f849d8e3 insert into t1(alltypes_
       8 aa98684e80e6fa9bd1cb3ee39443df7e select count(*) from t1
     500 aefd75efcaf1d7e65205373fc5a09b89 update t1 set alltypes_s
@@ -26,5 +25,3 @@
     110 e4510162feae7bd9a746c798ad56027d insert into t1(alltypes_
      10 f2c85b80eb883ee3c1eb184a8bca4e4d update t1 set alltypes_u
       1 f49bb0b4877aac4df9adb8d4e097e140 select * from t1 order b
-      1 fff66e9b3d962fa319c8068b5c1997cd rollback
-      1 fffca4d67ea0a788813031b8bbc3b329 commit
