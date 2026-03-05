@@ -513,8 +513,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqdumphex(iq, od_dta, od_len);
         }
         if (retrc) {
-            *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_RRN;
-            ERR("add genid %"PRIx64" rc %d", *genid, rc);
+            if (retrc == RC_INTERNAL_RETRY) {
+                rc = RC_INTERNAL_RETRY;
+                ERR("add genid %" PRIx64 " deadlock", *genid);
+            } else {
+                *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_RRN;
+                ERR("add genid %" PRIx64 " rc %d", *genid, rc);
+            }
         }
     }
 
@@ -1414,9 +1419,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (rc != 0) {
-        *opfailcode = OP_FAILED_VERIFY;
-        retrc = rc;
-        ERR("verify error", 0);
+        if (rc == RC_INTERNAL_RETRY) {
+            retrc = RC_INTERNAL_RETRY;
+            ERR("upd data deadlock", 0);
+        } else {
+            *opfailcode = OP_FAILED_VERIFY;
+            retrc = rc;
+            ERR("verify error", 0);
+        }
     }
 
     // if even one ix is done deferred, we want to do the post_update deferred
@@ -1950,8 +1960,11 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (iq->debug)
         reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, retrc);
     if (retrc != 0) {
-        *opfailcode = (retrc == ERR_VERIFY) ? OP_FAILED_VERIFY
-                                            : OP_FAILED_INTERNAL + ERR_DEL_DTA;
+        if (retrc == RC_INTERNAL_RETRY) {
+            rc = RC_INTERNAL_RETRY;
+        } else {
+            *opfailcode = (retrc == ERR_VERIFY) ? OP_FAILED_VERIFY : OP_FAILED_INTERNAL + ERR_DEL_DTA;
+        }
         goto err;
     }
 
