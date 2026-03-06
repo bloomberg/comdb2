@@ -2501,6 +2501,32 @@ function test_intermediate_physrep_active_status()
     done
 }
 
+# Verify that register-replicant operates correctly even though there are an excessive
+# number of 'Pending' physreps.
+function physrep_max_pending
+{
+    local j=0
+    local lsn=$($CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME default 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {})
+    local fakedb=""
+    while [[ $j -lt 100 ]]; do
+        fakedb="fake$j"
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "exec procedure sys.physrep.register_replicant('$fakedb', 'testmach', '$lsn', '$DBNAME', \"'$firstNode'\")")
+        [[ -z "$x" ]] && cleanFailExit "register_replicant failed to return a list of machines on iteration $j"
+        let j=j+1
+    done
+    j=0
+
+    # Succeeded!  just cleanup
+    while [[ $j -lt 100 ]]; do
+        fakedb="fake$j"
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "select count(*) from comdb2_physreps where dbname='$fakedb' and state='Pending'")
+        [[ "$x" == "1" ]] || cleanFailExit "Expected to find pending physrep for $fakedb, got $x on iteration $j"
+        $CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physreps where dbname='$fakedb'"
+        [[ $? == 0 ]] || cleanFailExit "Failed to delete pending physrep for $fakedb on iteration $j"
+        let j=j+1
+    done
+}
+
 function announce
 {
     typeset text=$1
@@ -2679,11 +2705,16 @@ function run_tests
     testcase_preamble $testcase
     test_intermediate_physrep_active_status
     testcase_finish $testcase
+
+    testcase="physrep_max_pending"
+    testcase_preamble $testcase
+    physrep_max_pending
+    testcase_finish $testcase
 }
 
 function run_one_test
 {
-    phys_rep_nomatch ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST}
+    physrep_max_pending
 }
 
 run_tests
