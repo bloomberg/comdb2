@@ -486,7 +486,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             unlock_schema_lk();
         backout(newdb);
         cleanup_newdb(newdb);
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Sqlite syntax check failed\n");
         return SC_CSC2_ERROR;
     } else {
