@@ -891,12 +891,9 @@ void init_cmp(Lua lua)
     lua_setfield(lua, -2, "__le");
 }
 
-static int l_typed_assignment(Lua);
 static int l_concat(Lua);
 void init_common(Lua lua)
 {
-    lua_pushcfunction(lua, l_typed_assignment);
-    lua_setfield(lua, -2, "__type");       
     lua_pushcfunction(lua, l_column_cast);
     lua_setfield(lua, -2, "__cast");    
     lua_pushcfunction(lua, l_concat);
@@ -2080,7 +2077,6 @@ static void init_blob(Lua L)
     setup_method(L, "__lt", l_blob_lt);
     setup_method(L, "__le", l_blob_le);
     setup_method(L, "__cast", l_column_cast);
-    setup_method(L, "__type", l_typed_assignment);
     setup_method(L, "__gc", l_blob_free);
     setup_method(L, "__len", l_blob_length);
 
@@ -2179,16 +2175,6 @@ int luabb_isnull(lua_State *lua, int arg_index)
     return 0;
 }
 
-int luabb_istyped(lua_State *lua, int arg_index)
-{
-    int type = lua_type(lua, arg_index);
-    if (type == LUA_TUSERDATA) {
-        const lua_dbtypes_t *n = lua_topointer(lua, arg_index);
-        return n->is_typed;
-    }
-    return 0;
-}
-
 void luabb_pushnull(Lua lua, int dbtype)
 {
     switch (dbtype) {
@@ -2254,39 +2240,6 @@ char *luabb_newblob(Lua lua, int len, void **blob)
     memset(b->val.data, 0xff, len);
     b->val.length = len;
     return (char *)b->val.data;
-}
-
-static int l_typed_assignment(lua_State *lua)
-{
-   const char *name1 = NULL;
-   const char *name2 = NULL;
-   if ((lua_type(lua, 1) == LUA_TUSERDATA)) {
-       if (luabb_istyped(lua,1)) {
-         lua_getmetatable(lua, 1); 
-         lua_pushstring(lua, "__metatable");
-         lua_gettable(lua, -2);
-         name1 = lua_tostring(lua, -1);
-         lua_getmetatable(lua, 2); 
-         lua_pushstring(lua, "__metatable");
-         lua_gettable(lua, -2);
-         name2 = lua_tostring(lua, -1);         
-         if (name1 && name2 && strcmp(name1, name2) == 0) { 
-           lua_pop(lua,4);
-           lua_remove(lua,1);
-         } else {
-           /* Remove everything and push nil. */  
-           lua_settop(lua, 0);
-           if (name1) {
-             luabb_error(lua, NULL, "Invalid assignment, invalid typed assignment for type %s", name1);
-           } else {
-             luabb_error(lua, NULL, "Invalid assignment, invalid typed assignment");
-           }
-         }
-       }
-   } else {
-         lua_remove(lua,1);
-   }
-   return 1;
 }
 
 int l_column_cast(Lua L)
