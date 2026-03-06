@@ -73,6 +73,7 @@
 #include "thread_util.h"
 #include <timer_util.h>
 #include <comdb2_atomic.h>
+#include <hostname_support.h>
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -2524,15 +2525,11 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
         return 0;
     }
 
-    char host[NI_MAXHOST], service[NI_MAXSERV];
     /* get our host name for local _into_ address of connection */
-    int s = getnameinfo((struct sockaddr *)&lcl_addr_inet, lcl_len, host,
-                        NI_MAXHOST, service, NI_MAXSERV, 0);
-
-    if (s != 0) {
-        logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u): %s\n",
-               inet_ntoa(lcl_addr_inet.sin_addr),
-               (unsigned)ntohs(lcl_addr_inet.sin_port), gai_strerror(s));
+    const char *host = get_cached_hostname_by_addr(&lcl_addr_inet);
+    if (host == NULL) {
+        logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u)\n", inet_ntoa(lcl_addr_inet.sin_addr),
+               (unsigned)ntohs(lcl_addr_inet.sin_port));
         return 0;
     }
 
@@ -2540,7 +2537,7 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
     int myh_len = strlen(host_node_ptr->netinfo_ptr->myhostname);
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
         assert(myh_len <= sizeof(host));
-        char *subnet = &host[myh_len];
+        const char *subnet = &host[myh_len];
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
     }
