@@ -117,7 +117,6 @@ void luabb_pushnull(Lua, int dbtype);
 void luabb_pushreal(Lua, double);
 
 int luabb_isnull(Lua, int index);
-int luabb_istyped(Lua, int index);
 
 /* must be called before any exposed functionality is available in lua */
 void init_dbtypes(Lua);
