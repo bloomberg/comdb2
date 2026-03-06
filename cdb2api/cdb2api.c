@@ -325,6 +325,7 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 static int cdb2_get_dbhosts(cdb2_hndl_tp *);
 static void hndl_set_comdb2buf(cdb2_hndl_tp *, COMDB2BUF *, int idx);
 static int send_reset(COMDB2BUF *sb, int localcache);
+static void free_raw_response(cdb2_hndl_tp *hndl);
 
 static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
 static int check_hb_on_blocked_write_set_from_env = 0;
@@ -1484,7 +1485,11 @@ void cdb2_set_sockpool(const char *sp_path)
     SOCKPOOL_OTHER_NAME = strdup(sp_path);
 }
 
-static int is_valid_int(const char *str)
+#ifndef CDB2API_SERVER
+static
+#endif
+    int
+    cdb2_is_valid_int(const char *str)
 {
     while (*str) {
         if (!isdigit(*str))
@@ -1582,7 +1587,7 @@ static void parse_dbhosts_from_env(int *dbnum, int *num_hosts, char hosts[][CDB2
         if (tok == NULL) {
             return;
         }
-        if (is_valid_int(tok)) {
+        if (cdb2_is_valid_int(tok)) {
             *dbnum = atoi(tok);
             tok = strtok_r(NULL, " :,", &last);
         }
@@ -1758,7 +1763,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
         }
         if (comdb2db_name && strcasecmp(comdb2db_name, tok) == 0) {
             tok = strtok_r(NULL, " :,", &last);
-            if (tok && is_valid_int(tok)) {
+            if (tok && cdb2_is_valid_int(tok)) {
                 *comdb2db_num = atoi(tok);
                 tok = strtok_r(NULL, " :,", &last);
             }
@@ -1778,7 +1783,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                     CDB2DBCONFIG_ADDL_PATH[sizeof(CDB2DBCONFIG_ADDL_PATH) - 1] = '\0';
                 }
             } else { /* host list */
-                if (tok && is_valid_int(tok)) {
+                if (tok && cdb2_is_valid_int(tok)) {
                     *dbnum = atoi(tok);
                     tok = strtok_r(NULL, " :,", &last);
                 }
@@ -1854,7 +1859,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                 for (ii = 0; ii <= current_size; ii++)
                     cdb2_room_distance[ii] = INT_MAX;
                 while (tok != NULL) {
-                    if (!is_valid_int(tok))
+                    if (!cdb2_is_valid_int(tok))
                         break;
                     ii = atoi(tok);
                     if (ii == 0) {
@@ -1870,7 +1875,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                     }
                     tok = strtok_r(NULL, " ,", &last);
 
-                    if (tok && is_valid_int(tok))
+                    if (tok && cdb2_is_valid_int(tok))
                         distance = atoi(tok);
                     else
                         continue;
@@ -1897,7 +1902,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                     cdb2_alarm_unread_socket_data = value_on_off(tok, &err);
             } else if (!cdb2_max_discard_records_set_from_env && (strcasecmp("max_discard_records", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
-                if (tok && is_valid_int(tok))
+                if (tok && cdb2_is_valid_int(tok))
                     cdb2_max_discard_records = atoi(tok);
             } else if (!cdb2_flat_col_vals_set_from_env && strcasecmp("flat_col_vals", tok) == 0) {
                 if ((tok = strtok_r(NULL, " =:,", &last)) != NULL)
@@ -4614,6 +4619,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
 #endif
+    if (hndl && hndl->is_tagged) {
+        sqlquery.has_is_tagged = 1;
+        sqlquery.is_tagged = 1;
+    }
 
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
@@ -5191,7 +5200,9 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         newsql_disconnect(hndl, hndl->sb, __LINE__);
 
     if (hndl->firstresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+        free_raw_response(hndl);
+        if (hndl->firstresponse)
+            cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
         hndl->firstresponse = NULL;
         free((void *)hndl->first_buf);
         hndl->first_buf = NULL;
@@ -6002,6 +6013,17 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     if (child->c_sslmode >= SSL_REQUIRE && (child->num_hosts == 0 && child->got_dbinfo == 0)) {
         child->got_dbinfo = 1;
         cdb2_get_dbhosts(child);
+    }
+}
+
+static void free_raw_response(cdb2_hndl_tp *hndl)
+{
+    // Tagged requests receive a RESPONSE_HEADER__SQL_RESPONSE_RAW response that
+    // contains both the "header" and the row data.  So the first response is
+    // also the last response and we only need to free one.
+    if (hndl->is_tagged && hndl->firstresponse && hndl->firstresponse == hndl->lastresponse) {
+        cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+        hndl->firstresponse = hndl->lastresponse = NULL;
     }
 }
 
@@ -8273,6 +8295,11 @@ static int get_connection_int(cdb2_hndl_tp *hndl, int *err)
     if (get_dbinfo || *err)
         return -1;
     before_discovery(hndl);
+    if (strcmp(hndl->type, "configured") == 0 && hndl->num_hosts > 0) {
+        // Special setting of "configured" means the proxy generated a list of hosts in its config and we should
+        // use that.  Don't try discovery or sockpool - use what's in the proxy config.
+        return 0;
+    }
     COMDB2BUF *sb = sockpool_get(hndl);
     after_discovery(hndl);
     if (sb == NULL)
@@ -8827,6 +8854,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->connected_host = -1;
     hndl->send_stack = 0;
     hndl->read_intrans_results = 1;
+    hndl->is_admin = (flags & CDB2_ADMIN);
+    hndl->is_tagged = (flags & CDB2_SET_TAGGED);
 
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
@@ -8835,8 +8864,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
-
-    hndl->is_admin = (flags & CDB2_ADMIN);
 
     if (cdb2_use_env_vars) {
         hndl->db_default_type_override_env = 0;
