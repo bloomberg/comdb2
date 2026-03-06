@@ -968,7 +968,7 @@
 (name='sosql_poke_timeout_sec', description='On replicants, when checking on master for transaction status, retry the check after this many seconds.', type='INTEGER', value='60', read_only='N')
 (name='spfile', description='', type='STRING', value=NULL, read_only='Y')
 (name='sql_close_sbuf', description='sql_close_sbuf', type='BOOLEAN', value='OFF', read_only='N')
-(name='sql_logfill', description='Request transaction logs via sql thread.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='sql_logfill', description='Request transaction logs via sql thread.  (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='sql_logfill_apply_thread', description='Use a dedicated thread to apply sql logfills.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='sql_logfill_debug', description='Enable extended trace for sql logfill thread.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='sql_logfill_lookahead_records', description='Max lookahead records cached for dedicated apply thread.  (Default: 10000)', type='INTEGER', value='10000', read_only='Y')
