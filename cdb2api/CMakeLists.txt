@@ -29,6 +29,10 @@ include_directories(
 add_definitions(-DDISABLE_HOSTADDR_CACHE)
 add_definitions(-DSBUF2_SERVER=0)
 
+if (DEFINED COMDB2_SEMVER AND NOT COMDB2_SEMVER STREQUAL "")
+  add_definitions(-DAPI_DRIVER_VERSION=${COMDB2_SEMVER})
+endif()
+
 if (COMDB2_BBCMAKE)
   include(${EXTRA_PLUGINS}/cdb2api/cdb2api.cmake)
   add_library(opencdb2api STATIC ${src})
