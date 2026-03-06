@@ -5150,16 +5150,23 @@ int bdb_clear_high_genid(
 
 /* determines what stripe the genid is part of and calls
  * bdb_set_high_genid_int */
-int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
-                       unsigned long long genid, int *bdberr)
+int bdb_set_high_genid(tran_type *input_trans, const char *db_name, unsigned long long genid, int *bdberr,
+                       const char *f, int l)
 {
+#ifdef DEBUG_LLMETA
+    fprintf(stderr, "%s: (%s:%d) setting %s stripe %d to %llx (%llu)\n", __func__, f, l, db_name,
+            get_dtafile_from_genid(genid), genid, genid);
+#endif
     return bdb_set_high_genid_int(input_trans, db_name,
                                   get_dtafile_from_genid(genid), genid, bdberr);
 }
 
-int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
-                              int stripe, unsigned long long genid, int *bdberr)
+int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name, int stripe, unsigned long long genid,
+                              int *bdberr, const char *f, int l)
 {
+#ifdef DEBUG_LLMETA
+    fprintf(stderr, "%s: (%s:%d) setting %s stripe %d to %llx (%llu)\n", __func__, f, l, db_name, stripe, genid, genid);
+#endif
     return bdb_set_high_genid_int(input_trans, db_name, stripe, genid, bdberr);
 }
 
@@ -10510,7 +10517,7 @@ static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
     key_struct.dbname_len = strlen(key_struct.dbname) + 1 /* NULL byte */;
 
     if (key_struct.dbname_len > LLMETA_TBLLEN) {
-        fprintf(stderr, "%s: db_name is too long\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: db_name is too long\n", __func__);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }

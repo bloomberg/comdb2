@@ -128,7 +128,13 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if ((rc = get_db_handle(newdb, trans))) {
+    if (s && s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
+        /* this is adding a shard, we need to try to open an existing shard, which may have data */
+        if ((rc = open_temp_db_resume(iq, newdb, newdb->tablename, s->resume))) {
+            sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
+            reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
+        }
+    } else if ((rc = get_db_handle(newdb, trans))) {
         if (rc == BDBERR_EXCEEDED_BLOBS){
             sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
             reqerrstr(iq, ERR_SC, "Maximum number of vutf8/blob fields exceeded\n");
@@ -136,6 +142,8 @@ int add_table_to_environment(char *table, const char *csc2,
             sc_errf(s, "Maximum number of indexes exceeded\n");
             reqerrstr(iq, ERR_SC, "Maximum number of indexes exceeded\n");
         }
+    }
+    if (rc) {
         rc = SC_BDB_ERROR;
         goto err;
     }
