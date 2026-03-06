@@ -21,8 +21,6 @@
 #include <lua.h>
 #include <comdb2.h>
 
-extern int gbl_spstrictassignments;
-
 // one switch to rule them all
 #define DBTYPES \
 XMACRO_DBTYPES(DBTYPES_LNIL,       "nil",        t0,         NULL)\
@@ -94,7 +92,6 @@ extern const char *dbtypes_str[];
 #define DBTYPES_COMMON		\
 	int magic;		\
 	dbtypes_enum dbtype;	\
-	int is_typed;		\
 	int is_null
 
 typedef struct {
@@ -150,7 +147,6 @@ typedef struct {
 #define init_new_t(n, DBTYPE) \
     (n)->magic = DBTYPES_MAGIC;\
     (n)->is_null = 0;\
-    (n)->is_typed = gbl_spstrictassignments;\
     (n)->dbtype = DBTYPE
 
 #define new_lua_t_sz(L, n, DBTYPE, sz) \

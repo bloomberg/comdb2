@@ -394,8 +394,6 @@ void luabb_typeconvert(Lua l, int pos, int type)
     lua_replace(l, pos);
 }
 
-#define luabb_todbpointer(x) ((lua_dbtypes_t *)(rawuvalue(x) + 1))
-
 HashType luabb_hashinfo(void *udata, double *d, const char **c, size_t *l)
 {
     const lua_dbtypes_t *t = udata;

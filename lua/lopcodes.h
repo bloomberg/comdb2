@@ -205,7 +205,7 @@ OP_CLOSE,/*	A 	close all variables in the stack up to (>=) R(A)*/
 OP_CLOSURE,/*	A Bx	R(A) := closure(KPROTO[Bx], R(A), ... ,R(A+n))	*/
 
 /* COMDB2 MODIFICATION */
-OP_CAST, /* 	A B C	R(A) := R(B).. := ..R(C)			*/
+OP_CAST, /* 	A B C	R(A) := RK(B) _cast RK(C)			*/
 
 OP_VARARG/*	A B	R(A), R(A+1), ..., R(A+B-1) = vararg		*/
 } OpCode;

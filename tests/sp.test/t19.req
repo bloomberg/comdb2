@@ -1,0 +1,88 @@
+DROP TABLE IF EXISTS t19
+CREATE TABLE t19(i INT, r REAL)$$
+INSERT INTO t19 VALUES(5, 2.5)
+INSERT INTO t19 VALUES(NULL, NULL)
+
+create procedure tonumber_int version 'sptest' {
+local function main()
+    local row = db:exec("select i from t19 where i is not null"):fetch()
+    local from = row.i
+    for i = from, 7 do
+        db:emit(i)
+    end
+end
+}$$
+exec procedure tonumber_int()
+
+create procedure tonumber_real version 'sptest' {
+local function main()
+    local row = db:exec("select r from t19 where r is not null"):fetch()
+    local from = row.r
+    for i = from, 5 do
+        db:emit(i)
+    end
+end
+}$$
+exec procedure tonumber_real()
+
+create procedure tonumber_null_int version 'sptest' {
+local function main()
+    local row = db:exec("select i from t19 where i is null"):fetch()
+    local from = row.i
+    for i = from, 3 do
+        db:emit(i)
+    end
+end
+}$$
+exec procedure tonumber_null_int()
+
+create procedure tonumber_null_real version 'sptest' {
+local function main()
+    local row = db:exec("select r from t19 where r is null"):fetch()
+    local from = row.r
+    for i = from, 3 do
+        db:emit(i)
+    end
+end
+}$$
+exec procedure tonumber_null_real()
+
+create procedure tonumber_arith_int version 'sptest' {
+local function main()
+    local row = db:exec("select i from t19 where i is not null"):fetch()
+    db:emit(row.i + 10)
+end
+}$$
+exec procedure tonumber_arith_int()
+
+create procedure tonumber_arith_real version 'sptest' {
+local function main()
+    local row = db:exec("select r from t19 where r is not null"):fetch()
+    db:emit(row.r * 2)
+end
+}$$
+exec procedure tonumber_arith_real()
+
+create procedure tonumber_arith_mixed version 'sptest' {
+local function main()
+    local row = db:exec("select i, r from t19 where i is not null"):fetch()
+    db:emit(row.i + row.r)
+end
+}$$
+exec procedure tonumber_arith_mixed()
+
+create procedure tonumber_arith_null_int version 'sptest' {
+local function main()
+    local row = db:exec("select i from t19 where i is null"):fetch()
+    db:emit(row.i + 10)
+end
+}$$
+exec procedure tonumber_arith_null_int()
+
+create procedure tonumber_arith_null_real version 'sptest' {
+local function main()
+    local row = db:exec("select r from t19 where r is null"):fetch()
+    db:emit(row.r * 2)
+end
+}$$
+exec procedure tonumber_arith_null_real()
