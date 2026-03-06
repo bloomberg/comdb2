@@ -4579,20 +4579,6 @@ static int db_setnull(Lua lua)
     return 0;
 }
 
-static int db_settyped(Lua lua)
-{
-    if (lua_type(lua, -1) != LUA_TUSERDATA) {
-        return luaL_error(lua, "bad argument to 'settyped'");
-    }
-
-    lua_dbtypes_t *t = (lua_dbtypes_t *)lua_topointer(lua, -1);
-    assert(t->magic == DBTYPES_MAGIC);
-    assert(t->dbtype > DBTYPES_MINTYPE);
-    assert(t->dbtype < DBTYPES_MAXTYPE);
-    t->is_typed = 1;
-    return 0;
-}
-
 static int db_setmaxinstructions(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -5044,7 +5030,6 @@ static const luaL_Reg db_funcs[] = {
     {"setmaxinstructions", db_setmaxinstructions},
     {"setnull", db_setnull},
     {"settimezone", db_settimezone},
-    {"settyped", db_settyped},
     {"sp", db_sp},
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"table", db_table},

@@ -501,9 +501,6 @@ REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_sparse_lockerid_map, READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
-                 &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE(
     "enable_sq_flattening_optimization",
     "Enable subquery flattening optimization for OUTER JOINS (Default: off)",
