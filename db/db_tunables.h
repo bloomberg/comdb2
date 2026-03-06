@@ -2614,4 +2614,6 @@ REGISTER_TUNABLE("track_db_open", "Track berkdb open DB handles", TUNABLE_INTEGE
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("clear_ufid_on_db_close", "Clear ufid hash on db->close", TUNABLE_INTEGER, &gbl_clear_ufid_on_db_close,
                  INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("get_peer_fqdn", "When set, use peer's FQDN", TUNABLE_BOOLEAN, &gbl_get_peer_fqdn, INTERNAL, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
