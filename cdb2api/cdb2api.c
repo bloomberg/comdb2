@@ -2801,6 +2801,11 @@ static int local_connection_cache_get_fd(const cdb2_hndl_tp *hndl, const char *t
     return fd;
 }
 
+#ifndef CDB2API_SERVER
+static
+#endif
+    void
+    cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
 static COMDB2BUF *local_connection_cache_get_sbuf(const cdb2_hndl_tp *hndl, const char *typestr)
 {
     COMDB2BUF *sb = NULL;
@@ -3257,7 +3262,11 @@ static COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, 
     return ((fd > 0) ? cdb2buf_open(fd, 0) : NULL);
 }
 
-void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum)
+#ifndef CDB2API_SERVER
+static
+#endif
+    void
+    cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum)
 {
     LOG_CALL("%s(%s,%d): fd=%d\n", __func__, typestr, dbnum, fd);
 #ifdef CDB2API_TEST
