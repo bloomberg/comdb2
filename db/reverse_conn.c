@@ -177,7 +177,6 @@ static void *reverse_connection_worker(void *args) {
     time_t last_conn_attempt = 0;
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
-    host->worker_state = REVERSE_CONN_WORKER_RUNNING;
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' worker thread started for %s@%s\n",
                        __func__, __LINE__, host->dbname, host->host);
@@ -332,6 +331,7 @@ static int populate_revconn_list(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp
         }
     } else {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to run statement '%s' (rc: %d)\n", __func__, __LINE__, cmd, rc);
+        return rc;
     }
     return 0;
 }
@@ -372,7 +372,15 @@ static int refresh_reverse_conn_hosts()
 
     rc = populate_revconn_list(metadb, &new_reverse_conn_hosts);
     cdb2_close(metadb);
+
+    if (rc != 0) {
+        revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to populate revconn list from metadb, rc=%d\n", __func__, __LINE__,
+                       rc);
+        return 1;
+    }
+
     int altcnt = gbl_altmetadb_count;
+
     /* See if the alt-metadb requires us to spawn a reverse connection */
     for (int i = 0; i < altcnt; i++) {
         if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
@@ -382,6 +390,11 @@ static int refresh_reverse_conn_hosts()
         }
         rc = populate_revconn_list(metadb, &new_reverse_conn_hosts);
         cdb2_close(metadb);
+        if (rc != 0) {
+            revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to populate revconn list from altmetadb, rc=%d\n", __func__,
+                           __LINE__, rc);
+            return 1;
+        }
     }
 
     replace_tier_by_hostname(&new_reverse_conn_hosts);
@@ -402,7 +415,7 @@ static int refresh_reverse_conn_hosts()
         }
 
         // If the 'old' host is not found in the new list, notify the worker.
-        if (found == 0) {
+        if (found == 0 && old_host->worker_state == REVERSE_CONN_WORKER_RUNNING) {
             old_host->worker_state = REVERSE_CONN_WORKER_EXITING;
         }
     }
@@ -470,6 +483,7 @@ static void *reverse_connection_manager(void *args) {
                 pthread_mutex_lock(&host->mu);
                 {
                     if (host->worker_state == REVERSE_CONN_WORKER_NEW) {
+                        host->worker_state = REVERSE_CONN_WORKER_RUNNING;
                         Pthread_create(&host->thd, NULL, reverse_connection_worker, host);
                     }
                 }
