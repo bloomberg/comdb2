@@ -2286,6 +2286,8 @@ clipper_usage:
         have_overlap_check(plow, phigh, mylow, myhigh);
     } else if (tokcmp(tok, ltok, "physrep_alt_metadb_print") == 0) {
         physrep_alt_metadb_print();
+    } else if (tokcmp(tok, ltok, "refreshrevconn") == 0) {
+        refresh_reverse_conn_hosts();
     } else if (tokcmp(tok, ltok, "leaktxn") == 0) {
         bdb_trans_leak(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "unleaktxn") == 0) {

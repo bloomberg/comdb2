@@ -263,11 +263,17 @@ static int add_reverse_host(const char *dbname, const char *host, reverse_conn_h
 int gbl_reverse_hosts_v2 = 0;
 extern int gbl_altmetadb_count;
 int get_alt_metadb_hndl(cdb2_hndl_tp **hndl, int index);
+int gbl_physrep_fake_revconn_populate_error = 0;
 
 static int populate_revconn_list(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp *new_reverse_conn_hosts)
 {
     int rc = 0;
     char cmd[400];
+
+    if (gbl_physrep_fake_revconn_populate_error) {
+        logmsg(LOGMSG_INFO, "%s:%d Debug: Simulating an error in populate_revconn_list\n", __func__, __LINE__);
+        return -1;
+    }
 
     /* This machine will attempt to start a reverse connection for any target
      * which lists it's dbname/host, dbname/tier, or dbname/cluster */
@@ -337,7 +343,7 @@ static int populate_revconn_list(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp
 }
 
 // Refresh the 'reverse connection host' list
-static int refresh_reverse_conn_hosts()
+int refresh_reverse_conn_hosts()
 {
     reverse_conn_host_tp *old_host;
     reverse_conn_host_tp *new_host;

@@ -21,6 +21,7 @@ int start_reverse_connections_manager();
 int stop_reverse_connections_manager();
 
 int dump_reverse_connection_host_list();
+int refresh_reverse_conn_hosts();
 int send_reversesql_request(const char *dbname, const char *host, const char *command);
 
 #endif /* INCLUDED_REVERSE_CONN_H */
