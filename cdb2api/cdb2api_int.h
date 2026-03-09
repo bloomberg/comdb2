@@ -32,8 +32,8 @@ extern "C" {
 #ifdef CDB2API_SERVER
 // use this one for fastsql since client_sbuf and server_sbuf are different
 int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port);
-#endif
 void cdb2_socket_pool_donate_ext(const cdb2_hndl_tp *hndl, const char *typestr, int fd, int ttl, int dbnum);
+#endif
 
 #ifdef CDB2API_SERVER
 int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
@@ -52,8 +52,9 @@ void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
-int cdb2_is_valid_int(const char *str);
 #endif
+
+int cdb2_is_valid_int(const char *str);
 
 struct cdb2_identity {
     void (*resetIdentity_start)();
