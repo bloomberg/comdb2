@@ -25,9 +25,7 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
 )
 
-# common obj files for .so/.dylib and .a
-add_definitions(-DDISABLE_HOSTADDR_CACHE)
-add_definitions(-DSBUF2_SERVER=0)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cdb2api_shared_definitions.cmake)
 
 if (DEFINED COMDB2_SEMVER AND NOT COMDB2_SEMVER STREQUAL "")
   add_definitions(-DAPI_DRIVER_VERSION=${COMDB2_SEMVER})
