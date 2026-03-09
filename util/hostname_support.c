@@ -24,7 +24,9 @@
 #include <sys/types.h>
 
 #include <hostname_support.h>
+#ifndef DISABLE_HOSTADDR_CACHE
 #include <logmsg.h>
+#endif
 
 #ifdef CDB2API_TEST
 #include <cdb2api_ssl_test.h>
