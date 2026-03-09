@@ -1485,11 +1485,7 @@ void cdb2_set_sockpool(const char *sp_path)
     SOCKPOOL_OTHER_NAME = strdup(sp_path);
 }
 
-#ifndef CDB2API_SERVER
-static
-#endif
-    int
-    cdb2_is_valid_int(const char *str)
+int cdb2_is_valid_int(const char *str)
 {
     while (*str) {
         if (!isdigit(*str))
