@@ -2527,6 +2527,43 @@ function physrep_max_pending
     done
 }
 
+# Reproduces issue where if metadb is unavailable for a period, revconn status
+# was set to 'EXITING' even though there is no thread actually running- which
+# left them permanently in the revconn list.  This test demonstrates that it no
+# longer happens.
+function physrep_revconn_populate_error
+{
+    local bogusname="bogusdb"
+    local count=0
+
+    # Add a random machine to comdb2_physrep_sources
+    add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${DBNAME} ${firstNode} $bogusname ${firstNode}
+
+    # Refresh revconn host list
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')"
+
+    # Enable physrep_fake_revconn_populate_error on one of the source nodes
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_revconn_populate_error 1"
+
+    # Refresh revconn host list again
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_revconn_populate_error 0"
+
+    # Dump revconn list
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $bogusname)
+
+    while [[ $x == *"exiting"* && count -lt 5 ]]; do
+        sleep 2
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $bogusname)
+        let count=count+1
+    done
+
+    [[ $x == *"exiting"* ]] && cleanFailExit "Revconn for bogus host $bogusname is still marked as exiting after 25 seconds: $x"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$bogusname'"
+}
+
 function announce
 {
     typeset text=$1
@@ -2714,7 +2751,7 @@ function run_tests
 
 function run_one_test
 {
-    physrep_max_pending
+    physrep_revconn_populate_error
 }
 
 run_tests
