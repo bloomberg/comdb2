@@ -529,10 +529,6 @@ static void free_hash(hash_t *h)
     hash_free(h);
 }
 
-void bdb_return_pglogs_hashtbl(hash_t *hashtbl);
-void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl);
-
-// void bdb_destory_pglogs_hashtbl(hash_t *hashtbl);
 /**
  * Free all shadows upon transaction commit/rollback
  *
@@ -544,21 +540,6 @@ int bdb_tran_free_shadows(bdb_state_type *bdb_state, tran_type *tran)
 
     if (!tran)
         return 0;
-
-    if (tran->asof_hashtbl) {
-        bdb_return_pglogs_hashtbl(tran->asof_hashtbl);
-        tran->asof_hashtbl = NULL;
-    }
-
-    if (tran->pglogs_hashtbl) {
-        bdb_return_pglogs_hashtbl(tran->pglogs_hashtbl);
-        tran->pglogs_hashtbl = NULL;
-    }
-
-    if (tran->relinks_hashtbl) {
-        bdb_return_pglogs_relink_hashtbl(tran->relinks_hashtbl);
-        tran->relinks_hashtbl = NULL;
-    }
 
     if (!tran->tables)
         return 0;

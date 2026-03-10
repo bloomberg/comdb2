@@ -1184,18 +1184,10 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
         tran->birth_lsn = tran->snapy_commit_lsn;
     }
 
-    tran->pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
-
-    tran->relinks_hashtbl =
-        hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
-
-    Pthread_mutex_init(&tran->pglogs_mutex, NULL);
-
     tran->asof_lsn.file = 0;
     tran->asof_lsn.offset = 1;
     tran->asof_ref_lsn.file = 0;
     tran->asof_ref_lsn.offset = 1;
-    tran->asof_hashtbl = NULL;
     tran->trak = trak;
 
     if (tran->tranclass == TRANCLASS_SERIALIZABLE) {
@@ -1375,14 +1367,6 @@ int llog_ltran_commit_log_wrap(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
                                u_int32_t flags, u_int64_t ltranid,
                                DB_LSN *prevllsn, u_int64_t gblcontext,
                                short isabort);
-
-void return_pglogs_queue_cursor(struct pglogs_queue_cursor *c);
-
-int free_pglogs_queue_cursors(void *obj, void *arg)
-{
-    return_pglogs_queue_cursor(obj);
-    return 0;
-}
 
 void abort_at_exit(void) 
 {
@@ -2078,12 +2062,6 @@ cleanup:
     myfree(tran->rc_list);
     myfree(tran->rc_locks);
 
-    if (tran->pglogs_queue_hash) {
-        hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_free(tran->pglogs_queue_hash);
-        tran->pglogs_queue_hash = NULL;
-    }
-
     if (tran->bkfill_txn_list)
         free(tran->bkfill_txn_list);
 
@@ -2369,12 +2347,6 @@ cleanup:
     if (tran->trak)
         logmsg(LOGMSG_USER, "TRK_TRAN: aborted %p (type=%d)\n", tran,
                 tran->tranclass);
-
-    if (tran->pglogs_queue_hash) {
-        hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_free(tran->pglogs_queue_hash);
-        tran->pglogs_queue_hash = NULL;
-    }
 
     if (tran->bkfill_txn_list)
         free(tran->bkfill_txn_list);

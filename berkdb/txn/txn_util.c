@@ -1650,8 +1650,6 @@ extern void bdb_osql_trn_repo_lock();
 extern void bdb_osql_trn_repo_unlock();
 extern int update_shadows_beforecommit(void *bdb_state, DB_LSN *last_logical_lsn,
 		unsigned long long *commit_genid, int is_master);
-extern int bdb_update_pglogs_commitlsn(void *bdb_state, void *pglogs, unsigned int nkeys,
-		DB_LSN commit_lsn);
 
 extern int __rep_lsn_cmp __P((const void *, const void *));
 
@@ -2021,9 +2019,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	}
 
 	assert(context != 0);
-
-	/* We use the (incorrect) 'prepare' lsn collecting pglogs above */
-	bdb_update_pglogs_commitlsn(dbenv->app_private, p->pglogs, p->keycnt, lsn_out);
 
 	if (F_ISSET(p, DB_DIST_UPDSHADOWS)) {
 #if defined (DEBUG_PREPARE)

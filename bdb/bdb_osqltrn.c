@@ -657,9 +657,6 @@ struct clients_relink_req {
     DB_LSN lsn;
 };
 
-int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
-                          db_pgno_t pgno, DB_LSN lsn);
-
 static pthread_mutex_t clients_update_req_lk = PTHREAD_MUTEX_INITIALIZER;
 static pool_t *clients_update_req_pool = NULL;
 struct clients_update_req *allocate_clients_update_req(void)

@@ -126,8 +126,6 @@ extern int gbl_debug_tmptbl_corrupt_mem;
 extern int gbl_utxnid_log;
 extern int gbl_serializable;
 
-extern int get_commit_lsn_map_switch_value();
-
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
 static __thread struct temptable *tmptbl_clone = NULL;

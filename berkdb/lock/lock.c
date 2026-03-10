@@ -997,8 +997,7 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	F_CLR(lidptr, DB_LOCKER_TRACK_WRITELOCKS);
 	lidptr->has_pglk_lsn = 1;
 
-	if (!txnp->pglogs_hashtbl)
-		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+    DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
 
 	assert(lidptr->ntrackedlocks != 0);
 	for (i = 0; i < lidptr->ntrackedlocks; i++) {
@@ -5978,8 +5977,6 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 			goto err;
 		}
 	}
-	if (LF_ISSET(LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PAGELOGS))
-		bdb_pglogs_key_list_init(pglogs, nkeys);
 	*keycnt = nkeys;
 	keyidx = 0;
 	for (i = 0; i < nlocks; i++) {
@@ -6126,12 +6123,6 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 					logmsg(LOGMSG_FATAL, "%s:%d keyidx = %d, nkeys = %d\n",
 						__func__, __LINE__, keyidx, nkeys);
 					abort();
-				}
-				if (LF_ISSET(LOCK_GET_LIST_GETLOCK |
-					LOCK_GET_LIST_PAGELOGS)) {
-					bdb_add_pglogs_key_list(keyidx++,
-						pglogs, lock->pgno, lock->fileid,
-						llsn, *maxlsn);
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
 					if (fp)
@@ -6453,19 +6444,6 @@ __lock_get_list_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	gbl_lock_get_list_start = 0;
 	return rc;
 }
-
-int
-lock_list_parse_pglogs(dbenv, list, maxlsn, pglogs, keycnt)
-	DB_ENV *dbenv;
-	DBT *list;
-	DB_LSN *maxlsn;
-	void **pglogs;
-	u_int32_t *keycnt;
-{
-	return __lock_list_parse_pglogs_int(dbenv, 0, LOCK_GET_LIST_PAGELOGS, 0,
-	    list, maxlsn, pglogs, keycnt, 0, NULL, NULL);
-}
-
 
 /*
  * PUBLIC: int __lock_get_list __P((DB_ENV *, u_int32_t, u_int32_t,
