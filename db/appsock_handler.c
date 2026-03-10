@@ -335,7 +335,7 @@ int set_rowlocks(void *trans, int enable)
 
     if (enable) {
         gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-        gbl_sql_tranlevel_default = gbl_snapshot_impl;
+        gbl_sql_tranlevel_default = TRANLEVEL_SNAPISOL;
     } else {
         gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
     }

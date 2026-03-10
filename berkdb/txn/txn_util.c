@@ -38,6 +38,7 @@ int osql_blkseq_unregister_cnonce(void *cnonce, int len);
 int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 
 extern int set_commit_context_prepared(unsigned long long context);
+extern int gbl_utxnid_log;
 
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
@@ -1649,8 +1650,6 @@ extern void bdb_osql_trn_repo_lock();
 extern void bdb_osql_trn_repo_unlock();
 extern int update_shadows_beforecommit(void *bdb_state, DB_LSN *last_logical_lsn,
 		unsigned long long *commit_genid, int is_master);
-extern int bdb_update_pglogs_commitlsn(void *bdb_state, void *pglogs, unsigned int nkeys,
-		DB_LSN commit_lsn);
 
 extern int __rep_lsn_cmp __P((const void *, const void *));
 
@@ -1956,7 +1955,6 @@ int __txn_abort_prepared_waiters(dbenv)
 }
 
 extern void lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc);
-extern int get_commit_lsn_map_switch_value();
 
 /* 
  * __txn_commit_recovered --
@@ -1972,7 +1970,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
-	int commit_lsn_map = get_commit_lsn_map_switch_value();
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
@@ -2022,9 +2019,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	}
 
 	assert(context != 0);
-
-	/* We use the (incorrect) 'prepare' lsn collecting pglogs above */
-	bdb_update_pglogs_commitlsn(dbenv->app_private, p->pglogs, p->keycnt, lsn_out);
 
 	if (F_ISSET(p, DB_DIST_UPDSHADOWS)) {
 #if defined (DEBUG_PREPARE)
@@ -2094,7 +2088,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	/* Update commit-lsn map */
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
-	if (commit_lsn_map) {
+	if (gbl_utxnid_log) {
 
 		if ((ret = __txn_commit_map_add_nolock(dbenv, p->utxnid, lsn_out)) != 0) {
 			logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %"PRIu64"\n", p->utxnid);

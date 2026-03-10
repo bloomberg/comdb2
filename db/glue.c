@@ -494,32 +494,6 @@ tran_type *trans_start_modsnap(struct ireq *iq, int trak)
     return out_trans;
 }
 
-tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
-                                int offset, int *error, int is_ha_retry)
-{
-    bdb_state_type *bdb_handle = thedb->bdb_env;
-    tran_type *out_trans = NULL;
-
-    *error = 0;
-
-    iq->gluewhere = "bdb_tran_begin_snapisol";
-
-    if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called with epoch=%d file=%d offset=%d\n",
-               (intptr_t)pthread_self(), __func__, epoch, file, offset);
-    }
-    out_trans = bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file,
-                                        offset, is_ha_retry);
-    iq->gluewhere = "bdb_tran_begin_snapisol done";
-
-    if (out_trans == NULL) {
-        logmsg(LOGMSG_ERROR, "*ERROR* %s:failed err %d\n", __func__, *error);
-        return NULL;
-    }
-
-    return out_trans;
-}
-
 tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
                                     int file, int offset, int *error,
                                     int is_ha_retry)
@@ -4268,7 +4242,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
             gbl_rowlocks = 1;
             gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-            gbl_sql_tranlevel_default = gbl_snapshot_impl;
+            gbl_sql_tranlevel_default = TRANLEVEL_SNAPISOL;
             logmsg(LOGMSG_INFO, "Rowlocks is *ENABLED*\n");
             break;
         case LLMETA_ROWLOCKS_DISABLED:
