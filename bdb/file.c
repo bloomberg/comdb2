@@ -126,8 +126,7 @@ extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 struct timeval last_pstack_time;
 extern int gbl_modsnap_asof;
-
-extern int get_commit_lsn_map_switch_value();
+extern int gbl_utxnid_log;
 
 #define FILENAMELEN 100
 
@@ -253,8 +252,6 @@ static int bdb_need_log_to_fulfill_log_age_requirement(int filenum)
     return 1;
 }
 
-void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum,
-                               int flags);
 void bdb_delete_timestamp_lsn(bdb_state_type *bdb_state, int32_t timestamp);
 extern pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
 extern DB_LSN bdb_gbl_recoverable_lsn;
@@ -301,14 +298,6 @@ static void bdb_checkpoint_list_delete_log(int filenum)
     bdb_gbl_recoverable_timestamp = ckp->timestamp;
 
     Pthread_mutex_unlock(&ckp_lst_mtx);
-}
-
-static void bdb_snapshot_asof_delete_log(bdb_state_type *bdb_state, int filenum,
-                                         time_t timestamp)
-{
-    bdb_checkpoint_list_delete_log(filenum);
-    bdb_delete_logfile_pglogs(bdb_state, filenum, 0);
-    bdb_delete_timestamp_lsn(bdb_state, timestamp);
 }
 
 static void bdb_modsnap_delete_log(bdb_state_type *bdb_state, int filenum,
@@ -3609,7 +3598,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     int filenum;
     int delete_adjacent;
     int ctrace_info = 0;
-    int commit_lsn_map = get_commit_lsn_map_switch_value();
 
     filenums_str[0] = 0;
 
@@ -3911,7 +3899,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
             }
 
             /* Delete transactions that committed in this file from the commit LSN map. */
-            if (commit_lsn_map) {
+            if (gbl_utxnid_log) {
                 __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, filenum);
             }
 

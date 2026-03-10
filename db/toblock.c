@@ -3078,9 +3078,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 }
             case BLOCK2_SOCK_SQL:
             case BLOCK2_RECOM:
+            case BLOCK2_SNAPISOL:
                 got_osql = 1;
                 /* fall-through */
-            case BLOCK2_SNAPISOL:
             case BLOCK2_SERIAL:
                 is_tagged = 0;
                 if (gbl_use_blkseq) {

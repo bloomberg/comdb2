@@ -39,7 +39,6 @@ extern int gbl_return_long_column_names;
 extern int gbl_typessql;
 extern int gbl_incoherent_clnt_wait;
 extern int gbl_new_leader_duration;
-extern int gbl_use_modsnap_for_snapshot;
 extern int gbl_gen_shard_verbose;
 void dump_response(const CDB2SQLRESPONSE *r);
 
@@ -1747,7 +1746,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                         rc = ii + 1;
                     } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
                         int snapshot_by_default =
-                            (clnt->dbtran.mode == TRANLEVEL_MODSNAP && gbl_sql_tranlevel_default == TRANLEVEL_MODSNAP);
+                            (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && gbl_sql_tranlevel_default == TRANLEVEL_SNAPISOL);
                         if (snapshot_by_default) {
                             logmsg(LOGMSG_DEBUG, "snapshot is on by default, use socksql instead\n");
                             clnt->dbtran.mode = TRANLEVEL_SOSQL;
@@ -1781,28 +1780,18 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                         clnt->dbtran.mode = TRANLEVEL_SOSQL;
                     } else if (strncasecmp(sqlstr, "snap", 4) == 0) {
                         sqlstr += 4;
-                        clnt->dbtran.mode = gbl_snapshot_impl;
+                        clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
                         clnt->verify_retries = 0;
                         if (clnt->hasql_on == 1) {
                             newsql_set_high_availability(clnt);
-                            logmsg(LOGMSG_ERROR, "Enabling snapshot %s isolation high availability\n",
-                                   gbl_use_modsnap_for_snapshot ? "(modsnap)" : "");
-                        }
-                    } else if (strncasecmp(sqlstr, "mod", 3) == 0) {
-                        sqlstr += 3;
-                        clnt->dbtran.mode = TRANLEVEL_MODSNAP; 
-                        clnt->verify_retries = 0;
-                        if (clnt->hasql_on == 1) {
-                            newsql_set_high_availability(clnt);
-                            logmsg(LOGMSG_ERROR, "Enabling snapshot (modsnap) isolation "
-                                                 "high availability\n");
+                            logmsg(LOGMSG_ERROR, "Enabling snapshot isolation high availability\n");
                         }
                     }
                     if (clnt->dbtran.mode == TRANLEVEL_INVALID) {
                         rc = ii + 1;
                     } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL && clnt->dbtran.maxchunksize) {
                         int snapshot_by_default =
-                            (clnt->dbtran.mode == TRANLEVEL_MODSNAP && gbl_sql_tranlevel_default == TRANLEVEL_MODSNAP);
+                            (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && gbl_sql_tranlevel_default == TRANLEVEL_SNAPISOL);
                         if (snapshot_by_default) {
                             logmsg(LOGMSG_DEBUG, "snapshot is on by default, use socksql instead\n");
                             clnt->dbtran.mode = TRANLEVEL_SOSQL;
@@ -1976,8 +1965,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->hasql_on = 1;
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-                        clnt->dbtran.mode == TRANLEVEL_SNAPISOL || 
-                        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+                        clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                         newsql_set_high_availability(clnt);
                         sql_debug_logf(clnt, __func__, __LINE__,
                                        "setting "
@@ -2587,7 +2575,7 @@ void newsql_effects(CDB2SQLRESPONSE *r, CDB2EFFECTS *e, struct sqlclntstate *cln
     r->response_type = RESPONSE_TYPE__COMDB2_INFO;
     int verify = !clnt->verifyretry_off;
     enum transaction_level mode = clnt->dbtran.mode;
-    if (verify && mode != TRANLEVEL_MODSNAP && mode != TRANLEVEL_SNAPISOL && mode != TRANLEVEL_SERIAL) {
+    if (verify && mode != TRANLEVEL_SNAPISOL && mode != TRANLEVEL_SERIAL) {
         r->error_code = -1;
         r->error_string = "Get effects not supported in transaction with verifyretry on";
         return;

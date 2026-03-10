@@ -1128,7 +1128,7 @@ static void comdb2SnapshotLsnFunc(
   struct sqlclntstate *clnt = get_sql_clnt();
   char lsn[MAX_LSN_STR];
   int sz = 0;
-  if (clnt != NULL && clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+  if (clnt != NULL && clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
     sz = snprintf(lsn, sizeof(lsn), "{%d:%d}",
              clnt->modsnap_start_lsn_file,
              clnt->modsnap_start_lsn_offset);

@@ -454,7 +454,6 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
 int gbl_sql_tranlevel_preserved = TRANLEVEL_SOSQL;
 int gbl_sql_tranlevel_default = TRANLEVEL_SOSQL;
-int gbl_snapshot_impl = TRANLEVEL_MODSNAP;
 int gbl_exit_alarm_sec = 300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
@@ -465,7 +464,6 @@ int gbl_disable_overflow_page_trace = 1;
 int gbl_simulate_rowlock_deadlock_interval = 0;
 int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
-int gbl_use_modsnap_for_snapshot = 0;
 int gbl_modsnap_asof = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
@@ -589,8 +587,6 @@ extern int bdb_osql_log_repo_init(int *bdberr);
 extern void set_stop_mempsync_thread();
 extern void bdb_prepare_close(bdb_state_type *bdb_state);
 extern void bdb_stop_recover_threads(bdb_state_type *bdb_state);
-
-extern int get_commit_lsn_map_switch_value();
 
 int gbl_use_plan = 1;
 
@@ -6458,7 +6454,7 @@ retry_tran:
     case LLMETA_ROWLOCKS_ENABLED:
     case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
         gbl_rowlocks = 1;
-        gbl_sql_tranlevel_default = gbl_snapshot_impl;
+        gbl_sql_tranlevel_default = TRANLEVEL_SNAPISOL;
     case LLMETA_ROWLOCKS_DISABLED:
         gbl_rowlocks = 0;
         gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;

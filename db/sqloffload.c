@@ -78,7 +78,6 @@ int tran2netreq(int dbtran)
         return NET_OSQL_SOCK_REQ;
 
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
         return NET_OSQL_RECOM_REQ;
 
     case TRANLEVEL_SNAPISOL:
@@ -106,11 +105,10 @@ int tran2netrpl(int dbtran)
     case TRANLEVEL_SOSQL:
         return NET_OSQL_SOCK_RPL;
 
-    case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
+    case TRANLEVEL_SNAPISOL:
         return NET_OSQL_RECOM_RPL;
 
-    case TRANLEVEL_SNAPISOL:
+    case TRANLEVEL_RECOM:
         return NET_OSQL_SNAPISOL_RPL;
 
     case TRANLEVEL_SERIAL:
@@ -429,10 +427,10 @@ int recom_abort(struct sqlclntstate *clnt)
 }
 
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
-                    char *tzname)
+                    char *tzname, int is_distributed_tran)
 {
 
-    return rese_commit(clnt, thd, tzname, OSQL_SNAPISOL_REQ, 0);
+    return rese_commit(clnt, thd, tzname, OSQL_SNAPISOL_REQ, is_distributed_tran);
 }
 
 int snapisol_abort(struct sqlclntstate *clnt)
@@ -559,14 +557,13 @@ int tran2req(int dbtran)
         return OSQL_SOCK_REQ;
 
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
         return OSQL_RECOM_REQ;
-
-    case TRANLEVEL_SNAPISOL:
-        return OSQL_SNAPISOL_REQ;
 
     case TRANLEVEL_SERIAL:
         return OSQL_SERIAL_REQ;
+
+    case TRANLEVEL_SNAPISOL:
+        return OSQL_SNAPISOL_REQ;
     }
 
     logmsg(LOGMSG_ERROR, "%s: unknown transaction mode %d\n", __func__, dbtran);

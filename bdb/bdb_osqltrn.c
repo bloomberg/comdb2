@@ -273,8 +273,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     if (!is_ha_retry)
         file = 0;
 
-    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-         shadow_tran->tranclass == TRANCLASS_SERIALIZABLE)) {
+    if (shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) {
         int behind = 0;
 
         /* Assert that we have an lsn for ha-retries */
@@ -293,7 +292,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             DB_LSN my_lsn, arg_lsn;
             uint32_t my_gen;
 
-            /* Request my startpoint */
+            /* Request my startpoint for serializable; snapshot does it
+               a lot sooner in populate_modsnap_state() */
             if (!file && (rc = request_durable_lsn_from_master(
                               bdb_state, &file, &offset, &durable_gen)) != 0) {
                 *bdberr = BDBERR_NOT_DURABLE;
@@ -485,8 +485,7 @@ int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
         {
-            assert(trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                   trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
+            assert(trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
 
             /* lock transaction mutex while registering the snapshot update */
             Pthread_mutex_lock(&trn->log_mtx);
@@ -575,8 +574,7 @@ int bdb_osql_trn_check_clients(bdb_osql_log_t *log, int *empty, int lock_repo,
 
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
         {
-            assert(trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                   trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
+            assert(trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
 
             if (bdb_osql_log_undo_required(trn->shadow_tran, log)) {
                 /* printf("XXX %p LOG %p Found %llx vs %llx\n", pthread_self(),
@@ -722,8 +720,7 @@ int bdb_osql_trn_get_oldest_asof_reflsn(DB_LSN *lsnout)
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
         {
-            assert(trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                   trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
+            assert(trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
             shadow_tran = trn->shadow_tran;
             assert(shadow_tran);
             if (shadow_tran->asof_ref_lsn.file != 0 &&
@@ -883,8 +880,7 @@ static int bdb_osql_trn_process_bfillhndl(bdb_state_type *bdb_state,
                 *bdberr);
     } else {
         do {
-            if ((trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                 trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
+            if (trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE &&
                 (!gbl_rowlocks || !bkfill_active_trans))
                 log = parse_log_for_snapisol(bdb_state, cur, &lsn,
                                              (!bkfill_active_trans) ? 2 : 1,
@@ -1013,9 +1009,8 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
         bdb_tran_open_shadow(cur->state, cur->dbnum, cur->shadow_tran, cur->idx,
                              cur->type, (type == BERKDB_SHAD_CREATE), bdberr);
 
-    /* backfill only snapshot/serializable for now */
-    if ((cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
-         cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL) &&
+    /* backfill only serializable for now */
+    if (cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE &&
         (shadcur == NULL ||
          bdb_osql_shadow_is_bkfilled(cur->ifn, bdberr) == 0)) {
         if (trn->bkfill_list.top) {
@@ -1093,8 +1088,7 @@ int bdb_oldest_active_lsn(bdb_state_type *bdb_state, void *inlsn)
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
         {
-            assert(trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                   trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
+            assert(trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
 
             if (trn->cancelled == 0) {
                 DB_LSN chklsn = trn->shadow_tran->oldest_txn_at_start.file > 0
@@ -1132,8 +1126,7 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
         {
-            assert(trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-                   trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
+            assert(trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
 
             if (trn->cancelled == 0 &&
                 log_compare(&trn->shadow_tran->birth_lsn, &lsn) < 0) {

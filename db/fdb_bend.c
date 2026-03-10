@@ -1117,7 +1117,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
     if (lvl == TRANLEVEL_SOSQL || lvl == TRANLEVEL_RECOM ||
-        lvl == TRANLEVEL_SERIAL || lvl == TRANLEVEL_SNAPISOL || lvl == TRANLEVEL_MODSNAP) {
+        lvl == TRANLEVEL_SERIAL || lvl == TRANLEVEL_SNAPISOL) {
         trans->mode = lvl;
     } else {
         trans->mode = TRANLEVEL_INVALID;

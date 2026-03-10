@@ -714,8 +714,7 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         /* Always create cur->sd for non-page order snapisol or you can lose
          * data in cursor_move_merge. */
         if (cur->shadow_tran &&
-            (cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
+            (cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
              type == BDB_OPEN_BOTH_CREATE))
             openhow = BERKDB_SHAD_CREATE;
 
@@ -761,9 +760,7 @@ bdb_cursor_ifn_t *bdb_cursor_open(
     }
 
     /* Add this to the list of cursors under this txn. */
-    if (cur->shadow_tran &&
-        (cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-         cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE)) {
+    if (cur->shadow_tran && cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) {
         listc_abl(&cur->shadow_tran->open_cursors, pcur_ifn);
     }
 
@@ -1572,62 +1569,6 @@ retrieve_logfile_pglogs(bdb_state_type *bdb_state, unsigned int filenum,
             last_logfile = filenum;
     }
     return e;
-}
-
-int bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum, int flags)
-{
-    int rc = 0, bdberr = 0, i, rtn = -1;
-    Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    if (logfile_pglogs_repo == NULL) {
-        Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
-        return rtn;
-    }
-    for (i = (flags ? filenum : first_logfile); i <= filenum; i++) {
-        struct logfile_pglogs_entry *e;
-        if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
-            Pthread_mutex_lock(&e->pglogs_lk);
-            rc = bdb_temp_table_close_cursor(bdb_state, e->pglogs_cur, &bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d error closing temp cursor %d %d\n",
-                       __func__, __LINE__, rc, bdberr);
-            }
-            e->pglogs_cur = NULL;
-            rc = bdb_temp_table_close(bdb_state, e->pglogs_tbl, &bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d error closing temp table %d %d\n",
-                       __func__, __LINE__, rc, bdberr);
-            }
-            e->pglogs_tbl = NULL;
-            Pthread_mutex_unlock(&e->pglogs_lk);
-            Pthread_mutex_destroy(&e->pglogs_lk);
-
-            Pthread_mutex_lock(&e->relinks_lk);
-            rc =
-                bdb_temp_table_close_cursor(bdb_state, e->relinks_cur, &bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d error closing temp cursor %d %d\n",
-                       __func__, __LINE__, rc, bdberr);
-            }
-            e->relinks_cur = NULL;
-            rc = bdb_temp_table_close(bdb_state, e->relinks_tbl, &bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d error closing temp table %d %d\n",
-                       __func__, __LINE__, rc, bdberr);
-            }
-            e->relinks_tbl = NULL;
-            Pthread_mutex_unlock(&e->relinks_lk);
-            Pthread_mutex_destroy(&e->relinks_lk);
-
-            hash_del(logfile_pglogs_repo, e);
-            free(e);
-
-            logmsg(LOGMSG_INFO, "%s: deleted filenum %d\n", __func__, filenum);
-            rtn = 0;
-        }
-    }
-    first_logfile = (flags ? first_logfile : (filenum + 1));
-    Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
-    return rtn;
 }
 
 int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
@@ -2900,9 +2841,7 @@ static int bdb_cursor_set_null_blob_in_shadows(bdb_cursor_ifn_t *pcur_ifn,
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
     int rc = 0;
 
-    if (!cur->shadow_tran ||
-        (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
-         cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE))
+    if (!cur->shadow_tran || cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE)
         return 0;
     rc = bdb_osql_set_null_blob_in_shadows(cur, cur->shadow_tran->osql, genid,
                                            dbnum, blobno, bdberr);
@@ -5414,9 +5353,7 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
         free(cur->addcur_odh);
 
     /* Remove from shadow-tran's open cursor list. */
-    if (cur->shadow_tran &&
-        (cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-         cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE)) {
+    if (cur->shadow_tran && cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) {
         listc_rfl(&cur->shadow_tran->open_cursors, pcur_ifn);
     }
 
@@ -6595,17 +6532,14 @@ static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
     int dirty_shadow = 0;
     DB_LSN upto;
 
-    /* here, for snapshot/serializable sessions, we need to resync shadows. */
-    if (!cur->shadow_tran ||
-        (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
-         cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE)) {
+    /* here, for serializable sessions, we need to resync shadows. */
+    if (!cur->shadow_tran || cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
         if (cur->trak) {
             if (!cur->shadow_tran) {
                 logmsg(LOGMSG_USER, "Cur %p skipping update shadows because "
                                 "shadow_tran is NULL\n",
                         cur);
-            } else if (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
-                       cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
+            } else if (cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
                 logmsg(LOGMSG_USER, "Cur %p skipping update shadows because it is "
                                 "the wrong tranclass (%d)\n",
                         cur, cur->shadow_tran->tranclass);
@@ -6884,17 +6818,14 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
 
     cur->upd_shadows_count = 0;
 
-    /* here, for snapshot/serializable sessions, we need to resync shadows. */
-    if (!cur->shadow_tran ||
-        (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
-         cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE)) {
+    /* here, for serializable sessions, we need to resync shadows. */
+    if (!cur->shadow_tran || cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
         if (cur->trak) {
             if (!cur->shadow_tran) {
                 logmsg(LOGMSG_USER, "Cur %p skipping update shadows because "
                                 "shadow_tran is NULL\n",
                         cur);
-            } else if (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
-                       cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
+            } else if (cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
                 logmsg(LOGMSG_USER,
                        "Cur %p skipping update shadows because it is "
                        "the wrong tranclass (%d)\n",

@@ -120,8 +120,7 @@ typedef enum {
     /* TRANCLASS_QUERYISOLATION = 6, */
     TRANCLASS_LOGICAL_NOROWLOCKS = 7, /* used in fetch.c for table locks */
     TRANCLASS_SOSQL = 8,
-    TRANCLASS_SNAPISOL = 9,
-    TRANCLASS_MODSNAP = 10
+    TRANCLASS_SNAPISOL = 9
 } tranclass_type;
 
 #define PAGE_KEY                                                               \

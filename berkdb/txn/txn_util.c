@@ -38,6 +38,7 @@ int osql_blkseq_unregister_cnonce(void *cnonce, int len);
 int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 
 extern int set_commit_context_prepared(unsigned long long context);
+extern int gbl_utxnid_log;
 
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
@@ -1956,7 +1957,6 @@ int __txn_abort_prepared_waiters(dbenv)
 }
 
 extern void lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc);
-extern int get_commit_lsn_map_switch_value();
 
 /* 
  * __txn_commit_recovered --
@@ -1972,7 +1972,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
-	int commit_lsn_map = get_commit_lsn_map_switch_value();
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
@@ -2094,7 +2093,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	/* Update commit-lsn map */
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
-	if (commit_lsn_map) {
+	if (gbl_utxnid_log) {
 
 		if ((ret = __txn_commit_map_add_nolock(dbenv, p->utxnid, lsn_out)) != 0) {
 			logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %"PRIu64"\n", p->utxnid);
