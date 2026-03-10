@@ -1088,7 +1088,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran->flags |= (inflags & (BDB_TRAN_NOLOG | BDB_TRAN_RECOVERY));
 
     switch (tran->tranclass) {
-    case TRANCLASS_SNAPISOL:
     case TRANCLASS_SERIALIZABLE:
         /* THIS HAS TO BE DONE AT THE MOMENT OF REGISTRATION 
            tran->startgenid = bdb_get_commit_genid(bdb_state); */ /*get_gblcontext(
@@ -1097,7 +1096,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
     case TRANCLASS_SOSQL:
     case TRANCLASS_READCOMMITTED:
-    case TRANCLASS_MODSNAP:
+    case TRANCLASS_SNAPISOL:
         break;
 
     case TRANCLASS_PHYSICAL:
@@ -1185,22 +1184,13 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
         tran->birth_lsn = tran->snapy_commit_lsn;
     }
 
-    tran->pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
-
-    tran->relinks_hashtbl =
-        hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
-
-    Pthread_mutex_init(&tran->pglogs_mutex, NULL);
-
     tran->asof_lsn.file = 0;
     tran->asof_lsn.offset = 1;
     tran->asof_ref_lsn.file = 0;
     tran->asof_ref_lsn.offset = 1;
-    tran->asof_hashtbl = NULL;
     tran->trak = trak;
 
-    if (tran->tranclass == TRANCLASS_SNAPISOL ||
-        tran->tranclass == TRANCLASS_SERIALIZABLE) {
+    if (tran->tranclass == TRANCLASS_SERIALIZABLE) {
         /* register transaction so we start receiving log undos */
         tran->osql =
             bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
@@ -1355,16 +1345,7 @@ tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state, int trak,
 tran_type *bdb_tran_begin_modsnap(bdb_state_type *bdb_state, int trak,
                                        int *bdberr)
 {
-    return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_MODSNAP, trak,
-                                     bdberr, 0, 0, 0, 0);
-}
-
-tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
-                                   int *bdberr, int epoch, int file, int offset,
-                                   int is_ha_retry)
-{
-    return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SNAPISOL, trak,
-                                     bdberr, epoch, file, offset, is_ha_retry);
+    return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SNAPISOL, trak, bdberr, 0, 0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
@@ -1385,14 +1366,6 @@ int llog_ltran_commit_log_wrap(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
                                u_int32_t flags, u_int64_t ltranid,
                                DB_LSN *prevllsn, u_int64_t gblcontext,
                                short isabort);
-
-void return_pglogs_queue_cursor(struct pglogs_queue_cursor *c);
-
-int free_pglogs_queue_cursors(void *obj, void *arg)
-{
-    return_pglogs_queue_cursor(obj);
-    return 0;
-}
 
 void abort_at_exit(void) 
 {
@@ -1586,7 +1559,6 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         }
         break;
 
-    case TRANCLASS_SNAPISOL:
     case TRANCLASS_SERIALIZABLE:
         rc = bdb_osql_trn_unregister(tran->osql, bdberr);
         if (rc)
@@ -1594,7 +1566,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     /* fallthrough */
     case TRANCLASS_SOSQL:
     case TRANCLASS_READCOMMITTED:
-    case TRANCLASS_MODSNAP:
+    case TRANCLASS_SNAPISOL:
         bdb_tran_free_shadows(bdb_state, tran);
         break;
 
@@ -2089,12 +2061,6 @@ cleanup:
     myfree(tran->rc_list);
     myfree(tran->rc_locks);
 
-    if (tran->pglogs_queue_hash) {
-        hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_free(tran->pglogs_queue_hash);
-        tran->pglogs_queue_hash = NULL;
-    }
-
     if (tran->bkfill_txn_list)
         free(tran->bkfill_txn_list);
 
@@ -2220,8 +2186,6 @@ int bdb_tran_commit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_READCOMMITTED)
         has_bdblock = 0;
-    else if (tran->tranclass == TRANCLASS_MODSNAP)
-        has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_SNAPISOL)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_SERIALIZABLE)
@@ -2294,7 +2258,6 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
         }
         break;
 
-    case TRANCLASS_SNAPISOL:
     case TRANCLASS_SERIALIZABLE:
         /* Clean up shadow indices if any. */
         rc = bdb_osql_trn_unregister(tran->osql, bdberr);
@@ -2303,7 +2266,7 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
     /* fallthrough */
     case TRANCLASS_SOSQL:
     case TRANCLASS_READCOMMITTED:
-    case TRANCLASS_MODSNAP:
+    case TRANCLASS_SNAPISOL:
         bdb_tran_free_shadows(bdb_state, tran);
         break;
 
@@ -2384,12 +2347,6 @@ cleanup:
         logmsg(LOGMSG_USER, "TRK_TRAN: aborted %p (type=%d)\n", tran,
                 tran->tranclass);
 
-    if (tran->pglogs_queue_hash) {
-        hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_free(tran->pglogs_queue_hash);
-        tran->pglogs_queue_hash = NULL;
-    }
-
     if (tran->bkfill_txn_list)
         free(tran->bkfill_txn_list);
 
@@ -2421,8 +2378,6 @@ int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
     else if (tran->tranclass == TRANCLASS_SOSQL)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_READCOMMITTED)
-        has_bdblock = 0;
-    else if (tran->tranclass == TRANCLASS_MODSNAP)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_SNAPISOL)
         has_bdblock = 0;

@@ -147,6 +147,8 @@ function run_isolated_test
 
 truncate
 populate
+# This test begins a PIT txn 10 seconds in the past .. make sure that it is possible
+sleep 11
 run_tests
 #run_isolated_test
 echo "Success"

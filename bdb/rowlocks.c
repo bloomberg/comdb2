@@ -2674,7 +2674,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
         break;
 
     case DB_TXN_SNAPISOL:
-        if (bdb_state->attr->snapisol) {
+        if (bdb_state->attr->llog) {
             if (!args->isabort) {
                 rc = update_shadows_beforecommit(bdb_state, lprev, commit_genid,
                                                  0);
@@ -3490,40 +3490,6 @@ done:
     free(diff);
 
     return rc;
-}
-
-int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
-                                 DB_LSN *oldest_ltran)
-{
-    DB_LTRAN *ltranlist = NULL;
-    u_int32_t ltrancount;
-    DB_LSN oldest = {0};
-    int idx, rc;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                               &ltrancount)) != 0)
-        abort();
-
-    if (ltrancount == 0) {
-        *ltran_count = ltrancount;
-        free(ltranlist);
-        return 0;
-    }
-
-    for (idx = 0; idx < ltrancount; idx++) {
-        if (oldest.file == 0 ||
-            log_compare(&ltranlist[idx].begin_lsn, &oldest) < 0)
-            oldest = ltranlist[idx].begin_lsn;
-    }
-
-    free(ltranlist);
-
-    *oldest_ltran = oldest;
-    *ltran_count = ltrancount;
-    return 0;
 }
 
 int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
