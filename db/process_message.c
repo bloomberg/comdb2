@@ -92,12 +92,10 @@ extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_use_modsnap_for_snapshot;
 extern int gbl_force_incoherent;
 extern int gbl_force_incoherent_master;
+extern int gbl_utxnid_log;
 extern struct thdpool *gbl_verify_thdpool;
-
-extern int get_commit_lsn_map_switch_value();
 
 void debug_bulktraverse_data(char *tbl);
 
@@ -5159,7 +5157,7 @@ clipper_usage:
         else
             logmsg(LOGMSG_USER, "Verify threadpool is not active\n");
     } else if (tokcmp(tok, ltok, "clm_delete_logfile") == 0) {
-        if (get_commit_lsn_map_switch_value()) {
+        if (gbl_utxnid_log) {
             int del_log;
 
             tok = segtok(line, lline, &st, &ltok);
@@ -5173,11 +5171,6 @@ clipper_usage:
         } else {
             logmsg(LOGMSG_USER, "Commit LSN map is not active\n");
         }
-    } else if (tokcmp(tok, ltok, "do_not_use_modsnap_for_snapshot") == 0) {
-        gbl_use_modsnap_for_snapshot = 0;
-        if (gbl_sql_tranlevel_default == gbl_snapshot_impl)
-            gbl_sql_tranlevel_default = TRANLEVEL_SNAPISOL;
-        gbl_snapshot_impl = TRANLEVEL_SNAPISOL;
     } else if (tokcmp(tok, ltok, "del_llmeta_comdb2_seqno") == 0) {
         bdb_del_seqno(NULL);
     } else if (tokcmp(tok, ltok, "clear_sc_history") == 0) {

@@ -1112,8 +1112,6 @@ struct __db_txn {
 	DB_LSN   we_start_at_this_lsn;	/* hard to pinpoint the
 					 * existing startlsn usage, so
 					 * this is a new one */
-	void			*pglogs_hashtbl;
-	pthread_mutex_t pglogs_mutex;
 	u_int64_t utxnid;
 	char *dist_txnid;
 	char *coordinator_name;
@@ -3305,7 +3303,6 @@ int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
 
 void __log_txn_lsn(DB_ENV *, DB_LSN *, u_int32_t *, u_int32_t *);
 
-int __recover_logfile_pglogs(DB_ENV *, void *);
 int normalize_rectype(u_int32_t* rectype);
 
 int bless_btree(char *input_file, char *output_file);

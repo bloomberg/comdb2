@@ -3421,6 +3421,11 @@ int osql_comm_init(struct dbenv *dbenv)
     net_register_handler(tmp->handle_sibling, NET_OSQL_SIGNAL, "osql_signal",
                          net_sorese_signal);
 
+    net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_REQ, "osql_snapisol_req", net_snapisol_req);
+    net_register_handler(
+        tmp->handle_sibling, NET_OSQL_SNAPISOL_RPL, "osql_snapisol_rpl",
+        (void (*)(void *, void *, char *, struct interned_string *, int, void *, int, uint8_t))net_osql_rpl);
+
     net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_REQ,
                          "osql_recom_req", net_recom_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_RPL,
@@ -3429,12 +3434,6 @@ int osql_comm_init(struct dbenv *dbenv)
 
     net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL,
                          "hbeat_sql", net_osql_heartbeat);
-
-    net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_REQ,
-                         "osql_snapisol_req", net_snapisol_req);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_RPL,
-                         "osql_snapisol_rpl",
-                         (void (*)(void*,void*,char*,struct interned_string*,int,void*,int,uint8_t))net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_REQ,
                          "osql_serial_req", net_serial_req);
@@ -3461,17 +3460,16 @@ int osql_comm_init(struct dbenv *dbenv)
     net_register_handler(tmp->handle_sibling, NET_OSQL_SIGNAL_UUID,
                          "osql_signal_uuid", net_sorese_signal);
 
-    net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_REQ_UUID,
-                         "osql_recom_req_uuid", net_recom_req);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_RPL_UUID,
-                         "osql_recom_rpl_uuid",
-                         (void (*)(void*,void*,char*,struct interned_string*,int,void*,int,uint8_t))net_osql_rpl);
-
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_REQ_UUID,
                          "osql_snapisol_req_uuid", net_snapisol_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_RPL_UUID,
                          "osql_snapisol_rpl_uuid",
                          (void (*)(void*,void*,char*,struct interned_string*,int,void*,int,uint8_t))net_osql_rpl);
+
+    net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_REQ_UUID, "osql_recom_req_uuid", net_recom_req);
+    net_register_handler(
+        tmp->handle_sibling, NET_OSQL_RECOM_RPL_UUID, "osql_recom_rpl_uuid",
+        (void (*)(void *, void *, char *, struct interned_string *, int, void *, int, uint8_t))net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_REQ_UUID,
                          "osql_serial_req_uuid", net_serial_req);
@@ -3798,12 +3796,12 @@ static int osql_net_type_to_net_uuid_type(int type)
         return NET_OSQL_SIGNAL_UUID;
     case NET_OSQL_RECOM_REQ:
         return NET_OSQL_RECOM_REQ_UUID;
-    case NET_OSQL_RECOM_RPL:
-        return NET_OSQL_RECOM_RPL_UUID;
     case NET_OSQL_SNAPISOL_REQ:
         return NET_OSQL_SNAPISOL_REQ_UUID;
     case NET_OSQL_SNAPISOL_RPL:
         return NET_OSQL_SNAPISOL_RPL_UUID;
+    case NET_OSQL_RECOM_RPL:
+        return NET_OSQL_RECOM_RPL_UUID;
     case NET_OSQL_SERIAL_REQ:
         return NET_OSQL_SERIAL_REQ_UUID;
     case NET_OSQL_SERIAL_RPL:
