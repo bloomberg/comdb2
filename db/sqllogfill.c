@@ -328,7 +328,20 @@ static void print_record_info(const char *prefix, const char *lsn)
 
 static inline int gen_okay(bdb_state_type *bdb_state, int64_t recgen, u_int32_t mygen)
 {
-    return recgen <= mygen;
+    if (recgen > mygen) {
+        static int64_t cnt = 0;
+        static int lastprint = 0;
+        cnt++;
+        if (gbl_debug_sql_logfill) {
+            int now = comdb2_time_epoch();
+            if (now - lastprint > 0) {
+                logmsg(LOGMSG_USER, "%s: recgen > mygen: recgen=%" PRId64 " mygen=%u cnt=%" PRId64 "\n", __func__,
+                       recgen, mygen, cnt);
+                lastprint = now;
+            }
+        }
+    }
+    return 1;
 }
 
 static int apply_record(bdb_state_type *bdb_state, const char *lsn, void *blob, int blob_len, int64_t genp,
@@ -698,7 +711,7 @@ static void *sql_apply_thread(void *arg)
             BDB_READLOCK(__func__);
             u_int32_t gen;
             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
-            if (copy.gen == gen && (copy.recgen == 0 || gen >= copy.recgen)) {
+            if (copy.gen == gen && (copy.recgen == 0 || gen_okay(bdb_state, copy.recgen, gen))) {
                 rep_apply_caller = "sqllogfill-apply-thread";
                 bdb_state->dbenv->apply_log(bdb_state->dbenv, copy.file, copy.offset, copy.rectype, copy.blob,
                                             copy.blob_len);
