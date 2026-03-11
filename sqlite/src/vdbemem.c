@@ -1726,7 +1726,10 @@ static int valueFromFunction(
   ctx.pOut = pVal;
   ctx.pFunc = pFunc;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ctx.pVdbe = db->pVdbe;
+  /* certain functions save info in pVdbe, and we need to pass that along so that
+   * along; this is used when we read from stat4 and evaluate functions 
+   */
+  func_needs_vdbe(&ctx, pFunc, db->pVdbe);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pFunc->xSFunc(&ctx, nVal, apVal);
   if( ctx.isError ){
