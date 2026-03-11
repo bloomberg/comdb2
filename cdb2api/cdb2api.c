@@ -6928,13 +6928,14 @@ void cdb2_set_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 1;
 }
-#endif
 
-#ifdef CDB2API_TEST
 void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl)
 {
     hndl->debug_trace = 0;
 }
+#endif
+
+#ifdef CDB2API_TEST
 
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out)
 {

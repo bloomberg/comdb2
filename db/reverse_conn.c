@@ -264,6 +264,49 @@ int gbl_reverse_hosts_v2 = 0;
 extern int gbl_altmetadb_count;
 int get_alt_metadb_hndl(cdb2_hndl_tp **hndl, int index);
 int gbl_physrep_fake_revconn_populate_error = 0;
+int gbl_physrep_fake_revconn_populate_error_once = 0;
+
+static int process_revconn_records(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp *new_reverse_conn_hosts)
+{
+    int rc;
+    while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
+        char *dbname = (char *)cdb2_column_value(metadb, 0);
+        char *host = (char *)cdb2_column_value(metadb, 1);
+        char **class_mach_list = NULL;
+        const char **cluster_mach_list = NULL;
+        int count = 0;
+
+        if (is_valid_mach_class(host)) {
+            if (class_machs(dbname, host, &count, &class_mach_list) == 0) {
+                /* Search for hosts */
+                int add_error = 0;
+                for (int i = 0; i < count; i++) {
+                    if (!add_error) {
+                        add_error += add_reverse_host(dbname, class_mach_list[i], new_reverse_conn_hosts);
+                    }
+                    free(class_mach_list[i]);
+                }
+                free(class_mach_list);
+                if (add_error) {
+                    return 1;
+                }
+            }
+        } else if (get_cluster_machs(host, &count, &cluster_mach_list) == 0) {
+            for (int i = 0; i < count; i++) {
+                if (add_reverse_host(dbname, cluster_mach_list[i], new_reverse_conn_hosts) != 0) {
+                    return 1;
+                }
+            }
+        } else if (add_reverse_host(dbname, host, new_reverse_conn_hosts) != 0) {
+            return 1;
+        }
+
+        if (gbl_revsql_debug == 1) {
+            revconn_logmsg(LOGMSG_USER, "%s:%d Adding %s/%s to revconn list\n", __func__, __LINE__, dbname, host);
+        }
+    }
+    return 0;
+}
 
 static int populate_revconn_list(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp *new_reverse_conn_hosts)
 {
@@ -298,48 +341,34 @@ static int populate_revconn_list(cdb2_hndl_tp *metadb, reverse_conn_host_list_tp
         cdb2_set_debug_trace(metadb);
     }
 
-    if ((rc = cdb2_run_statement(metadb, cmd)) == CDB2_OK) {
-        while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
-            char *dbname = (char *)cdb2_column_value(metadb, 0);
-            char *host = (char *)cdb2_column_value(metadb, 1);
-            char **class_mach_list = NULL;
-            const char **cluster_mach_list = NULL;
-            int count = 0;
-
-            if (is_valid_mach_class(host)) {
-                if (class_machs(dbname, host, &count, &class_mach_list) == 0) {
-                    /* Search for hosts */
-                    int add_error = 0;
-                    for (int i = 0; i < count; i++) {
-                        if (!add_error) {
-                            add_error += add_reverse_host(dbname, class_mach_list[i], new_reverse_conn_hosts);
-                        }
-                        free(class_mach_list[i]);
-                    }
-                    free(class_mach_list);
-                    if (add_error) {
-                        return 1;
-                    }
-                }
-            } else if (get_cluster_machs(host, &count, &cluster_mach_list) == 0) {
-                for (int i = 0; i < count; i++) {
-                    if (add_reverse_host(dbname, cluster_mach_list[i], new_reverse_conn_hosts) != 0) {
-                        return 1;
-                    }
-                }
-            } else if (add_reverse_host(dbname, host, new_reverse_conn_hosts) != 0) {
-                return 1;
-            }
-
-            if (gbl_revsql_debug == 1) {
-                revconn_logmsg(LOGMSG_USER, "%s:%d Adding %s/%s to revconn list\n", __func__, __LINE__, dbname, host);
-            }
-        }
+    // Inject fake error on first attempt if tunable is enabled
+    if (gbl_physrep_fake_revconn_populate_error_once) {
+        logmsg(LOGMSG_INFO, "%s:%d Debug: Simulating cdb2_run_statement failure (one-time)\n", __func__, __LINE__);
+        gbl_physrep_fake_revconn_populate_error_once = 0;
+        rc = -1; // Simulate failure
     } else {
-        logmsg(LOGMSG_ERROR, "%s:%d Failed to run statement '%s' (rc: %d)\n", __func__, __LINE__, cmd, rc);
-        return rc;
+        rc = cdb2_run_statement(metadb, cmd);
     }
-    return 0;
+
+    if (rc == CDB2_OK) {
+        return process_revconn_records(metadb, new_reverse_conn_hosts);
+    }
+
+    // First attempt failed - retry with debug enabled for better diagnostics
+    logmsg(LOGMSG_ERROR, "%s:%d Failed to run statement '%s' (rc: %d), retrying with debug enabled\n", __func__,
+           __LINE__, cmd, rc);
+
+    cdb2_set_debug_trace(metadb);
+    rc = cdb2_run_statement(metadb, cmd);
+    cdb2_unset_debug_trace(metadb);
+
+    if (rc == CDB2_OK) {
+        logmsg(LOGMSG_ERROR, "%s:%d Statement succeeded on retry with debug enabled\n", __func__, __LINE__);
+        return process_revconn_records(metadb, new_reverse_conn_hosts);
+    }
+
+    logmsg(LOGMSG_ERROR, "%s:%d Statement also failed on retry with debug enabled (rc: %d)\n", __func__, __LINE__, rc);
+    return rc;
 }
 
 // Refresh the 'reverse connection host' list

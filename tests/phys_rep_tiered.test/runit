@@ -2564,6 +2564,62 @@ function physrep_revconn_populate_error
     $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$bogusname'"
 }
 
+# Tests the debug retry logic: when populate_revconn_list fails, it should
+# automatically retry with debug enabled. This test uses a one-time failure
+# to verify that the retry succeeds and the revconn entry is added.
+function physrep_revconn_populate_retry_with_debug
+{
+    local bogusname="retrydb"
+    local count=0
+
+    # Add a database to comdb2_physrep_sources
+    add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${DBNAME} ${firstNode} $bogusname ${firstNode}
+
+    # Enable the one-time failure tunable (will fail once, then succeed on retry)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_revconn_populate_error_once 1"
+
+    # Refresh revconn host list - this should fail once, log the retry, then succeed
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')")
+
+    # Wait a bit for the revconn worker to spawn and logs to be written
+    sleep 2
+
+    # Verify that the fake error was injected
+    echo "$x" | egrep  "Simulating cdb2_run_statement failure \(one-time\)" > /dev/null
+    if [[ $? -ne 0 ]]; then
+        cleanFailExit "Expected fake error injection message not found in output"
+    fi
+
+    # Verify that the "retrying with debug enabled" message appears in the log
+    echo "$x" | egrep "retrying with debug enabled" > /dev/null
+    if [[ $? -ne 0 ]]; then
+        cleanFailExit "Expected 'retrying with debug enabled' message not found in output"
+    fi
+
+    # Verify that the "Statement succeeded on retry" message appears in the log
+    echo "$x" | egrep "Statement succeeded on retry with debug enabled" > /dev/null
+    if [[ $? -ne 0 ]]; then
+        cleanFailExit "Expected 'Statement succeeded on retry with debug enabled' message not found in output"
+    fi
+
+    echo "Found expected debug retry messages in log"
+
+    # Dump revconn list and verify the entry was successfully added
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $bogusname)
+
+    # The entry should be in "new" or "running" state (not missing, not exiting)
+    if [[ -z "$x" ]]; then
+        cleanFailExit "Revconn for $bogusname is missing - retry with debug failed"
+    fi
+
+    [[ $x == *"exiting"* ]] && cleanFailExit "Revconn for $bogusname is marked as exiting - should be running after successful retry: $x"
+
+    echo "Successfully verified debug retry logic: $bogusname is in revconn list with state: $x"
+
+    # Clean up
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$bogusname'"
+}
+
 function announce
 {
     typeset text=$1
@@ -2747,11 +2803,22 @@ function run_tests
     testcase_preamble $testcase
     physrep_max_pending
     testcase_finish $testcase
+
+    testcase="physrep_revconn_populate_error"
+    testcase_preamble $testcase
+    physrep_revconn_populate_error
+    testcase_finish $testcase
+
+    testcase="physrep_revconn_populate_retry_with_debug"
+    testcase_preamble $testcase
+    physrep_revconn_populate_retry_with_debug
+    testcase_finish $testcase
 }
 
 function run_one_test
 {
     physrep_revconn_populate_error
+    physrep_revconn_populate_retry_with_debug
 }
 
 run_tests
