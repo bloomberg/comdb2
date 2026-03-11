@@ -1023,6 +1023,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 extern int gbl_fullrecovery;
 int gbl_endianize_locklist = 1;
+int gbl_emit_gen_commits = 1;
 
 /*
  * __txn_commit --
@@ -1131,7 +1132,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	}
 
     /* don't let full recovery write a (higher) generation: it will force this newly-recovered node to be master on the next election */
-	elect_highest_committed_gen = !gbl_fullrecovery;
+	elect_highest_committed_gen = (!gbl_fullrecovery && gbl_emit_gen_commits);
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
