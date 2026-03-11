@@ -125,7 +125,7 @@ extern struct interned_string *gbl_myhostname_interned;
 extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 struct timeval last_pstack_time;
-extern int gbl_modsnap_asof;
+extern int gbl_modsnap;
 extern int gbl_utxnid_log;
 
 #define FILENAMELEN 100
@@ -3871,7 +3871,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
                 break;
             }
 
-            if (gbl_modsnap_asof && bdb_need_log_to_fulfill_log_age_requirement(filenum)) {
+            if (gbl_modsnap && bdb_need_log_to_fulfill_log_age_requirement(filenum)) {
                 Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
                 if (bdb_state->attr->debug_log_deletion)
                     logmsg(LOGMSG_USER, "%s: not ok to delete log %s, log file needed "
@@ -3894,7 +3894,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
              * get rid of the new snapshot temptables. We do not need to keep those
              * around if we're only holding log files for other replicants to recover.
              */
-            if (filenum <= local_lowfilenum && gbl_modsnap_asof) {
+            if (filenum <= local_lowfilenum && gbl_modsnap) {
                 bdb_modsnap_delete_log(bdb_state, filenum, logfile_stats.st_mtime);
             }
 
