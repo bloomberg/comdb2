@@ -52,6 +52,7 @@ void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
+void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl);
 #endif
 
 int cdb2_is_valid_int(const char *str);
