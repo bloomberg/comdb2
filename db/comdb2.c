@@ -454,7 +454,7 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
 int gbl_sql_tranlevel_preserved = TRANLEVEL_SOSQL;
 int gbl_sql_tranlevel_default = TRANLEVEL_SOSQL;
-int gbl_snapshot_impl = TRANLEVEL_SNAPISOL;
+int gbl_snapshot_impl = TRANLEVEL_MODSNAP;
 int gbl_exit_alarm_sec = 300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
