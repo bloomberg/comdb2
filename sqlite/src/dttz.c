@@ -84,6 +84,12 @@ void register_date_functions(sqlite3 * db) {
     }
 }
 
+void func_needs_vdbe(sqlite3_context *context, FuncDef *pFunc, Vdbe *pVdbe)
+{
+    if (pFunc->xSFunc == currentTS || pFunc->xSFunc == nowFunc || pFunc->xSFunc == nextSequence)
+        context->pVdbe = pVdbe;
+}
+
 static int _convMem2ClientDatetime(Mem *pMem, void *out, int outlen,
         int *outdtsz, int isstring)
 {

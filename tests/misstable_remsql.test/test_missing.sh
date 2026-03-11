@@ -13,6 +13,9 @@ a_cdb2config=$4
 a_dbdir=$5
 a_testdir=$6
 
+#TEST1 checking for missed table followed by good tables
+echo "TEST1 checking for missed table followed by good tables"
+
 output=run.out
 
 REM_CDB2_OPTIONS="--cdb2cfg ${a_remcdb2config}"
@@ -51,7 +54,6 @@ cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remd
 cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 
-
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
@@ -74,7 +76,8 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    exit 1
 fi
 
-#TEST2 start by accessing a missing table, followed by good tables
+#TEST2  following test one, again try to access a missing table, followed by good tables
+echo "TEST2  following test one, again try to access a missing table, followed by good tables"
 
 output=run.2.out
 
@@ -109,6 +112,7 @@ cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select dbname, tablename, in
 sed "s/dorintdb/${a_remdbname}/g" output_2.log > output_2.log.actual
 
 # validate results 
+
 testcase_output=$(cat $output)
 expected_output=$(cat output_2.log.actual)
 if [[ "$testcase_output" != "$expected_output" ]]; then
@@ -121,6 +125,45 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    echo "> diff ${PWD}/{output_2.log.actual,$output}"
    echo " "
    diff output_2.log.actual $output
+   echo " "
+
+   # quit
+   exit 1
+fi
+
+#TEST3  check that json_extract works - patch for function context
+echo "TEST3  check that json_extract works - patch for function context"
+
+output=run.3.out
+
+cdb2sql ${REM_CDB2_OPTIONS} $a_remdbname default "analyze t" > $output 2>&1
+
+echo cdb2sql ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t where json_extract( '{\"bb\":123}', '$.bb') = id"
+cdb2sql ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t where json_extract( '{\"bb\":123}', '$.bb') = id" > $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t where json_extract( '{\"bb\":123}', '$.bb' ) = id"
+
+if (( $? != 0 )) ; then
+    echo "Failure: select exit code $?"
+    exit 1
+fi
+
+#convert the table to actual dbname
+sed "s/dorintdb/${a_remdbname}/g" output_3.log > output_3.log.actual
+
+# validate results 
+
+testcase_output=$(cat $output)
+expected_output=$(cat output_3.log.actual)
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+   # print message 
+   echo "  ^^^^^^^^^^^^"
+   echo "The above testcase (${testcase}) has failed!!!" 
+   echo " "
+   echo "Use 'diff <expected-output> <my-output>' to see why:"
+   echo "> diff ${PWD}/{output_2.log.actual,$output}"
+   echo " "
+   diff output_3.log.actual $output
    echo " "
 
    # quit

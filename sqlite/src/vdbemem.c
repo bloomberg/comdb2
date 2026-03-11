@@ -1726,7 +1726,15 @@ static int valueFromFunction(
   ctx.pOut = pVal;
   ctx.pFunc = pFunc;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ctx.pVdbe = db->pVdbe;
+  /* Certain comdb2 functions save info in pVdbe, and we need set the pVdbe
+   * pointer in the function context.
+   * Example: now() needs the the default precision to work.
+   * Sqlite json on the other hand expectgs db pVdbe pointer to be NULL
+   * as it is using it to store internal json info. 
+   * Below function sets pVdbe in the function context only for comdb2
+   * variants that requires it.
+   */
+  func_needs_vdbe(&ctx, pFunc, db->pVdbe);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pFunc->xSFunc(&ctx, nVal, apVal);
   if( ctx.isError ){
