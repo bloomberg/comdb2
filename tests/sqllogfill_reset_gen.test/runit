@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+cnt=$(echo $CLUSTER | wc -w)
+
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    echo "This test requires a clustered installation of at least 3 nodes"
+    exit 0
+fi
+
+function get_log_file {
+    local master=$(get_master)
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $db --host $master "exec procedure sys.cmd.send('bdb cluster')" 2>/dev/null | grep "MASTER" | awk '{print $7}' | cut -d':' -f1
+}
+
+function do_writes {
+    # Get initial log file
+    local start_logfile=$(get_log_file)
+
+    while [[ -z "$start_logfile" ]]; do
+        echo "Waiting for log file to be available..."
+        sleep 1
+        start_logfile=$(get_log_file)
+    done
+
+    echo "Inserting records until log advances (starting at logfile $start_logfile)"
+
+    # Insert records in batches until log file advances
+    local batch_size=1000
+    local total_inserted=0
+    local current_logfile=$start_logfile
+
+    while [[ "$current_logfile" == "$start_logfile" ]]; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "insert into t1 select value, value from generate_series(1, $batch_size)" >/dev/null 2>&1
+        total_inserted=$((total_inserted + batch_size))
+        current_logfile=$(get_log_file)
+    done
+
+    echo "  Log file advanced from $start_logfile to $current_logfile after $total_inserted inserts"
+}
+
+function force_checkpoint {
+    local node=$1
+    echo "Forcing checkpoint on $node"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db @$node "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
+}
+
+function check_ignore_message {
+    echo "Checking logs for 'recgen > mygen' message"
+    local found=0
+    for node in $CLUSTER; do
+        local logfile="${TESTDIR}/logs/${db}.${node}.db"
+        if [[ -f "$logfile" ]] && grep -q "recgen > mygen" "$logfile" 2>/dev/null; then
+            echo "  Found in $node log"
+            found=1
+        fi
+    done
+
+    if [[ $found -eq 0 ]]; then
+        stop_all_nodes
+        failexit "Did not find expected 'recgen > mygen' message in any node logs"
+    else
+        echo "  SUCCESS: found recgen > mygen message"
+    fi
+}
+
+function runit {
+    echo "=== Starting SQL logfill generation wraparound test ==="
+
+    # Get initial master
+    master=$(get_master)
+    echo "Initial master: $master"
+
+    # Create table
+    echo "Creating test table"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master "drop table if exists t1" >/dev/null 2>&1
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master "create table t1 (id int, val int)" >/dev/null 2>&1 || failexit "Failed to create table"
+
+    # Get initial generation
+    initial_gen=$(get_node_gen $master)
+    echo "Initial generation: $initial_gen"
+
+    # Phase 1: Increment generation through elections
+    echo "=== Phase 1: Incrementing generation through elections ==="
+    for i in {1..5}; do
+        # Get current master and generation
+        master=$(get_master)
+        current_gen=$(get_node_gen $master)
+        echo "  Iteration $i: gen=$current_gen, master=$master"
+
+        # Downgrade master to force election
+        echo "  Forcing election via downgrade"
+        downgrade_master
+
+        # Get new master and generation after election
+        master=$(get_master)
+        new_gen=$(get_node_gen $master)
+        echo "  After election: gen=$new_gen, new_master=$master"
+
+        # Insert records to push log forward on new master
+        do_writes
+
+        # Force checkpoint on master to capture current generation
+        force_checkpoint $master
+    done
+
+    # Record high generation and data count
+    high_gen=$(get_node_gen $master)
+    echo "Highest generation reached: $high_gen"
+
+    # Phase 2: Stop and restart entire cluster
+    echo "=== Phase 2: Stopping and restarting cluster ==="
+
+    # Get first node from cluster
+    first_node=$(echo $CLUSTER | awk '{print $1}')
+    echo "Stopping first node: $first_node"
+    kill_by_pidfile ${TMPDIR}/${DBNAME}.${first_node}.pid
+
+    # Could have been master- wait for a new master
+    master=$(get_master)
+
+    while [[ -z "$master" ]]; do
+        echo "Waiting for new master after stopping $first_node..."
+        sleep 1
+        master=$(get_master)
+    done
+
+    # Insert more records to create gap in first node's log
+    echo "Inserting records to create gap in $first_node log"
+    do_writes
+
+    count_before=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default "select count(*) from t1" 2>/dev/null)
+
+    if [[ -z "$count_before" ]] || [[ "$count_before" -eq 0 ]]; then
+        failexit "No records found before restart"
+    fi
+
+    echo "Record count before restart: $count_before"
+
+    echo "Pushnext to advance the log"
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('pushnext')"
+
+    # Wait for all nodes to write a checkpoint
+    sleep 5
+
+    echo "Stopping remaining cluster nodes"
+    for node in $CLUSTER; do
+        if [[ "$node" != "$first_node" ]]; then
+            kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+        fi
+    done
+
+    echo "Verifying that all nodes are down"
+
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $node "select 1" >/dev/null 2>&1
+        if [[ $? -eq 0 ]]; then
+            stop_all_nodes
+            failexit "Node $node is still up after kill"
+        else
+            echo "Node $node is down as expected"
+        fi
+    done
+
+    echo "Starting entire cluster"
+    start_all_nodes
+    sleep 10
+
+    echo "Waiting for cluster coherency"
+    wait_for_cluster
+
+    # Get generation after restart
+    master=$(get_master)
+    restart_gen=$(get_node_gen $master)
+    echo "Generation after restart: $restart_gen (master: $master)"
+
+    # Verify generation wrapped
+    if [[ -z "$restart_gen" ]]; then
+        stop_all_nodes
+        failexit "Could not get generation after restart"
+    fi
+
+    if [[ $restart_gen -ge $high_gen ]]; then
+        stop_all_nodes
+        failexit "Generation did not reset after restart (restart_gen=$restart_gen >= high_gen=$high_gen)"
+    else
+        echo "SUCCESS: Generation reset confirmed (restart_gen=$restart_gen < high_gen=$high_gen)"
+    fi
+
+    # Phase 3: Verify sql_logfill works correctly
+    echo "=== Phase 3: Verifying sql_logfill with generation mismatch ==="
+
+    # Give sql_logfill time to catch up
+    echo "Waiting for sql_logfill to process gap records..."
+    sleep 30
+
+    # Verify data integrity
+    count_after=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default "select count(*) from t1" 2>/dev/null)
+    echo "Record count after restart: $count_after"
+
+    if [[ -z "$count_after" ]]; then
+        stop_all_nodes
+        failexit "Could not get record count after restart"
+    fi
+
+    if [[ "$count_before" != "$count_after" ]]; then
+        stop_all_nodes
+        failexit "Record count mismatch (before=$count_before, after=$count_after)"
+    fi
+
+    echo "SUCCESS: Data integrity verified (count=$count_after)"
+
+    # Check for ignore message in logs
+    check_ignore_message
+
+    echo "=== Test completed successfully ==="
+    echo "Summary:"
+    echo "  High generation during run: $high_gen"
+    echo "  Generation after restart: $restart_gen"
+    echo "  Records verified: $count_after"
+}
+
+runit
+stop_all_nodes
+echo "Success"
