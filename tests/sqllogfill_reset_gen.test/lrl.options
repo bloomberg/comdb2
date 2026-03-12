@@ -1,0 +1,11 @@
+# Disable features that prevent generation from going backwards
+berkattr elect_highest_committed_gen 0
+retrieve_gen_from_ckp 0
+match_on_ckp 0
+emit_gen_commits 0
+endianize_locklist 0
+sql_logfill 1
+sql_logfill_debug 1
+recovery_ckp 0
+
+logmsg level debug
