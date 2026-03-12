@@ -471,6 +471,10 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
             return SQLITE_OK;
         }
 
+        if (!gbl_vtab_externalauth_strict && !(module->access_flag & CDB2_STRICT)) {
+            return SQLITE_OK;
+        }
+
         int rc = access_control_check_sql_read(NULL, thd, (char *)mod->zName);
         if (rc != SQLITE_OK)
             return SQLITE_AUTH;

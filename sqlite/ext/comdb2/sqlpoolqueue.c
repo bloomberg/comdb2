@@ -80,7 +80,7 @@ static void free_sqlpoolqueue(void *p, int n)
 }
 
 sqlite3_module systblSqlpoolQueueModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_STRICT,
 };
 
 int systblSqlpoolQueueInit(sqlite3 *db) {
