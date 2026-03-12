@@ -159,7 +159,8 @@ static void free_columns(void *data, int n)
 
 sqlite3_module systblColumnsModule = {
   .access_flag = CDB2_ALLOW_ALL,
-  .systable_lock = "comdb2_tables"
+  .systable_lock_count = 1,
+  .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 int systblColumnsInit(sqlite3 *db)
