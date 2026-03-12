@@ -858,15 +858,3 @@ Generic stack collection
 * `id` - index of this stack.
 * `hits` - number of times this stack has been collected.
 * `stack` - flattened stack.
-
-## comdb2_stringrefs
-
-Active string references
-
-   comdb2_stringrefs(string, func, line, refcnt, stack)
-
-* `string` - stringref string value.
-* `func` - function which allocated the string.
-* `line` - line number which allocates the string.
-* `refcnt` - number of active references.
-* `stack` - stack which allocated string.

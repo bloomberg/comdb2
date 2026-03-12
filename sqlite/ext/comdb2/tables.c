@@ -232,9 +232,9 @@ int comdb2SystblInit(
     rc = systblTriggersInit(db);
   if (rc == SQLITE_OK)  
     rc = systblStacks(db);
+#ifdef COMDB2_TEST
   if (rc == SQLITE_OK)
     rc = systblStringRefsInit(db);
-#ifdef COMDB2_TEST
   if (rc == SQLITE_OK)
     rc = systblTranCommitInit(db);
 #endif
