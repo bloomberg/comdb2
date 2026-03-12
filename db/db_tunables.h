@@ -2400,6 +2400,8 @@ REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case o
                  TUNABLE_BOOLEAN, &gbl_externalauth_warn, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("passwords_with_externalauth", "Check password auth in addition to externalauth (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_passwords_with_externalauth, NOARG | READEARLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
