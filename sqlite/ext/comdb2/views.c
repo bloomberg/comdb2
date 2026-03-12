@@ -28,7 +28,8 @@
 
 sqlite3_module systblViewsModule = {
     .access_flag = CDB2_ALLOW_USER,
-  .systable_lock = "comdb2_views",
+  .systable_lock_count = 1,
+  .systable_locks = (const char *[]){ "comdb2_views" }
 };
 
 typedef struct view_entry {

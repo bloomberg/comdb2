@@ -745,20 +745,22 @@ void sqlinit(void)
     if (sqlite3_initialize()) abort();
 }
 
-static char *vtable_lockname(sqlite3 *db, const char *vtable, int *is_system_table)
+static const char **vtable_locknames(sqlite3 *db, const char *vtable, int *is_system_table, int *lk_count)
 {
     *is_system_table = 0;
+    *lk_count = 0;
     if (vtable == NULL || db == NULL || db->aModule.count == 0)
         return NULL;
     struct Module *module;
-    char *lockname = NULL;
+    const char **locknames = NULL;
     sqlite3_mutex_enter(db->mutex);
     if ((module = sqlite3HashFind(&db->aModule, vtable)) != NULL) {
         *is_system_table = 1;
-        lockname = module->pModule->systable_lock;
+        *lk_count = module->pModule->systable_lock_count;
+        locknames = module->pModule->systable_locks;
     }
     sqlite3_mutex_leave(db->mutex);
-    return lockname;
+    return locknames;
 }
 
 static int vtable_search(char **vtables, int ntables, const char *table)
@@ -773,12 +775,14 @@ static int vtable_search(char **vtables, int ntables, const char *table)
 
 static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const char *table)
 {
-    int is_system_table;
-    const char *vtable_lock = vtable_lockname(pAuthState->db, table, &is_system_table);
-    if (vtable_lock && !vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_lock)) {
-        pAuthState->vTableLocks =
-            (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * (pAuthState->numVTableLocks + 1));
-        pAuthState->vTableLocks[pAuthState->numVTableLocks++] = strdup(vtable_lock);
+    int is_system_table, lk_cnt;
+    const char **vtable_locks = vtable_locknames(pAuthState->db, table, &is_system_table, &lk_cnt);
+    for (int i = 0; i < lk_cnt; i++) {
+        if (!vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_locks[i])) {
+            pAuthState->vTableLocks =
+                (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * (pAuthState->numVTableLocks + 1));
+            pAuthState->vTableLocks[pAuthState->numVTableLocks++] = strdup(vtable_locks[i]);
+        }
     }
     if (is_system_table && !pAuthState->hasVTables)
         pAuthState->hasVTables = 1;

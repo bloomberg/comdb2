@@ -27,7 +27,8 @@ extern struct dbenv *thedb;
 
 sqlite3_module systblAutoAnalyzeTablesModule = {
     .access_flag = CDB2_ALLOW_USER,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 typedef struct systable_auto_analyze_tables {

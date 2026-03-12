@@ -77,7 +77,8 @@ static int get_triggers(void **data, int *npoints)
 
 static sqlite3_module systblTriggersModule = {
   .access_flag = CDB2_ALLOW_ALL,
-  .systable_lock = "comdb2_queues",
+  .systable_lock_count = 1,
+  .systable_locks = (const char *[]){ "comdb2_queues" }
 };
 
 int systblTriggersInit(sqlite3 *db)

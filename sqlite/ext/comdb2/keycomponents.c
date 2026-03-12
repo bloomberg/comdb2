@@ -110,7 +110,8 @@ static void free_keycomponents(void *data, int n)
 
 sqlite3_module systblKeyComponentsModule = {
   .access_flag = CDB2_ALLOW_ALL,
-  .systable_lock = "comdb2_tables",
+  .systable_lock_count = 1,
+  .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 int systblKeyComponentsInit(sqlite3 *db)

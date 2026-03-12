@@ -8060,15 +8060,18 @@ case OP_VOpen: {
   rc = pModule->xOpen(pVtab, &pVCur);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern int views_needs_comdb2_tables_lock(const char *);
-  if( p->crtPartitionLocks>0 && pModule->systable_lock &&
-      !strncasecmp(pModule->systable_lock, "comdb2_tables", strlen("comdb2_tables")+1 )){
-    p->crtPartitionLocks--;
-    if( p->crtPartitionLocks==0 ){
-        /* done collecting all schema, release the views lock for the rest
-         * of execution
-         */
-        extern void views_unlock(void);
-        views_unlock();
+  if( p->crtPartitionLocks>0 && pModule->systable_locks && pModule->systable_lock_count ){
+    for (int j=0; j < pModule->systable_lock_count; j++) {
+      if(!strncasecmp(pModule->systable_locks[j], "comdb2_tables", strlen("comdb2_tables")+1 )){
+      p->crtPartitionLocks--;
+        if( p->crtPartitionLocks==0 ){
+            /* done collecting all schema, release the views lock for the rest
+             * of execution
+             */
+            extern void views_unlock(void);
+            views_unlock();
+        }
+      }
     }
   }
 #endif

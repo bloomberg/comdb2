@@ -5244,9 +5244,11 @@ WhereInfo *sqlite3WhereBegin(
       int iCur = pTabItem->iCursor;
       sqlite3VdbeAddOp4(v, OP_VOpen, iCur, 0, 0, pVTab, P4_VTAB);
 #ifdef SQLITE_BUILDING_FOR_COMDB2
-      const char *lockname = ((VTable*)pVTab)->pVtab->pModule->systable_lock;
-      if( lockname && !strncasecmp(lockname, "comdb2_tables", sizeof("comdb2_tables")) )
-        v->numPartitionLocks++;
+      for (int j = 0; j<((VTable*)pVTab)->pVtab->pModule->systable_lock_count; j++ ) {
+          const char *lockname = ((VTable*)pVTab)->pVtab->pModule->systable_locks[j];
+          if( lockname && !strncasecmp(lockname, "comdb2_tables", sizeof("comdb2_tables")) )
+              v->numPartitionLocks++;
+      }
 #endif
     }else if( IsVirtual(pTab) ){
       /* noop */

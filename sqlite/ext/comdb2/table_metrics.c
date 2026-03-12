@@ -25,7 +25,8 @@
 extern struct dbenv *thedb;
 sqlite3_module systblTableMetricsModule = {
     .access_flag = CDB2_ALLOW_ALL,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 typedef struct systable_table_metrics {

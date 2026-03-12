@@ -222,7 +222,8 @@ const sqlite3_module systblTblSizeModule = {
   0,                       /* xRollbackTo */
   0,                       /* xShadowName */
   .access_flag = CDB2_ALLOW_ALL,
-  .systable_lock = "comdb2_tables",
+  .systable_lock_count = 1,
+  .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

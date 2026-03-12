@@ -197,7 +197,8 @@ const sqlite3_module systblMetricsModule = {
     0,                       /* xShadowName */
     .access_flag = CDB2_ALLOW_USER,
     /* this system table calculates table sizes. grab the 'comdb2_table' lock */
-    .systable_lock = "comdb2_tables"
+    .systable_lock_count = 2,
+    .systable_locks = (const char *[]){ "comdb2_tables", "comdb2_queues" }
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \
