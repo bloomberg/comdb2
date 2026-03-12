@@ -167,15 +167,17 @@ run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, ve
 run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
     "remove wildcard rule (vtab test)"
 
-# CDB2_ALLOW_USER vtabs should now be denied
-run_expect_failure "$MOHIT" "select 1 from comdb2_tunables limit 1" \
-    "mohit cannot access comdb2_tunables (no matching rule)"
-run_expect_failure "$MIKE" "select 1 from comdb2_metrics limit 1" \
-    "mike cannot access comdb2_metrics (no matching rule)"
+# CDB2_ALLOW_USER vtabs (non-strict) are allowed in non-strict mode
+run_expect_success "$MOHIT" "select 1 from comdb2_tunables limit 1" \
+    "mohit can access comdb2_tunables (non-strict, no matching rule)"
+run_expect_success "$MIKE" "select 1 from comdb2_metrics limit 1" \
+    "mike can access comdb2_metrics (non-strict, no matching rule)"
+
+# CDB2_STRICT vtabs should be denied without matching permission
 run_expect_failure "$MARK" "select 1 from comdb2_connections limit 1" \
-    "mk cannot access comdb2_connections (no matching rule)"
+    "mk cannot access comdb2_connections (CDB2_STRICT, no matching rule)"
 run_expect_failure "$MOHIT" "select 1 from comdb2_files limit 1" \
-    "mohit cannot access comdb2_files (no matching rule)"
+    "mohit cannot access comdb2_files (CDB2_STRICT, no matching rule)"
 
 # CDB2_ALLOW_ALL vtabs should still be accessible without any permission
 run_expect_success "$MOHIT" "select 1 from comdb2_tables limit 1" \
@@ -186,23 +188,23 @@ run_expect_success "$MIKE" "select 1 from comdb2_keywords limit 1" \
 #---------------------------------------------------------------
 echo "Test: vtab access granted with specific permission"
 #---------------------------------------------------------------
-# Grant mohit specific Read access to comdb2_tunables
-run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mohit', '*', 'Read', 'table', 'comdb2_tunables') on conflict do nothing" \
-    "grant mohit Read on comdb2_tunables"
-run_expect_success "$MOHIT" "select 1 from comdb2_tunables limit 1" \
-    "mohit can access comdb2_tunables (specific rule)"
-# mike still denied (no rule for him)
-run_expect_failure "$MIKE" "select 1 from comdb2_tunables limit 1" \
-    "mike still cannot access comdb2_tunables (no rule)"
+# Grant mohit specific Read access to comdb2_connections (CDB2_STRICT)
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mohit', '*', 'Read', 'table', 'comdb2_connections') on conflict do nothing" \
+    "grant mohit Read on comdb2_connections"
+run_expect_success "$MOHIT" "select 1 from comdb2_connections limit 1" \
+    "mohit can access comdb2_connections (specific rule)"
+# mike still denied (no rule for him, CDB2_STRICT)
+run_expect_failure "$MIKE" "select 1 from comdb2_connections limit 1" \
+    "mike still cannot access comdb2_connections (CDB2_STRICT, no rule)"
 
-# Grant mike specific Read access to comdb2_files
+# Grant mike specific Read access to comdb2_files (CDB2_STRICT)
 run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mike', '*', 'Read', 'table', 'comdb2_files') on conflict do nothing" \
     "grant mike Read on comdb2_files"
 run_expect_success "$MIKE" "select 1 from comdb2_files limit 1" \
     "mike can access comdb2_files (specific rule)"
-# mohit still denied (no rule for him)
+# mohit still denied (no rule for her, CDB2_STRICT)
 run_expect_failure "$MOHIT" "select 1 from comdb2_files limit 1" \
-    "mohit still cannot access comdb2_files (no rule)"
+    "mohit still cannot access comdb2_files (CDB2_STRICT, no rule)"
 
 # Restore wildcard and clean up vtab-specific rules
 run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \

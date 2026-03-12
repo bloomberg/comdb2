@@ -168,7 +168,7 @@ static void free_osqls(void *p, int n)
 }
 
 sqlite3_module systblActiveOsqlsModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_STRICT,
 };
 
 int systblActiveOsqlsInit(sqlite3 *db)
