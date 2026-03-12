@@ -3325,6 +3325,13 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans,
 {
     int rc;
 
+    static int counter = 0;
+
+    if (counter % 1000 == 0) {
+        ++counter;
+        logmsg(LOGMSG_ERROR, "SENDING REMTRAN %d!\n", counter);
+    }
+
     /* clean previous whatever */
     fdb_msg_clean_message(msg);
 
@@ -3971,6 +3978,13 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     svc_callback_arg_t svc_cb_arg = {0};
 
     sb = arg->sb;
+
+    static int counter = 0;
+
+    if (counter % 1000 == 0) {
+        ++counter;
+        logmsg(LOGMSG_ERROR, "RECEIVED REMTRAN %d!\n", counter);
+    }
 
     bzero(&msg, sizeof(msg));
 
