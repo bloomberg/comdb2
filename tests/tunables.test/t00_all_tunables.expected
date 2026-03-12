@@ -707,6 +707,7 @@
 (name='partition_retroactively_verbose', description='Disable/enable data routing debugging for retroactively time partitioning (Default: OFF)', type='BOOLEAN', value='OFF', read_only='N')
 (name='partition_sc_reorder', description='If the schema change is serialized for a partition, run current shard last', type='BOOLEAN', value='ON', read_only='N')
 (name='partitioned_table_enabled', description='Allow syntax create/alter table ... partitioned by ...', type='BOOLEAN', value='ON', read_only='N')
+(name='passwords_with_externalauth', description='Check password auth in addition to externalauth (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='pause_moveto', description='pause_moveto', type='BOOLEAN', value='OFF', read_only='N')
 (name='pbkdf2_iterations', description='Number of iterations of PBKDF2 algorithm for password hashing.', type='INTEGER', value='4096', read_only='N')
 (name='penaltyincpercent', description='', type='INTEGER', value='20', read_only='Y')
