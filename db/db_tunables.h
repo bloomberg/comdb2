@@ -2534,6 +2534,10 @@ REGISTER_TUNABLE("partition_retroactively",
 REGISTER_TUNABLE("partition_retroactively_verbose",
                  "Disable/enable data routing debugging for retroactively time partitioning (Default: OFF)",
                  TUNABLE_BOOLEAN, &gbl_retro_tpt_verbose, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "partition_retroactively_start",
+    "Block any retroactively time partitioning if start is earlier that that many hours in the future (Default: 24)",
+    TUNABLE_INTEGER, &gbl_retro_tpt_start, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("dohsql_joins", "Enable to support joins in parallel sql execution (default: on)", TUNABLE_BOOLEAN,
                  &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);

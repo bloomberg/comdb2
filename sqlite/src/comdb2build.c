@@ -45,6 +45,7 @@ extern int gbl_lightweight_rename;
 extern int gbl_transactional_drop_plus_rename;
 extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
+extern int gbl_retro_tpt_start;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 
@@ -7891,6 +7892,18 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
                                      (int32_t*)&partition->u.tpt.retention,
                                      (int64_t*)&partition->u.tpt.start)) {
         free_ddl_context(pParse);
+    }
+
+    /* if retroactively partitioning, make sure the start is one day in the future */
+    if (retro) {
+        time_t crtTime = time(NULL);
+        int startTime = partition->u.tpt.start;
+        if (gbl_retro_tpt_start > 0) {
+            if (crtTime >= (startTime - 3600 * gbl_retro_tpt_start)) {
+                setError(pParse, SQLITE_ABORT, "Bad start argument, please check partition_retroactively_start tunable");
+                return;
+            }
+        }
     }
 }
 
