@@ -7892,6 +7892,16 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
                                      (int64_t*)&partition->u.tpt.start)) {
         free_ddl_context(pParse);
     }
+
+    /* if retroactively partitioning, make sure the start is one day in the future */
+    if (retro) {
+        time_t crtTime = time(NULL);
+        int startTime = partition->u.tpt.start;
+        if (crtTime >= (startTime - 3600)) {
+            setError(pParse, SQLITE_ABORT, "Please choose a start time 1 hour in the future");
+            return;
+        }
+    }
 }
 
 /**
