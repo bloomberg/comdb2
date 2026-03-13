@@ -814,6 +814,7 @@ int convMem2ClientDatetime(Mem *pMem, void *out);
 int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz);
 int convDttz2ClientDatetime(const dttz_t *, const char *tzname, void *out, int sqltype);
 const char *get_clnt_tz();
+void func_needs_vdbe(sqlite3_context *context, FuncDef *pFunc, Vdbe *pVdbe);
 
 int sqliteVdbeMemDecimalBasicArithmetics(Mem *a, Mem *b, int opcode, Mem * res, int flipped);
 
