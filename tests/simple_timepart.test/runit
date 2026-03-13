@@ -215,11 +215,14 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl3 (a int)"
 cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl3 select value from generate_series(1,$CNT)"
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl4 (a int)"
 cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl4 select value from generate_series(1,$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl5 (a int)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl5 select value from generate_series(1,$CNT)"
 
 assertcnt tbl1 $CNT
 assertcnt tbl2 $CNT
 assertcnt tbl3 $CNT
 assertcnt tbl4 $CNT
+assertcnt tbl5 $CNT
 
 adayago=$(get_timestamp '-(24*3600 + 3600)')
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl1 as tbl1v1 PERIOD 'DAILY' RETENTION 3 START '${adayago}'" >> $OUT
@@ -249,6 +252,12 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
+alongtimeago="1970-01-01T000000.000 UTC"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl5 as tbl5v1 PERIOD 'DAILY' RETENTION 3 START '${alongtimeago}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
 
 sleep 60
 timepart_stats
@@ -257,21 +266,25 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl1v1 select value from ge
 cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl2v1 select value from generate_series($CNT+1,2*$CNT)"
 cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl3v1 select value from generate_series($CNT+1,2*$CNT)"
 cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl4v1 select value from generate_series($CNT+1,2*$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl5v1 select value from generate_series($CNT+1,2*$CNT)"
 
 assertcnt tbl1v1 $((2*CNT))
 assertcnt tbl2v1 $((2*CNT))
 assertcnt tbl3v1 $((2*CNT))
 assertcnt tbl4v1 $((2*CNT))
+assertcnt tbl5v1 $((2*CNT))
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl1v1"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl2v1"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl3v1"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl4v1"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl5v1"
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl1"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl2"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl3"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl4"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl5"
 
 
 # we need to scrub dbname from alpha
