@@ -7246,7 +7246,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     // Use () to differentiate between tablename and spname
     snprintf(spfunc, sizeof(spfunc), "%s()", spname);
 
-    if (gbl_uses_externalauth && access_control_check_sql_read(NULL, sqlthd, spfunc)) {
+    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
         (*err) = strdup("Read access denied for the stored procedure");
         return SQLITE_ACCESS;
     }
