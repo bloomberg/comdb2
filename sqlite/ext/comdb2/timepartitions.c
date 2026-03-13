@@ -31,15 +31,18 @@ static int systblTimepartitionsEventsInit(sqlite3 *db);
 
 sqlite3_module systblTimepartitionsModule = {
     .access_flag = CDB2_ALLOW_USER,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 sqlite3_module systblTimepartitionShardsModule = {
     .access_flag = CDB2_ALLOW_USER,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 sqlite3_module systblTimepartitionEventsModule = {
     .access_flag = CDB2_ALLOW_USER,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 

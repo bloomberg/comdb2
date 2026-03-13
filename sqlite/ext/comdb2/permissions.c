@@ -290,7 +290,8 @@ static int populate_timepart_permissions(void **data, int *nrows)
 
 sqlite3_module systblTablePermissionsModule = {
     .access_flag = CDB2_ALLOW_ALL,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 int systblTablePermissionsInit(sqlite3 *db)
@@ -303,7 +304,8 @@ int systblTablePermissionsInit(sqlite3 *db)
 
 sqlite3_module systblSystabPermissionsModule = {
     .access_flag = CDB2_ALLOW_ALL,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 int systblSystabPermissionsInit(sqlite3 *db)
@@ -316,7 +318,8 @@ int systblSystabPermissionsInit(sqlite3 *db)
 
 sqlite3_module systblTimepartPermissionsModule = {
     .access_flag = CDB2_ALLOW_ALL,
-    .systable_lock = "comdb2_tables",
+    .systable_lock_count = 1,
+    .systable_locks = (const char *[]){ "comdb2_tables" }
 };
 
 int systblTimepartPermissionsInit(sqlite3 *db)
