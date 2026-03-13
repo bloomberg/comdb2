@@ -26,7 +26,7 @@
 #include "types.h"
 
 sqlite3_module systblConnectionsModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_STRICT,
 };
 
 int get_connections(void **data, int *num_points) {

@@ -2387,6 +2387,12 @@ REGISTER_TUNABLE("allow_old_authn", "Reuse old successful authentication for the
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("vtab_externalauth", "Use IAM for vtab access control (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_vtab_externalauth, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("vtab_externalauth_strict", "Enforce access control on all CDB2_ALLOW_USER vtabs (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_vtab_externalauth_strict, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("externalauth_connect", "Check for externalauth only once on connect", TUNABLE_BOOLEAN,
                  &gbl_uses_externalauth_connect, NOARG | READEARLY, NULL, NULL, NULL, NULL);
 
@@ -2394,6 +2400,8 @@ REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case o
                  TUNABLE_BOOLEAN, &gbl_externalauth_warn, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("passwords_with_externalauth", "Check password auth in addition to externalauth (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_passwords_with_externalauth, NOARG | READEARLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);

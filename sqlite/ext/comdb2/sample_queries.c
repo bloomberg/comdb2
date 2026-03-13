@@ -28,7 +28,7 @@ extern hash_t *gbl_sample_queries_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
 sqlite3_module systblSampleQueriesModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_STRICT,
 };
 
 typedef struct systable_sample_queries {

@@ -28,11 +28,8 @@ static void simpleAuthInit(void)
     int rc = run_internal_sql_clnt(
         &clnt, "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) "
                "default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) "
-               "default '*', resourcename cstring(50) default '*')");
-    if (rc)
-        exit(1);
-    rc = run_internal_sql_clnt(&clnt, "create unique index if not exists comdb2_simple_auth_ix on "
-                                      "comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)");
+               "default '*', resourcename cstring(50) default '*', "
+               "unique(cluster, user, bpkg, verb, resourcetype, resourcename))");
     if (rc)
         exit(1);
 
@@ -180,7 +177,7 @@ int simpleAuthCheck(const char *principal, const char *verb_in, const char *reso
         strcat(sql, "' ");
     }
     strcat(sql, ") and (bpkg='*' ");
-    if (user) {
+    if (bpkg) {
         strcat(sql, "or bpkg = '");
         strcat(sql, bpkg);
         strcat(sql, "' ");
