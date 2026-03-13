@@ -11,7 +11,7 @@ function get_master
 {
     [[ "$debug" == 1 ]] && set -x
     typeset func="get_master"
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' 2>/dev/null | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
     echo "$x"
 }
 
@@ -391,4 +391,38 @@ downgrade_master() {
 
     # Double check that the cluster is up
     wait_for_cluster
+}
+
+stop_all_nodes() {
+    if [[ -z "$CLUSTER" ]]; then
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
+        return
+    fi
+    for node in $CLUSTER; do
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+    done
+}
+
+start_all_nodes() {
+    local SSH="ssh -n -o StrictHostKeyChecking=no -tt"
+    local LOGDIR=$TESTDIR/logs
+
+    PARAMS="$DBNAME --no-global-lrl"
+
+    if [[ -z "$CLUSTER" ]]; then
+        mv --backup=numbered $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.db.1
+        ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl ${DBDIR}/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.db 2>&1 &
+        return
+    fi 
+
+    for node in $CLUSTER; do
+        mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
+        if [ $node == $(hostname) ] ; then
+            ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl ${DBDIR}/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.$node.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
+        else
+            CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl ${DBDIR}/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+            $SSH $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+        fi
+    done
 }

@@ -326,8 +326,20 @@ static void print_record_info(const char *prefix, const char *lsn)
     }
 }
 
+extern int gbl_match_on_ckp;
+
 static inline int gen_okay(bdb_state_type *bdb_state, int64_t recgen, u_int32_t mygen)
 {
+    /* Only check generation if both elect_highest_committed_gen and gbl_match_on_ckp are enabled. */
+    if (!bdb_state->dbenv->attr.elect_highest_committed_gen || !gbl_match_on_ckp) {
+        if (gbl_debug_sql_logfill && recgen > mygen) {
+            logmsg(LOGMSG_USER,
+                   "%s: ignoring generation check (elect_highest_committed_gen=%d gbl_match_on_ckp=%d) recgen=%" PRId64
+                   " mygen=%u\n",
+                   __func__, bdb_state->dbenv->attr.elect_highest_committed_gen, gbl_match_on_ckp, recgen, mygen);
+        }
+        return 1;
+    }
     return recgen <= mygen;
 }
 
@@ -698,7 +710,7 @@ static void *sql_apply_thread(void *arg)
             BDB_READLOCK(__func__);
             u_int32_t gen;
             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
-            if (copy.gen == gen && (copy.recgen == 0 || gen >= copy.recgen)) {
+            if (copy.gen == gen && (copy.recgen == 0 || gen_okay(bdb_state, copy.recgen, gen))) {
                 rep_apply_caller = "sqllogfill-apply-thread";
                 bdb_state->dbenv->apply_log(bdb_state->dbenv, copy.file, copy.offset, copy.rectype, copy.blob,
                                             copy.blob_len);
