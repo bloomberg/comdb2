@@ -134,7 +134,7 @@ extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
 extern int gbl_typessql;
-extern int gbl_modsnap_asof;
+extern int gbl_modsnap;
 extern int gbl_2pc;
 
 /* Once and for all:
@@ -615,7 +615,6 @@ char *tranlevel_tostr(int lvl)
     case TRANLEVEL_RECOM:
         return "READ COMMITTED";
     case TRANLEVEL_SNAPISOL:
-    case TRANLEVEL_MODSNAP:
         return "SNAPSHOT";
     case TRANLEVEL_SERIAL:
         return "SERIALIZABLE";
@@ -1500,7 +1499,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                             return -1;
                         } else {
                             long long lcl_ret = flibc_ntohll(ret);
-                            if (gbl_modsnap_asof && bdb_is_timestamp_recoverable(thedb->bdb_env, lcl_ret) <= 0) {
+                            if (gbl_modsnap && bdb_is_timestamp_recoverable(thedb->bdb_env, lcl_ret) <= 0) {
                                 logmsg(LOGMSG_ERROR,
                                        "No log file to maintain "
                                        "snapshot epoch %lld\n",
@@ -1815,7 +1814,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && (populate_modsnap_state(clnt) != 0)) {
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && (populate_modsnap_state(clnt) != 0)) {
         rc = SQLITE_INTERNAL;
         goto done;
     }
@@ -1927,14 +1926,12 @@ inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
         return 0;
 
     if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-         clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-         clnt->dbtran.mode == TRANLEVEL_MODSNAP) &&
+         clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
         !get_asof_snapshot(clnt) && gbl_snapshot_serial_verify_retry)
         return !clnt->sent_data_to_client;
 
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-           clnt->dbtran.mode != TRANLEVEL_MODSNAP;
+           clnt->dbtran.mode != TRANLEVEL_SERIAL;
 }
 
 static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
@@ -1951,8 +1948,7 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
     /* Verify error can be retried in reccom or lower */
     return (rc == CDB2ERR_VERIFY_ERROR) &&
            (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
-           (clnt->dbtran.mode != TRANLEVEL_SERIAL) && 
-           (clnt->dbtran.mode != TRANLEVEL_MODSNAP);
+           (clnt->dbtran.mode != TRANLEVEL_SERIAL);
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -2013,11 +2009,10 @@ void abort_dbtran(struct sqlclntstate *clnt)
         break;
 
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
+    case TRANLEVEL_SNAPISOL:
         recom_abort(clnt);
         break;
 
-    case TRANLEVEL_SNAPISOL:
     case TRANLEVEL_SERIAL:
         serial_abort(clnt);
         if (clnt->arr) {
@@ -2067,8 +2062,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         sql_debug_logf(clnt, __func__, __LINE__, "starting\n");
 
         switch (clnt->dbtran.mode) {
-        case TRANLEVEL_RECOM:
-        case TRANLEVEL_MODSNAP: {
+        case TRANLEVEL_RECOM: {
             /* here we handle the communication with bp */
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
                 rc = recom_commit(clnt, thd->sqlthd, clnt->tzname, 0);
@@ -2128,7 +2122,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     sql_debug_logf(clnt, __func__, __LINE__,
                                    "serial-txn returns %d\n", rc);
                 } else {
-                    rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname);
+                    rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname, 0);
                     sql_debug_logf(clnt, __func__, __LINE__,
                                    "snapshot-txn returns %d\n", rc);
                 }
@@ -3365,7 +3359,7 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     curtran_assert_nolocks();
     assert(!clnt->modsnap_in_progress || clnt->in_client_trans);
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
         return SQLITE_INTERNAL;
     }
     if (gbl_sleep_5s_after_caching_table_versions) {
@@ -3632,7 +3626,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
     int rc;
     char *zErr = 0;
 
-    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
         if (clnt->modsnap_in_progress) {
             clear_modsnap_state(clnt);
         }
@@ -5889,7 +5883,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
             */
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
                 clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-                clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+                clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                 Pthread_mutex_lock(&clnt->dtran_mtx);
             }
 
@@ -5897,7 +5891,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
 
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
                 clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-                clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+                clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                 Pthread_mutex_unlock(&clnt->dtran_mtx);
             }
 

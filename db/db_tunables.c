@@ -172,7 +172,6 @@ extern int gbl_db_lock_maxid_override;
 extern int gbl_udp;
 extern int gbl_update_delete_limit;
 extern int gbl_updategenids;
-extern int gbl_use_modsnap_for_snapshot;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
 extern int portmux_port;
@@ -1148,19 +1147,6 @@ static int fdb_push_update(void *context, void *value)
 /* Forward declaration */
 int ctrace_set_rollat(void *unused, void *value);
 
-/*
- * The map is enabled if all of its dependencies are enabled and
- * any enabled feature depends on it.
- */
-int get_commit_lsn_map_switch_value()
-{
-    const int dependencies_are_enabled = gbl_utxnid_log;
-    const int enabled_dependent_exists = 
-        gbl_test_commit_lsn_map || gbl_use_modsnap_for_snapshot;
-    
-    return dependencies_are_enabled && enabled_dependent_exists;
-}
-
 /* Return the value for sql_tranlevel_default. */
 static void *sql_tranlevel_default_value(void *context)
 {
@@ -1191,7 +1177,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
     } else if (tokcmp(tok, ltok, "recom") == 0) {
         gbl_sql_tranlevel_default = TRANLEVEL_RECOM;
     } else if (tokcmp(tok, ltok, "snapshot") == 0) {
-        gbl_sql_tranlevel_default = gbl_snapshot_impl;
+        gbl_sql_tranlevel_default = TRANLEVEL_SNAPISOL;
     } else if (tokcmp(tok, ltok, "serial") == 0) {
         gbl_sql_tranlevel_default = TRANLEVEL_SERIAL;
     } else {

@@ -42,7 +42,6 @@
 extern int gbl_fdb_track;
 extern int blockproc2sql_error(int rc, const char *func, int line);
 
-
 int fdb_appsock_work(const char *cid, sqlclntstate *clnt, int version,
                      enum run_sql_flags flags, char *sql, int sqllen,
                      char *trim_key, int trim_keylen, COMDB2BUF *sb)
@@ -393,18 +392,20 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-        clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
         clnt->dbtran.mode == TRANLEVEL_SERIAL ||
         clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
         osql_shadtbl_begin_query(thedb->bdb_env, clnt);
     }
 
     switch (clnt->dbtran.mode) {
-    case TRANLEVEL_MODSNAP:
+    case TRANLEVEL_SNAPISOL:
     case TRANLEVEL_RECOM: {
         /* here we handle the communication with bp */
-        rc = recom_commit(clnt, NULL, clnt->tzname, 1);
+        if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL)
+            rc = snapisol_commit(clnt, NULL, clnt->tzname, 1);
+        else
+            rc = recom_commit(clnt, NULL, clnt->tzname, 1);
         /* if a transaction exists
            (it doesn't for empty begin/commit */
         if (clnt->dbtran.shadow_tran) {
@@ -448,10 +449,9 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     }
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-        clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
         clnt->dbtran.mode == TRANLEVEL_SERIAL ||
         clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
         osql_shadtbl_done_query(thedb->bdb_env, clnt);
     }
 
@@ -506,8 +506,11 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP: {
-        rc = recom_abort(clnt);
+    case TRANLEVEL_SNAPISOL: {
+        if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL)
+            rc = snapisol_abort(clnt);
+        else
+            rc = recom_abort(clnt);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s: recom abort failed %d??\n", __func__, rc);
     } break;
@@ -579,10 +582,9 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
 
     /* close any shadow cursors */
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-        clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
         clnt->dbtran.mode == TRANLEVEL_SERIAL ||
         clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
         osql_shadtbl_begin_query(thedb->bdb_env, clnt);
     }
 
@@ -608,7 +610,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
     pCur->numblobs = get_schema_blob_count(pCur->db, ".ONDISK");
 
     if (need_bdbcursor) {
-        assert(clnt->dbtran.mode != TRANLEVEL_MODSNAP || clnt->modsnap_in_progress);
+        assert(clnt->dbtran.mode != TRANLEVEL_SNAPISOL || clnt->modsnap_in_progress);
         pCur->bdbcur = bdb_cursor_open(
             pCur->db->handle, clnt->dbtran.cursor_tran,
             clnt->dbtran.shadow_tran, pCur->ixnum,
@@ -617,7 +619,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
                 : BDB_OPEN_REAL,
             NULL /* TODO: I don't think I need this here, please double check */,
             clnt->pageordertablescan, 0, NULL, NULL, NULL, NULL, NULL,
-            clnt->bdb_osql_trak, &bdberr, clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0);
+            clnt->bdb_osql_trak, &bdberr, (clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
         if (pCur->bdbcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
 
@@ -654,10 +656,9 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, sqlclntstate *clnt,
 
     /* close any shadow cursors */
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-        clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
         clnt->dbtran.mode == TRANLEVEL_SERIAL ||
         clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
         osql_shadtbl_done_query(thedb->bdb_env, clnt);
     }
 

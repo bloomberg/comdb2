@@ -151,11 +151,11 @@ static int get_row_lock_dta_minlk(bdb_state_type *bdb_state, DBC *dbcp,
                                      rlk, lkname, BDB_LOCK_WRITE);
 }
 
-extern int gbl_snapisol;
+extern int gbl_serializable;
 extern int gbl_logical_live_sc;
 int bdb_logical_logging_enabled()
 {
-    if ((gbl_bdb_state && gbl_bdb_state->attr->snapisol) || gbl_snapisol ||
+    if ((gbl_bdb_state && gbl_bdb_state->attr->llog) || gbl_serializable ||
         gbl_rowlocks || gbl_logical_live_sc)
         return 1;
     return 0;
@@ -168,7 +168,7 @@ int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran)
      * handle_truncation->vrfy_match->do_rcvry->reload_schemas->commit
      * reload_schemas opens btrees transactionally.  We call commit, but this
      * won't produce a log record if no other record has been written. */
-    if ((bdb_state->attr->snapisol || bdb_state->logical_live_sc) && !gbl_rowlocks && !gbl_is_physical_replicant &&
+    if ((bdb_state->attr->llog || bdb_state->logical_live_sc) && !gbl_rowlocks && !gbl_is_physical_replicant &&
         !tran->is_sc_rebuild) {
         if (bdb_state->logical_live_sc) {
             if (tran->parent)
@@ -321,7 +321,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
 
         /* If the calling code needs the record value to log an undo,
            fetch it */
-        if (dta_out || bdb_state->attr->snapisol ||
+        if (dta_out || bdb_state->attr->llog ||
             bdb_state->logical_live_sc || is_blob) {
             /* This codepath does a direct lookup on a masked genid. */
             int updateid = 0;
@@ -482,7 +482,7 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
     case TRANCLASS_PHYSICAL:
 
         add_snapisol_logging(bdb_state, tran);
-        if ((bdb_state->attr->snapisol || bdb_state->logical_live_sc) &&
+        if ((bdb_state->attr->llog || bdb_state->logical_live_sc) &&
             !payloadsz)
             payloadsz = &payloadsz_si;
 
@@ -923,7 +923,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
         }
 
         /* Use the inplace update shortcut for only a genid change */
-        if ((!bdb_state->attr->snapisol && !bdb_state->logical_live_sc) &&
+        if ((!bdb_state->attr->llog && !bdb_state->logical_live_sc) &&
             (NULL == dta) && (!old_dta_out) &&
             (ip_updates_enabled(bdb_state)) &&
             (((0 == use_new_genid) &&

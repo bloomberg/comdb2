@@ -2243,12 +2243,12 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             }
         }
 
-        assert(thd->clnt->dbtran.mode != TRANLEVEL_MODSNAP || thd->clnt->modsnap_in_progress);
+        assert(thd->clnt->dbtran.mode != TRANLEVEL_SNAPISOL || thd->clnt->modsnap_in_progress);
         tmpcur = bdb_cursor_open(
             pCur->db->handle, thd->clnt->dbtran.cursor_tran,
             thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL,
-            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr, thd->clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0);
+            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr, (thd->clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return SQLITE_INTERNAL;
@@ -2350,12 +2350,12 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
         }
         memcpy(&key[db->ix_keylen[ix]], &genid, sizeof(genid));
 
-        assert(thd->clnt->dbtran.mode != TRANLEVEL_MODSNAP || thd->clnt->modsnap_in_progress);
+        assert(thd->clnt->dbtran.mode != TRANLEVEL_SNAPISOL || thd->clnt->modsnap_in_progress);
         tmpcur = bdb_cursor_open(
             db->handle, thd->clnt->dbtran.cursor_tran,
             thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL,
-            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr, thd->clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0);
+            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr, (thd->clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return -1;

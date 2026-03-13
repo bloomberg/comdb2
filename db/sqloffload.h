@@ -77,7 +77,7 @@ int serial_abort(struct sqlclntstate *clnt);
 
 int osql_clean_sqlclntstate(struct sqlclntstate *clnt);
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
-                    char *tzname);
+                    char *tzname, int is_distributed_tran);
 int snapisol_abort(struct sqlclntstate *clnt);
 
 void osql_checkboard_for_each(void *arg, int (*func)(void *, void *));
