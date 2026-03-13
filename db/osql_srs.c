@@ -321,6 +321,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
         clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
+            clnt->done = 0; /* reset done flag */
             restore_stmt(clnt, item);
             if ((rc = dispatch_fn(clnt)) != 0)
                 break;
@@ -373,6 +374,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
     }
 
     osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+    clnt->verify_retries = 0;
 
     return rc;
 }

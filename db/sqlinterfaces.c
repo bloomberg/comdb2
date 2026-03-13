@@ -203,6 +203,8 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p);
 static int execute_sql_query_offload(struct sqlthdstate *, struct sqlclntstate *);
 static int record_query_cost(struct sql_thread *, struct sqlclntstate *);
+static void free_normalized_sql(struct sqlclntstate *clnt);
+void free_original_normalized_sql(struct sqlclntstate *clnt);
 
 static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
                               int line, const char *fmt, va_list args)
@@ -1243,13 +1245,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     thd->crtshard = 0;
 
-    unsigned long long rqid = clnt->osql.rqid;
-    if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(logger, &rqid, sizeof(rqid));
-    else if (!comdb2uuid_is_zero(clnt->osql.uuid)) {
-        /* have an "id_set" instead? */
-        reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
-    }
+    reqlog_set_rqid_from_clnt(logger, clnt);
 
     LISTC_T(struct sql_hist) lst;
     listc_init(&lst, offsetof(struct sql_hist, lnk));
@@ -1262,15 +1258,15 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->cost.time = comdb2_time_epochms() - thd->startms;
     h->cost.prepTime = thd->prepms;
     h->when = thd->stime;
-    h->txnid = rqid;
+    h->txnid = clnt->osql.rqid;
 
     time_metric_add(thedb->service_time, h->cost.time);
     clnt->last_cost = (int64_t) h->cost.cost;
 
     /* request logging framework takes care of logging long sql requests */
     reqlog_set_cost(logger, h->cost.cost);
-    if (rqid) {
-        reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
+    if (clnt->osql.rqid) {
+        reqlog_logf(logger, REQL_INFO, "rqid=%llx", clnt->osql.rqid);
     }
     reqlog_set_netwaitus(logger, clnt->netwaitus);
 
@@ -1692,17 +1688,15 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     query_stats_setup(thd, clnt);
 
     if (reqlog_get_event(thd->logger) == EV_SQL) {
-        unsigned char fp[FINGERPRINTSZ];
-        size_t len;
         char stmt[9] = {0}; // begin, commit, or rollback
         int i = 0;
         for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
             stmt[i] = (char) tolower(*s);
         }
-        if (gbl_fingerprint_queries) {
-            calc_fingerprint(stmt, &len, fp);
-            reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
-        }
+
+        /* Reset so we don't print the stale fingerprint */
+        free_normalized_sql(clnt);
+        free_original_normalized_sql(clnt);
     }
     log_queue_time(thd->logger, clnt);
 }
@@ -1834,7 +1828,7 @@ done:
 
     if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
         /* for chunks and SPs, don't end the request */
-        reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+        reqlog_end_request(thd->logger, rc, __func__, __LINE__);
     }
 
     return rc;
@@ -2388,7 +2382,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
-        outrc = CDB2ERR_VERIFY_ERROR;
+        outrc = rc = CDB2ERR_VERIFY_ERROR;
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         Pthread_mutex_unlock(&clnt->wait_mutex);
@@ -2533,12 +2527,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 done:
     reset_clnt_flags(clnt);
+    reqlog_set_rqid_from_clnt(thd->logger, clnt);
     if (clnt->osql.sock_started == 0)
         comdb2uuid_clear(clnt->osql.uuid);
 
     if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
         /* end request only for non-chunk and non-SP transactions */
-        reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+        reqlog_end_request(thd->logger, rc, __func__, __LINE__);
     }
 
     /* if this is a retry, let the upper layer free the structure */
