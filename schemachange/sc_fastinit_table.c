@@ -56,9 +56,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     struct dbtable *db;
     struct dbtable *newdb;
     int rc = 0;
-    int bdberr = 0;
     int datacopy_odh = 0;
-    char new_prefix[32];
     struct scinfo scinfo;
     struct errstat err = {0};
 
@@ -103,22 +101,12 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
-    /* create temporary tables.  to try to avoid strange issues always
-     * use a unqiue prefix.  this avoids multiple histories for these
-     * new. files in our logs.
-     *
-     * since the prefix doesn't matter and bdb needs to be able to unappend
-     * it, we let bdb choose the prefix */
-    /* ignore failures, there shouln't be any and we'd just have a
-     * truncated prefix anyway */
-    bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
-
     int local_lock = 0;
     if (!iq->sc_locked) {
         local_lock = 1;
         wrlock_schema_lk();
     }
-    rc = open_temp_db_resume(iq, newdb, new_prefix, 0, 0, tran);
+    rc = open_temp_newdb_resume(iq, newdb, 0);
     if (local_lock)
         unlock_schema_lk();
     if (rc) {

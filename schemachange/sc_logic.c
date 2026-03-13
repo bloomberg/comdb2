@@ -1382,13 +1382,15 @@ int resume_schema_change(void)
 /****************** Table functions ***********************************/
 /****************** Functions down here will likely be moved elsewhere *****/
 
-/* this assumes threads are not active in db */
-int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int resume,
-                        int temp, tran_type *tran)
+int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume)
 {
     char *tmpname;
     int bdberr;
     int nbytes;
+    char prefix[32];
+    int rc;
+
+    bdb_get_new_prefix(prefix, sizeof(prefix), &bdberr);
 
     nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
     if (nbytes <= 0) nbytes = 2;
@@ -1396,28 +1398,34 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int r
     tmpname = malloc(nbytes);
     snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
 
+    rc = open_temp_db_resume(iq, db, tmpname, resume);
+
+    free(tmpname);
+
+    return rc;
+}
+
+int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, int resume)
+{
+    int bdberr;
+
     db->handle = NULL;
 
     /* open existing temp db if it's there (ie we're resuming after a master
      * switch) */
     if (resume) {
-        db->handle = bdb_open_more(
-            tmpname, db->dbenv->basedir, db->lrl, db->nix,
-            (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-            db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
-            db->numblobs + 1, /* one main record + the blobs blobs */
-            db->dbenv->bdb_env, &bdberr);
+        db->handle = bdb_open_more(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
+                                   db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
+                                   db->ix_nullsallowed, db->numblobs + 1, /* one main record + the blobs blobs */
+                                   db->dbenv->bdb_env, &bdberr);
 
         if (db->handle)
             logmsg(LOGMSG_INFO,
                    "Found existing tempdb: %s, attempting to resume an in "
                    "progress schema change\n",
-                   tmpname);
+                   tablename);
         else {
-            logmsg(LOGMSG_ERROR,
-                   "Didn't find existing tempdb: %s, aborting schema change\n",
-                   tmpname);
-            free(tmpname);
+            logmsg(LOGMSG_ERROR, "Didn't find existing tempdb: %s, aborting schema change\n", tablename);
             return -1;
         }
     }
@@ -1425,49 +1433,38 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int r
     if (!db->handle) /* did not/could not open existing one, creating new one */
     {
         int rc;
-        tran_type * tmp_tran = tran;
+        tran_type *tran = NULL;
     retry:
-        if (!tmp_tran) {
-            rc = trans_start(iq, NULL, &tmp_tran);
-            if (rc)
-                return -1;
-        }
+        rc = trans_start(iq, NULL, &tran);
+        if (rc)
+            return -1;
 
-        db->handle = bdb_create_tran(
-            tmpname, db->dbenv->basedir, db->lrl, db->nix,
-            (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-            db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
-            db->numblobs + 1, /* one main record + the blobs blobs */
-            db->dbenv->bdb_env, temp, &bdberr, tmp_tran);
+        db->handle = bdb_create_tran(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
+                                     db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
+                                     db->ix_nullsallowed, db->numblobs + 1, /* one main record + the blobs blobs */
+                                     db->dbenv->bdb_env, 0, &bdberr, tran);
         if (db->handle == NULL) {
-            if (tmp_tran != tran) {
-                trans_abort(iq, tmp_tran);
-                tmp_tran = NULL;
-                if (bdberr == BDBERR_DEADLOCK) {
-                    logmsg(LOGMSG_WARN, "%s: retrying on BDBERR_DEADLOCK\n", __func__);
-                    goto retry;
-                }
+            trans_abort(iq, tran);
+            tran = NULL;
+            if (bdberr == BDBERR_DEADLOCK) {
+                logmsg(LOGMSG_WARN, "%s: retrying on BDBERR_DEADLOCK\n", __func__);
+                goto retry;
             }
 
-            logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__,
-                   tmpname, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__, tablename, bdberr);
 
-            free(tmpname);
             return bdberr;
         }
 
-        if (tmp_tran != tran) {
-            rc = trans_commit_nowait(iq, tmp_tran, gbl_myhostname);
-            if (rc)
-                return -1;
-        }
+        rc = trans_commit_nowait(iq, tran, gbl_myhostname);
+        if (rc)
+            return -1;
     }
 
     /* clone the blobstripe genid.  this will definately be needed in the
      * future when we don't change genids on schema change, but right now
      * isn't really needed. */
     bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
-    free(tmpname);
     return 0;
 }
 
