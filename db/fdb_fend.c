@@ -266,9 +266,9 @@ void _clnt_cache_rem_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl);
 fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name);
 static void _clnt_cache_destroy(sqlclntstate *clnt);
 
-static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl, char *row, int rowlen,
-                                               fdb_tbl_ent_t **found_ent, int versioned);
-static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial, fdb_tbl_ent_t **found_ent, int is_sqlite_master);
+static int _add_fdb_tbl_ent_from_packedksqlite(const char *dbname, fdb_tbl_t *tbl, char *row, int rowlen,
+                                               int versioned);
+static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial);
 
 static int _num_entries(fdb_t *fdb);
 
@@ -449,11 +449,14 @@ static void _cache_unlink_fdb(fdb_t *fdb)
 static void _free_fdb(fdb_t *fdb)
 {
     fdb_tbl_t *tmp, *tbl;
+
     LISTC_FOR_EACH_SAFE(&fdb->tables, tbl, tmp, lnk)
     {
         _unlink_fdb_table(fdb, tbl);
         _free_fdb_tbl(fdb, tbl);
     }
+
+    fdb_sqlstat_cache_destroy(&fdb->sqlstats);
 
     free(fdb->dbname);
     Pthread_mutex_destroy(&fdb->tables_mtx);
@@ -715,6 +718,64 @@ static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name, enum table_s
 }
 
 /**
+ * Expend _table_exists to handle the case when table exist but it is stale;
+ * in this case, we unlink the existing table (and free it if no users)/
+ * //!!NOTE!!: only calls this when tables_mtx is acquired
+ */
+static fdb_tbl_t *_table_exists_and_not_stale(fdb_t *fdb, const char *table_name, int *version,
+                                              unsigned long long remote_version)
+{
+    fdb_tbl_t *remtbl;
+    enum table_status status;
+
+    /* check if the table exists */
+    remtbl = _table_exists(fdb, table_name, &status, version, remote_version);
+    if (status == TABLE_EXISTS) {
+        /* table exists and has the right version; we still have the fdb read locked so
+         * we can proceed with updating the sqlite engine schema
+         *
+         * the table is not yet locked, we are still in prepare phase; but the sqlite will
+         * have the info cached, and when we get the table locks, we will acquire and check
+         * the cached version again
+         */
+        assert(remtbl);
+        /* collect stats tables also */
+        return remtbl;
+    }
+    if (!remtbl) /* not existing */
+        return NULL;
+
+    /* status was TABLE_STALE, need to remove table */
+
+    Pthread_mutex_lock(&remtbl->need_version_mtx);
+    if (!remtbl->need_version || ((remtbl->need_version - 1) == remtbl->version)) {
+        /* table was fixed in the meantime!, drop exclusive lock */
+        *version = remtbl->version;
+        Pthread_mutex_unlock(&remtbl->need_version_mtx);
+
+        return remtbl;
+    }
+
+    /* table is still stale, remove */
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" version %llu required %d\n", remtbl->fdb->dbname,
+               remtbl->name, remtbl->version, remtbl->need_version - 1);
+
+    /* this is done under fdb tables_mutex lock */
+    _unlink_fdb_table(fdb, remtbl);
+
+    Pthread_mutex_unlock(&remtbl->need_version_mtx);
+
+    /* at this point the remote table is only this thread and
+     * existing reader sqlite engines
+     * try to free it if this is last reader
+     */
+    _try_free_fdb_tbl(fdb, remtbl);
+
+    return NULL;
+}
+
+/**
  * Handling sqlite_stats; they have been temporarely added but linked
  * to original table tbl.
  * They really belong to the fdb, lets properly link them now
@@ -806,7 +867,6 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
 {
     unsigned long long remote_version = 0ULL;
     struct errstat err = {0};
-    enum table_status status;
     int rc = FDB_NOERR;
     fdb_tbl_t *tbl = NULL, *stat1 = NULL, *stat4 = NULL;
     int initial;
@@ -851,58 +911,15 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
 
     Pthread_mutex_lock(&fdb->tables_mtx);
 
-    /* check if the table exists */
-    fdb_tbl_t *remtbl = _table_exists(fdb, table_name, &status, version, remote_version);
-    if (status == TABLE_EXISTS) {
-        /* table exists and has the right version; we still have the fdb read locked so
-         * we can proceed with updating the sqlite engine schema
-         *
-         * the table is not yet locked, we are still in prepare phase; but the sqlite will
-         * have the info cached, and when we get the table locks, we will acquire and check
-         * the cached version again
-         */
-        assert(remtbl);
-        tbl = remtbl;
-        /* collect stats tables also */
+    tbl = _table_exists_and_not_stale(fdb, table_name, version, remote_version);
+    if (tbl) {
+        rc = FDB_NOERR;
         goto done;
     }
 
-    if (remtbl) {
-        /* status was TABLE_STALE */
-
-        Pthread_mutex_lock(&remtbl->need_version_mtx);
-        if (!remtbl->need_version || ((remtbl->need_version - 1) == remtbl->version)) {
-            /* table was fixed in the meantime!, drop exclusive lock */
-            rc = FDB_NOERR;
-            *version = remtbl->version;
-            Pthread_mutex_unlock(&remtbl->need_version_mtx);
-
-            tbl = remtbl;
-            /* collect stats tables also */
-            goto done;
-        }
-
-        /* table is still stale, remove */
-        if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" version %llu required %d\n", remtbl->fdb->dbname,
-                   remtbl->name, remtbl->version, remtbl->need_version - 1);
-
-        /* this is done under fdb tables_mutex lock */
-        _unlink_fdb_table(fdb, remtbl);
-
-        Pthread_mutex_unlock(&remtbl->need_version_mtx);
-
-        /* at this point the remote table is only this thread and
-         * existing reader sqlite engines
-         * try to free it if this is last reader
-         */
-        _try_free_fdb_tbl(fdb, remtbl);
-    }
-
-    /* we will generate new tables */
+    /* need to retrieve new table an link it (and maybe stats too) */
     link_table = 1;
 
-    /* is this the first table? grab sqlite_stats too */
     initial = _num_entries(fdb) == 0;
 
     if (!initial) {
@@ -923,11 +940,47 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
         goto done;
     }
 
+    /* we will do the remote schema and stats retrieval without blocking fdb->tables_mutex;
+     * this can end up with redundant retries, but it will not block the hash during this time
+     */
+    Pthread_mutex_unlock(&fdb->tables_mtx);
+
     /* this COULD be taken out of tbls_mtx, but I want to clear table
        under lock so I don't add garbage table structures when mispelling
      */
     found_ent = NULL;
-    rc = _retrieve_fdb_tbl(fdb, tbl, initial, &found_ent, is_sqlite_master);
+    rc = _retrieve_fdb_tbl(fdb, tbl, initial);
+
+    /* lock the tables_mtx again, check if the table was added already
+     * if table exists already, simply remove the dup here; otherwise
+     * proceed
+     */
+    Pthread_mutex_lock(&fdb->tables_mtx);
+
+    fdb_tbl_t *remtbl = _table_exists_and_not_stale(fdb, table_name, version, remote_version);
+    if (remtbl) {
+        /* table was already added with the right version */
+        _free_fdb_tbl(fdb, tbl);
+        tbl = remtbl;
+        goto done;
+    }
+
+    /* we are the first here to try to link the table in fdb */
+    if (rc == FDB_NOERR) {
+        fdb_tbl_ent_t *ent;
+        LISTC_FOR_EACH(&tbl->ents, ent, lnk)
+        {
+            if (strcasecmp(ent->name, "sqlite_stat1") == 0) {
+                fdb->has_sqlstat1 = 1;
+            }
+            if (strcasecmp(ent->name, "sqlite_stat4") == 0) {
+                fdb->has_sqlstat4 = 1;
+            }
+            if (strcasecmp(ent->name, tbl->name) == 0) {
+                found_ent = ent;
+            }
+        }
+    }
 
     if (rc != FDB_NOERR || (!found_ent && !is_sqlite_master)) {
         *version = 0;
@@ -935,8 +988,11 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
         _free_fdb_tbl(fdb, tbl);
         tbl = NULL;
 
-        if (rc == FDB_NOERR)
+        if (rc == FDB_NOERR) {
+            logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n", __func__, fdb->dbname, tbl->name, rc);
+
             rc = FDB_ERR_FDB_TBL_NOTFOUND;
+        }
 
         goto done;
     }
@@ -950,8 +1006,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
     /* create indedependet fdb_tbl for sqlite_stats*/
     if (initial) {
         /* we have a table, lets get the sqlite_stats */
-        if (fdb->has_sqlstat1 &&
-            strncasecmp(table_name, "sqlite_stat1", 13) != 0) {
+        if (fdb->has_sqlstat1 && !is_sqlite_stat1) {
             stat1 = _fix_table_stats(fdb, tbl, "sqlite_stat1");
             if (!stat1) {
                 rc = FDB_ERR_GENERIC;
@@ -960,8 +1015,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
             link_stat1 = 1;
         }
 
-        if (fdb->has_sqlstat4 &&
-            strncasecmp(table_name, "sqlite_stat4", 13) != 0) {
+        if (fdb->has_sqlstat4 && !is_sqlite_stat4) {
             if (fdb->has_sqlstat1) {
                 stat4 = _fix_table_stats(fdb, tbl, "sqlite_stat4");
                 if (!stat4) {
@@ -1104,7 +1158,7 @@ static int _num_entries(fdb_t *fdb)
  *
  * NOTE: we have tables_mtx locked when calling this
  */
-static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial, fdb_tbl_ent_t **found_ent, int is_sqlite_master)
+static int _retrieve_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl, int initial)
 {
     BtCursor *cur;
     int rc = FDB_NOERR;
@@ -1234,13 +1288,6 @@ run:
             break;
         }
 
-        if (!is_sqlite_master)
-            logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n",
-                   __func__, fdb->dbname, tbl->name, rc);
-
-        if (*found_ent)
-            *found_ent = NULL;
-
         goto close;
     }
 
@@ -1257,7 +1304,7 @@ run:
             goto close;
         }
 
-        irc = _add_fdb_tbl_ent_from_packedksqlite(fdb, tbl, row, rowlen, found_ent, versioned);
+        irc = _add_fdb_tbl_ent_from_packedksqlite(fdb->dbname, tbl, row, rowlen, versioned);
         if (irc) {
             rc = irc;
             goto close;
@@ -1273,7 +1320,7 @@ run:
 
     if (rc == IX_FND ||
         /* cdb2api does not know which row is the last */
-        (rc == IX_EMPTY /* && *found_ent -- capture also missing table */))
+        rc == IX_EMPTY)
         rc = FDB_NOERR;
 
 close:
@@ -1601,8 +1648,7 @@ char *fdb_sqlexplain_get_name(struct sqlclntstate *clnt, int rootpage)
  * insert an entry using a packed sqlite row ; no locking here, table is not yet
  * visible
  */
-static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl, char *row, int rowlen,
-                                               fdb_tbl_ent_t **found_ent, int versioned)
+static int _add_fdb_tbl_ent_from_packedksqlite(const char *dbname, fdb_tbl_t *tbl, char *row, int rowlen, int versioned)
 {
     fdb_tbl_ent_t *ent = (fdb_tbl_ent_t *)calloc(sizeof(fdb_tbl_ent_t), 1);
     char *etype, *name, *tbl_name, *sql, *csc2;
@@ -1625,10 +1671,10 @@ static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl, char 
                                               &csc2, &version, rootpage);
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%s:%s Inserting table %s:%s rootp=%d src_rootp=%d "
-                        "version=%llu, sql %s\n",
-                fdb->dbname, tbl->name, name, tbl_name, rootpage,
-                source_rootpage, version, sql);
+        logmsg(LOGMSG_USER,
+               "%s:%s Inserting table %s:%s rootp=%d src_rootp=%d "
+               "version=%llu, sql %s\n",
+               dbname, tbl->name, name, tbl_name, rootpage, source_rootpage, version, sql);
 
     if (strcasecmp(name, tbl_name) &&
         (where = strstr(sql, ") where (")) != NULL) {
@@ -1686,16 +1732,6 @@ static int _add_fdb_tbl_ent_from_packedksqlite(fdb_t *fdb, fdb_tbl_t *tbl, char 
         listc_atl(&tbl->ents, ent);
     else
         listc_abl(&tbl->ents, ent);
-
-    if (strcasecmp(ent->name, "sqlite_stat1") == 0) {
-        fdb->has_sqlstat1 = 1;
-    }
-    if (strcasecmp(ent->name, "sqlite_stat4") == 0) {
-        fdb->has_sqlstat4 = 1;
-    }
-    if (strcasecmp(ent->name, tbl->name) == 0) {
-        *found_ent = ent;
-    }
 
     if (versioned) {
         /* Do to the way sqlite_stat tables are added on the first table request
@@ -4455,12 +4491,6 @@ static int _free_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl)
 {
     fdb_tbl_ent_t *ent, *tmp;
 
-    /* check if this is a sqlite_stat table, for which stat might be present;
-       if so, clear it */
-    if (is_sqlite_stat(tbl->name)) {
-        fdb_sqlstat_cache_destroy(&fdb->sqlstats);
-    }
-
     LISTC_FOR_EACH_SAFE(&tbl->ents, ent, tmp, lnk)
     {
         /* free each index/data entry */
@@ -4587,6 +4617,7 @@ static void _clear_schema(const char *dbname, const char *tblname, int force)
             _unlink_fdb_table(fdb, tbl);
             _free_fdb_tbl(fdb, tbl);
         }
+        fdb_sqlstat_cache_destroy(&fdb->sqlstats);
     } else {
         tbl = hash_find_readonly(fdb->h_tbls_name, &tblname);
         if (tbl == NULL) {
