@@ -44,6 +44,7 @@ int gbl_partitioned_table_enabled = 1;
 int gbl_merge_table_enabled = 1;
 int gbl_retro_tpt = 1;
 int gbl_retro_tpt_verbose = 0;
+int gbl_retro_tpt_start = 24; /* default 24 hours in the future */
 
 struct timepart_shard {
     char *tblname; /* name of the table covering the shard, can be an alias */
