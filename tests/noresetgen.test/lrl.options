@@ -1,0 +1,4 @@
+# Use default options - features that preserve generation are enabled by default
+# This test verifies that generation number is preserved and increments across cluster restarts
+
+logmsg level debug
