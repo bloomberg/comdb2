@@ -2044,7 +2044,8 @@ static int stop_physrep_watcher_thread() {
     return 0;
 }
 
-static int is_a_physrep_source_or_dest() {
+int is_a_physrep_source_or_dest()
+{
     if (gbl_physrep_i_am_metadb == 1) {                   // Is not a physical replication metadb
         return 0;
     }
