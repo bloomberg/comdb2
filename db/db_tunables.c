@@ -1261,6 +1261,13 @@ static int file_copier_update(void *context, void *value)
     return 0;
 }
 
+static int iam_metrics_namespace_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    *(char **)tunable->var = intern((char *)value);
+    return 0;
+}
+
 static void *file_permissions_value(void *context)
 {
     static char val[15];
