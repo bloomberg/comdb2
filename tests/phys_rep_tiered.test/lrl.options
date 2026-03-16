@@ -1,5 +1,4 @@
 logmsg level debug
-dtastripe 1
 debug_drop_nth_rep_message 10000
 incoherent_slow_inactive_timeout 0
 # test requires fast revconn than 
@@ -25,3 +24,6 @@ wait_for_seqnum_trace 1
 online_recovery 0
 set_seqnum_trace 1
 setattr WAIT_FOR_SEQNUM_TRACE 1
+
+do semver 8.1.0
+enable_bulk_import 1
