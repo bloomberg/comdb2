@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+cnt=$(echo $CLUSTER | wc -w)
+
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    echo "This test requires a clustered installation of at least 3 nodes"
+    exit 0
+fi
+
+
+function run_test {
+    echo "=== Starting generation preservation test (default options) ==="
+
+    # Get initial master and generation
+    master=$(get_master)
+    initial_gen=$(get_node_gen $master)
+    echo "Initial master: $master"
+    echo "Initial generation: $initial_gen"
+
+    # Test: Stop and restart cluster 10 times, verify generation increments each time
+    echo "=== Testing generation preservation through cluster restarts ==="
+
+    prev_gen=$initial_gen
+    for i in {1..10}; do
+        # Get current master and generation before restart
+        master=$(get_master)
+        current_gen=$(get_node_gen $master)
+        echo "  Iteration $i: gen=$current_gen, master=$master"
+
+        # Stop entire cluster
+        echo "  Stopping entire cluster"
+        stop_all_nodes
+
+        # Verify all nodes are down
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $node "select 1" >/dev/null 2>&1
+            if [[ $? -eq 0 ]]; then
+                failexit "Node $node is still up after stop"
+            fi
+        done
+
+        # Restart entire cluster
+        echo "  Restarting entire cluster"
+        start_all_nodes
+        sleep 5
+
+        # Wait for cluster coherency
+        wait_for_cluster
+
+        # Get new master and generation after restart
+        master=$(get_master)
+        new_gen=$(get_node_gen $master)
+        echo "  After restart: gen=$new_gen, new_master=$master"
+
+        # Verify generation incremented
+        if [[ $new_gen -le $prev_gen ]]; then
+            stop_all_nodes
+            failexit "Generation did not increment after restart (prev=$prev_gen, new=$new_gen)"
+        else
+            echo "  SUCCESS: Generation incremented ($prev_gen -> $new_gen)"
+        fi
+
+        prev_gen=$new_gen
+    done
+
+    final_gen=$(get_node_gen $master)
+    echo "=== Test completed successfully ==="
+    echo "Summary:"
+    echo "  Initial generation: $initial_gen"
+    echo "  Final generation: $final_gen"
+    echo "  Total cluster restarts: 10"
+    echo "  Generation preserved and incremented correctly: YES"
+}
+
+run_test
+stop_all_nodes
+echo "Success"

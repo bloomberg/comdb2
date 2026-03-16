@@ -72,7 +72,7 @@ function check_ignore_message {
     fi
 }
 
-function runit {
+function run_test {
     echo "=== Starting SQL logfill generation wraparound test ==="
 
     # Get initial master
@@ -228,6 +228,6 @@ function runit {
     echo "  Records verified: $count_after"
 }
 
-runit
+run_test
 stop_all_nodes
 echo "Success"
