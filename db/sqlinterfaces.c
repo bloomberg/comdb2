@@ -2046,6 +2046,21 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
         abort_dbtran(clnt);
 }
 
+extern int gbl_replicant_retry_on_not_durable;
+
+static inline int should_change_client_rcode(void)
+{
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
+        return 0;
+    }
+
+    if (gbl_replicant_retry_on_not_durable) {
+        return 0;
+    }
+
+    return 1;
+}
+
 static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
 {
     int irc = 0, rc = 0, bdberr = 0;
@@ -2154,7 +2169,20 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                            " converted-rc %d\n",
                                            rc);
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                            rc = has_high_availability(clnt) ? CDB2ERR_NOTDURABLE : SQLHERR_MASTER_TIMEOUT;
+                            if (should_change_client_rcode()) {
+                                rc = SQLHERR_MASTER_TIMEOUT;
+                                sql_debug_logf(clnt, __func__, __LINE__,
+                                               "returned SQLHERR_MASTER_TIMEOUT for SQLITE_CLIENT_CHANGENODE "
+                                               "durable-lsns=%d, retry-on-not-durable=%d\n",
+                                               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS),
+                                               gbl_replicant_retry_on_not_durable);
+                            } else {
+                                sql_debug_logf(clnt, __func__, __LINE__,
+                                               "returned CDB2ERR_NOTDURABLE for SQLITE_CLIENT_CHANGENODE "
+                                               "durable-lsns=%d, retry-on-not-durable=%d\n",
+                                               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS),
+                                               gbl_replicant_retry_on_not_durable);
+                            }
                         }
                         irc = trans_abort_shadow(
                             (void **)&clnt->dbtran.shadow_tran, &bdberr);
