@@ -569,6 +569,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 			Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 			if (dbp != NULL && ufid->dbp == NULL) {
 				ufid->dbp = dbp;
+				ufid->dbp->added_to_ufid = 1;
 			} else if (ufid->dbp != dbp) {
 				close_dbp = dbp;
 			}
@@ -584,8 +585,9 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 		}
 		ret = ret ? ret : (ufid->ignore ? DB_IGNORED : 0);
 		(*dbpp) = ufid->dbp;
-		if (remove_on_found) {
+		if (remove_on_found && ufid->dbp != NULL) {
 			/* caller is going to close the dbp */
+			ufid->dbp->added_to_ufid = 0;
 			ufid->dbp = NULL;
 		}
 	} else {
