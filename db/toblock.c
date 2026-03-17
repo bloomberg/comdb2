@@ -896,6 +896,32 @@ int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
 
 extern int gbl_debug_force_non_durable;
 
+static inline int durable_change_rcode(struct ireq *iq)
+{
+    if (iq->sorese && iq->sorese->dist_txnid) {
+        return 1;
+    }
+
+    /* Always return NOT_DURABLE if DURABLE_LSNS enabled */
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
+        return 1;
+    }
+
+    /* Return normal rcode if retry-on-not-durable disabled */
+    if (!gbl_replicant_retry_on_not_durable) {
+        return 0;
+    }
+
+    /* Return NOT_DURABLE if ignore-final-retry disabled */
+    int is_final = iq->sorese ? iq->sorese->is_final : 0;
+    if (!is_final || !gbl_ignore_final_non_durable_retry) {
+        return 1;
+    }
+
+    /* Final retry & ignore-final-non-durable-retry enabled */
+    return 0;
+}
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -5964,8 +5990,7 @@ add_blkseq:
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:
                      * ask the the client to retry */
-                    if (irc == BDBERR_NOT_DURABLE &&
-                        (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable)) {
+                    if (irc == BDBERR_NOT_DURABLE && durable_change_rcode(iq)) {
                         rc = ERR_NOT_DURABLE;
                     }
                     logmsg(LOGMSG_DEBUG, "trans_commit_adaptive irc=%d, "

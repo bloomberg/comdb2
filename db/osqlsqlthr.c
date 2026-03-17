@@ -157,11 +157,12 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
     return 0;
 }
 
-#define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                                                           \
+#define RESTART_SOCKSQL_KEEP_RQID(retries)                                                                             \
     do {                                                                                                               \
         restarted = 0;                                                                                                 \
-        if (osql_should_restart(clnt, rc, keep_rqid)) {                                                                \
-            rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, keep_rqid, 0);                                      \
+        if (osql_should_restart(clnt, rc, retries)) {                                                                  \
+            int final = (retries >= gbl_allow_bplog_restarts);                                                         \
+            rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, retries, final);                                    \
             if (rc) {                                                                                                  \
                 logmsg(LOGMSG_ERROR, "%s: failed to restart socksql session rc=%d\n", __func__, rc);                   \
             } else {                                                                                                   \
@@ -1498,8 +1499,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
     return rc;
 }
 
-static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
-                                  int nettype)
+static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int nettype)
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
@@ -1575,7 +1575,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
             rc = osql_send_commit(&osql->target, osql->uuid, osql->replicant_numops,
                                   &osql->xerr, nettype, clnt->query_stats, snap_info_p);
         }
-        RESTART_SOCKSQL_KEEP_RQID(is_retry);
+        RESTART_SOCKSQL_KEEP_RQID(retries);
 
     } while (restarted);
 
