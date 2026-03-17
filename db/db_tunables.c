@@ -193,6 +193,7 @@ extern int gbl_all_prepare_abort;
 extern int gbl_all_prepare_leak;
 extern int gbl_flush_on_prepare;
 extern int gbl_debug_sleep_before_prepare;
+static char *gbl_debug_default_string_update = "debug_default_string_update_value";
 extern int gbl_wait_for_prepare_seqnum;
 extern int gbl_flush_replicant_on_prepare;
 extern int gbl_slow_rep_log_get_loop;
@@ -1407,6 +1408,14 @@ int register_tunable(comdb2_tunable *tunable)
 
     /* Keep tunable names in lower case (to be consistent). */
     tunable_tolower(t->name);
+
+    // Ensure the initial value for tunables without an update function
+    // is heap-allocated so the default update handler can safely free() it.
+    if ((tunable->type == TUNABLE_STRING || tunable->type == TUNABLE_RAW) && !tunable->update) {
+        if (tunable->var && *(char **)tunable->var) {
+            *((char **)tunable->var) = strdup(*(char **)tunable->var);
+        }
+    }
 
     t->descr = tunable->descr;
 
