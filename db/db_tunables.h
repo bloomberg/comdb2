@@ -333,6 +333,9 @@ REGISTER_TUNABLE("sleep_before_dispatch", "Sleep before dispatching on master. (
                  &gbl_debug_sleep_before_dispatch, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_sleep_before_prepare", "Sleep for 5 seconds before preparing. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_before_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_default_string_update",
+                 "Test default string update handler. (Default: debug_default_string_update_value)", TUNABLE_STRING,
+                 &gbl_debug_default_string_update, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_prefault_udp", "Disables 'enable_prefault_udp'", TUNABLE_BOOLEAN, &gbl_prefault_udp,
                  INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
