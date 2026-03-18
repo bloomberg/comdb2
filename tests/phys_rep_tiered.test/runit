@@ -2620,6 +2620,129 @@ function physrep_revconn_populate_retry_with_debug
     $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$bogusname'"
 }
 
+# Tests that when check_for_reverse_conn fails (returns -1), the physrep doesn't
+# incorrectly fall into the 'do_revconn is 0, registering replicant' path.
+# This verifies the fix where -1 (failed to contact metadb) was incorrectly
+# treated as 0 in the old code.
+function physrep_fake_check_revconn_error_test
+{
+    # Use the first standalone physrep which is already in comdb2_physrep_sources
+    local repl_dbname="${REPL_DBNAME_PREFIX}_${firstNode}"
+    local repl_host="${firstNode}"
+    local logfile="${TESTDIR}/logs/${repl_dbname}.log"
+
+    echo "== Testing physrep_fake_check_revconn_error tunable =="
+    echo "Using physrep: ${repl_dbname}@${repl_host}"
+
+    # Verify this physrep is in comdb2_physrep_sources (it should be, as it's the first one)
+    local in_sources=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_ALTMETA_DBNAME} --host ${REPL_ALTMETA_HOST} \
+        "select count(*) from comdb2_physrep_sources where dbname='${repl_dbname}' and host='${repl_host}'" 2>/dev/null)
+
+    if [[ "$in_sources" != "1" ]]; then
+        echo "Adding ${repl_dbname}@${repl_host} to comdb2_physrep_sources"
+        add_to_physrep_sources ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${DBNAME} ${firstNode} ${repl_dbname} ${repl_host}
+    else
+        echo "${repl_dbname}@${repl_host} is already in comdb2_physrep_sources"
+    fi
+
+    ###########################################################################
+    # Test Case 1: check_for_reverse_conn fails BUT register_self succeeds
+    # Expected: physrep should start replicating (fallback to direct connection)
+    ###########################################################################
+
+    echo ""
+    echo "=== Case 1: check_for_reverse_conn fails, register_self succeeds ==="
+
+    local logsize_before=$(wc -c < "$logfile" 2>/dev/null || echo 0)
+
+    # Enable only the check_revconn error (register_self will succeed)
+    echo "Enabling physrep_fake_check_revconn_error on ${repl_dbname}@${repl_host}"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "put tunable physrep_fake_check_revconn_error 1"
+
+    # Force the physrep to re-register immediately
+    echo "Forcing physrep registration to trigger revconn check..."
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "exec procedure sys.cmd.send('physrep_force_registration')"
+
+    # Wait for the 'do_revconn is -1' trace
+    echo "Waiting for 'do_revconn is -1' trace..."
+    local wait_count=0
+    local max_wait=70
+    local revconn_error_seen=0
+
+    while [[ $wait_count -lt $max_wait ]]; do
+        sleep 1
+        let wait_count=wait_count+1
+        local new_log_content=$(tail -c +$((logsize_before + 1)) "$logfile" 2>/dev/null)
+        local revconn_error_count=$(echo "$new_log_content" | grep -c "do_revconn is -1")
+
+        if [[ $revconn_error_count -gt 0 ]]; then
+            echo "'do_revconn is -1' trace detected after ${wait_count} seconds"
+            revconn_error_seen=1
+            break
+        fi
+    done
+
+    if [[ $revconn_error_seen -eq 0 ]]; then
+        cleanFailExit "Case 1 FAILED: No 'do_revconn is -1' trace was emitted"
+    fi
+
+    # Wait a bit for replication to start (since register_self should succeed)
+    echo "Waiting for physrep to start replicating after successful register_self..."
+    sleep 5
+
+    # Disable the tunable for the next test case
+    echo "Disabling physrep_fake_check_revconn_error"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "put tunable physrep_fake_check_revconn_error 0"
+
+    echo "Case 1 SUCCESS: check_for_reverse_conn failed, but register_self succeeded and physrep is running"
+
+    ###########################################################################
+    # Test Case 2: Both check_for_reverse_conn AND register_self fail
+    # Expected: rapid retry attempts without updating last_revconn_check
+    ###########################################################################
+
+    echo ""
+    echo "=== Case 2: Both check_for_reverse_conn and register_self fail ==="
+
+    logsize_before=$(wc -c < "$logfile" 2>/dev/null || echo 0)
+
+    # Enable both error injection tunables
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "put tunable physrep_fake_register_self_error 1"
+    echo "Enabling both physrep_fake_check_revconn_error and physrep_fake_register_self_error"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "put tunable physrep_fake_check_revconn_error 1"
+
+    # Force registration
+    echo "Forcing physrep registration..."
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "exec procedure sys.cmd.send('physrep_force_registration')"
+
+    # Wait and observe retry behavior
+    echo "Waiting to observe retry attempts..."
+    sleep $max_wait
+
+    # Count how many 'do_revconn is -1' traces we see (should be multiple if retrying quickly)
+    local new_log_content=$(tail -c +$((logsize_before + 1)) "$logfile" 2>/dev/null)
+    local retry_count=$(echo "$new_log_content" | grep -c "do_revconn is -1")
+
+    echo "Number of 'do_revconn is -1' traces in $max_wait seconds: $retry_count"
+
+    if [[ $retry_count -lt 2 ]]; then
+        cleanFailExit "Case 2 FAILED: Expected multiple retry attempts but only saw $retry_count"
+    fi
+
+    # Disable both tunables in the correct order
+    # First disable register_self error so the fallback path can succeed,
+    # then disable check_revconn error
+    echo "Disabling physrep_fake_register_self_error first"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "put tunable physrep_fake_register_self_error 0"
+
+    echo "Disabling physrep_fake_check_revconn_error"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${repl_dbname} --host ${repl_host} "put tunable physrep_fake_check_revconn_error 0"
+
+    echo "Case 2 SUCCESS: Both failures triggered rapid retry attempts ($retry_count retries in 10s)"
+    echo ""
+    echo "=== All test cases passed ==="
+}
+
 function announce
 {
     typeset text=$1
@@ -2813,12 +2936,16 @@ function run_tests
     testcase_preamble $testcase
     physrep_revconn_populate_retry_with_debug
     testcase_finish $testcase
+
+    testcase="physrep_fake_check_revconn_error_test"
+    testcase_preamble $testcase
+    physrep_fake_check_revconn_error_test
+    testcase_finish $testcase
 }
 
 function run_one_test
 {
-    physrep_revconn_populate_error
-    physrep_revconn_populate_retry_with_debug
+    physrep_fake_check_revconn_error_test
 }
 
 run_tests

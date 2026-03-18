@@ -68,7 +68,7 @@ int gbl_revsql_allow_command_exec;
 int gbl_revsql_debug = 0;
 int gbl_revsql_cdb2_debug;
 // 'reverse-connection host' list refresh frequency
-int gbl_revsql_host_refresh_freq_sec = 5;
+int gbl_revsql_host_refresh_freq_sec = 60;
 // 'reverse-connection' worker's new connection attempt frequency
 int gbl_revsql_connect_freq_sec = 5;
 

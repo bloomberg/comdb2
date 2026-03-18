@@ -58,6 +58,8 @@ typedef struct DB_Connection {
     } while (0)
 
 int gbl_physrep_debug = 0;
+int gbl_physrep_fake_check_revconn_error = 0;
+int gbl_physrep_fake_register_self_error = 0;
 int gbl_physrep_reconnect_interval = 3600; // force re-registration every hour
 int gbl_physrep_reconnect_penalty = 0;
 int gbl_blocking_physrep = 1;
@@ -65,11 +67,9 @@ int gbl_physrep_fanout = 8;
 int gbl_physrep_max_candidates = 6;
 int gbl_physrep_max_pending_replicants = 10;
 int gbl_deferred_phys_flag = 0;
-int gbl_physrep_source_nodes_refresh_freq_sec = 10;
-int gbl_physrep_slow_replicant_check_freq_sec = 10;
-int gbl_physrep_keepalive_freq_sec = 10;
-int gbl_physrep_check_minlog_freq_sec = 10;
-int gbl_physrep_hung_replicant_check_freq_sec = 10;
+int gbl_physrep_slow_replicant_check_freq_sec = 60;
+int gbl_physrep_keepalive_freq_sec = 60;
+int gbl_physrep_hung_replicant_check_freq_sec = 60;
 int gbl_physrep_hung_replicant_threshold = 60;
 int gbl_physrep_revconn_check_interval = 60;
 int gbl_physrep_update_registry_interval = 60;
@@ -78,7 +78,6 @@ int gbl_physrep_i_am_metadb = 0;
 int gbl_physrep_filter_by_class = 1;
 int gbl_started_physrep_threads = 0;
 
-unsigned int physrep_min_logfile;
 unsigned int gbl_deferred_phys_update;
 
 char *gbl_physrep_source_dbname;
@@ -871,6 +870,11 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
         physrep_logmsg(LOGMSG_USER, "%s:%d Registering self\n", __func__, __LINE__);
     }
 
+    if (gbl_physrep_fake_register_self_error) {
+        logmsg(LOGMSG_USER, "%s:%d: Fake error in register_self\n", __func__, __LINE__);
+        return -1;
+    }
+
     // Reset all the nodes from this physical replication cluster; and mark them
     // 'Inactive'.
     //
@@ -1173,16 +1177,17 @@ static int send_keepalive(void)
     return 0;
 }
 
-unsigned int physrep_min_filenum() {
-    return physrep_min_logfile;
-}
-
 extern int gbl_reverse_hosts_v2;
 
 static int check_for_reverse_conn(cdb2_hndl_tp *hndl) {
     int rc;
     char cmd[400];
     int do_wait = 0;
+
+    if (gbl_physrep_fake_check_revconn_error) {
+        logmsg(LOGMSG_USER, "%s:%d: Fake error checking for reverse connection\n", __func__, __LINE__);
+        return -1;
+    }
 
     if (!gbl_reverse_hosts_v2) {
         rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.should_wait_for_con('%s', '%s')", gbl_dbname,
@@ -1213,38 +1218,6 @@ static int check_for_reverse_conn(cdb2_hndl_tp *hndl) {
             rc = 0;
     }
     return (rc == 0) ? do_wait : -1;
-}
-
-void physrep_update_low_file_num(int *lowfilenum, int *local_lowfilenum) {
-    unsigned int physrep_minfilenum;
-    if ((get_dbtable_by_name("comdb2_physreps")) == NULL) {
-        return;
-    }
-
-    physrep_minfilenum = physrep_min_filenum();
-    if (physrep_minfilenum <= 0) {
-        if (gbl_physrep_debug) {
-            physrep_logmsg(LOGMSG_USER, "%s:%d: lowfilenum unchanged (physrep_minfilenum: %d)\n",
-                           __func__, __LINE__, physrep_minfilenum);
-        }
-    } else {
-        if (physrep_minfilenum <= *lowfilenum) {
-            if (gbl_physrep_debug) {
-                physrep_logmsg(LOGMSG_USER, "%s:%d: lowfilenum %d being changed "
-                               "physical replicant(s) (physrep_minfilenum: %d)\n",
-                               __func__, __LINE__, *lowfilenum, physrep_minfilenum);
-            }
-            *lowfilenum = physrep_minfilenum - 1;
-        }
-        if (physrep_minfilenum <= *local_lowfilenum) {
-            *local_lowfilenum = physrep_minfilenum - 1;
-        }
-    }
-
-    if (gbl_physrep_debug) {
-        physrep_logmsg(LOGMSG_USER, "%s:%d: lowfilenum: %d (physrep_minfilenum: %d)\n",
-                       __func__, __LINE__, *lowfilenum, physrep_minfilenum);
-    }
 }
 
 static int slow_replicants_count_int(cdb2_hndl_tp *metadb, unsigned int *count)
@@ -1304,93 +1277,6 @@ static int slow_replicants_count(unsigned int *count)
         cdb2_close(metadb);
     }
     return badrc ? -1 : 0;
-}
-
-static int update_min_logfile_int(cdb2_hndl_tp *metadb)
-{
-    char cmd[120+nodes_list_sz];
-    char *buf;
-    size_t buf_len;
-    int bytes_written;
-    int rc = 0;
-
-    if (gbl_ready == 0)
-        return 0;
-
-    bytes_written = 0;
-    buf = cmd;
-    buf_len = sizeof(cmd);
-
-    bytes_written +=
-        snprintf(buf+bytes_written, buf_len-bytes_written,
-                "WITH RECURSIVE replication_tree(dbname, host, file) AS "
-                "    (SELECT dbname, host, file FROM comdb2_physreps "
-                "         WHERE dbname='%s' AND host IN (",
-                gbl_dbname);
-    if (bytes_written >= buf_len) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
-
-    bytes_written += append_quoted_local_hosts(buf+bytes_written, buf_len-bytes_written, ",");
-    if (bytes_written >= buf_len) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
-
-    bytes_written += snprintf(buf + bytes_written, buf_len - bytes_written,
-                              "     ) "
-                              "     UNION "
-                              "     SELECT p.dbname, p.host, p.file FROM comdb2_physreps p, "
-                              "         comdb2_physrep_connections c, replication_tree t "
-                              "         WHERE p.state = 'Active' AND p.file <> 0 AND "
-                              "             t.dbname = c.source_dbname AND c.dbname = p.dbname) "
-                              "    SELECT file FROM replication_tree WHERE file IS NOT NULL ORDER BY file LIMIT 1");
-    if (bytes_written >= buf_len) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
-
-    if (gbl_physrep_debug) {
-        physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
-    }
-
-    rc = cdb2_run_statement(metadb, cmd);
-    if (rc == CDB2_OK) {
-        while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
-            int64_t *minfile = (int64_t *)cdb2_column_value(metadb, 0);
-            physrep_min_logfile = minfile ? (unsigned int)*minfile : 0;
-        }
-        if (rc == CDB2_OK_DONE)
-            rc = 0;
-    } else {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
-    }
-
-    return rc;
-}
-
-static int update_min_logfile(void)
-{
-    cdb2_hndl_tp *metadb;
-    int rc, altcnt = gbl_altmetadb_count;
-
-    if ((rc = physrep_get_metadb_or_local_hndl(&metadb)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to get metadb handle rc=%d\n", __func__, rc);
-    } else {
-        update_min_logfile_int(metadb);
-        cdb2_close(metadb);
-    }
-
-    for (int i = 0; i < altcnt; i++) {
-        if ((rc = get_alt_metadb_hndl(&metadb, i)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: failed to get alt metadb handle %d rc=%d\n", __func__, i, rc);
-            continue;
-        }
-        update_min_logfile_int(metadb);
-        cdb2_close(metadb);
-    }
-    return 0;
 }
 
 /*
@@ -1501,6 +1387,7 @@ static void *physrep_worker(void *args)
     comdb2_name_thread(__func__);
 
     volatile int64_t gen, highest_gen = 0;
+    int do_revconn;
     int64_t first_lcgen = -1;
     size_t sql_cmd_len = 150;
     char sql_cmd[sql_cmd_len];
@@ -1557,7 +1444,7 @@ repl_loop:
                 physrep_logmsg(LOGMSG_USER, "%s:%d Re-checking for reverse connection\n", __func__, __LINE__);
             }
             if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) == 0) {
-                int do_revconn = do_wait_for_reverse_conn(repl_metadb);
+                do_revconn = do_wait_for_reverse_conn(repl_metadb);
                 cdb2_close(repl_metadb);
                 if (gbl_physrep_debug) {
                     physrep_logmsg(LOGMSG_USER, "%s:%d Reverse connection check: do-revcon=%d, is-revcon=%d\n",
@@ -1586,8 +1473,10 @@ repl_loop:
                 goto sleep_and_retry;
             }
 
-            last_revconn_check = comdb2_time_epoch();
-            if (do_wait_for_reverse_conn(repl_metadb) == 1) {
+            do_revconn = do_wait_for_reverse_conn(repl_metadb);
+
+            if (do_revconn == 1) {
+                last_revconn_check = comdb2_time_epoch();
                 is_revconn = 1;
                 int wait_timeout_sec = 60;
 
@@ -1632,6 +1521,13 @@ repl_loop:
 
                 set_repl_db_connected(rev_conn_hndl->remote_dbname, rev_conn_hndl->remote_host);
             } else {
+                /* Intentionally try to register if we fail to determine if reverse connection is needed */
+                if (do_revconn == 0) {
+                    last_revconn_check = comdb2_time_epoch();
+                } else {
+                    physrep_logmsg(LOGMSG_DEBUG, "%s:%d do_revconn is %d, registering replicant\n", __func__, __LINE__,
+                                   do_revconn);
+                }
                 is_revconn = 0;
                 int notfound = 0;
                 while (stop_physrep_worker == 0) {
@@ -1649,6 +1545,12 @@ repl_loop:
 
                     physrep_logmsg(level, "%s:%d Failed to register against cluster, attempt %d\n",
                                    __func__, __LINE__, notfound);
+
+                    if (do_revconn == -1) {
+                        cdb2_close(repl_metadb);
+                        repl_metadb = NULL;
+                        goto sleep_and_retry;
+                    }
 
                     do {
                         cdb2_close(repl_metadb);
@@ -1957,7 +1859,6 @@ static void *physrep_watcher(void *args) {
     static int physrep_slow_replicant_last_checked;
     static int physrep_keepalive_last_sent;
     static int physrep_hung_replicant_last_checked;
-    static int physrep_minlog_last_checked;
 
     while (!gbl_exit && stop_physrep_watcher == 0) {
         sleep(1);
@@ -1986,19 +1887,11 @@ static void *physrep_watcher(void *args) {
         }
         // Common:
         //   1) Send keepalives
-        //   2) Update maximum log file number upto which it is safe to delete
 
         // Periodically send keepalive to report its LSN.
         if ((now - physrep_keepalive_last_sent) >= gbl_physrep_keepalive_freq_sec) {
             send_keepalive();
             physrep_keepalive_last_sent = now;
-        }
-
-        // Update the 'minimum log file' marker upto which it is safe to
-        // delete log files.
-        if ((now - physrep_minlog_last_checked) >= gbl_physrep_check_minlog_freq_sec) {
-            update_min_logfile();
-            physrep_minlog_last_checked = now;
         }
     }
     return NULL;
