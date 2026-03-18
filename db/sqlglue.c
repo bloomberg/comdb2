@@ -13059,14 +13059,9 @@ void comdb2_set_verify_remote_schemas(void)
     }
 }
 
-int comdb2_get_verify_remote_schemas(void)
+int comdb2_get_verify_remote_schemas(struct sqlclntstate *clnt)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-
-    if (thd && thd->clnt)
-        return thd->clnt->verify_remote_schemas == 1;
-
-    return 0;
+    return clnt ? clnt->verify_remote_schemas == 1 : 0;
 }
 
 uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
