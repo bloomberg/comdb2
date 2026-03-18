@@ -680,6 +680,7 @@ enum table_status {
  *  - TABLE_MISSING, otherwise
  *
  * !!NOTE!!: only calls this when tables_mtx is acquired
+ * NOTE2: remote_version is -1ULL if not retrieved
  */
 static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name, enum table_status *status, int *version,
                                 unsigned long long remote_version)
@@ -700,7 +701,7 @@ static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name, enum table_s
             (table->version != (table->need_version - 1))) {
             *status = TABLE_STALE;
         } else {
-            if (table->version != remote_version) {
+            if (remote_version != -1ULL && table->version != remote_version) {
                 logmsg(LOGMSG_WARN,
                        "Remote table %s.%s new version is "
                        "%lld, cached %lld\n",
@@ -718,7 +719,7 @@ static fdb_tbl_t *_table_exists(fdb_t *fdb, const char *table_name, enum table_s
 }
 
 /**
- * Expend _table_exists to handle the case when table exist but it is stale;
+ * Expand _table_exists to handle the case when the table exist but is stale;
  * in this case, we unlink the existing table (and free it if no users)/
  * //!!NOTE!!: only calls this when tables_mtx is acquired
  */
@@ -865,12 +866,12 @@ void _remove_table_stat(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
 static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, fdb_t *fdb, const char *table_name,
                                     int *version)
 {
-    unsigned long long remote_version = 0ULL;
+    unsigned long long remote_version = -1ULL;
     struct errstat err = {0};
     int rc = FDB_NOERR;
     fdb_tbl_t *tbl = NULL, *stat1 = NULL, *stat4 = NULL;
     int initial;
-    fdb_tbl_ent_t *found_ent;
+    fdb_tbl_ent_t *found_ent = NULL;
     int link_table = 0, link_stat1 = 0, link_stat4 = 0;
     int is_sqlite_master; /* corner case when sqlite_master is the first query remote;
                              there is no "sqlite_master" entry for sqlite_master, but
@@ -893,10 +894,11 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
     init->locked_stat4 = NULL;
     init->fdb = NULL;
 
-    /* we need the remote version of the table to be attached, do it now before
-     * mutexes are acquired (ignore sqlite_master)
+    /* this is the case when a column is not found, and we assume that it is missing
+     * from local cache; retrieve remote table version to check for that
+     * (sqlite_master has no version)
      */
-    if (comdb2_get_verify_remote_schemas() && !is_sqlite_master) {
+    if (comdb2_get_verify_remote_schemas(clnt) && !is_sqlite_master) {
         /* this is a retry for an already */
         rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class, fdb->loc == NULL, &remote_version, &err);
         if (rc != FDB_NOERR) {
@@ -948,7 +950,6 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
     /* this COULD be taken out of tbls_mtx, but I want to clear table
        under lock so I don't add garbage table structures when mispelling
      */
-    found_ent = NULL;
     rc = _retrieve_fdb_tbl(fdb, tbl, initial);
 
     /* lock the tables_mtx again, check if the table was added already
@@ -957,7 +958,11 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
      */
     Pthread_mutex_lock(&fdb->tables_mtx);
 
-    fdb_tbl_t *remtbl = _table_exists_and_not_stale(fdb, table_name, version, remote_version);
+    /* we have retrieved that table and its version; use that here instead of remote_version
+     * to check for the corner case when someone already added the table, and it is 
+     * already stale
+     */
+    fdb_tbl_t *remtbl = _table_exists_and_not_stale(fdb, table_name, version, tbl->version);
     if (remtbl) {
         /* table was already added with the right version */
         _free_fdb_tbl(fdb, tbl);
@@ -984,15 +989,16 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
 
     if (rc != FDB_NOERR || (!found_ent && !is_sqlite_master)) {
         *version = 0;
-        /* we cannot find the table; remove fdb_tbl, not linked in yet */
-        _free_fdb_tbl(fdb, tbl);
-        tbl = NULL;
 
         if (rc == FDB_NOERR) {
             logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n", __func__, fdb->dbname, tbl->name, rc);
 
             rc = FDB_ERR_FDB_TBL_NOTFOUND;
         }
+
+        /* we cannot find the table; remove fdb_tbl, not linked in yet */
+        _free_fdb_tbl(fdb, tbl);
+        tbl = NULL;
 
         goto done;
     }
@@ -4582,6 +4588,7 @@ static void _clear_schema(const char *dbname, const char *tblname, int force)
 {
     fdb_t *fdb;
     fdb_tbl_t *tbl;
+    int locked = 0;
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
 
@@ -4589,25 +4596,30 @@ static void _clear_schema(const char *dbname, const char *tblname, int force)
     fdb = _cache_fnd_fdb(dbname, NULL);
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "unknown fdb \"%s\"\n", dbname);
-        goto done;
-    }
-
-    /* are there any readers of this fdb */
-    if (force) {
-        if (gbl_fdb_track_locking)
-            logmsg(LOGMSG_USER, "Writelock fdb %s schema clean\n", fdb->dbname);
-        Pthread_rwlock_wrlock(&fdb->inuse_rwlock);
-        if (_test_trap_dlock1 == 2) {
-            _test_trap_dlock1++;
-        }
     } else {
-        if (gbl_fdb_track_locking)
-            logmsg(LOGMSG_USER, "Trywrlock fdb %s schema clean\n", fdb->dbname);
-        if (pthread_rwlock_trywrlock(&fdb->inuse_rwlock) != 0) {
-            logmsg(LOGMSG_ERROR, "there are still readers for this fdb, cancel clear");
-            goto done;
+        /* are there any readers of this fdb */
+        if (force) {
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Writelock fdb %s schema clean\n", fdb->dbname);
+            Pthread_rwlock_wrlock(&fdb->inuse_rwlock);
+            if (_test_trap_dlock1 == 2) {
+                _test_trap_dlock1++;
+            }
+            locked = 1;
+        } else {
+            if (gbl_fdb_track_locking)
+                logmsg(LOGMSG_USER, "Trywrlock fdb %s schema clean\n", fdb->dbname);
+            if (pthread_rwlock_trywrlock(&fdb->inuse_rwlock) != 0) {
+                logmsg(LOGMSG_ERROR, "there are still readers for this fdb, cancel clear");
+            } else {
+                locked = 1;
+            }
         }
     }
+    Pthread_mutex_unlock(&fdbs.arr_mtx);
+
+    if (!locked)
+        return;
 
     /* all ours, lets clear the entries */
     if (tblname == NULL) {
@@ -4623,17 +4635,15 @@ static void _clear_schema(const char *dbname, const char *tblname, int force)
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "Unknown table \"%s\" in db \"%s\"\n", tblname,
                     dbname);
-            goto unlock;
+        } else {
+            _unlink_fdb_table(fdb, tbl);
+            _free_fdb_tbl(fdb, tbl);
         }
-        _unlink_fdb_table(fdb, tbl);
-        _free_fdb_tbl(fdb, tbl);
     }
-unlock:
+
     if (gbl_fdb_track_locking)
         logmsg(LOGMSG_USER, "Unlock fdb %s schema clean\n", fdb->dbname);
     pthread_rwlock_unlock(&fdb->inuse_rwlock);
-done:
-    Pthread_mutex_unlock(&fdbs.arr_mtx);
 }
 
 /**
