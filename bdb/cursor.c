@@ -7511,7 +7511,9 @@ static int find_count_recnums(bdb_state_type *state, int64_t *rcnt)
     return -1;
 }
 
-int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t modsnap_start_lsn_file, uint32_t modsnap_start_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset, int parallel_count)
+int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int is_snapcur,
+                         uint32_t modsnap_start_lsn_file, uint32_t modsnap_start_lsn_offset,
+                         uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset, int parallel_count)
 {
     int64_t count = 0;
     int rc = 0;
@@ -7530,7 +7532,8 @@ int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int is
             rc = -1;
         }
 
-        if (rc == 0) *rcnt = count;
+        if (rc == 0)
+            *rcnt = count;
         return rc;
     }
 
@@ -7587,7 +7590,11 @@ int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int is
 }
 
 int gbl_parallel_count = 0;
-int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t modsnap_start_lsn_file, uint32_t modsnap_start_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset)
+int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t modsnap_start_lsn_file,
+                     uint32_t modsnap_start_lsn_offset, uint32_t last_checkpoint_lsn_file,
+                     uint32_t last_checkpoint_lsn_offset)
 {
-    return bdb_direct_count_int(cur->impl->state, ixnum, rcnt, is_snapcur, modsnap_start_lsn_file, modsnap_start_lsn_offset, last_checkpoint_lsn_file, last_checkpoint_lsn_offset, gbl_parallel_count);
+    return bdb_direct_count_int(cur->impl->state, ixnum, rcnt, is_snapcur, modsnap_start_lsn_file,
+                                modsnap_start_lsn_offset, last_checkpoint_lsn_file, last_checkpoint_lsn_offset,
+                                gbl_parallel_count);
 }
