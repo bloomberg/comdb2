@@ -6,7 +6,13 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/hrtime.sh
 
 export debug=1
+export isolation="blocksql"
+export transaction="0"
 
+[[ "$DBNAME" == *"recomm"* ]] && isolation="read committed"
+[[ "$DBNAME" == *"snapshot"* ]] && isolation="snapshot isolation"
+[[ "$DBNAME" == *"serial"* ]] && isolation="serial"
+[[ "$DBNAME" == *"transaction"* ]] && transaction="1"
 [[ $debug == "1" ]] && set -x
 
 function force_all_non_durable
@@ -54,9 +60,29 @@ function hide_non_durable_good_insert
 
     hide_non_durable_rcode 1
     force_all_non_durable 1
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values (1)" 2>&1)
-    [[ "$x" != *"rows inserted=1"* ]] && failexit "final insert should have succeeded"
+
+    if [[ "$transaction" == "1" ]]; then
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+begin
+insert into t1 values(1)
+commit
+EOF
+        )
+    else
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+insert into t1 values(1)
+EOF
+        )
+    fi
+
     echo "$x"
+    if [[ "$transaction" == "1" ]]; then
+        [[ "$x" != *"[commit] rc 0"* ]] && failexit "final insert should have succeeded"
+    else
+        [[ "$x" != *"rows inserted=1"* ]] && failexit "final insert should have succeeded"
+    fi
     after_not_durable=$(get_not_durable_commits)
     hide_non_durable_rcode 0
     force_all_non_durable 0
@@ -70,9 +96,29 @@ function show_non_durable_good_insert
 
     hide_non_durable_rcode 0
     force_all_non_durable 1
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values (1)" 2>&1)
-    [[ "$x" != *"Non-durable write"* ]] && failexit "final insert should been non-durable"
+
+    if [[ "$transaction" == "1" ]]; then
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+begin
+insert into t1 values(1)
+commit
+EOF
+        )
+    else
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+insert into t1 values(1)
+EOF
+    )
+    fi
+
     echo "$x"
+    if [[ "$transaction" == "1" ]]; then
+        [[ "$x" != *"[commit] failed with rc 210"* ]] && failexit "final insert should been non-durable"
+    else
+        [[ "$x" != *"Non-durable write"* ]] && failexit "final insert should been non-durable"
+    fi
     after_not_durable=$(get_not_durable_commits)
     hide_non_durable_rcode 0
     force_all_non_durable 0
@@ -83,16 +129,38 @@ function show_non_durable_constraint_violation
 {
     typeset -l before_not_durable=$(get_not_durable_commits)
     typeset -l after_not_durable=0
+    typeset -l r=0
 
     # First insert should succeed
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values (1)"
+
     [[ $? -ne 0 ]] && failexit "first insert should have succeeded"
 
     hide_non_durable_rcode 0
     force_all_non_durable 1
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values (1)" 2>&1)
-    [[ "$x" != *"Non-durable write"* ]] && failexit "final insert should have been non-durable"
+
+    if [[ "$transaction" == "1" ]]; then
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+begin
+insert into t1 values(1)
+commit
+EOF
+        )
+    else
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+insert into t1 values(1)
+EOF
+        )
+    fi
+
     echo "$x"
+    if [[ "$transaction" == "1" ]]; then
+        [[ "$x" != *"[commit] failed with rc 210"* ]] && failexit "final insert should been non-durable"
+    else
+        [[ "$x" != *"Non-durable write"* ]] && failexit "final insert should have been non-durable"
+    fi
     after_not_durable=$(get_not_durable_commits)
     hide_non_durable_rcode 0
     force_all_non_durable 0
@@ -112,9 +180,25 @@ function hide_non_durable_constraint_violation
 
     hide_non_durable_rcode 1
     force_all_non_durable 1
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values (1)" 2>&1)
-    [[ "$x" != *"add key constraint duplicate key"* ]] && failexit "final insert should have failed with constraint violation"
+
+    if [[ "$transaction" == "1" ]]; then
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+begin
+insert into t1 values(1)
+commit
+EOF
+        )
+    else
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+insert into t1 values(1)
+EOF
+        )
+    fi
+
     echo "$x"
+    [[ "$x" != *"add key constraint duplicate key"* ]] && failexit "final insert should have failed with constraint violation"
     after_not_durable=$(get_not_durable_commits)
     hide_non_durable_rcode 0
     force_all_non_durable 0
@@ -123,6 +207,7 @@ function hide_non_durable_constraint_violation
 
 function run_test
 {
+    echo "Running tests"
     hide_non_durable_good_insert
     show_non_durable_good_insert
     hide_non_durable_constraint_violation
