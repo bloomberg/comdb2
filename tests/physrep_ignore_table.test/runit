@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-#set -x
-
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
@@ -9,9 +7,7 @@ export DESTDB=${TESTCASE}dest${TESTID}
 export DEST_DBDIR=${DBDIR}/$DESTDB
 export stopfile=./stopfile.txt
 
-if [[ -z "$TEST_TIMEOUT" ]] ; then 
-    export TEST_TIMEOUT=5m 
-fi
+set -x
 
 function failexit
 {
@@ -147,8 +143,6 @@ function check_physrep_file_sizes
 
 function verify_ignored_tables
 {
-    # Give physreps 100 seconds to catch up
-
     t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
     t3=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t3" 2>&1)
 
@@ -157,7 +151,7 @@ function verify_ignored_tables
 
     # Physrep t1 & t3 should match parent
     j=0
-    while [[ "$j" -lt 101 ]] && [[ "$t1" != "$t1p" || "$t3" != "$t3p" ]] ; do
+    while [[ "$t1" != "$t1p" || "$t3" != "$t3p" ]] ; do
         sleep 1
 
         t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
@@ -166,8 +160,8 @@ function verify_ignored_tables
         t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
         t3p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t3" 2>&1)
 
-        let j=j+1
     done
+
     [[ "$t1" != "$t1p" ]] && failexit "t1 has different size on physrep: cluster=$t1 vs physrep=$t1p"
     [[ "$t3" != "$t3p" ]] && failexit "t3 has different size on physrep: cluster=$t3 vs physrep=$t3p"
 
