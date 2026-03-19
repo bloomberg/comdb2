@@ -312,6 +312,8 @@ function check_queue_dump_output
 {
     typeset fl=$1
     typeset found=0
+    typeset target_size=0
+    typeset output_size=0
     log=$TESTDIR/logtrigger${TESTID}/$fl.txt
     gunzip $fl.expected.gz
 
@@ -320,6 +322,17 @@ function check_queue_dump_output
         if [[ -s $log.${node} ]]; then
             found=1
             egrep -vi "genid|epoch|Commit-lsn" $log.${node} > $log.${node}.clean
+            
+            target_size=$(wc -c < $fl.expected)
+            output_size=$(wc -c < $log.${node}.clean)
+
+            while [[ $output_size -lt $target_size ]]; do
+                echo "Output size $output_size is less than expected size $target_size. Waiting for physrep to catch up..."
+                sleep 1
+                egrep -vi "genid|epoch|Commit-lsn" $log.${node} > $log.${node}.clean
+                output_size=$(wc -c < $log.${node}.clean)
+            done
+
             diff $log.${node}.clean $fl.expected
             r=$?
             if [[ $r -ne 0 ]]; then
@@ -335,6 +348,17 @@ function check_queue_dump_output
     # physrep name is prepended by r
     prlog=$TESTDIR/$DBNAME/r${fl}.txt
     egrep -vi "genid|epoch|Commit-lsn" $prlog > ${prlog}.clean
+
+    target_size=$(wc -c < $fl.expected)
+    output_size=$(wc -c < ${prlog}.clean)
+
+    while [[ "$output_size" -lt "$target_size" ]]; do
+        echo "Physrep output size $output_size is less than expected size $target_size. Waiting for physrep to catch up..."
+        sleep 1
+        egrep -vi "genid|epoch|Commit-lsn" $prlog > ${prlog}.clean
+        output_size=$(wc -c < ${prlog}.clean)
+    done
+
     diff ${prlog}.clean $fl.expected
     r=$?
     if [[ $r -ne 0 ]]; then
