@@ -29,6 +29,7 @@
 
 - `shell.c.in`: we have a patch to initialize comdb2's SQLite tunables in our
   build of the SQLite shell.
+- `global.c`: disable SQLite page cache because we use BerkeleyDB.
 
 ## Wednesday, Feb 11th, 2026
 
