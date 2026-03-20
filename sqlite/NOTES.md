@@ -1,5 +1,35 @@
 # NOTES
 
+## Setup
+
+* To get the current and latest versions of stock SQLite:
+
+  ```bash
+  git clone https://github.com/sqlite/sqlite.git sqlite-3.28.0
+  cp -R sqlite-3.28.0 sqlite-3.51.2
+  (cd sqlite-3.28.0 && git checkout version-3.28.0)
+  (cd sqlite-3.51.2 && git checkout version-3.51.2)
+  ```
+
+* To apply upstream changes to a file:
+
+  ```bash
+  diff3 -m $file sqlite-3.28.0/$file sqlite-3.51.2/$file > $file.merged
+  ```
+
+  Fix merge conflicts.
+
+* Replace current file with merged:
+
+  ```bash
+  mv $file.merged $file
+  ```
+
+## Friday, Mar 20th, 2026
+
+- `shell.c.in`: we have a patch to initialize comdb2's SQLite tunables in our
+  build of the SQLite shell.
+
 ## Wednesday, Feb 11th, 2026
 
 - `sqlite_tunables.{h,c}`: we have defined some of our own tunables for SQLite.
