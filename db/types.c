@@ -6401,6 +6401,9 @@ static TYPES_INLINE int SERVER_VUTF8_to_SERVER_BCSTR(
 {
     const char *cin = (const char *)in;
     int len, tmp;
+    const char *str;
+    int str_len;
+    int valid_len;
 
     if (inlen < VUTF8_ON_DISK_LEN)
         return -1;
@@ -6421,11 +6424,31 @@ static TYPES_INLINE int SERVER_VUTF8_to_SERVER_BCSTR(
     memcpy(&tmp, cin + 1, sizeof(int));
     len = ntohl(tmp);
 
-    *outdtsz = 1;
-    /* copy the actual data around */
-    return vutf8_convert(len, cin + VUTF8_ON_DISK_LEN,
-                         inlen - VUTF8_ON_DISK_LEN, (char *)out + 1, outlen - 1,
-                         inblob, NULL, outdtsz);
+    if (len <= 0) {
+        memset((char *)out + 1, 0, outlen - 1);
+        *outdtsz = outlen;
+        return 0;
+    }
+
+    str_len = len - 1;
+    if (str_len > outlen - 1)
+        return -1;
+    if (len <= inlen - VUTF8_ON_DISK_LEN) {
+        str = cin + VUTF8_ON_DISK_LEN;
+    } else if (inblob && inblob->exists && inblob->data && inblob->length != OSQL_BLOB_FILLER_LENGTH) {
+        str = inblob->data;
+    } else {
+        logmsg(LOGMSG_ERROR, "SERVER_VUTF8_to_SERVER_BCSTR: missing data for %d byte string\n", len);
+        return -1;
+    }
+
+    if (utf8_validate(str, len, &valid_len) || valid_len != str_len)
+        return -1;
+    memset((char *)out + 1, 0, outlen - 1);
+    memcpy((char *)out + 1, str, str_len);
+    *outdtsz = outlen;
+
+    return 0;
 }
 
 static TYPES_INLINE int SERVER_VUTF8_to_SERVER_VUTF8(
