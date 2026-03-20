@@ -114,6 +114,7 @@ struct comdb2_metrics_store {
     int64_t not_durable_commits;
     int64_t incoherent_slow_skips;
     int64_t inmem_repdb_memory;
+    int64_t physrep_metadb_sql_count;
 
     int64_t page_reads;
     int64_t page_writes;
@@ -321,6 +322,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.incoherent_slow_skips, NULL},
     {"inmem_repdb_memory", "Memory utilized by in-memory repdb", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.inmem_repdb_memory, NULL},
+    {"physrep_metadb_sql_count", "Count of SQL statements executed against physrep metadb", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.physrep_metadb_sql_count, NULL},
     {"page_reads", "Total page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_reads,
      NULL},
     {"page_writes", "Total page writes", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_writes,
@@ -446,6 +449,7 @@ extern int64_t gbl_distributed_commit_count;
 extern int64_t gbl_not_durable_commit_count;
 extern int64_t gbl_incoherent_slow_skips;
 extern int64_t gbl_inmem_repdb_memory;
+extern int64_t gbl_physrep_metadb_sql_count;
 
 static void update_sqllogfill_metrics()
 {
@@ -656,6 +660,7 @@ int refresh_metrics(void)
     stats.not_durable_commits = gbl_not_durable_commit_count;
     stats.incoherent_slow_skips = gbl_incoherent_slow_skips;
     stats.inmem_repdb_memory = gbl_inmem_repdb_memory;
+    stats.physrep_metadb_sql_count = gbl_physrep_metadb_sql_count;
     struct global_stats gstats = {0};
 
     global_request_stats(&gstats);

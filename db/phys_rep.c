@@ -40,6 +40,7 @@
 
 #include <parse_lsn.h>
 #include <logmsg.h>
+#include <comdb2_atomic.h>
 
 /* internal implementation */
 typedef struct DB_Connection {
@@ -61,6 +62,7 @@ int gbl_physrep_debug = 0;
 int gbl_physrep_reconnect_interval = 3600; // force re-registration every hour
 int gbl_physrep_reconnect_penalty = 0;
 int gbl_blocking_physrep = 1;
+int64_t gbl_physrep_metadb_sql_count = 0;
 int gbl_physrep_fanout = 8;
 int gbl_physrep_max_candidates = 6;
 int gbl_physrep_max_pending_replicants = 10;
@@ -535,6 +537,7 @@ static int update_registry(cdb2_hndl_tp *repl_metadb, const char *remote_dbname,
         physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
     }
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
         while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK)
             ;
@@ -600,6 +603,7 @@ static int send_reset_nodes_int(cdb2_hndl_tp *hndl, const char *state)
         physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
     }
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     if ((rc = cdb2_run_statement(hndl, cmd)) == CDB2_OK) {
         while ((rc = cdb2_next_record(hndl)) == CDB2_OK)
             ;
@@ -924,6 +928,7 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
         }
 
         int candidate_leaders_count = 0;
+        ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
         if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
             while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
                 char *dbname = (char *)cdb2_column_value(repl_metadb, 1);
@@ -1111,6 +1116,7 @@ static int send_keepalive_int(cdb2_hndl_tp *metadb)
         rc = snprintf(
             cmd, sizeof(cmd),
             "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'");
+        ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
         rc = cdb2_run_statement(metadb, cmd);
         if (rc != CDB2_OK) {
             physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute cmd %s (rc: %d)\n", __func__, __LINE__, cmd, rc);
@@ -1140,6 +1146,7 @@ static int send_keepalive_int(cdb2_hndl_tp *metadb)
     if (gbl_physrep_debug)
         physrep_logmsg(LOGMSG_USER, "%s:%d: Executing: %s\n", __func__, __LINE__, cmd);
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     rc = cdb2_run_statement(metadb, cmd);
     if (rc == CDB2_OK) {
         while (cdb2_next_record(metadb) == CDB2_OK) {
@@ -1200,6 +1207,7 @@ static int check_for_reverse_conn(cdb2_hndl_tp *hndl) {
     if (gbl_physrep_debug)
         physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     if ((rc = cdb2_run_statement(hndl, cmd)) == CDB2_OK) {
         while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
             int64_t val = *(int64_t *)cdb2_column_value(hndl, 0);
@@ -1261,6 +1269,7 @@ static int slow_replicants_count_int(cdb2_hndl_tp *metadb, unsigned int *count)
             "AND now() - last_keepalive >= %d",
             gbl_dbname, gbl_physrep_hung_replicant_threshold);
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     rc = cdb2_run_statement(metadb, query);
     if (rc == CDB2_OK) {
         while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
@@ -1355,6 +1364,7 @@ static int update_min_logfile_int(cdb2_hndl_tp *metadb)
         physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
     }
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     rc = cdb2_run_statement(metadb, cmd);
     if (rc == CDB2_OK) {
         while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
@@ -1926,6 +1936,7 @@ static void am_i_hung(time_t cur_time) {
         return;
     }
 
+    ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     rc = cdb2_run_statement(repl_metadb, query);
     if (rc == CDB2_OK) {
         while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {

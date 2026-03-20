@@ -2620,6 +2620,89 @@ function physrep_revconn_populate_retry_with_debug
     $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$bogusname'"
 }
 
+# Collects and sums the physrep_metadb_sql_count metric from all databases/physreps
+function physrep_metadb_sql_count_test
+{
+    echo "== Collecting physrep_metadb_sql_count from all databases =="
+    local total_count=0
+    local count=0
+    local dbname=""
+    local host=""
+
+    # Source database
+    echo "Collecting from source database: $DBNAME"
+    if [[ -z "$CLUSTER" ]]; then
+        host=$(hostname)
+    else
+        host="$firstNode"
+    fi
+    count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} --host ${host} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+    [[ -n "$count" ]] && total_count=$((total_count + count))
+    echo "  ${DBNAME}@${host}: $count"
+
+    # Main metadb
+    echo "Collecting from main metadb: $REPL_META_DBNAME"
+    count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_META_DBNAME} --host ${REPL_META_HOST} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+    [[ -n "$count" ]] && total_count=$((total_count + count))
+    echo "  ${REPL_META_DBNAME}@${REPL_META_HOST}: $count"
+
+    # Alternate metadb
+    echo "Collecting from alternate metadb: $REPL_ALTMETA_DBNAME"
+    count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_ALTMETA_DBNAME} --host ${REPL_ALTMETA_HOST} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+    [[ -n "$count" ]] && total_count=$((total_count + count))
+    echo "  ${REPL_ALTMETA_DBNAME}@${REPL_ALTMETA_HOST}: $count"
+
+    # Alternate metadb 2
+    echo "Collecting from alternate metadb2: $REPL_ALTMETA_DBNAME2"
+    count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_ALTMETA_DBNAME2} --host ${REPL_ALTMETA_HOST2} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+    [[ -n "$count" ]] && total_count=$((total_count + count))
+    echo "  ${REPL_ALTMETA_DBNAME2}@${REPL_ALTMETA_HOST2}: $count"
+
+    # Replication cluster
+    echo "Collecting from replication cluster: $REPL_CLUS_DBNAME"
+    if [[ -z "$CLUSTER" ]]; then
+        host=$(hostname)
+        count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host ${host} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+        [[ -n "$count" ]] && total_count=$((total_count + count))
+        echo "  ${REPL_CLUS_DBNAME}@${host}: $count"
+    else
+        for node in $CLUSTER; do
+            count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host ${node} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+            [[ -n "$count" ]] && total_count=$((total_count + count))
+            echo "  ${REPL_CLUS_DBNAME}@${node}: $count"
+        done
+    fi
+
+    # Standalone physreps
+    echo "Collecting from standalone physreps"
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${dbname} --host ${node} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+        [[ -n "$count" ]] && total_count=$((total_count + count))
+        echo "  ${dbname}@${node}: $count"
+    else
+        for node in $CLUSTER; do
+            dbname="${REPL_DBNAME_PREFIX}_${node}"
+            count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${dbname} --host ${node} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+            [[ -n "$count" ]] && total_count=$((total_count + count))
+            echo "  ${dbname}@${node}: $count"
+        done
+    fi
+
+    # Alternate replicant
+    echo "Collecting from alternate replicant: $REPL_ALT_DBNAME"
+    count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_ALT_DBNAME} --host ${REPL_ALT_HOST} "select value from comdb2_metrics where name='physrep_metadb_sql_count'" 2>/dev/null)
+    [[ -n "$count" ]] && total_count=$((total_count + count))
+    echo "  ${REPL_ALT_DBNAME}@${REPL_ALT_HOST}: $count"
+
+    echo ""
+    echo "========================================="
+    echo "TOTAL physrep_metadb_sql_count: $total_count"
+    echo "========================================="
+    echo ""
+}
+
 function announce
 {
     typeset text=$1
@@ -2813,12 +2896,16 @@ function run_tests
     testcase_preamble $testcase
     physrep_revconn_populate_retry_with_debug
     testcase_finish $testcase
+
+    testcase="physrep_metadb_sql_count"
+    testcase_preamble $testcase
+    physrep_metadb_sql_count_test
+    testcase_finish $testcase
 }
 
 function run_one_test
 {
-    physrep_revconn_populate_error
-    physrep_revconn_populate_retry_with_debug
+    physrep_metadb_sql_count_test
 }
 
 run_tests
