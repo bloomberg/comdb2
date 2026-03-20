@@ -79,6 +79,7 @@
 - [x] 65  ./src/whereInt.h.patch
 - [x] 12  ./src/shell.c.in.patch
 - [x] 13  ./src/vtab.c.patch
+- [x] 14  ./src/global.c.patch
 
 ## Headers
 
@@ -88,7 +89,6 @@
 
 ## Source Files
 
-- [ ] 14   ./src/global.c.patch
 - [ ] 14   ./src/random.c.patch
 - [ ] 14   ./src/test3.c.patch
 - [ ] 14   ./src/vdbeblob.c.patch
