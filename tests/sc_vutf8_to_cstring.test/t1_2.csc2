@@ -1,0 +1,10 @@
+schema
+{
+    int      id
+    cstring  txt[11]
+}
+
+keys
+{
+    dup "ID" = id
+}
