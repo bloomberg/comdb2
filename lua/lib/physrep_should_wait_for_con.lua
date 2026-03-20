@@ -10,15 +10,6 @@
 local function main(dbname, hostname)
     db:begin()
 
-    local rs, row = db:exec("SELECT count(*)=1 AS cnt FROM comdb2_tables WHERE tablename = 'comdb2_physrep_sources'")
-    local row = rs:fetch()
-
-    if row.cnt == 0 then
-        db:emit(row)
-        db:commit()
-        return
-    end
-
     local rs, row = db:exec("SELECT count(*) as cnt FROM comdb2_physrep_sources " ..
                             "    WHERE dbname = '" ..  dbname .. "' AND " ..
                             "        host LIKE '" .. hostname .. "'")

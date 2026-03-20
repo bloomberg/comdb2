@@ -95,6 +95,7 @@ function create_physrep
 
     # ignore tables t2 and t4
     echo "physrep_ignore t2 t4" >> $DEST_DBDIR/${DESTDB}.lrl
+    echo "physrep_debug 1" >> $DEST_DBDIR/${DESTDB}.lrl
     
     export replog=$DEST_DBDIR/$DESTDB.log
     

@@ -522,6 +522,7 @@ extern int gbl_physrep_update_registry_interval;
 extern int gbl_physrep_i_am_metadb;
 extern int gbl_physrep_keepalive_v2;
 extern int gbl_physrep_keepalive_freq_sec;
+extern int gbl_physrep_slow_replicant_check_freq_sec;
 extern int gbl_physrep_max_candidates;
 extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_reconnect_interval;

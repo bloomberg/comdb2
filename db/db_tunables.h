@@ -1821,7 +1821,7 @@ REGISTER_TUNABLE("tranlog_incoherent_timeout", "Timeout in seconds for incoheren
                  TUNABLE_INTEGER, &gbl_tranlog_incoherent_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_maxpoll", "Tranlog timeout in seconds for blocking poll. (Default: 60)", TUNABLE_INTEGER,
                  &gbl_tranlog_maxpoll, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_check_minlog_freq_sec", "Check the minimum log number to keep this often. (Default: 10)",
+REGISTER_TUNABLE("physrep_check_minlog_freq_sec", "Check the minimum log number to keep this often. (Default: 600)",
                  TUNABLE_INTEGER, &gbl_physrep_check_minlog_freq_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_debug", "Print extended physrep trace. (Default: off)", TUNABLE_BOOLEAN, &gbl_physrep_debug,
                  0, NULL, NULL, NULL, NULL);
@@ -1830,10 +1830,8 @@ REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid 
 REGISTER_TUNABLE("physrep_fanout",
                  "Maximum number of physical replicants that a node can service (Default: 8)",
                  TUNABLE_INTEGER, &gbl_physrep_fanout, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_hung_replicant_check_freq_sec",
-                 "Check for hung physical replicant this often. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_hung_replicant_check_freq_sec, 0, NULL,
-                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_hung_replicant_check_freq_sec", "Check for hung physical replicant this often. (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_physrep_hung_replicant_check_freq_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_hung_replicant_threshold",
                  "Report if the physical replicant has been inactive for this duration. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_physrep_hung_replicant_threshold, 0, NULL,
@@ -1856,13 +1854,14 @@ REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Defau
 REGISTER_TUNABLE("physrep_keepalive_v2", "Use version 2 of keepalive which includes first lsn. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_keepalive_v2, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
-                 "Periodically send lsn to source node after this interval. (Default: 10)", TUNABLE_INTEGER,
+                 "Periodically send lsn to source node after this interval. (Default: 60)", TUNABLE_INTEGER,
                  &gbl_physrep_keepalive_freq_sec, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_slow_replicant_check_freq_sec", "Check for slow physical replicant this often. (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_physrep_slow_replicant_check_freq_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_candidates",
                  "Maximum number of candidates that should be returned to a "
                  "new physical replicant during registration. (Default: 6)",
-                 TUNABLE_INTEGER, &gbl_physrep_max_candidates, 0, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_physrep_max_candidates, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb cluster hosts.", TUNABLE_STRING,
                  &gbl_physrep_metadb_host, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster name.",
@@ -1922,10 +1921,10 @@ REGISTER_TUNABLE("revsql_debug",
                  "Print extended reversql-sql trace. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_revsql_debug, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("revsql_host_refresh_freq_sec", "The frequency at which the "
-                 "reverse connection host list will be refreshed (Default: 5secs)",
-                 TUNABLE_INTEGER, &gbl_revsql_host_refresh_freq_sec, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_host_refresh_freq_sec",
+                 "The frequency at which the "
+                 "reverse connection host list will be refreshed (Default: 60 secs)",
+                 TUNABLE_INTEGER, &gbl_revsql_host_refresh_freq_sec, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("admin_revsql", "Run revsql sessions as admin.  (Default: Off)", TUNABLE_BOOLEAN, &gbl_admin_revsql, 0,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("revconn_rdtimeout", "Initial ms timeout for revconn connections.  (Default: 100)", TUNABLE_INTEGER,
