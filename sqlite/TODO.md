@@ -72,6 +72,7 @@
   - Comdb2-specific, leave as-is.
 - [x] 39  ./src/sqliteLimit.h.patch
 - [x] 65  ./src/whereInt.h.patch
+- [x] 12  ./src/shell.c.in.patch
 
 
 ## Headers
@@ -82,7 +83,6 @@
 
 ## Source Files
 
-- [ ] 12   ./src/shell.c.in.patch
 - [ ] 13   ./src/vtab.c.patch
 - [ ] 14   ./src/global.c.patch
 - [ ] 14   ./src/random.c.patch
