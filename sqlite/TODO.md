@@ -1,7 +1,12 @@
 # TODO
 
-
 ## Questions / Decisions
+
+### Friday, Mar 20th, 2026
+
+- What is dry-run mode?
+  - See `ddl_dryrun.test`. `dryrun $ddl` tells you the schema change
+    plan without making any changes.
 
 ### Wednesday, Feb 11th, 2026
 
@@ -73,7 +78,7 @@
 - [x] 39  ./src/sqliteLimit.h.patch
 - [x] 65  ./src/whereInt.h.patch
 - [x] 12  ./src/shell.c.in.patch
-
+- [x] 13  ./src/vtab.c.patch
 
 ## Headers
 
@@ -83,7 +88,6 @@
 
 ## Source Files
 
-- [ ] 13   ./src/vtab.c.patch
 - [ ] 14   ./src/global.c.patch
 - [ ] 14   ./src/random.c.patch
 - [ ] 14   ./src/test3.c.patch
