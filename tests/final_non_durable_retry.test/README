@@ -1,1 +1,3 @@
-Verify non-durable requests behavior against hide_non_durable_rcode
+Verify non-durable requests behavior against hide_non_durable_rcode.
+Also verifies chunk transactions do not fail with in-transaction disconnect
+when non-durable replay forcing is enabled.
