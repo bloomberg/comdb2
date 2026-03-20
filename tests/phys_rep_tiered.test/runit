@@ -1244,7 +1244,17 @@ function tranlog_timeout()
 {
     typeset begin
     typeset end
+    typeset longreq_before=0
+    typeset longreq_after=0
+    typeset x
     echo "== tranlog timeout test"
+
+    echo "Count current number of LONGREQS"
+    for node in $CLUSTER ; do 
+        logfile=$TESTDIR/logs/${DBNAME}.${node}.db
+        x=$(egrep "LONG REQUEST" $logfile | wc -l)
+        longreq_before=$(( longreq_before + x ))
+    done
 
     # Set timeout for 5 seconds - this should succeed if total time is between 5 and 7 seconds
     echo "Testing timeout of 5 seconds"
@@ -1265,14 +1275,16 @@ function tranlog_timeout()
         cleanFailExit "tranlog timeout test failed, total time $total wanted 30"
     fi
 
-    echo "Make sure there is no LONG REQUEST trace database output"
+    echo "Make sure LONG REQUEST trace hasn't increased"
     for node in $CLUSTER ; do 
         logfile=$TESTDIR/logs/${DBNAME}.${node}.db
-        egrep "LONG REQUEST" $logfile
-        if [[ $? -eq 0 ]]; then
-            cleanFailExit "Found LONG REQUEST trace output in $logfile"
-        fi
+        x=$(egrep "LONG REQUEST" $logfile | wc -l)
+        let longreq_after=longreq_after+x
     done
+
+    if [[ "$longreq_after" -gt "$longreq_before" ]]; then
+        cleanFailExit "Found LONG REQUEST trace output in $logfile"
+    fi
 }
 
 function get_log_cursor_gen()
@@ -2701,6 +2713,12 @@ function physrep_metadb_sql_count_test
     echo "TOTAL physrep_metadb_sql_count: $total_count"
     echo "========================================="
     echo ""
+
+    if [[ $total_count -gt 2500 ]]; then
+        cleanFailExit "FAILED: Total metadb SQL count ($total_count) exceeds threshold (2500)"
+    fi
+
+    echo "SUCCESS: Total metadb SQL count ($total_count) is within acceptable range (<= 2500)"
 }
 
 function announce

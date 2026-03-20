@@ -67,11 +67,10 @@ int gbl_physrep_fanout = 8;
 int gbl_physrep_max_candidates = 6;
 int gbl_physrep_max_pending_replicants = 10;
 int gbl_deferred_phys_flag = 0;
-int gbl_physrep_source_nodes_refresh_freq_sec = 10;
-int gbl_physrep_slow_replicant_check_freq_sec = 10;
-int gbl_physrep_keepalive_freq_sec = 10;
-int gbl_physrep_check_minlog_freq_sec = 10;
-int gbl_physrep_hung_replicant_check_freq_sec = 10;
+int gbl_physrep_slow_replicant_check_freq_sec = 60;
+int gbl_physrep_keepalive_freq_sec = 60;
+int gbl_physrep_hung_replicant_check_freq_sec = 60;
+int gbl_physrep_check_minlog_freq_sec = 600;
 int gbl_physrep_hung_replicant_threshold = 60;
 int gbl_physrep_revconn_check_interval = 60;
 int gbl_physrep_update_registry_interval = 60;
@@ -1107,26 +1106,9 @@ int gbl_physrep_keepalive_v2 = 0;
 
 static int send_keepalive_int(cdb2_hndl_tp *metadb)
 {
-    int rc = 0, use_v2 = 0;
+    int rc = 0, use_v2 = gbl_physrep_keepalive_v2;
     char cmd[600];
     LOG_INFO info;
-
-    /* TODO: remove after v2 enabled & new-schema is everywhere */
-    if (gbl_physrep_keepalive_v2) {
-        rc = snprintf(
-            cmd, sizeof(cmd),
-            "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'");
-        ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
-        rc = cdb2_run_statement(metadb, cmd);
-        if (rc != CDB2_OK) {
-            physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute cmd %s (rc: %d)\n", __func__, __LINE__, cmd, rc);
-            return rc;
-        }
-        if (cdb2_next_record(metadb) == CDB2_OK) {
-            int64_t val = *(int64_t *)cdb2_column_value(metadb, 0);
-            use_v2 = (val != 0) ? 1 : 0;
-        }
-    }
 
     info = get_last_lsn(thedb->bdb_env);
     if (use_v2) {
@@ -1573,13 +1555,14 @@ repl_loop:
                     physrep_logmsg(LOGMSG_USER, "%s:%d Reverse connection check: do-revcon=%d, is-revcon=%d\n",
                                    __func__, __LINE__, do_revconn, is_revconn);
                 }
+
+                /* The call might have failed.  That's okay, don't hammer metadb */
+                last_revconn_check = comdb2_time_epoch();
+
                 if (do_revconn == -1) {
-                    logmsg(LOGMSG_ERROR, "%s:%d Failed to contact physrep metadb- keeping do_revconn the same: %d\n",
+                    logmsg(LOGMSG_DEBUG, "%s:%d Failed to contact physrep metadb- keeping do_revconn the same: %d\n",
                            __func__, __LINE__, is_revconn);
                 } else {
-
-                    /* Only update timestamp on successful check */
-                    last_revconn_check = comdb2_time_epoch();
 
                     if ((do_revconn && !is_revconn) || (!do_revconn && is_revconn)) {
                         logmsg(LOGMSG_USER, "Revconn changed, do_revconn=%d, is_revconn=%d\n", do_revconn, is_revconn);

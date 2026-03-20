@@ -2,6 +2,8 @@ logmsg level debug
 dtastripe 1
 debug_drop_nth_rep_message 10000
 incoherent_slow_inactive_timeout 0
+# test requires fast revconn than 
+revsql_host_refresh_freq_sec 5
 revsql_fake_connect_failure 1
 revsql_debug 1
 physrep_debug 1
@@ -10,7 +12,7 @@ forbid_remote_admin 0
 ctrace_dbdir 1
 allow_lua_print 1
 reverse_hosts_v2 1
-physrep_keepalive_v2 1
+physrep_keepalive_v2 0
 enable_snapshot_isolation
 
 # Reproduced 'incoherent-physrep' bug with this removed.

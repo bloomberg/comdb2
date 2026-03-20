@@ -171,7 +171,7 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 ## Tunables
 
 * blocking_physrep: The `SELECT .. FROM comdb2_transaction_logs` query executed by physical replicants blocks for the next log record. (Default: `false`)
-* physrep_check_minlog_freq_sec: Check the minimum log number to keep this often. (Default: `10`)
+* physrep_check_minlog_freq_sec: Check the minimum log number to keep this often. (Default: `600`)
 * physrep_debug: Print extended physrep trace. (Default: `off`)
 * physrep_exit_on_invalid_logstream: Exit physreps on invalid logstream. (Default: off)
 * physrep_fanout: Maximum number of physical replicants that a node can service (Default: `8`)
@@ -189,9 +189,9 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * physrep_source_host: List of physical replication source cluster hosts.
 * revsql_allow_command_execution : Allow processing and execution of command * over the `reverse connection` that has come in as part of the request. This is mostly intended for testing. (Default: off)
 * revsql_cdb2_debug: Print extended reversql-sql cdb2 related trace. (Default: off)
-* revsql_connect_freq_sec: This node will attempt to `reverse connect` to the remote host at this frequency. (Default: 5secs)
+* revsql_connect_freq_sec: This node will attempt to `reverse connect` to the remote host at this frequency. (Default: 5 secs)
 * revsql_debug: Print extended reversql-sql trace. (Default: off)
-* revsql_host_refresh_freq_sec: The frequency at which the reverse connection host list will be refreshed. (Default: 5secs)
+* revsql_host_refresh_freq_sec: The frequency at which the reverse connection host list will be refreshed. (Default: 60 secs)
 * revsql_force_rte: Force rte-mode for all reverse connections. (Default: on)
 * connect_remote_rte: Force rte-mode for both fdb and revsql connections. (Default: off)
 
