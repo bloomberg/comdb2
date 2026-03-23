@@ -84,7 +84,7 @@
 - [x] 14  ./src/test3.c.patch
 - [x] 14  ./src/vdbeblob.c.patch
 - [x] 16  ./src/pragma.c.patch
-- [ ] 18  ./src/threads.c.patch
+- [x] 18  ./src/threads.c.patch
 - [ ] 26  ./src/decimal.c.patch
 - [ ] 27  ./tool/lemon.c.patch
 - [ ] 32  ./src/alter.c.patch
