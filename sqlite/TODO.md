@@ -82,7 +82,22 @@
 - [x] 14  ./src/global.c.patch
 - [x] 14  ./src/random.c.patch
 - [x] 14  ./src/test3.c.patch
-- [x] 14   ./src/vdbeblob.c.patch
+- [x] 14  ./src/vdbeblob.c.patch
+- [x] 16  ./src/pragma.c.patch
+- [ ] 18  ./src/threads.c.patch
+- [ ] 26  ./src/decimal.c.patch
+- [ ] 27  ./tool/lemon.c.patch
+- [ ] 32  ./src/alter.c.patch
+- [ ] 33  ./src/treeview.c.patch
+- [ ] 34  ./src/loadext.c.patch
+- [ ] 35  ./src/window.c.patch
+- [ ] 43  ./src/printf.c.patch
+- [ ] 47  ./src/mem1.c.patch
+- [ ] 57  ./src/whereexpr.c.patch
+- [ ] 58  ./src/status.c.patch
+- [ ] 59  ./src/callback.c.patch
+- [ ] 61  ./src/malloc.c.patch
+- [ ] 62  ./src/upsert.c.patch
 
 ## Headers
 
@@ -92,21 +107,6 @@
 
 ## Source Files
 
-- [ ] 16   ./src/pragma.c.patch
-- [ ] 18   ./src/threads.c.patch
-- [ ] 26   ./src/decimal.c.patch
-- [ ] 27   ./tool/lemon.c.patch
-- [ ] 32   ./src/alter.c.patch
-- [ ] 33   ./src/treeview.c.patch
-- [ ] 34   ./src/loadext.c.patch
-- [ ] 35   ./src/window.c.patch
-- [ ] 43   ./src/printf.c.patch
-- [ ] 47   ./src/mem1.c.patch
-- [ ] 57   ./src/whereexpr.c.patch
-- [ ] 58   ./src/status.c.patch
-- [ ] 59   ./src/callback.c.patch
-- [ ] 61   ./src/malloc.c.patch
-- [ ] 62   ./src/upsert.c.patch
 - [ ] 100  ./src/trigger.c.patch
 - [ ] 106  ./src/test_vfs.c.patch
 - [ ] 136  ./src/os_unix.c.patch
