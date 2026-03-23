@@ -35,6 +35,9 @@
 - `mem1.c`: use `blobmem` (specialized blob memory allocator?) when allocating
   large amounts of memory. Maybe more optimized or has fewer problems with
   fragmentation, etc.
+- `status.c`: we do not use SQLite's page caching, so disable assertions that
+  check whether page cache mutex is held, and never try to acquire page cache
+  mutex.
 
 ## Friday, Mar 20th, 2026
 
