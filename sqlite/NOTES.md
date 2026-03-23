@@ -30,6 +30,8 @@
 - `random.c`: we've made the random number generator thread-local instead of
   global to reduce contention amongst SQL threads.
 - `alter.c`: disable SQLite's logic because we handle much of DDL ourselves.
+- `loadext.c`: some extension APIs are disabled because they're not consistent
+  between SQLite and comdb2 semantics.
 
 ## Friday, Mar 20th, 2026
 
