@@ -90,7 +90,7 @@
 - [x] 32  ./src/alter.c.patch
 - [x] 33  ./src/treeview.c.patch
 - [x] 34  ./src/loadext.c.patch
-- [ ] 35  ./src/window.c.patch
+- [x] 35  ./src/window.c.patch
 - [ ] 43  ./src/printf.c.patch
 - [ ] 47  ./src/mem1.c.patch
 - [ ] 57  ./src/whereexpr.c.patch
