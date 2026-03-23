@@ -80,6 +80,8 @@
 - [x] 12  ./src/shell.c.in.patch
 - [x] 13  ./src/vtab.c.patch
 - [x] 14  ./src/global.c.patch
+- [x] 14  ./src/random.c.patch
+- [x] 14  ./src/test3.c.patch
 
 ## Headers
 
@@ -89,8 +91,6 @@
 
 ## Source Files
 
-- [ ] 14   ./src/random.c.patch
-- [ ] 14   ./src/test3.c.patch
 - [ ] 14   ./src/vdbeblob.c.patch
 - [ ] 16   ./src/pragma.c.patch
 - [ ] 18   ./src/threads.c.patch
