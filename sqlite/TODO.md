@@ -95,7 +95,7 @@
 - [x] 47  ./src/mem1.c.patch
 - [x] 57  ./src/whereexpr.c.patch
 - [x] 58  ./src/status.c.patch
-- [ ] 59  ./src/callback.c.patch
+- [x] 59  ./src/callback.c.patch
 - [ ] 61  ./src/malloc.c.patch
 - [ ] 62  ./src/upsert.c.patch
 
