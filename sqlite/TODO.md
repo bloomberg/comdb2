@@ -88,7 +88,7 @@
 - [x] 18  ./src/threads.c.patch
 - [x] 27  ./tool/lemon.c.patch
 - [x] 32  ./src/alter.c.patch
-- [ ] 33  ./src/treeview.c.patch
+- [x] 33  ./src/treeview.c.patch
 - [ ] 34  ./src/loadext.c.patch
 - [ ] 35  ./src/window.c.patch
 - [ ] 43  ./src/printf.c.patch
