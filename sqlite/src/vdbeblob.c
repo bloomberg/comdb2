@@ -59,8 +59,7 @@ static int blobSeekToRow(Incrblob *p, sqlite3_int64 iRow, char **pzErr){
   /* Set the value of register r[1] in the SQL statement to integer iRow. 
   ** This is done directly as a performance optimization
   */
-  v->aMem[1].flags = MEM_Int;
-  v->aMem[1].u.i = iRow;
+  sqlite3VdbeMemSetInt64(&v->aMem[1], iRow);
 
   /* If the statement has been run before (and is paused at the OP_ResultRow)
   ** then back it up to the point where it does the OP_NotExists.  This could
@@ -75,7 +74,10 @@ static int blobSeekToRow(Incrblob *p, sqlite3_int64 iRow, char **pzErr){
   }
   if( rc==SQLITE_ROW ){
     VdbeCursor *pC = v->apCsr[0];
-    u32 type = pC->nHdrParsed>p->iCol ? pC->aType[p->iCol] : 0;
+    u32 type;
+    assert( pC!=0 );
+    assert( pC->eCurType==CURTYPE_BTREE );
+    type = pC->nHdrParsed>p->iCol ? pC->aType[p->iCol] : 0;
     testcase( pC->nHdrParsed==p->iCol );
     testcase( pC->nHdrParsed==p->iCol+1 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -135,6 +137,7 @@ int sqlite3_blob_open(
   char *zErr = 0;
   Table *pTab;
   Incrblob *pBlob = 0;
+  int iDb;
   Parse sParse;
 
 #ifdef SQLITE_ENABLE_API_ARMOR
@@ -144,7 +147,7 @@ int sqlite3_blob_open(
 #endif
   *ppBlob = 0;
 #ifdef SQLITE_ENABLE_API_ARMOR
-  if( !sqlite3SafetyCheckOk(db) || zTable==0 ){
+  if( !sqlite3SafetyCheckOk(db) || zTable==0 || zColumn==0 ){
     return SQLITE_MISUSE_BKPT;
   }
 #endif
@@ -153,10 +156,9 @@ int sqlite3_blob_open(
   sqlite3_mutex_enter(db->mutex);
 
   pBlob = (Incrblob *)sqlite3DbMallocZero(db, sizeof(Incrblob));
-  do {
-    memset(&sParse, 0, sizeof(Parse));
+  while(1){
+    sqlite3ParseObjectInit(&sParse,db);
     if( !pBlob ) goto blob_open_out;
-    sParse.db = db;
     sqlite3DbFree(db, zErr);
     zErr = 0;
 
@@ -170,13 +172,21 @@ int sqlite3_blob_open(
       pTab = 0;
       sqlite3ErrorMsg(&sParse, "cannot open table without rowid: %s", zTable);
     }
+    if( pTab && (pTab->tabFlags&TF_HasGenerated)!=0 ){
+      pTab = 0;
+      sqlite3ErrorMsg(&sParse, "cannot open table with generated columns: %s",
+                      zTable);
+    }
 #ifndef SQLITE_OMIT_VIEW
-    if( pTab && pTab->pSelect ){
+    if( pTab && IsView(pTab) ){
       pTab = 0;
       sqlite3ErrorMsg(&sParse, "cannot open view: %s", zTable);
     }
 #endif
-    if( !pTab ){
+    if( pTab==0
+     || ((iDb = sqlite3SchemaToIndex(db, pTab->pSchema))==1 &&
+         sqlite3OpenTempDatabase(&sParse))
+    ){
       if( sParse.zErrMsg ){
         sqlite3DbFree(db, zErr);
         zErr = sParse.zErrMsg;
@@ -187,15 +197,11 @@ int sqlite3_blob_open(
       goto blob_open_out;
     }
     pBlob->pTab = pTab;
-    pBlob->zDb = db->aDb[sqlite3SchemaToIndex(db, pTab->pSchema)].zDbSName;
+    pBlob->zDb = db->aDb[iDb].zDbSName;
 
     /* Now search pTab for the exact column. */
-    for(iCol=0; iCol<pTab->nCol; iCol++) {
-      if( sqlite3StrICmp(pTab->aCol[iCol].zName, zColumn)==0 ){
-        break;
-      }
-    }
-    if( iCol==pTab->nCol ){
+    iCol = sqlite3ColumnIndex(pTab, zColumn);
+    if( iCol<0 ){
       sqlite3DbFree(db, zErr);
       zErr = sqlite3MPrintf(db, "no such column: \"%s\"", zColumn);
       rc = SQLITE_ERROR;
@@ -216,7 +222,8 @@ int sqlite3_blob_open(
         ** key columns must be indexed. The check below will pick up this 
         ** case.  */
         FKey *pFKey;
-        for(pFKey=pTab->pFKey; pFKey; pFKey=pFKey->pNextFrom){
+        assert( IsOrdinaryTable(pTab) );
+        for(pFKey=pTab->u.tab.pFKey; pFKey; pFKey=pFKey->pNextFrom){
           int j;
           for(j=0; j<pFKey->nCol; j++){
             if( pFKey->aCol[j].iFrom==iCol ){
@@ -274,7 +281,6 @@ int sqlite3_blob_open(
         {OP_Halt,           0, 0, 0},  /* 5  */
       };
       Vdbe *v = (Vdbe *)pBlob->pStmt;
-      int iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
       VdbeOp *aOp;
 
       sqlite3VdbeAddOp4Int(v, OP_Transaction, iDb, wrFlag, 
@@ -332,7 +338,9 @@ int sqlite3_blob_open(
       goto blob_open_out;
     }
     rc = blobSeekToRow(pBlob, iRow, &zErr);
-  } while( (++nAttempt)<SQLITE_MAX_SCHEMA_RETRY && rc==SQLITE_SCHEMA );
+    if( (++nAttempt)>=SQLITE_MAX_SCHEMA_RETRY || rc!=SQLITE_SCHEMA ) break;
+    sqlite3ParseObjectReset(&sParse);
+  }
 
 blob_open_out:
   if( rc==SQLITE_OK && db->mallocFailed==0 ){
@@ -341,9 +349,9 @@ blob_open_out:
     if( pBlob && pBlob->pStmt ) sqlite3VdbeFinalize((Vdbe *)pBlob->pStmt);
     sqlite3DbFree(db, pBlob);
   }
-  sqlite3ErrorWithMsg(db, rc, (zErr ? "%s" : 0), zErr);
+  sqlite3ErrorWithMsg(db, rc, (zErr ? "%s" : (char*)0), zErr);
   sqlite3DbFree(db, zErr);
-  sqlite3ParserReset(&sParse);
+  sqlite3ParseObjectReset(&sParse);
   rc = sqlite3ApiExit(db, rc);
   sqlite3_mutex_leave(db->mutex);
   return rc;
@@ -359,11 +367,12 @@ int sqlite3_blob_close(sqlite3_blob *pBlob){
   sqlite3 *db;
 
   if( p ){
+    sqlite3_stmt *pStmt = p->pStmt;
     db = p->db;
     sqlite3_mutex_enter(db->mutex);
-    rc = sqlite3_finalize(p->pStmt);
     sqlite3DbFree(db, p);
     sqlite3_mutex_leave(db->mutex);
+    rc = sqlite3_finalize(pStmt);
   }else{
     rc = SQLITE_OK;
   }
@@ -380,7 +389,7 @@ static int blobReadWrite(
   int iOffset, 
   int (*xCall)(BtCursor*, u32, u32, void*)
 ){
-  int rc;
+  int rc = SQLITE_OK;
   Incrblob *p = (Incrblob *)pBlob;
   Vdbe *v;
   sqlite3 *db;
@@ -420,15 +429,32 @@ static int blobReadWrite(
       ** using the incremental-blob API, this works. For the sessions module
       ** anyhow.
       */
-      sqlite3_int64 iKey;
-      iKey = sqlite3BtreeIntegerKey(p->pCsr);
-      sqlite3VdbePreUpdateHook(
-          v, v->apCsr[0], SQLITE_DELETE, p->zDb, p->pTab, iKey, -1
-      );
+      if( sqlite3BtreeCursorIsValidNN(p->pCsr)==0 ){
+        /* If the cursor is not currently valid, try to reseek it. This 
+        ** always either fails or finds the correct row - the cursor will
+        ** have been marked permanently CURSOR_INVALID if the open row has
+        ** been deleted.  */
+        int bDiff = 0;
+        rc = sqlite3BtreeCursorRestore(p->pCsr, &bDiff);
+        assert( bDiff==0 || sqlite3BtreeCursorIsValidNN(p->pCsr)==0 );
+      }
+      if( sqlite3BtreeCursorIsValidNN(p->pCsr) ){
+        sqlite3_int64 iKey;
+        iKey = sqlite3BtreeIntegerKey(p->pCsr);
+        assert( v->apCsr[0]!=0 );
+        assert( v->apCsr[0]->eCurType==CURTYPE_BTREE );
+        sqlite3VdbePreUpdateHook(
+            v, v->apCsr[0], SQLITE_DELETE, p->zDb, p->pTab, iKey, -1, p->iCol
+        );
+      }
     }
+    if( rc==SQLITE_OK ){
+      rc = xCall(p->pCsr, iOffset+p->iOffset, n, z);
+    }
+#else
+    rc = xCall(p->pCsr, iOffset+p->iOffset, n, z);
 #endif
 
-    rc = xCall(p->pCsr, iOffset+p->iOffset, n, z);
     sqlite3BtreeLeaveCursor(p->pCsr);
     if( rc==SQLITE_ABORT ){
       sqlite3VdbeFinalize(v);
@@ -494,9 +520,10 @@ int sqlite3_blob_reopen(sqlite3_blob *pBlob, sqlite3_int64 iRow){
     rc = SQLITE_ABORT;
   }else{
     char *zErr;
+    ((Vdbe*)p->pStmt)->rc = SQLITE_OK;
     rc = blobSeekToRow(p, iRow, &zErr);
     if( rc!=SQLITE_OK ){
-      sqlite3ErrorWithMsg(db, rc, (zErr ? "%s" : 0), zErr);
+      sqlite3ErrorWithMsg(db, rc, (zErr ? "%s" : (char*)0), zErr);
       sqlite3DbFree(db, zErr);
     }
     assert( rc!=SQLITE_SCHEMA );
