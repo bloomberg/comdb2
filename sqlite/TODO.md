@@ -92,8 +92,8 @@
 - [x] 34  ./src/loadext.c.patch
 - [x] 35  ./src/window.c.patch
 - [x] 43  ./src/printf.c.patch
-- [ ] 47  ./src/mem1.c.patch
-- [ ] 57  ./src/whereexpr.c.patch
+- [x] 47  ./src/mem1.c.patch
+- [x] 57  ./src/whereexpr.c.patch
 - [ ] 58  ./src/status.c.patch
 - [ ] 59  ./src/callback.c.patch
 - [ ] 61  ./src/malloc.c.patch
