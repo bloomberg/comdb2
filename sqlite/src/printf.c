@@ -25,17 +25,17 @@
 #define etPERCENT     7 /* Percent symbol. %% */
 #define etCHARX       8 /* Characters. %c */
 /* The rest are extensions, not normally found in printf() */
-#define etSQLESCAPE   9 /* Strings with '\'' doubled.  %q */
-#define etSQLESCAPE2 10 /* Strings with '\'' doubled and enclosed in '',
-                          NULL pointers replaced by SQL NULL.  %Q */
-#define etTOKEN      11 /* a pointer to a Token structure */
-#define etSRCLIST    12 /* a pointer to a SrcList */
-#define etPOINTER    13 /* The %p conversion */
-#define etSQLESCAPE3 14 /* %w -> Strings with '\"' doubled */
-#define etORDINAL    15 /* %r -> 1st, 2nd, 3rd, 4th, etc.  English only */
-#define etDECIMAL    16 /* %d or %u, but not %x, %o */
+#define etESCAPE_q    9  /* Strings with '\'' doubled.  %q */
+#define etESCAPE_Q    10 /* Strings with '\'' doubled and enclosed in '',
+                            NULL pointers replaced by SQL NULL.  %Q */
+#define etTOKEN       11 /* a pointer to a Token structure */
+#define etSRCITEM     12 /* a pointer to a SrcItem */
+#define etPOINTER     13 /* The %p conversion */
+#define etESCAPE_w    14 /* %w -> Strings with '\"' doubled */
+#define etORDINAL     15 /* %r -> 1st, 2nd, 3rd, 4th, etc.  English only */
+#define etDECIMAL     16 /* %d or %u, but not %x, %o */
 
-#define etINVALID    17 /* Any unrecognized conversion type */
+#define etINVALID     17 /* Any unrecognized conversion type */
 
 
 /*
@@ -54,6 +54,7 @@ typedef struct et_info {   /* Information about each format field */
   etByte type;             /* Conversion paradigm */
   etByte charset;          /* Offset into aDigits[] of the digits string */
   etByte prefix;           /* Offset into aPrefix[] of the prefix string */
+  char iNxt;               /* Next with same hash, or 0 for end of chain */
 } et_info;
 
 /*
@@ -62,78 +63,70 @@ typedef struct et_info {   /* Information about each format field */
 #define FLAG_SIGNED    1     /* True if the value to convert is signed */
 #define FLAG_STRING    4     /* Allow infinite precision */
 
-
 /*
-** The following table is searched linearly, so it is good to put the
-** most frequently used conversion types first.
+** The table is searched by hash.  In the case of %C where C is the character
+** and that character has ASCII value j, then the hash is j%23.
+**
+** The order of the entries in fmtinfo[] and the hash chain was entered
+** manually, but based on the output of the following TCL script:
 */
+#if 0  /*****  Beginning of script ******/
+foreach c {d s g z q Q w c o u x X f e E G i n % p T S r} {
+  scan $c %c x
+  set n($c) $x
+}
+set mx [llength [array names n]]
+puts "count: $mx"
+
+set mx 27
+puts "*********** mx=$mx ************"
+for {set r 0} {$r<$mx} {incr r} {
+  puts -nonewline [format %2d: $r]
+  foreach c [array names n] {
+    if {($n($c))%$mx==$r} {puts -nonewline " $c"}
+  }
+  puts ""
+}
+#endif /***** End of script ********/
+
 static const char aDigits[] = "0123456789ABCDEF0123456789abcdef";
 static const char aPrefix[] = "-x0\000X0";
-static const et_info fmtinfo[] = {
-  {  'd', 10, 1, etDECIMAL,    0,  0 },
-  {  's',  0, 4, etSTRING,     0,  0 },
-  {  'g',  0, 1, etGENERIC,    30, 0 },
-  {  'z',  0, 4, etDYNSTRING,  0,  0 },
-  {  'q',  0, 4, etSQLESCAPE,  0,  0 },
-  {  'Q',  0, 4, etSQLESCAPE2, 0,  0 },
-  {  'w',  0, 4, etSQLESCAPE3, 0,  0 },
-  {  'c',  0, 0, etCHARX,      0,  0 },
-  {  'o',  8, 0, etRADIX,      0,  2 },
-  {  'u', 10, 0, etDECIMAL,    0,  0 },
-  {  'x', 16, 0, etRADIX,      16, 1 },
-  {  'X', 16, 0, etRADIX,      0,  4 },
-#ifndef SQLITE_OMIT_FLOATING_POINT
-  {  'f',  0, 1, etFLOAT,      0,  0 },
-  {  'e',  0, 1, etEXP,        30, 0 },
-  {  'E',  0, 1, etEXP,        14, 0 },
-  {  'G',  0, 1, etGENERIC,    14, 0 },
-#endif
-  {  'i', 10, 1, etDECIMAL,    0,  0 },
-  {  'n',  0, 0, etSIZE,       0,  0 },
-  {  '%',  0, 0, etPERCENT,    0,  0 },
-  {  'p', 16, 0, etPOINTER,    0,  1 },
-
-  /* All the rest are undocumented and are for internal use only */
-  {  'T',  0, 0, etTOKEN,      0,  0 },
-  {  'S',  0, 0, etSRCLIST,    0,  0 },
-  {  'r', 10, 1, etORDINAL,    0,  0 },
+static const et_info fmtinfo[23] = {
+  /*  0 */  {  's',  0, 4, etSTRING,     0,  0,  1 },
+  /*  1 */  {  'E',  0, 1, etEXP,        14, 0,  0 },  /* Hash: 0 */
+  /*  2 */  {  'u', 10, 0, etDECIMAL,    0,  0,  3 },
+  /*  3 */  {  'G',  0, 1, etGENERIC,    14, 0,  0 },  /* Hash: 2 */
+  /*  4 */  {  'w',  0, 4, etESCAPE_w,   0,  0,  0 },
+  /*  5 */  {  'x', 16, 0, etRADIX,      16, 1,  0 },
+  /*  6 */  {  'c',  0, 0, etCHARX,      0,  0,  0 },  /* Hash: 7 */
+  /*  7 */  {  'z',  0, 4, etDYNSTRING,  0,  0,  6 },
+  /*  8 */  {  'd', 10, 1, etDECIMAL,    0,  0,  0 },
+  /*  9 */  {  'e',  0, 1, etEXP,        30, 0,  0 },
+  /* 10 */  {  'f',  0, 1, etFLOAT,      0,  0,  0 },
+  /* 11 */  {  'g',  0, 1, etGENERIC,    30, 0,  0 },
+  /* 12 */  {  'Q',  0, 4, etESCAPE_Q,   0,  0,  0 },
+  /* 13 */  {  'i', 10, 1, etDECIMAL,    0,  0,  0 },
+  /* 14 */  {  '%',  0, 0, etPERCENT,    0,  0, 16 },
+  /* 15 */  {  'T',  0, 0, etTOKEN,      0,  0,  0 },
+  /* 16 */  {  'S',  0, 0, etSRCITEM,    0,  0,  0 },  /* Hash: 14 */
+  /* 17 */  {  'X', 16, 0, etRADIX,      0,  4,  0 },  /* Hash: 19 */
+  /* 18 */  {  'n',  0, 0, etSIZE,       0,  0,  0 },
+  /* 19 */  {  'o',  8, 0, etRADIX,      0,  2, 17 },
+  /* 20 */  {  'p', 16, 0, etPOINTER,    0,  1,  0 },
+  /* 21 */  {  'q',  0, 4, etESCAPE_q,   0,  0,  0 },
+  /* 22 */  {  'r', 10, 1, etORDINAL,    0,  0,  0 }
 };
 
-/*
-** If SQLITE_OMIT_FLOATING_POINT is defined, then none of the floating point
-** conversions will work.
-*/
-#ifndef SQLITE_OMIT_FLOATING_POINT
-/*
-** "*val" is a double such that 0.1 <= *val < 10.0
-** Return the ascii code for the leading digit of *val, then
-** multiply "*val" by 10.0 to renormalize.
+/* Additional Notes:
 **
-** Example:
-**     input:     *val = 3.14159
-**     output:    *val = 1.4159    function return = '3'
-**
-** The counter *cnt is incremented each time.  After counter exceeds
-** 16 (the number of significant digits in a 64-bit float) '0' is
-** always returned.
+**    %S    Takes a pointer to SrcItem.  Shows name or database.name
+**    %!S   Like %S but prefer the zName over the zAlias
 */
-static char et_getdigit(LONGDOUBLE_TYPE *val, int *cnt){
-  int digit;
-  LONGDOUBLE_TYPE d;
-  if( (*cnt)<=0 ) return '0';
-  (*cnt)--;
-  digit = (int)*val;
-  d = digit;
-  digit += '0';
-  *val = (*val - d)*10.0;
-  return (char)digit;
-}
-#endif /* SQLITE_OMIT_FLOATING_POINT */
 
 /*
 ** Set the StrAccum object to an error mode.
 */
-static void setStrAccumError(StrAccum *p, u8 eError){
+void sqlite3StrAccumSetError(StrAccum *p, u8 eError){
   assert( eError==SQLITE_NOMEM || eError==SQLITE_TOOBIG );
   p->accError = eError;
   if( p->mxAlloc ) sqlite3_str_reset(p);
@@ -169,12 +162,12 @@ static char *printfTempBuf(sqlite3_str *pAccum, sqlite3_int64 n){
   char *z;
   if( pAccum->accError ) return 0;
   if( n>pAccum->nAlloc && n>pAccum->mxAlloc ){
-    setStrAccumError(pAccum, SQLITE_TOOBIG);
+    sqlite3StrAccumSetError(pAccum, SQLITE_TOOBIG);
     return 0;
   }
   z = sqlite3DbMallocRaw(pAccum->db, n);
   if( z==0 ){
-    setStrAccumError(pAccum, SQLITE_NOMEM);
+    sqlite3StrAccumSetError(pAccum, SQLITE_NOMEM);
   }
   return z;
 }
@@ -187,6 +180,13 @@ static char *printfTempBuf(sqlite3_str *pAccum, sqlite3_int64 n){
 # define SQLITE_PRINT_BUF_SIZE 70
 #endif
 #define etBUFSIZE SQLITE_PRINT_BUF_SIZE  /* Size of the output buffer */
+
+/*
+** Hard limit on the precision of floating-point conversions.
+*/
+#ifndef SQLITE_PRINTF_PRECISION_LIMIT
+# define SQLITE_FP_PRECISION_LIMIT 100000000
+#endif
 
 /*
 ** Render a string given by "fmt" into the StrAccum object.
@@ -214,18 +214,15 @@ void sqlite3_str_vappendf(
   u8 bArgList;               /* True for SQLITE_PRINTF_SQLFUNC */
   char prefix;               /* Prefix character.  "+" or "-" or " " or '\0'. */
   sqlite_uint64 longvalue;   /* Value for integer types */
-  LONGDOUBLE_TYPE realvalue; /* Value for real types */
+  double realvalue;          /* Value for real types */
   const et_info *infop;      /* Pointer to the appropriate info structure */
   char *zOut;                /* Rendering buffer */
   int nOut;                  /* Size of the rendering buffer */
   char *zExtra = 0;          /* Malloced memory used by some conversion */
-#ifndef SQLITE_OMIT_FLOATING_POINT
-  int  exp, e2;              /* exponent of real numbers */
-  int nsd;                   /* Number of significant digits returned */
-  double rounder;            /* Used for rounding floating point values */
+  int exp, e2;               /* exponent of real numbers */
   etByte flag_dp;            /* True if decimal point should be shown */
   etByte flag_rtz;           /* True if trailing zeros should be removed */
-#endif
+
   PrintfArguments *pArgList = 0; /* Arguments for SQLITE_PRINTF_SQLFUNC */
   char buf[etBUFSIZE];       /* Conversion buffer */
 
@@ -247,7 +244,10 @@ void sqlite3_str_vappendf(
 #if HAVE_STRCHRNUL
       fmt = strchrnul(fmt, '%');
 #else
-      do{ fmt++; }while( *fmt && *fmt != '%' );
+      fmt = strchr(fmt, '%');
+      if( fmt==0 ){
+        fmt = bufpt + strlen(bufpt);
+      }
 #endif
       sqlite3_str_append(pAccum, bufpt, (int)(fmt - bufpt));
       if( *fmt==0 ) break;
@@ -361,6 +361,9 @@ void sqlite3_str_vappendf(
     }while( !done && (c=(*++fmt))!=0 );
 
     /* Fetch the info entry for the field */
+#ifdef SQLITE_EBCDIC
+    /* The hash table only works for ASCII.  For EBCDIC, we need to do
+    ** a linear search of the table */
     infop = &fmtinfo[0];
     xtype = etINVALID;
     for(idx=0; idx<ArraySize(fmtinfo); idx++){
@@ -370,6 +373,20 @@ void sqlite3_str_vappendf(
         break;
       }
     }
+#else
+    /* Fast hash-table lookup */
+    assert( ArraySize(fmtinfo)==23 );
+    idx = ((unsigned)c) % 23;
+    if( fmtinfo[idx].fmttype==c
+     || fmtinfo[idx = fmtinfo[idx].iNxt].fmttype==c
+    ){
+      infop = &fmtinfo[idx];
+      xtype = infop->type;
+    }else{
+      infop = &fmtinfo[0];
+      xtype = etINVALID;
+    }
+#endif
 
     /*
     ** At this point, variables are initialized as follows:
@@ -388,15 +405,17 @@ void sqlite3_str_vappendf(
     **   xtype                       The class of the conversion.
     **   infop                       Pointer to the appropriate info struct.
     */
+    assert( width>=0 );
+    assert( precision>=(-1) );
     switch( xtype ){
       case etPOINTER:
         flag_long = sizeof(char*)==sizeof(i64) ? 2 :
                      sizeof(char*)==sizeof(long int) ? 1 : 0;
-        /* Fall through into the next case */
+        /* no break */ deliberate_fall_through
       case etORDINAL:
       case etRADIX:      
         cThousand = 0;
-        /* Fall through into the next case */
+        /* no break */ deliberate_fall_through
       case etDECIMAL:
         if( infop->flags & FLAG_SIGNED ){
           i64 v;
@@ -412,11 +431,10 @@ void sqlite3_str_vappendf(
             v = va_arg(ap,int);
           }
           if( v<0 ){
-            if( v==SMALLEST_INT64 ){
-              longvalue = ((u64)1)<<63;
-            }else{
-              longvalue = -v;
-            }
+            testcase( v==SMALLEST_INT64 );
+            testcase( v==(-1) );
+            longvalue = ~v;
+            longvalue++;
             prefix = '-';
           }else{
             longvalue = v;
@@ -436,6 +454,14 @@ void sqlite3_str_vappendf(
           }
           prefix = 0;
         }
+
+#if WHERETRACE_ENABLED
+        if( xtype==etPOINTER && sqlite3WhereTrace & 0x100000 ) longvalue = 0;
+#endif
+#if TREETRACE_ENABLED
+        if( xtype==etPOINTER && sqlite3TreeTrace & 0x100000 ) longvalue = 0;
+#endif
+
         if( longvalue==0 ) flag_alternateform = 0;
         if( flag_zeropad && precision<width-(prefix!=0) ){
           precision = width-(prefix!=0);
@@ -499,59 +525,83 @@ void sqlite3_str_vappendf(
         break;
       case etFLOAT:
       case etEXP:
-      case etGENERIC:
+      case etGENERIC: {
+        FpDecode s;
+        int iRound;
+        int j;
+
         if( bArgList ){
           realvalue = getDoubleArg(pArgList);
         }else{
           realvalue = va_arg(ap,double);
         }
-#ifdef SQLITE_OMIT_FLOATING_POINT
-        length = 0;
-#else
         if( precision<0 ) precision = 6;         /* Set default precision */
-        if( realvalue<0.0 ){
-          realvalue = -realvalue;
-          prefix = '-';
+#ifdef SQLITE_FP_PRECISION_LIMIT
+        if( precision>SQLITE_FP_PRECISION_LIMIT ){
+          precision = SQLITE_FP_PRECISION_LIMIT;
+        }
+#endif
+        if( xtype==etFLOAT ){
+          iRound = -precision;
+        }else if( xtype==etGENERIC ){
+          if( precision==0 ) precision = 1;
+          iRound = precision;
         }else{
-          prefix = flag_prefix;
+          iRound = precision+1;
         }
-        if( xtype==etGENERIC && precision>0 ) precision--;
-        testcase( precision>0xfff );
-        for(idx=precision&0xfff, rounder=0.5; idx>0; idx--, rounder*=0.1){}
-        if( xtype==etFLOAT ) realvalue += rounder;
-        /* Normalize realvalue to within 10.0 > realvalue >= 1.0 */
-        exp = 0;
-        if( sqlite3IsNaN((double)realvalue) ){
-          bufpt = "NaN";
-          length = 3;
-          break;
-        }
-        if( realvalue>0.0 ){
-          LONGDOUBLE_TYPE scale = 1.0;
-          while( realvalue>=1e100*scale && exp<=350 ){ scale *= 1e100;exp+=100;}
-          while( realvalue>=1e10*scale && exp<=350 ){ scale *= 1e10; exp+=10; }
-          while( realvalue>=10.0*scale && exp<=350 ){ scale *= 10.0; exp++; }
-          realvalue /= scale;
-          while( realvalue<1e-8 ){ realvalue *= 1e8; exp-=8; }
-          while( realvalue<1.0 ){ realvalue *= 10.0; exp--; }
-          if( exp>350 ){
+        sqlite3FpDecode(&s, realvalue, iRound, flag_altform2 ? 26 : 16);
+        if( s.isSpecial ){
+          if( s.isSpecial==2 ){
+            bufpt = flag_zeropad ? "null" : "NaN";
+            length = sqlite3Strlen30(bufpt);
+            break;
+          }else if( flag_zeropad ){
+            s.z[0] = '9';
+            s.iDP = 1000;
+            s.n = 1;
+          }else{
+            memcpy(buf, "-Inf", 5);
             bufpt = buf;
-            buf[0] = prefix;
-            memcpy(buf+(prefix!=0),"Inf",4);
-            length = 3+(prefix!=0);
+            if( s.sign=='-' ){
+              /* no-op */
+            }else if( flag_prefix ){
+              buf[0] = flag_prefix;
+            }else{
+              bufpt++;
+            }
+            length = sqlite3Strlen30(bufpt);
             break;
           }
         }
-        bufpt = buf;
+        if( s.sign=='-' ){
+          if( flag_alternateform
+           && !flag_prefix
+           && xtype==etFLOAT
+           && s.iDP<=iRound
+          ){
+            /* Suppress the minus sign if all of the following are true:
+            **   *  The value displayed is zero
+            **   *  The '#' flag is used
+            **   *  The '+' flag is not used, and
+            **   *  The format is %f
+            */
+            prefix = 0;
+          }else{
+            prefix = '-';
+          }
+        }else{
+          prefix = flag_prefix;
+        }
+
+        exp = s.iDP-1;
+
         /*
         ** If the field type is etGENERIC, then convert to either etEXP
         ** or etFLOAT, as appropriate.
         */
-        if( xtype!=etFLOAT ){
-          realvalue += rounder;
-          if( realvalue>=10.0 ){ realvalue *= 0.1; exp++; }
-        }
         if( xtype==etGENERIC ){
+          assert( precision>0 );
+          precision--;
           flag_rtz = !flag_alternateform;
           if( exp<-4 || exp>precision ){
             xtype = etEXP;
@@ -565,29 +615,32 @@ void sqlite3_str_vappendf(
         if( xtype==etEXP ){
           e2 = 0;
         }else{
-          e2 = exp;
+          e2 = s.iDP - 1;
         }
+        bufpt = buf;
         {
           i64 szBufNeeded;           /* Size of a temporary buffer needed */
           szBufNeeded = MAX(e2,0)+(i64)precision+(i64)width+15;
+          if( cThousand && e2>0 ) szBufNeeded += (e2+2)/3;
           if( szBufNeeded > etBUFSIZE ){
             bufpt = zExtra = printfTempBuf(pAccum, szBufNeeded);
             if( bufpt==0 ) return;
           }
         }
         zOut = bufpt;
-        nsd = 16 + flag_altform2*10;
         flag_dp = (precision>0 ?1:0) | flag_alternateform | flag_altform2;
         /* The sign in front of the number */
         if( prefix ){
           *(bufpt++) = prefix;
         }
         /* Digits prior to the decimal point */
+        j = 0;
         if( e2<0 ){
           *(bufpt++) = '0';
         }else{
           for(; e2>=0; e2--){
-            *(bufpt++) = et_getdigit(&realvalue,&nsd);
+            *(bufpt++) = j<s.n ? s.z[j++] : '0';
+            if( cThousand && (e2%3)==0 && e2>1 ) *(bufpt++) = ',';
           }
         }
         /* The decimal point */
@@ -596,13 +649,12 @@ void sqlite3_str_vappendf(
         }
         /* "0" digits after the decimal point but before the first
         ** significant digit of the number */
-        for(e2++; e2<0; precision--, e2++){
-          assert( precision>0 );
+        for(e2++; e2<0 && precision>0; precision--, e2++){
           *(bufpt++) = '0';
         }
         /* Significant digits after the decimal point */
         while( (precision--)>0 ){
-          *(bufpt++) = et_getdigit(&realvalue,&nsd);
+          *(bufpt++) = j<s.n ? s.z[j++] : '0';
         }
         /* Remove trailing zeros and the "." if no digits follow the "." */
         if( flag_rtz && flag_dp ){
@@ -618,6 +670,7 @@ void sqlite3_str_vappendf(
         }
         /* Add the "eNNN" suffix */
         if( xtype==etEXP ){
+          exp = s.iDP - 1;
           *(bufpt++) = aDigits[infop->charset];
           if( exp<0 ){
             *(bufpt++) = '-'; exp = -exp;
@@ -651,8 +704,8 @@ void sqlite3_str_vappendf(
           while( nPad-- ) bufpt[i++] = '0';
           length = width;
         }
-#endif /* !defined(SQLITE_OMIT_FLOATING_POINT) */
         break;
+      }
       case etSIZE:
         if( !bArgList ){
           *(va_arg(ap,int*)) = pAccum->nChar;
@@ -680,34 +733,29 @@ void sqlite3_str_vappendf(
           }
         }else{
           unsigned int ch = va_arg(ap,unsigned int);
-          if( ch<0x00080 ){
-            buf[0] = ch & 0xff;
-            length = 1;
-          }else if( ch<0x00800 ){
-            buf[0] = 0xc0 + (u8)((ch>>6)&0x1f);
-            buf[1] = 0x80 + (u8)(ch & 0x3f);
-            length = 2;
-          }else if( ch<0x10000 ){
-            buf[0] = 0xe0 + (u8)((ch>>12)&0x0f);
-            buf[1] = 0x80 + (u8)((ch>>6) & 0x3f);
-            buf[2] = 0x80 + (u8)(ch & 0x3f);
-            length = 3;
-          }else{
-            buf[0] = 0xf0 + (u8)((ch>>18) & 0x07);
-            buf[1] = 0x80 + (u8)((ch>>12) & 0x3f);
-            buf[2] = 0x80 + (u8)((ch>>6) & 0x3f);
-            buf[3] = 0x80 + (u8)(ch & 0x3f);
-            length = 4;
-          }
+          length = sqlite3AppendOneUtf8Character(buf, ch);
         }
         if( precision>1 ){
+          i64 nPrior = 1;
           width -= precision-1;
           if( width>1 && !flag_leftjustify ){
             sqlite3_str_appendchar(pAccum, width-1, ' ');
             width = 0;
           }
-          while( precision-- > 1 ){
-            sqlite3_str_append(pAccum, buf, length);
+          sqlite3_str_append(pAccum, buf, length);
+          precision--;
+          while( precision > 1 ){
+            i64 nCopyBytes;
+            if( nPrior > precision-1 ) nPrior = precision - 1;
+            nCopyBytes = length*nPrior;
+            if( nCopyBytes + pAccum->nChar >= pAccum->nAlloc ){
+              sqlite3StrAccumEnlarge(pAccum, nCopyBytes);
+            }
+            if( pAccum->accError ) break;
+            sqlite3_str_append(pAccum,
+                 &pAccum->zText[pAccum->nChar-nCopyBytes], nCopyBytes);
+            precision -= nPrior;
+            nPrior *= 2;
           }
         }
         bufpt = buf;
@@ -765,23 +813,32 @@ void sqlite3_str_vappendf(
           while( ii>=0 ) if( (bufpt[ii--] & 0xc0)==0x80 ) width++;
         }
         break;
-      case etSQLESCAPE:           /* %q: Escape ' characters */
-      case etSQLESCAPE2:          /* %Q: Escape ' and enclose in '...' */
-      case etSQLESCAPE3: {        /* %w: Escape " characters */
-        int i, j, k, n, isnull;
-        int needQuote;
+      case etESCAPE_q:          /* %q: Escape ' characters */
+      case etESCAPE_Q:          /* %Q: Escape ' and enclose in '...' */
+      case etESCAPE_w: {        /* %w: Escape " characters */
+        i64 i, j, k, n;
+        int needQuote = 0;
         char ch;
-        char q = ((xtype==etSQLESCAPE3)?'"':'\'');   /* Quote character */
         char *escarg;
+        char q;
 
         if( bArgList ){
           escarg = getTextArg(pArgList);
         }else{
           escarg = va_arg(ap,char*);
         }
-        isnull = escarg==0;
-        if( isnull ) escarg = (xtype==etSQLESCAPE2 ? "NULL" : "(NULL)");
-        /* For %q, %Q, and %w, the precision is the number of byte (or
+        if( escarg==0 ){
+          escarg = (xtype==etESCAPE_Q ? "NULL" : "(NULL)");
+        }else if( xtype==etESCAPE_Q ){
+          needQuote = 1;
+        }
+        if( xtype==etESCAPE_w ){
+          q = '"';
+          flag_alternateform = 0;
+        }else{
+          q = '\'';
+        }
+        /* For %q, %Q, and %w, the precision is the number of bytes (or
         ** characters if the ! flags is present) to use from the input.
         ** Because of the extra quoting characters inserted, the number
         ** of output characters may be larger than the precision.
@@ -793,7 +850,30 @@ void sqlite3_str_vappendf(
             while( (escarg[i+1]&0xc0)==0x80 ){ i++; }
           }
         }
-        needQuote = !isnull && xtype==etSQLESCAPE2;
+        if( flag_alternateform ){
+          /* For %#q, do unistr()-style backslash escapes for
+          ** all control characters, and for backslash itself.
+          ** For %#Q, do the same but only if there is at least
+          ** one control character. */
+          u32 nBack = 0;
+          u32 nCtrl = 0;
+          for(k=0; k<i; k++){
+            if( escarg[k]=='\\' ){
+              nBack++;
+            }else if( ((u8*)escarg)[k]<=0x1f ){
+              nCtrl++;
+            }
+          }
+          if( nCtrl || xtype==etESCAPE_q ){
+            n += nBack + 5*nCtrl;
+            if( xtype==etESCAPE_Q ){
+              n += 10;
+              needQuote = 2;
+            }
+          }else{
+            flag_alternateform = 0;
+          }
+        }
         n += i + 3;
         if( n>etBUFSIZE ){
           bufpt = zExtra = printfTempBuf(pAccum, n);
@@ -802,43 +882,97 @@ void sqlite3_str_vappendf(
           bufpt = buf;
         }
         j = 0;
-        if( needQuote ) bufpt[j++] = q;
-        k = i;
-        for(i=0; i<k; i++){
-          bufpt[j++] = ch = escarg[i];
-          if( ch==q ) bufpt[j++] = ch;
+        if( needQuote ){
+          if( needQuote==2 ){
+            memcpy(&bufpt[j], "unistr('", 8);
+            j += 8;
+          }else{
+            bufpt[j++] = '\'';
+          }
         }
-        if( needQuote ) bufpt[j++] = q;
+        k = i;
+        if( flag_alternateform ){
+          for(i=0; i<k; i++){
+            bufpt[j++] = ch = escarg[i];
+            if( ch==q ){
+              bufpt[j++] = ch;
+            }else if( ch=='\\' ){
+              bufpt[j++] = '\\';
+            }else if( ((unsigned char)ch)<=0x1f ){
+              bufpt[j-1] = '\\';
+              bufpt[j++] = 'u';
+              bufpt[j++] = '0';
+              bufpt[j++] = '0';
+              bufpt[j++] = ch>=0x10 ? '1' : '0';
+              bufpt[j++] = "0123456789abcdef"[ch&0xf];
+            }
+          }
+        }else{
+          for(i=0; i<k; i++){
+            bufpt[j++] = ch = escarg[i];
+            if( ch==q ) bufpt[j++] = ch;
+          }
+        }
+        if( needQuote ){
+          bufpt[j++] = '\'';
+          if( needQuote==2 ) bufpt[j++] = ')';
+        }
         bufpt[j] = 0;
         length = j;
         goto adjust_width_for_utf8;
       }
       case etTOKEN: {
-        Token *pToken;
         if( (pAccum->printfFlags & SQLITE_PRINTF_INTERNAL)==0 ) return;
-        pToken = va_arg(ap, Token*);
-        assert( bArgList==0 );
-        if( pToken && pToken->n ){
-          sqlite3_str_append(pAccum, (const char*)pToken->z, pToken->n);
+        if( flag_alternateform ){
+          /* %#T means an Expr pointer that uses Expr.u.zToken */
+          Expr *pExpr = va_arg(ap,Expr*);
+          if( ALWAYS(pExpr) && ALWAYS(!ExprHasProperty(pExpr,EP_IntValue)) ){
+            sqlite3_str_appendall(pAccum, (const char*)pExpr->u.zToken);
+            sqlite3RecordErrorOffsetOfExpr(pAccum->db, pExpr);
+          }
+        }else{
+          /* %T means a Token pointer */
+          Token *pToken = va_arg(ap, Token*);
+          assert( bArgList==0 );
+          if( pToken && pToken->n ){
+            sqlite3_str_append(pAccum, (const char*)pToken->z, pToken->n);
+            sqlite3RecordErrorByteOffset(pAccum->db, pToken->z);
+          }
         }
         length = width = 0;
         break;
       }
-      case etSRCLIST: {
-        SrcList *pSrc;
-        int k;
-        struct SrcList_item *pItem;
+      case etSRCITEM: {
+        SrcItem *pItem;
         if( (pAccum->printfFlags & SQLITE_PRINTF_INTERNAL)==0 ) return;
-        pSrc = va_arg(ap, SrcList*);
-        k = va_arg(ap, int);
-        pItem = &pSrc->a[k];
+        pItem = va_arg(ap, SrcItem*);
         assert( bArgList==0 );
-        assert( k>=0 && k<pSrc->nSrc );
-        if( pItem->zDatabase ){
-          sqlite3_str_appendall(pAccum, pItem->zDatabase);
-          sqlite3_str_append(pAccum, ".", 1);
+        if( pItem->zAlias && !flag_altform2 ){
+          sqlite3_str_appendall(pAccum, pItem->zAlias);
+        }else if( pItem->zName ){
+          if( pItem->fg.fixedSchema==0
+           && pItem->fg.isSubquery==0
+           && pItem->u4.zDatabase!=0
+          ){
+            sqlite3_str_appendall(pAccum, pItem->u4.zDatabase);
+            sqlite3_str_append(pAccum, ".", 1);
+          }
+          sqlite3_str_appendall(pAccum, pItem->zName);
+        }else if( pItem->zAlias ){
+          sqlite3_str_appendall(pAccum, pItem->zAlias);
+        }else if( ALWAYS(pItem->fg.isSubquery) ){/* Because of tag-20240424-1 */
+          Select *pSel = pItem->u4.pSubq->pSelect;
+          assert( pSel!=0 ); 
+          if( pSel->selFlags & SF_NestedFrom ){
+            sqlite3_str_appendf(pAccum, "(join-%u)", pSel->selId);
+          }else if( pSel->selFlags & SF_MultiValue ){
+            assert( !pItem->fg.isTabFunc && !pItem->fg.isIndexedBy );
+            sqlite3_str_appendf(pAccum, "%u-ROW VALUES CLAUSE",
+                                pItem->u1.nRow);
+          }else{
+            sqlite3_str_appendf(pAccum, "(subquery-%u)", pSel->selId);
+          }
         }
-        sqlite3_str_appendall(pAccum, pItem->zName);
         length = width = 0;
         break;
       }
@@ -871,6 +1005,45 @@ void sqlite3_str_vappendf(
   }/* End for loop over the format string */
 } /* End of function */
 
+
+/*
+** The z string points to the first character of a token that is
+** associated with an error.  If db does not already have an error
+** byte offset recorded, try to compute the error byte offset for
+** z and set the error byte offset in db.
+*/
+void sqlite3RecordErrorByteOffset(sqlite3 *db, const char *z){
+  const Parse *pParse;
+  const char *zText;
+  const char *zEnd;
+  assert( z!=0 );
+  if( NEVER(db==0) ) return;
+  if( db->errByteOffset!=(-2) ) return;
+  pParse = db->pParse;
+  if( NEVER(pParse==0) ) return;
+  zText =pParse->zTail;
+  if( NEVER(zText==0) ) return;
+  zEnd = &zText[strlen(zText)];
+  if( SQLITE_WITHIN(z,zText,zEnd) ){
+    db->errByteOffset = (int)(z-zText);
+  }
+}
+
+/*
+** If pExpr has a byte offset for the start of a token, record that as
+** as the error offset.
+*/
+void sqlite3RecordErrorOffsetOfExpr(sqlite3 *db, const Expr *pExpr){
+  while( pExpr
+     && (ExprHasProperty(pExpr,EP_OuterON|EP_InnerON) || pExpr->w.iOfst<=0)
+  ){
+    pExpr = pExpr->pLeft;
+  }
+  if( pExpr==0 ) return;
+  if( ExprHasProperty(pExpr, EP_FromDDL) ) return;
+  db->errByteOffset = pExpr->w.iOfst;
+}
+
 /*
 ** Enlarge the memory allocation on a StrAccum object so that it is
 ** able to accept at least N more bytes of text.
@@ -878,21 +1051,20 @@ void sqlite3_str_vappendf(
 ** Return the number of bytes of text that StrAccum is able to accept
 ** after the attempted enlargement.  The value returned might be zero.
 */
-static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
+int sqlite3StrAccumEnlarge(StrAccum *p, i64 N){
   char *zNew;
-  assert( p->nChar+(i64)N >= p->nAlloc ); /* Only called if really needed */
+  assert( p->nChar+N >= p->nAlloc ); /* Only called if really needed */
   if( p->accError ){
     testcase(p->accError==SQLITE_TOOBIG);
     testcase(p->accError==SQLITE_NOMEM);
     return 0;
   }
   if( p->mxAlloc==0 ){
-    setStrAccumError(p, SQLITE_TOOBIG);
+    sqlite3StrAccumSetError(p, SQLITE_TOOBIG);
     return p->nAlloc - p->nChar - 1;
   }else{
     char *zOld = isMalloced(p) ? p->zText : 0;
-    i64 szNew = p->nChar;
-    szNew += N + 1;
+    i64 szNew = p->nChar + N + 1;
     if( szNew+p->nChar<=p->mxAlloc ){
       /* Force exponential buffer size growth as long as it does not overflow,
       ** to avoid having to call this routine too often */
@@ -918,7 +1090,7 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
     }
     if( szNew > p->mxAlloc ){
       sqlite3_str_reset(p);
-      setStrAccumError(p, SQLITE_TOOBIG);
+      sqlite3StrAccumSetError(p, SQLITE_TOOBIG);
       return 0;
     }else{
       p->nAlloc = (int)szNew;
@@ -926,7 +1098,7 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
     if( p->db ){
       zNew = sqlite3DbRealloc(p->db, zOld, p->nAlloc);
     }else{
-      zNew = sqlite3_realloc64(zOld, p->nAlloc);
+      zNew = sqlite3Realloc(zOld, p->nAlloc);
     }
     if( zNew ){
       assert( p->zText!=0 || p->nChar==0 );
@@ -936,11 +1108,12 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
       p->printfFlags |= SQLITE_PRINTF_MALLOCED;
     }else{
       sqlite3_str_reset(p);
-      setStrAccumError(p, SQLITE_NOMEM);
+      sqlite3StrAccumSetError(p, SQLITE_NOMEM);
       return 0;
     }
   }
-  return N;
+  assert( N>=0 && N<=0x7fffffff );
+  return (int)N;
 }
 
 /*
@@ -1004,12 +1177,12 @@ void sqlite3_str_appendall(sqlite3_str *p, const char *z){
 static SQLITE_NOINLINE char *strAccumFinishRealloc(StrAccum *p){
   char *zText;
   assert( p->mxAlloc>0 && !isMalloced(p) );
-  zText = sqlite3DbMallocRaw(p->db, p->nChar+1 );
+  zText = sqlite3DbMallocRaw(p->db, 1+(u64)p->nChar );
   if( zText ){
     memcpy(zText, p->zText, p->nChar+1);
     p->printfFlags |= SQLITE_PRINTF_MALLOCED;
   }else{
-    setStrAccumError(p, SQLITE_NOMEM);
+    sqlite3StrAccumSetError(p, SQLITE_NOMEM);
   }
   p->zText = zText;
   return zText;
@@ -1022,6 +1195,22 @@ char *sqlite3StrAccumFinish(StrAccum *p){
     }
   }
   return p->zText;
+}
+
+/*
+** Use the content of the StrAccum passed as the second argument
+** as the result of an SQL function.
+*/
+void sqlite3ResultStrAccum(sqlite3_context *pCtx, StrAccum *p){
+  if( p->accError ){
+    sqlite3_result_error_code(pCtx, p->accError);
+    sqlite3_str_reset(p);
+  }else if( isMalloced(p) ){
+    sqlite3_result_text(pCtx, p->zText, p->nChar, SQLITE_DYNAMIC);
+  }else{
+    sqlite3_result_text(pCtx, "", 0, SQLITE_STATIC);
+    sqlite3_str_reset(p);
+  }
 }
 
 /*
@@ -1215,13 +1404,32 @@ char *sqlite3_vsnprintf(int n, char *zBuf, const char *zFormat, va_list ap){
   return zBuf;
 }
 char *sqlite3_snprintf(int n, char *zBuf, const char *zFormat, ...){
-  char *z;
+  StrAccum acc;
   va_list ap;
+  if( n<=0 ) return zBuf;
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( zBuf==0 || zFormat==0 ) {
+    (void)SQLITE_MISUSE_BKPT;
+    if( zBuf ) zBuf[0] = 0;
+    return zBuf;
+  }
+#endif
+  sqlite3StrAccumInit(&acc, 0, zBuf, n, 0);
   va_start(ap,zFormat);
-  z = sqlite3_vsnprintf(n, zBuf, zFormat, ap);
+  sqlite3_str_vappendf(&acc, zFormat, ap);
   va_end(ap);
-  return z;
+  zBuf[acc.nChar] = 0;
+  return zBuf;
 }
+
+/* Maximum size of an sqlite3_log() message. */
+#if defined(SQLITE_MAX_LOG_MESSAGE) 
+  /* Leave the definition as supplied */
+#elif SQLITE_PRINT_BUF_SIZE*10>10000
+# define SQLITE_MAX_LOG_MESSAGE 10000
+#else
+# define SQLITE_MAX_LOG_MESSAGE (SQLITE_PRINT_BUF_SIZE*10)
+#endif
 
 /*
 ** This is the routine that actually formats the sqlite3_log() message.
@@ -1239,7 +1447,7 @@ char *sqlite3_snprintf(int n, char *zBuf, const char *zFormat, ...){
 */
 static void renderLogMsg(int iErrCode, const char *zFormat, va_list ap){
   StrAccum acc;                          /* String accumulator */
-  char zMsg[SQLITE_PRINT_BUF_SIZE*3];    /* Complete log message */
+  char zMsg[SQLITE_MAX_LOG_MESSAGE];     /* Complete log message */
 
   sqlite3StrAccumInit(&acc, 0, zMsg, sizeof(zMsg), 0);
   sqlite3_str_vappendf(&acc, zFormat, ap);
@@ -1269,7 +1477,7 @@ void sqlite3_log(int iErrCode, const char *zFormat, ...){
 void sqlite3DebugPrintf(const char *zFormat, ...){
   va_list ap;
   StrAccum acc;
-  char zBuf[500];
+  char zBuf[SQLITE_PRINT_BUF_SIZE*10];
   sqlite3StrAccumInit(&acc, 0, zBuf, sizeof(zBuf), 0);
   va_start(ap,zFormat);
   sqlite3_str_vappendf(&acc, zFormat, ap);
@@ -1298,4 +1506,73 @@ void sqlite3_str_appendf(StrAccum *p, const char *zFormat, ...){
   va_start(ap,zFormat);
   sqlite3_str_vappendf(p, zFormat, ap);
   va_end(ap);
+}
+
+
+/*****************************************************************************
+** Reference counted string/blob storage
+*****************************************************************************/
+
+/*
+** Increase the reference count of the string by one.
+**
+** The input parameter is returned.
+*/
+char *sqlite3RCStrRef(char *z){
+  RCStr *p = (RCStr*)z;
+  assert( p!=0 );
+  p--;
+  p->nRCRef++;
+  return z;
+}
+
+/*
+** Decrease the reference count by one.  Free the string when the
+** reference count reaches zero.
+*/
+void sqlite3RCStrUnref(void *z){
+  RCStr *p = (RCStr*)z;
+  assert( p!=0 );
+  p--;
+  assert( p->nRCRef>0 );
+  if( p->nRCRef>=2 ){
+    p->nRCRef--;
+  }else{
+    sqlite3_free(p);
+  }
+}
+
+/*
+** Create a new string that is capable of holding N bytes of text, not counting
+** the zero byte at the end.  The string is uninitialized.
+**
+** The reference count is initially 1.  Call sqlite3RCStrUnref() to free the
+** newly allocated string.
+**
+** This routine returns 0 on an OOM.
+*/
+char *sqlite3RCStrNew(u64 N){
+  RCStr *p = sqlite3_malloc64( N + sizeof(*p) + 1 );
+  if( p==0 ) return 0;
+  p->nRCRef = 1;
+  return (char*)&p[1];
+}
+
+/*
+** Change the size of the string so that it is able to hold N bytes.
+** The string might be reallocated, so return the new allocation.
+*/
+char *sqlite3RCStrResize(char *z, u64 N){
+  RCStr *p = (RCStr*)z;
+  RCStr *pNew;
+  assert( p!=0 );
+  p--;
+  assert( p->nRCRef==1 );
+  pNew = sqlite3_realloc64(p, N+sizeof(RCStr)+1);
+  if( pNew==0 ){
+    sqlite3_free(p);
+    return 0;
+  }else{
+    return (char*)&pNew[1];
+  }
 }
