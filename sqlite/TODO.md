@@ -96,7 +96,7 @@
 - [x] 57  ./src/whereexpr.c.patch
 - [x] 58  ./src/status.c.patch
 - [x] 59  ./src/callback.c.patch
-- [ ] 61  ./src/malloc.c.patch
+- [x] 61  ./src/malloc.c.patch
 - [ ] 62  ./src/upsert.c.patch
 
 ## Headers

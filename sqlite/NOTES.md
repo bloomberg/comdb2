@@ -38,6 +38,10 @@
 - `status.c`: we do not use SQLite's page caching, so disable assertions that
   check whether page cache mutex is held, and never try to acquire page cache
   mutex.
+- `malloc.c`: implement thread-safe versions of `sqlite3DbMalloc` and
+  `sqlite3DbRealloc`. These thread-safe variants only seem to be used for fdb,
+  maybe because SQLite resources are shared for concurrent queries that
+  reference the same foreign db?
 
 ## Friday, Mar 20th, 2026
 
