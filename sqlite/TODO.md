@@ -46,6 +46,7 @@
 - [x] 10  ./src/comdb2Int.h.patch
   - Comdb2-specific, leave as-is.
 - [x] 10  ./src/decimal.h.patch
+- [x] 26  ./src/decimal.c.patch
   - Comdb2-specific, leave as-is. SQLite has a decimal extension now but
     choosing not to pull it in, we'll stick with our implementation.
 - [x] 14  ./src/hash.h.patch
@@ -85,7 +86,6 @@
 - [x] 14  ./src/vdbeblob.c.patch
 - [x] 16  ./src/pragma.c.patch
 - [x] 18  ./src/threads.c.patch
-- [ ] 26  ./src/decimal.c.patch
 - [ ] 27  ./tool/lemon.c.patch
 - [ ] 32  ./src/alter.c.patch
 - [ ] 33  ./src/treeview.c.patch
