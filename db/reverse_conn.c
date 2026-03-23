@@ -151,7 +151,7 @@ int replace_tier_by_hostname(reverse_conn_host_list_tp *new_reverse_conn_hosts) 
             cdb2_hndl_tp *hndl;
             int rc;
 
-            if ((rc = cdb2_open(&hndl, new_host->dbname, new_host->host, 0)) != 0) {
+            if ((rc = cdb2_open(&hndl, new_host->dbname, new_host->host, CDB2_DISABLE_LOCAL_CACHE)) != 0) {
                 revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n", __func__, __LINE__, new_host->dbname, new_host->host, rc);
                 free_rev_conn_host(listc_rfl(&new_reverse_conn_hosts, new_host));
                 continue;

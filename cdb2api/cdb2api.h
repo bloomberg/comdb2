@@ -43,7 +43,10 @@ enum cdb2_hndl_alloc_flags {
     CDB2_REQUIRE_FASTSQL = 512,
     CDB2_MASTER = 1024,
     CDB2_ALLOW_INCOHERENT = 2048,
-    CDB2_SET_TAGGED = 4096
+    CDB2_SET_TAGGED = 4096,
+#ifdef CDB2API_SERVER
+    CDB2_DISABLE_LOCAL_CACHE = 8192,
+#endif
 };
 
 enum cdb2_request_type {

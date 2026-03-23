@@ -11,6 +11,9 @@ export comdb2ar=${COMDB2AR_EXE}
 
 export FIGLET=$(which figlet)
 
+# Enable local connection cache to test that physrep doesn't cache metadb connections
+export COMDB2_CONFIG_MAX_LOCAL_CONNECTION_CACHE_ENTRIES=10
+
 dbname=$1
 dgpid=0
 first=""
@@ -732,7 +735,7 @@ END
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-            ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
         done
 
@@ -919,7 +922,7 @@ function setup_physrep_cluster()
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-            ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
         done
 
@@ -977,7 +980,7 @@ function setup_alt_replicant()
     add_to_physrep_sources ${_altmeta_dbname2} ${_altmeta_host2} ${_cluster_dbname} ${_cluster_host} ${_alt_dbname} ${_alt_host}
 
     # Start the alt-replicant
-    ssh ${_alt_host} "$COMDB2_EXE ${_alt_dbname} --lrl ${_repl_dbdir}/${_alt_dbname}.lrl --pidfile ${_repl_dbdir}/${_alt_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+    ssh ${_alt_host} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_alt_dbname} --lrl ${_repl_dbdir}/${_alt_dbname}.lrl --pidfile ${_repl_dbdir}/${_alt_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
     PIDs="${PIDs} $!"
 
     out=0
@@ -1077,7 +1080,7 @@ function setup_physrep_replicants()
                 ssh $node "echo \"machine_class mips\" >> ${_repl_dbdir}/${_repl_dbname}.lrl" 2>&1 < /dev/null
             fi
 
-            ssh ${node} "$COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
 
             # Wait for the node to start
@@ -2141,6 +2144,22 @@ else                         # Cluster
     done
 fi
 
+# Create replicant_env_vars file for remote nodes
+# This file will be sourced when starting databases on remote machines via SSH
+cat > ${TESTDIR}/phys_rep_tiered_replicant_vars <<EOF
+export COMDB2_CONFIG_MAX_LOCAL_CONNECTION_CACHE_ENTRIES=10
+EOF
+
+# Copy to remote nodes if running in cluster mode
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        scp ${TESTDIR}/phys_rep_tiered_replicant_vars ${node}:${TESTDIR}/ < /dev/null
+    done
+fi
+
+# Also set REP_ENV_VARS for the test
+export REP_ENV_VARS="${TESTDIR}/phys_rep_tiered_replicant_vars"
+
 # Setup both metadb and altmeta
 setup_physrep_metadb ${REPL_META_DBNAME} ${REPL_META_DBDIR}
 setup_physrep_metadb ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_DBDIR}
@@ -2426,7 +2445,7 @@ function verify_non_ignored_reptype
 
     echo "Restart $exit_node"
     logFile=$TESTDIR/logs/${REPL_CLUS_DBNAME}.${exit_node}.log
-    ssh ${exit_node} "$COMDB2_EXE ${REPL_CLUS_DBNAME} --lrl ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.lrl --pidfile ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" >> ${logFile} 2>&1 < /dev/null &
+    ssh ${exit_node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${REPL_CLUS_DBNAME} --lrl ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.lrl --pidfile ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" >> ${logFile} 2>&1 < /dev/null &
     PIDs="${PIDx} $!"
 
     echo "Block until $exit_node is available"
@@ -2721,6 +2740,107 @@ function physrep_metadb_sql_count_test
     echo "SUCCESS: Total metadb SQL count ($total_count) is within acceptable range (<= 2500)"
 }
 
+# Test that physrep is not holding cached connections to the metadb
+function physrep_no_cached_metadb_connections_test
+{
+    echo "== Checking for cached metadb connections =="
+    local found_cached=0
+    local node=""
+    local dbname=""
+    local output=""
+    local cached_count=0
+
+    # Check source database
+    echo "Checking source database: $DBNAME"
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+    else
+        node="$firstNode"
+    fi
+
+    output=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} --host ${node} "exec procedure sys.cmd.send('physrep_cached_metadb_connections')" 2>&1)
+    echo "$output"
+
+    # Parse total from output
+    if echo "$output" | grep -q "Total cached metadb connections:"; then
+        cached_count=$(echo "$output" | grep "Total cached metadb connections:" | awk '{print $NF}')
+        if [[ $cached_count -gt 0 ]]; then
+            echo "ERROR: Source database has $cached_count cached metadb connections"
+            found_cached=1
+        fi
+    fi
+
+    # Check replication cluster nodes
+    echo "Checking replication cluster: $REPL_CLUS_DBNAME"
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+        output=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host ${node} "exec procedure sys.cmd.send('physrep_cached_metadb_connections')" 2>&1)
+        echo "$output"
+
+        if echo "$output" | grep -q "Total cached metadb connections:"; then
+            cached_count=$(echo "$output" | grep "Total cached metadb connections:" | awk '{print $NF}')
+            if [[ $cached_count -gt 0 ]]; then
+                echo "ERROR: Replication cluster node $node has $cached_count cached metadb connections"
+                found_cached=1
+            fi
+        fi
+    else
+        for node in $CLUSTER; do
+            output=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host ${node} "exec procedure sys.cmd.send('physrep_cached_metadb_connections')" 2>&1)
+            echo "$output"
+
+            if echo "$output" | grep -q "Total cached metadb connections:"; then
+                cached_count=$(echo "$output" | grep "Total cached metadb connections:" | awk '{print $NF}')
+                if [[ $cached_count -gt 0 ]]; then
+                    echo "ERROR: Replication cluster node $node has $cached_count cached metadb connections"
+                    found_cached=1
+                fi
+            fi
+        done
+    fi
+
+    # Check standalone physreps
+    echo "Checking standalone physreps"
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        output=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${dbname} --host ${node} "exec procedure sys.cmd.send('physrep_cached_metadb_connections')" 2>&1)
+        echo "$output"
+
+        if echo "$output" | grep -q "Total cached metadb connections:"; then
+            cached_count=$(echo "$output" | grep "Total cached metadb connections:" | awk '{print $NF}')
+            if [[ $cached_count -gt 0 ]]; then
+                echo "ERROR: Standalone physrep $dbname has $cached_count cached metadb connections"
+                found_cached=1
+            fi
+        fi
+    else
+        for node in $CLUSTER; do
+            dbname="${REPL_DBNAME_PREFIX}_${node}"
+            output=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${dbname} --host ${node} "exec procedure sys.cmd.send('physrep_cached_metadb_connections')" 2>&1)
+            echo "$output"
+
+            if echo "$output" | grep -q "Total cached metadb connections:"; then
+                cached_count=$(echo "$output" | grep "Total cached metadb connections:" | awk '{print $NF}')
+                if [[ $cached_count -gt 0 ]]; then
+                    echo "ERROR: Standalone physrep $dbname has $cached_count cached metadb connections"
+                    found_cached=1
+                fi
+            fi
+        done
+    fi
+
+    echo ""
+    echo "========================================="
+    if [[ $found_cached -eq 0 ]]; then
+        echo "SUCCESS: No cached metadb connections found"
+    else
+        cleanFailExit "FAILED: Found cached metadb connections (see errors above)"
+    fi
+    echo "========================================="
+    echo ""
+}
+
 function announce
 {
     typeset text=$1
@@ -2919,11 +3039,16 @@ function run_tests
     testcase_preamble $testcase
     physrep_metadb_sql_count_test
     testcase_finish $testcase
+
+    testcase="physrep_no_cached_metadb_connections"
+    testcase_preamble $testcase
+    physrep_no_cached_metadb_connections_test
+    testcase_finish $testcase
 }
 
 function run_one_test
 {
-    physrep_metadb_sql_count_test
+    physrep_no_cached_metadb_connections_test
 }
 
 run_tests

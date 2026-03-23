@@ -2715,6 +2715,25 @@ static void sockpool_close_all(void)
     for ((v) = TAILQ_FIRST(head); (v) && ((tmp) = TAILQ_NEXT((v), field), 1); (v) = (tmp))
 #endif
 
+/* Available in server builds (for diagnostics) and test builds (for unit tests) */
+#if defined(CDB2API_SERVER) || defined(CDB2API_TEST)
+int get_num_cached_connections_for(const char *dbname)
+{
+    char *typestr = alloca(strlen(dbname) + 3);
+    snprintf(typestr, strlen(dbname) + 3, "/%s/", dbname);
+    struct local_cached_connection *cc;
+    int nconn = 0;
+    pthread_mutex_lock(&local_connection_cache_lock);
+    TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
+    {
+        if (strstr(cc->typestr, typestr))
+            nconn++;
+    }
+    pthread_mutex_unlock(&local_connection_cache_lock);
+    return nconn;
+}
+#endif
+
 #ifdef CDB2API_TEST
 
 void dump_cached_connections(void)
@@ -2739,24 +2758,10 @@ void dump_cached_connections(void)
     printf("hits %d missed %d evicts %d\n", num_cache_hits, num_cache_misses, num_cache_lru_evicts);
 }
 
-int get_num_cached_connections_for(const char *dbname)
-{
-    char typestr[20];
-    sprintf(typestr, "/%s/", dbname);
-    struct local_cached_connection *cc;
-    int nconn = 0;
-    TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
-    {
-        if (strstr(cc->typestr, typestr))
-            nconn++;
-    }
-    return nconn;
-}
-
 int get_cached_connection_index(const char *dbname)
 {
-    char typestr[20];
-    sprintf(typestr, "/%s/", dbname);
+    char *typestr = alloca(strlen(dbname) + 3);
+    snprintf(typestr, strlen(dbname) + 3, "/%s/", dbname);
     struct local_cached_connection *cc;
     int nconn = 0;
     TAILQ_FOREACH(cc, &local_connection_cache, local_cache_lnk)
@@ -3043,6 +3048,10 @@ static int local_connection_cache_put_sbuf(const cdb2_hndl_tp *hndl, const char 
 
 static int local_connection_cache_put(const cdb2_hndl_tp *hndl, const char *typestr, COMDB2BUF *sb)
 {
+#ifdef CDB2API_SERVER
+    if (hndl->flags & CDB2_DISABLE_LOCAL_CACHE)
+        return 0;
+#endif
     if (local_connection_cache_use_sbuf)
         return local_connection_cache_put_sbuf(hndl, typestr, sb);
     return local_connection_cache_put_fd(hndl, typestr, sb);
