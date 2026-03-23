@@ -86,7 +86,7 @@
 - [x] 14  ./src/vdbeblob.c.patch
 - [x] 16  ./src/pragma.c.patch
 - [x] 18  ./src/threads.c.patch
-- [ ] 27  ./tool/lemon.c.patch
+- [x] 27  ./tool/lemon.c.patch
 - [ ] 32  ./src/alter.c.patch
 - [ ] 33  ./src/treeview.c.patch
 - [ ] 34  ./src/loadext.c.patch
