@@ -32,6 +32,9 @@
 - `alter.c`: disable SQLite's logic because we handle much of DDL ourselves.
 - `loadext.c`: some extension APIs are disabled because they're not consistent
   between SQLite and comdb2 semantics.
+- `mem1.c`: use `blobmem` (specialized blob memory allocator?) when allocating
+  large amounts of memory. Maybe more optimized or has fewer problems with
+  fragmentation, etc.
 
 ## Friday, Mar 20th, 2026
 
