@@ -22,7 +22,7 @@
 * Replace current file with merged:
 
   ```bash
-  mv $file.merged $file
+  rm -f $file.patch $file.md && mv $file.merged $file
   ```
 
 ## Monday, Mar 23rd, 2026
