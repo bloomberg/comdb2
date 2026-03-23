@@ -195,6 +195,32 @@ void physrep_alt_metadb_print(void)
     }
 }
 
+extern int get_num_cached_connections_for(const char *dbname);
+
+void physrep_metadb_cached_connections(void)
+{
+    int total = 0;
+    int count = 0;
+
+    /* Check main metadb */
+    if (gbl_physrep_metadb_name) {
+        count = get_num_cached_connections_for(gbl_physrep_metadb_name);
+        physrep_logmsg(LOGMSG_USER, "Cached connections to %s: %d\n", gbl_physrep_metadb_name, count);
+        total += count;
+    }
+
+    /* Check alternate metadbs */
+    for (int i = 0; i < gbl_altmetadb_count; i++) {
+        if (gbl_altmetadb[i].dbname) {
+            count = get_num_cached_connections_for(gbl_altmetadb[i].dbname);
+            physrep_logmsg(LOGMSG_USER, "Cached connections to %s: %d\n", gbl_altmetadb[i].dbname, count);
+            total += count;
+        }
+    }
+
+    physrep_logmsg(LOGMSG_USER, "Total cached metadb connections: %d\n", total);
+}
+
 void cleanup_hosts()
 {
     DB_Connection *cnct;
@@ -314,7 +340,7 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
         cdb2_get_comdb2db(&comdb2dbname, &comdb2dbclass);
     }
 
-    *rc = cdb2_open(&comdb2db, comdb2dbname, comdb2dbclass, 0);
+    *rc = cdb2_open(&comdb2db, comdb2dbname, comdb2dbclass, CDB2_DISABLE_LOCAL_CACHE);
     if (*rc) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (err: %s rc: %d)\n", __func__, __LINE__,
                        comdb2dbname, comdb2dbclass, cdb2_errstr(comdb2db), *rc);
@@ -360,7 +386,7 @@ err:
 }
 
 static int get_local_hndl(cdb2_hndl_tp **hndl) {
-    int rc = cdb2_open(hndl, gbl_dbname, "local", 0);
+    int rc = cdb2_open(hndl, gbl_dbname, "local", CDB2_DISABLE_LOCAL_CACHE);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n",
                        __func__, __LINE__, gbl_dbname, "local", rc);
@@ -421,7 +447,7 @@ static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, 
             // Move to the next host for the next attempt
             *host_index = (*host_index + 1) % *host_count;
 
-            int rc = cdb2_open(hndl, dbname, direct_host, CDB2_DIRECT_CPU);
+            int rc = cdb2_open(hndl, dbname, direct_host, CDB2_DIRECT_CPU | CDB2_DISABLE_LOCAL_CACHE);
             if (rc != 0) {
                 physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d, attempt: %d)\n",
                                __func__, __LINE__, dbname, direct_host, rc, i+1);
@@ -456,7 +482,7 @@ static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, 
         return 1;
     }
 
-    int rc = cdb2_open(hndl, dbname, host, 0);
+    int rc = cdb2_open(hndl, dbname, host, CDB2_DISABLE_LOCAL_CACHE);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n",
                        __func__, __LINE__, dbname, host, rc);
@@ -1000,7 +1026,7 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                                __func__, __LINE__, cnct->hostname, cnct->dbname);
             }
 
-            rc = cdb2_open(repl_db, cnct->dbname, cnct->hostname, CDB2_DIRECT_CPU);
+            rc = cdb2_open(repl_db, cnct->dbname, cnct->hostname, CDB2_DIRECT_CPU | CDB2_DISABLE_LOCAL_CACHE);
             if (rc != 0) {
                 physrep_logmsg(LOGMSG_ERROR, "%s:%d: Couldn't connect to %s@%s (rc: %d error: %s)\n",
                                __func__, __LINE__, cnct->dbname,

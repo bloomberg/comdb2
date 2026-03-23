@@ -55,6 +55,7 @@ int physrep_fanout_get(const char *dbname);
 void physrep_fanout_dump(void);
 int physrep_add_alternate_metadb(char *dbname, char *host);
 void physrep_alt_metadb_print(void);
+void physrep_metadb_cached_connections(void);
 int physrep_allowed_source(const char *dbname, const char *hostname);
 
 #endif /* PHYS_REP_H */
