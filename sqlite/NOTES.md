@@ -25,6 +25,11 @@
   mv $file.merged $file
   ```
 
+## Monday, Mar 23rd, 2026
+
+- `random.c`: we've made the random number generator thread-local instead of
+  global to reduce contention amongst SQL threads.
+
 ## Friday, Mar 20th, 2026
 
 - `shell.c.in`: we have a patch to initialize comdb2's SQLite tunables in our
