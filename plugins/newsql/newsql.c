@@ -2536,6 +2536,15 @@ void free_newsql_appdata(struct sqlclntstate *clnt)
 void *(*externalMakeNewsqlAuthData)(void *, CDB2SQLQUERY__IdentityBlob *id) = NULL;
 void (*externalFreeNewsqlAuthData)(void *) = NULL;
 
+static int newsql_free_authdata(struct sqlclntstate *clnt)
+{
+    if (clnt->authdata) {
+        externalFreeNewsqlAuthData(clnt->authdata);
+        clnt->authdata = NULL;
+    }
+    return 0;
+}
+
 static void *newsql_get_authdata(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -2551,27 +2560,25 @@ static void *newsql_get_authdata(struct sqlclntstate *clnt)
         }
 
     }
-    if (clnt->authdata) {
-        externalFreeNewsqlAuthData(clnt->authdata);
-        clnt->authdata = NULL;
-    }
+    newsql_free_authdata(clnt);
     return NULL;
 }
 
-static int newsql_free_authdata(struct sqlclntstate *clnt)
-{
-    if (clnt->authdata) {
-        externalFreeNewsqlAuthData(clnt->authdata);
-        clnt->authdata = NULL;
-    }
-    return 0;
-}
-
+/* Returns the identity in the current protocol buffer.
+   The identity is invalid after the request is processed
+   and the protobuf buffer is freed. */
 void *newsql_get_identity(struct sqlclntstate *clnt)
 {
-    // latch the identity in clnt, if not there already
-    newsql_get_authdata(clnt);
-    return clnt->externalAuthUser;
+    void *id = NULL;
+    struct newsql_appdata *appdata = clnt->appdata;
+
+    if (appdata) {
+        CDB2SQLQUERY *sql_query = appdata->sqlquery;
+        if (sql_query && sql_query->identity)
+            id = sql_query->identity->principal;
+    }
+
+    return id;
 }
 
 void newsql_setup_clnt(struct sqlclntstate *clnt)
