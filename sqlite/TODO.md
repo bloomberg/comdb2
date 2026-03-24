@@ -2,6 +2,13 @@
 
 ## Questions / Decisions
 
+### Tuesday, Mar 24th, 2026
+
+- `src/test_vfs.c`: looks like we wanted to disable an assertion in
+  `testvfs_obj_del` (`ckfree((char *)p->apScript)`). This assertion
+  was removed entirely in newer SQLite, so removing the assertion
+  and our patch-out in our copy as well.
+
 ### Friday, Mar 20th, 2026
 
 - What is dry-run mode?
@@ -99,7 +106,7 @@
 - [x] 61  ./src/malloc.c.patch
 - [x] 62  ./src/upsert.c.patch
 - [x] 100  ./src/trigger.c.patch
-- [ ] 106  ./src/test_vfs.c.patch
+- [x] 106  ./src/test_vfs.c.patch
 - [ ] 136  ./src/os_unix.c.patch
 - [ ] 140  ./src/delete.c.patch
 - [ ] 143  ./src/update.c.patch
