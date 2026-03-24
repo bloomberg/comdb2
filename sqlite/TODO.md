@@ -10,6 +10,8 @@
   and our patch-out in our copy as well.
 - [ ] `src/os_unix.c`: some logmsg are NOT right (logging incorrect
   SQLite error).
+- [x] `delete.c`: we had cherry picked an optimization, preserved it
+  (commit `52a70498d`).
 
 ### Friday, Mar 20th, 2026
 
@@ -110,7 +112,7 @@
 - [x] 100  ./src/trigger.c.patch
 - [x] 106  ./src/test_vfs.c.patch
 - [x] 136  ./src/os_unix.c.patch
-- [ ] 140  ./src/delete.c.patch
+- [x] 140  ./src/delete.c.patch
 - [ ] 143  ./src/update.c.patch
 - [ ] 152  ./src/vdbe.h.patch
 - [ ] 164  ./src/rowset.c.patch
