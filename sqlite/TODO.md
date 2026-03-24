@@ -4,10 +4,12 @@
 
 ### Tuesday, Mar 24th, 2026
 
-- `src/test_vfs.c`: looks like we wanted to disable an assertion in
+- [x] `src/test_vfs.c`: looks like we wanted to disable an assertion in
   `testvfs_obj_del` (`ckfree((char *)p->apScript)`). This assertion
   was removed entirely in newer SQLite, so removing the assertion
   and our patch-out in our copy as well.
+- [ ] `src/os_unix.c`: some logmsg are NOT right (logging incorrect
+  SQLite error).
 
 ### Friday, Mar 20th, 2026
 
@@ -107,7 +109,7 @@
 - [x] 62  ./src/upsert.c.patch
 - [x] 100  ./src/trigger.c.patch
 - [x] 106  ./src/test_vfs.c.patch
-- [ ] 136  ./src/os_unix.c.patch
+- [x] 136  ./src/os_unix.c.patch
 - [ ] 140  ./src/delete.c.patch
 - [ ] 143  ./src/update.c.patch
 - [ ] 152  ./src/vdbe.h.patch
