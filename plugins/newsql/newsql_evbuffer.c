@@ -101,6 +101,22 @@ static int rd_evbuffer_ciphertext(struct newsql_appdata_evbuffer *);
 static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *);
 static int newsql_write_hdr_evbuffer(struct sqlclntstate *, int, int);
 
+static void inline free_pb_cdb2query(struct sqlclntstate *clnt, CDB2QUERY *query)
+{
+    struct newsql_appdata_evbuffer *appdata;
+
+    if (clnt == NULL || query == NULL)
+        return;
+
+    appdata = clnt->appdata;
+
+    /* clnt->externalAuthUser and appdata->sqlquery point into the protobuf memory.
+       ensure that they are cleared before freeing the memory */
+    appdata->sqlquery = NULL;
+    clnt->externalAuthUser = NULL;
+    cdb2__query__free_unpacked(query, &pb_alloc);
+}
+
 static void free_newsql_appdata_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
     check_thd(appdata->thd);
@@ -130,11 +146,7 @@ static void free_newsql_appdata_evbuffer(struct newsql_appdata_evbuffer *appdata
         disable_ssl_evbuffer(appdata);
         free(appdata->ssl_data);
     }
-    if (appdata->query) {
-        cdb2__query__free_unpacked(appdata->query, &pb_alloc);
-        appdata->query = NULL;
-        clnt->externalAuthUser = NULL;
-    }
+    free_pb_cdb2query(clnt, appdata->query);
     sqlwriter_free(appdata->writer);
     shutdown(fd, SHUT_RDWR);
     Close(fd);
@@ -167,11 +179,10 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
     if (sql_done(appdata->writer) == 0) {
         if (clnt->added_to_hist) {
             clnt->added_to_hist = 0;
-        } else if (appdata->query) {
-            cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+        } else {
+            free_pb_cdb2query(clnt, appdata->query);
         }
         appdata->query = NULL;
-        clnt->externalAuthUser = NULL;
         evtimer_once(appdata->base, rd_hdr, appdata);
     } else {
         appdata->cleanup_ev = event_new(appdata->base, -1, 0, newsql_cleanup, appdata);
@@ -730,8 +741,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     int commit_rollback;
     if (newsql_should_dispatch(clnt, &commit_rollback) != 0) {
     read:
-        if (appdata->query)
-            cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+        free_pb_cdb2query(clnt, appdata->query);
         appdata->query = NULL;
         evtimer_once(appdata->base, rd_hdr, appdata);
         return;
@@ -891,8 +901,7 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
     if (disttxn) {
         process_disttxn(appdata, disttxn);
     }
-    if (query)
-        cdb2__query__free_unpacked(query, &pb_alloc);
+    free_pb_cdb2query(&appdata->clnt, query);
 }
 
 static void add_rd_event_ssl(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *t)
@@ -1105,6 +1114,10 @@ static void rd_hdr(int fd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
+
+    /* Free the protocol buffer from last query, if any */
+    free_pb_cdb2query(&appdata->clnt, appdata->query);
+
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
     }
