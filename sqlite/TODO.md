@@ -12,6 +12,9 @@
   SQLite error).
 - [x] `delete.c`: we had cherry picked an optimization, preserved it
   (commit `52a70498d`).
+- [ ] `update.c`: line 908, we have a change to make `UPDATE` generate
+  verify error if row cannot be found, how should this work for the new
+  case of `UPDATE FROM` in the branch above?
 
 ### Friday, Mar 20th, 2026
 
@@ -113,7 +116,7 @@
 - [x] 106  ./src/test_vfs.c.patch
 - [x] 136  ./src/os_unix.c.patch
 - [x] 140  ./src/delete.c.patch
-- [ ] 143  ./src/update.c.patch
+- [x] 143  ./src/update.c.patch
 - [ ] 152  ./src/vdbe.h.patch
 - [ ] 164  ./src/rowset.c.patch
 - [ ] 205  ./src/vdbesort.c.patch
