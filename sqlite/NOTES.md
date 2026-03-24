@@ -25,6 +25,12 @@
   rm -f $file.patch $file.md && mv $file.merged $file
   ```
 
+## Tuesday, Mar 24th, 2026
+
+- `trigger.c`: our `sqlite_master` has an additional `csc2` column, needs to
+  be set to NULL for triggers. Also, `MASTER_NAME` (`"sqlite_master"`) has
+  been renamed to `LEGACY_SCHEMA_TABLE`.
+
 ## Monday, Mar 23rd, 2026
 
 - `random.c`: we've made the random number generator thread-local instead of
