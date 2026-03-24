@@ -98,25 +98,25 @@
 - [x] 59  ./src/callback.c.patch
 - [x] 61  ./src/malloc.c.patch
 - [x] 62  ./src/upsert.c.patch
-
-## Headers
-
-- [ ] 152 ./src/vdbe.h.patch
-- [ ] 252 ./src/sqlite.h.in.patch
-- [ ] 368 ./src/vdbeInt.h.patch
-
-## Source Files
-
-- [ ] 100  ./src/trigger.c.patch
+- [x] 100  ./src/trigger.c.patch
 - [ ] 106  ./src/test_vfs.c.patch
 - [ ] 136  ./src/os_unix.c.patch
 - [ ] 140  ./src/delete.c.patch
 - [ ] 143  ./src/update.c.patch
+- [ ] 152  ./src/vdbe.h.patch
 - [ ] 164  ./src/rowset.c.patch
 - [ ] 205  ./src/vdbesort.c.patch
 - [ ] 221  ./src/util.c.patch
 - [ ] 221  ./tool/mkkeywordhash.c.patch
+- [ ] 252  ./src/sqlite.h.in.patch
 - [ ] 258  ./src/resolve.c.patch
+- [ ] 368  ./src/vdbeInt.h.patch
+
+## Headers
+
+
+## Source Files
+
 - [ ] 334  ./src/attach.c.patch
 - [ ] 359  ./src/prepare.c.patch
 - [ ] 417  ./src/dttz.c.patch
