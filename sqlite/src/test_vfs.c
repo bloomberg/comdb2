@@ -28,11 +28,7 @@
 
 #include "sqlite3.h"
 #include "sqliteInt.h"
-#if defined(INCLUDE_SQLITE_TCL_H)
-#  include "sqlite_tcl.h"
-#else
-#  include "tcl.h"
-#endif
+#include "tclsqlite.h"
 
 typedef struct Testvfs Testvfs;
 typedef struct TestvfsShm TestvfsShm;
@@ -138,8 +134,9 @@ struct Testvfs {
 #define TESTVFS_LOCK_MASK         0x00040000
 #define TESTVFS_CKLOCK_MASK       0x00080000
 #define TESTVFS_FCNTL_MASK        0x00100000
+#define TESTVFS_SLEEP_MASK        0x00200000
 
-#define TESTVFS_ALL_MASK          0x001FFFFF
+#define TESTVFS_ALL_MASK          0x003FFFFF
 
 
 #define TESTVFS_MAX_PAGES 1024
@@ -239,6 +236,7 @@ static int tvfsResultCode(Testvfs *p, int *pRc){
     { SQLITE_BUSY,     "SQLITE_BUSY"   },
     { SQLITE_READONLY, "SQLITE_READONLY"   },
     { SQLITE_READONLY_CANTINIT, "SQLITE_READONLY_CANTINIT"   },
+    { SQLITE_NOTFOUND, "SQLITE_NOTFOUND"   },
     { -1,              "SQLITE_OMIT"   },
   };
 
@@ -531,6 +529,9 @@ static int tvfsLock(sqlite3_file *pFile, int eLock){
     tvfsExecTcl(p, "xLock", Tcl_NewStringObj(pFd->zFilename, -1), 
                    Tcl_NewStringObj(zLock, -1), 0, 0);
   }
+  if( p->mask&TESTVFS_LOCK_MASK && tvfsInjectIoerr(p) ){
+    return SQLITE_IOERR_LOCK;
+  }
   return sqlite3OsLock(pFd->pReal, eLock);
 }
 
@@ -546,7 +547,7 @@ static int tvfsUnlock(sqlite3_file *pFile, int eLock){
     tvfsExecTcl(p, "xUnlock", Tcl_NewStringObj(pFd->zFilename, -1), 
                    Tcl_NewStringObj(zLock, -1), 0, 0);
   }
-  if( p->mask&TESTVFS_WRITE_MASK && tvfsInjectIoerr(p) ){
+  if( p->mask&TESTVFS_UNLOCK_MASK && tvfsInjectIoerr(p) ){
     return SQLITE_IOERR_UNLOCK;
   }
   return sqlite3OsUnlock(pFd->pReal, eLock);
@@ -599,6 +600,7 @@ static int tvfsFileControl(sqlite3_file *pFile, int op, void *pArg){
     } aF[] = {
       { SQLITE_FCNTL_BEGIN_ATOMIC_WRITE, "BEGIN_ATOMIC_WRITE" },
       { SQLITE_FCNTL_COMMIT_ATOMIC_WRITE, "COMMIT_ATOMIC_WRITE" },
+      { SQLITE_FCNTL_ZIPVFS, "ZIPVFS" },
     };
     int i;
     for(i=0; i<sizeof(aF)/sizeof(aF[0]); i++){
@@ -612,7 +614,7 @@ static int tvfsFileControl(sqlite3_file *pFile, int op, void *pArg){
           0, 0
       );
       tvfsResultCode(p, &rc);
-      if( rc ) return rc;
+      if( rc ) return (rc<0 ? SQLITE_OK : rc);
     }
   }
   return sqlite3OsFileControl(pFd->pReal, op, pArg);
@@ -859,6 +861,10 @@ static int tvfsRandomness(sqlite3_vfs *pVfs, int nByte, char *zBufOut){
 ** actually slept.
 */
 static int tvfsSleep(sqlite3_vfs *pVfs, int nMicro){
+  Testvfs *p = (Testvfs *)pVfs->pAppData;
+  if( p->pScript && (p->mask&TESTVFS_SLEEP_MASK) ){
+    tvfsExecTcl(p, "xSleep", Tcl_NewIntObj(nMicro), 0, 0, 0);
+  }
   return sqlite3OsSleep(PARENTVFS(pVfs), nMicro);
 }
 
@@ -940,7 +946,8 @@ static int tvfsShmMap(
   Testvfs *p = (Testvfs *)(pFd->pVfs->pAppData);
 
   if( p->isFullshm ){
-    return sqlite3OsShmMap(pFd->pReal, iPage, pgsz, isWrite, pp);
+    sqlite3_file *pReal = pFd->pReal;
+    return pReal->pMethods->xShmMap(pReal, iPage, pgsz, isWrite, pp);
   }
 
   if( 0==pFd->pShm ){
@@ -990,7 +997,8 @@ static int tvfsShmLock(
   char zLock[80];
 
   if( p->isFullshm ){
-    return sqlite3OsShmLock(pFd->pReal, ofst, n, flags);
+    sqlite3_file *pReal = pFd->pReal;
+    return pReal->pMethods->xShmLock(pReal, ofst, n, flags);
   }
 
   if( p->pScript && p->mask&TESTVFS_SHMLOCK_MASK ){
@@ -1054,7 +1062,8 @@ static void tvfsShmBarrier(sqlite3_file *pFile){
   }
 
   if( p->isFullshm ){
-    sqlite3OsShmBarrier(pFd->pReal);
+    sqlite3_file *pReal = pFd->pReal;
+    pReal->pMethods->xShmBarrier(pReal);
     return;
   }
 }
@@ -1070,7 +1079,8 @@ static int tvfsShmUnmap(
   TestvfsFd **ppFd;
 
   if( p->isFullshm ){
-    return sqlite3OsShmUnmap(pFd->pReal, deleteFlag);
+    sqlite3_file *pReal = pFd->pReal;
+    return pReal->pMethods->xShmUnmap(pReal, deleteFlag);
   }
 
   if( !pBuffer ) return SQLITE_OK;
@@ -1175,7 +1185,7 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
       );
       if( rc!=SQLITE_OK ){
         Tcl_AppendResult(interp, "failed to get full path: ",
-                         Tcl_GetString(objv[2]), 0);
+                         Tcl_GetString(objv[2]), NULL);
         ckfree(zName);
         return TCL_ERROR;
       }
@@ -1184,19 +1194,19 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
       }
       ckfree(zName);
       if( !pBuffer ){
-        Tcl_AppendResult(interp, "no such file: ", Tcl_GetString(objv[2]), 0);
+        Tcl_AppendResult(interp, "no such file: ", Tcl_GetString(objv[2]), NULL);
         return TCL_ERROR;
       }
       if( objc==4 ){
-        int n;
+        Tcl_Size n;
         u8 *a = Tcl_GetByteArrayFromObj(objv[3], &n);
         int pgsz = pBuffer->pgsz;
         if( pgsz==0 ) pgsz = 65536;
-        for(i=0; i*pgsz<n; i++){
+        for(i=0; i*pgsz<(int)n; i++){
           int nByte = pgsz;
           tvfsAllocPage(pBuffer, i, pgsz);
           if( n-i*pgsz<pgsz ){
-            nByte = n;
+            nByte = (int)n;
           }
           memcpy(pBuffer->aPage[i], &a[i*pgsz], nByte);
         }
@@ -1239,9 +1249,10 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
         { "xLock",              TESTVFS_LOCK_MASK },
         { "xCheckReservedLock", TESTVFS_CKLOCK_MASK },
         { "xFileControl",       TESTVFS_FCNTL_MASK },
+        { "xSleep",             TESTVFS_SLEEP_MASK },
       };
       Tcl_Obj **apElem = 0;
-      int nElem = 0;
+      Tcl_Size nElem = 0;
       int mask = 0;
       if( objc!=3 ){
         Tcl_WrongNumArgs(interp, 2, objv, "LIST");
@@ -1251,7 +1262,7 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
         return TCL_ERROR;
       }
       Tcl_ResetResult(interp);
-      for(i=0; i<nElem; i++){
+      for(i=0; i<(int)nElem; i++){
         int iMethod;
         char *zElem = Tcl_GetString(apElem[i]);
         for(iMethod=0; iMethod<ArraySize(vfsmethod); iMethod++){
@@ -1261,7 +1272,7 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
           }
         }
         if( iMethod==ArraySize(vfsmethod) ){
-          Tcl_AppendResult(interp, "unknown method: ", zElem, 0);
+          Tcl_AppendResult(interp, "unknown method: ", zElem, NULL);
           return TCL_ERROR;
         }
       }
@@ -1277,7 +1288,7 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
     */
     case CMD_SCRIPT: {
       if( objc==3 ){
-        int nByte;
+        Tcl_Size nByte;
         if( p->pScript ){
           Tcl_DecrRefCount(p->pScript);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1380,13 +1391,13 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
         int j;
         int iNew = 0;
         Tcl_Obj **flags = 0;
-        int nFlags = 0;
+        Tcl_Size nFlags = 0;
 
         if( Tcl_ListObjGetElements(interp, objv[2], &nFlags, &flags) ){
           return TCL_ERROR;
         }
 
-        for(j=0; j<nFlags; j++){
+        for(j=0; j<(int)nFlags; j++){
           int idx = 0;
           if( Tcl_GetIndexFromObjStruct(interp, flags[j], aFlag, 
                 sizeof(aFlag[0]), "flag", 0, &idx) 
@@ -1394,7 +1405,7 @@ static int SQLITE_TCLAPI testvfs_obj_cmd(
             return TCL_ERROR;
           }
           if( aFlag[idx].iValue<0 && nFlags>1 ){
-            Tcl_AppendResult(interp, "bad flags: ", Tcl_GetString(objv[2]), 0);
+            Tcl_AppendResult(interp, "bad flags: ", Tcl_GetString(objv[2]), NULL);
             return TCL_ERROR;
           }
           iNew |= aFlag[idx].iValue;
@@ -1440,11 +1451,9 @@ static void SQLITE_TCLAPI testvfs_obj_del(ClientData cd){
   Testvfs *p = (Testvfs *)cd;
   if( p->pScript ) Tcl_DecrRefCount(p->pScript);
   sqlite3_vfs_unregister(p->pVfs);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  ckfree((char *)p->apScript);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  memset(p->pVfs, 0, sizeof(sqlite3_vfs));
   ckfree((char *)p->pVfs);
+  memset(p, 0, sizeof(Testvfs));
   ckfree((char *)p);
 }
 
@@ -1536,7 +1545,7 @@ static int SQLITE_TCLAPI testvfs_cmd(
 
   if( objc<2 || 0!=(objc%2) ) goto bad_args;
   for(i=2; i<objc; i += 2){
-    int nSwitch;
+    Tcl_Size nSwitch;
     char *zSwitch;
     zSwitch = Tcl_GetStringFromObj(objv[i], &nSwitch); 
 
@@ -1716,7 +1725,7 @@ static int SQLITE_TCLAPI test_vfs_set_readmark(
     return TCL_ERROR;
   }
   if( pShm==0 ){
-    Tcl_AppendResult(interp, "*-shm is not yet mapped", 0);
+    Tcl_AppendResult(interp, "*-shm is not yet mapped", NULL);
     return TCL_ERROR;
   }
   aShm = (u32*)pShm;
