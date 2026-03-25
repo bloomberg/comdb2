@@ -126,7 +126,7 @@
 - [x] 143  ./src/update.c.patch
 - [x] 152  ./src/vdbe.h.patch
 - [x] 164  ./src/rowset.c.patch
-- [ ] 205  ./src/vdbesort.c.patch
+- [x] 205  ./src/vdbesort.c.patch
 - [ ] 221  ./src/util.c.patch
 - [ ] 221  ./tool/mkkeywordhash.c.patch
 - [ ] 252  ./src/sqlite.h.in.patch
