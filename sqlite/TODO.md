@@ -10,6 +10,8 @@
   also needed to be extended.
 - [x] `src/util.c`: dropping `sqlite3GetVarint32` patch because that branch
   can't possibly be hit anymore.
+- [x] `tool/mkkeywordhash.c`: what should we set as priorities for custom
+  keywords???
 
 ### Tuesday, Mar 24th, 2026
 
@@ -130,7 +132,7 @@
 - [x] 164  ./src/rowset.c.patch
 - [x] 205  ./src/vdbesort.c.patch
 - [x] 221  ./src/util.c.patch
-- [ ] 221  ./tool/mkkeywordhash.c.patch
+- [x] 221  ./tool/mkkeywordhash.c.patch
 - [ ] 252  ./src/sqlite.h.in.patch
 - [ ] 258  ./src/resolve.c.patch
 - [ ] 368  ./src/vdbeInt.h.patch
