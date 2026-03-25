@@ -5,6 +5,7 @@
 #include "comdb2_plugin.h"
 #include "comdb2_initializer.h"
 #include "sqlquery.pb-c.h"
+#include "cdb2api_int.h"
 
 #include "logmsg.h"
 
@@ -12,6 +13,7 @@ extern char gbl_dbname[];
 extern int gbl_uses_simpleauth;
 extern int gbl_uses_externalauth;
 extern int gbl_allow_old_authn;
+extern struct cdb2_identity *identity_cb;
 
 int cdb2_in_client_trans();
 
@@ -164,6 +166,115 @@ extern int (*externalComdb2DeSerializeIdentity)(void **ID, int length, unsigned 
 extern int (*externalComdb2SerializeIdentity)(void *ID, int *length, void **dta);
 extern void *(*externalComdb2getAuthIdBlob)(void *ID);
 
+/* Server-side identity callbacks for cdb2api outbound connections.
+ * When simpleauth is enabled, the comdb2 process identifies itself as
+ * bpi:procauth:cluster:<cluster>:user:op:bpkg:comdb2 on outbound connections
+ * (e.g. bulkimport connecting to the source DB). */
+
+const char *get_my_mach_cluster(void);
+
+static CDB2SQLQUERY__IdentityBlob *simpleauth_id_blob = NULL;
+
+static void simpleauth_identity_create(void)
+{
+    if (simpleauth_id_blob)
+        return;
+
+    const char *cluster = get_my_mach_cluster();
+    if (!cluster)
+        cluster = "default";
+
+    CDB2SQLQUERY__IdentityBlob *id = calloc(1, sizeof(CDB2SQLQUERY__IdentityBlob));
+    if (!id)
+        return;
+    cdb2__sqlquery__identity_blob__init(id);
+
+    const int sz = snprintf(NULL, 0, "bpi:procauth:cluster:%s:user:op:bpkg:comdb2", cluster) + 1;
+    id->principal = malloc(sz);
+    if (!id->principal) {
+        free(id);
+        return;
+    }
+    snprintf(id->principal, sz, "bpi:procauth:cluster:%s:user:op:bpkg:comdb2", cluster);
+
+    id->majorversion = 1;
+    id->minorversion = 0;
+    id->data.data = (uint8_t *)strdup("simpleauth");
+    id->data.len = 10;
+
+    simpleauth_id_blob = id;
+}
+
+static void simpleauth_identity_destroy(int is_task_exit)
+{
+    if (simpleauth_id_blob) {
+        free(simpleauth_id_blob->principal);
+        free(simpleauth_id_blob->data.data);
+        free(simpleauth_id_blob);
+        simpleauth_id_blob = NULL;
+    }
+}
+
+static void *simpleauth_getIdentity(cdb2_hndl_tp *hndl, int flags)
+{
+    if (!simpleauth_id_blob)
+        simpleauth_identity_create();
+    if (!simpleauth_id_blob)
+        return NULL;
+
+    /* Return a copy — caller will manually free it */
+    CDB2SQLQUERY__IdentityBlob *copy = calloc(1, sizeof(CDB2SQLQUERY__IdentityBlob));
+    if (!copy)
+        return NULL;
+
+    cdb2__sqlquery__identity_blob__init(copy);
+
+    copy->principal = strdup(simpleauth_id_blob->principal);
+    if (!copy->principal) {
+        free(copy);
+        return NULL;
+    }
+
+    copy->majorversion = simpleauth_id_blob->majorversion;
+    copy->minorversion = simpleauth_id_blob->minorversion;
+    copy->data.len = simpleauth_id_blob->data.len;
+    copy->data.data = malloc(simpleauth_id_blob->data.len);
+    if (!copy->data.data) {
+        free(copy->principal);
+        free(copy);
+        return NULL;
+    }
+    memcpy(copy->data.data, simpleauth_id_blob->data.data, simpleauth_id_blob->data.len);
+    return copy;
+}
+
+static void simpleauth_resetIdentity_start(void)
+{
+}
+
+static void simpleauth_resetIdentity_end(int rc)
+{
+}
+
+static void simpleauth_set_identity(cdb2_hndl_tp *hndl, const void *identity)
+{
+}
+
+static int simpleauth_identity_valid(void)
+{
+    return simpleauth_id_blob != NULL;
+}
+
+static struct cdb2_identity simpleauth_identity_callbacks = {
+    .resetIdentity_start = simpleauth_resetIdentity_start,
+    .resetIdentity_end = simpleauth_resetIdentity_end,
+    .getIdentity = simpleauth_getIdentity,
+    .set_identity = simpleauth_set_identity,
+    .identity_create = simpleauth_identity_create,
+    .identity_destroy = simpleauth_identity_destroy,
+    .identity_valid = simpleauth_identity_valid,
+};
+
 static int simpleauth_destroy(void)
 {
     return 0;
@@ -183,6 +294,7 @@ static int simpleauth_initialize(void)
         externalComdb2SerializeIdentity = simpleSerializeIdentity;
         externalComdb2getAuthIdBlob = simpleGetAuthIdBlob;
         gbl_uses_externalauth = 1;
+        identity_cb = &simpleauth_identity_callbacks;
     }
     return 0;
 }
