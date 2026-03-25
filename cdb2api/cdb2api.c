@@ -6050,7 +6050,12 @@ static void free_raw_response(cdb2_hndl_tp *hndl)
     // contains both the "header" and the row data.  So the first response is
     // also the last response and we only need to free one.
     if (hndl->is_tagged && hndl->firstresponse && hndl->firstresponse == hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
+        free(hndl->firstresponse->value[0]->value.data);
+        free(hndl->firstresponse->value[0]);
+        free(hndl->firstresponse->value[1]->value.data);
+        free(hndl->firstresponse->value[1]);
+        free(hndl->firstresponse->value);
+        free(hndl->firstresponse);
         hndl->firstresponse = hndl->lastresponse = NULL;
     }
 }
@@ -6452,6 +6457,40 @@ read_record:
             free(hndl->first_buf);
             hndl->first_buf = NULL;
             GOTO_RETRY_QUERIES();
+        } else if (type == RESPONSE_HEADER__SQL_RESPONSE_RAW) {
+            if (!hndl->is_tagged) {
+                /* We don't expect a raw response unless it was a tagged request, so something
+                 * is wrong and we should return an error instead of continuing. */
+                sprintf(hndl->errstr, "%s: Unexpected raw response\n", __func__);
+                return -1;
+            }
+            // TODO: one buffer?
+            free_raw_response(hndl);
+            hndl->firstresponse = calloc(1, sizeof(CDB2SQLRESPONSE));
+            cdb2__sqlresponse__init(hndl->firstresponse);
+            hndl->firstresponse->response_type = RESPONSE_TYPE__LAST_ROW;
+            hndl->first_record_read = 1;
+            hndl->firstresponse->n_value = 2;
+            hndl->firstresponse->value = malloc(2 * sizeof(CDB2SQLRESPONSE__Column *));
+            hndl->firstresponse->value[0] = malloc(sizeof(CDB2SQLRESPONSE__Column));
+            hndl->firstresponse->value[1] = malloc(sizeof(CDB2SQLRESPONSE__Column));
+            hndl->firstresponse->value[0]->has_type = 1;
+            hndl->firstresponse->value[0]->type = CDB2__COLUMN_TYPE__INTEGER;
+            hndl->firstresponse->value[1]->has_type = 1;
+            hndl->firstresponse->value[1]->type = CDB2__COLUMN_TYPE__BLOB;
+            hndl->firstresponse->value[0]->has_isnull = 1;
+            hndl->firstresponse->value[1]->has_isnull = 1;
+            hndl->firstresponse->value[0]->isnull = 0;
+            hndl->firstresponse->value[1]->isnull = 0;
+            hndl->firstresponse->value[0]->value.data = malloc(sizeof(int));
+            hndl->firstresponse->value[1]->value.data = malloc(len - sizeof(int));
+            hndl->firstresponse->value[0]->value.len = sizeof(int);
+            hndl->firstresponse->value[1]->value.len = len - sizeof(int);
+            memcpy(hndl->firstresponse->value[0]->value.data, hndl->first_buf, sizeof(int));
+            memcpy(hndl->firstresponse->value[1]->value.data, (char *)(hndl->first_buf) + sizeof(int),
+                   len - sizeof(int));
+            hndl->lastresponse = hndl->firstresponse;
+            return 0;
         }
 
         /* We used to cache a session immediately after a handshake.
