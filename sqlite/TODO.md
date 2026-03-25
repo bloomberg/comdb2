@@ -2,6 +2,13 @@
 
 ## Questions / Decisions
 
+### Wednesday, Mar 25th, 2026
+
+- [x] `src/vdbe.c`: we needed to expand prepare mask to accomodate our
+  custom flags. Some flags needed to be shifted over in `sqlite.h.in`
+  to avoid conflict with `SQLITE_PREPARE_DONT_LOG`. So the prepare mask
+  also needed to be extended.
+
 ### Tuesday, Mar 24th, 2026
 
 - [x] `src/test_vfs.c`: looks like we wanted to disable an assertion in
@@ -117,7 +124,7 @@
 - [x] 136  ./src/os_unix.c.patch
 - [x] 140  ./src/delete.c.patch
 - [x] 143  ./src/update.c.patch
-- [ ] 152  ./src/vdbe.h.patch
+- [x] 152  ./src/vdbe.h.patch
 - [ ] 164  ./src/rowset.c.patch
 - [ ] 205  ./src/vdbesort.c.patch
 - [ ] 221  ./src/util.c.patch
