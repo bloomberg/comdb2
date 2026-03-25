@@ -125,7 +125,7 @@
 - [x] 140  ./src/delete.c.patch
 - [x] 143  ./src/update.c.patch
 - [x] 152  ./src/vdbe.h.patch
-- [ ] 164  ./src/rowset.c.patch
+- [x] 164  ./src/rowset.c.patch
 - [ ] 205  ./src/vdbesort.c.patch
 - [ ] 221  ./src/util.c.patch
 - [ ] 221  ./tool/mkkeywordhash.c.patch
