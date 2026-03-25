@@ -25,6 +25,12 @@
   rm -f $file.patch $file.md && mv $file.merged $file
   ```
 
+## Wednesday, Mar 25th, 2026
+
+- `rowset.c`: we have modified SQLite's `RowSet` to use BerkeleyDB temp tables
+  to better handle large update/delete/etc. queries. See Rivers's commit
+  `c026b966e`.
+
 ## Tuesday, Mar 24th, 2026
 
 - `trigger.c`: our `sqlite_master` has an additional `csc2` column, needs to
