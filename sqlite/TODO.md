@@ -8,6 +8,8 @@
   custom flags. Some flags needed to be shifted over in `sqlite.h.in`
   to avoid conflict with `SQLITE_PREPARE_DONT_LOG`. So the prepare mask
   also needed to be extended.
+- [x] `src/util.c`: dropping `sqlite3GetVarint32` patch because that branch
+  can't possibly be hit anymore.
 
 ### Tuesday, Mar 24th, 2026
 
@@ -127,7 +129,7 @@
 - [x] 152  ./src/vdbe.h.patch
 - [x] 164  ./src/rowset.c.patch
 - [x] 205  ./src/vdbesort.c.patch
-- [ ] 221  ./src/util.c.patch
+- [x] 221  ./src/util.c.patch
 - [ ] 221  ./tool/mkkeywordhash.c.patch
 - [ ] 252  ./src/sqlite.h.in.patch
 - [ ] 258  ./src/resolve.c.patch
