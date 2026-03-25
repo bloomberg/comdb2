@@ -4661,7 +4661,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         if (cdb2_non_threaded_identity)
             flags |= CDB2_NON_THREADED_IDENTITY;
         id_blob = identity_cb->getIdentity(hndl, flags);
-        if (id_blob->data.data) {
+        if (id_blob && id_blob->data.data) {
             sqlquery.identity = id_blob;
         }
     }
