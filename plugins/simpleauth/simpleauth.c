@@ -17,9 +17,6 @@ extern struct cdb2_identity *identity_cb;
 
 int cdb2_in_client_trans();
 
-#include "mem_plugins.h"
-#include "mem_override.h"
-
 int simpleAuthCheck(const char *principal, const char *verb, const char *resource);
 
 typedef struct authenticationDataT {
