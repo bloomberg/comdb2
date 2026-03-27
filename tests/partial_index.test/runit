@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+r="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+
+assert_eq() {
+    local actual="$1" expected="$2" msg="$3"
+    if [[ "$actual" != "$expected" ]]; then
+        echo "FAIL: $msg"
+        echo "  expected: $expected"
+        echo "  actual:   $actual"
+        exit 1
+    fi
+}
+
+# =====================================================
+# Case 1: One primary key, one partial key, both unique      
+# =====================================================
+
+$r 'create table t1 {
+schema
+{
+	int         id
+	int         id2            null=yes
+	int         is_active      dbstore=0
+    int         day
+}
+keys
+{
+	"PRIMARY_KEY"                       = id
+	uniqnulls "COLLECTION_IS_ACTIVE"    = id2 + is_active {where is_active = 1}
+}
+}
+'
+
+# --------- Test 1.1: Primary key conflict ---------
+
+$r "INSERT OR REPLACE INTO t1(id, day) VALUES(7, 1)"
+out=$($r "SELECT * FROM t1" 2>&1)
+assert_eq "$out" "(id=7, id2=NULL, is_active=0, day=1)" "Test 1.1: initial insert"
+
+$r "INSERT OR REPLACE INTO t1(id, day) VALUES(7, 2)"
+out=$($r "SELECT * FROM t1" 2>&1)
+assert_eq "$out" "(id=7, id2=NULL, is_active=0, day=2)" "Test 1.1: replace on primary key"
+
+# Verify with explicit commit
+$r - <<'EOF'
+BEGIN
+INSERT OR REPLACE INTO t1(id, day) VALUES(7, 3)
+COMMIT
+EOF
+out=$($r "SELECT * FROM t1" 2>&1)
+assert_eq "$out" "(id=7, id2=NULL, is_active=0, day=3)" "Test 1.1: replace on primary key with explicit commit"
+
+# --------- Test 1.2: Partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t1(id, id2, is_active, day) VALUES(8, 15, 1, 1)"
+out=$($r "SELECT * FROM t1 WHERE is_active = 1" 2>&1)
+assert_eq "$out" "(id=8, id2=15, is_active=1, day=1)" "Test 1.2: insert with partial key"
+
+$r "INSERT OR REPLACE INTO t1(id, id2, is_active, day) VALUES(9, 15, 1, 2)"
+out=$($r "SELECT * FROM t1 WHERE is_active = 1" 2>&1)
+assert_eq "$out" "(id=9, id2=15, is_active=1, day=2)" "Test 1.2: replace on partial key"
+
+# --------- Test 1.3: Both primary and partial key conflict ---------
+
+# Conflict with one record on primary key and one on partial key
+$r "INSERT OR REPLACE INTO t1(id, id2, is_active, day) VALUES(7, 15, 1, 3)"
+out=$($r "SELECT * FROM t1" 2>&1)
+assert_eq "$out" "(id=7, id2=15, is_active=1, day=3)" "Test 1.3: replace on both primary and partial key"
+
+# =====================================
+# Case 2: Two partial keys, both unique
+# =====================================
+
+$r 'create table t2 {
+schema
+{
+	int         id1            null=yes
+	int         id2            null=yes
+	int         is_active1     dbstore=0
+	int         is_active2     dbstore=0
+    int         day
+}
+keys {
+	uniqnulls "COLLECTION_IS_ACTIVE1"    = id1 + is_active1 {where is_active1 = 1}
+	uniqnulls "COLLECTION_IS_ACTIVE2"    = id2 + is_active2 {where is_active2 = 1}
+}
+}
+'
+
+# --------- Test 2.1: One partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t2(id1, is_active1, day) VALUES(13, 1, 1)"
+out=$($r "SELECT * FROM t2" 2>&1)
+assert_eq "$out" "(id1=13, id2=NULL, is_active1=1, is_active2=0, day=1)" "Test 2.1: insert with one partial key"
+
+$r "INSERT OR REPLACE INTO t2(id1, is_active1, day) VALUES(13, 1, 2)"
+out=$($r "SELECT * FROM t2" 2>&1)
+assert_eq "$out" "(id1=13, id2=NULL, is_active1=1, is_active2=0, day=2)" "Test 2.1: replace on one partial key"
+
+# --------- Test 2.2: Both partial keys conflict ---------
+
+$r "INSERT OR REPLACE INTO t2(id2, is_active2, day) VALUES(15, 1, 3)"
+out=$($r "SELECT * FROM t2 WHERE is_active2 = 1" 2>&1)
+assert_eq "$out" "(id1=NULL, id2=15, is_active1=0, is_active2=1, day=3)" "Test 2.2: insert with second partial key"
+
+$r "INSERT OR REPLACE INTO t2(id1, id2, is_active1, is_active2, day) VALUES(13, 15, 1, 1, 4)"
+out=$($r "SELECT * FROM t2" 2>&1)
+assert_eq "$out" "(id1=13, id2=15, is_active1=1, is_active2=1, day=4)" "Test 2.2: replace on both partial keys"
+
+# =============================================
+# Case 3: Two partial keys, one unique, one not
+# =============================================
+
+$r 'create table t3 {
+schema
+{
+	int         id1            null=yes
+	int         id2            null=yes
+	int         is_active1     dbstore=0
+	int         is_active2     dbstore=0
+    int         day
+}
+keys {
+	uniqnulls "COLLECTION_IS_ACTIVE1" = id1 + is_active1 {where is_active1 = 1}
+	dup "COLLECTION_IS_ACTIVE2"       = id2 + is_active2 {where is_active2 = 1}
+}
+}
+'
+
+# --------- Test 3.1: Unique partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t3(id1, is_active1, day) VALUES(21, 1, 1)"
+out=$($r "SELECT * FROM t3" 2>&1)
+assert_eq "$out" "(id1=21, id2=NULL, is_active1=1, is_active2=0, day=1)" "Test 3.1: insert with unique partial key"
+
+$r "INSERT OR REPLACE INTO t3(id1, is_active1, day) VALUES(21, 1, 2)"
+out=$($r "SELECT * FROM t3" 2>&1)
+assert_eq "$out" "(id1=21, id2=NULL, is_active1=1, is_active2=0, day=2)" "Test 3.1: replace on unique partial key"
+
+# --------- Test 3.2: Non-unique partial key, no conflict ---------
+
+$r "INSERT OR REPLACE INTO t3(id2, is_active2, day) VALUES(23, 1, 3)"
+out=$($r "SELECT * FROM t3 WHERE is_active2 = 1" 2>&1)
+assert_eq "$out" "(id1=NULL, id2=23, is_active1=0, is_active2=1, day=3)" "Test 3.2: insert with non-unique partial key"
+
+$r "INSERT OR REPLACE INTO t3(id2, is_active2, day) VALUES(23, 1, 4)"
+out=$($r "SELECT * FROM t3 WHERE is_active2 = 1 ORDER BY day" 2>&1)
+expected=$'(id1=NULL, id2=23, is_active1=0, is_active2=1, day=3)\n(id1=NULL, id2=23, is_active1=0, is_active2=1, day=4)'
+assert_eq "$out" "$expected" "Test 3.2: non-unique partial key allows duplicate"
+
+# =====================================================================
+# Case 4: One primary key, two partial keys, one unique, one not unique
+# =====================================================================
+
+$r 'create table t4 {
+schema
+{
+	int         id
+	int         id1            null=yes
+	int         id2            null=yes
+	int         is_active1     dbstore=0
+	int         is_active2     dbstore=0
+    int         day
+}
+keys {
+	"PRIMARY_KEY"                     = id
+	uniqnulls "COLLECTION_IS_ACTIVE1" = id1 + is_active1 {where is_active1 = 1}
+	dup "COLLECTION_IS_ACTIVE2"       = id2 + is_active2 {where is_active2 = 1}
+}
+}
+'
+
+# --------- Test 4.1: Primary key conflict ---------
+
+$r "INSERT OR REPLACE INTO t4(id, id2, is_active2, day) VALUES(31, 15, 1, 1)"
+out=$($r "SELECT * FROM t4" 2>&1)
+assert_eq "$out" "(id=31, id1=NULL, id2=15, is_active1=0, is_active2=1, day=1)" "Test 4.1: initial insert"
+
+$r "INSERT OR REPLACE INTO t4(id, id2, is_active2, day) VALUES(31, 15, 1, 2)"
+out=$($r "SELECT * FROM t4" 2>&1)
+assert_eq "$out" "(id=31, id1=NULL, id2=15, is_active1=0, is_active2=1, day=2)" "Test 4.1: replace on primary key"
+
+# Verify with explicit commit
+$r - <<'EOF'
+BEGIN
+INSERT OR REPLACE INTO t4(id, id2, is_active2, day) VALUES(31, 15, 1, 3)
+COMMIT
+EOF
+out=$($r "SELECT * FROM t4" 2>&1)
+assert_eq "$out" "(id=31, id1=NULL, id2=15, is_active1=0, is_active2=1, day=3)" "Test 4.1: replace on primary key with explicit commit"
+
+# --------- Test 4.2: Unique partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t4(id, id1, is_active1, id2, is_active2, day) VALUES(32, 75, 1, 15, 1, 4)"
+out=$($r "SELECT * FROM t4 WHERE is_active1 = 1" 2>&1)
+assert_eq "$out" "(id=32, id1=75, id2=15, is_active1=1, is_active2=1, day=4)" "Test 4.2: insert with unique partial key"
+
+$r "INSERT OR REPLACE INTO t4(id, id1, is_active1, id2, is_active2, day) VALUES(33, 75, 1, 15, 1, 5)"
+out=$($r "SELECT * FROM t4 WHERE is_active1 = 1" 2>&1)
+assert_eq "$out" "(id=33, id1=75, id2=15, is_active1=1, is_active2=1, day=5)" "Test 4.2: replace on unique partial key"
+
+# --------- Test 4.3: Both primary key and unique partial key conflict (match two different records) ---------
+
+$r "INSERT OR REPLACE INTO t4(id, id1, is_active1, id2, is_active2, day) VALUES(31, 75, 1, 15, 1, 6)"
+out=$($r "SELECT * FROM t4" 2>&1)
+assert_eq "$out" "(id=31, id1=75, id2=15, is_active1=1, is_active2=1, day=6)" "Test 4.3: replace on both primary and unique partial key"
+
+# --------- Test 4.4: Both primary key and non-unique partial key conflict (match one record) ---------
+
+$r "INSERT OR REPLACE INTO t4(id, id1, is_active1, id2, is_active2, day) VALUES(31, 75, 1, 15, 1, 7)"
+out=$($r "SELECT * FROM t4" 2>&1)
+assert_eq "$out" "(id=31, id1=75, id2=15, is_active1=1, is_active2=1, day=7)" "Test 4.4: replace on primary and non-unique partial key"
