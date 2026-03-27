@@ -135,7 +135,7 @@
 - [x] 221  ./tool/mkkeywordhash.c.patch
 - [x] 252  ./src/sqlite.h.in.patch
 - [x] 258  ./src/resolve.c.patch
-- [ ] 368  ./src/vdbeInt.h.patch
+- [x] 368  ./src/vdbeInt.h.patch
 
 ## Headers
 
