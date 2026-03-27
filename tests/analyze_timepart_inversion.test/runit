@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+# Test for lock inversion between schema_lk and views_lk
+#  _view_cron_new_rollout holds schema_lk (write), tries to get views_lk (write)
+# timepart_analyze_partition holds views_lk (read), then analyze needs schema_lk (read)
+
+VIEW="testview"
+ANALYZE_LOOP_PID=""
+
+function failexit_killdb()
+{
+    stop_analyze_loop
+    stop_all_nodes
+    failexit "$1"
+}
+
+function setup_debug_sleep_in_rollout
+{
+    echo "Setting debug_sleep_in_rollout to 10 seconds to trigger lock inversion"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --host ${master} $DBNAME default "PUT TUNABLE 'debug_sleep_in_rollout' 10"
+    if (( $? != 0 )) ; then
+        failexit_killdb "Could not set debug_sleep_in_rollout tunable"
+    fi
+}
+
+
+function create_timepart
+{
+    local starttime=$(get_timestamp 10)
+    echo "Creating time partition with test2min period and retention 2"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "CREATE TIME PARTITION ON t as ${VIEW} PERIOD 'test2min' RETENTION 2 START '${starttime}'"
+    if (( $? != 0 )) ; then
+        failexit_killdb "Could not create time partition"
+    fi
+}
+
+
+function insert_data
+{
+    echo "Inserting initial data"
+    for i in {1..100}; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "INSERT INTO ${VIEW} VALUES ($i, 'row$i')" >/dev/null 2>&1
+        if (( $? != 0 )) ; then
+            failexit_killdb "Could not insert row $i"
+        fi
+    done
+    echo "Inserted 100 rows"
+}
+
+
+function start_analyze_loop
+{
+    echo "Starting background analyze loop"
+
+    # Start a background process that continuously runs analyze on the time partition
+    (
+        while true; do
+            $CDB2SQL_EXE ${CDB2_OPTIONS} --host ${master} $DBNAME default "ANALYZE ${VIEW}" >/dev/null 2>&1
+            sleep 1
+        done
+    ) &
+
+    ANALYZE_LOOP_PID=$!
+    echo "Analyze loop started with PID $ANALYZE_LOOP_PID"
+}
+
+
+function stop_analyze_loop
+{
+    if [[ -n "$ANALYZE_LOOP_PID" ]]; then
+        echo "Stopping analyze loop (PID $ANALYZE_LOOP_PID)"
+        kill $ANALYZE_LOOP_PID 2>/dev/null
+        wait $ANALYZE_LOOP_PID 2>/dev/null
+        ANALYZE_LOOP_PID=""
+    fi
+}
+
+
+function wait_for_traces
+{
+    echo "Waiting for trace messages to appear in master log"
+
+    # Determine log file location
+    local logfile
+    if [[ -z "$CLUSTER" ]]; then
+        logfile="${TESTDIR}/logs/${DBNAME}.db"
+    else
+        logfile="${TESTDIR}/logs/${DBNAME}.${master}.db"
+    fi
+    echo "Monitoring log file: $logfile"
+
+    local timeout=600  # 10 minutes
+    local start_time=$(date +%s)
+    local required_traces=5
+    local prev_trace_count=0
+
+    # Wait until we see the trace message 3 times or timeout
+    while true; do
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+
+        insert_data
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "SELECT * FROM comdb2_timepartshards"
+
+        if [ $elapsed -ge $timeout ]; then
+            failexit_killdb "Timeout waiting for trace messages after ${timeout}s (found $prev_trace_count/$required_traces)"
+        fi
+
+        # Count trace messages in log
+        local trace_count=`grep -c "sleeping for.*seconds before doing rollout" "$logfile" 2>/dev/null || echo 0`
+
+        if [[ $trace_count -gt $prev_trace_count ]]; then
+            echo "Found trace message $trace_count/$required_traces at ${elapsed}s"
+            prev_trace_count=$trace_count
+        fi
+
+        if [[ $trace_count -ge $required_traces ]]; then
+            echo "Found all $required_traces trace messages at ${elapsed}s"
+            break
+        fi
+
+        sleep 1
+    done
+
+    echo "Successfully detected $required_traces rollouts with analyze running"
+}
+
+
+function cleanup_timepart
+{
+    echo "Dropping time partition"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "DROP TIME PARTITION ${VIEW}"
+    if (( $? != 0 )) ; then
+        failexit_killdb "Could not drop time partition"
+    fi
+}
+
+
+function verify_all_nodes
+{
+    echo "Verifying all nodes are responsive"
+
+    if [[ -z "$CLUSTER" ]]; then
+        # Single node test
+        local node=$(hostname)
+        echo "Testing node $node"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $node "select 1" >/dev/null 2>&1
+        if (( $? != 0 )) ; then
+            failexit_killdb "Node $node is not responsive"
+        fi
+    else
+        # Cluster test - verify each node
+        for node in $CLUSTER; do
+            echo "Testing node $node"
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $node "select 1" >/dev/null 2>&1
+            if (( $? != 0 )) ; then
+                failexit_killdb "Node $node is not responsive"
+            fi
+        done
+    fi
+
+    echo "All nodes are responsive"
+}
+
+
+function run_test
+{
+    setup_debug_sleep_in_rollout
+    create_timepart
+    start_analyze_loop
+    wait_for_traces
+    stop_analyze_loop
+    cleanup_timepart
+    verify_all_nodes
+
+    echo "Test completed without deadlock"
+}
+
+
+# Trap to ensure we stop the analyze loop on exit
+trap 'stop_analyze_loop' EXIT
+
+# Get master node
+master=`$CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+# Run the test
+run_test
+
+echo "SUCCESS"
+stop_all_nodes

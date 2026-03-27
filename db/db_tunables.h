@@ -333,6 +333,12 @@ REGISTER_TUNABLE("sleep_before_dispatch", "Sleep before dispatching on master. (
                  &gbl_debug_sleep_before_dispatch, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_sleep_before_prepare", "Sleep for 5 seconds before preparing. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_before_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+#ifdef COMDB2_TEST
+REGISTER_TUNABLE(
+    "debug_sleep_in_rollout",
+    "Sleep after acquiring schema_lk in _view_cron_new_rollout for testing lock inversion (Default: 0 seconds)",
+    TUNABLE_INTEGER, &gbl_debug_sleep_in_rollout, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+#endif
 REGISTER_TUNABLE("debug_default_string_update",
                  "Test default string update handler. (Default: debug_default_string_update_value)", TUNABLE_STRING,
                  &gbl_debug_default_string_update, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
