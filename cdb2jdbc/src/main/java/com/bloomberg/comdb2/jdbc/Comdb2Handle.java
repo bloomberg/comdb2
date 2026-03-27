@@ -200,6 +200,10 @@ public class Comdb2Handle extends AbstractConnection {
         ret.hasSendStack = hasSendStack;
         ret.sendStack = sendStack;
 
+        ret.hasUseIdentity = hasUseIdentity;
+        ret.useIdentity = useIdentity;
+        ret.ic = ic;
+
         return ret;
     }
 
