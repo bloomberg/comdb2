@@ -36,6 +36,10 @@
 #include <sys/types.h>
 #include <pb_alloc.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#include <limits.h>
+#endif
 
 #include "fdb_fend_minimal.h"
 #include "bdb_api.h"
@@ -282,6 +286,17 @@ static enum comdb2_import_op bulk_import_write_import_db_lrl(char *tmp_db_dir, c
             tmp_db_dir,
             gbl_dtastripe,
             gbl_blobstripe ? "blobstripe" : "noblobstripe");
+
+    extern int gbl_uses_simpleauth;
+    extern int gbl_uses_externalauth;
+
+    if (gbl_uses_simpleauth) {
+        fprintf(fp, "\nsimpleauth\n");
+    } else if (gbl_uses_externalauth) {
+        fprintf(fp, "\nexternalauth 1\n");
+    } else {
+        fprintf(fp, "\n");
+    }
 
 err:
     if (fp) {
@@ -1724,13 +1739,30 @@ static void print_import_data(ImportData data)
  */
 static enum comdb2_import_op get_my_comdb2_executable(char **p_exe)
 {
+#if defined(__APPLE__)
+    /* macOS: use _NSGetExecutablePath */
+    uint32_t bufsize = PATH_MAX;
+    *p_exe = malloc(bufsize);
+    if (*p_exe == NULL) {
+        __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
+        goto err;
+    }
+    if (_NSGetExecutablePath(*p_exe, &bufsize) != 0) {
+        free(*p_exe);
+        *p_exe = malloc(bufsize);
+        if (*p_exe == NULL) {
+            __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
+            goto err;
+        }
+        if (_NSGetExecutablePath(*p_exe, &bufsize) != 0) {
+            __import_logmsg(LOGMSG_ERROR, "Failed to get executable path\n");
+            free(*p_exe);
+            goto err;
+        }
+    }
+#elif defined(__linux__)
     int size;
-    pid_t pid;
-
-    size = 0;
-    pid = getpid();
-
-#if defined(_LINUX_SOURCE)
+    pid_t pid = getpid();
     size = snprintf(NULL, 0, "/proc/%ld/exe", (long) pid);
     *p_exe = malloc(++size);
     if (*p_exe == NULL) {
@@ -1738,7 +1770,9 @@ static enum comdb2_import_op get_my_comdb2_executable(char **p_exe)
         goto err;
     }
     sprintf(*p_exe, "/proc/%ld/exe", (long) pid);
-#elif defined(_SUN_SOURCE)
+#elif defined(__sun)
+    int size;
+    pid_t pid = getpid();
     size = snprintf(NULL, 0, "/proc/%ld/execname", (long) pid);
     *p_exe = malloc(++size);
     if (*p_exe == NULL) {

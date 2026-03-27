@@ -17,9 +17,6 @@ extern struct cdb2_identity *identity_cb;
 
 int cdb2_in_client_trans();
 
-#include "mem_plugins.h"
-#include "mem_override.h"
-
 int simpleAuthCheck(const char *principal, const char *verb, const char *resource);
 
 typedef struct authenticationDataT {
@@ -35,10 +32,15 @@ static int simpleCheckTableAccess(void *ID, const char *tablename, const char *a
 {
     char resource[512];
     int off;
+    const char *principal;
 
-    /* No identity blob sent - allow access (anonymous user) */
-    if (!ID)
-        return 0;
+    /* No identity blob sent - check if anonymous access is allowed */
+    if (!ID) {
+        principal = "bpi:anonymous";
+    } else {
+        authenticationData *authData = (authenticationData *)ID;
+        principal = authData->principal;
+    }
 
     off = snprintf(resource, sizeof(resource), "bri:comdb2:database:%s", gbl_dbname);
     if (tablename) {
@@ -53,8 +55,7 @@ static int simpleCheckTableAccess(void *ID, const char *tablename, const char *a
         }
     }
 
-    authenticationData *authData = (authenticationData *)ID;
-    return simpleAuthCheck(authData->principal, action, resource);
+    return simpleAuthCheck(principal, action, resource);
 }
 
 static int simpleCheckOPAccess(void *ID)

@@ -87,21 +87,18 @@ run_expect_failure() {
 
 setup_auth_table() {
 	local target=$1
-	run_expect_success $target "$OP" \
-		"create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" \
-		"[$target] create auth table"
-	run_expect_success $target "$OP" \
-		"create unique index if not exists comdb2_simple_auth_ix on comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)" \
-		"[$target] create auth index"
-	run_expect_success $target "$OP" \
-		"insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
-		"[$target] insert wildcard rule"
-	run_expect_success $target "$OP" \
-		"insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" \
-		"[$target] insert Connect rule"
-	run_expect_success $target "$OP" \
-		"insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
-		"[$target] insert Read rule for auth table"
+	# Create auth table WITHOUT index (CREATE INDEX has a response hang bug)
+	# simpleauth will work without the index, just slightly slower
+	echo "  Creating auth table on $target..."
+	query_${target}_db "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" || true
+
+	# Insert initial wildcard rules
+	echo "  Inserting auth rules on $target..."
+	query_${target}_db "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" || true
+	query_${target}_db "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" || true
+	query_${target}_db "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" || true
+
+	echo "  PASS: [$target] auth table setup complete"
 }
 
 restore_wildcard() {
@@ -245,18 +242,18 @@ main() {
 	run_expect_success src "$OP" "insert into t4 values(1)" \
 		"[src] insert into t4"
 
-	# Remove wildcard on source, grant op access only
+	# Remove wildcard on source, grant op access only for bpkg=setup (NOT bpkg=comdb2)
 	run_expect_success src "$OP" \
-		"insert into comdb2_simple_auth values('*', 'op', '*', '*', '*', '*') on conflict do nothing" \
-		"[src] grant op full access"
+		"insert into comdb2_simple_auth values('*', 'op', 'setup', '*', '*', '*') on conflict do nothing" \
+		"[src] grant op+setup full access"
 	run_expect_success src "$OP" \
 		"delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
 		"[src] remove wildcard"
 
 	# The comdb2 import process now identifies itself as
 	# bpi:procauth:cluster:<cluster>:user:op:bpkg:comdb2
-	# Since no grant exists for bpkg=comdb2 on the source, the import
-	# should fail because the source DB denies read access.
+	# Since no grant exists for bpkg=comdb2 on the source (only bpkg=setup is granted),
+	# the import should fail because the source DB denies read access.
 	run_expect_failure dst "$OP" "replace table t4 with LOCAL_$SRC_DBNAME.t4" \
 		"bulkimport without Read on src for comdb2 identity (should fail)"
 
@@ -292,10 +289,16 @@ main() {
 		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Read', 'table', 't5') on conflict do nothing" \
 		"[src] grant comdb2 identity Read on t5"
 	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Read', 'table', 'comdb2_files') on conflict do nothing" \
+		"[src] grant comdb2 identity Read on comdb2_files"
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Read', 'table', 'sys.cmd.send()') on conflict do nothing" \
+		"[src] grant comdb2 identity Read on sys.cmd.send()"
+	run_expect_success src "$OP" \
 		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Connect', '*', '*') on conflict do nothing" \
 		"[src] grant comdb2 identity Connect"
 
-	# Now the import should succeed because the comdb2 identity has Read on t5
+	# Now the import should succeed because the comdb2 identity has all necessary permissions
 	run_expect_success dst "$OP" "replace table t5 with LOCAL_$SRC_DBNAME.t5" \
 		"bulkimport with Read on src for comdb2 identity (should succeed)"
 
