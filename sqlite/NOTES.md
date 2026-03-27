@@ -25,6 +25,14 @@
   rm -f $file.patch $file.md && mv $file.merged $file
   ```
 
+## Friday, Mar 27th, 2026
+
+- `vdbeInt.h`: same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because
+  they are mutually exclusive. Former used to pass through data converted from
+  client format into our row format, skipping SQLite format. Latter says
+  whether string is null-terminated, but only relevant when data is in SQLite
+  format (so would never be used/inspected if data is in our row format).
+
 ## Wednesday, Mar 25th, 2026
 
 - `rowset.c`: we have modified SQLite's `RowSet` to use BerkeleyDB temp tables
