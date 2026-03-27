@@ -821,7 +821,11 @@ void sqlite3GenerateRowDelete(
     if( pParse->nested==0 || 0==sqlite3_stricmp(pTab->zName, "sqlite_stat1") ){
       sqlite3VdbeAppendP4(v, (char*)pTab, P4_TABLE);
     }
-    if( eMode!=ONEPASS_OFF ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( eMode!=ONEPASS_OFF || (iIdxNoSeek>=0 && iIdxNoSeek!=iDataCur)){
+#else
+  if( eMode!=ONEPASS_OFF ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeChangeP5(v, OPFLAG_AUXDELETE);
     }
     if( iIdxNoSeek>=0 && iIdxNoSeek!=iDataCur ){
