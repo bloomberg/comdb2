@@ -38,6 +38,10 @@
 #include "bdb_int.h"
 #include "sqlanalyze.h"
 #define VIEWS_MAX_RETENTION 1000
+#ifdef COMDB2_TEST
+#include <unistd.h>
+int gbl_debug_sleep_in_rollout = 0;
+#endif
 
 extern int gbl_is_physical_replicant;
 int gbl_partitioned_table_enabled = 1;
@@ -937,6 +941,13 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
+#ifdef COMDB2_TEST
+        if (gbl_debug_sleep_in_rollout) {
+            logmsg(LOGMSG_USER, "%s: sleeping for %d seconds before doing rollout\n", __func__,
+                   gbl_debug_sleep_in_rollout);
+            sleep(gbl_debug_sleep_in_rollout);
+        }
+#endif
         Pthread_rwlock_wrlock(&views_lk);
 
         view = _get_view(thedb->timepart_views, name);
@@ -1215,6 +1226,13 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
+#ifdef COMDB2_TEST
+        if (gbl_debug_sleep_in_rollout) {
+            logmsg(LOGMSG_USER, "%s: sleeping for %d seconds before doing rollout\n", __func__,
+                   gbl_debug_sleep_in_rollout);
+            sleep(gbl_debug_sleep_in_rollout);
+        }
+#endif
         Pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
 
         rc = _views_rollout_phase3(pShardName, err);
@@ -3143,6 +3161,13 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
+#ifdef COMDB2_TEST
+        if (gbl_debug_sleep_in_rollout) {
+            logmsg(LOGMSG_USER, "%s: sleeping for %d seconds before doing rollout\n", __func__,
+                   gbl_debug_sleep_in_rollout);
+            sleep(gbl_debug_sleep_in_rollout);
+        }
+#endif
         Pthread_rwlock_wrlock(&views_lk);
 
         view = _get_view(thedb->timepart_views, name);
@@ -3501,6 +3526,10 @@ done:
     return rc;
 }
 
+#ifdef COMDB2_TEST
+__thread int have_views_lk = 0;
+#endif
+
 int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
                                struct errstat *err)
 {
@@ -3510,6 +3539,9 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
     int i = 0;
 
     Pthread_rwlock_rdlock(&views_lk);
+#ifdef COMDB2_TEST
+    have_views_lk = 1;
+#endif
 
     view = _get_view(views, name);
     if (!view) {
@@ -3529,6 +3561,9 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
         }
     }
 done:
+#ifdef COMDB2_TEST
+    have_views_lk = 0;
+#endif
     Pthread_rwlock_unlock(&views_lk);
     return rc;
 }

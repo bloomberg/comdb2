@@ -109,6 +109,9 @@ typedef struct timepart_sc_arg {
 
 extern int gbl_partitioned_table_enabled;
 extern int gbl_merge_table_enabled;
+#ifdef COMDB2_TEST
+extern int gbl_debug_sleep_in_rollout;
+#endif
 
 /**
  * Initialize the views

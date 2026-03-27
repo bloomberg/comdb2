@@ -710,6 +710,11 @@ error:
     return rc;
 }
 
+#ifdef COMDB2_TEST
+extern __thread int have_views_lk;
+extern int gbl_debug_sleep_in_rollout;
+#endif
+
 /* NOTE: this is part of a transaction that caller should set by calling begin */
 int analyze_regular_table(const char *tablename, table_descriptor_t *td,
                           struct sqlclntstate *clnt, struct errstat *err)
@@ -729,6 +734,21 @@ int analyze_regular_table(const char *tablename, table_descriptor_t *td,
     else
         strncpy0(sqltablename, tablename, sizeof(sqltablename));
 
+#ifdef COMDB2_TEST
+    if (have_views_lk && gbl_debug_sleep_in_rollout) {
+        /* do a 'try-readlk' until that fails .. */
+        int rdlkrc = tryrdlock_schema_lk();
+        int cnt = 0;
+        while (rdlkrc == 0) {
+            unlock_schema_lk();
+            logmsg(LOGMSG_USER, "analyze_regular_table: sleeping until cannot acquire schemalk\n");
+            sleep(1);
+            rdlkrc = tryrdlock_schema_lk();
+            cnt++;
+        }
+        logmsg(LOGMSG_USER, "analyze_regular_table: slept %d seconds until cannot acquire schemalk\n", cnt);
+    }
+#endif
     rc = analyze_rename_table_for_backup_stats(sqltablename, clnt, err);
     if (rc) 
         goto err;
