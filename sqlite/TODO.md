@@ -136,13 +136,7 @@
 - [x] 252  ./src/sqlite.h.in.patch
 - [x] 258  ./src/resolve.c.patch
 - [x] 368  ./src/vdbeInt.h.patch
-
-## Headers
-
-
-## Source Files
-
-- [ ] 334  ./src/attach.c.patch
+- [x] 334  ./src/attach.c.patch
 - [ ] 359  ./src/prepare.c.patch
 - [ ] 417  ./src/dttz.c.patch
 - [ ] 427  ./src/tokenize.c.patch
@@ -156,10 +150,7 @@
 - [ ] 1362 ./src/func.c.patch
 - [ ] 1378 ./src/expr.c.patch
 - [ ] 1551 ./src/build.c.patch
+- [ ] 1671 ./parse.y.patch
 - [ ] 1719 ./src/vdbeaux.c.patch
 - [ ] 1805 ./src/vdbemem.c.patch
 - [ ] 2332 ./src/vdbe.c.patch
-
-## Miscellaneous
-
-- [ ] 1671 ./parse.y.patch
