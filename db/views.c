@@ -3535,6 +3535,8 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
 {
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
+    int tblcnt = 0;
+    char **tables = NULL;
     int rc = 0;
     int i = 0;
 
@@ -3547,24 +3549,37 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
     if (!view) {
         logmsg(LOGMSG_ERROR, "%s:%d could not find partition %s\n", __func__, __LINE__, name);
         errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST, "no partition %s", name);
+        Pthread_rwlock_unlock(&views_lk);
         goto done;
     }
 
+    /* Cannot hold views_lk while running analyze as it inverts the locking order:
+     * analyze blocks on run_internal_sql_client which requires the schemalk */
+    tblcnt = view->nshards;
+    tables = (char **)malloc(sizeof(char *) * view->nshards);
+    for (i = 0; i < view->nshards; i++) {
+        tables[i] = strdup(view->shards[i].tblname);
+    }
+
+    Pthread_rwlock_unlock(&views_lk);
+#ifdef COMDB2_TEST
+    have_views_lk = 0;
+#endif
+
     for (i=0; i<view->nshards; i++) {
-        rc = analyze_regular_table(view->shards[i].tblname, td, clnt, err);
+        rc = analyze_regular_table(tables[i], td, clnt, err);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n",
-                   __func__, __LINE__, view->shards[i].tblname, name, rc);
-            errstat_set_rcstrf(err, rc, "analyze failed shard %s of %s",
-                               view->shards[i].tblname, name);
+            logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n", __func__, __LINE__,
+                   tables[i], name, rc);
+            errstat_set_rcstrf(err, rc, "analyze failed shard %s of %s", tables[i], name);
             goto done;
         }
     }
 done:
-#ifdef COMDB2_TEST
-    have_views_lk = 0;
-#endif
-    Pthread_rwlock_unlock(&views_lk);
+    for (i = 0; i < tblcnt; i++) {
+        free(tables[i]);
+    }
+    free(tables);
     return rc;
 }
 
