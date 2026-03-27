@@ -26,15 +26,13 @@ static void simpleAuthInit(void)
     clnt.admin = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     int rc = run_internal_sql_clnt(
-        &clnt, "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) "
-               "default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) "
-               "default '*', resourcename cstring(50) default '*')");
+        &clnt, "create table if not exists comdb2_simple_auth {schema{cstring cluster[20] dbstore=\"*\" cstring "
+               "user[20] dbstore=\"*\" cstring bpkg[50] dbstore=\"*\" cstring verb[20] dbstore=\"*\" cstring "
+               "resourcetype[20] dbstore=\"*\" cstring resourcename[50] dbstore=\"*\" } keys { uniqnulls "
+               "\"comdb2_simple_auth_ix\" = cluster + user + bpkg + verb + resourcetype + resourcename }}");
     if (rc)
         exit(1);
-    rc = run_internal_sql_clnt(&clnt, "create unique index if not exists comdb2_simple_auth_ix on "
-                                      "comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)");
-    if (rc)
-        exit(1);
+    end_internal_sql_clnt(&clnt);
 
     int authcount;
     char *sql = "select count(*) from comdb2_simple_auth";
@@ -150,6 +148,7 @@ static void parseResource(const char *resource, char **database, char **table)
 int simpleAuthCheck(const char *principal, const char *verb_in, const char *resource)
 {
     pthread_once(&once, simpleAuthInit);
+
     struct sqlclntstate clnt;
     int allowed = 0;
 
@@ -180,7 +179,7 @@ int simpleAuthCheck(const char *principal, const char *verb_in, const char *reso
         strcat(sql, "' ");
     }
     strcat(sql, ") and (bpkg='*' ");
-    if (user) {
+    if (bpkg) {
         strcat(sql, "or bpkg = '");
         strcat(sql, bpkg);
         strcat(sql, "' ");
