@@ -139,7 +139,7 @@
 - [x] 334  ./src/attach.c.patch
 - [x] 359  ./src/prepare.c.patch
 - [x] 417  ./src/dttz.c.patch
-- [ ] 427  ./src/tokenize.c.patch
+- [x] 427  ./src/tokenize.c.patch
 - [ ] 436  ./src/insert.c.patch
 - [ ] 451  ./src/main.c.patch
 - [ ] 480  ./src/wherecode.c.patch
