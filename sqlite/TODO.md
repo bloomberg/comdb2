@@ -137,7 +137,7 @@
 - [x] 258  ./src/resolve.c.patch
 - [x] 368  ./src/vdbeInt.h.patch
 - [x] 334  ./src/attach.c.patch
-- [ ] 359  ./src/prepare.c.patch
+- [x] 359  ./src/prepare.c.patch
 - [ ] 417  ./src/dttz.c.patch
 - [ ] 427  ./src/tokenize.c.patch
 - [ ] 436  ./src/insert.c.patch
