@@ -6,6 +6,7 @@
 
   ```bash
   git clone https://github.com/sqlite/sqlite.git sqlite-3.28.0
+  rm -rf sqlite-3.51.2
   cp -R sqlite-3.28.0 sqlite-3.51.2
   (cd sqlite-3.28.0 && git checkout version-3.28.0)
   (cd sqlite-3.51.2 && git checkout version-3.51.2)
@@ -14,6 +15,7 @@
 * To apply upstream changes to a file:
 
   ```bash
+  export file=src/prepare.c
   diff3 -m $file sqlite-3.28.0/$file sqlite-3.51.2/$file > $file.merged
   ```
 
