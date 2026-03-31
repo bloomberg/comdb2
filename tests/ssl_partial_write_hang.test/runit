@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+
+SSL_MODE=REQUIRE cdb2sql ${CDB2_OPTIONS} $dbnm --host $host - >/dev/null 2>actual <<EOF &
+SET ROWBUFFER OFF
+SELECT SLEEP(1) FROM GENERATE_SERIES(1, 10)
+EOF
+
+sleep 5
+
+# Turn on partial SSL write mid-query to simulate network failure:
+# blocking IO would hang;
+# non-blocking IO will fail.
+SSL_MODE=ALLOW cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('stall_ssl_write 1')"
+
+wait
+
+diff expected actual

@@ -63,6 +63,18 @@ copy_files_to_node() {
         scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
         scp $SSH_OPT $SSH_MSTR $CDB2SQL_EXE $node:$CDB2SQL_EXE
     fi
+
+    if [[ -n "$LD_PRELOAD" ]] ; then
+        SAVIFS=$IFS
+        IFS=' :'
+        for so in $LD_PRELOAD; do
+            echo "Copying $so to $node"
+            ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $(dirname $so)"
+            scp $SSH_OPT $SSH_MSTR $so $node:$so
+        done
+        IFS=$SAVIFS
+    fi
+
     if [ -n "$RESTARTPMUX" ] ; then
         echo stop pmux on $node first before copying and starting it
         ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
