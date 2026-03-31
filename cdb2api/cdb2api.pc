@@ -6,6 +6,6 @@ includedir=${exec_prefix}/include
 Name: cdb2api
 Description: C API to talk to Comdb2
 Version: 1.0
-Libs: -L${libdir} -lcdb2api
+Libs: -L${libdir} -lcdb2api -lresolv
 Cflags: -I${includedir} 
 Requires: libprotobuf-c libssl libcrypto libunwind
