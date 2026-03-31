@@ -89,6 +89,8 @@ static struct debug_switches {
     int get_tmp_dir_sleep;
     int ignore_null_auth_func;
     int load_cache_delay;
+    int stall_ssl_write;
+    int newsql_response_is_row;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -272,6 +274,7 @@ int init_debug_switches(void)
     register_debug_switch("get_tmp_dir_sleep", &debug_switches.get_tmp_dir_sleep);
     register_debug_switch("ignore_null_auth_func", &debug_switches.ignore_null_auth_func);
     register_debug_switch("load_cache_delay", &debug_switches.load_cache_delay);
+    register_debug_switch("stall_ssl_write", &debug_switches.stall_ssl_write);
     return 0;
 }
 
@@ -549,4 +552,20 @@ int debug_switch_ignore_null_auth_func(void)
 int debug_switch_load_cache_delay(void)
 {
     return debug_switches.load_cache_delay;
+}
+int debug_switch_stall_ssl_write(void)
+{
+    return debug_switches.stall_ssl_write;
+}
+void debug_switch_set_stall_ssl_write(int val)
+{
+    debug_switches.stall_ssl_write = !!val;
+}
+int debug_switch_newsql_response_is_row(void)
+{
+    return debug_switches.newsql_response_is_row;
+}
+void debug_switch_set_newsql_response_is_row(int val)
+{
+    debug_switches.newsql_response_is_row = !!val;
 }

@@ -148,6 +148,9 @@ foreach(executable ${test-tools})
   endif()
 endforeach()
 
+add_library(partialwrite SHARED partialwrite.c)
+list(APPEND test-tools partialwrite)
+
 add_subdirectory(tcl)
 list(APPEND test-tools tclcdb2)
 

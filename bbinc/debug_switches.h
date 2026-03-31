@@ -82,6 +82,8 @@ int debug_switch_is_rep_rec_delayed(void);         /* 0 */
 int debug_switch_get_tmp_dir_sleep(void);          /* 0 */
 int debug_switch_ignore_null_auth_func(void);      /* 0 */
 int debug_switch_load_cache_delay(void);           /* 0 */
+int debug_switch_stall_ssl_write(void);            /* 0 */
+int debug_switch_newsql_response_is_row(void);     /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */
@@ -91,4 +93,6 @@ void debug_switch_set_rep_verify_req_delay(int);
 void debug_switch_set_dbq_get_delayed(int);
 void debug_switch_set_rep_rec_delayed(int);
 int debug_switch_set_tmp_dir_sleep(int);
+int debug_switch_set_newsql_response_is_row(int);
+void debug_switch_set_stall_ssl_write(int);
 #endif
