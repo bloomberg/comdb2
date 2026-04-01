@@ -5777,8 +5777,13 @@ static void comdb2AddIndexInt(
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         assert(idxType != SQLITE_IDXTYPE_DUPKEY);
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+        sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
+                           idxType, NULL);
+#else
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
                            idxType);
+#endif
         return;
     }
 
@@ -6172,8 +6177,13 @@ void comdb2AddIndex(
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         assert(idxType != SQLITE_IDXTYPE_DUPKEY);
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+        sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
+                           idxType, NULL);
+#else
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
                            idxType);
+#endif
         return;
     }
 
@@ -6229,7 +6239,8 @@ void comdb2CreateIndex(
     u8 idxType,         /* The index type */
     int withOpts,       /* WITH options (DATACOPY) */
     ExprList *pdList,   /* A list of columns in the partial datacopy */
-    int temp)
+    int temp,
+    Token *altname)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -6252,7 +6263,7 @@ void comdb2CreateIndex(
     if (temp || pParse->db->init.busy || pParse->db->isExpert ||
         IN_SPECIAL_PARSE) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
-                           pStart, pPIWhere, sortOrder, ifNotExist, idxType);
+                           pStart, pPIWhere, sortOrder, ifNotExist, idxType, altname);
         return;
     }
 
