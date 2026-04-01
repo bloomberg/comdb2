@@ -15,7 +15,7 @@
 * To apply upstream changes to a file:
 
   ```bash
-  export file=src/prepare.c
+  export file=src/select.c
   diff3 -m $file sqlite-3.28.0/$file sqlite-3.51.2/$file > $file.merged
   ```
 
@@ -50,11 +50,43 @@ wary whether these optimizations / bug-fixes still work.
 I started tracking this when I got to more important files (`where.c`,
 `select.c`), so it's not comprehensive.
 
-* `0b4e056d5`: "Patch from Richard which addresses the unnecessary btree hits
-  for OP_NoHope"
-* `2e54f2247`: "The OP_SeekScan opcode works, but using it requires disabling
-  the IN-earlyout optimization because the OP_IfNoHope opcode might move the
-  cursor."
+* `0b4e056d5`:
+
+  ```md
+  Patch from Richard which addresses the unnecessary btree hits for OP_NoHope
+  ```
+
+* `2e54f2247`:
+
+  ```md
+  The OP_SeekScan opcode works, but using it requires disabling the IN-earlyout
+  optimization because the OP_IfNoHope opcode might move the cursor.
+  ```
+
+* `807c5cb81`:
+
+  ```md
+  Cherrypick SQLite window function fix {173629165}
+  ```
+
+* `c536ee2a6`
+
+  ```md
+  Port sqlite 1f97086d
+  ```
+
+* `a837502df`
+
+  ```md
+  sqlite: Cherry-pick upstream 3.28 fixes
+  
+  * Remove two incorrect assert() statements from the logic used to derive
+    column names and types from subqueries. This allows the SQL associated with
+    CVE-2020-1387 (ticket [c8d3b9f0a750a529]) to be tested.
+  
+  * Fix a defect in the query-flattener optimization identified by ticket
+    [8f157e8010b22af0]. This fix is associated with CVE-2020-15358.
+  ```
 
 ## Friday, Mar 27th, 2026
 
