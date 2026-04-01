@@ -2,6 +2,10 @@
 
 ## Questions / Decisions
 
+- [x] `src/insert.c`: patches to ensure data is converted from SQLite
+  format to comdb2 format at insert time were moved from
+  `sqlite3CompleteInsertion()` to `sqlite3GenerateConstraintChecks()`. 
+
 ### Wednesday, Mar 25th, 2026
 
 - [x] `src/vdbe.c`: we needed to expand prepare mask to accomodate our
@@ -140,7 +144,7 @@
 - [x] 359  ./src/prepare.c.patch
 - [x] 417  ./src/dttz.c.patch
 - [x] 427  ./src/tokenize.c.patch
-- [ ] 436  ./src/insert.c.patch
+- [x] 436  ./src/insert.c.patch
 - [ ] 451  ./src/main.c.patch
 - [ ] 480  ./src/wherecode.c.patch
 - [ ] 593  ./src/select.c.patch

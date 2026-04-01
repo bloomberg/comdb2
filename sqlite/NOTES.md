@@ -27,6 +27,20 @@
   rm -f $file.patch $file.md && mv $file.merged $file
   ```
 
+## Prompts
+
+* Initial context:
+
+  ```text
+  I am working on upgrading SQLite in this project from version 3.28 to 3.51.
+  `sqlite/` contains our copy of SQLite with patches for comdb2. Inside there, I
+  have also cloned `sqlite-3.28.0` and `sqlite-3.51.2`, the vanilla upstream
+  releases, for your reference.
+
+  In `<file>`, around line <#>, we have a change to ... How should this change
+  be ported given that the surrounding code has been modified in SQLite 3.51.2?
+  ```
+
 ## Friday, Mar 27th, 2026
 
 - `vdbeInt.h`: same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because
