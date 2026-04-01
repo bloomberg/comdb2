@@ -41,6 +41,21 @@
   be ported given that the surrounding code has been modified in SQLite 3.51.2?
   ```
 
+## Cherry-picked patches
+
+These are patches we cherry-picked that seem to have shifted around in latest
+SQLite. During merge, preference was given to incoming changes, so need to be
+wary whether these optimizations / bug-fixes still work.
+
+I started tracking this when I got to more important files (`where.c`,
+`select.c`), so it's not comprehensive.
+
+* `0b4e056d5`: "Patch from Richard which addresses the unnecessary btree hits
+  for OP_NoHope"
+* `2e54f2247`: "The OP_SeekScan opcode works, but using it requires disabling
+  the IN-earlyout optimization because the OP_IfNoHope opcode might move the
+  cursor."
+
 ## Friday, Mar 27th, 2026
 
 - `vdbeInt.h`: same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because
