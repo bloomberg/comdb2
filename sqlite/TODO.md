@@ -145,7 +145,7 @@
 - [x] 417  ./src/dttz.c.patch
 - [x] 427  ./src/tokenize.c.patch
 - [x] 436  ./src/insert.c.patch
-- [ ] 451  ./src/main.c.patch
+- [x] 451  ./src/main.c.patch
 - [ ] 480  ./src/wherecode.c.patch
 - [ ] 593  ./src/select.c.patch
 - [ ] 612  ./src/vdbeapi.c.patch
