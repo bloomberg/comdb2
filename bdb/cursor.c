@@ -91,6 +91,7 @@ as long as there was a successful move in the past
 #include "thrman.h"
 
 #include "genid.h"
+#include "comdb2_atomic.h"
 
 //#define MERGE_DEBUG 1
 
@@ -2697,44 +2698,38 @@ done:
     bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &found_lsn, generation);
 }
 
-int bdb_latest_commit_is_durable(void *in_bdb_state)
+static int bdb_commit_is_durable(bdb_state_type *bdb_state, DB_LSN commit_lsn, uint32_t commit_gen)
 {
     extern int gbl_durable_replay_test;
     char *master;
-    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     seqnum_type ss = {{0}};
     int timeoutms;
     int needwait = 0;
     int rc = 0;
     uint32_t durable_gen;
-    uint32_t latest_gen;
     DB_LSN durable_lsn;
-    DB_LSN latest_lsn;
 
     bdb_get_rep_master(bdb_state, &master, NULL, NULL);
-    bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
 
-    logmsg(LOGMSG_INFO, "%s line %d master=%s latest-commit=[%d][%d] gen %d, "
-                        "latest-durable=[%d][%d] gen %d\n",
-           __func__, __LINE__, master, latest_lsn.file, latest_lsn.offset,
-           latest_gen, durable_lsn.file, durable_lsn.offset, durable_gen);
+    logmsg(LOGMSG_INFO,
+           "%s line %d master=%s check-commit=[%d][%d] gen %d, "
+           "latest-durable=[%d][%d] gen %d\n",
+           __func__, __LINE__, master, commit_lsn.file, commit_lsn.offset, commit_gen, durable_lsn.file,
+           durable_lsn.offset, durable_gen);
 
-    if (durable_gen < latest_gen) {
-        logmsg(LOGMSG_INFO,
-               "%s line %d waiting because durable_gen %d < latest_gen %d\n",
-               __func__, __LINE__, durable_gen, latest_gen);
+    if (durable_gen != commit_gen) {
+        logmsg(LOGMSG_INFO, "%s line %d waiting because durable_gen %d != commit_gen %d\n", __func__, __LINE__,
+               durable_gen, commit_gen);
         needwait = 1;
     }
 
-    if ((latest_gen == durable_gen) &&
-        log_compare(&durable_lsn, &latest_lsn) < 0) {
+    if ((commit_gen == durable_gen) && log_compare(&durable_lsn, &commit_lsn) < 0) {
         logmsg(LOGMSG_INFO,
-               "%s line %d waiting because durable_lsn [%d][%d] < latest_lsn "
+               "%s line %d waiting because durable_lsn [%d][%d] < commit_lsn "
                "[%d][%d]\n",
-               __func__, __LINE__, durable_lsn.file, durable_lsn.offset,
-               latest_lsn.file, latest_lsn.offset);
+               __func__, __LINE__, durable_lsn.file, durable_lsn.offset, commit_lsn.file, commit_lsn.offset);
         needwait = 1;
     }
 
@@ -2745,8 +2740,8 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     }
 
     if (needwait) {
-        ss.lsn = latest_lsn;
-        ss.generation = latest_gen;
+        ss.lsn = commit_lsn;
+        ss.generation = commit_gen;
         rc = (bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &ss, 0,
                                                            &timeoutms) == 0)
                  ? 1
@@ -2759,6 +2754,38 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     logmsg(LOGMSG_INFO, "%s line %d returning 1\n", __func__, __LINE__);
 
     return 1;
+}
+
+int bdb_latest_commit_is_durable(void *in_bdb_state)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    uint32_t latest_gen;
+    DB_LSN latest_lsn;
+    bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
+    return bdb_commit_is_durable(bdb_state, latest_lsn, latest_gen);
+}
+
+int64_t gbl_durable_blkseq_cnt = 0;
+int64_t gbl_durable_latest_cnt = 0;
+
+int bdb_blkseq_is_durable(void *in_bdb_state, void *blkseq, int seqlen)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    DB_LSN lsn;
+    void *replay_data = NULL;
+    int replay_len, rc, ret;
+
+    rc = bdb_blkseq_commitlsn_find(bdb_state, NULL, blkseq, seqlen, &replay_data, &replay_len);
+    if (rc != IX_FND || replay_len != sizeof(DB_LSN)) {
+        if (replay_data)
+            free(replay_data);
+        ATOMIC_ADD64(gbl_durable_latest_cnt, 1);
+        return bdb_latest_commit_is_durable(in_bdb_state);
+    }
+    lsn = *(DB_LSN *)replay_data;
+    free(replay_data);
+    ATOMIC_ADD64(gbl_durable_blkseq_cnt, 1);
+    return bdb_commit_is_durable(bdb_state, lsn, 0);
 }
 
 int bdb_get_lsn_context_from_timestamp(bdb_state_type *bdb_state,

@@ -35,7 +35,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 /* TODO: callback funcs rather than layer-violation */
 int osql_blkseq_register_cnonce(void *cnonce, int len);
 int osql_blkseq_unregister_cnonce(void *cnonce, int len);
-int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
+int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen, void *commitlsn, int commitlsnlen);
 
 extern int set_commit_context_prepared(unsigned long long context);
 
@@ -1601,15 +1601,17 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	u_int64_t timestamp = comdb2_time_epoch();
+    DB_LSN commitlsn;
 
 	if ((ret = __txn_dist_abort_log(dbenv, p->txnp, &p->txnp->last_lsn, 0, gen, timestamp, &dtxnid)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error writing dist-abort for txn %s, LSN %d:%d\n", p->dist_txnid,
 			p->prev_lsn.file, p->prev_lsn.offset);
 		abort();
 	}
+    commitlsn = p->txnp->last_lsn;
 
 	/* Write blkseq record for aborted prepare */
-	dist_txn_abort_write_blkseq(dbenv->app_private, p->blkseq_key.data, p->blkseq_key.size);
+	dist_txn_abort_write_blkseq(dbenv->app_private, p->blkseq_key.data, p->blkseq_key.size, &commitlsn, sizeof(DB_LSN));
 
 	/* Unregister cnonce */
 	osql_blkseq_unregister_cnonce(p->blkseq_key.data, p->blkseq_key.size);
@@ -1886,11 +1888,12 @@ int __rep_commit_dist_prepared(dbenv, dist_txnid)
  * Replication saw a dist-abort for this prepared txn.	Write the blkseq
  * and remove it from the prepared-txn list.
  *
- * PUBLIC: int __rep_abort_dist_prepared __P((DB_ENV *, const char *, ));
+ * PUBLIC: int __rep_abort_dist_prepared __P((DB_ENV *, const char *, DB_LSN commitlsn));
  */
-int __rep_abort_dist_prepared(dbenv, dist_txnid)
+int __rep_abort_dist_prepared(dbenv, dist_txnid, commitlsn)
 	DB_ENV *dbenv;
 	const char *dist_txnid;
+    DB_LSN commitlsn;
 {
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
@@ -1912,7 +1915,7 @@ int __rep_abort_dist_prepared(dbenv, dist_txnid)
 #endif
 	}
 
-	dist_txn_abort_write_blkseq(dbenv->app_private, p->blkseq_key.data, p->blkseq_key.size);
+	dist_txn_abort_write_blkseq(dbenv->app_private, p->blkseq_key.data, p->blkseq_key.size, &commitlsn, sizeof(DB_LSN));
 	assert(!F_ISSET(p, DB_DIST_HAVELOCKS));
 	__free_prepared_txn(dbenv, p);
 	return 0;
