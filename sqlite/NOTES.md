@@ -46,9 +46,9 @@
 
 ## Cherry-picked patches
 
-These are patches we cherry-picked that seem to have shifted around in latest
-SQLite. During merge, preference was given to incoming changes, so need to be
-wary whether these optimizations / bug-fixes still work.
+These are patches we cherry-picked that seem to have shifted around or been
+updated in latest SQLite. During merge, preference was given to incoming
+changes, so need to be wary whether these optimizations / bug-fixes still work.
 
 I started tracking this when I got to more important files (`where.c`,
 `select.c`), so it's not comprehensive.
@@ -89,6 +89,44 @@ I started tracking this when I got to more important files (`where.c`,
   
   * Fix a defect in the query-flattener optimization identified by ticket
     [8f157e8010b22af0]. This fix is associated with CVE-2020-15358.
+  ```
+
+* `da7576559c`:
+
+  ```md
+  Fix SQLite cost estimate
+  
+  This is a cherry-pick from SQLite (https://www.sqlite.org/src/info/c7b34930e27597e7).
+  
+  (DRQS 166741103)
+  ```
+
+* `cf92790ff`:
+
+  ```md
+  Cherrypick of SQLite 3.28 branch performance enhancement [263293f1e6db2603]:
+  Minor tweaks to query planning weights so that when STAT4 is enabled and
+  functioning, a full table scan is more likely to be selected if that seems
+  like the fastest solution. Only do this when STAT4 info is available because
+  an error has a large potential downside.
+  ```
+
+* `d1642188f9`:
+
+  ```md
+  {174271358} sqlite: Query planner interstage heuristic
+  
+  https://www.sqlite.org/src/info/74b247d958d74782
+  Add a heuristic in between the two solver() passes of the query planner that
+  tries to prevent a very slow query plan in cases where the output row count
+  estimate is imprecise.
+  
+  https://www.sqlite.org/src/info/357d9513d2bd13c4
+  Fix typos in comments.  Provided ".wheretrace" debugging output for the
+  interstage heuristic module.  Do omit automatic index loops in the
+  interstage heuristic.
+  
+  Port whereN.test to Comdb2
   ```
 
 ## Friday, Mar 27th, 2026
