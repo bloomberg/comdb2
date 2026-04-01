@@ -17,6 +17,9 @@
   ```bash
   export file=src/select.c
   diff3 -m $file sqlite-3.28.0/$file sqlite-3.51.2/$file > $file.merged
+
+  # Claude suggests that "git merge-file" creates fewer spurious conflicts.
+  git merge-file --stdout --quiet --diff3 $file sqlite-3.28.0/$file sqlite-3.51.2/$file > $file.merged
   ```
 
   Fix merge conflicts.

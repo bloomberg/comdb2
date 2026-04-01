@@ -326,6 +326,8 @@ struct sqlite3_value {
     OpFunc *pOpFunc;    /* Used when flags==MEM_OpFunc */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   } u;
+  char *z;            /* String or BLOB value */
+  int n;              /* Number of characters in string value, excluding '\0' */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   union {
     dttz_t     dt;    /* Datetime support */
@@ -338,8 +340,6 @@ struct sqlite3_value {
                          ondisk datetime or from api datetime parameter). */
   u32 flags;          /* Some combination of MEM_Null, MEM_Str, MEM_Dyn, etc. */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  char *z;            /* String or BLOB value */
-  int n;              /* Number of characters in string value, excluding '\0' */
   u16 flags;          /* Some combination of MEM_Null, MEM_Str, MEM_Dyn, etc. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   u8  enc;            /* SQLITE_UTF8, SQLITE_UTF16BE, SQLITE_UTF16LE */
