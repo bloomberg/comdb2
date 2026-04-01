@@ -2,9 +2,15 @@
 
 ## Questions / Decisions
 
+- [ ] `src/where.c`: (not important) do we still need `gbl_sqlite_stat4_scan`?
+  Seems like we have changes that are now mainlined, is this flag unnecessary...
 - [x] `src/insert.c`: patches to ensure data is converted from SQLite
   format to comdb2 format at insert time were moved from
   `sqlite3CompleteInsertion()` to `sqlite3GenerateConstraintChecks()`. 
+- We have both `gbl_sqlite_sortermult` and `gbl_sqlite_sorterpenalty`,
+  what's the difference? 
+- [ ] Change default value of `gbl_sqlite_sorterpenalty` to 3 to match
+  new default in SQLite?
 
 ### Wednesday, Mar 25th, 2026
 
