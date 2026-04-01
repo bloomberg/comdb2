@@ -536,6 +536,8 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
     rc = handle_buf_main2(thedb, NULL, p_slock->bigbuf, (uint8_t *)p_slock->bigbuf + 1024 * 64, 0, clnt->origin,
                           clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, comdbg_flags,
                           legacy_iq_setup, clnt, 0, clnt->authdata);
+
+    ATOMIC_ADD64(gbl_legacy_requests_all, 1);
     return rc;
 }
 

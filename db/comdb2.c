@@ -543,6 +543,7 @@ int gbl_support_sock_luxref = 1;
 int gbl_allow_user_schema;
 int gbl_disable_legacy_queues = 1;
 int64_t gbl_legacy_requests = 0;
+int64_t gbl_legacy_requests_all = 0; /* includes all auxiliary request types */
 
 struct quantize *q_min;
 struct quantize *q_hour;
