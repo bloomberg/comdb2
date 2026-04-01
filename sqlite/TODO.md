@@ -53,11 +53,12 @@
   - I think `SQLITE_AFF_MASK` is correct...
 - [ ] In `struct Index`, our `nAlloc` and SQLite's `mxSample` sound oddly similar,
   is one redundant with the other? See usage of `nAlloc` in `analyze.c`
-- [ ] Safe to change value of `SF_ASTIncluded`?
+- [x] Safe to change value of `SF_ASTIncluded`?
+  - Yes, only used at prepare time for planning parallel execution.
 
 ### Monday, Feb 9th, 2026
 
-- [ ] Decimal: Keep using ours?
+- [x] Decimal: Keep using ours?
   - My vote: yes. `decNumber` is more space-efficient, performance-oriented, and
     supports a wider variety of operations, implementing the full IEEE 754
     decimal arithmetic specification. It is also tied to the storage format now
@@ -71,40 +72,28 @@
 ## Done
 
 - [x] 4   ./src/default_consumer.h.in.patch
-  - Comdb2-specific, leave as-is.
 - [x] 10  ./src/comdb2Int.h.patch
-  - Comdb2-specific, leave as-is.
 - [x] 10  ./src/decimal.h.patch
 - [x] 26  ./src/decimal.c.patch
-  - Comdb2-specific, leave as-is. SQLite has a decimal extension now but
-    choosing not to pull it in, we'll stick with our implementation.
 - [x] 14  ./src/hash.h.patch
 - [x]     ./src/hash.c
 - [x] 14  ./src/os.h.patch
 - [x]     ./src/os.c
-  - Kept our patch, added comment on temp file naming convention.
 - [x] 1003 ./src/sqliteInt.h.patch
-  - But with questions...
 - [x] 15  ./src/sqlite_tunables.h.patch
 - [x] 82  ./src/sqlite_tunables.c.patch
-  - Nothing to do, new files.
 - [x]     ./src/btree.h
 - [x]     ./src/btreeInt.h
 - [x]     ./src/btree.c
-  - Copy over from SQLite.
 - [x] 402 ./src/sqlite_btree.h.patch
-  - Comdb2-specific, leave as-is.
 - [x] 27  ./src/md5.h.patch
 - [x] 260 ./src/md5.c.patch
-  - Comdb2-specific, leave as-is.
 - [x] 58  ./src/comdb2vdbe.h.patch
 - [x] 169 ./src/comdb2build.h.patch
 - [x] 394  ./src/comdb2vdbe.c.patch
 - [x] 469  ./src/comdb2lua.c.patch
 - [x] 8063 ./src/comdb2build.c.patch
-  - Leaving as-is for now, will revisit to see how we hook into SQLite.
 - [x] 37  ./src/fwd_types.h.patch
-  - Comdb2-specific, leave as-is.
 - [x] 39  ./src/sqliteLimit.h.patch
 - [x] 65  ./src/whereInt.h.patch
 - [x] 12  ./src/shell.c.in.patch
@@ -146,7 +135,7 @@
 - [x] 427  ./src/tokenize.c.patch
 - [x] 436  ./src/insert.c.patch
 - [x] 451  ./src/main.c.patch
-- [ ] 480  ./src/wherecode.c.patch
+- [x] 480  ./src/wherecode.c.patch
 - [ ] 593  ./src/select.c.patch
 - [ ] 612  ./src/vdbeapi.c.patch
 - [ ] 718  ./src/where.c.patch
