@@ -41,13 +41,13 @@
 #include "locks.h"
 
 extern int blkseq_get_rcode(void *data, int datalen);
-extern int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
+extern int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen, void *commitlsn, int commitlsn_sz);
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
                                         int timestamp, DB_LSN lsn, int stripe);
 
 extern int gbl_is_physical_replicant;
 
-static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
+static DB *create_blkseq_int(bdb_state_type *bdb_state, int stripe, int num, const char *inname)
 {
     char fname[1024];
     DB *db;
@@ -62,8 +62,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
         logmsg(LOGMSG_ERROR, "blkseq create rc %d\n", rc);
         return NULL;
     }
-    snprintf(fname, sizeof(fname), "%s/_blkseq.%d.%d.XXXXXX", bdb_state->tmpdir,
-             stripe, num);
+    snprintf(fname, sizeof(fname), "%s/%s.%d.%d.XXXXXX", bdb_state->tmpdir, inname, stripe, num);
     fd = mkstemp(fname);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR, "mkstemp rc %d %s\n", errno, strerror(errno));
@@ -87,6 +86,16 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     return db;
 }
 
+static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
+{
+    return create_blkseq_int(bdb_state, stripe, num, "_blkseq");
+}
+
+static DB *create_blkseq_commitlsns(bdb_state_type *bdb_state, int stripe, int num)
+{
+    return create_blkseq_int(bdb_state, stripe, num, "_blkseq_commitlsns");
+}
+
 void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
 {
     if (!bdb_state) 
@@ -97,6 +106,8 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
             Pthread_mutex_destroy(&bdb_state->blkseq_lk[stripe]);
             for (int i = 0; i < 2; i++) {
                 DB *to_be_deleted = bdb_state->blkseq[i][stripe];
+                to_be_deleted->close(to_be_deleted, DB_NOSYNC);
+                to_be_deleted = bdb_state->blkseq_commitlsns[i][stripe];
                 to_be_deleted->close(to_be_deleted, DB_NOSYNC);
             }
 
@@ -118,9 +129,17 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
         free(bdb_state->blkseq[0]);
         bdb_state->blkseq[0] = NULL;
     }
+    if (bdb_state->blkseq_commitlsns[0]) {
+        free(bdb_state->blkseq_commitlsns[0]);
+        bdb_state->blkseq_commitlsns[0] = NULL;
+    }
     if (bdb_state->blkseq[1]) {
         free(bdb_state->blkseq[1]);
         bdb_state->blkseq[1] = NULL;
+    }
+    if (bdb_state->blkseq_commitlsns[1]) {
+        free(bdb_state->blkseq_commitlsns[1]);
+        bdb_state->blkseq_commitlsns[1] = NULL;
     }
     if (bdb_state->blkseq_last_lsn[0]) {
         free(bdb_state->blkseq_last_lsn[0]);
@@ -149,6 +168,8 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
     bdb_state->blkseq_lk = malloc(nstripes * sizeof(pthread_mutex_t));
     bdb_state->blkseq[0] = malloc(nstripes * sizeof(DB *));
     bdb_state->blkseq[1] = malloc(nstripes * sizeof(DB *));
+    bdb_state->blkseq_commitlsns[0] = malloc(nstripes * sizeof(DB *));
+    bdb_state->blkseq_commitlsns[1] = malloc(nstripes * sizeof(DB *));
     bdb_state->blkseq_last_lsn[0] = malloc(nstripes * sizeof(DB_LSN));
     bdb_state->blkseq_last_lsn[1] = malloc(nstripes * sizeof(DB_LSN));
     bdb_state->blkseq_last_roll_time = malloc(nstripes * sizeof(time_t));
@@ -184,6 +205,9 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
             bdb_state->blkseq[i][stripe] = create_blkseq(bdb_state, stripe, i);
             if (bdb_state->blkseq[i][stripe] == NULL)
                 return -1;
+            bdb_state->blkseq_commitlsns[i][stripe] = create_blkseq_commitlsns(bdb_state, stripe, i);
+            if (bdb_state->blkseq_commitlsns[i][stripe] == NULL)
+                return -1;
             bzero(&bdb_state->blkseq_last_lsn[i][stripe], sizeof(DB_LSN));
         }
         listc_init(&bdb_state->blkseq_log_list[stripe],
@@ -206,6 +230,8 @@ static uint8_t get_stripe(bdb_state_type *bdb_state, uint8_t *bytes, int len)
     return stripe % bdb_state->pvt_blkseq_stripes;
 }
 
+extern __thread DB_LSN commit_lsn;
+
 /* recovery callback from berkeley (through bdb_apprec) */
 int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
                        DB_LSN *lsn, db_recops op)
@@ -213,6 +239,7 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
     int rc = 0;
     bdb_state_type *bdb_state;
     uint8_t stripe;
+    DBT commitlsn = {0};
 
     bdb_state = dbenv->app_private;
 
@@ -238,6 +265,9 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
         return (0);
     }
 
+    commitlsn.data = &commit_lsn;
+    commitlsn.size = sizeof(commit_lsn);
+
     if (op == DB_TXN_APPLY || op == DB_TXN_FORWARD_ROLL) {
         stripe =
             get_stripe(bdb_state, (uint8_t *)args->key.data, args->key.size);
@@ -250,6 +280,9 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
         rc = bdb_state->blkseq[0][stripe]->put(bdb_state->blkseq[0][stripe],
                 NULL, &args->key,
                 &args->data, DB_NOOVERWRITE);
+
+        bdb_state->blkseq_commitlsns[0][stripe]->put(bdb_state->blkseq_commitlsns[0][stripe], NULL, &args->key,
+                                                     &commitlsn, DB_NOOVERWRITE);
         if (rc == 0) {
             bdb_state->blkseq_last_lsn[0][stripe] = *lsn;
             rc = bdb_blkseq_update_lsn_locked(bdb_state, args->time, *lsn,
@@ -270,9 +303,11 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
         Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
         rc = bdb_state->blkseq[0][stripe]->del(bdb_state->blkseq[0][stripe],
                                                NULL, &args->key, 0);
+        bdb_state->blkseq_commitlsns[0][stripe]->del(bdb_state->blkseq_commitlsns[0][stripe], NULL, &args->key, 0);
         if (rc == 0 || rc == DB_NOTFOUND) {
             rc = bdb_state->blkseq[1][stripe]->del(bdb_state->blkseq[1][stripe],
                                                    NULL, &args->key, 0);
+            bdb_state->blkseq_commitlsns[1][stripe]->del(bdb_state->blkseq_commitlsns[1][stripe], NULL, &args->key, 0);
             if (rc == DB_NOTFOUND)
                 rc = 0;
         }
@@ -320,8 +355,8 @@ static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
     return 0;
 }
 
-int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
-                    int klen, void **dtaout, int *lenout)
+static int bdb_blkseq_find_int(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void **dtaout,
+                               int *lenout, int iscommitlsn)
 {
     DBT dkey = {0}, ddata = {0};
     int rc;
@@ -334,8 +369,13 @@ int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
     dkey.data = key;
     dkey.size = klen;
     for (int i = 0; i < 2; i++) {
-        rc = bdb_state->blkseq[i][stripe]->get(bdb_state->blkseq[i][stripe],
-                                               NULL, &dkey, &ddata, 0);
+        if (!iscommitlsn) {
+            rc = bdb_state->blkseq[i][stripe]->get(bdb_state->blkseq[i][stripe], NULL, &dkey, &ddata, 0);
+        } else {
+            rc = bdb_state->blkseq_commitlsns[i][stripe]->get(bdb_state->blkseq_commitlsns[i][stripe], NULL, &dkey,
+                                                              &ddata, 0);
+        }
+
         if (rc == 0) {
             if (dtaout)
                 *dtaout = ddata.data;
@@ -352,12 +392,23 @@ int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
     return IX_NOTFND;
 }
 
+int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void **dtaout, int *lenout)
+{
+    return bdb_blkseq_find_int(bdb_state, tran, key, klen, dtaout, lenout, 0);
+}
+
+int bdb_blkseq_commitlsn_find(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void **dtaout,
+                              int *lenout)
+{
+    return bdb_blkseq_find_int(bdb_state, tran, key, klen, dtaout, lenout, 1);
+}
+
 /*
  * TODO: create 'distributed-abort' blkseq response & update blkseq when
  * we see a dist_abort log-record.
  */
-int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void *data, int datalen,
-                      void **dtaout, int *lenout, int overwrite)
+static int bdb_blkseq_insert_int(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void *data,
+                                 int datalen, void **dtaout, int *lenout, int overwrite, int is_commitlsn)
 {
     DBT dkey = {0}, ddata = {0};
     DB_LSN lsn;
@@ -383,8 +434,12 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int
     now = comdb2_time_epoch();
 
     for (int i = 0; i < 2; i++) {
-        rc = bdb_state->blkseq[i][stripe]->get(bdb_state->blkseq[i][stripe],
-                                               NULL, &dkey, &ddata, 0);
+        if (is_commitlsn) {
+            rc = bdb_state->blkseq_commitlsns[i][stripe]->get(bdb_state->blkseq_commitlsns[i][stripe], NULL, &dkey,
+                                                              &ddata, 0);
+        } else {
+            rc = bdb_state->blkseq[i][stripe]->get(bdb_state->blkseq[i][stripe], NULL, &dkey, &ddata, 0);
+        }
         if (rc == 0) {
             if (overwrite) {
                 write_ix = i;
@@ -412,7 +467,12 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int
     /* not found in either tree - put it in the first */
     int flags = overwrite ? 0 : DB_NOOVERWRITE;
 
-    rc = bdb_state->blkseq[write_ix][stripe]->put(bdb_state->blkseq[write_ix][stripe], NULL, &dkey, &ddata, flags);
+    if (is_commitlsn) {
+        rc = bdb_state->blkseq_commitlsns[write_ix][stripe]->put(bdb_state->blkseq_commitlsns[write_ix][stripe], NULL,
+                                                                 &dkey, &ddata, flags);
+    } else {
+        rc = bdb_state->blkseq[write_ix][stripe]->put(bdb_state->blkseq[write_ix][stripe], NULL, &dkey, &ddata, flags);
+    }
     if (rc) {
         logmsg(LOGMSG_ERROR, "blkseq put stripe %d error %d\n", stripe, rc);
         Pthread_mutex_unlock(&bdb_state->blkseq_lk[stripe]);
@@ -421,7 +481,7 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int
 
     /* succeded in updating local table, log the update if transactional
      * (recovery isn't) */
-    if (tran) {
+    if (tran && !is_commitlsn) {
         if (!gbl_is_physical_replicant)
             rc = llog_blkseq_log(bdb_state->dbenv, tran->tid, &lsn, 0, now,
                                  &dkey, &ddata);
@@ -439,13 +499,32 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int
     return rc;
 }
 
+int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void *data, int datalen,
+                      void **dtaout, int *lenout, int overwrite)
+{
+    return bdb_blkseq_insert_int(bdb_state, tran, key, klen, data, datalen, dtaout, lenout, overwrite, 0);
+}
+
+int bdb_blkseq_commitlsn_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void *data,
+                                int datalen, void **dtaout, int *lenout, int overwrite)
+{
+    return bdb_blkseq_insert_int(bdb_state, tran, key, klen, data, datalen, dtaout, lenout, overwrite, 1);
+}
+
+int bdb_blkseq_update_commitlsn(bdb_state_type *bdb_state, void *key, int klen, int file, int offset)
+{
+    DB_LSN lsn = {.file = file, .offset = offset};
+    return bdb_blkseq_commitlsn_insert(bdb_state, NULL, key, klen, &lsn, sizeof(lsn), NULL, NULL, 1);
+}
+
 /* Every N seconds, we shift all the trees down and delete the oldest */
 static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
 {
     time_t now, last;
-    DB *to_be_deleted;
-    DB *newdb;
-    char *oldname = NULL;
+    DB *to_be_deleted, *to_be_deleted2;
+    DB *newdb, *newdb2;
+    char *oldname = NULL, *oldname2 = NULL;
+    ;
     int rc = 0;
     DB_ENV *env;
     int start, end;
@@ -504,12 +583,24 @@ static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
         goto done;
     }
 
+    /* create commitlsns */
+    newdb2 = create_blkseq_commitlsns(bdb_state, stripe, 0);
+    if (newdb2 == NULL) {
+        rc = BDBERR_MISC;
+        goto done;
+    }
+
     /* swap pointers */
     to_be_deleted = bdb_state->blkseq[1][stripe];
+    to_be_deleted2 = bdb_state->blkseq_commitlsns[1][stripe];
+
     bdb_state->blkseq[1][stripe] = bdb_state->blkseq[0][stripe];
     bdb_state->blkseq[0][stripe] = newdb;
-    bdb_state->blkseq_last_lsn[1][stripe] = bdb_state->blkseq_last_lsn[0][stripe];
 
+    bdb_state->blkseq_commitlsns[1][stripe] = bdb_state->blkseq_commitlsns[0][stripe];
+    bdb_state->blkseq_commitlsns[0][stripe] = newdb2;
+
+    bdb_state->blkseq_last_lsn[1][stripe] = bdb_state->blkseq_last_lsn[0][stripe];
     bdb_state->blkseq_last_roll_time[stripe] = now;
 
     /* Clean up the old blkseq file. Get its name, close it, delete it. */
@@ -523,6 +614,15 @@ static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
         oldname = strdup(oldname);
 
     to_be_deleted->close(to_be_deleted, DB_NOSYNC);
+
+    rc = to_be_deleted2->get_dbname(to_be_deleted2, (const char **)&oldname2, NULL);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't find filename of blkseq-commitlsns table\n");
+    } else {
+        oldname2 = strdup(oldname2);
+    }
+
+    to_be_deleted2->close(to_be_deleted2, DB_NOSYNC);
 
     if (oldname) {
         DB *db;
@@ -542,6 +642,26 @@ static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
             goto done;
         }
     }
+
+    if (oldname2) {
+        DB *db;
+        env = bdb_state->blkseq_env[stripe];
+
+        rc = db_create(&db, env, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "blkseq create rc %d\n", rc);
+            rc = BDBERR_MISC;
+            goto done;
+        }
+
+        rc = db->remove(db, oldname2, NULL, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "db->remove %s rc %d\n", oldname2, rc);
+            rc = BDBERR_MISC;
+            goto done;
+        }
+    }
+
     if (bdb_state->attr->private_blkseq_close_warn_time) {
         end = comdb2_time_epochms();
         if ((end - start) > bdb_state->attr->private_blkseq_close_warn_time) {
@@ -553,6 +673,8 @@ done:
     Pthread_mutex_unlock(&bdb_state->blkseq_lk[stripe]);
     if (oldname)
         free(oldname);
+    if (oldname2)
+        free(oldname2);
 
     return rc;
 }
@@ -566,16 +688,14 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     return rc;
 }
 
-static int bdb_blkseq_stripe_for_each(bdb_state_type *bdb_state, uint8_t stripe,
-                                      void *arg,
-                                      void (*func)(int, int, void *, void *,
-                                                   void *, void *))
+static int bdb_blkseq_stripe_for_each(bdb_state_type *bdb_state, uint8_t stripe, void *arg,
+                                      void (*func)(int, int, void *, void *, void *, void *, void *))
 {
-    DBC *dbc = NULL;
-    DBT dkey = {0}, ddata = {0};
-    int rc;
+    DBC *dbc = NULL, *dbc2 = NULL;
+    DBT dkey = {0}, ddata = {0}, ddata2 = {0};
+    int rc, rc2;
 
-    dkey.flags = ddata.flags = DB_DBT_REALLOC;
+    dkey.flags = ddata.flags = ddata2.flags = DB_DBT_REALLOC;
     Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
 
     for (int i = 0; i < 2; i++) {
@@ -583,10 +703,15 @@ static int bdb_blkseq_stripe_for_each(bdb_state_type *bdb_state, uint8_t stripe,
                                                   NULL, &dbc, 0);
         if (rc)
             goto done;
+        rc2 = bdb_state->blkseq_commitlsns[i][stripe]->cursor(bdb_state->blkseq_commitlsns[i][stripe], NULL, &dbc2, 0);
+        if (rc2)
+            goto done;
         rc = dbc->c_get(dbc, &dkey, &ddata, DB_FIRST);
         while (rc == 0) {
-            func(stripe, i, &(bdb_state->blkseq_last_lsn[i][stripe]), &dkey,
-                 &ddata, arg);
+            void *commitlsn;
+            rc2 = dbc2->c_get(dbc2, &dkey, &ddata2, DB_SET);
+            commitlsn = (rc2 == 0) ? ddata2.data : NULL;
+            func(stripe, i, &(bdb_state->blkseq_last_lsn[i][stripe]), &dkey, &ddata, commitlsn, arg);
             rc = dbc->c_get(dbc, &dkey, &ddata, DB_NEXT);
         }
         if (rc) {
@@ -597,6 +722,8 @@ static int bdb_blkseq_stripe_for_each(bdb_state_type *bdb_state, uint8_t stripe,
         }
         dbc->c_close(dbc);
         dbc = NULL;
+        dbc2->c_close(dbc2);
+        dbc2 = NULL;
     }
 
 done:
@@ -607,12 +734,16 @@ done:
         free(ddata.data);
     if (dbc)
         dbc->c_close(dbc);
+    if (ddata2.data)
+        free(ddata2.data);
+    if (dbc2)
+        dbc2->c_close(dbc2);
 
     return rc;
 }
 
 void bdb_blkseq_for_each(bdb_state_type *bdb_state, void *arg,
-                         void (*func)(int, int, void *, void *, void *, void *))
+                         void (*func)(int, int, void *, void *, void *, void *, void *))
 {
     int rc = 0;
     int nstripes =
@@ -626,12 +757,19 @@ void bdb_blkseq_for_each(bdb_state_type *bdb_state, void *arg,
     }
 }
 
-static void dump_blkseq(int stripe, int ix, void *plsn, void *pkey, void *pdata,
-                        void *arg)
+static void blkseq_commitlsn_to_str(DB_LSN lsn, char *lsnstr, int l)
+{
+    snprintf(lsnstr, l, "[%d][%d]", lsn.file, lsn.offset);
+}
+
+static void dump_blkseq(int stripe, int ix, void *plsn, void *pkey, void *pdata, void *incommitlsn, void *arg)
 {
     DB_LSN *lsn = plsn;
     DBT *key = pkey;
     DBT *data = pdata;
+    DB_LSN *commitlsn = incommitlsn ? (DB_LSN *)incommitlsn : NULL;
+    int commitlsn_file = commitlsn ? commitlsn->file : -1;
+    int commitlsn_offset = commitlsn ? commitlsn->offset : -1;
     int now;
     now = comdb2_time_epoch();
 
@@ -652,16 +790,15 @@ static void dump_blkseq(int stripe, int ix, void *plsn, void *pkey, void *pdata,
             memcpy(p, key->data, key->size);
             p[key->size] = '\0';
             logmsg(LOGMSG_USER,
-                   "stripe %d idx %d last_lsn=[%d][%d]: %s sz %d age %d rcode "
+                   "stripe %d idx %d last_lsn=[%d][%d] commit_lsn=[%d][%d]: %s sz %d age %d rcode "
                    "%d\n",
-                   stripe, ix, lsn->file, lsn->offset, p, data->size, age,
-                   rcode);
+                   stripe, ix, lsn->file, lsn->offset, commitlsn_file, commitlsn_offset, p, data->size, age, rcode);
         } else {
             logmsg(LOGMSG_USER,
-                   "stripe %d idx %d last_lsn=[%d][%d]: %x %x %x sz %d age %d "
+                   "stripe %d idx %d last_lsn=[%d][%d] commit_lsn=[%d][%d]: %x %x %x sz %d age %d "
                    "rcode %d\n",
-                   stripe, ix, lsn->file, lsn->offset, k[0], k[1], k[2],
-                   data->size, age, rcode);
+                   stripe, ix, lsn->file, lsn->offset, commitlsn_file, commitlsn_offset, k[0], k[1], k[2], data->size,
+                   age, rcode);
         }
     }
 }
@@ -692,6 +829,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
     int last_log_filenum;
     int oldest_blkseq;
     struct seen_blkseq *logseq;
+    DB_LSN commitlsn = {0};
 
     /* Walk the log file list backwards, stop when we get to blkseqs older than
      * we care about. */
@@ -715,6 +853,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
             normalize_rectype(&rectype);
 
             if (rectype == DB___txn_dist_abort) {
+                commitlsn = lsn;
                 bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                 LOGCOPY_TOLSN(&bslsn, bp);
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
@@ -727,13 +866,15 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                             logmsg(LOGMSG_ERROR, "at " PR_LSN " __txn_dist_prepare_read rc %d\n", PARM_LSN(bslsn), rc);
                             goto err;
                         }
-                        dist_txn_abort_write_blkseq(bdb_state, prepare->blkseq_key.data, prepare->blkseq_key.size);
+                        dist_txn_abort_write_blkseq(bdb_state, prepare->blkseq_key.data, prepare->blkseq_key.size,
+                                                    &commitlsn, sizeof(commitlsn));
                     }
                 }
             } else if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
                        rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit ||
                        rectype == DB___txn_regop_rowlocks_endianize || rectype == DB___txn_regop_gen_endianize) {
                 /* Skip past rectype & txnid */
+                commitlsn = lsn;
                 bp = (((char*)logdta.data) + sizeof(u_int32_t) + sizeof(u_int32_t));
                 LOGCOPY_TOLSN(&bslsn, bp);
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
@@ -811,14 +952,18 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
 
                         rc = bdb_blkseq_insert(bdb_state, NULL, blkseq->key.data, blkseq->key.size, blkseq->data.data,
                                                blkseq->data.size, NULL, NULL, 0);
-                        if (rc == IX_DUP)
+                        bdb_blkseq_commitlsn_insert(bdb_state, NULL, blkseq->key.data, blkseq->key.size, &commitlsn,
+                                                    sizeof(commitlsn), NULL, NULL, 1);
+
+                        if (rc == IX_DUP) {
                             ndupes++;
-                        else if (rc) {
+                        } else if (rc) {
                             logmsg(LOGMSG_ERROR, "at " PR_LSN " bdb_blkseq_insert %x %x %x rc %d\n", PARM_LSN(bslsn),
                                    k[0], k[1], k[2], rc);
                             goto err;
-                        } else
+                        } else {
                             nblkseq++;
+                        }
                         free(blkseq);
                         blkseq = NULL;
                     }
