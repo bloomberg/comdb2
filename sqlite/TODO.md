@@ -136,7 +136,7 @@
 - [x] 436  ./src/insert.c.patch
 - [x] 451  ./src/main.c.patch
 - [x] 480  ./src/wherecode.c.patch
-- [ ] 593  ./src/select.c.patch
+- [x] 593  ./src/select.c.patch
 - [ ] 612  ./src/vdbeapi.c.patch
 - [ ] 718  ./src/where.c.patch
 - [ ] 1152 ./src/analyze.c.patch
