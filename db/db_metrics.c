@@ -565,7 +565,10 @@ int refresh_metrics(void)
 
     stats.commits = n_commits;
     stats.fstraps = n_fstrap;
-    stats.nonsql = n_fstrap + n_qtrap - n_dbinfo;
+    stats.nonsql = n_fstrap                  /* legacy protocol over socketrequest */
+                   + n_qtrap                 /* legacy protocol */
+                   + gbl_legacy_requests_all /* legacy protocol over cdb2api */
+                   - n_dbinfo;
     stats.retries = n_retries;
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;

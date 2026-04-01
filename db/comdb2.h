@@ -3749,6 +3749,7 @@ extern int gbl_epoch_time;
 extern int gbl_watchdog_disable_at_start;
 
 extern int64_t gbl_legacy_requests;
+extern int64_t gbl_legacy_requests_all;
 
 void csc2_free_all(void);
 
