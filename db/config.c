@@ -1271,6 +1271,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
         gbl_serializable = 1;
+        gbl_use_modsnap_for_snapshot = 1;
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {
