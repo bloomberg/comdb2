@@ -1244,7 +1244,9 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
      * This can incorrectly report NOT_DURABLE but that's sane given that half
      * the cluster is incoherent */
     int is_final = iq->sorese ? iq->sorese->is_final : 0;
-    int non_durable_retry = gbl_replicant_retry_on_not_durable && (!is_final || !gbl_ignore_final_non_durable_retry);
+    int can_replicant_retry = IQ_HAS_SNAPINFO(iq) && IQ_SNAPINFO(iq)->replicant_is_able_to_retry;
+    int non_durable_retry =
+        gbl_replicant_retry_on_not_durable && can_replicant_retry && (!is_final || !gbl_ignore_final_non_durable_retry);
     int force_non_durable = non_durable_retry && gbl_debug_force_non_durable;
 
     if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || non_durable_retry) &&

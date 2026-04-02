@@ -205,6 +205,29 @@ EOF
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where 1" >/dev/null 2>&1
 }
 
+function show_non_durable_chunk_does_not_disconnect
+{
+    hide_non_durable_rcode 0
+    force_all_non_durable 1
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+set transaction chunk 1
+begin
+$(for i in $(seq 2001 2050); do
+    echo "insert into t1 values ($i)"
+done)
+commit
+EOF
+    rc=$?
+
+    [[ $rc -ne 0 ]] &&
+        failexit "chunk transaction should finish commit successfully (rc=$rc)"
+
+    hide_non_durable_rcode 0
+    force_all_non_durable 0
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where a between 2001 and 2050" >/dev/null 2>&1
+}
+
 function run_test
 {
     echo "Running tests"
@@ -212,6 +235,7 @@ function run_test
     show_non_durable_good_insert
     hide_non_durable_constraint_violation
     show_non_durable_constraint_violation
+    show_non_durable_chunk_does_not_disconnect
 }
 
 create_table
