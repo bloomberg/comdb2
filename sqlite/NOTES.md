@@ -129,6 +129,58 @@ I started tracking this when I got to more important files (`where.c`,
   Port whereN.test to Comdb2
   ```
 
+* `6afa709ac`:
+
+  ```md
+  Revisiting the IN-scan optimization to try to fix it .. (#1)
+
+  From 68cf0ace3d160c8b3c12ee692c337f0d47e079d7 Mon Sep 17 00:00:00 2001
+  From: drh <drh@noemail.net>
+  Date: Mon, 28 Sep 2020 19:51:54 +0000
+  Subject: [PATCH] Revisiting the IN-scan optimization to try to fix it for the
+   corner case where the statistics deceive the query planner into using a scan
+   when an indexed lookup would be better.  This check-in changes the code
+   generation to do the IN-scan using a new OP_SeekScan opcode.  That new opcode
+   is designed to abandon the scan and fall back to a seek if it doesn't find a
+   match quickly enough.  For this work-in-progress check-in, OP_SeekScan is
+   still a no-op and OP_SeekGE still ends up doing all the work.
+  ```
+
+* `52a70498d`:
+
+  ```md
+  Cherry-pick SQLite's update/delete optimization
+    
+  https://sqlite.org/src/info/0ecda433718f0bc9
+  ```
+
+* `5dc0b6b3b`:
+
+  ```md
+  Fix a problem where the loop for the RHS of a LEFT JOIN uses .. (#2)
+  
+  From 74ebaadcdd8b1058bbc80bf61334fe09da1c64b5 Mon Sep 17 00:00:00 2001
+  From: dan <dan@noemail.net>
+  Date: Sat, 4 Jan 2020 16:55:57 +0000
+  Subject: [PATCH] Fix a problem where the loop for the RHS of a LEFT JOIN uses
+   values from an IN() clause as the second or subsequent field of an index.
+  ```
+
+* `7d7d64e1e`:
+
+  ```md
+  At the end of the right-hand table loop of a LEFT JOIN that uses an IN (#3)
+  
+  commit 14c98a4f4016bb60679535e3d2d9fe6c49bfe04a (HEAD)
+  Author: drh <drh@noemail.net>
+  Date:   Mon Mar 16 03:07:53 2020 +0000
+  
+      At the end of the right-hand table loop of a LEFT JOIN that uses an IN
+      operator in the ON clause, put the OP_IfNoHope operator after the
+      OP_IfNotOpen operator, not before, to avoid a (harmless) uninitialized
+      register reference.  Ticket [82b588d342d515d1]
+  ```
+
 ## Friday, Mar 27th, 2026
 
 - `vdbeInt.h`: same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because

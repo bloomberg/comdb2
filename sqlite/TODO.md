@@ -2,6 +2,13 @@
 
 ## Questions / Decisions
 
+### Wednesday, April 2nd, 2026
+
+- [x] `src/where.c`: had to relocate patch to track dropped tables, the "omit
+  no-op join" optimization was factored into its own function.
+
+### Wednesday, April 1st, 2026
+
 - [ ] `src/where.c`: (not important) do we still need `gbl_sqlite_stat4_scan`?
   Seems like we have changes that are now mainlined, is this flag unnecessary...
 - [x] `src/insert.c`: patches to ensure data is converted from SQLite
@@ -144,7 +151,7 @@
 - [x] 480  ./src/wherecode.c.patch
 - [x] 593  ./src/select.c.patch
 - [x] 612  ./src/vdbeapi.c.patch
-- [ ] 718  ./src/where.c.patch
+- [x] 718  ./src/where.c.patch
 - [ ] 1152 ./src/analyze.c.patch
 - [ ] 1362 ./src/func.c.patch
 - [ ] 1378 ./src/expr.c.patch
