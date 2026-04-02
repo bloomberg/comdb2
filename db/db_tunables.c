@@ -89,6 +89,7 @@ extern int gbl_coordinator_block_until_durable;
 extern int gbl_disttxn_random_retry_poll;
 extern int gbl_disttxn_handle_cache;
 extern int gbl_disttxn_handle_linger_time;
+extern int gbl_disttxn_ddl_resolve_fatal;
 extern int gbl_disttxn_async_messages;
 extern int gbl_debug_sleep_before_dispatch;
 extern int gbl_debug_exit_participant_after_prepare;

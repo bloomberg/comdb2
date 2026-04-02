@@ -282,6 +282,8 @@ REGISTER_TUNABLE("disttxn_handle_cache", "Enable the disttxn handle-cache.  (Def
                  &gbl_disttxn_handle_cache, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_handle_linger_time", "Time that unused handles persist.  (Default: 60s)", TUNABLE_INTEGER,
                  &gbl_disttxn_handle_linger_time, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("disttxn_ddl_resolve_fatal", "Abort startup if DDL prepared txn cannot be resolved.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_disttxn_ddl_resolve_fatal, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_on_prepare", "Flush master log on prepare. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_flush_on_prepare, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_replicant_on_prepare", "Flush replicant log on prepare. (Default: on)", TUNABLE_BOOLEAN,
