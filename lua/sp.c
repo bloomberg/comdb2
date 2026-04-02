@@ -933,11 +933,15 @@ static int dbconsumer_next(Lua L)
     struct sqlclntstate *clnt = sp->clnt;
     if (!clnt->intrans) {
         /* First write done by this txn */
+        rc = start_new_transaction(clnt);
+        if (rc) {
+            luaL_error(L, "%s: start_new_transaction intrans:%d rc:%d\n",
+                       __func__, clnt->intrans, rc);
+        }
         rc = osql_sock_start_no_reorder(clnt, OSQL_SOCK_REQ, 0, 0);
         if (rc) {
             luaL_error(L, "%s osql_sock_start rc:%d", __func__, rc);
         }
-        clnt->intrans = 1;
     }
     Q4SP(qname, q->info.spname);
     ++clnt->osql_max_trans;

@@ -1,0 +1,34 @@
+test1 updated rows:
+13	1
+14	0
+test1 queue depth:
+0
+test2 inserted rows:
+99
+test2 queue depth:
+0
+test3 remaining rows:
+1
+3
+test3 queue depth:
+0
+test4 updated rows:
+1	1
+2	0
+3	1
+4	0
+5	1
+test4 queue depth:
+0
+test5 inserted rows:
+10
+20
+30
+test5 queue depth:
+0
+test6 remaining rows:
+1
+3
+5
+test6 queue depth:
+0
