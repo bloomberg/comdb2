@@ -881,7 +881,7 @@ int prepare_dist_abort_blkseq(uint8_t *buf_fstblk, int *outlen)
     return 0;
 }
 
-int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
+int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen, void *commitlsn, int commitlsn_sz)
 {
     bdb_state_type *bdb_state = (in_bdb_state ? in_bdb_state : thedb->bdb_env);
     uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
@@ -891,10 +891,17 @@ int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
         return rc;
     }
     assert(outlen <= FSTBLK_MAX_BUF_LEN);
-    return bdb_blkseq_insert(bdb_state, NULL, bskey, bskeylen, buf_fstblk, outlen, NULL, NULL, 1);
+    if ((rc = bdb_blkseq_insert(bdb_state, NULL, bskey, bskeylen, buf_fstblk, outlen, NULL, NULL, 1)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: error %d inserting blkseq\n", __func__, rc);
+    }
+    if (commitlsn_sz > 0) {
+        rc = bdb_blkseq_commitlsn_insert(bdb_state, NULL, bskey, bskeylen, commitlsn, commitlsn_sz, NULL, NULL, 1);
+    }
+    return rc;
 }
 
 extern int gbl_debug_force_non_durable;
+extern int gbl_debug_random_non_durable_pct;
 
 static inline int durable_change_rcode(struct ireq *iq)
 {
@@ -910,6 +917,14 @@ static inline int durable_change_rcode(struct ireq *iq)
     /* Return normal rcode if retry-on-not-durable disabled */
     if (!gbl_replicant_retry_on_not_durable) {
         return 0;
+    }
+
+    /* Debug: randomly return NOT_DURABLE to trigger retries and test blkseq_commitlsn */
+    if (gbl_debug_random_non_durable_pct > 0) {
+        int r = rand() % 100;
+        if (r < gbl_debug_random_non_durable_pct) {
+            return 1; /* Force NOT_DURABLE return code */
+        }
     }
 
     /* Return NOT_DURABLE if ignore-final-retry disabled */
@@ -943,12 +958,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     int blkseq_line = 0;
     int datalen = replay_data_len - 4;
+    int need_free = 0;
 
     if (!replay_data) {
 
         if (!IQ_HAS_SNAPINFO(iq)) {
-            assert( (seqlen == (sizeof(fstblkseq_t))) || 
-                    (seqlen == (sizeof(uuid_t))));
+            assert((seqlen == (sizeof(fstblkseq_t))) || (seqlen == (sizeof(uuid_t))));
         }
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
@@ -956,6 +971,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         if (rc == IX_FND) {
             memcpy(buf_fstblk, replay_data, replay_data_len - 4);
             datalen = replay_data_len - 4;
+            need_free = 1;
         }
     }
 
@@ -1248,7 +1264,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     int force_non_durable = non_durable_retry && gbl_debug_force_non_durable;
 
     if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || non_durable_retry) &&
-        (!bdb_latest_commit_is_durable(thedb->bdb_env) || force_non_durable)) {
+        (!bdb_blkseq_is_durable(thedb->bdb_env, fstseqnum, seqlen) || force_non_durable)) {
         if (IQ_HAS_SNAPINFO_KEY(iq)) {
             logmsg(LOGMSG_ERROR,
                    "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
@@ -1264,12 +1280,16 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                iq->sorese ? iq->sorese->rcout : 0);
     }
     blkseq_replay_count++;
+    if (need_free)
+        free(replay_data);
     return outrc;
 
 replay_error:
     logmsg(LOGMSG_ERROR, "%s:%d in REPLAY ERROR\n", __func__, blkseq_line);
     if (check_long_trn) {
         outrc = RC_TRAN_CLIENT_RETRY;
+        if (need_free)
+            free(replay_data);
         return outrc;
     }
     struct block_rsp errrsp;
@@ -1278,6 +1298,8 @@ replay_error:
 
     outrc = ERR_BLOCK_FAILED;
     blkseq_replay_error_count++;
+    if (need_free)
+        free(replay_data);
     return outrc;
 }
 
@@ -2844,7 +2866,7 @@ static inline void debug_prepare_tests(struct ireq *iq, tran_type *parent_trans,
     if (!prepared || debug_prepared_should_commit()) {
         trans_commit_adaptive(iq, parent_trans, source_host);
     } else if (prepared && debug_prepared_should_abort()) {
-        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen, NULL, 0);
         trans_abort(iq, parent_trans);
     } else {
         assert(gbl_all_prepare_leak);
@@ -3141,6 +3163,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 outrc = do_replay_case(iq, IQ_SNAPINFO(iq)->key,
                                        IQ_SNAPINFO(iq)->keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
+                if (replay_data)
+                    free(replay_data);
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
 #if DEBUG_DID_REPLAY
                 did_replay = 1;
@@ -3148,6 +3172,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 fromline = __LINE__;
                 goto cleanup;
             }
+            if (replay_data)
+                free(replay_data);
             bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
 
@@ -5835,8 +5861,8 @@ add_blkseq:
                                 }
 
                                 /* Prepare failed to reach a majority of the cluster: fail the txn */
-                                dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
                                 trans_abort(iq, parent_trans);
+                                dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen, NULL, 0);
 
                                 /* Wrote & replicated prepare record */
                             } else {
@@ -5863,6 +5889,7 @@ add_blkseq:
                                     prepared_count--;
                                     Pthread_mutex_unlock(&blklk);
                                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                                    blkseq_update_commitlsn(iq);
                                     if (iq->sorese->is_coordinator) {
                                         if (gbl_coordinator_wait_propagate) {
                                             coordinator_wait_propagate(iq->sorese->dist_txnid);
@@ -5897,13 +5924,15 @@ add_blkseq:
                                                __func__, __LINE__, iq->sorese->dist_txnid, iq->sorese->is_coordinator,
                                                iq->sorese->is_participant, err.errcode, outrc, iq->errstat.errstr);
                                     }
+                                    trans_abort(iq, parent_trans);
                                     if ((outrc == ERR_NOTSERIAL ||
                                          (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
                                         can_retry) {
+                                        /*
+                                         */
                                     } else {
-                                        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                                        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen, NULL, 0);
                                     }
-                                    trans_abort(iq, parent_trans);
 
                                     /* Downgrade, but disttxn commit record hasn't replicated */
                                 } else {
@@ -5981,9 +6010,11 @@ add_blkseq:
                                                        iq->errstat.errstr);
                             }
                             irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                            blkseq_update_commitlsn(iq);
                         }
                     } else if (!debug_prepare_testcase()) {
                         irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                        blkseq_update_commitlsn(iq);
                         /* 2pc testcases */
                     } else {
                         debug_prepare_tests(iq, parent_trans, source_host, bskey, bskeylen);
@@ -6238,6 +6269,7 @@ add_blkseq:
                 irc = trans_commit_adaptive(iq, trans, source_host);
                 if (irc == BDBERR_NOT_DURABLE)
                     irc = rc = ERR_NOT_DURABLE;
+                blkseq_update_commitlsn(iq);
             }
             if (hascommitlock) {
                 Pthread_rwlock_unlock(&commit_lock);

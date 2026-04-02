@@ -811,6 +811,21 @@ static void make_tag(struct ireq *iq, char *tag, int taglen)
     tag[taglen - 1] = '\0';
 }
 
+int blkseq_update_commitlsn(struct ireq *iq)
+{
+    void *bskey;
+    int bskeylen;
+
+    if (IQ_HAS_SNAPINFO_KEY(iq)) {
+        bskey = IQ_SNAPINFO(iq)->key;
+        bskeylen = IQ_SNAPINFO(iq)->keylen;
+    } else {
+        bskey = iq->seq;
+        bskeylen = iq->seqlen;
+    }
+    return bdb_blkseq_update_commitlsn(thedb->bdb_env, bskey, bskeylen, iq->commit_file, iq->commit_offset);
+}
+
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey, int blkkeylen, int release_schema_lk, int nowait)
 {
