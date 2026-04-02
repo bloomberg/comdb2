@@ -6,6 +6,8 @@
 
 - [x] `src/where.c`: had to relocate patch to track dropped tables, the "omit
   no-op join" optimization was factored into its own function.
+- [ ] `src/analyze.c`: `nActualRow` seems redundant with `nEst` in `StatAccum`
+  now?
 
 ### Wednesday, April 1st, 2026
 
