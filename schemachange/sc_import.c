@@ -1812,6 +1812,14 @@ static enum comdb2_import_op get_import_rcode_from_tmpdb_rcode(const int rc) {
 
 int do_import(struct ireq *iq, struct schema_change_type *sc, tran_type *tran)
 {
+    extern int gbl_is_physical_replicant;
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s: bulk import into a physical replicant is not allowed\n", __func__);
+        errstat_set_rcstrf(&iq->errstat, COMDB2_IMPORT_RC_INTERNAL,
+                           "bulk import into a physical replicant is not allowed");
+        return COMDB2_IMPORT_RC_INTERNAL;
+    }
+
     const char * const src_tablename = sc->import_src_tablename;
     const char * const srcdb = sc->import_src_dbname;
     const char * const dst_tablename = sc->tablename;

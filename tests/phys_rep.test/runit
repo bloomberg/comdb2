@@ -211,8 +211,17 @@ trap - INT EXIT
 
 override_physrep_sp
 setup_replicant
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('semver 8.1.0')"
+${CDB2SQL_EXE} --host localhost $destdb default "exec procedure sys.cmd.send('semver 8.1.0')"
+
 ./generate_tests.sh
 run_tests
+
+# (physrep needs to be alive)
+./bulkimport.sh $dbname ${DBDIR}
+[[ $? -ne 0 ]] && failexit "bulkimport test failed"
+
 cleanup
 
 exit 0

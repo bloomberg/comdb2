@@ -1771,6 +1771,11 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
 
 void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 {
+    if (gbl_is_physical_replicant) {
+        setError(pParse, SQLITE_MISUSE, "bulk import into a physical replicant is not allowed");
+        return;
+    }
+
     if (gbl_disable_sql_table_replacement) {
         setError(pParse, SQLITE_MISUSE, "sql table replacement is disabled");
         return;
