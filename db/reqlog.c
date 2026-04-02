@@ -3001,6 +3001,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                 break;
 
             case OP_STORED:
+            case OP_COUNTTABLE:
             case OP_RNGEXT2:
             case OP_RNGEXTP2:
             case OP_RNGEXTTAG:
