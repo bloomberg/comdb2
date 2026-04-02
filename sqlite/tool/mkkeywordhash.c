@@ -243,7 +243,7 @@ static Keyword aKeywordTable[] = {
   { "FIRST",            "TK_FIRST",        ALWAYS,           4      },
   { "FOLLOWING",        "TK_FOLLOWING",    WINDOWFUNC,       4      },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  { "FOR",              "TK_FOR",          ALWAYS            2      },
+  { "FOR",              "TK_FOR",          ALWAYS,           2      },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "FOR",              "TK_FOR",          TRIGGER,          2      },
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -293,7 +293,7 @@ static Keyword aKeywordTable[] = {
   { "OUTER",            "TK_JOIN_KW",      ALWAYS,           5      },
   { "OVER",             "TK_OVER",         WINDOWFUNC,       3      },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  { "PARTITION",        "TK_PARTITION",    ALWAYS            3      },
+  { "PARTITION",        "TK_PARTITION",    ALWAYS,           3      },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "PARTITION",        "TK_PARTITION",    WINDOWFUNC,       3      },
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -304,7 +304,7 @@ static Keyword aKeywordTable[] = {
   { "QUERY",            "TK_QUERY",        EXPLAIN,          0      },
   { "RAISE",            "TK_RAISE",        TRIGGER,          1      },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  { "RANGE",            "TK_RANGE",        ALWAYS            3      },
+  { "RANGE",            "TK_RANGE",        ALWAYS,           3      },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "RANGE",            "TK_RANGE",        WINDOWFUNC,       3      },
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
