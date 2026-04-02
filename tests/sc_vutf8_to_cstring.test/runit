@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+set -eo pipefail
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+nins=0
+
+function insert_fixed_width_records()
+{
+    j=$1
+    nstop=$2
+    let nins=nins+1
+    insfl=insert${nins}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id,txt) values ($j,'$(printf '%010d' $j)')"  &>> $insfl
+        let j=j+1
+    done
+}
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+
+function flushall() 
+{
+    for node in $cluster; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
+    done
+}
+
+
+echo "Test vutf8[10] to cstring[11] conversion during schema change"
+
+function init_vutf8_field_table() {
+    len=$1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t1"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create table t1  { 
+    schema {
+        int id
+        vutf8 txt[$len]
+    }
+}\$\$
+EOF
+}
+
+function verify_schemachange_to_cstring() {
+    insert_fixed_width_records 1 100
+
+    assertcnt t1 100
+
+    a=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 where id <= 5 order by id")
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
+    rc=$?
+
+    if [[ "$rc" != 0 ]]; then
+        failexit "Test Failed: Schema change failed with rc=$rc, expected success"
+    fi
+
+    assertcnt t1 100
+    do_verify t1
+
+    b=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 where id <= 5 order by id")
+
+    if [[ "$a" != "$b" ]]; then
+        failexit "Test Failed: Data mismatch after schema change. Before:\n$a\nAfter:\n$b"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id,txt) values (101,'1234567890')"  
+    assertcnt t1 101
+
+    flushall
+}
+
+# let's test for set cstr len of 10, + 1 for \0 = 11 
+#case 1: vutf8 overflows, vutf8[5] -> cstring[11]
+init_vutf8_field_table 5
+verify_schemachange_to_cstring
+
+#case 2: vutf8 just fits, vutf8[10] -> cstring[11]
+init_vutf8_field_table 10
+verify_schemachange_to_cstring
+
+#case 3: vutf8 larger (should be ez even without fix should pass), 
+# vutf8[20] -> cstring[11]
+init_vutf8_field_table 20
+verify_schemachange_to_cstring
+
+echo "Pass!"
+exit 0
