@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+r="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+
+# =====================================================
+# Case 1: One primary key, one partial key, both unique      
+# =====================================================
+
+$r 'create table t1 {
+schema
+{
+	int         id
+	int         id2            null=yes
+	int         is_active      dbstore=0
+    int         day
+}
+keys
+{
+	"PRIMARY_KEY"                       = id
+	uniqnulls "COLLECTION_IS_ACTIVE"    = id2 + is_active {where is_active = 1}
+}
+}
+'
+
+# --------- Test 1.1: Primary key conflict ---------
+
+$r "INSERT OR REPLACE INTO t1(id, day) VALUES(7, 1)"
+out=$($r "SELECT * FROM t1")
+if [[ "$out" != "(id=7, id2=NULL, is_active=0, day=1)" ]]; then
+    echo "Record not inserted. Expected (id=7, id2=NULL, is_active=0, day=1), got $out"
+    exit 1
+fi
+
+# Insert or replace with a different day, expected to succeed
+$r "INSERT OR REPLACE INTO t1(id, day) VALUES(7, 2)"
+out=$($r "SELECT * FROM t1")
+if [[ "$out" != "(id=7, id2=NULL, is_active=0, day=2)" ]]; then
+    echo "Record not replaced. Expected (id=7, id2=NULL, is_active=0, day=2), got $out"
+    exit 1
+fi
+
+# Verify with explicit commit
+$r - <<'EOF'
+BEGIN
+INSERT OR REPLACE INTO t1(id, day) VALUES(7, 3)
+COMMIT
+EOF
+out=$($r "SELECT * FROM t1")
+if [[ "$out" != "(id=7, id2=NULL, is_active=0, day=3)" ]]; then
+    echo "Record not replaced. Expected (id=7, id2=NULL, is_active=0, day=3), got $out"
+    exit 1
+fi
+
+# --------- Test 1.2: Partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t1(id, id2, is_active, day) VALUES(8, 15, 1, 1)"
+out=$($r "SELECT * FROM t1 WHERE is_active = 1")
+if [[ "$out" != "(id=8, id2=15, is_active=1, day=1)" ]]; then
+    echo "Record not inserted. Expected (id=8, id2=15, is_active=1, day=1), got $out"
+    exit 1
+fi
+
+# --------- Test 1.3: Insert or replace with a different day, expected to succeed ---------
+$r "INSERT OR REPLACE INTO t1(id, id2, is_active, day) VALUES(9, 15, 1, 2)"
+out=$($r "SELECT * FROM t1 WHERE is_active = 1")
+if [[ "$out" != "(id=9, id2=15, is_active=1, day=2)" ]]; then
+    echo "Record not replaced. Expected (id=9, id2=15, is_active=1, day=2), got $out"
+    exit 1
+fi
+
+# --------- Test 1.4: Both primary and partial key conflict ---------
+
+# Conflict with one record on primary key and one on partial key
+$r "INSERT OR REPLACE INTO t1(id, id2, is_active, day) VALUES(7, 15, 1, 3)"
+out=$($r "SELECT * FROM t1")
+if [[ "$out" != "(id=7, id2=15, is_active=1, day=3)" ]]; then
+    echo "Records not replaced. Expected (id=7, id2=15, is_active=1, day=3), got $out"
+    exit 1
+fi
+
+# =====================================
+# Case 2: Two partial keys, both unique
+# =====================================
+
+$r 'create table t2 {
+schema
+{
+	int         id1            null=yes
+	int         id2            null=yes
+	int         is_active1     dbstore=0
+	int         is_active2     dbstore=0
+    int         day
+}
+keys {
+	uniqnulls "COLLECTION_IS_ACTIVE1"    = id1 + is_active1 {where is_active1 = 1}
+	uniqnulls "COLLECTION_IS_ACTIVE2"    = id2 + is_active2 {where is_active2 = 1}
+}
+}
+'
+
+# --------- Test 2.1: One partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t2(id1, is_active1, day) VALUES(13, 1, 1)"
+out=$($r "SELECT * FROM t2")
+if [[ "$out" != "(id1=13, id2=NULL, is_active1=1, is_active2=0, day=1)" ]]; then
+    echo "Record not inserted. Expected (id1=13, id2=NULL, is_active1=1, is_active2=0, day=1), got $out"
+    exit 1
+fi
+
+$r "INSERT OR REPLACE INTO t2(id1, is_active1, day) VALUES(13, 1, 2)"
+out=$($r "SELECT * FROM t2")
+if [[ "$out" != "(id1=13, id2=NULL, is_active1=1, is_active2=0, day=2)" ]]; then
+    echo "Record not replaced. Expected (id1=13, id2=NULL, is_active1=1, is_active2=0, day=2), got $out"
+    exit 1
+fi
+
+# --------- Test 2.2: Both partial keys conflict ---------
+
+$r "INSERT OR REPLACE INTO t2(id2, is_active2, day) VALUES(15, 1, 3)"
+out=$($r "SELECT * FROM t2 WHERE is_active2 = 1")
+if [[ "$out" != "(id1=NULL, id2=15, is_active1=0, is_active2=1, day=3)" ]]; then
+    echo "Record not inserted. Expected (id1=NULL, id2=15, is_active1=0, is_active2=1, day=3), got $out"
+    exit 1
+fi
+
+$r "INSERT OR REPLACE INTO t2(id1, id2, is_active1, is_active2, day) VALUES(13, 15, 1, 1, 4)"
+out=$($r "SELECT * FROM t2")
+if [[ "$out" != "(id1=13, id2=15, is_active1=1, is_active2=1, day=4)" ]]; then
+    echo "Record not replaced. Expected (id1=13, id2=15, is_active1=1, is_active2=1, day=4), got $out"
+    exit 1
+fi
+
+# =============================================
+# Case 3: Two partial keys, one unique, one not
+# =============================================
+
+$r 'create table t3 {
+schema
+{
+	int         id1            null=yes
+	int         id2            null=yes
+	int         is_active1     dbstore=0
+	int         is_active2     dbstore=0
+    int         day
+}
+keys {
+	uniqnulls "COLLECTION_IS_ACTIVE1" = id1 + is_active1 {where is_active1 = 1}
+	dup "COLLECTION_IS_ACTIVE2"       = id2 + is_active2 {where is_active2 = 1}
+}
+}
+'
+
+# --------- Test 3.1: Unique partial key conflict ---------
+
+$r "INSERT OR REPLACE INTO t3(id1, is_active1, day) VALUES(21, 1, 1)"
+out=$($r "SELECT * FROM t3")
+if [[ "$out" != "(id1=21, id2=NULL, is_active1=1, is_active2=0, day=1)" ]]; then
+    echo "Record not inserted. Expected (id1=21, id2=NULL, is_active1=1, is_active2=0, day=1), got $out"
+    exit 1
+fi
+
+$r "INSERT OR REPLACE INTO t3(id1, is_active1, day) VALUES(21, 1, 2)"
+out=$($r "SELECT * FROM t3")
+if [[ "$out" != "(id1=21, id2=NULL, is_active1=1, is_active2=0, day=2)" ]]; then
+    echo "Record not replaced. Expected (id1=21, id2=NULL, is_active1=1, is_active2=0, day=2), got $out"
+    exit 1
+fi
+
+# --------- Test 3.2: Non-unique partial key, no conflict ---------
+
+$r "INSERT OR REPLACE INTO t3(id2, is_active2, day) VALUES(23, 1, 3)"
+out=$($r "SELECT * FROM t3 WHERE is_active2 = 1")
+if [[ "$out" != "(id1=NULL, id2=23, is_active1=0, is_active2=1, day=3)" ]]; then
+    echo "Record not inserted. Expected (id1=NULL, id2=23, is_active1=0, is_active2=1, day=3), got $out"
+    exit 1
+fi
+
+$r "INSERT OR REPLACE INTO t3(id2, is_active2, day) VALUES(23, 1, 4)"
+out=$($r "SELECT * FROM t3 WHERE is_active2 = 1")
+expected=$'(id1=NULL, id2=23, is_active1=0, is_active2=1, day=3)\n(id1=NULL, id2=23, is_active1=0, is_active2=1, day=4)'
+if [[ "$out" != "$expected" ]]; then
+    echo "Record not inserted. Expected two rows with day=3 and day=4, got $out"
+    exit 1
+fi
