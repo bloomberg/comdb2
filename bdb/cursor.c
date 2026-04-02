@@ -2773,7 +2773,7 @@ int bdb_blkseq_is_durable(void *in_bdb_state, void *blkseq, int seqlen)
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     DB_LSN lsn;
     void *replay_data = NULL;
-    int replay_len, rc, ret;
+    int replay_len, rc;
 
     rc = bdb_blkseq_commitlsn_find(bdb_state, NULL, blkseq, seqlen, &replay_data, &replay_len);
     if (rc != IX_FND || replay_len != sizeof(DB_LSN)) {

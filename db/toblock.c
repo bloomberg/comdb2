@@ -901,6 +901,7 @@ int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen, v
 }
 
 extern int gbl_debug_force_non_durable;
+extern int gbl_debug_random_non_durable_pct;
 
 static inline int durable_change_rcode(struct ireq *iq)
 {
@@ -916,6 +917,14 @@ static inline int durable_change_rcode(struct ireq *iq)
     /* Return normal rcode if retry-on-not-durable disabled */
     if (!gbl_replicant_retry_on_not_durable) {
         return 0;
+    }
+
+    /* Debug: randomly return NOT_DURABLE to trigger retries and test blkseq_commitlsn */
+    if (gbl_debug_random_non_durable_pct > 0) {
+        int r = rand() % 100;
+        if (r < gbl_debug_random_non_durable_pct) {
+            return 1; /* Force NOT_DURABLE return code */
+        }
     }
 
     /* Return NOT_DURABLE if ignore-final-retry disabled */
