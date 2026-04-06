@@ -3822,7 +3822,7 @@ static int cmp_tag_callback(const struct schema *s, struct cmp_tag_struct *info)
 
 /* NOTE: this is called in one place, with stderr, so any code
    it calls in turn assumes the output is to be logged. */
-int compare_all_tags(const char *table, FILE *out)
+int compare_all_tags(const char *table, FILE *out, int tags_only)
 {
     int rc;
     dbtable *db;
@@ -3849,6 +3849,8 @@ int compare_all_tags(const char *table, FILE *out)
             int ii;
             for (ii = 0; ii < info.numtags; ii++) {
                 struct schema *old = info.tags[ii];
+                if (tags_only && strncasecmp(old->tag, ".ONDISK", strlen(".ONDISK")) == 0)
+                    continue;
                 struct schema *new;
                 char search[MAXTAGLEN + 6];
                 snprintf(search, sizeof(search), ".NEW.%s", old->tag);
@@ -3874,7 +3876,7 @@ int compare_all_tags(const char *table, FILE *out)
     }
     unlock_taglock();
 
-    if (rc != 0)
+    if (rc != 0 || tags_only)
         return rc;
 
     db = get_dbtable_by_name(table);

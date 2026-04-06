@@ -836,6 +836,12 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         plan->dta_plan = 0;
     }
 
+    /* Check if there are new tags, or any modifications on existing tags */
+    if (compare_all_tags(olddb->tablename, NULL, 1)) {
+        info = ">    Tags are modified\n";
+        scprint(s, info);
+    }
+
     for (ii = 0; ii < blobn; ii++) {
         plan->blob_plan[ii] = -1;
     }
