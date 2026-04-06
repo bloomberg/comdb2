@@ -6562,12 +6562,22 @@ static int _clnt_cache_add_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl)
 
     clnt_fdb_cache_t *cache = clnt->remoteFdbCache;
 
-    LISTC_FOR_EACH(&tbl->ents, ent, lnk)
-    {
-        hash_add(cache->tbl_ent_by_rootp, ent);
+    /* stored procedures have a different table locking model than regular
+     * multi-write transactions
+     * for multi-writes , the table locks are acquired and released with each individual write
+     * for stored procedures, the table locks are preserved across multiple writes and only released on commit
+     * table locks are deduped; make sure the cache is also deduped
+     */
+
+    fdb_tbl_t *duptbl = hash_find_readonly(cache->tbl_by_name, &tbl->name);
+    if (!duptbl) {
+        LISTC_FOR_EACH(&tbl->ents, ent, lnk)
+        {
+            hash_add(cache->tbl_ent_by_rootp, ent);
+        }
+        hash_add(cache->tbl_by_name, tbl);
+        listc_abl(&cache->tbls, cent);
     }
-    hash_add(cache->tbl_by_name, tbl);
-    listc_abl(&cache->tbls, cent);
 
     return 0;
 }

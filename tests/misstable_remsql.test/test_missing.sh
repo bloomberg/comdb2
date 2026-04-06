@@ -111,6 +111,13 @@ cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select dbname, tablename, in
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output_2.log > output_2.log.actual
 
+#TEST3 check that stored procedures work with multiple writes for same table
+sed "s/dorintdb/${a_remdbname}/g" sp.txt > sp.txt.actual
+
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "create procedure mytst version 'mytst1' {`cat sp.txt.actual`}"
+
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure mytst1()"
+
 # validate results 
 
 testcase_output=$(cat $output)
