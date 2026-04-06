@@ -2478,8 +2478,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry.
              */
-            if (clnt->continued_on_chunk_verify_error && clnt->saved_rc && clnt->saved_errstr)
-                write_response(clnt, RESPONSE_ERROR, clnt->saved_errstr, clnt->saved_rc);
+            if (clnt->continued_on_chunk_verify_error)
+                write_response(clnt, RESPONSE_ERROR,
+                               "chunk transaction completed, but a verify error occurred on at least one chunk",
+                               CDB2ERR_CONTINUE_VERIFY_ERROR);
             else
                 write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
         }

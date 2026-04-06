@@ -760,6 +760,7 @@ These return codes can be found in ```cdb2api.h```
 | 2    |```CDB2ERR_VERIFY_ERROR``` | <a id="CDB2ERR_VERIFY_ERROR"/>An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose). 
 | 3    |```CDB2ERR_FKEY_VIOLATION``` | <a id="CDB2ERR_FKEY_VIOLATION"/>Foreign key violation. 
 | 4    |```CDB2ERR_NULL_CONSTRAINT``` | <a id="CDB2ERR_NULL_CONSTRAINT"/>Null constraint violation. 
+| 5    |```CDB2ERR_CONTINUE_VERIFY_ERROR``` | <a id="CDB2ERR_CONTINUE_VERIFY_ERROR"/>Chunk transaction completed, but a verify error occurred on at least one chunk, and continue on verify error is set on the client. See ```CDB2ERR_VERIFY_ERROR``` also. 
 | 113  |```CDB2ERR_CONV_FAIL``` | <a id="CDB2ERR_CONV_FAIL"/>Data could not be inserted/updated because the provided data could not be converted to the type/size in the table definition. 
 | 115  |```CDB2ERR_MALLOC``` | <a id="CDB2ERR_MALLOC"/>Malloc failed.  Check your code for memory leaks or heap corruption! 
 | 116  |```CDB2ERR_NOTSUPPORTED``` | <a id="CDB2ERR_NOTSUPPORTED"/>Operation not supported. 

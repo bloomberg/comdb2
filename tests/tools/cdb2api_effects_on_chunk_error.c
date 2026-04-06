@@ -359,7 +359,9 @@ int test2(char *dbname, int continue_on_verify_error) {
         fprintf(stderr, "Expected verify error at commit\n");
         rc = -1;
         goto err;
-    } else if (rc != CDB2ERR_VERIFY_ERROR)
+    } else if (continue_on_verify_error && rc != CDB2ERR_CONTINUE_VERIFY_ERROR) {
+        goto err;
+    } else if (!continue_on_verify_error && rc != CDB2ERR_VERIFY_ERROR)
         goto err;
 
     rc = cdb2_get_effects(hndl, &effects);
