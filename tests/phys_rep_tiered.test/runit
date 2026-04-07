@@ -2110,6 +2110,125 @@ function verify_connection_count
     fi
 }
 
+# Verify that stored procedures without actual writes don't trigger READONLY errors on physreps
+function test_sp_no_readonly
+{
+    local node=""
+    local physrep_dbname=""
+    local logfile=""
+    local before_count=0
+    local after_count=0
+    local sp_exists=0
+    local timeout=300
+    local elapsed=0
+
+    echo "Testing stored procedure without writes on physrep"
+
+    # Get the first standalone physrep
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+    else
+        for n in $CLUSTER; do
+            node=$n
+            break
+        done
+    fi
+
+    physrep_dbname="${REPL_DBNAME_PREFIX}_${node}"
+    logfile="$TESTDIR/logs/${physrep_dbname}.log"
+
+    echo "Using physrep: $physrep_dbname on node: $node"
+    echo "Log file: $logfile"
+
+    # Count current number of "attempted write against physical replicant" errors
+    before_count=$(grep -c "attempted write against physical replicant" "$logfile" 2>/dev/null)
+    echo "Before count of READONLY errors: $before_count"
+
+    # Create stored procedure on source that creates a temporary table
+    echo "Creating stored procedure on source"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create procedure test_temp_table version 'v1' {
+        local function main()
+            local temp = db:table(\"temp\", {
+                {\"id\", \"integer\"},
+                { \"value\", \"text\"}
+            })
+            temp:insert({id = 1, value = \"test\"})
+            db:emit(temp)
+        end
+    }" || cleanFailExit "Failed to create stored procedure on source"
+
+    # Wait for the stored procedure to appear on the physrep
+    echo "Waiting for stored procedure to replicate..."
+    elapsed=0
+    while [[ $elapsed -lt $timeout ]]; do
+        sp_exists=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $physrep_dbname --host $node \
+            "select count(*) from comdb2_procedures where name='test_temp_table'" 2>&1)
+
+        if [[ "$sp_exists" == "1" ]]; then
+            echo "Stored procedure has replicated"
+            break
+        fi
+
+        sleep 1
+        ((elapsed++))
+    done
+
+    if [[ $elapsed -ge $timeout ]]; then
+        cleanFailExit "Stored procedure did not replicate within $timeout seconds"
+    fi
+
+    # Execute the stored procedure on the physrep
+    # This should NOT generate a READONLY error because it doesn't do any actual writes
+    echo "Executing stored procedure on physrep..."
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $physrep_dbname --host $node \
+        "exec procedure test_temp_table()" > /dev/null 2>&1
+
+    if [[ $? -ne 0 ]]; then
+        cleanFailExit "Stored procedure execution failed"
+    fi
+
+    # Give logs a moment to flush
+    sleep 1
+
+    # Count "attempted write against physical replicant" errors again
+    after_count=$(grep -c "attempted write against physical replicant" "$logfile" 2>/dev/null)
+    echo "After count of READONLY errors: $after_count"
+
+    # Verify the count hasn't changed
+    if [[ $after_count -ne $before_count ]]; then
+        echo "ERROR: READONLY error count increased from $before_count to $after_count"
+        echo "Recent errors:"
+        grep "attempted write against physical replicant" "$logfile" | tail -5
+        cleanFailExit "READONLY error count increased"
+    fi
+
+    echo "SUCCESS: Stored procedure executed without generating READONLY errors"
+
+    # Drop the stored procedure from the source and wait for it to propagate
+    echo "Dropping stored procedure from source"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+        "drop procedure test_temp_table 'v1'" || cleanFailExit "Failed to drop stored procedure from source"
+
+    echo "Waiting for stored procedure drop to replicate..."
+    elapsed=0
+    while [[ $elapsed -lt $timeout ]]; do
+        sp_exists=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $physrep_dbname --host $node \
+            "select count(*) from comdb2_procedures where name='test_temp_table'" 2>&1)
+
+        if [[ "$sp_exists" == "0" ]]; then
+            echo "Stored procedure drop has replicated"
+            break
+        fi
+
+        sleep 1
+        ((elapsed++))
+    done
+
+    if [[ $elapsed -ge $timeout ]]; then
+        cleanFailExit "Stored procedure drop did not replicate within $timeout seconds"
+    fi
+}
+
 trap - INT EXIT
 
 # 1. Setup replication metadata cluster
@@ -2995,6 +3114,11 @@ function run_tests
     verify_connection_count
     testcase_finish $testcase
 
+    testcase="test_sp_no_readonly"
+    testcase_preamble $testcase
+    test_sp_no_readonly
+    testcase_finish $testcase
+
     testcase="verify_alt_metadb_system_table"
     testcase_preamble $testcase
     verify_alt_metadb_system_table
@@ -3048,7 +3172,7 @@ function run_tests
 
 function run_one_test
 {
-    physrep_no_cached_metadb_connections_test
+    test_sp_no_readonly
 }
 
 run_tests
