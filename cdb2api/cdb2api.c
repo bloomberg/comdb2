@@ -5282,9 +5282,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
-    if (!hndl->is_child_hndl) // parent handle will free
-        free_events(hndl);
-
     free(hndl);
     return rc;
 }
@@ -5977,13 +5974,24 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
         goto retry_queries;                                                                                            \
     } while (0);
 
+static cdb2_event *copy_event(cdb2_event *src)
+{
+    size_t elen = sizeof(cdb2_event) + src->argc * sizeof(cdb2_event_arg);
+    cdb2_event *dst = malloc(elen);
+    if (dst == NULL)
+        return NULL;
+    memcpy(dst, src, elen);
+    dst->next = NULL;
+    return dst;
+}
+
 /*
 Make newly opened child handle have same settings (references) as parent
 NOTE: ONLY WORKS CURRENTLY FOR PERIOD OF TIME
       WHERE NUM BIND VARS AND SET COMMANDS
       DO NOT CHANGE IN PARENT HANDLE
 */
-static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
+static int attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
 {
     child->is_child_hndl = 1;
     child->bindvars = parent->bindvars;
@@ -6027,9 +6035,24 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
 
     child->debug_trace = parent->debug_trace;
 
+    // remove current global events. Don't use these since client may have decided to remove a global event from parent
+    // handle
     free_events(child);
-    child->events = parent->events;
+    child->events.next = NULL;
     child->gbl_event_version = parent->gbl_event_version;
+
+    cdb2_event *child_event;
+    cdb2_event *parent_event;
+    cdb2_event *tmp;
+    for (parent_event = parent->events.next, child_event = &child->events; parent_event != NULL;
+         parent_event = parent_event->next) {
+        tmp = copy_event(parent_event);
+        if (tmp == NULL) {
+            return ENOMEM;
+        }
+        child_event->next = tmp;
+        child_event = tmp;
+    }
 
     /* XXX-GET-DBINFO when client asks for SSL, learn server's SSL capability
     from dbinfo if we haven't done so. We need dbinfo for 1) handling old
@@ -6042,6 +6065,8 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
         child->got_dbinfo = 1;
         cdb2_get_dbhosts(child);
     }
+
+    return 0;
 }
 
 static void free_raw_response(cdb2_hndl_tp *hndl)
@@ -6715,7 +6740,19 @@ read_record:
             clear_responses(hndl);  // signal to cdb2_next_record_int that we are done
             PRINT_AND_RETURN(-1);
         }
-        attach_to_handle(hndl->fdb_hndl, hndl);
+        if (attach_to_handle(hndl->fdb_hndl, hndl)) {
+            cdb2_close(hndl->fdb_hndl);
+            hndl->fdb_hndl = NULL;
+            if (is_hasql_commit)
+                cleanup_query_list(hndl, &commit_query_list, __LINE__);
+
+            sprintf(hndl->errstr, "%s: Can't attach to fdb %s:%s", __func__, hndl->firstresponse->foreign_db,
+                    hndl->firstresponse->foreign_class);
+            debugprint("Can't attach to fdb %s:%s\n", hndl->firstresponse->foreign_db,
+                       hndl->firstresponse->foreign_class);
+            clear_responses(hndl); // signal to cdb2_next_record_int that we are done
+            PRINT_AND_RETURN(-1);
+        }
 
         return_value = cdb2_run_statement_typed(hndl->fdb_hndl, sql, ntypes, types);
         if (is_hasql_commit)
@@ -9367,7 +9404,6 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
 static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
 {
     cdb2_event *gbl, *lcl, *tmp, *knot;
-    size_t elen;
 
     /* Fast return if the version has not changed. */
     if (hndl->gbl_event_version == cdb2_gbl_event_version)
@@ -9389,14 +9425,11 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
 
     /* Clone and append global events to the handle. */
     for (gbl = cdb2_gbl_events.next, lcl = &hndl->events; gbl != NULL; gbl = gbl->next) {
-        elen = sizeof(cdb2_event) + gbl->argc * sizeof(cdb2_event_arg);
-        tmp = malloc(elen);
+        tmp = copy_event(gbl);
         if (tmp == NULL) {
             pthread_mutex_unlock(&cdb2_event_mutex);
             return ENOMEM;
         }
-        memcpy(tmp, gbl, elen);
-        tmp->next = NULL;
         lcl->next = tmp;
         lcl = tmp;
     }
