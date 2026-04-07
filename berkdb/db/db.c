@@ -1410,6 +1410,12 @@ never_opened:
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
+	/* Save the fileid for close, if not done already */
+	if (!dbp->use_close_fileid) {
+		memcpy(dbp->close_fileid, dbp->fileid, sizeof(dbp->fileid));
+		dbp->use_close_fileid = 1;
+	}
+
 	/* Clear out fields that normally get set during open. */
 	memset(dbp->fileid, 0, sizeof(dbp->fileid));
 	dbp->adj_fileid = 0;

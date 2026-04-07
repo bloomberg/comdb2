@@ -398,10 +398,12 @@ __ufid_clear_dbp(dbenv, dbp)
 	DB_ENV *dbenv;
 	DB *dbp;
 {
+	u_int8_t *fileid;
 	struct __ufid_to_db_t *ufid;
 	dbp->added_to_ufid = 0;
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
-	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
+	fileid = dbp->use_close_fileid ? dbp->close_fileid : dbp->fileid;
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, fileid)) != NULL) {
 		if (ufid->dbp) {
 			ufid->dbp->added_to_ufid = 0;
 		}
@@ -1158,6 +1160,8 @@ __dbreg_do_open(dbenv,
 	F_SET(dbp, DB_AM_RECOVER);
 	if (meta_pgno != PGNO_BASE_MD) {
 		memcpy(dbp->fileid, uid, DB_FILE_ID_LEN);
+		dbp->use_close_fileid = 0;
+		memset(dbp->close_fileid, 0, DB_FILE_ID_LEN);
 		dbp->meta_pgno = meta_pgno;
 	}
 

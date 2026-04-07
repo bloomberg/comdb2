@@ -1602,6 +1602,8 @@ struct __db {
 	u_int32_t open_flags;		/* Flags passed to DB->open. */
 
 	u_int8_t fileid[DB_FILE_ID_LEN];/* File's unique ID for locking. */
+	u_int8_t close_fileid[DB_FILE_ID_LEN]; /* File's unique ID for closing, if db_refresh is called. */
+	int use_close_fileid; /* 1 if db_close should use close_fileid */
 
 	u_int32_t adj_fileid;		/* File's unique ID for curs. adj. */
 
