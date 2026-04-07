@@ -458,7 +458,7 @@ static char *legacy_options[] = {
     "sc_current_version 3",
     "disable_sql_table_replacement 1",
     "track_db_open 0",
-    "clear_ufid_on_db_close 0",
+    "clear_ufid_on_db_close 1",
     "get_peer_fqdn 0"
 };
 // clang-format on

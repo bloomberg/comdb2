@@ -626,6 +626,8 @@ swap_retry:
 
 		/* Copy the file's ID. */
 		memcpy(dbp->fileid, ((DBMETA *)meta)->uid, DB_FILE_ID_LEN);
+		dbp->use_close_fileid = 0;
+		memset(dbp->close_fileid, 0, DB_FILE_ID_LEN);
 
 		break;
 	default:

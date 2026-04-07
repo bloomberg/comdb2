@@ -324,6 +324,8 @@ __db_subdb_rename(dbp, txn, name, subdb, newname)
 	if ((ret = __memp_fget(mdbp->mpf, &dbp->meta_pgno, 0, &meta)) != 0)
 		goto err;
 	memcpy(dbp->fileid, ((DBMETA *)meta)->uid, DB_FILE_ID_LEN);
+	dbp->use_close_fileid = 0;
+	memset(dbp->close_fileid, 0, DB_FILE_ID_LEN);
 	if ((ret = __fop_lock_handle(dbenv,
 	    dbp, mdbp->lid, DB_LOCK_WRITE, NULL, 0)) != 0)
 		goto err;

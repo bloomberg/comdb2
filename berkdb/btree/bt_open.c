@@ -299,6 +299,8 @@ __bam_metachk(dbp, name, btm)
 
 	/* Copy the file's ID. */
 	memcpy(dbp->fileid, btm->dbmeta.uid, DB_FILE_ID_LEN);
+    dbp->use_close_fileid = 0;
+	memset(dbp->close_fileid, 0, DB_FILE_ID_LEN);
 
 	return (0);
 

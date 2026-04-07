@@ -538,6 +538,8 @@ creat2:	if ((ret = __db_appname(dbenv,
 	/* Construct a file_id. */
 	if ((ret = __os_fileid(dbenv, real_tmpname, 1, dbp->fileid)) != 0)
 		goto errmsg;
+	dbp->use_close_fileid = 0;
+	memset(dbp->close_fileid, 0, DB_FILE_ID_LEN);
 
 	if ((ret = __db_new_file(dbp, stxn, fhp, tmpname)) != 0)
 		goto err;
@@ -759,6 +761,8 @@ __fop_subdb_setup(dbp, txn, mname, name, mode, flags)
 	 */
 
 	memcpy(dbp->fileid, mdbp->fileid, DB_FILE_ID_LEN);
+	dbp->use_close_fileid = 0;
+	memset(dbp->close_fileid, 0, DB_FILE_ID_LEN);
 	if ((ret = __fop_lock_handle(dbenv, dbp,
 	    txn == NULL ? dbp->lid : txn->txnid,
 	    F_ISSET(dbp, DB_AM_CREATED) || LF_ISSET(DB_WRITEOPEN) ?
@@ -1126,6 +1130,8 @@ __fop_dummy(dbp, txn, old, new, flags)
 	if ((ret = db_create(&tmpdbp, dbenv, 0)) != 0)
 		goto err;
 	memcpy(&tmpdbp->fileid, ((DBMETA *)mbuf)->uid, DB_FILE_ID_LEN);
+	tmpdbp->use_close_fileid = 0;
+	memset(tmpdbp->close_fileid, 0, DB_FILE_ID_LEN);
 
 	/* Now, lock the name space while we initialize this file. */
 	if ((ret = __db_appname(dbenv,

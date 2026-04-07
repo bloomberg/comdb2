@@ -344,18 +344,10 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 					F_SET(dbp, DB_AM_DISCARD);
 
 				if (op == DB_TXN_ABORT &&
-				    !F_ISSET(dbp, DB_AM_RECOVER)) {
-					/*
-					 * The __db_refresh() call below will zap dbp->fileid.
-					 * __db_close() won't be able to find itself in ufid-hash,
-					 * leaving a stale DB pointer in ufid-hash.
-					 * So we must clear it here.
-					 */
-					if (dbp->added_to_ufid)
-						__ufid_clear_dbp(dbenv,  dbp);
+				    !F_ISSET(dbp, DB_AM_RECOVER))
 					t_ret = __db_refresh(dbp,
 					    NULL, DB_NOSYNC, NULL);
-				} else {
+				else {
 					if (op == DB_TXN_APPLY)
 						__db_sync(dbp);
 					t_ret =
