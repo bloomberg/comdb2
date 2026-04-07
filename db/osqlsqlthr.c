@@ -1019,12 +1019,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     int bdberr = 0;
     int is_distributed = 0;
 
-    if (gbl_is_physical_replicant) {
-        logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
-        osql_sock_abort(clnt, type);
-        return SQLITE_READONLY;
-    }
-
     if (gbl_debug_disttxn_trace) {
         uuidstr_t us;
         logmsg(LOGMSG_USER, "DISTTXN REPL %s %s use_2pc %d %s uuid=%s\n", __func__,
@@ -1033,9 +1027,13 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     }
 
     /* is it distributed? */
-
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
     {
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_ERROR, "%s attempted fdb write on physical replicant\n", __func__);
+            osql_sock_abort(clnt, type);
+            return SQLITE_READONLY;
+        }
         rc = fdb_trans_commit(clnt, sideeffects, &is_distributed);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
@@ -1073,6 +1071,12 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
          */
         bzero(&clnt->effects, sizeof(clnt->effects));
         goto done;
+    }
+
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
+        osql_sock_abort(clnt, type);
+        return SQLITE_READONLY;
     }
 
     assert(osql->sock_started);
