@@ -2505,9 +2505,9 @@ REGISTER_TUNABLE("pstack_self", "Dump stack traces on certain slow events.", TUN
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "noleader_retry_duration_ms",
-    "The amount of time in milliseconds that a replicant retries if there isn't a leader. (Default: 50,000)",
+    "The amount of time in milliseconds that a replicant retries if there isn't a leader. (Default: 60,000)",
     TUNABLE_INTEGER, &gbl_noleader_retry_duration_ms, INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("noleader_retry_poll_ms", "Wait this long before retrying on no-leader. (Default: 10)",
+REGISTER_TUNABLE("noleader_retry_poll_ms", "Wait this long before retrying on no-leader. (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_noleader_retry_poll_ms, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2api. (Default: none)", TUNABLE_STRING,
                  &gbl_cdb2api_policy_override, 0, NULL, NULL, NULL, NULL);
