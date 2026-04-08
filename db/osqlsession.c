@@ -777,7 +777,7 @@ done:
     return rc;
 }
 
-int osql_delete_sc_list(uuid_t uuid, tran_type *trans)
+int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *c, int l)
 {
     sc_list_t scl = {0};
 
@@ -785,8 +785,8 @@ int osql_delete_sc_list(uuid_t uuid, tran_type *trans)
 
     int rc = 0;
     uint8_t key[sizeof(int) + sizeof(uuid_t)];
-    uuidstr_t us;
 
+    uuidstr_t us;
     comdb2uuidstr(uuid, us);
 
     osqlcomm_scl_put_key(&scl, key, key + sizeof(key));

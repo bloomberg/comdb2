@@ -1442,6 +1442,7 @@ struct ireq {
     tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
     LISTC_T(struct schema_change_type) scs; /* all schema changes in this txn */
+    uuid_t scs_uuid;                        /* on resume, there is no sorese, but we need to know uuid for scs */
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;

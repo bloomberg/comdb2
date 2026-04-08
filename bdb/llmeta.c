@@ -7070,6 +7070,10 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
 
     buf_get(&type, sizeof(type), p_buf_key, p_buf_end_key);
 
+#ifdef DEBUG_LLMETA
+    fprintf(stderr, "%s: printing type %d\n", __func__, type);
+#endif
+
     switch (type) {
     case LLMETA_FVER_FILE_TYPE_TBL:
     case LLMETA_FVER_FILE_TYPE_IX:

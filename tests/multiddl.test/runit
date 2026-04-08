@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# args
+# <dbname>
+DBN=$1
+
+OUT="run.log"
+C="cdb2sql ${CDB2_OPTIONS} ${DBN} default"
+CT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} default"
+master=`getmaster`
+CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+echo "Inserting the rows"
+echo "Inserting the rows" >> $OUT
+$C "insert into t(a) select * from generate_series(1, 60)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE inserting rows"
+   exit 1
+fi
+
+echo "Slow down the schema change"
+echo "Slow down the schema change" >> $OUT
+$CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+if (( $? != 0 )) ; then
+   echo "FAILURE to setattr sc_force_delay"
+   exit 1
+fi
+$CM "exec procedure sys.cmd.send('scdelay 1000')"
+if (( $? != 0 )) ; then
+   echo "FAILURE to scdelay"
+   exit 1
+fi
+
+echo "Launch first rebuild"
+echo "Launch first rebuild" >> $OUT
+$C "rebuild t" &
+
+sleep 5
+
+echo "checking llmeta for first rebuild"
+echo "checking llmeta for first rebuild" >> $OUT
+$C "exec procedure sys.cmd.send('llmeta list')" | grep "LLMETA_SCHEMACHANGE"  | grep -v "HISTORY">> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to get the llmeta list first"
+   exit 1
+fi
+
+echo "Launch racing rebuild on same table"
+echo "Launch racing rebuild on same table" >> $OUT
+$C "rebuild t"
+if (( $? == 0 )) ; then
+   echo "FAILURE to stop the racing schema chainge"
+   exit 1
+fi
+
+echo "make sure subprocess is gone"
+wait
+
+echo "checking llmeta making sure we do not leak sclist"
+echo "checking llmeta making sure we do not leak sclist" >> $OUT
+$C "exec procedure sys.cmd.send('llmeta list')" | grep "LLMETA_SCHEMACHANGE"  | grep -v "HISTORY">> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to get the llmeta list second"
+   exit 1
+fi
+
+testcase_output=$(cat $OUT)
+expected_output=$(cat output.log)
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+   # print message 
+   echo "  ^^^^^^^^^^^^"
+   echo "The above testcase (${testcase}) has failed!!!" 
+   echo " "
+   echo "Use 'diff <expected-output> <my-output>' to see why:"
+   echo "> diff ${PWD}/{output.log,run.log}"
+   echo " "
+   diff output.log $OUT
+   echo " "
+
+   # quit
+   exit 1
+fi
+
+echo "SUCCESS"

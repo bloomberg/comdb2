@@ -1052,7 +1052,7 @@ extern const uint8_t *osqlcomm_scl_get_key(struct sc_list *scl,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
 extern const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
-extern int osql_delete_sc_list(uuid_t uuid, tran_type *trans);
+extern int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *c, int l);
 
 /**
  * Receive an array of serialized sclists and removes them
@@ -1079,7 +1079,7 @@ int resume_sc_multiddl_scabort(void **keys, int keylen, int num)
         }
         uuidstr_t us;
         comdb2uuidstr(scl.uuid, us);
-        int rc = osql_delete_sc_list(scl.uuid, NULL);
+        int rc = osql_delete_sc_list_int(scl.uuid, NULL, __func__, __LINE__);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to delete sc list uuid %s\n", us);
         } else {
@@ -1138,6 +1138,8 @@ int resume_sc_multiddl(int scabort)
         }
 
         rc = resume_sc_multiddl_txn(&scl);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rc);
 
         free(scl.offsets);
         free(scl.ser_scs);

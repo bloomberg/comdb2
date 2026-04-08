@@ -1283,6 +1283,9 @@ int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
     struct schema_change_type *sc, *tmp;
     int rc = 0;
 
+    /* save this in iq for early sc aborts */
+    comdb2uuidcpy(iq->scs_uuid, uuid);
+
     /* run the asynchronous (do_XX) part of the schema changes */
     LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk) {
         iq->sc = sc;
@@ -1554,9 +1557,6 @@ abort_sc:
         trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
         iq->sc_logical_tran = NULL;
     }
-
-    /* postabort has not osqlsession, so we need to delete scl here */
-    rc = osql_delete_sc_list(uuid, NULL);
 
     osql_postabort_handle(iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
