@@ -2,6 +2,12 @@
 
 ## Questions / Decisions
 
+### Thursday, April 6th, 2026
+
+- [ ] `src/analyze.c`: `analyzeOneTable()` calls `statInit()` via generated
+  VDBE. The order of arguments has changed, go back to `statInit()` and see
+  if we need to modify it or the caller.
+
 ### Wednesday, April 2nd, 2026
 
 - [x] `src/where.c`: had to relocate patch to track dropped tables, the "omit
