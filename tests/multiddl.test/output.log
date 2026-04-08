@@ -1,0 +1,10 @@
+Inserting the rows
+(rows inserted=60)
+Slow down the schema change
+Launch first rebuild
+checking llmeta for first rebuild
+(out='LLMETA_SCHEMACHANGE_STATUS_V2')
+(out='LLMETA_SCHEMACHANGE_LIST:')
+Launch racing rebuild on same table
+checking llmeta making sure we do not leak sclist
+(out='LLMETA_SCHEMACHANGE_STATUS_V2')
