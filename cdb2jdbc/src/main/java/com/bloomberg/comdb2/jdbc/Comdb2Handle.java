@@ -25,7 +25,6 @@ import com.bloomberg.comdb2.jdbc.Cdb2Query.*;
 import com.bloomberg.comdb2.jdbc.Constants.*;
 import com.bloomberg.comdb2.jdbc.Sqlquery.*;
 import com.bloomberg.comdb2.jdbc.Sqlresponse.*;
-import org.slf4j.event.Level;
 
 /**
  * A Java implementation of Mohit's C API.
@@ -35,6 +34,7 @@ import org.slf4j.event.Level;
  */
 public class Comdb2Handle extends AbstractConnection {
     private static Logger logger = LoggerFactory.getLogger(Comdb2Handle.class);
+    private enum Level { TRACE, DEBUG, WARN }
 
     static int POLICY_RANDOMROOM = 1;
     static int POLICY_RANDOM = 2;
@@ -455,7 +455,14 @@ public class Comdb2Handle extends AbstractConnection {
     // Add td info to the beginning of the string
     private void tdlog(Level level, String str, Object... params) {
         /* Fast return if the level is not loggable. */
-        if (!logger.isEnabledForLevel(level) && !debug)
+        boolean enabled;
+        switch (level) {
+            case TRACE: enabled = logger.isTraceEnabled(); break;
+            case DEBUG: enabled = logger.isDebugEnabled(); break;
+            case WARN:  enabled = logger.isWarnEnabled();  break;
+            default:    enabled = false;
+        }
+        if (!enabled && !debug)
             return;
 
         String mach = "(not-connected)";
@@ -472,9 +479,12 @@ public class Comdb2Handle extends AbstractConnection {
                 stringCnonce,
                 message
         };
-        logger.atLevel(level).log(
-                "td={} mach={} snapshotFile={} snapshotOffset={} cnonce={}: {}",
-                messageParams);
+        String fmt = "td={} mach={} snapshotFile={} snapshotOffset={} cnonce={}: {}";
+        switch (level) {
+            case TRACE: logger.trace(fmt, messageParams); break;
+            case DEBUG: logger.debug(fmt, messageParams); break;
+            case WARN:  logger.warn(fmt, messageParams);  break;
+        }
 
         if (debug) {
             MessageFormat form = new MessageFormat("td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}");

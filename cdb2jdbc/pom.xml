@@ -26,7 +26,7 @@ limitations under the License. -->
     <maven-dependency-plugin.version>2.10</maven-dependency-plugin.version>
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
     <protobuf-java.version>3.25.7</protobuf-java.version>
-    <slf4j.version>2.0.17</slf4j.version>
+    <slf4j.version>1.7.36</slf4j.version>
   </properties>
   <dependencies>
     <dependency>
