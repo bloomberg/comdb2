@@ -20,19 +20,19 @@ function check {
 }
 
 
-#####################
-## RUN WITHOUT FIX ##
-#####################
+########################################
+## RUN WITHOUT FIX EXPLICITLY ENABLED ##
+########################################
 echo 'comdb2_config:check_hb_on_blocked_write=0' >> ${cfg}
 ${chunk} ${dbname} ${tier} ${total}
-if [[ $? -eq 0 ]]; then
-    echo >&2 'Tunabled disabled - test expected to fail'
+if [[ $? -ne 0 ]]; then
+    echo >&2 'Tunabled always enabled for chunks - test expected to work'
     echo >&2 'chunk - fail'
     exit 1
 fi
 
 check
-if [[ $? -eq 0 ]]; then
+if [[ $? -ne 0 ]]; then
     cat >&2 ${cfg}
     echo >&2 "count:${count} (expected:${total})  min:${min} (expected:0)  max:${max} (expected:${expected_max})"
     echo >&2 'chunk - fail'
