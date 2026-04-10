@@ -51,8 +51,15 @@ public class Comdb2ClientInfo {
         driverName = name;
         driverVersion = version;
     }
-    
+
+    public static String getJavaHome() {
+        return System.getProperty("java.home");
+    }
+
+    @Deprecated
     public static String getCallerClass() {
+        logger.warn("getCallerClass() is deprecated and will be removed in a future version");
+
         String pkg = Comdb2ClientInfo.class.getPackage().getName() + ".";
         StackTraceElement[] stes = Thread.currentThread().getStackTrace();
         for (int i = 1, len = stes.length; i < len; ++i) {

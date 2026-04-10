@@ -691,7 +691,7 @@ public class Comdb2Handle extends AbstractConnection {
 
         if (!sentClientInfo) {
             sqlQuery.cinfo = new Cdb2ClientInfo();
-            sqlQuery.cinfo.argv0 = Comdb2ClientInfo.getCallerClass();
+            sqlQuery.cinfo.argv0 = Comdb2ClientInfo.getJavaHome();
             sqlQuery.cinfo.stack = Comdb2ClientInfo.getCallStack(32);
             sqlQuery.cinfo.api_driver_name = Comdb2ClientInfo.getDriverName();
             sqlQuery.cinfo.api_driver_version = Comdb2ClientInfo.getDriverVersion();
