@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# bdb_blkseq_clean_int drops the blkseq mutex before calling DB_FIRST on
+# a log cursor. If log deletion removes the first log file during that
+# window, DB_FIRST fails. The fix handles this gracefully instead of
+# returning an error.
+#
+# Two error codes can occur:
+#   rc=2      (ENOENT)       — log file deleted before open
+#   rc=-30990 (DB_NOTFOUND)  — log file truncated/empty, EOF at offset 0
+#
+# Strategy: use the smallest possible log files (256KB), aggressive
+# deletion (min_keep_logs=2, LOGDELETE_RUN_INTERVAL=1), a single blkseq
+# stripe, and multiple concurrent insert threads to maximize the number
+# of log rotations and blkseq cleanup cycles per second — giving the
+# race the best chance to trigger naturally. A background truncation
+# loop repeatedly truncates the oldest log file to trigger DB_NOTFOUND.
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+dbname=$1
+
+if [[ -z "$dbname" ]]; then
+    echo "dbname missing"
+    exit 1
+fi
+
+function failexit
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+STOPFILE=${TMPDIR}/blkseq_logdel_stop.$$
+
+function background_load
+{
+    while [[ ! -f $STOPFILE ]]; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+            "insert into t1 select * from generate_series(1, 500)" >/dev/null 2>&1
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+            "exec procedure sys.cmd.send('pushnext')" >/dev/null 2>&1
+    done
+}
+
+# Repeatedly truncate the oldest log file to trigger DB_NOTFOUND.
+# DB_FIRST will find the file (it exists) but read EOF at offset 0.
+function truncate_loop
+{
+    local logdir=$1
+    while [[ ! -f $STOPFILE ]]; do
+        oldest=$(ls ${logdir}/log.* 2>/dev/null | sort | head -1)
+        if [[ -n "$oldest" ]]; then
+            : > "$oldest"
+        fi
+        sleep 0.5
+    done
+}
+
+check_logs()
+{
+    local log=$1
+    if [[ -f "$log" ]]; then
+        if grep -q "\[ERROR\].*couldn't retrieve first log-record" "$log"; then
+            echo "Found blkseq log-record error in $log"
+            grep "\[ERROR\].*couldn't retrieve first log-record" "$log"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Create a table for generating blkseq entries
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1(a int)" || \
+    failexit "create table"
+
+# Phase 1: Seed blkseq entries and rotate logs
+for i in $(seq 1 5); do
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+        "insert into t1 select * from generate_series(1, 500)" >/dev/null 2>&1
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+        "exec procedure sys.cmd.send('pushnext')" >/dev/null 2>&1
+done
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+    "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
+
+echo "Phase 1 done: initial data inserted, logs rotated"
+
+# Phase 2: Wait for blkseq cleanup to roll slot 0 -> slot 1
+sleep 3
+
+echo "Phase 2 done: waited for blkseq roll"
+
+# Phase 3: Launch concurrent insert threads and a truncation loop.
+# The inserts keep blkseq entries flowing (slot 0 fills, rolls to slot 1,
+# cleanup checks DB_FIRST). The truncation loop keeps the oldest log file
+# empty so DB_FIRST hits EOF -> DB_NOTFOUND.
+NWRITERS=8
+for i in $(seq 1 $NWRITERS); do
+    background_load &
+done
+
+truncate_loop ${TESTDIR}/${DBNAME}/logs &
+
+sleep 60
+
+touch $STOPFILE
+wait 2>/dev/null
+rm -f $STOPFILE
+
+echo "Phase 3 done: load + truncation finished"
+
+# Check for ERROR-level messages
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        check_logs ${TESTDIR}/logs/${DBNAME}.${node}.db || \
+            failexit "blkseq cleanup race produced error messages"
+    done
+else
+    check_logs ${TESTDIR}/logs/${DBNAME}.db || \
+        failexit "blkseq cleanup race produced error messages"
+fi
+
+echo "Success"
+exit 0
