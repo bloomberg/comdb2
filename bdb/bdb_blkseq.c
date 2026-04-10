@@ -484,17 +484,24 @@ static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
         Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
 
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: couldn't retrieve first log-record, rc=%d\n",
-                    __func__, rc);
-            rc = BDBERR_MISC;
-            goto done;
+            /* Race with log deletion: the first log file was removed between
+             * cursor creation and DB_FIRST. If the oldest log is gone, the
+             * logs referenced by blkseq[1] are certainly gone too — safe to
+             * proceed with cleanup. */
+            logmsg(LOGMSG_DEBUG,
+                   "%s: couldn't retrieve first log-record, rc=%d, "
+                   "proceeding with blkseq cleanup\n",
+                   __func__, rc);
+            if (logdta.data)
+                free(logdta.data);
+            rc = 0;
+        } else {
+            if (logdta.data)
+                free(logdta.data);
+
+            if (lsn.file <= bdb_state->blkseq_last_lsn[1][stripe].file)
+                goto done;
         }
-
-        if (logdta.data)
-            free(logdta.data);
-
-        if (lsn.file <= bdb_state->blkseq_last_lsn[1][stripe].file)
-            goto done;
     }
 
     /* create a new db first */

@@ -1,0 +1,22 @@
+# Aggressive blkseq cleanup (1 second max age)
+private_blkseq_maxage 1
+
+# Single stripe to concentrate all cleanup on one path
+setattr PRIVATE_BLKSEQ_STRIPES 1
+
+# Check for deleteable logs every second
+setattr LOGDELETE_RUN_INTERVAL 1
+
+# Keep as few log files as possible
+min_keep_logs 2
+
+# Smallest possible log files to maximize rotation frequency
+# LOGFILESIZE must be >= 4 * LOGMEMSIZE
+setattr LOGMEMSIZE 65536
+setattr LOGFILESIZE 262144
+
+# Enable debug logging for log deletion
+setattr DEBUG_LOG_DELETION 1
+
+# Commit should force log to be synced to disk
+setattr SYNCTRANSACTIONS 1
