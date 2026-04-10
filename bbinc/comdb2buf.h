@@ -92,6 +92,11 @@ int CDB2BUF_FUNC(cdb2buf_close)(COMDB2BUF *sb);
 int CDB2BUF_FUNC(cdb2buf_free)(COMDB2BUF *sb);
 #define cdb2buf_free CDB2BUF_FUNC(cdb2buf_free)
 
+/* flush output.  returns # of bytes written or <0 for error. If timeout_error is not NULL, it will be set to 1 if a
+ * timeout occurred */
+int CDB2BUF_FUNC(cdb2buf_flush_chk_timeout)(COMDB2BUF *sb, int *timeout_error);
+#define cdb2buf_flush_chk_timeout CDB2BUF_FUNC(cdb2buf_flush_chk_timeout)
+
 /* flush output.  returns # of bytes written or <0 for error */
 int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb);
 #define cdb2buf_flush CDB2BUF_FUNC(cdb2buf_flush)
