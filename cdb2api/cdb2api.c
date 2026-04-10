@@ -4783,24 +4783,15 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     if (rc != len)
         debugprint("cdb2buf_write rc = %d (len = %d)\n", rc, len);
 
-    struct timeval start;
-    if (check_hb_on_blocked_write)
-        gettimeofday(&start, NULL);
+    // Always enable for chunk transactions
+    int check_hb_on_blocked_write_final = (check_hb_on_blocked_write || (hndl && hndl->is_chunk != CHUNK_NO));
+    int timeout_error = 0;
+    rc = cdb2buf_flush_chk_timeout(sb, &timeout_error);
 
-    rc = cdb2buf_flush(sb);
-
-    if (check_hb_on_blocked_write && rc < 0) {
-        // Failed writing to server. Don't know if cdb2buf_flush failed due to
-        // a timeout. Make a best effort guess:
-        struct timeval end;
-        gettimeofday(&end, NULL);
-        int64_t end_us = end.tv_sec * 1000000 + end.tv_usec;
-        int64_t start_us = start.tv_sec * 1000000 + start.tv_usec;
-        int64_t elapsed_us = end_us - start_us;
-        if (!is_begin && hndl && !hndl->is_read && hndl->in_trans && hndl->socket_timeout &&
-            elapsed_us >= (hndl->socket_timeout * 1000)) {
-            rc = wait_for_write(sb, hndl, event_hndl);
-        }
+    // Failed writing to server due to a timeout
+    if (check_hb_on_blocked_write_final && timeout_error && !is_begin && hndl && !hndl->is_read && hndl->in_trans &&
+        hndl->socket_timeout) {
+        rc = wait_for_write(sb, hndl, event_hndl);
     }
 
     if (rc < 0) {
