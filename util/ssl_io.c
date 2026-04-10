@@ -122,7 +122,7 @@ int CDB2BUF_FUNC(sslio_has_x509)(COMDB2BUF *sb)
     return (sb != NULL && sb->cert != NULL);
 }
 
-static int sslio_pollin(COMDB2BUF *sb)
+static int sslio_pollin(COMDB2BUF *sb, int *timeout_error)
 {
     int rc;
     struct pollfd pol;
@@ -138,6 +138,8 @@ static int sslio_pollin(COMDB2BUF *sb)
     } while (rc == -1 && errno == EINTR);
 
     if (rc <= 0) { /* timedout or error. */
+        if (timeout_error && rc == 0)
+            *timeout_error = 1;
         ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "failed to poll rc %d errno %d", rc, errno);
         return rc;
     }
@@ -151,7 +153,7 @@ static int sslio_pollin(COMDB2BUF *sb)
     return 1;
 }
 
-static int sslio_pollout(COMDB2BUF *sb)
+static int sslio_pollout(COMDB2BUF *sb, int *timeout_error)
 {
     int rc;
     struct pollfd pol;
@@ -164,6 +166,8 @@ static int sslio_pollout(COMDB2BUF *sb)
     } while (rc == -1 && errno == EINTR);
 
     if (rc <= 0) { /* timedout or error. */
+        if (timeout_error && rc == 0)
+            *timeout_error = 1;
         ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "failed to poll rc %d errno %d", rc, errno);
         return rc;
     }
@@ -359,7 +363,7 @@ re_accept_or_connect:
             /* This forces an incomplete SSL handshake */
             if (!fail_ssl_poll) {
 #endif
-                rc = sslio_pollin(sb);
+                rc = sslio_pollin(sb, NULL);
                 if (rc > 0)
                     goto re_accept_or_connect;
 #ifdef CDB2API_TEST
@@ -368,7 +372,7 @@ re_accept_or_connect:
             sb->protocolerr = 0;
             break;
         case SSL_ERROR_WANT_WRITE: /* Renegotiate */
-            rc = sslio_pollout(sb);
+            rc = sslio_pollout(sb, NULL);
             if (rc > 0)
                 goto re_accept_or_connect;
             sb->protocolerr = 0;
@@ -432,7 +436,7 @@ int CDB2BUF_FUNC(sslio_read)(COMDB2BUF *sb, char *cc, int len)
 
 reread:
     ERR_clear_error();
-    n = wantread ? sslio_pollin(sb) : sslio_pollout(sb);
+    n = wantread ? sslio_pollin(sb, NULL) : sslio_pollout(sb, NULL);
     if (n <= 0)
         return n;
 
@@ -456,7 +460,7 @@ reread:
     return n;
 }
 
-int CDB2BUF_FUNC(sslio_write)(COMDB2BUF *sb, const char *cc, int len)
+int CDB2BUF_FUNC(sslio_write)(COMDB2BUF *sb, const char *cc, int len, int *timeout_error)
 {
     int n, ioerr, wantwrite;
 
@@ -464,7 +468,7 @@ int CDB2BUF_FUNC(sslio_write)(COMDB2BUF *sb, const char *cc, int len)
 
 rewrite:
     ERR_clear_error();
-    n = wantwrite ? sslio_pollout(sb) : sslio_pollin(sb);
+    n = wantwrite ? sslio_pollout(sb, timeout_error) : sslio_pollin(sb, timeout_error);
     if (n <= 0)
         return n;
 
@@ -506,10 +510,10 @@ int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *sb, int wait_for_peer)
             ioerr = SSL_get_error(sb->ssl, rc);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
-                rc = sslio_pollin(sb);
+                rc = sslio_pollin(sb, NULL);
                 break;
             case SSL_ERROR_WANT_WRITE:
-                rc = sslio_pollout(sb);
+                rc = sslio_pollout(sb, NULL);
                 break;
             default:
                 rc = -1;

@@ -148,7 +148,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
 
-static int net_writes(COMDB2BUF *sb, const char *buf, int nbytes);
+static int net_writes(COMDB2BUF *sb, const char *buf, int nbytes, int *timeout_error);
 static int net_reads(COMDB2BUF *sb, char *buf, int nbytes);
 
 static watchlist_node_type *get_watchlist_node(COMDB2BUF *, const char *funcname);
@@ -2695,14 +2695,14 @@ static watchlist_node_type *get_watchlist_node(COMDB2BUF *sb, const char *funcna
     }
 }
 
-static int net_writes(COMDB2BUF *sb, const char *buf, int nbytes)
+static int net_writes(COMDB2BUF *sb, const char *buf, int nbytes, int *timeout_error)
 {
     int outrc;
     watchlist_node_type *watchlist_node = get_watchlist_node(sb, __func__);
     if (!watchlist_node)
         return -1;
     watchlist_node->write_age = comdb2_time_epoch();
-    outrc = watchlist_node->writefn(sb, buf, nbytes);
+    outrc = watchlist_node->writefn(sb, buf, nbytes, timeout_error);
     watchlist_node->write_age = 0;
     return outrc;
 }

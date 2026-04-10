@@ -64,7 +64,7 @@ enum CDB2BUF_FLAGS {
 };
 
 typedef int (*cdb2buf_readfn)(COMDB2BUF *sb, char *buf, int nbytes);
-typedef int (*cdb2buf_writefn)(COMDB2BUF *sb, const char *buf, int nbytes);
+typedef int (*cdb2buf_writefn)(COMDB2BUF *sb, const char *buf, int nbytes, int *timeout_error);
 
 /* retrieve underlying fd */
 int CDB2BUF_FUNC(cdb2buf_fileno)(COMDB2BUF *sb);
@@ -91,6 +91,11 @@ int CDB2BUF_FUNC(cdb2buf_close)(COMDB2BUF *sb);
 /* flush output, close fd, and free COMDB2BUF.*/
 int CDB2BUF_FUNC(cdb2buf_free)(COMDB2BUF *sb);
 #define cdb2buf_free CDB2BUF_FUNC(cdb2buf_free)
+
+/* flush output.  returns # of bytes written or <0 for error. If timeout_error is not NULL, it will be set to 1 if a
+ * timeout occurred */
+int CDB2BUF_FUNC(cdb2buf_flush_chk_timeout)(COMDB2BUF *sb, int *timeout_error);
+#define cdb2buf_flush_chk_timeout CDB2BUF_FUNC(cdb2buf_flush_chk_timeout)
 
 /* flush output.  returns # of bytes written or <0 for error */
 int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb);

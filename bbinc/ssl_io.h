@@ -32,7 +32,7 @@ void CDB2BUF_FUNC(sslio_free)(COMDB2BUF *);
 
 int CDB2BUF_FUNC(sslio_read)(COMDB2BUF *, char *cc, int len);
 #define sslio_read CDB2BUF_FUNC(sslio_read)
-int CDB2BUF_FUNC(sslio_write)(COMDB2BUF *, const char *cc, int len);
+int CDB2BUF_FUNC(sslio_write)(COMDB2BUF *, const char *cc, int len, int *timeout_error);
 #define sslio_write CDB2BUF_FUNC(sslio_write)
 
 /* Return the associated SSL object. */

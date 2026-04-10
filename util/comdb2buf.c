@@ -188,10 +188,11 @@ int CDB2BUF_FUNC(cdb2buf_close)(COMDB2BUF *sb)
     return cdb2buf_free(sb);
 }
 
-/* flush output */
-int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb)
+int CDB2BUF_FUNC(cdb2buf_flush_chk_timeout)(COMDB2BUF *sb, int *timeout_error)
 {
     int cnt = 0, rc, len;
+    if (timeout_error)
+        *timeout_error = 0;
 
     if (sb == 0)
         return -1;
@@ -206,17 +207,18 @@ int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb)
         void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
-        rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len);
+        rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len, timeout_error);
         if (rc == 0 && sb->ssl != ssl) {
             /* Fall back to plaintext if client donates
                the socket to sockpool. */
             goto ssl_downgrade;
         }
 #else
-        rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len);
+        rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len, timeout_error);
 #endif
-        if (rc <= 0)
+        if (rc <= 0) {
             return -1 + rc;
+        }
         cnt += rc;
         sb->wtl += rc;
         if (sb->wtl >= sb->lbuf)
@@ -226,6 +228,12 @@ ssl_downgrade:
     /* this reduces fragmentation for Nagle-disabled sockets*/
     sb->whd = sb->wtl = 0;
     return cnt;
+}
+
+/* flush output */
+int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb)
+{
+    return cdb2buf_flush_chk_timeout(sb, NULL);
 }
 
 int CDB2BUF_FUNC(cdb2buf_putc)(COMDB2BUF *sb, char c)
@@ -536,7 +544,7 @@ int CDB2BUF_FUNC(cdb2buf_printfx)(COMDB2BUF *sb, char *buf, int lbuf, char *fmt,
 
 /* default read/write functions for sbuf, which implement timeouts and
  * retry on EINTR. */
-static int swrite_unsecure(COMDB2BUF *sb, const char *cc, int len)
+static int swrite_unsecure(COMDB2BUF *sb, const char *cc, int len, int *timeout_error)
 {
     int rc;
     struct pollfd pol;
@@ -550,8 +558,11 @@ static int swrite_unsecure(COMDB2BUF *sb, const char *cc, int len)
             rc = poll(&pol, 1, sb->writetimeout);
         } while (rc == -1 && errno == EINTR);
 
-        if (rc <= 0)
+        if (rc <= 0) {
+            if (timeout_error && rc == 0)
+                *timeout_error = 1;
             return rc; /*timed out or error*/
+        }
         if ((pol.revents & POLLOUT) == 0)
             return -100000 + pol.revents;
         /*can write*/
@@ -564,13 +575,13 @@ static int swrite_unsecure(COMDB2BUF *sb, const char *cc, int len)
     return write(sb->fd, cc, len);
 }
 
-static int swrite(COMDB2BUF *sb, const char *cc, int len)
+static int swrite(COMDB2BUF *sb, const char *cc, int len, int *timeout_error)
 {
     int rc;
     if (sb->ssl == NULL)
-        rc = swrite_unsecure(sb, cc, len);
+        rc = swrite_unsecure(sb, cc, len, timeout_error);
     else
-        rc = sslio_write(sb, cc, len);
+        rc = sslio_write(sb, cc, len, timeout_error);
     return rc;
 }
 
