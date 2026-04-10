@@ -27,10 +27,10 @@ On every machine in the cluster:
 
 2. Install prerequisites: 
    
-   **Debian/Ubuntu**
+   **Debian-based systems**
         
    ```
-   sudo apt-get install -y  \
+   sudo apt install         \
        bison                \
        build-essential      \
        cmake                \
@@ -49,16 +49,10 @@ On every machine in the cluster:
        zlib1g-dev
    ```
 
-   **CentOS 7/8**
-
-   On CentOS 8, enable the PowerTools repository first:
+   **RPM-based systems**
 
    ```
-   dnf config-manager --set-enabled powertools
-   ```
-
-   ```
-   yum install -y       \
+   dnf install          \
        byacc            \
        cmake            \
        epel-release     \
@@ -89,7 +83,7 @@ On every machine in the cluster:
        zlib-devel
    ```
 
-   **macOS High Sierra (experimental)**
+   **macOS (experimental)**
 
    Install Xcode and Homebrew. Then install required libraries:
 
