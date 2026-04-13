@@ -324,6 +324,8 @@
 (name='emptystrnum', description='Empty strings don't convert to numbers', type='BOOLEAN', value='ON', read_only='N')
 (name='enable_2pc', description='Enable 2pc fdb transactions.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='enable_berkdb_retry_deadlock_bias', description='', type='BOOLEAN', value='OFF', read_only='Y')
+(name='enable_bulk_import', description='Enable bulk import. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='enable_bulk_import_different_tables', description='Enable bulk import across tables with different names. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='enable_cache_internal_nodes', description='B-tree internal nodes have a higher cache priority. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='enable_datetime_ms_us_sc', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='enable_datetime_promotion', description='', type='BOOLEAN', value='ON', read_only='Y')
