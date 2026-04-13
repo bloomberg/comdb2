@@ -353,6 +353,48 @@ function test_bad_inputs_with_werror() {
 	)
 }
 
+function test_bulk_import_not_enabled() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=foo rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		set_dst_tunable "enable_bulk_import 0"
+
+		trap "set_dst_tunable 'enable_bulk_import 1';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" 2>&1)
+
+		# Then
+		echo "DEBUG: err=$err"
+		(( $? != 0 )) 
+		echo $err | grep "bulk import is not enabled"
+	)
+}
+
+function test_different_tables_not_enabled() {
+	(
+		# Given
+		local src_tbl=foo dst_tbl=bar rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema $src_tbl $dst_tbl > /dev/null
+		set_dst_tunable "enable_bulk_import_different_tables 0"
+
+		trap "set_dst_tunable 'enable_bulk_import_different_tables 1';
+			query_src_db 'drop table $src_tbl';
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		err=$(query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" 2>&1)
+
+		# Then
+		echo "DEBUG: err=$err"
+		(( $? != 0 )) 
+		echo $err | grep "import across different table names not enabled"
+	)
+}
+
 function test_resume_is_blocked() {
 	(
 		# Given
@@ -434,7 +476,14 @@ function main() {
 	fi
 
 	set_src_tunable "semver 8.1.0"
+	query_src_db "exec procedure sys.cmd.send('logmsg level debug')"
 	set_dst_tunable "semver 8.1.0"
+	query_dst_db "exec procedure sys.cmd.send('logmsg level debug')"
+
+	set_src_tunable "enable_bulk_import 1"
+	set_dst_tunable "enable_bulk_import 1"
+	set_src_tunable "enable_bulk_import_different_tables 1"
+	set_dst_tunable "enable_bulk_import_different_tables 1"
 
 	for testcase in $tests;
 	do
