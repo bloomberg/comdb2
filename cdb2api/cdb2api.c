@@ -1754,8 +1754,7 @@ static int *cdb2_room_distance = NULL;
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
-                              int *dbname_found, int *comdb2db_found, int *stack_at_open, char shards[][DBNAME_LEN],
-                              int *num_shards)
+                              int *dbname_found, int *comdb2db_found, char shards[][DBNAME_LEN], int *num_shards)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
@@ -2048,15 +2047,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                     }
                     free(libs);
                 }
-            } else if (strcasecmp("stack_at_open", tok) == 0 && stack_at_open) {
-                tok = strtok_r(NULL, " :,", &last);
-                if (tok) {
-                    if (strncasecmp(tok, "true", 4) == 0) {
-                        *stack_at_open = 1;
-                    } else {
-                        *stack_at_open = 0;
-                    }
-                }
             } else if (!cdb2_get_dbinfo_set_from_env && (strcasecmp("get_dbinfo_v3", tok) == 0)) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
@@ -2272,19 +2262,18 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         *num_db_hosts = 0;
     if (num_shards)
         *num_shards = 0;
-    int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
 #ifdef CDB2API_TEST
     if (cdb2cfg_override_all_config_paths) {
         if ((s = cdb2_cdb2buf_openread(cdb2dbconfig_singleconfig)) != NULL) {
             read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
             cdb2buf_close(s);
         }
 
         if ((s = cdb2_cdb2buf_openread(cdb2dbconfig_singleconfig)) != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
             cdb2buf_close(s);
         }
 
@@ -2299,7 +2288,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 #ifdef CDB2API_TEST
         if ((s = cdb2_cdb2buf_openread(cdb2api_test_comdb2db_cfg)) != NULL) {
             read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
             cdb2buf_close(s);
             fallback_on_bb_bin = 0;
         } else
@@ -2307,13 +2296,12 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 
             if (CDB2DBCONFIG_BUF != NULL) {
                 read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF, comdb2db_hosts, num_hosts, comdb2db_num,
-                                  dbname, db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack,
-                                  shards, num_shards);
+                                  dbname, db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards,
+                                  num_shards);
                 fallback_on_bb_bin = 0;
             } else if (*CDB2DBCONFIG_NOBBENV != '\0' && (s = cdb2_cdb2buf_openread(CDB2DBCONFIG_NOBBENV)) != NULL) {
                 read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
-                                  num_shards);
+                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
                 cdb2buf_close(s);
                 fallback_on_bb_bin = 0;
             }
@@ -2326,8 +2314,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         if (fallback_on_bb_bin) {
             if ((s = cdb2_cdb2buf_openread(CDB2DBCONFIG_TEMP_BB_BIN)) != NULL) {
                 read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
-                                  num_shards);
+                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
                 cdb2buf_close(s);
             }
         }
@@ -2335,7 +2322,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
 #ifdef CDB2API_TEST
         if ((s = cdb2_cdb2buf_openread(cdb2api_test_dbname_cfg)) != NULL) {
             read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards, num_shards);
+                              num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
             cdb2buf_close(s);
         } else
 #endif /* CDB2API_TEST */
@@ -2343,14 +2330,12 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
             if (get_config_file(dbname, filename, sizeof(filename), 0) == 0 &&
                 (s = cdb2_cdb2buf_openread(filename)) != NULL) {
                 read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
-                                  num_shards);
+                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
                 cdb2buf_close(s);
             } else if (get_config_file(dbname, filename, sizeof(filename), 1) == 0 &&
                        (s = cdb2_cdb2buf_openread(filename)) != NULL) {
                 read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
-                                  num_shards);
+                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
                 cdb2buf_close(s);
             }
 
@@ -2358,8 +2343,7 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
         if (CDB2DBCONFIG_ADDL_PATH[0] != '\0') {
             if ((s = cdb2_cdb2buf_openread(CDB2DBCONFIG_ADDL_PATH)) != NULL) {
                 read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, send_stack, shards,
-                                  num_shards);
+                                  db_hosts, num_db_hosts, dbnum, &dbname_found, &comdb2db_found, shards, num_shards);
                 cdb2buf_close(s);
             }
             CDB2DBCONFIG_ADDL_PATH[0] = '\0';
@@ -4633,8 +4617,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         cinfo.argv0 = _ARGV0;
         cinfo.api_driver_name = api_driver_name;
         cinfo.api_driver_version = api_driver_version;
-        if (hndl && hndl->send_stack)
-            cinfo.stack = hndl->stack;
         sqlquery.client_info = &cinfo;
         if (hndl)
             hndl->sent_client_info = 1;
@@ -6418,7 +6400,7 @@ read_record:
 
             /* Decrement retry counter: It is not a real retry. */
             --retries_done;
-            /* Resend client info (argv0, cheapstack and etc.)
+            /* Resend client info (argv0, etc.)
                over the SSL connection. */
             hndl->sent_client_info = 0;
             GOTO_RETRY_QUERIES();
@@ -8895,8 +8877,6 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-int comdb2_cheapstack_char_array(char *str, int maxln);
-
 int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
               int flags)
 {
@@ -8916,7 +8896,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
-    hndl->send_stack = 0;
     hndl->read_intrans_results = 1;
     hndl->is_admin = (flags & CDB2_ADMIN);
     hndl->is_tagged = (flags & CDB2_SET_TAGGED);
@@ -9097,9 +9076,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             }
         }
     }
-
-    if (hndl->send_stack)
-        comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
 
     if (rc == 0) {
         rc = refresh_gbl_events_on_hndl(hndl);
