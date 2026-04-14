@@ -34,8 +34,6 @@
 
 #define CDB2HOSTNAME_LEN 128
 
-#define MAX_STACK 512 /* Size of call-stack which opened the handle */
-
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
 #include "cdb2api.h"
@@ -217,8 +215,6 @@ struct cdb2_hndl {
 
     /* X509 attribute to check database name against */
     int nid_dbname;
-    char stack[MAX_STACK];
-    int send_stack;
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
 
     /* per handle iaaap::IIdentity */
