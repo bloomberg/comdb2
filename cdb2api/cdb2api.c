@@ -4793,7 +4793,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         int64_t end_us = end.tv_sec * 1000000 + end.tv_usec;
         int64_t start_us = start.tv_sec * 1000000 + start.tv_usec;
         int64_t elapsed_us = end_us - start_us;
-        if (!is_begin && !hndl->is_read && hndl->in_trans && hndl->socket_timeout &&
+        if (!is_begin && hndl && !hndl->is_read && hndl->in_trans && hndl->socket_timeout &&
             elapsed_us >= (hndl->socket_timeout * 1000)) {
             rc = wait_for_write(sb, hndl, event_hndl);
         }
