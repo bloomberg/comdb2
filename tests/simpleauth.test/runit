@@ -19,11 +19,25 @@ MARK="bpi:procauth:cluster:test:user:mk:bpkg:myapp"
 passed=0
 failed=0
 
+set_tunable_all_nodes() {
+    local tunable="$1"
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER; do
+            ${CDB2SQL_EXE} --admin ${CDB2_OPTIONS} --host $node ${dbnm} "put tunable $tunable" > /dev/null 2>&1
+        done
+    else
+        ${CDB2SQL_EXE} --admin ${CDB2_OPTIONS} ${dbnm} default "put tunable $tunable" > /dev/null 2>&1
+    fi
+}
+
 run_expect_success() {
     local principal="$1"
-    local sql="$2"
-    local desc="$3"
-    if $SA "$principal" "$sql" > /dev/null 2>&1; then
+    shift
+    # Last argument is the description, everything else is SQL
+    local args=("$@")
+    local desc="${args[-1]}"
+    unset 'args[-1]'
+    if $SA "$principal" "${args[@]}" > /dev/null 2>&1; then
         echo "  PASS: $desc"
         passed=$((passed + 1))
     else
@@ -34,9 +48,12 @@ run_expect_success() {
 
 run_expect_failure() {
     local principal="$1"
-    local sql="$2"
-    local desc="$3"
-    if $SA "$principal" "$sql" > /dev/null 2>&1; then
+    shift
+    # Last argument is the description, everything else is SQL
+    local args=("$@")
+    local desc="${args[-1]}"
+    unset 'args[-1]'
+    if $SA "$principal" "${args[@]}" > /dev/null 2>&1; then
         echo "  FAIL: $desc (expected failure but succeeded)"
         failed=$((failed + 1))
     else
@@ -96,35 +113,37 @@ run_expect_success "$OP" "delete from comdb2_simple_auth where user = 'op' or us
     "clean up user-specific rules"
 
 #---------------------------------------------------------------
-echo "Test: verb-specific permissions (Read vs Write)"
+echo "Test: dryrun vtab access does not pollute error state"
 #---------------------------------------------------------------
-# Grant op access to auth table before removing wildcard
+# Turn off vtab_externalauth so vtab checks run in dryrun mode.
+# Remove the wildcard so the dryrun check will encounter a denial.
+# Then on the same connection: access a CDB2_STRICT vtab (denied
+# in dryrun, but allowed) followed by a normal write.  If the
+# dryrun denial leaks errstat into osql.xerr the write will fail.
 run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
-    "grant op write on auth table"
+    "grant op write on auth table (dryrun test)"
 run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
-    "grant op read on auth table"
+    "grant op read on auth table (dryrun test)"
 run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
-    "remove wildcard rule"
-
-# mk gets Read-only on t1
-run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Read', 'table', 't1') on conflict do nothing" \
-    "add mk Read rule for t1"
-run_expect_success "$MARK" "select * from t1" \
-    "mk can read t1"
-run_expect_failure "$MARK" "insert into t1 values(2)" \
-    "mk cannot write t1 (no Write rule)"
-
-# Now grant mk Write
-run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Write', 'table', 't1') on conflict do nothing" \
-    "add mk Write rule for t1"
-run_expect_success "$MARK" "insert into t1 values(2)" \
-    "mk can write t1 (Write rule added)"
-
+    "remove wildcard rule (dryrun test)"
+set_tunable_all_nodes "vtab_externalauth 0"
+echo "  vtab_externalauth disabled (dryrun test)"
+# Grant mohit Write on t1 so the write should succeed
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mohit', '*', 'Write', 'table', 't1') on conflict do nothing" \
+    "grant mohit Write on t1 (dryrun test)"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mohit', '*', 'Read', 'table', 't1') on conflict do nothing" \
+    "grant mohit Read on t1 (dryrun test)"
+# Same connection: vtab access (dryrun denied) then write to t1
+# The write must succeed — if xerr is polluted it will fail.
+run_expect_success "$MOHIT" "select 1 from comdb2_connections limit 1" "insert into t1 values(99)" \
+    "dryrun vtab denial does not break subsequent write"
 # Restore
+set_tunable_all_nodes "vtab_externalauth 1"
+echo "  vtab_externalauth re-enabled (dryrun test)"
 run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
-    "restore wildcard rule"
+    "restore wildcard rule (dryrun test)"
 run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
-    "clean up user-specific rules"
+    "clean up user-specific rules (dryrun test)"
 
 #---------------------------------------------------------------
 echo "Test: vtab access control with externalauth (CDB2_ALLOW_ALL)"
@@ -211,6 +230,37 @@ run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, ve
     "restore wildcard rule (vtab test)"
 run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
     "clean up user-specific rules (vtab test)"
+
+#---------------------------------------------------------------
+echo "Test: verb-specific permissions (Read vs Write)"
+#---------------------------------------------------------------
+# Grant op access to auth table before removing wildcard
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op write on auth table"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op read on auth table"
+run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+    "remove wildcard rule"
+
+# mk gets Read-only on t1
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Read', 'table', 't1') on conflict do nothing" \
+    "add mk Read rule for t1"
+run_expect_success "$MARK" "select * from t1" \
+    "mk can read t1"
+run_expect_failure "$MARK" "insert into t1 values(2)" \
+    "mk cannot write t1 (no Write rule)"
+
+# Now grant mk Write
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Write', 'table', 't1') on conflict do nothing" \
+    "add mk Write rule for t1"
+run_expect_success "$MARK" "insert into t1 values(2)" \
+    "mk can write t1 (Write rule added)"
+
+# Restore
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "restore wildcard rule"
+run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
+    "clean up user-specific rules"
 
 #---------------------------------------------------------------
 echo "Test: cleanup"

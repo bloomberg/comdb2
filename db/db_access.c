@@ -438,9 +438,13 @@ int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
 int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
 {
     HashElem *current;
+    int dryrun = 0;
 
     if (!gbl_uses_password && !(gbl_uses_externalauth && gbl_vtab_externalauth)) {
-        return 0;
+        if (gbl_uses_externalauth && !gbl_vtab_externalauth)
+            dryrun = 1;
+        else
+            return 0;
     }
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -463,8 +467,22 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
         }
 
         int rc = access_control_check_sql_read(NULL, thd, (char *)mod->zName);
-        if (rc != SQLITE_OK)
+        if (rc != SQLITE_OK) {
+            if (dryrun) {
+                struct sqlclntstate *clnt = thd->clnt;
+                if (errstat_get_rc(&clnt->osql.xerr) == SQLITE_ACCESS)
+                    bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
+                static int vtab_access_warned = 0;
+                if (!vtab_access_warned) {
+                    vtab_access_warned = 1;
+                    logmsg(LOGMSG_WARN,
+                           "vtab access would be denied for %s user %s, enable vtab_externalauth to enforce\n",
+                           mod->zName, clnt->externalAuthUser ? clnt->externalAuthUser : "unknown");
+                }
+                return SQLITE_OK;
+            }
             return SQLITE_AUTH;
+        }
         return SQLITE_OK;
     }
     assert(0);

@@ -26,10 +26,10 @@ static void simpleAuthInit(void)
     clnt.admin = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     int rc = run_internal_sql_clnt(
-        &clnt, "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) "
-               "default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) "
-               "default '*', resourcename cstring(50) default '*', "
-               "unique(cluster, user, bpkg, verb, resourcetype, resourcename))");
+        &clnt, "create table if not exists comdb2_simple_auth {schema{cstring cluster[20] dbstore=\"*\" cstring "
+               "user[20] dbstore=\"*\" cstring bpkg[50] dbstore=\"*\" cstring verb[20] dbstore=\"*\" cstring "
+               "resourcetype[20] dbstore=\"*\" cstring resourcename[50] dbstore=\"*\" } keys { uniqnulls "
+               "\"comdb2_simple_auth_ix\" = cluster + user + bpkg + verb + resourcetype + resourcename }}");
     if (rc)
         exit(1);
 
