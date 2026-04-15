@@ -4013,7 +4013,14 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if ((rc = send_columns(clnt, stmt)) != 0) {
-        return rc;
+        /* read only requests */
+        if (clnt->isselect || v->explain)
+            return rc;
+        /* if we are in a single write transaction and client disconnected, set error here
+         * to let sqlite know we want a rollback
+         * NOTE: explicit transactions do not send columns here so they will not get an error
+         */
+        clnt->query_rc = CDB2ERR_IO_ERROR;
     }
 
     if (clnt->intrans == 0) {
