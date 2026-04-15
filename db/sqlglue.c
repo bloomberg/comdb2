@@ -5096,6 +5096,11 @@ int sqlite3BtreeCommit(Btree *pBt)
         goto done;
     }
 
+    /* have we set an error because client d/c ? */
+    if (clnt->query_rc == CDB2ERR_IO_ERROR) {
+        return sqlite3BtreeRollback(pBt, 0, 0);
+    }
+
     clnt->recno = 0;
 
     /* reset the state of the sqlengine */
