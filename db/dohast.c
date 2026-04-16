@@ -289,6 +289,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 sqlite3_free(tmp);
                 sqlite3_free(orderby);
                 sqlite3_free(where);
+                sqlite3_free(cols);
                 return NULL;
             }
             tbl = sqlite3_mprintf("%s(%s)%s%s", tmp, subnode->sql,
@@ -314,6 +315,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                     sqlite3_free(tbl);
                     sqlite3_free(orderby);
                     sqlite3_free(where);
+                    sqlite3_free(cols);
                     return NULL;
                 }
                 tmp = tbl;
@@ -334,6 +336,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                         sqlite3_free(tbl);
                         sqlite3_free(orderby);
                         sqlite3_free(where);
+                        sqlite3_free(cols);
                         return NULL;
                     }
                     tmp = tbl;
