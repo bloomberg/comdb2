@@ -23,6 +23,11 @@ function init() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(1, NOW())"
 
     master=`getmaster`
+    if [ -n "$CLUSTER" ] ; then
+        logfile="$TESTDIR/logs/$dbnm.$master.db"
+    else
+        logfile="$TESTDIR/logs/$dbnm.db"
+    fi
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE 'debug.invalid_genid' 1"
 }
 
@@ -56,8 +61,110 @@ EOF
     assert_fail $?
 }
 
+function set_all_nodes_tunable() {
+    local tunable=$1
+    local value=$2
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER; do
+            cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE '$tunable' $value"
+        done
+    else
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE '$tunable' $value"
+    fi
+}
+
+function run_client_disconnect_during_retry() {
+    echo "Test: client disconnect during retry"
+    # Raise retry max on all nodes so retries are still in flight when
+    # timeout kills the client (the retry loop runs on the SQL node the
+    # client is connected to, which may not be the master).
+    set_all_nodes_tunable osql_verify_retry_max 100000
+
+    # Client starts a tx that will retry for a very long time (invalid_genid is on).
+    # timeout kills the client after 2s while retries are in flight.
+    timeout 2 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF 2>&1 || true
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+    # Give the server a moment to clean up the dead client
+    sleep 2
+
+    # Restore default
+    set_all_nodes_tunable osql_verify_retry_max 499
+
+    # The server should still be healthy — run a simple query to prove it
+    out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT i FROM t1 WHERE i = 1")
+    if [[ "$out" != "1" ]]; then
+        failexit "server unhealthy after client disconnect during retry, got: $out"
+    fi
+
+    # The disconnect log appears on whichever node ran the SQL — check all logs.
+    found_disconnect=0
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER; do
+            if grep -q "client disconnected during async replay" "$TESTDIR/logs/$dbnm.$node.db"; then
+                found_disconnect=1
+                break
+            fi
+        done
+    else
+        if grep -q "client disconnected during async replay" "$logfile"; then
+            found_disconnect=1
+        fi
+    fi
+    if [[ $found_disconnect -eq 0 ]]; then
+        failexit "server did not detect client disconnect during replay"
+    fi
+
+    # Verify table data is intact (no partial commit from killed replay)
+    val=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT j FROM t1 WHERE i = 1")
+    if [[ -z "$val" ]]; then
+        failexit "data corrupted after client disconnect during retry"
+    fi
+
+    echo "client disconnect during retry: passed"
+}
+
+function run_queue_full_during_retry() {
+    echo "Test: queue full during retry"
+    # Shrink the SQL engine pool so it's easy to saturate.
+    # Set on all nodes since the client may connect to any of them.
+    set_all_nodes_tunable sqlenginepool.maxt 4
+    set_all_nodes_tunable sqlenginepool.maxq 2
+
+    # Saturate the pool with long-running queries
+    for i in $(seq 1 6); do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "SELECT SLEEP(5)" &>/dev/null &
+    done
+    sleep 1
+
+    # Trigger a tx that will need to retry — pool is full, dispatch may fail
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF 2>&1 || true
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+
+    # Wait for SLEEP queries to finish and pool to drain
+    wait
+
+    # Restore pool settings
+    set_all_nodes_tunable sqlenginepool.maxt 48
+    set_all_nodes_tunable sqlenginepool.maxq 500
+
+    # Server should still be healthy
+    out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT i FROM t1 WHERE i = 1")
+    if [[ "$out" != "1" ]]; then
+        failexit "server unhealthy after queue-full retry, got: $out"
+    fi
+    echo "queue full during retry: passed"
+}
+
 init
 run_bad_tx_with_intransres
 run_bad_tx_without_intransres
+run_client_disconnect_during_retry
+run_queue_full_during_retry
 verify
 cleanup
