@@ -4480,14 +4480,13 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
         return -1;
     }
     if (clnt->osql.replay == OSQL_RETRY_DO) {
-        plugin_func *save_cb = clnt->done_cb;
-        clnt->done_cb = NULL;
-        int rc  = srs_tran_replay_inline(clnt);
-        if (rc && !clnt->query_rc) {
-            clnt->query_rc = rc;
+        if (srs_tran_replay_prepare(clnt) == 0) {
+            return RC_INTERNAL_RETRY;
         }
-        clnt->done_cb = save_cb;
-    } else if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+    }
+    /* Set to NONE to suppress the error from srs_tran_destroy(). */
+    osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+    if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
         srs_tran_destroy(clnt);
     }
     Pthread_mutex_lock(&lru_evbuffers_mtx); /* protect log_long_running_stmts_evbuffer() */
@@ -4601,6 +4600,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 }
 
 int gbl_debug_sqlthd_failures;
+int gbl_debug_fail_replay_dispatch;
 int gbl_enable_internal_sql_stmt_caching = 1;
 
 static int execute_verify_indexes(struct sqlthdstate *thd, struct sqlclntstate *clnt)
@@ -5055,6 +5055,11 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, int force_dispatch)
     }
 
     struct string_ref *sr = get_ref(clnt->sql_ref);
+    if (gbl_debug_fail_replay_dispatch && clnt->osql.replay != OSQL_RETRY_NONE &&
+        clnt->verify_retries >= gbl_debug_fail_replay_dispatch) {
+        put_ref(&sr);
+        return -1;
+    }
     if ((rc = thdpool_enqueue(pool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sr, flags)) != 0) {
         if ((in_client_trans(clnt) || clnt->osql.replay == OSQL_RETRY_DO) &&

@@ -1378,6 +1378,9 @@ REGISTER_TUNABLE("debug.invalid_genid",
                  "Deliberately introduce an invalid genid, FOR TESTING PURPOSE (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_invalid_genid,
                  NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.fail_replay_dispatch",
+                 "Force replay dispatch to fail when verify_retries >= N, FOR TESTING PURPOSE (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_fail_replay_dispatch, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "query_plan_percentage",
     "Alarm if the average cost per row of current query plan is n percent above the cost for different query plan."

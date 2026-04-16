@@ -455,8 +455,9 @@ int sql_peer_check(struct sqlwriter *writer)
 int sql_done(struct sqlwriter *writer)
 {
     struct sqlclntstate *clnt = writer->clnt;
-    if (done_cb_evbuffer(clnt) != 0) {
-        return -1;
+    int rc = done_cb_evbuffer(clnt);
+    if (rc != 0) {
+        return rc;
     }
     Pthread_mutex_lock(&writer->wr_lock);
     writer->done = 1;
