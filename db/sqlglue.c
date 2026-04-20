@@ -1138,6 +1138,7 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
     int outdtsz;
     int rc = 0;
     uint8_t *out = (uint8_t *)outbuf;
+    dttz_t dttz;
 
     if (m->flags & MEM_Null) {
         /* for local replicants, we need to supply a value here. */
@@ -1300,14 +1301,19 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             case DTTZ_PREC_USEC: {
                 if (f->type != SERVER_DATETIME ||
                     !gbl_forbid_datetime_truncation || m->du.dt.dttz_conv) {
+
+                    dttz = m->du.dt;
+                    if (convopts->roundup && f->type == SERVER_DATETIME)
+                        next_milliseconds(&dttz);
+
                     if (f->type == SERVER_DATETIME &&
                         gbl_forbid_datetime_ms_us_s2s) {
                         server_datetime_t sdt;
                         bzero(&sdt, sizeof(sdt));
                         sdt.flag = 8; /*data_bit */
-                        sdt.sec = flibc_htonll(m->du.dt.dttz_sec);
+                        sdt.sec = flibc_htonll(dttz.dttz_sec);
                         *((char *)&sdt.sec) ^= 0x80;
-                        sdt.msec = htons(m->du.dt.dttz_frac / 1000);
+                        sdt.msec = htons(dttz.dttz_frac / 1000);
 
                         rc = SERVER_to_SERVER(
                             &sdt, sizeof(sdt), SERVER_DATETIME, NULL, NULL, 0,
@@ -1317,9 +1323,9 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                         server_datetimeus_t sdt;
                         bzero(&sdt, sizeof(sdt));
                         sdt.flag = 8; /*data_bit */
-                        sdt.sec = flibc_htonll(m->du.dt.dttz_sec);
+                        sdt.sec = flibc_htonll(dttz.dttz_sec);
                         *((char *)&sdt.sec) ^= 0x80;
-                        sdt.usec = htonl(m->du.dt.dttz_frac);
+                        sdt.usec = htonl(dttz.dttz_frac);
 
                         rc = SERVER_to_SERVER(
                             &sdt, sizeof(sdt), SERVER_DATETIMEUS, NULL, NULL, 0,
@@ -3378,6 +3384,9 @@ static int sqlite_unpacked_to_ondisk(BtCursor *pCur, UnpackedRecord *rec,
 
     struct field_conv_opts_tz convopts = {0};
     convopts.flags = gbl_large_str_idx_find ? FLD_CONV_TRUNCATE : 0;
+
+    if (bias_info->bias == OP_SeekLT || bias_info->bias == OP_SeekGE)
+        convopts.roundup = 1;
 
     struct mem_info info = {0};
     info.s = pCur->db->ixschema[pCur->ixnum];
