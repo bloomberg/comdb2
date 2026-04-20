@@ -120,7 +120,7 @@ struct fdb_tbl_ent {
  */
 struct fdb_tbl {
     char *name;
-    int name_len; /* no zero */
+    char *fqname; /* include dbname to uniqueness */
 
     unsigned long long version; /* version of the tbl/index when cached */
 
@@ -263,7 +263,7 @@ static void _try_free_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl);
 static fdb_sqlstat_cache_t *_sqlstats_get(fdb_t *fdb, sqlclntstate *clnt);
 static int _clnt_cache_add_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl);
 void _clnt_cache_rem_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl);
-fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name);
+static fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name, const char *dbname);
 static void _clnt_cache_destroy(sqlclntstate *clnt);
 
 static int _add_fdb_tbl_ent_from_packedksqlite(const char *dbname, fdb_tbl_t *tbl, char *row, int rowlen,
@@ -644,7 +644,7 @@ int is_local(const fdb_t *fdb)
 /**************  TABLE OPERATIONS ***************/
 
 /* Allocate a fdb_tbl entry */
-static fdb_tbl_t *_alloc_fdb_tbl(const char *tblname)
+static fdb_tbl_t *_alloc_fdb_tbl(const char *tblname, const char *dbname)
 {
     fdb_tbl_t *tbl;
 
@@ -656,7 +656,9 @@ static fdb_tbl_t *_alloc_fdb_tbl(const char *tblname)
     }
 
     tbl->name = strdup(tblname);
-    tbl->name_len = strlen(tblname);
+    size_t fqlen = strlen(tblname) + strlen(dbname) + 2;
+    tbl->fqname = malloc(fqlen);
+    snprintf(tbl->fqname, fqlen, "%s.%s", dbname, tblname);
     Pthread_rwlock_init(&tbl->table_lock, NULL);
     listc_init(&tbl->ents, offsetof(struct fdb_tbl_ent, lnk));
     Pthread_mutex_init(&tbl->need_version_mtx, NULL);
@@ -792,7 +794,7 @@ fdb_tbl_t *_fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
     fdb_tbl_ent_t *stat_ent;
 
     /* alloc table */
-    stat_tbl = _alloc_fdb_tbl(stat_name);
+    stat_tbl = _alloc_fdb_tbl(stat_name, fdb->dbname);
     if (!stat_tbl) {
         logmsg(LOGMSG_ERROR, "%s: OOM %s for %p\n", __func__, stat_name, tbl);
         return NULL;
@@ -936,7 +938,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
     }
 
     /* create the table object */
-    tbl = _alloc_fdb_tbl(table_name);
+    tbl = _alloc_fdb_tbl(table_name, fdb->dbname);
     if (!tbl) {
         rc = FDB_ERR_MALLOC;
         goto done;
@@ -1869,7 +1871,7 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
     }
 
 search:
-    tbl = _clnt_cache_get_tbl_by_name(pCur->clnt, zTblName);
+    tbl = _clnt_cache_get_tbl_by_name(pCur->clnt, zTblName, fdb->dbname);
     assert(tbl); /* we have a pthread_rwlock_rdlock here */
 
     if (!pCur->crt_sqlite_master_row) {
@@ -4509,6 +4511,7 @@ static int _free_fdb_tbl(fdb_t *fdb, fdb_tbl_t *tbl)
 
     /* free table itself */
     free(tbl->name);
+    free(tbl->fqname);
     Pthread_rwlock_destroy(&tbl->table_lock);
     Pthread_mutex_destroy(&tbl->need_version_mtx);
 
@@ -6513,7 +6516,7 @@ static clnt_fdb_cache_t *_clnt_cache_create(void)
     clnt_fdb_cache_t *cache = calloc(1, sizeof(clnt_fdb_cache_t));
     if (cache) {
         cache->tbl_ent_by_rootp = hash_init_i4(0);
-        cache->tbl_by_name = hash_init_strptr(0);
+        cache->tbl_by_name = hash_init_strptr(offsetof(fdb_tbl_t, fqname));
         listc_init(&cache->tbls, offsetof(struct clnt_fdb_cache_ent, lnk));
     }
     return cache;
@@ -6569,7 +6572,7 @@ static int _clnt_cache_add_tbl(sqlclntstate *clnt, fdb_tbl_t *tbl)
      * table locks are deduped; make sure the cache is also deduped
      */
 
-    fdb_tbl_t *duptbl = hash_find_readonly(cache->tbl_by_name, &tbl->name);
+    fdb_tbl_t *duptbl = hash_find_readonly(cache->tbl_by_name, &tbl->fqname);
     if (!duptbl) {
         LISTC_FOR_EACH(&tbl->ents, ent, lnk)
         {
@@ -6618,16 +6621,24 @@ fdb_tbl_ent_t *fdb_clnt_cache_get_ent(sqlclntstate *clnt, int rootpage)
     return ent;
 }
 
-fdb_tbl_ent_t *_sqlite_cache_get_ent_by_name(sqlclntstate *clnt, const char *name)
+static fdb_tbl_ent_t *_sqlite_cache_get_ent_by_name(sqlclntstate *clnt, const char *name, const char *dbname)
 {
-    fdb_tbl_t *tbl = hash_find_readonly(clnt->remoteFdbCache->tbl_by_name, &name);
+    int len = strlen(name) + strlen(dbname) + 2;
+    char *fqname = alloca(len);
+    snprintf(fqname, len, "%s.%s", dbname, name);
+
+    fdb_tbl_t *tbl = hash_find_readonly(clnt->remoteFdbCache->tbl_by_name, &fqname);
     return tbl ? tbl->ents.top : NULL;
 }
 
-fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name)
+static fdb_tbl_t *_clnt_cache_get_tbl_by_name(sqlclntstate *clnt, const char *name, const char *dbname)
 {
     fdb_tbl_t *tbl;
-    tbl = hash_find_readonly(clnt->remoteFdbCache->tbl_by_name, &name);
+    int len = strlen(name) + strlen(dbname) + 2;
+    char *fqname = alloca(len);
+    snprintf(fqname, len, "%s.%s", dbname, name);
+
+    tbl = hash_find_readonly(clnt->remoteFdbCache->tbl_by_name, &fqname);
     return tbl;
 }
 
@@ -6655,7 +6666,7 @@ static int _sqlstat_populate_table(fdb_t *fdb, BtCursor *cur, const char *tblnam
     fdbc_if->set_sql(cur, sql);
 
     /* for schema changed sqlite stats, we need to provide the version! */
-    fdbc_if->impl->ent = _sqlite_cache_get_ent_by_name(cur->clnt, tblname);
+    fdbc_if->impl->ent = _sqlite_cache_get_ent_by_name(cur->clnt, tblname, fdb->dbname);
 
     /* try a few times here */
     do {
