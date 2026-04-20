@@ -276,7 +276,6 @@ shalloc_timing|  on |Berkeley DB will keep stats on time
 sql_release_locks_in_update_shadows|  on |Release sql locks in update_shadows on lockwait
 sql_release_locks_on_emit_row_lockwait|  off |Release sql locks when we are about to emit a row
 sql_release_locks_on_si_lockwait|  on |Release sql locks from si if the rep thread is waiting
-sql_release_locks_on_slow_reader|  on |Release sql locks if a tcp write to the client blocks
 sqlclient_use_random_readnode|  off |Sql client will use random sql allocation by default 
 sqlite3openserial|  on |Serialize calls to sqlite3_open to prevent excess CPU
 superset_foreign_keys|  on |Allow foreign key to be a superset of your key

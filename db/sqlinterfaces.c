@@ -168,8 +168,6 @@ extern int gbl_print_syntax_err;
 extern int gbl_max_sqlcache;
 extern int gbl_track_sqlengine_states;
 extern struct ruleset *gbl_ruleset;
-extern int gbl_sql_release_locks_on_slow_reader;
-extern int gbl_sql_no_timeouts_on_release_locks;
 extern int get_snapshot(struct sqlclntstate *clnt, int *f, int *o);
 
 extern void clnt_try_enable_logdel(struct sqlclntstate *clnt);
@@ -283,11 +281,6 @@ static inline void comdb2_set_sqlite_vdbe_dtprec_int(Vdbe *p,
                                                      struct sqlclntstate *clnt)
 {
     p->dtprec = clnt->dtprec;
-}
-
-int disable_server_sql_timeouts(void)
-{
-    return gbl_sql_release_locks_on_slow_reader && gbl_sql_no_timeouts_on_release_locks;
 }
 
 #define XRESPONSE(x) #x,
@@ -5629,9 +5622,6 @@ int sbuf_is_local(COMDB2BUF *sb)
 
 int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
 {
-    if (!gbl_sql_release_locks_on_slow_reader) {
-        return 0;
-    }
     int waiters = -1, lock_desired = -1;
     if ((waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) == 0
         && (lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0
