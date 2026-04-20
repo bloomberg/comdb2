@@ -1701,7 +1701,6 @@ void curtran_assert_nolocks(void);
 void curtran_puttran(tran_type *tran);
 int sbuf_is_local(COMDB2BUF *);
 int fdb_access_control_create(struct sqlclntstate *, char *str);
-int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
 int start_new_transaction(struct sqlclntstate *);

@@ -985,7 +985,6 @@
 (name='sql_release_locks_in_update_shadows', description='Release sql locks in update_shadows on lockwait', type='BOOLEAN', value='ON', read_only='N')
 (name='sql_release_locks_on_emit_row_lockwait', description='Release sql locks when we are about to emit a row', type='BOOLEAN', value='OFF', read_only='N')
 (name='sql_release_locks_on_si_lockwait', description='Release sql locks from si if the rep thread is waiting', type='BOOLEAN', value='ON', read_only='N')
-(name='sql_release_locks_on_slow_reader', description='Release sql locks if a tcp write to the client blocks', type='BOOLEAN', value='ON', read_only='N')
 (name='sql_row_delay_msecs', description='Add this delay before sending back a row, for every row (default: 0)', type='INTEGER', value='0', read_only='N')
 (name='sql_time_threshold', description='Sets the threshold time in ms after which queries are reported as running a long time. (Default: 5000 ms)', type='INTEGER', value='5000', read_only='N')
 (name='sql_tranlevel_default', description='Sets the default SQL transaction level for the database.', type='ENUM', value='BLOCKSQL', read_only='Y')

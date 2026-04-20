@@ -733,8 +733,6 @@ int gbl_sql_release_locks_on_si_lockwait = 1;
 /* If this is set, recom_replay will see the same row multiple times in a scan &
  * fail */
 int gbl_sql_release_locks_on_emit_row = 0;
-int gbl_sql_release_locks_on_slow_reader = 1;
-int gbl_sql_no_timeouts_on_release_locks = 1;
 int gbl_sql_release_locks_in_update_shadows = 1;
 int gbl_sql_random_release_interval = 0;
 int gbl_sql_release_locks_trace = 0;
@@ -5444,12 +5442,6 @@ static void register_all_int_switches()
     register_int_switch("sql_release_locks_on_emit_row_lockwait",
                         "Release sql locks when we are about to emit a row",
                         &gbl_sql_release_locks_on_emit_row);
-    register_int_switch("sql_release_locks_on_slow_reader",
-                        "Release sql locks if a tcp write to the client blocks",
-                        &gbl_sql_release_locks_on_slow_reader);
-    register_int_switch("no_timeouts_on_release_locks",
-                        "Disable client-timeouts if we're releasing locks",
-                        &gbl_sql_no_timeouts_on_release_locks);
     register_int_switch("sql_release_locks_in_update_shadows",
                         "Release sql locks in update_shadows on lockwait",
                         &gbl_sql_release_locks_in_update_shadows);
