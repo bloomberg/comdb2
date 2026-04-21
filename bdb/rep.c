@@ -3479,7 +3479,7 @@ done_wait:
 
     uint32_t cluster_size = total_commissioned + 1;
     uint32_t number_with_this_update = num_successfully_acked + 1;
-    uint32_t durable_target = (cluster_size / 2) + 1;
+    uint32_t durable_target = (cluster_size % 2) ? (cluster_size / 2) + 1 : (cluster_size / 2);
 
     ATOMIC_ADD64(gbl_distributed_commit_count, 1);
 
