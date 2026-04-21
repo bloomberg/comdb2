@@ -559,6 +559,7 @@
 (name='max_query_fingerprints', description='Maximum number of queries to be placed into the fingerprint hash (Default: 1000)', type='INTEGER', value='1000', read_only='N')
 (name='max_query_sample_queries', description='Maximum number of queries to be placed into the sample queries hash (Default: 1000)', type='INTEGER', value='1000', read_only='N')
 (name='max_rowlocks_reposition', description='Release a physical cursor an re-establish.', type='INTEGER', value='10', read_only='N')
+(name='max_sc_lists', description='Limit how many total schema change lists object can coexist in llmeta (Default :10000)', type='INTEGER', value='10000', read_only='N')
 (name='max_sql_idle_time', description='Warn when an SQL connection remains idle for this long.', type='INTEGER', value='3600', read_only='N')
 (name='max_sqlcache_hints', description='Maximum number of "hinted" query plans to keep (global). (Default: 100)', type='INTEGER', value='100', read_only='Y')
 (name='max_sqlcache_per_thread', description='Maximum number of plans to cache per sql thread (statement cache is per-thread). (Default: 10)', type='INTEGER', value='10', read_only='Y')

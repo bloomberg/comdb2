@@ -15,6 +15,9 @@ CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
 rm $OUT 2>/dev/null
 touch $OUT
 
+
+echo "TEST 1: make sure we do no leak scl"
+
 echo "Inserting the rows"
 echo "Inserting the rows" >> $OUT
 $C "insert into t(a) select * from generate_series(1, 60)" >> $OUT
@@ -68,6 +71,52 @@ if (( $? != 0 )) ; then
    echo "FAILURE to get the llmeta list second"
    exit 1
 fi
+
+echo "TEST 2: make sure we block too many scl"
+
+echo "limit number of pending scl to maximum one"
+echo "limit number of pending scl to maximum one" >> $OUT
+$CM "put tunable max_sc_lists 1"
+if (( $? != 0 )) ; then
+   echo "FAILURE to adjust max_sc_lists"
+   exit 1
+fi
+
+echo "launching parallel rebuild"
+echo "launching parallel rebuild" >> $OUT
+$CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+if (( $? != 0 )) ; then
+   echo "FAILURE to setattr sc_force_delay"
+   exit 1
+fi
+$CM "exec procedure sys.cmd.send('scdelay 1000')"
+if (( $? != 0 )) ; then
+   echo "FAILURE to scdelay"
+   exit 1
+fi
+$C "rebuild t" &
+
+sleep 5
+
+echo "checking llmeta for scl for running rebuild"
+echo "checking llmeta for scl for running rebuild" >> $OUT
+$C "exec procedure sys.cmd.send('llmeta list')" | grep "LLMETA_SCHEMACHANGE"  | grep -v "HISTORY">> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to get the llmeta list first"
+   exit 1
+fi
+
+echo "checking that any new schema change is blocked now" 
+echo "checking that any new schema change is blocked now" >> $OUT
+$C "rebuild t2" >> $OUT 2>&1
+if (( $? == 0 )) ; then
+   echo "FAILURE to stop new schema change"
+   exit 1
+fi
+
+echo "waiting for thread"
+echo "waiting for thread" >> $OUT
+wait
 
 testcase_output=$(cat $OUT)
 expected_output=$(cat output.log)

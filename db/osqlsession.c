@@ -39,6 +39,8 @@
 
 #include <disttxn.h>
 
+int gbl_max_sc_lists = 10000;
+
 struct sess_impl {
     int clients; /* number of threads using the session */
 
@@ -817,6 +819,20 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to create sc_list\n",
                __func__);
+        goto done;
+    }
+
+    /* check if too many scl-s */
+    int bdberr = 0;
+    int num_scl = bdb_llmeta_get_num_sc_lists(NULL, &bdberr);
+    if (num_scl < 0 || bdberr) {
+        errstat_set_rcstrf(&sess->xerr, rc = ERR_SC, "failed to count scl %d", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: failed to count sc_lists rc %d bdberr %d\n", __func__, rc, bdberr);
+        goto done;
+    }
+    if (num_scl >= gbl_max_sc_lists) {
+        errstat_set_rcstrf(&sess->xerr, rc = ERR_SC, "too many sc lists objects %d >= %d", num_scl, gbl_max_sc_lists);
+        logmsg(LOGMSG_ERROR, "%s: too many sc lists objects %d >= %d\n", __func__, num_scl, gbl_max_sc_lists);
         goto done;
     }
 
