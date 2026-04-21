@@ -1629,6 +1629,7 @@ int bdb_llmeta_get_all_sc_lists(tran_type *t, void ***dtas, int **dtalens,
                                 void ***keys, int *keylen, int *num, int *bdberr);
 
 int bdb_llmeta_rem_all_sc_lists(tran_type *input_trans);
+int bdb_llmeta_get_num_sc_lists(tran_type *t, int *bdberr);
 
 int bdb_set_in_schema_change(tran_type *input_trans, const char *db_name,
                              void *schema_change_data,

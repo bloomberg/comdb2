@@ -2580,6 +2580,9 @@ REGISTER_TUNABLE(
 REGISTER_TUNABLE("multitable_ddl",
                  "Enables single schema change object ddl implementation (default: off)",
                  TUNABLE_BOOLEAN, &gbl_multitable_ddl, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_sc_lists",
+                 "Limit how many total schema change lists object can coexist in llmeta (Default :10000)",
+                 TUNABLE_INTEGER, &gbl_max_sc_lists, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("sc_history_max_rows", "Max number of rows returned in comdb2_sc_history (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_sc_history_max_rows, 0, NULL, NULL, NULL, NULL);

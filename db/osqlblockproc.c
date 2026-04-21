@@ -1416,8 +1416,9 @@ int bplog_schemachange(struct ireq *iq)
     /* save the SCHEMA_CHANGES object in LLMETA to be able to resume */
     rc = osql_sess_save_sc_list(iq->sorese);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to save sc list rc %d\n", __func__, rc);
-        return -1;
+        logmsg(LOGMSG_ERROR, "%s failed to save sc list rc %d %s\n", __func__, rc, iq->sorese->xerr.errstr);
+        reqerrstr(iq, ERR_SC, "%s", iq->sorese->xerr.errstr);
+        return ERR_SC;
     }
 
     rc = bplog_schemachange_run(iq, iq->sorese->uuid, &iq->sorese->scs);

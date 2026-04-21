@@ -8,3 +8,11 @@ checking llmeta for first rebuild
 Launch racing rebuild on same table
 checking llmeta making sure we do not leak sclist
 (out='LLMETA_SCHEMACHANGE_STATUS_V2')
+limit number of pending scl to maximum one
+launching parallel rebuild
+checking llmeta for scl for running rebuild
+(out='LLMETA_SCHEMACHANGE_STATUS_V2')
+(out='LLMETA_SCHEMACHANGE_LIST:')
+checking that any new schema change is blocked now
+[rebuild t2] failed with rc 240 too many sc lists objects 1 >= 1
+waiting for thread

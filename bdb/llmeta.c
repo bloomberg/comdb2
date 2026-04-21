@@ -202,6 +202,7 @@ static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr);
 static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
                      void ***values, int **valuelens, int *num, int *bdberr);
+static int kv_get_num_keys(tran_type *t, void *k, size_t klen, int *num, int *bdberr);
 static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v, size_t vlen, int *bdberr);
 static int kv_del(tran_type *tran, void *k, int *bdberr);
 typedef int kv_for_each_cb(void *k, void *v, void *data);
@@ -4175,6 +4176,25 @@ int bdb_llmeta_get_all_sc_lists(tran_type *t, void ***dtas, int **dtalens, void 
     }
 
     return 0;
+}
+
+int bdb_llmeta_get_num_sc_lists(tran_type *t, int *bdberr)
+{
+    int num = 0;
+    int rc = 0;
+    union {
+        int type;
+        uint8_t buf[LLMETA_IXLEN];
+    } key = {0};
+    key.type = htonl(LLMETA_SCHEMACHANGE_LIST);
+
+    rc = kv_get_num_keys(t, &key, sizeof(key.type), &num, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve num of sc lists rc %d bdberr %d\n", __func__, rc, *bdberr);
+        return -1;
+    }
+
+    return num;
 }
 
 static int _rem_all_schema_change_lists(tran_type *trans)
@@ -9897,6 +9917,26 @@ static int kv_get_keys(tran_type *t, void *k, size_t klen, void ***ret,
     }
     *num = n;
     *ret = names;
+    return rc;
+}
+
+// get num of matching key partial keys
+static int kv_get_num_keys(tran_type *t, void *k, size_t klen, int *num, int *bdberr)
+{
+    int n = 0;
+    int fnd;
+    uint8_t out[LLMETA_IXLEN];
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out, &fnd, bdberr);
+    while (rc == 0 && fnd == 1) {
+        if (memcmp(k, out, klen) != 0) {
+            break;
+        }
+        ++n;
+        uint8_t nxt[LLMETA_IXLEN];
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, out, nxt, 1, &fnd, bdberr);
+        memcpy(out, nxt, sizeof(out));
+    }
+    *num = n;
     return rc;
 }
 
