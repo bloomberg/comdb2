@@ -974,6 +974,8 @@
 (name='sql_close_sbuf', description='sql_close_sbuf', type='BOOLEAN', value='OFF', read_only='N')
 (name='sql_logfill', description='Request transaction logs via sql thread.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='sql_logfill_apply_thread', description='Use a dedicated thread to apply sql logfills.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='sql_logfill_auto_disabled', description='Set to 1 when sql-logfill has been auto-disabled due to consecutive failures.  (Default: 0)', type='INTEGER', value='0', read_only='Y')
+(name='sql_logfill_autodisable_threshold', description='Disable sql-logfill after this many consecutive authentication failures.  (Default: 5)', type='INTEGER', value='5', read_only='N')
 (name='sql_logfill_debug', description='Enable extended trace for sql logfill thread.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='sql_logfill_lookahead_records', description='Max lookahead records cached for dedicated apply thread.  (Default: 10000)', type='INTEGER', value='10000', read_only='Y')
 (name='sql_logfill_next_timeout', description='Max amount of time logfill blocked on transaction-logs.  (Default: 10)', type='INTEGER', value='10', read_only='N')
