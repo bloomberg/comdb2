@@ -83,7 +83,12 @@ runsql 'create table t3 {schema {cstring a[512]}}'
 runsql 'create index t3_a on t3(a)'
 
 runsql 'create table t4 {schema {cstring a[513]}}'
-runsqlfail 'create index t4_a on t4(a)' # Index exceeds max length
+runsqlfail 'create index t4_a on t4(a)' # Index exceeds max length. Ths really only takes 512 bytes + 1 NULL byte since we chop off the '\0' at the end. But would be confusing to allow 513, so disallow this.
+
+if [[ "$DBNAME" != *"insertmaxindexoldlogicgenerated"* ]]; then
+    runsql 'create table t5 {schema { byte b[501] datetime d } keys { "b" = b + d } }' # datetime used to be interpreted as 76 bytes! Should be 11
+    runsqlfail 'create table t6 {schema { byte b[502] datetime d } keys { "b" = b + d } }'
+fi
 
 # Verify this comes up after bounce
 bounce_cluster

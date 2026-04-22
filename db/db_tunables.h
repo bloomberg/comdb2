@@ -800,6 +800,8 @@ REGISTER_TUNABLE("max_lua_instructions",
                  "procedure is looping and kill it. (Default: 10000)",
                  TUNABLE_INTEGER, &gbl_max_lua_instructions, 0, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("max_key_size_new", "Use new logic for checking max key size (Default: on)", TUNABLE_INTEGER,
+                 &gbl_max_key_size_new, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_num_compact_pages_per_txn", NULL, TUNABLE_INTEGER,
                  &gbl_max_num_compact_pages_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("maxq",
