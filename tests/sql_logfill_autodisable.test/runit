@@ -1,0 +1,427 @@
+#!/usr/bin/env bash
+
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+
+ADMIN_USER="admin"
+ADMIN_PASS="admin"
+
+# Non-OP user for the per-table access restriction test
+LIMITED_USER="logfill_limited"
+LIMITED_PASS="logfill_limpass"
+
+# Run SQL as admin user
+function sql_admin {
+    COMDB2_USER=$ADMIN_USER COMDB2_PASSWORD=$ADMIN_PASS \
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "$@"
+}
+
+# Run SQL as admin user against a specific host
+function sql_admin_host {
+    local node=$1
+    shift
+    COMDB2_USER=$ADMIN_USER COMDB2_PASSWORD=$ADMIN_PASS \
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $node "$@"
+}
+
+# Wait for a specific node to be reachable (with admin credentials)
+function wait_node_up_auth {
+    local node=$1
+    echo "Waiting for $node to come up..."
+    while ! COMDB2_USER=$ADMIN_USER COMDB2_PASSWORD=$ADMIN_PASS \
+              $CDB2SQL_EXE --tabs $db --host $node 'select 1' &>/dev/null; do
+        sleep 1
+    done
+    echo "  $node is up"
+}
+
+# Wait for all cluster nodes to be reachable (with admin credentials)
+function wait_cluster_auth {
+    for node in $CLUSTER; do
+        wait_node_up_auth $node
+    done
+}
+
+# Get master using admin credentials
+function get_master_auth {
+    COMDB2_USER=$ADMIN_USER COMDB2_PASSWORD=$ADMIN_PASS \
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $db default \
+        'exec procedure sys.cmd.send("bdb cluster")' 2>/dev/null \
+        | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+# Wait until a master is elected (returns master hostname)
+function wait_master_auth {
+    local master=""
+    echo "Waiting for master election..."
+    while [[ -z "$master" ]]; do
+        master=$(get_master_auth)
+        [[ -z "$master" ]] && sleep 2
+    done
+    echo "Master elected: $master"
+    echo "$master"
+}
+
+# Enable sql_logfill in the LRL file on all cluster nodes
+function enable_sql_logfill_lrl {
+    local lrl_file="$DBDIR/${DBNAME}.lrl"
+    echo "Enabling sql_logfill in LRL file: $lrl_file"
+
+    # Modify the local copy
+    sed -i 's/^sql_logfill 0$/sql_logfill 1/' "$lrl_file"
+    if ! grep -q "^sql_logfill 1" "$lrl_file"; then
+        failexit "Failed to enable sql_logfill in local LRL file"
+    fi
+    echo "  Enabled sql_logfill on $(hostname)"
+
+    # Modify the copy on each remote node
+    for node in $CLUSTER; do
+        if [[ "$node" != "$(hostname)" ]]; then
+            ssh -n -o StrictHostKeyChecking=no $node \
+                "sed -i 's/^sql_logfill 0$/sql_logfill 1/' '$lrl_file'" \
+                || failexit "Failed to enable sql_logfill on $node"
+            ssh -n -o StrictHostKeyChecking=no $node \
+                "grep -q '^sql_logfill 1' '$lrl_file'" \
+                || failexit "Failed to verify sql_logfill on $node"
+            echo "  Enabled sql_logfill on $node"
+        fi
+    done
+}
+
+# Append COMDB2_USER/COMDB2_PASSWORD to replicant_vars (sourced by start_all_nodes
+# for remote nodes) and export them locally so the local node inherits them too.
+function set_logfill_user {
+    local user=$1
+    local pass=$2
+    local var_file="${TESTDIR}/replicant_vars"
+
+    echo "export COMDB2_USER=${user}" >> "$var_file"
+    echo "export COMDB2_PASSWORD=${pass}" >> "$var_file"
+
+    for node in $CLUSTER; do
+        if [[ "$node" != "$(hostname)" ]]; then
+            scp -o StrictHostKeyChecking=no "$var_file" "${node}:${var_file}" \
+                || failexit "Failed to copy replicant_vars to $node"
+        fi
+    done
+
+    export COMDB2_USER=$user
+    export COMDB2_PASSWORD=$pass
+}
+
+# Remove COMDB2_USER/COMDB2_PASSWORD from replicant_vars and unset locally.
+function clear_logfill_user {
+    local var_file="${TESTDIR}/replicant_vars"
+
+    sed -i '/^export COMDB2_USER=/d;/^export COMDB2_PASSWORD=/d' "$var_file"
+
+    for node in $CLUSTER; do
+        if [[ "$node" != "$(hostname)" ]]; then
+            scp -o StrictHostKeyChecking=no "$var_file" "${node}:${var_file}" 2>/dev/null || true
+        fi
+    done
+
+    unset COMDB2_USER
+    unset COMDB2_PASSWORD
+}
+
+# Poll replicant log files for the auto-disable message, up to $timeout seconds.
+function wait_autodisable {
+    local master=$1
+    local timeout=${2:-30}
+    local expected_msg="auto-disabling sql logfill after"
+    local elapsed=0
+
+    echo "Waiting up to ${timeout}s for auto-disable in replicant logs..."
+    while [[ $elapsed -lt $timeout ]]; do
+        local all_found=1
+        for node in $CLUSTER; do
+            [[ "$node" == "$master" ]] && continue
+            local logfile="${TESTDIR}/logs/${db}.${node}.db"
+            if ! grep -q "$expected_msg" "$logfile" 2>/dev/null; then
+                all_found=0
+                break
+            fi
+        done
+        [[ $all_found -eq 1 ]] && return 0
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    return 1
+}
+
+# Check all replicant log files for the auto-disable message
+function check_autodisable_message {
+    local master=$1
+    local expected_msg="auto-disabling sql logfill after"
+    local all_found=1
+
+    echo "Checking replicant logs for: '$expected_msg'"
+
+    for node in $CLUSTER; do
+        if [[ "$node" == "$master" ]]; then
+            echo "  Skipping master: $node"
+            continue
+        fi
+
+        local logfile="${TESTDIR}/logs/${db}.${node}.db"
+        if [[ ! -f "$logfile" ]]; then
+            echo "  ERROR: log file not found for replicant $node: $logfile"
+            all_found=0
+            continue
+        fi
+
+        if grep -q "$expected_msg" "$logfile" 2>/dev/null; then
+            echo "  FOUND in $node log"
+        else
+            echo "  NOT FOUND in $node log ($logfile)"
+            all_found=0
+        fi
+    done
+
+    if [[ $all_found -eq 0 ]]; then
+        stop_all_nodes
+        failexit "Did not find auto-disable message in all replicant logs"
+    fi
+    echo "  SUCCESS: auto-disable message found in all replicant logs"
+}
+
+# Scenario 1: sql_logfill has no credentials at all.  With auth enabled the
+# internal 'select 1' ping fails with ACCESS, which is counted in
+# connect_to_master().  After the threshold the feature auto-disables.
+function run_test {
+    echo "=== sql_logfill auto-disable test (no credentials) ==="
+
+    # ----------------------------------------------------------------
+    # Phase 1: Set up authentication
+    # ----------------------------------------------------------------
+    echo "=== Phase 1: Setting up authentication ==="
+
+    local master=$(get_master)
+    echo "Initial master: $master"
+
+    # Create admin (OP) user and enable authentication.
+    # These two commands run unauthenticated - that is fine before auth is on.
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master \
+        "put password '$ADMIN_PASS' for '$ADMIN_USER'" \
+        || failexit "Failed to create admin user"
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master \
+        "grant op to '$ADMIN_USER'" \
+        || failexit "Failed to grant op to admin"
+
+    COMDB2_USER=$ADMIN_USER COMDB2_PASSWORD=$ADMIN_PASS \
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master \
+        "put authentication on" \
+        || failexit "Failed to enable authentication"
+
+    echo "Authentication enabled."
+
+    # ----------------------------------------------------------------
+    # Phase 2: Verify comdb2_transaction_logs is protected on all nodes
+    # ----------------------------------------------------------------
+    echo "=== Phase 2: Verifying comdb2_transaction_logs is protected ==="
+
+    for node in $CLUSTER; do
+        if $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $node \
+               "select 1 from comdb2_transaction_logs limit 1" \
+               &>/dev/null; then
+            stop_all_nodes
+            failexit "comdb2_transaction_logs accessible without credentials on $node (expected failure)"
+        fi
+        echo "  OK: comdb2_transaction_logs is protected on $node"
+    done
+
+    # ----------------------------------------------------------------
+    # Phase 3: Create table t1 and write 1000 records
+    # ----------------------------------------------------------------
+    echo "=== Phase 3: Creating table and writing 1000 records ==="
+
+    sql_admin "create table t1 (id int)" \
+        || failexit "Failed to create table t1"
+
+    sql_admin "insert into t1 select * from generate_series(1, 1000)" \
+        || failexit "Failed to insert first 1000 records"
+
+    echo "Inserted 1000 records into t1"
+
+    # ----------------------------------------------------------------
+    # Phase 4: Stop a non-master node, then push the log forward
+    # ----------------------------------------------------------------
+    echo "=== Phase 4: Stopping a non-master node ==="
+
+    master=$(get_master_auth)
+    local stopped_node=""
+    for node in $CLUSTER; do
+        if [[ "$node" != "$master" ]]; then
+            stopped_node=$node
+            break
+        fi
+    done
+
+    echo "Stopping non-master node: $stopped_node"
+    kill_by_pidfile ${TMPDIR}/${DBNAME}.${stopped_node}.pid
+
+    echo "Inserting 1000 more records to push the log forward..."
+    sql_admin "insert into t1 select * from generate_series(1001, 2000)" \
+        || failexit "Failed to insert second 1000 records"
+
+    echo "Inserted records 1001-2000; $stopped_node is now behind the log"
+
+    # ----------------------------------------------------------------
+    # Phase 5: Stop all remaining nodes (including the master)
+    # ----------------------------------------------------------------
+    echo "=== Phase 5: Stopping all remaining nodes ==="
+
+    for node in $CLUSTER; do
+        if [[ "$node" != "$stopped_node" ]]; then
+            echo "Stopping $node"
+            kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+        fi
+    done
+
+    echo "All nodes are now down."
+
+    # ----------------------------------------------------------------
+    # Phase 6: Enable sql_logfill in each node's LRL file
+    # ----------------------------------------------------------------
+    echo "=== Phase 6: Enabling sql_logfill in LRL files ==="
+    enable_sql_logfill_lrl
+
+    # ----------------------------------------------------------------
+    # Phase 7: Restart the cluster
+    # ----------------------------------------------------------------
+    echo "=== Phase 7: Restarting cluster ==="
+    start_all_nodes
+
+    echo "Waiting for all nodes to come up..."
+    wait_cluster_auth
+
+    local new_master=$(wait_master_auth)
+    echo "New master: $new_master"
+
+    # ----------------------------------------------------------------
+    # Phase 8: Wait for sql_logfill to auto-disable itself
+    # ----------------------------------------------------------------
+    echo "=== Phase 8: Waiting for sql_logfill to auto-disable ==="
+
+    new_master=$(get_master_auth)
+    if ! wait_autodisable "$new_master" 30; then
+        stop_all_nodes
+        failexit "sql_logfill did not auto-disable within timeout (no-credentials scenario)"
+    fi
+
+    # ----------------------------------------------------------------
+    # Phase 9: Verify the auto-disable message in each replicant's log
+    # ----------------------------------------------------------------
+    echo "=== Phase 9: Checking replicant logs ==="
+    check_autodisable_message "$new_master"
+
+    echo "=== Scenario 1 (no credentials) completed successfully ==="
+}
+
+# Scenario 2: sql_logfill connects with a non-OP user's credentials.
+# The 'select 1' ping succeeds (valid credentials), but the log query against
+# comdb2_transaction_logs fails with ACCESS because the user lacks OP rights.
+# This exercises the failure counter in request_logs_from_master().
+function run_test_per_table_restriction {
+    echo "=== sql_logfill auto-disable test (per-table access restriction) ==="
+
+    # Auth is already ON from run_test; admin credentials still work.
+
+    # ----------------------------------------------------------------
+    # Phase 10: Create a non-OP limited user
+    # ----------------------------------------------------------------
+    echo "=== Phase 10: Creating limited (non-OP) user ==="
+
+    local master=$(get_master_auth)
+    echo "Current master: $master"
+
+    sql_admin_host $master "put password '$LIMITED_PASS' for '$LIMITED_USER'" \
+        || failexit "Failed to create $LIMITED_USER"
+
+    # ----------------------------------------------------------------
+    # Phase 11: Verify limited_user can 'select 1' but not transaction_logs
+    # ----------------------------------------------------------------
+    echo "=== Phase 11: Verifying per-table access restriction ==="
+
+    if ! COMDB2_USER=$LIMITED_USER COMDB2_PASSWORD=$LIMITED_PASS \
+             $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db --host $master \
+             'select 1' &>/dev/null; then
+        stop_all_nodes
+        failexit "$LIMITED_USER cannot do 'select 1' - expected to succeed"
+    fi
+    echo "  $LIMITED_USER can execute 'select 1' (confirmed)"
+
+    if COMDB2_USER=$LIMITED_USER COMDB2_PASSWORD=$LIMITED_PASS \
+           $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db --host $master \
+           'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' \
+           &>/dev/null; then
+        stop_all_nodes
+        failexit "$LIMITED_USER can access comdb2_transaction_logs - expected ACCESS denied"
+    fi
+    echo "  $LIMITED_USER is blocked from comdb2_transaction_logs (confirmed)"
+
+    # ----------------------------------------------------------------
+    # Phase 12: Stop all nodes; configure them to connect as limited_user
+    # ----------------------------------------------------------------
+    echo "=== Phase 12: Stopping cluster and configuring limited_user credentials ==="
+
+    stop_all_nodes
+
+    # Inject credentials into the database process environment.
+    # start_all_nodes sources ${TESTDIR}/replicant_vars for remote nodes;
+    # exported vars are inherited by the local node's subprocess.
+    set_logfill_user "$LIMITED_USER" "$LIMITED_PASS"
+
+    # ----------------------------------------------------------------
+    # Phase 13: Restart the cluster (sql_logfill already enabled in LRL)
+    # ----------------------------------------------------------------
+    echo "=== Phase 13: Restarting cluster with limited_user credentials ==="
+    start_all_nodes
+
+    echo "Waiting for all nodes to come up..."
+    wait_cluster_auth
+
+    local new_master=$(wait_master_auth)
+    echo "New master: $new_master"
+
+    # ----------------------------------------------------------------
+    # Phase 14: Wait for sql_logfill to auto-disable itself
+    # ----------------------------------------------------------------
+    echo "=== Phase 14: Waiting for sql_logfill to auto-disable ==="
+
+    new_master=$(get_master_auth)
+    if ! wait_autodisable "$new_master" 30; then
+        clear_logfill_user
+        stop_all_nodes
+        failexit "sql_logfill did not auto-disable within timeout (per-table scenario)"
+    fi
+
+    # ----------------------------------------------------------------
+    # Phase 15: Verify the auto-disable message in each replicant's log
+    # ----------------------------------------------------------------
+    echo "=== Phase 15: Checking replicant logs ==="
+    check_autodisable_message "$new_master"
+
+    clear_logfill_user
+
+    echo "=== Scenario 2 (per-table restriction) completed successfully ==="
+}
+
+cnt=$(echo $CLUSTER | wc -w)
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    failexit "This test requires a clustered installation of at least 3 nodes"
+fi
+
+run_test
+run_test_per_table_restriction
+stop_all_nodes
+echo "Success"

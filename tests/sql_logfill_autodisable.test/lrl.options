@@ -1,0 +1,3 @@
+sql_logfill 0
+
+logmsg level debug
