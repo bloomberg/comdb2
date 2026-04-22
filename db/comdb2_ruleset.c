@@ -396,18 +396,6 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     }
   }
   if( criteria->pFingerprint!=NULL ){
-    if( !comdb2_ruleset_fingerprints_allowed() ){
-      char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
-
-      memset(zFingerprint, 0, sizeof(zFingerprint));
-      util_tohex(zFingerprint, (char *)criteria->pFingerprint, FPSZ);
-
-      logmsg(LOGMSG_ERROR,
-             "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
-             "disabled\n", __func__, rule->ruleNo, zFingerprint);
-
-      return RULESET_M_ERROR; /* have forbidden criteria */
-    }
     if( (context->pFingerprint==NULL) ||
         memcmp(context->pFingerprint, criteria->pFingerprint, FPSZ)!=0 ){
       return RULESET_M_FALSE; /* have criteria, not matched */
@@ -472,19 +460,6 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   }
   result->flags |= rule->flags; /* NOTE: OR matched rule flags together. */
   return (rule->flags&RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
-}
-
-int comdb2_ruleset_fingerprints_allowed(void){
-  /*
-  ** NOTE: When strict fingerprints are enabled double-quoted strings within
-  **       SQL queries will be assumed to refer to database identifiers, not
-  **       string literals.  In that mode, fingerprint based matching rules
-  **       make sense because SQL queries would be normalized consistently,
-  **       even if the query is not prepared first.  This is necessary, in
-  **       part, because preparing SQL queries on non-SQL engine threads is
-  **       seen as too expensive.
-  */
-  return gbl_strict_dbl_quotes;
 }
 
 size_t comdb2_evaluate_ruleset(
@@ -643,7 +618,6 @@ int comdb2_load_ruleset_item_criteria(
   char *zBuf,
   size_t nBuf, /* NOT USED */
   int noCase,
-  int bAllowFingerprint,
   int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
@@ -808,13 +782,6 @@ int comdb2_load_ruleset_item_criteria(
     }
     zField = "fingerprint";
     if( sqlite3_stricmp(zTok, zField)==0 ){
-      if( !bAllowFingerprint ){
-        snprintf(zError, nError,
-                 "%s:%d, field '%s' forbidden by configuration",
-                 zFileName, lineNo, zField);
-        rc = EACCES;
-        goto done;
-      }
       if( pnFingerprint!=NULL ) (*pnFingerprint)++;
       zTok = strtok_r(NULL, RULESET_DELIM, pzSav);
       if( zTok==NULL ){
@@ -1067,8 +1034,7 @@ int comdb2_load_ruleset(
         while( zTok!=NULL ){
           int rc2 = comdb2_load_ruleset_item_criteria(
             zFileName, lineNo, zTok, -1, rule->mode&RULESET_MM_NOCASE,
-            comdb2_ruleset_fingerprints_allowed(), 1, criteria,
-            rule->mode&RULESET_MM_REGEXP ? cache : NULL, &zTok, &zSav,
+            1, criteria, rule->mode&RULESET_MM_REGEXP ? cache : NULL, &zTok, &zSav,
             &rules->nFingerprint, zError, sizeof(zError)
           );
           if( rc2==0 ){

@@ -1426,7 +1426,7 @@ clipper_usage:
         if (zTok != NULL) { /* was context manually specified? */
             strcpy(zCtx, tok); /* re-copy from original to fix strtok_r() */
             rc = comdb2_load_ruleset_item_criteria(
-                "<evaluate_ruleset>", 0, zTok, -1, 0, 1, 0, &uCtx, NULL,
+                "<evaluate_ruleset>", 0, zTok, -1, 0, 0, &uCtx, NULL,
                 NULL, &zSav, NULL, zBuf, sizeof(zBuf)
             );
             free(zCtx);

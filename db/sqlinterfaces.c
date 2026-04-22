@@ -5170,9 +5170,7 @@ static int verify_dispatch_sql_query(struct sqlclntstate *clnt, int force_dispat
         return 0;
     }
 
-    if (gbl_fingerprint_queries &&
-        comdb2_ruleset_fingerprints_allowed()) {
-        /* IGNORED */
+    if (gbl_fingerprint_queries) {
         preview_and_calc_fingerprint(clnt);
     }
 
