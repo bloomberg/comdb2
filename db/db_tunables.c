@@ -238,6 +238,8 @@ extern int gbl_sql_logfill_stats;
 extern int gbl_sql_logfill_dedicated_apply_thread;
 extern int gbl_sql_logfill_lookahead_records;
 extern int gbl_sql_logfill_next_timeout;
+extern int gbl_sql_logfill_autodisable_threshold;
+extern int gbl_sql_logfill_auto_disabled;
 extern int gbl_dedup_rep_all_reqs;
 extern int gbl_apply_queue_memory;
 extern int gbl_inmem_repdb;

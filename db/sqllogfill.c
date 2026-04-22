@@ -36,8 +36,12 @@ int gbl_sql_logfill_stats = 1;
 int gbl_sql_logfill_dedicated_apply_thread = 0;
 int gbl_sql_logfill_lookahead_records = 10000;
 int gbl_sql_logfill_next_timeout = 10;
+int gbl_sql_logfill_autodisable_threshold = 5;
 
+/* Flags */
+int gbl_sql_logfill_auto_disabled = 0;
 static int sql_logfill_thds_created = 0;
+static int sql_logfill_auth_failure_cnt = 0;
 
 struct log_record {
     unsigned int file;
@@ -109,6 +113,16 @@ static void disconnect_from_master(void)
     }
 }
 
+static void increment_logfill_auth_failure_cnt(void)
+{
+    sql_logfill_auth_failure_cnt++;
+    if (sql_logfill_auth_failure_cnt >= gbl_sql_logfill_autodisable_threshold) {
+        logmsg(LOGMSG_ERROR, "%s: auto-disabling sql logfill after %d consecutive auth failures\n", __func__,
+               sql_logfill_auth_failure_cnt);
+        gbl_sql_logfill_auto_disabled = 1;
+    }
+}
+
 /* Connect to master */
 static int connect_to_master(bdb_state_type *bdb_state, const char *master)
 {
@@ -119,6 +133,9 @@ static int connect_to_master(bdb_state_type *bdb_state, const char *master)
     }
 
     if (!master) {
+        if (gbl_debug_sql_logfill) {
+            logmsg(LOGMSG_USER, "%s: thedb->master is NULL, cannot connect\n", __func__);
+        }
         return 1;
     }
 
@@ -139,7 +156,8 @@ static int connect_to_master(bdb_state_type *bdb_state, const char *master)
     rc = cdb2_run_statement(hndl, "set transaction blocksql");
     if (rc != CDB2_OK) {
         if (gbl_debug_sql_logfill) {
-            logmsg(LOGMSG_USER, "%s: cdb2_run_statement to master %s failed rc=%d\n", __func__, master, rc);
+            logmsg(LOGMSG_USER, "%s: set-transaction-blocksql %s failed rc=%d, %s\n", __func__, master, rc,
+                   cdb2_errstr(hndl));
         }
         cdb2_close(hndl);
         hndl = NULL;
@@ -149,10 +167,15 @@ static int connect_to_master(bdb_state_type *bdb_state, const char *master)
     rc = cdb2_run_statement(hndl, "select 1");
     if (rc != CDB2_OK) {
         if (gbl_debug_sql_logfill) {
-            logmsg(LOGMSG_USER, "%s: cdb2_run_statement to master %s failed rc=%d\n", __func__, master, rc);
+            logmsg(LOGMSG_USER, "%s: cdb2_run_statement to master %s failed rc=%d, %s\n", __func__, master, rc,
+                   cdb2_errstr(hndl));
         }
         cdb2_close(hndl);
         hndl = NULL;
+
+        if (rc == CDB2ERR_ACCESS) {
+            increment_logfill_auth_failure_cnt();
+        }
         return 1;
     }
 
@@ -395,7 +418,9 @@ static int apply_record(bdb_state_type *bdb_state, const char *lsn, void *blob, 
     return 0;
 }
 
-static void request_logs_from_master(bdb_state_type *bdb_state)
+/* Returns 1 if the call failed in a way that warrants a retry delay in the
+ * caller (e.g. the log-request SQL statement itself failed), 0 otherwise. */
+static int request_logs_from_master(bdb_state_type *bdb_state)
 {
     DB_LSN next_lsn = {0}, gap_lsn = {0}, last_locked = {0}, rec_lsn = {0};
     LOG_INFO last_lsn = {0};
@@ -410,10 +435,9 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
 
         /* Copy master name under bdb-lock */
         BDB_READLOCK(__func__);
-        if (!thedb->master || thedb->master == gbl_myhostname) {
+        if (!thedb->master || thedb->master == gbl_myhostname || !strcmp(thedb->master, ".invalid")) {
             BDB_RELLOCK();
-            sleep(1);
-            return;
+            return 1;
         }
         need_reconnect = !is_connected || (connected_node && strcmp(thedb->master, connected_node) != 0);
         if (need_reconnect) {
@@ -425,8 +449,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
         if (need_reconnect) {
             rc = connect_to_master(bdb_state, master_name);
             if (rc) {
-                sleep(1);
-                return;
+                return 1;
             }
         }
 
@@ -436,7 +459,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
         if (!thedb->master || strcmp(thedb->master, connected_node) != 0) {
             BDB_RELLOCK();
             disconnect_from_master();
-            return;
+            return 0;
         }
 
         /* Check for rep-verify-match- returns current gen, not commit-gen */
@@ -445,7 +468,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
         /* Returns non-0 before rep-verify-match */
         if (rc != 0) {
             BDB_RELLOCK();
-            return;
+            return 0;
         }
 
         /* Find gap lsn */
@@ -453,14 +476,14 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
 
         if (rc != 0) {
             BDB_RELLOCK();
-            return;
+            return 0;
         }
 
         /* No gap */
         if (IS_ZERO_LSN(gap_lsn)) {
             BDB_RELLOCK();
             nogap_returns++;
-            return;
+            return 0;
         }
 
         /* Get our current last lsn */
@@ -488,7 +511,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
 
         if (rc < 0 || rc >= SQL_CMD_LEN) {
             logmsg(LOGMSG_ERROR, "%s: snprintf failed, rc=%d\n", __func__, rc);
-            return;
+            return 0;
         }
 
         if (gbl_debug_sql_logfill) {
@@ -498,12 +521,16 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
 
         if ((rc = cdb2_run_statement(hndl, sql_cmd)) != CDB2_OK) {
             if (gbl_debug_sql_logfill) {
-                logmsg(LOGMSG_ERROR, "%s: cdb2_run_statement failed rc=%d\n", __func__, rc);
+                logmsg(LOGMSG_ERROR, "%s: cdb2_run_statement failed rc=%d, %s\n", __func__, rc, cdb2_errstr(hndl));
+            }
+            if (rc == CDB2ERR_ACCESS) {
+                increment_logfill_auth_failure_cnt();
             }
             disconnect_from_master();
-            return;
+            return 1;
         }
 
+        sql_logfill_auth_failure_cnt = 0;
         sql_finds++;
 
         if ((rc = cdb2_next_record(hndl)) != CDB2_OK) {
@@ -511,7 +538,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
                 logmsg(LOGMSG_USER, "%s: cdb2_next_record returned rc=%d\n", __func__, rc);
             }
             disconnect_from_master();
-            return;
+            return 0;
         }
 
         lsn = (char *)cdb2_column_value(hndl, 0);
@@ -520,7 +547,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
                 logmsg(LOGMSG_ERROR, "%s: char_to_lsn rc = %d for lsn %s\n", __func__, rc, lsn);
             }
             disconnect_from_master();
-            return;
+            return 0;
         }
 
         /* First record is the duplicate at last_lsn- skip it */
@@ -560,7 +587,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: apply_record failed rc=%d - exiting apply loop\n", __func__, rc);
                 BDB_RELLOCK();
-                return;
+                return 0;
             }
 
             /* Gap-lsn can change if inmem_repdb_most_recent is enabled */
@@ -583,6 +610,7 @@ static void request_logs_from_master(bdb_state_type *bdb_state)
             logmsg(LOGMSG_USER, "%s: done, desired=%d exiting=%d rc=%d\n", __func__, desired, exiting, rc);
         }
     }
+    return 0;
 }
 
 static inline void sleep_for_gap_lsn(bdb_state_type *bdb_state)
@@ -618,15 +646,19 @@ static void *sql_logfill_thread(void *arg)
     logmsg(LOGMSG_USER, "%s: starting sql-logfill-thread\n", __func__);
     bdb_thread_event(bdb_state, COMDB2_THR_EVENT_START_RDONLY);
 
-    while (!db_is_exiting()) {
+    while (!db_is_exiting() && !gbl_sql_logfill_auto_disabled) {
         if (thedb->master != gbl_myhostname) {
-            request_logs_from_master(bdb_state);
+            if (request_logs_from_master(bdb_state)) {
+                sleep(1);
+            }
         }
 
         /* Wait for new master to be resolved */
-        while ((desired = bdb_lock_desired(bdb_state)) && !(exiting = db_is_exiting())) {
+        while ((desired = bdb_lock_desired(bdb_state)) && !(exiting = db_is_exiting()) &&
+               !gbl_sql_logfill_auto_disabled) {
             if (gbl_debug_sql_logfill) {
-                logmsg(LOGMSG_USER, "%s: bdb_lock_desired=%d, exiting=%d sleeping\n", __func__, desired, exiting);
+                logmsg(LOGMSG_USER, "%s: bdb_lock_desired=%d, exiting=%d autodisabled=%d sleeping\n", __func__, desired,
+                       exiting, gbl_sql_logfill_auto_disabled);
             }
             sleep(1);
         }
@@ -655,7 +687,7 @@ static void *sql_apply_thread(void *arg)
     struct log_record copy = {0};
     logmsg(LOGMSG_USER, "%s: starting sql-apply-thread\n", __func__);
 
-    while (!db_is_exiting()) {
+    while (!db_is_exiting() && !gbl_sql_logfill_auto_disabled) {
 
         int apply_log = 0;
         Pthread_mutex_lock(&sql_apply_queue_lock);

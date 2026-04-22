@@ -82,6 +82,7 @@ extern int gbl_is_physical_replicant;
 extern int gbl_physrep_debug;
 extern int gbl_dumptxn_at_commit;
 extern int gbl_sql_logfill;
+extern int gbl_sql_logfill_auto_disabled;
 
 int gbl_replicant_poll_on_sc = 0;
 int gbl_rep_badgen_trace;
@@ -556,10 +557,17 @@ static int send_rep_all_req_dedup(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, 
 	return rc;
 }
 
+/* Returns non-zero when sql_logfill is active and handling fills, meaning
+ * the traditional fill-request path should be suppressed. */
+static int sql_logfill_active(void)
+{
+    return gbl_sql_logfill && !gbl_sql_logfill_auto_disabled;
+}
+
 int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 					 const char *func, int line)
 {
-	if (gbl_sql_logfill) {
+	if (sql_logfill_active()) {
    		return 0;
 	}
 	if (gbl_dedup_rep_all_reqs == 1) {
@@ -583,7 +591,7 @@ int send_rep_log_req(DB_ENV *dbenv, char *master_eid, DB_LSN *startlsn, DB_LSN *
 	DBT *max_lsn_dbt_ptr = NULL, max_lsn_dbt = {0};
 	DB_LSN tmp_lsn = {0};
 	static unsigned long long cnt = 0;
-	if (gbl_sql_logfill) {
+	if (sql_logfill_active()) {
    		return 0;
 	}
 	if (maxlsn) {
