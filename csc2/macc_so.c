@@ -59,6 +59,7 @@ int dimidx = 0, dims[7], rngidx = 0, ranges[2], range_or_array = 0, range = 0,
 char *dims_cnst[7];
 
 int lastidx = 0;
+int gbl_max_key_size_new = 1;
 #define MAX_NESTED_RECTYPE 16
 static int ncases = -1;
 static int nested_rectype[MAX_NESTED_RECTYPE];
@@ -404,9 +405,9 @@ char * sqltypetxt(int t, int size)
         case T_DECIMAL64: return "decimal64";
         case T_DECIMAL128: return "decimal128";
 
-        case T_PSTR:  
+        case T_PSTR:
         case T_CSTR:
-        case T_FCHAR: 
+        case T_FCHAR:
         case T_VUTF8:
                            {
                                return "char";
@@ -723,6 +724,49 @@ int keysize(struct key *ck) /* CALCULATES SIZE OF A STRUCT KEY */
     }
 }
 
+static int keysize2(struct key *ck) /* CALCULATES ONDISK SIZE OF A KEY PIECE */
+{
+    int arr, chr, rng;
+    int ondtidx = ck->stbl;
+
+    if (ck->expr) {
+        /* TODO: calculate correct on-disk size for expression index pieces. The current code does this (incorrectly) as
+         * well. */
+        return 1;
+    }
+    if (ondtidx < 0) {
+        csc2_error("ERROR: INVALID KEY TABLE INDEX %d.\n", ck->stbl);
+        any_errors++;
+        return 0;
+    }
+
+    struct table *tables = macc_globals->tables;
+    struct symbol *sym = &tables[ondtidx].sym[ck->sym];
+    int sz = sym->szof; /* start with client fullsize like _create_schema_column */
+    int server_type;
+    int client_type;
+
+    arr = (sym->dim[0] != -1);              /* is this an array? */
+    rng = (ck->rg[0] > 0 && ck->rg[1] > 0); /* is a character range specified? */
+    chr = ((sym->type == T_PSTR) || (sym->type == T_UCHAR) || (sym->type == T_CSTR));
+
+    if (chr && rng)
+        sz = ck->rg[1] - ck->rg[0] + 1;
+    else if (arr && (ck->el[0] != -1))
+        sz = sym->size;
+
+    /* For cstrings, artificially add 1 to the size. Since we strip the '\0' at the end when storing on disk, we could
+     * technically store a cstring of size 513 in a key. But that would be confusing to the client. */
+    if (sym->type == T_CSTR) {
+        ++sz;
+    }
+
+    /* Then adjust to the on-disk representation like _set_column_ondisk_length. */
+    server_type = field_type(sym->type, 1);
+    client_type = field_type(sym->type, 0);
+    return dyns_adjust_ondisk_field_length(server_type, sz, client_type);
+}
+
 static int
 keyondisksize(struct key *wk) /* CALCULATE THE SIZE IN BYTES OF A WHOLE KEY */
 {
@@ -737,6 +781,19 @@ keyondisksize(struct key *wk) /* CALCULATE THE SIZE IN BYTES OF A WHOLE KEY */
             /* one byte extra header will be needed for every column in key. */
             sz++;
         }
+    }
+    return sz;
+}
+
+static int keyondisksize2(struct key *wk) /* CALCULATE ONDISK SIZE IN BYTES OF A WHOLE KEY */
+{
+    struct key *ck;
+    int sz;
+    sz = 0;
+    ck = wk;
+    while (ck) {
+        sz += keysize2(ck);
+        ck = ck->cmp;
     }
     return sz;
 }
@@ -1056,8 +1113,13 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             return;
         }
     }
-    int sz = keyondisksize(macc_globals->workkey);
-    if (sz > MAXKEYLEN) { /* COMDB2 CURRENTLY SUPPORTS 512 byte KEYS*/
+    int sz;
+    if (gbl_max_key_size_new)
+        sz = keyondisksize2(macc_globals->workkey) -
+             1; /* COMDB2 CURRENTLY SUPPORTS 512 byte KEYS (not including null byte) */
+    else
+        sz = keyondisksize(macc_globals->workkey);
+    if (sz > MAXKEYLEN) {
         csc2_error(
             "Error at line %3d: KEY %s TOO BIG(%d)! VALID SIZE=1-%d BYTES\n",
             current_line, tag, sz, MAXKEYLEN);
@@ -3278,7 +3340,7 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
             *value_type = CLIENT_FUNCTION;
             *value_sz = len;
             return 0;
-        } 
+        }
         default:
             return -1;
         }

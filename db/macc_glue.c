@@ -24,6 +24,8 @@ static int init_check_constraints(dbtable *tbl);
 static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
                           int no_side_effects, struct errstat *err);
 
+extern int gbl_max_key_size_new;
+
 char gbl_ver_temp_table[] = ".COMDB2.TEMP.VER.";
 
 struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
@@ -184,7 +186,7 @@ static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum)
     }
     for (ii = 0; ii < tbl->nix; ii++) {
         tmpidxsz = dyns_get_idx_size(ii);
-        if (tmpidxsz < 1 || tmpidxsz > MAXKEYLEN) {
+        if (tmpidxsz < 1 || (!gbl_max_key_size_new && tmpidxsz > MAXKEYLEN)) {
             logmsg(LOGMSG_ERROR, "index %d bad keylen %d in csc schema %s\n",
                    ii, tmpidxsz, tblname);
             cleanup_newdb(tbl);
@@ -333,7 +335,7 @@ static struct schema * _create_index_datacopy_schema(struct schema *sch, int ix,
         m = &p->member[piece];
         m->idx = find_field_idx_in_tag(sch, temp->field);
         if (m->idx == -1) {
-            /* DEFAULT tag can fail here, but error is ignored, 
+            /* DEFAULT tag can fail here, but error is ignored,
              * no datacopy idx for comdbgi
              */
             rc = -ix - 1;
@@ -796,7 +798,7 @@ static struct schema * _create_table_schema(char *tag, int alt)
         return NULL;
 
     /* ondisk format has an extra byte per field, and some other types have other
-     * way to store (strings, blobs); this is why ondisk is wrong here, since 
+     * way to store (strings, blobs); this is why ondisk is wrong here, since
      * parser just returns the length of the values!
      */
     sch->recsize = dyns_get_table_tag_size(tag); /* wrong for .ONDISK */
@@ -850,87 +852,73 @@ static int _set_column_blobs(struct field *fld, int nblobs)
     return nblobs;
 }
 
+int dyns_adjust_ondisk_field_length(int server_type, int len, int client_type)
+{
+    switch (server_type) {
+    case SERVER_BLOB:
+        /* TODO use the enums that are used in types.c */
+        /* blobs are stored as flag byte + 32 bit length */
+        return 5;
+    case SERVER_VUTF8:
+    case SERVER_BLOB2:
+        /* TODO use the enums that are used in types.c */
+        /* vutf8s are stored as flag byte + 32 bit length, plus
+         * optionally strings up to a certain length can be stored
+         * in the record itself */
+        return (len == -1) ? 5 : (len + 5);
+    case SERVER_BCSTR:
+        if (client_type == CLIENT_PSTR || client_type == CLIENT_PSTR2)
+            return len + 1;
+        /* no change needed from client length */
+        return len;
+    case SERVER_DATETIME:
+        /* server CLIENT_DATETIME is a server_datetime_t */
+        return sizeof(server_datetime_t);
+    case SERVER_DATETIMEUS:
+        /* server CLIENT_DATETIMEUS is a server_datetimeus_t */
+        return sizeof(server_datetimeus_t);
+    case SERVER_INTVYM:
+        /* server CLIENT_INTVYM is a server_intv_ym_t */
+        return sizeof(server_intv_ym_t);
+    case SERVER_INTVDS:
+        /* server CLIENT_INTVDS is a server_intv_ds_t */
+        return sizeof(server_intv_ds_t);
+    case SERVER_INTVDSUS:
+        /* server CLIENT_INTVDSUS is a server_intv_dsus_t */
+        return sizeof(server_intv_dsus_t);
+    case SERVER_DECIMAL:
+        switch (len) {
+        case 14:
+            return sizeof(server_decimal32_t);
+        case 24:
+            return sizeof(server_decimal64_t);
+        case 43:
+            return sizeof(server_decimal128_t);
+        default:
+            abort();
+        }
+    default:
+        return len + 1; /* most server types have a leading null/not-null byte */
+    }
+}
+
 /* for ondisk, we need to set the field length to server type proper
  * return current offset
  */
 static int _set_column_ondisk_length(struct field *fld, int idx, char *tag,
                                     int offset)
 {
-    char buf[MAXCOLNAME + 1] = {0}; /* scratch space buffer */
+    int clnt_type = -1;
 
-    /* cheat: change type to be ondisk type */
-    switch (fld->type) {
-        case SERVER_BLOB:
-            /* TODO use the enums that are used in types.c */
-            /* blobs are stored as flag byte + 32 bit length */
-            fld->len = 5;
-            break;
-        case SERVER_VUTF8:
-        case SERVER_BLOB2:
-            /* TODO use the enums that are used in types.c */
-            /* vutf8s are stored as flag byte + 32 bit length, plus
-             * optionally strings up to a certain length can be stored
-             * in the record itself */
-            if (fld->len == -1)
-                fld->len = 5;
-            else
-                fld->len += 5;
-            break;
-        case SERVER_BCSTR: {
-            int clnt_type = 0;
-            int clnt_offset = 0;
-            int clnt_len = 0;
+    if (fld->type == SERVER_BCSTR) {
+        char buf[MAXCOLNAME + 1] = {0}; /* scratch space buffer */
+        int clnt_offset = 0;
+        int clnt_len = 0;
 
-            dyns_get_table_field_info(tag, idx, buf, sizeof(buf),
-                                      &clnt_type, &clnt_offset, NULL,
-                                      &clnt_len, NULL, 0);
-
-            if (clnt_type == CLIENT_PSTR || clnt_type == CLIENT_PSTR2) {
-                fld->len++;
-            } else {
-                /* no change needed from client length */
-            }
-            } break;
-        case SERVER_DATETIME:
-            /* server CLIENT_DATETIME is a server_datetime_t */
-            fld->len = sizeof(server_datetime_t);
-            break;
-        case SERVER_DATETIMEUS:
-            /* server CLIENT_DATETIMEUS is a server_datetimeus_t */
-            fld->len = sizeof(server_datetimeus_t);
-            break;
-        case SERVER_INTVYM:
-            /* server CLIENT_INTVYM is a server_intv_ym_t */
-            fld->len = sizeof(server_intv_ym_t);
-            break;
-        case SERVER_INTVDS:
-            /* server CLIENT_INTVDS is a server_intv_ds_t */
-            fld->len = sizeof(server_intv_ds_t);
-            break;
-        case SERVER_INTVDSUS:
-            /* server CLIENT_INTVDSUS is a server_intv_dsus_t */
-            fld->len = sizeof(server_intv_dsus_t);
-            break;
-        case SERVER_DECIMAL:
-            switch (fld->len) {
-            case 14:
-                fld->len = sizeof(server_decimal32_t);
-                break;
-            case 24:
-                fld->len = sizeof(server_decimal64_t);
-                break;
-            case 43:
-                fld->len = sizeof(server_decimal128_t);
-                break;
-            default:
-                abort();
-            }
-            break;
-        default:
-            /* other types just add one for the flag byte */
-            fld->len++;
-            break;
+        dyns_get_table_field_info(tag, idx, buf, sizeof(buf), &clnt_type, &clnt_offset, NULL, &clnt_len, NULL, 0);
     }
+
+    fld->len = dyns_adjust_ondisk_field_length(fld->type, fld->len, clnt_type);
     fld->offset = offset;
     offset += fld->len;
     return offset;
@@ -1039,7 +1027,7 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
 
     ntags = dyns_get_table_count();
 
-    /*  we will store the schemas here and add them at the end, so we 
+    /*  we will store the schemas here and add them at the end, so we
      *  do not polute tag hash in case of error
      */
     /* a server schema per tag + one client schema for ondisk */
