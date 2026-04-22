@@ -47,7 +47,6 @@ extern int gbl_is_physical_replicant;
 int gbl_partitioned_table_enabled = 1;
 int gbl_merge_table_enabled = 1;
 int gbl_retro_tpt = 1;
-int gbl_legacy_tpt = 0;
 int gbl_retro_tpt_verbose = 0;
 int gbl_retro_tpt_start = 24; /* default 24 hours in the future */
 

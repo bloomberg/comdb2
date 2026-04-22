@@ -46,7 +46,6 @@ extern int gbl_transactional_drop_plus_rename;
 extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
 extern int gbl_retro_tpt_start;
-extern int gbl_legacy_tpt;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 extern int gbl_enable_bulk_import;
@@ -1633,7 +1632,7 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
 
     if (comdb2IsDryrun(pParse)) {
         setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
-        return;
+         return;
     }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
@@ -1643,17 +1642,6 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
         }
     }
 #endif
-
-    static int once = 0;
-    if (!once) {
-        logmsg(LOGMSG_ERROR, "Deprecated time partition %.*s syntax\n", 
-                partition_name->n, partition_name->z);
-        once++;
-    }
-    if (!gbl_legacy_tpt) {
-        setError(pParse, SQLITE_MISUSE, "Deprecated time partition syntax");
-        return;
-    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
