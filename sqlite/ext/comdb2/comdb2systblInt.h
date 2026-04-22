@@ -56,6 +56,7 @@ extern sqlite3_module systblSchemaVersionsModule;
 extern sqlite3_module systblTablePermissionsModule;
 extern sqlite3_module systblSystabPermissionsModule;
 extern sqlite3_module systblTimepartPermissionsModule;
+extern sqlite3_module systblRulesetsModule;
 
 int systblTriggersInit(sqlite3 *);
 int systblTablesInit(sqlite3 *db);
@@ -108,6 +109,7 @@ int systblApiHistoryInit(sqlite3 *db);
 int systblDbInfoInit(sqlite3 *db);
 int systblUnusedFilesInit(sqlite3 *db);
 int systblPhysrepAltmetadbInit(sqlite3 *db);
+int systblRulesetsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

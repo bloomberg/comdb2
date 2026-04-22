@@ -135,6 +135,7 @@ void thdpool_command_to_all(char *line, int lline, int st);
 void thdpool_set_dump_on_full(struct thdpool *pool, int onoff);
 /* TODO: maybe thdpool_set_event_callback, to call for various life cycle events? */
 void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*));
+char *thdpool_name(struct thdpool *pool);
 
 int thdpool_lock(struct thdpool *pool);
 int thdpool_unlock(struct thdpool *pool);
