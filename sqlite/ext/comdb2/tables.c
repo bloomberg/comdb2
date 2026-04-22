@@ -253,6 +253,8 @@ int comdb2SystblInit(
     rc = systblUnusedFilesInit(db);
   if (rc == SQLITE_OK)
     rc = systblPhysrepAltmetadbInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblRulesetsInit(db);
 #endif
   return rc;
 }
