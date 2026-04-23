@@ -592,8 +592,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid, iq->usedb->sc_from->sc_genids)) {
         return 0;
     }
 
@@ -690,8 +689,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return 0;
     }
 
-    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid, iq->usedb->sc_from->sc_genids)) {
         return 0;
     }
 
@@ -779,7 +777,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
+    unsigned long long *sc_genids = iq->usedb->sc_from->sc_genids;
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
     }

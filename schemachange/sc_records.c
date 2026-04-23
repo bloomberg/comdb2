@@ -196,22 +196,22 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
  * If success it returns 0, if failure it returns <0 */
 int gbl_debug_stall_in_oplog_seed = 0;
 
-int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
+int init_sc_genids(struct dbtable *db, unsigned long long **p_sc_genids, struct schema_change_type *s)
 {
     void *rec;
     int orglen, bdberr, stripe;
-    unsigned long long *sc_genids;
+    unsigned long long *sc_genids = *p_sc_genids;
 
-    if (db->sc_genids == NULL) {
-        db->sc_genids = malloc(sizeof(unsigned long long) * MAXDTASTRIPE);
-        if (db->sc_genids == NULL) {
+    if (sc_genids == NULL) {
+        sc_genids = malloc(sizeof(unsigned long long) * MAXDTASTRIPE);
+        if (sc_genids == NULL) {
             logmsg(LOGMSG_ERROR,
                    "init_sc_genids: failed to allocate sc_genids\n");
             return -1;
         }
     }
 
-    sc_genids = db->sc_genids;
+    *p_sc_genids = sc_genids;
 
     /* if we aren't resuming simply zero the genids */
     if (!s->resume) {
@@ -284,9 +284,10 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
                        stripe);
                 sc_genids[stripe] = 0ULL;
             }
-        } else
+        } else {
             rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);
+        }
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "init_sc_genids: failed to find newest genid for "
                        "stripe: %d\n",
