@@ -293,13 +293,6 @@ char *fdb_get_alias(const char **p_tablename);
 void fdb_stat_alias(void);
 
 /**
- * This function will check some critical regions
- * hanging if something is wrong
- *
- */
-void fdb_sanity_check(void);
-
-/**
  * Check if master table access if local or remote
  *
  */
@@ -450,5 +443,14 @@ int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
  */
 int fdb_is_sqlite_stat(sqlclntstate *clnt, int rootpage);
 
-#endif
+/* the watchdog will run every gbl_fdb_watchdog_secs seconds
+ * and it will connect to the first table of each fdb
+ * it is run from watcher thread and detect cases when access
+ * is blocked
+ *
+ */
+extern int gbl_fdb_watchdog_secs;         /* run watched every this number of seconds */
+extern int gbl_fdb_watchdog_latency_secs; /* alert if ping takes longer */
+void fdb_watchdog(void);
 
+#endif
