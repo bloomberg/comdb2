@@ -3706,7 +3706,7 @@ int is_tablename_queue(const char *);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
-int comdb2_get_verify_remote_schemas(struct sqlclntstate *clnt);
+int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
 
 const char *thrman_get_where(struct thr_handle *thr);
