@@ -632,7 +632,6 @@
 (name='no_round_robin_stripes', description='Disables 'round_robin_stripes'', type='BOOLEAN', value='ON', read_only='Y')
 (name='no_sc_inco_chk', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='no_static_tag_blob_fix', description='', type='BOOLEAN', value='OFF', read_only='Y')
-(name='no_timeouts_on_release_locks', description='Disable client-timeouts if we're releasing locks', type='BOOLEAN', value='ON', read_only='N')
 (name='no_update_delete_limit', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='noblobstripe', description='Disables 'blobstripe'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nochecksums', description='Disables 'checksums'', type='BOOLEAN', value='OFF', read_only='N')
