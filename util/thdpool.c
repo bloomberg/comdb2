@@ -1285,6 +1285,10 @@ void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*))
     pool->queued_callback = callback;
 }
 
+char *thdpool_name(struct thdpool *pool) {
+    return pool->name;
+}
+
 void comdb2_name_thread(const char *name) {
 #ifdef __linux
     char buf[16];

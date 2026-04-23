@@ -3446,6 +3446,21 @@ clipper_usage:
             thdpool_process_message(gbl_verify_thdpool, line, lline, st);
         else
             logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
+    } else if (tokcmp(tok, ltok, "sqlpool") == 0) {
+        char *pool_name = segtok(line, lline, &st, &ltok);
+        if (pool_name == NULL) {
+            fprintf(stderr, "Expected sqlpool name\n");
+            return 1;
+        }
+        pool_name = tokdup(pool_name, ltok);
+        struct thdpool *pool = get_named_sql_pool(pool_name, 0, 0);
+        if (pool == NULL) {
+            fprintf(stderr, "Unknown pool \"%s\"\n", pool_name);
+            free(pool_name);
+            return 1;
+        }
+        free(pool_name);
+        thdpool_process_message(pool, line, lline, st);
     } else if (tokcmp(tok, ltok, "disttxn") == 0) {
         char dist_txnid[128] = {0};
         int found = 0;
