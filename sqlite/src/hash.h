@@ -60,6 +60,7 @@ struct HashElem {
   HashElem *next, *prev;       /* Next and previous elements in the table */
   void *data;                  /* Data associated with this element */
   const char *pKey;            /* Key associated with this element */
+  unsigned int h;              /* hash for pKey */
 };
 
 /*
@@ -68,11 +69,6 @@ struct HashElem {
 void sqlite3HashInit(Hash*);
 void *sqlite3HashInsert(Hash*, const char *pKey, void *pData);
 void *sqlite3HashFind(const Hash*, const char *pKey);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#ifdef SQLITE_ENABLE_NORMALIZE
-void *sqlite3HashFindN(const Hash*, const char *pKey, int nKey);
-#endif /* SQLITE_ENABLE_NORMALIZE */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3HashClear(Hash*);
 
 /*
@@ -96,6 +92,6 @@ void sqlite3HashClear(Hash*);
 /*
 ** Number of entries in a hash table
 */
-/* #define sqliteHashCount(H)  ((H)->count) // NOT USED */
+#define sqliteHashCount(H)  ((H)->count)
 
 #endif /* SQLITE_HASH_H */
