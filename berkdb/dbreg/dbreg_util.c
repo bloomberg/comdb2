@@ -567,7 +567,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 		if (ufid->dbp == NULL && create) {
 			DB *dbp = NULL;
 			Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
-			ret = __ufid_open(dbenv, txn, &dbp, inufid, ufid->fname, lsnp);
+			ret = __ufid_open(dbenv, NULL, &dbp, inufid, ufid->fname, lsnp);
 			Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 			if (dbp != NULL && ufid->dbp == NULL) {
 				ufid->dbp = dbp;
@@ -600,7 +600,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 	}
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 	if (close_dbp) {
-		__db_close(close_dbp, txn, 0);
+		__db_close(close_dbp, NULL, 0);
 	}
 #if defined (UFID_HASH_DEBUG)
 	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
