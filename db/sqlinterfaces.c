@@ -6616,6 +6616,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->uuid = malloc(strlen(us) + 1);
     snprintf(c->uuid, strlen(us) + 1, "%s", us);
     c->is_canceled = clnt->discard_this;
+    c->pool = clnt->pPool ? thdpool_name(clnt->pPool) : NULL;
 }
 
 static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)
