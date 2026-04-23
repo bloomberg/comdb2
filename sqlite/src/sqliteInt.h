@@ -1436,23 +1436,6 @@ void sqlite3CryptFunc(sqlite3_context*,int,sqlite3_value**);
 #define SQLITE_TRACE_NONLEGACY_MASK  0x0f     /* Normal flags */
 
 
-struct sqlite3InitInfo {      /* Information used during initialization */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  char *zTblName;             /* Optional table name for attachments */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  int newTnum;                /* Rootpage of table being initialized */
-  u8 iDb;                     /* Which db file is being initialized */
-  u8 busy;                    /* TRUE if currently initializing */
-  unsigned orphanTrigger : 1; /* Last statement is orphaned TEMP trigger */
-  unsigned imposterTable : 1; /* Building an imposter table */
-  unsigned reopenMemdb : 1;   /* ATTACH is really a reopen using MemDB */
-  void *locked_table;         /* transient transfer info from sqlite3AddAndLockTable to fdbUnlock */
-  void *locked_stat1;
-  void *locked_stat4;
-  void *fdb;
-};
-typedef struct sqlite3InitInfo sqlite3InitInfo;
-
 /*
 ** Each database connection is an instance of the following structure.
 */
@@ -1495,7 +1478,17 @@ struct sqlite3 {
   int nTotalChange;             /* Value returned by sqlite3_total_changes() */
   int aLimit[SQLITE_N_LIMIT];   /* Limits */
   int nMaxSorterMmap;           /* Maximum size of regions mapped by sorter */
-  sqlite3InitInfo init;         /* Information used during initialization */
+  struct sqlite3InitInfo {      /* Information used during initialization */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    char *zTblName;             /* Optional table name for attachments */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    int newTnum;                /* Rootpage of table being initialized */
+    u8 iDb;                     /* Which db file is being initialized */
+    u8 busy;                    /* TRUE if currently initializing */
+    unsigned orphanTrigger : 1; /* Last statement is orphaned TEMP trigger */
+    unsigned imposterTable : 1; /* Building an imposter table */
+    unsigned reopenMemdb : 1;   /* ATTACH is really a reopen using MemDB */
+  } init;
   int nVdbeActive;              /* Number of VDBEs currently running */
   int nVdbeRead;                /* Number of active VDBEs that read or write */
   int nVdbeWrite;               /* Number of active VDBEs that read and write */
@@ -5043,15 +5036,16 @@ void sqlite3_tunables_init(void);
 void sqlite3_dump_tunables(void);
 void sqlite3_set_tunable_by_name(char *tname, char *val);
 
-extern void fdbUnlock(sqlite3InitInfo *init);
-extern int sqlite3AddAndLockTable(sqlite3InitInfo *init, const char *dbname,
-      const char *table, int *version,
+extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
+      const char *table, int *version, int in_analysis_load,
       int *out_class, int *out_local, int *out_class_override,
       int *proto_version);
+extern int sqlite3UnlockTable(const char *dbname, const char *table);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, int argc, sqlite3_value **argv,
       const char *zName, const char *zFile, char **pzErrDyn, int version,
       int class, int local, int class_override, int proto_version);
 extern void comdb2_dynamic_detach(sqlite3 *db, int idx);  
+extern int comdb2_fdb_check_class(const char *dbname);
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);
 extern int sqlite3UpdateMemCollAttr(BtCursor *pCur, int idx, Mem *mem);
 char* sqlite3ExprDescribe(Vdbe *v, const Expr *pExpr);
