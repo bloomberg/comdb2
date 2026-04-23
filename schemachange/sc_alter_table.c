@@ -589,7 +589,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(newdb, &db->sc_genids, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -605,19 +605,19 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         assert(db->sharding_func);
         for (i = 0; i < newdb->dtastripe; i++) {
             for (int shard = 0; shard < db->sharding_arg->n - 1; shard++) {
-                if (newdb->sc_genids[i] < db->sharding_arg->cs[shard].resume_genids[i]) {
+                if (db->sc_genids[i] < db->sharding_arg->cs[shard].resume_genids[i]) {
                     logmsg(LOGMSG_INFO, "%s updating %s stripe %d sc_genid from %llx (%lld) to %llx (%lld) using %s\n",
-                           __func__, s->tablename, i, newdb->sc_genids[i], newdb->sc_genids[i],
+                           __func__, s->tablename, i, db->sc_genids[i], db->sc_genids[i],
                            db->sharding_arg->cs[shard].resume_genids[i], db->sharding_arg->cs[shard].resume_genids[i],
                            db->sharding_arg->ss[shard]->tablename);
-                    newdb->sc_genids[i] = db->sharding_arg->cs[shard].resume_genids[i];
+                    db->sc_genids[i] = db->sharding_arg->cs[shard].resume_genids[i];
                 }
             }
         }
     }
     for (i = 0; i < newdb->dtastripe; i++) {
         logmsg(LOGMSG_INFO, "%s: %s stripe %d result resume genid %llx (%lld)\n", __func__, s->tablename, i,
-               newdb->sc_genids[i], newdb->sc_genids[i]);
+               db->sc_genids[i], db->sc_genids[i]);
     }
 
     Pthread_rwlock_wrlock(&db->sc_live_lk);
@@ -675,7 +675,7 @@ convert_records:
         changed == SC_CONSTRAINT_CHANGE) {
         if (!s->live)
             gbl_readonly_sc = 1;
-        rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+        rc = convert_all_records(db, newdb, db->sc_genids, s);
         if (rc == 1) rc = 0;
     } else
         rc = 0;
@@ -719,8 +719,7 @@ errout:
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
@@ -798,7 +797,7 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
+    if (init_sc_genids(newdb, &db->sc_genids, s)) {
         sc_client_error(s, "Failed to initialize sc_genids");
         return -1;
     }
@@ -848,7 +847,7 @@ convert_records:
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    rc = convert_all_records(db, newdb, db->sc_genids, s);
     if (rc == 1) rc = 0;
 
     remove_ongoing_alter(s);
@@ -886,8 +885,7 @@ convert_records:
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
-                    i, newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
         while (s->logical_livesc) {
@@ -1259,7 +1257,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         sc_printf(s, "Starting FULL table upgrade.\n");
     }
 
-    if (init_sc_genids(db, s)) {
+    if (init_sc_genids(db, &db->sc_genids, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         return SC_LLMETA_ERR;
     }
