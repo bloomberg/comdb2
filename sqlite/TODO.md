@@ -92,12 +92,12 @@
 
 ## Done
 
-- [x] 4   ./src/default_consumer.h.in.patch
-- [x] 10  ./src/comdb2Int.h.patch
-- [x] 10  ./src/decimal.h.patch
-- [x] 26  ./src/decimal.c.patch
-- [x] 14  ./src/hash.h.patch
-- [x]     ./src/hash.c
+- [x] 4   ./src/default_consumer.h.in.patch (keep)
+- [x] 10  ./src/comdb2Int.h.patch (keep)
+- [x] 10  ./src/decimal.h.patch (keep)
+- [x] 26  ./src/decimal.c.patch (keep)
+- [x] 14  ./src/hash.h.patch (pr)
+- [x]     ./src/hash.c (pr)
 - [x] 14  ./src/os.h.patch
 - [x]     ./src/os.c
 - [x] 1003 ./src/sqliteInt.h.patch
