@@ -215,10 +215,10 @@ typedef enum sc_tag_change_subtype {
 
 #define DBPAD_OR_DBSTORE_ERR(e) ((e) == SC_BAD_NEW_FIELD || (e) == SC_BAD_DBPAD || (e) == SC_BAD_DBSTORE_FUNC_NOT_NULL)
 
+#define gbl_ondisk_ver_fmt ".ONDISK.VER.%d"
 extern hash_t *gbl_tag_hash;
 extern char gbl_ondisk_ver[];
 extern const int gbl_ondisk_ver_len;
-extern char gbl_ondisk_ver_fmt[];
 extern int gbl_use_t2t;
 
 int tag_init(void);

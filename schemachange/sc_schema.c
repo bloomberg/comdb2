@@ -1311,13 +1311,11 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                 if (strcmp(dbname, ct->table[k]) == 0 &&
                     strcasecmp(key, ct->keynm[k]) == 0) {
                     if (compat_chg(olddb, newsc, key) == 0) continue;
-                    char *info = ">%s:%s -> %s:%s\n";
+#define info "%s:%s -> %s:%s"
                     if (s && s->dryrun) {
-                        cdb2buf_printf(s->sb, info, db->tablename, ct->lclkeyname,
-                                    dbname, ct->keynm[k]);
+                        cdb2buf_printf(s->sb, ">" info "\n", db->tablename, ct->lclkeyname, dbname, ct->keynm[k]);
                     } else if (out) {
-                        logmsgf(LOGMSG_USER, out, info + 1, db->tablename,
-                                ct->lclkeyname, dbname, ct->keynm[k]);
+                        logmsgf(LOGMSG_USER, out, info "\n", db->tablename, ct->lclkeyname, dbname, ct->keynm[k]);
                     }
                     return 1;
                 }

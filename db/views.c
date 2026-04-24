@@ -2187,16 +2187,11 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
 {
     int timeNextRollout = INT_MAX;
     char query[1024];
-    char *fmt_forward =
-        "select cast((cast(%d as datetime) + cast(%d as %s)) as int) as val";
-    char *fmt_backward =
-        "select cast((cast(%d as datetime) - cast(%d as %s)) as int) as val";
-    char *fmt;
+#define fmt_forward "select cast((cast(%d as datetime) + cast(%d as %s)) as int) as val"
+#define fmt_backward "select cast((cast(%d as datetime) - cast(%d as %s)) as int) as val"
     char *cast_str = NULL;
     int cast_val = 0;
     struct errstat err = {0};
-
-    fmt = (back_in_time) ? fmt_backward : fmt_forward;
 
     /* time reference */
     if (crtTime == INT_MIN && retention > 1) {
@@ -2244,7 +2239,7 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
         return INT_MAX;
     }
 
-    snprintf(query, sizeof(query), fmt, crtTime, cast_val, cast_str);
+    snprintf(query, sizeof(query), back_in_time ? fmt_backward : fmt_forward, crtTime, cast_val, cast_str);
 
     /* note: this is run when a new rollout is decided.  It doesn't have
     to be fast, or highly optimized (like running directly datetime functions */

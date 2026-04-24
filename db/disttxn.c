@@ -2241,9 +2241,8 @@ static int append_coordinator_str(void *obj, void *arg)
 {
     allowed_coordinators_t *coordinator = (allowed_coordinators_t *)obj;
     int *offset = (int *)arg;
-    char *st = (*offset) == 0 ? "%s/%s" : " %s/%s";
-    (*offset) += snprintf(&allowed_coordinators_str[*offset], sizeof(allowed_coordinators_str) - (*offset), st,
-                          coordinator->dbname, coordinator->tier);
+    (*offset) += snprintf(&allowed_coordinators_str[*offset], sizeof(allowed_coordinators_str) - (*offset),
+                          (*offset) == 0 ? "%s/%s" : " %s/%s", coordinator->dbname, coordinator->tier);
     return 0;
 }
 
