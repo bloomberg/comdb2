@@ -1017,16 +1017,16 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
                clnt->dbtran.dtran ? " has remote writes" : " no remote writes", comdb2uuidstr(clnt->osql.uuid, us));
     }
 
-    if (gbl_is_physical_replicant) {
-        logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
-        osql_sock_abort(clnt, type);
-        return SQLITE_READONLY;
-    }
-
     /* temp hook for sql transactions */
     /* is it distributed? */
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
     {
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_ERROR, "%s attempted fdb write on physical replicant\n", __func__);
+            osql_sock_abort(clnt, type);
+            return SQLITE_READONLY;
+        }
+
         rc = fdb_trans_commit(clnt, sideeffects);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
