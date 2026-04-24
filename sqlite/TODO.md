@@ -106,6 +106,7 @@
 - [x]     ./src/btree.h
 - [x]     ./src/btreeInt.h
 - [x]     ./src/btree.c
+- [x]     ./src/btmutex.c
 - [x] 402 ./src/sqlite_btree.h.patch
 - [x] 27  ./src/md5.h.patch
 - [x] 260 ./src/md5.c.patch
