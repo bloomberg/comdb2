@@ -4327,6 +4327,7 @@ static int cdb2_convert_error_code(int rc)
 
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
+    free_raw_response(hndl);
     if (hndl->lastresponse) {
         cdb2__sqlresponse__free_unpacked(hndl->lastresponse, hndl->allocator);
         if (hndl->protobuf_size)
