@@ -6269,6 +6269,11 @@ static struct schema *create_version_schema(char *csc2, int version,
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
 
+    if (version < 0 || version > 255) {
+        logmsg(LOGMSG_ERROR, "%s: out of range table version:%d\n", __func__, version);
+        goto done;
+    }
+
     ver_db = create_new_dbtable(
         thedb, NULL, csc2, 0 /* no altname */, 0 /* fake dbnum */,
         1 /* allow ull */, 1 /* no side effects */, &err);
