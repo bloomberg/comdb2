@@ -98,11 +98,11 @@
 - [x] 26  ./src/decimal.c.patch (keep)
 - [x] 14  ./src/hash.h.patch (pr)
 - [x]     ./src/hash.c (pr)
-- [x] 14  ./src/os.h.patch
-- [x]     ./src/os.c
+- [x] 14  ./src/os.h.patch (pr)
+- [x]     ./src/os.c (pr)
 - [x] 1003 ./src/sqliteInt.h.patch
-- [x] 15  ./src/sqlite_tunables.h.patch
-- [x] 82  ./src/sqlite_tunables.c.patch
+- [x] 15  ./src/sqlite_tunables.h.patch (keep)
+- [x] 82  ./src/sqlite_tunables.c.patch (keep)
 - [x]     ./src/btree.h
 - [x]     ./src/btreeInt.h
 - [x]     ./src/btree.c
