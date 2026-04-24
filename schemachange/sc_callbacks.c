@@ -32,6 +32,7 @@
 #include "sc_rename_table.h"
 #include "alias.h"
 #include "gen_shard.h"
+#include "tag.h"
 
 extern int gbl_retro_tpt_verbose;
 
