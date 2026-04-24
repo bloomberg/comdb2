@@ -37,6 +37,7 @@ comdb2_query_plans
 comdb2_queues
 comdb2_repl_stats
 comdb2_replication_netqueue
+comdb2_ruleset
 comdb2_sample_queries
 comdb2_sc_history
 comdb2_sc_status

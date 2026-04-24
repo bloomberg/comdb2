@@ -321,7 +321,7 @@ static void comdb2_dump_ruleset_item(
   logmsg(level, "%s: ruleset %p rule #%d %s action "
          "{%s} (0x%llX), pool {%s}, flags {%s} (0x%llX), "
          "mode {%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
-         "sql {%s}, fingerprint {%s}, evalCount %d, matchCount %d\n",
+         "sql {%s}, fingerprint {%s}, identity {%s}, evalCount %d, matchCount %d\n",
          __func__, rules, rule->ruleNo,
          zMessage ? zMessage : "<null>",
          zAction ? zAction : "<null>",
@@ -333,7 +333,9 @@ static void comdb2_dump_ruleset_item(
          criteria->zOriginTask ? criteria->zOriginTask : "<null>",
          criteria->zUser ? criteria->zUser : "<null>",
          criteria->zSql ? criteria->zSql : "<null>",
-         zFingerprint, rule->evalCount, rule->matchCount);
+         zFingerprint, 
+         criteria->zIdentity ? criteria->zIdentity : "<null>",  
+         rule->evalCount, rule->matchCount);
 }
 
 static ruleset_match_t comdb2_evaluate_ruleset_item(
@@ -353,16 +355,19 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   const char *zOriginTask;
   const char *zUser;
   const char *zSql;
+  const char *zIdentity;
   if( stringComparer==regexp_match ){
     zOriginHost = (const char *)cache->pOriginHostRe;
     zOriginTask = (const char *)cache->pOriginTaskRe;
     zUser = (const char *)cache->pUserRe;
     zSql = (const char *)cache->pSqlRe;
+    zIdentity = (const char*)cache->pIdentityRe;
   }else{
     zOriginHost = criteria->zOriginHost;
     zOriginTask = criteria->zOriginTask;
     zUser = criteria->zUser;
     zSql = criteria->zSql;
+    zIdentity = criteria->zIdentity;
   }
   if( stringComparer!=NULL ){
     if( zOriginHost!=NULL && ((context->zOriginHost==NULL) ||
@@ -381,6 +386,11 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
         stringComparer(context->zSql, zSql)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
+    if( zIdentity!=NULL && ((context->zIdentity==NULL) ||
+        stringComparer(context->zIdentity, zIdentity)!=0) ){
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+
   }else{
     if( zOriginHost!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
@@ -392,6 +402,9 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
     if( zSql!=NULL ){
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
+    if (zIdentity!=NULL){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
   }
@@ -755,7 +768,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       if( criteria->zSql!=NULL ){
         free(criteria->zSql);
-        criteria->zUser = NULL;
+        criteria->zSql = NULL;
       }
       criteria->zSql = strdup(zTok);
       if( criteria->zSql==NULL ){
@@ -816,6 +829,45 @@ int comdb2_load_ruleset_item_criteria(
       zTok = strtok_r(NULL, RULESET_DELIM, pzSav);
       continue;
     }
+
+    zField = "identity";
+    if( sqlite3_stricmp(zTok, zField)==0 ){
+      zTok = strtok_r(NULL, RULESET_TEXT_DELIM, pzSav);
+      if( zTok==NULL ){
+        snprintf(zError, nError,
+                 "%s:%d, expected %s value after '%s'",
+                 zFileName, lineNo, zField, zField);
+        rc = EINVAL;
+        goto done;
+      }
+      if( criteria->zIdentity!=NULL ){
+        free(criteria->zIdentity);
+        criteria->zIdentity = NULL;
+      }
+      criteria->zIdentity = strdup(zTok);
+      if( criteria->zIdentity==NULL ){
+        snprintf(zError, nError,
+                 "%s:%d, could not duplicate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, strlen(zTok)+1);
+        rc = ENOMEM;
+        goto done;
+      }
+      if( cache!=NULL ){
+        zReErr = NULL;
+        if( recompile_regexp(zTok, noCase, &cache->pIdentityRe, &zReErr)!=0 ){
+          snprintf(zError, nError,
+                   "%s:%d, bad %s regular expression '%s': %s",
+                   zFileName, lineNo, zField, zTok, zReErr);
+          re_free(cache->pIdentityRe);
+          cache->pIdentityRe = NULL;
+          rc = EINVAL;
+          goto done;
+        }
+      }
+      zTok = strtok_r(NULL, RULESET_DELIM, pzSav);
+      continue;
+    }
+
     snprintf(zError, nError,
              "%s:%d, unknown rule criteria field '%s'",
              zFileName, lineNo, zTok);

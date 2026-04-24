@@ -144,6 +144,8 @@ struct ruleset_item_criteria {
   unsigned char *pFingerprint;    /* Obtained via "clnt->work.aFingerprint".
                                    * If not NULL this will be matched using
                                    * memcmp(). */
+
+  char *zIdentity;
 };
 
 struct ruleset_item_criteria_cache {
@@ -158,6 +160,9 @@ struct ruleset_item_criteria_cache {
 
   void *pSqlRe;                   /* This is the cached regular expression for
                                    * the SQL pattern, if needed. */
+
+  void *pIdentityRe;              /* This is the cached regular expression for
+                                   * the identity pattern, if needed. */
 };
 
 struct ruleset_item {
