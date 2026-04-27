@@ -145,7 +145,6 @@ void test_read_comdb2db_cfg()
     char *dbname = "mydb";
     int num_db_hosts = 0;
     int dbnum = 0;
-    int stack_at_open = 0;
     char shards[10][DBNAME_LEN];
     int num_shards = 0;
     int dbname_found;
@@ -163,8 +162,7 @@ void test_read_comdb2db_cfg()
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
                       &dbnum, &dbname_found,
-                      &comdb2db_found, &stack_at_open,
-                      shards, &num_shards);
+                      &comdb2db_found, shards, &num_shards);
 
     assert(num_hosts == 0);
     assert(comdb2db_num == 0);
@@ -187,8 +185,7 @@ void test_read_comdb2db_cfg()
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
                       &dbnum, &dbname_found,
-                      &comdb2db_found, &stack_at_open,
-                      shards, &num_shards);
+                      &comdb2db_found, shards, &num_shards);
 
     assert(num_hosts == 5);
     assert(comdb2db_num == 0);
@@ -234,8 +231,7 @@ void test_read_comdb2db_cfg()
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
                       &dbnum, &dbname_found,
-                      &comdb2db_found, &stack_at_open,
-                      shards, &num_shards);
+                      &comdb2db_found, shards, &num_shards);
 
     assert(num_db_hosts == 3);
     assert(num_hosts == 3);

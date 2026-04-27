@@ -59,6 +59,7 @@ set(src
   version_util.c
   comdb2_walkback.c
   import_util.c
+  logrecord.c
 )
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
@@ -91,6 +92,7 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
   ${UNWIND_INCLUDE_DIR}
+  ${PROJECT_BINARY_DIR}/berkdb
 )
 add_dependencies(util mem)
 if (COMDB2_BBCMAKE)

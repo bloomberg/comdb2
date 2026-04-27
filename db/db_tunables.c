@@ -46,6 +46,8 @@ extern int gbl_sleep_5s_after_caching_table_versions;
 extern int gbl_transactional_drop_plus_rename;
 extern int gbl_bulk_import_validation_werror;
 extern int gbl_debug_sleep_during_bulk_import;
+extern int gbl_enable_bulk_import;
+extern int gbl_enable_bulk_import_different_tables;
 extern int gbl_debug_stall_in_oplog_seed;
 extern int gbl_waitalive_iterations;
 extern int gbl_allow_anon_id_for_spmux;
@@ -1475,6 +1477,18 @@ const char *tunable_type(comdb2_tunable_type type)
     default: assert(0);
     }
     return "???";
+}
+
+static int enable_bulk_import_different_tables_update(void *context, void *value)
+{
+    int val = *(int *)value;
+    if (val) {
+        gbl_enable_bulk_import = 1;
+        gbl_enable_bulk_import_different_tables = 1;
+    } else {
+        gbl_enable_bulk_import_different_tables = 0;
+    }
+    return 0;
 }
 
 /* Register all db tunables. */

@@ -402,13 +402,14 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* temp hook for sql transactions */
     if (clnt->dbtran.dtran) {
-        rc = fdb_trans_commit(clnt, TRANS_CLNTCOMM_NORMAL, &is_distributed_tran);
+        rc = fdb_trans_commit(clnt, TRANS_CLNTCOMM_NORMAL);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
             return rc;
         }
     }
 
+    is_distributed_tran = (is_distributed_tran && clnt->sent_fdb_commit);
     return rese_commit(clnt, thd, tzname, OSQL_RECOM_REQ, is_distributed_tran);
 }
 
@@ -732,29 +733,31 @@ static void osql_scdone_commit_callback(struct ireq *iq)
 static void osql_scdone_abort_callback(struct ireq *iq)
 {
     gbl_readonly_sc = 0;
-    uuid_t uuid;
-    if ((iq->osql_flags & OSQL_FLAGS_SCDONE) && iq->sc_pending) {
-        iq->sc = iq->sc_pending;
-        comdb2uuidcpy(uuid, iq->sc->uuid);
-        while (iq->sc != NULL) {
-            struct schema_change_type *sc_next;
-            scdone_abort_cleanup(iq);
-            sc_next = iq->sc->sc_next;
-            free_schema_change_type(iq->sc);
-            iq->sc = sc_next;
+    /* we mark OSQL_FLAGS_SCDONE on error if the schema change
+     * is not resumable
+     */
+    if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
+        if (iq->sc_pending) {
+            iq->sc = iq->sc_pending;
+            while (iq->sc != NULL) {
+                struct schema_change_type *sc_next;
+                scdone_abort_cleanup(iq);
+                sc_next = iq->sc->sc_next;
+                free_schema_change_type(iq->sc);
+                iq->sc = sc_next;
+            }
+            iq->sc_pending = NULL;
+            iq->sc_seed = 0;
+            iq->sc_should_abort = 0;
         }
-        iq->sc_pending = NULL;
-        iq->sc_seed = 0;
-        iq->sc_should_abort = 0;
 
-        int rc = osql_delete_sc_list(uuid, NULL);
+        int rc = osql_delete_sc_list(iq->scs_uuid, NULL);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to remove sc list rc %d\n",
                     __func__, rc);
         }
     }
     iq->tranddl = 0;
-
 }
 
 void osql_postcommit_handle(struct ireq *iq)

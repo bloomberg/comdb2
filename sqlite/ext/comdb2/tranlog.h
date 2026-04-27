@@ -18,6 +18,7 @@
 #define INCLUDED_TRANLOG_H
 
 #include "build/db.h"
+#include "logrecord.h"
 
 /* Define flags for the third argument */
 enum {
@@ -26,7 +27,5 @@ enum {
     TRANLOG_FLAGS_DESCENDING        = 0x4,
     TRANLOG_FLAGS_SENTINEL          = 0x8,
 };
-
-u_int64_t get_timestamp_from_matchable_record(char *data);
 
 #endif

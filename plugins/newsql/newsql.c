@@ -31,6 +31,10 @@
 #include "newsql.h"
 #include "cheapstack.h"
 
+#ifdef COMDB2_TEST
+#include "debug_switches.h"
+#endif
+
 void free_original_normalized_sql(struct sqlclntstate *);
 
 extern int gbl_allow_incoherent_sql;
@@ -834,7 +838,22 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     } else if (arg->pingpong) {
         return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING, 1);
     }
-    return newsql_response(clnt, &r, !clnt->rowbuffer);
+
+#ifdef COMDB2_TEST
+    if (debug_switch_stall_ssl_write()) {
+        debug_switch_set_newsql_response_is_row(1);
+    }
+#endif
+
+    int rc = newsql_response(clnt, &r, !clnt->rowbuffer);
+
+#ifdef COMDB2_TEST
+    if (debug_switch_stall_ssl_write()) {
+        debug_switch_set_newsql_response_is_row(0);
+    }
+#endif
+
+    return rc;
 }
 
 static int newsql_row_remtran(struct sqlclntstate *clnt, const char *name,
@@ -888,7 +907,21 @@ static int newsql_row_last(struct sqlclntstate *clnt)
     _has_effects(clnt, resp);
     _has_snapshot(clnt, resp);
     _has_features(clnt, resp);
-    return newsql_response(clnt, &resp, 1);
+
+#ifdef COMDB2_TEST
+    if (debug_switch_stall_ssl_write()) {
+        debug_switch_set_newsql_response_is_row(1);
+    }
+#endif
+
+    int rc = newsql_response(clnt, &resp, 1);
+
+#ifdef COMDB2_TEST
+    if (debug_switch_stall_ssl_write()) {
+        debug_switch_set_newsql_response_is_row(0);
+    }
+#endif
+    return rc;
 }
 
 static int newsql_row_last_dummy(struct sqlclntstate *clnt)

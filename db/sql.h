@@ -699,8 +699,6 @@ struct features {
     unsigned queue_me : 1;
 };
 
-struct clnt_fdb_cache;
-
 /* Client specific sql state */
 struct sqlclntstate {
     struct thdpool *pPool;     /* When null, the default SQL thread pool is
@@ -1062,6 +1060,7 @@ struct sqlclntstate {
     int use_2pc;
     int is_participant;
     int is_coordinator;
+    int sent_fdb_commit;
 
     char *dist_txnid;
     int64_t dist_timestamp;
@@ -1089,7 +1088,6 @@ struct sqlclntstate {
     char *origin_argv0;
 
     unsigned blocking_tranlog : 1;
-    struct clnt_fdb_cache *remoteFdbCache;
 };
 typedef struct sqlclntstate sqlclntstate;
 
@@ -1617,7 +1615,7 @@ struct query_plan_item {
 };
 int free_query_plan_hash(hash_t *query_plan_hash);
 int clear_query_plans();
-struct string_ref *form_query_plan(struct sqlclntstate *clnt, sqlite3_stmt *stmt);
+struct string_ref *form_query_plan(sqlite3_stmt *stmt);
 void add_query_plan(int64_t cost, int64_t nrows, struct fingerprint_track *t, struct string_ref *zSql_ref,
                     struct string_ref *query_plan_ref, unsigned char *plan_fingerprint, char *params);
 
@@ -1701,7 +1699,6 @@ void curtran_assert_nolocks(void);
 void curtran_puttran(tran_type *tran);
 int sbuf_is_local(COMDB2BUF *);
 int fdb_access_control_create(struct sqlclntstate *, char *str);
-int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
 int start_new_transaction(struct sqlclntstate *);

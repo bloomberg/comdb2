@@ -6106,8 +6106,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     rc = start_schema_change_tran(iq, sc->tran);
 
     /* user suspended sc */
-    if (rc || sc->preempted == SC_ACTION_RESUME ||
-        sc->kind == SC_ALTERTABLE_PENDING) {
+    if (rc != SC_OK || sc->preempted == SC_ACTION_RESUME || sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
         if (sc->nothrevent) {
             /* we need to link the sc into sc_pending so that backout
@@ -6115,9 +6114,15 @@ static int start_schema_change_tran_wrapper(const char *tblname,
              */
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
-            /* mark scdone so that cleanup removes llmeta */
+        }
+        /* mark scdone so that cleanup removes llmeta */
+        if (rc != SC_OK) {
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            else {
+                /* potential downgrade during the last shard processing */
+                iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+            }
         }
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -6178,9 +6183,11 @@ static int _process_single_table_sc(struct ireq *iq)
 
     /* schema change for a regular table */
     rc = start_schema_change_tran(iq, NULL);
-    if (rc || sc->preempted == SC_ACTION_RESUME ||
-        sc->kind == SC_ALTERTABLE_PENDING) {
+    if (rc != SC_OK || sc->preempted == SC_ACTION_RESUME || sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
+        /* mark scdone so that cleanup removes llmeta */
+        if (rc != SC_OK && rc != SC_MASTER_DOWNGRADE)
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
@@ -6242,8 +6249,15 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
         }
     }
 
-    if (rc && rc != SC_MASTER_DOWNGRADE)
-        iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    /* mark scdone so that cleanup removes llmeta */
+    if (rc != SC_OK) {
+        if (rc != SC_MASTER_DOWNGRADE)
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        else {
+            /* potential downgrade during the last shard processing */
+            iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+        }
+    }
     return rc;
 }
 
@@ -6271,7 +6285,14 @@ static int _process_single_table_sc_merge(struct ireq *iq)
 
     iq->sc->sc_next = iq->sc_pending;
     iq->sc_pending = iq->sc;
-    if (rc) {
+    /* mark scdone so that cleanup removes llmeta */
+    if (rc != SC_OK) {
+        if (rc != SC_MASTER_DOWNGRADE)
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        else {
+            /* potential downgrade during the last shard processing */
+            iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+        }
         return ERR_SC;
     }
 
@@ -6333,9 +6354,12 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
         rc = start_schema_change_tran(iq, NULL);
 
-        if (rc) {
+        /* mark scdone so that cleanup removes llmeta */
+        if (rc != SC_OK) {
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            else
+                iq->osql_flags ^= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
 
@@ -6350,9 +6374,13 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
 
         rc = start_schema_change_tran(iq, NULL);
-        if (rc) {
+
+        /* mark scdone so that cleanup removes llmeta */
+        if (rc != SC_OK) {
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            else
+                iq->osql_flags ^= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
 
@@ -6615,6 +6643,14 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
 
             iq->sc->sc_next = iq->sc_pending;
             iq->sc_pending = iq->sc;
+
+            /* mark scdone so that cleanup removes llmeta */
+            if (rc != SC_OK) {
+                if (rc != SC_MASTER_DOWNGRADE)
+                    iq->osql_flags |= OSQL_FLAGS_SCDONE;
+                else
+                    iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+            }
         }
     }
     free(arg.part_name);
@@ -6913,6 +6949,13 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
         rc = finalize_schema_change(iq, iq->sc_tran);
         iq->usedb = NULL;
         if (rc != SC_OK) {
+            /* rollback plan:
+             * iq->sc_pending has all schema changes finalized or not
+             * schema changes that failed early (example: already running error)
+             * are already freed and not in this list anymore
+             * backout code will process iq->sc_pending
+             * and finaly remove sc_list from llmeta using iq->scs_uuid key
+             */
             return ERR_SC;
         }
         if (IS_FASTINIT(iq->sc) && gbl_replicate_local)

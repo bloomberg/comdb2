@@ -48,6 +48,8 @@ extern int gbl_sc_protobuf;
 extern int gbl_retro_tpt_start;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
+extern int gbl_enable_bulk_import;
+extern int gbl_enable_bulk_import_different_tables;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -1776,6 +1778,11 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
         return;
     }
 
+    if (!gbl_enable_bulk_import) {
+        setError(pParse, SQLITE_MISUSE, "bulk import is not enabled");
+        return;
+    }
+
     if (!gbl_sc_protobuf) {
         setError(pParse, SQLITE_MISUSE,
             "sc_protobuf lrl option required for sql table replacement");
@@ -1798,6 +1805,12 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
     }
 
     if (create_string_from_token(v, pParse, &src_tablename, nm3)) {
+        goto err;
+    }
+
+    if (strcmp(src_tablename, dst_tablename) != 0 && !gbl_enable_bulk_import_different_tables) {
+        setError(pParse, SQLITE_MISUSE,
+            "import across different table names not enabled");
         goto err;
     }
 
@@ -8045,7 +8058,7 @@ void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database, int alter
 
     if (chkAndCopyTableTokens(pParse, partition->u.mergetable.tablename, name, database,
                               ERROR_ON_TBL_NOT_FOUND, 1, NULL, &partition_first_shardname, /* check_for_illegal_chars */ 0)) {
-        return;                             
+        return;
     }
 
     if (partition_first_shardname) {

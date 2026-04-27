@@ -1442,6 +1442,7 @@ struct ireq {
     tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
     LISTC_T(struct schema_change_type) scs; /* all schema changes in this txn */
+    uuid_t scs_uuid;                        /* on resume, there is no sorese, but we need to know uuid for scs */
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;
@@ -3705,7 +3706,7 @@ int is_tablename_queue(const char *);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
-int comdb2_get_verify_remote_schemas(struct sqlclntstate *clnt);
+int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
 
 const char *thrman_get_where(struct thr_handle *thr);
@@ -3741,7 +3742,6 @@ void destroy_password_cache();
 
 extern int gbl_rcache;
 extern int gbl_throttle_txn_chunks_msec;
-extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_fail_client_write_lock;
 extern int gbl_server_admin_mode;
 

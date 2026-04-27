@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+# Validate required environment variables
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+	q=${!required}
+	echo "$required=$q"
+	if [[ -z "$q" ]]; then
+		echo "$required not set" >&2
+		exit 1
+	fi
+done
+
+SRC_DBNAME=$SECONDARY_DBNAME
+SRC_CDB2_OPTIONS=$SECONDARY_CDB2_OPTIONS
+SRC_CDB2_CONFIG=$SECONDARY_CDB2_CONFIG
+DST_DBNAME=$DBNAME
+DST_CDB2_OPTIONS=$CDB2_OPTIONS
+DST_CDB2_CONFIG=$CDB2_CONFIG
+
+# Principals
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+IMPORTER="bpi:procauth:cluster:test:user:importer:bpkg:bulkimport"
+NOACCESS="bpi:procauth:cluster:test:user:noaccess:bpkg:bulkimport"
+
+# simpleauth_test wrapper for each database
+sa_dst() {
+	local principal="$1" sql="$2"
+	CDB2_CONFIG=$DST_CDB2_CONFIG ${TESTSBUILDDIR}/simpleauth_test $DST_DBNAME "$principal" "$sql"
+}
+
+sa_src() {
+	local principal="$1" sql="$2"
+	CDB2_CONFIG=$SRC_CDB2_CONFIG ${TESTSBUILDDIR}/simpleauth_test $SRC_DBNAME "$principal" "$sql"
+}
+
+# Plain cdb2sql wrappers (no identity — used for setup tunables)
+query_src_db() {
+	cdb2sql ${SRC_CDB2_OPTIONS} $SRC_DBNAME default "$1"
+}
+
+query_dst_db() {
+	cdb2sql ${DST_CDB2_OPTIONS} $DST_DBNAME default "$1"
+}
+
+set_tunable() {
+	local db_options=$1 db_name=$2 tunable=$3 nodes
+	if [[ -z "$CLUSTER" ]]; then nodes=$HOSTNAME; else nodes=$CLUSTER; fi
+	for node in $nodes; do
+		cdb2sql --host ${node} ${db_options} $db_name "exec procedure sys.cmd.send('${tunable}')"
+	done
+}
+
+set_src_tunable() { set_tunable "$SRC_CDB2_OPTIONS" "$SRC_DBNAME" "$1"; }
+set_dst_tunable() { set_tunable "$DST_CDB2_OPTIONS" "$DST_DBNAME" "$1"; }
+
+passed=0
+failed=0
+
+run_expect_success() {
+	local target="$1" principal="$2" sql="$3" desc="$4"
+	if sa_${target} "$principal" "$sql" > /dev/null 2>&1; then
+		echo "  PASS: $desc"
+		passed=$((passed + 1))
+	else
+		echo "  FAIL: $desc"
+		failed=$((failed + 1))
+	fi
+}
+
+run_expect_failure() {
+	local target="$1" principal="$2" sql="$3" desc="$4"
+	if sa_${target} "$principal" "$sql" > /dev/null 2>&1; then
+		echo "  FAIL: $desc (expected failure but succeeded)"
+		failed=$((failed + 1))
+	else
+		echo "  PASS: $desc"
+		passed=$((passed + 1))
+	fi
+}
+
+setup_auth_table() {
+	local target=$1
+	# Create auth table WITHOUT index (CREATE INDEX has a response hang bug)
+	# simpleauth will work without the index, just slightly slower
+	echo "  Creating auth table on $target..."
+	query_${target}_db "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" || true
+
+	# Insert initial wildcard rules
+	echo "  Inserting auth rules on $target..."
+	query_${target}_db "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" || true
+	query_${target}_db "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" || true
+	query_${target}_db "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" || true
+
+	echo "  PASS: [$target] auth table setup complete"
+}
+
+restore_wildcard() {
+	local target=$1
+	sa_${target} "$OP" \
+		"insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+		> /dev/null 2>&1
+	sa_${target} "$OP" \
+		"delete from comdb2_simple_auth where user != '*'" \
+		> /dev/null 2>&1
+}
+
+#---------------------------------------------------------------
+main() {
+	# Allow running in non-cluster mode (use hostname as single node)
+	if [ -z "$CLUSTER" ] ; then
+		echo "Running in non-cluster mode (single node: $HOSTNAME)"
+		export CLUSTER=$HOSTNAME
+	fi
+
+	set_src_tunable "semver 8.1.0"
+	set_dst_tunable "semver 8.1.0"
+
+	echo "=== Setup: auth tables on both databases ==="
+	setup_auth_table dst
+	setup_auth_table src
+
+	#---------------------------------------------------------------
+	echo ""
+	echo "=== Test 1: Bulkimport succeeds with wildcard permissions ==="
+	#---------------------------------------------------------------
+	run_expect_success dst "$OP" "create table t1(i int unique, j longlong default nextsequence)" \
+		"[dst] create t1"
+	run_expect_success src "$OP" "create table t1(i int unique, j longlong default nextsequence)" \
+		"[src] create t1"
+	run_expect_success src "$OP" "insert into t1(i) values(1)" \
+		"[src] insert into t1"
+	run_expect_success src "$OP" "insert into t1(i) values(2)" \
+		"[src] insert into t1"
+
+	run_expect_success dst "$OP" "replace table t1 with LOCAL_$SRC_DBNAME.t1" \
+		"bulkimport with wildcard (should succeed)"
+
+	# Cleanup test 1
+	sa_dst "$OP" "drop table t1" > /dev/null 2>&1
+	sa_src "$OP" "drop table t1" > /dev/null 2>&1
+
+	#---------------------------------------------------------------
+	echo ""
+	echo "=== Test 2: Bulkimport fails without DDL permission on destination ==="
+	#---------------------------------------------------------------
+	# Setup tables
+	run_expect_success dst "$OP" "create table t2(i int unique)" \
+		"[dst] create t2"
+	run_expect_success src "$OP" "create table t2(i int unique)" \
+		"[src] create t2"
+	run_expect_success src "$OP" "insert into t2 values(1)" \
+		"[src] insert into t2"
+
+	# Grant op full control of auth table, then remove wildcard on dst
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', '*', '*', '*', '*') on conflict do nothing" \
+		"[dst] grant op full access"
+	run_expect_success dst "$OP" \
+		"delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+		"[dst] remove wildcard"
+
+	# Grant importer only Read on t2 (no DDL)
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'importer', '*', 'Read', 'table', 't2') on conflict do nothing" \
+		"[dst] grant importer Read on t2"
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'importer', '*', 'Connect', '*', '*') on conflict do nothing" \
+		"[dst] grant importer Connect"
+
+	# Try bulkimport as importer — should fail (no DDL permission)
+	run_expect_failure dst "$IMPORTER" "replace table t2 with LOCAL_$SRC_DBNAME.t2" \
+		"bulkimport without DDL on dst (should fail)"
+
+	# Restore dst wildcard
+	restore_wildcard dst
+
+	# Cleanup test 2
+	sa_dst "$OP" "drop table t2" > /dev/null 2>&1
+	sa_src "$OP" "drop table t2" > /dev/null 2>&1
+
+	#---------------------------------------------------------------
+	echo ""
+	echo "=== Test 3: Bulkimport succeeds with DDL permission on destination ==="
+	#---------------------------------------------------------------
+	# Setup tables
+	run_expect_success dst "$OP" "create table t3(i int unique)" \
+		"[dst] create t3"
+	run_expect_success src "$OP" "create table t3(i int unique)" \
+		"[src] create t3"
+	run_expect_success src "$OP" "insert into t3 values(1)" \
+		"[src] insert into t3"
+
+	# Grant op full control, remove wildcard on dst
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', '*', '*', '*', '*') on conflict do nothing" \
+		"[dst] grant op full access"
+	run_expect_success dst "$OP" \
+		"delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+		"[dst] remove wildcard"
+
+	# Grant importer DDL + Read + Write on t3
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'importer', '*', 'DDL', 'table', 't3') on conflict do nothing" \
+		"[dst] grant importer DDL on t3"
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'importer', '*', 'Read', 'table', 't3') on conflict do nothing" \
+		"[dst] grant importer Read on t3"
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'importer', '*', 'Write', 'table', 't3') on conflict do nothing" \
+		"[dst] grant importer Write on t3"
+	run_expect_success dst "$OP" \
+		"insert into comdb2_simple_auth values('*', 'importer', '*', 'Connect', '*', '*') on conflict do nothing" \
+		"[dst] grant importer Connect"
+
+	# Bulkimport as importer — should succeed (has DDL)
+	run_expect_success dst "$IMPORTER" "replace table t3 with LOCAL_$SRC_DBNAME.t3" \
+		"bulkimport with DDL on dst (should succeed)"
+
+	# Restore dst wildcard
+	restore_wildcard dst
+
+	# Cleanup test 3
+	sa_dst "$OP" "drop table t3" > /dev/null 2>&1
+	sa_src "$OP" "drop table t3" > /dev/null 2>&1
+
+	#---------------------------------------------------------------
+	echo ""
+	echo "=== Test 4: Bulkimport without read permission on source ==="
+	#---------------------------------------------------------------
+	# Setup tables
+	run_expect_success dst "$OP" "create table t4(i int unique)" \
+		"[dst] create t4"
+	run_expect_success src "$OP" "create table t4(i int unique)" \
+		"[src] create t4"
+	run_expect_success src "$OP" "insert into t4 values(1)" \
+		"[src] insert into t4"
+
+	# Remove wildcard on source, grant op access only for bpkg=setup (NOT bpkg=comdb2)
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'setup', '*', '*', '*') on conflict do nothing" \
+		"[src] grant op+setup full access"
+	run_expect_success src "$OP" \
+		"delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+		"[src] remove wildcard"
+
+	# The comdb2 import process now identifies itself as
+	# bpi:procauth:cluster:<cluster>:user:op:bpkg:comdb2
+	# Since no grant exists for bpkg=comdb2 on the source (only bpkg=setup is granted),
+	# the import should fail because the source DB denies read access.
+	run_expect_failure dst "$OP" "replace table t4 with LOCAL_$SRC_DBNAME.t4" \
+		"bulkimport without Read on src for comdb2 identity (should fail)"
+
+	# Restore src wildcard
+	restore_wildcard src
+
+	# Cleanup test 4
+	sa_dst "$OP" "drop table t4" > /dev/null 2>&1
+	sa_src "$OP" "drop table t4" > /dev/null 2>&1
+
+	#---------------------------------------------------------------
+	echo ""
+	echo "=== Test 5: Bulkimport succeeds when source grants access to comdb2 identity ==="
+	#---------------------------------------------------------------
+	# Setup tables
+	run_expect_success dst "$OP" "create table t5(i int unique)" \
+		"[dst] create t5"
+	run_expect_success src "$OP" "create table t5(i int unique)" \
+		"[src] create t5"
+	run_expect_success src "$OP" "insert into t5 values(1)" \
+		"[src] insert into t5"
+
+	# Remove wildcard on source, grant op access only
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', '*', '*', '*', '*') on conflict do nothing" \
+		"[src] grant op full access"
+	run_expect_success src "$OP" \
+		"delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+		"[src] remove wildcard"
+
+	# Grant the comdb2 process identity Read + Connect on the source
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Read', 'table', 't5') on conflict do nothing" \
+		"[src] grant comdb2 identity Read on t5"
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Read', 'table', 'comdb2_files') on conflict do nothing" \
+		"[src] grant comdb2 identity Read on comdb2_files"
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Read', 'table', 'sys.cmd.send()') on conflict do nothing" \
+		"[src] grant comdb2 identity Read on sys.cmd.send()"
+	run_expect_success src "$OP" \
+		"insert into comdb2_simple_auth values('*', 'op', 'comdb2', 'Connect', '*', '*') on conflict do nothing" \
+		"[src] grant comdb2 identity Connect"
+
+	# Now the import should succeed because the comdb2 identity has all necessary permissions
+	run_expect_success dst "$OP" "replace table t5 with LOCAL_$SRC_DBNAME.t5" \
+		"bulkimport with Read on src for comdb2 identity (should succeed)"
+
+	# Restore src wildcard
+	restore_wildcard src
+
+	# Cleanup test 5
+	sa_dst "$OP" "drop table t5" > /dev/null 2>&1
+	sa_src "$OP" "drop table t5" > /dev/null 2>&1
+
+	#---------------------------------------------------------------
+	echo ""
+	echo "Results: $passed passed, $failed failed"
+
+	if [ $failed -gt 0 ] ; then
+		failexit "$failed tests failed"
+	fi
+
+	echo "Success"
+}
+
+main

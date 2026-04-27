@@ -1,0 +1,1 @@
+This tests the multiddl.  First test makes sure we do not leak sclists when multiple racing schema changes target the same table.

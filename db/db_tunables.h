@@ -118,6 +118,13 @@ REGISTER_TUNABLE("bulk_import_validation_werror",
                  "(Default: on)", TUNABLE_BOOLEAN,
                  &gbl_bulk_import_validation_werror, 0, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("enable_bulk_import", "Enable bulk import. (Default: off)", TUNABLE_BOOLEAN, &gbl_enable_bulk_import,
+                 NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("enable_bulk_import_different_tables",
+                 "Enable bulk import across tables with different names. "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_enable_bulk_import_different_tables, NOARG, NULL, NULL,
+                 enable_bulk_import_different_tables_update, NULL);
 /*
 REGISTER_TUNABLE("cache",
                  "Database cache size (in kb) . (Default: 64mb)",

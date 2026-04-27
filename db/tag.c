@@ -65,7 +65,6 @@ extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
 
 char gbl_ondisk_ver[] = ".ONDISK.VER.";
-char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
 const int gbl_ondisk_ver_len = sizeof ".ONDISK.VER.255xx";
 
 int _dbg_tags = 0;

@@ -4154,7 +4154,7 @@ int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmet
     return 0;
 }
 
-/* return all schema change pending transactons */
+/* return all schema change pending lists */
 int bdb_llmeta_get_all_sc_lists(tran_type *t, void ***dtas, int **dtalens, void ***keys,
                                 int *keylen, int *num, int *bdberr)
 {
@@ -4175,6 +4175,80 @@ int bdb_llmeta_get_all_sc_lists(tran_type *t, void ***dtas, int **dtalens, void 
     }
 
     return 0;
+}
+
+static int _rem_all_schema_change_lists(tran_type *trans)
+{
+    uint8_t key[LLMETA_IXLEN] = {0};
+    int key_type = htonl(LLMETA_SCHEMACHANGE_LIST);
+    int keylen = sizeof(key_type);
+    uint8_t out[LLMETA_IXLEN];
+    int fnd;
+    int rc = 0;
+    int bdberr = 0;
+    int cnt = 0;
+
+    memcpy(key, &key_type, keylen);
+
+    do {
+        /* find the first key */
+        rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, trans, key, keylen, out, &fnd, &bdberr);
+        if (rc == 0 && fnd == 1) {
+            if (memcmp(key, out, keylen) != 0)
+                break;
+
+            /* delete first entry, if any */
+            rc = bdb_lite_exact_del(llmeta_bdb_state, trans, out, &bdberr);
+            if (rc)
+                break;
+            cnt++;
+        } else
+            break;
+    } while (1);
+
+    if (cnt > 0) {
+        logmsg(LOGMSG_USER, "Deleted %d scl llmeta objects\n", cnt);
+    }
+
+    if (rc && bdberr == BDBERR_DEL_DTA) /* deleted all keys, if any */
+        return 0;
+    return rc;
+}
+
+/* remove all schema change pending lists */
+int bdb_llmeta_rem_all_sc_lists(tran_type *input_trans)
+{
+    tran_type *trans = input_trans;
+    int rc = 0;
+    int bdberr = 0;
+
+    if (!input_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
+        if (!trans) /* TODO: consider adding a retry */
+            return -1;
+    }
+
+    rc = _rem_all_schema_change_lists(trans);
+    if (rc)
+        goto err;
+
+    if (!input_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, &bdberr);
+        if (rc)
+            return -1;
+    }
+
+    return 0;
+
+err:
+    if (!input_trans) {
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to abort txn rc %d bdberr %d\n", __func__, rc, bdberr);
+        }
+    }
+
+    return -1;
 }
 
 int bdb_newsc_del_redo_genid(tran_type *t, const char *tablename, uint64_t genid, int *bdberr)
@@ -7069,6 +7143,10 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     p_buf_end_data = (uint8_t *)data + datalen;
 
     buf_get(&type, sizeof(type), p_buf_key, p_buf_end_key);
+
+#ifdef DEBUG_LLMETA
+    fprintf(stderr, "%s: printing type %d\n", __func__, type);
+#endif
 
     switch (type) {
     case LLMETA_FVER_FILE_TYPE_TBL:

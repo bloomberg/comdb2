@@ -122,7 +122,8 @@ int osql_sess_save_sc_list(osql_sess_t *sess);
  * Remove sc list from llmeta
  *
  */
-int osql_delete_sc_list(uuid_t uuid, tran_type *trans);
+int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *f, int l);
+#define osql_delete_sc_list(uuid, trans) osql_delete_sc_list_int((uuid), (trans), __func__, __LINE__)
 
 /**
  * Coordinator has asked this participant to prepare it's osql schedule

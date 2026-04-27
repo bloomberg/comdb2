@@ -13,6 +13,36 @@ public class ClientInfoIT {
         Assert.assertArrayEquals("driver name and version match pom.xml", expected_driver, actual_driver);
     }
 
+    @Test public void getJavaHomeTest() {
+        String expected = System.getProperty("java.home");
+        String actual = Comdb2ClientInfo.getJavaHome();
+        Assert.assertNotNull("java.home should not be null", actual);
+        Assert.assertEquals("getJavaHome should return java.home system property", expected, actual);
+    }
+
+    @Test public void verifyTaskNameIsJavaHome() throws SQLException {
+        String db = System.getProperty("cdb2jdbc.test.database");
+        String cluster = System.getProperty("cdb2jdbc.test.cluster");
+
+        Connection conn = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s", cluster, db));
+        Statement stmt = conn.createStatement();
+        /* Execute a query so that client info is sent to the server. */
+        stmt.executeQuery("SELECT 1");
+        ResultSet rs = stmt.executeQuery("SELECT task FROM comdb2_clientstats");
+        String javaHome = System.getProperty("java.home");
+        boolean found = false;
+        while (rs.next()) {
+            String task = rs.getString(1);
+            if (task != null && task.equals(javaHome))
+                found = true;
+        }
+        Assert.assertTrue("Should find java.home (" + javaHome + ") as task name in comdb2_clientstats", found);
+
+        rs.close();
+        stmt.close();
+        conn.close();
+    }
+
     @Test public void verifyDriverInfoInDatabase() throws SQLException {
         String db = System.getProperty("cdb2jdbc.test.database");
         String cluster = System.getProperty("cdb2jdbc.test.cluster");

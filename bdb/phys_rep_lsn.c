@@ -7,6 +7,7 @@
 #include <dbinc/db_swap.h>
 #include "phys_rep_lsn.h"
 #include "tranlog.h"
+#include "logrecord.h"
 #include <cdb2api.h>
 #include <parse_lsn.h>
 #include "locks.h"
@@ -81,7 +82,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
 
         } while (!matchable_log_type(bdb_state->dbenv, rectype));
 
-        my_time = get_timestamp_from_matchable_record(logrec.data);
+        my_time = logrecord_timestamp_matchable(logrec.data);
         if (gbl_physrep_debug) {
             physrep_logmsg(LOGMSG_USER, "%s my ts is %"PRIu64", {%u:%u}\n", __func__,
                            my_time, rec_lsn.file, rec_lsn.offset);

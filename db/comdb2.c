@@ -733,8 +733,6 @@ int gbl_sql_release_locks_on_si_lockwait = 1;
 /* If this is set, recom_replay will see the same row multiple times in a scan &
  * fail */
 int gbl_sql_release_locks_on_emit_row = 0;
-int gbl_sql_release_locks_on_slow_reader = 1;
-int gbl_sql_no_timeouts_on_release_locks = 1;
 int gbl_sql_release_locks_in_update_shadows = 1;
 int gbl_sql_random_release_interval = 0;
 int gbl_sql_release_locks_trace = 0;
@@ -3824,17 +3822,6 @@ static int init(int argc, char **argv)
     Pthread_key_create(&query_info_key, NULL);
     Pthread_key_create(&DBG_FREE_CURSOR, free);
 
-    if (gbl_import_mode) {
-        gbl_exit = 1;
-        gbl_fullrecovery = 1;
-
-        rc = bulk_import_tmpdb_pull_foreign_dbfiles(gbl_import_src);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
-            exit(rc);
-        }
-    }
-
     if (lrlname == NULL) {
         char *lrlenv = getenv("COMDB2_CONFIG");
         if (lrlenv)
@@ -3916,6 +3903,17 @@ static int init(int argc, char **argv)
     thedb = newdbenv(dbname, lrlname);
     if (thedb == 0)
         return -1;
+
+    if (gbl_import_mode) {
+        gbl_exit = 1;
+        gbl_fullrecovery = 1;
+
+        rc = bulk_import_tmpdb_pull_foreign_dbfiles(gbl_import_src);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
+            exit(rc);
+        }
+    }
 
     if (gbl_create_mode && gbl_archive_on_init) { 
         rc = archive_old_files(thedb->basedir);
@@ -5444,12 +5442,6 @@ static void register_all_int_switches()
     register_int_switch("sql_release_locks_on_emit_row_lockwait",
                         "Release sql locks when we are about to emit a row",
                         &gbl_sql_release_locks_on_emit_row);
-    register_int_switch("sql_release_locks_on_slow_reader",
-                        "Release sql locks if a tcp write to the client blocks",
-                        &gbl_sql_release_locks_on_slow_reader);
-    register_int_switch("no_timeouts_on_release_locks",
-                        "Disable client-timeouts if we're releasing locks",
-                        &gbl_sql_no_timeouts_on_release_locks);
     register_int_switch("sql_release_locks_in_update_shadows",
                         "Release sql locks in update_shadows on lockwait",
                         &gbl_sql_release_locks_in_update_shadows);
@@ -6599,5 +6591,6 @@ static void create_service_file(const char *lrlname)
 #endif
     return;
 }
+
 
 

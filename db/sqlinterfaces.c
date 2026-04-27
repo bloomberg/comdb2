@@ -168,8 +168,6 @@ extern int gbl_print_syntax_err;
 extern int gbl_max_sqlcache;
 extern int gbl_track_sqlengine_states;
 extern struct ruleset *gbl_ruleset;
-extern int gbl_sql_release_locks_on_slow_reader;
-extern int gbl_sql_no_timeouts_on_release_locks;
 extern int get_snapshot(struct sqlclntstate *clnt, int *f, int *o);
 
 extern void clnt_try_enable_logdel(struct sqlclntstate *clnt);
@@ -283,11 +281,6 @@ static inline void comdb2_set_sqlite_vdbe_dtprec_int(Vdbe *p,
                                                      struct sqlclntstate *clnt)
 {
     p->dtprec = clnt->dtprec;
-}
-
-int disable_server_sql_timeouts(void)
-{
-    return gbl_sql_release_locks_on_slow_reader && gbl_sql_no_timeouts_on_release_locks;
 }
 
 #define XRESPONSE(x) #x,
@@ -1810,8 +1803,6 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* clients don't expect column data if it's a converted request */
     reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" new transaction\n",
                 (clnt->sql) ? clnt->sql : "(???.)");
-
-    clnt->use_2pc = gbl_2pc;
 
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
@@ -3361,7 +3352,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->in_sqlite_init = 0;
         if (rc == SQLITE_OK) {
             if (!prepareOnly) rc = sqlite3LockStmtTables(rec->stmt);
-        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas(clnt)) {
+        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
             return SQLITE_SCHEMA_REMOTE;
         }
@@ -4013,7 +4004,14 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if ((rc = send_columns(clnt, stmt)) != 0) {
-        return rc;
+        /* read only requests */
+        if (clnt->isselect || v->explain)
+            return rc;
+        /* if we are in a single write transaction and client disconnected, set error here
+         * to let sqlite know we want a rollback
+         * NOTE: explicit transactions do not send columns here so they will not get an error
+         */
+        clnt->query_rc = CDB2ERR_IO_ERROR;
     }
 
     if (clnt->intrans == 0) {
@@ -5622,9 +5620,6 @@ int sbuf_is_local(COMDB2BUF *sb)
 
 int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
 {
-    if (!gbl_sql_release_locks_on_slow_reader) {
-        return 0;
-    }
     int waiters = -1, lock_desired = -1;
     if ((waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) == 0
         && (lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0

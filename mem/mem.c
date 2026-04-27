@@ -397,7 +397,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
             rc = ENOMEM;
         else {
 #ifdef PER_THREAD_MALLOC
-            /* 
+            /*
              * MALLOC_ARENA_MAX:
              * 1. Each subsytem has at most MALLOC_ARENA_MAX mspaces.
              * 2. A thread is allowed to create one if there's no mspace on
@@ -2190,7 +2190,7 @@ comdb2bma comdb2bma_create_trace(size_t init, size_t cap, const char *name,
             if (ret->alloc == NULL) {
                 mspace_free(root.m, ret);
                 ret = NULL;
-            } 
+            }
             else {
                 Pthread_key_create(&ret->bmakey, comdb2bma_thr_dest);
                 Pthread_cond_init(&ret->cond, NULL);

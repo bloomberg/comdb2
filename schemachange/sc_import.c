@@ -36,6 +36,10 @@
 #include <sys/types.h>
 #include <pb_alloc.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#include <limits.h>
+#endif
 
 #include "fdb_fend_minimal.h"
 #include "bdb_api.h"
@@ -80,6 +84,8 @@ extern tran_type *curtran_gettran(void);
 extern void curtran_puttran(tran_type *tran);
 
 int gbl_debug_sleep_during_bulk_import = 0;
+int gbl_enable_bulk_import = 0;
+int gbl_enable_bulk_import_different_tables = 0;
 extern int gbl_import_mode;
 extern char *gbl_import_table;
 extern char *gbl_file_copier;
@@ -282,6 +288,17 @@ static enum comdb2_import_op bulk_import_write_import_db_lrl(char *tmp_db_dir, c
             tmp_db_dir,
             gbl_dtastripe,
             gbl_blobstripe ? "blobstripe" : "noblobstripe");
+
+    extern int gbl_uses_simpleauth;
+    extern int gbl_uses_externalauth;
+
+    if (gbl_uses_simpleauth) {
+        fprintf(fp, "\nsimpleauth\n");
+    } else if (gbl_uses_externalauth) {
+        fprintf(fp, "\nexternalauth 1\n");
+    } else {
+        fprintf(fp, "\n");
+    }
 
 err:
     if (fp) {
@@ -1622,6 +1639,9 @@ enum comdb2_import_tmpdb_op bulk_import_tmpdb_pull_foreign_dbfiles(const char *f
         goto err;
     }
 
+    __import_logmsg(LOGMSG_DEBUG, "Executing query: %s\n", select_files_query);
+    __import_logmsg(LOGMSG_DEBUG, "Fetching %d files from comdb2_files\n", listc_size(filename_list));
+
     rc = cdb2_run_statement(hndl, select_files_query);
     free(select_files_query);
     LISTC_CLEAN(filename_list, lnk, 1, str_list_elt);
@@ -1724,13 +1744,30 @@ static void print_import_data(ImportData data)
  */
 static enum comdb2_import_op get_my_comdb2_executable(char **p_exe)
 {
+#if defined(__APPLE__)
+    /* macOS: use _NSGetExecutablePath */
+    uint32_t bufsize = PATH_MAX;
+    *p_exe = malloc(bufsize);
+    if (*p_exe == NULL) {
+        __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
+        goto err;
+    }
+    if (_NSGetExecutablePath(*p_exe, &bufsize) != 0) {
+        free(*p_exe);
+        *p_exe = malloc(bufsize);
+        if (*p_exe == NULL) {
+            __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
+            goto err;
+        }
+        if (_NSGetExecutablePath(*p_exe, &bufsize) != 0) {
+            __import_logmsg(LOGMSG_ERROR, "Failed to get executable path\n");
+            free(*p_exe);
+            goto err;
+        }
+    }
+#elif defined(__linux__)
     int size;
-    pid_t pid;
-
-    size = 0;
-    pid = getpid();
-
-#if defined(_LINUX_SOURCE)
+    pid_t pid = getpid();
     size = snprintf(NULL, 0, "/proc/%ld/exe", (long) pid);
     *p_exe = malloc(++size);
     if (*p_exe == NULL) {
@@ -1738,7 +1775,9 @@ static enum comdb2_import_op get_my_comdb2_executable(char **p_exe)
         goto err;
     }
     sprintf(*p_exe, "/proc/%ld/exe", (long) pid);
-#elif defined(_SUN_SOURCE)
+#elif defined(__sun)
+    int size;
+    pid_t pid = getpid();
     size = snprintf(NULL, 0, "/proc/%ld/execname", (long) pid);
     *p_exe = malloc(++size);
     if (*p_exe == NULL) {
@@ -1781,6 +1820,11 @@ const char *bulk_import_get_err_str(const int rc) {
             return "Can't connect to provided source db class";
         case COMDB2_IMPORT_RC_BAD_SRC_VERS:
             return "Source db version is less than min required for import";
+        case COMDB2_IMPORT_RC_NOT_ENABLED:
+            return "Bulk import is not enabled (set 'enable_bulk_import' tunable)";
+        case COMDB2_IMPORT_RC_DIFF_TABLES_NOT_ENABLED:
+            return "Import across different table names is not enabled (set 'enable_bulk_import_different_tables' "
+                   "tunable)";
         case COMDB2_IMPORT_RC_INTERNAL:
             return "An internal error occurred";
         case COMDB2_IMPORT_RC_UNKNOWN:
@@ -1812,9 +1856,26 @@ static enum comdb2_import_op get_import_rcode_from_tmpdb_rcode(const int rc) {
 
 int do_import(struct ireq *iq, struct schema_change_type *sc, tran_type *tran)
 {
+    if (!gbl_enable_bulk_import) {
+        __import_logmsg(LOGMSG_ERROR, "bulk import is not enabled\n");
+        errstat_set_rcstrf(&iq->errstat, COMDB2_IMPORT_RC_NOT_ENABLED, "%s",
+                           bulk_import_get_err_str(COMDB2_IMPORT_RC_NOT_ENABLED));
+        return COMDB2_IMPORT_RC_NOT_ENABLED;
+    }
+
     const char * const src_tablename = sc->import_src_tablename;
     const char * const srcdb = sc->import_src_dbname;
     const char * const dst_tablename = sc->tablename;
+
+    if (strcmp(src_tablename, dst_tablename) != 0 && !gbl_enable_bulk_import_different_tables) {
+        __import_logmsg(LOGMSG_ERROR,
+                        "import across different table names not enabled "
+                        "(src '%s' dst '%s')\n",
+                        src_tablename, dst_tablename);
+        errstat_set_rcstrf(&iq->errstat, COMDB2_IMPORT_RC_DIFF_TABLES_NOT_ENABLED, "%s",
+                           bulk_import_get_err_str(COMDB2_IMPORT_RC_DIFF_TABLES_NOT_ENABLED));
+        return COMDB2_IMPORT_RC_DIFF_TABLES_NOT_ENABLED;
+    }
 
     char *tmp_db_dir = NULL;
     char *command = NULL;

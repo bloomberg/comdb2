@@ -51,16 +51,9 @@ public class Comdb2ClientInfo {
         driverName = name;
         driverVersion = version;
     }
-    
-    public static String getCallerClass() {
-        String pkg = Comdb2ClientInfo.class.getPackage().getName() + ".";
-        StackTraceElement[] stes = Thread.currentThread().getStackTrace();
-        for (int i = 1, len = stes.length; i < len; ++i) {
-            StackTraceElement ste = stes[i];
-            if (!ste.getClassName().startsWith(pkg))
-                return ste.getClassName();
-        }
-        return "Unknown Java class";
+
+    public static String getJavaHome() {
+        return System.getProperty("java.home");
     }
 
     public static String getCallStack(int layers) {

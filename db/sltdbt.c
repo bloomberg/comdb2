@@ -405,7 +405,7 @@ static int tablename_implicit(int opcode)
 
 int handle_ireq(struct ireq *iq)
 {
-    int rc;
+    int rc, fd = -1, has_ssl = 0;
 
     bdb_reset_thread_stats();
 
@@ -427,9 +427,19 @@ int handle_ireq(struct ireq *iq)
     reqlog_pushprefixf(iq->reqlogger, "%s:REQ %s ", getorigin(iq),
                        req2a(iq->opcode));
 
-    if (!iq->sorese) /* don't count osql */
+    if (!iq->sorese) { /* don't count osql */
+        if (iq->sb != NULL) {
+            /* socketrequest */
+            fd = cdb2buf_fileno(iq->sb);
+        } else if (iq->setup_data != NULL) {
+            /* legacy request via cdb2api */
+            struct sqlclntstate *clnt = (struct sqlclntstate *)iq->setup_data;
+            fd = clnt->plugin.get_fileno(clnt);
+            has_ssl = clnt->plugin.has_ssl(clnt);
+        }
         iq->rawnodestats = get_raw_node_stats(iq->origin_argv0 ? iq->origin_argv0 : NULL, NULL, iq->identity,
-                                              iq->frommach, cdb2buf_fileno(iq->sb), 0 /* tag does not support ssl */);
+                                              iq->frommach, fd, has_ssl);
+    }
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles && IQ_HAS_SNAPINFO(iq))

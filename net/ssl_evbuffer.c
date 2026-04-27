@@ -29,6 +29,11 @@
 #include <ssl_glue.h>
 #include <ssl_support.h>
 
+#ifdef COMDB2_TEST
+#include <dlfcn.h>
+#include <debug_switches.h>
+#endif
+
 extern char gbl_dbname[];
 extern int gbl_nid_dbname;
 extern SSL_CTX *gbl_ssl_ctx;
@@ -198,6 +203,15 @@ int wr_ssl_evbuffer(struct ssl_data *ssl_data, struct evbuffer *wr_buf)
     if (len > KB(16)) len = KB(16);
     const void *buf = evbuffer_pullup(wr_buf, len);
     ERR_clear_error();
+#ifdef COMDB2_TEST
+    if (debug_switch_stall_ssl_write() && debug_switch_newsql_response_is_row()) {
+        logmsg(LOGMSG_WARN, "Stalling SSL_write...\n");
+        int *pstall = dlsym(RTLD_NEXT, "__partial_write_stall");
+        if (pstall != NULL)
+            *pstall = 60;
+        debug_switch_set_stall_ssl_write(0);
+    }
+#endif
     int rc = SSL_write(ssl, buf, len);
     if (rc > 0) {
         evbuffer_drain(wr_buf, rc);

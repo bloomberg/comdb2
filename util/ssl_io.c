@@ -383,12 +383,6 @@ re_accept_or_connect:
     } else {
         sb->protocolerr = 0;
     }
-    /* Put blocking back. */
-    if (fcntl(fd, F_SETFL, flags) < 0) {
-        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
-                     "fcntl: (%d) %s", errno, strerror(errno));
-        return -1;
-    }
     if (rc != 1 && close_on_verify_error) {
     error:
         if (sb->ssl != NULL) {
@@ -498,19 +492,42 @@ int CDB2BUF_FUNC(sslio_close)(COMDB2BUF *sb, int wait_for_peer)
 {
     /* Upon success, the 1st call to SSL_shutdown
        returns 0, and the 2nd returns 1. */
-    int rc = 0;
+    int rc = 0, ioerr, flags = 0;
     if (sb->ssl == NULL)
         return 0;
 
     if (!wait_for_peer)
         SSL_set_shutdown(sb->ssl, SSL_SENT_SHUTDOWN);
     else {
-        rc = SSL_shutdown(sb->ssl);
-        if (rc == 0)
-            rc = SSL_shutdown(sb->ssl);
+        while ((rc = SSL_shutdown(sb->ssl)) != 1) {
+            if (rc == 0)
+                continue;
+
+            ioerr = SSL_get_error(sb->ssl, rc);
+            switch (ioerr) {
+            case SSL_ERROR_WANT_READ:
+                rc = sslio_pollin(sb);
+                break;
+            case SSL_ERROR_WANT_WRITE:
+                rc = sslio_pollout(sb);
+                break;
+            default:
+                rc = -1;
+                break;
+            }
+
+            if (rc <= 0) {
+                rc = -1;
+                break;
+            }
+        }
         if (rc == 1)
             rc = 0;
     }
+
+    /* Puts blocking back. The fd may be returned to sockpool */
+    if (rc == 0 && ((flags = fcntl(sb->fd, F_GETFL, NULL)) < 0 || fcntl(sb->fd, F_SETFL, flags & ~O_NONBLOCK) < 0))
+        rc = -1;
 
     sslio_free(sb);
     return rc;

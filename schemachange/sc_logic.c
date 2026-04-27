@@ -1052,42 +1052,6 @@ extern const uint8_t *osqlcomm_scl_get_key(struct sc_list *scl,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
 extern const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
-extern int osql_delete_sc_list(uuid_t uuid, tran_type *trans);
-
-/**
- * Receive an array of serialized sclists and removes them
- *
- */
-int resume_sc_multiddl_scabort(void **keys, int keylen, int num)
-{
-    sc_list_t scl = {0};
-    uint8_t *p_buf_key, *p_buf_key_end;
-    int i;
-
-    for (i = 0; i < num; i++) {
-        p_buf_key = keys[i];
-        p_buf_key_end = p_buf_key + keylen;
-        if (!osqlcomm_scl_get_key(&scl, p_buf_key, p_buf_key_end)) {
-            logmsg(LOGMSG_ERROR, "%s: failed to read key\n", __func__);
-            continue;
-        }
-
-        if (scl.version != SESS_SC_LIST_VER) {
-            logmsg(LOGMSG_ERROR,
-                   "%s found incompatible sc list version %d expected %d\n",
-                   __func__, scl.version, SESS_SC_LIST_VER);
-        }
-        uuidstr_t us;
-        comdb2uuidstr(scl.uuid, us);
-        int rc = osql_delete_sc_list(scl.uuid, NULL);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to delete sc list uuid %s\n", us);
-        } else {
-            logmsg(LOGMSG_ERROR, "Aborted sc list uuid %s\n", us);
-        }
-    }
-    return 0;
-}
 
 extern int resume_sc_multiddl_txn(sc_list_t *scl);
 
@@ -1108,6 +1072,10 @@ int resume_sc_multiddl(int scabort)
     int bdberr = 0;
     uint8_t *p_buf, *p_buf_end, *p_buf_key, *p_buf_key_end;
 
+    if (scabort) {
+        return bdb_llmeta_rem_all_sc_lists(NULL);
+    }
+
     rc = bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen,
                                      &num, &bdberr);
     if (rc) {
@@ -1115,11 +1083,6 @@ int resume_sc_multiddl(int scabort)
                "Failed to retrieve pending schema changes rc %d bdberr %d\n",
                rc, bdberr);
         return -1;
-    }
-
-    if (scabort) {
-        rc = resume_sc_multiddl_scabort(keys, keylen, num);
-        goto freetime;
     }
 
     for (i = 0; i < num; i++) {
@@ -1138,6 +1101,8 @@ int resume_sc_multiddl(int scabort)
         }
 
         rc = resume_sc_multiddl_txn(&scl);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rc);
 
         free(scl.offsets);
         free(scl.ser_scs);

@@ -127,6 +127,76 @@ run_expect_success "$OP" "delete from comdb2_simple_auth where user != '*'" \
     "clean up user-specific rules"
 
 #---------------------------------------------------------------
+echo "Test: UDF access bypasses simpleauth, stored procedures do not"
+#---------------------------------------------------------------
+
+# Create procedures and register UDFs while wildcard allows it
+run_expect_success "$OP" "create procedure myadd version 'test' {local function myadd(a, b) return a + b end}" \
+    "create myadd procedure for scalar UDF"
+run_expect_success "$OP" "create lua scalar function myadd" \
+    "register myadd as scalar UDF"
+run_expect_success "$OP" "create procedure mysum version 'test' {local agg = 0 local function step(v) agg = agg + v end local function final() return agg end}" \
+    "create mysum procedure for aggregate UDF"
+run_expect_success "$OP" "create lua aggregate function mysum" \
+    "register mysum as aggregate UDF"
+run_expect_success "$OP" "create procedure myproc version 'test' {local function main() db:column_name('result', 1) db:column_type('text', 1) db:emit('hello') end}" \
+    "create myproc stored procedure"
+run_expect_success "$OP" "create table if not exists t_udf(i int)" \
+    "create t_udf table"
+run_expect_success "$OP" "insert into t_udf values(10),(20),(30)" \
+    "populate t_udf"
+
+# Verify everything works with wildcard in place
+run_expect_success "$MARK" "select myadd(1, 2)" \
+    "mk can call scalar UDF (wildcard allows)"
+run_expect_success "$MARK" "select mysum(i) from t_udf" \
+    "mk can call aggregate UDF (wildcard allows)"
+run_expect_success "$MARK" "exec procedure myproc()" \
+    "mk can exec procedure (wildcard allows)"
+
+# Set up restricted access: remove wildcard, grant mk only table access
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op write on auth table"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op read on auth table"
+run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+    "remove wildcard rule"
+
+# Give mk Read access to t_udf table only (no stored-procedure access)
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'mk', '*', 'Read', 'table', 't_udf') on conflict do nothing" \
+    "add mk Read rule for t_udf"
+
+# mk can call scalar UDF (no table involved, UDFs bypass auth entirely)
+run_expect_success "$MARK" "select myadd(1, 2)" \
+    "mk can call scalar UDF without stored-procedure access (UDFs bypass auth)"
+
+# mk can call aggregate UDF on t_udf (table Read is enough, UDF itself needs no auth)
+run_expect_success "$MARK" "select mysum(i) from t_udf" \
+    "mk can call aggregate UDF with table access (UDFs bypass auth)"
+
+# mk cannot exec stored procedure (stored procedures check auth, no matching rule)
+run_expect_failure "$MARK" "exec procedure myproc()" \
+    "mk cannot exec procedure without stored-procedure Read rule"
+
+# Restore and cleanup
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "restore wildcard rule"
+run_expect_success "$OP" "delete from comdb2_simple_auth where user = 'op' or user = 'mk'" \
+    "clean up user-specific rules"
+run_expect_success "$OP" "drop lua scalar function myadd" \
+    "drop myadd UDF"
+run_expect_success "$OP" "drop lua aggregate function mysum" \
+    "drop mysum UDF"
+run_expect_success "$OP" "drop procedure myadd version 'test'" \
+    "drop myadd procedure"
+run_expect_success "$OP" "drop procedure mysum version 'test'" \
+    "drop mysum procedure"
+run_expect_success "$OP" "drop procedure myproc version 'test'" \
+    "drop myproc procedure"
+run_expect_success "$OP" "drop table if exists t_udf" \
+    "drop t_udf table"
+
+#---------------------------------------------------------------
 echo "Test: cleanup"
 #---------------------------------------------------------------
 run_expect_success "$OP" "drop table if exists t1" \

@@ -1873,8 +1873,8 @@ int participant_has_failed(const char *dist_txnid, const char *coordinator_name,
                            int rcode, int outrc, const char *errmsg)
 {
     if (gbl_debug_disttxn_trace) {
-        logmsg(LOGMSG_USER, "DISTTXN %s FAILED dist_txnid %s rcode=%d outrc=%d errmsg=%s\n", __func__, dist_txnid,
-               rcode, outrc, errmsg);
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s rcode=%d outrc=%d errmsg=%s\n", __func__, dist_txnid, rcode,
+               outrc, errmsg);
     }
     Pthread_mutex_lock(&part_lk);
     participant_t *p = hash_find(participant_hash, &dist_txnid);
@@ -1891,8 +1891,7 @@ int participant_has_failed(const char *dist_txnid, const char *coordinator_name,
 void participant_has_propagated(const char *dist_txnid, const char *coordinator_name, const char *coordinator_master)
 {
     if (gbl_debug_disttxn_trace) {
-        logmsg(LOGMSG_USER, "DISTTXN %s PROPAGATED %s master %s dist_txnid %s\n", __func__, coordinator_name,
-               coordinator_master, dist_txnid);
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dist_txnid);
     }
     send_coordinator_propagated(dist_txnid, coordinator_name, coordinator_master);
     disable_sanc_heartbeats(dist_txnid, 1);
@@ -1903,8 +1902,7 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
                                 const char *coordinator_master)
 {
     if (gbl_debug_disttxn_trace) {
-        logmsg(LOGMSG_USER, "DISTTXN %s WAIT %s tier %s master %s dist_txnid %s\n", __func__, coordinator_name,
-               coordinator_tier, coordinator_master, dist_txnid);
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dist_txnid);
     }
     int rtn = 0, first = 1, lock_desired = 0;
 
@@ -2243,9 +2241,8 @@ static int append_coordinator_str(void *obj, void *arg)
 {
     allowed_coordinators_t *coordinator = (allowed_coordinators_t *)obj;
     int *offset = (int *)arg;
-    char *st = (*offset) == 0 ? "%s/%s" : " %s/%s";
-    (*offset) += snprintf(&allowed_coordinators_str[*offset], sizeof(allowed_coordinators_str) - (*offset), st,
-                          coordinator->dbname, coordinator->tier);
+    (*offset) += snprintf(&allowed_coordinators_str[*offset], sizeof(allowed_coordinators_str) - (*offset),
+                          (*offset) == 0 ? "%s/%s" : " %s/%s", coordinator->dbname, coordinator->tier);
     return 0;
 }
 

@@ -27,6 +27,7 @@
 #include "comdb2systbl.h"
 #include "parse_lsn.h"
 #include "epochlib.h"
+#include "logrecord.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -377,202 +378,6 @@ static inline int parse_lsn(const unsigned char *lsnstr, DB_LSN *lsn)
     return 0;
 }
 
-static u_int64_t get_timestamp_from_regop_gen_record(char *data)
-{
-    u_int64_t timestamp;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 8 + 4 + 4 + 8] );
-    } else {
-        LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 4 + 4 + 8] );
-    }
-    return timestamp;
-}
-
-static u_int32_t get_generation_from_regop_gen_record(char *data)
-{
-    u_int32_t generation;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 8 + 4] );
-    } else {
-        LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4] );
-    }
-    return generation;
-}
-
-static u_int32_t get_generation_from_dist_commit_record(char *data)
-{
-    u_int32_t generation;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8] );
-    } else {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8] );
-    }
-    return generation;
-}
-
-static u_int32_t get_timestamp_from_dist_commit_record(char *data)
-{
-    u_int64_t timestamp;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8] );
-    } else {
-        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8] );
-    }
-    return timestamp;
-}
-
-static u_int32_t get_generation_from_dist_abort_record(char *data)
-{
-    u_int32_t generation;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8] );
-    } else {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8] );
-    }
-    return generation;
-}
-
-static u_int32_t get_timestamp_from_dist_abort_record(char *data)
-{
-    u_int64_t timestamp;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8] );
-    } else {
-        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4] );
-    }
-    return timestamp;
-}
-
-static u_int64_t get_timestamp_from_regop_rowlocks_record(char *data)
-{
-    u_int64_t timestamp;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8] );
-    } else {
-        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8] );
-    }
-    return timestamp;
-}
-
-static u_int32_t get_generation_from_regop_rowlocks_record(char *data)
-{
-    u_int32_t generation = 0;
-    off_t loff;
-    u_int32_t lflags;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        loff = 4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8;
-    } else {
-        loff = 4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8;
-    }
-    LOGCOPY_32( &lflags, &data[loff] );
-    if (lflags & DB_TXN_LOGICAL_GEN) {
-        LOGCOPY_32(&generation, &data[loff + 4]);
-    }
-
-    return generation;
-}
-
-static u_int32_t get_timestamp_from_regop_record(char *data)
-{
-    u_int32_t timestamp;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 4] );
-    } else {
-        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 4] );
-    }
-    return timestamp;
-}
-
-static u_int32_t get_timestamp_from_ckp_record(char *data)
-{
-    u_int32_t timestamp;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8 + 8] );
-    } else {
-        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8] );
-    }
-    return timestamp;
-}
-
-static u_int32_t get_generation_from_ckp_record(char *data)
-{
-    u_int32_t generation;
-    u_int32_t rectype;
-    LOGCOPY_32(&rectype, data); 
-    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 8 + 4] );
-    } else {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
-    }
-    return generation;
-}
-
-u_int64_t get_timestamp_from_matchable_record(char *data)
-{
-    u_int32_t rectype = 0;
-    u_int32_t dood = 0;
-    if (data)
-    {
-        LOGCOPY_32(&rectype, data); 
-        dood = *(uint32_t *)(data);
-        logmsg(LOGMSG_DEBUG, "%s rec: %u, dood: %u\n", __func__, rectype,
-                dood);
-    }
-    else
-    {
-        logmsg(LOGMSG_DEBUG, "No data, so can't get rectype!\n");
-    }
-
-    if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
-       rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
-        return get_timestamp_from_regop_gen_record(data);
-    }
-
-    if (rectype == DB___txn_dist_commit || (rectype == DB___txn_dist_commit+2000)) {
-        return get_timestamp_from_dist_commit_record(data);
-    }
-
-    if (rectype == DB___txn_dist_abort || (rectype == DB___txn_dist_abort+2000)) {
-        return get_timestamp_from_dist_abort_record(data);
-    }
-
-    if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
-        rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
-        return get_timestamp_from_regop_rowlocks_record(data);
-    }
-
-    if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
-        return get_timestamp_from_regop_record(data);
-    }
-
-	if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000) ||
-		rectype == DB___txn_ckp_recovery || (rectype == DB___txn_ckp_recovery+2000)) {
-		return get_timestamp_from_ckp_record(data);
-	}
-
-    return -1;
-}
-
 /*
 ** Return values of columns for the row at which the series_cursor
 ** is currently pointing.
@@ -652,23 +457,23 @@ static int tranlogColumn(
         normalize_rectype(&rectype);
 
         if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize){
-            generation = get_generation_from_regop_gen_record(pCur->data.data);
+            generation = logrecord_generation_regop_gen(pCur->data.data);
         }
 
         if (rectype == DB___txn_dist_commit){
-            generation = get_generation_from_dist_commit_record(pCur->data.data);
+            generation = logrecord_generation_dist_commit(pCur->data.data);
         }
 
         if (rectype == DB___txn_dist_abort){
-            generation = get_generation_from_dist_abort_record(pCur->data.data);
+            generation = logrecord_generation_dist_abort(pCur->data.data);
         }
 
         if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
-            generation = get_generation_from_regop_rowlocks_record(pCur->data.data);
+            generation = logrecord_generation_regop_rowlocks(pCur->data.data);
         }
 
         if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
-            generation = get_generation_from_ckp_record(pCur->data.data);
+            generation = logrecord_generation_ckp(pCur->data.data);
         }
 
         if (generation > 0) {
@@ -706,29 +511,29 @@ static int tranlogColumn(
 
         if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
             rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
-            timestamp = get_timestamp_from_regop_gen_record(pCur->data.data);
+            timestamp = logrecord_timestamp_regop_gen(pCur->data.data);
         }
 
         if (rectype == DB___txn_dist_commit || (rectype == DB___txn_dist_commit+2000)){
-            timestamp = get_timestamp_from_dist_commit_record(pCur->data.data);
+            timestamp = logrecord_timestamp_dist_commit(pCur->data.data);
         }
 
         if (rectype == DB___txn_dist_abort || (rectype == DB___txn_dist_abort+2000)){
-            timestamp = get_timestamp_from_dist_abort_record(pCur->data.data);
+            timestamp = logrecord_timestamp_dist_abort(pCur->data.data);
         }
 
         if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
             rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
-            timestamp = get_timestamp_from_regop_rowlocks_record(pCur->data.data);
+            timestamp = logrecord_timestamp_regop_rowlocks(pCur->data.data);
         }
 
         if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
-            timestamp = get_timestamp_from_regop_record(pCur->data.data);
+            timestamp = logrecord_timestamp_regop(pCur->data.data);
         }
 
 		if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000) ||
 			rectype == DB___txn_ckp_recovery || (rectype == DB___txn_ckp_recovery+2000)) {
-			timestamp = get_timestamp_from_ckp_record(pCur->data.data);
+			timestamp = logrecord_timestamp_ckp(pCur->data.data);
 		}
 
         if (timestamp > 0) {
