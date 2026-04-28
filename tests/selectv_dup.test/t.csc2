@@ -1,0 +1,9 @@
+tag ondisk {
+    longlong instid
+    int state
+    int updatehost
+}
+keys {
+    "ID" = instid
+    dup "STATE" = state + instid
+}
