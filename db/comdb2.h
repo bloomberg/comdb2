@@ -1622,6 +1622,7 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 extern int gbl_multitable_ddl;
+extern int gbl_max_sc_lists;
 
 extern int64_t gbl_num_auth_allowed;
 extern int64_t gbl_num_auth_denied;
