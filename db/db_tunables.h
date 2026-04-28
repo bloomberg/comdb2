@@ -2602,10 +2602,8 @@ REGISTER_TUNABLE("iam_dbname",
                  "override dbname for IAM",
                  TUNABLE_STRING, &gbl_iam_dbname, READEARLY | READONLY, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("iam_base_bri",
-                 "base resource identifier for IAM",
-                 TUNABLE_STRING, &gbl_iam_base_bri, READEARLY | READONLY, NULL,
-                 NULL, NULL, NULL);
+REGISTER_TUNABLE("iam_base_bri", "base resource identifier for IAM", TUNABLE_STRING, &gbl_iam_base_bri, READEARLY, NULL,
+                 iam_base_bri_verify, iam_base_bri_update, NULL);
 REGISTER_TUNABLE("iam_metrics_namespace", "metrics namespace for IAM user metrics (default: comdb2-iam)",
                  TUNABLE_STRING, &gbl_iam_metrics_namespace, READEARLY | READONLY, NULL, NULL,
                  iam_metrics_namespace_update, NULL);

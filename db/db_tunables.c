@@ -396,6 +396,7 @@ extern int gbl_noleader_retry_poll_ms;
 extern char *gbl_iam_dbname;
 extern char *gbl_iam_base_bri;
 extern char *gbl_iam_metrics_namespace;
+extern int gbl_uses_externalauth;
 
 /* util/ctrace.c */
 extern int nlogs;
@@ -1268,6 +1269,26 @@ static int file_copier_update(void *context, void *value)
 }
 
 static int iam_metrics_namespace_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    *(char **)tunable->var = intern((char *)value);
+    return 0;
+}
+
+static int iam_base_bri_verify(void *context, void *value)
+{
+    if (gbl_iam_base_bri != NULL) {
+        logmsg(LOGMSG_ERROR, "iam_base_bri is already set, cannot change at runtime\n");
+        return 1;
+    }
+    if (gbl_uses_externalauth) {
+        logmsg(LOGMSG_ERROR, "iam_base_bri cannot be set while externalauth is enabled\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int iam_base_bri_update(void *context, void *value)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
     *(char **)tunable->var = intern((char *)value);
