@@ -1,0 +1,4 @@
+(name='iam_base_bri', value=NULL, read_only='N')
+(name='iam_base_bri', value='test_bri_value')
+[PUT TUNABLE iam_base_bri 'another_value'] failed with rc -3 Invalid tunable value
+(name='iam_base_bri', value='test_bri_value')
