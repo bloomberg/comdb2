@@ -40,6 +40,7 @@ else()
 
 add_library(cdb2api STATIC ${src})
 add_dependencies(cdb2api proto)
+target_compile_options(cdb2api PRIVATE -Wformat-security)
 target_link_libraries(cdb2api PUBLIC resolv)
 
 configure_file(cdb2api.pc cdb2api.pc @ONLY)
