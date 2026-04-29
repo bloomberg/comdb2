@@ -2180,7 +2180,10 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
                              int *num_valid_hosts, int *num_valid_sameroom_hosts);
 static int get_config_file(const char *dbname, char *f, size_t s, int use_pkg_path)
 {
-    char *root = getenv("COMDB2_ROOT");
+    char *root = NULL;
+#if defined(CDB2API_TEST) || defined(CDB2API_SERVER)
+    root = getenv("COMDB2_ROOT");
+#endif
 
     /* `dbname' is NULL if we're only reading defaults from comdb2db.cfg.
        Formatting a NULL pointer with %s specifier is undefined behavior,
@@ -7247,7 +7250,7 @@ int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, con
     bindval->varname = (char *)name;
     LOG_CALL("%s(%p, \"%s\", %zu, %s, %p, %zu) = 0\n", __func__, hndl, name, count, cdb2_type_str(type), varaddr,
              typelen);
-    return rc;    
+    return rc;
 }
 
 int cdb2_bind_array_index(cdb2_hndl_tp *hndl, int index, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
