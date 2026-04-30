@@ -3503,6 +3503,7 @@ int fdb_bend_trans_begin(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     arg->clnt = clnt;
 
     if (!rc) {
+        clnt->origin = get_origin_mach_by_buf(sb);
         arg->flags = flags;
         if (gbl_expressions_indexes) {
             if (clnt->idxInsert || clnt->idxDelete) {
