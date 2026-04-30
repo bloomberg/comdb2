@@ -355,23 +355,30 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
     Pthread_mutex_unlock(&clnt->write_lock);
 }
 
+int do_da_recover(struct sqlclntstate *clnt)
+{
+    struct timeval now, diff;
+    gettimeofday(&now, NULL);
+    timersub(&now, &clnt->last_sql_recover_time, &diff);
+    int64_t ms = diff.tv_sec * 1000 - diff.tv_usec / 1000;
+    if (ms >= gbl_sql_recover_time) {
+        clnt->last_sql_recover_time = now;
+        if (recover_deadlock_evbuffer(clnt) != 0) {
+            logmsg(LOGMSG_ERROR, "%s recover_deadlock failed sql:%32s\n", __func__, clnt->sql);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
 #ifdef DEBUG
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
 #endif
-    if (gbl_sql_recover_time && R == RESPONSE_ROW) {
-        /* TODO: Also do this for OP_SorterInsert */
-        struct timeval now, diff;
-        gettimeofday(&now, NULL);
-        timersub(&now, &clnt->last_sql_recover_time, &diff);
-        int64_t ms = diff.tv_sec * 1000 - diff.tv_usec / 1000;
-        if (ms >= gbl_sql_recover_time) {
-            clnt->last_sql_recover_time = now;
-            if (recover_deadlock_evbuffer(clnt) != 0) {
-                logmsg(LOGMSG_ERROR, "%s recover_deadlock failed sql:%32s\n", __func__, clnt->sql);
-                return -1;
-            }
+    if (gbl_sql_recover_time && R == RESPONSE_ROW) { /* TODO: Also do this for OP_SorterInsert */
+        if (do_da_recover(clnt)) {
+            return -1;
         }
     }
     return clnt->plugin.write_response(clnt, R, D, I); /* newsql_write_response */

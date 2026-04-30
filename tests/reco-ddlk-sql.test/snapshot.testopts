@@ -1,0 +1,4 @@
+cache 1 gb
+do debug recover_deadlock_evbuffer
+enable_snapshot_isolation
+sql_tranlevel_default snapshot

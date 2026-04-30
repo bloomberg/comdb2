@@ -681,27 +681,6 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
         goto done;
     }
 
-    if ((rc = check_recover_deadlock(clnt)))
-        goto done;
-
-    if (clnt->in_sqlite_init == 0) {
-        if (no_recover_deadlock == 0) {
-            if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
-
-                rc = clnt_check_bdb_lock_desired(clnt);
-
-            } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
-
-                rc = recover_deadlock(thedb->bdb_env, clnt, NULL, 0);
-
-                if ((rc = check_recover_deadlock(clnt)))
-                    goto done;
-
-                logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-            }
-        }
-    }
-
     if (check_sql_client_disconnect(clnt, __FILE__, __LINE__)) {
         rc = SQLITE_ABORT;
         goto done;
@@ -710,6 +689,23 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
     if (clnt->limits.maxcost && (thd->cost > clnt->limits.maxcost)) {
         rc = SQLITE_COST_TOO_HIGH;
         goto done;
+    }
+
+    if (clnt->in_sqlite_init || no_recover_deadlock) {
+        rc = 0;
+        goto done;
+    }
+
+    if (clnt->dbtran.mode > TRANLEVEL_RECOM) {
+        int do_da_recover(struct sqlclntstate *clnt);
+        rc = do_da_recover(clnt);
+    } else if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
+        rc = clnt_check_bdb_lock_desired(clnt);
+    } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
+        recover_deadlock(thedb->bdb_env, clnt, NULL, 0);
+        rc = check_recover_deadlock(clnt);
+    } else {
+        rc = check_recover_deadlock(clnt);
     }
 
 done:
