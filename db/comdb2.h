@@ -506,6 +506,7 @@ struct rawnodestats {
     pthread_mutex_t lk;
     hash_t *fingerprints;
     api_history_t *api_history;
+    struct in_addr addr;
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
@@ -3026,6 +3027,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host);
 struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, const char *id, char *host, int fd,
                                         int is_ssl);
+int get_nodestats_ip(struct rawnodestats *raw, char *buf, size_t len);
 int release_node_stats(const char *task, const char *stack, char *host);
 struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
