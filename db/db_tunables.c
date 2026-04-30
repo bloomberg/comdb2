@@ -1281,7 +1281,7 @@ static int iam_base_bri_verify(void *context, void *value)
         logmsg(LOGMSG_ERROR, "iam_base_bri is already set, cannot change at runtime\n");
         return 1;
     }
-    if (gbl_uses_externalauth) {
+    if (gbl_ready && gbl_uses_externalauth) {
         logmsg(LOGMSG_ERROR, "iam_base_bri cannot be set while externalauth is enabled\n");
         return 1;
     }
