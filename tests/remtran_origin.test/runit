@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+SRC_DB=$DBNAME
+SRC_OPT="$CDB2_OPTIONS --cdb2cfg $CDB2_CONFIG"
+DST_DB=$SECONDARY_DBNAME
+DST_OPT="$SECONDARY_CDB2_OPTIONS --cdb2cfg $SECONDARY_CDB2_CONFIG"
+
+src_host=$(cdb2sql --tabs $SRC_OPT $SRC_DB default "SELECT comdb2_host()")
+echo "Source host: $src_host"
+
+# From SRC_DB, open a transaction writing into DST_DB via remtran (push disabled in lrl.options)
+# and sleep to keep the OSQL session alive on DST_DB long enough to observe it
+cdb2sql $SRC_OPT $SRC_DB default - 2>&1 <<EOF &
+begin
+insert into LOCAL_${DST_DB}.t values (1)
+select sleep(15)
+commit
+EOF
+BG_PID=$!
+
+# Poll comdb2_active_osqls on DST_DB for the remtran session (argv0=comdb2.tsk)
+result=""
+for i in $(seq 1 12); do
+    sleep 1
+    result=$(cdb2sql --tabs $DST_OPT $DST_DB default \
+        "SELECT origin, argv0 FROM comdb2_active_osqls WHERE argv0='comdb2.tsk'" 2>/dev/null)
+    if [[ -n "$result" ]]; then
+        echo "Found at poll $i: $result"
+        break
+    fi
+done
+
+wait $BG_PID || true
+
+if [[ -z "$result" ]]; then
+    echo "FAIL: no comdb2.tsk entry found in comdb2_active_osqls on $DST_DB"
+    exit 1
+fi
+
+origin=$(echo "$result" | awk -F'\t' '{print $1}')
+argv0=$(echo "$result" | awk -F'\t' '{print $2}')
+
+echo "origin=$origin argv0=$argv0"
+
+if [[ -z "$origin" || "$origin" == "?" ]]; then
+    echo "FAIL: origin not set (got '$origin'), expected hostname"
+    exit 1
+fi
+
+if [[ "$argv0" != "comdb2.tsk" ]]; then
+    echo "FAIL: expected argv0=comdb2.tsk, got argv0=$argv0"
+    exit 1
+fi
+
+# Verify the write landed
+count=$(cdb2sql --tabs $DST_OPT $DST_DB default "SELECT count(*) FROM t WHERE id=1")
+if [[ "$count" != "1" ]]; then
+    echo "FAIL: expected 1 row in DST_DB.t, got $count"
+    exit 1
+fi
+
+echo "PASS: remtran origin=$origin argv0=$argv0"
+exit 0

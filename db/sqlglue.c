@@ -13168,6 +13168,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
 
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
+    clnt.current_user.bypass_auth = 1;
     strncpy0(clnt.tzname, "UTC", sizeof(clnt.tzname));
     sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;

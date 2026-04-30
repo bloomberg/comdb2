@@ -6990,6 +6990,9 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     plugin_set_callbacks(clnt, internal);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
+    clnt->argv0 = strdup("comdb2.tsk");
+    clnt->origin = gbl_myhostname;
+    clnt->conninfo.pid = gbl_mypid;
 }
 
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
