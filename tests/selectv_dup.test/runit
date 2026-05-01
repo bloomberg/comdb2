@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Test: SELECTV + UPDATE committing on multiple threads
+#
+# Multiple threads race to SELECTV + UPDATE the same rows.
+# Only one thread should win per row. If the bug exists, multiple threads
+# commit successfully for the same row, resulting in:
+#   - state > 1 in the jobs table (incremented by multiple threads)
+#   - duplicate instids in the schedule table
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+numworkers=5
+maxrecords=50
+iterations=5
+maxselectfail=10
+failed=0
+
+exe=${TESTSBUILDDIR}/selectv
+if [[ ! -x $exe ]]; then
+    echo "FAIL: selectv test tool not found at $exe"
+    exit 1
+fi
+
+for iter in $(seq 1 $iterations); do
+    echo "=== Iteration $iter of $iterations ==="
+
+    cdb2sql ${CDB2_OPTIONS} $dbname default "truncate jobs"
+    cdb2sql ${CDB2_OPTIONS} $dbname default "truncate schedule"
+    sleep 1
+
+    # Insert records in a single cdb2sql session
+    inserttmp=$(mktemp)
+    for i in $(seq 1 $maxrecords); do
+        echo "insert into jobs(instid, state, updatehost) values($i, 0, 0)" >> $inserttmp
+    done
+    cdb2sql ${CDB2_OPTIONS} $dbname default - < $inserttmp
+    rc=$?
+    rm -f $inserttmp
+    if [[ $rc -ne 0 ]]; then
+        echo "FAIL: Could not insert records"
+        exit 1
+    fi
+    echo "Inserted $maxrecords records"
+
+    # Use the C selectv tool (better at triggering the race)
+    $exe -d $dbname -o -t $numworkers > test_iter${iter}.log 2>&1 &
+    tpid=$!
+    echo "selectv tool PID $tpid"
+
+    maxwait=60
+    elapsed=0
+    selecterror=0
+    while [[ $selecterror -lt $maxselectfail ]]; do
+        num=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+            "select count(*) from jobs where state = 0" 2>&1)
+        if [[ $? != 0 ]]; then
+            let selecterror=selecterror+1
+            echo "select error: $num"
+            sleep 3
+            continue
+        fi
+        if [[ "$num" == "0" ]]; then
+            echo "All jobs claimed after ${elapsed}s"
+            break
+        fi
+        echo "  $num remaining (${elapsed}s elapsed)..."
+
+        if grep -q "BUG" test_iter${iter}.log 2>/dev/null; then
+            echo "FAIL: BUG marker found in selectv log"
+            failed=1
+            break
+        fi
+
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
+    kill -9 $tpid 2>/dev/null
+    wait $tpid 2>/dev/null
+
+    if [[ $selecterror -ge $maxselectfail ]]; then
+        echo "WARNING: SELECT failed $selecterror times"
+    fi
+
+    # === VERIFICATION ===
+
+    # Check 1: Any job updated by more than one thread?
+    # state starts at 0, each update does state+1. If state > 1, two threads
+    # both committed an update for the same row.
+    bad_state=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+        "select instid, state from jobs where state > 1 limit 20")
+
+    if [[ -n "$bad_state" ]]; then
+        echo "FAIL: Found jobs with state > 1 (multiple threads updated same row)!"
+        echo "$bad_state"
+        failed=1
+    else
+        echo "PASS: No jobs updated by multiple threads (state check)"
+    fi
+
+    # Check 2: Duplicate instids in schedule table
+    dupes=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+        "select instid, count(*) as c from schedule group by instid having c > 1 limit 20")
+
+    if [[ -n "$dupes" ]]; then
+        echo "FAIL: Found duplicate instids in schedule table!"
+        echo "Multiple threads committed SELECTV+UPDATE for the same record."
+        echo "$dupes"
+        failed=1
+    else
+        echo "PASS: No duplicate instids in schedule table"
+    fi
+
+    echo ""
+done
+
+if [[ $failed -ne 0 ]]; then
+    echo "Testcase FAILED: SELECTV allowed duplicate commits"
+    exit 1
+fi
+
+echo "Testcase passed."
+exit 0

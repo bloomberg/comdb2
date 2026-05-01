@@ -1256,6 +1256,7 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
                        p_buf + sizeof(fnd.genid));
         assert(tran->tablename);
         fnd.tablename = tran->tablename;
+        fnd.tableversion = tran->tableversion;
         if (hash_find(tran->selectv_genids, &fnd) == NULL) {
             sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
             sgenid->genid = fnd.genid;
