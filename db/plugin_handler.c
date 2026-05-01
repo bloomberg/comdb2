@@ -137,6 +137,13 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         queue_consumer_handlers[consumer_info->type] = consumer_info;
         break;
     }
+    case COMDB2_PLUGIN_TRANSACTION_NOTIFIER: {
+        transaction_notifier *n = (transaction_notifier *)new_plugin->data;
+        Pthread_mutex_lock(&transaction_notifier_lock);
+        listc_abl(&transaction_notifiers, n);
+        Pthread_mutex_unlock(&transaction_notifier_lock);
+        break;
+    };
     case COMDB2_PLUGIN_INITIALIZER:
         break;
     case COMDB2_PLUGIN_QUERY_PREPARER: {
