@@ -110,8 +110,6 @@
 
 #include "views.h"
 
-int gbl_delay_sql_lock_release_sec = 5;
-
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur, int *bdberr);
 
@@ -699,8 +697,6 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
     if (clnt->dbtran.mode > TRANLEVEL_RECOM) {
         int do_da_recover(struct sqlclntstate *clnt);
         rc = do_da_recover(clnt);
-    } else if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
-        rc = clnt_check_bdb_lock_desired(clnt);
     } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
         recover_deadlock(thedb->bdb_env, clnt, NULL, 0);
         rc = check_recover_deadlock(clnt);

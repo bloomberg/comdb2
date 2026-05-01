@@ -366,6 +366,8 @@ int do_da_recover(struct sqlclntstate *clnt)
         if (recover_deadlock_evbuffer(clnt) != 0) {
             logmsg(LOGMSG_ERROR, "%s recover_deadlock failed sql:%32s\n", __func__, clnt->sql);
             return -1;
+        } else {
+            logmsg(LOGMSG_ERROR, "%s recover_deadlock done   sql:%32s now:%zd\n", __func__, clnt->sql, ms);
         }
     }
     return 0;

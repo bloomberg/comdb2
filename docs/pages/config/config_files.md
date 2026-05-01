@@ -798,7 +798,6 @@ These options are toggle-able at runtime.
 |debugthreads | off | If set to 'on' enables trace on thread events.
 |decimal_rounding | DEC_ROUND_HALF_EVEN | See [decimal rounding options](#decimal-rounding-options)
 |default_sql_mspace_kbsz          | 1024            | Default size of memory regions owned by SQL threads, in KB 
-|delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
 |disable_cache_internal_nodes | | Disable enable_cache_internal_nodes
 |disable_inplace_blob_optimization | | Disables enable_inplace_blob_optimization
 |disable_inplace_blobs | | Disables enable_inplace_blobs (needs enable_inplace_blob_optimization, and enable_osql_blob_optimization also enabled - which they are by default)
