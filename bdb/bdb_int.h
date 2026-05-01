@@ -120,8 +120,7 @@ typedef enum {
     /* TRANCLASS_QUERYISOLATION = 6, */
     TRANCLASS_LOGICAL_NOROWLOCKS = 7, /* used in fetch.c for table locks */
     TRANCLASS_SOSQL = 8,
-    TRANCLASS_SNAPISOL = 9,
-    TRANCLASS_MODSNAP = 10
+    TRANCLASS_SNAPISOL = 9
 } tranclass_type;
 
 #define PAGE_KEY                                                               \
@@ -131,153 +130,10 @@ typedef enum {
 #define PAGE_KEY_SIZE                                                          \
     (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
 
-struct lsn_list {
-    DB_LSN lsn;
-    LINKC_T(struct lsn_list) lnk;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-
-struct commit_list {
-    DB_LSN commit_lsn;
-    unsigned long long logical_tranid;
-    LINKC_T(struct commit_list) lnk;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-
-struct lsn_commit_list {
-    DB_LSN lsn;
-    DB_LSN commit_lsn;
-    LINKC_T(struct lsn_commit_list) lnk;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-
-struct relink_list {
-    db_pgno_t inh;
-    DB_LSN lsn;
-    LINKC_T(struct relink_list) lnk;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-
-enum { PGLOGS_QUEUE_PAGE = 1, PGLOGS_QUEUE_RELINK = 2 };
-
-struct pglogs_queue_key {
-    LINKC_T(struct pglogs_queue_key) lnk;
-    unsigned long long logical_tranid;
-    int type;
-    db_pgno_t pgno;
-    db_pgno_t prev_pgno;
-    db_pgno_t next_pgno;
-    DB_LSN lsn;
-    DB_LSN commit_lsn;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-
-struct asof_cursor {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    struct pglogs_queue_key *cur;
-};
-
-struct fileid_pglogs_queue {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    int deleteme;
-    pthread_rwlock_t queue_lk;
-    LISTC_T(struct pglogs_queue_key) queue_keys;
-};
-
-// This is stored in a hash indexed by fileid.  All cursors pointed
-// at a fileid maintain a pointer to the same memory.
-struct pglogs_queue_cursor {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    struct fileid_pglogs_queue *queue;
-    struct pglogs_queue_key *last;
-};
-
-struct pglogs_queue_heads {
-    int index;
-    unsigned char **fileids;
-};
-
-struct page_logical_lsn_key {
-    PAGE_KEY
-    DB_LSN lsn;
-    DB_LSN commit_lsn;
-};
-
-struct pglogs_key {
-    PAGE_KEY
-    LISTC_T(struct lsn_list) lsns;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-#define PGLOGS_KEY_OFFSET (offsetof(struct pglogs_key, fileid))
-
-struct pglogs_logical_key {
-    PAGE_KEY
-    LISTC_T(struct lsn_commit_list) lsns;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-#define PGLOGS_LOGICAL_KEY_OFFSET (offsetof(struct pglogs_logical_key, fileid))
-
-struct pglogs_relink_key {
-    PAGE_KEY
-    LISTC_T(struct relink_list) relinks;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-};
-#define PGLOGS_RELINK_KEY_OFFSET (offsetof(struct pglogs_relink_key, fileid))
-
-struct ltran_pglogs_key {
-    unsigned long long logical_tranid;
-    pthread_mutex_t pglogs_mutex;
-    DB_LSN logical_commit_lsn; /* lsn of the physical commit of the logical
-                                  transaction */
-    hash_t *pglogs_hashtbl;
-};
-
 struct timestamp_lsn_key {
     int32_t timestamp;
     DB_LSN lsn;
     unsigned long long context;
-};
-
-typedef struct pglogs_tmptbl_key {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    db_pgno_t pgno;
-    DB_LSN commit_lsn;
-    DB_LSN lsn;
-} pglogs_tmptbl_key;
-
-typedef struct relinks_tmptbl_key {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    db_pgno_t pgno;
-    DB_LSN lsn;
-    db_pgno_t inh;
-} relinks_tmptbl_key;
-
-struct logfile_pglogs_entry {
-    u_int32_t filenum;
-
-    pthread_mutex_t pglogs_lk;
-    struct temp_table *pglogs_tbl;
-    struct temp_cursor *pglogs_cur;
-
-    pthread_mutex_t relinks_lk;
-    struct temp_table *relinks_tbl;
-    struct temp_cursor *relinks_cur;
 };
 
 struct checkpoint_list {
@@ -350,16 +206,6 @@ struct tran_tag {
     DB_LSN asof_lsn;
     /* oldest logical ref point of a begin-as-of tran*/
     DB_LSN asof_ref_lsn;
-
-    /* hash table for pglogs */
-    hash_t *pglogs_hashtbl;
-    /* hash table for relinks */
-    hash_t *relinks_hashtbl;
-    pthread_mutex_t pglogs_mutex;
-
-    /* hash table to keep track of
-       whether we have copied pglogs from the gbl structure for a given page */
-    hash_t *asof_hashtbl;
 
     /* temporary: used in logical abort case */
     hash_t *compensated_records;
@@ -467,8 +313,6 @@ struct tran_tag {
     u_int32_t rc_count;
     u_int64_t logbytes;
 
-    /* Newsi pglogs queue hash */
-    hash_t *pglogs_queue_hash;
     u_int32_t flags;
     int is_prepared;
 };
@@ -1543,9 +1387,6 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
 int update_shadows_beforecommit(bdb_state_type *bdb_state, DB_LSN *lsn,
                                 unsigned long long *commit_genid,
                                 int is_master);
-
-int timestamp_lsn_keycmp(void *_, int key1len, const void *key1, int key2len,
-                         const void *key2);
 
 /**
  * Return a cursor to a shadow file, either index or data
