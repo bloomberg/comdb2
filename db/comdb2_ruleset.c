@@ -321,7 +321,7 @@ static void comdb2_dump_ruleset_item(
   logmsg(level, "%s: ruleset %p rule #%d %s action "
          "{%s} (0x%llX), pool {%s}, flags {%s} (0x%llX), "
          "mode {%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
-         "sql {%s}, fingerprint {%s}, evalCount %d, matchCount %d\n",
+         "sql {%s}, fingerprint {%s}, identity {%s}, evalCount %d, matchCount %d\n",
          __func__, rules, rule->ruleNo,
          zMessage ? zMessage : "<null>",
          zAction ? zAction : "<null>",
@@ -333,7 +333,9 @@ static void comdb2_dump_ruleset_item(
          criteria->zOriginTask ? criteria->zOriginTask : "<null>",
          criteria->zUser ? criteria->zUser : "<null>",
          criteria->zSql ? criteria->zSql : "<null>",
-         zFingerprint, rule->evalCount, rule->matchCount);
+         zFingerprint, 
+         criteria->zIdentity ? criteria->zIdentity : "<null>",  
+         rule->evalCount, rule->matchCount);
 }
 
 static ruleset_match_t comdb2_evaluate_ruleset_item(
@@ -353,16 +355,19 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   const char *zOriginTask;
   const char *zUser;
   const char *zSql;
+  const char *zIdentity;
   if( stringComparer==regexp_match ){
     zOriginHost = (const char *)cache->pOriginHostRe;
     zOriginTask = (const char *)cache->pOriginTaskRe;
     zUser = (const char *)cache->pUserRe;
     zSql = (const char *)cache->pSqlRe;
+    zIdentity = (const char*)cache->pIdentityRe;
   }else{
     zOriginHost = criteria->zOriginHost;
     zOriginTask = criteria->zOriginTask;
     zUser = criteria->zUser;
     zSql = criteria->zSql;
+    zIdentity = criteria->zIdentity;
   }
   if( stringComparer!=NULL ){
     if( zOriginHost!=NULL && ((context->zOriginHost==NULL) ||
@@ -381,6 +386,11 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
         stringComparer(context->zSql, zSql)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
+    if( zIdentity!=NULL && ((context->zIdentity==NULL) ||
+        stringComparer(context->zIdentity, zIdentity)!=0) ){
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+
   }else{
     if( zOriginHost!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
@@ -394,20 +404,11 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     if( zSql!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
+    if (zIdentity!=NULL){
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
   }
   if( criteria->pFingerprint!=NULL ){
-    if( !comdb2_ruleset_fingerprints_allowed() ){
-      char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
-
-      memset(zFingerprint, 0, sizeof(zFingerprint));
-      util_tohex(zFingerprint, (char *)criteria->pFingerprint, FPSZ);
-
-      logmsg(LOGMSG_ERROR,
-             "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
-             "disabled\n", __func__, rule->ruleNo, zFingerprint);
-
-      return RULESET_M_ERROR; /* have forbidden criteria */
-    }
     if( (context->pFingerprint==NULL) ||
         memcmp(context->pFingerprint, criteria->pFingerprint, FPSZ)!=0 ){
       return RULESET_M_FALSE; /* have criteria, not matched */
@@ -472,19 +473,6 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   }
   result->flags |= rule->flags; /* NOTE: OR matched rule flags together. */
   return (rule->flags&RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
-}
-
-int comdb2_ruleset_fingerprints_allowed(void){
-  /*
-  ** NOTE: When strict fingerprints are enabled double-quoted strings within
-  **       SQL queries will be assumed to refer to database identifiers, not
-  **       string literals.  In that mode, fingerprint based matching rules
-  **       make sense because SQL queries would be normalized consistently,
-  **       even if the query is not prepared first.  This is necessary, in
-  **       part, because preparing SQL queries on non-SQL engine threads is
-  **       seen as too expensive.
-  */
-  return gbl_strict_dbl_quotes;
 }
 
 size_t comdb2_evaluate_ruleset(
@@ -643,7 +631,6 @@ int comdb2_load_ruleset_item_criteria(
   char *zBuf,
   size_t nBuf, /* NOT USED */
   int noCase,
-  int bAllowFingerprint,
   int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
@@ -781,7 +768,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       if( criteria->zSql!=NULL ){
         free(criteria->zSql);
-        criteria->zUser = NULL;
+        criteria->zSql = NULL;
       }
       criteria->zSql = strdup(zTok);
       if( criteria->zSql==NULL ){
@@ -808,13 +795,6 @@ int comdb2_load_ruleset_item_criteria(
     }
     zField = "fingerprint";
     if( sqlite3_stricmp(zTok, zField)==0 ){
-      if( !bAllowFingerprint ){
-        snprintf(zError, nError,
-                 "%s:%d, field '%s' forbidden by configuration",
-                 zFileName, lineNo, zField);
-        rc = EACCES;
-        goto done;
-      }
       if( pnFingerprint!=NULL ) (*pnFingerprint)++;
       zTok = strtok_r(NULL, RULESET_DELIM, pzSav);
       if( zTok==NULL ){
@@ -849,6 +829,45 @@ int comdb2_load_ruleset_item_criteria(
       zTok = strtok_r(NULL, RULESET_DELIM, pzSav);
       continue;
     }
+
+    zField = "identity";
+    if( sqlite3_stricmp(zTok, zField)==0 ){
+      zTok = strtok_r(NULL, RULESET_TEXT_DELIM, pzSav);
+      if( zTok==NULL ){
+        snprintf(zError, nError,
+                 "%s:%d, expected %s value after '%s'",
+                 zFileName, lineNo, zField, zField);
+        rc = EINVAL;
+        goto done;
+      }
+      if( criteria->zIdentity!=NULL ){
+        free(criteria->zIdentity);
+        criteria->zIdentity = NULL;
+      }
+      criteria->zIdentity = strdup(zTok);
+      if( criteria->zIdentity==NULL ){
+        snprintf(zError, nError,
+                 "%s:%d, could not duplicate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, strlen(zTok)+1);
+        rc = ENOMEM;
+        goto done;
+      }
+      if( cache!=NULL ){
+        zReErr = NULL;
+        if( recompile_regexp(zTok, noCase, &cache->pIdentityRe, &zReErr)!=0 ){
+          snprintf(zError, nError,
+                   "%s:%d, bad %s regular expression '%s': %s",
+                   zFileName, lineNo, zField, zTok, zReErr);
+          re_free(cache->pIdentityRe);
+          cache->pIdentityRe = NULL;
+          rc = EINVAL;
+          goto done;
+        }
+      }
+      zTok = strtok_r(NULL, RULESET_DELIM, pzSav);
+      continue;
+    }
+
     snprintf(zError, nError,
              "%s:%d, unknown rule criteria field '%s'",
              zFileName, lineNo, zTok);
@@ -1067,8 +1086,7 @@ int comdb2_load_ruleset(
         while( zTok!=NULL ){
           int rc2 = comdb2_load_ruleset_item_criteria(
             zFileName, lineNo, zTok, -1, rule->mode&RULESET_MM_NOCASE,
-            comdb2_ruleset_fingerprints_allowed(), 1, criteria,
-            rule->mode&RULESET_MM_REGEXP ? cache : NULL, &zTok, &zSav,
+            1, criteria, rule->mode&RULESET_MM_REGEXP ? cache : NULL, &zTok, &zSav,
             &rules->nFingerprint, zError, sizeof(zError)
           );
           if( rc2==0 ){

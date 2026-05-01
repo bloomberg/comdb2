@@ -120,8 +120,8 @@ static void clnt_queued_event(void *p)
 static struct thdpool *create_sql_pool(const char *zName, int nThreads)
 {
     struct thdpool *pool = thdpool_create(
-        (zName != NULL) ? zName : SQL_POOL_LEGACY_NAME,
-        sizeof(struct sqlthdstate));
+            (zName != NULL) ? zName : SQL_POOL_LEGACY_NAME,
+            sizeof(struct sqlthdstate));
 
     if (pool == NULL) return NULL;
 
@@ -133,19 +133,16 @@ static struct thdpool *create_sql_pool(const char *zName, int nThreads)
     thdpool_set_delt_fn(pool, thdpool_sqlengine_end);
     thdpool_set_dque_fn(pool, thdpool_sqlengine_dque);
     thdpool_set_queued_callback(pool, clnt_queued_event);
-
-    if (zName != NULL) {
-        /* TODO: *TUNING* Defaults for non-default pools. */
+    if (zName)
         thdpool_set_maxthds(pool, nThreads);
-        thdpool_set_maxqueueoverride(pool, SQL_POOL_NAMED_MAXQ_OVERRIDE);
-    } else {
-        thdpool_set_minthds(pool, SQL_POOL_DEFLT_MIN_THREADS);
+    else
         thdpool_set_maxthds(pool, SQL_POOL_DEFLT_MAX_THREADS);
-        thdpool_set_linger(pool, SQL_POOL_LINGER_SECS);
-        thdpool_set_maxqueueoverride(pool, SQL_POOL_DEFLT_MAXQ_OVERRIDE);
-        thdpool_set_maxqueueagems(pool, SQL_POOL_MAXQ_AGE_MS);
-        thdpool_set_dump_on_full(pool, 1);
-    }
+    thdpool_set_maxqueueoverride(pool, SQL_POOL_NAMED_MAXQ_OVERRIDE);
+    thdpool_set_minthds(pool, SQL_POOL_DEFLT_MIN_THREADS);
+    thdpool_set_linger(pool, SQL_POOL_LINGER_SECS);
+    thdpool_set_maxqueueoverride(pool, SQL_POOL_DEFLT_MAXQ_OVERRIDE);
+    thdpool_set_maxqueueagems(pool, SQL_POOL_MAXQ_AGE_MS);
+    thdpool_set_dump_on_full(pool, 1);
 
     return pool;
 }

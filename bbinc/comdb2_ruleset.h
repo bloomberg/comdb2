@@ -144,6 +144,8 @@ struct ruleset_item_criteria {
   unsigned char *pFingerprint;    /* Obtained via "clnt->work.aFingerprint".
                                    * If not NULL this will be matched using
                                    * memcmp(). */
+
+  char *zIdentity;
 };
 
 struct ruleset_item_criteria_cache {
@@ -158,6 +160,9 @@ struct ruleset_item_criteria_cache {
 
   void *pSqlRe;                   /* This is the cached regular expression for
                                    * the SQL pattern, if needed. */
+
+  void *pIdentityRe;              /* This is the cached regular expression for
+                                   * the identity pattern, if needed. */
 };
 
 struct ruleset_item {
@@ -232,15 +237,12 @@ typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;
 
-int comdb2_ruleset_fingerprints_allowed(void);
-
 int comdb2_load_ruleset_item_criteria(
   const char *zFileName,
   int lineNo,
   char *zBuf,
   size_t nBuf,
   int noCase,
-  int bAllowFingerprint,
   int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
