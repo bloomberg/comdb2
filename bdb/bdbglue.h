@@ -52,10 +52,8 @@ int bdb_the_lock_desired(void);
  * Backend thread event constants.
  */
 enum bdb_thr_event {
-    BDBTHR_EVENT_DONE_RDONLY = 0,
-    BDBTHR_EVENT_START_RDONLY = 1,
-    BDBTHR_EVENT_DONE_RDWR = 2,
-    BDBTHR_EVENT_START_RDWR = 3
+    BDBTHR_EVENT_DONE = 0,
+    BDBTHR_EVENT_START = 1,
 };
 
 void bdb_thread_event(struct bdb_state_tag *, enum bdb_thr_event);

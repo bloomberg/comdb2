@@ -118,7 +118,7 @@ void *auto_analyze_table(void *arg)
 
     logmsg(LOGMSG_WARN, "%s: STARTING %s\n", __func__, tblname);
     COMDB2BUF *sb = cdb2buf_open(fileno(stdout), 0);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     int percent = bdb_attr_get(thedb->bdb_attr, 
                                BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
 
@@ -129,7 +129,7 @@ void *auto_analyze_table(void *arg)
                tblname, rc);
     }
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     cdb2buf_free(sb);
     free(tblname);
     if (gbl_debug_aa) {
@@ -381,7 +381,7 @@ void *auto_analyze_main(void *unused)
     bdb_state_type *bdb_state = thedb->bdb_env;
 
     thrman_register(THRTYPE_ANALYZE);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     int save_freq = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ);
     unsigned min_ops = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MIN_AA_OPS);
@@ -496,7 +496,7 @@ void *auto_analyze_main(void *unused)
 
     ctrace("AUTOANALYZE check took %d ms\n", comdb2_time_epochms() - strt);
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     return NULL;
 }
 

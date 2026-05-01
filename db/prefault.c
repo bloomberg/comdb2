@@ -444,7 +444,7 @@ static void *prefault_io_thread(void *arg)
 
     dbenv = arg;
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     logmsg(LOGMSG_INFO, "io thread started as %p\n", (void *)pthread_self());
 
@@ -936,7 +936,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             }
 
             case PFRQ_EXITTHD: {
-                backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDONLY);
+                backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE);
                 free(req);
                 /*fprintf(stderr, "exiting prefault thread %p\n",
                   (void *)pthread_self());*/

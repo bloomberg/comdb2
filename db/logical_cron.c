@@ -211,11 +211,11 @@ unsigned long long logical_cron_read_persistent(const char *name,
         goto done;
     }
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDONLY);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     counter = run_sql_thd_return_ll(query, thd, err);
     if (counter == LLONG_MIN)
         counter = 0;
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
     sqlite3_free(query);
 

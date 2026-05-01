@@ -5444,12 +5444,12 @@ int osql_comm_diffstat(struct reqlogger *statlogger, int *have_scon_header)
 
 static void net_startthread_rtn(void *arg)
 {
-    bdb_thread_event((bdb_state_type *)arg, 1);
+    bdb_thread_event((bdb_state_type *)arg, BDBTHR_EVENT_START);
 }
 
 static void net_stopthread_rtn(void *arg)
 {
-    bdb_thread_event((bdb_state_type *)arg, 0);
+    bdb_thread_event((bdb_state_type *)arg, BDBTHR_EVENT_DONE);
 }
 
 static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,

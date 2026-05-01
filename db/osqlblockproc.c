@@ -1453,7 +1453,7 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
 void *resume_sc_multiddl_txn_finalize(void *p)
 {
     comdb2_name_thread(__func__);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
 
     struct ireq *iq = (struct ireq*)p;
     struct schema_change_type *sc;
@@ -1531,7 +1531,7 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     iq->sc_logical_tran = NULL;
 
     osql_postcommit_handle(iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
     return NULL;
 
@@ -1554,7 +1554,7 @@ abort_sc:
     }
 
     osql_postabort_handle(iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
     return NULL;
 }

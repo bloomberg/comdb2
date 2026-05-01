@@ -207,9 +207,9 @@ static void *watchdog_thread(void *arg)
                  * replication
                  * and we read from a non-master, so no point trying. */
 
-                backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_START);
                 coherent = bdb_am_i_coherent(thedb->bdb_env);
-                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
 /* i dont know why this seems to fail sometimes with -4.
    disabling for now. */

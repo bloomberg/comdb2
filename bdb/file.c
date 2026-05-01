@@ -1399,12 +1399,12 @@ int net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *hostname,
 
 static void net_startthread_rtn(void *arg)
 {
-    bdb_thread_event((bdb_state_type *)arg, 1);
+    bdb_thread_event((bdb_state_type *)arg, BDBTHR_EVENT_START);
 }
 
 static void net_stopthread_rtn(void *arg)
 {
-    bdb_thread_event((bdb_state_type *)arg, 0);
+    bdb_thread_event((bdb_state_type *)arg, BDBTHR_EVENT_DONE);
 }
 
 /* According to the berkdb docs, after the DB/DBENV close() functions have
@@ -5712,7 +5712,7 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
 
     /* XXX this looks wrong */
     if (!parent_bdb_state)
-        bdb_thread_event(bdb_state, 1);
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     Pthread_attr_init(&(bdb_state->pthread_attr_detach));
 

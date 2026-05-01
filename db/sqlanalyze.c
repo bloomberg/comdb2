@@ -305,7 +305,7 @@ static void *sampling_thread(void *arg)
 
     /* register thread */
     thrman_register(THRTYPE_ANALYZE);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     /* update state */
     ix_des->comp_state = SAMPLING_RUNNING;
@@ -327,7 +327,7 @@ static void *sampling_thread(void *arg)
     Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* cleanup */
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     return NULL;
 }
@@ -908,7 +908,7 @@ static void *analyze_thread(void *arg)
 
     /* register thread */
     thd_self = thrman_register(THRTYPE_ANALYZE);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     stat4dump(1, td->table, 1); /* dump stats in trc file */
 
@@ -942,7 +942,7 @@ static void *analyze_thread(void *arg)
     analyze_cur_table_threads--;
     Pthread_cond_broadcast(&table_thd_cond);
     Pthread_mutex_unlock(&table_thd_mutex);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     sql_mem_shutdown(NULL);
 
