@@ -63,13 +63,23 @@ int reject_anon_id(struct sqlclntstate *clnt)
 
 int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
 
-void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt) {
-    snprintf(out, outlen,
-            "%s:origin:%s:pid:%d",
-            clnt->argv0 ? clnt->argv0 : "?",
-            clnt->origin ? clnt->origin: "?",
-            clnt->conninfo.pid);
-} 
+void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt)
+{
+    char ip[INET_ADDRSTRLEN] = "?";
+    if (clnt->rawnodestats)
+        get_nodestats_ip(clnt->rawnodestats, ip, sizeof(ip));
+    int off = snprintf(out, outlen, "%s:origin:%s:pid:%d:ip:%s",
+                       clnt->argv0 ? clnt->argv0 : "?",
+                       clnt->origin ? clnt->origin : "?",
+                       clnt->conninfo.pid, ip);
+    const char *api = clnt->plugin.api_type(clnt);
+    if (api && off < outlen)
+        off += snprintf(out + off, outlen - off, ":api_type:%s", api);
+    if (clnt->api_driver_name && off < outlen)
+        off += snprintf(out + off, outlen - off, ":driver_name:%s", clnt->api_driver_name);
+    if (clnt->api_driver_version && off < outlen)
+        snprintf(out + off, outlen - off, ":driver_version:%s", clnt->api_driver_version);
+}
 
 int gbl_fdb_auth_error = 0;
 
@@ -265,11 +275,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         if ((authdata = get_authdata(clnt)) != NULL)
             clnt->authdata = authdata;
         char client_info[1024];
-        snprintf(client_info, sizeof(client_info),
-                 "%s:origin:%s:pid:%d",
-                 clnt->argv0 ? clnt->argv0 : "?",
-                 clnt->origin ? clnt->origin: "?",
-                 clnt->conninfo.pid);
+        get_client_origin(client_info, sizeof(client_info), clnt);
         if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux) {
             return reject_anon_id(clnt);
         }
@@ -352,11 +358,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
         if ((authdata = get_authdata(clnt)) != NULL)
             clnt->authdata = authdata;
         char client_info[1024];
-        snprintf(client_info, sizeof(client_info),
-                 "%s:origin:%s:pid:%d",
-                 clnt->argv0 ? clnt->argv0 : "?",
-                 clnt->origin ? clnt->origin: "?",
-                 clnt->conninfo.pid);
+        get_client_origin(client_info, sizeof(client_info), clnt);
         if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux)
             return reject_anon_id(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
@@ -482,11 +484,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
             && !clnt->current_user.bypass_auth /* not analyze */) {
             clnt->authdata = get_authdata(clnt);
             char client_info[1024];
-            snprintf(client_info, sizeof(client_info),
-                     "%s:origin:%s:pid:%d",
-                     clnt->argv0 ? clnt->argv0 : "?",
-                     clnt->origin ? clnt->origin: "?",
-                     clnt->conninfo.pid);
+            get_client_origin(client_info, sizeof(client_info), clnt);
             if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux)
                 return reject_anon_id(clnt);
             if (gbl_externalauth_warn && !clnt->authdata) {

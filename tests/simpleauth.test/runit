@@ -197,6 +197,57 @@ run_expect_success "$OP" "drop table if exists t_udf" \
     "drop t_udf table"
 
 #---------------------------------------------------------------
+echo "Test: anonymous access"
+#---------------------------------------------------------------
+ANON="bpi:anonymous"
+
+run_expect_success "$ANON" "select * from t1" \
+    "anonymous can read t1 (wildcard allows)"
+
+# Remove wildcard, grant op access to auth table
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op write on auth table"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op read on auth table"
+run_expect_success "$OP" "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" \
+    "remove wildcard rule"
+
+run_expect_failure "$ANON" "select * from t1" \
+    "anonymous cannot read t1 (no matching rule)"
+
+# Restore
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "restore wildcard rule"
+run_expect_success "$OP" "delete from comdb2_simple_auth where user = 'op'" \
+    "clean up op rules"
+
+#---------------------------------------------------------------
+echo "Test: verify simpleauth logs client_info with IP for anonymous"
+#---------------------------------------------------------------
+found_log=0
+if [ -n "$CLUSTER" ] ; then
+    for node in $(getclusternodes) ; do
+        logfile="${TESTDIR}/logs/${dbnm}.${node}.db"
+        if grep -q "simpleauth: principal='bpi:anonymous' client_info='.*:ip:" "$logfile" 2>/dev/null; then
+            found_log=1
+            break
+        fi
+    done
+else
+    logfile="${TESTDIR}/logs/${dbnm}.db"
+    if grep -q "simpleauth: principal='bpi:anonymous' client_info='.*:ip:" "$logfile" 2>/dev/null; then
+        found_log=1
+    fi
+fi
+if [ $found_log -eq 1 ]; then
+    echo "  PASS: server log shows anonymous principal with IP in client_info"
+    passed=$((passed + 1))
+else
+    echo "  FAIL: server log missing anonymous client_info with IP"
+    failed=$((failed + 1))
+fi
+
+#---------------------------------------------------------------
 echo "Test: cleanup"
 #---------------------------------------------------------------
 run_expect_success "$OP" "drop table if exists t1" \

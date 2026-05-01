@@ -2549,6 +2549,7 @@ static void init_clientstats(nodestats_t *entry, int task_len, int stack_len, ch
                     sizeof(struct in_addr));
         }
     }
+    memcpy(&(entry->rawtotals.addr), &(entry->addr), sizeof(struct in_addr));
 }
 
 static void update_clientstats_cache(nodestats_t *entry) {
@@ -2647,6 +2648,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
             memcpy(&(entry->addr), &peeraddr.sin_addr,
                     sizeof(struct in_addr));
         }
+        memcpy(&(entry->rawtotals.addr), &(entry->addr), sizeof(struct in_addr));
     }
     Pthread_mutex_unlock(&entry->mtx);
 
@@ -2707,6 +2709,15 @@ int hash_for_clientstats(hashforfunc_t *func, void *arg)
 {
     assert(clientstats);
     return hash_for(clientstats, func, arg);
+}
+
+int get_nodestats_ip(struct rawnodestats *raw, char *buf, size_t len)
+{
+    if (!raw || !buf || len == 0)
+        return -1;
+    if (inet_ntop(AF_INET, &raw->addr, buf, len) == NULL)
+        return -1;
+    return 0;
 }
 
 struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, const char *id, char *host, int fd,

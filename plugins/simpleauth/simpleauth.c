@@ -55,6 +55,8 @@ static int simpleCheckTableAccess(void *ID, const char *tablename, const char *a
         }
     }
 
+    logmsg(LOGMSG_USER, "simpleauth: principal='%s' client_info='%s' action='%s'\n",
+           principal, argv0 ? argv0 : "(null)", action);
     return simpleAuthCheck(principal, action, resource);
 }
 
