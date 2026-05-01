@@ -103,18 +103,18 @@
 - [x] 1003 ./src/sqliteInt.h.patch
 - [x] 15  ./src/sqlite_tunables.h.patch (keep)
 - [x] 82  ./src/sqlite_tunables.c.patch (keep)
-- [x]     ./src/btree.h
-- [x]     ./src/btreeInt.h
-- [x]     ./src/btree.c
-- [x]     ./src/btmutex.c
-- [x] 402 ./src/sqlite_btree.h.patch
-- [x] 27  ./src/md5.h.patch
-- [x] 260 ./src/md5.c.patch
-- [x] 58  ./src/comdb2vdbe.h.patch
-- [x] 169 ./src/comdb2build.h.patch
-- [x] 394  ./src/comdb2vdbe.c.patch
-- [x] 469  ./src/comdb2lua.c.patch
-- [x] 8063 ./src/comdb2build.c.patch
+- [x]     ./src/btree.h (pr)
+- [x]     ./src/btreeInt.h (pr)
+- [x]     ./src/btree.c (pr)
+- [x]     ./src/btmutex.c (pr)
+- [x] 402 ./src/sqlite_btree.h.patch (pr)
+- [x] 27  ./src/md5.h.patch (keep)
+- [x] 260 ./src/md5.c.patch (keep)
+- [x] 58  ./src/comdb2vdbe.h.patch (keep)
+- [x] 394 ./src/comdb2vdbe.c.patch (keep)
+- [x] 469 ./src/comdb2lua.c.patch (keep)
+- [x] 169  ./src/comdb2build.h.patch (keep)
+- [x] 8063 ./src/comdb2build.c.patch (keep)
 - [x] 37  ./src/fwd_types.h.patch
 - [x] 39  ./src/sqliteLimit.h.patch
 - [x] 65  ./src/whereInt.h.patch
