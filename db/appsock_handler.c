@@ -223,12 +223,12 @@ static void appsock_thd_start(struct thdpool *pool, void *thddata)
 {
     struct appsock_thd_state *state = thddata;
     state->thr_self = thrman_register(THRTYPE_APPSOCK_POOL);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 }
 
 static void appsock_thd_end(struct thdpool *pool, void *thddata)
 {
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 }
 
 static void appsock_work(struct thdpool *pool, void *work, void *thddata)

@@ -644,7 +644,7 @@ static void *sql_logfill_thread(void *arg)
 
     comdb2_name_thread(__func__);
     logmsg(LOGMSG_USER, "%s: starting sql-logfill-thread\n", __func__);
-    bdb_thread_event(bdb_state, COMDB2_THR_EVENT_START_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     while (!db_is_exiting() && !gbl_sql_logfill_auto_disabled) {
         if (thedb->master != gbl_myhostname) {
@@ -674,7 +674,7 @@ static void *sql_logfill_thread(void *arg)
 
     cleanup_sql_logfill();
 
-    bdb_thread_event(bdb_state, COMDB2_THR_EVENT_DONE_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 
@@ -682,7 +682,7 @@ static void *sql_apply_thread(void *arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     comdb2_name_thread(__func__);
-    bdb_thread_event(bdb_state, COMDB2_THR_EVENT_START_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     struct log_record copy = {0};
     logmsg(LOGMSG_USER, "%s: starting sql-apply-thread\n", __func__);
@@ -762,7 +762,7 @@ static void *sql_apply_thread(void *arg)
                 usleep(bdb_state->attr->rep_debug_delay * 1000);
         }
     }
-    bdb_thread_event(bdb_state, COMDB2_THR_EVENT_DONE_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     apply_thread_is_running = 0;
     return NULL;
 }

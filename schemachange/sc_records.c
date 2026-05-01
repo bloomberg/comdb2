@@ -1256,7 +1256,7 @@ static void *convert_records_thd(struct convert_record_data *data)
     }
 
     if (data->isThread) {
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     }
 
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
@@ -1377,7 +1377,8 @@ cleanup:
 
 cleanup_no_msg:
     convert_record_data_cleanup(data);
-    if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    if (data->isThread)
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     if (data->iq.debug)
         reqpopprefixes(&data->iq, 1);
@@ -1954,7 +1955,7 @@ static void *upgrade_records_thd(void *vdata)
     }
 
     if (data->isThread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     // initialize convert_record_data
     data->outrc = -1;
@@ -1974,7 +1975,7 @@ static void *upgrade_records_thd(void *vdata)
     while ((rc = upgrade_records(data)) > 0) {
         if (get_stopsc(__func__, __LINE__)) {
             if (data->isThread)
-                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
             return NULL;
         }
     }
@@ -2003,7 +2004,8 @@ cleanup:
 
     convert_record_data_cleanup(data);
 
-    if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    if (data->isThread)
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
     return NULL;
@@ -3525,7 +3527,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     }
 
     if (data->isThread) {
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     }
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
 
@@ -3830,7 +3832,7 @@ cleanup:
     convert_record_data_cleanup(data);
 
     if (data->isThread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     /* restore our  thread type to what it was before */
     if (oldtype != THRTYPE_UNKNOWN)

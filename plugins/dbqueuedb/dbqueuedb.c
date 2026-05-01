@@ -642,9 +642,9 @@ static void *stat_thread(void *argsptr)
     comdb2_name_thread(__func__);
     struct statthrargs *args = argsptr;
     thread_started("dbque stat");
-    backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START);
     stat_thread_int(args->db, args->fullstat, args->walk_queue);
-    backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_DONE_RDONLY);
+    backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_DONE);
     free(args);
     return NULL;
 }
@@ -749,9 +749,9 @@ static void *flush_thd(void *argsptr)
     comdb2_name_thread(__func__);
     struct flush_thd_data *args = argsptr;
     thread_started("dbque flush");
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     queue_flush(args->db, args->consumern);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     if (flush_thread_active)
         flush_thread_active = 0;
     free(args);

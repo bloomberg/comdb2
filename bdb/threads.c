@@ -113,7 +113,7 @@ void *memp_trickle_thread(void *arg)
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb memptrickle");
 
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     while (!bdb_state->passed_dbenv_open)
         sleep(1);
@@ -145,7 +145,7 @@ void *memp_trickle_thread(void *arg)
         usleep(time);
     }
 
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
     return NULL;
 }
@@ -165,7 +165,7 @@ void *deadlockdetect_thread(void *arg)
 
     thread_started("bdb deadlockdetect");
 
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     while (1) {
         int rc;
@@ -184,7 +184,7 @@ void *deadlockdetect_thread(void *arg)
             logmsg(LOGMSG_DEBUG, "deadlockdetect_thread: exiting\n");
 
             BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
+            bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
             pthread_exit(NULL);
         }
 
@@ -222,7 +222,7 @@ void *master_lease_thread(void *arg)
     assert(!bdb_state->parent);
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb master lease");
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
     while (!db_is_exiting() && (lease_time = bdb_state->attr->master_lease) != 0) {
@@ -238,7 +238,7 @@ void *master_lease_thread(void *arg)
     }
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
 
     bdb_state->master_lease_thread = 0;
     master_lease_thread_running = 0;
@@ -262,7 +262,7 @@ void *coherency_lease_thread(void *arg)
     assert(!bdb_state->parent);
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb coherency lease");
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
     while (!db_is_exiting() && (lease_time = bdb_state->attr->coherency_lease)) {
@@ -310,7 +310,7 @@ void *coherency_lease_thread(void *arg)
     }
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
 
     bdb_state->coherency_lease_thread = 0;
     coherency_thread_running = 0;
@@ -328,7 +328,7 @@ void *logdelete_thread(void *arg)
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb logdelete");
 
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     time_t last_run_time = 0;
 
     while (!db_is_exiting()) {
@@ -344,7 +344,7 @@ void *logdelete_thread(void *arg)
     }
 
     logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 
@@ -387,7 +387,7 @@ void *checkpoint_thread(void *arg)
     while (!bdb_state->after_llmeta_init_done)
         sleep(1);
 
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     while (!db_is_exiting()) {
         BDB_READLOCK("checkpoint_thread");
@@ -482,7 +482,7 @@ void *checkpoint_thread(void *arg)
     }
 
     logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 

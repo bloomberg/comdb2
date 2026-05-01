@@ -259,7 +259,7 @@ static void *fstdump_thread(void *arg)
     if (sendrec && databuf) {
         /* If not threaded then read lock etc already acquired */
         if (fstdump->real_thread) {
-            bdb_thread_event(common->bdb_state, BDBTHR_EVENT_START_RDONLY);
+            bdb_thread_event(common->bdb_state, BDBTHR_EVENT_START);
             BDB_READLOCK("fstdump_thread");
         }
 
@@ -267,7 +267,7 @@ static void *fstdump_thread(void *arg)
 
         if (fstdump->real_thread) {
             BDB_RELLOCK();
-            bdb_thread_event(common->bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+            bdb_thread_event(common->bdb_state, BDBTHR_EVENT_DONE);
         }
     } else {
         Pthread_mutex_lock(&common->lock);

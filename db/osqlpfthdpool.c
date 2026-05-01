@@ -280,7 +280,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     unsigned long long step;
     osqlpf_rq_t *req = (osqlpf_rq_t *)work;
     init_fake_ireq(thedb, &iq);
-    bdb_thread_event(thedb->bdb_env, 1);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     if (gbl_prefault_udp)
         send_prefault_udp = 2;
 
@@ -545,7 +545,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     }
 
 done:
-    bdb_thread_event(thedb->bdb_env, 0);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     send_prefault_udp = 0;
 }
 

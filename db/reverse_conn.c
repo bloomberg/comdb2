@@ -174,7 +174,7 @@ int replace_tier_by_hostname(reverse_conn_host_list_tp *new_reverse_conn_hosts) 
 static void *reverse_connection_worker(void *args) {
     reverse_conn_host_tp *host = args;
     time_t last_conn_attempt = 0;
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' worker thread started for %s@%s\n",
@@ -225,7 +225,7 @@ static void *reverse_connection_worker(void *args) {
         }
         sleep(1);
     }
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     return 0;
 }
 

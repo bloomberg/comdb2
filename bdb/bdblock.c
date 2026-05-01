@@ -845,19 +845,11 @@ void bdb_thread_event(bdb_state_type *bdb_state, enum bdb_thr_event event)
         parent = bdb_state;
 
     switch (event) {
-    case BDBTHR_EVENT_DONE_RDONLY: /* thread done */
+    case BDBTHR_EVENT_DONE: /* thread done */
         delete_thread_lock_info(parent);
         break;
 
-    case BDBTHR_EVENT_START_RDONLY: /* thread start */
-        new_thread_lock_info(parent);
-        break;
-
-    case BDBTHR_EVENT_DONE_RDWR: /* thread done */
-        delete_thread_lock_info(parent);
-        break;
-
-    case BDBTHR_EVENT_START_RDWR: /* thread start */
+    case BDBTHR_EVENT_START: /* thread start */
         new_thread_lock_info(parent);
         break;
 
@@ -869,12 +861,12 @@ void bdb_thread_event(bdb_state_type *bdb_state, enum bdb_thr_event event)
 
 void bdb_thread_done_rw(void)
 {
-    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_DONE);
 }
 
 void bdb_thread_start_rw(void)
 {
-    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_START);
 }
 
 static void dump_int(thread_lock_info_type *lk, FILE *out)

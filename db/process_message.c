@@ -626,7 +626,7 @@ void *clean_exit_thd(void *unused)
     gbl_exit = 1;
     Pthread_mutex_unlock(&exiting_lock);
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     thread_started("clean_exit");
 
     clean_exit();
@@ -1677,14 +1677,14 @@ clipper_usage:
         dump_all_constraints(dbenv);
     } else if (tokcmp(tok, ltok, "checkcsc2") == 0) {
         int rc;
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START);
         logmsg(LOGMSG_USER, "checking schemas...\n");
         rc = check_current_schemas();
         logmsg(LOGMSG_USER, "checked schemas, this database is %s\n",
                rc == 0 ? "good" : "bad");
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     }
 
     else if (tokcmp(tok, ltok, "nowatch") == 0) {

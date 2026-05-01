@@ -244,7 +244,7 @@ void *mempsync_thd(void *p)
 	int rep_check = 0;
 
 	struct bdb_state_tag *bdb_state = gbl_bdb_state;
-	bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+	bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 	thrman_register(THRTYPE_GENERIC);
 	thread_started("mempsync");
 
@@ -336,7 +336,7 @@ err:
 		}
 	}
 
-	bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+	bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
 
 	mempsync_thread_running = 0;
 

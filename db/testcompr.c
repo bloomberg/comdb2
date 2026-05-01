@@ -308,7 +308,7 @@ static void *handle_comptest_thd(void *_arg)
         skip = 0;
     }
 
-    backend_thread_event(thedb, BDBTHR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     comp.sb = arg->sb;
     comp.just_crle = 0;
     for (i = 0; i < MAXBLOBS; ++i) {
@@ -400,7 +400,7 @@ static void *handle_comptest_thd(void *_arg)
         compr_stat(&comp);
     }
     cdb2buf_flush(arg->sb);
-    backend_thread_event(thedb, BDBTHR_EVENT_DONE_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     return NULL;
 }
 

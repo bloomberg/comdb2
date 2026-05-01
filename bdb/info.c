@@ -1084,9 +1084,9 @@ static void *bdb_thread_wrapper(void *p)
     struct bdb_thread_args *args = (struct bdb_thread_args *)p;
 
     thread_started("bdb_thread");
-    bdb_thread_event(args->bdb_state, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(args->bdb_state, BDBTHR_EVENT_START);
     args->func(args->bdb_state);
-    bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE);
     free(args);
     return NULL;
 }

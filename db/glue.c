@@ -3711,12 +3711,12 @@ int open_auxdbs(struct dbtable *db, int force_create)
 
 void comdb2_net_start_thread(void *opaque)
 {
-    backend_thread_event((struct dbenv *)opaque, 1);
+    backend_thread_event((struct dbenv *)opaque, COMDB2_THR_EVENT_START);
 }
 
 void comdb2_net_stop_thread(void *opaque)
 {
-    backend_thread_event((struct dbenv *)opaque, 0);
+    backend_thread_event((struct dbenv *)opaque, COMDB2_THR_EVENT_DONE);
 }
 
 int open_bdb_env(struct dbenv *dbenv)

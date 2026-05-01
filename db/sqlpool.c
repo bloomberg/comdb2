@@ -38,7 +38,7 @@ static pthread_mutex_t sqlengine_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
 void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
                          enum thrtype type)
 {
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     sql_mem_init(NULL);
 
@@ -90,7 +90,7 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 
     sql_mem_shutdown(NULL);
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 }
 
 static void thdpool_sqlengine_start(struct thdpool *pool, void *thd)

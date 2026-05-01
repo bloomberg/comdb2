@@ -12004,12 +12004,12 @@ static pthread_t stat4dump_tid = {0};
 
 void *stat4dump_thread(void *arg)
 {
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDONLY);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     logmsg(LOGMSG_USER, "stat4dump_thread started\n");
     while (gbl_debug_stat4dump_loop) {
         stat4dump(1, NULL, 0);
     }
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     logmsg(LOGMSG_USER, "stat4dump_thread stopped\n");
     stat4dump_tid = 0;
     return NULL;

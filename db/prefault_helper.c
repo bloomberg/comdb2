@@ -84,7 +84,7 @@ static void *prefault_helper_thread(void *arg)
 
     logmsg(LOGMSG_INFO, "prefault_helper_thread instance %d started as tid %p\n", i, (void *)pthread_self());
 
-    backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(dbenv, COMDB2_THR_EVENT_START);
 
     /* thdinfo is assigned to thread specific variable thd_info_key which
      * will automatically free it when the thread exits. */
@@ -196,7 +196,7 @@ static void *prefault_helper_thread(void *arg)
     }
 #if 0
    /* we never actually get here */
-   backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+   backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
    return NULL;
 #endif
 }
@@ -228,7 +228,7 @@ static void *prefault_helper_thread(void *arg)
    fprintf(stderr, "prefault_helper_thread instance %d started as tid %p\n",
       i, (void *)pthread_self());
 
-   backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
+   backend_thread_event(dbenv, COMDB2_THR_EVENT_START);
 
 
    while(1)
@@ -262,7 +262,7 @@ static void *prefault_helper_thread(void *arg)
       Pthread_mutex_unlock(&(dbenv->prefault_helper.threads[i].mutex));
    }
    
-   backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+   backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 }
 #endif
 
