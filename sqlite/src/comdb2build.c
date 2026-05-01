@@ -21,6 +21,7 @@
 #include <net_types.h>
 #include <views.h>
 #include <logmsg.h>
+#include "phys_rep.h"
 #include <str0.h>
 #include <zlib.h>
 #include <shard_range.h>
@@ -1780,6 +1781,11 @@ void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 
     if (!gbl_enable_bulk_import) {
         setError(pParse, SQLITE_MISUSE, "bulk import is not enabled");
+        return;
+    }
+    
+    if (is_a_physrep_source_or_dest()) {
+        setError(pParse, SQLITE_MISUSE, "bulk import into a physical replicant is not allowed");
         return;
     }
 

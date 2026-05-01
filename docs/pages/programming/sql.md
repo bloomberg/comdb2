@@ -552,6 +552,15 @@ system table.
 
 The ```REPLACE TABLE``` statement can be used to replace a table with another table.
 
+The source table is specified using [foreign table](#foreign-tables) syntax. For a database running 
+on the same machine, use ```LOCAL_database.tablename```:
+
+```sql
+REPLACE TABLE mytable WITH LOCAL_sourcedb.sourcetable;
+```
+
+For remote databases, use ```database.tablename``` (requires [comdb2db](clients.html#comdb2db) configuration).
+
 Below is a list of requirements that must be satisfied to use this statement:
 - The source and destination databases have the same datastripe and blobstripe settings.
 - There is no network firewall preventing the destination database from communicating 
