@@ -79,10 +79,13 @@ delete from t
 exec procedure test()
 EOF
 ) > t07.output 2>&1
+
+# delete from t processes rows in non-deterministic way
+# Sort both files before comparing.
 set -x
-diff -q t07.output t07.expected
+diff <(sort t07.output) <(sort t07.expected)
 if [[ $? -ne 0 ]]; then
-    diff t07.output t07.expected | head -10
+    diff <(sort t07.output) <(sort t07.expected) | head -10
     exit 1
 fi
 exit 0
