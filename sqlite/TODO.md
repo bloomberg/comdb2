@@ -115,6 +115,7 @@
 - [x] 469 ./src/comdb2lua.c.patch (keep)
 - [x] 169  ./src/comdb2build.h.patch (keep)
 - [x] 8063 ./src/comdb2build.c.patch (keep)
+- [x]     ./src/auth.c (pr)
 - [x] 37  ./src/fwd_types.h.patch
 - [x] 39  ./src/sqliteLimit.h.patch
 - [x] 65  ./src/whereInt.h.patch
