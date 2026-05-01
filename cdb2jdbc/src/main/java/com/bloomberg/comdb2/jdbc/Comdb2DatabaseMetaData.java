@@ -28,12 +28,19 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     private String url;
     Comdb2Connection conn;
     private String sqlkws = null;
+    private String databaseProductVersion = "UNKNOWN";
+    private SQLException databaseProductVersionException = null;
 
     Comdb2DatabaseMetaData(Comdb2Connection conn) throws SQLException {
         url = "jdbc:comdb2:" + conn.getDatabase() + ":" + conn.getCluster();
         this.conn = conn;
         conn.lookup();
         stmt = conn.createStatement();
+        try {
+            databaseProductVersion = readDatabaseProductVersion(stmt);
+        } catch (SQLException e) {
+            databaseProductVersionException = e;
+        }
     }
 
     public <T> T unwrap(Class<T> iface) throws SQLException {
@@ -85,12 +92,17 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     public String getDatabaseProductVersion() throws SQLException {
-        String ret;
-        ResultSet rs = stmt.executeQuery("select comdb2_version()");
-        ret = "UNKNOWN";
-        while (rs.next())
-            ret = rs.getString(1);
-        rs.close();
+        if (databaseProductVersionException != null)
+            throw databaseProductVersionException;
+        return databaseProductVersion;
+    }
+
+    private String readDatabaseProductVersion(Statement statement) throws SQLException {
+        String ret = "UNKNOWN";
+        try (ResultSet rs = statement.executeQuery("select comdb2_version()")) {
+            while (rs.next())
+                ret = rs.getString(1);
+        }
         return ret;
     }
 
