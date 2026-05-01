@@ -2872,6 +2872,30 @@ void bdb_upgrade_all_prepared(bdb_state_type *bdb_state)
     bdb_state->dbenv->txn_upgrade_all_prepared(bdb_state->dbenv);
 }
 
+int bdb_collect_ddl_prepared(bdb_state_type *bdb_state, char ***dist_txnids, char ***coordinator_names,
+                             char ***coordinator_tiers, int *count)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->dbenv->txn_collect_ddl_prepared(bdb_state->dbenv, dist_txnids, coordinator_names,
+                                                      coordinator_tiers, count);
+}
+
+int bdb_mark_prepared_resolved(bdb_state_type *bdb_state, const char *dist_txnid, int committed)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->dbenv->txn_mark_prepared_resolved(bdb_state->dbenv, dist_txnid, committed);
+}
+
+int bdb_is_dist_committed(bdb_state_type *bdb_state, const char *dist_txnid)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    extern int __txn_is_dist_committed(DB_ENV *, const char *);
+    return __txn_is_dist_committed(bdb_state->dbenv, dist_txnid);
+}
+
 unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *file, unsigned int *offset)
 {

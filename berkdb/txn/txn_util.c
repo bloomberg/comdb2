@@ -1257,10 +1257,10 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
  * handled in bdb_recover_blkseq.
  *
  * PUBLIC: int __txn_recover_prepared __P((DB_ENV *, DB_TXN *txnid,
- * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
+ * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *, u_int32_t));
  */
 int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq_key,
-		coordinator_gen, coordinator_name, coordinator_tier)
+		coordinator_gen, coordinator_name, coordinator_tier, lflags)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	const char *dist_txnid;
@@ -1270,6 +1270,7 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 	u_int32_t coordinator_gen;
 	DBT *coordinator_name;
 	DBT *coordinator_tier;
+	u_int32_t lflags;
 {
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
@@ -1344,6 +1345,8 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 	memcpy(p->coordinator_tier.data, coordinator_tier->data, coordinator_tier->size);
 	p->coordinator_tier.size = coordinator_tier->size;
 
+	p->lflags = lflags;
+
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((fnd = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		logmsg(LOGMSG_FATAL, "Recovery found multiple prepared records with dist-txnid %s\n",
@@ -1351,6 +1354,9 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 		abort();
 	}
 	F_SET(p, DB_DIST_RECOVERED);
+	if (lflags & DB_TXN_SCHEMA_LOCK) {
+		F_SET(p, DB_DIST_NEEDS_SCHEMA_LK);
+	}
 
 	hash_add(dbenv->prepared_txn_hash, p);
 	hash_add(dbenv->prepared_utxnid_hash, p);
@@ -1493,11 +1499,160 @@ int __txn_recover_all_prepared(dbenv)
 	return 0;
 }
 
-/* 
+/*
+ * __txn_collect_ddl_prepared --
+ *
+ * Collect DDL prepared transactions (those needing schema lock) that are
+ * unresolved. These must be resolved before upgrade to avoid deadlock with
+ * the schema lock held during initialization.
+ *
+ * PUBLIC: int __txn_collect_ddl_prepared __P((DB_ENV *, char ***, char ***, char ***, int *));
+ */
+
+struct __collect_ddl_disttxn_node {
+	char *coordinator_name;
+	char *coordinator_tier;
+	char *dist_txnid;
+};
+
+struct __collect_ddl_disttxns {
+	DB_ENV *dbenv;
+	struct __collect_ddl_disttxn_node *disttxns;
+	int count;
+};
+
+static int __collect_ddl_prepared_cb(void *obj, void *arg)
+{
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	struct __collect_ddl_disttxns *collect = (struct __collect_ddl_disttxns *)arg;
+	int ret;
+
+	if (!F_ISSET(p, DB_DIST_NEEDS_SCHEMA_LK))
+		return 0;
+	if (F_ISSET(p, DB_DIST_HAVELOCKS | DB_DIST_COMMITTED | DB_DIST_ABORTED))
+		return 0;
+
+	if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_name.size + 1,
+		&collect->disttxns[collect->count].coordinator_name)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+		abort();
+	}
+	memcpy(collect->disttxns[collect->count].coordinator_name,
+		p->coordinator_name.data, p->coordinator_name.size);
+
+	if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_tier.size + 1,
+		&collect->disttxns[collect->count].coordinator_tier)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+		abort();
+	}
+	memcpy(collect->disttxns[collect->count].coordinator_tier,
+		p->coordinator_tier.data, p->coordinator_tier.size);
+
+	if ((ret = __os_strdup(collect->dbenv, p->dist_txnid,
+		&collect->disttxns[collect->count].dist_txnid)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+		abort();
+	}
+	collect->count++;
+	return 0;
+}
+
+int __txn_collect_ddl_prepared(dbenv, dist_txnids, coordinator_names,
+	coordinator_tiers, count)
+	DB_ENV *dbenv;
+	char ***dist_txnids;
+	char ***coordinator_names;
+	char ***coordinator_tiers;
+	int *count;
+{
+	int alloc;
+	struct __collect_ddl_disttxns collect = {0};
+	collect.dbenv = dbenv;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_info(dbenv->prepared_txn_hash, NULL, NULL, NULL, NULL, &alloc, NULL, NULL);
+	if (alloc == 0) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		*count = 0;
+		return 0;
+	}
+
+	int ret;
+	if ((ret = __os_malloc(dbenv, sizeof(struct __collect_ddl_disttxn_node) * alloc,
+		&collect.disttxns)) != 0) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		return ret;
+	}
+	hash_for(dbenv->prepared_txn_hash, __collect_ddl_prepared_cb, &collect);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+
+	*count = collect.count;
+	if (collect.count == 0) {
+		__os_free(dbenv, collect.disttxns);
+		*dist_txnids = NULL;
+		*coordinator_names = NULL;
+		*coordinator_tiers = NULL;
+		return 0;
+	}
+
+	if ((ret = __os_malloc(dbenv, sizeof(char *) * collect.count, dist_txnids)) != 0)
+		goto err;
+	if ((ret = __os_malloc(dbenv, sizeof(char *) * collect.count, coordinator_names)) != 0)
+		goto err;
+	if ((ret = __os_malloc(dbenv, sizeof(char *) * collect.count, coordinator_tiers)) != 0)
+		goto err;
+
+	for (int i = 0; i < collect.count; i++) {
+		(*dist_txnids)[i] = collect.disttxns[i].dist_txnid;
+		(*coordinator_names)[i] = collect.disttxns[i].coordinator_name;
+		(*coordinator_tiers)[i] = collect.disttxns[i].coordinator_tier;
+	}
+	__os_free(dbenv, collect.disttxns);
+	return 0;
+
+err:
+	__os_free(dbenv, collect.disttxns);
+	return ret;
+}
+
+/*
+ * __txn_mark_prepared_resolved --
+ *
+ * Mark a prepared transaction as committed or aborted without requiring
+ * DB_DIST_HAVELOCKS. Used during startup to resolve DDL transactions before
+ * upgrade. __txn_prune_resolved_prepared will remove them before upgrade.
+ *
+ * PUBLIC: int __txn_mark_prepared_resolved __P((DB_ENV *, const char *, int));
+ */
+int __txn_mark_prepared_resolved(dbenv, dist_txnid, committed)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+	int committed;
+{
+	DB_TXN_PREPARED *p;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	p = hash_find(dbenv->prepared_txn_hash, &dist_txnid);
+	if (p != NULL) {
+		if (committed)
+			F_SET(p, DB_DIST_COMMITTED);
+		else
+			F_SET(p, DB_DIST_ABORTED);
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	if (p == NULL) {
+		logmsg(LOGMSG_ERROR, "%s unable to locate txnid %s\n", __func__, dist_txnid);
+		return -1;
+	}
+	logmsg(LOGMSG_INFO, "%s marked DDL prepared txn %s as %s\n", __func__,
+		dist_txnid, committed ? "committed" : "aborted");
+	return 0;
+}
+
+/*
  * __txn_upgrade_all_prepared --
  *
  * Create berkley txns for unresolved but prepared transactions we found
- * during recovery.  Acquire locks for these transactions.	Update the 
+ * during recovery.  Acquire locks for these transactions.	Update the
  * transaction id-space and write a txn-recycle record
  *
  * PUBLIC: int __txn_upgrade_all_prepared __P((DB_ENV *));
