@@ -4478,14 +4478,11 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
         return -1;
     }
     if (clnt->osql.replay == OSQL_RETRY_DO) {
-        plugin_func *save_cb = clnt->done_cb;
-        clnt->done_cb = NULL;
-        int rc  = srs_tran_replay_inline(clnt);
-        if (rc && !clnt->query_rc) {
-            clnt->query_rc = rc;
+        if (srs_tran_replay_prepare(clnt) == 0) {
+            return RC_INTERNAL_RETRY;
         }
-        clnt->done_cb = save_cb;
-    } else if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+    }
+    if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
         srs_tran_destroy(clnt);
     }
     Pthread_mutex_lock(&lru_evbuffers_mtx); /* protect log_long_running_stmts_evbuffer() */

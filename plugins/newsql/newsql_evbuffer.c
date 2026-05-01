@@ -176,7 +176,8 @@ static void newsql_reset_evbuffer(struct newsql_appdata_evbuffer *appdata)
 static int newsql_done_cb(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    if (sql_done(appdata->writer) == 0) {
+    int rc = sql_done(appdata->writer);
+    if (rc == 0) {
         if (clnt->added_to_hist) {
             clnt->added_to_hist = 0;
         } else {
@@ -184,7 +185,7 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
         }
         appdata->query = NULL;
         evtimer_once(appdata->base, rd_hdr, appdata);
-    } else {
+    } else if (rc < 0) {
         appdata->cleanup_ev = event_new(appdata->base, -1, 0, newsql_cleanup, appdata);
         event_active(appdata->cleanup_ev, 0, 0);
     }

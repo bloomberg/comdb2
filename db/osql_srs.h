@@ -58,10 +58,19 @@ int srs_tran_del_last_query(struct sqlclntstate *clnt);
 int srs_tran_empty(struct sqlclntstate *clnt);
 
 /**
- * Replay transaction using the current history
- *
+ * Prepare the transaction for replay
  */
-int srs_tran_replay_inline(struct sqlclntstate *);
+int srs_tran_replay_prepare(struct sqlclntstate *);
+
+/**
+ * Begin the replay of the transaction
+ */
+int srs_tran_replay_begin(struct sqlclntstate *);
+
+/**
+ * Schedule a query during replay
+ */
+int srs_tran_replay_async(struct sqlclntstate *);
 
 void srs_tran_print_history(struct sqlclntstate *clnt, int indent);
 #endif
