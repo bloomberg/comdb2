@@ -173,6 +173,7 @@ static void process_lrl(
         const std::string& lrltext,
         bool strip_cluster_info,
         bool strip_consumer_info,
+        bool tunable_config,
         std::string& datadestdir,
         const std::string& lrldestdir,
         std::string& dbname,
@@ -202,6 +203,14 @@ static void process_lrl(
 
         std::string tok;
         if(liness >> tok) {
+            std::string config_tok(tok);
+            if(tok == "if") {
+                std::string machine_type;
+                liness >> machine_type;
+                if(!(liness >> config_tok)) {
+                    config_tok.clear();
+                }
+            }
 
             if(tok == "name" && dbname.empty()) {
                 // Get the db name from the first lrl file found,
@@ -287,18 +296,17 @@ static void process_lrl(
                 // changes tok, it needs to be the last test
                 line.insert(0, "# ");
             } else if (strip_consumer_info) {
-                if (tok == "if") {
-                    liness >> tok; /* consume machine type */
-                    liness >> tok; /* read real option */
-                }
-
-                if (tok == "queue" || tok == "procedure" || tok == "consumer")
+                if (config_tok == "queue" || config_tok == "procedure" ||
+                    config_tok == "consumer")
                     line.insert(0, "# ");
 
                 /* Also strip ssl config from the LRL for QA mode. */
-                if(strncasecmp(tok.c_str(), "ssl", 3) == 0)
+                if(strncasecmp(config_tok.c_str(), "ssl", 3) == 0)
                     line.insert(0, "# ");
             }
+
+            if(tunable_config && config_tok == "externalauth")
+                line.insert(0, "# ");
         }
 
         if(!(of << line << std::endl)) {
@@ -306,6 +314,12 @@ static void process_lrl(
             ss << "Error writing " << filename;
             throw Error(ss);
         }
+    }
+
+    if(tunable_config && !(of << "foreign_db_resolve_local 1" << std::endl)) {
+        std::ostringstream ss;
+        ss << "Error writing " << filename;
+        throw Error(ss);
     }
 }
 
@@ -362,6 +376,7 @@ void deserialise_database(
         const std::string *p_datadestdir,
         bool strip_cluster_info,
         bool strip_consumer_info,
+        bool tunable_config,
         bool run_full_recovery,
         const std::string& comdb2_task,
         unsigned percent_full,
@@ -886,7 +901,8 @@ void deserialise_database(
         } else if (is_lrl) {
             std::ostringstream lrldata;
             process_lrl(lrldata, filename, text, strip_cluster_info,
-                        strip_consumer_info, datadestdir, lrldestdir, dbname,
+                        strip_consumer_info, tunable_config, datadestdir,
+                        lrldestdir, dbname,
                         table_set);
             if (!datadestdir.empty()) {
                 make_dirs(datadestdir);
@@ -939,10 +955,10 @@ void deserialise_database(
 
         if (run_with_done_file)
            cmdss << "comdb2_stdout_redir ";
-        
-        cmdss<< comdb2_task << " " 
+
+        cmdss<< comdb2_task << " "
              << dbname << " -lrl "
-             << main_lrl_file 
+             << main_lrl_file
              << " -fullrecovery";
 
         for (int i = 0; i < options.size(); i++) {
@@ -1059,7 +1075,7 @@ void restore_partials(
         nonames = check_usenames(dbname, dbdir, nonames);
     }
 
-    // The first thing we need to do is to delete all the logs - we 
+    // The first thing we need to do is to delete all the logs - we
     // don't want recovery run on partial logs
     std::string logpath;
     if (nonames)
@@ -1141,7 +1157,7 @@ void restore_partials(
 
         if (filename.substr(filename.length() - 5, 5) == ".data") {
             unpack_incr_data(file_order, updated_files, dbdir, dryrun);
-            write_file = false; 
+            write_file = false;
         }
         else if (new_files.find(filename) != new_files.end()) {
             write_file = true;
@@ -1172,9 +1188,9 @@ void restore_partials(
     if(run_full_recovery) {
         std::ostringstream cmdss;
 
-        cmdss<< comdb2_task << " " 
+        cmdss<< comdb2_task << " "
              << dbname << " -lrl "
-             << lrlpath 
+             << lrlpath
              << " -fullrecovery";
 
         for (int i = 0; i < options.size(); i++) {
