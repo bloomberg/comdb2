@@ -2554,6 +2554,9 @@ REGISTER_TUNABLE("partition_sc_reorder", "If the schema change is serialized for
 REGISTER_TUNABLE("partition_retroactively",
                  "Disable/enable time partition syntax to retroactively partition an existing table (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_retro_tpt, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("legacy_tpt_partition",
+                 "Disable/enable time partition syntax CREATE TIME PARTITION that generates legacy tpts (Default: OFF)",
+                 TUNABLE_BOOLEAN, &gbl_legacy_tpt, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("partition_retroactively_verbose",
                  "Disable/enable data routing debugging for retroactively time partitioning (Default: OFF)",
                  TUNABLE_BOOLEAN, &gbl_retro_tpt_verbose, 0, NULL, NULL, NULL, NULL);
