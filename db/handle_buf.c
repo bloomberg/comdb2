@@ -511,7 +511,7 @@ void *thd_req(void *vthd)
         // inline.  If we're called as a start routine of a new thread, we need to call it
         // ourselves.
         if (!thd->do_inline)
-            backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
+            backend_thread_event(dbenv, COMDB2_THR_EVENT_START);
 
         /* thdinfo is assigned to thread specific variable thd_info_key which
          * will automatically free it when the thread exits. */
@@ -731,7 +731,7 @@ void *thd_req(void *vthd)
                         pool_free(thdinfo->ct_add_table_genid_pool);
                     }
                     delete_defered_index_tbl();
-                    backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
+                    backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE);
                     return 0;
                 }
             }

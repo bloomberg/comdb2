@@ -638,11 +638,11 @@ static void *udp_reader_thd(void *arg)
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
     int fd = repinfo->udp_fd;
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     while (!db_is_exiting()) {
         udp_reader(fd, 0, bdb_state);
     }
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 

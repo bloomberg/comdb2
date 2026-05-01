@@ -735,7 +735,7 @@ int views_do_purge(timepart_views_t *views, const char *name)
     struct errstat xerr = {0};
     int rc;
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
 
     rdlock_schema_lk();
 
@@ -743,7 +743,7 @@ int views_do_purge(timepart_views_t *views, const char *name)
 
     unlock_schema_lk();
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
     return rc;
 }
@@ -937,7 +937,7 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
         run = 0;
 
     if (run) {
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
 
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
@@ -1000,7 +1000,7 @@ done:
             unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
         /* queue the next event, done with the mutex released to avoid
            racing against scheduler callback runs */
@@ -1109,7 +1109,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
         run = 0;
 
     if (run) {
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
         rdlock_schema_lk();
         Pthread_rwlock_wrlock(&views_lk);
 
@@ -1177,7 +1177,7 @@ done:
         Pthread_rwlock_unlock(&views_lk);
         unlock_schema_lk();
         csc2_free_all();
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
         /*  schedule next */
         if (rc == VIEW_NOERR) {
@@ -1223,7 +1223,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
         run = 0;
 
     if (run) {
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
 #ifdef COMDB2_TEST
@@ -1246,7 +1246,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
             unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     }
 done:
     return NULL;
@@ -1952,7 +1952,7 @@ int views_cron_restart(timepart_views_t *views)
         abort();
     }
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     BDB_READLOCK(__func__);
 
     if (thedb->master == gbl_myhostname && !gbl_is_physical_replicant) {
@@ -1986,7 +1986,7 @@ done:
     BDB_RELLOCK();
 
     Pthread_rwlock_unlock(&views_lk);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     return rc;
 }
 
@@ -3153,7 +3153,7 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
     if (!gbl_exit &&
         !(thedb->master != gbl_myhostname || gbl_is_physical_replicant)) {
 
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
 #ifdef COMDB2_TEST
@@ -3203,7 +3203,7 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
         if (rc != VIEW_NOERR)
             unlock_schema_lk();
         BDB_RELLOCK();
-        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+        bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
         if (rc == VIEW_NOERR && !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
             rc = _view_new_rollout_lkless(name_dup, period, rolltime,

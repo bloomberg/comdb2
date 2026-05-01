@@ -162,11 +162,11 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     if (gbl_queuedb_file_threshold <= 0) return NULL;
     if (dbenv == NULL) return NULL;
     bdb_state_type *bdb_state = dbenv->bdb_env;
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     BDB_READLOCK("queuedb cron thread");
     if (dbenv->master != gbl_myhostname) {
         BDB_RELLOCK();
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
         return NULL; 
     }
     wrlock_schema_lk();
@@ -242,7 +242,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     }
     unlock_schema_lk();
     BDB_RELLOCK();
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 

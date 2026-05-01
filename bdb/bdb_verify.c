@@ -1251,9 +1251,9 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work,
 {
     td_processing_info_t *info = work;
     bdb_state_type *bdb_state = info->common_params->bdb_state;
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     bdb_verify_handler(info);
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     free(work);
 }
 

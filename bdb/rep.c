@@ -1121,7 +1121,7 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
     bdb_state->repinfo->in_election = 0;
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     pthread_exit(NULL);
 }
 
@@ -1174,7 +1174,7 @@ static void *elect_thread(void *args)
     bdb_state = elect_thread_args->bdb_state;
     op = elect_thread_args->op;
 
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     free(elect_thread_args);
 
@@ -1190,7 +1190,7 @@ static void *elect_thread(void *args)
         print(bdb_state, "election already in progress, exiting\n");
         Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
-        bdb_thread_event(bdb_state, 0);
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
         return NULL;
     }
 
@@ -1253,7 +1253,7 @@ elect_again:
         bdb_state->repinfo->in_election = 0;
         Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
-        bdb_thread_event(bdb_state, 0);
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
         return NULL;
     }
 
@@ -1368,7 +1368,7 @@ elect_again:
                 Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
                 bdb_state->repinfo->in_election = 0;
                 Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
-                bdb_thread_event(bdb_state, 0);
+                bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
                 return NULL;
             }
         }
@@ -1385,7 +1385,7 @@ give_up:
     bdb_state->repinfo->in_election = 0;
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
 
     return NULL;
 }
@@ -1499,9 +1499,9 @@ static void *dummy_add_thread_int(void *arg, int add_delay)
 {
     bdb_state_type *bdb_state = arg;
     thread_started("dummy add");
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     add_thread_int(bdb_state, add_delay);
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 
@@ -1531,9 +1531,9 @@ void *rep_catchup_add_thread(void *arg)
     Pthread_mutex_unlock(&lk);
     bdb_state_type *bdb_state = arg;
     thread_started("rep_catchup_add");
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     add_thread_int(bdb_state, 1);
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     Pthread_mutex_lock(&lk);
     rep_catchup_add_running = 0;
     Pthread_mutex_unlock(&lk);
@@ -1771,7 +1771,7 @@ void *hostdown_thread(void *arg)
 
     hostdown_buf = (hostdown_type *)arg;
     bdb_state = hostdown_buf->bdb_state;
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     host = hostdown_buf->host;
     free(arg);
 
@@ -1838,7 +1838,7 @@ void *hostdown_thread(void *arg)
 
     BDB_RELLOCK();
 
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
 
     return NULL;
 }
@@ -5488,7 +5488,7 @@ void *watcher_thread(void *arg)
     sleep(5);
 
     bdb_state = (bdb_state_type *)arg;
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -5707,7 +5707,7 @@ void *watcher_thread(void *arg)
 
             BDB_RELLOCK();
 
-            bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+            bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
             pthread_exit(NULL);
         }
 
@@ -5956,7 +5956,7 @@ void *watcher_thread(void *arg)
         send_context_to_all(bdb_state);
     }
 
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     return NULL;
 }
 

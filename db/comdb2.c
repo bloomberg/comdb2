@@ -1134,7 +1134,7 @@ static void *purge_old_blkseq_thread(void *arg)
     thread_started("blkseq");
 
     dbenv->purge_old_blkseq_is_running = 1;
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     loop = 0;
     sleep(1);
@@ -1260,7 +1260,7 @@ static void *purge_old_blkseq_thread(void *arg)
     }
 
     dbenv->purge_old_blkseq_is_running = 0;
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     return NULL;
 }
 
@@ -1291,7 +1291,7 @@ static void *purge_old_files_thread(void *arg)
     thread_started("purgefiles");
 
     dbenv->purge_old_files_is_running = 1;
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     assert(!gbl_is_physical_replicant);
 
@@ -1387,7 +1387,7 @@ static void *purge_old_files_thread(void *arg)
 
     free(resume);
     dbenv->purge_old_files_is_running = 0;
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     return NULL;
 }
@@ -4492,10 +4492,10 @@ static int init(int argc, char **argv)
 #if 0
     /* We can't do this anymore - recovery may still be holding transactions
        open waiting for the master to write an abort record. */
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 #endif
 
     /* some dbs have lots of tables and spew on startup.  this just wastes

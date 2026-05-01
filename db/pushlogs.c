@@ -57,7 +57,7 @@ static void *pushlogs_thread(void *voidarg)
 
     memset(junk, '@', sizeof(junk));
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     while (1) {
         tran_type *trans;
@@ -157,7 +157,7 @@ static void *pushlogs_thread(void *voidarg)
         broadcast_flush_all();
     }
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     logmsg(LOGMSG_USER, "pushlogs thread exiting\n");
     return NULL;
 }

@@ -439,10 +439,8 @@ enum {
 /* Copied verbatim from bdb_api.h since we don't expose that file to most
  * modules. */
 enum {
-    COMDB2_THR_EVENT_DONE_RDONLY = 0,
-    COMDB2_THR_EVENT_START_RDONLY = 1,
-    COMDB2_THR_EVENT_DONE_RDWR = 2,
-    COMDB2_THR_EVENT_START_RDWR = 3
+    COMDB2_THR_EVENT_DONE = 0,
+    COMDB2_THR_EVENT_START = 1,
 };
 
 enum lclop {

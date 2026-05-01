@@ -68,7 +68,7 @@ static enum thrtype prepare_sc_thread(struct schema_change_type *s)
         } else
             thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
         if (!s->nothrevent) {
-            backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+            backend_thread_event(thedb, COMDB2_THR_EVENT_START);
             logmsg(LOGMSG_INFO, "Preparing schema change read write thread\n");
         }
     }
@@ -79,7 +79,7 @@ static void reset_sc_thread(enum thrtype oldtype, struct schema_change_type *s)
 {
     struct thr_handle *thr_self = thrman_self();
     if (!s->nothrevent) {
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
         /* restore our  thread type to what it was before */
         if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
@@ -187,7 +187,7 @@ static int master_downgrading(struct schema_change_type *s)
 {
     if (get_stopsc(__func__, __LINE__)) {
         if (!s->nothrevent)
-            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
         if (s->sb) {
             cdb2buf_printf(s->sb, "!Master node downgrading - new master will "
                                "resume schemachange\n");
@@ -716,7 +716,7 @@ downgraded:
             int bdberr;
 
             if (!trans)
-                backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
             /* return NOMASTER for live schemachange writes */
             sc_set_downgrading(s);
@@ -727,7 +727,7 @@ downgraded:
             s->newdb = NULL;
 
             if (!trans)
-                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
         }
     }
     if (rc && rc != SC_COMMIT_PENDING && s->preempted != SC_ACTION_RESUME) {
@@ -800,9 +800,9 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     int rc;
     bdb_state_type *bdb_state = thedb->bdb_env;
     thread_started("schema_change");
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
     rc = do_schema_change_tran_int(arg);
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     if (rc == SC_COMMIT_PENDING) {
        rc = SC_OK; 
     }
@@ -877,7 +877,7 @@ void *sc_resuming_watchdog(void *p)
     logmsg(LOGMSG_INFO, "%s: started, sleeping %d seconds\n", __func__, time);
     sleep(time);
     logmsg(LOGMSG_INFO, "%s: waking up\n", __func__);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     init_fake_ireq(thedb, &iq);
     Pthread_mutex_lock(&sc_resuming_mtx);
     stored_sc = sc_resuming;
@@ -904,7 +904,7 @@ void *sc_resuming_watchdog(void *p)
     }
     sc_resuming = NULL;
     logmsg(LOGMSG_INFO, "%s: existing\n", __func__);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     Pthread_mutex_unlock(&sc_resuming_mtx);
     return NULL;
 }

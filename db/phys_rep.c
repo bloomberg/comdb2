@@ -1545,7 +1545,7 @@ static void *physrep_worker(void *args)
     while (!sc_ready())
         sleep(1);
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
     bdb_attr_set(thedb->bdb_attr, BDB_ATTR_ENABLE_SEQNUM_GENERATIONS, 0);
     bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS, 0);
@@ -1842,7 +1842,7 @@ sleep_and_retry:
         close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
     }
 
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     physrep_worker_running = 0;
 
