@@ -2189,6 +2189,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host);
 int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
                          int timeoutms, int adaptive, void *blkseq, int blklen,
                          void *blkkey, int blkkeylen);
+int blkseq_update_commitlsn(struct ireq *iq);
 int trans_abort(struct ireq *iq, void *trans);
 int trans_abort_priority(struct ireq *iq, void *trans, int *priority);
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
