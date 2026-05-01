@@ -972,7 +972,7 @@
 (name='sosql_poke_timeout_sec', description='On replicants, when checking on master for transaction status, retry the check after this many seconds.', type='INTEGER', value='60', read_only='N')
 (name='spfile', description='', type='STRING', value=NULL, read_only='Y')
 (name='sql_close_sbuf', description='sql_close_sbuf', type='BOOLEAN', value='OFF', read_only='N')
-(name='sql_logfill', description='Request transaction logs via sql thread.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='sql_logfill', description='Request transaction logs via sql thread.  (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='sql_logfill_apply_thread', description='Use a dedicated thread to apply sql logfills.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='sql_logfill_auto_disabled', description='Set to 1 when sql-logfill has been auto-disabled due to consecutive failures.  (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='sql_logfill_autodisable_threshold', description='Disable sql-logfill after this many consecutive authentication failures.  (Default: 5)', type='INTEGER', value='5', read_only='N')
