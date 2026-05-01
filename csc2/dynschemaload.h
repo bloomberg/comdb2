@@ -83,6 +83,11 @@ int dyns_get_table_count(void);
 int dyns_get_table_tag_size(char *tabletag);
 int dyns_get_table_field_count(char *tabletag);
 
+/* Convert a server-type length to on-disk length; client_type is used for
+ * SERVER_BCSTR to distinguish pstr from cstr.
+ */
+int dyns_adjust_ondisk_field_length(int server_type, int len, int client_type);
+
 /* constraint accessors */
 int dyns_get_constraint_count(void);
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,
