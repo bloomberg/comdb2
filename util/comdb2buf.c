@@ -188,10 +188,11 @@ int CDB2BUF_FUNC(cdb2buf_close)(COMDB2BUF *sb)
     return cdb2buf_free(sb);
 }
 
-/* flush output */
-int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb)
+int CDB2BUF_FUNC(cdb2buf_flush_chk_timeout)(COMDB2BUF *sb, int *timeout_error)
 {
     int cnt = 0, rc, len;
+    if (timeout_error)
+        *timeout_error = 0;
 
     if (sb == 0)
         return -1;
@@ -215,8 +216,11 @@ ssl_downgrade:
 #else
         rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len);
 #endif
-        if (rc <= 0)
+        if (rc <= 0) {
+            if (timeout_error && rc == 0)
+                *timeout_error = 1;
             return -1 + rc;
+        }
         cnt += rc;
         sb->wtl += rc;
         if (sb->wtl >= sb->lbuf)
@@ -226,6 +230,12 @@ ssl_downgrade:
     /* this reduces fragmentation for Nagle-disabled sockets*/
     sb->whd = sb->wtl = 0;
     return cnt;
+}
+
+/* flush output */
+int CDB2BUF_FUNC(cdb2buf_flush)(COMDB2BUF *sb)
+{
+    return cdb2buf_flush_chk_timeout(sb, NULL);
 }
 
 int CDB2BUF_FUNC(cdb2buf_putc)(COMDB2BUF *sb, char c)
