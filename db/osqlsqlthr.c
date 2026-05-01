@@ -62,8 +62,18 @@ extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_master_retry_poll_ms = 100;
-int gbl_noleader_retry_duration_ms = 50 * 1000; /* wait up to 50 seconds for a new leader */
-int gbl_noleader_retry_poll_ms = 10;
+int gbl_noleader_retry_duration_ms = 60 * 1000; /* wait up to 60 seconds for a new leader */
+int gbl_noleader_retry_poll_ms = 1000;
+
+static pthread_mutex_t gbl_noleader_wait_mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t gbl_noleader_wait_cv = PTHREAD_COND_INITIALIZER;
+
+void osql_noleader_broadcast(void)
+{
+    pthread_mutex_lock(&gbl_noleader_wait_mtx);
+    pthread_cond_broadcast(&gbl_noleader_wait_cv);
+    pthread_mutex_unlock(&gbl_noleader_wait_mtx);
+}
 
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype);
@@ -199,6 +209,27 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
         }                                                                                                              \
     } while (0)
 
+static void noleader_wait_for_timeout(int poll_ms)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += poll_ms / 1000;
+    ts.tv_nsec += (poll_ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
+    pthread_mutex_lock(&gbl_noleader_wait_mtx);
+    // TODO: if callback received, should it still retry? Think so.
+    int rc = pthread_cond_timedwait(&gbl_noleader_wait_cv, &gbl_noleader_wait_mtx, &ts);
+    if (rc && rc != ETIMEDOUT) {
+        logmsg(LOGMSG_FATAL, "pthread_cond_timedwait:%d rc:%d (%s) thd:%p\n", __LINE__, rc, strerror(rc),
+               (void *)pthread_self());
+        abort();
+    }
+    pthread_mutex_unlock(&gbl_noleader_wait_mtx);
+}
+
 /* see below */
 enum { OSQL_START_KEEP_RQID = 1, OSQL_START_NO_REORDER = 2, OSQL_START_IS_FINAL = 4 };
 extern int gbl_debug_disttxn_trace;
@@ -258,7 +289,7 @@ retry:
                 comdb2uuidstr(osql->uuid, us);
                 logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d uuid:%s\n", retries, us);
             }
-            poll(NULL, 0, poll_ms);
+            noleader_wait_for_timeout(poll_ms);
             goto retry;
         } else {
             uuidstr_t us;
@@ -297,7 +328,7 @@ retry:
             comdb2uuidstr(osql->uuid, us);
             logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d uuid:%s\n", retries, us);
         }
-        poll(NULL, 0, poll_ms);
+        noleader_wait_for_timeout(poll_ms);
         goto retry;
     }
 
@@ -1047,7 +1078,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !osql->sock_started) {
         /* we only have remote writes; at this point, we have clnt->effects tracking all remote writes
          * also clnt->remote_effects
-         * if we have local writes, the clnt->effects gets reset, so final commit results are ok (we 
+         * if we have local writes, the clnt->effects gets reset, so final commit results are ok (we
          * add whatever local master sends to the clnt->remote_effects);
          * HERE howewer, there is no local write, so clnt->effects does not get reset; we need to reset
          * it so we do not overcount
@@ -1101,8 +1132,7 @@ retry:
         rc = osql_wait(clnt);
         if (rc) {
             rcout = SQLITE_CLIENT_CHANGENODE;
-            logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
-                    __func__, __LINE__, rcout, rc);
+            logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", __func__, __LINE__, rcout, rc);
         } else {
 
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
@@ -1214,8 +1244,8 @@ err:
     /* unregister this osql thread from checkboard */
     rc = osql_end(clnt);
     if (rc && !rcout) {
-        logmsg(LOGMSG_ERROR, "%s line %d setting rout to SQLITE_INTERNAL (%d) rc is %d\n", 
-                __func__, __LINE__, SQLITE_INTERNAL, rc);
+        logmsg(LOGMSG_ERROR, "%s line %d setting rout to SQLITE_INTERNAL (%d) rc is %d\n", __func__, __LINE__,
+               SQLITE_INTERNAL, rc);
         rcout = SQLITE_INTERNAL;
     }
 
@@ -1233,9 +1263,7 @@ done:
         if (iirc != 0) /* if error or has selectv rows */
         {
             if (iirc < 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "%s: osql_shadtbl_has_selectv failed rc=%d bdberr=%d\n",
-                        __func__, rc, bdberr);
+                logmsg(LOGMSG_ERROR, "%s: osql_shadtbl_has_selectv failed rc=%d bdberr=%d\n", __func__, rc, bdberr);
             }
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
         }
@@ -1255,9 +1283,7 @@ done:
         /* we also need to free the tran object */
         rc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran, &bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d failed to abort shadow tran for socksql rc=%d\n",
-                    __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "%s:%d failed to abort shadow tran for socksql rc=%d\n", __FILE__, __LINE__, rc);
     }
 
     osql->sock_started = 0;
@@ -1330,9 +1356,7 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
      */
     rc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran, &bdberr);
     if (rc) {
-        logmsg(LOGMSG_ERROR, 
-                "%s:%d failed to abort shadow tran for socksql rc=%d\n",
-                __FILE__, __LINE__, rc);
+        logmsg(LOGMSG_ERROR, "%s:%d failed to abort shadow tran for socksql rc=%d\n", __FILE__, __LINE__, rc);
     }
 
     if (clnt->osql.tablename) {
@@ -1826,7 +1850,7 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         /* this is a distributed create for a partition, creating individual shard here, info passed from
          * SET OPTIONS through clnt struct
          */
-        if (sc->kind == SC_ADDTABLE) { 
+        if (sc->kind == SC_ADDTABLE) {
             sc->partition.type = PARTITION_ADD_GENSHARD;
         } else {
             sc->partition.type = PARTITION_REM_GENSHARD;
