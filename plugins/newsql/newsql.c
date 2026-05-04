@@ -2133,14 +2133,6 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 } else {
                     appdata->send_intrans_response = -1;
                 }
-            } else if (strncasecmp(sqlstr, "admin", 5) == 0) {
-                sqlstr += 7;
-                sqlstr = skipws(sqlstr);
-                if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->admin = 0;
-                } else {
-                    clnt->admin = 1;
-                }
             } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
                 rc = handle_set_querylimits(sqlstr, clnt);
             } else if (strncasecmp(sqlstr, "rowbuffer", 9) == 0) {
