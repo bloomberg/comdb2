@@ -6121,7 +6121,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else {
                 /* potential downgrade during the last shard processing */
-                iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+                iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
             }
         }
     } else {
@@ -6255,7 +6255,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         else {
             /* potential downgrade during the last shard processing */
-            iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+            iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
         }
     }
     return rc;
@@ -6291,7 +6291,7 @@ static int _process_single_table_sc_merge(struct ireq *iq)
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         else {
             /* potential downgrade during the last shard processing */
-            iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+            iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
         }
         return ERR_SC;
     }
@@ -6359,7 +6359,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
-                iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+                iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
 
@@ -6380,7 +6380,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
-                iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+                iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
 
@@ -6649,7 +6649,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
                 if (rc != SC_MASTER_DOWNGRADE)
                     iq->osql_flags |= OSQL_FLAGS_SCDONE;
                 else
-                    iq->osql_flags ^= OSQL_FLAGS_SCDONE;
+                    iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
             }
         }
     }
