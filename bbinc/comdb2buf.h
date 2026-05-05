@@ -28,6 +28,7 @@
 #  define SBUF2_SERVER 1
 #  ifndef CDB2BUF_UNGETC
 #    define CDB2BUF_UNGETC 1
+#    define CDB2BUF_UNGETC_BUF_MAX 8
 #  endif
 #endif
 

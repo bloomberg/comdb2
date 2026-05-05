@@ -21,7 +21,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "bdb_int.h"
 #include "cdb2_constants.h"
 #include "comdb2.h"
 #include "cdb2api.h"
