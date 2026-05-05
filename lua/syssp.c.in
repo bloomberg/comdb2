@@ -435,14 +435,20 @@ static int _db_process_command(Lua L, char *cmd, const char *colname)
         sp->max_num_instructions = 1000000; //allow large number of steps
     }
 
-    if (gbl_uses_password) {
-      if (sp && sp->clnt) {
-          int bdberr;
-          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "",
-                                    sp->clnt->current_user.name, &bdberr)) {
-              return luaL_error(L, "User doesn't have access to run this command.");
-          }
-      }
+    if (sp && sp->clnt) {
+        extern int (*externalComdb2CheckOpAccess)(void *);
+        if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
+            sp->clnt->authdata = get_authdata(sp->clnt);
+            if (externalComdb2CheckOpAccess(sp->clnt->authdata)) {
+                return luaL_error(L, "User doesn't have OP credentials to run this command.");
+            }
+        } else if (gbl_uses_password) {
+            int bdberr;
+            if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "",
+                                      sp->clnt->current_user.name, &bdberr)) {
+                return luaL_error(L, "User doesn't have access to run this command.");
+            }
+        }
     }
 
     lua_createtable(L, 0, 0);
