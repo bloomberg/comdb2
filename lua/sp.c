@@ -4106,6 +4106,7 @@ static void reset_clnt_after_sp(struct sqlclntstate *clnt,
     clnt->recover_ddlk_fail = NULL;
     clnt->dohsql_disable = saved_dohsql_disable;
     clnt->osql_max_trans = saved_osql_max_trans;
+    clnt->current_user.bypass_auth = 0;
 }
 
 static int db_udf_error(Lua L)
@@ -7247,7 +7248,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if (trigger || consumer)
+    if (trigger)
         clnt->current_user.bypass_auth = 1;
 
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
@@ -7259,6 +7260,9 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         (*err) = strdup("Read access denied for the stored procedure");
         return SQLITE_ACCESS;
     }
+
+    if (consumer)
+        clnt->current_user.bypass_auth = 1;
 
     if (gbl_is_physical_replicant && consumer) {
         rc = -3;
