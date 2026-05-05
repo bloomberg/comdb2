@@ -1933,7 +1933,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 9;
                 sqlstr = skipws(sqlstr);
                 char *spname = sqlstr;
-                while (!isspace(*sqlstr)) {
+                while (*sqlstr && !isspace(*sqlstr)) {
                     ++sqlstr;
                 }
                 *sqlstr = 0;

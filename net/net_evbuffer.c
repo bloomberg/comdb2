@@ -2882,6 +2882,8 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     if (b.pos == -1) b = evbuffer_search(buf, " ", 1, NULL);
     if (b.pos == -1) return 1;
     char key[CDB2BUF_UNGETC_BUF_MAX + 1];
+    if (b.pos + 1 > sizeof(key))
+        return 1;
     evbuffer_copyout(buf, key, b.pos + 1);
     key[b.pos + 1] = 0;
     if (secure && strstr(key, "newsql") == NULL) {
