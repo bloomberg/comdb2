@@ -1138,6 +1138,10 @@ hdr:
     appdata->hdr.compression = ntohl(hdr.compression);
     appdata->hdr.state = ntohl(hdr.state);
     appdata->hdr.length = ntohl(hdr.length);
+    if (appdata->hdr.length < 0) {
+        free_newsql_appdata_evbuffer(appdata);
+        return;
+    }
     rd_payload(-1, 0, appdata);
 }
 
