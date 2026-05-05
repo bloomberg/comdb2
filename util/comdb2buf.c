@@ -51,10 +51,6 @@
 #  endif
 #endif /* !SBUF2_SERVER */
 
-#if CDB2BUF_UNGETC
-#  define CDB2BUF_UNGETC_BUF_MAX 8 /* see also net/net_evbuffer.c */
-#endif
-
 #ifdef my_ssl_println
 #undef my_ssl_println
 #endif

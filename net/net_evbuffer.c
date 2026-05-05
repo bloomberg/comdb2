@@ -45,10 +45,13 @@
 #include <bb_oscompat.h>
 #include <berkdb/dbinc/rep_types.h>
 #include <comdb2_atomic.h>
+#include <comdb2buf.h>
 #include <compat.h>
+#include <connectmsg.pb-c.h>
+#include <hostname_support.h>
 #include <intern_strings.h>
-#include <sys_wrap.h>
 #include <logmsg.h>
+#include <sys_wrap.h>
 #ifdef PER_THREAD_MALLOC
   #include <mem_net.h>
   #include <mem_override.h>
@@ -62,10 +65,6 @@
 #include <ssl_evbuffer.h>
 #include <ssl_glue.h>
 #include <timer_util.h>
-
-#include <connectmsg.pb-c.h>
-#include <hostname_support.h>
-#include "net_int.h"
 
 #ifndef FIONREAD
 #  error FIONREAD not available
@@ -84,7 +83,6 @@
 #  endif
 #endif
 
-#define CDB2BUF_UNGETC_BUF_MAX 8 /* See also, util/comdb2buf.c */
 #define MAX_DISTRESS_COUNT 3
 
 #define hprintf_lvl LOGMSG_USER
@@ -4106,11 +4104,11 @@ void do_revconn_evbuffer(int fd, short what, void *data)
         shutdown_close(fd);
         return;
     }
-    int rc;
     struct evbuffer *buf = evbuffer_new();
-    if ((rc = evbuffer_read(buf, fd, -1)) <= 0) {
+    ssize_t rc = evbuffer_read(buf, fd, CDB2BUF_UNGETC_BUF_MAX);
+    if (rc <= 0) {
         if (gbl_revsql_debug) {
-            logmsg(LOGMSG_USER, "revconn: %s: Failed to read from fd:%d rc:%d\n", __func__, fd, rc);
+            logmsg(LOGMSG_USER, "revconn: %s: Failed to read from fd:%d n:%zd\n", __func__, fd, rc);
         }
         evbuffer_free(buf);
         shutdown_close(fd);
