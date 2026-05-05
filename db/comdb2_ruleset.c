@@ -987,48 +987,34 @@ static int comdb2_merge_ruleset_items(
   return 0;
 }
 
-int comdb2_load_ruleset(
-  const char *zFileName,
-  struct ruleset **pRules
-){
+int comdb2_load_ruleset_fp(const char *ruleset, struct ruleset **pRules, FILE *fp, const char *zFileName) {
   int rc = 0;
   char zError[RULESET_MAX_BUF];
-  char zLine[RULESET_MAX_BUF];
+  char *line = NULL;
+  size_t line_len = 0;
   const char *zField = NULL;
   size_t nLine;
   int lineNo = 0;
-  int fd = -1;
-  COMDB2BUF *sb = NULL;
+  if (zFileName == NULL)
+    zFileName = "<buffer>";
   struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
     snprintf(zError, sizeof(zError),
-             "%s:%d, cannot allocate ruleset (%zu bytes)",
-             zFileName, lineNo, sizeof(struct ruleset));
+             ":%s:%d cannot allocate ruleset (%zu bytes)",
+             zFileName, lineNo,
+             sizeof(struct ruleset));
     goto failure;
   }
-  fd = open(zFileName, O_RDONLY);
-  if( fd==-1 ){
-    snprintf(zError, sizeof(zError), "%s:%d, open (read) failed errno=%d",
-             zFileName, lineNo, errno);
-    goto failure;
-  }
-  sb = cdb2buf_open(fd, 0);
-  if( sb==NULL ){
-    snprintf(zError, sizeof(zError), "%s:%d, cdb2buf_open failed errno=%d",
-             zFileName, lineNo, errno);
-    goto failure;
-  }
-  while( 1 ){
-    memset(zLine, 0, sizeof(zLine));
-    if( cdb2buf_gets(zLine, sizeof(zLine), sb)<=0 ) break;
-    nLine = strlen(zLine);
-    if( zLine[nLine-1]=='\n' || zLine[nLine-1]=='\r' ){
-      zLine[nLine-1] = '\0';
+
+  while (getline(&line, &line_len, fp) != -1) {
+    nLine = strlen(line);
+    if( line[nLine-1]=='\n' || line[nLine-1]=='\r' ){
+      line[nLine-1] = '\0';
     }
     lineNo++;
-    if( !zLine[0] ) continue; /* blank line */
-    char *zBuf = zLine;
+    if( !line[0] ) continue; /* blank line */
+    char *zBuf = line;
     char *zEnd = NULL;
     char *zBad = NULL;
     char *zTok = NULL;
@@ -1068,7 +1054,7 @@ int comdb2_load_ruleset(
           goto failure;
         }
         if( comdb2_more_ruleset_items(rules,
-                (size_t)ruleNo, zError, sizeof(zError), zFileName, lineNo) ){
+                                      (size_t)ruleNo, zError, sizeof(zError), zFileName, lineNo) ){
           goto failure;
         }
         assert( ruleNo>0 );
@@ -1168,7 +1154,7 @@ int comdb2_load_ruleset(
               goto failure;
             }
             assert( zEnd!=NULL );
-            while( zEnd && zEnd[0]=='\0' && zEnd-zLine<nLine ){ zEnd++; }
+            while( zEnd && zEnd[0]=='\0' && zEnd-line<nLine ){ zEnd++; }
             zTok = strtok_r(zEnd, RULESET_DELIM, &zSav);
             continue;
           }
@@ -1194,8 +1180,8 @@ int comdb2_load_ruleset(
             if( rule->mode&RULESET_MM_REGEXP ){
               zReErr = NULL;
               if( criteria->zOriginHost!=NULL && recompile_regexp(
-                      criteria->zOriginHost, noCase, &cache->pOriginHostRe,
-                      &zReErr)!=0 ){
+                criteria->zOriginHost, noCase, &cache->pOriginHostRe,
+                &zReErr)!=0 ){
                 snprintf(zError, sizeof(zError),
                          "%s:%d, bad %s regular expression '%s': %s",
                          zFileName, lineNo, "originHost", criteria->zOriginHost,
@@ -1206,8 +1192,8 @@ int comdb2_load_ruleset(
               }
               zReErr = NULL;
               if( criteria->zOriginTask!=NULL && recompile_regexp(
-                      criteria->zOriginTask, noCase, &cache->pOriginTaskRe,
-                      &zReErr)!=0 ){
+                criteria->zOriginTask, noCase, &cache->pOriginTaskRe,
+                &zReErr)!=0 ){
                 snprintf(zError, sizeof(zError),
                          "%s:%d, bad %s regular expression '%s': %s",
                          zFileName, lineNo, "originTask", criteria->zOriginTask,
@@ -1218,7 +1204,7 @@ int comdb2_load_ruleset(
               }
               zReErr = NULL;
               if( criteria->zUser!=NULL && recompile_regexp(
-                      criteria->zUser, noCase, &cache->pUserRe, &zReErr)!=0 ){
+                criteria->zUser, noCase, &cache->pUserRe, &zReErr)!=0 ){
                 snprintf(zError, sizeof(zError),
                          "%s:%d, bad %s regular expression '%s': %s",
                          zFileName, lineNo, "user", criteria->zUser, zReErr);
@@ -1228,7 +1214,7 @@ int comdb2_load_ruleset(
               }
               zReErr = NULL;
               if( criteria->zSql!=NULL && recompile_regexp(
-                      criteria->zSql, noCase, &cache->pSqlRe, &zReErr)!=0 ){
+                criteria->zSql, noCase, &cache->pSqlRe, &zReErr)!=0 ){
                 snprintf(zError, sizeof(zError),
                          "%s:%d, bad %s regular expression '%s': %s",
                          zFileName, lineNo, "sql", criteria->zSql, zReErr);
@@ -1240,7 +1226,7 @@ int comdb2_load_ruleset(
               comdb2_free_ruleset_item_criteria_cache(cache);
             }
             assert( zEnd!=NULL );
-            while( zEnd && zEnd[0]=='\0' && zEnd-zLine<nLine ){ zEnd++; }
+            while( zEnd && zEnd[0]=='\0' && zEnd-line<nLine ){ zEnd++; }
             zTok = strtok_r(zEnd, RULESET_DELIM, &zSav);
             continue;
           }
@@ -1354,7 +1340,7 @@ int comdb2_load_ruleset(
 
   if( *pRules!=NULL ){
     if( comdb2_merge_ruleset_items(
-            *pRules, rules, zError, sizeof(zError), zFileName, lineNo)!=0 ){
+      *pRules, rules, zError, sizeof(zError), zFileName, lineNo)!=0 ){
       goto failure;
     }
     comdb2_free_ruleset_int(rules);
@@ -1372,11 +1358,57 @@ failure:
   if( rc==0 ) rc = EINVAL;
 
 done:
-    if (sb != NULL)
-        cdb2buf_close(sb);
-    else if (fd != -1)
-        Close(fd);
-    return rc;
+  free(line);
+  return rc;
+}
+
+int comdb2_load_ruleset_buf(const char *ruleset, struct ruleset **rules) {
+  FILE *fp = fmemopen((void *)ruleset, strlen(ruleset), "r");
+  int rc = comdb2_load_ruleset_fp(ruleset, rules, fp, NULL);
+  fclose(fp);
+  return rc;
+}
+
+int comdb2_load_ruleset_filename(
+  const char *zFileName,
+  struct ruleset **pRules
+){
+  int fd = open(zFileName, O_RDONLY);
+  if( fd==-1 ){
+    logmsg(LOGMSG_ERROR, "%s, open (read) failed errno=%d",
+             zFileName, errno);
+    goto failure;
+  }
+  off_t sz = lseek(fd, SEEK_END, 0);
+  if (sz == -1) {
+    logmsg(LOGMSG_ERROR, "lseek failed errno=%d", errno);
+    goto failure;
+  }
+  char *rulestr = malloc(sz+1);
+  if (rulestr == NULL) {
+    logmsg(LOGMSG_ERROR, "malloc failed errno=%d", errno);
+    goto failure;
+  }
+  if (lseek(fd, SEEK_SET, 0) != 0) {
+    logmsg(LOGMSG_ERROR, "lseek failed errno=%d", errno);
+    goto failure;
+  }
+  ssize_t nRead = read(fd, rulestr, sz);
+  if (nRead != sz) {
+    logmsg(LOGMSG_ERROR, "read failed errno=%d", errno);
+    goto failure;
+  }
+  close(fd);
+  FILE *fp = fmemopen(rulestr, sz, "r");
+  int rc = comdb2_load_ruleset_fp(zFileName, pRules, fp, zFileName);
+  fclose(fp);
+  free(rulestr);
+  return rc;
+
+failure:
+  if (fd != -1)
+    close(fd);
+  return -1;
 }
 
 int comdb2_save_ruleset(

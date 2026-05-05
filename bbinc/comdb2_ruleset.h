@@ -18,6 +18,7 @@
 #define _COMDB2_RULESET_H_
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #ifndef FPSZ
 #define FPSZ 16 /* stolen from "sql.h" FINGERPRINTSZ */
@@ -273,7 +274,9 @@ size_t comdb2_ruleset_result_to_str(
 int comdb2_enable_ruleset_item(struct ruleset *rules, int ruleNo, int bEnable);
 void comdb2_dump_ruleset(struct ruleset *rules);
 void comdb2_free_ruleset(struct ruleset *rules);
-int comdb2_load_ruleset(const char *zFileName, struct ruleset **pRules);
 int comdb2_save_ruleset(const char *zFileName, struct ruleset *rules);
 
+int comdb2_load_ruleset_filename(const char *zFileName, struct ruleset **pRules);
+int comdb2_load_ruleset_buf(const char *ruleset, struct ruleset **rules);
+int comdb2_load_ruleset_fp(const char *ruleset, struct ruleset **pRules, FILE *fp, const char *zFileName);
 #endif /* _COMDB2_RULESET_H_ */
