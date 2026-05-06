@@ -31,6 +31,7 @@ void set_fail_dbinfo_no_response(int);
 int get_num_cache_lru_evicts(void);
 int get_num_cache_hits(void);
 int get_num_cache_misses(void);
+int get_num_stale_cache_rejects(void);
 
 void set_fail_next(int);
 void set_fail_read(int);
@@ -76,6 +77,7 @@ void set_fail_ssl_new(int);
 void set_fail_ssl_negotiation_once(int);
 void set_fail_ssl_poll(int);
 void set_fail_sslio_close_in_local_cache(int);
+void set_fail_local_cache_peek(int);
 
 void set_cdb2api_test_comdb2db_cfg(const char *);
 void set_cdb2api_test_single_cfg(const char *);
