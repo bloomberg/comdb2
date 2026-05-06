@@ -24,6 +24,7 @@ static void simpleAuthInit(void)
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.admin = 1;
+    clnt.current_user.bypass_auth = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     int rc = run_internal_sql_clnt(
         &clnt, "create table if not exists comdb2_simple_auth {schema{cstring cluster[20] dbstore=\"*\" cstring "
@@ -38,6 +39,7 @@ static void simpleAuthInit(void)
     char *sql = "select count(*) from comdb2_simple_auth";
     start_internal_sql_clnt(&clnt);
     clnt.admin = 1;
+    clnt.current_user.bypass_auth = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.plugin.write_response = latch_response_value;
     clnt.sql = sql;
@@ -200,6 +202,7 @@ int simpleAuthCheck(const char *principal, const char *verb_in, const char *reso
 
     start_internal_sql_clnt(&clnt);
     clnt.admin = 1;
+    clnt.current_user.bypass_auth = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.plugin.write_response = latch_response_value;
     clnt.sql = sql;

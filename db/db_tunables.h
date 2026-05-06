@@ -2434,6 +2434,9 @@ REGISTER_TUNABLE("consumer_auth_warnonly",
                  "Warn instead of denying access for consumer stored procedures (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_consumer_auth_warnonly, NOARG, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("admin_bypass_externalauth", "Allow admin connections to bypass external auth checks (Default: OFF)",
+                 TUNABLE_BOOLEAN, &gbl_admin_bypass_externalauth, NOARG | READEARLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
 

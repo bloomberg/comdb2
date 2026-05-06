@@ -425,7 +425,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
 
-     if (clnt->admin)
+     if ((clnt->admin && gbl_admin_bypass_externalauth) || clnt->current_user.bypass_auth)
          return SQLITE_OK;
 
      if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
@@ -476,7 +476,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 static int comdb2CheckOpAccess(void) {
     struct sqlclntstate *clnt = get_sql_clnt();
 
-    if (clnt->admin)
+    if ((clnt->admin && gbl_admin_bypass_externalauth) || clnt->current_user.bypass_auth)
         return SQLITE_OK;
 
     if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
