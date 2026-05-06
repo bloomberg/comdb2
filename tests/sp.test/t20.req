@@ -1,0 +1,14 @@
+create procedure pow version '1' {
+local function pow(a, b)
+    return a^b
+end
+}$$
+create lua scalar function pow
+select pow(2, .5)
+select pow(9, .5)
+select pow(2, 10)
+select pow(3, 3)
+select pow(10, 3)
+select pow(2.0, 0.5)
+select pow(2.0, 10.0)
+select pow(4.0, 2.0)

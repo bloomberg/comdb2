@@ -62,7 +62,8 @@ typedef enum {
     LUA_OP_SUB,
     LUA_OP_MUL,
     LUA_OP_DIV,
-    LUA_OP_MOD
+    LUA_OP_MOD,
+    LUA_OP_POW
 } operation_t;
 
 typedef enum {
