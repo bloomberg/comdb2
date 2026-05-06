@@ -278,5 +278,7 @@ int comdb2_save_ruleset(const char *zFileName, struct ruleset *rules);
 
 int comdb2_load_ruleset_filename(const char *zFileName, struct ruleset **pRules);
 int comdb2_load_ruleset_buf(const char *ruleset, struct ruleset **rules);
-int comdb2_load_ruleset_fp(const char *ruleset, struct ruleset **pRules, FILE *fp, const char *zFileName);
+int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileName);
+
+extern struct ruleset *gbl_ruleset;
 #endif /* _COMDB2_RULESET_H_ */

@@ -987,7 +987,7 @@ static int comdb2_merge_ruleset_items(
   return 0;
 }
 
-int comdb2_load_ruleset_fp(const char *ruleset, struct ruleset **pRules, FILE *fp, const char *zFileName) {
+int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileName) {
   int rc = 0;
   char zError[RULESET_MAX_BUF];
   char *line = NULL;
@@ -1007,11 +1007,13 @@ int comdb2_load_ruleset_fp(const char *ruleset, struct ruleset **pRules, FILE *f
     goto failure;
   }
 
+  printf("ruleset: {\n");
   while (getline(&line, &line_len, fp) != -1) {
     nLine = strlen(line);
     if( line[nLine-1]=='\n' || line[nLine-1]=='\r' ){
       line[nLine-1] = '\0';
     }
+    printf("%02d> %s\n", lineNo, line);
     lineNo++;
     if( !line[0] ) continue; /* blank line */
     char *zBuf = line;
@@ -1337,6 +1339,7 @@ int comdb2_load_ruleset_fp(const char *ruleset, struct ruleset **pRules, FILE *f
       }
     }
   }
+  printf("}\n");
 
   if( *pRules!=NULL ){
     if( comdb2_merge_ruleset_items(
@@ -1364,7 +1367,7 @@ done:
 
 int comdb2_load_ruleset_buf(const char *ruleset, struct ruleset **rules) {
   FILE *fp = fmemopen((void *)ruleset, strlen(ruleset), "r");
-  int rc = comdb2_load_ruleset_fp(ruleset, rules, fp, NULL);
+  int rc = comdb2_load_ruleset_fp(rules, fp, NULL);
   fclose(fp);
   return rc;
 }
@@ -1373,42 +1376,10 @@ int comdb2_load_ruleset_filename(
   const char *zFileName,
   struct ruleset **pRules
 ){
-  int fd = open(zFileName, O_RDONLY);
-  if( fd==-1 ){
-    logmsg(LOGMSG_ERROR, "%s, open (read) failed errno=%d",
-             zFileName, errno);
-    goto failure;
-  }
-  off_t sz = lseek(fd, SEEK_END, 0);
-  if (sz == -1) {
-    logmsg(LOGMSG_ERROR, "lseek failed errno=%d", errno);
-    goto failure;
-  }
-  char *rulestr = malloc(sz+1);
-  if (rulestr == NULL) {
-    logmsg(LOGMSG_ERROR, "malloc failed errno=%d", errno);
-    goto failure;
-  }
-  if (lseek(fd, SEEK_SET, 0) != 0) {
-    logmsg(LOGMSG_ERROR, "lseek failed errno=%d", errno);
-    goto failure;
-  }
-  ssize_t nRead = read(fd, rulestr, sz);
-  if (nRead != sz) {
-    logmsg(LOGMSG_ERROR, "read failed errno=%d", errno);
-    goto failure;
-  }
-  close(fd);
-  FILE *fp = fmemopen(rulestr, sz, "r");
-  int rc = comdb2_load_ruleset_fp(zFileName, pRules, fp, zFileName);
+  FILE *fp = fopen(zFileName, "r");
+  int rc = comdb2_load_ruleset_fp(pRules, fp, zFileName);
   fclose(fp);
-  free(rulestr);
   return rc;
-
-failure:
-  if (fd != -1)
-    close(fd);
-  return -1;
 }
 
 int comdb2_save_ruleset(
