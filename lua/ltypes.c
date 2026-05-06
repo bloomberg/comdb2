@@ -857,7 +857,8 @@ static int l_sub(Lua);
 static int l_mul(Lua);
 static int l_div(Lua);
 static int l_mod(Lua);
-void init_arithmetic(Lua lua, int mod)
+static int l_pow(Lua);
+void init_arithmetic(Lua lua, int full)
 {
     lua_pushcfunction(lua, l_add);
     lua_setfield(lua, -2, "__add");
@@ -871,9 +872,12 @@ void init_arithmetic(Lua lua, int mod)
     lua_pushcfunction(lua, l_div);
     lua_setfield(lua, -2, "__div");
 
-    if (mod != LUA_OP_MOD) return;
+    if (!full) return;
+
     lua_pushcfunction(lua, l_mod);
     lua_setfield(lua, -2, "__mod");
+    lua_pushcfunction(lua, l_pow);
+    lua_setfield(lua, -2, "__pow");
 }
 
 static int l_eq(Lua);
@@ -1137,6 +1141,7 @@ static int l_int_arithmetic(Lua lua, operation_t op)
     case LUA_OP_MUL: v->val = v1 * v2; break;
     case LUA_OP_DIV: v->val = v1 / v2; break;
     case LUA_OP_MOD: v->val = v1 % v2; break;
+    case LUA_OP_POW: v->val = pow(v1, v2); break;
     }
     return 1;
 }
@@ -1155,6 +1160,7 @@ static int l_real_arithmetic(Lua lua, operation_t op)
     case LUA_OP_MUL: v->val = v1 * v2; break;
     case LUA_OP_DIV: v->val = v1 / v2; break;
     case LUA_OP_MOD: v->val = fmod(v1, v2); break;
+    case LUA_OP_POW: v->val = pow(v1, v2); break;
     }
     return 1;
 }
@@ -1387,6 +1393,11 @@ static int l_div(Lua lua)
 static int l_mod(Lua lua)
 {
     return l_arithmetic(lua, LUA_OP_MOD);
+}
+
+static int l_pow(Lua lua)
+{
+    return l_arithmetic(lua, LUA_OP_POW);
 }
 
 int l_cstring_new(lua_State *lua) {
@@ -2308,7 +2319,7 @@ static void init_int(Lua L)
     lua_settable(L, -3);
 
     luaL_openlib(L, NULL, int_funcs, 0);
-    init_arithmetic(L, LUA_OP_MOD);
+    init_arithmetic(L, 1);
     init_cmp(L);
     init_common(L);
 
@@ -2363,7 +2374,7 @@ static void init_real(Lua L)
     lua_settable(L, -3);
 
     luaL_openlib(L, NULL, real_funcs, 0);
-    init_arithmetic(L, LUA_OP_MOD);
+    init_arithmetic(L, 1);
     init_cmp(L);
     init_common(L);
 
