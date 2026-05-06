@@ -28,16 +28,20 @@ commit
 EOF
 BG_PID=$!
 
-# Poll comdb2_active_osqls on DST_DB for the remtran session (argv0=comdb2.tsk)
+# comdb2_active_osqls is node-local, so poll every node in the cluster
+dst_nodes=$(cdb2sql --tabs $DST_OPT $DST_DB default "SELECT host FROM comdb2_cluster" 2>/dev/null)
+
 result=""
 for i in $(seq 1 12); do
     sleep 1
-    result=$(cdb2sql --tabs $DST_OPT $DST_DB default \
-        "SELECT origin, argv0 FROM comdb2_active_osqls WHERE argv0='comdb2.tsk'" 2>/dev/null)
-    if [[ -n "$result" ]]; then
-        echo "Found at poll $i: $result"
-        break
-    fi
+    for node in $dst_nodes; do
+        result=$(cdb2sql --tabs --host "$node" $DST_OPT $DST_DB \
+            "SELECT origin, argv0 FROM comdb2_active_osqls WHERE argv0='comdb2.tsk'" 2>/dev/null)
+        if [[ -n "$result" ]]; then
+            echo "Found at poll $i on $node: $result"
+            break 2
+        fi
+    done
 done
 
 wait $BG_PID || true
