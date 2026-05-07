@@ -151,6 +151,7 @@
 (name='comptxn_inherit_locks', description='Compensating transactions inherit pagelocks', type='BOOLEAN', value='ON', read_only='N')
 (name='connect_remote_rte', description='Connect to remote nodes using rte. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='consolidate_dbreg_ranges', description='Combine adjacent dbreg ranges for same file', type='BOOLEAN', value='ON', read_only='N')
+(name='consumer_auth_warnonly', description='Warn instead of denying access for consumer stored procedures (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='convert_record_sleep', description='Force a 5-second delay in each convert_record() call', type='BOOLEAN', value='OFF', read_only='N')
 (name='convflush', description='', type='INTEGER', value='100', read_only='Y')
 (name='coordinator_block_until_durable', description='Coordinator blocks until its commit is durable.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')

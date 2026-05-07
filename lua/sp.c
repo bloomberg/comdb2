@@ -7257,8 +7257,19 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     snprintf(spfunc, sizeof(spfunc), "%s()", spname);
 
     if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
-        (*err) = strdup("Read access denied for the stored procedure");
-        return SQLITE_ACCESS;
+        if (consumer && gbl_consumer_auth_warnonly) {
+            static int logged = 0;
+            if (!logged) {
+                logged = 1;
+                logmsg(LOGMSG_WARN,
+                       "Read access would be denied for consumer stored procedure '%s', "
+                       "set consumer_auth_warnonly to off to enforce\n",
+                       spname);
+            }
+        } else {
+            (*err) = strdup("Read access denied for the stored procedure");
+            return SQLITE_ACCESS;
+        }
     }
 
     if (consumer)
