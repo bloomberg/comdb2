@@ -42,6 +42,16 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
+void wait_for_schema_change_start(struct schema_change_type *s, enum async_sc_flag flag)
+{
+
+    Pthread_mutex_lock(&s->mtxStart);
+    while (s->async_status < flag) {
+        Pthread_cond_wait(&s->condStart, &s->mtxStart);
+    }
+    Pthread_mutex_unlock(&s->mtxStart);
+}
+
 /* If this is successful, it increments */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
@@ -300,7 +310,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,
                                  iq->sc_host, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
+            logmsg(LOGMSG_ERROR, "%s Couldn't save schema change seed %llx (%llu) rc %d bdberr %d\n", s->tablename,
+                   seed, seed, rc, bdberr);
         }
     }
     iq->sc_seed = seed;
@@ -309,7 +320,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->trans = trans;
     arg->iq = iq;
     arg->sc = iq->sc;
-    s->started = 0;
+    s->async_status = ASYNC_SC_NONE;
 
     if (s->resume && s->resume != SC_OSQL_RESUME && IS_ALTERTABLE(s)) {
         if (gbl_test_sc_resume_race) {
@@ -348,17 +359,10 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             s->preempted == SC_ACTION_RESUME) {
             free(arg);
             arg = NULL;
-            Pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_locked, s);
+            Pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *))do_schema_change_locked, s);
         } else {
-            Pthread_mutex_lock(&s->mtxStart);
-            Pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran_thd,
-                                arg);
-            while (!s->started) {
-                Pthread_cond_wait(&s->condStart, &s->mtxStart);
-            }
-            Pthread_mutex_unlock(&s->mtxStart);
+            Pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *))do_schema_change_tran_thd, arg);
+            wait_for_schema_change_start(s, ASYNC_SC_START);
         }
     }
     /* SC_COMMIT_PENDING is SC_OK for the upper layers */
@@ -592,8 +596,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid, iq->usedb->sc_from->sc_genids)) {
         return 0;
     }
 
@@ -690,8 +693,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return 0;
     }
 
-    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         iq->usedb->sc_to->sc_genids)) {
+    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid, iq->usedb->sc_from->sc_genids)) {
         return 0;
     }
 
@@ -779,7 +781,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
+    unsigned long long *sc_genids = iq->usedb->sc_from->sc_genids;
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
     }

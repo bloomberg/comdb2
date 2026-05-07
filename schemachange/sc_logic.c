@@ -676,7 +676,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg)
 
     Pthread_mutex_lock(&s->mtx);
     Pthread_mutex_lock(&s->mtxStart);
-    s->started = 1;
+    s->async_status = ASYNC_SC_START;
     Pthread_cond_signal(&s->condStart);
     Pthread_mutex_unlock(&s->mtxStart);
 
@@ -915,7 +915,7 @@ struct timepart_sc_resuming {
     int nshards;
 };
 
-void *resume_sc_multiddl_txn_finalize(void *p);
+void *resume_sc_multiddl_txn_finalize_thd(void *p);
 static int process_tpt_sc_hash(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
@@ -935,8 +935,7 @@ static int process_tpt_sc_hash(void *obj, void *arg)
         s = s->sc_next;
     }
 
-    Pthread_create(&tid, &gbl_pthread_attr_detached,
-                        resume_sc_multiddl_txn_finalize, iq);
+    Pthread_create(&tid, &gbl_pthread_attr_detached, resume_sc_multiddl_txn_finalize_thd, iq);
     return 0;
 }
 
@@ -1085,6 +1084,8 @@ int resume_sc_multiddl(int scabort)
         return -1;
     }
 
+    logmsg(LOGMSG_ERROR, "%s: found %d scl objects\n", __func__, num);
+
     for (i = 0; i < num; i++) {
         p_buf_key = keys[i];
         p_buf_key_end = p_buf_key + keylen;
@@ -1099,6 +1100,9 @@ int resume_sc_multiddl(int scabort)
             rc = -1;
             goto freetime;
         }
+
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%s Resuming schema change %s\n", __func__, comdb2uuidstr(scl.uuid, us));
 
         rc = resume_sc_multiddl_txn(&scl);
         if (rc)
@@ -1347,27 +1351,50 @@ int resume_schema_change(void)
 /****************** Table functions ***********************************/
 /****************** Functions down here will likely be moved elsewhere *****/
 
-int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume)
+char *get_prefixed_tablename(const char *tablename)
 {
     char *tmpname;
+    char prefix[32];
     int bdberr;
     int nbytes;
-    char prefix[32];
-    int rc;
 
     bdb_get_new_prefix(prefix, sizeof(prefix), &bdberr);
 
-    nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
+    nbytes = snprintf(NULL, 0, "%s%s", prefix, tablename);
     if (nbytes <= 0) nbytes = 2;
     nbytes++;
+
     tmpname = malloc(nbytes);
-    snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
+    snprintf(tmpname, nbytes, "%s%s", prefix, tablename);
 
-    rc = open_temp_db_resume(iq, db, tmpname, resume);
+    return tmpname;
+}
 
-    free(tmpname);
+int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume)
+{
+    char *tblname = get_prefixed_tablename(db->tablename);
+    int rc;
+
+    rc = open_temp_db_resume(iq, db, tblname, resume);
+
+    free(tblname);
 
     return rc;
+}
+
+void *open_temp_db_resume_early(struct dbtable *db, char *tablename)
+{
+    int bdberr;
+    void *handle;
+
+    handle = bdb_open_more(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen, db->ix_dupes,
+                           db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
+                           db->numblobs + 1, /* one main record + the blobs blobs */
+                           db->dbenv->bdb_env, &bdberr);
+    if (!handle) {
+        logmsg(LOGMSG_ERROR, "%s: failed to open temp file bdberr %d\n", __func__, bdberr);
+    }
+    return handle;
 }
 
 int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, int resume)
@@ -1376,14 +1403,9 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, in
 
     db->handle = NULL;
 
-    /* open existing temp db if it's there (ie we're resuming after a master
-     * switch) */
+    /* open existing temp db if it's there (ie we're resuming after a master switch) */
     if (resume) {
-        db->handle = bdb_open_more(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
-                                   db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
-                                   db->ix_nullsallowed, db->numblobs + 1, /* one main record + the blobs blobs */
-                                   db->dbenv->bdb_env, &bdberr);
-
+        db->handle = open_temp_db_resume_early(db, tablename);
         if (db->handle)
             logmsg(LOGMSG_INFO,
                    "Found existing tempdb: %s, attempting to resume an in "
@@ -1531,7 +1553,8 @@ int verify_new_temp_sc_db(struct dbtable *p_db, struct dbtable *p_newdb, tran_ty
                "%s: db's max file version %#16llx >= newdb's min file "
                "version %#16llx\n",
                __func__, db_max_file_version, newdb_min_file_version);
-        return -1;
+        /*abort();
+        return -1;*/
     }
 
     return 0;
@@ -1771,6 +1794,10 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
                 backout_constraint_pointers(s->newdb, s->db);
             }
             change_schemas_recover(s->db->tablename);
+            if (s->db->sc_genids) {
+                free(s->db->sc_genids);
+                s->db->sc_genids = NULL;
+            }
         }
         /* TODO: (NC) Also delete view? */
         sc_del_unused_files_tran(s->db, tran);

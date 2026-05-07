@@ -1,0 +1,123 @@
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 7,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  },
+  {
+   "TABLENAME"    : "$2_C429139B",
+  },
+  {
+   "TABLENAME"    : "$3_8A26EC5C",
+  },
+  {
+   "TABLENAME"    : "$4_3FDAE1EA",
+  },
+  {
+   "TABLENAME"    : "$5_9FEC23C1",
+  },
+  {
+   "TABLENAME"    : "$6_93A67B48",
+  }
+  ]
+ }
+]
+(name='t', period='daily', retention=7, nshards=7, version=1, shard0name='<none>')
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t', shardname='$2_C429139B')
+(name='t', shardname='$3_8A26EC5C')
+(name='t', shardname='$4_3FDAE1EA')
+(name='t', shardname='$5_9FEC23C1')
+(name='t', shardname='$6_93A67B48')
+(rows inserted=5)
+(rows inserted=10)
+(rows inserted=10)
+(rows inserted=10)
+(rows inserted=10)
+(rows inserted=10)
+(rows inserted=10)
+(rows inserted=5)
+
+[]
+
+(count(*)=70)
+(a=6, b=NULL)
+(a=7, b=NULL)
+(a=8, b=NULL)
+(a=9, b=NULL)
+(a=10, b=NULL)
+(a=16, b=NULL)
+(a=17, b=NULL)
+(a=18, b=NULL)
+(a=19, b=NULL)
+(a=20, b=NULL)
+(a=26, b=NULL)
+(a=27, b=NULL)
+(a=28, b=NULL)
+(a=29, b=NULL)
+(a=30, b=NULL)
+(a=31, b=NULL)
+(a=32, b=NULL)
+(a=33, b=NULL)
+(a=34, b=NULL)
+(a=35, b=NULL)
+(a=36, b=NULL)
+(a=37, b=NULL)
+(a=38, b=NULL)
+(a=39, b=NULL)
+(a=40, b=NULL)
+(a=46, b=NULL)
+(a=47, b=NULL)
+(a=48, b=NULL)
+(a=49, b=NULL)
+(a=50, b=NULL)
+(a=51, b=NULL)
+(a=52, b=NULL)
+(a=53, b=NULL)
+(a=54, b=NULL)
+(a=55, b=NULL)
+(a=56, b=NULL)
+(a=57, b=NULL)
+(a=58, b=NULL)
+(a=59, b=NULL)
+(a=60, b=NULL)
+(a=61, b=NULL)
+(a=62, b=NULL)
+(a=63, b=NULL)
+(a=64, b=NULL)
+(a=65, b=NULL)
+(a=66, b=NULL)
+(a=67, b=NULL)
+(a=68, b=NULL)
+(a=69, b=NULL)
+(a=70, b=NULL)
+(a=1021, b=NULL)
+(a=1022, b=NULL)
+(a=1023, b=NULL)
+(a=1024, b=NULL)
+(a=1025, b=NULL)
+(a=1041, b=NULL)
+(a=1042, b=NULL)
+(a=1043, b=NULL)
+(a=1044, b=NULL)
+(a=1045, b=NULL)
+(a=2001, b=NULL)
+(a=2002, b=NULL)
+(a=2003, b=NULL)
+(a=2004, b=NULL)
+(a=2005, b=NULL)
+(a=2006, b=NULL)
+(a=2007, b=NULL)
+(a=2008, b=NULL)
+(a=2009, b=NULL)
+(a=2010, b=NULL)
