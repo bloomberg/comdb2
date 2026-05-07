@@ -2430,6 +2430,9 @@ REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case o
                  TUNABLE_BOOLEAN, &gbl_externalauth_warn, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("consumer_auth_warnonly",
+                 "Warn instead of denying access for consumer stored procedures (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_consumer_auth_warnonly, NOARG, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
