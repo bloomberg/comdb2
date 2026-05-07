@@ -59,6 +59,7 @@
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
+extern int gbl_reject_mixed_ddl_dml;
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_master_retry_poll_ms = 100;
@@ -495,6 +496,14 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
+    osqlstate_t *osql = &clnt->osql;
+    if (gbl_reject_mixed_ddl_dml && osql->running_ddl)
+        return SQLITE_DDL_MISUSE;
+    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, pCur->db->tablename))
+        return SQLITE_DDL_MISUSE;
+    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, pCur->db->tablename))
+        hash_add(clnt->dml_tables, strdup(pCur->db->tablename));
+
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         START_SOCKSQL;
         do {
@@ -627,6 +636,14 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     /* limit transaction*/
     if ((rc = check_osql_capacity(thd)))
         return rc;
+
+    osqlstate_t *osql = &clnt->osql;
+    if (gbl_reject_mixed_ddl_dml && osql->running_ddl)
+        return SQLITE_DDL_MISUSE;
+    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, pCur->db->tablename))
+        return SQLITE_DDL_MISUSE;
+    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, pCur->db->tablename))
+        hash_add(clnt->dml_tables, strdup(pCur->db->tablename));
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         START_SOCKSQL;
@@ -769,6 +786,14 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     /* limit transaction*/
     if ((rc = check_osql_capacity(thd)))
         return rc;
+
+    osqlstate_t *osql = &clnt->osql;
+    if (gbl_reject_mixed_ddl_dml && osql->running_ddl)
+        return SQLITE_DDL_MISUSE;
+    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, pCur->db->tablename))
+        return SQLITE_DDL_MISUSE;
+    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, pCur->db->tablename))
+        hash_add(clnt->dml_tables, strdup(pCur->db->tablename));
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         START_SOCKSQL;

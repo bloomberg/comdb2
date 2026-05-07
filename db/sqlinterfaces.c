@@ -6221,6 +6221,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     case SQLITE_NO_TABLESCANS:
     case SQLITE_ANALYZE_ALREADY_RUNNING:
     case SQLITE_PREPARE_REQUIRE_SEMI:
+    case SQLITE_DDL_MISUSE:
         *errstr = sqlite3_errmsg(sqldb);
         break;
 
@@ -6399,6 +6400,8 @@ int sqlserver2sqlclient_error(int rc)
         return CDB2ERR_ANALYZE_ALREADY_RUNNING;
     case SQLITE_MISSING_SEMI:
         return RESPONSE_ERROR_INCOMPLETE;
+    case SQLITE_DDL_MISUSE:
+        return CDB2ERR_INTERNAL;
     default:
         return CDB2ERR_UNKNOWN;
     }

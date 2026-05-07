@@ -3,7 +3,7 @@ bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
-set -x
+[[ $DEBUG == 1 ]] && set -x
 
 dbnm=$1
 
@@ -41,9 +41,21 @@ function assert_schema
     fi
 }
 
+function set_tunable_on_all_nodes
+{
+    nodes=$(cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster')
+    tunable="$1"
+    echo "tunable: $tunable"
+    for node in $nodes; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('$tunable')"
+    done
+}
+
 
 master=`getmaster`
 echo "master is $master"
+
+set_tunable_on_all_nodes "reject_mixed_ddl_dml off"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 {schema{int a int b}}"
 assert_vers t1 0
@@ -316,5 +328,50 @@ assert_schema t4 "schema{int a int b} keys{\"A\" = a}"
 do_verify t1
 do_verify t2
 do_verify t3
+
+err_msg="Transactional DDL Error: Overlapping Tables"
+set_tunable_on_all_nodes "reject_mixed_ddl_dml on"
+echo "TEST TRAN: TRUNCATE T1; INSERT INTO T1 (expected: fail with DDL error)"
+out=$(cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF" 2>&1
+begin
+truncate t1
+insert into t1 values (10, 100)
+commit
+EOF
+)
+if [[ "$out" != *"$err_msg"* ]]; then
+    failexit "Expected error message '$err_msg' not found in output: $out"
+fi
+assertcnt t1 3
+assert_vers t1 1
+do_verify t1
+
+
+echo "TEST TRAN: INSERT INTO T1; TRUNCATE T1;  (expected: fail with DDL error)"
+out=$(cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF" 2>&1
+begin
+insert into t1 values (10, 100)
+truncate t1
+commit
+EOF
+)
+if [[ "$out" != *"$err_msg"* ]]; then
+    failexit "Expected error message '$err_msg' not found in output: $out"
+fi
+assertcnt t1 3
+assert_vers t1 1
+do_verify t1
+
+
+echo "TEST TRAN: CREATE TABLE T_TEST; INSERT INTO T_TEST (expected: fail with DDL error)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+create table t_test {schema{int x int y}}$$
+insert into t_test values (1, 2)
+commit
+EOF
+if cdb2sql ${CDB2_OPTIONS} $dbnm default "select count(*) from t_test" &>/dev/null; then
+    failexit "Table t_test should not exist after failed transaction"
+fi
 
 echo "Success"
