@@ -1,0 +1,4 @@
+simpleauth
+passwords_with_externalauth
+table dummy dummy.csc2
+create_dba_user off

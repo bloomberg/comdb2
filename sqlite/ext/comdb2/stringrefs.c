@@ -84,7 +84,7 @@ static void free_stringrefs(void *p, int n)
 }
 
 sqlite3_module systblStringRefsModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_STRICT,
 };
 
 int systblStringRefsInit(sqlite3 *db) {
