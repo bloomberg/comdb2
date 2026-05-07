@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+SA="${TESTSBUILDDIR}/simpleauth_test ${dbnm}"
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+MOHIT="bpi:procauth:cluster:testcluster:user:mohit:bpkg:myapp"
+
+passed=0
+failed=0
+
+run_expect_success() {
+    local principal="$1"
+    local sql="$2"
+    local desc="$3"
+    if $SA "$principal" "$sql" > /dev/null 2>&1; then
+        echo "  PASS: $desc"
+        passed=$((passed + 1))
+    else
+        echo "  FAIL: $desc"
+        failed=$((failed + 1))
+    fi
+}
+
+run_expect_failure() {
+    local principal="$1"
+    local sql="$2"
+    local desc="$3"
+    if $SA "$principal" "$sql" > /dev/null 2>&1; then
+        echo "  FAIL: $desc (expected failure but succeeded)"
+        failed=$((failed + 1))
+    else
+        echo "  PASS: $desc"
+        passed=$((passed + 1))
+    fi
+}
+
+# Run SQL via admin connection with OP password user (bypasses IAM).
+admin_sql() {
+    local sql="$1"
+    ${CDB2SQL_EXE} --admin ${CDB2_OPTIONS} ${dbnm} default - <<EOF
+set user admin_user
+set password adminpass
+$sql
+EOF
+}
+
+#---------------------------------------------------------------
+echo "Test: Setup comdb2_simple_auth table and IAM rules"
+#---------------------------------------------------------------
+run_expect_success "$OP" "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" \
+    "create auth table"
+run_expect_success "$OP" "create unique index if not exists comdb2_simple_auth_ix on comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)" \
+    "create auth index"
+# Wildcard rule: allow everyone everything via IAM
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "insert wildcard IAM rule"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" \
+    "insert Connect rule"
+# OP needs explicit IAM access to auth table after wildcard removal
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Write', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op IAM write on auth table"
+run_expect_success "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', 'op', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" \
+    "grant op IAM read on auth table"
+
+#---------------------------------------------------------------
+echo "Test: Create test table and enable password auth"
+#---------------------------------------------------------------
+run_expect_success "$OP" "create table if not exists t1(i int)" \
+    "create test table t1"
+# Create password users: 'default' (non-OP) for data tests,
+# 'admin_user' (OP) for management via admin connection.
+run_expect_success "$OP" "put password '' for 'default'" \
+    "create default password user"
+run_expect_success "$OP" "put password 'adminpass' for 'admin_user'" \
+    "create admin password user"
+run_expect_success "$OP" "grant op to 'admin_user'" \
+    "grant OP to admin_user"
+# Grant table-level password ACLs to default user
+run_expect_success "$OP" "grant read on t1 to 'default'" \
+    "grant password read on t1 to default"
+run_expect_success "$OP" "grant write on t1 to 'default'" \
+    "grant password write on t1 to default"
+# Enable password authentication -- from this point both IAM and
+# password checks must pass.
+# Note: put authentication on uses comdb2AuthenticateOpPassword which
+# requires password-based OP credentials (ignores IAM), so we must
+# use admin_sql with admin_user/adminpass rather than simpleauth_test.
+admin_sql "put authentication on"
+echo "  password authentication enabled"
+
+#---------------------------------------------------------------
+echo "Test: Both IAM and password pass"
+#---------------------------------------------------------------
+# simpleauth_test provides IAM identity (wildcard allows everything).
+# Password user is 'default' with correct password and table ACLs.
+run_expect_success "$MOHIT" "select * from t1" \
+    "read t1: IAM pass + password pass"
+run_expect_success "$MOHIT" "insert into t1 values(1)" \
+    "write t1: IAM pass + password pass"
+
+#---------------------------------------------------------------
+echo "Test: IAM passes but password table ACL denied"
+#---------------------------------------------------------------
+# Revoke password-based table ACLs for default user.
+# IAM wildcard still allows, but bdb_check_user_tbl_access will fail
+# because 'default' is not OP and has no table grants.
+admin_sql "revoke read on t1 from 'default'"
+admin_sql "revoke write on t1 from 'default'"
+run_expect_failure "$MOHIT" "select * from t1" \
+    "read t1: IAM pass + password ACL denied"
+run_expect_failure "$MOHIT" "insert into t1 values(2)" \
+    "write t1: IAM pass + password ACL denied"
+# Restore password ACLs
+admin_sql "grant read on t1 to 'default'"
+admin_sql "grant write on t1 to 'default'"
+# Verify restored
+run_expect_success "$MOHIT" "select * from t1" \
+    "read t1 after restore: both pass"
+
+#---------------------------------------------------------------
+echo "Test: IAM denied but password passes"
+#---------------------------------------------------------------
+# Remove wildcard IAM rule.  Keep the Connect rule so MakeRequest
+# still passes (allows connection but not table-level access).
+admin_sql "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'"
+# MOHIT has no IAM Read/Write rule for t1 -> IAM table check fails
+# before reaching the password ACL check.
+run_expect_failure "$MOHIT" "select * from t1" \
+    "read t1: IAM denied + password pass (fails at IAM)"
+run_expect_failure "$MOHIT" "insert into t1 values(3)" \
+    "write t1: IAM denied + password pass (fails at IAM)"
+# Restore wildcard IAM rule
+admin_sql "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing"
+# Verify restored
+run_expect_success "$MOHIT" "select * from t1" \
+    "read t1 after IAM restore: both pass"
+
+#---------------------------------------------------------------
+echo "Test: Neither IAM nor password passes"
+#---------------------------------------------------------------
+admin_sql "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'"
+admin_sql "revoke read on t1 from 'default'"
+admin_sql "revoke write on t1 from 'default'"
+run_expect_failure "$MOHIT" "select * from t1" \
+    "read t1: IAM denied + password denied"
+run_expect_failure "$MOHIT" "insert into t1 values(4)" \
+    "write t1: IAM denied + password denied"
+
+#---------------------------------------------------------------
+echo "Test: Cleanup"
+#---------------------------------------------------------------
+admin_sql "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing"
+admin_sql "drop table if exists t1"
+admin_sql "delete from comdb2_simple_auth where user != '*'"
+
+echo ""
+echo "Results: $passed passed, $failed failed"
+
+if [ $failed -gt 0 ] ; then
+    failexit "$failed tests failed"
+fi
+
+echo "Success"
+exit 0
