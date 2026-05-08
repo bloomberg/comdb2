@@ -1647,6 +1647,9 @@ char *fdb_sqlexplain_get_name(struct sqlclntstate *clnt, int rootpage)
     fdb_tbl_ent_t *ent;
     char tmp[1024];
 
+    if (rootpage == RTPAGE_SQLITE_MASTER)
+        return strdup("sqlite_master");
+
     ent = fdb_clnt_cache_get_ent(clnt, rootpage);
 
     /* NOTE: do we support live table removals? */
@@ -6844,23 +6847,9 @@ static int _run_ping(char *query)
 /* we have read livelock on this fdb */
 int _ping_fdb(fdb_t *fdb)
 {
-    fdb_tbl_t *tbl;
     char *query;
     char dbname[256];
     int rc;
-
-    /* get the first table, get the table lock */
-    Pthread_mutex_lock(&fdb->tables_mtx);
-    tbl = fdb->tables.top;
-    if (!tbl) {
-        /* corner case, fdb is being added but still busy locating the
-         * nodes, so no tables yet here, just return
-         */
-        Pthread_mutex_unlock(&fdb->tables_mtx);
-        return 0;
-    }
-    Pthread_rwlock_rdlock(&tbl->table_lock); /* table lock */
-    Pthread_mutex_unlock(&fdb->tables_mtx);
 
     if (fdb->local) {
         snprintf(dbname, sizeof(dbname), "LOCAL_%s", fdb->dbname);
@@ -6869,15 +6858,12 @@ int _ping_fdb(fdb_t *fdb)
     } else {
         snprintf(dbname, sizeof(dbname), "%s", fdb->dbname);
     }
-    query = sqlite3_mprintf("select 1 from \"%w\".\"%w\" limit 1", dbname, tbl->name);
+    query = sqlite3_mprintf("select 1 from \"%w\".sqlite_master limit 1", dbname);
 
     rc = _run_ping(query);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to ping fdb %s rc %d\n", fdb->dbname, rc);
     }
-
-    /* unlock table */
-    Pthread_rwlock_unlock(&tbl->table_lock);
 
     sqlite3_free(query);
 
