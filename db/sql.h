@@ -968,6 +968,7 @@ struct sqlclntstate {
 
     int translevel_changed;
     int admin;
+    int use_db_identity;
 
     /* Grab this mutex when calling sql_tick. This is to prevent race when
        multiple threads are working on a single clnt (parallel-count, for instance). */

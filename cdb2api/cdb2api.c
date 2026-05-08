@@ -5197,6 +5197,14 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (!hndl)
         return 0;
 
+    if (hndl->id_blob_owned && hndl->id_blob) {
+        free(hndl->id_blob->principal);
+        free(hndl->id_blob->data.data);
+        free(hndl->id_blob);
+        hndl->id_blob = NULL;
+        hndl->id_blob_owned = 0;
+    }
+
     if (hndl->stmt_types) {
         free(hndl->stmt_types);
         hndl->stmt_types = NULL;
@@ -8795,6 +8803,22 @@ void cdb2_set_argv0(cdb2_hndl_tp *hndl, const char *argv0)
 {
     free(hndl->argv0_override);
     hndl->argv0_override = argv0 ? strdup(argv0) : NULL;
+}
+
+void cdb2_setDbIdentityBlob(cdb2_hndl_tp *hndl)
+{
+    if (!iam_identity || !identity_cb)
+        return;
+    int flags = 0;
+    if (cdb2_use_optional_identity)
+        flags |= CDB2_USE_OPTIONAL_IDENTITY;
+    if (cdb2_non_threaded_identity)
+        flags |= CDB2_NON_THREADED_IDENTITY;
+    CDB2SQLQUERY__IdentityBlob *id_blob = identity_cb->getIdentity(hndl, flags);
+    if (id_blob && id_blob->data.data) {
+        hndl->id_blob = id_blob;
+        hndl->id_blob_owned = 1;
+    }
 }
 #endif
 
