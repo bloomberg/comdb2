@@ -61,8 +61,8 @@ RUN cd /comdb2 &&  \
     mkdir build && \
     cd build && \
     cmake ${CMAKE_FLAGS} .. && \
-    make -j4 && \
-    make -j4 test-tools && \
+    make -j$(nproc) && \
+    make -j$(nproc) test-tools && \
     make install &&  \
     cp /comdb2/tests/docker/client / && \
     cp /comdb2/tests/docker/server / && \
