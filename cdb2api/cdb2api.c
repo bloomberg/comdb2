@@ -4618,7 +4618,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         cinfo.pid = _PID;
         cinfo.th_id = (uint64_t)pthread_self();
         cinfo.host_id = cdb2_hostid();
-        cinfo.argv0 = _ARGV0;
+        cinfo.argv0 = (hndl && hndl->argv0_override) ? hndl->argv0_override : _ARGV0;
         cinfo.api_driver_name = api_driver_name;
         cinfo.api_driver_version = api_driver_version;
         sqlquery.client_info = &cinfo;
@@ -5251,6 +5251,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     cdb2_clearbindings(hndl);
     free_query_list_on_handle(hndl);
+    free(hndl->argv0_override);
     free(hndl->sslpath);
     free(hndl->cert);
     free(hndl->key);
@@ -8788,6 +8789,12 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
 void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id)
 {
     hndl->id_blob = (CDB2SQLQUERY__IdentityBlob *)id;
+}
+
+void cdb2_set_argv0(cdb2_hndl_tp *hndl, const char *argv0)
+{
+    free(hndl->argv0_override);
+    hndl->argv0_override = argv0 ? strdup(argv0) : NULL;
 }
 #endif
 

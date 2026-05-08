@@ -220,6 +220,7 @@ void cdb2_set_comdb2db_config(char *cfg_file);
 void cdb2_set_comdb2db_info(char *cfg_info);
 void cdb2_set_sockpool(const char *sp_path);
 void cdb2_set_identity(cdb2_hndl_tp *hndl, const void *identity);
+void cdb2_set_argv0(cdb2_hndl_tp *hndl, const char *argv0);
 
 int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type, int flags);
 
