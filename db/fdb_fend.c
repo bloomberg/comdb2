@@ -4152,6 +4152,8 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
     if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob &&
         ((clnt->authdata = get_authdata(clnt)) != NULL)) {
         cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
+    } else if (clnt->use_db_identity) {
+        cdb2_setDbIdentityBlob(hndl);
     }
 }
 
@@ -6840,6 +6842,7 @@ static int _run_ping(char *query)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.admin = 1;
     clnt.skip_eventlog = 1;
+    clnt.use_db_identity = 1;
     rc = run_internal_sql_clnt(&clnt, query);
     end_internal_sql_clnt(&clnt);
     return rc;

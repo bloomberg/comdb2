@@ -231,6 +231,7 @@ struct cdb2_hndl {
     int is_child_hndl;
     CDB2SQLQUERY__IdentityBlob *id_blob;
     char *argv0_override;
+    int id_blob_owned;
     struct cdb2_stmt_types *stmt_types;
     RETRY_CALLBACK retry_clbk;
     int is_tagged;
