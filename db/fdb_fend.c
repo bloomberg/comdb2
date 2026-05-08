@@ -2362,6 +2362,7 @@ cdb2_hndl_tp* fdb_connect(const char *dbname, enum mach_class inclass, int local
         return NULL;
     }
 
+    cdb2_set_argv0(hndl, gbl_dbname);
     cdb2_register_retry_callback(hndl, &fdb_retry_callback);
 
     return hndl;
