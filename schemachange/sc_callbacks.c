@@ -284,8 +284,7 @@ int live_sc_post_update_delayed_key_adds(struct ireq *iq, void *trans, unsigned 
 #endif
     /* need to check where the cursor is, even tho that check was done once in
      * post_update */
-    int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, newgenid, usedb->sc_to->sc_genids);
+    int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(iq->usedb->handle, newgenid, usedb->sc_from->sc_genids);
     if (is_gen_gt_scptr) {
         if (iq->debug) {
             reqprintf(iq, "%s: skip genid 0x%llx to the right of scptr", __func__, newgenid);

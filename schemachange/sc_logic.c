@@ -1771,6 +1771,10 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
                 backout_constraint_pointers(s->newdb, s->db);
             }
             change_schemas_recover(s->db->tablename);
+            if (s->db->sc_genids) {
+                free(s->db->sc_genids);
+                s->db->sc_genids = NULL;
+            }
         }
         /* TODO: (NC) Also delete view? */
         sc_del_unused_files_tran(s->db, tran);
