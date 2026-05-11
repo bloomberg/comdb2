@@ -7810,8 +7810,7 @@ done_delete:
 
         /* was error? verify error ? */
         if (rc != 1) {
-            if ((bdberr == 0 && rc == 0) ||
-                (bdberr == IX_PASTEOF && rc == -1)) {
+            if ((bdberr == 0 && rc == 0) || (bdberr == IX_PASTEOF && rc == -1) || (bdberr == IX_EMPTY && rc == -1)) {
                 /* verify error */
                 err->ixnum = -1; /* data */
                 err->errcode = ERR_CONSTR;

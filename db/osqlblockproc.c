@@ -281,8 +281,7 @@ static int pselectv_callback(void *arg, const char *tablename, int tableversion,
     if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
         if (rc != 1) {
             unsigned long long lclgenid = bdb_genid_to_host_order(genid);
-            if ((bdberr == 0 && rc == 0) ||
-                (bdberr == IX_PASTEOF && rc == -1)) {
+            if ((bdberr == 0 && rc == 0) || (bdberr == IX_PASTEOF && rc == -1) || (bdberr == IX_EMPTY && rc == -1)) {
                 err->ixnum = -1;
                 err->errcode = ERR_CONSTR;
                 ctrace("constraints error, no genid %llx (%llu)\n", lclgenid,

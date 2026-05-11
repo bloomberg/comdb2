@@ -1,0 +1,5 @@
+1 begin
+1 selectv id from t2
+1 update t2 set id = id + 1
+2 delete from t2
+1 commit
