@@ -53,6 +53,7 @@ int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
 void cdb2_unset_debug_trace(cdb2_hndl_tp *hndl);
+void cdb2_set_argv0(cdb2_hndl_tp *hndl, const char *argv0);
 #endif
 
 int cdb2_is_valid_int(const char *str);
