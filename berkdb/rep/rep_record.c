@@ -3873,7 +3873,7 @@ gap_check:		use_range = 0;
 		dist_txnid = alloca(dist_abort_args->dist_txnid.size + 1);
 		memcpy(dist_txnid, dist_abort_args->dist_txnid.data, dist_abort_args->dist_txnid.size);
 		dist_txnid[dist_abort_args->dist_txnid.size] = '\0';
-		if ((ret = __rep_abort_dist_prepared(dbenv, dist_txnid)) != 0) {
+		if ((ret = __rep_abort_dist_prepared(dbenv, dist_txnid, rp->lsn)) != 0) {
 			goto err;
 		}
 		__os_free(dbenv, dist_abort_args);

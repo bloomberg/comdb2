@@ -112,6 +112,8 @@ struct comdb2_metrics_store {
     double watchdog_time;
     int64_t distributed_commits;
     int64_t not_durable_commits;
+    int64_t durable_blkseq_cnt;
+    int64_t durable_latest_cnt;
     int64_t incoherent_slow_skips;
     int64_t inmem_repdb_memory;
     int64_t physrep_metadb_sql_count;
@@ -318,6 +320,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.distributed_commits, NULL},
     {"not_durable_commits", "Number of not durable commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.not_durable_commits, NULL},
+    {"durable_blkseq_cnt", "Replay-durability count filled by private blkseq", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.durable_blkseq_cnt, NULL},
+    {"durable_latest_cnt", "Replay-durability count filled by private latest", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.durable_latest_cnt, NULL},
     {"disabled_incoherent_slows", "Disabled incoherent-slow count", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.incoherent_slow_skips, NULL},
     {"inmem_repdb_memory", "Memory utilized by in-memory repdb", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
@@ -447,6 +453,8 @@ int64_t gbl_fastsql_execute_stop;
 
 extern int64_t gbl_distributed_commit_count;
 extern int64_t gbl_not_durable_commit_count;
+extern int64_t gbl_durable_blkseq_cnt;
+extern int64_t gbl_durable_latest_cnt;
 extern int64_t gbl_incoherent_slow_skips;
 extern int64_t gbl_inmem_repdb_memory;
 extern int64_t gbl_physrep_metadb_sql_count;
@@ -661,6 +669,8 @@ int refresh_metrics(void)
     stats.watchdog_time = time_metric_average(thedb->watchdog_time);
     stats.distributed_commits = gbl_distributed_commit_count;
     stats.not_durable_commits = gbl_not_durable_commit_count;
+    stats.durable_blkseq_cnt = gbl_durable_blkseq_cnt;
+    stats.durable_latest_cnt = gbl_durable_latest_cnt;
     stats.incoherent_slow_skips = gbl_incoherent_slow_skips;
     stats.inmem_repdb_memory = gbl_inmem_repdb_memory;
     stats.physrep_metadb_sql_count = gbl_physrep_metadb_sql_count;
