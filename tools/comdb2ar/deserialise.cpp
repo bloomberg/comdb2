@@ -173,6 +173,7 @@ static void process_lrl(
         const std::string& lrltext,
         bool strip_cluster_info,
         bool strip_consumer_info,
+        bool strip_external_auth,
         std::string& datadestdir,
         const std::string& lrldestdir,
         std::string& dbname,
@@ -202,6 +203,14 @@ static void process_lrl(
 
         std::string tok;
         if(liness >> tok) {
+            std::string config_tok(tok);
+            if(tok == "if") {
+                std::string machine_type;
+                liness >> machine_type;
+                if(!(liness >> config_tok)) {
+                    config_tok.clear();
+                }
+            }
 
             if(tok == "name" && dbname.empty()) {
                 // Get the db name from the first lrl file found,
@@ -287,18 +296,17 @@ static void process_lrl(
                 // changes tok, it needs to be the last test
                 line.insert(0, "# ");
             } else if (strip_consumer_info) {
-                if (tok == "if") {
-                    liness >> tok; /* consume machine type */
-                    liness >> tok; /* read real option */
-                }
-
-                if (tok == "queue" || tok == "procedure" || tok == "consumer")
+                if (config_tok == "queue" || config_tok == "procedure" ||
+                    config_tok == "consumer")
                     line.insert(0, "# ");
 
                 /* Also strip ssl config from the LRL for QA mode. */
-                if(strncasecmp(tok.c_str(), "ssl", 3) == 0)
+                if(strncasecmp(config_tok.c_str(), "ssl", 3) == 0)
                     line.insert(0, "# ");
             }
+
+            if(strip_external_auth && config_tok == "externalauth")
+                line.insert(0, "# ");
         }
 
         if(!(of << line << std::endl)) {
@@ -362,6 +370,7 @@ void deserialise_database(
         const std::string *p_datadestdir,
         bool strip_cluster_info,
         bool strip_consumer_info,
+        bool strip_external_auth,
         bool run_full_recovery,
         const std::string& comdb2_task,
         unsigned percent_full,
@@ -886,7 +895,7 @@ void deserialise_database(
         } else if (is_lrl) {
             std::ostringstream lrldata;
             process_lrl(lrldata, filename, text, strip_cluster_info,
-                        strip_consumer_info, datadestdir, lrldestdir, dbname,
+                        strip_consumer_info, strip_external_auth, datadestdir, lrldestdir, dbname,
                         table_set);
             if (!datadestdir.empty()) {
                 make_dirs(datadestdir);

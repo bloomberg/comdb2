@@ -98,6 +98,7 @@ int main(int argc, char *argv[])
     bool support_files_only = false;
     bool strip_cluster_info = false;
     bool strip_consumer_info = false;
+    bool strip_external_auth = false;
     bool run_full_recovery = true;
     bool run_with_done_file = false;
     bool force_mode = false;
@@ -155,6 +156,7 @@ int main(int argc, char *argv[])
                 } else if(std::strcmp(optarg, "qa") == 0) {
                     strip_consumer_info = true;
                     strip_cluster_info = true;
+                    strip_external_auth = true;
                 } else {
                     std::cerr << "Unrecognised parameter to -C: " << optarg
                         << std::endl;
@@ -346,6 +348,7 @@ int main(int argc, char *argv[])
              p_datadest,
              strip_cluster_info,
              strip_consumer_info,
+             strip_external_auth,
              run_full_recovery,
              comdb2_task,
              percent_full,
