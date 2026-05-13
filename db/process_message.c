@@ -1426,7 +1426,7 @@ clipper_usage:
         if (zTok != NULL) { /* was context manually specified? */
             strcpy(zCtx, tok); /* re-copy from original to fix strtok_r() */
             rc = comdb2_load_ruleset_item_criteria(
-                "<evaluate_ruleset>", 0, zTok, -1, 0, 1, 0, &uCtx, NULL,
+                "<evaluate_ruleset>", 0, zTok, -1, 0, 0, &uCtx, NULL,
                 NULL, &zSav, NULL, zBuf, sizeof(zBuf)
             );
             free(zCtx);
@@ -1490,7 +1490,7 @@ clipper_usage:
         }
         if (ltok != 0) {
             tokcpy(tok, ltok, zFileName);
-            rc = comdb2_load_ruleset(zFileName, &gbl_ruleset);
+            rc = comdb2_load_ruleset_filename(zFileName, &gbl_ruleset);
             if (rc == 0) {
                 logmsg(LOGMSG_USER, "Ruleset loaded from file \"%s\"\n",
                        zFileName);
@@ -3446,6 +3446,21 @@ clipper_usage:
             thdpool_process_message(gbl_verify_thdpool, line, lline, st);
         else
             logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
+    } else if (tokcmp(tok, ltok, "sqlpool") == 0) {
+        char *pool_name = segtok(line, lline, &st, &ltok);
+        if (pool_name == NULL) {
+            fprintf(stderr, "Expected sqlpool name\n");
+            return 1;
+        }
+        pool_name = tokdup(pool_name, ltok);
+        struct thdpool *pool = get_named_sql_pool(pool_name, 0, 0);
+        if (pool == NULL) {
+            fprintf(stderr, "Unknown pool \"%s\"\n", pool_name);
+            free(pool_name);
+            return 1;
+        }
+        free(pool_name);
+        thdpool_process_message(pool, line, lline, st);
     } else if (tokcmp(tok, ltok, "disttxn") == 0) {
         char dist_txnid[128] = {0};
         int found = 0;

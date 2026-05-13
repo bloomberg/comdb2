@@ -4728,6 +4728,8 @@ void clnt_to_ruleset_item_criteria(
       clnt->current_user.have_name ? clnt->current_user.name : NULL;
   context->zSql = clnt->sql;
   context->pFingerprint = clnt->work.aFingerprint;
+  clnt->plugin.get_authdata(clnt);
+  context->zIdentity = clnt->externalAuthUser;
 }
 
 static int can_execute_sql_query_now(
@@ -5170,9 +5172,7 @@ static int verify_dispatch_sql_query(struct sqlclntstate *clnt, int force_dispat
         return 0;
     }
 
-    if (gbl_fingerprint_queries &&
-        comdb2_ruleset_fingerprints_allowed()) {
-        /* IGNORED */
+    if (gbl_fingerprint_queries) {
         preview_and_calc_fingerprint(clnt);
     }
 
@@ -6615,6 +6615,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->uuid = malloc(strlen(us) + 1);
     snprintf(c->uuid, strlen(us) + 1, "%s", us);
     c->is_canceled = clnt->discard_this;
+    c->pool = clnt->pPool ? thdpool_name(clnt->pPool) : NULL;
 }
 
 static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)

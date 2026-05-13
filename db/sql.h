@@ -1352,6 +1352,7 @@ struct connection_info {
     char *common_name; /* common name in the certificate */
     char common_name_str[ub_common_name];
     char *identity;
+    char *pool;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
