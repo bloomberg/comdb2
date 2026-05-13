@@ -95,8 +95,8 @@ int check_user_password(struct sqlclntstate *clnt)
     }
 
     if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) &&
-            (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
-            !clnt->admin && !clnt->current_user.bypass_auth) {
+        (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
+        !(clnt->admin && gbl_admin_bypass_externalauth) && !clnt->current_user.bypass_auth) {
         clnt->authdata = get_authdata(clnt);
         if (clnt->allow_make_request)
             return 0;
@@ -209,7 +209,8 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     else
         rc = check_user_password(clnt);
 
-    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
+    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest &&
+        !(clnt->admin && gbl_admin_bypass_externalauth)) {
         if (rc == 0 && gbl_uses_externalauth_connect)
             clnt->authgen = bpfunc_auth_gen;
         return rc;
@@ -260,7 +261,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         return 0;
     }
 
-    if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
+    if (gbl_uses_externalauth && !(clnt->admin && gbl_admin_bypass_externalauth) && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite && !clnt->current_user.bypass_auth) {
         if ((authdata = get_authdata(clnt)) != NULL)
             clnt->authdata = authdata;
@@ -346,9 +347,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
     }
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
-        externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
-        && !clnt->current_user.bypass_auth /* not analyze */) {
+    if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) && externalComdb2AuthenticateUserRead &&
+        !(clnt->admin && gbl_admin_bypass_externalauth) && !clnt->current_user.bypass_auth /* not analyze */) {
         if ((authdata = get_authdata(clnt)) != NULL)
             clnt->authdata = authdata;
         char client_info[1024];
@@ -477,9 +477,8 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
             return SQLITE_OK;
         }
 
-        if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
-            externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
-            && !clnt->current_user.bypass_auth /* not analyze */) {
+        if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) && externalComdb2AuthenticateUserRead &&
+            !(clnt->admin && gbl_admin_bypass_externalauth) && !clnt->current_user.bypass_auth /* not analyze */) {
             clnt->authdata = get_authdata(clnt);
             char client_info[1024];
             snprintf(client_info, sizeof(client_info),
