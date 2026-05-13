@@ -12,7 +12,7 @@
 
 pthread_mutex_t print_lock = PTHREAD_MUTEX_INITIALIZER;
 
-const int gbl_num_threads = 10;
+#define gbl_num_threads 10
 const char *gbl_dbname;
 const char *gbl_tier;
 const char *gbl_table_name;

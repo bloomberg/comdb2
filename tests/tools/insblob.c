@@ -8,8 +8,7 @@
 
 int main(int argc, char **argv)
 {
-    int rc;
-    int i;
+    int i = 0;
 
     int st_idx = atoi(argv[1]);
     int end_idx = atoi(argv[2]);
@@ -39,7 +38,7 @@ int main(int argc, char **argv)
 
     /*cdb2_set_comdb2db_config("dhconfig.cfg");*/
  
-    rc = cdb2_open(&hndl, dbname, stage, 0);
+    int rc = cdb2_open(&hndl, dbname, stage, 0);
     if (rc != 0) {
         puts("cdb2_open");
         goto done;
