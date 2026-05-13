@@ -365,6 +365,7 @@ MAKE_CDB2API_TEST_SWITCH(fail_timeout_sockpool_recv)
 MAKE_CDB2API_TEST_SWITCH(fail_timeout_sockpool_send)
 MAKE_CDB2API_TEST_SWITCH(fail_ssl_negotiation_once)
 MAKE_CDB2API_TEST_SWITCH(fail_sslio_close_in_local_cache)
+MAKE_CDB2API_TEST_SWITCH(fail_local_cache_peek)
 
 #define MAKE_CDB2API_TEST_COUNTER(name)                                                                                \
     static int name;                                                                                                   \
@@ -380,6 +381,7 @@ MAKE_CDB2API_TEST_COUNTER(num_tcp_connects)
 MAKE_CDB2API_TEST_COUNTER(num_cache_lru_evicts)
 MAKE_CDB2API_TEST_COUNTER(num_cache_hits)
 MAKE_CDB2API_TEST_COUNTER(num_cache_misses)
+MAKE_CDB2API_TEST_COUNTER(num_stale_cache_rejects)
 MAKE_CDB2API_TEST_COUNTER(num_sockpool_recv)
 MAKE_CDB2API_TEST_COUNTER(num_sockpool_send)
 MAKE_CDB2API_TEST_COUNTER(num_sockpool_recv_timeouts)
@@ -3244,18 +3246,39 @@ static COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, 
     if (was_from_local_cache) {
         *was_from_local_cache = 0;
         sb = local_connection_cache_get(hndl, typestr);
-        if (sb != NULL) {
+        if (sb != NULL)
             *was_from_local_cache = 1;
-            LOG_CALL("%s(%s,%d,%p,%p[%d]): fd=%d\n", __func__, typestr, dbnum, port, was_from_local_cache,
-                     (was_from_local_cache ? *was_from_local_cache : 0), cdb2buf_fileno(sb));
-            return sb;
+    }
+
+    if (sb == NULL) {
+        int fd = cdb2_socket_pool_get_ll(hndl, typestr, dbnum, port);
+        if (fd > 0)
+            sb = cdb2buf_open(fd, 0);
+    }
+
+    /* Discard stale connections from either path: EOF, unexpected data, or socket error */
+    if (sb != NULL) {
+        char peek;
+#ifdef CDB2API_TEST
+        int ret = fail_local_cache_peek ? 0 : recv(cdb2buf_fileno(sb), &peek, 1, MSG_PEEK | MSG_DONTWAIT);
+#else
+        int ret = recv(cdb2buf_fileno(sb), &peek, 1, MSG_PEEK | MSG_DONTWAIT);
+#endif
+        if (ret != -1 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+            LOG_CALL("%s(%s): stale fd=%d ret=%d errno=%d\n", __func__, typestr, cdb2buf_fileno(sb), ret, errno);
+#ifdef CDB2API_TEST
+            ++num_stale_cache_rejects;
+#endif
+            cdb2buf_close(sb);
+            sb = NULL;
+            if (was_from_local_cache)
+                *was_from_local_cache = 0;
         }
     }
 
-    int fd = cdb2_socket_pool_get_ll(hndl, typestr, dbnum, port);
     LOG_CALL("%s(%s,%d,%p,%p[%d]): fd=%d\n", __func__, typestr, dbnum, port, was_from_local_cache,
-             (was_from_local_cache ? *was_from_local_cache : 0), fd);
-    return ((fd > 0) ? cdb2buf_open(fd, 0) : NULL);
+             (was_from_local_cache ? *was_from_local_cache : 0), cdb2buf_fileno(sb));
+    return sb;
 }
 
 #ifndef CDB2API_SERVER
