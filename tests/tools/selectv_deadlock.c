@@ -133,7 +133,7 @@ void *run_test(void *x)
         assert(count == limit);
         assert(rc == CDB2_OK_DONE);
 
-        int64_t instid;
+        int64_t instid = 0;
         cdb2_clearbindings(hndl);
         cdb2_bind_param(hndl, "instid", CDB2_INTEGER, &instid, sizeof(instid));
         for (int i = 0; i < (do_contention ? limit : 1); i++) {
