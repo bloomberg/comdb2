@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-set -x
+[[ $DEBUG -eq 1 ]] && set -x
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 source ${TESTSROOTDIR}/tools/cluster_utils.sh
@@ -2979,6 +2979,15 @@ function testcase_preamble
     announce "Running $testcase"
 }
 
+function test_bulkimport
+{
+    echo "== Running bulkimport tests against physrep source and replicant =="
+    ./bulkimport.sh $SOURCE_DBNAME $SOURCE_HOST $REPL_CLUS_DBNAME $REPL_CLUS_HOST
+    if [[ $? -ne 0 ]]; then
+        cleanFailExit "bulkimport tests failed"
+    fi
+}
+
 function run_tests
 {
     testcase="verify_generation"
@@ -3167,6 +3176,11 @@ function run_tests
     testcase="physrep_no_cached_metadb_connections"
     testcase_preamble $testcase
     physrep_no_cached_metadb_connections_test
+    testcase_finish $testcase
+
+    testcase="bulkimport"
+    testcase_preamble $testcase
+    test_bulkimport
     testcase_finish $testcase
 }
 
