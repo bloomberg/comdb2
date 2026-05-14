@@ -1,6 +1,5 @@
 nowatch
 logmsg level info
-enable_snapshot_isolation
 init_with_genid48
 verbose_set_sc_in_progress on
 setattr REP_PROCESSORS 0

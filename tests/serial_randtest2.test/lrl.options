@@ -1,5 +1,3 @@
-enable_snapshot_isolation
-
 table t1 t1.csc2
 ssl_client_mode OPTIONAL
 enable_serial_isolation

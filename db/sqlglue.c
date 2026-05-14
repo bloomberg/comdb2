@@ -3756,7 +3756,7 @@ done:
 
 static int snapisol_enabled_correctly()
 {
-    return gbl_rowlocks || (gbl_snapisol && gbl_utxnid_log);
+    return gbl_rowlocks || gbl_utxnid_log;
 }
 
 static int serial_enabled_correctly()

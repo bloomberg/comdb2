@@ -1,2 +1,0 @@
-enable_snapshot_isolation
-# Don't explicitly enable serializable: We are testing running serializable with just 'enable_snapshot_isolation'

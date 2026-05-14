@@ -1,7 +1,6 @@
 nowatch
 logmsg level info
 maxosqltransfer 1000000
-enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1
 init_with_genid48
 
