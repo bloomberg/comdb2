@@ -572,24 +572,49 @@ static char *proc_cmdline_getargv0(void)
 {
     char procname[64];
     static char argv0[PATH_MAX];
+    int max_retries = 3;
+    int retry_count = 0;
+    int delay_ms = 10; // 10ms
 
     snprintf(procname, sizeof(procname), "/proc/self/cmdline");
-    COMDB2BUF *s = cdb2_cdb2buf_openread(procname);
-    if (s == NULL) {
-        fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
-                strerror(errno));
-        return NULL;
-    }
 
-    if ((cdb2buf_gets(argv0, PATH_MAX, s)) < 0) {
-        fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname,
-                strerror(errno));
+    while (retry_count < max_retries) {
+        COMDB2BUF *s = cdb2_cdb2buf_openread(procname);
+        if (s == NULL) {
+            if (errno == EBUSY) {
+                retry_count++;
+                if (retry_count < max_retries) {
+                    poll(NULL, 0, delay_ms); // exponential backoff: 10ms, 20ms, 40ms
+                    delay_ms *= 2;
+                }
+                continue;
+            }
+            fprintf(stderr, "%s cannot open %s (attempt %d), %s\n", __func__, procname, retry_count + 1,
+                    strerror(errno));
+            return NULL;
+        }
+
+        if ((cdb2buf_gets(argv0, PATH_MAX, s)) < 0) {
+            if (errno == EBUSY) {
+                cdb2buf_close(s);
+                retry_count++;
+                if (retry_count < max_retries) {
+                    poll(NULL, 0, delay_ms);
+                    delay_ms *= 2;
+                }
+                continue;
+            }
+            fprintf(stderr, "%s error reading from %s (attempt %d), %s\n", __func__, procname, retry_count + 1,
+                    strerror(errno));
+            cdb2buf_close(s);
+            return NULL;
+        }
+
         cdb2buf_close(s);
-        return NULL;
+        return argv0;
     }
 
-    cdb2buf_close(s);
-    return argv0;
+    return NULL;
 }
 #endif
 
