@@ -466,8 +466,7 @@ enum transaction_level {
     */
     TRANLEVEL_RECOM = 10,
     TRANLEVEL_SERIAL = 11,
-    TRANLEVEL_SNAPISOL = 12,
-    TRANLEVEL_MODSNAP = 13 /* server flag, client uses SNAPISOL */
+    TRANLEVEL_SNAPISOL = 12
 };
 
 enum RECORD_WRITE_TYPES {
@@ -2179,7 +2178,6 @@ tran_type *trans_start_modsnap(struct ireq *, int trak);
 tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
                                     int file, int offset, int *error,
                                     int is_ha_retry);
-tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file, int offset, int *error, int is_ha_retry);
 tran_type *trans_start_socksql(struct ireq *, int trak);
 int trans_commit(struct ireq *iq, void *trans, char *source_host);
 int trans_commit_nowait(struct ireq *iq, void *trans, char *source_host);
@@ -3335,7 +3333,6 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
 extern int gbl_rowlocks;
 extern int gbl_disable_tagged_api;
 extern int gbl_disable_tagged_api_writes;
-extern int gbl_snapisol;
 extern int gbl_update_shadows_interval;
 extern int gbl_lowpri_snapisol_sessions;
 extern int gbl_disable_legacy_queues;
@@ -3453,7 +3450,6 @@ extern int gbl_fk_allow_superset_keys;
 extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
-extern int gbl_snapshot_impl;
 
 void berkdb_iopool_process_message(char *line, int lline, int st);
 void stop_trickle_threads();

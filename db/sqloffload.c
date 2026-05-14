@@ -78,7 +78,6 @@ int tran2netreq(int dbtran)
         return NET_OSQL_SOCK_REQ;
 
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
         return NET_OSQL_RECOM_REQ;
 
     case TRANLEVEL_SNAPISOL:
@@ -107,7 +106,6 @@ int tran2netrpl(int dbtran)
         return NET_OSQL_SOCK_RPL;
 
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
         return NET_OSQL_RECOM_RPL;
 
     case TRANLEVEL_SNAPISOL:
@@ -428,11 +426,10 @@ int recom_abort(struct sqlclntstate *clnt)
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
 
-int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
-                    char *tzname)
+int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd, char *tzname, int is_distributed_tran)
 {
 
-    return rese_commit(clnt, thd, tzname, OSQL_SNAPISOL_REQ, 0);
+    return rese_commit(clnt, thd, tzname, OSQL_SNAPISOL_REQ, is_distributed_tran);
 }
 
 int snapisol_abort(struct sqlclntstate *clnt)
@@ -559,7 +556,6 @@ int tran2req(int dbtran)
         return OSQL_SOCK_REQ;
 
     case TRANLEVEL_RECOM:
-    case TRANLEVEL_MODSNAP:
         return OSQL_RECOM_REQ;
 
     case TRANLEVEL_SNAPISOL:

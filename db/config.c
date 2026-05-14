@@ -55,8 +55,6 @@ extern int gbl_recovery_lsn_offset;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_server_admin_mode;
-extern int gbl_modsnap_asof;
-extern int gbl_use_modsnap_for_snapshot;
 
 int gbl_disable_access_controls;
 
@@ -1254,21 +1252,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
     } else if (tokcmp(tok, ltok, "enable_selectv_range_check") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLOG, 1);
         gbl_selectv_rangechk = 1;
     } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLOG, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
-    } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        gbl_snapisol = 1;
-        gbl_use_modsnap_for_snapshot = 1;
-        if (gbl_sql_tranlevel_default == gbl_snapshot_impl)
-            gbl_sql_tranlevel_default = TRANLEVEL_MODSNAP;
-        gbl_snapshot_impl = TRANLEVEL_MODSNAP;
-        gbl_modsnap_asof = 1;
     } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLOG, 1);
         gbl_selectv_rangechk = 1;
         gbl_serializable = 1;
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {

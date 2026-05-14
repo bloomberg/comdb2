@@ -7280,7 +7280,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         (*err) = strdup("Cannot execute consumer on physical-replicant");
     }
     else {
-        const int clnt_mode_is_snapshot_by_default = clnt->dbtran.mode == TRANLEVEL_MODSNAP && gbl_sql_tranlevel_default == TRANLEVEL_MODSNAP;
+        const int clnt_mode_is_snapshot_by_default = clnt->dbtran.mode == TRANLEVEL_SNAPISOL && gbl_sql_tranlevel_default == TRANLEVEL_SNAPISOL;
         const int convert_modsnap_to_sosql = clnt_mode_is_snapshot_by_default && sp->can_consume && !clnt->in_client_trans;
         if (convert_modsnap_to_sosql) {
             clnt->dbtran.mode = TRANLEVEL_SOSQL;
@@ -7289,7 +7289,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         rc = push_args_and_run_sp(clnt, end_ptr, err);
 
         if (convert_modsnap_to_sosql) {
-            clnt->dbtran.mode = TRANLEVEL_MODSNAP;
+            clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
         }
     }
 
