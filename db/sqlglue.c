@@ -6627,7 +6627,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
 
     cursorid = pCur->cursorid;
     if (pCur->bt && pCur->bt->is_remote &&
-        pCur->rootpage != RTPAGE_SQLITE_MASTER) /* sqlite_master is local */
+        (pCur->rootpage != RTPAGE_SQLITE_MASTER || !fdb_master_is_local(pCur))) /* is sqlite_master local ? */
     {
         /* release the fdb cursor */
         if (pCur->fdbc) {
