@@ -55,7 +55,6 @@ extern int gbl_recovery_lsn_offset;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_server_admin_mode;
-extern int gbl_modsnap;
 
 int gbl_disable_access_controls;
 
@@ -1258,13 +1257,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLOG, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
-    } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        gbl_snapisol = 1;
-        gbl_modsnap = 1;
     } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLOG, 1);
-        gbl_snapisol = 1;
-        gbl_modsnap = 1;
         gbl_selectv_rangechk = 1;
         gbl_serializable = 1;
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {

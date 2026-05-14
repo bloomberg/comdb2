@@ -2300,8 +2300,6 @@ static int undo_get_ltranid(bdb_state_type *bdb_state, DBT *logdta,
     return rc;
 }
 
-extern int gbl_snapisol;
-
 /**
  * Called during commit once we now there is no way back.
  * This retrieves the list of deleted rows that will become
@@ -2328,11 +2326,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
 
     if (gbl_disable_update_shadows)
         return 0;
-
-    /* Return immediately if snapisol isn't enabled */
-    if (!gbl_snapisol)
-        return 0;
-
+ 
     /* Skip entirely if there are no clients */
     bdb_osql_trn_count_clients(&count, !is_master);
     /* Don't parse if no one cares */

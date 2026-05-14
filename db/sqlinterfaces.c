@@ -134,7 +134,6 @@ extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
 extern int gbl_typessql;
-extern int gbl_modsnap;
 extern int gbl_2pc;
 
 /* Once and for all:
@@ -1492,7 +1491,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                             return -1;
                         } else {
                             long long lcl_ret = flibc_ntohll(ret);
-                            if (gbl_modsnap && bdb_is_timestamp_recoverable(thedb->bdb_env, lcl_ret) <= 0) {
+                            if (bdb_is_timestamp_recoverable(thedb->bdb_env, lcl_ret) <= 0) {
                                 logmsg(LOGMSG_ERROR,
                                        "No log file to maintain "
                                        "snapshot epoch %lld\n",

@@ -1592,7 +1592,6 @@ extern int gbl_sql_tranlevel_preserved;
 
 extern int gbl_rowlocks;
 extern int gbl_early;
-extern int gbl_modsnap;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_verify_all_pools;

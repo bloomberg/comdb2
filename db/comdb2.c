@@ -464,7 +464,6 @@ int gbl_disable_overflow_page_trace = 1;
 int gbl_simulate_rowlock_deadlock_interval = 0;
 int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
-int gbl_modsnap = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
 int gbl_test_commit_lsn_map = 0;
@@ -535,7 +534,6 @@ int gbl_rowlocks = 0;
 int gbl_disable_tagged_api = 1;
 int gbl_disable_tagged_api_writes = 1;
 int gbl_serializable = 0; // Just for bookkeeping
-int gbl_snapisol = 0;
 int gbl_update_shadows_interval = 0;
 int gbl_lowpri_snapisol_sessions = 0;
 int gbl_support_sock_luxref = 1;
@@ -4163,11 +4161,9 @@ static int init(int argc, char **argv)
 
     disttxn_init_recover_prepared();
 
-    if (!gbl_exit && gbl_modsnap) {
+    if (!gbl_exit) {
         bdb_gbl_asof_modsnap_init(thedb->bdb_env);
-    } else {
-        logmsg(LOGMSG_INFO, "snapisol is not running\n");
-    }
+    } 
 
     /* We grab alot of genids in the process of opening llmeta */
     if (gbl_init_with_genid48 && gbl_create_mode)
@@ -4400,7 +4396,6 @@ static int init(int argc, char **argv)
 
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_LLOG, 1);
-        gbl_snapisol = 1;
     }
 
     /* This runs logical recovery.  */

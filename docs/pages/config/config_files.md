@@ -832,7 +832,6 @@ These options are toggle-able at runtime.
 |enable_prefault_udp | not set |  Send lossy prefault requests to replicants 
 |enable_selectv_range_check | not set | ***Experimental*** If set, SELECTV will send ranges for verification, not every touched record.
 |enable_serial_isolation | 0 | Enable to allow SERIALIZABLE level transactions to run against the database
-|enable_snapshot_isolation | 0 | Enable to allow SNAPSHOT level transactions to run against the database
 |enable_sparse_lockerid_map | set | If set, allocates a sparse map of lockers for deadlock resolution
 |enable_sql_stmt_caching | not set | Enable caching of query plans.  If followed by "all" will cache all queries, including those without parameters.
 |enable_tagged_api | 0 |

@@ -3333,7 +3333,6 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
 extern int gbl_rowlocks;
 extern int gbl_disable_tagged_api;
 extern int gbl_disable_tagged_api_writes;
-extern int gbl_snapisol;
 extern int gbl_update_shadows_interval;
 extern int gbl_lowpri_snapisol_sessions;
 extern int gbl_disable_legacy_queues;

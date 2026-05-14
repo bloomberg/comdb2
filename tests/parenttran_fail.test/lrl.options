@@ -4,4 +4,3 @@ off sql_release_locks_on_si_lockwait
 off sql_release_locks_on_emit_row_lockwait
 off sql_release_locks_in_update_shadows
 off release_locks_trace
-enable_snapshot_isolation
