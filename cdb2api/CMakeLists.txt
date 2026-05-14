@@ -31,10 +31,11 @@ if (DEFINED COMDB2_SEMVER AND NOT COMDB2_SEMVER STREQUAL "")
 endif()
 
 if (COMDB2_BBCMAKE)
+  set(cdb2api_extra_link_libs)
   include(${EXTRA_PLUGINS}/cdb2api/cdb2api.cmake)
   add_library(opencdb2api STATIC ${src})
   add_dependencies(opencdb2api proto)
-  target_link_libraries(opencdb2api PUBLIC cdb2api)
+  target_link_libraries(opencdb2api PUBLIC cdb2api ${cdb2api_extra_link_libs})
   comdb2_lib_target(opencdb2api)
 else()
 
