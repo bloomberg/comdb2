@@ -313,7 +313,7 @@ static double cdb2_min_tls_ver = 0;
 
 static int _PID;        /* ONE-TIME */
 static int _MACHINE_ID; /* ONE-TIME */
-static char *_ARGV0;    /* ONE-TIME */
+static char *_ARGV0 = NULL; /* ONE-TIME */
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 static pthread_mutex_t cdb2_event_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -595,6 +595,8 @@ static char *proc_cmdline_getargv0(void)
 
 char *cdb2_getargv0(void)
 {
+    if (_ARGV0)
+        return _ARGV0;
 #if defined(__APPLE__)
     return apple_getargv0();
 #elif defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
