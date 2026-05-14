@@ -2166,94 +2166,157 @@ static inline int key_has_expressions_members(struct schema *key)
     return 0;
 }
 
-/* Verify that the tables and keys referred to by this table's constraints all
- * exist & have the correct column count.  If they don't it's a bit of a show
- * stopper. */
-int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
-                             struct dbtable *new_db,
-                             struct schema_change_type *s)
+/*
+ * Helper function for `verify_constraint`
+ *
+ * Performs the following verifications
+ *     1. The constrained-on table exists
+ *     2. The constrained-on table is not a time partition
+ *     3. The constrained-on table has the constrained-on key
+ *     4. The constrained-on table has the expected number of columns
+ *
+ * If `updated_target_db` is set, then verifications 2-4 are performed on
+ * `updated_target_db` instead of the current version of the table.
+ *
+ * Logs each failure and returns the number of failed verifications.
+ */
+static int verify_constraint_rule(constraint_t *ct, int rule_ix,
+                                  struct dbtable *source_db,
+                                  struct dbtable *updated_target_db,
+                                  struct schema *fky,
+                                  struct schema_change_type *s)
 {
-    int ii, jj;
-    char keytag[MAXTAGLEN];
-    struct schema *bky, *fky;
     int n_errors = 0;
 
-    if (!from_db) {
-        for (ii = 0; ii < thedb->num_dbs; ii++) {
-            from_db = get_newer_db(thedb->dbs[ii], new_db);
-            n_errors += verify_constraints_exist(
-                from_db, from_db == to_db ? NULL : to_db, new_db, s);
-        }
-        return n_errors;
+    struct dbtable * target_db = get_dbtable_by_name(ct->table[rule_ix]);
+
+    if (target_db && updated_target_db)
+        target_db = get_newer_db(target_db, updated_target_db);
+    else if (strcasecmp(ct->table[rule_ix], source_db->tablename) == 0)
+        target_db = source_db;
+
+    if (!target_db) {
+        /* Referencing a non-existent table */
+        constraint_err(s, source_db, ct, rule_ix, "parent table not found");
+        return ++n_errors;
+    } else if (target_db->timepartition_name) {
+        constraint_err(s, source_db, ct, rule_ix, "A foreign key cannot refer to a time partition");
+        return ++n_errors;
     }
 
-    for (ii = 0; ii < from_db->n_constraints; ii++) {
-        constraint_t *ct = &from_db->constraints[ii];
-
-        if (from_db == new_db) {
-            snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
-        } else {
-            snprintf(keytag, sizeof(keytag), "%s", ct->lclkeyname);
-        }
-        if (!(fky = find_tag_schema(from_db, keytag))) {
-            /* Referencing a nonexistent key */
-            constraint_err(s, from_db, ct, 0, "foreign key not found");
+    char keytag[MAXTAGLEN];
+    struct schema *bky;
+    if (target_db == updated_target_db) {
+        snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[rule_ix]);
+        if (!(bky = find_tag_schema_by_name(ct->table[rule_ix], keytag))) {
+            constraint_err(s, source_db, ct, rule_ix, "parent key not found");
             n_errors++;
         }
-        if (from_db->ix_expr && key_has_expressions_members(fky) &&
-            (ct->flags & CT_UPD_CASCADE)) {
-            constraint_err(s, from_db, ct, 0, "cascading update on expression indexes is not allowed");
+    } else {
+        snprintf(keytag, sizeof(keytag), "%s", ct->keynm[rule_ix]);
+        if (!(bky = find_tag_schema(target_db, keytag))) {
+            constraint_err(s, source_db, ct, rule_ix, "parent key not found");
             n_errors++;
-        }
-        for (jj = 0; jj < ct->nrules; jj++) {
-            struct dbtable *rdb;
-
-            /* If we have a target table (to_db) only look at rules pointing
-             * to that table. */
-            if (to_db && strcasecmp(ct->table[jj], to_db->tablename) != 0)
-                continue;
-
-            rdb = get_dbtable_by_name(ct->table[jj]);
-            if (rdb)
-                rdb = get_newer_db(rdb, new_db);
-            else if (strcasecmp(ct->table[jj], from_db->tablename) == 0)
-                rdb = from_db;
-            if (!rdb) {
-                /* Referencing a non-existent table */
-                constraint_err(s, from_db, ct, jj, "parent table not found");
-                n_errors++;
-                continue;
-            } else {
-                if (rdb->timepartition_name) {
-                    constraint_err(s, from_db, ct, jj, "A foreign key cannot refer to a time partition");
-                    n_errors++;
-                    continue;
-                }
-            }
-            if (rdb == new_db) {
-                snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[jj]);
-                if (!(bky = find_tag_schema_by_name(ct->table[jj], keytag))) {
-                    /* Referencing a nonexistent key */
-                    constraint_err(s, from_db, ct, jj, "parent key not found");
-                    n_errors++;
-                }
-            } else {
-                snprintf(keytag, sizeof(keytag), "%s", ct->keynm[jj]);
-                if (!(bky = find_tag_schema(rdb, keytag))) {
-                    /* Referencing a nonexistent key */
-                    constraint_err(s, from_db, ct, jj, "parent key not found");
-                    n_errors++;
-                }
-            }
-
-            if (constraint_key_check(fky, bky)) {
-                /* Invalid constraint index */
-                constraint_err(s, from_db, ct, jj, "invalid number of columns");
-                n_errors++;
-            }
         }
     }
 
+    if (constraint_key_check(fky, bky)) {
+        constraint_err(s, source_db, ct, rule_ix, "invalid number of columns");
+        n_errors++;
+    }
+
+    return n_errors;
+}
+
+/*
+ * Helper function for `verify_constraints_from_dbtable`/`verify_constraints_to_dbtable`
+ *
+ * Performs the following verifications
+ *     1. `source_db` has the constrained-on key
+ *     2. Constraint does not have a cascading update on expression indexes
+ *     3. Each of the constraint's rules is valid. See `verify_constraint_rule` for
+ *       details on rule verification. (if `target_db` is provided,
+ *       only rules referring to `target_db` are checked)
+ *
+ * `source_db_is_updated`/`target_db_is_updated` should be 1 if 
+ * `source_db`/`target_db` refers to the new btree for an existing table.
+ *
+ * Logs each failure and returns the number of failed verifications.
+ */
+static int verify_constraint(constraint_t * const ct,
+                             struct dbtable *source_db,
+                             struct dbtable *target_db,
+                             int source_db_is_updated,
+                             int target_db_is_updated,
+                             struct schema_change_type *s)
+{
+    int n_errors = 0;
+
+    char keytag[MAXTAGLEN];
+    if (source_db_is_updated) {
+        snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
+    } else {
+        snprintf(keytag, sizeof(keytag), "%s", ct->lclkeyname);
+    }
+
+    struct schema *fky = find_tag_schema(source_db, keytag);
+    if (!fky) {
+        constraint_err(s, source_db, ct, 0, "foreign key not found");
+        n_errors++;
+    }
+    if (source_db->ix_expr && key_has_expressions_members(fky) &&
+        (ct->flags & CT_UPD_CASCADE)) {
+        constraint_err(s, source_db, ct, 0, "cascading update on expression indexes is not allowed");
+        n_errors++;
+    }
+    for (int jj = 0; jj < ct->nrules; jj++) {
+        const int constraint_rule_is_eligible_for_verification = !target_db
+            || strcasecmp(ct->table[jj], target_db->tablename) == 0;
+        if (constraint_rule_is_eligible_for_verification) {
+            n_errors += verify_constraint_rule(ct, jj, source_db, target_db_is_updated ? target_db : NULL, fky, s);
+        }
+    }
+
+    return n_errors;
+}
+
+int verify_constraints_from_dbtable(struct dbtable *source_db,
+                                    int is_updated,
+                                    struct schema_change_type *s)
+{
+    int n_errors = 0;
+
+    for (int ii = 0; ii < source_db->n_constraints; ii++) {
+        constraint_t * const ct = &source_db->constraints[ii];
+        n_errors += verify_constraint(ct, source_db, NULL,
+            /* src_db_is_updated */ is_updated, /* target_db_is_updated */ 0, s);
+    }
+
+    return n_errors;
+}
+
+static int verify_constraints_to_dbtable(struct dbtable *target_db,
+                                         int is_updated,
+                                         struct schema_change_type *s)
+{
+    int n_errors = 0;
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        // Need to call `get_newer_db` for the case when there is a self-referencing constraint.
+        struct dbtable * const source_db = get_newer_db(thedb->dbs[ii], target_db);
+
+        for (int ii = 0; ii < source_db->n_constraints; ii++) {
+            constraint_t * const ct = &source_db->constraints[ii];
+            n_errors += verify_constraint(ct, source_db, target_db,
+                /* source_db_is_updated */ 0, /* target_db_is_updated */ is_updated, s);
+        }
+    }
+    return n_errors;
+}
+
+int verify_constraints_to_and_from_dbtable(struct dbtable *new_db, int is_updated, struct schema_change_type *s)
+{
+    int n_errors = verify_constraints_from_dbtable(new_db, is_updated, s);
+    n_errors += verify_constraints_to_dbtable(new_db, is_updated, s);
     return n_errors;
 }
 
