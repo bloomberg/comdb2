@@ -1,2 +1,1 @@
-enable_snapshot_isolation
 sql_tranlevel_default snapshot

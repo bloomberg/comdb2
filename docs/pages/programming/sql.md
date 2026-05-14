@@ -34,14 +34,12 @@ In Snapshot Isolation level (```SET TRANSACTION SNAPSHOT ISOLATION```) this stat
 beginning a transaction that will group all *read* and *write* operations into a transaction. *Reads* 
 will see results of intermediate operations within a transaction. Reads are repeatable in this mode 
 without the use of long term read locks through the use of Multi Version Concurrency Control. This level 
-also guarantees lack of phantoms. Before using snapshot isolation, you must add enable_snapshot_isolation 
-to your lrl file.
+also guarantees lack of phantoms.
 
 The optional ```AS OF DATETIME``` clause begins a transaction with a snapshot of the database as
 it existed as of the given time. The snapshot only has the effects of transactions that committed
 before that time. Using ```AS OF DATETIME``` requires the transaction being in ```SNAPSHOT ISOLATION```
-mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```). Note that enabling ```SNAPSHOT ISOLATION```
-requires the ```enable_snapshot_isolation``` lrl tunable. Snapshots requested from before snapshot
+mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```).  Snapshots requested from before snapshot
 isolation was enabled will not work. A snapshot is only available if enough transaction logs are
 online to find commits before the specified time. The time provided must unquoted date in ISO 8601
 format or Unix time. If the provided timestamp is higher than the highest timestamp in the database's 

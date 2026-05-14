@@ -1,6 +1,5 @@
 nowatch
 logmsg level info
-enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1
 init_with_genid48
 logdelete_lock_trace on

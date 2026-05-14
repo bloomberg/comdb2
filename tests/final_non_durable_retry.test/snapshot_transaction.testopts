@@ -1,2 +1,0 @@
-set_snapshot_impl modsnap
-enable_snapshot_isolation

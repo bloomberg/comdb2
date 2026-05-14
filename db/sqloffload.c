@@ -428,31 +428,12 @@ int recom_abort(struct sqlclntstate *clnt)
 
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd, char *tzname, int is_distributed_tran)
 {
-    int rc = 0;
-
-    /* temp hook for sql transactions */
-    if (clnt->dbtran.dtran) {
-        rc = fdb_trans_commit(clnt, TRANS_CLNTCOMM_NORMAL);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
-            return rc;
-        }
-    }
 
     return rese_commit(clnt, thd, tzname, OSQL_SNAPISOL_REQ, is_distributed_tran);
 }
 
 int snapisol_abort(struct sqlclntstate *clnt)
 {
-    int rc;
-
-    /* temp hook for sql transactions */
-    if (clnt->dbtran.dtran) {
-        rc = fdb_trans_rollback(clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
-        }
-    }
 
     return sorese_abort(clnt, OSQL_SNAPISOL_REQ);
 }

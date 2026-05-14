@@ -46,7 +46,6 @@
 #include <logmsg.h>
 
 unsigned int bdb_osql_trn_total_count = 0;
-extern int gbl_modsnap;
 
 extern int request_durable_lsn_from_master(bdb_state_type *bdb_state,
                                            uint32_t *durable_file,
@@ -218,8 +217,6 @@ void bdb_get_gbl_recoverable_lsn(void *lsn)
 
 void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp)
 {
-    if (!gbl_modsnap)
-        return;
     Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
     bdb_gbl_recoverable_timestamp = timestamp;
     bdb_gbl_recoverable_lsn = *(DB_LSN *)lsn;
