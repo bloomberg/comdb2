@@ -7256,7 +7256,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     // Use () to differentiate between tablename and spname
     snprintf(spfunc, sizeof(spfunc), "%s()", spname);
 
-    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
+    if (gbl_uses_externalauth && access_control_check_sql_read(NULL, sqlthd, spfunc)) {
         if (consumer && gbl_consumer_auth_warnonly) {
             static int logged = 0;
             if (!logged) {

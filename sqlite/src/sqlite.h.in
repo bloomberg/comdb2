@@ -6523,6 +6523,7 @@ enum {
   CDB2_ALLOW_USER = 1<<1, /* Limit access only to permitted users */
   CDB2_HIDDEN     = 1<<2, /* Remove it from system table list
                              (comdb2_systables) */
+  CDB2_STRICT     = 1<<3, /* Always enforce access check */
 };
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

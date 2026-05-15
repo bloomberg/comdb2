@@ -756,7 +756,7 @@ sqlite3_module systblTransactionLogsModule = {
   0,                 /* xRelease */
   0,                 /* xRollbackTo */
   0,                 /* xShadowName */
-  .access_flag = CDB2_ALLOW_USER
+  .access_flag = CDB2_ALLOW_USER | CDB2_STRICT
 };
 
 
