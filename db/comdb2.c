@@ -20,6 +20,7 @@ int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
 extern int gbl_delay_sql_lock_release_sec;
+extern int gbl_2pc;
 
 void __berkdb_set_num_read_ios(long long *n);
 void __berkdb_set_num_write_ios(long long *n);
@@ -4166,6 +4167,12 @@ static int init(int argc, char **argv)
         bdb_berkdb_iomap_set(thedb->bdb_env, 1);
 
     disttxn_init_recover_prepared();
+
+    /* Resolve DDL prepared transactions before acquiring schema lock
+     * to prevent deadlock in bdb_upgrade_all_prepared() */
+    if (!gbl_exit && !gbl_create_mode && gbl_2pc) {
+        disttxn_resolve_ddl_prepared();
+    }
 
     if (!gbl_exit && gbl_modsnap_asof) {
         bdb_gbl_asof_modsnap_init(thedb->bdb_env);
