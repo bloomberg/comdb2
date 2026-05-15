@@ -182,7 +182,10 @@ typedef struct osqlstate {
 
     /* verify handling */
     /* keep the log of sql strings for the current transaction */
+    struct srs_tran_query *replay_cursor;
     struct srs_tran *history;
+    int num_queries;
+    int total_queries;
     int replay;  /* set this when a session is replayed, used by sorese */
     int sent_column_data; /* set this if we've already sent the column data */
 
@@ -785,6 +788,7 @@ struct sqlclntstate {
     uint8_t no_more_heartbeats;
     uint8_t done;
     plugin_func *done_cb; /* newsql_done_evbuffer */
+    plugin_func *save_cb;
     unsigned long long sqltick, sqltick_last_seen;
 
     int using_case_insensitive_like;
