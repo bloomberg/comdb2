@@ -688,6 +688,7 @@ int gbl_physrep_force_registration = 0;
 
 int force_registration()
 {
+    bdb_state_type *bdb_state = gbl_bdb_state;
     int rtn = 0;
     if (gbl_physrep_force_registration) {
         logmsg(LOGMSG_USER, "%s: forcing registration on flag\n", __func__);
@@ -700,6 +701,13 @@ int force_registration()
         physrep_master_cached = strdup(gbl_myhostname);
         rtn = 1;
     }
+
+    if (bdb_state->callback->nodeup_rtn && !bdb_state->callback->nodeup_rtn(bdb_state, gbl_physrep_repl_host)) {
+        physrep_logmsg(LOGMSG_INFO, "%s source node '%s' has been rtcpu'd, reconnecting\n", __func__,
+                       gbl_physrep_repl_host);
+        rtn = 1;
+    }
+
     return rtn;
 }
 
@@ -887,6 +895,15 @@ int physrep_allowed_source(const char *dbname, const char *hostname)
         }
         return 0;
     }
+
+    /* Exclude any rtcpu'd node */
+    if (bdb_state->callback->nodeup_rtn && !bdb_state->callback->nodeup_rtn(bdb_state, hostname)) {
+        if (gbl_physrep_debug) {
+            physrep_logmsg(LOGMSG_USER, "%s: discarding rtcpu'd node %s\n", __func__, hostname);
+        }
+        return 0;
+    }
+
     return 1;
 }
 
