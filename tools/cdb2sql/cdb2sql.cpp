@@ -2510,7 +2510,7 @@ int main(int argc, char *argv[])
     if (dbtype == NULL && dbtype_valid(argv[optind])) {
         dbtype = argv[optind];
         optind++;
-    } else {
+    } else if (dbtype == NULL) {
         dbtype = (char *) "local"; /* might want "default" here */
     }
 
