@@ -268,6 +268,9 @@ static int cdb2_donate_unused_connections_set_from_env = 0;
 /* Fix last set repeat, disable if this breaks anything */
 static int disable_fix_last_set = 0;
 static int cdb2_disable_fix_last_set_set_from_env = 0;
+/* Error when SET is called inside a transaction */
+static int set_in_trans_error = 0; // some clients might be doing this. Don't break their programs
+static int cdb2_set_in_trans_error_set_from_env = 0;
 
 /* Skip dbinfo query if sockpool provides connection */
 static int get_dbinfo = 0;
@@ -1620,6 +1623,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                                    &cdb2_donate_unused_connections_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_DISABLE_FIX_LAST_SET", &disable_fix_last_set,
                                    &cdb2_disable_fix_last_set_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_SET_IN_TRANS_ERROR", &set_in_trans_error,
+                                   &cdb2_set_in_trans_error_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_USE_FTRUNCATE", &cdb2_use_ftruncate,
                                    &cdb2_use_ftruncate_set_from_env);
         process_env_var_str("COMDB2_CONFIG_ROOM", (char *)&cdb2_machine_room, sizeof(cdb2_machine_room),
@@ -1834,6 +1839,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
             } else if (!cdb2_disable_fix_last_set_set_from_env && (strcasecmp("disable_fix_last_set", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 disable_fix_last_set = value_on_off(tok, &err);
+            } else if (!cdb2_set_in_trans_error_set_from_env && (strcasecmp("set_in_trans_error", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    set_in_trans_error = value_on_off(tok, &err);
             } else if (!cdb2_use_ftruncate_set_from_env && (strcasecmp("use_ftruncate", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
@@ -5892,7 +5901,7 @@ static int process_set_stmt_return_types(cdb2_hndl_tp *hndl, const char *sql)
 static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
     hndl->is_set = 1;
-    if (hndl->in_trans) {
+    if (set_in_trans_error && hndl->in_trans) {
         sprintf(hndl->errstr, "Can't run set query inside transaction.");
         hndl->error_in_trans = CDB2ERR_BADREQ;
         hndl->client_side_error = 1;

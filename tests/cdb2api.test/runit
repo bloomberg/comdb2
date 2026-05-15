@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# This test case is a collection of queries reported in various 
+# This test case is a collection of queries reported in various
 # DRQS tickets. As such each one will have different schemas.
 # The driver will just add/alter tables as required.
 
@@ -10,6 +10,8 @@ if [[ -z "$dbname" ]] ; then
     echo dbname missing
     exit 1
 fi
+
+export COMDB2_FEATURE_SET_IN_TRANS_ERROR=on
 
 # Execute all .req files.
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $dbname -r req
