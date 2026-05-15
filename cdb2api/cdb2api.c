@@ -5288,30 +5288,22 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
        4. Otherwise, return an error. */
 
     int rc;
-    struct timespec ts;
+    struct timeval tv;
     uint64_t cnt, seq, tm, now;
     cnonce_t *c;
 
     static char hex[] = "0123456789abcdef";
     char *in, *out, *end;
 
-    rc = clock_gettime(CLOCK_MONOTONIC, &ts);
+retry:
+    rc = gettimeofday(&tv, NULL);
     if (rc != 0)
         return rc;
     c = &hndl->cnonce;
     seq = c->seq;
     tm = (seq & TIME_MASK) >> CNT_BITS;
-    now = (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
-    if (now == tm) {
-        cnt = ((seq & CNT_MASK) + 1) & CNT_MASK;
-        if (cnt == 0) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr),
-                     "Transaction rate too high.");
-            rc = -1;
-        } else {
-            c->seq = (seq & TIME_MASK) | cnt;
-        }
-    } else if (now > tm) {
+    now = (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+    if (now > tm) {
         if (tm == 0) {
             c->hostid = _MACHINE_ID;
             c->pid = _PID;
@@ -5319,6 +5311,15 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
             c->ofs = sprintf(c->str, CNONCE_STR_FMT, c->hostid, c->pid, (intptr_t)c->hndl);
         }
         c->seq = (now << CNT_BITS);
+    } else {
+        cnt = ((seq & CNT_MASK) + 1) & CNT_MASK;
+        if (cnt == 0) {
+            /* Transaction rate too high */
+            poll(NULL, 0, 100);
+            goto retry;
+        } else {
+            c->seq = (seq & TIME_MASK) | cnt;
+        }
     }
 
     if (rc == 0) {
