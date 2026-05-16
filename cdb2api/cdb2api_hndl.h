@@ -23,6 +23,7 @@
 #define INCLUDED_CDB2API_HNDL_H
 #include <comdb2buf.h>
 
+#include <inttypes.h>
 #include <sys/types.h>
 #include <sys/queue.h>
 
@@ -60,8 +61,8 @@ struct cdb2_event {
    4096 txn/us (~4 billion transactions per second) till September 17, 2112.
 
    See next_cnonce() for details. */
-#define CNONCE_STR_FMT "%lx-%x-%llx-"
-#define CNONCE_STR_SZ 60 /* 16 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
+#define CNONCE_STR_FMT "%lx-%x-%" PRIxPTR "-"
+#define CNONCE_STR_SZ ((sizeof(long) + sizeof(int) + sizeof(intptr_t)) * 2 + 3 + 16 + 1)
 
 #define CNT_BITS 12
 #define TIME_MASK (-1ULL << CNT_BITS)
