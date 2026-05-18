@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+# Setup tables
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1(a INT, b INT)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t2(x INT, y INT)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE INDEX t1_a ON t1(a)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE INDEX t1_b ON t1(b)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE INDEX t2_x ON t2(x)"
+
+# Populate t1: 1000 rows, a = i%33, b = i
+cdb2sql ${CDB2_OPTIONS} $dbnm default "WITH s(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM s WHERE i<999) INSERT INTO t1 SELECT i%33, i FROM s"
+
+# Populate t2: 60 rows, x = i, y = i%3
+cdb2sql ${CDB2_OPTIONS} $dbnm default "WITH s(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM s WHERE i<59) INSERT INTO t2 SELECT i, i%3 FROM s"
+
+# Gather statistics
+cdb2sql ${CDB2_OPTIONS} $dbnm default "ANALYZE t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "ANALYZE t2"
+
+# Test: query plan with bound parameter ?=0
+echo "@bind CDB2_INTEGER zero 0
+explain query plan SELECT * FROM t1 JOIN t2 ON t1.b = t2.x WHERE t1.a = 5 AND t2.y = @zero" | cdb2sql ${CDB2_OPTIONS} $dbnm default - | grep "detail=" | sed "s/id=[0-9]*/id=N/" > plan_bound.txt
+
+# Test: query plan with literal 0
+cdb2sql ${CDB2_OPTIONS} $dbnm default "explain query plan SELECT * FROM t1 JOIN t2 ON t1.b = t2.x WHERE t1.a = 5 AND t2.y = 0" | grep "detail=" | sed "s/id=[0-9]*/id=N/" > plan_literal.txt
+
+echo "Bound parameter plan:"
+cat plan_bound.txt
+echo ""
+echo "Literal plan:"
+cat plan_literal.txt
+
+# A bound value of 0 should be handled the same way as a literal 0
+# when estimating the probability of (x=<some-integer>).
+if ! diff plan_bound.txt plan_literal.txt > /dev/null; then
+    echo "FAIL: bound parameter produces different query plan than literal"
+    diff plan_bound.txt plan_literal.txt
+    exit 1
+fi
+
+echo "Success!"
