@@ -2,6 +2,7 @@
 #include <string.h>
 #include <cdb2api.h>
 #include <signal.h>
+#include <inttypes.h>
 
 static int Cdb2_open(cdb2_hndl_tp **db, char *dbname)
 {
@@ -110,12 +111,12 @@ static int test_leading_space(char *dbname)
     }
     val = (int64_t *)cdb2_column_value(db, 0);
     if (*val != 100) {
-        fprintf(stderr, "%s failed. expected 100 received:%ld\n", __func__, *val);
+        fprintf(stderr, "%s failed. expected 100 received:%" PRId64 "\n", __func__, *val);
         return -1;
     }
     val = (int64_t *)cdb2_column_value(db, 1);
     if (val != NULL) {
-        fprintf(stderr, "%s failed. expected NULL received:%p val:%ld\n", __func__, val, *val);
+        fprintf(stderr, "%s failed. expected NULL received:%p val:%" PRId64 "\n", __func__, val, *val);
         return -1;
     }
     rc = cdb2_next_record(db);

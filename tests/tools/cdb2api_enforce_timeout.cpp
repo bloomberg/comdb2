@@ -3,6 +3,7 @@
 #include <cdb2api.h>
 #include <cdb2api_test.h>
 #include <sys/time.h>
+#include <inttypes.h>
 
 static int64_t epochms()
 {
@@ -22,7 +23,7 @@ int test_enforce_timeout_open_sockpool(const char *dbname, const char *type)
     rc = cdb2_open(&cdb2h, "proddb", "prod", 0);
     if (rc != CDB2_OK) {
         end = epochms();
-        fprintf(stderr, "Can't open db:%s cluster:%s within:%ld %s\n", dbname, type, end-start, cdb2_errstr(cdb2h));
+        fprintf(stderr, "Can't open db:%s cluster:%s within:%" PRId64 " %s\n", dbname, type, end-start, cdb2_errstr(cdb2h));
         if (end - start > 5100) {
             cdb2_close(cdb2h);
             return -1;
