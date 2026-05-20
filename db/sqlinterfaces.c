@@ -3451,20 +3451,23 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt, struct sqlclnt
             rc = SQLITE_ERROR;
             goto out;
         }
-        if (!sample_queries && p.pos == 0) {
-            p.pos = sqlite3_bind_parameter_index(stmt, p.name);
-        }
-        if (!sample_queries && p.pos == 0) {
-            rc = SQLITE_ERROR;
-            goto out;
+        if (!sample_queries) {
+            if (p.pos == 0) {
+                p.pos = sqlite3_bind_parameter_index(stmt, p.name);
+            }
+            if (p.pos <= 0 || p.pos > params) {
+                rc = SQLITE_ERROR;
+                goto out;
+            }
         }
 
         char *name;
-        if (strlen(p.name) <= 0) { // name is blank because this was from cdb2_bind_index()
+        if (strlen(p.name) == 0) { // name is blank because this was from cdb2_bind_index()
             name = intspace;
             sprintf(name, "?%d", p.pos);
-        } else
+        } else {
             name = p.name;
+        }
 
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             if (!sample_queries)
@@ -3561,7 +3564,7 @@ carray_err:     *err = sqlite3_mprintf("carray_bind: invalid param:%s count:%d t
         }
     }
 out:if (rc) {
-        *err = sqlite3_mprintf("Bad parameter:%s type:%d\n", p.name, p.type);
+        *err = sqlite3_mprintf("bad parameter name:%s pos:%d type:%d\n", p.name, p.pos, p.type);
     }
     return rc;
 }
