@@ -1066,9 +1066,10 @@ static int convert_record(struct convert_record_data *data)
             0,            /* blkpos */
             addflags, 0);
 
-        if (rc)
+        if (rc && rc != RC_INTERNAL_RETRY) {
             logmsg(LOGMSG_ERROR, "Failed to add record %llx (%lld) in migration %s->%s rc %d\n", ngenid, ngenid,
                    tbl->tablename, data->iq.usedb->tablename, rc);
+        }
 
         data->iq.usedb = tbl;
 
