@@ -3564,7 +3564,7 @@ carray_err:     *err = sqlite3_mprintf("carray_bind: invalid param:%s count:%d t
         }
     }
 out:if (rc) {
-        *err = sqlite3_mprintf("bad parameter name:%s pos:%d type:%d\n", p.name, p.pos, p.type);
+        *err = sqlite3_mprintf("bad parameter name:%s type:%d\n", p.name, p.type);
     }
     return rc;
 }
