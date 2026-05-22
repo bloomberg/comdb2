@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
@@ -23,7 +23,24 @@ function init() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(1, NOW())"
 
     master=`getmaster`
+    if [ -n "$CLUSTER" ] ; then
+        logfile="$TESTDIR/logs/$dbnm.$master.db"
+    else
+        logfile="$TESTDIR/logs/$dbnm.db"
+    fi
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE 'debug.invalid_genid' 1"
+}
+
+function set_all_nodes_tunable() {
+    local tunable=$1
+    local value=$2
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER; do
+            cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE '$tunable' $value"
+        done
+    else
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE '$tunable' $value"
+    fi
 }
 
 function cleanup() {
@@ -56,8 +73,141 @@ EOF
     assert_fail $?
 }
 
+function run_client_timeout_during_retry() {
+    echo "Test: client timeout during retry"
+    # Raise retry max on all nodes so retries are still in flight when
+    # the client-side api timeout fires.
+    set_all_nodes_tunable osql_verify_retry_max 100000
+
+    # Client-side api_call_timeout expires while the server is still retrying.
+    # The server should clean up the replay state without "state is wrong" errors.
+    COMDB2_CONFIG_API_CALL_TIMEOUT=1000 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF 2>&1 || true
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+
+    sleep 2
+
+    set_all_nodes_tunable osql_verify_retry_max 499
+
+    # Server should still be healthy
+    out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT i FROM t1 WHERE i = 1")
+    if [[ "$out" != "1" ]]; then
+        failexit "server unhealthy after client timeout during retry, got: $out"
+    fi
+
+    # The replay state must be cleaned up without "state is wrong" errors.
+    found_state_wrong=0
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER; do
+            if grep -q "state is wrong" "$TESTDIR/logs/$dbnm.$node.db"; then
+                found_state_wrong=1
+                break
+            fi
+        done
+    else
+        if grep -q "state is wrong" "$logfile"; then
+            found_state_wrong=1
+        fi
+    fi
+    if [[ $found_state_wrong -eq 1 ]]; then
+        failexit "replay state not cleaned up on client disconnect"
+    fi
+
+    echo "client timeout during retry: passed"
+}
+
+function run_queue_full_during_retry() {
+    echo "Test: queue full during retry"
+    # Shrink the SQL engine pool so it's easy to saturate.
+    # Set on all nodes since the client may connect to any of them.
+    set_all_nodes_tunable sqlenginepool.maxt 4
+    set_all_nodes_tunable sqlenginepool.maxq 2
+
+    # Saturate the pool with long-running queries
+    for i in $(seq 1 6); do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "SELECT SLEEP(5)" &>/dev/null &
+    done
+    sleep 1
+
+    # Trigger a tx that will need to retry — pool is full, dispatch may fail
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF 2>&1 || true
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+
+    # Wait for SLEEP queries to finish and pool to drain
+    wait
+
+    # Restore pool settings
+    set_all_nodes_tunable sqlenginepool.maxt 48
+    set_all_nodes_tunable sqlenginepool.maxq 0
+
+    # Server should still be healthy
+    out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT i FROM t1 WHERE i = 1")
+    if [[ "$out" != "1" ]]; then
+        failexit "server unhealthy after queue-full retry, got: $out"
+    fi
+    echo "queue full during retry: passed"
+}
+
+function run_healthy_contention() {
+    echo "Test: healthy contention produces correct effects across replays"
+    # Real (not forged) verify replays: many writers race to bump the same row
+    # to current+1. invalid_genid must be OFF here so replays actually succeed.
+    # Assert (1) replays happened and (2) get_effects stayed correct: the sum of
+    # updates each writer reported succeeding equals the final row value.
+    set_all_nodes_tunable debug.invalid_genid 0
+
+    local node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+        "SELECT host FROM comdb2_cluster WHERE is_master='N' AND coherent_state='coherent' LIMIT 1")
+    [[ -z "$node" ]] && node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()")
+    local nwriters=10 duration=15
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "CREATE TABLE ctr(a INT PRIMARY KEY, b INT)"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "INSERT INTO ctr VALUES(1, 0)"
+
+    # Counter is cumulative and already high from the forced-failure scenarios
+    # above, so measure the delta caused by this workload, not the raw value.
+    local vr_before=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node \
+        "SELECT value FROM comdb2_metrics WHERE name='verify_replays'")
+
+    writer() {
+        local out=$1 n=0 cur nupd start=$SECONDS
+        while (( SECONDS - start < duration )); do
+            cur=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT b FROM ctr WHERE a=1")
+            nupd=$(cdb2sql --showeffects ${CDB2_OPTIONS} $dbnm --host $node \
+                "UPDATE ctr SET b=$((cur+1)) WHERE a=1 AND b=$cur" \
+                | grep "Number of rows updated " | sed "s/.*updated //g")
+            [[ "$nupd" == "1" ]] && n=$((n+1))
+        done
+        echo $n > $out
+    }
+
+    for i in $(seq 1 $nwriters); do writer ${TMPDIR}/w.$i.out & done
+    wait
+
+    local reported=0 f
+    for f in ${TMPDIR}/w.*.out; do reported=$((reported + $(cat $f))); done
+    local final=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT b FROM ctr WHERE a=1")
+    local vr_after=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node \
+        "SELECT value FROM comdb2_metrics WHERE name='verify_replays'")
+    local replays=$((vr_after - vr_before))
+
+    echo "reported=$reported final=$final verify_replays(delta)=$replays"
+    [[ $replays -gt 0 ]] || failexit "expected verify replays under contention, got 0"
+    [[ $reported -eq $final ]] || failexit "get_effects mismatch: reported $reported but row is $final"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "DROP TABLE ctr"
+    echo "healthy contention: passed"
+}
+
 init
 run_bad_tx_with_intransres
 run_bad_tx_without_intransres
+run_client_timeout_during_retry
+run_queue_full_during_retry
 verify
 cleanup
+run_healthy_contention

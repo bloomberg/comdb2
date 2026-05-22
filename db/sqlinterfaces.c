@@ -4480,14 +4480,15 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
         return -1;
     }
     if (clnt->osql.replay == OSQL_RETRY_DO) {
-        plugin_func *save_cb = clnt->done_cb;
-        clnt->done_cb = NULL;
-        int rc  = srs_tran_replay_inline(clnt);
-        if (rc && !clnt->query_rc) {
-            clnt->query_rc = rc;
+        int rc = srs_tran_replay_prepare(clnt);
+        if (rc == RC_INTERNAL_RETRY) {
+            return rc;
         }
-        clnt->done_cb = save_cb;
-    } else if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+    }
+    if (clnt->osql.replay != OSQL_RETRY_NONE) {
+        osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+    }
+    if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
         srs_tran_destroy(clnt);
     }
     Pthread_mutex_lock(&lru_evbuffers_mtx); /* protect log_long_running_stmts_evbuffer() */
@@ -4855,6 +4856,17 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     assert(clnt->dbtran.pStmt == NULL);
 
+    if (clnt->osql.replay == OSQL_RETRY_DO && !clnt->osql.in_replay_nested) {
+        if (srs_tran_replay(clnt) == RC_INTERNAL_RETRY) {
+            /* Another iteration was scheduled on a new worker.
+             * That worker now owns the clnt; do NOT signal_clnt_as_done
+             * here or it would race with the new worker's enqueue. */
+            thrman_setid(thrman_self(), "[done]");
+            return;
+        }
+        goto done;
+    }
+
     /* everything going in is cursor based */
     int rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
@@ -4896,10 +4908,6 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         clnt->query_rc = execute_sql_query(thd, clnt);
     }
 
-    if (clnt->sql_ref) {
-        put_ref(&clnt->sql_ref);
-    }
-
     osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
 
@@ -4912,6 +4920,12 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n", __func__);
     }
     clnt->osql.timings.query_finished = osql_log_time();
+
+done:
+    if (clnt->sql_ref) {
+        put_ref(&clnt->sql_ref);
+    }
+
     osql_log_time_done(clnt);
     clnt_change_state(clnt, CONNECTION_IDLE);
     debug_close_clnt(clnt);
@@ -4935,6 +4949,15 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
     case THD_FREE:
         /* we just mark the client done here, with error */
         clnt->query_rc = CDB2ERR_IO_ERROR;
+        /* A parked verify-retry is being aborted: done_cb was stashed in
+         * save_cb by srs_tran_replay_prepare (osql_srs.c). Restore it and stop
+         * the replay, otherwise signal_clnt_as_done dead-ends on wait_cond and
+         * the newsql connection is never torn down. */
+        if (!clnt->done_cb && clnt->save_cb) {
+            clnt->done_cb = clnt->save_cb;
+            clnt->save_cb = NULL;
+            osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+        }
         signal_clnt_as_done(clnt);
         break;
     }
