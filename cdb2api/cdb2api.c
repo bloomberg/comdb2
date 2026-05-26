@@ -760,10 +760,10 @@ static void process_env_vars(void)
                         &max_local_connection_cache_entries_envvar);
     process_env_var_int("COMDB2_CONFIG_MAX_LOCAL_CONNECTION_CACHE_AGE", &max_local_connection_cache_age,
                         &max_local_connection_cache_age_envvar);
-    process_env_var_int("COMDB2_CONFIG_LOCAL_CONNECTION_CACHE_USE_SBUF", &local_connection_cache_use_sbuf,
-                        &local_connection_cache_use_sbuf_envvar);
-    process_env_var_int("COMDB2_CONFIG_LOCAL_CONNECTION_CACHE_CHECK_PID", &local_connection_cache_check_pid,
-                        &local_connection_cache_check_pid_envvar);
+    process_env_var_str_on_off("COMDB2_CONFIG_LOCAL_CONNECTION_CACHE_USE_SBUF", &local_connection_cache_use_sbuf,
+                              &local_connection_cache_use_sbuf_envvar);
+    process_env_var_str_on_off("COMDB2_CONFIG_LOCAL_CONNECTION_CACHE_CHECK_PID", &local_connection_cache_check_pid,
+                              &local_connection_cache_check_pid_envvar);
     process_env_var_str_on_off("COMDB2_CONFIG_USE_ENV_VARS", &cdb2_use_env_vars, 0);
 
     if (cdb2_use_env_vars) {
@@ -1660,25 +1660,26 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                             &cdb2_sockpool_recv_timeoutms_set_from_env);
         process_env_var_int("COMDB2_CONFIG_API_CALL_TIMEOUT", &CDB2_API_CALL_TIMEOUT,
                             &cdb2_api_call_timeout_set_from_env);
-        process_env_var_int("COMDB2_CONFIG_ENFORCE_API_CALL_TIMEOUT", &CDB2_ENFORCE_API_CALL_TIMEOUT,
-                            &cdb2_enforce_api_call_timeout_set_from_env);
-        process_env_var_int("COMDB2_CONFIG_NON_THREADED_IDENTITY", &cdb2_non_threaded_identity,
-                            &cdb2_non_threaded_identity);
+        process_env_var_str_on_off("COMDB2_CONFIG_ENFORCE_API_CALL_TIMEOUT", &CDB2_ENFORCE_API_CALL_TIMEOUT,
+                                   &cdb2_enforce_api_call_timeout_set_from_env);
+        process_env_var_str_on_off("COMDB2_CONFIG_NON_THREADED_IDENTITY", &cdb2_non_threaded_identity,
+                                   &cdb2_non_threaded_identity);
         process_env_var_int("COMDB2_CONFIG_COMDB2DB_TIMEOUT", &COMDB2DB_TIMEOUT, &cdb2_comdb2db_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_SOCKET_TIMEOUT", &CDB2_SOCKET_TIMEOUT, &cdb2_socket_timeout_set_from_env);
         process_env_var_int("COMDB2_CONFIG_PROTOBUF_SIZE", &CDB2_PROTOBUF_SIZE, &cdb2_protobuf_size_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_PROTOBUF_HEURISTIC", &cdb2_protobuf_heuristic,
-                            &cdb2_protobuf_heuristic_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_FLAT_COL_VALS", &cdb2_flat_col_vals, &cdb2_flat_col_vals_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_USE_BMSD", &cdb2_use_bmsd, &cdb2_use_bmsd_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_COMDB2DB_FALLBACK", &cdb2_comdb2db_fallback,
-                            &cdb2_comdb2db_fallback_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_USE_OPTIONAL_IDENTITY", &cdb2_use_optional_identity,
-                            &cdb2_use_optional_identity_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_DISCARD_UNREAD_SOCKET_DATA", &cdb2_discard_unread_socket_data,
-                            &cdb2_discard_unread_socket_data_set_from_env);
-        process_env_var_int("COMDB2_FEATURE_ALARM_UNREAD_SOCKET_DATA", &cdb2_alarm_unread_socket_data,
-                            &cdb2_alarm_unread_socket_data_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_PROTOBUF_HEURISTIC", &cdb2_protobuf_heuristic,
+                                   &cdb2_protobuf_heuristic_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_FLAT_COL_VALS", &cdb2_flat_col_vals,
+                                   &cdb2_flat_col_vals_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_USE_BMSD", &cdb2_use_bmsd, &cdb2_use_bmsd_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_COMDB2DB_FALLBACK", &cdb2_comdb2db_fallback,
+                                   &cdb2_comdb2db_fallback_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_USE_OPTIONAL_IDENTITY", &cdb2_use_optional_identity,
+                                   &cdb2_use_optional_identity_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_DISCARD_UNREAD_SOCKET_DATA", &cdb2_discard_unread_socket_data,
+                                   &cdb2_discard_unread_socket_data_set_from_env);
+        process_env_var_str_on_off("COMDB2_FEATURE_ALARM_UNREAD_SOCKET_DATA", &cdb2_alarm_unread_socket_data,
+                                   &cdb2_alarm_unread_socket_data_set_from_env);
         process_env_var_int("COMDB2_FEATURE_MAX_DISCARD_RECORDS", &cdb2_max_discard_records,
                             &cdb2_max_discard_records_set_from_env);
         process_env_var_str_on_off("COMDB2_CONFIG_CHECK_HB_ON_BLOCKED_WRITE", &check_hb_on_blocked_write,
