@@ -36,6 +36,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #endif
 
 #include "cdb2_constants.h"
+#include "debug_switches.h"
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -691,6 +692,20 @@ __dbreg_id_to_db(dbenv, txn, dbpp, ndx, inc, lsnp, in_recovery_verify)
 	if (rc == DB_DELETED) {
 		/*fprintf(stderr, "__dbreg_id_to_db %d DB_DELETED\n", ndx); */
       /*__db_panic(dbenv, rc);*/
+	}
+
+	/* Fault injection: simulate transient DB_DELETED during replication apply */
+	if (rc == 0 && !in_recovery_verify) {
+		static __thread int deleted_counter = 0;
+		int intvl = debug_switch_test_dbreg_deleted_intvl();
+		if (intvl > 0) {
+			if (deleted_counter == 0) {
+				deleted_counter = intvl;
+				rc = DB_DELETED;
+			} else {
+				deleted_counter--;
+			}
+		}
 	}
 
 #if defined (UFID_HASH_DEBUG)
