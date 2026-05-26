@@ -5,7 +5,7 @@
    You may obtain a copy of the License at
 
    http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,7 +28,7 @@ import com.bloomberg.comdb2.jdbc.Sqlresponse.*;
 
 /**
  * A Java implementation of Mohit's C API.
- * 
+ *
  * @author Rivers Zhang
  * @author Sebastien Blind
  */
@@ -95,6 +95,7 @@ public class Comdb2Handle extends AbstractConnection {
     HashMap<Integer, Cdb2BindValue> bindVarsByIndex;
     private List<String> sentSetStmts; // Collection of "set" SQL statements sent for this Connection
     private List<String> pendingSetStmts; // Collection of "set" SQL statements pending to be sent
+    private List<Integer> stmtTypes; // return types from SET STATEMENT RETURN TYPES
 
     private boolean ack = false;
     private boolean skipDrain = false;
@@ -545,7 +546,7 @@ public class Comdb2Handle extends AbstractConnection {
             driverErrStr = "Database disconnected while in transaction.";
             return Errors.CDB2ERR_TRAN_IO_ERROR;
         }
-        
+
         tdlog(Level.TRACE,
               "retryQueries: nretry=%d runlast=%b queryList.size()=%d",
               nretry, runlast, queryList.size());
@@ -617,7 +618,7 @@ public class Comdb2Handle extends AbstractConnection {
             return 1;
         }
 
-        for (int ii = 0, 
+        for (int ii = 0,
              len = runlast ? queryList.size() : queryList.size() - 1;
              ii < len; ++ii) {
             QueryItem item = queryList.get(ii);
@@ -726,8 +727,9 @@ public class Comdb2Handle extends AbstractConnection {
             tdlog(Level.TRACE, "starting sendQuery");
         sqlQuery.setFlags.addAll(pendingSetStmts);
 
-        if (types != null)
+        if (types != null) {
             sqlQuery.types.addAll(types);
+        }
 
         if (isRetry > 0) {
             sqlQuery.hasRetry = true;
@@ -755,12 +757,12 @@ public class Comdb2Handle extends AbstractConnection {
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_MASTER_EXEC_VALUE);
 
         sqlQuery.cnonce = cnonce;
-        
+
         sqlQuery.reqInfo = new Cdb2ReqInfo();
         sqlQuery.reqInfo.timestampus = timestampus;
         sqlQuery.reqInfo.numretries = nretry;
 
-        if (snapshotFile > 0) { 
+        if (snapshotFile > 0) {
             tdlog(Level.TRACE, "Setting hasSnapshotInfo to true because snapshotFile is %d", snapshotFile);
             sqlQuery.hasSnapshotInfo = true;
             sqlQuery.file = snapshotFile;
@@ -912,8 +914,56 @@ public class Comdb2Handle extends AbstractConnection {
         return runStatement(sql, null);
     }
 
+    private static int typeNameToConstant(String name) {
+        switch (name) {
+            case "integer":         return Constants.Types.CDB2_INTEGER;
+            case "real":            return Constants.Types.CDB2_REAL;
+            case "cstring":         return Constants.Types.CDB2_CSTRING;
+            case "blob":            return Constants.Types.CDB2_BLOB;
+            case "datetime":        return Constants.Types.CDB2_DATETIME;
+            case "datetimeus":      return Constants.Types.CDB2_DATETIMEUS;
+            case "intervalym":      return Constants.Types.CDB2_INTERVALYM;
+            case "intervalds":      return Constants.Types.CDB2_INTERVALDS;
+            case "intervaldsus":    return Constants.Types.CDB2_INTERVALDSUS;
+            default:                return -1;
+        }
+    }
+
+    private boolean parseStmtReturnTypes(String sql) {
+        String[] tokens = sql.split("\\s+");
+        if (tokens.length < 4 ||
+            !tokens[1].equals("statement") ||
+            !tokens[2].equals("return") ||
+            !tokens[3].equals("types"))
+            return false;
+
+        if (stmtTypes != null) {
+            driverErrStr = "statement return types already set";
+            return true;
+        }
+
+        List<Integer> types = new ArrayList<Integer>();
+        for (int i = 4; i < tokens.length; i++) {
+            int t = typeNameToConstant(tokens[i]);
+            if (t < 0) {
+                driverErrStr = "bad type: " + tokens[i];
+                return true;
+            }
+            types.add(t);
+        }
+        if (types.isEmpty()) {
+            driverErrStr = "no types specified";
+            return true;
+        }
+        stmtTypes = types;
+        return true;
+    }
+
     /* Sql interface to these */
     private boolean isClientOnlySetCommand(String sql) {
+        if (parseStmtReturnTypes(sql))
+            return true;
+
         String tokens[] = sql.split(" ");
 
         if (tokens.length < 1)
@@ -922,8 +972,8 @@ public class Comdb2Handle extends AbstractConnection {
         // Debug
         if (tokens[1].equals("debug")) {
             if (tokens.length == 3) {
-                if (    tokens[2].equals("on") || 
-                        tokens[2].equals("true") || 
+                if (    tokens[2].equals("on") ||
+                        tokens[2].equals("true") ||
                         tokens[2].equals("yes")) {
                     setDebug(true);
                 } else {
@@ -1017,6 +1067,8 @@ public class Comdb2Handle extends AbstractConnection {
 
         if (lowerSql.startsWith("set")) {
             if (isClientOnlySetCommand(lowerSql)) {
+                if (driverErrStr != null)
+                    return Errors.CDB2ERR_BADSTATE;
                 tdlog(Level.TRACE, "Added client-only set command %s", sql);
             } else {
                 addSetStatement(sql);
@@ -1039,6 +1091,10 @@ public class Comdb2Handle extends AbstractConnection {
             }
             return 0;
         }
+
+        if (types == null && stmtTypes != null)
+            types = stmtTypes;
+        stmtTypes = null;
 
         boolean is_begin = false, is_commit = false, is_rollback = false;
 
@@ -1078,7 +1134,7 @@ public class Comdb2Handle extends AbstractConnection {
         }
         retryAll = false;
 
-        // If we've already added this query onto the query-list 
+        // If we've already added this query onto the query-list
         // we don't want to run the last
         boolean runLast = true;
 
@@ -1138,7 +1194,7 @@ public class Comdb2Handle extends AbstractConnection {
                             errorInTxn = retryrc;
                         tdlog(Level.DEBUG, "Can't retry query, retryrc = %d", retryrc);
                         return retryrc;
-                    } 
+                    }
                     else if (retryrc > 0) {
                         tdlog(Level.TRACE, "retryQueries returns %d", retryrc);
                         closeNoException();
@@ -1153,7 +1209,7 @@ public class Comdb2Handle extends AbstractConnection {
             timestampus = System.currentTimeMillis() * 1000L;
 
             if (!inTxn || is_begin) {
-                sent = sendQuery(sql, types, is_begin, 0, retry, 
+                sent = sendQuery(sql, types, is_begin, 0, retry,
                         is_begin ? false : runLast);
             } else {
                 sent = sendQuery(sql, types, false, 0, 0, runLast);
@@ -1262,7 +1318,7 @@ public class Comdb2Handle extends AbstractConnection {
                         tdlog(Level.TRACE, "continuing on retryable error %d for null readNsh", errVal);
                         if (is_commit) {
                             cleanup_query_list();
-                        } 
+                        }
                         return errVal;
                     }
                 }
@@ -1412,8 +1468,8 @@ public class Comdb2Handle extends AbstractConnection {
                     tdlog(Level.TRACE,
                           "Continue with true retryAll for non-commit, null firstResp and 0 errVal");
                     continue;
-                } 
-               
+                }
+
                 driverErrStr = "Timeout while reading response from server.";
 
                 tdlog(Level.TRACE,
@@ -1509,7 +1565,7 @@ public class Comdb2Handle extends AbstractConnection {
                 }
 
                 // this happens with 'begin'
-                if (isHASql && (((is_retryable(nxtrc) && snapshotFile>0) || is_begin) || 
+                if (isHASql && (((is_retryable(nxtrc) && snapshotFile>0) || is_begin) ||
                             (io == null && ((inTxn && snapshotFile > 0) || commitSnapshotFile > 0)))) {
                     closeNoException();
 
@@ -1538,7 +1594,7 @@ public class Comdb2Handle extends AbstractConnection {
                       nxtrc, is_begin, isHASql);
                 return convert_rc(nxtrc);
             } else {
-                // XXX I could paper over this with the api, but i want to see what is 
+                // XXX I could paper over this with the api, but i want to see what is
                 // happening first
                 tdlog(Level.TRACE, "XXX FAIL .. firstResp.respType=%d", firstResp.respType);
             }
@@ -1814,11 +1870,11 @@ readloop:
             /*
             if (lastResp.respType == 3) {
                 last_non_logical_err = null;
-                // This only happens in a BEGIN which can't get a durable lsn 
+                // This only happens in a BEGIN which can't get a durable lsn
                 // from the master
                 if (is_retryable(lastResp.errCode)) {
                     //begin_retry = true;
-                    tdlog(Level.TRACE, "next_int: returning retryable rcode" + 
+                    tdlog(Level.TRACE, "next_int: returning retryable rcode" +
                             lastResp.errCode + " on begin");
                     //closeNoException();
                     //skip_to_open = true;
@@ -2113,7 +2169,7 @@ readloop:
                 continue;
 
             io = new SockIO(myDbHosts.get(dbHostIdx), pmuxrte ? portMuxPort : myDbPorts.get(dbHostIdx),
-                            tcpbufsz, pmuxrte ? myDbName : null, 
+                            tcpbufsz, pmuxrte ? myDbName : null,
                             soTimeout, connectTimeout);
             if (io.open()) {
                 try {

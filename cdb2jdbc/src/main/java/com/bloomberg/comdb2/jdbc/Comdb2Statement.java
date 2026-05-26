@@ -5,7 +5,7 @@
    You may obtain a copy of the License at
 
    http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -81,6 +81,14 @@ public class Comdb2Statement implements Statement {
         if(rs != null) {
             rs.close();
             rs = null;
+        }
+        
+        //TODO: can do this for all set statements inTxn
+        if (locase.startsWith("set statement return types") &&
+                (conn.isInTxn() || !conn.getAutoCommit())) {
+            throw Comdb2Connection.createSQLException(
+                    "set statement return types not allowed inside a transaction",
+                    Constants.Errors.CDB2ERR_BADSTATE, sql, null);
         }
 
         if (!conn.isInTxn()) {
