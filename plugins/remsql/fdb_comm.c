@@ -1829,6 +1829,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->ix.ixlen))
             return -1;
         msg->ix.ixlen = ntohl(msg->ix.ixlen);
+        if (msg->ix.ixlen < 0 || msg->ix.ixlen > MAXKEYSZ + MAXRECSZ)
+            return -1;
 
         rc = cdb2buf_fread((char *)&msg->ix.seq, 1, sizeof(msg->ix.seq), sb);
         if (rc != sizeof(msg->ix.seq))
@@ -1841,8 +1843,11 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
 
             rc = cdb2buf_fread(msg->ix.ix, 1, msg->ix.ixlen, sb);
-            if (rc != msg->ix.ixlen)
+            if (rc != msg->ix.ixlen) {
+                free(msg->ix.ix);
+                msg->ix.ix = NULL;
                 return -1;
+            }
         } else {
             msg->ix.ix = NULL;
         }
