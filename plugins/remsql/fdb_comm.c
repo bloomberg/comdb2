@@ -1432,8 +1432,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->cf.keylen))
             return -1;
         msg->cf.keylen = ntohl(msg->cf.keylen);
-
-        assert(msg->cf.keylen > 0);
+        if (msg->cf.keylen <= 0 || msg->cf.keylen > MAXKEYSZ + MAXRECSZ)
+            return -1;
 
         msg->cf.key = (char *)malloc(msg->cf.keylen);
         if (!msg->cf.key)
@@ -1583,42 +1583,25 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
 
             rc = cdb2buf_fread(msg->in.data, 1, msg->in.datalen, sb);
-            if (rc != msg->in.datalen) {
-                free(msg->in.data);
-                msg->in.data = NULL;
+            if (rc != msg->in.datalen)
                 return -1;
-            }
         } else {
             msg->in.data = NULL;
         }
 
         if (flags & FDB_MSG_TRAN_TBLNAME) {
             rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
-            if (rc != sizeof(tmp)) {
-                free(msg->in.data);
-                msg->in.data = NULL;
+            if (rc != sizeof(tmp))
                 return -1;
-            }
             tmp = ntohl(tmp);
-            if (tmp <= 0 || tmp > MAXTABLELEN) {
-                free(msg->in.data);
-                msg->in.data = NULL;
+            if (tmp <= 0 || tmp > MAXTABLELEN)
                 return -1;
-            }
             msg->in.tblname = malloc(tmp + 1);
-            if (!msg->in.tblname) {
-                free(msg->in.data);
-                msg->in.data = NULL;
+            if (!msg->in.tblname)
                 return -1;
-            }
             rc = cdb2buf_fread(msg->in.tblname, 1, tmp, sb);
-            if (rc != tmp) {
-                free(msg->in.tblname);
-                msg->in.tblname = NULL;
-                free(msg->in.data);
-                msg->in.data = NULL;
+            if (rc != tmp)
                 return -1;
-            }
             msg->in.tblname[tmp] = '\0';
         }
 
@@ -1751,42 +1734,25 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
 
             rc = cdb2buf_fread(msg->up.data, 1, msg->up.datalen, sb);
-            if (rc != msg->up.datalen) {
-                free(msg->up.data);
-                msg->up.data = NULL;
+            if (rc != msg->up.datalen)
                 return -1;
-            }
         } else {
             msg->up.data = NULL;
         }
 
         if (flags & FDB_MSG_TRAN_TBLNAME) {
             rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
-            if (rc != sizeof(tmp)) {
-                free(msg->up.data);
-                msg->up.data = NULL;
+            if (rc != sizeof(tmp))
                 return -1;
-            }
             tmp = ntohl(tmp);
-            if (tmp <= 0 || tmp > MAXTABLELEN) {
-                free(msg->up.data);
-                msg->up.data = NULL;
+            if (tmp <= 0 || tmp > MAXTABLELEN)
                 return -1;
-            }
             msg->up.tblname = malloc(tmp + 1);
-            if (!msg->up.tblname) {
-                free(msg->up.data);
-                msg->up.data = NULL;
+            if (!msg->up.tblname)
                 return -1;
-            }
             rc = cdb2buf_fread(msg->up.tblname, 1, tmp, sb);
-            if (rc != tmp) {
-                free(msg->up.tblname);
-                msg->up.tblname = NULL;
-                free(msg->up.data);
-                msg->up.data = NULL;
+            if (rc != tmp)
                 return -1;
-            }
             msg->up.tblname[tmp] = '\0';
         }
 
@@ -1843,11 +1809,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
 
             rc = cdb2buf_fread(msg->ix.ix, 1, msg->ix.ixlen, sb);
-            if (rc != msg->ix.ixlen) {
-                free(msg->ix.ix);
-                msg->ix.ix = NULL;
+            if (rc != msg->ix.ixlen)
                 return -1;
-            }
         } else {
             msg->ix.ix = NULL;
         }
