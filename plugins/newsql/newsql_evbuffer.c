@@ -858,7 +858,7 @@ static void process_disttxn(struct newsql_appdata_evbuffer *appdata, CDB2DISTTXN
     }
 
 sendresponse:
-    if (disttxn->disttxn->async) {
+    if (disttxn->disttxn && disttxn->disttxn->async) {
         rd_hdr(-1, 0, appdata);
         return;
     }
