@@ -124,9 +124,12 @@ __qam_incfirst_recover(dbenv, dbtp, lsnp, op, info)
 				    __qam_fremove(file_dbp, cp->pgno)) != 0)
 					goto err;
 			meta->first_recno++;
-			if (meta->first_recno == RECNO_OOB)
-				meta->first_recno++;
 			modified = 1;
+			if (meta->first_recno == RECNO_OOB) {
+				meta->first_recno++;
+				if (meta->cur_recno == RECNO_OOB)
+					break;
+			}
 		}
 	}
 
