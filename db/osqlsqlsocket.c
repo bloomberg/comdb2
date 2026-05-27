@@ -300,6 +300,10 @@ int osqlcomm_req_socket(COMDB2BUF *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
 
     GDATA(sqlqlen);
     sqlqlen = htonl(sqlqlen);
+    if (sqlqlen <= 0 || sqlqlen > MAXQUERYLEN) {
+        rc = -1;
+        goto done;
+    }
 
     *sql = malloc(sqlqlen + 1);
     if (!*sql) {
@@ -311,6 +315,7 @@ int osqlcomm_req_socket(COMDB2BUF *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
 
     GDATALEN(uuid, sizeof(uuid_t));
     GDATALEN(tzname, DB_MAX_TZNAMEDB);
+    tzname[DB_MAX_TZNAMEDB - 1] = '\0';
     GDATA(unused);
     GDATA(pad);
     GDATALEN(*sql, sqlqlen + 1 /* there is an extra byte here */);
@@ -334,6 +339,10 @@ int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess)
     while (!is_msg_done) {
         GDATA(buflen);
         buflen = htonl(buflen);
+        if (buflen <= 0) {
+            rc = -1;
+            goto done;
+        }
 
         if (gbl_sockbplog_debug)
             logmsg(LOGMSG_ERROR, "%p Received a packet of length %d\n",

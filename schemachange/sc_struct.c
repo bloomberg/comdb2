@@ -27,6 +27,28 @@
 #include "str0.h"
 #include "sc_version.h"
 
+static void free_genshard_partition(struct schema_change_type *s)
+{
+    if (s->partition.u.genshard.dbnames) {
+        for (uint32_t i = 0; i < s->partition.u.genshard.numdbs; i++)
+            free(s->partition.u.genshard.dbnames[i]);
+        free(s->partition.u.genshard.dbnames);
+        s->partition.u.genshard.dbnames = NULL;
+    }
+    if (s->partition.u.genshard.columns) {
+        for (uint32_t i = 0; i < s->partition.u.genshard.numcols; i++)
+            free(s->partition.u.genshard.columns[i]);
+        free(s->partition.u.genshard.columns);
+        s->partition.u.genshard.columns = NULL;
+    }
+    if (s->partition.u.genshard.shardnames) {
+        for (uint32_t i = 0; i < s->partition.u.genshard.numdbs; i++)
+            free(s->partition.u.genshard.shardnames[i]);
+        free(s->partition.u.genshard.shardnames);
+        s->partition.u.genshard.shardnames = NULL;
+    }
+}
+
 /************ SCHEMACHANGE TO BUF UTILITY FUNCTIONS
  * *****************************/
 
@@ -1176,22 +1198,80 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
                                           p_buf, p_buf_end);
         p_buf = (uint8_t *)buf_get(&s->partition.u.genshard.numdbs, sizeof(s->partition.u.genshard.numdbs), p_buf,
                                    p_buf_end);
-        s->partition.u.genshard.dbnames = malloc(s->partition.u.genshard.numdbs * sizeof(char*));
+        if (!p_buf)
+            return NULL;
+        s->partition.u.genshard.dbnames = calloc(s->partition.u.genshard.numdbs, sizeof(char *));
+        if (!s->partition.u.genshard.dbnames)
+            return NULL;
         for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
-            s->partition.u.genshard.dbnames[i] = strdup(p_buf);
-            p_buf = ((char*)p_buf) + strlen(s->partition.u.genshard.dbnames[i]) + 1;
+            if (p_buf >= p_buf_end) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            size_t maxlen = (char *)p_buf_end - (char *)p_buf;
+            size_t slen = strnlen((char *)p_buf, maxlen);
+            if (slen == maxlen) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            s->partition.u.genshard.dbnames[i] = strndup((char *)p_buf, slen);
+            if (!s->partition.u.genshard.dbnames[i]) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            p_buf += slen + 1;
         }
         p_buf = (uint8_t *)buf_get(&s->partition.u.genshard.numcols, sizeof(s->partition.u.genshard.numcols), p_buf,
                                    p_buf_end);
-        s->partition.u.genshard.columns = malloc(s->partition.u.genshard.numcols * sizeof(char*));
-        for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
-            s->partition.u.genshard.columns[i] = strdup(p_buf);
-            p_buf = ((char*)p_buf) + strlen(s->partition.u.genshard.columns[i]) + 1;
+        if (!p_buf) {
+            free_genshard_partition(s);
+            return NULL;
         }
-        s->partition.u.genshard.shardnames = malloc(s->partition.u.genshard.numdbs * sizeof(char*));
+        s->partition.u.genshard.columns = calloc(s->partition.u.genshard.numcols, sizeof(char *));
+        if (!s->partition.u.genshard.columns) {
+            free_genshard_partition(s);
+            return NULL;
+        }
+        for (int i = 0; i < s->partition.u.genshard.numcols; i++) {
+            if (p_buf >= p_buf_end) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            size_t maxlen = (char *)p_buf_end - (char *)p_buf;
+            size_t slen = strnlen((char *)p_buf, maxlen);
+            if (slen == maxlen) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            s->partition.u.genshard.columns[i] = strndup((char *)p_buf, slen);
+            if (!s->partition.u.genshard.columns[i]) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            p_buf += slen + 1;
+        }
+        s->partition.u.genshard.shardnames = calloc(s->partition.u.genshard.numdbs, sizeof(char *));
+        if (!s->partition.u.genshard.shardnames) {
+            free_genshard_partition(s);
+            return NULL;
+        }
         for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
-            s->partition.u.genshard.shardnames[i] = strdup(p_buf);
-            p_buf = ((char*)p_buf) + strlen(s->partition.u.genshard.shardnames[i]) + 1;
+            if (p_buf >= p_buf_end) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            size_t maxlen = (char *)p_buf_end - (char *)p_buf;
+            size_t slen = strnlen((char *)p_buf, maxlen);
+            if (slen == maxlen) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            s->partition.u.genshard.shardnames[i] = strndup((char *)p_buf, slen);
+            if (!s->partition.u.genshard.shardnames[i]) {
+                free_genshard_partition(s);
+                return NULL;
+            }
+            p_buf += slen + 1;
         }
         break;
     }
