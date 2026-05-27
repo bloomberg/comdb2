@@ -27,6 +27,7 @@
 #include "logmsg.h"
 #include "comdb2_appsock.h"
 #include <disttxn.h>
+#include "cdb2_constants.h"
 
 #include "ssl_bend.h" /* for gbl_client_ssl_mode & gbl_ssl_allow_remsql */
 #include "ssl_support.h"
@@ -1568,6 +1569,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->in.datalen))
             return -1;
         msg->in.datalen = ntohl(msg->in.datalen);
+        if (msg->in.datalen < 0)
+            return -1;
 
         rc = cdb2buf_fread((char *)&msg->in.seq, 1, sizeof(msg->in.seq), sb);
         if (rc != sizeof(msg->in.seq))
@@ -1580,23 +1583,43 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
 
             rc = cdb2buf_fread(msg->in.data, 1, msg->in.datalen, sb);
-            if (rc != msg->in.datalen)
+            if (rc != msg->in.datalen) {
+                free(msg->in.data);
+                msg->in.data = NULL;
                 return -1;
+            }
         } else {
             msg->in.data = NULL;
         }
 
         if (flags & FDB_MSG_TRAN_TBLNAME) {
             rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
-            if (rc != sizeof(tmp))
+            if (rc != sizeof(tmp)) {
+                free(msg->in.data);
+                msg->in.data = NULL;
                 return -1;
+            }
             tmp = ntohl(tmp);
-            msg->in.tblname = malloc(tmp);
-            if (!msg->in.tblname)
+            if (tmp <= 0 || tmp > MAXTABLELEN) {
+                free(msg->in.data);
+                msg->in.data = NULL;
                 return -1;
+            }
+            msg->in.tblname = malloc(tmp + 1);
+            if (!msg->in.tblname) {
+                free(msg->in.data);
+                msg->in.data = NULL;
+                return -1;
+            }
             rc = cdb2buf_fread(msg->in.tblname, 1, tmp, sb);
-            if (rc != tmp)
+            if (rc != tmp) {
+                free(msg->in.tblname);
+                msg->in.tblname = NULL;
+                free(msg->in.data);
+                msg->in.data = NULL;
                 return -1;
+            }
+            msg->in.tblname[tmp] = '\0';
         }
 
         break;
@@ -1647,12 +1670,15 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(tmp))
                 return -1;
             tmp = ntohl(tmp);
-            msg->de.tblname = malloc(tmp);
+            if (tmp <= 0 || tmp > MAXTABLELEN)
+                return -1;
+            msg->de.tblname = malloc(tmp + 1);
             if (!msg->de.tblname)
                 return -1;
             rc = cdb2buf_fread(msg->de.tblname, 1, tmp, sb);
             if (rc != tmp)
                 return -1;
+            msg->de.tblname[tmp] = '\0';
         }
 
         break;
@@ -1711,6 +1737,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->up.datalen))
             return -1;
         msg->up.datalen = ntohl(msg->up.datalen);
+        if (msg->up.datalen < 0)
+            return -1;
 
         rc = cdb2buf_fread((char *)&msg->up.seq, 1, sizeof(msg->up.seq), sb);
         if (rc != sizeof(msg->up.seq))
@@ -1723,23 +1751,43 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
 
             rc = cdb2buf_fread(msg->up.data, 1, msg->up.datalen, sb);
-            if (rc != msg->up.datalen)
+            if (rc != msg->up.datalen) {
+                free(msg->up.data);
+                msg->up.data = NULL;
                 return -1;
+            }
         } else {
             msg->up.data = NULL;
         }
 
         if (flags & FDB_MSG_TRAN_TBLNAME) {
             rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
-            if (rc != sizeof(tmp))
+            if (rc != sizeof(tmp)) {
+                free(msg->up.data);
+                msg->up.data = NULL;
                 return -1;
+            }
             tmp = ntohl(tmp);
-            msg->up.tblname = malloc(tmp);
-            if (!msg->up.tblname)
+            if (tmp <= 0 || tmp > MAXTABLELEN) {
+                free(msg->up.data);
+                msg->up.data = NULL;
                 return -1;
+            }
+            msg->up.tblname = malloc(tmp + 1);
+            if (!msg->up.tblname) {
+                free(msg->up.data);
+                msg->up.data = NULL;
+                return -1;
+            }
             rc = cdb2buf_fread(msg->up.tblname, 1, tmp, sb);
-            if (rc != tmp)
+            if (rc != tmp) {
+                free(msg->up.tblname);
+                msg->up.tblname = NULL;
+                free(msg->up.data);
+                msg->up.data = NULL;
                 return -1;
+            }
+            msg->up.tblname[tmp] = '\0';
         }
 
         break;
