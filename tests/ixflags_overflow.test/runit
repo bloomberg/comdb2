@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Regression test for heap-buffer-overflow in key_add_comn (macc_so.c).
+#
+# ixflags[] in macc_globals_t is sized to MAXINDEX (50), but the index number
+# (ix) is derived from keyixnum[] which is sized to MAXKEYS (256).  Creating a
+# table with more than MAXINDEX keys causes an out-of-bounds write to
+# ixflags[ix] when ix >= MAXINDEX.
+#
+# With the bug:   server crashes / cdb2sql returns non-zero.
+# With the fix:   CREATE TABLE succeeds and the table is usable.
+
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -x
+
+if [[ -z "$DBNAME" ]]; then
+    echo "DBNAME not set"
+    exit 1
+fi
+
+# Number of keys to create - must exceed MAXINDEX (50) to trigger the overflow.
+NUM_KEYS=51
+
+# Build CSC2 schema with NUM_KEYS integer fields and NUM_KEYS duplicate keys.
+schema="schema {"
+for i in $(seq 0 $((NUM_KEYS - 1))); do
+    schema="$schema int f$i"
+done
+schema="$schema } keys {"
+for i in $(seq 0 $((NUM_KEYS - 1))); do
+    schema="$schema dup \"k$i\" = f$i"
+done
+schema="$schema }"
+
+# CREATE TABLE - this is where the overflow is triggered in key_add_comn.
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1 { $schema }"
+if [[ $? -ne 0 ]]; then
+    failexit "CREATE TABLE with $NUM_KEYS keys failed"
+fi
+
+# Sanity-check that the table is actually usable.
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into t1(f0, f50) values(1, 2)"
+if [[ $? -ne 0 ]]; then
+    failexit "INSERT after CREATE TABLE failed"
+fi
+
+count=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1")
+if [[ "$count" != "1" ]]; then
+    failexit "Expected row count 1, got '$count'"
+fi
+
+echo "Testcase passed."
+exit 0

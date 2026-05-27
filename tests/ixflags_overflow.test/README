@@ -1,0 +1,19 @@
+Regression test for a heap-buffer-overflow in key_add_comn() (csc2/macc_so.c).
+
+The macc_globals_t struct contains several arrays sized to MAXINDEX (50),
+including ixflags[].  The index number (ix) assigned to each key during CSC2
+schema parsing is derived from keyixnum[], which is sized to MAXKEYS (256).
+When a table is created with more than MAXINDEX keys, ix reaches 50 and the
+write at:
+
+    macc_globals->ixflags[ix] = macc_globals->workkeyflag;
+
+overflows the 50-element array, writing one int past its end.
+
+This test creates a table with 51 keys (one more than MAXINDEX) to trigger
+the overflow.  With the bug present the server crashes during the schema
+change; with the fix the CREATE TABLE succeeds and the table is usable.
+
+Fix: change the MAXINDEX-sized arrays in macc_globals_t (ixflags, ixsize,
+ixblocksize, lv0size, spltpercnt) to use MAXKEYS, and update the
+initialisation loop in dyns_init_globals() accordingly.
