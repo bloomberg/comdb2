@@ -584,6 +584,7 @@ int fdb_recv_row_int(fdb_msg_t *msg, char *cid, COMDB2BUF *sb, const char *func,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d (%s:%d)\n",
                __func__, rc, func, line);
+        fdb_msg_clean_message(msg);
         /* synthetic row containing the error */
         msg->hd.type = FDB_MSG_DATA_ROW;
         msg->dr.rc = FDB_ERR_READ_IO;
@@ -615,6 +616,7 @@ int fdb_recv_2pc_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     rc = fdb_msg_read_message(trans->fcon.sb, msg, 0);
     if (rc != FDB_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n", __func__, rc);
+        fdb_msg_clean_message(msg);
         trans->rc = FDB_ERR_READ_IO;
         trans->errstr = strdup("failed to read rc from socket");
         trans->errstrlen = strlen(trans->errstr) + 1;
@@ -664,6 +666,7 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     if (rc != FDB_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
                __func__, rc);
+        fdb_msg_clean_message(msg);
         trans->rc = FDB_ERR_READ_IO;
         trans->errstr = strdup("failed to read rc from socket");
         trans->errstrlen = strlen(trans->errstr) + 1;
@@ -1042,38 +1045,53 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             return -1;
         msg->tv.seq = ntohl(msg->tv.seq);
 
-        /* dist-txnid */
+        /* dist-txnid: schema defines cstring dist_txnid[129] */
         rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
         if (rc != sizeof(tmp))
             return -1;
         tmp = ntohl(tmp);
+        if (tmp <= 0 || tmp > 129)
+            return -1;
 
         msg->tv.dist_txnid = malloc(tmp);
+        if (!msg->tv.dist_txnid)
+            return -1;
         rc = cdb2buf_fread((char *)msg->tv.dist_txnid, 1, tmp, sb);
         if (rc != tmp)
             return -1;
+        msg->tv.dist_txnid[tmp - 1] = '\0';
 
         /* coordinator-dbname */
         rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
         if (rc != sizeof(tmp))
             return -1;
         tmp = ntohl(tmp);
+        if (tmp <= 0 || tmp > MAX_DBNAME_LENGTH)
+            return -1;
 
         msg->tv.coordinator_dbname = malloc(tmp);
+        if (!msg->tv.coordinator_dbname)
+            return -1;
         rc = cdb2buf_fread((char *)msg->tv.coordinator_dbname, 1, tmp, sb);
         if (rc != tmp)
             return -1;
+        msg->tv.coordinator_dbname[tmp - 1] = '\0';
 
         /* coordinator-tier */
         rc = cdb2buf_fread((char *)&tmp, 1, sizeof(tmp), sb);
         if (rc != sizeof(tmp))
             return -1;
         tmp = ntohl(tmp);
+        if (tmp <= 0 || tmp > MAX_DBNAME_LENGTH)
+            return -1;
 
         msg->tv.coordinator_tier = malloc(tmp);
+        if (!msg->tv.coordinator_tier)
+            return -1;
         rc = cdb2buf_fread((char *)msg->tv.coordinator_tier, 1, tmp, sb);
         if (rc != tmp)
             return -1;
+        msg->tv.coordinator_tier[tmp - 1] = '\0';
 
         /* timestamp */
         rc = cdb2buf_fread((char *)&lltmp, 1, sizeof(lltmp), sb);
@@ -1087,7 +1105,11 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(msg->tv.authdtalen))
                 return -1;
             msg->tv.authdtalen = ntohl(msg->tv.authdtalen);
+            if (msg->tv.authdtalen <= 0 || msg->tv.authdtalen > 65536)
+                return -1;
             msg->tv.authdta = malloc(msg->tv.authdtalen);
+            if (!msg->tv.authdta)
+                return -1;
             rc = cdb2buf_fread(msg->tv.authdta, 1, msg->tv.authdtalen, sb);
             if (rc != msg->tv.authdtalen)
                 return -1;
@@ -1124,6 +1146,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
             msg->tr.authdtalen = ntohl(msg->tr.authdtalen);
             msg->tr.authdta = malloc(msg->tr.authdtalen);
+            if (!msg->tr.authdta)
+                return -1;
             rc = cdb2buf_fread(msg->tr.authdta, 1, msg->tr.authdtalen, sb);
             if (rc != msg->tr.authdtalen)
                 return -1;
@@ -1151,6 +1175,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->rv.errstrlen))
             return -1;
         msg->rv.errstrlen = ntohl(msg->rv.errstrlen);
+        if (msg->rv.errstrlen < 0 || msg->rv.errstrlen > 4096)
+            return -1;
 
         if (msg->rv.errstrlen) {
             msg->rv.errstr = (char *)malloc(msg->rv.errstrlen);
@@ -1160,6 +1186,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             rc = cdb2buf_fread(msg->rv.errstr, 1, msg->rv.errstrlen, sb);
             if (rc != msg->rv.errstrlen)
                 return -1;
+            msg->rv.errstr[msg->rv.errstrlen - 1] = '\0';
         } else {
             msg->rv.errstr = NULL;
         }
@@ -1281,6 +1308,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
                 return -1;
             msg->co.authdtalen = ntohl(msg->co.authdtalen);
             msg->co.authdta = malloc(msg->co.authdtalen);
+            if (!msg->co.authdta)
+                return -1;
             rc = cdb2buf_fread(msg->co.authdta, 1, msg->co.authdtalen, sb);
             if (rc != msg->co.authdtalen)
                 return -1;
@@ -3715,6 +3744,7 @@ static int handle_remsql_session(COMDB2BUF *sb, struct dbenv *dbenv)
         logmsg(LOGMSG_ERROR,
                "%s: failed to handle remote cursor request rc=%d\n", __func__,
                rc);
+        fdb_msg_clean_message(&msg);
         return rc;
     }
 
@@ -3885,13 +3915,14 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n", __func__, rc);
+        fdb_msg_clean_message(&msg);
         return rc;
     }
 
     if ((msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_2PC_BEGIN) {
         logmsg(LOGMSG_ERROR, "%s: received wrong packet type=%d, expecting tran begin\n", __func__,
                (msg.hd.type & FD_MSG_TYPE));
-        abort();
+        fdb_msg_clean_message(&msg);
         return -1;
     }
 
@@ -3965,6 +3996,7 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
     svc_cb_arg.clnt = NULL;
 
 done:
+    fdb_msg_clean_message(&msg);
     done_sql_thread();
 
     return rc;
@@ -3998,6 +4030,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n", __func__, rc);
+        fdb_msg_clean_message(&msg);
         return rc;
     }
 
@@ -4089,6 +4122,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     svc_cb_arg.clnt = NULL;
 
 done:
+    fdb_msg_clean_message(&msg);
     done_sql_thread();
 
     return rc;
