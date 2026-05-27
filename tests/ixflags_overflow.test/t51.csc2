@@ -1,0 +1,106 @@
+schema {
+    int f0
+    int f1
+    int f2
+    int f3
+    int f4
+    int f5
+    int f6
+    int f7
+    int f8
+    int f9
+    int f10
+    int f11
+    int f12
+    int f13
+    int f14
+    int f15
+    int f16
+    int f17
+    int f18
+    int f19
+    int f20
+    int f21
+    int f22
+    int f23
+    int f24
+    int f25
+    int f26
+    int f27
+    int f28
+    int f29
+    int f30
+    int f31
+    int f32
+    int f33
+    int f34
+    int f35
+    int f36
+    int f37
+    int f38
+    int f39
+    int f40
+    int f41
+    int f42
+    int f43
+    int f44
+    int f45
+    int f46
+    int f47
+    int f48
+    int f49
+    int f50
+}
+keys {
+    "K0" = f0
+    "K1" = f1
+    "K2" = f2
+    "K3" = f3
+    "K4" = f4
+    "K5" = f5
+    "K6" = f6
+    "K7" = f7
+    "K8" = f8
+    "K9" = f9
+    "K10" = f10
+    "K11" = f11
+    "K12" = f12
+    "K13" = f13
+    "K14" = f14
+    "K15" = f15
+    "K16" = f16
+    "K17" = f17
+    "K18" = f18
+    "K19" = f19
+    "K20" = f20
+    "K21" = f21
+    "K22" = f22
+    "K23" = f23
+    "K24" = f24
+    "K25" = f25
+    "K26" = f26
+    "K27" = f27
+    "K28" = f28
+    "K29" = f29
+    "K30" = f30
+    "K31" = f31
+    "K32" = f32
+    "K33" = f33
+    "K34" = f34
+    "K35" = f35
+    "K36" = f36
+    "K37" = f37
+    "K38" = f38
+    "K39" = f39
+    "K40" = f40
+    "K41" = f41
+    "K42" = f42
+    "K43" = f43
+    "K44" = f44
+    "K45" = f45
+    "K46" = f46
+    "K47" = f47
+    "K48" = f48
+    "K49" = f49
+    "K50" = f50
+}

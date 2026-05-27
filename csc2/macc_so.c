@@ -1100,6 +1100,13 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         }
     }
 
+    if (ix >= MAXINDEX) {
+        csc2_error("Error at line %3d: TOO MANY INDEXES (%d), MAX IS %d\n", current_line, ix + 1, MAXINDEX);
+        csc2_syntax_error("Error at line %3d: TOO MANY INDEXES (%d), MAX IS %d", current_line, ix + 1, MAXINDEX);
+        any_errors++;
+        return;
+    }
+
     if (exprname == 0) { /* get expression */
         exprnum = -1;
     } else {
