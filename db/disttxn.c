@@ -2205,6 +2205,11 @@ int osql_sanction_disttxn(const char *dist_txnid, unsigned long long *rqid, uuid
     Pthread_mutex_lock(&sanc_lk);
     sanc = hash_find(sanctioned_hash, &dist_txnid);
     if (sanc != NULL) {
+        if (sanc->sanctioned == -1) {
+            logmsg(LOGMSG_ERROR, "%s: dist_txnid %s has been discarded, ignoring prepare\n", __func__, dist_txnid);
+            Pthread_mutex_unlock(&sanc_lk);
+            return -1;
+        }
         (*rqid) = sanc->rqid;
         comdb2uuidcpy((*uuid), sanc->uuid);
         sanc->sanctioned = 1;

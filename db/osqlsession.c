@@ -317,6 +317,9 @@ int osql_prepare(const char *dist_txnid, const char *coordinator_dbname, const c
         logmsg(LOGMSG_INFO, "%s: coordinator beat participant prepare dist-txn %s\n", __func__, dist_txnid);
         return 0;
     }
+    if (rc < 0) {
+        return -1;
+    }
 
     osql_sess_t *sess = osql_repository_get(uuid);
     if (!sess) {
