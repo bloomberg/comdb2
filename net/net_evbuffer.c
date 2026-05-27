@@ -1604,16 +1604,16 @@ static int process_decom_hostname(struct event_info *e)
         uint32_t n;
         memcpy(&n, e->rd_buf, sizeof(n));
         e->need = htonl(n);
+        if (e->need > HOSTNAME_LEN) {
+            hprintf("bad hostname len:%zu\n", e->need);
+            return -1;
+        }
         return 0;
     }
-    if (e->need > HOSTNAME_LEN) {
-        hprintf("bad hostname len:%zu\n", e->need);
-    } else {
-        char host[e->need + 1];
-        memcpy(host, e->rd_buf, e->need);
-        host[e->need] = 0;
-        dispatch_decom(intern(host));
-    }
+    char host[e->need + 1];
+    memcpy(host, e->rd_buf, e->need);
+    host[e->need] = 0;
+    dispatch_decom(intern(host));
     message_done(e);
     return 0;
 }
