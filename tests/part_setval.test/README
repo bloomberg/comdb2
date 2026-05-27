@@ -1,0 +1,5 @@
+Regression test for input validation of SET PARTITION NUMDBS / NUMCOLS / DBS / COLS / SHARDS.
+- oversized NUMDBS or NUMCOLS values must be rejected with an error (not crash the server)
+- the original crash path: NUMDBS=2147483647 caused malloc(~16 GB) to return NULL, and the
+  subsequent SET PARTITION DBS write to that NULL pointer caused a server crash
+- server must remain reachable after receiving all invalid inputs

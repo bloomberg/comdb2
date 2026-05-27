@@ -2172,47 +2172,71 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             } else if (strncasecmp(sqlstr, "PARTITION NUMDBS ", 17) == 0) {
                 sqlstr += 17;
                 int numdbs = strtol(sqlstr, &endp, 10);
-                if (endp != sqlstr && numdbs > 0)
+                if (endp != sqlstr && numdbs > 0 && numdbs <= 4096)
                     clnt->remsql_set.numdbs = numdbs;
-                else
+                else {
                     logmsg(LOGMSG_ERROR,
                            "Error: bad value for remsql_set.numdbs %s\n", sqlstr);
+                    snprintf(err, sizeof(err), "bad value for PARTITION NUMDBS");
+                    rc = ii + 1;
+                }
                 if (gbl_gen_shard_verbose) {
                     logmsg(LOGMSG_USER, "setting clnt->remsql_set.numdbs to %d\n",
                        clnt->remsql_set.numdbs);
                 }
             } else if (strncasecmp(sqlstr, "PARTITION DBS ", 14) == 0) {
                 clnt->remsql_set.dbnames = (char**)malloc(sizeof(char*) * clnt->remsql_set.numdbs);
-                rc = partition_extract_string_params(&sqlstr[14], clnt->remsql_set.dbnames, clnt->remsql_set.numdbs, __func__);
-                if (rc) {
-                    snprintf(err, sizeof(err), "failed to extract dbnames");
+                if (!clnt->remsql_set.dbnames) {
+                    snprintf(err, sizeof(err), "out of memory for dbnames");
                     rc = ii + 1;
+                } else {
+                    rc = partition_extract_string_params(&sqlstr[14], clnt->remsql_set.dbnames, clnt->remsql_set.numdbs,
+                                                         __func__);
+                    if (rc) {
+                        snprintf(err, sizeof(err), "failed to extract dbnames");
+                        rc = ii + 1;
+                    }
                 }
             } else if (strncasecmp(sqlstr, "PARTITION NUMCOLS ", 18) == 0) {
                 sqlstr += 18;
                 int numcols = strtol(sqlstr, &endp, 10);
-                if (endp != sqlstr && numcols > 0)
+                if (endp != sqlstr && numcols > 0 && numcols <= 4096)
                     clnt->remsql_set.numcols = numcols;
-                else
+                else {
                     logmsg(LOGMSG_ERROR,
                            "Error: bad value for remsql_set.numcols %s\n", sqlstr);
+                    snprintf(err, sizeof(err), "bad value for PARTITION NUMCOLS");
+                    rc = ii + 1;
+                }
                 if (gbl_gen_shard_verbose) {
                     logmsg(LOGMSG_USER, "setting clnt->remsql_set.numcols to %d\n",
                        clnt->remsql_set.numcols);
                 }
              } else if (strncasecmp(sqlstr, "PARTITION COLS ", 15) == 0) {
                 clnt->remsql_set.columns = (char**)malloc(sizeof(char*) * clnt->remsql_set.numcols);
-                rc = partition_extract_string_params(&sqlstr[15], clnt->remsql_set.columns, clnt->remsql_set.numcols, __func__);
-                if (rc) {
-                    snprintf(err, sizeof(err), "failed to extract columns");
+                if (!clnt->remsql_set.columns) {
+                    snprintf(err, sizeof(err), "out of memory for columns");
                     rc = ii + 1;
+                } else {
+                    rc = partition_extract_string_params(&sqlstr[15], clnt->remsql_set.columns,
+                                                         clnt->remsql_set.numcols, __func__);
+                    if (rc) {
+                        snprintf(err, sizeof(err), "failed to extract columns");
+                        rc = ii + 1;
+                    }
                 }
             } else if (strncasecmp(sqlstr, "PARTITION SHARDS ", 17) == 0) {
                 clnt->remsql_set.shardnames = (char**)malloc(sizeof(char*) * clnt->remsql_set.numdbs);
-                rc = partition_extract_string_params(&sqlstr[17], clnt->remsql_set.shardnames, clnt->remsql_set.numdbs, __func__);
-                if (rc) {
-                    snprintf(err, sizeof(err), "failed to extract columns");
+                if (!clnt->remsql_set.shardnames) {
+                    snprintf(err, sizeof(err), "out of memory for shardnames");
                     rc = ii + 1;
+                } else {
+                    rc = partition_extract_string_params(&sqlstr[17], clnt->remsql_set.shardnames,
+                                                         clnt->remsql_set.numdbs, __func__);
+                    if (rc) {
+                        snprintf(err, sizeof(err), "failed to extract shardnames");
+                        rc = ii + 1;
+                    }
                 }
             } else if (strncasecmp(sqlstr, "remsql_", 7) == 0) {
                 sqlstr += 7;
