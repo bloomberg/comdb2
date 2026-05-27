@@ -2354,12 +2354,25 @@ static void pmux_get_readcb(int fd, short what, void *data)
         hprintf("TIMEOUT fd:%d\n", fd);
         pmux_reconnect(c);
         return;
-    } else if ((rc = evbuffer_read(c->buf, fd, -1)) <= 0) {
+    }
+    /*
+    ** response format: "<port> <app>/<service>/<instance>"
+    **         example: "19000 comdb2/replication/foodb"
+    **
+    ** Don't waste memory by reading an unreasonably large response.
+    */
+    size_t max_bytes_expected = 128;
+    if ((rc = evbuffer_read(c->buf, fd, max_bytes_expected + 1)) <= 0) {
         hprintf("FAILED read fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
-    size_t len;
+    if (evbuffer_get_length(c->buf) > max_bytes_expected) {
+        hprintf("FAILED response too big max:%ld\n", max_bytes_expected);
+        pmux_reconnect(c);
+        return;
+    }
+    size_t len = 0;
     char *res = evbuffer_readln(c->buf, &len, EVBUFFER_EOL_ANY);
     if (res == NULL) {
         event_base_once(base, fd, EV_READ, pmux_get_readcb, c, &connect_timeout);
@@ -2370,7 +2383,7 @@ static void pmux_get_readcb(int fd, short what, void *data)
     sscanf(res, "%d", &port);
     hprintf("GOT PORT:%d\n", port);
     if (port > 0 && port <= USHRT_MAX) {
-        char expected[len + 1];
+        char expected[max_bytes_expected + 1];
         snprintf(expected, sizeof(expected), "%d %s/%s/%s", port,
                  netinfo_ptr->app, netinfo_ptr->service, netinfo_ptr->instance);
         if (strcmp(res, expected) == 0) {
