@@ -1,0 +1,2 @@
+(version='1')
+[EXEC PROCEDURE metacrash_gc()] failed with rc -3 [string "..."]:5: attempt to call field 'setmetatable' (a nil value)

@@ -383,7 +383,7 @@ static const luaL_Reg dblib[] = {
   {"setfenv", db_setfenv},
   {"sethook", db_sethook},
   {"setlocal", db_setlocal},
-  {"setmetatable", db_setmetatable},
+  // {"setmetatable", db_setmetatable},  -- security risk
   {"setupvalue", db_setupvalue},
   {"traceback", db_errorfb},
   {NULL, NULL}

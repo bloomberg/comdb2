@@ -1,0 +1,13 @@
+CREATE PROCEDURE metacrash_gc version '1' {
+local function main()
+  local b = db:guid()
+  local s = db:prepare('select 1')
+  debug.setmetatable(b, getmetatable(s))
+  s = nil
+  b = nil
+  collectgarbage('collect')
+  collectgarbage('collect')
+  return 1
+end
+}$$
+EXEC PROCEDURE metacrash_gc()
