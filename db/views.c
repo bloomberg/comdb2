@@ -1111,6 +1111,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
 
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+        BDB_READLOCK(__func__);
         rdlock_schema_lk();
         Pthread_rwlock_wrlock(&views_lk);
 
@@ -1128,7 +1129,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
                           (arg1) ? (char *)arg1 : "NULL", arg2,
                           (arg2) ? (char *)arg2 : "NULL", arg3);
 
-        /* this is a safeguard! we take effort to schedule cleanup of 
+        /* this is a safeguard! we take effort to schedule cleanup of
         a dropped partition ahead of everything, but jic ! */
         if (unlikely(
                 _validate_view_id(view, event->source_id, "phase 2", err))) {
@@ -1147,8 +1148,6 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
         /* lets save this */
         timeCrtRollout = view->roll_time;
 
-        BDB_READLOCK(__func__);
-
         rc = _views_rollout_phase2(view, pShardName, &timeNextRollout,
                                    &removeShardName, err);
 
@@ -1158,13 +1157,10 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
                 thedb->bdb_env, view->name,
                 0 /*not sure it is safe here to wait, so don't*/, &bdberr);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "%s -- bdb_llog_views view %s rc:%d bdberr:%d\n",
-                        __func__, view->name, rc, bdberr);
+                logmsg(LOGMSG_ERROR, "%s -- bdb_llog_views view %s rc:%d bdberr:%d\n", __func__, view->name, rc,
+                       bdberr);
             }
         }
-
-        BDB_RELLOCK();
 
         /* tell the world */
         gbl_views_gen++;
@@ -1178,6 +1174,7 @@ done:
         Pthread_rwlock_unlock(&views_lk);
         unlock_schema_lk();
         csc2_free_all();
+        BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
         /*  schedule next */
@@ -1937,9 +1934,16 @@ int views_cron_restart(timepart_views_t *views)
        we will requeue them */
     cron_clear_queue(timepart_sched);
 
+    /* Acquire BDB replock before views_lk to match the ordering used in
+       _view_cron_phase1/3 (BDB_READLOCK -> views_lk).  Consistent ordering
+       across all callers avoids a potential deadlock if the bdb_lock is ever
+       initialized with writer preference, and makes lock auditing simpler. */
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+    BDB_READLOCK(__func__);
+
     /* corner case: master started and schema change for time partition
-       submitted before watchdog thread has time to restart it, will deadlock
-       if this is the case, abort the schema change */
+       submitted before watchdog thread has time to restart it; abort the
+       schema change so views_cron_restart does not wait indefinitely */
     rc = pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
         if (get_schema_change_in_progress(__func__, __LINE__)) {
@@ -1952,9 +1956,6 @@ int views_cron_restart(timepart_views_t *views)
     } else if (rc) {
         abort();
     }
-
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
-    BDB_READLOCK(__func__);
 
     if (thedb->master == gbl_myhostname && !gbl_is_physical_replicant) {
         /* queue all the events required for this */
@@ -1984,9 +1985,8 @@ int views_cron_restart(timepart_views_t *views)
     rc = VIEW_NOERR;
 
 done:
-    BDB_RELLOCK();
-
     Pthread_rwlock_unlock(&views_lk);
+    BDB_RELLOCK();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     return rc;
 }

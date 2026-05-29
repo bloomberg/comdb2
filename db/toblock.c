@@ -6541,10 +6541,37 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct i
     }
 
     if (iq->tptlock) {
+        /*
+         * Lock ordering problem: this path acquires views_lk(rd) here, then
+         * bplog_schemachange_run() acquires schema_lk(wr) deep inside
+         * toblock_main_int().  That is the reverse of the canonical order
+         * (schema_lk -> views_lk) used by the time-partition cron threads
+         * (_view_cron_phase1/2/3) and by views_cron_restart().
+         *
+         * If a transaction holds both a BPFUNC for time-partition retention
+         * (sets tptlock, acquires views_lk(rd)) and a DDL schema change (sets
+         * tranddl, acquires schema_lk(wr) via bplog_schemachange_run), the
+         * following deadlock can occur:
+         *
+         *   Thread A (this block processor):
+         *     holds views_lk(rd), waits for schema_lk(wr)
+         *
+         *   Thread B (cron phase1/2/3 or any SC path):
+         *     holds schema_lk(wr or rd), waits for views_lk(wr)
+         *
+         * Thread A cannot get schema_lk(wr) because Thread B holds it.
+         * Thread B cannot get views_lk(wr) because Thread A holds views_lk(rd)
+         * (readers block writers).
+         *
+         * The proper fix requires either narrowing the views_lk scope inside
+         * toblock_main_int() or hoisting schema_lk acquisition to before
+         * views_lock() — both require significant refactoring.
+         *
+         * Until then, we prevent the deadlock by rejecting any transaction that
+         * sets both tptlock (BPFUNC TIMEPART_RETENTION) and tranddl (DDL schema
+         * changes) in the same transaction.
+         */
         if (iq->tranddl) {
-            /* avoid a lock inversion here; simply forbit mixing bpfunc that
-             * requires tpt lock with other schema changes
-             */
             reqlog_set_error(
                 iq->reqlogger,
                 "Error cannot mix tpt retention with other schema changes",
