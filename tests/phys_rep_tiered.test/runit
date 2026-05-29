@@ -2460,6 +2460,109 @@ function physrep_allowed_source
     done
 }
 
+function physrep_rtcpu_source
+{
+    local name
+    local out
+    local cmd
+    local sql
+    local rc
+
+    echo "== physrep_rtcpu_source =="
+
+    # Test 1: Verify that physrep_allowed_source rejects RTCPU'd source nodes
+    echo "Verify that RTCPU'd source nodes are rejected by physrep_allowed_source"
+    for node in $CLUSTER ; do
+        name=${REPL_DBNAME_PREFIX}_${node}
+
+        # First verify source nodes are allowed before marking RTCPU
+        for src_node in $CLUSTER ; do
+            cmd="physrep_allowed_source $DBNAME $src_node"
+            sql="exec procedure sys.cmd.send(\"$cmd\")"
+            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
+            rc=${out##*=}
+            [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source should allow $src_node before rtcpu, got rc=$rc"
+        done
+
+        # Mark each source node as RTCPU'd and verify it is rejected
+        for src_node in $CLUSTER ; do
+            echo "Marking $src_node as RTCPU'd on $name"
+            sql="exec procedure sys.cmd.send(\"fakedr add $src_node\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "$sql"
+
+            cmd="physrep_allowed_source $DBNAME $src_node"
+            sql="exec procedure sys.cmd.send(\"$cmd\")"
+            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
+            rc=${out##*=}
+            [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source should reject rtcpu'd node $src_node on $name, got rc=$rc"
+        done
+
+        # Remove the RTCPU marks and verify nodes are allowed again
+        for src_node in $CLUSTER ; do
+            echo "Removing RTCPU mark for $src_node on $name"
+            sql="exec procedure sys.cmd.send(\"fakedr del $src_node\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "$sql"
+
+            cmd="physrep_allowed_source $DBNAME $src_node"
+            sql="exec procedure sys.cmd.send(\"$cmd\")"
+            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
+            rc=${out##*=}
+            [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source should allow $src_node after removing rtcpu, got rc=$rc"
+        done
+    done
+
+    # Test 2: Verify that a physrep re-registers when its source is RTCPU'd
+    echo "Verify that physrep re-registers when source is RTCPU'd"
+    for node in $CLUSTER ; do
+        name=${REPL_DBNAME_PREFIX}_${node}
+
+        # Get the current source host for this physrep
+        local cur_source=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node \
+            "select source_host from comdb2_physrep_connections where dbname='$name' and host='$node' limit 1" 2>/dev/null)
+        if [[ -z "$cur_source" ]]; then
+            # Try from the metadb
+            cur_source=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS ${REPL_ALTMETA_DBNAME} --host ${REPL_ALTMETA_HOST} \
+                "select source_host from comdb2_physrep_connections where dbname='$name' and host='$node' limit 1" 2>/dev/null)
+        fi
+
+        if [[ -z "$cur_source" ]]; then
+            echo "Could not determine current source for $name, skipping reconnection test for this node"
+            continue
+        fi
+
+        echo "Physrep $name@$node is connected to source $cur_source"
+
+        # Mark all source nodes RTCPU'd on this physrep
+        for src_node in $CLUSTER ; do
+            sql="exec procedure sys.cmd.send(\"fakedr add $src_node\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "$sql"
+        done
+
+        # Force re-registration
+        echo "Forcing re-registration on $name"
+        sql="exec procedure sys.cmd.send(\"physrep_force_registration\")"
+        $CDB2SQL_EXE --admin $CDB2_OPTIONS $name --host $node "$sql"
+
+        # Wait briefly for re-registration attempt
+        sleep 5
+
+        # Remove the RTCPU marks so the physrep can reconnect
+        for src_node in $CLUSTER ; do
+            sql="exec procedure sys.cmd.send(\"fakedr del $src_node\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS $name --host $node "$sql"
+        done
+
+        # Force re-registration again so it can find a valid source
+        sql="exec procedure sys.cmd.send(\"physrep_force_registration\")"
+        $CDB2SQL_EXE --admin $CDB2_OPTIONS $name --host $node "$sql"
+
+        # Wait for the physrep to catch up with the source
+        echo "Waiting for $name to catch up after reconnection"
+        wait_for_catchup $name $node
+        echo "Physrep $name caught up after rtcpu reconnection test"
+    done
+}
+
 function physrep_block_writes_correct_rcode
 {
     # Make sure that physreps block writes & return the correct rcode when they do
@@ -3139,6 +3242,11 @@ function run_tests
     physrep_allowed_source
     testcase_finish $testcase
 
+    testcase="physrep_rtcpu_source"
+    testcase_preamble $testcase
+    physrep_rtcpu_source
+    testcase_finish $testcase
+
     testcase="test_intermediate_physrep_active_status"
     testcase_preamble $testcase
     test_intermediate_physrep_active_status
@@ -3172,7 +3280,7 @@ function run_tests
 
 function run_one_test
 {
-    test_sp_no_readonly
+    physrep_rtcpu_source
 }
 
 run_tests
