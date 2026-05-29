@@ -4650,6 +4650,10 @@ static int db_settimezone(lua_State *lua)
 {
     SP sp = getsp(lua);
     const char *tz = lua_tostring(lua, -1);
+    if (tz == NULL)
+        return luaL_error(lua, "settimezone: expected string argument");
+    if (strlen(tz) >= sizeof(sp->clnt->tzname))
+        return luaL_error(lua, "settimezone: timezone string too long, max length is %d", (int)sizeof(sp->clnt->tzname) - 1);
     strcpy(sp->clnt->tzname, tz);
     lua_pop(lua, -1);
     return 0;
