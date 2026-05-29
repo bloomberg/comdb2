@@ -365,7 +365,13 @@ int files_util_filter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
     }
 
     if (idxNum & FILES_CHUNK_SIZE_FLAG) {
-        pCur->chunk_size = sqlite3_value_int64(argv[i++]);
+        sqlite3_int64 cs = sqlite3_value_int64(argv[i++]);
+        if (cs <= 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: chunk_size must be positive\n",
+                   __FILE__, __LINE__);
+            return SQLITE_ERROR;
+        }
+        pCur->chunk_size = cs;
     } else {
         pCur->chunk_size = 0;
     }
