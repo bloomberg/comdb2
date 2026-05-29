@@ -312,7 +312,7 @@ int ssl_whitelisted(const char *host)
 {
     if (gbl_ssl_allow_localhost) {
         if (host != NULL) {
-            if (strcasecmp(host, "localhost") || strcasecmp(host, "localhost.localdomain")) {
+            if (strcasecmp(host, "localhost") == 0 || strcasecmp(host, "localhost.localdomain") == 0) {
                 return 1;
             }
         }
