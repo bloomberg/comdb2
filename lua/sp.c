@@ -3251,10 +3251,6 @@ static void reset_sp(SP sp)
         sp->clnttype = NULL;
     }
     free_tmptbls(sp);
-    if (sp->buf) {
-        free(sp->buf);
-        sp->buf = NULL;
-    }
     if (sp->error) {
         free(sp->error);
         sp->error = NULL;
@@ -3262,7 +3258,6 @@ static void reset_sp(SP sp)
     sp->consumer = NULL;
     sp->pingpong = 0;
     sp->ntypes = 0;
-    sp->bufsz = 0;
     sp->rc = 0;
     sp->num_instructions = 0;
     sp->max_num_instructions = gbl_max_lua_instructions;
