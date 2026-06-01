@@ -1205,6 +1205,10 @@ static struct sp_tmptbl *create_temp_table(Lua lua, const char **name)
     sql = strbuf_new();
     strbuf_appendf(sql, "CREATE TEMP TABLE \"%s\" (", n2);
     size_t num = lua_objlen(lua, 2);
+    if (num > MAXCOLUMNS) {
+        luabb_error(lua, sp, "too many columns (max:%d)", MAXCOLUMNS);
+        goto out;
+    }
     const char *comma = "";
     for (size_t i = 1; i <= num; ++i) {
         lua_rawgeti(lua, 2, i);
@@ -1218,20 +1222,23 @@ static struct sp_tmptbl *create_temp_table(Lua lua, const char **name)
         }
         lua_rawgeti(lua, -1, 1);
         lua_rawgeti(lua, -2, 2);
-        char *quoted_col = sqlite3_mprintf("\"%w\"", lua_tostring(lua, -2));
-        strbuf_appendf(sql, "%s%s %s", comma, quoted_col,
-                       lua_tostring(lua, -1));
+        const char *colname = lua_tostring(lua, -2);
+        const char *coltype = lua_tostring(lua, -1);
+        if (coltype == NULL || strlen(coltype) > 64) {
+            luabb_error(lua, sp, "bad column type in 'table'");
+            goto out;
+        }
+        char *quoted_col = sqlite3_mprintf("\"%w\"", colname);
+        strbuf_appendf(sql, "%s%s %s", comma, quoted_col, coltype);
         sqlite3_free(quoted_col);
         lua_pop(lua, 3);
         comma = ", ";
     }
     strbuf_append(sql, ")");
 
-    // Following can throw exception which may leak strbuf.
-    // Copy DDL string onto stack instead.
-    int len = strbuf_len(sql) + 1;
-    char *ddl = alloca(len);
-    memcpy(ddl, strbuf_buf(sql), len);
+    // Lua-managed buffer: GC reclaims it if prepare throws.
+    lua_pushlstring(lua, strbuf_buf(sql), strbuf_len(sql));
+    const char *ddl = lua_tostring(lua, -1);
     strbuf_free(sql);
     sql = NULL;
     sqlite3_stmt *stmt;
