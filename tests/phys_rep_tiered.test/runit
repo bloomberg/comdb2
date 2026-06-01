@@ -2177,6 +2177,9 @@ function test_sp_no_readonly
         cleanFailExit "Stored procedure did not replicate within $timeout seconds"
     fi
 
+    # It appears in systables before it is actually ready - paper over with sleep
+    sleep 5
+
     # Execute the stored procedure on the physrep
     # This should NOT generate a READONLY error because it doesn't do any actual writes
     echo "Executing stored procedure on physrep..."
@@ -2828,34 +2831,48 @@ function physrep_revconn_populate_retry_with_debug
     # Add a database to comdb2_physrep_sources
     add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${DBNAME} ${firstNode} $bogusname ${firstNode}
 
-    # Enable the one-time failure tunable (will fail once, then succeed on retry)
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_revconn_populate_error_once 1"
-
     # Refresh revconn host list - this should fail once, log the retry, then succeed
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')")
+    # Retry up to 5 times as other revconn registrations can race with this output
+    local attempt=0
+    local found=0
+    while [[ $attempt -lt 5 ]]; do
+        let attempt=attempt+1
 
-    # Wait a bit for the revconn worker to spawn and logs to be written
-    sleep 2
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_revconn_populate_error_once 1"
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')")
 
-    # Verify that the fake error was injected
-    echo "$x" | egrep  "Simulating cdb2_run_statement failure \(one-time\)" > /dev/null
-    if [[ $? -ne 0 ]]; then
-        cleanFailExit "Expected fake error injection message not found in output"
+        sleep 2
+
+        # Verify that the fake error was injected
+        echo "$x" | egrep "Simulating cdb2_run_statement failure \(one-time\)" > /dev/null
+        if [[ $? -ne 0 ]]; then
+            echo "Attempt $attempt: fake error injection message not found, retrying"
+            continue
+        fi
+
+        # Verify that the "retrying with debug enabled" message appears in the log
+        echo "$x" | egrep "retrying with debug enabled" > /dev/null
+        if [[ $? -ne 0 ]]; then
+            echo "Attempt $attempt: 'retrying with debug enabled' message not found, retrying"
+            continue
+        fi
+
+        # Verify that the "Statement succeeded on retry" message appears in the log
+        echo "$x" | egrep "Statement succeeded on retry with debug enabled" > /dev/null
+        if [[ $? -ne 0 ]]; then
+            echo "Attempt $attempt: 'Statement succeeded on retry with debug enabled' message not found, retrying"
+            continue
+        fi
+
+        found=1
+        break
+    done
+
+    if [[ $found -ne 1 ]]; then
+        cleanFailExit "Expected debug retry messages not found in output after $attempt attempts"
     fi
 
-    # Verify that the "retrying with debug enabled" message appears in the log
-    echo "$x" | egrep "retrying with debug enabled" > /dev/null
-    if [[ $? -ne 0 ]]; then
-        cleanFailExit "Expected 'retrying with debug enabled' message not found in output"
-    fi
-
-    # Verify that the "Statement succeeded on retry" message appears in the log
-    echo "$x" | egrep "Statement succeeded on retry with debug enabled" > /dev/null
-    if [[ $? -ne 0 ]]; then
-        cleanFailExit "Expected 'Statement succeeded on retry with debug enabled' message not found in output"
-    fi
-
-    echo "Found expected debug retry messages in log"
+    echo "Found expected debug retry messages in log (attempt $attempt)"
 
     # Dump revconn list and verify the entry was successfully added
     x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $bogusname)
