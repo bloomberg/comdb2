@@ -754,6 +754,7 @@ static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
         ret->prec = precision;
         tzname = get_string_value(lua,idx, "tz");
         if (tzname) {
+            if (strlen(tzname) >= sizeof(ret->tzname) ) goto err;
             strcpy(ret->tzname, tzname);
         } else {
             strcpy(ret->tzname, "US/Eastern");
