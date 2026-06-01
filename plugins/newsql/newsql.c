@@ -2201,7 +2201,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             } else if (strncasecmp(sqlstr, "PARTITION NUMCOLS ", 18) == 0) {
                 sqlstr += 18;
                 int numcols = strtol(sqlstr, &endp, 10);
-                if (endp != sqlstr && numcols > 0 && numcols <= 4096)
+                if (endp != sqlstr && numcols >= 0 && numcols <= 4096)
                     clnt->remsql_set.numcols = numcols;
                 else {
                     logmsg(LOGMSG_ERROR,
@@ -2214,18 +2214,19 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                        clnt->remsql_set.numcols);
                 }
              } else if (strncasecmp(sqlstr, "PARTITION COLS ", 15) == 0) {
-                clnt->remsql_set.columns = (char**)malloc(sizeof(char*) * clnt->remsql_set.numcols);
-                if (!clnt->remsql_set.columns) {
-                    snprintf(err, sizeof(err), "out of memory for columns");
-                    rc = ii + 1;
-                } else {
-                    rc = partition_extract_string_params(&sqlstr[15], clnt->remsql_set.columns,
-                                                         clnt->remsql_set.numcols, __func__);
-                    if (rc) {
-                        snprintf(err, sizeof(err), "failed to extract columns");
-                        rc = ii + 1;
-                    }
-                }
+                 if (clnt->remsql_set.numcols == 0) {
+                     /* DROP sends numcols=0; no columns to extract */
+                 } else if (!(clnt->remsql_set.columns = (char **)malloc(sizeof(char *) * clnt->remsql_set.numcols))) {
+                     snprintf(err, sizeof(err), "out of memory for columns");
+                     rc = ii + 1;
+                 } else {
+                     rc = partition_extract_string_params(&sqlstr[15], clnt->remsql_set.columns,
+                                                          clnt->remsql_set.numcols, __func__);
+                     if (rc) {
+                         snprintf(err, sizeof(err), "failed to extract columns");
+                         rc = ii + 1;
+                     }
+                 }
             } else if (strncasecmp(sqlstr, "PARTITION SHARDS ", 17) == 0) {
                 clnt->remsql_set.shardnames = (char**)malloc(sizeof(char*) * clnt->remsql_set.numdbs);
                 if (!clnt->remsql_set.shardnames) {
