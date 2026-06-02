@@ -1,0 +1,66 @@
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+Test 1: db:exec fdb push write insert
+(version='test1')
+10	lua_exec
+Test 2: db:prepare + bind positional + exec
+(version='test2')
+20	lua_bind
+Test 3: db:prepare + bind named + exec
+(version='test3')
+30	lua_named
+Test 4: rebind + re-exec loop
+(version='test4')
+40	loop40
+41	loop41
+42	loop42
+Test 5: bind various types
+(version='test5')
+99	3.140000	hello
+Test 6: bind NULL
+(version='test6')
+100	NULL	NULL
+Test 7: db:exec fdb push update
+(version='test7')
+10	updated
+Test 8: db:exec fdb push delete
+(version='test8')
+Test 9: bind out-of-range position
+(version='test9')
+[exec procedure test_bind_oob()] failed with rc -3 [stmt:bind(5, 99)...]:7: bind position 5 out of range (1-2)
+Test 10: prepare + exec without bind (no params)
+(version='test10')
+60	no_bind
+Test 11: mix local and remote writes
+(version='test11')
+70	local
+71	local2
+70	remote
+Test 12: close and re-prepare
+(version='test12')
+80	close1
+81	close2
+Test 13: empty string and zero values
+(version='test13')
+0	
+Test 14: push writes in transaction
+(version='test14')
+90	txn1
+91	txn2
+Test 15: push write error from remote
+got expected error
+Test 16: push write after SP on same connection
+1
+Test 17: bind typed decimal NULL from query column
+(rows inserted=1)
+(version='test17')
+200	2.500000	NULL
+Test 18: two concurrently-prepared push statements
+(version='test18')
+500	twoprep
+501
+Test 19: SP invoked with bind arg + push prepare
+(version='test19')
+502	argprep
+Testcase passed.

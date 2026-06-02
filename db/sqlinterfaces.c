@@ -4237,10 +4237,15 @@ retry_legacy_remote:
             rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
             if (rc == SQLITE_SCHEMA_PUSH_REMOTE)
                 rc = handle_fdb_push(clnt, &err);
-            else
-                rc = handle_fdb_push_write(clnt, &err, 0, NULL);
+            else {
+                if (rec.stmt) {
+                    sqlite3_finalize(rec.stmt);
+                    rec.stmt = NULL;
+                }
+                rc = handle_fdb_push_write(clnt, &err, 0, NULL, clnt->sql);
+            }
             if (rc == -2) {
-                logmsg(LOGMSG_ERROR, "QUERY %s disable push\n", clnt->sql);
+                logmsg(LOGMSG_WARN, "QUERY %s disable push\n", clnt->sql);
                 /* remote server does not support proxy, retry without */
                 clnt->disable_fdb_push = 1;
                 goto retry_legacy_remote;

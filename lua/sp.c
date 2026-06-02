@@ -119,6 +119,8 @@ struct dbstmt_t {
     uint8_t readonly;
     uint8_t fetched;
     uint8_t initial; // 1: stmt tables are locked
+    uint8_t fdb_push; // 0: local
+    fdb_push_connector_t *push_conn; // owned connector for a prepared push write
     struct sql_state *rec; // only db:prepare will set
     LIST_ENTRY(dbstmt_t) entries;
 };
@@ -1156,6 +1158,7 @@ static void donate_stmt(SP sp, dbstmt_t *dbstmt)
     }
     free(dbstmt->rec);
     dbstmt->rec = NULL;
+    fdb_push_free(&dbstmt->push_conn);
     dbstmt->stmt = NULL;
     dbstmt->num_tbls = 0;
 }
@@ -1923,9 +1926,118 @@ static inline void no_stmt_chk(Lua L, const dbstmt_t *dbstmt)
     if (dbstmt == NULL || dbstmt->stmt == NULL) luaL_error(L, "no active stmt");
 }
 
+static int fdb_push_bind_int(Lua lua, fdb_push_connector_t *push, sqlite3_stmt *stmt, int name, int value)
+{
+    SP sp = getsp(lua);
+    if (!push) {
+        return -1;
+    }
+
+    int position = 0;
+    if (lua_isnumber(lua, name)) {
+        position = lua_tonumber(lua, name);
+    } else if (lua_isstring(lua, name)) {
+        position = sqlite3_bind_parameter_index(stmt, lua_tostring(lua, name));
+    }
+    int nparams = fdb_push_get_nparams(push);
+    if (position <= 0 || position > nparams) {
+        return luaL_error(lua, "bind position %d out of range (1-%d)", position, nparams);
+    }
+
+    struct param_data *param = &fdb_push_get_params(push)[position - 1];
+    if (param->type == CLIENT_CSTR || param->type == CLIENT_BLOB)
+        free(param->u.p);
+    memset(param, 0, sizeof(*param));
+    param->pos = position;
+
+    const void *p = NULL;
+    const char *c;
+    size_t l;
+    int type;
+    if ((type = luabb_dbtype(lua, value)) > DBTYPES_MINTYPE) {
+        if (luabb_isnull(lua, value)) {
+            param->null = 1;
+            /* null: only the client type matters, so accept any typed null
+             * (incl. decimal/interval the value switch rejects) as CLIENT_INT */
+            switch (type) {
+            case DBTYPES_INTEGER: param->type = CLIENT_INT; break;
+            case DBTYPES_REAL: param->type = CLIENT_REAL; break;
+            case DBTYPES_CSTRING: param->type = CLIENT_CSTR; break;
+            case DBTYPES_BLOB: param->type = CLIENT_BLOB; break;
+            case DBTYPES_DATETIME: param->type = CLIENT_DATETIME; break;
+            default: param->type = CLIENT_INT; break;
+            }
+            return 0;
+        }
+        p = lua_topointer(lua, value);
+    }
+    switch (type) {
+    case DBTYPES_LNIL:
+        param->null = 1;
+        param->type = CLIENT_INT; // lua nil is typeless. make it INT
+        break;
+    case DBTYPES_LSTRING:
+        c = lua_tolstring(lua, value, &l);
+        param->type = CLIENT_CSTR;
+        param->u.p = strdup(c);
+        param->len = l;
+        break;
+    case DBTYPES_LNUMBER:
+        param->type = CLIENT_REAL;
+        param->u.r = lua_tonumber(lua, value);
+        break;
+    case DBTYPES_INTEGER:
+        param->type = CLIENT_INT;
+        param->u.i = ((lua_int_t *)p)->val;
+        break;
+    case DBTYPES_REAL:
+        param->type = CLIENT_REAL;
+        param->u.r = ((lua_real_t *)p)->val;
+        break;
+    case DBTYPES_CSTRING:
+        c = ((lua_cstring_t *)p)->val;
+        l = ((lua_cstring_t *)p)->len;
+        param->type = CLIENT_CSTR;
+        param->u.p = strdup(c);
+        param->len = l;
+        break;
+    case DBTYPES_BLOB: {
+        blob_t *b = &((lua_blob_t *)p)->val;
+        param->type = CLIENT_BLOB;
+        param->u.p = malloc(b->length);
+        memcpy(param->u.p, b->data, b->length);
+        param->len = b->length;
+        break;
+    }
+    case DBTYPES_DATETIME: {
+        datetime_t *d = &((lua_datetime_t *)p)->val;
+        dttz_t dt;
+        datetime_t_to_dttz(d, &dt);
+        param->type = CLIENT_DATETIME;
+        param->u.dt = dt;
+        break;
+    }
+    default:
+        return luabb_error(lua, sp, "unsupported type (%d) for fdb push bind", type);
+    }
+    return 0;
+}
+
+static int fdb_push_bind(Lua lua, fdb_push_connector_t *push, sqlite3_stmt *stmt)
+{
+    int rc = fdb_push_bind_int(lua, push, stmt, 2, 3);
+    lua_pushinteger(lua, rc);
+    return 1;
+}
+
 static int dbstmt_bind_int(Lua lua, dbstmt_t *dbstmt)
 {
     no_stmt_chk(lua, dbstmt);
+    if (dbstmt->fdb_push == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        /* bind targets this stmt's own connector directly; never route through
+         * clnt->fdb_push, since fdb_push_bind may longjmp on a bind error */
+        return fdb_push_bind(lua, dbstmt->push_conn, dbstmt->stmt);
+    }
     if (dbstmt->fetched) {
         dbstmt->fetched = 0;
         sqlite3_reset(dbstmt->stmt);
@@ -1945,6 +2057,9 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **pstmt,
     sqlite3_stmt *stmt;
     rec_ptr->sql = sql;
 
+    sp->clnt->fdb_push_remote = gbl_fdb_push_remote;
+    sp->clnt->fdb_push_remote_write = gbl_fdb_push_remote_write;
+
     /* Reset logger. This clears table names (see reqlog_add_table) and
        print events (see reqlog_logv_int) in the logger. */
     reqlog_reset_logger(sp->thd->logger);
@@ -1960,6 +2075,7 @@ retry:
         /* NOTE: Only this call can return SQLITE_PERM. */
         sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags & ~PREPARE_RECREATE);
     }
+
     sp->initial = 0;
     if ((sp->rc == SQLITE_PERM) && (maxRetries != 0) &&
             ((maxRetries == -1) || (nRetry++ < maxRetries))) {
@@ -1973,6 +2089,14 @@ retry:
         rec_ptr->sql = sqlite3_sql(stmt);
         ((Vdbe*)stmt)->luaStartTime = -1;
         *pstmt = stmt;
+    } else if (sp->rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        if (rec) {  // called by db:bind + stmt:prepare
+            stmt = rec_ptr->stmt;
+            rec_ptr->sql = sqlite3_sql(stmt);
+            *pstmt = stmt;
+        } else {    // called by db:exec
+            sqlite3_finalize(rec_ptr->stmt);
+        }
     } else if (sp->rc == SQLITE_SCHEMA) {
         return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
@@ -3202,10 +3326,29 @@ static int dbstmt_exec(Lua lua)
 
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
+
+    int rc;
+    if (dbstmt->fdb_push) {
+        struct errstat err = {0};
+        /* install this stmt's own connector for the duration of the write */
+        fdb_push_connector_t *saved = sp->clnt->fdb_push;
+        sp->clnt->fdb_push = dbstmt->push_conn;
+        rc = handle_fdb_push_write(sp->clnt, &err, 0, NULL, dbstmt->rec->sql);
+        /* handle_fdb_push_write frees the connector on rc==-2; keep in sync */
+        dbstmt->push_conn = sp->clnt->fdb_push;
+        sp->clnt->fdb_push = saved;
+        if (rc == -2) {
+            return luabb_error(lua, sp, "remote does not support push write");
+        } else if (rc != 0) {
+            return luabb_error(lua, sp, "%s in stmt: %s", err.errstr, dbstmt->rec->sql);
+        }
+        lua_pushinteger(lua, 0);
+        return 1;
+    }
+    
     no_stmt_chk(lua, dbstmt);
     setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
-    int rc;
     lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
         lua_another_step(sp->clnt, stmt, rc);
@@ -3536,12 +3679,24 @@ static int db_exec(Lua lua)
         ++sql;
 
     sqlite3_stmt *stmt = NULL;
-    int rc = lua_prepare_sql(sp, sql, &stmt);
-    if (rc != 0) {
+    struct errstat err = {0};
+    int rc;
+
+    rc = lua_prepare_sql(sp, sql, &stmt);
+    if (rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        rc = handle_fdb_push_write(sp->clnt, &err, 0, NULL, sql);
+        sp->rc = rc;
+        if (rc != 0) {
+            sp->error = strdup(err.errstr);
+        }
         lua_pushnil(lua);
-        lua_pushinteger(lua, rc);
+        lua_pushinteger(lua, sp->rc);
         return 2;
+        // TODO: return dbstmt instead of nil. This will be supported once we work on push read.
     }
+    
+    if (rc != 0) return 2;
+
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
     if (dbstmt->readonly) {
         // dbstmt:fetch() will run it
@@ -3587,13 +3742,37 @@ static int db_prepare(Lua L)
     }
     sqlite3_stmt *stmt = NULL;
     struct sql_state *rec = calloc(1, sizeof(*rec));
-    if (lua_prepare_sql_int(sp, sql, &stmt, rec, lua_get_prepare_flags()) != 0) {
+    int rc = lua_prepare_sql_int(sp, sql, &stmt, rec, lua_get_prepare_flags());
+    if (rc != SQLITE_SCHEMA_PUSH_REMOTE_WRITE && rc != 0) {
         free(rec);
         return 2;
+    }
+    if (rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        fdb_push_connector_t *push = sp->clnt->fdb_push;
+        int nparams = sqlite3_bind_parameter_count(stmt);
+        if (nparams > 0) {
+            struct param_data* params = calloc(nparams, sizeof(struct param_data));
+            if (!params) {
+                free(rec);
+                sqlite3_finalize(stmt);
+                luabb_error(L, sp, "out of memory preparing statement");
+                return 2;
+            }
+            fdb_push_clear_params(push); // drop any stale clone before installing ours
+            fdb_push_set_params(push, params);
+            fdb_push_set_nparams(push, nparams);
+        }
     }
     dbstmt_t *dbstmt = new_dbstmt(L, sp, stmt);
     dbstmt->initial = 1;
     dbstmt->rec = rec;
+    dbstmt->fdb_push = rc;
+    if (rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        /* detach the connector: this stmt owns it, so a later db:prepare of
+         * another push write can't clobber our params/remotedb */
+        dbstmt->push_conn = sp->clnt->fdb_push;
+        sp->clnt->fdb_push = NULL;
+    }
     sp->prev_dbstmt = dbstmt;
     lua_pushinteger(L, 0);
     return 2;

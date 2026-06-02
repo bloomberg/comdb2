@@ -1,0 +1,9 @@
+schema
+{
+   int  id
+   cstring b1[10]
+}
+keys
+{
+   "ID"  = id
+}

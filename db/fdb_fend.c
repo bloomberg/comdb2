@@ -6369,7 +6369,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
                 rc = osql_schemachange_logic(sc, 0);
             } else {
                 /* remote */
-                rc = handle_fdb_push_write(clnt, &err, 6, (const char **)&extra_set);
+                rc = handle_fdb_push_write(clnt, &err, 6, (const char **)&extra_set, clnt->sql);
             }
         } while (0);
         clnt->sql = sql;

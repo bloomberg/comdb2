@@ -844,7 +844,11 @@ static int sqlite3Prepare(
   if( db->init.busy==0 ){
     sqlite3VdbeSetSql(sParse.pVdbe, zSql, (int)(sParse.zTail-zSql), prepFlags);
   }
-  if( sParse.pVdbe && (rc!=SQLITE_OK || db->mallocFailed) ){
+  if( sParse.pVdbe && (rc!=SQLITE_OK || db->mallocFailed)
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    && rc!=SQLITE_SCHEMA_PUSH_REMOTE_WRITE
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  ){
     sqlite3VdbeFinalize(sParse.pVdbe);
     assert(!(*ppStmt));
   }else{
@@ -899,7 +903,7 @@ static int sqlite3LockAndPrepare(
     ** or encounters a permanent error.  A schema problem after one schema
     ** reset is considered a permanent error. */
     rc = sqlite3Prepare(db, zSql, nBytes, prepFlags, pOld, ppStmt, pzTail);
-    assert( rc==SQLITE_OK || *ppStmt==0 );
+    assert( rc==SQLITE_OK || rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE || *ppStmt==0 );
   }while( rc==SQLITE_ERROR_RETRY
        || (rc==SQLITE_SCHEMA && (sqlite3ResetOneSchema(db,-1), cnt++)==0) );
   sqlite3BtreeLeaveAll(db);
@@ -1013,7 +1017,7 @@ int sqlite3_prepare_v3(
   rc = sqlite3LockAndPrepare(db,zSql,nBytes,
                  SQLITE_PREPARE_SAVESQL|(prepFlags&SQLITE_PREPARE_MASK),
                  0,ppStmt,pzTail);
-  assert( rc==SQLITE_OK || ppStmt==0 || *ppStmt==0 );
+  assert( rc==SQLITE_OK || rc==SQLITE_SCHEMA_PUSH_REMOTE_WRITE || ppStmt==0 || *ppStmt==0 );
   return rc;
 }
 
