@@ -447,8 +447,11 @@ int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
     int first_row = 1;
     int rc = 0, irc;
     int client_redir;
+    int cdb2open_flags = clnt->features.require_fastsql ? CDB2_REQUIRE_FASTSQL : 0;
 
-    hndl = _hndl_open(clnt,  &client_redir, CDB2_SQL_ROWS, err, 0, NULL);
+    cdb2open_flags |= CDB2_SQL_ROWS;
+
+    hndl = _hndl_open(clnt, &client_redir, cdb2open_flags, err, 0, NULL);
     if (client_redir)
         goto reset;
     if (!hndl)
@@ -574,6 +577,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     int rc;
     int set_intrans = 0;
     const char *noverify = "SET VeRiFyReTRy OFF";
+    int cdb2open_flags = clnt->features.require_fastsql ? CDB2_REQUIRE_FASTSQL : 0 /* no sqlite row format here */;
 
     if (!push)
         return -2;
@@ -612,8 +616,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             n_extra_sets = 1;
             sets = &noverify;
         }
-        tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err,
-                                            n_extra_sets, sets);
+        tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, cdb2open_flags, err, n_extra_sets, sets);
         if (!tran->fcon.hndl) {
             rc = -2;
             goto free;
