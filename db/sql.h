@@ -1492,8 +1492,14 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err);
  * Same as handle_fdb_push, but for writes
  *
  */
-int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err,
-                          int n_extra_sets, const char **sets);
+int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err, int n_extra_sets, const char **sets,
+                          const char *sql);
+
+int fdb_push_get_nparams(fdb_push_connector_t *push);
+void fdb_push_set_nparams(fdb_push_connector_t *push, int nparams);
+struct param_data *fdb_push_get_params(fdb_push_connector_t *push);
+void fdb_push_set_params(fdb_push_connector_t *push, struct param_data *params);
+void fdb_push_clear_params(fdb_push_connector_t *push);
 
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
@@ -1731,6 +1737,7 @@ void ssl_set_clnt_user(struct sqlclntstate *);
 void clnt_plugin_reset(struct sqlclntstate *clnt);
 
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line);
+int is_stored_proc(struct sqlclntstate *clnt);
 
 /* Convert a sequence of Mem * to a serialized sqlite row */
 int sqlite3_unpacked_to_packed(Mem *mems, int nmems, char **ret_rec,

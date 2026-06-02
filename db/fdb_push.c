@@ -132,6 +132,10 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
 
     _master_clnt_set(clnt);
 
+    /* free any connector left over from a prior statement in the same
+     * top-level query (e.g. multiple pushes in one stored procedure) */
+    if (clnt->fdb_push)
+        fdb_push_free(&clnt->fdb_push);
     clnt->fdb_push = push;
 
     return 0;
@@ -150,11 +154,15 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
     logmsg(LOGMSG_DEBUG,
            "%s query %s (fdb_push_remote_write=%d)\n",
            __func__, clnt->sql, clnt->fdb_push_remote_write);
-    if (!clnt->fdb_push_remote || !clnt->fdb_push_remote_write)
+    if (!clnt->fdb_push_remote || !clnt->fdb_push_remote_write) {
+        logmsg(LOGMSG_DEBUG, "%s: QUERY %s fdb_push_remote or fdb_push_remote_write not set\n", __func__, clnt->sql);
         return -1;
+    }
 
-    if (clnt->disable_fdb_push)
+    if (clnt->disable_fdb_push) {
+        logmsg(LOGMSG_DEBUG, "%s: QUERY %s disable push write\n", __func__, clnt->sql);
         return -1;
+    }
 
     if (pDb->version < FDB_VER_CDB2API)
         return -1;
@@ -188,6 +196,10 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
         free(params);
     }
 
+    /* free any connector left over from a prior write in the same top-level
+     * query (e.g. multiple writes in one stored procedure) */
+    if (clnt->fdb_push)
+        fdb_push_free(&clnt->fdb_push);
     clnt->fdb_push = push;
     return 0;
 
@@ -438,8 +450,7 @@ static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
     return _hndl_open_int(clnt, class, flags | cdb2api_policy_flag, err, n_sets, sets);
 }
 
-static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl,
-                          struct errstat *err)
+static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl, struct errstat *err, const char *sql)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
     int rc;
@@ -453,7 +464,7 @@ static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl,
         free(dts);
         return -1;
     }
-    rc = cdb2_run_statement(hndl, clnt->sql);
+    rc = cdb2_run_statement(hndl, sql);
     free(dts);
 
     return rc;
@@ -485,7 +496,7 @@ int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
     if (!hndl)
         return -1; /* TODO: do we need reset here? */
 
-    rc = _run_statement(clnt, hndl, err);
+    rc = _run_statement(clnt, hndl, err, clnt->sql);
     if (rc) {
         const char *errstr = cdb2_errstr(hndl);
         if (errstr &&
@@ -594,8 +605,7 @@ reset:
  * Same as handle_fdb_push, but for writes
  *
  */
-int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
-                          int n_extra_sets, const char **sets)
+int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_sets, const char **sets, const char *sql)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
     const char *errstr = NULL;
@@ -681,7 +691,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     fdb_client_set_identityBlob(clnt, hndl);
 
     /* run the statement */
-    rc = _run_statement(clnt, hndl, err);
+    rc = _run_statement(clnt, hndl, err, sql);
     if (rc != CDB2_OK) {
         goto hndl_err;
     }
@@ -731,8 +741,9 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
 
     int ncols = cdb2_numcolumns(hndl);
 
-    /* if this is standalone, send answers to client */
-    if (!clnt->in_client_trans) {
+    if (!is_stored_proc(clnt) && !clnt->in_client_trans) {
+        /* cdb2sql standalone: write response directly to client */
+
         /* write columns info */
         rc = write_response(clnt, RESPONSE_COLUMNS_FDB_PUSH, hndl, ncols);
         if (rc) {
@@ -769,7 +780,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             rc = -1;
             goto free;
         }
-    } else {
+    } else if (clnt->in_client_trans) {
+        /* in transaction — cumulative subtraction + INTRANS_STATE */
         if (clnt->verifyretry_off) {
             // take difference since effects in transaction are cumulative
             clnt->effects.num_affected += effects.num_affected - tran->last_effects.num_affected;
@@ -781,6 +793,13 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
             tran->last_effects = effects;
         }
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
+    } else {
+        /* SP standalone — just store effects */
+        clnt->effects.num_affected = effects.num_affected;
+        clnt->effects.num_selected = effects.num_selected;
+        clnt->effects.num_updated = effects.num_updated;
+        clnt->effects.num_deleted = effects.num_deleted;
+        clnt->effects.num_inserted = effects.num_inserted;
     }
 
     if (gbl_debug_disttxn_trace) {
@@ -820,12 +839,14 @@ hndl_err:
         goto free;
     }
     errstat_set_rcstrf(err, rc, "%s", errstr);
-    int irc = write_response(clnt, RESPONSE_ERROR, (void *)errstr, rc);
-    if (irc) {
-        logmsg(LOGMSG_DEBUG, "Failed to write error to client");
+    if (!is_stored_proc(clnt)) {
+        int irc = write_response(clnt, RESPONSE_ERROR, (void *)errstr, rc);
+        if (irc) {
+            logmsg(LOGMSG_DEBUG, "Failed to write error to client");
+        }
     }
 free:
-    /* remote the fdb_tran_t */
+    /* remove the fdb_tran_t */
     fdb_free_tran(clnt, tran);
 free_push:
     if (rc == -2) {
@@ -1081,4 +1102,49 @@ void fdb_disable_push(void)
     GET_CLNT;
 
     clnt->disable_fdb_push = 1;
+}
+
+int fdb_push_get_nparams(fdb_push_connector_t *push)
+{
+    return push ? push->nparams : 0;
+}
+
+void fdb_push_set_nparams(fdb_push_connector_t *push, int nparams)
+{
+    if (push)
+        push->nparams = nparams;
+}
+
+struct param_data *fdb_push_get_params(fdb_push_connector_t *push)
+{
+    return push ? push->params : NULL;
+}
+
+void fdb_push_set_params(fdb_push_connector_t *push, struct param_data *params)
+{
+    if (push)
+        push->params = params;
+}
+
+/* Free the connector's param array and its deep-copied contents, reset to empty.
+ *
+ * db:prepare of a push write needs a fresh param array sized to the statement's
+ * own placeholders. But fdb_push_write_setup, which runs first during prepare,
+ * may already have cloned the enclosing SP's invocation params into the
+ * connector (see param_count() at the top of that function). This drops that
+ * stale clone so the caller can install its own array without leaking it.
+ */
+void fdb_push_clear_params(fdb_push_connector_t *push)
+{
+    if (!push || !push->params)
+        return;
+
+    for (int i = 0; i < push->nparams; i++) {
+        free(push->params[i].name);
+        if ((push->params[i].type == CLIENT_CSTR || push->params[i].type == CLIENT_BLOB) && push->params[i].len > 0)
+            free(push->params[i].u.p);
+    }
+    free(push->params);
+    push->params = NULL;
+    push->nparams = 0;
 }
