@@ -6,3 +6,4 @@ init_with_inplace_updates
 round_robin_stripes
 enable_snapshot_isolation
 nowatch
+reject_mixed_ddl_dml off
