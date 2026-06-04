@@ -528,8 +528,8 @@ send_error:
         if (!(irc = cdb2_get_effects(hndl, &effects))) {
             clnt->effects.num_selected = effects.num_selected;
         } else {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n",
-                   __func__, __LINE__, irc, clnt->sql);
+            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d err \"%s\" sql \"%s\"\n", __func__, __LINE__, irc,
+                   cdb2_errstr(hndl), clnt->sql);
         }
     }
 
@@ -669,7 +669,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
     if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
         rc = cdb2_get_effects(hndl, &effects);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d sql \"%s\"\n", __func__, __LINE__, rc, clnt->sql);
+            logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d err \"%s\" sql \"%s\"\n", __func__, __LINE__, rc,
+                   cdb2_errstr(hndl), clnt->sql);
             goto hndl_err;
         }
         tran->nwrites += effects.num_inserted + effects.num_deleted + effects.num_updated;
