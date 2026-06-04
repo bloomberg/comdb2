@@ -1,0 +1,37 @@
+Regression test for a DELETE failure on a table that has all of:
+
+  - replicate_local 1 (sets gbl_replicate_local)
+  - a user-defined comdb2_seqno column declared null=yes
+  - a plain key on that comdb2_seqno column
+  - at least one expression index (e.g. checksum_md5), which sets ix_expr=1
+    for the entire table
+
+Root cause
+----------
+When ix_expr=1, sqlite3BtreeInsert builds every index key on the replicant
+via sqlite_to_ondisk() and stores the results in clnt->idxInsert[].  For a
+NULL comdb2_seqno value, mem_to_ondisk() calls get_unique_longlong() to
+generate a seqno.  This happens independently for:
+
+  1. The data record  (OP_Insert)  -> seqno1 stored in pCur->ondisk_buf
+  2. The index key    (OP_IdxInsert for the comdb2_seqno index) -> seqno2
+     stored in clnt->idxInsert[2]
+
+Because get_unique_longlong() returns a different value on each call,
+seqno1 != seqno2.  The data record and the index key therefore contain
+different seqno values.
+
+On DELETE, the engine reads seqno1 from the data record and uses it to
+build the delete key for the comdb2_seqno index.  The stored key has seqno2,
+so the lookup fails:
+
+  [delete from t where id = 1] failed with rc 304
+  Table 't' key not found on index 2 unable to delete genid=... rc=2
+
+Fix
+---
+In osql_insrec() (db/osqlsqlthr.c), after pCur->ondisk_buf has been
+populated with the authoritative seqno1, rebuild any index key that
+contains a comdb2_seqno member using stag_ondisk_to_ix() so that it
+matches the data record before the key is sent to the master or saved
+to the shadow table.

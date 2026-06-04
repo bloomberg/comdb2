@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+# Create a table with:
+#   - a user-defined comdb2_seqno column (null=yes)
+#   - an expression index (checksum_md5), which sets ix_expr=1 for the table
+#   - a plain key on the comdb2_seqno column
+#
+# With replicate_local=1, mem_to_ondisk calls get_unique_longlong() independently
+# for the data record and for the comdb2_seqno index key, producing two different
+# seqno values.  DELETE then fails with rc 304 ("key not found on index 2") because
+# the delete key (built from the data record's seqno) does not match the stored
+# index key (built from a separately generated seqno).
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'CREATE TABLE t {
+    schema {
+        int id
+        vutf8 text[100]
+        longlong comdb2_seqno null=yes
+    }
+    keys {
+        "KEY_ID" = id
+        dup "KEY_TEXT_MD5" = (cstring[33]) "checksum_md5(text)"
+        "COMDB2_SEQNO" = comdb2_seqno
+    }
+}'
+
+# Insert without providing comdb2_seqno — the engine generates one internally.
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "INSERT INTO t (id, text) VALUES (1, 'hello world')"
+
+# Verify the row exists and the seqno was assigned.
+assertcnt t 1
+
+seqno=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default \
+    "SELECT comdb2_seqno FROM t WHERE id = 1")
+if [ -z "$seqno" ] || [ "$seqno" = "NULL" ] ; then
+    failexit "comdb2_seqno was not assigned on insert"
+fi
+echo "Inserted row with comdb2_seqno=$seqno"
+
+# Before the fix this DELETE failed with:
+#   [delete from t where id = 1] failed with rc 304
+#   Table 't' key not found on index 2 unable to delete genid=... rc=2
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "DELETE FROM t WHERE id = 1"
+
+# Verify the row is gone.
+assertcnt t 0
+
+echo "SUCCESS"
+exit 0

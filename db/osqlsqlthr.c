@@ -608,6 +608,33 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return SQLITE_OK;
 }
 
+/* When gbl_replicate_local=1, mem_to_ondisk generates a fresh seqno via
+ * get_unique_longlong() each time it encounters a NULL comdb2_seqno value.
+ * This is called once for the data record (storing seqno1 in pCur->ondisk_buf)
+ * and independently once per index key containing comdb2_seqno (storing a
+ * different seqno2 in clnt->idxInsert[i]).  The mismatch means DELETE later
+ * tries to remove a key with seqno1 (read from the data record) but finds
+ * seqno2 in the index -> DB_NOTFOUND -> rc 304.
+ *
+ * Fix: rebuild each comdb2_seqno index key from the ondisk data record so
+ * that the stored key and any future delete key use the same seqno value. */
+static void fixup_replicate_local_seqno(struct BtCursor *pCur, const char *ondisk_record, struct sqlclntstate *clnt)
+{
+    if (!gbl_replicate_local || !gbl_expressions_indexes || !pCur->db->ix_expr || !clnt->idxInsert)
+        return;
+
+    for (int i = 0; i < pCur->db->nix; i++) {
+        if (!clnt->idxInsert[i])
+            continue;
+        struct schema *ixsc = get_schema(pCur->db, i);
+        if (!ixsc || find_field_idx_in_tag(ixsc, "comdb2_seqno") < 0)
+            continue;
+        char correct_key[MAXKEYLEN];
+        if (stag_ondisk_to_ix(pCur->db, i, ondisk_record, correct_key) == 0)
+            memcpy(clnt->idxInsert[i], correct_key, pCur->db->ix_keylen[i]);
+    }
+}
+
 /**
  * Process a sqlite insert row request
  * Row is provided by (pData, nData, blobs, maxblobs)
@@ -627,6 +654,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     /* limit transaction*/
     if ((rc = check_osql_capacity(thd)))
         return rc;
+
+    fixup_replicate_local_seqno(pCur, pData, clnt);
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         START_SOCKSQL;
