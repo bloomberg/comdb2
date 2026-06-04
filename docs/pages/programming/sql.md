@@ -911,10 +911,6 @@ immediately. When off, a server flushes on every single row and hence it may red
 
 Runs stored procedure in verbose mode, printing each executed line and db:trace(...) in client console
 
-### SET SPDEBUG
-
-Runs stored procedure in debug mode
-
 ### SET SSL_MODE
 
 Sets client-side SSL mode. See [SSL Mode Summary](ssl.html#ssl-mode-summary) for details.

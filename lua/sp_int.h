@@ -46,7 +46,6 @@ struct stored_proc {
     struct spversion_t spversion;
     char *src;
     struct sqlclntstate *clnt;
-    struct sqlclntstate *debug_clnt;
     struct sqlthdstate *thd;
     int num_instructions;
     int max_num_instructions;

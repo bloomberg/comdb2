@@ -102,7 +102,6 @@ extern int get_commit_lsn_map_switch_value();
 void debug_bulktraverse_data(char *tbl);
 
 int gbl_track_sqlengine_states = 0;
-extern pthread_t gbl_break_lua;
 
 extern void reinit_sql_hint_table();
 extern void bdb_trans_leak(bdb_state_type *bdb_state);
@@ -1699,11 +1698,6 @@ clipper_usage:
 
     else if (tokcmp(tok, ltok, "reco") == 0) {
         bdb_set_recovery(dbenv->static_table.handle);
-    } else if (tokcmp(tok, ltok, "lua_break") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        pthread_t thread_id;
-        sscanf(tok, "%p", (void **)&thread_id);
-        gbl_break_lua = thread_id;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "bdb") == 0) {

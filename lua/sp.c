@@ -92,14 +92,6 @@ extern int gbl_sql_tranlevel_default;
 
 extern char *tranlevel_tostr(int lvl);
 
-pthread_t gbl_break_lua;
-int gbl_break_all_lua = 0;
-char *gbl_break_spname;
-void *debug_clnt;
-
-pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
-
 struct tmptbl_info_t {
     struct temptable tbl;
     char *sql;
@@ -1498,181 +1490,9 @@ static int stmt_sql_step(Lua L, dbstmt_t *dbstmt)
     return rc;
 }
 
-typedef struct client_info {
-    struct sqlclntstate *clnt;
-    pthread_t thread_id;
-    char buffer[250];
-    int has_buffer;
-} clnt_info;
-
-static int send_sp_trace(struct sqlclntstate *clnt, const char *trace, int want_response)
+static int send_sp_trace(struct sqlclntstate *clnt, const char *trace)
 {
-    int type = want_response ? RESPONSE_DEBUG : RESPONSE_TRACE;
-    return write_response(clnt, type, (void *)trace, 0);
-}
-
-static clnt_info info_buf;
-
-static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
-{
-    SP sp = getsp(lua);
-    struct sqlclntstate *clnt = sp->debug_clnt;
-
-    info_buf.has_buffer = 0;
-
-    char *trace = "\ncomdb2_lua> ";
-    sp->rc = send_sp_trace(clnt, trace, 1);
-    if (sp->rc) {
-        return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
-    }
-    Pthread_mutex_lock(&lua_debug_mutex);
-    int rc = read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
-    Pthread_mutex_unlock(&lua_debug_mutex);
-    return rc;
-}
-
-static void InstructionCountHook(Lua, lua_Debug *);
-static int db_debug(lua_State *lua)
-{
-    int nargs = lua_gettop(lua);
-    const char *trace;
-    int rc;
-
-    if (nargs > 2)
-        return luabb_error(lua, NULL,
-                           "wrong number of  arguments %d, should be 1", nargs);
-
-    SP sp = getsp(lua);
-
-    if (sp->debug_clnt->sp == NULL) {
-        /* To be given as lrl value. */
-        logmsg(LOGMSG_ERROR, "debug client no longer valid \n");
-        sp->debug_clnt = sp->clnt;
-        lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-        Pthread_cond_broadcast(&lua_debug_cond);
-        return 0;
-    }
-
-    if (sp->debug_clnt->want_stored_procedure_debug) {
-        trace = lua_tostring(lua, -1);
-        rc = send_sp_trace(sp->debug_clnt, trace, 0);
-        if (rc) {
-            if (sp->debug_clnt != sp->clnt) {
-                /* To be given as lrl value. */
-                sp->debug_clnt = sp->clnt;
-                lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-                Pthread_cond_broadcast(&lua_debug_cond);
-                return 0;
-            }
-            sleep(2);
-            return luabb_error(lua, NULL, "Error in sending back data.");
-        }
-    }
-
-    if (gbl_break_all_lua) {
-        char sp_info[128];
-        int len;
-        if (sp->spversion.version_num) {
-            sprintf(sp_info, "%s:%d", sp->spname, sp->spversion.version_num);
-        } else {
-            sprintf(sp_info, "%s:%s", sp->spname, sp->spversion.version_str);
-        }
-        len = strlen(sp_info);
-        if (gbl_break_spname && strncasecmp(sp_info, gbl_break_spname, len) == 0) {
-            gbl_break_lua = pthread_self();
-        }
-    }
-
-    if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
-        if (debug_clnt) {
-            sp->debug_clnt = debug_clnt;
-            sp->debug_clnt->sp = sp;
-            debug_clnt = NULL;
-        }
-        char *buffer = "_SP.debug_next()";
-        if (luaL_loadbuffer(lua, buffer, strlen(buffer), "=(debug command)") ||
-            lua_pcall(lua, 0, 0, 0)) {
-            return luabb_error(lua, NULL, "Error in the call for breakpoint");
-        }
-        lua_settop(lua, 0); /* remove eventual returns */
-        gbl_break_lua = 0;
-        gbl_break_all_lua = 0;
-    }
-
-    return 0;
-}
-
-static int db_db_debug(Lua lua)
-{
-    char *replace_from = NULL;
-    int finish_execute = 0;
-    for (;;) {
-        char buffer[250] = {0};
-        int n = get_remote_input(lua, buffer, sizeof(buffer));
-        if (strncmp(buffer, "cont", 4) == 0) {
-            Pthread_cond_broadcast(&lua_debug_cond);
-            sprintf(buffer, " %s", "_SP.do_next = false \n if (db.emit) then "
-                                   "\n db_emit = db.emit \n end");
-            finish_execute = 1;
-        } else if (strncmp(buffer, "help", 4) == 0) {
-            sprintf(buffer, " %s()", "_SP.help");
-        } else if (strncmp(buffer, "next", 4) == 0) {
-            sprintf(buffer, " %s()", "_SP.debug_next");
-            finish_execute = 1;
-        } else if (strncmp(buffer, "breakpoints", 11) == 0) {
-            sprintf(buffer, " %s()", "_SP.bkps");
-        } else if (strncmp(buffer, "stop at", 7) == 0) {
-            int i = atoi(&buffer[7]);
-            sprintf(buffer, " %s(%d)", "_SP.set_breakpoint", i);
-        } else if (strncmp(buffer, "list", 4) == 0) {
-            int i = atoi(&buffer[4]);
-            sprintf(buffer, " %s(%d)", "_SP.list_code", i);
-        } else if (strncmp(buffer, "delete at", 9) == 0) {
-            int i = atoi(&buffer[9]);
-            sprintf(buffer, " %s(%d)", "_SP.delete_breakpoint", i);
-        } else if (strncmp(buffer, "print ", 6) == 0) {
-            char old_buffer[sizeof(buffer)];
-            sprintf(old_buffer, "%s", buffer);
-            int len = strlen(&old_buffer[6]);
-            old_buffer[6 + len - 1] = '\0';
-            sprintf(buffer, "eval('%s')", old_buffer + 6);
-        } else if (strncmp(buffer, "getinfo", 7) == 0) {
-            sprintf(buffer, " %s", "_SP.getinfo(5)");
-        } else if (strncmp(buffer, "HALT", 4) == 0) {
-            logmsg(LOGMSG_USER, "Halt should not be coming here...\n");
-            continue;
-        } else if (strncmp(buffer, "where", 5) == 0) {
-            sprintf(buffer, " %s", "_SP.where()");
-        } else if ((replace_from = strstr(buffer, "getvariable")) != 0) {
-            char *arguments = replace_from + strlen("getvariable");
-            snprintf0(buffer, sizeof(buffer), "_SP.get_var%s", arguments);
-            replace_from = NULL;
-        } else if ((replace_from = strstr(buffer, "setvariable")) != 0) {
-            char *arguments = replace_from + strlen("setvariable");
-            snprintf0(buffer, sizeof(buffer), "_SP.set_var%s", arguments);
-            replace_from = NULL;
-        } else if (n == 0) {
-            /* Debugging socket is closed, let the program continue. */
-            Pthread_cond_broadcast(&lua_debug_cond);
-            sprintf(buffer, " %s", "db_emit = db.emit");
-            finish_execute = 1;
-        } else if (buffer[0] == '\0') {
-            /* Debugging socket is closed, let the program continue. */
-            sprintf(buffer, " %s()", "_SP.debug_next");
-        }
-
-        logmsg(LOGMSG_USER, "Running buffer%s ", buffer);
-
-        if (luaL_loadbuffer(lua, buffer, strlen(buffer), "=(debug command)") ||
-            lua_pcall(lua, 0, 0, 0)) {
-            db_debug(lua);
-            logmsg(LOGMSG_ERROR, "Problem in running LUA %s\n", buffer);
-        }
-        lua_settop(lua, 0); /* remove eventual returns */
-        if (finish_execute) {
-            return 0;
-        }
-    }
+    return write_response(clnt, RESPONSE_TRACE, (void *)trace, 0);
 }
 
 static int db_trace(lua_State *lua)
@@ -1690,7 +1510,7 @@ static int db_trace(lua_State *lua)
     SP sp = getsp(lua);
 
     if (sp->clnt->want_stored_procedure_trace) {
-        sp->rc = send_sp_trace(sp->clnt, trace, 0);
+        sp->rc = send_sp_trace(sp->clnt, trace);
     }
 
     return 0;
@@ -1838,7 +1658,7 @@ static char *load_src(char *spname, struct spversion_t *spversion,
     return src;
 }
 
-static int load_debugging_information(struct stored_proc *sp, char **err)
+static int load_trace_information(struct stored_proc *sp, char **err)
 {
     int i, rc = 0;
     char *s;
@@ -1863,161 +1683,22 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
     for (i = 0; i < source_size; i++) {
         if (sp_source[i] == '\n') {
             sp_source[i] = '\0';
-            /*printf("%d> %s\n", idx, s);*/
             lua_pushstring(sp->lua, s);
             lua_rawseti(sp->lua, -2, idx++);
             s = &sp_source[i + 1];
         }
     }
-    /* make this more hidden somehow? */
     lua_setglobal(sp->lua, "_thecode");
-    if (sp->clnt->want_stored_procedure_trace) {
-        debug = "function trace (event, line)\n"
-                "  local s = debug.getinfo(0).name \n"
-                "  if (s == 'return_type') then  \n"
-                "     s = nil  \n"
-                "  end  \n"
-                " if (s and _thecode[line]) then \n"
-                "   db.trace(line .. ':' .. _thecode[line])\n"
-                " end\n"
-                "end\n"
-                "debug.sethook(trace, \"l\")\n";
-    } else {
-        /* REM : Use level 4 when trying to access variables in debugging. */
-        debug = "_SP._breakpoints = {}\n"
-                "_SP._variables = {}\n"
-                "_SP.do_next = true\n" /* Have the breakpoint at first running
-                                          line. */
-                "_SP.curr_line = 0\n"
-                "_SP.set_breakpoint = function(line) \n"
-                " _SP._breakpoints[line] = true  \n"
-                " db.debug('Breakpoint set at line : ' .. line)\n"
-                "end \n"
-                "_SP.delete_breakpoint = function(line) \n"
-                " _SP._breakpoints[line] = false  \n"
-                " db.debug('Breakpoint deleted from line : ' .. line)\n"
-                "end \n"
-                "_SP.list_code = function(line) \n"
-                " local curr_line = line \n"
-                " while( curr_line <line+10) do \n"
-                "   if(_thecode[curr_line]) then \n"
-                "     db.debug( curr_line .. ' : ' ..  _thecode[curr_line])\n"
-                "   end\n"
-                "   curr_line = curr_line + 1\n"
-                " end\n"
-                "end \n"
-                "_SP.has_breakpoint = function(line)\n"
-                " return _SP._breakpoints[line] \n"
-                "end \n"
-                "_SP.debug_next = function(line)\n"
-                " _SP.do_next = true \n"
-                "end \n"
-                "_SP.help = function(line)\n"
-                "     db.debug('stop at <line no>        -- Adds Breakpoint')\n"
-                "     db.debug('delete at <line no>      -- Deletes "
-                "Breakpoint')\n"
-                "     db.debug('next                     -- Next Line')\n"
-                "     db.debug('getinfo                  -- Get info of local "
-                "variables')\n"
-                "     db.debug('getvariable(num)         -- Get local variable "
-                "of the number displayed in getinfo call.')\n"
-                "     db.debug('setvariable(num, value)  -- Set local variable "
-                "of the number displayed in getinfo call.')\n"
-                "     db.debug('print                    -- Display Local "
-                "Variable by name')\n"
-                "     db.debug('cont                     -- Continue')\n"
-                "     db.debug('help                     -- This menu')\n"
-                "end \n"
-                "eval = function(object, value)\n"
-                " if(_SP._variables[object]) then\n"
-                "   value = _SP._variables[object]  \n"
-                " end\n"
-                "   if(value and type(value) == 'table') then\n"
-                "    db.debug(tostring(object)) \n"
-                "    display_table(value)\n"
-                "    return\n"
-                "   end\n"
-                "   if (value) then \n"
-                "     db.debug(tostring(object) ..' : ' .. tostring(value)) \n"
-                "   else \n"
-                "     db.debug(tostring(object)) \n"
-                "   end \n"
-                "end \n"
-                "display_table = function(object)\n"
-                " if(_SP._variables[object]) then\n"
-                "   table.foreach(_SP._variables[object], eval) \n"
-                " else\n"
-                "   table.foreach(object, eval) \n"
-                " end\n"
-                "end \n"
-                "_SP.bkps = function(object)\n"
-                " local line = 1 \n"
-                " while true do \n"
-                "   if(_thecode[line]) then \n"
-                "     if(_SP.has_breakpoint(line)) then\n"
-                "       db.debug('line no ' .. line .. ':' .. _thecode[line])\n"
-                "     end \n"
-                "   else \n"
-                "     return \n"
-                "   end \n"
-                "   line = line + 1\n"
-                " end \n"
-                "end \n"
-                "_SP.get_var = function(num) \n"
-                "  local name, x = debug.getlocal(5, num) \n"
-                "  if name then  \n"
-                "    db.debug('got local variable ' .. name .. ' : ' .. "
-                "tostring(x))\n"
-                "  end \n"
-                "  return x\n"
-                "end \n"
-                "_SP.set_var = function(num, val) \n"
-                "  local name, x = debug.setlocal(5, num,val) \n"
-                "end \n"
-                "_SP.where = function() \n"
-                "  db.debug('line no ' .. _SP.curr_line .. ':' .. "
-                "_thecode[_SP.curr_line])\n"
-                "end \n"
-                "_SP.getinfo = function(num) \n"
-                "     local a = 1\n"
-                "     while true do \n"
-                "       local name, value = debug.getlocal(num, a) \n"
-                "       if not name then break end \n"
-                "       _SP._variables[name] = value \n"
-                "       db.debug('local var ' .. a .. '). '.. name .. ' : ' .. "
-                "tostring(value))\n"
-                "       a = a + 1\n"
-                "     end\n"
-                "end\n"
-                "local function debug_emit(obj) \n"
-                "  table.foreach(obj, eval) \n"
-                "  db.emit(obj)\n"
-                "end \n"
-                "function comdb2_debug (event, line)\n"
-                "  _SP.curr_line = line\n"
-                "  local s = debug.getinfo(0).name \n"
-                "  if (s == 'return_type') then  \n"
-                "     s = nil  \n"
-                "  end  \n"
-                "  if(s and _thecode[line]) then \n"
-                "    db.debug('line no ' .. line .. ':' .. _thecode[line])\n"
-                "    if(_SP.has_breakpoint(line) or _SP.do_next) then\n"
-                "       local db_emit = debug_emit\n"
-                "       local a = 1\n"
-                "       while true do \n"
-                "         local name, value = debug.getlocal(2, a) \n"
-                "         if not name then break end \n"
-                "         _SP._variables[name] = value \n"
-                "         a = a + 1\n"
-                "       end\n"
-                "       _SP.do_next = false \n"
-                "       db.db_debug()\n"
-                "    end  \n"
-                "   end \n"
-                "end\n"
-                "\n"
-                "debug.sethook(comdb2_debug, \"l\")\n";
-    }
+    debug = "function trace (event, line)\n"
+            "  local s = debug.getinfo(0).name \n"
+            "  if (s == 'return_type') then  \n"
+            "     s = nil  \n"
+            "  end  \n"
+            " if (s and _thecode[line]) then \n"
+            "   db.trace(line .. ':' .. _thecode[line])\n"
+            " end\n"
+            "end\n"
+            "debug.sethook(trace, \"l\")\n";
     rc = luaL_loadstring(sp->lua, debug);
     if (rc) {
         err_str = lua_tostring(sp->lua, -1);
@@ -2066,31 +1747,6 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
                 sp->max_num_instructions);
         }
         sp->num_instructions++;
-
-        if (gbl_break_all_lua) {
-            lua_getstack(lua, 1, debug);
-            lua_getinfo(lua, "nSl", debug);
-            char sp_info[128];
-            lua_getstack(lua, 1, debug);
-            lua_getinfo(lua, "nSl", debug);
-            if (sp->spversion.version_num) {
-                sprintf(sp_info, "%s:%d:%d", sp->spname,
-                        sp->spversion.version_num, debug->currentline);
-            } else {
-                sprintf(sp_info, "%s:%s:%d", sp->spname,
-                        sp->spversion.version_str, debug->currentline);
-            }
-            if (gbl_break_spname && strcasecmp(sp_info, gbl_break_spname) == 0) {
-                gbl_break_lua = pthread_self();
-            }
-        }
-
-        if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
-            if (debug_clnt) {
-                char *err = NULL;
-                load_debugging_information(sp, &err);
-            }
-        }
 
         if (gbl_epoch_time) {
             if ((gbl_epoch_time - sp->clnt->last_check_time) > 5) {
@@ -5061,9 +4717,7 @@ static const luaL_Reg db_funcs[] = {
     {"table", db_table},
     {"table_to_json", db_table_to_json},
     {"udf_error", db_udf_error},
-    /************** DEBUG ***************/
-    {"db_debug", db_db_debug},
-    {"debug", db_debug},
+    /************** TRACE ***************/
     {"trace", db_trace},
     /************ INTERNAL **************/
     {"bootstrap", db_bootstrap},
@@ -6237,53 +5891,6 @@ out:
     return arg->type;
 }
 
-static void debug_sp(struct sqlclntstate *clnt)
-{
-    pthread_t arg1 = 0;
-    char *carg1 = NULL;
-halt_here:
-    debug_clnt = clnt;
-    if (arg1 == 0) {
-        gbl_break_all_lua = 1;
-        gbl_break_spname = carg1;
-    } else {
-        gbl_break_lua = arg1;
-    }
-    clnt->want_stored_procedure_debug = 1;
-wait_here:
-    Pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
-    Pthread_mutex_lock(&lua_debug_mutex);
-    Pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
-    Pthread_mutex_unlock(&lua_debug_mutex);
-do_continue:
-    logmsg(LOGMSG_USER, "CoNtInUe \n");
-    info_buf.has_buffer = 0;
-    Pthread_mutex_lock(&lua_debug_mutex);
-    int rc = read_response(clnt, RESPONSE_BYTES, info_buf.buffer, 250);
-    if (rc && (strncmp(info_buf.buffer, "HALT", 4) == 0)) {
-        Pthread_mutex_unlock(&lua_debug_mutex);
-        goto halt_here;
-    } else if (rc) {
-        info_buf.has_buffer = 1;
-        if ((strncmp(info_buf.buffer, "cont", 4) == 0)) {
-            Pthread_mutex_unlock(&lua_debug_mutex);
-            goto do_continue;
-        }
-        logmsg(LOGMSG_USER, "This was not continue \n");
-        Pthread_mutex_unlock(&lua_debug_mutex);
-        goto wait_here;
-    } else {
-        Pthread_mutex_unlock(&lua_debug_mutex);
-    }
-
-    if (debug_clnt == clnt) {
-        debug_clnt = NULL;
-    }
-    clnt->sp = NULL;
-    sleep(2);
-    logmsg(LOGMSG_USER, "Exit debugging \n");
-}
-
 static int get_spname(struct sqlclntstate *clnt, char *spname, const char **end_ptr, char **err)
 {
 #   define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
@@ -6392,8 +5999,7 @@ static int setup_sp_int(char *spname, struct sqlthdstate *thd, struct sqlclntsta
 {
     SP sp = clnt->sp;
     if (sp) {
-        if (clnt->want_stored_procedure_trace ||
-            clnt->want_stored_procedure_debug) {
+        if (clnt->want_stored_procedure_trace) {
             close_sp(clnt);
             sp = NULL;
         }
@@ -6450,7 +6056,6 @@ static int setup_sp_int(char *spname, struct sqlthdstate *thd, struct sqlclntsta
     clnt->sp = sp;
     sp->clnt = clnt;
     sp->emit_mutex = &clnt->wait_mutex;
-    sp->debug_clnt = clnt;
     sp->thd = thd;
     sp->parent = sp;
     sp->initial = 1;
@@ -6480,9 +6085,8 @@ static int setup_sp_int(char *spname, struct sqlthdstate *thd, struct sqlclntsta
         *new_vm = 1;
         strcpy(sp->spname, spname);
     }
-    if (clnt && (clnt->want_stored_procedure_trace ||
-                 clnt->want_stored_procedure_debug)) {
-        if (load_debugging_information(sp, err)) {
+    if (clnt && clnt->want_stored_procedure_trace) {
+        if (load_trace_information(sp, err)) {
             return -1;
         }
     }
@@ -6565,12 +6169,6 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
             assert(clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS);
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_ABORTED_STATE);
         }
-    }
-
-    if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
-        gbl_lua_version++;
-        gbl_break_lua = 0;
-        gbl_break_all_lua = 0;
     }
 
     return rc;
@@ -7240,11 +6838,6 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
-
-    if (strcmp(spname, "debug") == 0) {
-        debug_sp(clnt);
-        return 0;
-    }
 
     if ((rc = setup_sp_int(spname, thd, clnt, trigger, &new_vm, err)) != 0) return rc;
     SP sp = clnt->sp;

@@ -5499,7 +5499,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     }
     clnt->saved_rc = 0;
     clnt->sqlite_errstr = NULL;
-    clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;

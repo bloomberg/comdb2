@@ -584,14 +584,6 @@ int newsql_columns_fdb_push(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
     return newsql_response(clnt, &resp, 0);
 }
 
-static int newsql_debug(struct sqlclntstate *c, char *info)
-{
-    CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
-    r.response_type = RESPONSE_TYPE__SP_DEBUG;
-    r.info_string = info;
-    return newsql_response_int(c, &r, RESPONSE_HEADER__SQL_RESPONSE_TRACE, 1);
-}
-
 static int newsql_error(struct sqlclntstate *c, char *r, int e)
 {
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
@@ -1160,7 +1152,6 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_COLUMNS_STR: return newsql_columns_str(c, a, i);
     case RESPONSE_COLUMNS_FDB_PUSH:
         return newsql_columns_fdb_push(c, a, i);
-    case RESPONSE_DEBUG: return newsql_debug(c, a);
     case RESPONSE_ERROR: return newsql_error(c, a, i);
     case RESPONSE_ERROR_ACCESS: return newsql_error(c, a, CDB2__ERROR_CODE__ACCESS);
     case RESPONSE_ERROR_APPSOCK_LIMIT: return newsql_error(c, a, CDB2__ERROR_CODE__APPSOCK_LIMIT);
@@ -1200,38 +1191,11 @@ static int newsql_ping_pong(struct sqlclntstate *clnt)
     return appdata->ping_pong(clnt); /* newsql_ping_pong_evbuffer */
 }
 
-static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
-{
-    struct newsqlheader hdr = {0};
-    if (read_response(clnt, RESPONSE_BYTES, &hdr, sizeof(hdr)) != 1) {
-        return -1;
-    }
-    if (ntohl(hdr.type) != CDB2_REQUEST_TYPE__CDB2QUERY) {
-        return -2;
-    }
-    int len = ntohl(hdr.length);
-    if (len > sz) {
-        return -3;
-    }
-    uint8_t buf[len];
-    if (read_response(clnt, RESPONSE_BYTES, buf, len) != 1) {
-        return -4;
-    }
-    CDB2QUERY *query = cdb2__query__unpack(NULL, len, buf);
-    if (!query) {
-        return -5;
-    }
-    strncpy0(cmd, query->spcmd, sz);
-    cdb2__query__free_unpacked(query, NULL);
-    return 0;
-}
-
 static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
 {
     struct newsql_appdata *appdata = c->appdata;
     switch (t) {
     case RESPONSE_PING_PONG: return newsql_ping_pong(c);
-    case RESPONSE_SP_CMD: return newsql_sp_cmd(c, r, e);
     case RESPONSE_BYTES: return appdata->read(c, r, e, 1);
     default: abort();
     }
@@ -1996,14 +1960,6 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 11;
                 sqlstr = skipws(sqlstr);
                 bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
-            } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
-                sqlstr += 7;
-                sqlstr = skipws(sqlstr);
-                if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->want_stored_procedure_debug = 0;
-                } else {
-                    clnt->want_stored_procedure_debug = 1;
-                }
             } else if (strncasecmp(sqlstr, "HASQL", 5) == 0) {
                 sqlstr += 5;
                 sqlstr = skipws(sqlstr);
@@ -2708,8 +2664,6 @@ static const char *response_type_str(int type) {
             return "COMDB2_INFO";
         case RESPONSE_TYPE__SP_TRACE:
             return "SP_TRACE";
-        case RESPONSE_TYPE__SP_DEBUG:
-            return "SP_DEBUG";
         case RESPONSE_TYPE__SQL_ROW:
             return "SQL_ROW";
         default:

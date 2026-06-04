@@ -880,8 +880,6 @@ int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return inner_columns(c, a);
     case RESPONSE_COLUMNS_STR:
         return 0 /*newsql_columns_str(c, a, i)*/;
-    case RESPONSE_DEBUG:
-        return 0 /*newsql_debug(c, a)*/;
     case RESPONSE_ERROR:
         return inner_error(c, i, (char *)a);
     case RESPONSE_ERROR_ACCESS:
