@@ -171,7 +171,6 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 ## Tunables
 
 * blocking_physrep: The `SELECT .. FROM comdb2_transaction_logs` query executed by physical replicants blocks for the next log record. (Default: `false`)
-* physrep_check_minlog_freq_sec: Check the minimum log number to keep this often. (Default: `600`)
 * physrep_debug: Print extended physrep trace. (Default: `off`)
 * physrep_exit_on_invalid_logstream: Exit physreps on invalid logstream. (Default: off)
 * physrep_fanout: Maximum number of physical replicants that a node can service (Default: `8`)

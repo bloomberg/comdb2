@@ -744,7 +744,6 @@
 (name='pgcompactpool.stacksz', description='Thread stack size.', type='INTEGER', value='1048576', read_only='N')
 (name='physical_ack_interval', description='For logical transactions, have the slave send an 'ack' after this many physical operations.', type='INTEGER', value='0', read_only='N')
 (name='physical_commit_interval', description='Force a physical commit after this many physical operations.', type='INTEGER', value='512', read_only='N')
-(name='physrep_check_minlog_freq_sec', description='Check the minimum log number to keep this often. (Default: 600)', type='INTEGER', value='600', read_only='N')
 (name='physrep_debug', description='Print extended physrep trace. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_exit_on_invalid_logstream', description='Exit physreps on invalid logstream.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_fanout', description='Maximum number of physical replicants that a node can service (Default: 8)', type='INTEGER', value='8', read_only='N')

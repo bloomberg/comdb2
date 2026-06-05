@@ -520,7 +520,6 @@ extern int gbl_tranlog_maxpoll;
 
 /* Physical replication */
 extern int gbl_blocking_physrep;
-extern int gbl_physrep_check_minlog_freq_sec;
 extern int gbl_physrep_debug;
 extern int gbl_physrep_exit_on_invalid_logstream;
 extern int gbl_physrep_fanout;

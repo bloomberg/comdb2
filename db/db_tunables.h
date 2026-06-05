@@ -1860,8 +1860,6 @@ REGISTER_TUNABLE("tranlog_incoherent_timeout", "Timeout in seconds for incoheren
                  TUNABLE_INTEGER, &gbl_tranlog_incoherent_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_maxpoll", "Tranlog timeout in seconds for blocking poll. (Default: 60)", TUNABLE_INTEGER,
                  &gbl_tranlog_maxpoll, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_check_minlog_freq_sec", "Check the minimum log number to keep this often. (Default: 600)",
-                 TUNABLE_INTEGER, &gbl_physrep_check_minlog_freq_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_debug", "Print extended physrep trace. (Default: off)", TUNABLE_BOOLEAN, &gbl_physrep_debug,
                  0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
