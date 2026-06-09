@@ -29,6 +29,15 @@ Test parameters
 (i=NULL, r=NULL, s=NULL, b=x'deadbeaf', d=NULL, d2=NULL)
 (i=NULL, r=NULL, s=NULL, b=NULL, d="2023-09-13T000000.000 America/New_York", d2=NULL)
 (i=NULL, r=NULL, s=NULL, b=NULL, d=NULL, d2="2023-09-13T000000.000001 America/New_York")
+Test write with bound parameters
+(rows inserted=1)
+(id=50, b1='Bound1')
+(rows updated=1)
+(id=50, b1='Updated')
+(rows deleted=1)
+(rows inserted=1)
+(i=99, r=3.140000, s='bound', b=NULL, d=NULL, d2=NULL)
+(rows deleted=1)
 Test set statement
 (i=NULL, r=NULL, s=NULL, b=NULL, d="2023-09-13T130000.000 Asia/Tokyo", d2=NULL)
 (i=NULL, r=NULL, s=NULL, b=NULL, d="2023-09-13T130000.000 Asia/Tokyo", d2=NULL)

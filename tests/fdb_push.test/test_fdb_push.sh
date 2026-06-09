@@ -82,6 +82,45 @@ cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
 select * from LOCAL_${a_remdbname}.t2 where d2=@d2
 EOF
 
+echo "Test write with bound parameters" >> $output
+# INSERT with bound integer and cstring params
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_INTEGER id 50
+@bind CDB2_CSTRING b1 Bound1
+insert into LOCAL_${a_remdbname}.t values (@id, @b1)
+EOF
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t where id=50" >> $output 2>&1
+
+# UPDATE with bound params
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_CSTRING b1 Updated
+@bind CDB2_INTEGER id 50
+update LOCAL_${a_remdbname}.t set b1=@b1 where id=@id
+EOF
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t where id=50" >> $output 2>&1
+
+# DELETE with bound param
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_INTEGER id 50
+delete from LOCAL_${a_remdbname}.t where id=@id
+EOF
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t where id=50" >> $output 2>&1
+
+# INSERT into t2 with multiple typed params
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_INTEGER i 99
+@bind CDB2_REAL r 3.14
+@bind CDB2_CSTRING s bound
+insert into LOCAL_${a_remdbname}.t2(i, r, s) values (@i, @r, @s)
+EOF
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t2 where i=99" >> $output 2>&1
+
+# DELETE from t2 with bound param to clean up
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_INTEGER i 99
+delete from LOCAL_${a_remdbname}.t2 where i=@i
+EOF
+
 echo "Test set statement" >> $output
 cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
 set timezone Asia/Tokyo

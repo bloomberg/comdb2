@@ -164,9 +164,34 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
     if (!push)
         return -1;
 
-    clnt->fdb_push = push;
+    // Copy params from clnt plugin into push connector
+    int nparams = param_count(clnt);
+    if (nparams > 0) {
+        struct param_data *params = calloc(nparams, sizeof(struct param_data));
+        if (!params)
+            goto err;
 
+        for (int i = 0; i < nparams; i++) {
+            if (param_value(clnt, &params[i], i) != 0) {
+                free(params);
+                goto err;
+            }
+        }
+
+        if (dohsql_clone_params(nparams, params, &push->nparams, &push->params)) {
+            free(params);
+            goto err;
+        }
+        free(params);
+    }
+
+    clnt->fdb_push = push;
     return 0;
+
+err:
+    free(push->remotedb);
+    free(push);
+    return -1;
 }
 
 /**
@@ -638,7 +663,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
                 }
             }
 
-            rc = cdb2_run_statement(tran->fcon.hndl, "begin");      
+            rc = cdb2_run_statement(tran->fcon.hndl, "begin");
             while (rc == CDB2_OK) {
                 rc = cdb2_next_record(tran->fcon.hndl);
             }
@@ -805,9 +830,7 @@ free_push:
         /* This will get retried as non-cdb2api, free fdb_push
          * so that the postpone message works
          */
-        clnt->fdb_push = NULL;
-        free(push->remotedb);
-        free(push);
+        fdb_push_free(&clnt->fdb_push);
         if (set_intrans) {
             /* if this tried to short call to local sqlite3BtreeBeginTrans
              * first time we try to push, and we set clnt->intrans,
