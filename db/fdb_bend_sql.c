@@ -284,7 +284,7 @@ int fdb_svc_alter_schema(sqlclntstate *clnt, sqlite3_stmt *stmt, UnpackedRecord 
 
 void init_sqlclntstate(sqlclntstate *clnt, char *tid)
 {
-    start_internal_sql_clnt(clnt);
+    start_internal_sql_clnt(clnt, 0);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
 
     clnt->osql.rqid = OSQL_RQID_USE_UUID;

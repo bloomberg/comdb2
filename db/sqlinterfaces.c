@@ -6563,7 +6563,7 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
 void run_internal_sql(char *sql)
 {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.sql = skipws(sql);
     int rc = dispatch_sql_query(&clnt);
     if (rc || clnt.query_rc || clnt.saved_errstr) {
@@ -6989,7 +6989,7 @@ void *internal_get_identity(struct sqlclntstate *clnt)
     return NULL;
 }
 
-void start_internal_sql_clnt(struct sqlclntstate *clnt)
+void start_internal_sql_clnt(struct sqlclntstate *clnt, int bypass_auth)
 {
     reset_clnt(clnt, 1);
     plugin_set_callbacks(clnt, internal);
@@ -6998,6 +6998,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     clnt->argv0 = strdup("comdb2.tsk");
     clnt->origin = gbl_myhostname;
     clnt->conninfo.pid = gbl_mypid;
+    clnt->current_user.bypass_auth = bypass_auth;
 }
 
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
@@ -7017,10 +7018,10 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
     return rc;
 }
 
-static inline void init_internal_sql_clnt(struct sqlclntstate *clnt, struct schema_mem *sm) 
+static inline void init_internal_sql_clnt(struct sqlclntstate *clnt, struct schema_mem *sm)
 {
-    start_internal_sql_clnt(clnt);
-    
+    start_internal_sql_clnt(clnt, 0);
+
     if (sm) {
         clnt->verify_indexes = 1;
         clnt->schema_mems = (void *)sm;

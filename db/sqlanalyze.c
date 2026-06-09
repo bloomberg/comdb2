@@ -223,7 +223,7 @@ void cleanup_stats(COMDB2BUF *sb)
             "select 'cdb2.'||name||'.sav' from sqlite_master where type='table' group by name"
         ")";
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     if (run_internal_sql_clnt(&clnt, "begin") != 0) goto end;
     if (run_internal_sql_clnt(&clnt, "delete from sqlite_stat1 where idx is null") != 0) goto end;
@@ -823,7 +823,7 @@ static int analyze_thread_int(table_descriptor_t *td, struct thr_handle *thr_sel
     struct sqlclntstate clnt;
     struct errstat err = {0};
 
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.osql_max_trans = 0; // allow large transactions
     clnt.admin = 1; // allow analyze to bypass sql thdpool
@@ -1368,7 +1368,7 @@ void handle_backout(COMDB2BUF *sb, char *table)
 
     int rc = 0;
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
 
     rdlock_schema_lk();
 

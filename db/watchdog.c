@@ -92,9 +92,8 @@ int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
 static void watchdogauth(void) {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.admin = 0;
-    clnt.current_user.bypass_auth = 0;
     if(gbl_uses_externalauth)
         check_user_password(&clnt);
     end_internal_sql_clnt(&clnt);
@@ -103,10 +102,9 @@ static void watchdogauth(void) {
 static void watchdogsql(void)
 {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 1);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.admin = 1;
-    clnt.current_user.bypass_auth = 1;
     clnt.skip_eventlog = 1;
     run_internal_sql_clnt(&clnt, "select 1");
     end_internal_sql_clnt(&clnt);

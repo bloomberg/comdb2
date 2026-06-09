@@ -197,7 +197,7 @@ static void create_distributed_transactions_table(void)
 {
     int rc;
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.admin = 1;
     clnt.skip_eventlog = 1;

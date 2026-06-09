@@ -2310,7 +2310,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
     }
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.sql = (char *)temp;
 
     /* schema_mems is used to pass db->schema to is_comdb2_index_blob so we can
@@ -2379,7 +2379,7 @@ int resolve_sfuncs_for_db(struct dbenv* thedb)
     int got_curtran = 0;
     const char * sql = "select 1 from sqlite_master limit 1";
 
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 1);
     clnt.sql = (char *)sql;
 
     sqlthd = start_sql_thread();
@@ -11877,7 +11877,7 @@ void stat4dump(int more, char *table, int istrace)
     Pthread_setspecific(query_info_key, thd);
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
     thd->clnt = &clnt;
 
@@ -12821,7 +12821,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     sm.mout = mout;
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    start_internal_sql_clnt(&clnt, 0);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.verify_indexes = 1;
@@ -13145,8 +13145,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     long long ret = LLONG_MIN;
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
-    clnt.current_user.bypass_auth = 1;
+    start_internal_sql_clnt(&clnt, 1);
     strncpy0(clnt.tzname, "UTC", sizeof(clnt.tzname));
     sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
@@ -13285,7 +13284,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         sm.min = m;
         sm.mout = &mout;
 
-        start_internal_sql_clnt(&clnt);
+        start_internal_sql_clnt(&clnt, 0);
         clnt.dbtran.mode = TRANLEVEL_SOSQL;
         clnt.sql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
