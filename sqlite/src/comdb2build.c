@@ -53,7 +53,6 @@ int gbl_disable_sql_table_replacement = 0;
 extern int gbl_enable_bulk_import;
 extern int gbl_enable_bulk_import_different_tables;
 
-extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
 extern void *comdb2_get_ddl_context(char *name);
@@ -2694,7 +2693,7 @@ int producekw(OpFunc *f)
                 strncpy(kw, zName, nName);
                 kw[nName] = 0;
 
-                int rc = sqlite3GetToken((unsigned char*) kw, &tok);
+                i64 rc = sqlite3GetToken((unsigned char*) kw, &tok);
                 if (rc > 0) {
                     int isfb = sqlite3ParserFallback(tok);
                     if ((isfb && f->int_arg == KW_FB) || (!isfb && f->int_arg == KW_RES)) {
