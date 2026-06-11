@@ -948,4 +948,6 @@ int CDB2BUF_FUNC(cdb2buf_lasterror)(COMDB2BUF *sb, char *err, size_t n)
     return sb->protocolerr;
 }
 
-#include "ssl_io.c"
+#ifndef CDB2API_AMALGAMATION
+#  include "ssl_io.c"
+#endif

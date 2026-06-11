@@ -65,6 +65,12 @@ static unsigned char sid_ctx[8];
 static int gbl_ssl_ctx_new_failure_warned = 0;
 #endif
 
+#define XMACRO_SSL_NO_PROTOCOLS(a, b, c) {a,b,c},
+struct ssl_no_protocols ssl_no_protocols[] = {
+    SSL_NO_PROTOCOLS
+};
+#undef XMACRO_SSL_NO_PROTOCOLS
+
 int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, char **pcert, char **pkey, char **pca,
                               char **pcrl, long sess_sz, const char *ciphers, double mintlsver, char *err, size_t n)
 {
@@ -293,12 +299,6 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, ch
     /* Make sure the obselete SSL v2 & v3 protocols are always disallowed. */
     if (mintlsver < 0)
         mintlsver = 0;
-
-    #define XMACRO_SSL_NO_PROTOCOLS(a, b, c) {a,b,c},
-    struct ssl_no_protocols ssl_no_protocols[] = {
-        SSL_NO_PROTOCOLS
-    };
-    #undef XMACRO_SSL_NO_PROTOCOLS
 
 #ifdef SSL_OP_NO_COMPRESSION
     options |= SSL_OP_NO_COMPRESSION;

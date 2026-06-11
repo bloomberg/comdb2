@@ -1187,6 +1187,14 @@ static int send_fd(const cdb2_hndl_tp *hndl, int sockfd, const void *data, size_
     return send_fd_to(sockfd, data, nbytes, fd_to_send, timeoutms);
 }
 
+static struct addrinfo make_hints_addrinfo(void)
+{
+    struct addrinfo hints = {0};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    return hints;
+}
+
 static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
 {
     /*RESOLVE AN ADDRESS*/
@@ -1212,7 +1220,7 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
         /* it's dotted-decimal */
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-        struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = 0, .ai_flags = 0};
+        struct addrinfo hints = make_hints_addrinfo();
         struct addrinfo *result = NULL;
         int gai_rc = getaddrinfo(tok, /*service=*/NULL, &hints, &result);
         if (gai_rc != 0) {
@@ -2421,7 +2429,7 @@ static int get_host_by_addr(const char *comdb2db_name, char comdb2db_hosts[][CDB
         return -1;
     }
 
-    struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = 0, .ai_flags = 0};
+    struct addrinfo hints = make_hints_addrinfo();
     struct addrinfo *result = NULL;
     int gai_rc = getaddrinfo(dns_name, /*service=*/NULL, &hints, &result);
     if (gai_rc != 0) {
@@ -3435,6 +3443,7 @@ static int try_ssl(cdb2_hndl_tp *hndl)
     int rc = 0, dossl = 0;
     cdb2_ssl_sess *p;
     COMDB2BUF *sb = hndl->sb;
+    struct newsqlheader hdr;
 
     if (sslio_has_ssl(sb))
         return 0;
@@ -3492,7 +3501,8 @@ static int try_ssl(cdb2_hndl_tp *hndl)
     }
 
     /* If negotiation fails, let API retry. */
-    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN)};
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN);
     rc = cdb2buf_fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1) {
         rc = -1;
@@ -3903,6 +3913,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
     void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
+    int connect_timeout;
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_PMUX, e)) != NULL) {
         callbackrc =
@@ -3924,7 +3935,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
 
     debugprint("name %s\n", name);
 
-    int connect_timeout = hndl->connect_timeout;
+    connect_timeout = hndl->connect_timeout;
 
     if (CDB2_ENFORCE_API_CALL_TIMEOUT) {
 #ifdef CDB2API_TEST
@@ -4636,6 +4647,22 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
+    int n_features = 0;
+    int features[20]; // Max 20 client features??
+    CDB2QUERY query = CDB2__QUERY__INIT;
+    CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
+    CDB2SQLQUERY__Cinfo cinfo;
+    char *env_tz;
+    CDB2SQLQUERY__Snapshotinfo snapshotinfo;
+    uint8_t trans_append;
+    CDB2SQLQUERY__Reqinfo req_info = CDB2__SQLQUERY__REQINFO__INIT;
+    int len;
+    unsigned char *buf;
+    int on_heap;
+    struct newsqlheader hdr;
+    int check_hb_on_blocked_write_final;
+    int timeout_error;
+
     while ((e = cdb2_next_callback(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(event_hndl, e, 1, CDB2_SQL, sql);
@@ -4646,15 +4673,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 
     LOG_CALL("%s line %d\n", __func__, __LINE__);
 
-    int n_features = 0;
-    int features[20]; // Max 20 client features??
-    CDB2QUERY query = CDB2__QUERY__INIT;
-    CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
-
     // This should be sent once right after we connect, not with every query
-    CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
-
     if (!hndl || !hndl->sent_client_info) {
+        cdb2__sqlquery__cinfo__init(&cinfo);
         cinfo.pid = _PID;
         cinfo.th_id = (uint64_t)pthread_self();
         cinfo.host_id = cdb2_hostid();
@@ -4682,7 +4703,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     sqlquery.bindvars = bindvars;
     sqlquery.n_types = ntypes;
     sqlquery.types = (int *)types;
-    char *env_tz = getenv("COMDB2TZ");
+    env_tz = getenv("COMDB2TZ");
 
     if (env_tz == NULL) {
         env_tz = getenv("TZ");
@@ -4769,7 +4790,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         sqlquery.cnonce.len = hndl->cnonce_len;
     }
 
-    CDB2SQLQUERY__Snapshotinfo snapshotinfo;
     if (hndl && hndl->snapshot_file && !hndl->in_trans) { /* This is a retry transaction. */
         cdb2__sqlquery__snapshotinfo__init(&snapshotinfo);
         snapshotinfo.file = hndl->snapshot_file;
@@ -4791,16 +4811,14 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         sqlquery.skip_rows = skip_nrows;
     }
 
-    uint8_t trans_append = hndl && hndl->in_trans && do_append;
-    CDB2SQLQUERY__Reqinfo req_info = CDB2__SQLQUERY__REQINFO__INIT;
+    trans_append = hndl && hndl->in_trans && do_append;
     req_info.timestampus = (hndl ? hndl->timestampus : 0);
     req_info.num_retries = retries_done;
     sqlquery.req_info = &req_info;
 
-    int len = cdb2__query__get_packed_size(&query);
+    len = cdb2__query__get_packed_size(&query);
 
-    unsigned char *buf;
-    int on_heap = 1;
+    on_heap = 1;
     if (trans_append || len > MAX_BUFSIZE_ONSTACK) {
         buf = malloc(len + 1);
     } else {
@@ -4810,9 +4828,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 
     cdb2__query__pack(&query, buf);
 
-    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-                               .compression = ntohl(0),
-                               .length = ntohl(len)};
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY);
+    hdr.length = ntohl(len);
 
     // finally send header and query
     rc = cdb2buf_write((char *)&hdr, sizeof(hdr), sb);
@@ -4824,8 +4842,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         debugprint("cdb2buf_write rc = %d (len = %d)\n", rc, len);
 
     // Always enable for chunk transactions
-    int check_hb_on_blocked_write_final = (check_hb_on_blocked_write || (hndl && hndl->is_chunk != CHUNK_NO));
-    int timeout_error = 0;
+    check_hb_on_blocked_write_final = (check_hb_on_blocked_write || (hndl && hndl->is_chunk != CHUNK_NO));
+    timeout_error = 0;
     rc = cdb2buf_flush_chk_timeout(sb, &timeout_error);
 
     // Failed writing to server due to a timeout
@@ -7152,6 +7170,7 @@ static int cdb2_bind_array_helper(cdb2_hndl_tp *hndl, cdb2_coltype type, const v
         return -1;
     }
 
+    CDB2SQLQUERY__Bindvalue *bindval;
     CDB2SQLQUERY__Bindvalue__Array *carray = malloc(sizeof(*carray));
     cdb2__sqlquery__bindvalue__array__init(carray);
 
@@ -7205,7 +7224,7 @@ static int cdb2_bind_array_helper(cdb2_hndl_tp *hndl, cdb2_coltype type, const v
     default: goto notsupported;
     }
 
-    CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
+    bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
     cdb2__sqlquery__bindvalue__init(bindval);
     bindval->type = type;
     bindval->carray = carray;
@@ -7303,6 +7322,11 @@ static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, co
     int rc;
     char dns_name[256] = {0};
 
+    int min_distance;
+    int min_distance_nodes;
+    int near_nodes;
+    int far_nodes;
+
     *num_hosts = 0;
 
     rc = snprintf(dns_name, sizeof(dns_name), "%s.comdb2.%s.%s", dbname, tier, cdb2_bmssuffix);
@@ -7332,10 +7356,10 @@ static int bms_srv_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, co
 
     SRVRecord resolved;
 
-    int min_distance = INT_MAX;
-    int min_distance_nodes = 0;
-    int near_nodes = 0;
-    int far_nodes = 0;
+    min_distance = INT_MAX;
+    min_distance_nodes = 0;
+    near_nodes = 0;
+    far_nodes = 0;
 
     char db_hosts[MAX_NODES][64];
     int host_distance[MAX_NODES];
@@ -7393,6 +7417,7 @@ static int bms_ip_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, con
                          int *num_hosts, int *num_same_room, int start_count)
 {
     int rc;
+    int count;
     char dns_name[256] = {0};
     if (start_count == 0) {
         if (num_hosts)
@@ -7409,7 +7434,7 @@ static int bms_ip_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, con
     if (rc < 0 || rc >= sizeof(dns_name))
         return -1;
 
-    struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = 0, .ai_flags = 0};
+    struct addrinfo hints = make_hints_addrinfo();
     struct addrinfo *result = NULL;
     int gai_rc = getaddrinfo(dns_name, /*service=*/NULL, &hints, &result);
     if (gai_rc != 0) {
@@ -7419,7 +7444,7 @@ static int bms_ip_lookup(char hosts[][CDB2HOSTNAME_LEN], const char *dbname, con
             goto no_roomresult;
     }
 
-    int count = start_count;
+    count = start_count;
     const struct addrinfo *rp;
     for (rp = result; rp != NULL; rp = rp->ai_next) {
         char host[64];
@@ -7802,6 +7827,16 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
     int rc = 0; /* Make compilers happy. */
     int port = 0;
 
+    CDB2QUERY query = CDB2__QUERY__INIT;
+    CDB2DBINFO dbinfoquery = CDB2__DBINFO__INIT;
+    int len;
+    unsigned char *buf;
+    struct newsqlheader hdr;
+    CDB2DBINFORESPONSE *dbinfo_response;
+    char *p;
+    int timeoutms;
+    int donated;
+
     void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
@@ -7883,19 +7918,16 @@ again:
 
     cdb2buf_settimeout(sb, hndl->comdb2db_timeout, hndl->comdb2db_timeout);
 
-    CDB2QUERY query = CDB2__QUERY__INIT;
-
-    CDB2DBINFO dbinfoquery = CDB2__DBINFO__INIT;
     dbinfoquery.dbname = (char *)dbname;
     query.dbinfo = &dbinfoquery;
 
-    int len = cdb2__query__get_packed_size(&query);
-    unsigned char *buf = malloc(len + 1);
+    len = cdb2__query__get_packed_size(&query);
+    buf = malloc(len + 1);
     cdb2__query__pack(&query, buf);
 
-    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-                               .compression = ntohl(0),
-                               .length = ntohl(len)};
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY);
+    hdr.length = ntohl(len);
 
     cdb2buf_write((char *)&hdr, sizeof(hdr), sb);
     cdb2buf_write((char *)buf, len, sb);
@@ -7927,8 +7959,6 @@ again:
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
 
-    CDB2DBINFORESPONSE *dbinfo_response = NULL;
-    char *p = NULL;
     p = malloc(hdr.length);
     if (!p) {
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory", __func__, __LINE__);
@@ -7985,9 +8015,9 @@ again:
 
     free(p);
 
-    int timeoutms = 10 * 1000;
+    timeoutms = 10 * 1000;
 
-    int donated = local_connection_cache_put(hndl, newsql_typestr, sb);
+    donated = local_connection_cache_put(hndl, newsql_typestr, sb);
     if (!donated && (cdb2buf_free(sb) == 0)) {
         cdb2_socket_pool_donate_ext(hndl, newsql_typestr, fd, timeoutms / 1000, dbnum);
     }
@@ -8029,6 +8059,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     ++num_get_dbhosts;
 #endif
 
+    int node_seq;
     int use_bmsd = 0;
     char comdb2db_hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     int comdb2db_ports[MAX_NODES];
@@ -8192,8 +8223,7 @@ retry:
     }
 
     rc = -1;
-    int i = 0;
-    int node_seq = 0;
+    node_seq = 0;
     if ((hndl->flags & CDB2_RANDOM) ||
         ((hndl->flags & CDB2_RANDOMROOM) && (hndl->num_hosts_sameroom == 0))) {
         node_seq = cdb2_random_int() % hndl->num_hosts;
@@ -8201,7 +8231,7 @@ retry:
                (hndl->num_hosts_sameroom > 0)) {
         node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* Try dbinfo on same room first */
-        for (i = 0; i < hndl->num_hosts_sameroom; i++) {
+        for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
             // comment out for now. Extra output fails ssl_dbname and ssl_set_cmd test.
             // #ifdef CDB2API_TEST
@@ -8225,7 +8255,7 @@ retry:
     }
 
     /* Try everything now */
-    for (i = 0; i < hndl->num_hosts; i++) {
+    for (int i = 0; i < hndl->num_hosts; i++) {
         int try_node = (node_seq + i) % hndl->num_hosts;
         rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
                                hndl->hosts[try_node], hndl->hosts, hndl->ports,

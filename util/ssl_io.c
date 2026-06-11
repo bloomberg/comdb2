@@ -205,8 +205,13 @@ static int ssl_verify(COMDB2BUF *sb, ssl_mode mode, const char *dbname, int nid)
 #endif
     if (sb->ssl != NULL && SSL_NEEDS_VERIFICATION(mode)) {
         /* Convert SSL_PREFER_VERIFY_XXX to SSL_VERIFY_XXX */
-        if (SSL_IS_OPTIONAL(mode))
-            mode += (SSL_REQUIRE - SSL_PREFER);
+        if (SSL_IS_OPTIONAL(mode)) {
+            switch(mode) {
+            case SSL_PREFER_VERIFY_CA: mode = SSL_VERIFY_CA; break;
+            case SSL_PREFER_VERIFY_HOSTNAME: mode = SSL_VERIFY_HOSTNAME; break;
+            case SSL_PREFER_VERIFY_DBNAME: mode = SSL_VERIFY_DBNAME; break;
+            }
+        }
         sb->cert = SSL_get_peer_certificate(sb->ssl);
 #ifdef CDB2API_TEST
         if (fail_null_server_cert)
