@@ -454,8 +454,10 @@ static char *legacy_options[] = {
     "wal_osync 1",
     "usenames",
     "setattr max_sql_idle_time 864000",
+    // 'recovery_ckp' must be enabled & move first ..
+    // .. we can enable 'retrieve_gen_from_ckp' after recovery_ckp 
+    //"recovery_ckp 0",
     "retrieve_gen_from_ckp 0",
-    "recovery_ckp 0",
     "sc_current_version 3",
     "disable_sql_table_replacement 1",
     "track_db_open 0",
