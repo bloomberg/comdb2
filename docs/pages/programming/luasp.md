@@ -401,20 +401,20 @@ end
 ### db:exec
 
 ```
-db:table, rc = db:exec(query)
+dbstmt, rc = db:exec(query)
 ```
 
 Description:
 
-This method creates an anonymous dbtable backed by the dynamic SQL query specified.  The resulting dbtable
-is fully equivalent to a dbtable referencing a base table, supporting all of the same methods.  Use of DDL
+This method executes the dynamic SQL query specified and returns a dbstmt handle to the results.
+The dbstmt can be used to fetch rows, emit results, or check rows changed.  Use of DDL
 statements is not allowed.
 
 Return Values:
 
 |Name                     | Description                                                   |  Notes 
 |-------------------------|---------------------------------------------------------------|-------------------------------------------
-|*dbtable*                | anonymous table of rows returned from query                   | The relational table produced by the query   
+|*dbstmt*                 | handle to the SQL statement results                           | Use to fetch rows or emit results            
 |*rc*                     | non zero is failure                                           | The return code                              
 
 Parameters:
@@ -427,22 +427,21 @@ Parameters:
 ### db:prepare
 
 ```
-dbtable, rc = db:prepare(query)
+dbstmt, rc = db:prepare(query)
 ```
 
 Description:
 
-This method creates an anonymous dbtable backed by the SQL query specified.  The resulting dbtable
-is the same as dbtable referencing a base table, supporting all of the same methods.
+This method prepares the SQL query specified and returns a dbstmt handle.
 This method differs from db:exec in that the query plan of the specified query is automatically cached, 
-and replaceable parameters are used with the <dbtable>:bind call.  The syntax of the SQL uses the *?* character
+and replaceable parameters are used with the dbstmt:bind call.  The syntax of the SQL uses the *?* character
 as a placeholder for a replaceable parameter. Maximum of 2048 parameters are allowed in a query.
 
 Return Values:
 
 |Name           | Description                                  |  Notes
 |---------------|----------------------------------------------|-------------------------------------------
-|*dbtable*      | anonymous table of rows returned from query  | The relational table produced by the query   
+|*dbstmt*       | handle to the prepared SQL statement         | Use dbstmt:bind to set parameters            
 |*rc*           | non zero is failure                          | The return code                              
 
 
@@ -531,8 +530,8 @@ t:bind(2, 2)
 t:exec()
 
 t = db:prepare("INSERT INTO t(c1, c2) values(@i, @j)")
-t:bind(i, 3)
-t:bind(j, 4)
+t:bind("i", 3)
+t:bind("j", 4)
 t:exec()
 ```
 
@@ -562,7 +561,7 @@ dbrow = dbstmt:fetch()
 
 Description:
 
-A call to this method will produce a dbrow from the dbtable. When all rows of the dbtable are consumed, `nil` is returned. Before executing a new sql statement either all the rows must be consumed  by calling `fetch()` in a loop, or calling `emit()`, or calling `dbtable:close()`.
+A call to this method will produce a dbrow from the dbstmt. When all rows of the dbstmt are consumed, `nil` is returned. Before executing a new sql statement either all the rows must be consumed  by calling `fetch()` in a loop, or calling `emit()`, or calling `dbstmt:close()`.
 
 Return Values:
 
@@ -577,7 +576,7 @@ none
 ### dbstmt:close
 
 ```
-dbrow = dbstmt:close()
+dbstmt:close()
 ```
 
 Description:
@@ -848,17 +847,17 @@ Return Values:
 
 ### dbtable:where
 
-dbtable, rc  = dbtable:where(where clause)
+dbstmt, rc  = dbtable:where(where clause)
 
 Description:
 
-This method produces a dbtable consisting of the contents of the invoking dbtable filtered through an SQL where clause.
+This method produces a dbstmt consisting of the contents of the invoking dbtable filtered through an SQL where clause.
 
 Return Values:
 
 |Name                | Description  
 |--------------------|--------------
-|  *dbtable*    | The dbtable produced
+|  *dbstmt*    | The dbstmt produced
 | *rc*          | non zero is failure 
 
 Parameters:
@@ -1240,15 +1239,16 @@ Parameters:
 ### db:emit
 
 ```
-db:emit(dbtable | dbrow)
+db:emit(dbtable | dbstmt | dbrow)
 ```
 
 Description:
 
-This method emits an item to the calling SQL client.  When invoked with a dbtable (the result of the "db:exec" method)
-it will send each dbrow contained in the dbtable (the Lua table corresponding to each row returned by the query) to the client using the format
+This method emits an item to the calling SQL client.  When invoked with a dbtable (the result of the "db:table" method)
+or a dbstmt (the result of the "db:exec" method)
+it will send each row to the client using the format
 specified by optional calls to db:column_type, db:column_name, db:num_columns.
-When invoked with a dbrow (the result of the dbtable:fetch method) the corresponding database "row" (Lua "table")
+When invoked with a dbrow (the result of the dbstmt:fetch method) the corresponding database "row" (Lua "table")
 will be sent to the client.
 
 
