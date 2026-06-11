@@ -546,9 +546,11 @@ void sqlite3SchemaClear(void *p){
 void sqlite3SchemaClearByName(void *p, const char *tblname){
   HashElem *pElem;
   Schema *pSchema = (Schema *)p;
+  sqlite3 xdb;
   int len = sqlite3Strlen30(tblname);
   int len2;
 
+  memset(&xdb, 0, sizeof(xdb));
   for(pElem=sqliteHashFirst(&pSchema->tblHash);
    pElem;
    pElem=sqliteHashNext(pElem)){
@@ -562,7 +564,7 @@ void sqlite3SchemaClearByName(void *p, const char *tblname){
       sqlite3HashInsert(&pSchema->tblHash, tblname, 0);
 
       /* second we blast it away */
-      sqlite3DeleteTable(0, pTab);
+      sqlite3DeleteTable(&xdb, pTab);
       break;
     }
   }
