@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Election quorum must count all sanctioned nodes; the old get_num_up dropped
+# rtcpu'd nodes, so a minority could elect a master missing durable commits.
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+cluster_size=${#nodes[@]}
+export LOGDIR=$TESTDIR/logs
+
+function send_all
+{
+    for node in ${nodes[@]}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+function cleanup
+{
+    send_all "debug tcmtest routecpu"
+}
+trap cleanup EXIT
+
+function kill_node
+{
+    kill_by_pidfile ${TMPDIR}/${DBNAME}.$1.pid
+}
+
+function start_node
+{
+    typeset node=$1
+    typeset params="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+    mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
+    if [[ $node == $(hostname) ]]; then
+        (cd $DBDIR; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${params} &> $LOGDIR/${DBNAME}.${node}.db &)
+    else
+        typeset cmd="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${params} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+        ssh -n -o StrictHostKeyChecking=no -tt $node ${cmd} &> $LOGDIR/${DBNAME}.${node}.db &
+        echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+    fi
+}
+
+function wait_for_master
+{
+    typeset master=""
+    for ((i = 0; i < 60; i++)); do
+        master=$(get_master_and_fail_if_not_found) && break
+        sleep 1
+    done
+    [[ -n "$master" ]] || return 1
+    echo "$master"
+}
+
+function write_on
+{
+    timeout 30 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $1 "insert into t1 values($2)"
+}
+
+function replicants_of
+{
+    for node in ${nodes[@]}; do
+        [[ "$node" != "$1" ]] && echo $node
+    done
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+
+# Positive: a sanctioned majority still elects after an rtcpu'd node dies
+master=$(wait_for_master) || failexit "no master elected"
+victim=$(replicants_of $master | head -1)
+send_all "debug tcmtest routecpu $victim"
+kill_node $victim
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+sleep 5
+master=$(wait_for_master) || failexit "no master elected"
+[[ "$master" != "$victim" ]] || failexit "dead node $victim reported as master"
+write_on $master 1 || failexit "majority could not write after rtcpu'd node died"
+
+start_node $victim
+# the master never makes an rtcpu'd node coherent
+send_all "debug tcmtest routecpu"
+wait_for_cluster
+master=$(wait_for_master) || failexit "no master elected"
+
+# Negative: rtcpu and kill every replicant; the lone master must give up mastership
+replicants=$(replicants_of $master | xargs)
+send_all "debug tcmtest routecpu $replicants"
+masterlog=$LOGDIR/${DBNAME}.${master}.db
+before=$(grep -c "cluster is unelectable" $masterlog)
+for node in $replicants; do
+    kill_node $node
+done
+unelectable=0
+for ((i = 0; i < 30; i++)); do
+    (( $(grep -c "cluster is unelectable" $masterlog) > before )) && unelectable=1 && break
+    sleep 1
+done
+[[ $unelectable == 1 ]] || failexit "lone master $master never found the cluster unelectable"
+if write_on $master 2; then
+    failexit "lone master $master accepted a write with $(( cluster_size - 1 )) rtcpu'd nodes down"
+fi
+
+for node in $replicants; do
+    start_node $node
+done
+send_all "debug tcmtest routecpu"
+wait_for_cluster
+master=$(wait_for_master) || failexit "no master elected"
+
+write_on $master 3 || failexit "could not write after replicants returned"
+expected="1,3"
+
+# Keep vs elect: with exactly half the nodes up the master stays, but no new master can be elected
+if (( cluster_size % 2 == 0 )); then
+    half=$(replicants_of $master | head -$(( cluster_size / 2 )) | xargs)
+    masterlog=$LOGDIR/${DBNAME}.${master}.db
+    before=$(grep -c "cluster is unelectable" $masterlog)
+    for node in $half; do
+        kill_node $node
+    done
+    sleep 10
+    (( $(grep -c "cluster is unelectable" $masterlog) == before )) || failexit "master $master stepped down with half the cluster up"
+    write_on $master 4 || failexit "master $master rejected a write with half the cluster up"
+
+    before=$(grep -c "election will not be held" $masterlog)
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+    refused=0
+    for ((i = 0; i < 30; i++)); do
+        (( $(grep -c "election will not be held" $masterlog) > before )) && refused=1 && break
+        sleep 1
+    done
+    [[ $refused == 1 ]] || failexit "half the cluster did not refuse to elect a new master"
+    if write_on $master 5; then
+        failexit "half the cluster accepted a write after giving up the master"
+    fi
+    # The timed-out write is still retried server-side, so it may land once a master returns
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "select count(*) from t1 where a = 5")
+    [[ "$x" == "0" ]] || failexit "write 5 committed with half the cluster up"
+
+    for node in $half; do
+        start_node $node
+    done
+    wait_for_cluster
+    master=$(wait_for_master) || failexit "no master elected after half the cluster returned"
+    write_on $master 6 || failexit "could not write after half the cluster returned"
+    expected="1,3,4,6"
+else
+    echo "Skipping keep-vs-elect check: needs an even number of nodes"
+fi
+
+rows=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select group_concat(a) from (select a from t1 where a != 5 order by a)")
+[[ "$rows" == "$expected" ]] || failexit "expected rows $expected, got '$rows'"
+
+echo "Success"
+exit 0

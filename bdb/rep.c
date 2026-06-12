@@ -1049,64 +1049,56 @@ typedef struct {
     int op;
 } elect_thread_args_type;
 
-static int get_num_up(bdb_state_type *bdb_state)
+/* Electing a master needs a majority of the sanctioned nodes; keeping the
+ * current master needs only half, unless elect_forbid_perfect_netsplit is set */
+static int sanctioned_quorum(bdb_state_type *bdb_state, int keep, int *out_num_up, int *out_num_connected)
 {
-    const char *nodelist[REPMAX];
-    int num_up;
-    int tot;
-    int i;
-
-    if (!bdb_state->callback->nodeup_rtn)
-        return net_count_nodes(bdb_state->repinfo->netinfo);
-
-    num_up = 0;
-
-    tot = net_get_all_nodes(bdb_state->repinfo->netinfo, nodelist);
-
-    for (i = 0; i < tot; i++)
-        if ((bdb_state->callback->nodeup_rtn)(bdb_state, nodelist[i]))
-            num_up++;
-
-/* now check for me, cause we werent counted in the first list */
-#if 0
-   if ( (bdb_state->callback->nodeup_rtn)(bdb_state, 
-      bdb_state->repinfo->mynode) )
-      num_up++;
-#endif
-    /* Count me as always up - if I am about to participate in an election,
-       it doesn't make sense that I am not counted */
-    num_up++;
-
-    return num_up;
-}
-
-/* decide if we have enough rtcpu'd machines connected to us to safely elect
- * a master. */
-int is_electable(bdb_state_type *bdb_state, int *out_num_up,
-                 int *out_num_connected)
-{
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    const char *hostlist[REPMAX];
     int num_up, num_connected, rc;
 
-    num_up = get_num_up(bdb_state);
-    num_connected = net_count_connected_nodes(bdb_state->repinfo->netinfo);
-
-    if (bdb_state->attr->elect_forbid_perfect_netsplit) {
-        if (num_connected < ((num_up / 2) + 1))
-            rc = 0;
-        else
-            rc = 1;
+    num_up = net_get_sanctioned_node_list(netinfo, REPMAX, hostlist);
+    if (num_up == 0) {
+        /* No sanctioned list: fall back to every node we know about */
+        static int warned = 0;
+        if (!warned) {
+            logmsg(LOGMSG_WARN, "%s: sanctioned node list is empty\n", __func__);
+            warned = 1;
+        }
+        num_up = net_count_nodes(netinfo);
+        num_connected = net_count_connected_nodes(netinfo);
     } else {
-        if (num_connected < (num_up / 2))
-            rc = 0;
-        else
-            rc = 1;
+        /* Count ourselves only if we are sanctioned */
+        int self_sanctioned = 0;
+        for (int i = 0; i < num_up && i < REPMAX; i++) {
+            if (hostlist[i] == bdb_state->repinfo->myhost) {
+                self_sanctioned = 1;
+                break;
+            }
+        }
+        num_connected = net_sanctioned_and_connected_nodes(netinfo, REPMAX, hostlist) + self_sanctioned;
     }
+
+    if (keep && !bdb_state->attr->elect_forbid_perfect_netsplit)
+        rc = (num_connected * 2 >= num_up);
+    else
+        rc = (num_connected * 2 > num_up);
 
     if (out_num_up)
         *out_num_up = num_up;
     if (out_num_connected)
         *out_num_connected = num_connected;
     return rc;
+}
+
+int is_electable(bdb_state_type *bdb_state, int *out_num_up, int *out_num_connected)
+{
+    return sanctioned_quorum(bdb_state, 0, out_num_up, out_num_connected);
+}
+
+static int can_keep_master(bdb_state_type *bdb_state, int *out_num_up, int *out_num_connected)
+{
+    return sanctioned_quorum(bdb_state, 1, out_num_up, out_num_connected);
 }
 
 void defer_commits_for_upgrade(bdb_state_type *bdb_state, const char *host,
@@ -1821,9 +1813,8 @@ void *hostdown_thread(void *arg)
 
         print(bdb_state, "xxx master is %s we are %s\n", master_host,
               bdb_state->repinfo->myhost);
-        electable = is_electable(bdb_state, &num_up, &num_connected);
-        print(bdb_state, "connected to %d out of %d up nodes\n", num_connected,
-              num_up);
+        electable = can_keep_master(bdb_state, &num_up, &num_connected);
+        print(bdb_state, "connected to %d out of %d sanctioned nodes\n", num_connected, num_up);
 
         if (!electable) {
 
