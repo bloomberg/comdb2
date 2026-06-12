@@ -1,0 +1,1 @@
+Verify that election uses the sanctioned node count rather than filtering out rtcpu'd nodes
