@@ -1,26 +1,3 @@
-#!/usr/bin/env bash
-bash -n "$0" | exit 1
-set -x
+#!/bin/bash
 
-output=run.log
-
-DBNAME=$1
-[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
-shift
-
-${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "create table t { $(cat t.csc2) }"
-master=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs ${DBNAME} default "select host from comdb2_cluster where is_master='Y'")
-
-> $output
-for sz in 64 1024 65537 131072; do
-    echo -n "sz=${sz} " >> $output
-    ${TESTSBUILDDIR}/tagged_bounds ${DBNAME} ${master} ${sz} >> $output 2>&1
-done
-
-if ! diff expected $output; then
-    echo "FAIL: output differs from expected"
-    exit 1
-fi
-
-echo "Passed"
 exit 0

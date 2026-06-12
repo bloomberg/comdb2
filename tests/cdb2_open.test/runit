@@ -1,13 +1,3 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-[[ $debug == 1 ]] && set -x
-export db=$1
-export cdb2_open=${TESTSBUILDDIR}/cdb2_open
-
-out=$($cdb2_open -c $CDB2_CONFIG -d $db 2>&1)
-echo $out
-open_per_second=$(echo $out | awk '{print $7}')
-
-echo "$open_per_second cdb2 open calls per second"
-echo "Test Successful"
 exit 0

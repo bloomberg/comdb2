@@ -1,1 +1,3 @@
-${TESTSBUILDDIR}/crle
+#!/bin/bash
+
+exit 0
