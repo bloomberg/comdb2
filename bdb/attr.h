@@ -318,10 +318,10 @@ DEF_ATTR(REP_MEMSIZE, rep_memsize, QUANTITY, 524288,
          "Maximum size for a local copy of log records for transaction "
          "processors on replicants. Larger transactions will read from the log "
          "directly.")
-DEF_ATTR(ELECT_DISABLE_NETSPLIT_PATCH, elect_forbid_perfect_netsplit, BOOLEAN,
-         1, "When false, on a net split, the side with the master keeps it "
-            "instead of downgrading. New masters still can't be elected "
-            "without a quorum.")
+DEF_ATTR(ELECT_DISABLE_NETSPLIT_PATCH, elect_forbid_perfect_netsplit, BOOLEAN, 0,
+         "When false, on a net split, the side with the master keeps it "
+         "instead of downgrading. New masters still can't be elected "
+         "without a quorum.")
 DEF_ATTR(OSYNC, osync, BOOLEAN, 0, "Enables O_SYNC on data files (reads still "
                                    "go through FS cache) if directio isn't "
                                    "set.")
