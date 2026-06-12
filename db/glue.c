@@ -120,6 +120,7 @@ int (*comdb2_ipc_master_set)(char *host) = 0;
     vtag_to_ondisk((db), fnddta, fndlen, args->ver, genid)
 
 extern int verbose_deadlocks;
+extern int tcmtest_routecpu_is_down(const char *host);
 
 struct net_new_queue_msg {
     bbuint32_t reserved;
@@ -3159,8 +3160,7 @@ int getroom_callback(void *dummy, const char *host) { return machine_dc(host); }
 
 static int nodeup_drtest_callback(void *bdb_handle, const char *host, int *is_drtest)
 {
-    extern char *tcmtest_routecpu_down_node;
-    if (host == tcmtest_routecpu_down_node) {
+    if (tcmtest_routecpu_is_down(host)) {
         return 0;
     }
     return machine_is_up(host, is_drtest);
@@ -3174,8 +3174,7 @@ static int nodeup_callback(void *bdb_handle, const char *host)
 
 int is_node_up(const char *host)
 {
-    extern char *tcmtest_routecpu_down_node;
-    if (host == tcmtest_routecpu_down_node) {
+    if (tcmtest_routecpu_is_down(host)) {
         return 0;
     }
     return machine_is_up(host, NULL);
