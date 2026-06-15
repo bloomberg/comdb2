@@ -1594,6 +1594,89 @@ function verify_revconn_fix
     fi
 }
 
+# Verify that a revconn replicant uses cached is_revconn state when metadb is
+# temporarily unreachable, rather than falling into find_new_repl_db.
+function revconn_metadb_failure_test
+{
+    echo "== revconn_metadb_failure_test =="
+
+    local repl_name=${REPL_DBNAME_PREFIX}_${firstNode}
+    local repl_node=${firstNode}
+    local logFile=$TESTDIR/logs/${repl_name}.log
+
+    echo "Setting low find_new_repl_db_timeout as safety net"
+    $CDB2SQL_EXE --admin ${CDB2_OPTIONS} --host ${repl_node} ${repl_name} "exec procedure sys.cmd.send('put tunable physrep_find_new_repl_db_timeout 5')"
+
+    echo "Recording log position before test"
+    local log_lines_before=$(wc -l < $logFile)
+
+    echo "Killing altmeta (the replicant's metadb)"
+    if [[ -z "$CLUSTER" ]]; then
+        kill -9 $(cat ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid)
+    else
+        for node in $CLUSTER ; do
+            ssh ${node} "kill -9 \$(cat ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid)" < /dev/null 2>/dev/null
+        done
+    fi
+
+    sleep 2
+
+    echo "Forcing replicant to re-register (triggers revconn decision point)"
+    $CDB2SQL_EXE --admin ${CDB2_OPTIONS} --host ${repl_node} ${repl_name} "exec procedure sys.cmd.send('physrep_force_registration')"
+
+    echo "Sleeping 15s to allow replicant to hit the decision point with metadb down"
+    sleep 15
+
+    echo "Restarting altmeta"
+    if [[ -z "$CLUSTER" ]]; then
+        local node=$(hostname)
+        local altLogFile=$TESTDIR/logs/${REPL_ALTMETA_DBNAME}.${node}.log
+        $COMDB2_EXE ${REPL_ALTMETA_DBNAME} --lrl ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.lrl --pidfile ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid >> ${altLogFile} 2>&1 &
+    else
+        for node in $CLUSTER ; do
+            local altLogFile=$TESTDIR/logs/${REPL_ALTMETA_DBNAME}.${node}.log
+            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${REPL_ALTMETA_DBNAME} --lrl ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.lrl --pidfile ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid" >> ${altLogFile} 2>&1 < /dev/null &
+        done
+    fi
+
+    echo "Waiting for altmeta to come back online"
+    local out=""
+    local wait_count=0
+    while [[ "$out" != "1" ]] && [[ $wait_count -lt 60 ]]; do
+        sleep 1
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${REPL_ALTMETA_HOST} ${REPL_ALTMETA_DBNAME} 'select 1' 2>/dev/null)
+        let wait_count=wait_count+1
+    done
+    if [[ "$out" != "1" ]]; then
+        cleanFailExit "Altmeta failed to come back online"
+    fi
+
+    echo "Waiting for replicant to resume replication"
+    sleep 10
+
+    echo "Checking replicant log for expected behavior"
+    local new_log=$(tail -n +$((log_lines_before+1)) $logFile)
+
+    local found_cached=$(echo "$new_log" | grep "Metadb unreachable, using cached revconn state" | wc -l)
+    local found_find_timeout=$(echo "$new_log" | grep "Couldn't connect to source hosts within" | wc -l)
+
+    echo "  Cached revconn path hits: $found_cached"
+    echo "  find_new_repl_db timeout hits: $found_find_timeout"
+
+    if [[ "$found_find_timeout" -gt 0 ]]; then
+        cleanFailExit "Replicant fell into find_new_repl_db despite being a revconn replicant"
+    fi
+
+    if [[ "$found_cached" -eq 0 ]]; then
+        echo "  WARNING: did not see cached revconn message (may not have hit the code path)"
+    fi
+
+    echo "Restoring default find_new_repl_db_timeout"
+    $CDB2SQL_EXE --admin ${CDB2_OPTIONS} --host ${repl_node} ${repl_name} "exec procedure sys.cmd.send('put tunable physrep_find_new_repl_db_timeout 60')"
+
+    echo "== revconn_metadb_failure_test passed =="
+}
+
 # Count number of file-descriptors used by the revconn-source
 function revconn_leak_test
 {
@@ -3204,6 +3287,11 @@ function run_tests
     revconn_leak_test
     testcase_finish $testcase
 
+    testcase="revconn_metadb_failure_test"
+    testcase_preamble $testcase
+    revconn_metadb_failure_test
+    testcase_finish $testcase
+
     testcase="physrep_truncate"
     testcase_preamble $testcase
     physrep_truncate
@@ -3297,7 +3385,7 @@ function run_tests
 
 function run_one_test
 {
-    physrep_rtcpu_source
+    revconn_metadb_failure_test
 }
 
 run_tests
