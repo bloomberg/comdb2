@@ -1950,7 +1950,7 @@ function require_recent_heartbeat
     retries=0
 
     while [[ $retries -lt 10 ]]; do
-        $CDB2SQL_EXE $CDB2_OPTIONS $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "update comdb2_physreps set last_keepalive = '1981-08-30T23:59:59.987 US/Eastern' where dbname = '$name' and host = '$host'"
+        $CDB2SQL_EXE $CDB2_OPTIONS $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "update comdb2_physreps set last_keepalive = '1981-08-30T23:59:59.987' where dbname = '$name' and host = '$host'"
 
         lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME default 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
         out2=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "exec procedure sys.physrep.register_replicant('testdb', 'testmach', '$lsn', '$DBNAME', \"'$firstNode'\")")
