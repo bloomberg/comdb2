@@ -170,6 +170,7 @@ int gbl_allow_lua_print = 0;
 int gbl_lua_prepare_max_retries = 0;
 int gbl_lua_prepare_retry_sleep = 200;
 int gbl_allow_pragma = 0;
+int gbl_allow_shard_truncate = 0;
 int gbl_master_changed_oldfiles = 0;
 int gbl_recovery_timestamp = 0;
 int gbl_recovery_lsn_file = 0;

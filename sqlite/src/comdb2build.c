@@ -47,6 +47,7 @@ extern int gbl_gen_shard_verbose;
 extern int gbl_sc_protobuf;
 extern int gbl_retro_tpt_start;
 extern int gbl_legacy_tpt;
+extern int gbl_allow_shard_truncate;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 extern int gbl_enable_bulk_import;
@@ -1188,7 +1189,7 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, /* check_for_illegal_chars */ 0))
+                              ERROR_ON_TBL_NOT_FOUND, !gbl_allow_shard_truncate, 0, NULL, /* check_for_illegal_chars */ 0))
         goto out;
 
     sc->kind = SC_TRUNCATETABLE;

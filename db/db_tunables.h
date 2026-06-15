@@ -50,6 +50,8 @@ REGISTER_TUNABLE("allow_pragma",
                  "Enable to allow use of the PRAGMA command (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_pragma,
                  NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_shard_truncate", "Allow TRUNCATE on individual time partition shards. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_shard_truncate, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_negative_column_size",
                  "Allow negative column size in csc2 schema. Added mostly for "
                  "backwards compatibility. (Default: off)",
