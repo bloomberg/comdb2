@@ -1347,7 +1347,7 @@ int resume_schema_change(void)
 /****************** Table functions ***********************************/
 /****************** Functions down here will likely be moved elsewhere *****/
 
-int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume)
+int open_temp_newdb_resume(struct dbtable *db, int resume)
 {
     char *tmpname;
     int bdberr;
@@ -1363,14 +1363,14 @@ int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume)
     tmpname = malloc(nbytes);
     snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
 
-    rc = open_temp_db_resume(iq, db, tmpname, resume);
+    rc = open_temp_db_resume(db, tmpname, resume);
 
     free(tmpname);
 
     return rc;
 }
 
-int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, int resume)
+int open_temp_db_resume(struct dbtable *db, char *tablename, int resume)
 {
     int bdberr;
 
@@ -1398,30 +1398,34 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, in
     if (!db->handle) /* did not/could not open existing one, creating new one */
     {
         int rc;
-        tran_type *tran = NULL;
+        tran_type *tran;
+        seqnum_type seqnum;
     retry:
-        rc = trans_start(iq, NULL, &tran);
-        if (rc)
-            return -1;
+        tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+        if (!tran)
+            return ERR_INTERNAL;
 
         db->handle = bdb_create_tran(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
                                      db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
                                      db->ix_nullsallowed, db->numblobs + 1, /* one main record + the blobs blobs */
                                      db->dbenv->bdb_env, 0, &bdberr, tran);
         if (db->handle == NULL) {
-            trans_abort(iq, tran);
+            int create_err = bdberr;
+            int abort_err;
+            bdb_tran_abort(thedb->bdb_env, tran, &abort_err);
             tran = NULL;
-            if (bdberr == BDBERR_DEADLOCK) {
+            if (create_err == BDBERR_DEADLOCK) {
                 logmsg(LOGMSG_WARN, "%s: retrying on BDBERR_DEADLOCK\n", __func__);
                 goto retry;
             }
 
-            logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__, tablename, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__, tablename, create_err);
 
-            return bdberr;
+            return create_err;
         }
 
-        rc = trans_commit_nowait(iq, tran, gbl_myhostname);
+        bdb_trans_set_nowait(tran);
+        rc = bdb_tran_commit_with_seqnum_size(thedb->bdb_env, tran, &seqnum, NULL, &bdberr);
         if (rc)
             return -1;
     }

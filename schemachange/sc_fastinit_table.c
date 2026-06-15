@@ -106,7 +106,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         local_lock = 1;
         wrlock_schema_lk();
     }
-    rc = open_temp_newdb_resume(iq, newdb, 0);
+    rc = open_temp_newdb_resume(newdb, 0);
     if (local_lock)
         unlock_schema_lk();
     if (rc) {

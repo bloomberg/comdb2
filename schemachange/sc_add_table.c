@@ -130,7 +130,7 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (s && s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
         /* this is adding a shard, we need to try to open an existing shard, which may have data */
-        if ((rc = open_temp_db_resume(iq, newdb, newdb->tablename, s->resume))) {
+        if ((rc = open_temp_db_resume(newdb, newdb->tablename, s->resume))) {
             sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
             reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
         }

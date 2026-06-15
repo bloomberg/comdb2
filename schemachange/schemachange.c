@@ -940,7 +940,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
-    rc = open_temp_newdb_resume(iq, newdb, 1);
+    rc = open_temp_newdb_resume(newdb, 1);
     if (rc) {
         backout_schemas(newdb->tablename);
         abort();

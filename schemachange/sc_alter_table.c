@@ -521,7 +521,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/
-    rc = open_temp_newdb_resume(iq, newdb, s->resume);
+    rc = open_temp_newdb_resume(newdb, s->resume);
     if (rc) {
         if (rc == BDBERR_EXCEEDED_BLOBS) {
             sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");

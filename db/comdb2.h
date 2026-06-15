@@ -3648,8 +3648,8 @@ const char *sc_tag_change_subtype_text(sc_tag_change_subtype);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
 int get_dbtable_idx_by_name(const char *tablename);
-int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *tablename, int resume);
-int open_temp_newdb_resume(struct ireq *iq, struct dbtable *db, int resume);
+int open_temp_db_resume(struct dbtable *db, char *tablename, int resume);
+int open_temp_newdb_resume(struct dbtable *db, int resume);
 int find_constraint(struct dbtable *db, constraint_t *ct);
 
 /* END OF SCHEMACHANGE DECLARATIONS*/
