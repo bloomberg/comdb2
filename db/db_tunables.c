@@ -539,6 +539,7 @@ extern int gbl_physrep_slow_replicant_check_freq_sec;
 extern int gbl_physrep_max_candidates;
 extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_reconnect_interval;
+extern int gbl_physrep_find_new_repl_db_timeout;
 extern int gbl_physrep_shuffle_host_list;
 extern int gbl_physrep_ignore_queues;
 extern int gbl_physrep_max_rollback;

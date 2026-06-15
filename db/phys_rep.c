@@ -72,6 +72,7 @@ int gbl_physrep_keepalive_freq_sec = 60;
 int gbl_physrep_hung_replicant_check_freq_sec = 60;
 int gbl_physrep_hung_replicant_threshold = 60;
 int gbl_physrep_revconn_check_interval = 60;
+int gbl_physrep_find_new_repl_db_timeout = 60;
 int gbl_physrep_update_registry_interval = 60;
 int gbl_physrep_shuffle_host_list = 0;
 int gbl_physrep_i_am_metadb = 0;
@@ -247,6 +248,7 @@ static void set_repl_db_disconnected()
     repl_db_connected = 0;
     gbl_physrep_repl_name = NULL;
     gbl_physrep_repl_host = NULL;
+    physrep_logmsg(LOGMSG_USER, "Physical replicant has disconnected\n");
 }
 
 static void close_repl_connection(DB_Connection *cnct, cdb2_hndl_tp *repl_db,
@@ -1015,6 +1017,7 @@ static int seedsort(const void *arg1, const void *arg2)
 static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp **repl_db) {
     int rc, count = 0;
     DB_Connection *cnct;
+    int start_time = time(NULL);
 
     assert(repl_db_connected == 0);
 
@@ -1077,6 +1080,13 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
         }
 
         count++;
+        int elapsed = time(NULL) - start_time;
+        if (gbl_physrep_find_new_repl_db_timeout > 0 && elapsed >= gbl_physrep_find_new_repl_db_timeout) {
+            physrep_logmsg(LOGMSG_USER,
+                           "%s:%d: Couldn't connect to source hosts within %d seconds, break to re-register\n",
+                           __func__, __LINE__, elapsed);
+            return NULL;
+        }
         if (count < 10) {
             physrep_logmsg(LOGMSG_USER,
                            "%s:%d: Couldn't connect to any of the replication source hosts, retrying in a second\n",
@@ -1497,7 +1507,15 @@ repl_loop:
             }
 
             last_revconn_check = comdb2_time_epoch();
-            if (do_wait_for_reverse_conn(repl_metadb) == 1) {
+            int do_revconn = do_wait_for_reverse_conn(repl_metadb);
+            if (do_revconn == -1) {
+                if (is_revconn == 1) {
+                    do_revconn = 1;
+                } else {
+                    do_revconn = 0;
+                }
+            }
+            if (do_revconn == 1) {
                 is_revconn = 1;
                 int wait_timeout_sec = 60;
 
