@@ -1055,6 +1055,8 @@ public class Comdb2Handle extends AbstractConnection {
         int commitIsRetry = 0;
         int rc;
 
+        driverErrStr = null;
+        
         sql = sql.trim();
         String lowerSql = sql.toLowerCase();
 
