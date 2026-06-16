@@ -1911,8 +1911,8 @@ REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster nam
 REGISTER_TUNABLE("physrep_reconnect_penalty", "Physrep wait seconds before retry to the same node. (Default: 5)",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_find_new_repl_db_timeout",
-                 "Max seconds to spend in find_new_repl_db before giving up. (Default: 60)",
-                 TUNABLE_INTEGER, &gbl_physrep_find_new_repl_db_timeout, 0, NULL, NULL, NULL, NULL);
+                 "Max seconds to spend in find_new_repl_db before giving up. (Default: 60)", TUNABLE_INTEGER,
+                 &gbl_physrep_find_new_repl_db_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_reconnect_interval", "Reconnect interval for physical replicants (Default: 600)",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_shuffle_host_list",

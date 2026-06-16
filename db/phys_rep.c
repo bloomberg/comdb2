@@ -1510,8 +1510,8 @@ repl_loop:
             int do_revconn = do_wait_for_reverse_conn(repl_metadb);
             if (do_revconn == -1) {
                 if (is_revconn == 1) {
-                    physrep_logmsg(LOGMSG_USER, "%s:%d Metadb unreachable, using cached revconn state\n",
-                                   __func__, __LINE__);
+                    physrep_logmsg(LOGMSG_USER, "%s:%d Metadb unreachable, using cached revconn state\n", __func__,
+                                   __LINE__);
                     do_revconn = 1;
                 } else {
                     do_revconn = 0;
