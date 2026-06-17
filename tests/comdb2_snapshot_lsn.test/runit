@@ -88,6 +88,52 @@ EOF
 
     touch $stopfile
     wait
+
+    echo "Disable global tunable"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable 'use_current_lsn_for_non_snapshot' 0"
+
+    echo "Per-session: without set, should return NULL"
+    result=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master - <<EOF
+select comdb2_snapshot_lsn()
+EOF
+)
+    echo "$result"
+    if [[ "$result" != *"comdb2_snapshot_lsn()=NULL"* ]]; then
+        failexit "Expected comdb2_snapshot_lsn() to return NULL, got $result"
+    fi
+
+    echo "Per-session: with set on, should return non-NULL"
+    result=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master - <<EOF
+set use_current_lsn_for_snapshot on
+select comdb2_snapshot_lsn()
+EOF
+)
+    echo "$result"
+    if [[ "$result" == *"comdb2_snapshot_lsn()=NULL"* ]]; then
+        failexit "Expected comdb2_snapshot_lsn() to return non-NULL with per-session set, got $result"
+    fi
+
+    echo "Per-session: set off should return NULL again"
+    result=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master - <<EOF
+set use_current_lsn_for_snapshot on
+set use_current_lsn_for_snapshot off
+select comdb2_snapshot_lsn()
+EOF
+)
+    echo "$result"
+    if [[ "$result" != *"comdb2_snapshot_lsn()=NULL"* ]]; then
+        failexit "Expected comdb2_snapshot_lsn() to return NULL after set off, got $result"
+    fi
+
+    echo "Per-session: other sessions unaffected"
+    result=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master - <<EOF
+select comdb2_snapshot_lsn()
+EOF
+)
+    echo "$result"
+    if [[ "$result" != *"comdb2_snapshot_lsn()=NULL"* ]]; then
+        failexit "Expected other session to still return NULL, got $result"
+    fi
 }
 
 run_test

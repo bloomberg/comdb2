@@ -1132,7 +1132,7 @@ static void comdb2SnapshotLsnFunc(
     sz = snprintf(lsn, sizeof(lsn), "{%d:%d}",
              clnt->modsnap_start_lsn_file,
              clnt->modsnap_start_lsn_offset);
-  } else if (gbl_use_current_lsn_for_non_snapshot) {
+  } else if (gbl_use_current_lsn_for_non_snapshot || (clnt != NULL && clnt->use_current_lsn_for_snapshot)) {
     DB_LSN curlsn;
     __log_txn_lsn(thedb->bdb_env->dbenv, &curlsn, NULL, NULL);
     sz = snprintf(lsn, sizeof(lsn), "{%d:%d}", curlsn.file, curlsn.offset);

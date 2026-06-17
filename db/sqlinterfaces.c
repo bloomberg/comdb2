@@ -5495,6 +5495,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
     clnt->verifyretry_off = 0;
+    clnt->use_current_lsn_for_snapshot = 0;
     clnt->is_expert = 0;
     clnt->is_fast_expert = 0;
 

@@ -1046,9 +1046,10 @@ struct sqlclntstate {
     uint32_t last_checkpoint_lsn_file;
     uint32_t last_checkpoint_lsn_offset;
 
-    void *modsnap_registration; 
-    
-    int modsnap_in_progress; 
+    void *modsnap_registration;
+
+    int modsnap_in_progress;
+    int use_current_lsn_for_snapshot;
 
     int lastresptype;
     char *externalAuthUser;
