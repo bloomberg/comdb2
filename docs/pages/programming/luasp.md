@@ -1711,3 +1711,55 @@ cdb2sql> select median(i) from t;
 ```
 
 The `DROP LUA AGGREGATE FUNCTION func-name` statement disassociates the stored procedure from SQL function. The stored procedure still exists, but it's not callable as a function from SQL.
+
+### Lua functions and remote tables
+
+Comdb2 supports querying tables on remote clusters using the `remotedb.tablename` syntax (see [Foreign Databases](fdb.html)). When Lua functions appear in statements that reference remote tables, where the function executes depends on which tables are involved.
+
+**All-remote reads — function in SELECT list**
+
+When a Lua function appears in the `SELECT` list of an all-remote query, the FDB push path is not activated. The query uses a cursor-based path: the remote cluster returns raw rows and the local engine evaluates the function. Register the function on the **local** cluster.
+
+```
+-- greet_name is called locally on rows fetched from "remotecluster"
+cdb2sql> select greet_name(sex, firstName, lastName) as hi from remotecluster.persons
+```
+
+If the function is absent locally the query fails with an "unknown function" error even though the data is on the remote cluster.
+
+**All-remote reads — function in WHERE clause only**
+
+When a Lua function appears only in the `WHERE` clause and the `SELECT` list contains only plain columns, the query can be serialised and the FDB push path **is** activated. The entire SQL is forwarded to the remote cluster and the function executes there. Register the function on **both** clusters: locally so the SQL prepare phase succeeds, and on the remote so the pushed query can execute.
+
+```
+-- greet_name is called on the remote cluster (WHERE-only, plain SELECT list)
+cdb2sql> select sex, firstName, lastName from remotecluster.persons
+          where greet_name(sex, firstName, lastName) like 'Mr.%'
+```
+
+If the function is absent on the remote the query fails because the pushed SQL cannot be executed there — even though the local registration is intact.
+
+**All-remote writes**
+
+A write (`INSERT ... VALUES`, `UPDATE ... SET`, `DELETE ... WHERE`) targeting a remote table is forwarded in full to that remote cluster via the push-write path. The function executes on the **remote** cluster. Register the function on **both** clusters: locally so the SQL prepare phase succeeds, and on the remote so the pushed write can execute.
+
+```
+-- classify_salary runs on "remotecluster", not locally
+cdb2sql> insert into remotecluster.employees values(1, classify_salary(95000))
+```
+
+If the function is absent on the remote the write fails with an "unknown function" error from the remote.
+
+**Mixed local and remote tables**
+
+When a query joins local and remote tables, push mode is never activated. In most cases the query executes entirely on the local node: remote rows are fetched via a cursor and Lua functions are evaluated locally. However, when the remote table is the outer loop of the join and a Lua function appears in the `WHERE` clause, the query planner may emit a cursor hint that forwards the predicate to the remote cursor — causing the function to execute on the remote cluster instead.
+
+Because the execution site depends on the query plan chosen at runtime, it is not always predictable where a Lua function will run in a mixed join. To avoid "unknown function" errors regardless of plan shape, **register the function on both the local and remote clusters**.
+
+```
+-- greet_name may run locally or on "remotecluster" depending on the query plan
+cdb2sql> select l.dept, greet_name(r.sex, r.firstName, r.lastName) as hi
+           from localtable l
+           join remotecluster.persons r on l.id = r.id
+          where greet_name(r.sex, r.firstName, r.lastName) like 'Mr.%'
+```

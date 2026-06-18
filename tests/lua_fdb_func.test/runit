@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Shorthand helpers
+L() { $CDB2SQL_EXE $CDB2_OPTIONS           $DBNAME           default "$@"; }
+R() { $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "$@"; }
+L_tabs() { $CDB2SQL_EXE --tabs $CDB2_OPTIONS           $DBNAME           default "$@"; }
+R_tabs() { $CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "$@"; }
+
+# Remote table prefix used in queries from the local database
+RPREFIX="LOCAL_${SECONDARY_DBNAME}"
+
+# ---------------------------------------------------------------------------
+# greet_name(sex, fname, lname) -> "Mr./Ms. fname lname" or "fname lname"
+# ---------------------------------------------------------------------------
+register_greet_name_remote() {
+    R "DROP PROCEDURE greet_name" 2>/dev/null
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default - <<EOF
+CREATE PROCEDURE greet_name VERSION 'v1' {
+local function greet_name(sex, fname, lname)
+    if sex == "m" then
+        return "Mr. " .. fname .. " " .. lname
+    elseif sex == "f" then
+        return "Ms. " .. fname .. " " .. lname
+    else
+        return fname .. " " .. lname
+    end
+end
+}\$\$
+CREATE LUA SCALAR FUNCTION greet_name
+EOF
+}
+
+register_greet_name_local() {
+    L "DROP PROCEDURE greet_name" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+CREATE PROCEDURE greet_name VERSION 'v1' {
+local function greet_name(sex, fname, lname)
+    if sex == "m" then
+        return "Mr. " .. fname .. " " .. lname
+    elseif sex == "f" then
+        return "Ms. " .. fname .. " " .. lname
+    else
+        return fname .. " " .. lname
+    end
+end
+}\$\$
+CREATE LUA SCALAR FUNCTION greet_name
+EOF
+}
+
+drop_greet_name_remote() {
+    R "DROP LUA SCALAR FUNCTION greet_name" 2>/dev/null
+    R "DROP PROCEDURE greet_name"           2>/dev/null
+}
+
+drop_greet_name_local() {
+    L "DROP LUA SCALAR FUNCTION greet_name" 2>/dev/null
+    L "DROP PROCEDURE greet_name"           2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Setup: create tables on both databases
+# ---------------------------------------------------------------------------
+echo "=== Setup ==="
+
+R "DROP TABLE IF EXISTS rpersons"   2>/dev/null
+R "DROP TABLE IF EXISTS rgreetings" 2>/dev/null
+R "CREATE TABLE rpersons   (id INT, sex TEXT, fname TEXT, lname TEXT)" \
+    || failexit "create rpersons"
+R "CREATE TABLE rgreetings (id INT, greeting TEXT)" \
+    || failexit "create rgreetings"
+R "INSERT INTO rpersons VALUES(1, 'm', 'John', 'Doe')"   || failexit "insert rpersons 1"
+R "INSERT INTO rpersons VALUES(2, 'f', 'Jane', 'Roe')"   || failexit "insert rpersons 2"
+R "INSERT INTO rpersons VALUES(3, 'x', 'Alex', 'Smith')" || failexit "insert rpersons 3"
+
+L "DROP TABLE IF EXISTS ldepts" 2>/dev/null
+L "CREATE TABLE ldepts (id INT, dept TEXT)" || failexit "create ldepts"
+L "INSERT INTO ldepts VALUES(1, 'Engineering')" || failexit "insert ldepts 1"
+L "INSERT INTO ldepts VALUES(2, 'Marketing')"   || failexit "insert ldepts 2"
+L "INSERT INTO ldepts VALUES(3, 'Finance')"     || failexit "insert ldepts 3"
+
+# Register greet_name locally — kept for tests 1, 2, 3, 4
+register_greet_name_local
+
+# ---------------------------------------------------------------------------
+# Test 1: All-remote SELECT — function in SELECT list.
+#
+# When a Lua function appears in the SELECT list, gen_select fails to
+# serialize it (TK_FUNCTION hits WRC_Abort in _exprCallback), so the
+# FDB push path is never set up.  The query falls back to the cursor-
+# based path: raw rows are fetched from the remote and the local engine
+# evaluates the function.
+#
+# greet_name is registered locally only.  If it were running on the
+# remote this test would fail because the remote has no greet_name.
+# ---------------------------------------------------------------------------
+echo "=== Test 1: all-remote SELECT, function in SELECT list ==="
+
+out=$(L "SELECT greet_name(sex, fname, lname) AS greeting \
+         FROM ${RPREFIX}.rpersons ORDER BY id" 2>&1)
+rc=$?
+[[ $rc -ne 0 ]] && failexit "Test 1: SELECT failed: $out"
+
+exp=$(printf "(greeting='Mr. John Doe')\n(greeting='Ms. Jane Roe')\n(greeting='Alex Smith')")
+[[ "$out" != "$exp" ]] && failexit "Test 1: wrong output:
+expected: $exp
+got:      $out"
+
+echo "PASSED: greet_name in SELECT list executed locally (local only, no remote registration needed)"
+
+# ---------------------------------------------------------------------------
+# Test 2: All-remote SELECT — function in WHERE clause only.
+#
+# When the SELECT list contains only plain columns and the Lua function
+# appears solely in the WHERE predicate, sqlite_struct_to_string can
+# serialise the query (sqlite3ExprDescribeParams handles TK_FUNCTION).
+# gen_select returns a non-NULL node with remotedb set, so the FDB push
+# path IS set up and the entire SQL is forwarded to the remote cluster.
+# The function therefore executes on the remote.
+#
+# greet_name is registered on BOTH clusters: locally so the SQL prepare
+# phase succeeds (SQLite resolves function names at compile time), and
+# on the remote so the pushed query can execute there.
+#
+# Test 6 (negative) confirms push is routing to the remote: running the
+# same query with greet_name absent on the remote fails even though the
+# local registration is intact.
+# ---------------------------------------------------------------------------
+echo "=== Test 2: all-remote SELECT, function in WHERE clause only ==="
+
+register_greet_name_remote
+
+out=$(L "SELECT sex, fname, lname \
+         FROM ${RPREFIX}.rpersons \
+         WHERE greet_name(sex, fname, lname) LIKE 'Mr.%' \
+         ORDER BY id" 2>&1)
+rc=$?
+[[ $rc -ne 0 ]] && failexit "Test 2: SELECT failed: $out"
+
+exp="(sex='m', fname='John', lname='Doe')"
+[[ "$out" != "$exp" ]] && failexit "Test 2: wrong output:
+expected: $exp
+got:      $out"
+
+drop_greet_name_remote
+
+echo "PASSED: greet_name in WHERE only executed on remote cluster via FDB push"
+
+# ---------------------------------------------------------------------------
+# Test 3: Mixed local+remote join — function in SELECT list and WHERE.
+#
+# When local and remote tables appear in the same query the FDB push
+# path is never set up (remoteIdb is cleared on the first local table).
+# The query executes on the local node; remote rows are fetched via a
+# cursor.  All Lua functions are evaluated locally.
+#
+# greet_name is registered locally only.
+# ---------------------------------------------------------------------------
+echo "=== Test 3: mixed local+remote join ==="
+
+# 3a: greet_name in SELECT list — evaluated locally on fetched remote rows
+out=$(L "SELECT l.dept, greet_name(r.sex, r.fname, r.lname) AS greeting \
+         FROM ldepts l JOIN ${RPREFIX}.rpersons r ON l.id = r.id \
+         ORDER BY l.id" 2>&1)
+rc=$?
+[[ $rc -ne 0 ]] && failexit "Test 3a: mixed join SELECT failed: $out"
+
+exp3a=$(printf "(dept='Engineering', greeting='Mr. John Doe')\n(dept='Marketing', greeting='Ms. Jane Roe')\n(dept='Finance', greeting='Alex Smith')")
+[[ "$out" != "$exp3a" ]] && failexit "Test 3a: wrong output:
+expected: $exp3a
+got:      $out"
+
+echo "  3a PASSED: greet_name in SELECT evaluated locally"
+
+# 3b: greet_name in WHERE, plain JOIN — whether the cursor hint fires depends
+#     on the planner's join order.  With the plain JOIN the planner picks the
+#     remote table as the outer loop; the codeCursorHint check then exits early
+#     (it indexes pTabList by loop level, which hits the local table's NULL
+#     zDatabase).  No hint is emitted, greet_name is evaluated locally on the
+#     fetched remote rows.  greet_name must be registered locally only.
+out=$(L "SELECT l.dept AS dept \
+         FROM ldepts l JOIN ${RPREFIX}.rpersons r ON l.id = r.id \
+         WHERE greet_name(r.sex, r.fname, r.lname) LIKE 'Mr.%'" 2>&1)
+rc=$?
+[[ $rc -ne 0 ]] && failexit "Test 3b: mixed join WHERE (no hint) failed: $out"
+
+exp3b="(dept='Engineering')"
+[[ "$out" != "$exp3b" ]] && failexit "Test 3b: wrong output:
+expected: $exp3b
+got:      $out"
+
+echo "  3b PASSED: greet_name in WHERE, no cursor hint — evaluated locally"
+
+# 3c: greet_name in WHERE, CROSS JOIN with rpersons as outer loop —
+#     Placing the remote table first forces SQLite to make it the outer loop
+#     (cursor 0) without building an auto-index.  OP_CursorHint is then emitted
+#     for cursor 0, which is the actual FDB cursor.  The hint serialises the Lua
+#     predicate and sends it to the remote cursor as a WHERE filter.
+#
+#     With greet_name registered locally only (not on the remote), the remote
+#     cursor fails with "no such function: greet_name".  This failure proves the
+#     hint is routing the predicate evaluation to the remote.
+#
+#     greet_name is still registered locally (from the top of Test 3).
+out=$(L "SELECT l.dept AS dept \
+         FROM ${RPREFIX}.rpersons r CROSS JOIN ldepts l \
+         WHERE l.id = r.id AND greet_name(r.sex, r.fname, r.lname) LIKE 'Mr.%'" 2>&1)
+rc=$?
+[[ $rc -eq 0 ]] && failexit "Test 3c: CROSS JOIN with local-only greet_name should fail (cursor hint routes to remote), but succeeded"
+echo "$out" | grep -qi "greet_name" \
+    || failexit "Test 3c: expected a function-related error, got: $out"
+
+echo "  3c PASSED: cursor hint fired — greet_name absent on remote caused failure, proving remote execution"
+
+# 3d: same CROSS JOIN with greet_name registered on BOTH clusters —
+#     the remote cursor hint fires and the remote evaluates greet_name successfully.
+register_greet_name_remote
+
+out=$(L "SELECT l.dept AS dept \
+         FROM ${RPREFIX}.rpersons r CROSS JOIN ldepts l \
+         WHERE l.id = r.id AND greet_name(r.sex, r.fname, r.lname) LIKE 'Mr.%'" 2>&1)
+rc=$?
+[[ $rc -ne 0 ]] && failexit "Test 3d: CROSS JOIN with both-cluster greet_name failed: $out"
+
+[[ "$out" != "$exp3b" ]] && failexit "Test 3d: wrong output:
+expected: $exp3b
+got:      $out"
+
+drop_greet_name_remote
+
+echo "  3d PASSED: cursor hint fired, greet_name on remote — evaluated correctly on remote"
+echo "PASSED: mixed local+remote join tests complete"
+
+# ---------------------------------------------------------------------------
+# Test 4: Remote write — INSERT VALUES with function.
+#
+# For INSERT ... VALUES(func(...)), the FDB push-write path IS activated
+# (the INSERT node is stack[0] in the AST with iDb>1, and the VALUES
+# subquery does not emit a SELECT node to the stack).  The entire SQL is
+# forwarded to the remote cluster, so greet_name executes there.
+#
+# greet_name must be registered locally so the SQL prepare phase
+# succeeds, and on the remote so the pushed INSERT can evaluate it.
+# ---------------------------------------------------------------------------
+echo "=== Test 4: remote write, INSERT VALUES with function ==="
+
+register_greet_name_remote
+
+L "INSERT INTO ${RPREFIX}.rgreetings VALUES(1, greet_name('m', 'John', 'Doe'))" \
+    || failexit "Test 4: INSERT row 1 failed"
+L "INSERT INTO ${RPREFIX}.rgreetings VALUES(2, greet_name('f', 'Jane', 'Roe'))" \
+    || failexit "Test 4: INSERT row 2 failed"
+L "INSERT INTO ${RPREFIX}.rgreetings VALUES(3, greet_name('x', 'Alex', 'Smith'))" \
+    || failexit "Test 4: INSERT row 3 failed"
+
+cnt=$(R_tabs "SELECT COUNT(*) FROM rgreetings")
+[[ "$cnt" != "3" ]] && failexit "Test 4: expected 3 rows in rgreetings, got $cnt"
+
+drop_greet_name_remote
+
+echo "PASSED: remote write executed greet_name on remote cluster via push-write"
+
+# ---------------------------------------------------------------------------
+# Test 5: Negative — function in SELECT list, absent locally.
+#
+# Because the SELECT list has a Lua function, the FDB push path is not
+# set up and the function is evaluated by the local engine.  With
+# greet_name absent locally the query must fail.
+# ---------------------------------------------------------------------------
+echo "=== Test 5: negative — SELECT list function, absent locally ==="
+
+drop_greet_name_local
+register_greet_name_remote
+
+out=$(L "SELECT greet_name(sex, fname, lname) AS greeting \
+         FROM ${RPREFIX}.rpersons" 2>&1)
+rc=$?
+[[ $rc -eq 0 ]] && failexit "Test 5: SELECT should have failed (greet_name not local), but succeeded"
+echo "$out" | grep -qi "greet_name" \
+    || failexit "Test 5: expected a function-related error, got: $out"
+
+echo "PASSED: SELECT list function correctly failed when greet_name absent locally"
+
+# ---------------------------------------------------------------------------
+# Test 6: Negative — function in WHERE only, absent on remote.
+#
+# This is the key test proving that the FDB push path IS active for the
+# WHERE-only case.  greet_name is registered locally (so prepare
+# succeeds) but NOT on the remote.  Because push forwards the full SQL
+# to the remote, the remote fails with "no such function".
+#
+# If the query were running locally (no push), greet_name would be
+# found locally and the test would succeed — the failure here is proof
+# that push is routing the WHERE evaluation to the remote.
+# ---------------------------------------------------------------------------
+echo "=== Test 6: negative — WHERE-only function, absent on remote (proves push is active) ==="
+
+drop_greet_name_remote
+register_greet_name_local
+
+out=$(L "SELECT sex, fname, lname \
+         FROM ${RPREFIX}.rpersons \
+         WHERE greet_name(sex, fname, lname) LIKE 'Mr.%'" 2>&1)
+rc=$?
+[[ $rc -eq 0 ]] && failexit "Test 6: SELECT should have failed (greet_name not on remote), but succeeded"
+echo "$out" | grep -qi "greet_name" \
+    || failexit "Test 6: expected a function-related error, got: $out"
+
+echo "PASSED: WHERE-only function failed on remote — confirms FDB push is routing the query"
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+drop_greet_name_local
+drop_greet_name_remote
+R "DROP TABLE IF EXISTS rgreetings" 2>/dev/null
+R "DROP TABLE IF EXISTS rpersons"   2>/dev/null
+L "DROP TABLE IF EXISTS ldepts"     2>/dev/null
+
+echo "=== All tests passed ==="
+exit 0
