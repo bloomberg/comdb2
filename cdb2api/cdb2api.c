@@ -4317,41 +4317,11 @@ retry:
     if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_TRACE) {
         CDB2SQLRESPONSE *response =
             cdb2__sqlresponse__unpack(NULL, hdr.length, *buf);
-        if (response->response_type == RESPONSE_TYPE__SP_TRACE) {
+        if (response && response->response_type == RESPONSE_TYPE__SP_TRACE) {
             fprintf(stdout, "%s\n", response->info_string);
+        }
+        if (response) {
             cdb2__sqlresponse__free_unpacked(response, NULL);
-        } else {
-            fprintf(stdout, "%s", response->info_string);
-            cdb2__sqlresponse__free_unpacked(response, NULL);
-            char cmd[250];
-            if (fgets(cmd, 250, stdin) == NULL ||
-                strncasecmp(cmd, "quit", 4) == 0) {
-                /* don't exit program, just quit sp in the middle
-                   finish should be used to quit debugger and run sp till end */
-                rc = -1;
-                goto after_callback;
-            }
-            CDB2QUERY query = CDB2__QUERY__INIT;
-            query.spcmd = cmd;
-            int loc_len = cdb2__query__get_packed_size(&query);
-            unsigned char *locbuf = malloc(loc_len + 1);
-
-            cdb2__query__pack(&query, locbuf);
-
-            struct newsqlheader hdr = {.type =
-                                           ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-                                       .compression = ntohl(0),
-                                       .length = ntohl(loc_len)};
-
-            cdb2buf_write((char *)&hdr, sizeof(hdr), hndl->sb);
-            cdb2buf_write((char *)locbuf, loc_len, hndl->sb);
-
-            int rc = cdb2buf_flush(hndl->sb);
-            free(locbuf);
-            if (rc < 0) {
-                rc = -1;
-                goto after_callback;
-            }
         }
         debugprint("- going to retry\n");
         if (hndl->retry_clbk) {
