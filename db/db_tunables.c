@@ -175,6 +175,7 @@ extern int gbl_test_trigger_deadlock;
 extern int gbl_llmeta_deadlock_poll;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
+extern int gbl_test_sc_delay_after_unset_running;
 extern int gbl_track_weighted_queue_metrics_separately;
 extern int gbl_typessql;
 extern int gbl_typessql_records_max;

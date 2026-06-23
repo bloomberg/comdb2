@@ -5780,6 +5780,10 @@ add_blkseq:
                                                    gbl_myhostname, 0, 1, NULL,
                                                    0, NULL, 0);
                     }
+                    /* Clear sc_running after trans_commit_logical so that
+                     * replicants have the new tableversion visible before
+                     * stat shows SC as done */
+                    osql_clear_sc_running(iq);
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
@@ -6117,6 +6121,12 @@ add_blkseq:
                     Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
+
+                /* In rowlocks mode, trans IS the sc_logical_tran (see
+                 * start_new_transaction). Clear sc_running after commit,
+                 * mirroring the non-rowlocks tranddl path at ~line 5786. */
+                if (iq->tranddl)
+                    osql_clear_sc_running(iq);
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;

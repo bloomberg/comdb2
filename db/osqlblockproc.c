@@ -1584,6 +1584,10 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     }
     iq->sc_logical_tran = NULL;
 
+    /* Clear sc_running after trans_commit_logical so that replicants have
+     * the new schema visible before stat shows SC as done */
+    osql_clear_sc_running(iq);
+
     osql_postcommit_handle(iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 

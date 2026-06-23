@@ -320,6 +320,7 @@ static inline int wait_to_resume(struct schema_change_type *s)
 
 int gbl_test_scindex_deadlock = 0;
 int gbl_test_sc_resume_race = 0;
+int gbl_test_sc_delay_after_unset_running = 0;
 int gbl_readonly_sc = 0;
 
 /*********** Outer Business logic for schemachanges ************************/

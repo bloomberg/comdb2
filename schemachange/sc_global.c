@@ -360,6 +360,13 @@ done:
            __func__, table, running, func, line, rc);
 
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+
+    if (!running && rc == 0 && gbl_test_sc_delay_after_unset_running) {
+        logmsg(LOGMSG_INFO, "%s: sleeping %ds after clearing sc_running for %s\n", __func__,
+               gbl_test_sc_delay_after_unset_running, table);
+        sleep(gbl_test_sc_delay_after_unset_running);
+    }
+
     return rc;
 }
 

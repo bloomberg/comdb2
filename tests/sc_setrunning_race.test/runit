@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Reproduce the race between sc_set_running(0) and trans_commit:
+#
+# sc_set_running(0) is called inside osql_finalize_scs(), before the schema
+# change transaction is committed.  This means the master's 'stat' output
+# stops showing "Schema change in progress" while the new tableversion is not
+# yet durable or visible on replicants.
+#
+# The test_sc_delay_after_unset_running tunable (set in lrl.options) inserts a
+# sleep between sc_set_running(0) and trans_commit inside osql_finalize_scs(),
+# widening the race window to make the bug reliably reproducible.
+#
+# This is a CLUSTER-ONLY test: we need replicants to demonstrate the race.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+set -x
+
+dbname=$1
+
+echo "CLUSTER='$CLUSTER' dbname=$dbname"
+
+if [ -z "$CLUSTER" ]; then
+    echo "This test requires a cluster; skipping on single node"
+    exit 0
+fi
+
+getmaster() {
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+        "exec procedure sys.cmd.send('bdb cluster')" \
+        | grep MASTER | cut -f1 -d: | tr -d '[:space:]')
+    ok=0
+    while [[ "$ok" != "1" ]]; do
+        ok=1
+        for node in $CLUSTER; do
+            m2=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbname \
+                "exec procedure sys.cmd.send('bdb cluster')" \
+                | grep MASTER | cut -f1 -d: | tr -d '[:space:]')
+            if [[ "$master" == "" || "$master" != "$m2" ]]; then
+                master="$m2"
+                ok=0
+                break
+            fi
+        done
+    done
+    echo $master
+}
+
+get_replicant() {
+    for node in $CLUSTER; do
+        if [[ "$node" != "$master" ]]; then
+            echo $node
+            return
+        fi
+    done
+}
+
+get_table_version() {
+    local node=$1
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbname \
+        "select table_version('t')" 2>/dev/null
+}
+
+# Setup
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t {`cat t.csc2`}"
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "insert into t select value, 'row'||value from generate_series(1, 200)"
+assertcnt t 200
+
+master=$(getmaster)
+replicant=$(get_replicant)
+echo "master=$master replicant=$replicant"
+
+# Record the version before the ALTER so we know what the new version should be
+ver_before=$(get_table_version $master)
+ver_expected=$((ver_before + 1))
+echo "version before alter=$ver_before expected after=$ver_expected"
+
+# The lrl.options sets test_sc_delay_after_unset_running 5, which inserts a
+# 5-second sleep between sc_set_running(0) and trans_commit inside
+# osql_finalize_scs().  During that window, 'stat' shows no SC running but the
+# schema change transaction is not yet committed.
+(cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "alter table t {`cat t2.csc2`}" &> alter.out || touch alter.failed) &
+
+# Wait for SC to start
+sleep 2
+
+echo "Polling master stat tightly for SC completion..."
+while true; do
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbname \
+        "exec procedure sys.cmd.send('stat')" \
+        | grep "Schema change in progress" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "SC stopped showing as running on master (sc_set_running(0) fired)"
+        break
+    fi
+    # tight poll — no sleep, to hit the window as soon as sc_set_running(0) fires
+done
+
+# At this point sc_set_running(0) has fired but trans_commit has NOT yet run
+# (because of the 5s delay in test_sc_delay_after_unset_running).
+# The replicant does not yet have the new schema; its tableversion is still old.
+master_ver=$(get_table_version $master)
+replicant_ver=$(get_table_version $replicant)
+
+echo "Immediately after sc_set_running(0), before trans_commit:"
+echo "  master    table_version='$master_ver' (expected $ver_expected)"
+echo "  replicant table_version='$replicant_ver' (expected $ver_expected)"
+
+wait  # let the alter finish
+
+if [[ "$replicant_ver" != "$ver_expected" ]]; then
+    failexit "RACE REPRODUCED: replicant has table_version='$replicant_ver' but stat showed SC done (expected $ver_expected); sc_set_running(0) fires before trans_commit"
+fi
+
+if [[ "$master_ver" != "$ver_expected" ]]; then
+    failexit "master has table_version='$master_ver' but stat showed SC done (expected $ver_expected)"
+fi
+
+echo "SUCCESS"

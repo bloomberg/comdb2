@@ -6919,6 +6919,15 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion, int
  * Handle the finalize part of a chain of schema changes
  *
  */
+void osql_clear_sc_running(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc_pending;
+    while (sc != NULL) {
+        sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__, __LINE__);
+        sc = sc->sc_next;
+    }
+}
+
 int osql_finalize_scs(struct ireq *iq, tran_type *trans)
 {
     int rc;
@@ -6982,14 +6991,6 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
             }
             sc = sc->sc_next;
         }
-    }
-
-    /* Success: reset the table counters */
-    iq->sc = iq->sc_pending;
-    while (iq->sc != NULL) {
-        sc_set_running(iq, iq->sc, iq->sc->tablename, 0, NULL, 0,
-                       __func__, __LINE__);
-        iq->sc = iq->sc->sc_next;
     }
 
     if (iq->sc_pending) {

@@ -450,6 +450,7 @@ uint8_t *osqlcomm_scl_put(struct sc_list *scl,
  *
  */
 int osql_finalize_scs(struct ireq *iq, tran_type *trans);
+void osql_clear_sc_running(struct ireq *iq);
 
 /**
  * Return non-zero if host is known to osqlnet, 0 if not

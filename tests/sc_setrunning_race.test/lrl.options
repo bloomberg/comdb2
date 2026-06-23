@@ -1,0 +1,2 @@
+setattr DURABLE_LSNS 1
+test_sc_delay_after_unset_running 5

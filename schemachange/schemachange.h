@@ -523,6 +523,7 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...);
 int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;
+extern int gbl_test_sc_delay_after_unset_running;
 extern int gbl_altersc_latency;
 extern int gbl_altersc_delay_usec;
 

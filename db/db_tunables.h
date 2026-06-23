@@ -1221,6 +1221,10 @@ REGISTER_TUNABLE("test_sc_resume_race",
                  "Test race between schemachange resume and blockprocessor",
                  TUNABLE_BOOLEAN, &gbl_test_sc_resume_race, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("test_sc_delay_after_unset_running",
+                 "Delay in seconds after sc_set_running(0) before commit, to "
+                 "reproduce sc_set_running/trans_commit race",
+                 TUNABLE_INTEGER, &gbl_test_sc_delay_after_unset_running, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("throttlesqloverlog",
                  "On a full queue of SQL requests, dump the current thread "
                  "pool this often (in secs). (Default: 5sec)",
