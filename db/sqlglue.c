@@ -2722,6 +2722,10 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return SQLITE_DEADLOCK;
     }
 
+    /* schema change detected during lock-release/recover_deadlock */
+    if (rc == SQLITE_COMDB2SCHEMA)
+        return SQLITE_COMDB2SCHEMA;
+
     if (rc == IX_FND || rc == IX_NOTFND) {
         void *buf;
         int sz;
@@ -2858,6 +2862,10 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
                    : 0);
         return SQLITE_DEADLOCK;
     }
+
+    /* schema change detected during lock-release/recover_deadlock */
+    if (rc == SQLITE_COMDB2SCHEMA)
+        return SQLITE_COMDB2SCHEMA;
 
     if (rc == IX_FND || rc == IX_NOTFND) {
         void *buf;
@@ -3246,6 +3254,54 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
 }
 
 unsigned long long release_locks_on_si_lockwait_cnt = 0;
+int gbl_debug_sleep_in_cursor_move = 0; /* ms to sleep on each cursor move (testing only) */
+int gbl_recover_deadlock_sync_dta = 0;  /* sync index/data cursors before lock release */
+
+/*
+ * Before releasing cursor locks, walk all open index cursors and sync each
+ * one's paired data cursor (set via BTREE_HINT_TABLECURSOR) to the index
+ * cursor's current genid if they differ.  Must be called while locks are
+ * still held so the target row is guaranteed to exist at find time.
+ */
+void sync_index_data_cursors(struct sql_thread *thd)
+{
+    BtCursor *cur;
+
+    Pthread_mutex_lock(&thd->lk);
+    if (!thd->bt)
+        goto done;
+
+    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+    {
+        BtCursor *dta = cur->pCursorHintTableCursor;
+        if (!dta || !cur->bdbcur || !dta->bdbcur)
+            continue;
+        if (cur->cursor_class != CURSORCLASS_INDEX)
+            continue;
+        unsigned long long idx_genid = cur->genid;
+        if (idx_genid == 0 || idx_genid == dta->genid)
+            continue;
+        /* data cursor hasn't caught up to the index cursor -- find it now.
+         * use bdbcur->find directly (not ddguard) to avoid re-entering
+         * recover_deadlock which also needs thd->lk */
+        int bdberr;
+        int rc = dta->bdbcur->find(dta->bdbcur, &idx_genid, sizeof(idx_genid), 0, &bdberr);
+        if (rc != IX_FND)
+            continue;
+        int fndlen;
+        void *buf;
+        uint8_t ver;
+        dta->bdbcur->get_found_data(dta->bdbcur, &dta->rrn, &dta->genid, &fndlen, &buf, &ver);
+        vtag_to_ondisk(dta->db, buf, &fndlen, ver, dta->genid);
+        dta->ondisk_buf = buf;
+        dta->dtabuf = buf;
+        dta->dtabuflen = fndlen;
+    }
+
+done:
+    Pthread_mutex_unlock(&thd->lk);
+}
+
 /* Release pagelocks if the replicant is waiting on this sql thread */
 static int cursor_move_postop(BtCursor *pCur)
 {
@@ -3255,15 +3311,22 @@ static int cursor_move_postop(BtCursor *pCur)
     extern int gbl_locks_check_waiters;
     int rc = 0;
 
-    /* FIXME modsnap does not handle repositioning correctly? */
-    if (gbl_locks_check_waiters && gbl_sql_release_locks_on_si_lockwait && clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+    if (gbl_debug_sleep_in_cursor_move)
+        poll(NULL, 0, gbl_debug_sleep_in_cursor_move);
+
+    if (gbl_locks_check_waiters) {
         extern int gbl_sql_random_release_interval;
+        /* Please review repositioning for modsnap! */
+        int is_si = (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL);
+        if (is_si && !gbl_sql_release_locks_on_si_lockwait)
+            return 0;
+        rlocks_reason_t reason = is_si ? RLOCKS_REASON_SI_LOCKWAIT : RLOCKS_REASON_LOCKWAIT;
         if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
-            rc = release_locks("replication is waiting on si-session");
+            rc = release_locks(reason);
             release_locks_on_si_lockwait_cnt++;
         } else if (gbl_sql_random_release_interval &&
                    !(rand() % gbl_sql_random_release_interval)) {
-            rc = release_locks("random release cursor_move_postop");
+            rc = release_locks(RLOCKS_REASON_RANDOM);
             release_locks_on_si_lockwait_cnt++;
         }
     }
@@ -5946,6 +6009,17 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             if (debug_switch_reset_deadlock_race()) {
                 deadlock_race = 0;
             }
+        }
+
+        /* If the cursor was pre-synced by sync_index_data_cursors before a
+         * lock release, the cursor is already positioned at the requested
+         * genid and the data is in the cursor's buffers.  Skip the BDB seek
+         * to avoid a "Dta lookup lost the race" failure if the row was deleted
+         * during the lock-release window. */
+        if (gbl_recover_deadlock_sync_dta && bias == OP_DeferredSeek && pCur->genid == (unsigned long long)intKey &&
+            !pCur->eof) {
+            *pRes = 0;
+            goto done;
         }
 
         /* TODO: we already found the data record.  find some way to map between
@@ -10753,14 +10827,24 @@ static int ddguard_bdb_cursor_move(BtCursor *pCur, int flags, int *bdberr, int h
         int rc2 = cursor_move_postop(pCur);
         if (rc2) {
             logmsg(LOGMSG_ERROR, "cursor_move_postop returned %d\n", rc2);
-            *bdberr = BDBERR_DEADLOCK;
-            if (rc2 < 0) {
-                rc = SQLITE_BUSY;
-            } else if (rc2 == SQLITE_CLIENT_CHANGENODE) {
+            if (rc2 == SQLITE_CLIENT_CHANGENODE) {
                 rc = SQLITE_CLIENT_CHANGENODE;
                 *bdberr = BDBERR_NOT_DURABLE;
+            } else if (rc2 == SQLITE_COMDB2SCHEMA || rc2 == SQLITE_SCHEMA) {
+                /* A schema change was detected while releasing locks /
+                 * recovering from deadlock (e.g. the table was dropped or
+                 * altered under us).  Surface it as a schema-change error so
+                 * the client gets CDB2ERR_SCHEMA -- do NOT mask it as a
+                 * deadlock, which would be reported as a (retryable)
+                 * CDB2ERR_DEADLOCK. */
+                rc = SQLITE_COMDB2SCHEMA;
+                *bdberr = 0;
+            } else if (rc2 < 0) {
+                rc = SQLITE_BUSY;
+                *bdberr = BDBERR_DEADLOCK;
             } else {
                 rc = rc2;
+                *bdberr = BDBERR_DEADLOCK;
             }
         }
     }
@@ -11612,6 +11696,14 @@ const char *comdb2_get_sql(void)
 }
 
 int gbl_fdb_track_hints = 0;
+static void sqlite3BtreeCursorHint_TableCursor(BtCursor *pCur, BtCursor *pTableCsr)
+{
+    assert(pCur->cursor_class == CURSORCLASS_INDEX);
+    assert(pTableCsr->cursor_class == CURSORCLASS_TABLE);
+    assert(pCur->db == pTableCsr->db);
+    pCur->pCursorHintTableCursor = pTableCsr;
+}
+
 static void sqlite3BtreeCursorHint_Range(BtCursor *pCur, const Expr *pExpr)
 {
     char *expr = "?no vdbe engine?";
@@ -11667,8 +11759,18 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
 
         break;
     }
+
+    case BTREE_HINT_TABLECURSOR: {
+        sqlite3BtreeCursorHint_TableCursor(pCur, va_arg(ap, BtCursor *));
+        break;
+    }
     }
     va_end(ap);
+}
+
+BtCursor *sqlite3BtreeCursorHintTblCsr(BtCursor *pCsr)
+{
+    return pCsr->pCursorHintTableCursor;
 }
 
 int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)

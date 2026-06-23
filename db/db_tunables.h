@@ -1750,6 +1750,13 @@ REGISTER_TUNABLE("client_heartbeat_ms",
                  TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_cursor_move", "Sleep N ms on each cursor move (testing only).  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_in_cursor_move, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("recover_deadlock_sync_dta",
+                 "Sync index/data cursors before lock release in recover_deadlock.  (Default: 0)", TUNABLE_BOOLEAN,
+                 &gbl_recover_deadlock_sync_dta, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_release_wait_ms",
                  "Release sql-locks if rep-thd is blocked for this many ms."
                  "  (Default: 60000)",

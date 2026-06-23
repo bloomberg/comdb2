@@ -3597,7 +3597,7 @@ int SQLITE_NOINLINE sqlite3VdbeFinishMoveto(VdbeCursor *p){
     snprintf(errmsg, sizeof(errmsg),
              "Dta lookup lost the race for tbl %s genid=%llu (%llx) [new]\n",
              sqlite3BtreeGetTblName(p->uc.pCursor),
-             bdb_genid_to_host_order(p->movetoTarget), 
+             bdb_genid_to_host_order(p->movetoTarget),
              bdb_genid_to_host_order(p->movetoTarget));
     logmsg(LOGMSG_ERROR, "%s\n", errmsg);
     if (gbl_abort_on_dta_lookup_error)
