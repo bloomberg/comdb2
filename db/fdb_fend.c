@@ -982,6 +982,7 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
         /* table was already added with the right version */
         _free_fdb_tbl(fdb, tbl);
         tbl = remtbl;
+        link_table = 0; /* already linked by the winning thread */
         goto done;
     }
 
