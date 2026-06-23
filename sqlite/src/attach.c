@@ -81,9 +81,6 @@ static void attachFunc(
   const char *zFile,
   char **pzErrDyn,
   int version,
-  int class,
-  int local,
-  int class_override,
   int proto_version
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
@@ -208,9 +205,6 @@ static void attachFunc(
       rc = sqlite3BtreeReopen(dbName, db->aDb[iFndDb].pBt);
 
       db->aDb[iFndDb].zDbSName = dbName;
-      db->aDb[iFndDb].class = class;
-      db->aDb[iFndDb].class_override = class_override;
-      db->aDb[iFndDb].local = local;
       db->aDb[iFndDb].version = proto_version;
       goto done_with_open;
     }
@@ -263,9 +257,6 @@ static void attachFunc(
     db->nDb++;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     pNew->zDbSName = dbName;
-    pNew->class = class;
-    pNew->class_override = class_override;
-    pNew->local = local;
     pNew->version = proto_version;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pNew->zDbSName = sqlite3DbStrDup(db, zName);
@@ -365,22 +356,12 @@ done_with_open:
       db->init.locked_stat4 = NULL;
       db->init.fdb = NULL;
 
-      char *zTmp = (char*)zName;
-      /* we need to take care of override and local */
-      if (local) {
-        zTmp = sqlite3_mprintf("LOCAL_%s", zName);  
-      } else if (class_override) {
-        extern const char *mach_class_class2tier(int value);
-        zTmp = sqlite3_mprintf("%s_%s", mach_class_class2tier(class), zName);
-      }
-      rc = sqlite3InitTable(db, &zErrDyn, zTmp);
+      rc = sqlite3InitTable(db, &zErrDyn, zName);
       db->init.busy = savedBusy;
       db->init.locked_table = savedLockedtable;
       db->init.locked_stat1 = savedLockedstat1;
       db->init.locked_stat4 = savedLockedstat4;
       db->init.fdb = savedfdb;
-      if (zTmp != zName)
-        sqlite3DbFree(db, zTmp);
 
       /*
       ** Need to set the version to the table to support per table schema
@@ -473,7 +454,7 @@ static void attachFunc(
   if( zName==0 ) zName = "";
 
   zErrDyn = NULL;
-  rc = comdb2_dynamic_attach(db, context, 0, argv, zName, zFile, &zErrDyn, 0, 0, 0, 0, 0);
+  rc = comdb2_dynamic_attach(db, context, 0, argv, zName, zFile, &zErrDyn, 0, 0);
   if( zErrDyn ){
     sqlite3_result_error(context, zErrDyn, -1);
     sqlite3DbFree(db, zErrDyn);

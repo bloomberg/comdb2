@@ -514,7 +514,8 @@ double gbl_sql_cost_error_threshold = -1;
 int gbl_parallel_recovery_threads = 0;
 
 int gbl_fdb_resolve_local = 0;
-int gbl_fdb_allow_cross_classes = 0;
+char *gbl_fdb_resolve_tier = NULL;
+int gbl_fdb_class_override_spew_limit = 100;
 uint64_t gbl_sc_headroom = 10;
 /*---COUNTS---*/
 long n_qtrap;

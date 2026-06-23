@@ -33,17 +33,22 @@ $cmd_rmt < inserts.req > ${output} 2>&1
 echo "Select from remote db"
 $cmd "select * from LOCAL_${a_remdbname}.trem" >> ${output} 2>&1
 
+# disable local resolution so bare dbname queries fail as expected
+$cmd "put tunable foreign_db_resolve_local 0"
+
 # we expect errors here
 set +e
 echo "Trying to skip LOCAL override"
 # this should fail for missing LOCAL
 $cmd "select * from ${a_remdbname}.trem" >> ${output} 2>&1
 
-# this should fail for missing dbname 
+# this should fail for missing dbname
 echo "Trying to skip dbname"
 $cmd "select * from trem" >> ${output} 2>&1
 
 set -e
+# re-enable local resolution
+$cmd "put tunable foreign_db_resolve_local 1"
 # proper access, test old db with new table
 echo "Accessing same remote db but new table"
 $cmd "select * from LOCAL_${a_remdbname}.t2" >> ${output} 2>&1

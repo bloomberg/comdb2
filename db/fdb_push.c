@@ -26,7 +26,6 @@ struct fdb_push_connector {
     enum ast_type type; /* what type of request we override */
     char *remotedb; /* name of the remote db; class matches stored fdb */
     enum mach_class class; /* what stage this db lives on */
-    int class_override; /* class was explicit in the remdb name */
     int local;      /* is this a local db */
     int ncols;
     int rowlen;  /* current row len returned from remote */
@@ -61,8 +60,7 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
  * Create a fdb push connector
  *
  */
-fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class, int override, int local,
-                                      enum ast_type type)
+fdb_push_connector_t *fdb_push_create(const char *dbname, enum mach_class class, int local, enum ast_type type)
 {
     fdb_push_connector_t *push = NULL;
 
@@ -79,7 +77,6 @@ fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class,
     }
     push->class = class;
     push->local = local;
-    push->class_override = override;
     push->type = type;
 
     return push;
@@ -114,8 +111,11 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     if (pDb->version < FDB_VER_PROXY)
         return -1;
 
-    fdb_push_connector_t* push= fdb_push_create(pDb->zDbSName, pDb->class, pDb->class_override,
-                                                     pDb->local, AST_TYPE_SELECT);
+    enum mach_class fdb_class;
+    int fdb_local;
+    if (get_fdb_class(pDb->zDbSName, &fdb_class, &fdb_local))
+        return -1;
+    fdb_push_connector_t *push = fdb_push_create(pDb->zDbSName, fdb_class, fdb_local, AST_TYPE_SELECT);
     if (!push)
         return -1;
 
@@ -159,8 +159,11 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
     if (pDb->version < FDB_VER_CDB2API)
         return -1;
 
-    fdb_push_connector_t *push = fdb_push_create(pDb->zDbSName, pDb->class, pDb->class_override,
-                           pDb->local, type);
+    enum mach_class fdb_class;
+    int fdb_local;
+    if (get_fdb_class(pDb->zDbSName, &fdb_class, &fdb_local))
+        return -1;
+    fdb_push_connector_t *push = fdb_push_create(pDb->zDbSName, fdb_class, fdb_local, type);
     if (!push)
         return -1;
 
@@ -414,7 +417,7 @@ static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
     const char *class = "default";
     if (push->local)
         class = "local";
-    else if (push->class_override) {
+    else if (push->class != get_my_mach_class()) {
         class = mach_class_class2name(push->class);
         assert(class);
     }
@@ -617,7 +620,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
         goto free_push;
     }
 
-    rc = fdb_check_class_match(fdb, push->local, push->class, push->class_override);
+    rc = fdb_check_class_match(fdb, push->local, push->class);
     if (rc) {
         logmsg(LOGMSG_ERROR, "FDB push class mismatch\n");
         rc = -2;

@@ -6,3 +6,4 @@ foreign_db_push_redirect 0
 watchthreshold 300
 fdb_watchdog_sec 20
 fdb_watchdog_latency_sec 20
+foreign_db_resolve_local 1

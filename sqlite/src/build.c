@@ -550,10 +550,9 @@ retry_after_fdb_creation:
       logmsg(LOGMSG_USER, "Trying to locate \"%s:%s\"\n", fqDbname, zName);
     }
 
-    int lvl, local, lvl_override;
     /* this will get us a read lock fdb object */
     rc = sqlite3AddAndLockTable(&db->init, fqDbname, zName, &version,
-          &lvl, &local, &lvl_override, &server_version);
+          &server_version);
     if( rc ){
         if( gbl_fdb_track )
             logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
@@ -562,7 +561,7 @@ retry_after_fdb_creation:
     }
 
     if( gbl_fdb_track ){
-      logmsg(LOGMSG_USER, "Found new foreign table \"%s:%s\" version %d\n", 
+      logmsg(LOGMSG_USER, "Found new foreign table \"%s:%s\" version %d\n",
           fqDbname, zName, version);
     }
 
@@ -573,7 +572,7 @@ retry_after_fdb_creation:
     ** attached from two different databases
     */
     rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
-        &zErrDyn, version, lvl, local, lvl_override, server_version);
+        &zErrDyn, version, server_version);
 
     fdbUnlock(&db->init);
 
@@ -657,22 +656,9 @@ Table *sqlite3FindTableCheckOnlyNoAlias(
 Table *sqlite3FindTableByAnalysisLoad(
   sqlite3 *db,
   const char *zName,
-  const char *zDatabase,
-  int local,
-  int class
+  const char *zDatabase
 ){
-  char *fqdbname = (char*)zDatabase;
-  Table *ret;
-  if (local)
-    fqdbname = sqlite3_mprintf("LOCAL_%s", zDatabase);
-  else if (class >= 0)  {
-    extern const char *mach_class_class2tier(int value);
-    fqdbname = sqlite3_mprintf("%s_%s", mach_class_class2tier(class), zDatabase);
-  }
-  ret = sqlite3FindTable_int(db, zName, fqdbname, 1, 1, 0);
-  if (fqdbname != zDatabase)
-    sqlite3DbFree(db, fqdbname);
-  return ret;
+  return sqlite3FindTable_int(db, zName, zDatabase, 1, 1, 0);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

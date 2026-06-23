@@ -67,7 +67,8 @@
 #include "disttxn.h"
 
 extern int gbl_fdb_resolve_local;
-extern int gbl_fdb_allow_cross_classes;
+extern char *gbl_fdb_resolve_tier;
+extern int gbl_fdb_class_override_spew_limit;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_disttxn_trace;
@@ -157,9 +158,7 @@ struct fdb_tbl {
 struct fdb {
     char *dbname;
     int dbname_len; /* excluding terminal 0 */
-    enum mach_class class
-        ;      /* what class is the cluster CLASS_PROD, CLASS_TEST, ... */
-    int class_override; /* set if class is part of table name at creation */
+    enum mach_class class; /* what class is the cluster CLASS_PROD, CLASS_TEST, ... */
     int local; /* was this added by a LOCAL access ?*/
     int dbnum; /* cache dbnum for db, needed by current dbt_handl_alloc* */
 
@@ -334,8 +333,6 @@ void _fdb_clear_clnt_node_affinities(sqlclntstate *clnt);
 
 static int _get_protocol_flags(sqlclntstate *clnt, fdb_t *fdb,
                                int *flags);
-static int _validate_existing_fdb(fdb_t *fdb, int cls, int local);
-
 int fdb_get_remote_version(const char *dbname, const char *table,
                            enum mach_class class, int local,
                            unsigned long long *version,
@@ -534,19 +531,62 @@ void put_fdb_int(fdb_t *fdb, enum fdb_put_flag flag, const char *f, int l)
     }
 }
 
-static void _init_fdb(fdb_t *fdb, const char *dbname, enum mach_class class, int local, int class_override)
+/* Strip recognized class prefix (LOCAL_, DEV_, PROD_, etc.) from dbname.
+ * Returns pointer past the prefix if found, or original dbname if not.
+ * Spews a rate-limited deprecation warning when a prefix is stripped.
+ */
+static const char *_strip_class_prefix(const char *dbname)
+{
+    static unsigned long long class_override_spew_count = 0;
+    const char *tmpname;
+    char *class;
+
+    if ((tmpname = strchr(dbname, '_')) == NULL)
+        return dbname;
+
+    class = strndup(dbname, tmpname - dbname);
+    if (strncasecmp(class, "LOCAL", 6) == 0 || mach_class_name2class(class) != CLASS_UNKNOWN) {
+        unsigned long long cnt = __atomic_add_fetch(&class_override_spew_count, 1, __ATOMIC_RELAXED);
+        if (gbl_fdb_class_override_spew_limit > 0 && (cnt % gbl_fdb_class_override_spew_limit) == 1) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: class override '%s' in dbname '%s' is deprecated "
+                   "and ignored (count=%llu)\n",
+                   __func__, class, dbname, cnt);
+        }
+        free(class);
+        return tmpname + 1;
+    }
+    free(class);
+    return dbname;
+}
+
+static void _init_fdb(fdb_t *fdb, const char *dbname)
 {
     fdb->dbname = strdup(dbname);
-    fdb->class = class;
-    fdb->class_override = class_override;
+    fdb->dbname_len = strlen(dbname);
+
+    /* resolve class/local from gbl tunables */
+    if (gbl_fdb_resolve_local) {
+        fdb->local = 1;
+        fdb->class = get_my_mach_class();
+    } else if (gbl_fdb_resolve_tier) {
+        fdb->local = 0;
+        fdb->class = mach_class_name2class(gbl_fdb_resolve_tier);
+        if (fdb->class == CLASS_UNKNOWN) {
+            logmsg(LOGMSG_ERROR, "%s: foreign_db_resolve_tier '%s' is not a recognized class\n", __func__,
+                   gbl_fdb_resolve_tier);
+        }
+    } else {
+        fdb->local = 0;
+        fdb->class = get_my_mach_class();
+    }
+
     /*
        default remote version we expect
 
        code will backout on initial connection
      */
     fdb->server_version = gbl_fdb_default_ver;
-    fdb->dbname_len = strlen(dbname);
-    fdb->local = local;
     Pthread_rwlock_init(&fdb->inuse_rwlock, NULL);
     Pthread_mutex_init(&fdb->tables_mtx, NULL);
     listc_init(&fdb->tables, offsetof(struct fdb_tbl, lnk));
@@ -557,15 +597,49 @@ static void _init_fdb(fdb_t *fdb, const char *dbname, enum mach_class class, int
     Pthread_mutex_init(&fdb->dbcon_mtx, NULL);
 }
 
+/* Check that fdb class/local still matches current gbl tunable settings.
+ * Spews a rate-limited warning on mismatch. Returns 0 if ok, 1 if mismatch.
+ */
+static int _check_fdb_gbl_mismatch(fdb_t *fdb)
+{
+    static unsigned long long mismatch_spew_count = 0;
+    int mismatch = 0;
+
+    if (fdb->local && !gbl_fdb_resolve_local) {
+        mismatch = 1;
+    } else if (!fdb->local && gbl_fdb_resolve_tier) {
+        enum mach_class tier_class = mach_class_name2class(gbl_fdb_resolve_tier);
+        if (tier_class != fdb->class)
+            mismatch = 1;
+    } else if (!fdb->local && !gbl_fdb_resolve_tier && !gbl_fdb_resolve_local) {
+        if (fdb->class != get_my_mach_class())
+            mismatch = 1;
+    }
+    if (mismatch) {
+        unsigned long long cnt = __atomic_add_fetch(&mismatch_spew_count, 1, __ATOMIC_RELAXED);
+        if (gbl_fdb_class_override_spew_limit > 0 && (cnt % gbl_fdb_class_override_spew_limit) == 1) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: fdb '%s' class mismatch with current gbl settings "
+                   "(cached class=%d local=%d) (count=%llu)\n",
+                   __func__, fdb->dbname, fdb->class, fdb->local, cnt);
+        }
+    }
+    return mismatch;
+}
+
 /**
  * Check if a "dbname" fdb exists, if it not, create one.
- * The return fdb is read locked.  Check/add is done under lock arr_mtx
+ * The return fdb is read locked.  Check/add is done under lock arr_mtx.
+ * Class and local are resolved from gbl tunables at creation time.
+ * If fdb already exists, verify gbl tunables still match and spew on mismatch.
  *
  */
-static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class, int local, int class_override)
+static fdb_t *_new_fdb(const char *dbname, int *created)
 {
     int rc = 0;
     fdb_t *fdb;
+
+    dbname = _strip_class_prefix(dbname);
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
 
@@ -587,7 +661,7 @@ static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class, 
 
     fdb = _cache_fnd_fdb(dbname, NULL);
     if (fdb) {
-        assert(class == fdb->class && local == fdb->local);
+        _check_fdb_gbl_mismatch(fdb);
 
         if (gbl_fdb_track_locking)
             logmsg(LOGMSG_USER, "Locking existing fdb %s\n", fdb->dbname);
@@ -605,7 +679,7 @@ static fdb_t *_new_fdb(const char *dbname, int *created, enum mach_class class, 
         goto done;
     }
 
-    _init_fdb(fdb, dbname, class, local, class_override);
+    _init_fdb(fdb, dbname);
 
     if (gbl_fdb_track_locking)
         logmsg(LOGMSG_USER, "Locking new fdb %s\n", fdb->dbname);
@@ -1356,56 +1430,6 @@ done:
     return rc;
 }
 
-static enum mach_class get_fdb_class(const char **p_dbname, int *local,
-                                     int *lvl_override)
-{
-    const char *dbname = *p_dbname;
-    enum mach_class my_lvl = CLASS_UNKNOWN;
-    enum mach_class remote_lvl = CLASS_UNKNOWN;
-    const char *tmpname;
-    char *class;
-
-    *local = 0;
-
-    my_lvl = get_my_mach_class();
-
-    /* extract class if any */
-    if ((tmpname = strchr(dbname, '_')) != NULL) {
-        class = strndup(dbname, tmpname - dbname);
-        dbname = tmpname + 1;
-        if (strncasecmp(class, "LOCAL", 6) == 0) {
-            *local = 1;
-            remote_lvl = my_lvl;
-            /* accessed allowed implicitely */
-        } else {
-            remote_lvl = mach_class_name2class(class);
-        }
-        free(class); /* class is strndup'd */
-        *p_dbname = dbname;
-        if (lvl_override)
-            *lvl_override = 1;
-    } else {
-        /* implicit is same class */
-        remote_lvl = my_lvl;
-        if (lvl_override)
-            *lvl_override = 0;
-    }
-
-    /* override local */
-    if (gbl_fdb_resolve_local) {
-        *local = 1;
-        remote_lvl = my_lvl; /* accessed allowed implicitely */
-    }
-
-    /* NOTE: for now, we only allow same class or local overrides.
-       I will sleep better */
-    if (!gbl_fdb_allow_cross_classes && remote_lvl != my_lvl) {
-        logmsg(LOGMSG_ERROR, "%s: trying to access wrong cluster class\n", __func__);
-        remote_lvl = CLASS_DENIED;
-    }
-
-    return remote_lvl;
-}
 
 static int _failed_AddAndLockTable(sqlclntstate *clnt, const char *dbname, int errcode, const char *prefix)
 {
@@ -1426,24 +1450,14 @@ static int _failed_AddAndLockTable(sqlclntstate *clnt, const char *dbname, int e
 }
 
 int create_local_fdb(const char *fdb_name, fdb_t **fdb) {
-    int local, lvl_override;
-    local = lvl_override = 0;
-
-    const enum mach_class lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
-    if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
-        logmsg(LOGMSG_ERROR, "%s: Could not find usable fdb class\n", __func__);
-        const int rc = (lvl == CLASS_UNKNOWN)
-                        ? FDB_ERR_CLASS_UNKNOWN
-                        : FDB_ERR_CLASS_DENIED;
-        return rc;
-    }
+    fdb_name = _strip_class_prefix(fdb_name);
 
     *fdb = calloc(1, sizeof(fdb_t));
-    if (!fdb) {
+    if (!*fdb) {
         logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
         return FDB_ERR_MALLOC;
     }
-    _init_fdb(*fdb, fdb_name, lvl, local, lvl_override);
+    _init_fdb(*fdb, fdb_name);
 
     return 0;
 }
@@ -1457,54 +1471,25 @@ int create_local_fdb(const char *fdb_name, fdb_t **fdb) {
  *       and returns SQLITE_ERROR so that sql can rollback
  *
  */
-int sqlite3AddAndLockTable(sqlite3InitInfo *init, const char *dbname, const char *table, int *version, int *out_class,
-                           int *out_local, int *out_class_override, int *out_proto_version)
+int sqlite3AddAndLockTable(sqlite3InitInfo *init, const char *dbname, const char *table, int *version,
+                           int *out_proto_version)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     sqlclntstate *clnt = thd->clnt;
     fdb_t *fdb;
     int rc = FDB_NOERR;
     int created = 0;
-    int local = 0;
-    enum mach_class lvl = 0;
     char errstr[256];
     char *perrstr;
-    int lvl_override;
 
-    lvl = get_fdb_class(&dbname, &local, &lvl_override);
-    if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
-        return _failed_AddAndLockTable(clnt, dbname,
-                                       (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN : FDB_ERR_CLASS_DENIED,
-                                       (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
-    }
-
-    /* try to find or create the fdb;
-     * the returned fdb, created or not, is read locked (live lock inuse_rwlock)
-     * fdb is visible to other clients
-     */
-    fdb = _new_fdb(dbname, &created, lvl, local, lvl_override);
+    /* _new_fdb strips class prefix, resolves class/local from gbl tunables,
+     * and checks for mismatch if fdb already exists */
+    fdb = _new_fdb(dbname, &created);
     if (!fdb) {
-        /* we cannot really alloc a new memory string for sqlite here */
         return _failed_AddAndLockTable(clnt, dbname, FDB_ERR_MALLOC, "OOM allocating fdb object");
     }
-    if (!created) {
-        /* we need to validate requested class to existing class */
-        rc = _validate_existing_fdb(fdb, lvl, local);
-        if (rc != FDB_NOERR) {
-            put_fdb(fdb, FDB_PUT_NOFREE);
-            return _failed_AddAndLockTable(clnt, dbname, rc, "mismatching class");
-        }
-    }
 
-    /* hack: sqlite stats are inheriting the present db lvl */
-    if (!created && is_sqlite_stat(table)) {
-        lvl = fdb->class;
-        if (!fdb->loc) {
-            local = 1;
-        }
-    }
-
-    if (!local) {
+    if (!fdb->local) {
         rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc, &fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
             switch (rc) {
@@ -1530,7 +1515,7 @@ int sqlite3AddAndLockTable(sqlite3InitInfo *init, const char *dbname, const char
                 perrstr = "no destination";
                 break;
             }
-            goto error; /* new_fdb bumped up users, need to decrement that */
+            goto error;
         }
     }
 
@@ -1538,9 +1523,7 @@ int sqlite3AddAndLockTable(sqlite3InitInfo *init, const char *dbname, const char
     rc = _add_table_and_stats_fdb(clnt, init, fdb, table, version);
     if (rc != FDB_NOERR) {
         if (rc != FDB_ERR_SSL)
-            logmsg(LOGMSG_ERROR,
-                   "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
-                   __func__, dbname, table, rc);
+            logmsg(LOGMSG_ERROR, "%s: failed to add foreign table \"%s:%s\" rc=%d\n", __func__, fdb->dbname, table, rc);
 
         switch (rc) {
         case FDB_ERR_FDB_TBL_NOTFOUND: {
@@ -1578,18 +1561,18 @@ int sqlite3AddAndLockTable(sqlite3InitInfo *init, const char *dbname, const char
         }
         }
 
-    error:
+    error:;
+        char *errdbname = strdup(fdb->dbname);
         put_fdb(fdb, created ? FDB_PUT_TRYFREE : FDB_PUT_NOFREE);
-        return _failed_AddAndLockTable(clnt, dbname, rc, perrstr);
+        rc = _failed_AddAndLockTable(clnt, errdbname, rc, perrstr);
+        free(errdbname);
+        return rc;
     }
 
     /* here we have the table read lock (table_lock) and possibly
      * the stats as well (if required by sqlite engine initial setup)
      */
 
-    *out_class = lvl;
-    *out_local = local;
-    *out_class_override = lvl_override;
     *out_proto_version = fdb->server_version;
 
     return SQLITE_OK; /* speaks sqlite */
@@ -5424,48 +5407,20 @@ done:
     return rc;
 }
 
-static int _validate_existing_fdb(fdb_t *fdb, int cls, int local)
-{
-    if (fdb->local != local) {
-        logmsg(LOGMSG_ERROR,
-               "Failed local match fdb %s class %d local %d, asked for class "
-               "%d local %d\n",
-               fdb->dbname, fdb->class, fdb->local, cls, local);
-        /* follow-up instances don't specify LOCAL mode */
-        return FDB_ERR_CLASS_DENIED;
-    }
-    if (fdb->class != cls) {
-        logmsg(
-            LOGMSG_ERROR,
-            "Failed class match fdb %s class %d, asked for class %d local %d\n",
-            fdb->dbname, fdb->class, cls, local);
-        /* follow-up instances don't specify same class */
-        return FDB_ERR_CLASS_DENIED;
-    }
-    return FDB_NOERR;
-}
 
 int fdb_validate_existing(const char *zDatabase)
 {
     fdb_t *fdb = NULL;
     int rc = FDB_NOERR;
-    const char *dbName = zDatabase;
-    int local;
-    int cls;
-
-    /* This points dbName at 'name' portion of zDatabase */
-    cls = get_fdb_class(&dbName, &local, NULL);
+    const char *dbName = _strip_class_prefix(zDatabase);
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
 
-    /* This searches only by 'name' (so no duplicate dbnames across classes) */
     fdb = _cache_fnd_fdb(dbName, NULL);
     if (fdb) {
-        rc = _validate_existing_fdb(fdb, cls, local);
+        if (_check_fdb_gbl_mismatch(fdb))
+            rc = FDB_ERR_CLASS_DENIED;
     }
-    /* else {}: if the fdb was removed, there is no validation
-       to be done; fdb was probably removed and the follow
-       up code might actually establish a new fdb */
     Pthread_mutex_unlock(&fdbs.arr_mtx);
     return rc;
 }
@@ -6194,8 +6149,7 @@ int fdb_push_set(int val)
  * Check that fdb class matches a specific class
  *
  */
-int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
-                          int class_override)
+int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class)
 {
     if (fdb->local != local) {
         logmsg(LOGMSG_ERROR, "%s: fdb %s different local %d %d\n", __func__,
@@ -6204,19 +6158,26 @@ int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
     }
     if (!fdb->local) {
         if (class != fdb->class) {
-            logmsg(LOGMSG_ERROR, "%s: fdb %s different class %s%d %d\n",
-                   __func__, fdb->dbname, class_override ? "override " : "",
-                   fdb->class, class);
+            logmsg(LOGMSG_ERROR, "%s: fdb %s different class %d %d\n", __func__, fdb->dbname, fdb->class, class);
             return -1;
         }
     }
     return 0;
 }
 
+int get_fdb_class(const char *dbname, enum mach_class *out_class, int *out_local)
+{
+    fdb_t *fdb = get_fdb_int(dbname, FDB_GET_LOCK, __func__, __LINE__);
+    if (!fdb)
+        return -1;
+    *out_class = fdb->class;
+    *out_local = fdb->local;
+    put_fdb(fdb, FDB_PUT_NOFREE);
+    return 0;
+}
+
 static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
                                                        const char *tblname,
-                                                       enum mach_class class,
-                                                       int local, int override,
                                                        enum ast_type type)
 {
     int created = 0;
@@ -6224,11 +6185,11 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
     struct errstat err = {0};
 
     /* remote fdb */
-    fdb_t *fdb = _new_fdb(dbname, &created, class, local, override);
+    fdb_t *fdb = _new_fdb(dbname, &created);
     if (!fdb)
         return NULL;
 
-    int rc = fdb_get_remote_version(fdb->dbname, tblname, fdb->class, local, &remote_version, &err);
+    int rc = fdb_get_remote_version(fdb->dbname, tblname, fdb->class, fdb->local, &remote_version, &err);
 
     put_fdb(fdb, FDB_PUT_NOFREE);
 
@@ -6246,7 +6207,7 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
             return NULL;
     }
 
-    fdb_push_connector_t * push = fdb_push_create(dbname, class, override, local, type);
+    fdb_push_connector_t *push = fdb_push_create(dbname, fdb->class, fdb->local, type);
     return push;
 }
 
@@ -6259,8 +6220,6 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     int i;
     fdb_push_connector_t **pushes;
     int rc;
-    int local = gbl_fdb_resolve_local;
-    enum mach_class myclass = get_my_mach_class();
 
     sqlclntstate *clnt = get_sql_clnt();
     if(!clnt) {
@@ -6279,9 +6238,8 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     /* create create sql statements */
     for(i = 0; i < nshards; i++) {
         if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname))) {
-            pushes[i] = fdb_push_connector_create(dbnames[i], type == AST_TYPE_CREATE ?
-                                                  shardnames[i] : sc->partition.u.genshard.tablename,
-                                                  myclass, local, 1, type);
+            pushes[i] = fdb_push_connector_create(
+                dbnames[i], type == AST_TYPE_CREATE ? shardnames[i] : sc->partition.u.genshard.tablename, type);
             if (!pushes[i]) {
                 logmsg(LOGMSG_ERROR, "%s malloc shard push %d\n", __func__, i);
                 goto setup_error;
@@ -6858,7 +6816,7 @@ int _ping_fdb(fdb_t *fdb)
 
     if (fdb->local) {
         snprintf(dbname, sizeof(dbname), "LOCAL_%s", fdb->dbname);
-    } else if (fdb->class_override) {
+    } else if (fdb->class != get_my_mach_class()) {
         snprintf(dbname, sizeof(dbname), "%s_%s", mach_class_class2tier(fdb->class), fdb->dbname);
     } else {
         snprintf(dbname, sizeof(dbname), "%s", fdb->dbname);

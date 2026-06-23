@@ -383,8 +383,8 @@ int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr,
  * Check that fdb class matches a specific class
  *
  */
-int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
-                          int class_override);
+int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class);
+int get_fdb_class(const char *dbname, enum mach_class *out_class, int *out_local);
 
 /**
  * Connect to a remote cluster based of push connector information
@@ -416,8 +416,7 @@ int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
  *  Create a fdb push connector
  *
  */
-fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class, int override, int local,
-                                      enum ast_type type);
+fdb_push_connector_t *fdb_push_create(const char *dbname, enum mach_class class, int local, enum ast_type type);
 
 /**
  * Callback for cdb2api transport I/O retry

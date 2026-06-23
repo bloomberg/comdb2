@@ -7,3 +7,4 @@ test_fdb_io on
 fdbdebg 1
 foreign_db_push_remote 0
 foreign_db_push_redirect 0
+foreign_db_resolve_local 1
