@@ -66,6 +66,7 @@ COMDB2_EXE=${COMDB2_EXE:-comdb2}
 CDB2SQL_EXE=${CDB2SQL_EXE:-cdb2sql}
 COMDB2AR_EXE=${COMDB2AR_EXE:-comdb2ar}
 COPYCOMDB2_EXE=${COPYCOMDB2_EXE:-copycomdb2}
+CDB2_COPYLOGS_START_EXE=${CDB2_COPYLOGS_START_EXE:-cdb2_copylogs_start}
 export comdb2ar=$COMDB2AR_EXE  # used by copycomdb2
 export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 export COMDB2_ROOT=${DBDIR}
@@ -77,6 +78,7 @@ check_executables_for_cluster()
 {
     which $CDB2SQL_EXE  > /dev/null || failexit "$CDB2SQL_EXE not in path"
     which $COMDB2AR_EXE  > /dev/null || failexit "$COMDB2AR_EXE not in path"
+    which $CDB2_COPYLOGS_START_EXE  > /dev/null || failexit "$CDB2_COPYLOGS_START_EXE not in path"
     which $COPYCOMDB2_EXE  > /dev/null || failexit "$COPYCOMDB2_EXE not in path"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then

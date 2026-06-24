@@ -4,7 +4,7 @@
 
 #set -x
 
-vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE COPYCOMDB2_EXE CDB2VERIFY_EXE PMUX_EXE"
+vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE COPYCOMDB2_EXE CDB2VERIFY_EXE PMUX_EXE CDB2_COPYLOGS_START_EXE"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -15,7 +15,7 @@ for required in $vars; do
 done
 
 #make sure files exist
-files="COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE COPYCOMDB2_EXE CDB2VERIFY_EXE PMUX_EXE"
+files="COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE COPYCOMDB2_EXE CDB2VERIFY_EXE PMUX_EXE CDB2_COPYLOGS_START_EXE"
 for file in $files; do
     f=${!file}
     if [[ ! -f $f ]] ; then
@@ -54,10 +54,11 @@ copy_files_to_node() {
     trap "close_master_ssh_session \"closing\"" INT EXIT
       
     ssh $SSH_OPT $SSH_MSTR -MNf $node   #start master ssh session for node
-    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2 $TESTDIR/etc/cdb2/config.d" < /dev/null
+    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $d4 $d5 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2 $TESTDIR/etc/cdb2/config.d" < /dev/null
 
     if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
         scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
+        scp $SSH_OPT $SSH_MSTR $CDB2_COPYLOGS_START_EXE $node:$CDB2_COPYLOGS_START_EXE
         scp $SSH_OPT $SSH_MSTR $COPYCOMDB2_EXE $node:$COPYCOMDB2_EXE
         scp $SSH_OPT $SSH_MSTR $CDB2VERIFY_EXE $node:$CDB2VERIFY_EXE
         scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
