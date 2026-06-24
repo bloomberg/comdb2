@@ -1405,20 +1405,6 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
     Pthread_rwlock_wrlock(&queue->queue_lk);
     if (cur)
         curqe = cur->cur;
-    /* Any orphan relinks at the front can be deleted */
-    while ((qe = LISTC_TOP(&queue->queue_keys)) != NULL &&
-           qe->type == PGLOGS_QUEUE_RELINK) {
-        qe = listc_rtl(&queue->queue_keys);
-        return_pglogs_queue_key(qe);
-#ifdef ASOF_TRACE
-        count++;
-#endif
-        /* adjust asof queue cursor */
-        if (curqe == qe) {
-            cur->cur = NULL;
-            goto done;
-        }
-    }
 
     /* Find the last entry we can delete */
     qe = LISTC_BOT(&queue->queue_keys);
@@ -6801,14 +6787,9 @@ static int update_pglogs_from_global_queues_int(
             }
         }
 
-        /* Skip over unneeded RELINKS */
-        while (!update_current_pglogs && current && current != last) {
-            current = current->lnk.next;
-            if (current->type != PGLOGS_QUEUE_PAGE)
-                continue;
-            assert(log_compare(&current->commit_lsn, start_lsn) > 0);
+        /* On master, relink records preceed pglogs */
+        if (current)
             update_current_pglogs = 1;
-        }
     }
 
     Pthread_rwlock_unlock(&qcur->queue->queue_lk);
