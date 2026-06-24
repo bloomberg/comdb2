@@ -27,6 +27,7 @@
 #include <poll.h>
 #include <time.h>
 #include <uuid/uuid.h>
+#include <comdb2_atomic.h>
 
 #include <rtcpu.h>
 #include <list.h>
@@ -546,7 +547,7 @@ static const char *_strip_class_prefix(const char *dbname)
 
     class = strndup(dbname, tmpname - dbname);
     if (strncasecmp(class, "LOCAL", 6) == 0 || mach_class_name2class(class) != CLASS_UNKNOWN) {
-        unsigned long long cnt = __atomic_add_fetch(&class_override_spew_count, 1, __ATOMIC_RELAXED);
+        unsigned long long cnt = ATOMIC_ADD64(class_override_spew_count, 1);
         if (gbl_fdb_class_override_spew_limit > 0 && (cnt % gbl_fdb_class_override_spew_limit) == 1) {
             logmsg(LOGMSG_ERROR,
                    "%s: class override '%s' in dbname '%s' is deprecated "
@@ -616,7 +617,7 @@ static int _check_fdb_gbl_mismatch(fdb_t *fdb)
             mismatch = 1;
     }
     if (mismatch) {
-        unsigned long long cnt = __atomic_add_fetch(&mismatch_spew_count, 1, __ATOMIC_RELAXED);
+        unsigned long long cnt = ATOMIC_ADD64(mismatch_spew_count, 1);
         if (gbl_fdb_class_override_spew_limit > 0 && (cnt % gbl_fdb_class_override_spew_limit) == 1) {
             logmsg(LOGMSG_ERROR,
                    "%s: fdb '%s' class mismatch with current gbl settings "
