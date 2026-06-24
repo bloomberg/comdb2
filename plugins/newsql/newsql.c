@@ -872,8 +872,17 @@ static int newsql_row_remtran(struct sqlclntstate *clnt, const char *name,
     if (!clnt->flat_col_vals)
         value[0] = &cols[0];
     cdb2__sqlresponse__column__init(&cols[0]);
-    int64_t i64 = val;
-    newsql_integer(cols, 0, i64, flip);
+
+    char strbuf[24];
+    if (appdata->col_info.type[0] == SQLITE_TEXT) {
+        /* fastsql compat: column was declared as TEXT, send as string */
+        cols[0].value.len = snprintf(strbuf, sizeof(strbuf), "%d", val) + 1;
+        cols[0].value.data = (uint8_t *)strbuf;
+    } else {
+        int64_t i64 = val;
+        newsql_integer(cols, 0, i64, flip);
+    }
+
     if (clnt->flat_col_vals)
         bd[0] = cols[0].value;
 
