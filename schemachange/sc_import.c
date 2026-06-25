@@ -289,6 +289,11 @@ static enum comdb2_import_op bulk_import_write_import_db_lrl(char *tmp_db_dir, c
             gbl_dtastripe,
             gbl_blobstripe ? "blobstripe" : "noblobstripe");
 
+    extern int gbl_fdb_resolve_local;
+
+    if (gbl_fdb_resolve_local)
+        fprintf(fp, "\nforegin_db_resolve_local 1\n");
+
     extern int gbl_uses_externalauth;
 
 #ifdef COMDB2_TEST
