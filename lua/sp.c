@@ -423,7 +423,8 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg, int register_timeou
             --retry;
         }
         if (check_retry_conditions(L, reg, 1) != 0) {
-            rc = luabb_error(L, sp, sp->error);
+            luabb_error(L, sp, sp->error);
+            rc = -1;
             goto out;
         }
         if (rc != NET_SEND_FAIL_TIMEOUT) {
