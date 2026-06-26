@@ -27,7 +27,7 @@
 extern int gbl_osql_verify_retries_max;
 
 typedef struct srs_tran_query {
-    int iscommit;
+    int iscommit; /* statement is 'COMMIT' or equivalent */
     void *stmt;
     LINKC_T(struct srs_tran_query) lnk; /* next query */
 } srs_tran_query_t;
@@ -194,7 +194,8 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     if (srs_tran_do_not_retry(clnt))
         return 0;
 
-    /* don't grow session when the transaction is simply repeated */
+    /* If we are actively retrying the transaction, the query should already be
+     * in the history - do not add it. */
     if (osql->replay != OSQL_RETRY_NONE) {
         if (!osql->history) {
             logmsg(LOGMSG_ERROR, "%s: state is %d but no history???\n",

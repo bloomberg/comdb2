@@ -21,9 +21,16 @@
 #include "sql.h"
 
 enum {
-    OSQL_RETRY_NONE = 0, /* no retry yet */
-    OSQL_RETRY_DO = 1,   /* we are running a retry iteration, no client comm */
-    OSQL_RETRY_LAST = 3, /* this is the last attempt, send client result */
+    /* No retry in progress. Initial state, or set after the transaction
+     * committed, received a non-retryable error, or exhausted retries. */
+    OSQL_RETRY_NONE = 0,
+    /* A retry is in progress. Do not send results back to the client yet. */
+    OSQL_RETRY_DO = 1,
+    /* The last retry is in progress. We must send results back to the client
+     * regardless of the outcome. */
+    OSQL_RETRY_LAST = 3,
+    /* A retry failed with a non-retryable error. Do not retry further and send
+     * the error back to the client. */
     OSQL_RETRY_HALT = 4
 };
 

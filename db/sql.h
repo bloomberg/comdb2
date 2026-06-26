@@ -863,10 +863,10 @@ struct sqlclntstate {
     int isUnlocked;
     int writeTransaction;
     int prepare_only;
-    int verify_retries; /* how many verify retries we've borne */
-    int verifyretry_off;
+    int verify_retries;  /* how many verify retries we've done */
+    int verifyretry_off; /* whether verify retries are disabled */
     int pageordertablescan;
-    int snapshot; /* snapshot epoch placeholder */
+    int snapshot; /* snapshot epoch, >0 for a point-in-time transaction */
     int snapshot_file;
     int snapshot_offset;
     int is_hasql_retry;
@@ -922,7 +922,7 @@ struct sqlclntstate {
     int8_t wrong_db;
     int8_t high_availability_flag;
     int8_t hasql_on;
-    int8_t has_recording;
+    int8_t has_recording; /* whether client ran SELECTV in the current transaction */
     int8_t is_retry;
     int8_t get_cost;
     int8_t is_explain;
@@ -1000,7 +1000,7 @@ struct sqlclntstate {
     int last_pid;
     char* origin_host;
     int8_t sent_data_to_client;
-    int8_t is_asof_snapshot;
+    int8_t is_asof_snapshot;          /* whether client started a point-in-time transaction */
     LINKC_T(struct sqlclntstate) lnk; /* appsock + sbuf */
     TAILQ_ENTRY(sqlclntstate) lru_entry; /* libevent connections which can be closed */
     TAILQ_ENTRY(sqlclntstate) sql_entry; /* all libevent connections */

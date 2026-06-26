@@ -1931,13 +1931,19 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
     if (clnt->verifyretry_off || clnt->dbtran.trans_has_sp || clnt->is_participant)
         return 0;
 
-    /* Any isolation level can retry if nothing has been read */
+    /* Any isolation level can retry if nothing has been read by the client.
+     *
+     * Snapshot and serializable transactions can be retried against a new
+     * snapshot. Retrying a point-in-time transaction, however, is pointless
+     * as it will keep failing with the same error. */
     if ((rc == CDB2ERR_NOTSERIAL || rc == CDB2ERR_VERIFY_ERROR) &&
         !clnt->sent_data_to_client && !get_asof_snapshot(clnt) &&
         gbl_snapshot_serial_verify_retry)
         return 1;
 
-    /* Verify error can be retried in reccom or lower */
+    /* Verify errors can always be retried in read committed or lower. Even if
+     * the client read data that could change after retrying, these isolation
+     * levels do not guarantee repeatable reads anyway. */
     return (rc == CDB2ERR_VERIFY_ERROR) && (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
            (clnt->dbtran.mode != TRANLEVEL_SERIAL);
 }
