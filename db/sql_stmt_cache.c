@@ -24,7 +24,7 @@ int gbl_max_sqlcache = 10;
 int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
 
 extern int gbl_debug_temptables;
-static int stmt_cache_finalize_entry(stmt_cache_entry_t *entry);
+static int stmt_cache_finalize_entry(stmt_cache_entry_t *entry, struct sqlclntstate *clnt);
 
 static int query_data_func(struct sqlclntstate *clnt, void **data, int *sz,
                            int type, int op)
@@ -38,7 +38,7 @@ static int query_data_func(struct sqlclntstate *clnt, void **data, int *sz,
 static int stmt_cache_finalize_entry_cb(void *stmt_entry, void *args)
 {
     (void)args;
-    return stmt_cache_finalize_entry(stmt_entry);
+    return stmt_cache_finalize_entry(stmt_entry, NULL);
 }
 
 /* Teardown statement cache */
@@ -140,9 +140,9 @@ static void stmt_cache_free_entry(stmt_cache_entry_t *entry)
     sqlite3_free(entry);
 }
 
-static int stmt_cache_finalize_entry(stmt_cache_entry_t *entry)
+static int stmt_cache_finalize_entry(stmt_cache_entry_t *entry, struct sqlclntstate *clnt)
 {
-    sqlite3_finalize(entry->stmt);
+    stmt_cache_free_vdbe(entry->stmt, clnt);
     if (entry->qd_func && entry->stmt_data) {
         entry->qd_func(NULL, &entry->stmt_data, NULL, QUERY_STMT_DATA,
                        QUERY_DATA_DELETE);
@@ -160,7 +160,7 @@ static int stmt_cache_delete_last_entry(stmt_cache_t *stmt_cache, void *list)
         logmsg(LOGMSG_ERROR, "%s:%d failed to delete entry (rc: %d)\n",
                __func__, __LINE__, rc);
     }
-    stmt_cache_finalize_entry(entry);
+    stmt_cache_finalize_entry(entry, NULL);
     return rc;
 }
 
@@ -556,7 +556,7 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
             }
             if (stmt_cache_requeue_old_entry(thd->stmt_cache, rec->stmt_entry)) { /* put back in queue... */
-                stmt_cache_finalize_entry(rec->stmt_entry);                   /* ...and on error, cleanup */
+                stmt_cache_finalize_entry(rec->stmt_entry, clnt);                 /* ...and on error, cleanup */
             }
             return 0;
         }
@@ -598,9 +598,8 @@ int stmt_cache_put_distributed(struct sqlthdstate *thd,
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
     rc = stmt_cache_put_int(thd, clnt, rec, 0, outrc, distributed);
-    if (rc != 0 && rec->stmt) {
-        sqlite3_finalize(rec->stmt);
-        rec->stmt = NULL;
+    if (rc != 0) {
+        stmt_cache_free_vdbe(rec->stmt, clnt);
     }
     if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
         char *k = rec->cache_hint;
@@ -620,4 +619,11 @@ int stmt_cache_put(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                    struct sql_state *rec, int outrc)
 {
     return stmt_cache_put_distributed(thd, clnt, rec, outrc, 0);
+}
+
+void stmt_cache_free_vdbe(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
+{
+    sqlite3_finalize(stmt); /* no-op on NULL */
+    if (clnt != NULL) /* zNormSql is owned by the VDBE */
+        clnt->work.zNormSql = NULL;
 }

@@ -2999,7 +2999,7 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
     }
 
     /* terminate the current statement; we are gonna reprepare */
-    sqlite3_finalize(rec->stmt);
+    stmt_cache_free_vdbe(rec->stmt, clnt);
     rec->stmt = NULL;
     clnt->dbtran.pStmt = NULL;
 }
@@ -4652,7 +4652,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd, struct sqlclntstate *
             else
                 stmt_cache_add_new_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
         } else {
-            sqlite3_finalize(stmt);
+            stmt_cache_free_vdbe(stmt, clnt);
         }
         return rc;
     }
@@ -4663,7 +4663,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd, struct sqlclntstate *
         else
             stmt_cache_add_new_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
     } else {
-        sqlite3_finalize(stmt);
+        stmt_cache_free_vdbe(stmt, clnt);
     }
 
     clnt->has_sqliterow = 0;

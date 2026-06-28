@@ -98,4 +98,5 @@ int stmt_cache_find_and_remove_entry(stmt_cache_t *stmt_cache, const char *sql, 
 int stmt_cache_add_new_entry(stmt_cache_t *stmt_cache, const char *sql, const char *actual_sql, sqlite3_stmt *stmt,
                              struct sqlclntstate *clnt);
 int stmt_cache_requeue_old_entry(stmt_cache_t *, stmt_cache_entry_t *);
+void stmt_cache_free_vdbe(sqlite3_stmt *, struct sqlclntstate *);
 #endif /* !__INCLUDED_SQL_STMT_CACHE_H */
