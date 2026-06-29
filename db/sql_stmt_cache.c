@@ -624,6 +624,6 @@ int stmt_cache_put(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 void stmt_cache_free_vdbe(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
 {
     sqlite3_finalize(stmt); /* no-op on NULL */
-    if (clnt != NULL) /* zNormSql is owned by the VDBE */
+    if (clnt != NULL)       /* zNormSql is owned by the VDBE */
         clnt->work.zNormSql = NULL;
 }
