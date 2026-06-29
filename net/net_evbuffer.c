@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include <event2/buffer.h>
+#include <event2/dns.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
 #include <event2/listener.h>
@@ -115,6 +116,7 @@ int gbl_libevent_rte_only = 0;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char *gbl_myhostname;
 extern int gbl_accept_on_child_nets;
+extern int gbl_check_replicant_hostname;
 extern int gbl_create_mode;
 extern int gbl_debug_pb_connectmsg_dbname_check;
 extern int gbl_debug_pb_connectmsg_gibberish;
@@ -154,6 +156,7 @@ struct policy_info {
 static struct policy_info single;
 static pthread_t base_thd;
 static struct event_base *base;
+static struct evdns_base *dns_base;
 
 static pthread_t timer_thd;
 static struct event_base *timer_base;
@@ -1276,6 +1279,10 @@ static void exit_once_func(void)
         }
     }
     net_stop = 1;
+    if (dns_base) {
+        evdns_base_free(dns_base, 0);
+        dns_base = NULL;
+    }
     stop_base(base);
     if (dedicated_timer) {
         stop_base(timer_base);
@@ -2560,6 +2567,55 @@ static void net_accept_ssl_error(void *data)
     accept_info_free(a);
 }
 
+static int validate_host_finish(struct accept_info *a)
+{
+    if (a->c.flags & CONNECT_MSG_SSL) {
+        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
+            logmsg(LOGMSG_ERROR, "Peer requested SSL, but I don't have an SSL key pair.\n");
+            return -1;
+        }
+        a->origin = get_hostname_by_fileno(a->fd);
+        a->ssl_data = ssl_data_new(a->fd, a->origin);
+        accept_ssl_evbuffer(a->ssl_data, base, net_accept_ssl_error, net_accept_ssl_success, a);
+        return 0;
+    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
+        logmsg(LOGMSG_ERROR, "Replicant SSL connections are required.\n");
+        return -1;
+    }
+    return accept_host(a);
+}
+
+static void hostname_check_cb(int result, struct evutil_addrinfo *res, void *arg)
+{
+    struct accept_info *a = arg;
+    if (result != 0) {
+        logmsg(LOGMSG_ERROR, "%s fd:%d DNS lookup failed for claimed host:%s: %s\n",
+               __func__, a->fd, a->from_host, evutil_gai_strerror(result));
+        accept_info_free(a);
+        return;
+    }
+    int match = 0;
+    for (struct evutil_addrinfo *r = res; r; r = r->ai_next) {
+        struct sockaddr_in *sin = (struct sockaddr_in *)r->ai_addr;
+        if (sin->sin_addr.s_addr == a->ss.sin_addr.s_addr) {
+            match = 1;
+            break;
+        }
+    }
+    evutil_freeaddrinfo(res);
+    if (!match) {
+        char ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &a->ss.sin_addr, ip, sizeof(ip));
+        logmsg(LOGMSG_ERROR, "%s fd:%d hostname mismatch: claimed:%s does not resolve to ip:%s\n",
+               __func__, a->fd, a->from_host, ip);
+        accept_info_free(a);
+        return;
+    }
+    if (validate_host_finish(a) != 0) {
+        accept_info_free(a);
+    }
+}
+
 static int validate_host(struct accept_info *a)
 {
     if (strcmp(a->from_host, gbl_myhostname) == 0) {
@@ -2603,20 +2659,12 @@ static int validate_host(struct accept_info *a)
         logmsg(LOGMSG_ERROR, "connection from node:%d host:%s not allowed\n", a->c.from_nodenum, host);
         return -1;
     }
-    if (a->c.flags & CONNECT_MSG_SSL) {
-        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
-            logmsg(LOGMSG_ERROR, "Peer requested SSL, but I don't have an SSL key pair.\n");
-            return -1;
-        }
-        a->origin = get_hostname_by_fileno(a->fd);
-        a->ssl_data = ssl_data_new(a->fd, a->origin);
-        accept_ssl_evbuffer(a->ssl_data, base, net_accept_ssl_error, net_accept_ssl_success, a);
+    if (gbl_check_replicant_hostname) {
+        struct evutil_addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
+        evdns_getaddrinfo(dns_base, a->from_host, NULL, &hints, hostname_check_cb, a);
         return 0;
-    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
-        logmsg(LOGMSG_ERROR, "Replicant SSL connections are required.\n");
-        return -1;
     }
-    return accept_host(a);
+    return validate_host_finish(a);
 }
 
 static int process_long_hostname(struct accept_info *a)
@@ -3561,6 +3609,7 @@ static void setup_bases(void)
 {
     event_set_fatal_callback(libevent_fatal_cb);
     init_base(&base_thd, &base, "main", NULL);
+    dns_base = evdns_base_new(base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
     if (dedicated_timer) {
         gettimeofday(&timer_tick, NULL);
         init_base(&timer_thd, &timer_base, "timer", &timer_tick);

@@ -1054,6 +1054,10 @@ REGISTER_TUNABLE("replicant_latches",
                  "Also acquire latches on replicants. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicant_latches, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("check_replicant_hostname",
+                 "Verify that the connecting peer's IP reverse-resolves to the "
+                 "hostname claimed in its connect message. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_check_replicant_hostname, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("replicate_local",
                  "When enabled, record all database events to a comdb2_oplog "
                  "table. This can be used to set clusters/instances that are "

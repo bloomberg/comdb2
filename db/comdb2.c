@@ -375,6 +375,7 @@ int gbl_debug_pb_connectmsg_dbname_check = 0;
 int gbl_debug_pb_connectmsg_gibberish = 0;
 double gbl_query_plan_percentage = 50;
 int gbl_readonly = 0;
+int gbl_check_replicant_hostname = 1;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
 

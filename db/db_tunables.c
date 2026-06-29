@@ -154,6 +154,7 @@ extern int gbl_debug_lock_get_list_copy_compare;
 extern int gbl_rep_mon_threshold;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;
+extern int gbl_check_replicant_hostname;
 extern int gbl_return_long_column_names;
 extern int gbl_round_robin_stripes;
 extern int skip_clear_queue_extents;
