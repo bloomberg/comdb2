@@ -1672,6 +1672,7 @@ extern int gbl_authorization_cache_ageout;
 extern int gbl_cache_authz_perms;
 extern int gbl_iam_verbosity;
 extern int gbl_iam_decision_history;
+extern int gbl_iam_drop_raw_metrics;
 extern int gbl_use_sp_resource;
 extern char* gbl_foreign_metadb;
 extern char* gbl_foreign_metadb_class;
