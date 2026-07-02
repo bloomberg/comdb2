@@ -3940,7 +3940,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd, struct sqlclntstate *
             write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
     }
-    return 0;
+    return rc;
 }
 
 void _delay_sending_row(void)
@@ -3963,7 +3963,7 @@ void _delay_sending_row(void)
 static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     struct sql_state *rec, int *fast_error, struct errstat *err)
 {
-    int rc, t_rc;
+    int rc;
     uint64_t row_id = 0;
     int rowcount = 0;
     int postponed_write = 0;
@@ -4084,11 +4084,7 @@ postprocessing:
         rc = 0;
     /* closing: error codes, postponed write result and so on*/
     post_query_get_cost(thd, clnt);
-    t_rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
-    if (t_rc != 0 && rc == 0)
-        rc = t_rc;
-
-    return rc;
+    return post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
 }
 
 static void handle_sqlite_error(struct sqlthdstate *thd,
