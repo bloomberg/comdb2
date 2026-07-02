@@ -4699,7 +4699,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
-    } else if (iam_identity && identity_cb && (hndl && requesting_sql_rows(hndl) == 0)) {
+    } else if (iam_identity && identity_cb && (!hndl || requesting_sql_rows(hndl) == 0)) {
         int flags = 0;
         if (cdb2_use_optional_identity)
             flags |= CDB2_USE_OPTIONAL_IDENTITY;
@@ -4718,7 +4718,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         }
 #endif
         if (!id_blob || !id_blob->data.data) {
-            if (cdb2_fail_on_identity_failure) {
+            /* hndl is NULL for the comdb2db lookup: send it without identity */
+            if (cdb2_fail_on_identity_failure && hndl) {
                 snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: IAM identity creation failed", __func__);
                 rc = CDB2ERR_ACCESS;
                 goto after_callback;
