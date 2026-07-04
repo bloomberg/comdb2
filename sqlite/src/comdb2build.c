@@ -782,7 +782,7 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt, int oplog_cn
 
 static int authenticateSC(const char * table,  Parse *pParse)
 {
-    char *username = strstr(table, "@");
+    const char *username = strstr(table, "@");
     struct sqlclntstate *clnt = get_sql_clnt();
     if (username && strcmp(username+1, clnt->current_user.name) == 0) {
         return 0;
