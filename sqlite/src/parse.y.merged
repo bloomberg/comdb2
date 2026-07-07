@@ -187,22 +187,12 @@ cmdlist ::= ecmd.
 ecmd ::= SEMI.
 ecmd ::= cmdx SEMI.
 %ifndef SQLITE_OMIT_EXPLAIN
-<<<<<<< src/parse.y
-ecmd ::= explain cmdx.
-explain ::= EXPLAIN.              { pParse->explain = 1; }
-explain ::= EXPLAIN QUERY PLAN.   { pParse->explain = 2; }
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-explain ::= EXPLAIN DISTRIBUTION. { pParse->explain = 3; }
-%endif SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-ecmd ::= explain cmdx.
-explain ::= EXPLAIN.              { pParse->explain = 1; }
-explain ::= EXPLAIN QUERY PLAN.   { pParse->explain = 2; }
-=======
 ecmd ::= explain cmdx SEMI.       {NEVER-REDUCE}
 explain ::= EXPLAIN.              { if( pParse->pReprepare==0 ) pParse->explain = 1; }
 explain ::= EXPLAIN QUERY PLAN.   { if( pParse->pReprepare==0 ) pParse->explain = 2; }
->>>>>>> sqlite-3.51.2/src/parse.y
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+explain ::= EXPLAIN DISTRIBUTION. { if( pParse->pReprepare==0 ) pParse->explain = 3; }
+%endif SQLITE_BUILDING_FOR_COMDB2
 %endif  SQLITE_OMIT_EXPLAIN
 cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 
@@ -270,7 +260,6 @@ create_table ::= dryrun createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
 create_table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
    sqlite3StartTable(pParse,&Y,&Z,T,0,0,E);
 }
-<<<<<<< src/parse.y
 %endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
@@ -279,14 +268,9 @@ comdb2_create_table_csc2 ::= dryrun createkw temp(T) TABLE ifnotexists(E) nm(Y) 
   comdb2CreateTableCSC2(pParse,&Y,&Z,O,&C,T,E);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
-createkw(A) ::= CREATE(A).  {disableLookaside(pParse);}
-||||||| sqlite-3.28.0/src/parse.y
-createkw(A) ::= CREATE(A).  {disableLookaside(pParse);}
-=======
 createkw(A) ::= CREATE(A).  {
   disableLookaside(pParse);
 }
->>>>>>> sqlite-3.51.2/src/parse.y
 
 %type ifnotexists {int}
 ifnotexists(A) ::= .              {A = 0;}
