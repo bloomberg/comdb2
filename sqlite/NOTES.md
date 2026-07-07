@@ -35,13 +35,16 @@
 * Initial context:
 
   ```text
-  I am working on upgrading SQLite in this project from version 3.28 to 3.51.
-  `sqlite/` contains our copy of SQLite with patches for comdb2. Inside there, I
-  have also cloned `sqlite-3.28.0` and `sqlite-3.51.2`, the vanilla upstream
-  releases, for your reference.
+  I'm upgrading SQLite in comdb2 from 3.28.0 to 3.51.2. Relevant paths:
+  `sqlite/sqlite-3.28.0/` and `sqlite/sqlite-3.51.2/` are clean upstream SQLite
+  checkouts; current comdb2 code is under `sqlite/`; build/reachability clues
+  include `sqlite/definitions.cmake`, `SQLITE_BUILDING_FOR_COMDB2`, git history,
+  and references in the repo.
 
-  In `<file>`, around line <#>, we have a change to ... How should this change
-  be ported given that the surrounding code has been modified in SQLite 3.51.2?
+  When I ask questions, use those sources first: compare upstream versions,
+  check comdb2 diffs/history, and distinguish compiled/reachable code from dead
+  or excluded code. Do not assume comdb2 patches are obsolete or invent
+  rationale; clearly separate evidence, inference, and uncertainty.
   ```
 
 ## Cherry-picked patches
@@ -181,106 +184,169 @@ I started tracking this when I got to more important files (`where.c`,
       register reference.  Ticket [82b588d342d515d1]
   ```
 
-## Friday, Mar 27th, 2026
+## Observations and Decisions
 
-- `vdbeInt.h`: same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because
-  they are mutually exclusive. Former used to pass through data converted from
-  client format into our row format, skipping SQLite format. Latter says
-  whether string is null-terminated, but only relevant when data is in SQLite
-  format (so would never be used/inspected if data is in our row format).
+### General
 
-## Wednesday, Mar 25th, 2026
+- We have cherry-picked specific extensions from SQLite rather than support all
+  of them, presumably to reduce maintenance surface area.
 
-- `rowset.c`: we have modified SQLite's `RowSet` to use BerkeleyDB temp tables
-  to better handle large update/delete/etc. queries. See Rivers's commit
-  `c026b966e`.
+### `alter.c`
 
-## Tuesday, Mar 24th, 2026
+- Disable SQLite's logic because we handle much of DDL ourselves.
 
-- `trigger.c`: our `sqlite_master` has an additional `csc2` column, needs to
-  be set to NULL for triggers. Also, `MASTER_NAME` (`"sqlite_master"`) has
-  been renamed to `LEGACY_SCHEMA_TABLE`.
-
-## Monday, Mar 23rd, 2026
-
-- `random.c`: we've made the random number generator thread-local instead of
-  global to reduce contention amongst SQL threads.
-- `alter.c`: disable SQLite's logic because we handle much of DDL ourselves.
-- `loadext.c`: some extension APIs are disabled because they're not consistent
-  between SQLite and comdb2 semantics.
-- `mem1.c`: use `blobmem` (specialized blob memory allocator?) when allocating
-  large amounts of memory. Maybe more optimized or has fewer problems with
-  fragmentation, etc.
-- `status.c`: we do not use SQLite's page caching, so disable assertions that
-  check whether page cache mutex is held, and never try to acquire page cache
-  mutex.
-- `malloc.c`: implement thread-safe versions of `sqlite3DbMalloc` and
-  `sqlite3DbRealloc`. These thread-safe variants only seem to be used for fdb,
-  maybe because SQLite resources are shared for concurrent queries that
-  reference the same foreign db?
-
-## Friday, Mar 20th, 2026
-
-- `shell.c.in`: we have a patch to initialize comdb2's SQLite tunables in our
-  build of the SQLite shell.
-- `global.c`: disable SQLite page cache because we use BerkeleyDB.
-
-## Wednesday, Feb 11th, 2026
-
-- `sqlite_tunables.{h,c}`: we have defined some of our own tunables for SQLite.
-- `sqlite_btree.{h,c}`: we have completely replaced the B-Tree routines with our
-  own to interact with BerkeleyDB instead. The functions are defined in
-  `db/sqlglue.c`.
-- `md5.{h,c}`: Adapted from SQLite's implementation in `src/test_md5.c`. Seems
-  that SQLite does not expose this by default, maybe only when built with test
-  flags.
-- `fwd_types.h`: I guess we need to be able to refer to some SQLite structures in
-  `db/` code.
-
-## Tuesday, Feb 10th, 2026
-
-- `sqliteInt.h`
-  - We define additional affinity types for new datatypes like datetime, interval,
-    etc.
-  - We had a cool Lingzhi patch to make `SQLITE_KEEPNULL` work in spite of our
-    additional affinity types. Latest SQLite doesn't have `SQLITE_KEEPNULL` at
-    all, removed the patch. **This means we have one less
-    `#ifdef SQLITE_BUILDING_FOR_COMDB2` block now** (127 vs. 128).
-  - `struct Index` - `nAlloc` vs. `mxSample`. Seems like we have rewritten some
-    parts of `analyze.c`, feels like it makes sense to keep both.
-  - `SF_ASTIncluded`. We have added a `selFlag` related to parallel SQL execution
-    that now conflicts with SQLite's own `SF_PushDown`. My only concern would be
-    if changing the flag would break like fdb queries or something, but I don't
-    think the AST itself is serialized, so maybe the actual flag value doesn't
-    matter? In that case it should be safe to just pick a different flag value...
-
-## Monday, Feb 9th, 2026
-
-- Decimal
-  - Looks like we use the `decNumber` library for decimal math
-    - Written by someone at IBM
-    - https://github.com/dnotq/decNumber
-    - `src/decimal.h` typedefs `decQuad` to `sql_decimal_t`
-  - However SQLite now includes a decimal extension (`ext/misc/decimal.c`)
-    - https://sqlite.org/floatingpoint.html#the_decimal_c_extension
-    - Stores decimals as strings, supports arbitrary precision math
-  - It looks like the `decNumber` library is _way_ more comprehensive
-    - Tries to be more space efficient
-    - More focused on being performant
-    - Wider variety of operations support
-    - Fully implements the IEEE 754 decimal arithmetic spec
-  - https://tutti.prod.bloomberg.com/comdb2/programming/decimals
-    - Looks like we specifically only support `decimal32`, `decimal64`, and
-      `decimal128`, hence only typedef'ing `decQuad`.
-    - The conceptual representation is `sign * significand * (10 ^ exponent)`,
-      where each of decimal type can store a different number of digits for
-      the significand and exponent.
-
-## Thursday, Feb 5th, 2026
+### `CMakeLists.txt`
 
 - Certain files are generated at build time (see `tool` directory and comments
   in `CMakeLists.txt`).
-- We have cherry-picked specific extensions from SQLite rather than support all
-  of them, presumably to reduce maintenance surface area.
 - Reorganized `CMakeLists.txt` to clarify which files are stock SQLite vs.
   Comdb2-related.
+
+### `decimal.h` (decimal math)
+
+- Looks like we use the `decNumber` library for decimal math
+  - Written by someone at IBM
+  - https://github.com/dnotq/decNumber
+  - `src/decimal.h` typedefs `decQuad` to `sql_decimal_t`
+- However SQLite now includes a decimal extension (`ext/misc/decimal.c`)
+  - https://sqlite.org/floatingpoint.html#the_decimal_c_extension
+  - Stores decimals as strings, supports arbitrary precision math
+- It looks like the `decNumber` library is _way_ more comprehensive
+  - Tries to be more space efficient
+  - More focused on being performant
+  - Wider variety of operations support
+  - Fully implements the IEEE 754 decimal arithmetic spec
+- https://tutti.prod.bloomberg.com/comdb2/programming/decimals
+  - Looks like we specifically only support `decimal32`, `decimal64`, and
+    `decimal128`, hence only typedef'ing `decQuad`.
+  - The conceptual representation is `sign * significand * (10 ^ exponent)`,
+    where each of decimal type can store a different number of digits for
+    the significand and exponent.
+
+### `fwd_types.h`
+
+- I guess we need to be able to refer to some SQLite structures in `db/` code.
+
+### `global.c`
+
+- Disable SQLite page cache because we use BerkeleyDB.
+
+### `loadext.c`
+
+- Some extension APIs are disabled because they're not consistent between
+  SQLite and comdb2 semantics.
+
+### `malloc.c`
+
+- Implement thread-safe versions of `sqlite3DbMalloc` and `sqlite3DbRealloc`.
+  These thread-safe variants only seem to be used for fdb, maybe because SQLite
+  resources are shared for concurrent queries that reference the same foreign
+  db?
+
+### `md5.{h,c}`
+
+- Adapted from SQLite's implementation in `src/test_md5.c`. Seems that SQLite
+  does not expose this by default, maybe only when built with test flags.
+
+### `mem1.c`
+
+- Use `blobmem` (specialized blob memory allocator?) when allocating large
+  amounts of memory. Maybe more optimized or has fewer problems with
+  fragmentation, etc.
+
+### `parse.y`
+
+- The tokenizer (`tokenize.c`) converts a flat string of characters into a
+  sequence of tokens, including: keywords (`SELECT`, `INSERT`), identifiers,
+  `TK_SEMI`, `TK_SPACE`, etc. Other systems may refer to the tokenizer as a
+  "lexer". The tokens are fed one at a time into the parser. `parse.y` specifies
+  the grammar, i.e. what actions to take when a particular sequence of tokens is
+  encountered. The parser maintains a stack of tokens. When the tokenizer feeds
+  a new token into the parser, the parser **shifts** or pushes it onto a stack.
+  If the top of the stack satisfies a grammar rule, the parser **reduces** or
+  collapses those stack entries into the left-hand side of the grammar rule.
+
+- How does the tokenizer classify ambiguous tokens? It "cheats" a little by
+  keeping track of `lastTokenParsed` or calling `getToken(...)` to peek at the
+  next token - this can be seen in functions like `analyzeOverKeyword`. The
+  parser does NOT feed information back into the tokenizer.
+
+- How does the parser handle ambiguous tokens? For example, it needs to be able
+  to tell that in `SELECT begin FROM t`, `begin` is an identifier, not the
+  `BEGIN` keyword. This is handled through `%fallback` lists in the grammar.
+  When the parser sees a token from this list and the token cannot be used as a
+  keyword in the current position of the statement being consumed, it attempts
+  to parse as if the token is an identifier instead. The parser attempts to be
+  **lenient** in this regard.
+
+- **DECISION**: Keep the `if( pParse->pReprepare==0 )` guards for `explain`
+  rules. These were introduced alongside the addition of
+  `sqlite_stmt_explain(S, E)`, which allows the caller to change the explain
+  mode or treat an `EXPLAIN ...` statement as a normal query.
+  `sqlite_stmt_explain` internally reprepares the statement, so the guards are
+  necessary to prevent the user-supplied state from being clobbered when
+  re-parsing the query.
+
+- **DECISION**: Keep the `SEMI` token in `explain` rules. On EOL, the tokenizer
+  synthesizes `TK_SEMI`, so this does not break existing `EXPLAIN` statements
+  that do not end in a semicolon. This just makes the `explain` rule consistent
+  with other rules.
+
+### `random.c`
+
+- We've made the random number generator thread-local instead of global to
+  reduce contention amongst SQL threads.
+
+### `rowset.c`
+
+- We have modified SQLite's `RowSet` to use BerkeleyDB temp tables to better
+  handle large update/delete/etc. queries. See Rivers's commit `c026b966e`.
+
+### `shell.c.in`
+
+- We have a patch to initialize comdb2's SQLite tunables in our build of the
+  SQLite shell.
+
+### `sqlite_btree.{h,c}`
+
+- We have completely replaced the B-Tree routines with our own to interact with
+  BerkeleyDB instead. The functions are defined in `db/sqlglue.c`.
+
+### `sqlite_tunables.{h,c}`
+
+- We have defined some of our own tunables for SQLite.
+
+### `sqliteInt.h`
+
+- We define additional affinity types for new datatypes like datetime,
+  interval, etc.
+- We had a cool Lingzhi patch to make `SQLITE_KEEPNULL` work in spite of our
+  additional affinity types. Latest SQLite doesn't have `SQLITE_KEEPNULL` at
+  all, removed the patch. **This means we have one less
+  `#ifdef SQLITE_BUILDING_FOR_COMDB2` block now** (127 vs. 128).
+- `struct Index` - `nAlloc` vs. `mxSample`. Seems like we have rewritten some
+  parts of `analyze.c`, feels like it makes sense to keep both.
+- `SF_ASTIncluded`. We have added a `selFlag` related to parallel SQL execution
+  that now conflicts with SQLite's own `SF_PushDown`. My only concern would be
+  if changing the flag would break like fdb queries or something, but I don't
+  think the AST itself is serialized, so maybe the actual flag value doesn't
+  matter? In that case it should be safe to just pick a different flag value...
+
+### `status.c`
+
+- We do not use SQLite's page caching, so disable assertions that check whether
+  page cache mutex is held, and never try to acquire page cache mutex.
+
+### `trigger.c`
+
+- Our `sqlite_master` has an additional `csc2` column, needs to be set to NULL
+  for triggers. Also, `MASTER_NAME` (`"sqlite_master"`) has been renamed to
+  `LEGACY_SCHEMA_TABLE`.
+
+### `vdbeInt.h`
+
+- Same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because they are mutually
+  exclusive. Former used to pass through data converted from client format into
+  our row format, skipping SQLite format. Latter says whether string is
+  null-terminated, but only relevant when data is in SQLite format (so would
+  never be used/inspected if data is in our row format).
