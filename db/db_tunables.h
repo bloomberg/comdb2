@@ -2441,7 +2441,7 @@ REGISTER_TUNABLE("vtab_externalauth", "Use IAM for vtab access control (Default:
 REGISTER_TUNABLE("vtab_externalauth_strict", "Enforce access control on all CDB2_ALLOW_USER vtabs (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_vtab_externalauth_strict, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("vtab_externalauth_warn", "Log vtab access denials without enforcing (Default: off)", TUNABLE_BOOLEAN,
+REGISTER_TUNABLE("vtab_externalauth_warn", "Log vtab access denials without enforcing (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_vtab_externalauth_warn, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case of missing authdata",

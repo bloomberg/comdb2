@@ -241,7 +241,7 @@ int gbl_allow_old_authn = 1;
 int gbl_uses_externalauth = 0;
 int gbl_vtab_externalauth = 0;
 int gbl_vtab_externalauth_strict = 0;
-int gbl_vtab_externalauth_warn = 0;
+int gbl_vtab_externalauth_warn = 1;
 #ifdef COMDB2_TEST
 int gbl_uses_simpleauth = 0;
 #endif
