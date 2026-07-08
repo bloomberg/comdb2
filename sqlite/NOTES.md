@@ -300,6 +300,15 @@ I started tracking this when I got to more important files (`where.c`,
   `comdb2AddIndexInt()` is called from all paths that create indexes:
   `comdb2AddIndex()`, `comdb2AddPrimaryKey()`, and `comdb2CreateIndex()`.
 
+- **DECISION**: Light the `isCreate` flag when writing to
+  `u1.cr.constraintName`. It is a debug-only flag used to enforce the invariant
+  that `u1.cr` members should only be accessed for `CREATE TABLE ...` and
+  `ALTER TABLE ADD COLUMN ... CONSTRAINT x ...`. `u1.d` members are only active
+  when a `RETURNING` clause is present in a query (i.e. never during DDL).
+  SQLite always sets `isCreate` by calling `disableLookaside()` _before_ writing
+  to `constraintName`. Do the same by calling `disableLookaside()` when reducing
+  `ALTER TABLE`. `ASSERT_IS_CREATE` before writing to `constraintName`.
+
 ### `random.c`
 
 - We've made the random number generator thread-local instead of global to

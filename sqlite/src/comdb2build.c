@@ -6472,19 +6472,24 @@ static int set_constraint_name(Parse *pParse,
     char constraint_name_buf[MAXCONSLEN + 1];
     char *constraint_name;
 
-    if (pParse->constraintName.n == 0) {
+#ifdef DEBUG
+    /* Safeguard access to pParse->u1.cr members. */
+    assert(pParse->isCreate);
+#endif
+
+    if (pParse->u1.cr.constraintName.n == 0) {
         /* Generate the constraint name. */
         gen_constraint_name(constraint, constraint_name_buf,
                             sizeof(constraint_name_buf));
         constraint_name = constraint_name_buf;
     } else {
-        if (pParse->constraintName.n > MAXCONSLEN) {
+        if (pParse->u1.cr.constraintName.n > MAXCONSLEN) {
             setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
             return 1;
         }
-        memcpy(constraint_name_buf, pParse->constraintName.z,
-               pParse->constraintName.n);
-        constraint_name_buf[pParse->constraintName.n] = 0;
+        memcpy(constraint_name_buf, pParse->u1.cr.constraintName.z,
+               pParse->u1.cr.constraintName.n);
+        constraint_name_buf[pParse->u1.cr.constraintName.n] = 0;
         constraint_name = constraint_name_buf;
         sqlite3Dequote(constraint_name);
     }
@@ -6498,7 +6503,7 @@ static int set_constraint_name(Parse *pParse,
     }
 
     /* Don't use auto-generated constraint name for foreign keys. */
-    if (pParse->constraintName.n > 0 || constraint->type != CONS_FKEY) {
+    if (pParse->u1.cr.constraintName.n > 0 || constraint->type != CONS_FKEY) {
         constraint->name = comdb2_strdup(ctx->mem, constraint_name);
         if (constraint->name == 0) {
             setError(pParse, SQLITE_NOMEM, "System out of memory");
