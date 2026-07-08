@@ -280,10 +280,9 @@ ifnotexists(A) ::= IF NOT EXISTS. {A = 1;}
 temp(A) ::= TEMP.  {A = pParse->db->init.busy==0;}
 %endif  SQLITE_OMIT_TEMPDB
 temp(A) ::= .      {A = 0;}
-<<<<<<< src/parse.y
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F) partitioned merge. {
+create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_option_set(F) partitioned merge. {
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
 partitioned ::= . 
@@ -315,15 +314,9 @@ merge_with ::= MERGE nm(Y) dbnm(Z). {
 merge_with_alter ::= MERGE nm(Y) dbnm(Z). {
   comdb2SaveMergeTable(pParse, &Y, &Z, 1);
 }
-
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_options(F). {
-||||||| sqlite-3.28.0/src/parse.y
-create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_options(F). {
-=======
 create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_option_set(F). {
->>>>>>> sqlite-3.51.2/src/parse.y
   sqlite3EndTable(pParse,&X,&E,F,0);
 }
 %endif !SQLITE_BUILDING_FOR_COMDB2
@@ -343,9 +336,9 @@ create_table_args ::= LIKE_KW nm(Y) dbnm(Z). {
 %type table_option_set {u32}
 %type table_option {u32}
 table_option_set(A) ::= .    {A = 0;}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 table_option_set(A) ::= table_option(A).
 table_option_set(A) ::= table_option_set(X) COMMA table_option(Y). {A = X|Y;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 table_option(A) ::= WITHOUT nm(X). {
   if( X.n==5 && sqlite3_strnicmp(X.z,"rowid",5)==0 ){
     A = TF_WithoutRowid | TF_NoVisibleRowid;
