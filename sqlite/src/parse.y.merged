@@ -520,24 +520,14 @@ scantok(A) ::= . {
 //
 carglist ::= carglist ccons.
 carglist ::= .
-<<<<<<< src/parse.y
-ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
-ccons ::= DEFAULT scanpt(A) term(X) scanpt(Z).
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-                            {comdb2AddDefaultValue(pParse,X,A,Z);}
-%endif SQLITE_BUILDING_FOR_COMDB2
-%ifndef SQLITE_BUILDING_FOR_COMDB2
-                            {sqlite3AddDefaultValue(pParse,X,A,Z);}
-%endif !SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
-ccons ::= DEFAULT scanpt(A) term(X) scanpt(Z).
-                            {sqlite3AddDefaultValue(pParse,X,A,Z);}
-=======
 ccons ::= CONSTRAINT nm(X). {ASSERT_IS_CREATE; pParse->u1.cr.constraintName = X;}
 ccons ::= DEFAULT scantok(A) term(X).
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+                            {comdb2AddDefaultValue(pParse,X,A.z,&A.z[A.n]);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A.z,&A.z[A.n]);}
->>>>>>> sqlite-3.51.2/src/parse.y
+%endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT LP(A) expr(X) RP(Z).
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 // include LP and RP
@@ -545,37 +535,21 @@ ccons ::= DEFAULT LP(A) expr(X) RP(Z).
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A.z+1,Z.z);}
-<<<<<<< src/parse.y
 %endif !SQLITE_BUILDING_FOR_COMDB2
-ccons ::= DEFAULT PLUS(A) term(X) scanpt(Z).
+ccons ::= DEFAULT PLUS(A) scantok(Z) term(X).
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-                            {comdb2AddDefaultValue(pParse,X,A.z,Z);}
+                            {comdb2AddDefaultValue(pParse,X,A.z,&Z.z[Z.n]);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-                            {sqlite3AddDefaultValue(pParse,X,A.z,Z);}
-%endif !SQLITE_BUILDING_FOR_COMDB2
-ccons ::= DEFAULT MINUS(A) term(X) scanpt(Z).      {
-||||||| sqlite-3.28.0/src/parse.y
-ccons ::= DEFAULT PLUS(A) term(X) scanpt(Z).
-                            {sqlite3AddDefaultValue(pParse,X,A.z,Z);}
-ccons ::= DEFAULT MINUS(A) term(X) scanpt(Z).      {
-=======
-ccons ::= DEFAULT PLUS(A) scantok(Z) term(X).
                             {sqlite3AddDefaultValue(pParse,X,A.z,&Z.z[Z.n]);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT MINUS(A) scantok(Z) term(X). {
->>>>>>> sqlite-3.51.2/src/parse.y
   Expr *p = sqlite3PExpr(pParse, TK_UMINUS, X, 0);
-<<<<<<< src/parse.y
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  comdb2AddDefaultValue(pParse,p,A.z,Z);
+  comdb2AddDefaultValue(pParse,p,A.z,&Z.z[Z.n]);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  sqlite3AddDefaultValue(pParse,p,A.z,Z);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-||||||| sqlite-3.28.0/src/parse.y
-  sqlite3AddDefaultValue(pParse,p,A.z,Z);
-=======
   sqlite3AddDefaultValue(pParse,p,A.z,&Z.z[Z.n]);
->>>>>>> sqlite-3.51.2/src/parse.y
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 ccons ::= DEFAULT scantok id(X).       {
   Expr *p = tokenExpr(pParse, TK_STRING, X);
@@ -691,20 +665,20 @@ conslist ::= conslist tconscomma tcons.
 conslist ::= tcons.
 tconscomma ::= COMMA.          {ASSERT_IS_CREATE; pParse->u1.cr.constraintName.n = 0;}
 tconscomma ::= .
-<<<<<<< src/parse.y
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
-||||||| sqlite-3.28.0/src/parse.y
-tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
-=======
 tcons ::= CONSTRAINT nm(X).    {ASSERT_IS_CREATE; pParse->u1.cr.constraintName = X;}
->>>>>>> sqlite-3.51.2/src/parse.y
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
                                  {sqlite3AddPrimaryKey(pParse,X,R,I,0);}
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                  {sqlite3CreateIndex(pParse,0,0,0,X,R,0,0,0,0,
                                        SQLITE_IDXTYPE_UNIQUE);}
-<<<<<<< src/parse.y
+tcons ::= CHECK LP(A) expr(E) RP(B) onconf.
+                                 {sqlite3AddCheckConstraint(pParse,E,A.z,B.z);}
+tcons ::= FOREIGN KEY LP eidlist(FA) RP
+          REFERENCES nm(T) eidlist_opt(TA) refargs(R) defer_subclause_opt(D). {
+    sqlite3CreateForeignKey(pParse, FA, &T, TA, R);
+    sqlite3DeferForeignKey(pParse, D);
+}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %type nm_opt {Token}
@@ -714,7 +688,7 @@ nm_opt(A) ::= nm(X). {A = X;}
 %type with_opt {int}
 with_opt(A) ::= OPTION DATACOPY. {A = 1;}
 with_opt(A) ::= . {A = 0;}
-tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
+tcons ::= CONSTRAINT nm(X).      {ASSERT_IS_CREATE; pParse->u1.cr.constraintName = X;}
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
   comdb2AddPrimaryKey(pParse, X, R, I, 0);
 }
@@ -739,22 +713,6 @@ tcons ::= FOREIGN KEY LP eidlist(FA) RP
 tcons ::= CHECK LP scanpt(BW) expr(E) scanpt(AW) RP.
                                  {comdb2AddCheckConstraint(pParse,E,BW,AW);}
 %endif SQLITE_BUILDING_FOR_COMDB2
-%ifndef SQLITE_BUILDING_FOR_COMDB2
-tcons ::= CHECK LP expr(E) RP onconf.
-                                 {sqlite3AddCheckConstraint(pParse,E);}
-||||||| sqlite-3.28.0/src/parse.y
-tcons ::= CHECK LP expr(E) RP onconf.
-                                 {sqlite3AddCheckConstraint(pParse,E);}
-=======
-tcons ::= CHECK LP(A) expr(E) RP(B) onconf.
-                                 {sqlite3AddCheckConstraint(pParse,E,A.z,B.z);}
->>>>>>> sqlite-3.51.2/src/parse.y
-tcons ::= FOREIGN KEY LP eidlist(FA) RP
-          REFERENCES nm(T) eidlist_opt(TA) refargs(R) defer_subclause_opt(D). {
-    sqlite3CreateForeignKey(pParse, FA, &T, TA, R);
-    sqlite3DeferForeignKey(pParse, D);
-}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 %type defer_subclause_opt {int}
 defer_subclause_opt(A) ::= .                    {A = 0;}
@@ -2342,14 +2300,14 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 %endif
 
 //////////////////////// ALTER TABLE table ... ////////////////////////////////
-<<<<<<< src/parse.y
 %ifndef SQLITE_OMIT_ALTERTABLE
+%ifndef SQLITE_OMIT_VIRTUALTABLE
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 
-constraint_opt ::= .                 { pParse->constraintName.n = 0; }
-constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
+constraint_opt ::= .                 {ASSERT_IS_CREATE; pParse->u1.cr.constraintName.n = 0; }
+constraint_opt ::= CONSTRAINT nm(X). {ASSERT_IS_CREATE; pParse->u1.cr.constraintName = X; }
 
-alter_comma ::= COMMA. {pParse->constraintName.n = 0;}
+alter_comma ::= COMMA. {ASSERT_IS_CREATE; pParse->u1.cr.constraintName.n = 0;}
 
 tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
   comdb2AddPrimaryKey(pParse, X, R, I, 0);
@@ -2369,6 +2327,7 @@ cmd ::= alter_table_csc2.
 cmd ::= alter_table alter_table_action_list. {comdb2AlterTableEnd(pParse);}
 
 alter_table ::= dryrun ALTER TABLE nm(Y) dbnm(Z) . {
+  disableLookaside(pParse);  /* zero-inits u1.cr and sets isCreate under SQLITE_DEBUG */
   comdb2AlterTableStart(pParse,&Y,&Z);
 }
 
@@ -2482,12 +2441,6 @@ cmd ::= dryrun ALTER TABLE nm(X) RENAME TO nm(Y). {
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-%ifndef SQLITE_OMIT_ALTERTABLE
-=======
-%ifndef SQLITE_OMIT_ALTERTABLE 
-%ifndef SQLITE_OMIT_VIRTUALTABLE
->>>>>>> sqlite-3.51.2/src/parse.y
 cmd ::= ALTER TABLE fullname(X) RENAME TO nm(Z). {
   sqlite3AlterRenameTable(pParse,X,&Z);
 }
