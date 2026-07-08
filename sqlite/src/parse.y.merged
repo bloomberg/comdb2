@@ -333,7 +333,6 @@ create_table_args ::= AS select(S). {
   sqlite3EndTable(pParse,0,0,0,S);
   sqlite3SelectDelete(pParse->db, S);
 }
-<<<<<<< src/parse.y
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 create_table_args ::= LIKE_KW nm(Y) dbnm(Z). {
@@ -341,22 +340,13 @@ create_table_args ::= LIKE_KW nm(Y) dbnm(Z). {
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 
-%type table_options {int}
-table_options(A) ::= .    {A = 0;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
-table_options(A) ::= WITHOUT nm(X). {
-||||||| sqlite-3.28.0/src/parse.y
-%type table_options {int}
-table_options(A) ::= .    {A = 0;}
-table_options(A) ::= WITHOUT nm(X). {
-=======
 %type table_option_set {u32}
 %type table_option {u32}
 table_option_set(A) ::= .    {A = 0;}
 table_option_set(A) ::= table_option(A).
 table_option_set(A) ::= table_option_set(X) COMMA table_option(Y). {A = X|Y;}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 table_option(A) ::= WITHOUT nm(X). {
->>>>>>> sqlite-3.51.2/src/parse.y
   if( X.n==5 && sqlite3_strnicmp(X.z,"rowid",5)==0 ){
     A = TF_WithoutRowid | TF_NoVisibleRowid;
   }else{
@@ -364,11 +354,6 @@ table_option(A) ::= WITHOUT nm(X). {
     sqlite3ErrorMsg(pParse, "unknown table option: %.*s", X.n, X.z);
   }
 }
-<<<<<<< src/parse.y
-%endif !SQLITE_BUILDING_FOR_COMDB2
-
-||||||| sqlite-3.28.0/src/parse.y
-=======
 table_option(A) ::= nm(X). {
   if( X.n==6 && sqlite3_strnicmp(X.z,"strict",6)==0 ){
     A = TF_Strict;
@@ -377,7 +362,7 @@ table_option(A) ::= nm(X). {
     sqlite3ErrorMsg(pParse, "unknown table option: %.*s", X.n, X.z);
   }
 }
->>>>>>> sqlite-3.51.2/src/parse.y
+%endif !SQLITE_BUILDING_FOR_COMDB2
 columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
 <<<<<<< src/parse.y
@@ -387,40 +372,6 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
-
-/*
-** The code generator needs some extra TK_ token values for tokens that
-** are synthesized and do not actually appear in the grammar:
-*/
-%token
-  TRUEFALSE       /* True or false keyword */
-  ISNOT           /* Combination of IS and NOT */
-  FUNCTION        /* A function invocation */
-  COLUMN          /* Reference to a table column */
-  AGG_FUNCTION    /* An aggregate function */
-  AGG_COLUMN      /* An aggregated column */
-  UMINUS          /* Unary minus */
-  UPLUS           /* Unary plus */
-  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
-  REGISTER        /* Reference to a VDBE register */
-  VECTOR          /* Vector */
-  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
-  IF_NULL_ROW     /* the if-null-row operator */
-  ASTERISK        /* The "*" in count(*) and similar */
-  SPAN            /* The span operator */
-.
-
-/* There must be no more than 255 tokens defined above.  If this grammar
-** is extended with new rules and tokens, they must either be so few in
-** number that TK_SPAN is no more than 255, or else the new tokens must
-** appear after this line.
-*/
-
-%include {
-#if TK_SPAN>255
-# error too many tokens in the grammar
-#endif
-}
 ||||||| sqlite-3.28.0/src/parse.y
 columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 =======

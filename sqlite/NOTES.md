@@ -292,6 +292,8 @@ I started tracking this when I got to more important files (`where.c`,
   that do not end in a semicolon. This just makes the `explain` rule consistent
   with other rules.
 
+- **DECISION**: Disable `STRICT` mode for `CREATE TABLE`.
+
 ### `random.c`
 
 - We've made the random number generator thread-local instead of global to
