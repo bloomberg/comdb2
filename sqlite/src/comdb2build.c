@@ -5818,6 +5818,11 @@ static void comdb2AddIndexInt(
         return;
     }
 
+    /* Disallow NULLS FIRST / NULLS LAST in the sort order. */
+    if (sqlite3HasExplicitNulls(pParse, pList)) {
+        goto cleanup;
+    }
+
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_key));
     if (key == 0)
         goto oom;

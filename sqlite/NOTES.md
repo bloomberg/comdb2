@@ -294,6 +294,12 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **DECISION**: Disable `STRICT` mode for `CREATE TABLE`.
 
+- **DECISION**: Accept `NULLS FIRST / LAST` syntax in a manner that is
+  consistent with SQLite - allow it for `ORDER BY` whenever it appears in a
+  query, disallow it for DDL with a call to `sqlite3HasExplicitNulls()`.
+  `comdb2AddIndexInt()` is called from all paths that create indexes:
+  `comdb2AddIndex()`, `comdb2AddPrimaryKey()`, and `comdb2CreateIndex()`.
+
 ### `random.c`
 
 - We've made the random number generator thread-local instead of global to
