@@ -5419,8 +5419,8 @@ cleanup:
 }
 
 void comdb2AddColumn(Parse *pParse, /* Parser context */
-                     Token *pName,  /* Name of the column */
-                     Token *pType   /* Type of the column */
+                     Token pName,   /* Name of the column */
+                     Token pType    /* Type of the column */
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -5428,7 +5428,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
 
     struct comdb2_column *column;
     struct comdb2_column *current;
-    char type[pType->n + 1];
+    char type[pType.n + 1];
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     int rc;
     int column_exists;
@@ -5456,17 +5456,17 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
         goto oom;
 
     /* Column name */
-    column->name = comdb2_strndup(ctx->mem, pName->z, pName->n);
+    column->name = comdb2_strndup(ctx->mem, pName.z, pName.n);
     if (column->name == 0)
         goto oom;
     sqlite3Dequote(column->name);
 
     /* Column type */
-    if (pType->n == 0) {
+    if (pType.n == 0) {
         setError(pParse, SQLITE_MISUSE, "No type specified.");
         goto cleanup;
     }
-    strncpy0(type, pType->z, sizeof(type));
+    strncpy0(type, pType.z, sizeof(type));
     sqlite3Dequote(type);
 
     if ((rc = comdb2_parse_sql_type(type, (int *)&column->len)) == -1) {

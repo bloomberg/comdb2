@@ -68,7 +68,7 @@ void comdb2AlterTableOptions(Parse *pParse, uint32_t);
 void comdb2CreateTableStart(Parse *, Token *, Token *, int, int, int, int);
 void comdb2CreateTableEnd(Parse *, Token *, Token *, u8, int);
 void comdb2CreateTableLikeEnd(Parse *, Token *, Token *);
-void comdb2AddColumn(Parse *, Token *, Token *);
+void comdb2AddColumn(Parse *, Token, Token);
 void comdb2AddDefaultValue(Parse *, Expr *, const char *, const char *);
 void comdb2TestDefault(Parse *, Expr *, const char *, const char *);
 void comdb2AddNull(Parse *);
