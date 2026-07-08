@@ -5299,7 +5299,7 @@ void comdb2CreateTableEnd(
     Parse *pParse, /* Parse context */
     Token *pCons,  /* The ',' token after the last column defn. */
     Token *pEnd,   /* The ')' before options in the CREATE TABLE */
-    u8 tabOpts,    /* Extra table options. Usually 0. */
+    u32 tabOpts,   /* Extra table options. Usually 0. */
     int comdb2Opts /* Comdb2 specific table options. */
 )
 {
