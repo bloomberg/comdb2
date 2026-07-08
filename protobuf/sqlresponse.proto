@@ -116,6 +116,8 @@ enum CDB2SyncMode {
 }
 
 enum CDB2ServerFeatures {
+    option allow_alias = true;
+    SKIP_ROWS            = 1;
     SKIP_INTRANS_RESULTS = 1;
 }
 
