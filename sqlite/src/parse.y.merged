@@ -365,18 +365,12 @@ table_option(A) ::= nm(X). {
 %endif !SQLITE_BUILDING_FOR_COMDB2
 columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
-<<<<<<< src/parse.y
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
+columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,A,Y);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
-%endif !SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
-=======
 columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
->>>>>>> sqlite-3.51.2/src/parse.y
+%endif !SQLITE_BUILDING_FOR_COMDB2
 
 // Declare some tokens early in order to influence their values, to 
 // improve performance and reduce the executable size.  The goal here is
