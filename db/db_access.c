@@ -473,7 +473,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
 
         int rc = access_control_check_sql_read(NULL, thd, (char *)mod->zName);
         if (rc != SQLITE_OK) {
-            if (!gbl_vtab_externalauth && gbl_vtab_externalauth_warn) {
+            if (gbl_uses_externalauth && !gbl_vtab_externalauth && gbl_vtab_externalauth_warn) {
                 struct sqlclntstate *clnt = thd->clnt;
                 if (errstat_get_rc(&clnt->osql.xerr) == SQLITE_ACCESS)
                     bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
