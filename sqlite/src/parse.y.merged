@@ -1149,31 +1149,11 @@ on_using(N) ::= .                 [OR] {N.pOn = 0; N.pUsing = 0;}
 %type indexed_opt {Token}
 %type indexed_by  {Token}
 indexed_opt(A) ::= .                 {A.z=0; A.n=0;}
-<<<<<<< src/parse.y
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-indexed_opt(A) ::= INDEXED BY nm(X). {A = X;}
-indexed_opt(A) ::= NOT INDEXED.      {A.z=0; A.n=1;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
-
-%type using_opt {IdList*}
-%destructor using_opt {sqlite3IdListDelete(pParse->db, $$);}
-using_opt(U) ::= USING LP idlist(L) RP.  {U = L;}
-using_opt(U) ::= .                        {U = 0;}
-
-||||||| sqlite-3.28.0/src/parse.y
-indexed_opt(A) ::= INDEXED BY nm(X). {A = X;}
-indexed_opt(A) ::= NOT INDEXED.      {A.z=0; A.n=1;}
-
-%type using_opt {IdList*}
-%destructor using_opt {sqlite3IdListDelete(pParse->db, $$);}
-using_opt(U) ::= USING LP idlist(L) RP.  {U = L;}
-using_opt(U) ::= .                        {U = 0;}
-
-=======
 indexed_opt(A) ::= indexed_by(A).
 indexed_by(A)  ::= INDEXED BY nm(X). {A = X;}
 indexed_by(A)  ::= NOT INDEXED.      {A.z=0; A.n=1;}
->>>>>>> sqlite-3.51.2/src/parse.y
+%endif !SQLITE_BUILDING_FOR_COMDB2
 
 %type orderby_opt {ExprList*}
 %destructor orderby_opt {sqlite3ExprListDelete(pParse->db, $$);}
