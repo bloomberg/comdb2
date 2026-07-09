@@ -396,6 +396,38 @@ For example, to bind an INTERVALDS (interval day to second) value, you would use
 stmt.setObject(1, new Cdb2Types.IntervalYearMonth(1, 0, 3));
 ```
 
+### Setting Statement Return Types
+
+You can override the return types of columns for the next query using the `SET STATEMENT RETURN TYPES` command.
+This is a client-side directive that instructs the server to coerce result columns to the specified types.
+The override applies only to the immediately following query — subsequent queries revert to their natural types.
+
+```java
+Statement stmt = conn.createStatement();
+stmt.execute("set statement return types cstring integer");
+ResultSet rs = stmt.executeQuery("select now(), 3.14");
+// Column 1 comes back as VARCHAR (cstring), column 2 as BIGINT (integer)
+```
+
+The supported type names are:
+
+| Type Name | Description |
+|-----------|-------------|
+| integer | 64-bit integer |
+| real | floating point |
+| cstring | text/string |
+| blob | binary data |
+| datetime | datetime (millisecond precision) |
+| datetimeus | datetime (microsecond precision) |
+| intervalym | interval year-month |
+| intervalds | interval day-second |
+| intervaldsus | interval day-second (microsecond precision) |
+
+**few gotchas:**
+
+- It is not allowed inside a transaction (`BEGIN`/`COMMIT` block or when auto-commit is off).
+- The number of types specified must match the number of columns in the query result.
+
 ### Using Named Parameters for PreparedStatement
 
 Comdb2 has built-in support for named parameters. You would simply use `@param_name` instead of `?` in your queries:
