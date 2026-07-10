@@ -365,6 +365,57 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,A,Y);}
 columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+/*
+** Comdb2: we need to declare the synthesized tokens below before the
+** keyword and fallback declarations so they receive low TK_ values.
+** They are used as operator codes and get stored in single-byte fields
+** (Expr.op2, Select.op, etc.), so their values must stay <= 255; the
+** many keyword tokens that follow have no such limit because they only
+** appear as grammar terminals and are never stored in an op byte. The
+** TK_SPAN>255 guard below enforces this bound at compile time.
+*/
+%endif SQLITE_BUILDING_FOR_COMDB2
+
+/*
+** The code generator needs some extra TK_ token values for tokens that
+** are synthesized and do not actually appear in the grammar:
+*/
+%token
+  COLUMN          /* Reference to a table column */
+  AGG_FUNCTION    /* An aggregate function */
+  AGG_COLUMN      /* An aggregated column */
+  TRUEFALSE       /* True or false keyword */
+  ISNOT           /* Combination of IS and NOT */
+  FUNCTION        /* A function invocation */
+  UPLUS           /* Unary plus */
+  UMINUS          /* Unary minus */
+  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
+  REGISTER        /* Reference to a VDBE register */
+  VECTOR          /* Vector */
+  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
+  IF_NULL_ROW     /* the if-null-row operator */
+  ASTERISK        /* The "*" in count(*) and similar */
+  SPAN            /* The span operator */
+  ERROR           /* An expression containing an error */
+.
+
+term(A) ::= QNUMBER(X). {
+  A=tokenExpr(pParse,@X,X);
+  sqlite3DequoteNumber(pParse, A);
+}
+
+/* There must be no more than 255 tokens defined above.  If this grammar
+** is extended with new rules and tokens, they must either be so few in
+** number that TK_SPAN is no more than 255, or else the new tokens must
+** appear after this line.
+*/
+%include {
+#if TK_SPAN>255
+# error too many tokens in the grammar
+#endif
+}
+
 // Declare some tokens early in order to influence their values, to 
 // improve performance and reduce the executable size.  The goal here is
 // to get the "jump" operations in ISNULL through ESCAPE to have numeric
@@ -3191,7 +3242,6 @@ filter_clause(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %token
-<<<<<<< src/parse.y
   TO_TEXT
   TO_DATETIME
   TO_INTERVAL_YE
@@ -3205,73 +3255,8 @@ filter_clause(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
   TO_INT
   TO_REAL
   TO_DECIMAL
-||||||| sqlite-3.28.0/src/parse.y
-  TRUEFALSE       /* True or false keyword */
-  ISNOT           /* Combination of IS and NOT */
-  FUNCTION        /* A function invocation */
-  COLUMN          /* Reference to a table column */
-  AGG_FUNCTION    /* An aggregate function */
-  AGG_COLUMN      /* An aggregated column */
-  UMINUS          /* Unary minus */
-  UPLUS           /* Unary plus */
-  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
-  REGISTER        /* Reference to a VDBE register */
-  VECTOR          /* Vector */
-  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
-  IF_NULL_ROW     /* the if-null-row operator */
-  ASTERISK        /* The "*" in count(*) and similar */
-  SPAN            /* The span operator */
-=======
-  COLUMN          /* Reference to a table column */
-  AGG_FUNCTION    /* An aggregate function */
-  AGG_COLUMN      /* An aggregated column */
-  TRUEFALSE       /* True or false keyword */
-  ISNOT           /* Combination of IS and NOT */
-  FUNCTION        /* A function invocation */
-  UPLUS           /* Unary plus */
-  UMINUS          /* Unary minus */
-  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
-  REGISTER        /* Reference to a VDBE register */
-  VECTOR          /* Vector */
-  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
-  IF_NULL_ROW     /* the if-null-row operator */
-  ASTERISK        /* The "*" in count(*) and similar */
-  SPAN            /* The span operator */
-  ERROR           /* An expression containing an error */
->>>>>>> sqlite-3.51.2/src/parse.y
 .
-<<<<<<< src/parse.y
 %endif SQLITE_BUILDING_FOR_COMDB2
-%endif
-||||||| sqlite-3.28.0/src/parse.y
-/* There must be no more than 255 tokens defined above.  If this grammar
-** is extended with new rules and tokens, they must either be so few in
-** number that TK_SPAN is no more than 255, or else the new tokens must
-** appear after this line.
-*/
-%include {
-#if TK_SPAN>255
-# error too many tokens in the grammar
-#endif
-}
-=======
-
-term(A) ::= QNUMBER(X). {
-  A=tokenExpr(pParse,@X,X);
-  sqlite3DequoteNumber(pParse, A);
-}
-
-/* There must be no more than 255 tokens defined above.  If this grammar
-** is extended with new rules and tokens, they must either be so few in
-** number that TK_SPAN is no more than 255, or else the new tokens must
-** appear after this line.
-*/
-%include {
-#if TK_SPAN>255
-# error too many tokens in the grammar
-#endif
-}
->>>>>>> sqlite-3.51.2/src/parse.y
 
 /*
 ** The TK_SPACE, TK_COMMENT, and TK_ILLEGAL tokens must be the last three
