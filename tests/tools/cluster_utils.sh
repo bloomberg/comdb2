@@ -32,9 +32,9 @@ function bounce_node
         ) &
     else
         PARAMS="$DBNAME --no-global-lrl"
-        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
         kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
-        ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+        ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
         echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
     fi
 }
@@ -54,7 +54,7 @@ function bounce_cluster
     REP_ENV_VARS="${DBDIR}/replicant_env_vars"
     for node in $CLUSTER ; do
         PARAMS="$DBNAME --no-global-lrl"
-        CMD="sleep $sleeptime ; source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+        CMD="sleep $sleeptime ; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
         if [ $node == $(hostname) ] ; then
             (
                 kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
@@ -65,7 +65,7 @@ function bounce_cluster
         else
             kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
             mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done
@@ -177,10 +177,10 @@ function kill_restart_node
         sleep $delay
         if [ $node == `hostname` ] ; then
             PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
-            $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
+            ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
         else
             PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
-            CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+            CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
             ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
@@ -190,8 +190,8 @@ function kill_restart_node
         sleep $delay
         echo "$DBNAME: starting single node"
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
-        echo "$COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db"
-        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
+        echo "${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db"
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
     fi
 
     popd
@@ -222,10 +222,10 @@ function kill_restart_secondary_node
         sleep $delay
         if [ $node == `hostname` ] ; then
             PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid"
-            $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.${node}.db &
+            ${DEBUG_PREFIX} $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.${node}.db &
         else
             PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid"
-            CMD="cd ${SECONDARY_DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${SECONDARY_DBNAME}.db"
+            CMD="cd ${SECONDARY_DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${SECONDARY_DBNAME}.db"
             ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${SECONDARY_DBNAME}.${node}.db &
             echo $! > ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid
         fi
@@ -235,8 +235,8 @@ function kill_restart_secondary_node
         sleep $delay
         echo "$SECONDARY_DBNAME: starting single node"
         PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.pid"
-        echo "$COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.db"
-        $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.db &
+        echo "${DEBUG_PREFIX} $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.db"
+        ${DEBUG_PREFIX} $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.db &
     fi
 
     popd
@@ -265,10 +265,10 @@ function kill_restart_tertiary_node
         sleep $delay
         if [ $node == `hostname` ] ; then
             PARAMS="--no-global-lrl --lrl $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl --pidfile ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid"
-            $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.${node}.db &
+            ${DEBUG_PREFIX} $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.${node}.db &
         else
             PARAMS="--no-global-lrl --lrl $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl --pidfile ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid"
-            CMD="cd ${TERTIARY_DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${TERTIARY_DBNAME}.db"
+            CMD="cd ${TERTIARY_DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${TERTIARY_DBNAME}.db"
             ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${TERTIARY_DBNAME}.${node}.db &
             echo $! > ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid
         fi
@@ -278,8 +278,8 @@ function kill_restart_tertiary_node
         sleep $delay
         echo "$TERTIARY_DBNAME: starting single node"
         PARAMS="--no-global-lrl --lrl $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl --pidfile ${TMPDIR}/${TERTIARY_DBNAME}.pid"
-        echo "$COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.db"
-        $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.db &
+        echo "${DEBUG_PREFIX} $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.db"
+        ${DEBUG_PREFIX} $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.db &
     fi
 
     popd
@@ -420,8 +420,8 @@ start_all_nodes() {
         if [ $node == $(hostname) ] ; then
             ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl ${DBDIR}/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.$node.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
         else
-            CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl ${DBDIR}/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
-            $SSH $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+            CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl ${DBDIR}/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+            $SSH $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done

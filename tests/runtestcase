@@ -19,29 +19,29 @@ setup_debugger() {
             DEBUG_PREFIX="gdb --args"
             ;;
         valgrind)
-            DEBUG_PREFIX="valgrind --track-origins=yes --log-file=$TESTDIR/$TESTCASE.valgrind"
+            DEBUG_PREFIX="valgrind --track-origins=yes --log-file=$TESTDIR/$TESTCASE.%p.valgrind"
             ;;
         memcheck)
-            DEBUG_PREFIX="valgrind --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30 --log-file=$TESTDIR/$TESTCASE.valgrind"
+            DEBUG_PREFIX="valgrind --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30 --log-file=$TESTDIR/$TESTCASE.%p.valgrind"
             ;;
         callgrind)
-            DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=no --dump-instr=yes --collect-systime=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+            DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=no --dump-instr=yes --collect-systime=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.%p.callgrind"
             if [[ -n ${COLLECTFUNC} ]]; then
                 # collect info on $COLLECTFUNC only
-                DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+                DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.%p.callgrind"
             fi
             ;;
         drd)
             DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
             ;;
         helgrind)
-            DEBUG_PREFIX="valgrind --tool=helgrind --log-file=$TESTDIR/$TESTCASE.helgrind"
+            DEBUG_PREFIX="valgrind --tool=helgrind --log-file=$TESTDIR/$TESTCASE.%p.helgrind"
             ;;
         cachegrind)
-            DEBUG_PREFIX="valgrind --tool=cachegrind --cachegrind-out-file=$TESTDIR/$TESTCASE.cachegrind"
+            DEBUG_PREFIX="valgrind --tool=cachegrind --cachegrind-out-file=$TESTDIR/$TESTCASE.%p.cachegrind"
             ;;
         massif)
-            DEBUG_PREFIX="valgrind --tool=massif --massif-out-file=$TESTDIR/$TESTCASE.massifgrind"
+            DEBUG_PREFIX="valgrind --tool=massif --massif-out-file=$TESTDIR/$TESTCASE.%p.massifgrind"
             ;;
         perf)
             DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g -s "
