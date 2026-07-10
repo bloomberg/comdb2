@@ -2852,11 +2852,9 @@ analyze_sumthds(A) ::= SUMMARIZE INTEGER(X). {
 
 //////////////////////////////// TESTDEFAULT //////////////////////////////////
 //
-%ifdef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= TESTDEFAULT LP(A) expr(X) RP(Z). {
                             {comdb2TestDefault(pParse,X,A.z+1,Z.z);}
 }
-%endif SQLITE_BUILDING_FOR_COMDB2
 //////////////////////////////// REBUILD TABLE ////////////////////////////////
 
 %type comdb2opt {int}
