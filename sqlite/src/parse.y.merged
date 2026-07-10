@@ -606,7 +606,10 @@ ccons ::= REFERENCES nm(T) eidlist_opt(TA) refargs(R).
 ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= COLLATE ids(C).        {sqlite3AddCollateType(pParse, &C);}
-<<<<<<< src/parse.y
+ccons ::= GENERATED ALWAYS AS generated.
+ccons ::= AS generated.
+generated ::= LP expr(E) RP.          {sqlite3AddGenerated(pParse,E,0);}
+generated ::= LP expr(E) RP ID(TYPE). {sqlite3AddGenerated(pParse,E,&TYPE);}
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= OPTION DBPAD EQ INTEGER(X). {
     int tmp;
@@ -615,13 +618,6 @@ ccons ::= OPTION DBPAD EQ INTEGER(X). {
     comdb2AddDbpad(pParse, tmp);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-=======
-ccons ::= GENERATED ALWAYS AS generated.
-ccons ::= AS generated.
-generated ::= LP expr(E) RP.          {sqlite3AddGenerated(pParse,E,0);}
-generated ::= LP expr(E) RP ID(TYPE). {sqlite3AddGenerated(pParse,E,&TYPE);}
->>>>>>> sqlite-3.51.2/src/parse.y
 
 // The optional AUTOINCREMENT keyword
 %type autoinc {int}
