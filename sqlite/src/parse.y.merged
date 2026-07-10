@@ -1016,10 +1016,12 @@ stl_prefix(A) ::= .                           {A = 0;}
 seltablist(A) ::= stl_prefix(A) nm(Y) dbnm(D) as(Z) on_using(N). {
   A = sqlite3SrcListAppendFromTerm(pParse,A,&Y,&D,&Z,0,&N);
 }
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 seltablist(A) ::= stl_prefix(A) nm(Y) dbnm(D) as(Z) indexed_by(I) on_using(N). {
   A = sqlite3SrcListAppendFromTerm(pParse,A,&Y,&D,&Z,0,&N);
   sqlite3SrcListIndexedBy(pParse, A, &I);
 }
+%endif !SQLITE_BUILDING_FOR_COMDB2
 seltablist(A) ::= stl_prefix(A) nm(Y) dbnm(D) LP exprlist(E) RP as(Z) on_using(N). {
   A = sqlite3SrcListAppendFromTerm(pParse,A,&Y,&D,&Z,0,&N);
   sqlite3SrcListFuncArgs(pParse, A, E);
