@@ -248,7 +248,7 @@ cmd ::= ROLLBACK trans_opt TO savepoint_opt nm(X). {
 }
 
 ///////////////////// The CREATE TABLE statement ////////////////////////////
-
+//
 cmd ::= create_table create_table_args.
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
@@ -1450,7 +1450,7 @@ returning ::= .
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
-insert_cmd(A) ::= REPLACE. {A=OE_Replace;}
+insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
 
 %type idlist_opt {IdList*}
 %destructor idlist_opt {sqlite3IdListDelete(pParse->db, $$);}
@@ -2275,7 +2275,7 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 %endif
 
 //////////////////////// ALTER TABLE table ... ////////////////////////////////
-%ifndef SQLITE_OMIT_ALTERTABLE
+%ifndef SQLITE_OMIT_ALTERTABLE 
 %ifndef SQLITE_OMIT_VIRTUALTABLE
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 
