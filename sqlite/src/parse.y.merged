@@ -1217,16 +1217,8 @@ limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
 
 /////////////////////////// The DELETE statement /////////////////////////////
 //
-<<<<<<< src/parse.y
-%ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= maybe_with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
-||||||| sqlite-3.28.0/src/parse.y
-%ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
-=======
 %if SQLITE_ENABLE_UPDATE_DELETE_LIMIT || SQLITE_UDL_CAPABLE_PARSER
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt_ret(W)
->>>>>>> sqlite-3.51.2/src/parse.y
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
 #ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -1238,18 +1230,8 @@ cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt_ret(W)
 #endif
   sqlite3DeleteFrom(pParse,X,W,O,L);
 }
-<<<<<<< src/parse.y
-%endif
-%ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= maybe_with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
-||||||| sqlite-3.28.0/src/parse.y
-%endif
-%ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
-=======
 %else
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt_ret(W). {
->>>>>>> sqlite-3.51.2/src/parse.y
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
@@ -1271,24 +1253,14 @@ where_opt_ret(A) ::= WHERE expr(X) RETURNING selcollist(Y).
 
 ////////////////////////// The UPDATE command ////////////////////////////////
 //
-<<<<<<< src/parse.y
-%ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%if SQLITE_ENABLE_UPDATE_DELETE_LIMIT || SQLITE_UDL_CAPABLE_PARSER
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= maybe_with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= maybe_with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif SQLITE_BUILDING_FOR_COMDB2
-        where_opt(W) orderby_opt(O) limit_opt(L).  {
-||||||| sqlite-3.28.0/src/parse.y
-%ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
-        where_opt(W) orderby_opt(O) limit_opt(L).  {
-=======
-%if SQLITE_ENABLE_UPDATE_DELETE_LIMIT || SQLITE_UDL_CAPABLE_PARSER
-cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
         where_opt_ret(W) orderby_opt(O) limit_opt(L).  {
->>>>>>> sqlite-3.51.2/src/parse.y
   sqlite3SrcListIndexedBy(pParse, X, &I);
   if( F ){
     SrcList *pFromClause = F;
@@ -1303,10 +1275,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
     X = sqlite3SrcListAppendList(pParse, X, pFromClause);
   }
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-<<<<<<< src/parse.y
-%ifndef SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-=======
 #ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( O || L ){
     updateDeleteLimitError(pParse,O,L);
@@ -1314,40 +1282,24 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
     L = 0;
   }
 #endif
->>>>>>> sqlite-3.51.2/src/parse.y
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,0,O,L,0);
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 }
-<<<<<<< src/parse.y
-%endif
-%ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%else
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= maybe_with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= maybe_with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif SQLITE_BUILDING_FOR_COMDB2
-        where_opt(W).  {
-||||||| sqlite-3.28.0/src/parse.y
-%endif
-%ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
-        where_opt(W).  {
-=======
-%else
-cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
         where_opt_ret(W). {
->>>>>>> sqlite-3.51.2/src/parse.y
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-<<<<<<< src/parse.y
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-||||||| sqlite-3.28.0/src/parse.y
-=======
   if( F ){
     SrcList *pFromClause = F;
     if( pFromClause->nSrc>1 ){
@@ -1360,13 +1312,11 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
     }
     X = sqlite3SrcListAppendList(pParse, X, pFromClause);
   }
->>>>>>> sqlite-3.51.2/src/parse.y
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,0,0,0,0);
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 }
 %endif
 
@@ -1391,18 +1341,32 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 }
 
 ////////////////////////// The INSERT command /////////////////////////////////
-
+//
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+// Upstream's nullable `with` covers both plain and CTE-prefixed INSERT in one rule.
+// comdb2 can't reuse this: our `REPLACE TABLE` rule makes REPLACE ambiguous behind a
+// nullable `with`, so INSERT is split into a bare form (makes REPLACE shiftable) plus
+// a non-nullable `nonempty_with` form.
 cmd ::= insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3Insert(pParse, X, S, F, R, U);
 }
-
 cmd ::= insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
-
 %ifndef SQLITE_OMIT_CTE
+cmd ::= nonempty_with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
+        upsert(U). {
+  sqlite3Insert(pParse, X, S, F, R, U);
+}
+cmd ::= nonempty_with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
+{
+  sqlite3Insert(pParse, X, 0, F, R, 0);
+}
+%endif
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3Insert(pParse, X, S, F, R, U);
@@ -2475,11 +2439,18 @@ anylist ::= anylist ANY.
 %type wqitem {Cte*}
 // %destructor wqitem {sqlite3CteDelete(pParse->db, $$);} // not reachable
 
-maybe_with ::= .
+with ::= .
 %ifndef SQLITE_OMIT_CTE
 with ::= WITH wqlist(W).              { sqlite3WithPush(pParse, W, 1); }
 with ::= WITH RECURSIVE wqlist(W).    { sqlite3WithPush(pParse, W, 1); }
-maybe_with ::= with.
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+// comdb2 adds `REPLACE TABLE ... WITH ...`. REPLACE also begins an insert_cmd, so
+// the INSERT rule can't sit behind the nullable `with` (unresolvable shift/reduce
+// on REPLACE). `nonempty_with` is a non-nullable WITH-prefix used by the comdb2
+// INSERT rule so REPLACE stays disambiguable by its following token.
+nonempty_with ::= WITH wqlist(W).           { sqlite3WithPush(pParse, W, 1); }
+nonempty_with ::= WITH RECURSIVE wqlist(W). { sqlite3WithPush(pParse, W, 1); }
+%endif SQLITE_BUILDING_FOR_COMDB2
 
 %type wqas {u8}
 wqas(A)   ::= AS.                  {A = M10d_Any;}
