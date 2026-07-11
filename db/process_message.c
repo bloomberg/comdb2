@@ -1425,7 +1425,7 @@ clipper_usage:
         if (zTok != NULL) zTok = strtok_r(NULL, " ", &zSav); /* next arg? */
 
         if (zTok != NULL) { /* was context manually specified? */
-            strcpy(zCtx, tok); /* re-copy from original to fix strtok_r() */
+            memcpy(zCtx, tok, ltok + 1); /* re-copy from original to fix strtok_r() */
             rc = comdb2_load_ruleset_item_criteria(
                 "<evaluate_ruleset>", 0, zTok, -1, 0, 1, 0, &uCtx, NULL,
                 NULL, &zSav, NULL, zBuf, sizeof(zBuf)
@@ -3034,6 +3034,10 @@ clipper_usage:
             stream = 1;
         }
 
+        if (stream <= 0 || (size_t)stream > SIZE_MAX / sizeof(unsigned long long)) {
+            logmsg(LOGMSG_ERROR, "Invalid stream count for osqlecho\n");
+            return -1;
+        }
         sent =
             (unsigned long long *)malloc(stream * sizeof(unsigned long long));
         replied =
@@ -3131,8 +3135,8 @@ clipper_usage:
         } else {
             char tokv[32];
             bzero(tokv, sizeof(tokv));
-            strncpy(tokv, tok,
-                    (ltok >= sizeof(tokv)) ? (sizeof(tokv) - 1) : ltok);
+            memcpy(tokv, tok,
+                   (ltok >= sizeof(tokv)) ? (sizeof(tokv) - 1) : ltok);
             logmsg(LOGMSG_ERROR, "Invalid command for checktags '%s'. use one of "
                             "'off','soft','full'. seek help!\n",
                     tokv);
