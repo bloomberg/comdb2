@@ -317,6 +317,15 @@ I started tracking this when I got to more important files (`where.c`,
   productions, and keeping the same grammar shape as upstream reduces friction on
   future SQLite upgrades.
 
+- **DECISION**: Keep `UPDATE ... FROM ...` disabled for comdb2. Upstream's shared
+  UPDATE reduce action references the `from(F)` clause, but the comdb2 UPDATE
+  production has no `from(F)` symbol. Wrap the FROM-handling block in
+  `%ifndef SQLITE_BUILDING_FOR_COMDB2` (in *both* the `SQLITE_ENABLE_UPDATE_DELETE_LIMIT`
+  and the `%else` branches) so it is excluded from the comdb2 build — otherwise
+  lemon emits a reference to an undefined `F` and `parse.c` fails to compile.
+  Leaving `UPDATE ... FROM` disabled until we work out what the execution layer
+  needs to support it.
+
 ### `random.c`
 
 - We've made the random number generator thread-local instead of global to
