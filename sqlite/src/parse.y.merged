@@ -1978,7 +1978,7 @@ cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbn
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= dryrun createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP where_opt(W). {
   sqlite3CreateIndex(pParse, &X, &D, 
                      sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
@@ -2067,7 +2067,7 @@ cmd ::= dryrun DROP INDEX ifexists(E) nm(X).          {comdb2DropIndex(pParse, &
 cmd ::= dryrun DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndex(pParse, &X, &Y, E);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= dryrun DROP INDEX ifexists(E) fullname(X).   {sqlite3DropIndex(pParse, X, E);}
+cmd ::= DROP INDEX ifexists(E) fullname(X).   {sqlite3DropIndex(pParse, X, E);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 
 ///////////////////////////// The VACUUM command /////////////////////////////

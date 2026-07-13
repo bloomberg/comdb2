@@ -326,6 +326,21 @@ I started tracking this when I got to more important files (`where.c`,
   Leaving `UPDATE ... FROM` disabled until we work out what the execution layer
   needs to support it.
 
+- **DECISION**: Bring the `%ifndef SQLITE_BUILDING_FOR_COMDB2` parity branches of
+  `CREATE INDEX` and `DROP INDEX` back in line with pure upstream. They had
+  accidentally picked up the comdb2 `dryrun` prefix; removed it so the parity
+  (upstream-tracking) branch is verbatim 3.51.2.
+
+- **OBSERVATION**: The `dryrun` prefix (a comdb2 nullable nonterminal) is inserted
+  in-place into several *upstream* statement rules rather than added as separate
+  `%ifdef`-guarded comdb2 rules: `DROP TABLE` (refactored to
+  `drop_table ::= dryrun DROP TABLE ...`), `CREATE VIEW`, `DROP VIEW`,
+  `CREATE TRIGGER`, `DROP TRIGGER`, and `create_vtab`. This is a known deviation
+  from the "only add `%ifdef`-guarded lines to upstream" convention — these edits
+  modify the upstream rule lines directly. Left as-is for now: converting each to
+  a guarded fork would be a large, churny change for little benefit (`dryrun` is
+  nullable, so the upstream syntax still parses).
+
 ### `random.c`
 
 - We've made the random number generator thread-local instead of global to
