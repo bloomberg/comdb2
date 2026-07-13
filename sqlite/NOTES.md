@@ -309,6 +309,14 @@ I started tracking this when I got to more important files (`where.c`,
   to `constraintName`. Do the same by calling `disableLookaside()` when reducing
   `ALTER TABLE`. `ASSERT_IS_CREATE` before writing to `constraintName`.
 
+- **DECISION**: Migrate the comdb2 `DEFAULT` constraint rules from the 3.28-era
+  `scanpt` grammar shape to upstream's `scantok` shape, even in the live
+  `%ifdef SQLITE_BUILDING_FOR_COMDB2` branch. `comdb2AddDefaultValue` now receives
+  the token-span pointers (e.g. `A.z, &A.z[A.n]`) instead of raw `scanpt` scan
+  pointers. This is functionally equivalent for the single-token `term`
+  productions, and keeping the same grammar shape as upstream reduces friction on
+  future SQLite upgrades.
+
 ### `random.c`
 
 - We've made the random number generator thread-local instead of global to
