@@ -341,16 +341,7 @@ I started tracking this when I got to more important files (`where.c`,
   a guarded fork would be a large, churny change for little benefit (`dryrun` is
   nullable, so the upstream syntax still parses).
 
-- **TODO**: when porting `sqlite3AddReturning()` in `build.c`, patch
-  it so it's rejected with a parser error:
-
-  ```c
-  #ifdef SQLITE_BUILDING_FOR_COMDB2
-    sqlite3ErrorMsg(pParse, "RETURNING is not supported");
-    sqlite3ExprListDelete(pParse->db, pList);
-    return;
-  #endif
-  ```
+- **DECISION**: Disable `RETURNING`, don't allow it to parse at all.
 
 
 ### `random.c`
