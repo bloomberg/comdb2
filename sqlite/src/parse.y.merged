@@ -1311,6 +1311,7 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif SQLITE_BUILDING_FOR_COMDB2
         where_opt_ret(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   if( F ){
     SrcList *pFromClause = F;
     if( pFromClause->nSrc>1 ){
@@ -1323,6 +1324,7 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
     }
     X = sqlite3SrcListAppendList(pParse, X, pFromClause);
   }
+%endif !SQLITE_BUILDING_FOR_COMDB2
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
 #ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( O || L ){
