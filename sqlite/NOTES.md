@@ -343,6 +343,9 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **DECISION**: Disable `RETURNING`, don't allow it to parse at all.
 
+- **DECISION**: Allow CTE `AS [NOT] MATERIALIZED` to flow in - it's
+  just an optimizer hint and this optimization may be performed
+  as of today regardless.
 
 ### `random.c`
 
