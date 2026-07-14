@@ -869,6 +869,7 @@
 (name='rep_verify_limit_enabled', description='Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_verify_max_time', description='Maximum amount of time we allow a replicant to roll back its logs in an attempt to sync up to the master.', type='INTEGER', value='300', read_only='N')
 (name='rep_verify_min_progress', description='Abort replicant if it doesn't make this much progress while rolling back logs to sync up to master.', type='INTEGER', value='10485760', read_only='N')
+(name='rep_verify_peer_hostname', description='Reject an incoming cluster connection unless its source address resolves (forward-confirmed reverse DNS) to the hostname the peer claims in its connect message. Disable only in environments without reliable reverse DNS. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_workers', description='Size of worker pool for applying page changes on behalf of transactions. (only has effect when REP_PROCESSORS is set)', type='INTEGER', value='16', read_only='N')
 (name='repalwayswait', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='repchecksum', description='Enable to perform additional checksumming of replication stream. Note: Log records in replication stream already have checksums. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')

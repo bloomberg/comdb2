@@ -2701,4 +2701,12 @@ REGISTER_TUNABLE("clear_ufid_on_db_close", "Clear ufid hash on db->close", TUNAB
                  INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("get_peer_fqdn", "When set, use peer's FQDN", TUNABLE_BOOLEAN, &gbl_get_peer_fqdn, INTERNAL, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_verify_peer_hostname",
+                 "Reject an incoming cluster connection unless its source "
+                 "address resolves (forward-confirmed reverse DNS) to the "
+                 "hostname the peer claims in its connect message. Disable "
+                 "only in environments without reliable reverse DNS. "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

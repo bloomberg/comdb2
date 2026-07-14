@@ -2572,6 +2572,86 @@ int findpeer(int fd, char *addr, int len)
     return 0;
 }
 
+/* When set, reject an incoming cluster connection unless the source address
+   really belongs to the hostname the peer claims in its connect message.
+   (Default: on). */
+int gbl_rep_verify_peer_hostname = 1;
+
+/* Forward-resolve 'hostname' and return 0 if 'src' is one of the resolved
+   IPv4 addresses, -1 otherwise. */
+static int net_host_has_addr(const char *hostname, const struct in_addr *src)
+{
+    struct addrinfo hints = {0}, *res = NULL, *r;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(hostname, NULL, &hints, &res) != 0 || res == NULL)
+        return -1;
+    int rc = -1;
+    for (r = res; r != NULL; r = r->ai_next) {
+        if (r->ai_family != AF_INET)
+            continue;
+        if (((struct sockaddr_in *)r->ai_addr)->sin_addr.s_addr == src->s_addr) {
+            rc = 0;
+            break;
+        }
+    }
+    freeaddrinfo(res);
+    return rc;
+}
+
+/* Confirm that a peer offering 'from_host' in its connect message really is
+   that host, by checking the connection's source address 'src'.  Without
+   this a rogue node can be admitted into the cluster simply by claiming a
+   trusted peer's hostname (see validate_host() in net_evbuffer.c).
+
+   We forward-resolve the claimed hostname - and each configured dedicated
+   subnet variant, since a peer may connect over a dedicated subnet - and
+   require the connection's source address to be one of the resolved
+   addresses.  Forward resolution relies only on the same name resolution the
+   cluster already uses to reach its peers, and does not depend on reverse DNS
+   being configured.
+
+   Returns 0 if the peer is validated (or the check is disabled), -1 to
+   reject the connection. */
+int net_validate_connect_host(const char *from_host, struct sockaddr_in *src)
+{
+    if (!gbl_rep_verify_peer_hostname)
+        return 0;
+
+    if (from_host == NULL)
+        return -1;
+
+    /* Local (same-host) clusters connect over loopback but still claim their
+       real hostnames - trust loopback. */
+    if (src->sin_addr.s_addr == htonl(INADDR_LOOPBACK))
+        return 0;
+
+    /* The claimed base hostname, as reached over the default subnet. */
+    if (net_host_has_addr(from_host, &src->sin_addr) == 0)
+        return 0;
+
+    /* Snapshot the dedicated subnet suffixes under the lock, then resolve the
+       subnet-qualified names outside it (DNS lookups can block). */
+    char suffixes[MAXSUBNETS + 1][HOSTNAME_LEN];
+    int nsuf = 0;
+    Pthread_mutex_lock(&subnet_mtx);
+    for (uint8_t i = 0; i < num_dedicated_subnets; i++) {
+        if (subnet_suffices[i] && subnet_suffices[i][0])
+            strncpy0(suffixes[nsuf++], subnet_suffices[i], HOSTNAME_LEN);
+    }
+    Pthread_mutex_unlock(&subnet_mtx);
+
+    for (int i = 0; i < nsuf; i++) {
+        char name[256];
+        snprintf(name, sizeof(name), "%s%s", from_host, suffixes[i]);
+        if (net_host_has_addr(name, &src->sin_addr) == 0)
+            return 0;
+    }
+
+    logmsg(LOGMSG_ERROR, "%s: rejecting connection claiming host:%s from %s: source address does not match\n", __func__,
+           from_host, inet_ntoa(src->sin_addr));
+    return -1;
+}
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum, int accept)
