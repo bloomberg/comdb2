@@ -824,6 +824,8 @@ struct accept_info {
     char *origin;
     int has_is_physrep;
     int is_physrep;
+    struct accept_info *hostcheck_next; /* hostcheck thread queue link */
+    int hostcheck_ok;                   /* result of the peer-hostname check */
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
@@ -2564,6 +2566,80 @@ static void net_accept_ssl_error(void *data)
     accept_info_free(a);
 }
 
+/* Continue accepting a connection once the peer's claimed hostname has been
+   verified against its source address (see validate_host / hostcheck_fn).
+   Runs on the main event base.  Returns 0 on success (or once SSL setup has
+   been handed off), -1 to reject. */
+static int validate_host_finish(struct accept_info *a)
+{
+    check_base_thd();
+    if (a->c.flags & CONNECT_MSG_SSL) {
+        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
+            logmsg(LOGMSG_ERROR, "Peer requested SSL, but I don't have an SSL key pair.\n");
+            return -1;
+        }
+        a->origin = get_hostname_by_fileno(a->fd);
+        a->ssl_data = ssl_data_new(a->fd, a->origin);
+        accept_ssl_evbuffer(a->ssl_data, base, net_accept_ssl_error, net_accept_ssl_success, a);
+        return 0;
+    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
+        logmsg(LOGMSG_ERROR, "Replicant SSL connections are required.\n");
+        return -1;
+    }
+    return accept_host(a);
+}
+
+/* Verifying that a peer's source address matches its claimed hostname can
+   require blocking DNS resolution (getaddrinfo), which must not run on the
+   event loop.  Connections that need the check are handed to a dedicated
+   thread, which resolves the hostname and then resumes acceptance back on the
+   main event base - mirroring newsql's gethostname thread. */
+extern int gbl_rep_verify_peer_hostname;
+
+static pthread_t hostcheck_thd;
+static pthread_mutex_t hostcheck_lk = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t hostcheck_cond = PTHREAD_COND_INITIALIZER;
+static struct accept_info *hostcheck_head;
+static struct accept_info *hostcheck_tail;
+
+/* Back on the event base: act on the resolver's verdict. */
+static void hostcheck_resume(int dummyfd, short what, void *data)
+{
+    struct accept_info *a = data;
+    if (!a->hostcheck_ok) {
+        logmsg(LOGMSG_ERROR, "%s fd:%d rejecting connection from node:%d host:%s: source address does not match\n",
+               __func__, a->fd, a->c.from_nodenum, a->from_host_interned);
+        accept_info_free(a);
+        return;
+    }
+    if (validate_host_finish(a) != 0) {
+        accept_info_free(a);
+    }
+}
+
+/* Dedicated thread: forward-resolve claimed hostnames off the event loop. */
+static void *hostcheck_fn(void *unused)
+{
+    comdb2_name_thread("hostcheck");
+    while (1) {
+        Pthread_mutex_lock(&hostcheck_lk);
+        while (hostcheck_head == NULL) {
+            Pthread_cond_wait(&hostcheck_cond, &hostcheck_lk);
+        }
+        struct accept_info *a = hostcheck_head;
+        hostcheck_head = a->hostcheck_next;
+        if (hostcheck_head == NULL) {
+            hostcheck_tail = NULL;
+        }
+        a->hostcheck_next = NULL;
+        Pthread_mutex_unlock(&hostcheck_lk);
+
+        a->hostcheck_ok = (net_validate_connect_host(a->from_host_interned, &a->ss) == 0);
+        evtimer_once(base, hostcheck_resume, a); /* resume on the main event base */
+    }
+    return NULL;
+}
+
 static int validate_host(struct accept_info *a)
 {
     if (strcmp(a->from_host, gbl_myhostname) == 0) {
@@ -2618,20 +2694,24 @@ static int validate_host(struct accept_info *a)
             return -1;
         }
     }
-    if (a->c.flags & CONNECT_MSG_SSL) {
-        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
-            logmsg(LOGMSG_ERROR, "Peer requested SSL, but I don't have an SSL key pair.\n");
-            return -1;
-        }
-        a->origin = get_hostname_by_fileno(a->fd);
-        a->ssl_data = ssl_data_new(a->fd, a->origin);
-        accept_ssl_evbuffer(a->ssl_data, base, net_accept_ssl_error, net_accept_ssl_success, a);
+    /* Confirm the connection's source address really belongs to the claimed
+       hostname, so a rogue node can't impersonate a trusted peer just by
+       putting its hostname in the connect message.  The check may block on DNS
+       resolution, so hand it to the hostcheck thread and resume acceptance in
+       validate_host_finish() once it completes. */
+    if (gbl_rep_verify_peer_hostname) {
+        a->hostcheck_next = NULL;
+        Pthread_mutex_lock(&hostcheck_lk);
+        if (hostcheck_tail)
+            hostcheck_tail->hostcheck_next = a;
+        else
+            hostcheck_head = a;
+        hostcheck_tail = a;
+        Pthread_cond_signal(&hostcheck_cond); /* -> hostcheck_fn */
+        Pthread_mutex_unlock(&hostcheck_lk);
         return 0;
-    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
-        logmsg(LOGMSG_ERROR, "Replicant SSL connections are required.\n");
-        return -1;
     }
-    return accept_host(a);
+    return validate_host_finish(a);
 }
 
 static int process_long_hostname(struct accept_info *a)
@@ -3582,6 +3662,7 @@ static void setup_bases(void)
 {
     event_set_fatal_callback(libevent_fatal_cb);
     init_base(&base_thd, &base, "main", NULL);
+    Pthread_create(&hostcheck_thd, NULL, hostcheck_fn, NULL); /* off-loads peer-hostname DNS checks */
     if (dedicated_timer) {
         gettimeofday(&timer_tick, NULL);
         init_base(&timer_thd, &timer_base, "timer", &timer_tick);

@@ -340,6 +340,7 @@ void add_host(host_node_type *);
 void dispatch_decom(char *);
 int do_appsock(netinfo_type *, struct sockaddr_in *, COMDB2BUF *, uint8_t);
 int findpeer(int, char *, int);
+int net_validate_connect_host(const char *from_host, struct sockaddr_in *src);
 int get_dedicated_conhost(host_node_type *, struct in_addr *);
 host_node_type *get_host_node_by_name_ll(netinfo_type *, const char *);
 host_node_type *add_to_netinfo_ll(netinfo_type *, const char hostname[], int portnum);
