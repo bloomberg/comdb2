@@ -5079,6 +5079,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         } else {
             nops += tmpnops;
             iq->sorese->nops = nops;
+            if (tmpnops == 0 && iq->upsert_ignored) {
+                logmsg(LOGMSG_DEBUG, "upsert did not insert, skipping constraints\n");
+                goto serializable_check;
+            }
         }
     }
 
@@ -5230,6 +5234,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             GOTOBACKOUT;
     }
 
+serializable_check:
     Pthread_rwlock_rdlock(&commit_lock);
     hascommitlock = 1;
     if (iq->arr || iq->selectv_arr) {

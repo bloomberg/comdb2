@@ -1419,8 +1419,9 @@ struct ireq {
 
     /* List of indices that we've written to detect uncommittable upsert txns */
     hash_t *vfy_idx_hash; 
-
     int dup_key_insert;
+    /* Whether this txn has ignored upsert conflicts */
+    int upsert_ignored;
 
     /* List of genids that we've written to detect uncommittable txn's */
     hash_t *vfy_genid_hash;
