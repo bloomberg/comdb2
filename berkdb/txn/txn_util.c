@@ -40,6 +40,15 @@ int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 extern int set_commit_context_prepared(unsigned long long context);
 extern int gbl_utxnid_log;
 
+/*
+ * Count of times we were asked to remove a utxnid that wasn't present in the
+ * commit-LSN map.  This is an expected condition (the map is a windowed cache;
+ * see __txn_commit_map_remove_nolock), so it is not fatal -- but a spike here
+ * outside of physrep rewinds / recover-to-lsn can indicate a real map-population
+ * bug, so it is surfaced as an observable counter.
+ */
+int64_t gbl_commit_map_remove_miss = 0;
+
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
 	TXN_EVENT_T op;
@@ -505,8 +514,31 @@ static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lis
 
 	UTXNID_TRACK * const txn = hash_find(txmap->transactions, &utxnid);
 	if (!txn) {
-		logmsg(LOGMSG_ERROR, "%s: Could not find transaction %"PRIu64" in the map\n", __func__, utxnid);
-		ret = 1;
+		/*
+		 * The commit-LSN map is a windowed, in-memory cache: it is pruned
+		 * as log files are deleted, is rebuilt only from the last
+		 * checkpoint forward on restart, and (on physical replicants) need
+		 * not span a range that is being rewound / truncated.  A missing
+		 * entry is therefore an expected condition, not corruption.  Report
+		 * it as DB_NOTFOUND and let the caller decide -- recovery's backward
+		 * pass treats it as a no-op so it can continue.
+		 */
+		++gbl_commit_map_remove_miss;
+		/*
+		 * On a large physrep rewind every committed txn in the undo window
+		 * can miss, so rate-limit the log to at most one line per second.
+		 * gbl_commit_map_remove_miss (see 'bdb clminfo') is the durable,
+		 * always-on signal. Safe: this runs under txmap_mutexp.
+		 */
+		static int lastpr = 0;
+		const int now = comdb2_time_epoch();
+		if (now != lastpr) {
+			logmsg(LOGMSG_WARN, "%s: transaction %"PRIu64" not in commit map "
+					"(nothing to remove); total misses %"PRId64"\n",
+					__func__, utxnid, gbl_commit_map_remove_miss);
+			lastpr = now;
+		}
+		ret = DB_NOTFOUND;
 		goto err;
 	}
 
@@ -566,9 +598,11 @@ void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
 	if (should_lock) { Pthread_mutex_lock(&txmap->txmap_mutexp); }
 
 	logmsg(lvl, "Highest logfile: %"PRId64"; "
-					"Smallest logfile: %"PRId64"\n",
+					"Smallest logfile: %"PRId64"; "
+					"Remove misses: %"PRId64"\n",
 					txmap->highest_logfile,
-					txmap->smallest_logfile);
+					txmap->smallest_logfile,
+					gbl_commit_map_remove_miss);
 
 	if (should_lock) { Pthread_mutex_unlock(&txmap->txmap_mutexp); }
 }

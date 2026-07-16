@@ -224,10 +224,21 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		 * so we treat this as an abort even if it was a commit record.
 		 */
 
-		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
-				argp->txnid->utxnid);
-			goto quiet_err;
+		if (commit_lsn_map) {
+			ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid);
+			if (ret == DB_NOTFOUND) {
+				/*
+				 * Benign: the commit-LSN map is a windowed cache and need
+				 * not contain every committed txn the backward pass undoes
+				 * (log-file pruning, rebuild-from-checkpoint on restart,
+				 * physrep rewinds).  Nothing to un-track; continue the pass.
+				 */
+				ret = 0;
+			} else if (ret != 0) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+					argp->txnid->utxnid);
+				goto quiet_err;
+			}
 		}
 
 		ret = __db_txnlist_update(dbenv,
@@ -481,10 +492,21 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		(!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 
-		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
-				argp->txnid->utxnid);
-			goto quiet_err;
+		if (commit_lsn_map) {
+			ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid);
+			if (ret == DB_NOTFOUND) {
+				/*
+				 * Benign: the commit-LSN map is a windowed cache and need
+				 * not contain every committed txn the backward pass undoes
+				 * (log-file pruning, rebuild-from-checkpoint on restart,
+				 * physrep rewinds).  Nothing to un-track; continue the pass.
+				 */
+				ret = 0;
+			} else if (ret != 0) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+					argp->txnid->utxnid);
+				goto quiet_err;
+			}
 		}
 
 		/*
@@ -606,10 +628,21 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 * so we treat this as an abort even if it was a commit record.
 		 */
 
-		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
-				argp->txnid->utxnid);
-			goto quiet_err;
+		if (commit_lsn_map) {
+			ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid);
+			if (ret == DB_NOTFOUND) {
+				/*
+				 * Benign: the commit-LSN map is a windowed cache and need
+				 * not contain every committed txn the backward pass undoes
+				 * (log-file pruning, rebuild-from-checkpoint on restart,
+				 * physrep rewinds).  Nothing to un-track; continue the pass.
+				 */
+				ret = 0;
+			} else if (ret != 0) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+					argp->txnid->utxnid);
+				goto quiet_err;
+			}
 		}
 
 		ret = __db_txnlist_update(dbenv,
@@ -838,10 +871,21 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			__txn_deallocate_ltrans(dbenv, lt);
 		}
 
-		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
-				argp->txnid->utxnid);
-			goto quiet_err;
+		if (commit_lsn_map) {
+			ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid);
+			if (ret == DB_NOTFOUND) {
+				/*
+				 * Benign: the commit-LSN map is a windowed cache and need
+				 * not contain every committed txn the backward pass undoes
+				 * (log-file pruning, rebuild-from-checkpoint on restart,
+				 * physrep rewinds).  Nothing to un-track; continue the pass.
+				 */
+				ret = 0;
+			} else if (ret != 0) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+					argp->txnid->utxnid);
+				goto quiet_err;
+			}
 		}
 
 		/*
