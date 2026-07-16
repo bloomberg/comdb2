@@ -261,6 +261,10 @@ extract_highest_logfile_from_clminfo() {
 	grep -oP '(?<=Highest logfile: )[-]?[0-9]+' <<<"$1"
 }
 
+extract_remove_misses_from_clminfo() {
+	grep -oP '(?<=Remove misses: )[-]?[0-9]+' <<<"$1"
+}
+
 verify_txmap_has_expected_min_max_files() {
 	trap 'error $LINENO' ERR
 
@@ -400,11 +404,99 @@ test_recover_to_lsn() {
 	verify_correct_utxnids_in_map "$utxnids_to_recover" "$utxnids_to_be_deleted_during_recovery" "$master"
 }
 
+test_recover_to_lsn_missing_map_entries() {
+	trap 'error $LINENO' ERR
+
+	# Regression test: a recover-to-lsn backward pass must tolerate undoing a
+	# committed transaction that is absent from the commit-LSN map, rather than
+	# aborting the whole pass. The map is a windowed in-memory cache, so it need
+	# not contain every committed txn that recovery walks over (e.g. on a
+	# physical replicant, or across a restart / log-file prune). Before the fix,
+	# such a miss failed with "Could not find transaction N in the map" and the
+	# node could not truncate its log.
+
+	# Given: some traffic, then an early recovery point captured after a flush.
+	cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table tmiss(i int)' > /dev/null
+	cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into tmiss values(1)' > /dev/null
+	cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")' > /dev/null
+
+	local recovery_lsn recovery_lsn_file
+	recovery_lsn=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm default \
+		'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | sed 's/.*lsn //g ; s/ .*//g')
+	recovery_lsn_file=$(echo "$recovery_lsn" | cut -d: -f 1)
+	readonly recovery_lsn recovery_lsn_file
+
+	# More committed traffic that recovery will undo, spanning higher logfiles.
+	insert_values 10 tmiss 1
+	pushlogs $(( recovery_lsn_file + 3 ))
+	insert_values 10 tmiss 1
+
+	# Pick a logfile in the undo range that currently has map entries and drop
+	# just those entries from the in-memory map. The log records themselves are
+	# untouched, so the backward pass will still walk these committed txns --
+	# but they are now missing from the map, reproducing the bug's condition.
+	local hole_file
+	hole_file=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm \
+		"select min(commitlsnfile) from comdb2_transaction_commit where commitlsnfile > $recovery_lsn_file")
+	readonly hole_file
+	if [[ -z "$hole_file" || "$hole_file" == "NULL" ]]; then
+		echo "FAIL: no committed txns in the undo range to remove from the map"
+		exit 1
+	fi
+
+	local misses_before
+	misses_before=$(extract_remove_misses_from_clminfo "$(get_clminfo $master)")
+	misses_before=${misses_before:-0}
+	readonly misses_before
+
+	cdb2sql ${CDB2_OPTIONS} --host $master $dbnm \
+		"exec procedure sys.cmd.send('clm_delete_logfile $hole_file')" > /dev/null
+
+	# When: recover/truncate back to the early lsn, walking the missing entries.
+	cdb2sql ${CDB2_OPTIONS} --host $master $dbnm \
+		"exec procedure sys.cmd.truncate_log(\"{$recovery_lsn}\")"
+
+	# Then: the node is healthy (this query fails if the backward pass aborted
+	# or the node went down) ...
+	local alive
+	alive=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'select 1')
+	if [[ "$alive" != "1" ]]; then
+		echo "FAIL: master unhealthy after recover-to-lsn across missing map entries"
+		exit 1
+	fi
+
+	# ... the pre-recovery-lsn state survived and the undone traffic is gone ...
+	local rowcount
+	rowcount=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'select COUNT(*) from tmiss')
+	if [[ "$rowcount" != "1" ]]; then
+		echo "FAIL: expected 1 row in tmiss after recovery, got $rowcount"
+		exit 1
+	fi
+
+	# ... and we actually exercised the missing-entry path.
+	local misses_after
+	misses_after=$(extract_remove_misses_from_clminfo "$(get_clminfo $master)")
+	misses_after=${misses_after:-0}
+	readonly misses_after
+	if (( misses_after <= misses_before )); then
+		echo "FAIL: expected commit-map remove misses to increase ($misses_before -> $misses_after)"
+		exit 1
+	fi
+
+	# ... and the recovered table is internally consistent.
+	#
+	# Leave tmiss in place: dropping a table immediately after a recover-to-lsn
+	# can race with the truncate and leave residue that the suite's end-of-test
+	# verify trips on. test_recover_to_lsn likewise leaves its table behind.
+	do_verify tmiss
+}
+
 if [ "$TESTCASE" == "commit_lsn_map_delete_generated" ];
 then
 	set -o pipefail
 	test_recover_to_lsn
 	test_delete
+	test_recover_to_lsn_missing_map_entries
 else
 	test_add
 fi
