@@ -209,6 +209,7 @@ void currangearr_init(CurRangeArr *arr)
     arr->cap = CURRANGEARR_INIT_CAP;
     arr->file = 0;
     arr->offset = 0;
+    arr->log_cursor_gen = -1;
     arr->hash = NULL;
     arr->ranges = malloc(sizeof(CurRange *) * arr->cap);
 }
@@ -4711,13 +4712,16 @@ void get_current_lsn(struct sqlclntstate *clnt)
         logmsg(LOGMSG_ERROR, "get_current_lsn: ireq has no bdb handle\n");
         abort();
     }
+    int64_t gen = bdb_get_log_cursor_gen(db->handle);
     if (clnt->arr) {
         clnt->arr->file = clnt->file;
         clnt->arr->offset = clnt->offset;
+        clnt->arr->log_cursor_gen = gen;
     }
     if (clnt->selectv_arr) {
         clnt->selectv_arr->file = clnt->modsnap_in_progress ? clnt->modsnap_start_lsn_file : clnt->file;
         clnt->selectv_arr->offset = clnt->modsnap_in_progress ? clnt->modsnap_start_lsn_offset : clnt->offset;
+        clnt->selectv_arr->log_cursor_gen = gen;
     }
 }
 

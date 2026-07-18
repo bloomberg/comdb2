@@ -7633,6 +7633,10 @@ done_delete:
         p_buf = (uint8_t *)osqlcomm_serial_type_get(&dt, p_buf, p_buf_end);
         arr->file = dt.file;
         arr->offset = dt.offset;
+        /* Snapshot the master's log truncation counter now so that
+         * osql_serial_check can detect if the log is truncated before
+         * it gets to scan it. */
+        arr->log_cursor_gen = bdb_get_log_cursor_gen(thedb->bdb_env);
 
         p_buf_end = p_buf + dt.buf_size;
 
