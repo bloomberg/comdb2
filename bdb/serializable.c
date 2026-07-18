@@ -338,7 +338,7 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                              unsigned int *file, unsigned int *offset,
                              int (*check_this_txn)(bdb_state_type *bdb_state,
                                                    DB_LSN lsn, void *ranges),
-                             int regop_only)
+                             int regop_only, int64_t log_cursor_gen)
 {
     int rc;
     DBT logdta;
@@ -354,6 +354,21 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
     __txn_dist_prepare_args *argprep = NULL;
     __txn_regop_rowlocks_args *argrlp = NULL;
     llog_ltran_commit_args *commit = NULL;
+
+    /* If the log was truncated since the read-set LSN was recorded, the
+     * file:offset may point into rewritten data.  Fail the serial check
+     * immediately rather than reading garbage and crashing. */
+    if (log_cursor_gen != -1) {
+        int64_t cur_gen = __log_get_cursor_gen(bdb_state->dbenv);
+        if (cur_gen != log_cursor_gen) {
+            logmsg(LOGMSG_WARN,
+                   "%s: log truncated (gen %lld -> %lld) at %u:%u, "
+                   "failing serial check\n",
+                   __func__, (long long)log_cursor_gen,
+                   (long long)cur_gen, *file, *offset);
+            return 1;
+        }
+    }
 
     seriallsn.file = *file;
     seriallsn.offset = *offset;
@@ -620,10 +635,11 @@ done:
 
 int bdb_osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                           unsigned int *file, unsigned int *offset,
-                          int regop_only)
+                          int regop_only, int64_t log_cursor_gen)
 {
     if (!ranges)
         return 0;
     return osql_serial_check(bdb_state, ranges, file, offset,
-                             serial_check_this_txn, regop_only);
+                             serial_check_this_txn, regop_only,
+                             log_cursor_gen);
 }

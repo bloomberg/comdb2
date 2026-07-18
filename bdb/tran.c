@@ -2843,6 +2843,11 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
     return current_context;
 }
 
+int64_t bdb_get_log_cursor_gen(bdb_state_type *bdb_state)
+{
+    return __log_get_cursor_gen(bdb_state->dbenv);
+}
+
 int bdb_tran_get_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t *timestamp)
 {
     return bdb_state->dbenv->locker_get_timestamp(bdb_state->dbenv, trans->tid->txnid, timestamp);

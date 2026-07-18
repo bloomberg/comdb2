@@ -2195,7 +2195,7 @@ int llmeta_set_last_analyze_epoch(uint64_t value);
 
 int bdb_osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                           unsigned int *file, unsigned int *offset,
-                          int regop_only);
+                          int regop_only, int64_t log_cursor_gen);
 
 int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
                                const char *url, char **errstr);
@@ -2374,6 +2374,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
                        int64_t *maxactive, int64_t *commits, int64_t *aborts);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
+int64_t bdb_get_log_cursor_gen(bdb_state_type *bdb_state);
 int bdb_recoverlk_blocked(bdb_state_type *bdb_state);
 
 void send_newmaster(bdb_state_type *bdb_state, int online);
