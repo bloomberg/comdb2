@@ -187,6 +187,30 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
 }
 
 /*
+ * __log_get_cursor_gen --
+ *	Return the current log cursor generation counter.  This counter is
+ *	incremented each time the log is truncated.  Callers can snapshot it
+ *	before a long operation and compare on re-entry to detect truncation.
+ *
+ * PUBLIC: int64_t __log_get_cursor_gen __P((DB_ENV *));
+ */
+int64_t
+__log_get_cursor_gen(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_LOG *dblp;
+	LOG *lp;
+	int64_t gen;
+
+	dblp = (DB_LOG *)dbenv->lg_handle;
+	lp = (LOG *)dblp->reginfo.primary;
+	Pthread_rwlock_rdlock(&dbenv->loglk);
+	gen = lp->log_cursor_gen;
+	Pthread_rwlock_unlock(&dbenv->loglk);
+	return gen;
+}
+
+/*
  * __log_cursor --
  *	Create a log cursor.
  *
