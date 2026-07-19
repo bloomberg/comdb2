@@ -1406,6 +1406,13 @@ static int newsql_get_snapshot(struct sqlclntstate *clnt, int *file,
         *file = sqlquery->snapshot_info->file;
         *offset = sqlquery->snapshot_info->offset;
     }
+    /* On ha-retry, statements after BEGIN (e.g. INSERT) carry no
+     * snapshot_info in their sqlquery.  Fall back to the snapshot stored
+     * on the clnt during BEGIN handling, just as fill_snapinfo does. */
+    if (*file == 0 && clnt->is_hasql_retry && clnt->snapshot_file) {
+        *file = clnt->snapshot_file;
+        *offset = clnt->snapshot_offset;
+    }
     return 0;
 }
 
