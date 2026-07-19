@@ -3772,7 +3772,7 @@ void bdb_set_seqnum(void *in_bdb_state)
     }
 }
 
-int gbl_online_recovery = 1;
+int gbl_online_recovery = 0;
 
 static pthread_mutex_t rep_mon_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t rep_mon_cd = PTHREAD_COND_INITIALIZER;
