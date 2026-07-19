@@ -2059,7 +2059,7 @@ REGISTER_TUNABLE("libevent_rte_only", "Prevent listening on TCP socket. (Default
                  TUNABLE_BOOLEAN, &gbl_libevent_rte_only, READONLY, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("online_recovery",
-                 "Don't get the bdb-writelock for recovery.  (Default: on)",
+                 "Don't get the bdb-writelock for recovery.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_online_recovery, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
