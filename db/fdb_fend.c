@@ -1427,6 +1427,7 @@ close:
     }
 
 done:
+    free(cur);
     sqlite3_free(sql);
     return rc;
 }
