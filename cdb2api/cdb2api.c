@@ -241,7 +241,11 @@ static int local_connection_cache_check_pid_envvar = 0;
 
 static int connection_cache_entries = 0;
 
+#ifdef CDB2API_AMALGAMATION
+static int cdb2_use_ftruncate = 0;
+#else
 int cdb2_use_ftruncate = 0;
+#endif
 static int cdb2_use_ftruncate_set_from_env = 0;
 static int cdb2_use_env_vars = 1;
 static int cdb2_install_set_from_env = 0;
@@ -250,8 +254,8 @@ TAILQ_HEAD(local_connection_cache_list, local_cached_connection);
 
 /* owner of the in-proc connection cache */
 static pid_t local_connection_cache_owner_pid;
-struct local_connection_cache_list local_connection_cache;
-struct local_connection_cache_list free_local_connection_cache;
+static struct local_connection_cache_list local_connection_cache;
+static struct local_connection_cache_list free_local_connection_cache;
 typedef struct local_connection_cache_list local_connection_cache_list;
 
 static int cdb2cfg_override = 0;
@@ -490,21 +494,30 @@ extern void CDB2_UNINSTALL_LIBS(const char *);
 #endif
 void (*cdb2_uninstall)(const char *) = CDB2_UNINSTALL_LIBS;
 
-#ifndef CDB2_IDENTITY_CALLBACKS
-    struct cdb2_identity *identity_cb = NULL;
+#ifdef CDB2API_SERVER // identity_cb is non-static, because simpleauth needs to set it
+#   ifdef CDB2_IDENTITY_CALLBACKS
+        extern struct cdb2_identity CDB2_IDENTITY_CALLBACKS;
+        struct cdb2_identity *identity_cb = &CDB2_IDENTITY_CALLBACKS;
+#   else
+        struct cdb2_identity *identity_cb = NULL;
+#   endif
 #else
-    extern struct cdb2_identity CDB2_IDENTITY_CALLBACKS;
-    struct cdb2_identity *identity_cb = &CDB2_IDENTITY_CALLBACKS;
+#   ifdef CDB2_IDENTITY_CALLBACKS
+        extern struct cdb2_identity CDB2_IDENTITY_CALLBACKS;
+        static struct cdb2_identity *identity_cb = &CDB2_IDENTITY_CALLBACKS;
+#   else
+        static struct cdb2_identity *identity_cb = NULL;
+#   endif
 #endif
 
-#ifndef CDB2_PUBLISH_EVENT_CALLBACKS
-    struct cdb2_publish_event *publish_event_cb = NULL;
-#else
+#if defined(CDB2API_SERVER) || !defined(CDB2_PUBLISH_EVENT_CALLBACKS) || !defined(CDB2API_TEST)
+    static struct cdb2_publish_event *publish_event_cb = NULL;
+#elif defined(CDB2_PUBLISH_EVENT_CALLBACKS)
     extern struct cdb2_publish_event CDB2_PUBLISH_EVENT_CALLBACKS;
-    struct cdb2_publish_event *publish_event_cb = &CDB2_PUBLISH_EVENT_CALLBACKS;
+    static struct cdb2_publish_event *publish_event_cb = &CDB2_PUBLISH_EVENT_CALLBACKS;
 #endif
 
-pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define MAX_SOCKPOOL_FDS 8
 
 #include <netdb.h>
@@ -9135,13 +9148,12 @@ out:
     return rc;
 }
 
-cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
+static cdb2_event *cdb2_register_event_varg(cdb2_hndl_tp *hndl, cdb2_event_type types,
                                 cdb2_event_ctrl ctrls, cdb2_event_callback cb,
-                                void *user_arg, int nargs, ...)
+                                void *user_arg, int nargs, va_list ap)
 {
     cdb2_event *ret;
     cdb2_event *curr;
-    va_list ap;
     int i;
 
     /* Allocate an event object. */
@@ -9157,10 +9169,8 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
     ret->argc = nargs;
 
     /* Copy over argument types. */
-    va_start(ap, nargs);
     for (i = 0; i != nargs; ++i)
         ret->argv[i] = va_arg(ap, cdb2_event_arg);
-    va_end(ap);
 
     if (hndl == NULL) {
         /* handle is NULL. We want to register to the global events. */
@@ -9178,6 +9188,17 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
             ;
         curr->next = ret;
     }
+    return ret;
+}
+
+cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
+                                cdb2_event_ctrl ctrls, cdb2_event_callback cb,
+                                void *user_arg, int nargs, ...)
+{
+    va_list ap;
+    va_start(ap, nargs);
+    cdb2_event *ret = cdb2_register_event_varg(hndl, types, ctrls, cb, user_arg, nargs, ap);
+    va_end(ap);
     return ret;
 }
 

@@ -21,6 +21,11 @@
 
 #ifndef INCLUDED_CDB2API_HNDL_H
 #define INCLUDED_CDB2API_HNDL_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <comdb2buf.h>
 
 #include <sys/types.h>
@@ -209,4 +214,9 @@ struct cdb2_hndl {
     RETRY_CALLBACK retry_clbk;
     int is_tagged;
 };
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
