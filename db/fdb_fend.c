@@ -533,20 +533,26 @@ void put_fdb_int(fdb_t *fdb, enum fdb_put_flag flag, const char *f, int l)
 }
 
 /* Strip recognized class prefix (LOCAL_, DEV_, PROD_, etc.) from dbname.
- * Returns pointer past the prefix if found, or original dbname if not.
+ * Sets *is_local=1 if the LOCAL_ prefix was used (may be NULL).
+ * Returns pointer past the prefix if a recognized prefix was found, else original.
  * Spews a rate-limited deprecation warning when a prefix is stripped.
  */
-static const char *_strip_class_prefix(const char *dbname)
+static const char *_strip_class_prefix(const char *dbname, int *is_local)
 {
     static unsigned long long class_override_spew_count = 0;
     const char *tmpname;
     char *class;
+
+    if (is_local)
+        *is_local = 0;
 
     if ((tmpname = strchr(dbname, '_')) == NULL)
         return dbname;
 
     class = strndup(dbname, tmpname - dbname);
     if (strncasecmp(class, "LOCAL", 6) == 0 || mach_class_name2class(class) != CLASS_UNKNOWN) {
+        if (is_local && strncasecmp(class, "LOCAL", 6) == 0)
+            *is_local = 1;
         unsigned long long cnt = ATOMIC_ADD64(class_override_spew_count, 1);
         if (gbl_fdb_class_override_spew_limit > 0 && (cnt % gbl_fdb_class_override_spew_limit) == 1) {
             logmsg(LOGMSG_ERROR,
@@ -561,13 +567,15 @@ static const char *_strip_class_prefix(const char *dbname)
     return dbname;
 }
 
-static void _init_fdb(fdb_t *fdb, const char *dbname)
+static void _init_fdb(fdb_t *fdb, const char *dbname, int local_hint)
 {
     fdb->dbname = strdup(dbname);
     fdb->dbname_len = strlen(dbname);
 
-    /* resolve class/local from gbl tunables */
-    if (gbl_fdb_resolve_local) {
+    /* resolve class/local: an explicit LOCAL_ prefix or the resolve-local
+     * tunable makes this a local db; otherwise use the resolve-tier tunable
+     * or default to this machine's class */
+    if (local_hint || gbl_fdb_resolve_local) {
         fdb->local = 1;
         fdb->class = get_my_mach_class();
     } else if (gbl_fdb_resolve_tier) {
@@ -606,13 +614,15 @@ static int _check_fdb_gbl_mismatch(fdb_t *fdb)
     static unsigned long long mismatch_spew_count = 0;
     int mismatch = 0;
 
-    if (fdb->local && !gbl_fdb_resolve_local) {
-        mismatch = 1;
-    } else if (!fdb->local && gbl_fdb_resolve_tier) {
+    /* a local fdb is always valid (created via LOCAL_ prefix or resolve-local
+     * tunable); only non-local fdbs can mismatch a changed tier resolution */
+    if (fdb->local) {
+        mismatch = 0;
+    } else if (gbl_fdb_resolve_tier) {
         enum mach_class tier_class = mach_class_name2class(gbl_fdb_resolve_tier);
         if (tier_class != fdb->class)
             mismatch = 1;
-    } else if (!fdb->local && !gbl_fdb_resolve_tier && !gbl_fdb_resolve_local) {
+    } else if (!gbl_fdb_resolve_local) {
         if (fdb->class != get_my_mach_class())
             mismatch = 1;
     }
@@ -639,8 +649,9 @@ static fdb_t *_new_fdb(const char *dbname, int *created)
 {
     int rc = 0;
     fdb_t *fdb;
+    int is_local = 0;
 
-    dbname = _strip_class_prefix(dbname);
+    dbname = _strip_class_prefix(dbname, &is_local);
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
 
@@ -680,7 +691,7 @@ static fdb_t *_new_fdb(const char *dbname, int *created)
         goto done;
     }
 
-    _init_fdb(fdb, dbname);
+    _init_fdb(fdb, dbname, is_local);
 
     if (gbl_fdb_track_locking)
         logmsg(LOGMSG_USER, "Locking new fdb %s\n", fdb->dbname);
@@ -1452,14 +1463,15 @@ static int _failed_AddAndLockTable(sqlclntstate *clnt, const char *dbname, int e
 }
 
 int create_local_fdb(const char *fdb_name, fdb_t **fdb) {
-    fdb_name = _strip_class_prefix(fdb_name);
+    int is_local = 0;
+    fdb_name = _strip_class_prefix(fdb_name, &is_local);
 
     *fdb = calloc(1, sizeof(fdb_t));
     if (!*fdb) {
         logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
         return FDB_ERR_MALLOC;
     }
-    _init_fdb(*fdb, fdb_name);
+    _init_fdb(*fdb, fdb_name, is_local);
 
     return 0;
 }
@@ -5414,7 +5426,7 @@ int fdb_validate_existing(const char *zDatabase)
 {
     fdb_t *fdb = NULL;
     int rc = FDB_NOERR;
-    const char *dbName = _strip_class_prefix(zDatabase);
+    const char *dbName = _strip_class_prefix(zDatabase, NULL);
 
     Pthread_mutex_lock(&fdbs.arr_mtx);
 
