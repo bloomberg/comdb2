@@ -37,11 +37,13 @@ int gbl_sql_logfill_dedicated_apply_thread = 0;
 int gbl_sql_logfill_lookahead_records = 10000;
 int gbl_sql_logfill_next_timeout = 10;
 int gbl_sql_logfill_autodisable_threshold = 5;
+int gbl_sql_logfill_request_fail_autodisable_threshold = 5;
 
 /* Flags */
 int gbl_sql_logfill_auto_disabled = 0;
 static int sql_logfill_thds_created = 0;
 static int sql_logfill_auth_failure_cnt = 0;
+static int sql_logfill_request_fail_cnt = 0;
 
 struct log_record {
     unsigned int file;
@@ -123,6 +125,47 @@ static void increment_logfill_auth_failure_cnt(void)
     }
 }
 
+/* When all of the master's sql engines are busy and its dispatch queue is full,
+ * the master rejects the logfill request with CDB2ERR_REJECTED.  That error is
+ * retryable, so the cdb2 client retries it internally and -- for our
+ * CDB2_DIRECT_CPU handle with min_retries==1 -- surfaces it to us as
+ * CDB2ERR_CONNECT_ERROR (or CDB2ERR_TRAN_IO_ERROR once retries are exhausted),
+ * NOT as CDB2ERR_REJECTED (which we still match, defensively).
+ *
+ * These same codes are also what a genuinely unreachable master produces: for a
+ * CDB2_DIRECT_CPU handle cdb2_open() does not connect (and "set transaction
+ * blocksql" is a client-side set), so the first real round-trip -- the "select
+ * 1" ping in connect_to_master() -- is where an unreachable master surfaces, and
+ * that is a counting site.  We do NOT distinguish "reachable but saturated" from
+ * "unreachable" here; both mean "logfill can't get logs from the master", and in
+ * both cases parking logfill and falling back to the traditional fill-request
+ * path (otherwise suppressed while sql_logfill is active) is the right response.
+ *
+ * Spurious trips are avoided by two things rather than by inspecting the error:
+ * (1) request_logs_from_master() returns early WITHOUT counting when there is no
+ * elected master (thedb->master is unset / ".invalid"), which covers ordinary
+ * elections and outage windows; and (2) the counters are reset the moment we
+ * reach the master and make progress (a successful fetch, or confirming there is
+ * no gap), so only a *sustained* run of failures against a still-elected master
+ * reaches the threshold. */
+static int logfill_request_failed(int rc)
+{
+    return rc == CDB2ERR_REJECTED || rc == CDB2ERR_CONNECT_ERROR || rc == CDB2ERR_TRAN_IO_ERROR;
+}
+
+static void increment_logfill_request_fail_cnt(void)
+{
+    sql_logfill_request_fail_cnt++;
+    if (gbl_sql_logfill_request_fail_autodisable_threshold > 0 &&
+        sql_logfill_request_fail_cnt >= gbl_sql_logfill_request_fail_autodisable_threshold) {
+        logmsg(LOGMSG_ERROR,
+               "%s: auto-disabling sql logfill after %d consecutive request failures (master unavailable or at "
+               "capacity)\n",
+               __func__, sql_logfill_request_fail_cnt);
+        gbl_sql_logfill_auto_disabled = 1;
+    }
+}
+
 /* Connect to master */
 static int connect_to_master(bdb_state_type *bdb_state, const char *master)
 {
@@ -175,6 +218,8 @@ static int connect_to_master(bdb_state_type *bdb_state, const char *master)
 
         if (rc == CDB2ERR_ACCESS) {
             increment_logfill_auth_failure_cnt();
+        } else if (logfill_request_failed(rc)) {
+            increment_logfill_request_fail_cnt();
         }
         return 1;
     }
@@ -483,6 +528,15 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
         if (IS_ZERO_LSN(gap_lsn)) {
             BDB_RELLOCK();
             nogap_returns++;
+            /* We reached the master and confirmed we are caught up: the master
+             * is servicing us, so clear the consecutive-failure counters.  This
+             * is what makes the counts "consecutive" -- without it a healthy
+             * replicant that is almost always caught up (and so almost always
+             * takes this path) would never reset, and unrelated transient
+             * failures would accumulate over the process lifetime and
+             * eventually trip a spurious auto-disable. */
+            sql_logfill_auth_failure_cnt = 0;
+            sql_logfill_request_fail_cnt = 0;
             return 0;
         }
 
@@ -525,17 +579,27 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
             }
             if (rc == CDB2ERR_ACCESS) {
                 increment_logfill_auth_failure_cnt();
+            } else if (logfill_request_failed(rc)) {
+                increment_logfill_request_fail_cnt();
             }
             disconnect_from_master();
             return 1;
         }
 
         sql_logfill_auth_failure_cnt = 0;
+        sql_logfill_request_fail_cnt = 0;
         sql_finds++;
 
         if ((rc = cdb2_next_record(hndl)) != CDB2_OK) {
             if (gbl_debug_sql_logfill) {
                 logmsg(LOGMSG_USER, "%s: cdb2_next_record returned rc=%d\n", __func__, rc);
+            }
+            /* The master accepted the query but could not stream results (e.g.
+             * dropped the connection under load).  Count the connect/io class
+             * of errors here too; CDB2_OK_DONE and other benign codes are not
+             * matched by logfill_request_failed(). */
+            if (logfill_request_failed(rc)) {
+                increment_logfill_request_fail_cnt();
             }
             disconnect_from_master();
             return 0;
@@ -641,12 +705,32 @@ static void *sql_logfill_thread(void *arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     int desired, exiting;
+    int was_parked = 0;
 
     comdb2_name_thread(__func__);
     logmsg(LOGMSG_USER, "%s: starting sql-logfill-thread\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
 
-    while (!db_is_exiting() && !gbl_sql_logfill_auto_disabled) {
+    while (!db_is_exiting()) {
+        /* When auto-disabled we park rather than exit: the traditional
+         * fill-request path has taken over (sql_logfill_active() is now false),
+         * and an operator can clear gbl_sql_logfill_auto_disabled to resume.
+         * Drop any master connection and reset the failure counters so a resume
+         * starts fresh with a full threshold's worth of attempts. */
+        if (gbl_sql_logfill_auto_disabled) {
+            disconnect_from_master();
+            sql_logfill_auth_failure_cnt = 0;
+            sql_logfill_request_fail_cnt = 0;
+            was_parked = 1;
+            sleep(1);
+            continue;
+        }
+
+        if (was_parked) {
+            logmsg(LOGMSG_USER, "%s: resuming sql-logfill after auto-disable was cleared\n", __func__);
+            was_parked = 0;
+        }
+
         if (thedb->master != gbl_myhostname) {
             if (request_logs_from_master(bdb_state)) {
                 sleep(1);
@@ -687,7 +771,14 @@ static void *sql_apply_thread(void *arg)
     struct log_record copy = {0};
     logmsg(LOGMSG_USER, "%s: starting sql-apply-thread\n", __func__);
 
-    while (!db_is_exiting() && !gbl_sql_logfill_auto_disabled) {
+    while (!db_is_exiting()) {
+
+        /* Park (rather than exit) while auto-disabled so we can resume if an
+         * operator clears gbl_sql_logfill_auto_disabled. */
+        if (gbl_sql_logfill_auto_disabled) {
+            sleep(1);
+            continue;
+        }
 
         int apply_log = 0;
         Pthread_mutex_lock(&sql_apply_queue_lock);

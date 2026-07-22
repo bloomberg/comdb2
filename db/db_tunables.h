@@ -1472,11 +1472,16 @@ REGISTER_TUNABLE("sql_logfill_lookahead_records",
 REGISTER_TUNABLE("sql_logfill_next_timeout", "Max amount of time logfill blocked on transaction-logs.  (Default: 10)",
                  TUNABLE_INTEGER, &gbl_sql_logfill_next_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_logfill_auto_disabled",
-                 "Set to 1 when sql-logfill has been auto-disabled due to consecutive failures.  (Default: 0)",
-                 TUNABLE_INTEGER, (int *)&gbl_sql_logfill_auto_disabled, READONLY, NULL, NULL, NULL, NULL);
+                 "Set to 1 when sql-logfill has been auto-disabled due to consecutive failures; clear it to 0 to "
+                 "resume the parked sql-logfill threads.  (Default: 0)",
+                 TUNABLE_INTEGER, (int *)&gbl_sql_logfill_auto_disabled, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_logfill_autodisable_threshold",
                  "Disable sql-logfill after this many consecutive authentication failures.  (Default: 5)",
                  TUNABLE_INTEGER, &gbl_sql_logfill_autodisable_threshold, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_logfill_request_fail_autodisable_threshold",
+                 "Disable sql-logfill after this many consecutive failed log requests to a reachable master "
+                 "(e.g. all sql engines busy and queue full, surfaced as a connect/io error).  (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_sql_logfill_request_fail_autodisable_threshold, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("periodic_rep_report", "Report replication status every second.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_periodic_rep_report, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_always_grab_writelock", "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
