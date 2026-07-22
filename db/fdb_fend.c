@@ -143,6 +143,8 @@ struct fdb_tbl {
      */
     struct fdb *fdb;
 
+    int linked; /* 1 while linked in fdb hashes/list; guards free from dangling */
+
     int nix;        /* number of indexes */
     int ix_partial; /* is there partial index */
     int ix_expr;    /* is there expressions index */
@@ -1132,6 +1134,24 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
                 /* artificial corner case: no stat1 but stat4 */
                 _remove_table_stat(fdb, tbl, "sqlite_stat4");
             }
+        }
+
+        /* keep-first stat dedup: a concurrent thread may have collected and
+         * linked the shared stats while we were unlocked for the remote
+         * retrieval. If so, discard our freshly-built (not-yet-linked)
+         * duplicates and let the done: block reuse the already-linked
+         * generation via hash_find. This guarantees a single stat generation
+         * so every engine bakes the same rootpage (mirrors the main-table
+         * dedup above). Freeing here is safe: these stat tbls are not linked. */
+        if (link_stat1 && stat1 && hash_find_readonly(fdb->h_tbls_name, &sqlite_stat1)) {
+            _free_fdb_tbl(fdb, stat1);
+            stat1 = NULL;
+            link_stat1 = 0;
+        }
+        if (link_stat4 && stat4 && hash_find_readonly(fdb->h_tbls_name, &sqlite_stat4)) {
+            _free_fdb_tbl(fdb, stat4);
+            stat4 = NULL;
+            link_stat4 = 0;
         }
     }
 
@@ -4566,9 +4586,11 @@ static void _xlink_fdb_table(fdb_t *fdb, fdb_tbl_t *tbl, int add)
         tbl->fdb = fdb;
         listc_abl(&fdb->tables, tbl);
         hash_add(fdb->h_tbls_name, tbl);
+        tbl->linked = 1;
     } else {
         listc_rfl(&fdb->tables, tbl);
         hash_del(fdb->h_tbls_name, tbl);
+        tbl->linked = 0;
     }
 }
 static void _link_fdb_table(fdb_t *fdb, fdb_tbl_t *tbl)
@@ -5133,6 +5155,12 @@ int fdb_unlock_table(sqlclntstate *clnt, fdb_tbl_ent_t *ent)
 
         /* shared table changed, our table is stale */
         Pthread_rwlock_unlock(&our_table->table_lock);
+
+        /* defensive: a stale table must not reach the free path still linked, or
+         * _free_fdb_tbl would leave dangling ents in h_ents_rootp/h_ents_name.
+         * Normally the superseding thread already unlinked it (linked==0). */
+        if (our_table->linked)
+            _unlink_fdb_table(fdb, our_table);
 
         /* try to free it if we are the last reader */
         _try_free_fdb_tbl(fdb, our_table);
