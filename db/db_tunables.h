@@ -570,6 +570,10 @@ REGISTER_TUNABLE("fdb_watchdog_latency_sec",
                  &gbl_fdb_watchdog_latency_secs, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_watchdog_debug", "Introduces a long lock wait for fdb array to test fdb watchdog",
                  TUNABLE_INTEGER, &gbl_fdb_watchdog_debug, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_add_stat_delay_ms",
+                 "Testing only: sleep this many ms in the fdb schema/stats retrieval window to widen the "
+                 "stat-collection race. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_fdb_add_stat_delay_ms, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_watchdog_alerts", "Output only, reports how many fdb watchdog alerts were reported",
                  TUNABLE_INTEGER, &gbl_fdb_watchdog_alerts, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)", TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,

@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Reproduce the fdb stat-rootpage double-collection race and surface the
+# "unable to find rootpage" error (instead of crashing on comdb2_fdb_info).
+#
+# MAIN ($DBNAME)              = querying node (fdb race runs here; carries the
+#                               fdb_add_stat_delay_ms debug delay via lrl.options)
+# SECONDARY (srcdb$DBNAME)    = remote data source (tables t1..t4 + ANALYZE)
+#
+# Scenario:
+#   - Two connections C1/C2 (engines E1/E2) run concurrent first-touch queries
+#     for two DIFFERENT tables (t1, t2) while the fdb cache is empty. Both
+#     observe initial==1 in _add_table_and_stats_fdb() and each collects the
+#     shared sqlite_stat1/sqlite_stat4, allocating a fresh (never-reused)
+#     rootpage per collection. One engine's schema ends up holding stat
+#     rootpages that no longer match the winning generation in the fdb cache.
+#   - Each connection then prepares a query on a NEW remote table (t3/t4) on its
+#     same engine. That forces comdb2_dynamic_attach -> sqlite3AnalysisLoad,
+#     which opens a cursor on the stat rootpage recorded in the engine's schema.
+#     That rootpage is stale relative to the rebuilt client cache, so
+#     fdb_clnt_cache_get_ent() misses -> "unable to find rootpage".
+#
+# RED == reproduced. Fixed code keeps a single shared stat rootpage, so the
+# follow-up query on a new table finds it.
+################################################################################
+
+echo "main db vars"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    echo "$required=$q"
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+SRC_OPTS="${SECONDARY_CDB2_OPTIONS}"   # talk to the data-source db
+QRY_OPTS="${CDB2_OPTIONS}"             # talk to the querying db
+SEC="${SECONDARY_DBNAME}"
+
+# Pin every querying-node request to one host: the fdb cache is per-node.
+mach=$(cdb2sql --tabs ${QRY_OPTS} $DBNAME default "select comdb2_host()")
+echo "querying node = $mach"
+
+query() { cdb2sql ${QRY_OPTS} --host $mach $DBNAME "$@" ; }
+
+################################################################################
+# 1) Build the remote source: t1,t2 for the double-collect, plus t3,t4 as the
+#    "new" tables the follow-up queries attach. ANALYZE creates the shared
+#    sqlite_stat1/sqlite_stat4.
+################################################################################
+echo "Populating data source $SEC"
+for t in t1 t2 t3 t4 ; do
+    cdb2sql ${SRC_OPTS} $SEC default "create table ${t}(i int)" || exit 1
+    cdb2sql ${SRC_OPTS} $SEC default "create index ${t}ix on ${t}(i)" || exit 1
+    for i in $(seq 1 200) ; do echo "insert into ${t}(i) values($((i % 37)))" ; done | \
+        cdb2sql ${SRC_OPTS} $SEC default - >/dev/null || exit 1
+done
+cdb2sql ${SRC_OPTS} $SEC default "analyze" || exit 1
+
+################################################################################
+# 2) Two persistent connections. Each fires its first-touch query concurrently
+#    (double-collect), then -- on the SAME engine -- queries a NEW table so the
+#    re-attach runs analyze-load against the engine's (now stale) stat rootpage.
+#    The `select sleep(3)` between the two statements keeps the connection (and
+#    its engine) alive and lets both first-touch queries overlap first.
+################################################################################
+echo "Firing concurrent first-touch + follow-up new-table queries"
+rm -f q.out
+
+{
+    echo "select count(*) from LOCAL_${SEC}.t1"
+    echo "select sleep(3)"
+    echo "select count(*) from LOCAL_${SEC}.t3"
+} | timeout 60 cdb2sql ${QRY_OPTS} --host $mach $DBNAME - >> q.out 2>&1 &
+
+{
+    echo "select count(*) from LOCAL_${SEC}.t2"
+    echo "select sleep(3)"
+    echo "select count(*) from LOCAL_${SEC}.t4"
+} | timeout 60 cdb2sql ${QRY_OPTS} --host $mach $DBNAME - >> q.out 2>&1 &
+
+wait
+
+# Broader net: also hit pooled engines from fresh connections with new tables.
+for t in t3 t4 ; do
+    for n in 1 2 3 4 5 ; do
+        timeout 20 cdb2sql ${QRY_OPTS} --host $mach $DBNAME \
+            "select count(*) from LOCAL_${SEC}.${t}" >> q.out 2>&1
+    done
+done
+
+echo "==== query output (q.out) ===="
+cat q.out
+
+################################################################################
+# 3) Detect the race.  Primary signal: the "unable to find rootpage" family of
+#    errors.  We deliberately do NOT query comdb2_fdb_info (iterating the
+#    corrupted cache via that systable crashes the db and masks the error).
+################################################################################
+sigs='unable to find rootpage|failed to find table.*after init|unable to open database'
+dblogs=$(ls ${TESTDIR}/logs/${DBNAME}.db ${TESTDIR}/logs/${DBNAME}.*.db 2>/dev/null)
+
+fail=0
+if grep -Eq "$sigs" q.out 2>/dev/null || { [[ -n "$dblogs" ]] && grep -Eq "$sigs" $dblogs 2>/dev/null; } ; then
+    echo "RACE REPRODUCED: stale stat rootpage / schema-attach error detected"
+    grep -EH "$sigs" q.out $dblogs 2>/dev/null | head
+    fail=1
+fi
+if ! query "select 1" >/dev/null 2>&1 ; then
+    echo "RACE REPRODUCED: querying db is unavailable (crashed under the corrupted fdb cache)"
+    fail=1
+fi
+
+if (( fail )) ; then
+    echo "FAILURE"
+    exit 1
+fi
+
+echo "SUCCESS"
+exit 0

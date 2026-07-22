@@ -111,6 +111,7 @@ extern int gbl_fdb_track_hints;
 extern int gbl_fdb_watchdog_secs;
 extern int gbl_fdb_watchdog_latency_secs;
 extern int gbl_fdb_watchdog_debug;
+extern int gbl_fdb_add_stat_delay_ms;
 extern int gbl_fdb_watchdog_alerts;
 extern int gbl_forbid_ulonglong;
 extern int gbl_force_highslot;

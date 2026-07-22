@@ -90,6 +90,8 @@ int gbl_fdb_auth_enabled = 1;
 int gbl_fdb_remsql_cdb2api = 1;
 int gbl_fdb_emulate_old = 0;
 int gbl_fdb_watchdog_debug = 0;         /* keep fdbs mutex blocked for this many seconds for watchdog testing */
+int gbl_fdb_add_stat_delay_ms = 0;      /* testing only: sleep this many ms in the schema/stats retrieval window
+                                           to widen the stat-collection race in _add_table_and_stats_fdb */
 int gbl_fdb_watchdog_alerts = 0;        /* keep count of how many alerts were generated */
 int gbl_fdb_watchdog_secs = 60;         /* run watched every this number of seconds */
 int gbl_fdb_watchdog_latency_secs = 59; /* alert if ping takes longer */
@@ -1036,6 +1038,12 @@ static int _add_table_and_stats_fdb(sqlclntstate *clnt, sqlite3InitInfo *init, f
      * this can end up with redundant retries, but it will not block the hash during this time
      */
     Pthread_mutex_unlock(&fdb->tables_mtx);
+
+    /* testing only: widen the window between reading "initial" and re-linking so a
+     * second concurrent request for a different table also observes initial==1 and
+     * double-collects the shared stats (see gbl_fdb_add_stat_delay_ms) */
+    if (gbl_fdb_add_stat_delay_ms > 0 && initial)
+        poll(NULL, 0, gbl_fdb_add_stat_delay_ms);
 
     /* this COULD be taken out of tbls_mtx, but I want to clear table
        under lock so I don't add garbage table structures when mispelling

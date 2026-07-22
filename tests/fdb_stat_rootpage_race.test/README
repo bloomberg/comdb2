@@ -1,0 +1,45 @@
+fdb_stat_rootpage_race
+======================
+
+Reproduces a startup race in the foreign-db (remote sql) schema attach path,
+surfacing the exact error from the field:
+
+    fdb_cursor_open: unable to find rootpage <N>
+    comdb2_dynamic_attach: failed to find table "<t>" after init
+    sqlite3FindTable_int: failed to find table <db>.<t> rc=1 unable to open database: <db>
+
+Mechanism
+---------
+When the querying node's fdb cache is empty, two concurrent first-touch queries
+for DIFFERENT tables (t1 on engine E1, t2 on engine E2) both observe
+`initial == 1` in `_add_table_and_stats_fdb` (db/fdb_fend.c). Each independently
+collects the shared `sqlite_stat1`/`sqlite_stat4` tables and allocates its own
+(monotonic, never-reused) rootpage numbers via get_rootpage_numbers()
+(db/sqlmaster.c, `| 0x40000000`). The re-check under the re-acquired lock only
+dedups the MAIN table, not the stats, so two stat generations with different
+rootpages end up in the shared fdb cache. One engine's SQLite schema now holds
+stat rootpages that differ from the generation kept in the fdb name hash.
+
+Each connection then queries a NEW remote table (t3/t4) on its SAME engine.
+That forces `comdb2_dynamic_attach` -> `sqlite3InitOne` -> `sqlite3AnalysisLoad`,
+whose internal "SELECT ... FROM sqlite_stat1" opens a cursor on the stat rootpage
+recorded in the engine's schema. That rootpage is stale relative to the client
+cache rebuilt for this prepare, so `fdb_clnt_cache_get_ent()` misses and the
+attach fails with "unable to find rootpage". The db stays up (no crash).
+
+Discriminator (why this is specifically the stat double-collection)
+-------------------------------------------------------------------
+  - concurrent queries to the SAME table  -> SUCCESS: the existing main-table
+    dedup catches it; a single sqlite_stat1 rootpage remains.
+  - concurrent queries to DIFFERENT tables -> the second engine keeps a stale
+    stat rootpage, and its follow-up new-table query fails as above.
+
+Determinism
+-----------
+The race is widened by the INTERNAL, test-only tunable `fdb_add_stat_delay_ms`
+(set in lrl.options); it is 0 (a no-op) in production. Note: querying
+comdb2_fdb_info against the corrupted cache CRASHES the db, so the test avoids
+that systable and detects the error via the client rc / db log instead.
+
+RED == reproduced. The fix (dedup the stat tables before linking, like the main
+table) keeps one shared stat rootpage and the follow-up new-table query finds it.
