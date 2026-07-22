@@ -1,0 +1,14 @@
+# Enable sql_logfill (READONLY - must be set at startup)
+sql_logfill 1
+sql_logfill_debug 1
+
+# Auto-disable after this many consecutive failed log requests to a saturated
+# master.  Kept low so the test trips quickly.
+sql_logfill_request_fail_autodisable_threshold 3
+
+# Enable the query-prioritization ruleset engine so we can make the master
+# reject the logfill query (simulating "all sql engines busy, queue full").
+prioritize_queries 1
+verbose_prioritize_queries 1
+
+logmsg level debug

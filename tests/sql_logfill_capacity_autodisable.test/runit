@@ -1,0 +1,298 @@
+#!/usr/bin/env bash
+#
+# Reproduces the condition where the master's sql engines are all busy and the
+# dispatch queue is full: the master rejects the logfill's
+# comdb2_transaction_logs() request.  Previously the logfill thread would keep
+# hammering the saturated master forever; now it auto-disables after
+# gbl_sql_logfill_request_fail_autodisable_threshold consecutive failed requests
+# and falls back to the traditional fill-request path.
+#
+# We make the rejection deterministic (instead of racing real pool saturation)
+# by loading a query-prioritization ruleset on the master that REJECTs any
+# query against comdb2_transaction_logs.  A ruleset REJECT is delivered to the
+# client as CDB2ERR_REJECTED -- exactly the error a full sql queue produces.
+# That code is retryable, so the cdb2 client retries it and surfaces it to the
+# logfill as a connect/io error; the logfill counts those and auto-disables.
+#
+# Because send_rep_all_req()/send_rep_log_req() are suppressed while sql_logfill
+# is active, the gap on a behind replicant cannot close via normal replication
+# until logfill auto-disables.  That makes the failure count climb reliably to
+# the threshold with no timing race.
+#
+# Phase 2 then frees the ruleset, clears the (now writable) auto-disable tunable
+# at runtime, and confirms the parked logfill thread resumes instead of staying
+# dead until a restart.
+
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+
+RULESET_NAME="reject_logfill.ruleset"
+DISABLE_MSG="auto-disabling sql logfill after .* consecutive request failures"
+
+cnt=$(echo $CLUSTER | wc -w)
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    failexit "This test requires a clustered installation of at least 3 nodes"
+fi
+
+# Copy the reject ruleset to every node and load it.  Only the master enforces
+# it (the logfill query runs there), but we load it everywhere so the test is
+# robust to a master change.
+function distribute_and_load_ruleset {
+    for node in $CLUSTER; do
+        if [[ "$node" == "$(hostname)" ]]; then
+            mkdir -p "$DBDIR/rulesets/"
+            cp "$RULESET_NAME" "$DBDIR/rulesets/" || failexit "cp ruleset failed"
+        else
+            ssh -n -o StrictHostKeyChecking=no "$node" "mkdir -p $DBDIR/rulesets/" </dev/null \
+                || failexit "mkdir rulesets on $node failed"
+            scp -o StrictHostKeyChecking=no "$RULESET_NAME" "$node:$DBDIR/rulesets/" \
+                || failexit "scp ruleset to $node failed"
+        fi
+    done
+
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$node" \
+            "exec procedure sys.cmd.send('reload_ruleset $DBDIR/rulesets/$RULESET_NAME')" \
+            || failexit "Failed to load ruleset on $node"
+    done
+}
+
+# Confirm the reproduction condition: the master rejects a comdb2_transaction_logs
+# query (the exact query the logfill thread runs).  The client retries the
+# retryable REJECTED code and ultimately reports a connect/io error, so we don't
+# assert on the client error string; instead we assert the probe failed and that
+# the master logged the ruleset rejection.
+function verify_master_rejects_logfill_query {
+    local master=$1
+    local out rc
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$master" \
+        "select count(*) from comdb2_transaction_logs(NULL, NULL, 4)" 2>&1)
+    rc=$?
+    echo "  transaction_logs probe: rc=$rc out=[$out]"
+    if [[ $rc -eq 0 ]]; then
+        stop_all_nodes
+        failexit "Expected master to REJECT the comdb2_transaction_logs query, but it succeeded"
+    fi
+
+    # verbose_prioritize_queries logs the ruleset rejection on the master.
+    local mlog="${TESTDIR}/logs/${DBNAME}.${master}.db"
+    local elapsed=0
+    while [[ $elapsed -lt 20 ]]; do
+        if grep -qiE "REJECTED.*comdb2_transaction_logs|Rejected due to rule" "$mlog" 2>/dev/null; then
+            echo "  OK: master's ruleset rejects the logfill query (reproduction condition set up)"
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    stop_all_nodes
+    failexit "Probe failed (rc=$rc) but master log shows no ruleset rejection: $mlog"
+}
+
+# Start a single (already-stopped) cluster node.  Mirrors kill_restart_node's
+# start branch; we need to start the victim *after* advancing the log so it comes
+# back with a gap.
+function start_node {
+    local node=$1
+    local LOGDIR=$TESTDIR/logs
+    local REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    local PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+
+    pushd "$DBDIR" >/dev/null
+    mv --backup=numbered "$LOGDIR/${DBNAME}.${node}.db" "$LOGDIR/${DBNAME}.${node}.db.1" 2>/dev/null
+    if [[ "$node" == "$(hostname)" ]]; then
+        $COMDB2_EXE ${DBNAME} ${PARAMS} &> "$LOGDIR/${DBNAME}.${node}.db" &
+    else
+        local CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS}"
+        ssh -n -o StrictHostKeyChecking=no -tt "$node" ${CMD} &> "$LOGDIR/${DBNAME}.${node}.db" &
+        echo $! > "${TMPDIR}/${DBNAME}.${node}.pid"
+    fi
+    popd >/dev/null
+}
+
+# Advance the log on the master well past the (down) victim, creating a real gap.
+function advance_log {
+    local master=$1
+    echo "Advancing the log on $master to open a gap"
+    # Keep each insert under the default maxosqltransfer (50000 record
+    # modifications per transaction), or the master rejects it with
+    # "transaction too big" before we ever reach the logfill saturation path.
+    for i in $(seq 1 5); do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$master" \
+            "insert into t1 select * from generate_series(1, 40000)" >/dev/null \
+            || failexit "insert to advance log failed"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$master" \
+            "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
+    done
+}
+
+# Poll the victim's log for the request-failure auto-disable message.
+function wait_for_reject_autodisable {
+    local node=$1
+    local timeout=${2:-120}
+    local logfile="${TESTDIR}/logs/${DBNAME}.${node}.db"
+    local elapsed=0
+    echo "Waiting up to ${timeout}s for auto-disable on $node ($logfile)"
+    while [[ $elapsed -lt $timeout ]]; do
+        if grep -qE "$DISABLE_MSG" "$logfile" 2>/dev/null; then
+            echo "  FOUND auto-disable message:"
+            grep -E "$DISABLE_MSG" "$logfile" | tail -1
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    return 1
+}
+
+# After auto-disable, normal replication resumes and the victim should catch up.
+function wait_for_victim_catchup {
+    local node=$1
+    local expected=$2
+    local timeout=${3:-120}
+    local elapsed=0
+    echo "Waiting up to ${timeout}s for $node to catch up to $expected rows"
+    while [[ $elapsed -lt $timeout ]]; do
+        local got
+        got=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db --host "$node" \
+            "select count(*) from t1" 2>/dev/null)
+        if [[ "$got" =~ ^[0-9]+$ ]] && [[ "$got" == "$expected" ]]; then
+            echo "  $node caught up ($got rows)"
+            return 0
+        fi
+        echo "  $node has $got / $expected rows..."
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    return 1
+}
+
+# Phase 2: prove the auto-disable is recoverable at runtime.  Free the ruleset
+# so the master will service logfill again, clear the (now non-READONLY)
+# gbl_sql_logfill_auto_disabled tunable on the victim, and confirm the parked
+# logfill thread resumes rather than staying dead until a restart.
+function run_resume_test {
+    local victim=$1
+    echo "=== Phase 2: clearing auto-disable and verifying resume on $victim ==="
+
+    # Master should stop rejecting the logfill query.
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$node" \
+            "exec procedure sys.cmd.send('free_ruleset')" >/dev/null 2>&1
+    done
+
+    local val
+    val=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db --host "$victim" \
+        "select value from comdb2_tunables where name='sql_logfill_auto_disabled'" 2>/dev/null)
+    echo "  victim sql_logfill_auto_disabled before clear: [$val]"
+
+    # Clear it at runtime -- this only succeeds because the fix made the tunable
+    # writable (it was previously READONLY).
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$victim" \
+        "put tunable 'sql_logfill_auto_disabled' 0" \
+        || { stop_all_nodes; failexit "failed to clear sql_logfill_auto_disabled on $victim"; }
+
+    # The authoritative proof of resume: the parked thread logs this only when it
+    # observes the flag cleared and re-enters its work loop.  If the flag had not
+    # actually cleared, the thread would stay parked and never log it.
+    local vlog="${TESTDIR}/logs/${DBNAME}.${victim}.db"
+    local elapsed=0
+    while [[ $elapsed -lt 60 ]]; do
+        if grep -qE "resuming sql-logfill after auto-disable was cleared" "$vlog" 2>/dev/null; then
+            echo "  OK: parked sql-logfill thread resumed after the flag was cleared"
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    stop_all_nodes
+    failexit "sql-logfill did not resume on $victim after clearing auto-disable: $vlog"
+}
+
+function run_test {
+    echo "=== sql_logfill reject auto-disable test ==="
+
+    local master=$(get_master)
+    echo "Initial master: $master"
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$master" "drop table if exists t1" >/dev/null 2>&1
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host "$master" "create table t1 (id int)" \
+        || failexit "Failed to create table t1"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db default \
+        "insert into t1 select * from generate_series(1, 1000)" \
+        || failexit "Failed to seed t1"
+    wait_for_cluster
+
+    echo "=== Loading reject ruleset on all nodes ==="
+    distribute_and_load_ruleset
+
+    master=$(get_master)
+    verify_master_rejects_logfill_query "$master"
+
+    # Pick a non-master victim replicant.
+    local victim=""
+    for node in $CLUSTER; do
+        if [[ "$node" != "$master" ]]; then
+            victim=$node
+            break
+        fi
+    done
+    [[ -z "$victim" ]] && failexit "Could not pick a non-master victim node"
+    echo "Victim replicant: $victim"
+
+    echo "=== Stopping victim, advancing log, restarting victim behind ==="
+    kill_by_pidfile "${TMPDIR}/${DBNAME}.${victim}.pid"
+
+    advance_log "$master"
+    local expected
+    expected=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db --host "$master" \
+        "select count(*) from t1")
+    echo "Master row count after advance: $expected"
+    # Guard against an empty/garbage read: a blank $expected would let the
+    # catch-up check below match a blank victim read ("" == "") and pass falsely.
+    if ! [[ "$expected" =~ ^[0-9]+$ ]] || (( expected <= 1000 )); then
+        stop_all_nodes
+        failexit "Unexpected master row count after advance: [$expected]"
+    fi
+
+    start_node "$victim"
+    waitmach "$victim"
+
+    echo "=== Waiting for victim logfill to auto-disable on rejections ==="
+    if ! wait_for_reject_autodisable "$victim" 120; then
+        stop_all_nodes
+        failexit "victim $victim did not auto-disable sql_logfill on rejections"
+    fi
+
+    # Prove the auto-disable was driven by the master rejecting the logfill's
+    # comdb2_transaction_logs request (not by an unrelated connect blip): with
+    # sql_logfill_debug on, request_logs_from_master logs the failed run of that
+    # query.  (select 1 is not matched by the ruleset, so the connect succeeds.)
+    local vlog="${TESTDIR}/logs/${DBNAME}.${victim}.db"
+    if ! grep -qE "request_logs_from_master: cdb2_run_statement failed" "$vlog" 2>/dev/null; then
+        stop_all_nodes
+        failexit "victim auto-disabled but log shows no failed comdb2_transaction_logs request: $vlog"
+    fi
+    echo "  OK: auto-disable was driven by the rejected logfill request"
+
+    echo "=== Verifying victim recovers via normal replication after auto-disable ==="
+    if ! wait_for_victim_catchup "$victim" "$expected" 120; then
+        stop_all_nodes
+        failexit "victim $victim did not catch up after logfill auto-disabled"
+    fi
+
+    run_resume_test "$victim"
+
+    echo "=== Test completed successfully ==="
+}
+
+run_test
+stop_all_nodes
+echo "Success"
