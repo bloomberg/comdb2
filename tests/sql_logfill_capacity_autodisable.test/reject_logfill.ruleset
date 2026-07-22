@@ -1,0 +1,6 @@
+version 1
+
+rule 1 action REJECT
+rule 1 flags {PRINT STOP}
+rule 1 mode {REGEXP NOCASE}
+rule 1 sql .*comdb2_transaction_logs.*
