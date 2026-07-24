@@ -108,7 +108,11 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
   sqlite3 *db = pData->db;
   int iDb = pData->iDb;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( argc==6 );   /* comdb2 sqlite_master has an extra `csc2` column */
+#else
   assert( argc==5 );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   UNUSED_PARAMETER2(NotUsed, argc);
   assert( sqlite3_mutex_held(db->mutex) );
   db->mDbFlags |= DBFLAG_EncodingFixed;
