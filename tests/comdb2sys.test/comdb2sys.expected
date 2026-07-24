@@ -352,6 +352,7 @@
 (name='recovery_processors')
 (name='recovery_workers')
 (name='sqlenginepool')
+(name='systemsqlpool')
 (name='udppfaultpool')
 [SELECT name FROM comdb2_threadpools ORDER BY name] rc 0
 (COUNT(*)=1=0)

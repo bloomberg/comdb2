@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+TESTSBUILDDIR=${TESTSBUILDDIR:-$(dirname $0)/../../build/tests/tools}
+
+set -e
+set -x
+
+dbname=$1
+shift
+
+export COMDB2_CONFIG_USE_ENV_VARS=1
+export COMDB2_CONFIG_DEFAULT_TYPE=local
+export COMDB2_FEATURE_IAM_IDENTITY=on
+export COMDB2_FEATURE_DISCARD_UNREAD_SOCKET_DATA=off
+
+cdb2sql="${TESTSBUILDDIR}/simpleauth_test"
+
+$cdb2sql $dbname "default_principal" "select * from comdb2_ruleset order by ruleid" > out
+
+# set max pool size to 1 to running out of max possible active connections
+$cdb2sql $dbname "default_principal" "exec procedure sys.cmd.send('sqlenginepool maxt 1')"
+
+# run a query that'll eat up the only available thread
+$cdb2sql $dbname "default_principal" "select sleep(10)" &
+$cdb2sql $dbname "default_principal" "select sleep(10)" &
+
+# wait for the query to start - overly conservative
+sleep 1
+
+# this fails (times out) because the only available thread is being used by the previous query
+timeout 5 $cdb2sql $dbname local "select 1" >> out 2>&1 || (echo timed out >>out; true)
+
+# this is in the system pool and doesn't time out
+timeout 5 cdb2sql $dbname local - >>out 2>&1 <<EOF
+@bind CDB2_CSTRING a singlemeta
+SELECT value FROM comdb2_tunables WHERE name=@a
+EOF
+
+# wait for the thread pool blockers to finish so we can use the database normally again
+wait
+
+cdb2sql $dbname "exec procedure sys.cmd.send('reload_ruleset $(pwd)/deny_ruleset')"
+
+$cdb2sql $dbname "default_principal" "select * from comdb2_ruleset order by ruleid" >>out 2>&1
+
+$cdb2sql $dbname "default_principal" "select 1" >>out 2>&1
+$cdb2sql $dbname "imposter" "select 1" >>out 2>&1 || true
+
+diff expected out

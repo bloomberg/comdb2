@@ -1356,7 +1356,7 @@ struct connection_info {
     char *common_name; /* common name in the certificate */
     char common_name_str[ub_common_name];
     char *identity;
-    char *pool;
+    char *pool_name;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
@@ -1534,7 +1534,6 @@ void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
 #define SQL_POOL_NAMED_MAX_THREADS    (1)
 #define SQL_POOL_LINGER_SECS          (30) /* 30 seconds */
 #define SQL_POOL_DEFLT_MAXQ_OVERRIDE  (500)
-#define SQL_POOL_NAMED_MAXQ_OVERRIDE  (500)
 #define SQL_POOL_MAXQ_AGE_MS          (5 * 60 * 1000) /* 5 minutes */
 #define SQL_POOL_STOP_TIMEOUT_US      (5000000) /* 5 seconds */
 
