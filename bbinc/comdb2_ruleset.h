@@ -146,7 +146,10 @@ struct ruleset_item_criteria {
                                    * If not NULL this will be matched using
                                    * memcmp(). */
 
-  char *zIdentity;
+  char *zIdentity; /* Obtained via "clnt->plugins->get_identity()".
+                      If not NULL this pattern will be matched
+                      against the actual value using the
+                      semantics of the specified match mode. */
 };
 
 struct ruleset_item_criteria_cache {

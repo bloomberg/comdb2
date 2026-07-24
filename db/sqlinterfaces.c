@@ -3386,6 +3386,17 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         rc = ERR_SQL_PREPARE;
     }
     if (rc) {
+        /*
+        ** The pre-dispatch fingerprint preview (see
+        ** preview_and_calc_fingerprint) may have populated the original
+        ** normalized SQL and fingerprint so that dispatch could route this
+        ** query to a named SQL pool.  A successful prepare replaces both via
+        ** prepare_fingerprint(); a failed prepare does not.  Discard the
+        ** preview fingerprint here so that invalid SQL continues to be logged
+        ** with the all-zero fingerprint, matching historical behavior.
+        */
+        free_original_normalized_sql(clnt);
+        memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
         _prepare_error(thd, clnt, rec, rc, err);
     } else {
         clnt->verify_remote_schemas = 0;
@@ -6655,7 +6666,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->uuid = malloc(strlen(us) + 1);
     snprintf(c->uuid, strlen(us) + 1, "%s", us);
     c->is_canceled = clnt->discard_this;
-    c->pool = clnt->pPool ? thdpool_name(clnt->pPool) : NULL;
+    c->pool_name = clnt->pPool ? thdpool_name(clnt->pPool) : NULL;
 }
 
 static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)

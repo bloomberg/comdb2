@@ -1,0 +1,23 @@
+version 2
+pool systemsqlpool threads 32
+
+# sql_logfill - select lsn, generation, payload from comdb2_transaction_logs(?, ?, ?, ?)",
+rule 1 action SET_POOL
+rule 1 pool systemsqlpool
+rule 1 fingerprint x'14d532803022f07f6a9db4caaffdaa75'
+
+# where_comdb2
+# SELECT host,is_master,coherent_state FROM comdb2_cluster ORDER BY CASE is_master WHEN?THEN?ELSE?END;
+rule 2 action SET_POOL
+rule 2 pool systemsqlpool
+rule 2 fingerprint x'ebf7f5d84127ec96341ca52ed9a9797e'
+
+# SELECT comdb2_semver()
+rule 3 action SET_POOL
+rule 3 pool systemsqlpool
+rule 3 fingerprint x'512ec5eacc7776e1878a42258b635124'
+
+# 04/22 22:16:04:   fp=7549f81f7876a39f5b218547590760e2 sql="SELECT value FROM comdb2_tunables WHERE name=?;"
+rule 4 action SET_POOL
+rule 4 pool systemsqlpool
+rule 4 fingerprint x'7549f81f7876a39f5b218547590760e2'

@@ -1,0 +1,4 @@
+version 2
+
+rule 1 action REJECT_ALL
+rule 1 identity imposter

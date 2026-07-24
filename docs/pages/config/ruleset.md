@@ -16,13 +16,8 @@ desired, one (or more) ruleset files may be loaded automatically on startup by
 using `do` directives in the [LRL file](config_files.md#lrl-files), e.g.:
 
 ```
-strict_double_quotes 1
 do reload_ruleset /full/path/to/the/file.ruleset
 ```
-
-In the above example, use of the `strict_double_quotes` tunable is optional;
-however, it will permit loaded ruleset files to make use of the `fingerprint`
-property.
 
 A ruleset file consists of optional blank lines, optional comment lines, a
 required file header, optional thread pool definition lines, and optional
@@ -110,13 +105,6 @@ The supported set of property names and their required formats is:
 |user           | Any pattern string suitable for match mode.  May not contain whitespace. |
 |sql            | Any pattern string suitable for match mode.  May contain whitespace. |
 |fingerprint    | SQLite compatible BLOB, with a size of exactly sixteen (16) bytes, as string literal, e.g. `x'0123456789abcdef0123456789abcdef'`. |
-
-### SQL query fingerprints
-
-In order to successfully make use of the `fingerprint` property in rule
-definitions, the `strict_double_quotes` tunable must be enabled.  This is
-necessary to ensure internal consistency with the fingerprints calculated
-by threads that do not have access to the SQL query preparation subsystem.
 
 ### Flags syntax
 

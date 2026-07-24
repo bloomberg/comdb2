@@ -18,6 +18,7 @@ set(module plugins)
 set(MODULE PLUGINS)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_plugins.h @ONLY)
 
+add_subdirectory(builtin_ruleset)
 add_subdirectory(dbqueuedb)
 add_subdirectory(logdelete)
 add_subdirectory(newsql)
