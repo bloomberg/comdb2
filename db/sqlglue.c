@@ -5923,23 +5923,6 @@ done:
 }
 
 /*
- ** Return non-zero if a transaction is active.
- */
-int sqlite3BtreeIsInTrans(Btree *pBt)
-{
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = (thd && thd->clnt) ? thd->clnt->intrans : 0;
-
-/* UNIMPLEMENTED */
-/* FIXME TODO XXX #if 0'ed out the foll */
-#if 0
-   reqlog_logf(pBt->reqlogger, REQL_TRACE, "IsInTrans(pBt %d)      = %s\n",
-         pBt->btreeid, rc ? "yes" : "no");
-#endif
-    return rc;
-}
-
-/*
  ** Return the value of the 'auto-vacuum' property. If auto-vacuum is
  ** enabled 1 is returned. Otherwise 0.
  */
@@ -11661,12 +11644,28 @@ void print_cooked_access(BtCursor *pCur, int col)
 #endif
 
 /*
- ** Return non-zero if a read (or write) transaction is active.
+ ** Return the current transaction state of the Btree: one of
+ ** SQLITE_TXN_NONE, SQLITE_TXN_READ, or SQLITE_TXN_WRITE.
+ **
+ ** comdb2 does not distinguish read vs write at this layer, so an
+ ** active transaction is reported as WRITE.
  */
-int sqlite3BtreeIsInReadTrans(Btree *p)
+int sqlite3BtreeTxnState(Btree *p)
 {
-    /* TODO: called where? need? */
-    return sqlite3BtreeIsInTrans(p);
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    int intrans = (thd && thd->clnt) ? thd->clnt->intrans : 0;
+    return intrans ? SQLITE_TXN_WRITE : SQLITE_TXN_NONE;
+}
+
+/*
+ ** Return the page number of the last page in the database file.
+ **
+ ** comdb2 has no fixed-size paged file; return 0 ("no limit"), which
+ ** disables the upstream rootpage bounds check in sqlite3InitCallback.
+ */
+Pgno sqlite3BtreeLastPage(Btree *p)
+{
+    return 0;
 }
 
 int sqlite3BtreeIsInBackup(Btree *p)
