@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Verify that cdb2_sqlreplay skips 'PUT TUNABLE externalauth' by default, and
+# replays it when --replay-externalauth is given.  We assert on the tool's own
+# (verbose) behavior rather than flipping externalauth on a live db, since
+# enabling externalauth can break connectivity for a db with no auth backend.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+CDB2_SQLREPLAY_EXE=${CDB2_SQLREPLAY_EXE:-${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay}
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 { schema { int id } }"
+
+# Build a replay log.  Each line is one JSON event as emitted by the event
+# logger.  We interleave marker inserts with several 'put tunable externalauth'
+# variants (quoted, uppercase) plus a similarly-named tunable that must NOT be
+# skipped (externalauth_warn).
+cat > replay.log <<'EOF'
+{"type":"sql","time":1,"sql":"insert into t1(id) values(1)"}
+{"type":"sql","time":2,"sql":"put tunable externalauth 'off'"}
+{"type":"sql","time":3,"sql":"PUT TUNABLE externalauth 'off'"}
+{"type":"sql","time":4,"sql":"put tunable externalauth_warn 'off'"}
+{"type":"sql","time":5,"sql":"insert into t1(id) values(2)"}
+EOF
+
+########################################################################
+# Default behavior: externalauth statements are skipped.
+########################################################################
+echo "=== default replay (externalauth should be skipped) ==="
+${CDB2_SQLREPLAY_EXE} --verbose ${DBNAME} replay.log > default.out 2>&1
+cat default.out
+
+# Both externalauth variants must be skipped ...
+skipped=$(grep -c "^skipping.*externalauth" default.out)
+assertres $skipped 2
+
+# ... and the executed (bare) sql line for them must be absent.
+ran=$(grep -c "^put tunable externalauth 'off'$" default.out)
+assertres $ran 0
+ran=$(grep -c "^PUT TUNABLE externalauth 'off'$" default.out)
+assertres $ran 0
+
+# The lookalike tunable must NOT be skipped.
+skippedwarn=$(grep -c "skipping.*externalauth_warn" default.out)
+assertres $skippedwarn 0
+
+# Replay must continue past the skipped statements: both markers inserted.
+cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default "select count(*) from t1")
+assertres $cnt 2
+
+########################################################################
+# --replay-externalauth: externalauth statements are replayed.
+########################################################################
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "truncate t1"
+
+echo "=== replay with --replay-externalauth (externalauth should run) ==="
+${CDB2_SQLREPLAY_EXE} --verbose --replay-externalauth ${DBNAME} replay.log > allow.out 2>&1
+cat allow.out
+
+# Nothing should be skipped now.
+skipped=$(grep -c "^skipping" allow.out)
+assertres $skipped 0
+
+# The externalauth statements must actually be handed to the server (verbose
+# prints the bare sql line right before running it).
+ran=$(grep -c "^put tunable externalauth 'off'$" allow.out)
+assertres $ran 1
+ran=$(grep -c "^PUT TUNABLE externalauth 'off'$" allow.out)
+assertres $ran 1
+
+# Every replayed statement (including externalauth) executed without error.
+errs=$(grep -c "Error: run rc" allow.out)
+assertres $errs 0
+
+# Connection stays healthy and markers still replay.
+cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default "select count(*) from t1")
+assertres $cnt 2
+
+echo "Success"
+exit 0
