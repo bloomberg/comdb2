@@ -1297,6 +1297,25 @@ static int iam_base_bri_update(void *context, void *value)
     return 0;
 }
 
+static int externalauth_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int *)value;
+    logmsg(LOGMSG_USER, "%s called with value %d\n", __func__, val);
+    if (val && gbl_fullrecovery) {
+        logmsg(LOGMSG_USER, "External authentication cannot be enabled during full recovery; "
+                            "leaving it disabled\n");
+        val = 0;
+    }
+    if (val) {
+        logmsg(LOGMSG_USER, "External authentication enabled\n");
+    } else {
+        logmsg(LOGMSG_USER, "External authentication disabled\n");
+    }
+    *(int *)tunable->var = val;
+    return 0;
+}
+
 static void *file_permissions_value(void *context)
 {
     static char val[15];
