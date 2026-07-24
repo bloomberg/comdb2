@@ -50,6 +50,7 @@ std::map<std::string, std::list<cson_value*>> transactions;
 
 bool diffs = false;
 bool verbose = false;
+bool replay_externalauth = false; /* skip 'PUT TUNABLE externalauth' by default */
 int threshold_percent = 5;
 
 int64_t maxevents = 0;
@@ -64,6 +65,8 @@ static const char *usage_text =
     "  --verbose              Lots of verbose output\n"
     "  --threshold N          Set diff threshold to N% (default 5)\n"
     "  --stopat N             Stop after N events processed\n"
+    "  --replay-externalauth  Replay 'PUT TUNABLE externalauth' statements\n"
+    "                         (skipped by default)\n"
     "\n"
     ;
 
@@ -699,6 +702,26 @@ void dump_sql_event(cson_value *event) {
     printf("tranid 0 %s", sql.c_str());
 }
 
+/* Detect a 'PUT TUNABLE externalauth ...' statement (case-insensitive). The
+   tunable name may optionally be quoted, e.g. put tunable 'externalauth' 1. */
+static bool is_put_tunable_externalauth(const char *sql) {
+    if (sql == nullptr)
+        return false;
+    std::string s(sql);
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    std::istringstream iss(s);
+    std::vector<std::string> toks;
+    std::string tok;
+    while (iss >> tok)
+        toks.push_back(tok);
+    if (toks.size() < 3 || toks[0] != "put" || toks[1] != "tunable")
+        return false;
+    std::string name = toks[2];
+    if (name.size() >= 2 && (name.front() == '\'' || name.front() == '"'))
+        name = name.substr(1, name.size() - 2);
+    return name == "externalauth";
+}
+
 void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     const char *sql = get_strprop(event_val, "sql");
     if(sql == nullptr) {
@@ -713,6 +736,12 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
 		    return;
 	    }
 	    sql = (*s).second.c_str();
+    }
+
+    if (!replay_externalauth && is_put_tunable_externalauth(sql)) {
+        if (verbose)
+            std::cout << "skipping (use --replay-externalauth to replay): " << sql << std::endl;
+        return;
     }
 
     std::vector<uint8_t *> blobs_vect;
@@ -1126,6 +1155,8 @@ int main(int argc, char **argv) {
             }
             threshold_percent = (int) strtol(argv[0], nullptr, 10);
         }
+        else if (strcmp(argv[0], "--replay-externalauth") == 0)
+            replay_externalauth = true;
         else if (strcmp(argv[0], "--stopat") == 0) {
             argc--;
             argv++;
