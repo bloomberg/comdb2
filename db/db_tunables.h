@@ -2438,8 +2438,8 @@ REGISTER_TUNABLE("allow_old_authn", "Reuse old successful authentication for the
                  TUNABLE_BOOLEAN, &gbl_allow_old_authn, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY, NULL, NULL,
+                 externalauth_update, NULL);
 
 REGISTER_TUNABLE("externalauth_connect", "Check for externalauth only once on connect", TUNABLE_BOOLEAN,
                  &gbl_uses_externalauth_connect, NOARG | READEARLY, NULL, NULL, NULL, NULL);
