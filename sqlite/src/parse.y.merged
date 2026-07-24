@@ -1438,14 +1438,21 @@ cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES return
 // avoid unreachable code.
 //%destructor upsert {sqlite3UpsertDelete(pParse->db,$$);}
 upsert(A) ::= . { A = 0; }
-%ifndef SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+// Disallow RETURNING and chained ON CONFLICT clauses.
+upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW)
+              DO UPDATE SET setlist(Z) where_opt(W).
+              { A = sqlite3UpsertNew(pParse->db,T,TW,Z,W,0);}
+upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW) DO NOTHING.
+              { A = sqlite3UpsertNew(pParse->db,T,TW,0,0,0); }
+%else !SQLITE_BUILDING_FOR_COMDB2
 upsert(A) ::= RETURNING selcollist(X).  { A = 0; sqlite3AddReturning(pParse,X); }
-%endif !SQLITE_BUILDING_FOR_COMDB2
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW)
               DO UPDATE SET setlist(Z) where_opt(W) upsert(N).
               { A = sqlite3UpsertNew(pParse->db,T,TW,Z,W,N);}
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW) DO NOTHING upsert(N).
               { A = sqlite3UpsertNew(pParse->db,T,TW,0,0,N); }
+%endif SQLITE_BUILDING_FOR_COMDB2
 upsert(A) ::= ON CONFLICT DO NOTHING returning.
               { A = sqlite3UpsertNew(pParse->db,0,0,0,0,0); }
 upsert(A) ::= ON CONFLICT DO UPDATE SET setlist(Z) where_opt(W) returning.
