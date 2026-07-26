@@ -83,6 +83,14 @@ struct fieldopt {
     } value;
 };
 
+enum pd_flags { PERIOD_SYSTEM = 0, PERIOD_BUSINESS = 1, PERIOD_MAX = 2 };
+
+struct period {
+    int enable;
+    int start;
+    int end;
+};
+
 enum ct_flags {
     CT_UPD_CASCADE = 0x00000001,
     CT_DEL_CASCADE = 0x00000002,
