@@ -70,8 +70,8 @@ typedef struct __cipher {
 #define	DB_AES_CHUNK	16	/* AES byte unit size */
 
 typedef struct __aes_cipher {
-	AES_KEY	decrypt_key;	/* Decryption key instance */
-	AES_KEY	encrypt_key;	/* Encryption key instance */
+    EVP_CIPHER_CTX *encrypt_ctx;
+    EVP_CIPHER_CTX *decrypt_ctx;
 } AES_CIPHER;
 
 #include "dbinc_auto/crypto_ext.h"
