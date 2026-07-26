@@ -951,6 +951,13 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, COMDB2BUF *sb,
     iq->debug_buf[0] = '\0';
     iq->tzname[0] = '\0';
 
+    /* partition_shards lives in region 2 and must be explicitly initialized */
+    if (gbl_partition_unique_debug && iq->partition_shards)
+        logmsg(LOGMSG_USER, "%s: [master] freeing partition_shards nshards=%d\n", __func__, iq->npartition_shards);
+    free(iq->partition_shards);
+    iq->partition_shards = NULL;
+    iq->npartition_shards = 0;
+
     iq->where = "setup";
     iq->frommach = frommach ? intern(frommach) : NULL;
     iq->frompid = frompid;

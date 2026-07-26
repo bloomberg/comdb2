@@ -5173,6 +5173,17 @@ clipper_usage:
         bdb_del_seqno(NULL);
     } else if (tokcmp(tok, ltok, "clear_sc_history") == 0) {
         bdb_clear_sc_history();
+    } else if (tokcmp(tok, ltok, "clear_lock_stats") == 0) {
+        extern long long gbl_lockreqs_deadlocked;
+        extern long long gbl_lockreqs_in_pdt;
+        extern long long gbl_dka_calls;
+        extern long long gbl_cross_shard_calls;
+        bdb_reset_lock_counters(thedb->bdb_env);
+        gbl_lockreqs_deadlocked = 0;
+        gbl_lockreqs_in_pdt = 0;
+        gbl_dka_calls = 0;
+        gbl_cross_shard_calls = 0;
+        logmsg(LOGMSG_USER, "lock stats cleared\n");
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;

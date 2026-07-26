@@ -1,0 +1,71 @@
+timepart_ins_perf - Performance benchmark for TRUNCATE time partition unique checks
+
+Overview
+--------
+Measures the overhead of cross-shard unique index enforcement on TRUNCATE
+time partitions across three write workloads.  Runs each workload under three
+configurations (off / on / on-nolocks) and reports timing, deadlocks, and
+lock stats per configuration.
+
+  Phase 1 — INSERT: workers insert new rows into the partition.
+            Cross-shard unique checks fire for every unique index.
+            This phase shows the full overhead of the feature.
+
+  Phase 2 — UPDATE non-key column: workers update column c (not unique).
+            Cross-shard checks do not fire.  Serves as a control to confirm
+            the feature adds no overhead to non-unique writes.
+
+  Phase 3 — DELETE: workers delete rows.
+            Cross-shard checks do not fire.  Serves as a control.
+
+Each pass repopulates the partition to an identical initial state so all
+three configurations (off / on / on-nolocks) execute the same workload.
+Off and on pass order is randomised per iteration to neutralise cache effects.
+
+Parameters
+----------
+Override on the make command line, e.g.:
+  make timepart_ins_perf ROWS_PER_SHARD=1000 NWORKERS=4 ITERATIONS=5
+
+  ROWS_PER_SHARD  Rows per shard for background seed data and benchmark
+                  (default: 10000)
+  NRANGES         Number of non-overlapping row ranges / max workers (default: 8)
+  NWORKERS        Parallel writers (default: NRANGES)
+  ITERATIONS      Benchmark repetitions per phase (default: 3)
+  TXN_SIZE        Rows per transaction (default: 10)
+  D_SIZE          Bytes for randomblob() filler column (default: 16)
+  DEBUG_TRACE     1=enable partition_unique_debug tunable and collect detailed
+                  per-counter stats; 0=skip debug counters (default: 1)
+
+Running
+-------
+Single node:
+  cd tests && make timepart_ins_perf
+
+With custom parameters:
+  make timepart_ins_perf ROWS_PER_SHARD=100 NWORKERS=2 ITERATIONS=1
+
+Docker cluster (3 nodes):
+  cd tests/docker
+  ./runit -s <repo_root> -n 3 -f <path_to_run_script>
+
+  where run_script contains:
+    make CLUSTER="m1 m2 m3" SKIP_COPY_EXE=1 TESTDIR=$TESTDIR timepart_ins_perf
+
+Output
+------
+Per-iteration timing line (one per phase):
+  iter 0 (off->on): off=750ms  on=1480ms  on-nolocks=1460ms
+
+Summary table per phase with totals, per-row averages, and % change vs off:
+
+                                        off           on   on vs off   on-nolocks   nolocks vs off
+  total time (ms)                      2261         4457       +97%         4398            +94%
+  ...
+  cross-shard lock requests               0      2106930        n/a      2105460              n/a
+  cross-shard unique checks               0        60198        n/a        60156              n/a
+
+When DEBUG_TRACE=1, additional rows appear (lock reqs deadlocked txns,
+cross-shard lock requests, delayed key add calls, cross-shard unique checks).
+
+Timeout: 10 minutes (set in Makefile).

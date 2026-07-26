@@ -56,6 +56,8 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 
 
 
+__thread int64_t bdb_thr_lockreqs = 0;
+
 extern int verbose_deadlocks;
 extern int gbl_rowlocks;
 extern int gbl_page_latches;
@@ -2240,6 +2242,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	}
 
 	region->stat.st_nrequests++;
+	bdb_thr_lockreqs++;
 
 	sh_locker = *in_locker;
 

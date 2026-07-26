@@ -47,6 +47,10 @@ struct comdb2_metrics_store {
     int64_t locks_aborted;
     int64_t fstraps;
     int64_t lockrequests;
+    int64_t lockreqs_deadlocked;
+    int64_t lockreqs_in_pdt;
+    int64_t dka_calls;
+    int64_t cross_shard_calls;
     int64_t lockwaits;
     int64_t lock_wait_time_us;
     int64_t memory_ulimit;
@@ -202,6 +206,14 @@ comdb2_metric gbl_metrics[] = {
      &stats.ismaster, NULL},
     {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.lockrequests, NULL},
+    {"lockreqs_deadlocked", "Lock requests from deadlocked transaction attempts (requires partition_unique_debug)",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockreqs_deadlocked, NULL},
+    {"lockreqs_in_pdt", "Lock requests from cross-shard unique checks (requires partition_unique_debug)",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockreqs_in_pdt, NULL},
+    {"dka_calls", "Deferred key add invocations (requires partition_unique_debug)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.dka_calls, NULL},
+    {"cross_shard_calls", "Cross-shard unique index checks (requires partition_unique_debug)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cross_shard_calls, NULL},
     {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwaits,
      NULL},
     {"lockwait_time", "Time spent in lock waits (us)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
@@ -574,6 +586,15 @@ int refresh_metrics(void)
     stats.sql_count = gbl_nsql + gbl_nnewsql;
     stats.sql_ssl_count = gbl_nnewsql_ssl;
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+
+    extern long long gbl_lockreqs_deadlocked;
+    extern long long gbl_lockreqs_in_pdt;
+    extern long long gbl_dka_calls;
+    extern long long gbl_cross_shard_calls;
+    stats.lockreqs_deadlocked = gbl_lockreqs_deadlocked;
+    stats.lockreqs_in_pdt = gbl_lockreqs_in_pdt;
+    stats.dka_calls = gbl_dka_calls;
+    stats.cross_shard_calls = gbl_cross_shard_calls;
 
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
                                &stats.locks_aborted, &stats.lockwaits,

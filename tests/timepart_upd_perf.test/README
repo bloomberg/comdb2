@@ -1,0 +1,70 @@
+timepart_perf - Performance benchmark for TRUNCATE time partition unique checks
+
+Overview
+--------
+Measures the overhead of cross-shard unique index enforcement on TRUNCATE
+time partitions.  Creates a daily partition with 8 shards, populates each
+shard, then runs UPDATE workloads under three configurations:
+
+  off         partition_unique disabled (baseline)
+  on          partition_unique enabled with table read locks
+  on-nolocks  partition_unique enabled, table read locks skipped
+
+Each phase repopulates the shards to identical initial state before running,
+so all three configurations execute the same workload.  Phases are randomly
+ordered per iteration to neutralise cache-warming effects.
+
+Parameters
+----------
+Override on the make command line, e.g.:
+  make timepart_perf ROWS_PER_SHARD=1000 NWORKERS=4 ITERATIONS=5
+
+  ROWS_PER_SHARD  Rows inserted per shard (default: 10000)
+  NRANGES         Number of non-overlapping row ranges / max workers (default: 8)
+  NWORKERS        Parallel writers (default: NRANGES)
+  ITERATIONS      Benchmark repetitions (default: 3)
+  TXN_SIZE        Rows per transaction (default: 10)
+  D_SIZE          Bytes for randomblob() filler column (default: 16)
+  DEBUG_TRACE     1=enable partition_unique_debug tunable and collect detailed
+                  per-counter stats; 0=skip debug counters (default: 1)
+
+Running
+-------
+Single node:
+  cd tests && make timepart_perf
+
+With custom parameters:
+  make timepart_perf ROWS_PER_SHARD=100 NWORKERS=2 ITERATIONS=1 TXN_SIZE=1
+
+Docker cluster (3 nodes):
+  Create a run script:
+    #!/bin/bash
+    cd /comdb2/tests
+    TESTDIR=/tmp/dhtest/$RANDOM
+    trap "cp -r $TESTDIR /common/timepart_perf_logs" EXIT
+    make CLUSTER="m1 m2 m3" SKIP_COPY_EXE=1 TESTDIR=$TESTDIR timepart_perf
+
+  Then run:
+    cd tests/docker
+    ./runit -s <repo_root> -n 3 -f <path_to_run_script>
+
+Output
+------
+Per-iteration timing line:
+  iter 0 (off->on): off=50ms  on=55ms  on-nolocks=52ms
+
+Summary table with totals, per-row averages, and % change vs off:
+
+                                        off           on   on vs off   on-nolocks   nolocks vs off
+  total time (ms)                     12345        13456         +9%        13200            +6%
+  deadlocks                              10           15        +50%           14           +40%
+  lock waits                            100          150        +50%          145           +45%
+  total lock requests               500000       700000        +40%       680000           +36%
+
+When DEBUG_TRACE=1, additional rows appear:
+  lock reqs deadlocked txns            ...
+  cross-shard lock requests            ...
+  delayed key add calls                ...
+  cross-shard unique checks            ...
+
+Timeout: 30 minutes (set in Makefile).

@@ -2601,6 +2601,19 @@ REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("partition_unique",
+                 "Enforce unique index constraints across all shards of a TRUNCATE time partition (Default: off). "
+                 "Does not validate pre-existing data; cross-shard duplicates present before enabling this tunable "
+                 "are the user's responsibility to detect and resolve.",
+                 TUNABLE_BOOLEAN, &gbl_partition_unique, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("partition_unique_debug",
+                 "Enable debug tracing for partition_unique cross-shard unique enforcement (Default: off). "
+                 "Logs packet build/send on replicant, receive/store and free on master, and each cross-shard check.",
+                 TUNABLE_BOOLEAN, &gbl_partition_unique_debug, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("partition_unique_skip_locks",
+                 "Debug: when set, OSQL_PARTITION_SHARDS will not acquire read table locks for sibling shards "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_partition_unique_skip_locks, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("partition_sc_reorder", "If the schema change is serialized for a partition, run current shard last",
                  TUNABLE_BOOLEAN, &gbl_partition_sc_reorder, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("partition_retroactively",

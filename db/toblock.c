@@ -81,6 +81,7 @@
 #include "schemachange.h"
 #include "views.h"
 #include <disttxn.h>
+#include "indices.h"
 
 #if 0
 #define TEST_OSQL
@@ -1906,9 +1907,7 @@ int tolongblock(struct ireq *iq)
                 poll(0, 0, (rand() % 25 + 1));
                 goto retrysingle;
             } else {
-                logmsg(LOGMSG_ERROR, 
-                        "*ERROR* [%d] tolongblock too much contention %d\n",
-                        __LINE__, retries);
+                logmsg(LOGMSG_ERROR, "*ERROR* [%d] tolongblock too much contention %d\n", __LINE__, retries);
                 thd_dump();
             }
         }
@@ -2315,6 +2314,8 @@ static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
  * and cleaned up.  Note that this is inside of the retry loop. */
 static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 {
+    extern __thread int64_t bdb_thr_lockreqs;
+    int64_t lr_start = gbl_partition_unique_debug ? bdb_thr_lockreqs : 0;
     int rc;
     int gaveaway;
     int i = 0;
@@ -2481,6 +2482,10 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
     }
 
     javasp_trans_end(iq->jsph);
+    if (gbl_partition_unique_debug && rc == RC_INTERNAL_RETRY) {
+        extern long long gbl_lockreqs_deadlocked;
+        ATOMIC_ADD64(gbl_lockreqs_deadlocked, (bdb_thr_lockreqs - lr_start));
+    }
     return rc;
 }
 
@@ -5093,6 +5098,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
     ixout = -1;
     errout = 0;
 
+    if (gbl_partition_unique_debug) {
+        static __thread int tbk_count = 0;
+        if (++tbk_count <= 3)
+            logmsg(LOGMSG_USER, "toblock: delayed=%d reorder=%d osql_flags=0x%x partition_shards=%p nshards=%d\n",
+                   delayed, osql_is_index_reorder_on(iq->osql_flags), iq->osql_flags, (void *)iq->partition_shards,
+                   iq->npartition_shards);
+    }
+
     if (delayed || gbl_goslow || osql_is_index_reorder_on(iq->osql_flags)) {
 
         if (osql_is_index_reorder_on(iq->osql_flags)) {
@@ -5126,11 +5139,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (iq->vfy_idx_track == 1 && iq->dup_key_insert == 1) {
                 rc = ERR_UNCOMMITTABLE_TXN;
                 errout = ERR_UNCOMMITTABLE_TXN;
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "Transaction is uncommittable: "
-                                                   "Duplicate insert on key '%s' "
-                                                   "in table '%s' index %d",
-                      get_keynm_from_db_idx(iq->usedb, ixout),
-                      iq->usedb->tablename, ixout);
+                reqerrstr_uncommittable_dup(iq, iq->usedb, ixout);
             } else {
                 check_serializability = 1;
             }

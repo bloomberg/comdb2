@@ -1,0 +1,425 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/hrtime.sh
+
+# Performance infrastructure test for TRUNCATE time partitions.
+#
+# Creates a daily TRUNCATE partition with 8 shards and populates each shard
+# with ROWS_PER_SHARD rows.  Values for the two unique columns (a, b) are
+# unique across all shards by using a per-shard offset.  The wide string
+# column (d) is filled with random hex data so that rows are large and
+# BTree pages contain realistic amounts of incompressible data.
+#
+# The test only fails on operational errors.
+
+dbname=$1
+cmd="cdb2sql ${CDB2_OPTIONS} $dbname default"
+cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbname default"
+
+# Configurable parameters — override on the make command line:
+#   make timepart_perf ROWS_PER_SHARD=1000 NRANGES=4 NWORKERS=4 ITERATIONS=3 D_SIZE=4000
+ROWS_PER_SHARD=${ROWS_PER_SHARD:-10000}
+NRANGES=${NRANGES:-8}
+ITERATIONS=${ITERATIONS:-3}   # passes each worker makes through its range
+D_SIZE=${D_SIZE:-16}          # bytes passed to randomblob(); d column = hex = 2*D_SIZE chars
+TXN_SIZE=${TXN_SIZE:-10}      # number of UPDATE rows per transaction
+DEBUG_TRACE=${DEBUG_TRACE:-1}  # 1=enable partition_unique_debug tunable and collect detailed stats
+
+RETENTION=8
+START='20260101T'
+
+# ============================================================
+# Setup: create TRUNCATE partition
+# ============================================================
+
+# d is filled with hex(randomblob(4000)) = 8000 random hex chars per row,
+# which is incompressible and pushes each row close to the column maximum.
+run_or_die()
+{
+    local sql=$1 msg=$2
+    $cmd "$sql" > /dev/null || failexit "$msg"
+}
+
+D_COL_SIZE=$(( 2 * D_SIZE + 1 ))   # hex(randomblob(D_SIZE)) produces 2*D_SIZE chars
+
+run_or_die \
+    "create table t (
+         a int,
+         b int,
+         c int,
+         d cstring(${D_COL_SIZE}),
+         unique (a),
+         unique (b)
+     ) partitioned by time period 'daily' retention ${RETENTION} start '${START}'" \
+    "create partitioned table failed"
+
+nshards=$($cmdt "select count(*) from comdb2_timepartshards where name='t'")
+if [[ "$nshards" != "$RETENTION" ]]; then
+    failexit "expected ${RETENTION} shards, got '${nshards}'"
+fi
+
+echo "Partition: ${RETENTION} shards, ${ROWS_PER_SHARD} rows/shard"
+echo "Row size:  d = hex(randomblob(${D_SIZE})) = ${D_COL_SIZE} chars"
+echo "Total rows: $(( RETENTION * ROWS_PER_SHARD ))"
+echo ""
+
+# ============================================================
+# Populate each shard
+# ============================================================
+# Values for a and b use a per-shard offset so they are unique across
+# all shards:  shard N gets a/b in [N*ROWS_PER_SHARD+1 .. (N+1)*ROWS_PER_SHARD]
+
+# Collect shard names into an array
+mapfile -t shard_names < <($cmdt "select shardname from comdb2_timepartshards where name='t' order by shardname")
+
+populate_shards() {
+    local msg=${1:-"Populating shards..."}
+    echo "$msg"
+    local total_t0=$(timems)
+    for (( s = 0; s < ${#shard_names[@]}; s++ )); do
+        local shard=${shard_names[$s]}
+        local base=$(( s * ROWS_PER_SHARD ))
+        local t0=$(timems)
+        $cmd "insert into \"${shard}\"
+              select
+                  value + ${base},
+                  value + ${base},
+                  value,
+                  hex(randomblob(${D_SIZE}))
+              from generate_series(1, ${ROWS_PER_SHARD})" > /dev/null \
+            || failexit "insert into shard '${shard}' (idx ${s}) failed"
+        local t1=$(timems)
+        echo "  shard ${s} (${shard}): $(( t1 - t0 )) ms"
+    done
+    local total_t1=$(timems)
+    echo "All shards populated in $(( total_t1 - total_t0 )) ms"
+}
+
+repopulate_shards() {
+    for (( s = 0; s < ${#shard_names[@]}; s++ )); do
+        local shard=${shard_names[$s]}
+        $cmd "delete from \"${shard}\" where 1" > /dev/null \
+            || failexit "delete from shard '${shard}' failed"
+    done
+    populate_shards "Repopulating shards..."
+}
+
+populate_shards "Populating shards..."
+
+echo ""
+echo "Total rows: $(( RETENTION * ROWS_PER_SHARD ))"
+
+# Verify total row count via the partition view
+total=$($cmdt "select count(*) from t")
+expected=$(( RETENTION * ROWS_PER_SHARD ))
+if [[ "$total" != "$expected" ]]; then
+    failexit "expected ${expected} rows in partition view, got '${total}'"
+fi
+
+echo "Row count verified: ${total}"
+echo ""
+
+# ============================================================
+# Build shuffled 'a' value array split into NRANGES ranges
+# ============================================================
+# The full set of 'a' values (1..TOTAL_ROWS) is randomly shuffled so that
+# each range covers a non-sequential, non-contiguous subset of rows.  This
+# gives subsequent workload steps a realistic access pattern with no
+# sequential hot spots.
+
+TOTAL_ROWS=$(( RETENTION * ROWS_PER_SHARD ))
+RANGE_SIZE=$(( TOTAL_ROWS / NRANGES ))
+
+echo "Building shuffled 'a' value array (${TOTAL_ROWS} values)..."
+mapfile -t a_shuffled < <(seq 1 $TOTAL_ROWS | shuf)
+
+echo "Splitting into ${NRANGES} ranges of ${RANGE_SIZE} values each"
+
+declare -a range_lo range_hi
+for r in $(seq 0 $(( NRANGES - 1 ))); do
+    range_lo[$r]=$(( r * RANGE_SIZE ))
+    range_hi[$r]=$(( range_lo[$r] + RANGE_SIZE - 1 ))
+    echo "  range ${r}: a[${range_lo[$r]}]=${a_shuffled[${range_lo[$r]}]} .. a[${range_hi[$r]}]=${a_shuffled[${range_hi[$r]}]}"
+done
+echo ""
+
+# ============================================================
+# Verify cross-shard distribution of each range
+# ============================================================
+# Shard s originally holds 'a' values in [(s*ROWS_PER_SHARD)+1 .. (s+1)*ROWS_PER_SHARD].
+# A range that only covers one shard would mean workers don't trigger cross-shard
+# lookups.  Each range should hit all RETENTION shards roughly equally.
+
+echo "Cross-shard distribution per range:"
+for (( r = 0; r < NRANGES; r++ )); do
+    declare -a sc
+    for (( s = 0; s < RETENTION; s++ )); do sc[$s]=0; done
+    for (( k = 0; k < RANGE_SIZE; k++ )); do
+        a=${a_shuffled[$(( range_lo[$r] + k ))]}
+        s=$(( (a - 1) / ROWS_PER_SHARD ))
+        sc[$s]=$(( sc[$s] + 1 ))
+    done
+    echo -n "  range ${r}:"
+    for (( s = 0; s < RETENTION; s++ )); do
+        printf " shard%d=%d" $s ${sc[$s]}
+    done
+    echo ""
+    unset sc
+done
+echo ""
+
+# ============================================================
+# Pre-generate SQL update files (setup — outside timing)
+# ============================================================
+# Since we repopulate before each phase, every phase starts from the same
+# initial state and one set of update files suffices.
+#
+# File naming: ${UPDATE_DIR}/upd_r<range>.sql
+# Each file contains RANGE_SIZE UPDATE statements.
+
+UPDATE_DIR=$(mktemp -d) || failexit "mktemp -d failed"
+trap "rm -rf '${UPDATE_DIR}'" EXIT
+
+# Since we repopulate shards before each phase, all phases start from the
+# same initial state.  One update file per range is sufficient; every
+# iteration replays the same updates against freshly repopulated data.
+echo "Pre-generating SQL update files (${NRANGES} ranges)..."
+
+for (( r = 0; r < NRANGES; r++ )); do
+    local_base=$(( TOTAL_ROWS + r * RANGE_SIZE ))
+    local_lo=${range_lo[$r]}
+
+    outfile="${UPDATE_DIR}/upd_r${r}.sql"
+    {
+        for (( k = 0; k < RANGE_SIZE; k++ )); do
+            new_val=$(( local_base + k + 1 ))
+            old_val=${a_shuffled[$(( local_lo + k ))]}
+            (( k % TXN_SIZE == 0 )) && echo "begin;"
+            echo "update t set a = ${new_val} where a = ${old_val};"
+            (( (k + 1) % TXN_SIZE == 0 || k + 1 == RANGE_SIZE )) && echo "commit;"
+        done
+    } > "$outfile"
+done
+echo "Done."
+echo ""
+
+# ============================================================
+# set_tunable <0|1>
+# ============================================================
+set_one_tunable() {
+    local name=$1 val=$2
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} --host $node $dbname default \
+                "put tunable $name $val" > /dev/null \
+                || failexit "put tunable $name $val on $node"
+        done
+    else
+        $cmd "put tunable $name $val" > /dev/null \
+            || failexit "put tunable $name $val"
+    fi
+}
+
+function set_tunable
+{
+    local val=$1
+    set_one_tunable partition_unique $val
+    set_one_tunable partition_unique_debug $DEBUG_TRACE
+    set_one_tunable partition_unique_skip_locks 0
+}
+
+function set_tunable_nolocks
+{
+    set_one_tunable partition_unique 1
+    set_one_tunable partition_unique_debug $DEBUG_TRACE
+    set_one_tunable partition_unique_skip_locks 1
+}
+
+# ============================================================
+# Benchmark: interleaved off/on per iteration
+# ============================================================
+# Each iteration runs the off pass then the on pass back-to-back so
+# that system conditions (cache state, load) are as similar as possible
+# between the two measurements.  Per-iteration timings are printed;
+# averages are compared at the end.
+
+NWORKERS=${NWORKERS:-$NRANGES}
+
+echo "Benchmark: ${NWORKERS} parallel workers, ${ITERATIONS} iterations, ${RANGE_SIZE} rows/range, ${TXN_SIZE} rows/txn"
+echo "(each iteration: order of off/on passes chosen randomly to equalise cache warming)"
+echo ""
+
+total_off=0
+total_on=0
+
+# run_pass <phase> <iter> — repopulates shards, sets tunables, clears stats,
+# then runs NWORKERS workers.  Returns elapsed ms in pass_ms.
+function run_pass
+{
+    local phase=$1 iter=$2 pids=() failed=0
+    repopulate_shards
+    set_tunable $phase
+    clear_lock_stats
+    local t0=$(timems)
+    for (( w = 0; w < NWORKERS; w++ )); do
+        cdb2sql ${CDB2_OPTIONS} $dbname default \
+            -f "${UPDATE_DIR}/upd_r${w}.sql" > /dev/null &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    local t1=$(timems)
+    [[ $failed -ne 0 ]] && failexit "iter ${iter} phase ${phase} workers failed"
+    pass_ms=$(( t1 - t0 ))
+}
+
+get_stats() {
+    local total=0
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            local v=$(cdb2sql -tabs ${CDB2_OPTIONS} --host $node $dbname default \
+                "select cast(value as int) from comdb2_metrics where name='$1'")
+            total=$(( total + v ))
+        done
+    else
+        total=$($cmdt "select cast(value as int) from comdb2_metrics where name='$1'")
+    fi
+    echo $total
+}
+clear_lock_stats() {
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} --host $node $dbname default \
+                "exec procedure sys.cmd.send('clear_lock_stats')" > /dev/null
+        done
+    else
+        $cmd "exec procedure sys.cmd.send('clear_lock_stats')" > /dev/null
+    fi
+}
+
+run_nolocks_pass() {
+    local iter=$1 pids=() failed=0
+    repopulate_shards
+    set_tunable_nolocks
+    clear_lock_stats
+    local t0=$(timems)
+    for (( w = 0; w < NWORKERS; w++ )); do
+        cdb2sql ${CDB2_OPTIONS} $dbname default \
+            -f "${UPDATE_DIR}/upd_r${w}.sql" > /dev/null &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    local t1=$(timems)
+    [[ $failed -ne 0 ]] && failexit "iter ${iter} on-nolocks workers failed"
+    pass_ms=$(( t1 - t0 ))
+}
+
+# Accumulators for totals across all iterations
+tot_off_ms=0;  tot_off_dl=0;  tot_off_lw=0;  tot_off_lr=0;  tot_off_lrd=0;  tot_off_pdt=0;  tot_off_dka=0;  tot_off_csc=0
+tot_on_ms=0;   tot_on_dl=0;   tot_on_lw=0;   tot_on_lr=0;   tot_on_lrd=0;   tot_on_pdt=0;   tot_on_dka=0;   tot_on_csc=0
+tot_nl_ms=0;   tot_nl_dl=0;   tot_nl_lw=0;   tot_nl_lr=0;   tot_nl_lrd=0;   tot_nl_pdt=0;   tot_nl_dka=0;   tot_nl_csc=0
+
+collect_stats() {
+    # usage: collect_stats <prefix>  — reads comdb2_metrics into <prefix>_* vars
+    local pfx=$1
+    eval "${pfx}_dl=$(get_stats deadlocks)"
+    eval "${pfx}_lw=$(get_stats lockwaits)"
+    eval "${pfx}_lr=$(get_stats lockrequests)"
+    if (( DEBUG_TRACE )); then
+        eval "${pfx}_lrd=$(get_stats lockreqs_deadlocked)"
+        eval "${pfx}_pdt=$(get_stats lockreqs_in_pdt)"
+        eval "${pfx}_dka=$(get_stats dka_calls)"
+        eval "${pfx}_csc=$(get_stats cross_shard_calls)"
+    else
+        eval "${pfx}_lrd=0; ${pfx}_pdt=0; ${pfx}_dka=0; ${pfx}_csc=0"
+    fi
+}
+
+for (( i = 0; i < ITERATIONS; i++ )); do
+    if (( RANDOM % 2 == 0 )); then
+        first=0; second=1; order="off->on"
+    else
+        first=1; second=0; order="on->off"
+    fi
+
+    run_pass $first  $i; first_ms=$pass_ms; collect_stats first
+    run_pass $second $i; second_ms=$pass_ms; collect_stats second
+    run_nolocks_pass $i; nolocks_ms=$pass_ms; collect_stats nolocks
+
+    if (( first == 0 )); then
+        off_ms=$first_ms;  off_dl=$first_dl;  off_lw=$first_lw;  off_lr=$first_lr;  off_lrd=$first_lrd;  off_pdt=$first_pdt;  off_dka=$first_dka;  off_csc=$first_csc
+        on_ms=$second_ms;  on_dl=$second_dl;  on_lw=$second_lw;  on_lr=$second_lr;  on_lrd=$second_lrd;  on_pdt=$second_pdt;  on_dka=$second_dka;  on_csc=$second_csc
+    else
+        off_ms=$second_ms; off_dl=$second_dl; off_lw=$second_lw; off_lr=$second_lr; off_lrd=$second_lrd; off_pdt=$second_pdt; off_dka=$second_dka; off_csc=$second_csc
+        on_ms=$first_ms;   on_dl=$first_dl;   on_lw=$first_lw;   on_lr=$first_lr;   on_lrd=$first_lrd;   on_pdt=$first_pdt;   on_dka=$first_dka;   on_csc=$first_csc
+    fi
+
+    # Accumulate totals
+    tot_off_ms=$((  tot_off_ms  + off_ms  ));  tot_on_ms=$((  tot_on_ms  + on_ms  ));  tot_nl_ms=$((  tot_nl_ms  + nolocks_ms  ))
+    tot_off_dl=$((  tot_off_dl  + off_dl  ));  tot_on_dl=$((  tot_on_dl  + on_dl  ));  tot_nl_dl=$((  tot_nl_dl  + nolocks_dl  ))
+    tot_off_lw=$((  tot_off_lw  + off_lw  ));  tot_on_lw=$((  tot_on_lw  + on_lw  ));  tot_nl_lw=$((  tot_nl_lw  + nolocks_lw  ))
+    tot_off_lr=$((  tot_off_lr  + off_lr  ));  tot_on_lr=$((  tot_on_lr  + on_lr  ));  tot_nl_lr=$((  tot_nl_lr  + nolocks_lr  ))
+    tot_off_lrd=$(( tot_off_lrd + off_lrd ));  tot_on_lrd=$(( tot_on_lrd + on_lrd ));  tot_nl_lrd=$(( tot_nl_lrd + nolocks_lrd ))
+    tot_off_pdt=$(( tot_off_pdt + off_pdt ));  tot_on_pdt=$(( tot_on_pdt + on_pdt ));  tot_nl_pdt=$(( tot_nl_pdt + nolocks_pdt ))
+    tot_off_dka=$(( tot_off_dka + off_dka ));  tot_on_dka=$(( tot_on_dka + on_dka ));  tot_nl_dka=$(( tot_nl_dka + nolocks_dka ))
+    tot_off_csc=$(( tot_off_csc + off_csc ));  tot_on_csc=$(( tot_on_csc + on_csc ));  tot_nl_csc=$(( tot_nl_csc + nolocks_csc ))
+
+    echo "  iter ${i} (${order}): off=${off_ms}ms  on=${on_ms}ms  on-nolocks=${nolocks_ms}ms"
+done
+
+set_tunable 0
+
+# ============================================================
+# Summary report
+# ============================================================
+total_rows=$(( ROWS_PER_SHARD * RETENTION * ITERATIONS ))
+
+pct() {
+    # usage: pct <val> <base>  — prints signed % change, or "n/a" if base==0
+    local val=$1 base=$2
+    if (( base == 0 )); then echo "n/a"; return; fi
+    local diff=$(( val - base ))
+    local p=$(( diff * 100 / base ))
+    if (( diff >= 0 )); then printf "+%d%%" $p; else printf "%d%%" $p; fi
+}
+
+echo ""
+echo "=== Summary (${ITERATIONS} iterations, ${total_rows} total rows, ${NWORKERS} workers, ${TXN_SIZE} rows/txn) ==="
+echo ""
+printf "  %-30s %12s %12s %16s %12s %16s\n" "" "off" "on" "on vs off" "on-nolocks" "nolocks vs off"
+printf "  %-30s %12s %12s %16s %12s %16s\n" "------------------------------" "------------" "------------" "----------------" "------------" "----------------"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "total time (ms)"             $tot_off_ms  $tot_on_ms  "$(pct $tot_on_ms  $tot_off_ms)"  $tot_nl_ms  "$(pct $tot_nl_ms  $tot_off_ms)"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "avg time/iter (ms)"          $((tot_off_ms/ITERATIONS)) $((tot_on_ms/ITERATIONS)) "" $((tot_nl_ms/ITERATIONS)) ""
+printf "  %-30s %12d %12d %16s %12d %16s\n" "deadlocks"                   $tot_off_dl  $tot_on_dl  "$(pct $tot_on_dl  $tot_off_dl)"  $tot_nl_dl  "$(pct $tot_nl_dl  $tot_off_dl)"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "lock waits"                  $tot_off_lw  $tot_on_lw  "$(pct $tot_on_lw  $tot_off_lw)"  $tot_nl_lw  "$(pct $tot_nl_lw  $tot_off_lw)"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "total lock requests"         $tot_off_lr  $tot_on_lr  "$(pct $tot_on_lr  $tot_off_lr)"  $tot_nl_lr  "$(pct $tot_nl_lr  $tot_off_lr)"
+if (( DEBUG_TRACE )); then
+printf "  %-30s %12d %12d %16s %12d %16s\n" "lock reqs deadlocked txns"   $tot_off_lrd $tot_on_lrd "$(pct $tot_on_lrd $tot_off_lrd)" $tot_nl_lrd "$(pct $tot_nl_lrd $tot_off_lrd)"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "cross-shard lock requests"   $tot_off_pdt $tot_on_pdt "$(pct $tot_on_pdt $tot_off_pdt)" $tot_nl_pdt "$(pct $tot_nl_pdt $tot_off_pdt)"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "delayed key add calls"       $tot_off_dka $tot_on_dka "$(pct $tot_on_dka $tot_off_dka)" $tot_nl_dka "$(pct $tot_nl_dka $tot_off_dka)"
+printf "  %-30s %12d %12d %16s %12d %16s\n" "cross-shard unique checks"   $tot_off_csc $tot_on_csc "$(pct $tot_on_csc $tot_off_csc)" $tot_nl_csc "$(pct $tot_nl_csc $tot_off_csc)"
+fi
+
+if (( total_rows > 0 )); then
+    echo ""
+    printf "  %-30s %12s %12s %16s %12s %16s\n" "per row" "off" "on" "on vs off" "on-nolocks" "nolocks vs off"
+    printf "  %-30s %12s %12s %16s %12s %16s\n" "------------------------------" "------------" "------------" "----------------" "------------" "----------------"
+    printf "  %-30s %12.1f %12.1f %16s %12.1f %16s\n" "lock requests" \
+        $(echo "$tot_off_lr $total_rows" | awk '{printf "%.1f",$1/$2}') \
+        $(echo "$tot_on_lr $total_rows"  | awk '{printf "%.1f",$1/$2}') \
+        "$(pct $tot_on_lr $tot_off_lr)" \
+        $(echo "$tot_nl_lr $total_rows"  | awk '{printf "%.1f",$1/$2}') \
+        "$(pct $tot_nl_lr $tot_off_lr)"
+    if (( DEBUG_TRACE )); then
+    printf "  %-30s %12.1f %12.1f %16s %12.1f %16s\n" "cross-shard lock requests" \
+        $(echo "$tot_off_pdt $total_rows" | awk '{printf "%.1f",$1/$2}') \
+        $(echo "$tot_on_pdt $total_rows"  | awk '{printf "%.1f",$1/$2}') \
+        "" \
+        $(echo "$tot_nl_pdt $total_rows"  | awk '{printf "%.1f",$1/$2}') \
+        ""
+    fi
+fi
+
+echo ""
+echo "Testcase passed."
+exit 0

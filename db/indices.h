@@ -59,4 +59,9 @@ int del_new_record_indices(struct ireq *iq, void *trans,
                            unsigned long long del_keys,
                            blob_buffer_t *del_idx_blobs, int verify_retry);
 
+int check_cross_shard_unique(struct ireq *iq, void *trans, int ixnum, char *key, int keylen, int *opfailcode);
+
+void reqerrstr_dup_key(struct ireq *iq, struct dbtable *db, int ixnum);
+void reqerrstr_uncommittable_dup(struct ireq *iq, struct dbtable *db, int ixnum);
+
 #endif

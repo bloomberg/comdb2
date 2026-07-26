@@ -1371,6 +1371,12 @@ struct ireq {
     char debug_buf[256];
     char tzname[DB_MAX_TZNAMEDB];
 
+    /* shard dbtables for cross-shard unique check (TRUNCATE partitions).
+     * Lives in region 2 (not zeroed by init_ireq_legacy's region3 bzero).
+     * Set by OSQL_PARTITION_SHARDS handler; freed at transaction end. */
+    struct dbtable **partition_shards;
+    int npartition_shards;
+
     /************/
     /* REGION 3 */
     /************/
@@ -1433,6 +1439,7 @@ struct ireq {
     /* indexes on expressions */
     uint8_t **idxInsert;
     uint8_t **idxDelete;
+
 
     /* osql prefault step index */
     int *osql_step_ix;
@@ -3556,6 +3563,9 @@ extern int gbl_repscore;
 extern int gbl_max_verify_retries;
 
 extern int gbl_surprise;
+extern int gbl_partition_unique;
+extern int gbl_partition_unique_debug;
+extern int gbl_partition_unique_skip_locks;
 
 extern int gbl_check_wrong_db;
 

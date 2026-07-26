@@ -218,6 +218,14 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
     return 0;
 }
 
+int bdb_reset_lock_counters(bdb_state_type *bdb_state)
+{
+    DB_LOCK_STAT *lock_stats = NULL;
+    int rc = bdb_state->dbenv->lock_stat(bdb_state->dbenv, &lock_stats, DB_STAT_CLEAR);
+    free(lock_stats);
+    return rc;
+}
+
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
                            int64_t *bpool_misses, int64_t *rw_evicts)
 {
