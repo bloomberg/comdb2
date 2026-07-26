@@ -1,0 +1,8 @@
+CREATE TABLE fp_pagein(x INTEGER);$$
+INSERT INTO fp_pagein(x) VALUES(1);
+INSERT INTO fp_pagein(x) VALUES(2);
+INSERT INTO fp_pagein(x) VALUES(3);
+SELECT * FROM fp_pagein ORDER BY x;
+SELECT * FROM fp_pagein ORDER BY x;
+SELECT * FROM fp_pagein ORDER BY x;
+SELECT (total_pagein_read >= count) AS reads_ge_count, (total_pagein_read_io <= total_pagein_read) AS io_le_total FROM comdb2_fingerprints WHERE normalized_sql LIKE 'SELECT%fp_pagein%';

@@ -2,6 +2,13 @@ This test attempts to verify that SQL queries executed inside (and outside) of
 stored procedures end up being normalized and added to the fingerprints system
 table, along with their cost metrics.
 
+"t10.req" verifies that the comdb2_fingerprints systable also exposes
+bufferpool page-in counters (total_pagein_read, total_pagein_read_io) for a
+fingerprint. Since the exact page counts depend on bufferpool cache state and
+are not deterministic across environments, the test checks structural
+invariants instead of exact values: total_pagein_read is at least the
+execution count, and total_pagein_read_io never exceeds total_pagein_read.
+
 -------------------------------- SPECIAL NOTES --------------------------------
 
 The "t03.req" test file purposely excludes the following fingerprints from its
