@@ -107,6 +107,7 @@ set(BERK_C
   mp/mp_alloc.c
   mp/mp_bh.c
   mp/mp_fget.c
+  mp/mp_fingerprint_rtstats.c
   mp/mp_fopen.c
   mp/mp_fput.c
   mp/mp_fset.c

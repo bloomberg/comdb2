@@ -3128,6 +3128,12 @@ struct berkdb_thread_stats *bb_berkdb_get_process_stats(void);
 void bb_berkdb_thread_stats_init(void);
 void bb_berkdb_thread_stats_reset(void);
 
+void bb_fingerprint_rtstats_init(void);
+void bb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+void bb_fingerprint_rtstats_clear(void);
+int bb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
+    uint64_t *n_pagein_read, uint64_t *n_pagein_read_io);
+
 extern int gbl_bb_berkdb_enable_thread_stats;
 extern int gbl_bb_berkdb_enable_lock_timing;
 extern int gbl_bb_berkdb_enable_memp_timing;

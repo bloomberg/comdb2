@@ -23,6 +23,7 @@
 #include <plhash_glue.h>
 #include "tohex.h"
 #include <reqlog.h>
+#include <bdb_api.h>
 
 struct fingerprint_track_systbl {
     char *fingerprint;
@@ -34,6 +35,8 @@ struct fingerprint_track_systbl {
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
     char *excluded;    /* 'Y' if excluded from longreqs */
+    int64_t total_pagein_read;    /* Cumulative bufferpool page-ins (hit+miss) */
+    int64_t total_pagein_read_io; /* Subset of the above that required disk I/O */
 
     char fp[FINGERPRINTSZ*2+1];
 };
@@ -88,6 +91,13 @@ static int fingerprints_callback(void **data, int *npoints)
                         pFp[copied].nNormSql = strlen(pEntry->zNormSql);
                         assert( pFp[copied].nNormSql==pEntry->nNormSql );
                     }
+                    {
+                        uint64_t n_pagein_read, n_pagein_read_io;
+                        bdb_fingerprint_rtstats_get(pEntry->fingerprint, FINGERPRINTSZ,
+                            &n_pagein_read, &n_pagein_read_io);
+                        pFp[copied].total_pagein_read = n_pagein_read;
+                        pFp[copied].total_pagein_read_io = n_pagein_read_io;
+                    }
                     copied++;
                     pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
                 }
@@ -129,6 +139,10 @@ int systblFingerprintsInit(sqlite3 *db)
         offsetof(struct fingerprint_track_systbl, prepTime),
         CDB2_INTEGER, "total_rows", -1,
         offsetof(struct fingerprint_track_systbl, rows),
+        CDB2_INTEGER, "total_pagein_read", -1,
+        offsetof(struct fingerprint_track_systbl, total_pagein_read),
+        CDB2_INTEGER, "total_pagein_read_io", -1,
+        offsetof(struct fingerprint_track_systbl, total_pagein_read_io),
         CDB2_CSTRING, "normalized_sql", -1,
         offsetof(struct fingerprint_track_systbl, zNormSql),
         CDB2_CSTRING, "excluded_from_longreqs", -1,
