@@ -9,6 +9,11 @@ are not deterministic across environments, the test checks structural
 invariants instead of exact values: total_pagein_read is at least the
 execution count, and total_pagein_read_io never exceeds total_pagein_read.
 
+"t11.req" checks the same page-in invariants for two distinct SQL statements
+executed inside a single stored procedure (Lua inner statements), verifying
+each gets its own independently-tracked page-in counters rather than one
+statement's counters leaking into the other's.
+
 -------------------------------- SPECIAL NOTES --------------------------------
 
 The "t03.req" test file purposely excludes the following fingerprints from its
