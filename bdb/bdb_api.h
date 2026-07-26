@@ -1372,6 +1372,11 @@ void bdb_reset_thread_stats(void);
 const struct berkdb_thread_stats *bdb_get_thread_stats(void);
 const struct berkdb_thread_stats *bdb_get_process_stats(void);
 
+void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+void bdb_fingerprint_rtstats_clear(void);
+int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen, uint64_t *n_pagein_read,
+                                uint64_t *n_pagein_read_io);
+
 /* Format and print the thread stats.  printfn() is a function which accepts
  * a line to print (\n\0 terminated) and a context pointer. Its return value
  * is ignored.  bdb_fprintf_stats is a convenience wrapper which uses fputs()

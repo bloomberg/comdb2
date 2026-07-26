@@ -3370,11 +3370,17 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        if (!t) prepare_fingerprint(clnt, rec, fingerprint, flags);
+        if (!t)
+            t = prepare_fingerprint(clnt, rec, fingerprint, flags);
         reqlog_set_fingerprint(thd->logger, (const char *)fingerprint, FINGERPRINTSZ);
 
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
+
+        /* t is this fingerprint's gbl_fingerprint_hash entry (NULL until its
+         * first execution completes); pass its presence as has_main_entry. */
+        if (gbl_fingerprint_queries)
+            bdb_fingerprint_rtstats_set(clnt->work.aFingerprint, FINGERPRINTSZ, t != NULL);
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = ERR_SQL_PREPARE;
@@ -4111,6 +4117,8 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
+    bdb_fingerprint_rtstats_clear();
+
     sqlite3_stmt *stmt = rec->stmt;
     int distributed = 0;
 

@@ -54,6 +54,7 @@ extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
+extern void bb_fingerprint_rtstats_bump_pagein(int did_io);
 void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
@@ -312,6 +313,9 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 		++mfp->stat.st_map;
 		if (gbl_bb_berkdb_enable_memp_timing)
 			bb_memp_hit(start_time_us);
+		/* mmap fast-path: page is served from the mapping without a
+		 * cache fetch, so it never does fetch-time disk I/O. */
+		bb_fingerprint_rtstats_bump_pagein(0);
 		return (0);
 	}
 
@@ -844,6 +848,7 @@ alloc:		/*
 
 	if (gbl_bb_berkdb_enable_memp_timing)
 		bb_memp_hit(start_time_us);
+	bb_fingerprint_rtstats_bump_pagein(did_io != NULL && *did_io);
 	return (0);
 
 err:	/*
@@ -890,6 +895,7 @@ __memp_read_recovery_pages(dbmfp)
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
 	int ret, free_buf, i;
+	int did_io;
 	void *fpage;
 	size_t nr, pagesize;
 	db_pgno_t inpg;
@@ -945,9 +951,12 @@ __memp_read_recovery_pages(dbmfp)
 			inpg = PGNO(pagep);
 		}
 
-		/* Read this page into the bufferpool. */
+		/* Read this page into the bufferpool.  Pass a real did_io so the
+		 * page-in I/O is attributed (to the NO-FINGERPRINT bucket, since
+		 * no fingerprint TLS is set during recovery). */
+		did_io = 0;
 		if (0 == __memp_fget_internal(dbmfp, &inpg,
-			DB_MPOOL_RECP, &fpage, NULL))
+			DB_MPOOL_RECP, &fpage, &did_io))
 			 __memp_fput(dbmfp, fpage, 0);
 	}
 
