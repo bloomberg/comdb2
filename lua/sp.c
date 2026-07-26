@@ -1148,6 +1148,8 @@ static void donate_stmt(SP sp, dbstmt_t *dbstmt)
     sqlite3_stmt *stmt = dbstmt->stmt;
     if (stmt == NULL) return;
 
+    bdb_fingerprint_rtstats_clear();
+
     if (!gbl_enable_sql_stmt_caching || !dbstmt->rec) {
         sqlite3_finalize(stmt);
     } else {
@@ -1252,6 +1254,7 @@ static struct sp_tmptbl *create_temp_table(Lua lua, const char **name)
     }
     lua_end_step(sp->clnt, sp, stmt);
     set_tmptbl(NULL);
+    bdb_fingerprint_rtstats_clear();
     sqlite3_finalize(stmt);
 
     if (rc == SQLITE_DONE) {
@@ -2364,6 +2367,7 @@ out:if (rc) {
         sql_check_errors(sp->clnt, sqldb, stmt, &errstr);
         luabb_error(lua, sp, errstr);
     }
+    bdb_fingerprint_rtstats_clear();
     sqlite3_finalize(stmt);
     lua_pushinteger(lua, rc);
     return 1;
@@ -2419,6 +2423,7 @@ static int dbtable_copyfrom(Lua lua)
     }
     lua_end_step(sp->clnt, sp, stmt);
 
+    bdb_fingerprint_rtstats_clear();
     sqlite3_finalize(stmt);
 
     lua_pushinteger(lua, 0); /* Success return code. */
@@ -3002,6 +3007,7 @@ static void drop_temp_tables(SP sp)
         do {
             rc = sqlite3_step(stmt);
         } while (rc == SQLITE_ROW);
+        bdb_fingerprint_rtstats_clear();
         sqlite3_finalize(stmt);
         if (rc != SQLITE_DONE) {
             expire = 1;
@@ -3653,8 +3659,10 @@ int db_csvcopy(Lua lua)
 done:
     if (csv.z)
         free(csv.z);
-    if (stmt)
+    if (stmt) {
+        bdb_fingerprint_rtstats_clear();
         sqlite3_finalize(stmt);
+    }
     if (fp)
         fclose(fp);
     if (rc == 0)
@@ -6661,6 +6669,7 @@ static void clone_temp_tables(SP sp)
         sqlite3_stmt *stmt;
         lua_prepare_sql_with_temp_ddl(sp, strbuf_buf(sql), &stmt);
         clone_temp_table(stmt, &tmp->tbl);
+        bdb_fingerprint_rtstats_clear();
         sqlite3_finalize(stmt);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
