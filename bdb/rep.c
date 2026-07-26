@@ -1043,46 +1043,25 @@ typedef struct {
     int op;
 } elect_thread_args_type;
 
-static int get_num_up(bdb_state_type *bdb_state)
+static int get_num_sanctioned(bdb_state_type *bdb_state)
 {
-    const char *nodelist[REPMAX];
-    int num_up;
-    int tot;
-    int i;
-
-    if (!bdb_state->callback->nodeup_rtn)
-        return net_count_nodes(bdb_state->repinfo->netinfo);
-
-    num_up = 0;
-
-    tot = net_get_all_nodes(bdb_state->repinfo->netinfo, nodelist);
-
-    for (i = 0; i < tot; i++)
-        if ((bdb_state->callback->nodeup_rtn)(bdb_state, nodelist[i]))
-            num_up++;
-
-/* now check for me, cause we werent counted in the first list */
-#if 0
-   if ( (bdb_state->callback->nodeup_rtn)(bdb_state, 
-      bdb_state->repinfo->mynode) )
-      num_up++;
-#endif
-    /* Count me as always up - if I am about to participate in an election,
-       it doesn't make sense that I am not counted */
-    num_up++;
-
+    int num_up = net_get_sanctioned_node_list(bdb_state->repinfo->netinfo, -1, NULL);
+    if (num_up == 0)
+        logmsg(LOGMSG_WARN, "%s: sanctioned node list is empty\n", __func__);
     return num_up;
 }
 
-/* decide if we have enough rtcpu'd machines connected to us to safely elect
+/* decide if we have enough sanctioned nodes connected to us to safely elect
  * a master. */
 int is_electable(bdb_state_type *bdb_state, int *out_num_up,
                  int *out_num_connected)
 {
     int num_up, num_connected, rc;
 
-    num_up = get_num_up(bdb_state);
-    num_connected = net_count_connected_nodes(bdb_state->repinfo->netinfo);
+    num_up = get_num_sanctioned(bdb_state);
+    const char *hostlist[REPMAX];
+    /* +1 for self: assumes caller is sanctioned */
+    num_connected = net_sanctioned_and_connected_nodes(bdb_state->repinfo->netinfo, REPMAX, hostlist) + 1;
 
     if (bdb_state->attr->elect_forbid_perfect_netsplit) {
         if (num_connected < ((num_up / 2) + 1))

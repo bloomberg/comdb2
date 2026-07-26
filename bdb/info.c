@@ -1578,6 +1578,12 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         call_for_election(bdb_state, __func__, __LINE__);
     }
 
+    else if (tokcmp(tok, ltok, "get_num_sanctioned") == 0) {
+        int num_sanctioned, num_connected;
+        is_electable(bdb_state, &num_sanctioned, &num_connected);
+        logmsgf(LOGMSG_USER, out, "num_sanctioned %d num_connected %d\n", num_sanctioned, num_connected);
+    }
+
     else if (tokcmp(tok, ltok, "repdbgy") == 0)
         rc = bdb_state->dbenv->set_verbose(bdb_state->dbenv,
                                            DB_VERB_REPLICATION, 1);
