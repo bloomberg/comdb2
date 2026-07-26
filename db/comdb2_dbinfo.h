@@ -125,7 +125,8 @@ struct db_info2_resp {
     int shmflags;
     int ninfo;
     int moreflags;
-    int fluff[7];
+    int physrep_src_dbnum;
+    int fluff[6];
     struct dbinfopc dbdata[1];
 };
 
