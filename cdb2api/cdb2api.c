@@ -6222,8 +6222,14 @@ retry_queries:
         hndl->max_retries = hndl->num_hosts * 3;
     }
 
-    if ((retries_done > 1) && ((retries_done > hndl->max_retries) || (is_api_call_timedout(hndl)))) {
-        sprintf(hndl->errstr, "%s: Maximum number of retries done num_retries:%d.", __func__, retries_done);
+    int timedout = is_api_call_timedout(hndl);
+    if ((retries_done > 1) && ((retries_done > hndl->max_retries) || timedout)) {
+        if (timedout) {
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Timed out executing query num_retries:%d\n", __func__,
+                     __LINE__, retries_done);
+        } else {
+            sprintf(hndl->errstr, "%s: Maximum number of retries done num_retries:%d.", __func__, retries_done);
+        }
         if (is_hasql_commit) {
             cleanup_query_list(hndl, &commit_query_list, __LINE__);
         }
