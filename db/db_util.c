@@ -255,6 +255,35 @@ int rewrite_lrl_remove_tables(const char *lrlname)
         if (ltok && tokcmp(tok, ltok, "timepartitions") == 0)
             continue;
 
+        /* repoint "resource <name> <path>" at the copy dump_qresources() just
+         * placed in the db dir, so the db no longer depends on the original
+         * (possibly transient) repop location. */
+        if (ltok && tokcmp(tok, ltok, "resource") == 0 && thedb && thedb->basedir) {
+            int nlen, plen;
+            char *ntok = segtok(line, sizeof(line), &st, &nlen);
+            char *ptok = segtok(line, sizeof(line), &st, &plen);
+            if (nlen > 0 && plen > 0) {
+                char *name = tokdup(ntok, nlen);
+                char *path = tokdup(ptok, plen);
+                const char *base = strrchr(path, '/');
+                base = base ? base + 1 : path;
+
+                char local[PATH_MAX];
+                struct stat st_buf;
+                /* only rewrite if the local copy actually exists */
+                if (snprintf(local, sizeof(local), "%s/%s", thedb->basedir, base) < (int)sizeof(local) &&
+                    stat(local, &st_buf) == 0) {
+                    cdb2buf_printf(sbnew, "resource %s %s\n", name, local);
+                    free(name);
+                    free(path);
+                    continue;
+                }
+                free(name);
+                free(path);
+                /* fall through and echo the original line unchanged */
+            }
+        }
+
         /* echo the line back out unchanged */
         cdb2buf_printf(sbnew, "%s", line);
     }
@@ -341,6 +370,23 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in, const char *p_lrl_fname_ou
             logmsg(LOGMSG_ERROR, "%s: skipping line containing table def: %s\n",
                     __func__, line);
             continue;
+        }
+
+        if (ltok && tokcmp(tok, ltok, "resource") == 0) {
+            int nlen, plen;
+            char *ntok = segtok(line, sizeof(line), &st, &nlen);
+            char *ptok = segtok(line, sizeof(line), &st, &plen);
+            if (nlen > 0 && plen > 0) {
+                char *name = tokdup(ntok, nlen);
+                char *path = tokdup(ptok, plen);
+                const char *base = strrchr(path, '/');
+                base = base ? base + 1 : path;
+                cdb2buf_printf(sb_out, "resource %s %s/%s\n", name, out_lrl_dir, base);
+                free(name);
+                free(path);
+                continue;
+            }
+            /* malformed - fall through and copy the line verbatim */
         }
         cdb2buf_printf(sb_out, "%s", line);
     }

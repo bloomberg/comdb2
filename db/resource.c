@@ -32,6 +32,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <errno.h>
 
 #include <bb_oscompat.h>
 #include <list.h>
@@ -162,6 +163,7 @@ const char *getresourcepath(const char *name)
     return NULL;
 }
 
+// this is called by process_message.c sys.cmd.send("stat resources")
 void dumpresources(void)
 {
     struct resource *res;
@@ -177,4 +179,73 @@ void cleanresources(void)
     while ((ent = listc_rtl(&list)) != NULL) {
         free(ent);
     }
+}
+
+/* Copy every registered resource file (except the auto-added "lrl"
+ * self-resource) into `dir`, using each file's basename.  Used by
+ * repopulate_lrl() so a repop'd lrl carries copies of its resource files rather than pointing back at
+ * the original db directory.  Returns the number of files copied, or -1 on
+ * error. */
+int dump_qresources(const char *dir)
+{
+    struct resource *res;
+    int n = 0;
+
+    LISTC_FOR_EACH(&list, res, link)
+    {
+        /* "lrl" is the master lrl itself - it is regenerated separately and
+         * never appears as a "resource" directive in lrl text. */
+        if (strcmp(res->name, "lrl") == 0)
+            continue;
+
+        const char *base = strrchr(res->filepath, '/');
+        base = base ? base + 1 : res->filepath;
+
+        char path[PATH_MAX];
+        if (snprintf(path, sizeof(path), "%s/%s", dir, base) >= (int)sizeof(path)) {
+            logmsg(LOGMSG_ERROR, "%s: dest path too long for resource %s\n", __func__, res->name);
+            return -1;
+        }
+
+        FILE *in = fopen(res->filepath, "r");
+        if (in == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, res->filepath, strerror(errno));
+            return -1;
+        }
+        FILE *out = fopen(path, "w");
+        if (out == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, path, strerror(errno));
+            fclose(in);
+            return -1;
+        }
+
+        /* raw byte copy - resources may be binary (.jar) files */
+        // TODO: is this really needed? ( /bb/bin/comdb2translisten.jar )
+        // does this need dumping?
+        char buf[4096];
+        size_t nr;
+        int err = 0;
+        while ((nr = fread(buf, 1, sizeof(buf), in)) > 0) {
+            if (fwrite(buf, 1, nr, out) != nr) {
+                logmsg(LOGMSG_ERROR, "%s:fwrite(\"%s\"):%s\n", __func__, path, strerror(errno));
+                err = 1;
+                break;
+            }
+        }
+        if (!err && ferror(in)) {
+            logmsg(LOGMSG_ERROR, "%s:fread(\"%s\"):%s\n", __func__, res->filepath, strerror(errno));
+            err = 1;
+        }
+        fclose(in);
+        if (fclose(out) != 0 && !err) {
+            logmsg(LOGMSG_ERROR, "%s:fclose(\"%s\"):%s\n", __func__, path, strerror(errno));
+            err = 1;
+        }
+        if (err)
+            return -1;
+
+        logmsg(LOGMSG_INFO, "%s copied resource %s -> %s\n", __func__, res->name, path);
+        ++n;
+    }
+    return n;
 }

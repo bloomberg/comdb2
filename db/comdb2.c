@@ -3092,6 +3092,13 @@ int repopulate_lrl(const char *p_lrl_fname_out)
         return -1;
     }
 
+    /* copy resource files (e.g. translisten .cfg, SP .jar) into the out dir;
+     * rewrite_lrl_un_llmeta() rewrites the "resource" lines to point at them */
+    if (dump_qresources(p_data->lrl_fname_out_dir) < 0) {
+        free(p_data);
+        return -1;
+    }
+
     int has_tp = dump_timepartitions(p_data->lrl_fname_out_dir, thedb->envname,
                                      TIMEPART_FILE_NAME);
     if (has_tp < 0) {
@@ -4449,6 +4456,11 @@ static int init(int argc, char **argv)
 
         llmeta_set_lua_funcs(s);
         llmeta_set_lua_funcs(a);
+
+        /* copy resource files (e.g. queue .cfg) into the db dir,
+         * rewrite_lrl_remove_tables() then repoints the "resource" lines at these local copies. */
+        if (dump_qresources(thedb->basedir) < 0)
+            logmsg(LOGMSG_WARN, "failed to copy one or more resource files into %s\n", thedb->basedir);
 
         /* remove table defs from and add use_llmeta to the lrl file */
         if (rewrite_lrl_remove_tables(getresourcepath("lrl"))) {
