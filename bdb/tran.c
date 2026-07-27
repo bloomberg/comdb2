@@ -70,6 +70,8 @@ int gbl_debug_sleep_before_prepare = 0;
 extern int gbl_debug_txn_sleep;
 extern int gbl_debug_disttxn_trace;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
+extern int __txn_is_dist_committed(DB_ENV *, const char *);
+extern void __os_free(DB_ENV *, void *);
 
 #if 0
 int __lock_dump_region_lockerid __P((DB_ENV *, const char *, FILE *, u_int32_t lockerid));
@@ -2825,6 +2827,45 @@ void bdb_upgrade_all_prepared(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
     bdb_state->dbenv->txn_upgrade_all_prepared(bdb_state->dbenv);
+}
+
+int bdb_collect_ddl_prepared(bdb_state_type *bdb_state, char ***dist_txnids, char ***coordinator_names,
+                             char ***coordinator_tiers, int *count)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->dbenv->txn_collect_ddl_prepared(bdb_state->dbenv, dist_txnids, coordinator_names,
+                                                      coordinator_tiers, count);
+}
+
+int bdb_mark_prepared_resolved(bdb_state_type *bdb_state, const char *dist_txnid, int committed)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->dbenv->txn_mark_prepared_resolved(bdb_state->dbenv, dist_txnid, committed);
+}
+
+int bdb_is_dist_committed(bdb_state_type *bdb_state, const char *dist_txnid)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return __txn_is_dist_committed(bdb_state->dbenv, dist_txnid);
+}
+
+void bdb_free_ddl_prepared(bdb_state_type *bdb_state, char **dist_txnids, char **coordinator_names,
+                           char **coordinator_tiers, int count)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    DB_ENV *dbenv = bdb_state->dbenv;
+    for (int i = 0; i < count; i++) {
+        __os_free(dbenv, dist_txnids[i]);
+        __os_free(dbenv, coordinator_names[i]);
+        __os_free(dbenv, coordinator_tiers[i]);
+    }
+    __os_free(dbenv, dist_txnids);
+    __os_free(dbenv, coordinator_names);
+    __os_free(dbenv, coordinator_tiers);
 }
 
 unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
