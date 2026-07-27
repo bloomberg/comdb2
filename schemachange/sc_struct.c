@@ -452,6 +452,100 @@ static int unpack_newcsc2_field(const ProtobufCBinaryData *src, char **dest, siz
     return 0;
 }
 
+/* Sanity caps for genshard partition arrays received over the wire. A generic
+ * shard partition is bounded by the number of physical shards and partitioning
+ * columns; these are generous upper bounds that still stop a corrupt or hostile
+ * OSQL_SCHEMACHANGE from triggering a huge allocation. */
+#define SC_GENSHARD_MAX_DBS 4096
+#define SC_GENSHARD_MAX_COLS 4096
+
+/* Validate an unpacked CDB2Schemachange before any of its fields are copied into
+ * a struct schema_change_type or otherwise dereferenced. Returns 0 when the
+ * message is well-formed, -1 otherwise. Every OSQL_SCHEMACHANGE entrypoint must
+ * funnel through here so the validation is identical regardless of the caller.
+ *
+ * For PARTITION_ADD_GENSHARD this guarantees, before the copy loops run, that:
+ *   - genshardtablename is non-NULL and fits the destination buffer;
+ *   - the count fields are actually present (has_genshardnum{dbs,cols});
+ *   - the counts are positive and capped to sane maximums;
+ *   - the counts agree with the repeated-field array lengths;
+ *   - the dbnames/shardnames/columns array pointers are non-NULL; and
+ *   - no entry in the dbnames/shardnames/columns arrays is NULL. */
+static int validate_schemachange_proto(CDB2Schemachange *sc)
+{
+    if (!sc) {
+        logmsg(LOGMSG_ERROR, "%s: NULL schemachange\n", __func__);
+        return -1;
+    }
+
+    switch (sc->partition_type) {
+    case PARTITION_ADD_GENSHARD: {
+        if (!sc->genshardtablename) {
+            logmsg(LOGMSG_ERROR, "%s: genshard partition missing tablename\n", __func__);
+            return -1;
+        }
+        if (strlen(sc->genshardtablename) >= MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "%s: genshard tablename too long\n", __func__);
+            return -1;
+        }
+        if (!sc->has_genshardnumdbs || !sc->has_genshardnumcols) {
+            logmsg(LOGMSG_ERROR, "%s: genshard partition missing count fields\n", __func__);
+            return -1;
+        }
+        if (sc->genshardnumdbs <= 0 || sc->genshardnumcols <= 0) {
+            logmsg(LOGMSG_ERROR, "%s: genshard partition has non-positive counts (dbs=%d cols=%d)\n",
+                   __func__, sc->genshardnumdbs, sc->genshardnumcols);
+            return -1;
+        }
+        if (sc->genshardnumdbs > SC_GENSHARD_MAX_DBS || sc->genshardnumcols > SC_GENSHARD_MAX_COLS) {
+            logmsg(LOGMSG_ERROR, "%s: genshard partition counts exceed maximum (dbs=%d cols=%d)\n",
+                   __func__, sc->genshardnumdbs, sc->genshardnumcols);
+            return -1;
+        }
+        if ((size_t)sc->genshardnumdbs != sc->n_gensharddbnames ||
+            (size_t)sc->genshardnumdbs != sc->n_genshardshardnames ||
+            (size_t)sc->genshardnumcols != sc->n_genshardcolumns) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: genshard count mismatch (numdbs=%d n_dbnames=%zu n_shardnames=%zu numcols=%d "
+                   "n_columns=%zu)\n",
+                   __func__, sc->genshardnumdbs, sc->n_gensharddbnames, sc->n_genshardshardnames,
+                   sc->genshardnumcols, sc->n_genshardcolumns);
+            return -1;
+        }
+        if (!sc->gensharddbnames || !sc->genshardshardnames || !sc->genshardcolumns) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: genshard partition missing array (dbnames=%p shardnames=%p columns=%p)\n",
+                   __func__, (void *)sc->gensharddbnames, (void *)sc->genshardshardnames,
+                   (void *)sc->genshardcolumns);
+            return -1;
+        }
+        for (size_t i = 0; i < sc->n_gensharddbnames; i++) {
+            if (!sc->gensharddbnames[i]) {
+                logmsg(LOGMSG_ERROR, "%s: genshard dbname[%zu] is NULL\n", __func__, i);
+                return -1;
+            }
+        }
+        for (size_t i = 0; i < sc->n_genshardshardnames; i++) {
+            if (!sc->genshardshardnames[i]) {
+                logmsg(LOGMSG_ERROR, "%s: genshard shardname[%zu] is NULL\n", __func__, i);
+                return -1;
+            }
+        }
+        for (size_t i = 0; i < sc->n_genshardcolumns; i++) {
+            if (!sc->genshardcolumns[i]) {
+                logmsg(LOGMSG_ERROR, "%s: genshard column[%zu] is NULL\n", __func__, i);
+                return -1;
+            }
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc, size_t *plen)
 {
     int32_t *ibuf = (int32_t *)packed_sc;
@@ -464,6 +558,12 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
     CDB2Schemachange *sc = cdb2__schemachange__unpack(NULL, len, (const unsigned char *)&ibuf[2]);
     if (!sc) {
         logmsg(LOGMSG_ERROR, "%s: error unpacking sc\n", __func__);
+        return -1;
+    }
+
+    if (validate_schemachange_proto(sc) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: schemachange failed validation\n", __func__);
+        cdb2__schemachange__free_unpacked(sc, NULL);
         return -1;
     }
 
@@ -581,22 +681,45 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
         break;
     }
     case PARTITION_ADD_GENSHARD: {
-         strncpy(s->partition.u.genshard.tablename,sc->genshardtablename, sizeof(s->partition.u.genshard.tablename));
-         s->partition.u.genshard.numdbs = sc->genshardnumdbs;
-         s->partition.u.genshard.dbnames = (char **)malloc(sizeof(char *) * s->partition.u.genshard.numdbs);
-         for(int i=0;i<s->partition.u.genshard.numdbs;i++){
-             s->partition.u.genshard.dbnames[i] = strdup(sc->gensharddbnames[i]);
-         }
-         s->partition.u.genshard.numcols = sc->genshardnumcols;
-         s->partition.u.genshard.columns = (char **)malloc(sizeof(char *) * s->partition.u.genshard.numcols);
-         for(int i=0;i<s->partition.u.genshard.numcols;i++){
-             s->partition.u.genshard.columns[i] = strdup(sc->genshardcolumns[i]);
-         }
-         s->partition.u.genshard.shardnames = (char **)malloc(sizeof(char *) * s->partition.u.genshard.numdbs);
-         for(int i=0;i<s->partition.u.genshard.numdbs;i++){
-             s->partition.u.genshard.shardnames[i] = strdup(sc->genshardshardnames[i]);
-         }
-         break;
+        /* validate_schemachange_proto() has already guaranteed the counts are
+         * positive, capped, agree with the array lengths, and that no array or
+         * entry pointer is NULL; here we only need to guard against allocation
+         * failure and free any partial state. calloc() zero-fills the arrays so
+         * free_genshard_partition() can safely skip not-yet-populated slots. */
+        strncpy0(s->partition.u.genshard.tablename, sc->genshardtablename,
+                 sizeof(s->partition.u.genshard.tablename));
+        s->partition.u.genshard.numdbs = sc->genshardnumdbs;
+        s->partition.u.genshard.numcols = sc->genshardnumcols;
+        s->partition.u.genshard.dbnames = calloc(s->partition.u.genshard.numdbs, sizeof(char *));
+        s->partition.u.genshard.columns = calloc(s->partition.u.genshard.numcols, sizeof(char *));
+        s->partition.u.genshard.shardnames = calloc(s->partition.u.genshard.numdbs, sizeof(char *));
+        if (!s->partition.u.genshard.dbnames || !s->partition.u.genshard.columns ||
+            !s->partition.u.genshard.shardnames) {
+            logmsg(LOGMSG_ERROR, "%s: genshard partition array allocation failed\n", __func__);
+            free_genshard_partition(s);
+            cdb2__schemachange__free_unpacked(sc, NULL);
+            return -1;
+        }
+        for (uint32_t i = 0; i < s->partition.u.genshard.numdbs; i++) {
+            s->partition.u.genshard.dbnames[i] = strdup(sc->gensharddbnames[i]);
+            s->partition.u.genshard.shardnames[i] = strdup(sc->genshardshardnames[i]);
+            if (!s->partition.u.genshard.dbnames[i] || !s->partition.u.genshard.shardnames[i]) {
+                logmsg(LOGMSG_ERROR, "%s: genshard partition strdup failed\n", __func__);
+                free_genshard_partition(s);
+                cdb2__schemachange__free_unpacked(sc, NULL);
+                return -1;
+            }
+        }
+        for (uint32_t i = 0; i < s->partition.u.genshard.numcols; i++) {
+            s->partition.u.genshard.columns[i] = strdup(sc->genshardcolumns[i]);
+            if (!s->partition.u.genshard.columns[i]) {
+                logmsg(LOGMSG_ERROR, "%s: genshard partition strdup failed\n", __func__);
+                free_genshard_partition(s);
+                cdb2__schemachange__free_unpacked(sc, NULL);
+                return -1;
+            }
+        }
+        break;
     }
     }
     s->preserve_oplog_count = (sc->has_preserve_oplog_count) ? sc->preserve_oplog_count : -1;
