@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Tests the queue resource config safe copying through repopnewlrl:
+#   1. repopnewlrl copies the queue .cfg into the repop dir and points
+#      the repop'd lrl's "resource" line at it (rewrite_lrl_un_llmeta).
+#   2. --create from that repop lrl copies the .cfg into the db dir and repoints
+#      the lrl's "resource" line at the local copy (dump_qresources +
+#      rewrite_lrl_remove_tables), so the db is self-contained - (i.e the db should come up
+#      after the repop dir is deleted.
+
+set -ex
+
+db=$DBNAME
+
+pids=""
+cleanup() {
+    for p in $pids; do
+        kill -9 $p >/dev/null 2>&1 || true
+    done
+}
+trap cleanup EXIT
+
+stop_db() {
+    cdb2sql $db local 'exec procedure sys.cmd.send("exit")' || true
+    sleep 5
+    pids=""
+}
+
+rm -rf $DBDIR
+mkdir -p $DBDIR
+
+# Create the source db.
+$COMDB2_EXE $db --create --dir $DBDIR > $TESTDIR/$db.create.log 2>&1
+
+cat <<-EOF >> $DBDIR/$db.lrl
+	queue testq 1024
+EOF
+
+# --- bring up with the queue only, create the tables -------------
+$COMDB2_EXE $db --lrl $DBDIR/$db.lrl > $TESTDIR/$db.start.log 2>&1 &
+pids="$pids $!"
+sleep 10
+
+
+cdb2sql $db local "create table t(a int)" >/dev/null
+cdb2sql $db local "create table t1(a int)" >/dev/null
+
+master=$(cdb2sql --tabs $db local "select host from comdb2_cluster where is_master='Y'")
+[[ -z "$master" ]] && master=$(cdb2sql --tabs $db local "select comdb2_host()")
+# logfile=$DBDIR/$db.debug_queueops.log
+# ${TESTSBUILDDIR}/debug_queueops $db $master > $logfile 2>&1
+
+
+stop_db
+
+# --- add resource and restart -----------------------
+cat <<-EOF > $TESTDIR/$db.testq.cfg
+	queue testq
+	table t1
+	field a add pre_upd post_upd del
+EOF
+
+cat <<-EOF >> $DBDIR/$db.lrl
+resource testq $TESTDIR/$db.testq.cfg
+EOF
+
+$COMDB2_EXE $db --lrl $DBDIR/$db.lrl >> $TESTDIR/$db.start.log 2>&1 &
+pids="$pids $!"
+sleep 10
+
+# The source db must come up with the trigger configured.
+out=$(cdb2sql --tabs $db local "select 1")
+if [[ "$out" != "1" ]]; then
+    echo "FAIL: source db did not come up with translisten trigger"
+    cat $DBDIR/$db.start.log
+    exit 1
+fi
+
+stop_db
+
+# --- repopnewlrl into it's own repop dir -------------------------------
+repopdir=$TESTDIR/$db.repop
+rm -rf $repopdir
+mkdir -p $repopdir
+$COMDB2_EXE $db --repopnewlrl $repopdir/$db.lrl --lrl $DBDIR/$db.lrl
+
+# Reinit the same db directory from the repop'd lrl (which points back at $DBDIR).
+rm -rf $DBDIR
+mkdir -p $DBDIR
+$COMDB2_EXE $db --create --lrl $repopdir/$db.lrl > $TESTDIR/$db.repop.create.log 2>&1
+
+# create should have copied the queue cfg into the db dir and repointed the
+# lrl's "resource" line at that local copy (dump_qresources + rewrite_lrl).
+if [[ ! -f $DBDIR/$db.testq.cfg ]]; then
+    echo "FAIL: resource cfg was not copied into the db dir"
+    ls -l $DBDIR
+    exit 1
+fi
+
+if ! grep -q "^resource testq $DBDIR/$db.testq.cfg\$" $repopdir/$db.lrl; then
+    echo "FAIL: repop lrl resource line was not repointed at the db dir"
+    grep "^resource" $repopdir/$db.lrl || true
+    exit 1
+fi
+
+cp $repopdir/$db.lrl $DBDIR/$db.lrl
+rm -rf $repopdir
+
+$COMDB2_EXE $db --lrl $DBDIR/$db.lrl > $TESTDIR/$db.repop.start.log 2>&1 &
+pids="$pids $!"
+sleep 10
+
+out=$(cdb2sql --tabs $db local "select 1")
+if [[ "$out" != "1" ]]; then
+    echo "FAIL: reinited db did not come up (got '$out')"
+    cat $TESTDIR/$db.repop.start.log
+    exit 1
+fi
+
+stop_db
+
+echo "Passed."
+exit 0
