@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+SRC_DB=$DBNAME
+SRC_OPT="$CDB2_OPTIONS"
+DST_DB=$SECONDARY_DBNAME
+DST_OPT="$SECONDARY_CDB2_OPTIONS"
+
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+
+passed=0
+failed=0
+
+src() { cdb2sql ${SRC_OPT} $SRC_DB default "$1"; }
+src_tabs() { cdb2sql --tabs ${SRC_OPT} $SRC_DB default "$1"; }
+dst() { cdb2sql ${DST_OPT} $DST_DB default "$1"; }
+
+sa_dst() {
+    CDB2_CONFIG=$SECONDARY_CDB2_CONFIG ${TESTSBUILDDIR}/simpleauth_test $DST_DB "$1" "$2"
+}
+
+setup_auth_table() {
+    local q=$1
+    $q "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" || true
+    $q "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" || true
+    $q "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" || true
+    $q "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Read', 'table', 'comdb2_simple_auth') on conflict do nothing" || true
+}
+
+echo "=== Setup: auth tables on both databases ==="
+setup_auth_table src
+setup_auth_table dst
+
+echo "=== Setup: tables ==="
+dst "create table dst(id int)" || failexit "create dst.dst"
+src "create table src(id int)" || failexit "create src.src"
+
+echo "=== Setup: trigger on source db that writes to the remote db ==="
+cdb2sql ${SRC_OPT} $SRC_DB default - <<EOF || failexit "create trigger"
+create procedure remtrig version 'v1' {
+local function main(event)
+    if event.type == 'add' then
+        local _, rc = db:exec("insert into LOCAL_${DST_DB}.dst(id) values(" .. event.new.id .. ")")
+        if rc ~= 0 then return rc end
+    end
+    return 0
+end
+}\$\$
+create lua trigger remtrig on (table src for insert)
+EOF
+
+echo "  waiting for trigger to register..."
+for i in $(seq 1 30); do
+    cnt=$(src_tabs "select count(*) from comdb2_triggers where tbl_name='src' and type='trigger'" 2>/dev/null)
+    [[ "$cnt" == "1" ]] && break
+    sleep 1
+done
+[[ "$cnt" == "1" ]] || failexit "trigger did not register"
+
+echo ""
+echo "=== Lock down the remote db to specific identities ==="
+dst "insert into comdb2_simple_auth values('*', 'op', 'setup', '*', '*', '*') on conflict do nothing" || true
+dst "insert into comdb2_simple_auth values('*', 'op', 'comdb2', '*', '*', '*') on conflict do nothing" || true
+dst "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'" || true
+
+echo ""
+echo "=== Test 1: trigger remote write succeeds with db identity granted ==="
+src "insert into src(id) values(1)" || failexit "insert src id=1"
+
+found=0
+for i in $(seq 1 30); do
+    out=$(sa_dst "$OP" "select count(*) as cnt from dst where id=1" 2>/dev/null)
+    if echo "$out" | grep -q "(cnt=1)"; then found=1; break; fi
+    sleep 1
+done
+
+if [[ "$found" == "1" ]]; then
+    echo "  PASS: trigger's remote write landed on the remote db (db identity accepted)"
+    passed=$((passed + 1))
+else
+    echo "  FAIL: trigger's remote write never reached the remote db"
+    failed=$((failed + 1))
+fi
+
+echo ""
+echo "=== Cleanup ==="
+cdb2sql ${SRC_OPT} $SRC_DB default "drop lua trigger remtrig" >/dev/null 2>&1 || true
+cdb2sql ${SRC_OPT} $SRC_DB default "drop procedure remtrig version 'v1'" >/dev/null 2>&1 || true
+
+sa_dst "$OP" "insert into comdb2_simple_auth values('*', '*', '*', '*', '*', '*') on conflict do nothing" >/dev/null 2>&1 || true
+sa_dst "$OP" "delete from comdb2_simple_auth where user='op' and bpkg in ('setup', 'comdb2')" >/dev/null 2>&1 || true
+
+echo ""
+echo "Results: $passed passed, $failed failed"
+[[ $failed -gt 0 ]] && failexit "$failed test(s) failed"
+echo "Success"
+exit 0

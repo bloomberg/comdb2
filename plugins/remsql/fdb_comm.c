@@ -17,6 +17,7 @@
 #include <gettimeofday_ms.h>
 
 #include "sql.h"
+#include "cdb2api_int.h"
 #include "fdb_fend.h"
 #include "fdb_comm.h"
 #include "fdb_bend.h"
@@ -451,6 +452,12 @@ int fdb_send_open(struct sqlclntstate *clnt, fdb_msg_t *msg, char *cid, fdb_tran
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->co.authdtalen, &msg->co.authdta);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to serialize identity\n", __func__);
+            return rc;
+        }
+    } else if (!clnt->authdata && clnt->use_db_identity && fdb_auth_enabled()) {
+        rc = cdb2_serialize_db_identity(&msg->co.authdtalen, &msg->co.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to serialize db identity\n", __func__);
             return rc;
         }
     }
@@ -3344,7 +3351,15 @@ int fdb_send_2pc_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *tr
             logmsg(LOGMSG_ERROR, "%s: failed to serialize identity\n", __func__);
             return rc;
         }
+    } else if (!clnt->authdata && clnt->use_db_identity && fdb_auth_enabled()) {
+        rc = cdb2_serialize_db_identity(&msg->tv.authdtalen, &msg->tv.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to serialize db identity\n", __func__);
+            return rc;
+        }
     }
+    if (msg->tv.authdtalen)
+        msg->tv.flags |= FDB_MSG_TRANS_AUTH;
 
     assert(trans->seq == 0);
 
@@ -3396,7 +3411,15 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans,
             logmsg(LOGMSG_ERROR, "%s: failed to serialize identity\n", __func__);
             return rc;
         }
+    } else if (!clnt->authdata && clnt->use_db_identity && fdb_auth_enabled()) {
+        rc = cdb2_serialize_db_identity(&msg->tr.authdtalen, &msg->tr.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to serialize db identity\n", __func__);
+            return rc;
+        }
     }
+    if (msg->tr.authdtalen)
+        msg->tr.flags |= FDB_MSG_TRANS_AUTH;
     assert(trans->seq == 0);
 
     cdb2buf_printf(sb, "%s\n", "remtran");
@@ -3639,6 +3662,15 @@ int fdb_bend_trans_2pc_begin(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *
             }
         }
     }
+
+    if (!rc && msg->tv.authdta && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
+        rc = externalComdb2DeSerializeIdentity(&clnt->authdata, msg->tv.authdtalen, msg->tv.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
+            return rc;
+        }
+    }
+
     /* Send response & version */
     fdb_send_tran_2pc_rc(FDB_2PC_VER, tid, rc, NULL, sb);
 
