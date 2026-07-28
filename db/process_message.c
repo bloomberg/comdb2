@@ -218,6 +218,7 @@ static const char *HELP_STAT[] = {
     "stat switch                - show switch statuses",
     "stat clnt [#] [rates|totals]- show per client request stats",
     "stat mtrap                 - show mtrap system stats",
+    "stat auth                  - auth cache sizing stats (authn/authz evictions)",
     "stat dohsql                - show distributed sql stats",
     "stat oldfile               - dump oldfile hash",
     "dmpl                       - dump threads",
@@ -1748,6 +1749,13 @@ clipper_usage:
             blob_print_stats();
         } else if (tokcmp(tok, ltok, "compr") == 0) {
             compr_print_stats();
+        } else if (tokcmp(tok, ltok, "auth") == 0) {
+            extern int gbl_uses_externalauth;
+            extern void (*externalComdb2AuthCacheStat)(void);
+            if (gbl_uses_externalauth && externalComdb2AuthCacheStat)
+                externalComdb2AuthCacheStat();
+            else
+                logmsg(LOGMSG_USER, "external auth not enabled\n");
         } else if (tokcmp(tok, ltok, "resources") == 0) {
             dumpresources();
         } else if (tokcmp(tok, ltok, "signals") == 0) {

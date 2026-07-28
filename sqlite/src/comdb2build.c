@@ -422,6 +422,7 @@ extern int gbl_allow_anon_id_for_spmux;
 int reject_anon_id(struct sqlclntstate *);
 int (*externalComdb2AuthenticateUserDDL)(void*, const char *tablename) = NULL;
 int (*externalComdb2CheckOpAccess)(void *) = 0;
+void (*externalComdb2AuthCacheStat)(void) = 0;
 
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
