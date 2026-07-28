@@ -594,10 +594,17 @@ int handle_ireq(struct ireq *iq)
         osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
         /* Free the sorese transaction buffer */
         free(iq->p_buf_out_start);
+        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     } else {
+        /* reqlog_end_request() dereferences iq->rawnodestats (see
+         * update_api_history()), which points into the refcounted clientstats
+         * entry. Keep the reference held across reqlog_end_request() and only
+         * release it afterwards; otherwise a concurrent add_clientstats() can
+         * evict and free the entry once our ref hits 0, leaving a dangling
+         * pointer and a destroyed rawnodestats->lk mutex. */
+        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
         release_node_stats(iq->origin_argv0 ? iq->origin_argv0 : NULL, NULL, iq->frommach);
     }
-    reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
 
