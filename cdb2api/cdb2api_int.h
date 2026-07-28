@@ -46,6 +46,7 @@ int cdb2_read_line(char *line, int maxlen, COMDB2BUF *s, const char *buf, int *c
 #ifdef CDB2API_SERVER
 void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id);
 int cdb2_setDbIdentityBlob(cdb2_hndl_tp *hndl);
+int cdb2_serialize_db_identity(int *length, void **dta);
 
 void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
 void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);

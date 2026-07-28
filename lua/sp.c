@@ -3767,6 +3767,7 @@ static void reset_clnt_after_sp(struct sqlclntstate *clnt,
     clnt->dohsql_disable = saved_dohsql_disable;
     clnt->osql_max_trans = saved_osql_max_trans;
     clnt->current_user.bypass_auth = 0;
+    clnt->use_db_identity = 0;
 }
 
 static int db_udf_error(Lua L)
@@ -6873,8 +6874,10 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if (trigger)
+    if (trigger) {
         clnt->current_user.bypass_auth = 1;
+        clnt->use_db_identity = 1;
+    }
 
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
 

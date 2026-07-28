@@ -8817,6 +8817,38 @@ int cdb2_setDbIdentityBlob(cdb2_hndl_tp *hndl)
     }
     return 0;
 }
+
+int cdb2_serialize_db_identity(int *length, void **dta)
+{
+    *length = 0;
+    *dta = NULL;
+    if (!iam_identity || !identity_cb)
+        return 0;
+    int flags = 0;
+    if (cdb2_use_optional_identity)
+        flags |= CDB2_USE_OPTIONAL_IDENTITY;
+    if (cdb2_non_threaded_identity)
+        flags |= CDB2_NON_THREADED_IDENTITY;
+    CDB2SQLQUERY__IdentityBlob *id_blob = identity_cb->getIdentity(NULL, flags);
+    if (!id_blob)
+        return -1;
+    int rc = 0;
+    if (id_blob->data.data) {
+        size_t len = protobuf_c_message_get_packed_size((ProtobufCMessage *)id_blob);
+        void *buf = malloc(len);
+        if (!buf) {
+            rc = -1;
+        } else {
+            protobuf_c_message_pack((ProtobufCMessage *)id_blob, (uint8_t *)buf);
+            *dta = buf;
+            *length = (int)len;
+        }
+    }
+    free(id_blob->principal);
+    free(id_blob->data.data);
+    free(id_blob);
+    return rc;
+}
 #endif
 
 static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
