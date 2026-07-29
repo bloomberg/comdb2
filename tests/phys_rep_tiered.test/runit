@@ -2178,6 +2178,100 @@ function phys_rep_nomatch
     return 0
 }
 
+# DRQS 185276960: assert tunable defaults. verify_source_range ships ON (the
+# connect-time coverage check has no compatibility concerns and is the primary
+# fix). keepalive_v2 ships OFF so a new sender does not invoke the v2 keepalive SP
+# against an older metadb that cannot tolerate a missing firstfile column -- but
+# the firstfile test variant turns it on via its .testopts, so assert per-variant.
+function phys_rep_verify_tunable_defaults
+{
+    echo "== phys_rep_verify_tunable_defaults =="
+    local q="select value from comdb2_tunables where name="
+    local vsr ka2 thr
+    vsr=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_verify_source_range'")
+    ka2=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_keepalive_v2'")
+    thr=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_no_source_alarm_threshold'")
+    echo "verify_source_range=$vsr keepalive_v2=$ka2 no_source_alarm_threshold=$thr FIRSTFILE=$FIRSTFILE"
+    [[ "$vsr" == "ON" ]] || cleanFailExit "physrep_verify_source_range should default ON (got '$vsr')"
+    [[ "$thr" == "10" ]] || cleanFailExit "physrep_no_source_alarm_threshold should default 10 (got '$thr')"
+    if [[ "$FIRSTFILE" == "1" ]]; then
+        [[ "$ka2" == "ON" ]] || cleanFailExit "physrep_keepalive_v2 should be ON in firstfile variant (got '$ka2')"
+    else
+        [[ "$ka2" == "OFF" ]] || cleanFailExit "physrep_keepalive_v2 should default OFF (got '$ka2')"
+    fi
+    return 0
+}
+
+# DRQS 185276960: exercise the production rollout end to end, in the order it will
+# be performed (only meaningful when we start WITHOUT a firstfile column, i.e. the
+# FIRSTFILE=0 variants):
+#   1. binary deployed, keepalive_v2 off, no firstfile column -> physrep healthy;
+#   2. enable keepalive_v2 while the column is STILL absent -> the (new) SP must
+#      tolerate the missing column and keep refreshing last_keepalive;
+#   3. ALTER add the firstfile column live;
+#   4. keepalive_v2 auto-detects the column and starts populating firstfile,
+#      with no restart -- register_replicant can now range-filter.
+# Run last: it mutates tunables and the metadb schema.
+function phys_rep_firstfile_rollout
+{
+    echo "== phys_rep_firstfile_rollout =="
+
+    if [[ "$FIRSTFILE" == "1" ]]; then
+        echo "skip: variant already has a firstfile column / keepalive_v2 on"
+        return 0
+    fi
+
+    local meta=${REPL_META_DBNAME}
+    local metahost=${REPL_META_HOST}
+
+    # 1. No firstfile column, keepalive_v2 off: registry still maintained (v1).
+    local col
+    col=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $meta --host $metahost "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'")
+    [[ "$col" == "0" ]] || cleanFailExit "expected no firstfile column, got count=$col"
+    local recent
+    recent=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $meta --host $metahost "select count(*) from comdb2_physreps where last_keepalive > (now() - cast(300 as sec))")
+    [[ "$recent" =~ ^[0-9]+$ ]] && [[ "$recent" -ge 1 ]] || cleanFailExit "registry not being kept alive before rollout (recent=$recent)"
+
+    # 2. Enable keepalive_v2 on the source node(s) while the column is absent.
+    #    The new keepalive_v2 SP must tolerate the missing column (no errors).
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable physrep_keepalive_v2 1"
+    else
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "put tunable physrep_keepalive_v2 1"
+        done
+    fi
+
+    # Give a couple of keepalive cycles; last_keepalive must keep advancing.
+    sleep 10
+    recent=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $meta --host $metahost "select count(*) from comdb2_physreps where last_keepalive > (now() - cast(120 as sec))")
+    [[ "$recent" =~ ^[0-9]+$ ]] && [[ "$recent" -ge 1 ]] || cleanFailExit "keepalive_v2 broke keepalive with no firstfile column (recent=$recent)"
+    echo "keepalive_v2 tolerated missing firstfile column"
+
+    # 3. Subsequent schema change: add the firstfile column live on all metadbs.
+    local md
+    for md in "${REPL_META_DBNAME} ${REPL_META_HOST}" \
+              "${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST}" \
+              "${REPL_ALTMETA_DBNAME2} ${REPL_ALTMETA_HOST2}"; do
+        set -- $md
+        [[ -z "$1" || -z "$2" ]] && continue
+        echo "Adding firstfile column to $1@$2"
+        $CDB2SQL_EXE $CDB2_OPTIONS $1 --host $2 "ALTER TABLE comdb2_physreps ADD COLUMN firstfile INT"
+    done
+
+    # 4. keepalive_v2 should auto-populate firstfile within a few keepalive cycles.
+    local timeout=180 elapsed=0 cnt=0
+    while [[ $elapsed -lt $timeout ]]; do
+        cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $meta --host $metahost "select count(*) from comdb2_physreps where firstfile is not null" 2>/dev/null)
+        [[ "$cnt" =~ ^[0-9]+$ ]] && [[ "$cnt" -ge 1 ]] && break
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    [[ "$cnt" =~ ^[0-9]+$ ]] && [[ "$cnt" -ge 1 ]] || cleanFailExit "firstfile not auto-populated after live ALTER (waited ${timeout}s, cnt=$cnt)"
+    echo "firstfile auto-populated on $cnt row(s) after live ALTER -- rollout OK"
+    return 0
+}
+
 # rev-cons were decrementing active_appsock_conns without incrementing
 # Verify that there are a sane number of 'concurrent_connections' in comdb2_metrics
 function verify_connection_count
@@ -3280,6 +3374,11 @@ function run_tests
     phys_rep_nomatch ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST}
     testcase_finish $testcase
 
+    testcase="phys_rep_verify_tunable_defaults"
+    testcase_preamble $testcase
+    phys_rep_verify_tunable_defaults
+    testcase_finish $testcase
+
     testcase="tranlog_timeout"
     testcase_preamble $testcase
     tranlog_timeout
@@ -3466,6 +3565,12 @@ function run_tests
     testcase="bulkimport"
     testcase_preamble $testcase
     test_bulkimport
+    testcase_finish $testcase
+
+    # Run last: mutates tunables and the metadb schema (full rollout sequence).
+    testcase="phys_rep_firstfile_rollout"
+    testcase_preamble $testcase
+    phys_rep_firstfile_rollout
     testcase_finish $testcase
 }
 
