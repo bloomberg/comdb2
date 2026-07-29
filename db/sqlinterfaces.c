@@ -2325,6 +2325,8 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                 "\"%s\" SOCKSL commit rc=%d replay=%d\n",
                                 (clnt->sql) ? clnt->sql : "(???.)", rc,
                                 clnt->osql.replay);
+                } else if (rc == SQLITE_CLIENT_CHANGENODE && clnt->osql.xerr.errstr[0] == '\0') {
+                    errstat_cat_str(&clnt->osql.xerr, "Transaction is not durable");
                 }
 
                 if (rc) {
