@@ -2214,6 +2214,17 @@ clipper_usage:
         tokcpy(tok, ltok, hostname);
         int rtn = physrep_allowed_source(dbname, hostname);
         logmsg(LOGMSG_USER, "physrep_allowed_source dbname=%s hostname=%s rtn=%d\n", dbname, hostname, rtn);
+    } else if (tokcmp(tok, ltok, "revconn_host_is_up") == 0) {
+        char *hostname = NULL;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "revconn_host_is_up requires hostname\n");
+            return -1;
+        }
+        hostname = alloca(ltok + 1);
+        tokcpy(tok, ltok, hostname);
+        int rtn = physrep_revconn_host_is_up(hostname);
+        logmsg(LOGMSG_USER, "revconn_host_is_up hostname=%s rtn=%d\n", hostname, rtn);
     } else if (tokcmp(tok, ltok, "physrep_force_registration") == 0) {
         extern int gbl_physrep_force_registration;
         logmsg(LOGMSG_USER, "physrep forcing registration, current-value is %d\n", gbl_physrep_force_registration);

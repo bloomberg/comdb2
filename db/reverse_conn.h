@@ -24,4 +24,9 @@ int dump_reverse_connection_host_list();
 int refresh_reverse_conn_hosts();
 int send_reversesql_request(const char *dbname, const char *host, const char *command);
 
+/* Returns 1 if 'host' is up per rtcpu, 0 if it is rtcpu'd-down or
+ * unknown/decommissioned. Used to gate whether a node should source reverse
+ * connections (a rtcpu-down machine should not initiate/serve them). */
+int physrep_revconn_host_is_up(const char *host);
+
 #endif /* INCLUDED_REVERSE_CONN_H */

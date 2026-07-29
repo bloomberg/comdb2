@@ -41,6 +41,7 @@
 
 #include "phys_rep.h"
 #include "reversesql.h"
+#include "reverse_conn.h"
 
 #include "cdb2api.h"
 #include "cdb2api_int.h"
@@ -200,6 +201,17 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
         goto done;
     }
     remote_host[read_bytes-1] = 0; // discard trailing '\n'
+
+    // Reject reverse connections originating from a source that rtcpu reports as
+    // down/decommissioned -- a rtcpu-down machine should not act as a reverse-
+    // connection source. This is the receiver-side mirror of the sender's own
+    // self-gate in reverse_conn.c.
+    if (!physrep_revconn_host_is_up(remote_host)) {
+        logmsg(LOGMSG_WARN, "%s:%d Rejecting 'reversesql' request from down/rtcpu'd source %s@%s\n", __func__, __LINE__,
+               remote_dbname, remote_host);
+        rc = -1;
+        goto done;
+    }
 
     read_bytes = cdb2buf_gets(command, sizeof(command), sb);
     if (read_bytes >= 1)           // Safety
