@@ -254,7 +254,10 @@ static inline int have_overlap(DB_LSN *parent_low, DB_LSN *parent_high, DB_LSN *
     }
 
     int max_rollback = gbl_physrep_max_rollback;
-    if (max_rollback > 0 && my_high->file - parent_high->file > max_rollback) {
+    /* my_high->file/parent_high->file are unsigned; only compare the gap when we
+     * are actually ahead of the source, else the subtraction underflows and
+     * wrongly rejects a source that is ahead of us (the normal healthy case). */
+    if (max_rollback > 0 && my_high->file > parent_high->file && my_high->file - parent_high->file > max_rollback) {
         return 0;
     }
 
@@ -349,6 +352,54 @@ static inline int find_parent_range(cdb2_hndl_tp *repl_db, DB_LSN *lowest, DB_LS
         }
     }
     return 0;
+}
+
+/*
+ * Best-effort pre-connect viability probe used by find_new_repl_db(): does this
+ * candidate source's live log range cover our current log range?
+ *    1 = overlap (the source can serve us)
+ *    0 = no overlap (the source's logs don't cover us -- skip it)
+ *   -1 = unknown (couldn't determine one of the ranges; caller should NOT
+ *        exclude the source over a transient failure)
+ *
+ * This reuses the same primitives as find_match_lsn() but avoids walking log
+ * records or computing a truncation point, so it is cheap enough to run against
+ * every candidate before committing to it.
+ */
+int physrep_source_covers_me(void *in_bdb_state, cdb2_hndl_tp *repl_db)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    DB_LSN parent_lowest = {0}, parent_highest = {0};
+    DB_LSN my_lowest = {0}, my_highest = {0};
+    DB_LOGC *logc;
+    int rc;
+
+    if (!find_parent_range(repl_db, &parent_lowest, &parent_highest)) {
+        return -1;
+    }
+
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        physrep_logmsg(LOGMSG_ERROR, "%s: Can't get log cursor rc %d\n", __func__, rc);
+        return -1;
+    }
+
+    int have_my_range = find_my_range(logc, &my_lowest, &my_highest);
+    logc->close(logc, 0);
+
+    if (!have_my_range) {
+        return -1;
+    }
+
+    rc = have_overlap(&parent_lowest, &parent_highest, &my_lowest, &my_highest);
+
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s: parent-range {%d:%d}-{%d:%d}, my-range {%d:%d}-{%d:%d}, covers=%d\n", __func__,
+                       parent_lowest.file, parent_lowest.offset, parent_highest.file, parent_highest.offset,
+                       my_lowest.file, my_lowest.offset, my_highest.file, my_highest.offset, rc);
+    }
+
+    return rc;
 }
 
 LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO start_info)

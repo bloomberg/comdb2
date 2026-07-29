@@ -79,6 +79,21 @@ int gbl_physrep_i_am_metadb = 0;
 int gbl_physrep_filter_by_class = 1;
 int gbl_started_physrep_threads = 0;
 
+/* Verify a candidate source's live log range covers our LSN before committing
+ * to it in find_new_repl_db(), instead of discovering non-coverage later via
+ * the slow sentinel/truncation path. ON by default: no compatibility concerns --
+ * it is a purely local decision, fails safe (proceeds on any probe error), and
+ * the log-range query it runs against the source is already used by the existing
+ * find_match_lsn()/truncation path, so every source already supports it. Needs
+ * neither the firstfile column nor a uniform fleet. */
+int gbl_physrep_verify_source_range = 1;
+
+/* Observable "nobody can serve me" state + how many consecutive no-viable-source
+ * registration cycles we tolerate before latching the flag and alarming. */
+int gbl_physrep_no_viable_source = 0;
+int gbl_physrep_no_source_alarm_threshold = 10;
+static int physrep_no_source_streak = 0;
+
 unsigned int gbl_deferred_phys_update;
 
 char *gbl_physrep_source_dbname;
@@ -1023,6 +1038,13 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
 
     while (stop_physrep_worker == 0) {
 
+        /* Set if we reached a source this pass but its logs don't cover us. */
+        int saw_noncovering = 0;
+        /* Set if some candidate could not be probed this pass (skipped for the
+         * reconnect penalty, or failed to open / 'select 1'). If so we cannot
+         * conclude "no source covers me" -- a source we never reached might. */
+        int saw_unreachable = 0;
+
         if (gbl_physrep_shuffle_host_list == 1) {
             qsort(repl_dbs, repl_dbs_sz, sizeof(DB_Connection *), seedsort);
         }
@@ -1036,6 +1058,7 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                     physrep_logmsg(LOGMSG_USER, "%s:%d Skipping mach %s@%s last_fail @%ld vs %d\n",
                                    __func__, __LINE__, cnct->hostname, cnct->dbname, cnct->last_failed, now);
                 }
+                saw_unreachable = 1;
                 continue;
             }
 
@@ -1051,6 +1074,7 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                                cnct->hostname, rc, cdb2_errstr(*repl_db));
                 cdb2_close(*repl_db);
                 cnct->last_failed = time(NULL);
+                saw_unreachable = 1;
                 continue;
             }
 
@@ -1059,9 +1083,27 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                 physrep_logmsg(LOGMSG_ERROR, "%s:%d: Couldn't execute 'select 1' against %s@%s (rc: %d error: %s)\n",
                                __func__, __LINE__, cnct->dbname, cnct->hostname, rc, cdb2_errstr(*repl_db));
                 cnct->last_failed = time(NULL);
+                saw_unreachable = 1;
+                cdb2_close(*repl_db);
                 continue;
             }
             while (cdb2_next_record(*repl_db) == CDB2_OK) {
+            }
+
+            /* Best-effort: confirm this source's live log range covers our LSN
+             * before committing. Skipping a provably non-covering source here
+             * avoids the slow sentinel -> truncation -> sleep discovery loop. */
+            if (gbl_physrep_verify_source_range) {
+                int cov = physrep_source_covers_me(thedb->bdb_env, *repl_db);
+                if (cov == 0) {
+                    physrep_logmsg(LOGMSG_WARN, "%s:%d source %s@%s does not cover my LSN, skipping\n", __func__,
+                                   __LINE__, cnct->dbname, cnct->hostname);
+                    saw_noncovering = 1;
+                    cnct->last_failed = time(NULL);
+                    cdb2_close(*repl_db);
+                    continue;
+                }
+                /* cov == -1 (unknown): fall through; handle_truncation is the backstop. */
             }
 
             physrep_logmsg(LOGMSG_USER, "Attached to '%s' db '%s' for replication\n", cnct->hostname, cnct->dbname);
@@ -1076,7 +1118,34 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
             cnct->last_cnct = time(NULL);
             cnct->is_up = 1;
             set_repl_db_connected(cnct->dbname, cnct->hostname);
+            /* Found a viable source: clear the no-viable-source alarm state. */
+            physrep_no_source_streak = 0;
+            gbl_physrep_no_viable_source = 0;
             return cnct;
+        }
+
+        /* Every reachable candidate this pass was probed and none covered our
+         * LSN. Retrying the same list is pointless -- re-register to get a fresh
+         * candidate list (the registry may have newer firstfile data), and count
+         * this toward the no-viable-source alarm. If instead some candidate was
+         * merely unreachable this pass, we cannot conclude non-coverage: fall
+         * through to the normal retry so a transiently-down covering source gets
+         * another chance and the alarm does not misfire. */
+        if (saw_noncovering && !saw_unreachable) {
+            /* Latch + log once on the rising edge only; the caller's
+             * sleep_and_retry path already paces re-registration, so re-logging
+             * every cycle here would just flood the log at ERROR for as long as
+             * the condition persists. The flag stays latched until a viable or
+             * reverse connection clears it above. */
+            if (++physrep_no_source_streak >= gbl_physrep_no_source_alarm_threshold && !gbl_physrep_no_viable_source) {
+                LOG_INFO me = get_last_lsn(thedb->bdb_env);
+                gbl_physrep_no_viable_source = 1;
+                physrep_logmsg(LOGMSG_ERROR,
+                               "PHYSREP NO VIABLE SOURCE: no source retains logs covering my LSN {%u:%u} after %d "
+                               "attempts; a full resync may be required\n",
+                               me.file, me.offset, physrep_no_source_streak);
+            }
+            return NULL;
         }
 
         count++;
@@ -1153,6 +1222,13 @@ static void delete_replicant_host(DB_Connection *cnct)
     free(cnct);
 }
 
+/* OFF by default for safe gradual rollout. keepalive_v2 makes the sender invoke
+ * sys.physrep.keepalive_v2 on the metadb, and OLDER metadb binaries have a
+ * keepalive_v2 SP that unconditionally writes the firstfile column -- which
+ * errors if the column has not been added yet. Shipping this off keeps a freshly
+ * upgraded node behavior-identical to the old binary (it keeps sending v1
+ * keepalive) until an operator enables it fleet-wide, after the comdb2_physreps
+ * firstfile column exists. (The NEW keepalive_v2 SP tolerates a missing column.) */
 int gbl_physrep_keepalive_v2 = 0;
 
 static int send_keepalive_int(cdb2_hndl_tp *metadb)
@@ -1561,6 +1637,10 @@ repl_loop:
                 do_truncate = 1;
 
                 set_repl_db_connected(rev_conn_hndl->remote_dbname, rev_conn_hndl->remote_host);
+                /* Recovered via a reverse connection: clear the
+                 * no-viable-source alarm state. */
+                physrep_no_source_streak = 0;
+                gbl_physrep_no_viable_source = 0;
             } else {
                 is_revconn = 0;
                 int notfound = 0;
