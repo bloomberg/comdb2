@@ -26,24 +26,33 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
     local physrep_fanout = tunables["physrep_fanout"]
     local physrep_max_candidates = tunables["physrep_max_candidates"]
     local firstfile = tunables["firstfile"]
-    local cte 
+    local cte
 
+    -- Two-tier selection when the metadb tracks firstfile (i.e. comdb2_physreps
+    -- has a firstfile column): the primary pass is STRICT -- only sources whose
+    -- reported [firstfile, file] range actually covers the replicant's pfile
+    -- (firstfile must be non-NULL, so a source that has not reported yet is not
+    -- assumed viable). If that yields nothing, the "without fanout" fallback pass
+    -- below stays permissive (firstfile IS NULL allowed) so a not-yet-reporting
+    -- fleet is never left with zero candidates. When there is no firstfile column
+    -- (firstfile == 0) we skip range filtering entirely and lean on the
+    -- replicant's connect-time verification (physrep_verify_source_range).
     if firstfile == 1 then
         cte = ("WITH RECURSIVE " ..
                  "    tiers (dbname, host, tier) AS " ..
                  "        (SELECT dbname, host, 0 " ..
                  "             FROM comdb2_physreps " ..
                  "             WHERE dbname = '" .. source_dbname .. "' AND " ..
-                 "                   host IN (" .. source_hosts ..") AND " .. 
+                 "                   host IN (" .. source_hosts ..") AND " ..
                  "                   (file >= " .. pfile .. " AND " ..
-                 "                   (firstfile IS NULL OR firstfile <= " .. pfile .. ")) " ..
+                 "                   firstfile IS NOT NULL AND firstfile <= " .. pfile .. ") " ..
                  "         UNION ALL " ..
                  "         SELECT p.dbname, p.host, t.tier+1  " ..
                  "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
                  "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " ..
                  "             AND p.dbname = c.dbname AND p.host = c.host " ..
                  "             AND (c.file >= " .. pfile .. " AND " ..
-                 "                 (c.firstfile IS NULL OR c.firstfile <= " .. pfile ..  "))" ..
+                 "                 c.firstfile IS NOT NULL AND c.firstfile <= " .. pfile ..  ")" ..
                  "             AND (c.last_keepalive > (NOW() - cast (600 as sec)))), " ..
                  "    child_count (dbname, host, tier, cnt) AS " ..
                  "        (SELECT t.dbname, t.host, t.tier, count (*) c" ..

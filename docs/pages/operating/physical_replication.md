@@ -144,6 +144,31 @@ CREATE TABLE comdb2_physreps(dbname CSTRING(60),
                              UNIQUE (dbname, host))
 ```
 This could be thought of as the registry of all the physical replicants nodes in the system (both sources and replicants).
+
+The `firstfile` column records each node's *oldest* available transaction log file
+(populated by `keepalive_v2`), while `file` records its newest. Together they let
+`register_replicant` prefer sources whose `[firstfile, file]` range actually covers
+a registering replicant's LSN. The `firstfile` column is **optional**: if it is
+absent, `keepalive_v2` simply does not report it and `register_replicant` skips
+range-filtering — replicants still confirm coverage at connect time via
+`physrep_verify_source_range`. Adding the column is a pure optimization (fewer
+wasted connection attempts), not a requirement.
+
+Recommended rollout ordering. `physrep_verify_source_range` ships **on** (the
+connect-time coverage check has no compatibility concerns and is the primary fix,
+active as soon as the binary is deployed). `physrep_keepalive_v2` ships **off** so
+a new binary is a behavior-neutral drop-in for the registry path:
+
+1. Deploy the new binary across the fleet (sources, replicants, metadbs).
+   Connect-time source verification is active immediately.
+2. `ALTER TABLE comdb2_physreps ADD COLUMN firstfile INT` on the metadb cluster(s).
+3. Enable `physrep_keepalive_v2` fleet-wide so nodes begin reporting `firstfile`;
+   `register_replicant` then also range-filters candidates during registration.
+
+Enabling `physrep_keepalive_v2` before step 1 completes or step 2 is done risks a
+node invoking the v2 keepalive SP on an older metadb that cannot handle a missing
+`firstfile` column.
+
 * Physical replicant states:
     * `Pending`  : The node has requested to become a physical replicant (registration in-progress)
     * `Active`   : The node is a physical replicant
@@ -178,7 +203,9 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * physrep_hung_replicant_threshold: Report if the physical replicant has been inactive for this duration. (Default: 60)
 * physrep_i_am_metadb: Marks the node as 'physical replcation metadb'. (Default: off)
 * physrep_keepalive_freq_sec: Periodically send lsn to source node after this interval. (Default: 10)
+* physrep_keepalive_v2: Use version 2 of keepalive, which also reports the oldest (first) log file. Ships `off` for safe gradual rollout; enable fleet-wide only after the metadb `comdb2_physreps` table has a `firstfile` column (older metadb binaries cannot tolerate its absence). (Default: `off`)
 * physrep_max_candidates: Maximum number of candidates that should be returned to a new physical replicant during registration. (Default: `6`)
+* physrep_no_source_alarm_threshold: Consecutive no-viable-source registration cycles (a cycle in which every reachable candidate was probed and none retained logs covering this replicant's LSN) before a physrep latches `gbl_physrep_no_viable_source` and logs `PHYSREP NO VIABLE SOURCE`. The latched state is exposed as the `physrep_no_viable_source` metric in `comdb2_metrics` and is cleared once the replicant connects to a viable source. (Default: `10`)
 * physrep_metadb_host: List of physical replication metadb cluster hosts.
 * physrep_metadb_name: Physical replication metadb cluster name.
 * physrep_reconnect_penalty: Physrep wait seconds before retry to the same node. (Default: `5`)
@@ -186,6 +213,7 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * physrep_shuffle_host_list: Shuffle the host list returned by register_replicant() before connecting to the hosts. (Default: off)
 * physrep_source_dbname: Physical replication source cluster dbname.
 * physrep_source_host: List of physical replication source cluster hosts.
+* physrep_verify_source_range: Before committing to a candidate source, verify (by querying the source directly) that its live log range covers the replicant's LSN; skip it if not. Schema-independent, needs neither the `firstfile` column nor a uniform fleet, and has no compatibility concerns (purely local, fails safe, and uses a query older sources already support). (Default: `on`)
 * revsql_allow_command_execution : Allow processing and execution of command * over the `reverse connection` that has come in as part of the request. This is mostly intended for testing. (Default: off)
 * revsql_cdb2_debug: Print extended reversql-sql cdb2 related trace. (Default: off)
 * revsql_connect_freq_sec: This node will attempt to `reverse connect` to the remote host at this frequency. (Default: 5 secs)
@@ -222,6 +250,7 @@ and not be executed manually.
 * sys.physrep.register_replicant: A request to register a new physical replicant. This is the first step of registration. 
 * sys.physrep.update_registry: As the second step of registration, the physrep executes this to confirm that it is successfully connected to a node.
 * sys.physrep.keepalive: Is executed by replicants periodically to report their current LSNs.
+* sys.physrep.keepalive_v2: Like keepalive, but also reports the oldest (first) log file into `comdb2_physreps.firstfile` when that column exists. Tolerates its absence.
 * sys.physrep.reset_nodes: Is executed to reset states of nodes in replication metadb.
 * sys.physrep.topology: Returns a list of all the nodes in the system alongside their tiers.
 * sys.physrep.get_reverse_hosts: Returns pairs of dbname/host against which the source node must periodically send `reversesql` requests.

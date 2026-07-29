@@ -1900,8 +1900,18 @@ REGISTER_TUNABLE("debug_fake_rte_failure", "Fake rte failures in connect-remote-
                  &gbl_debug_fake_rte_failure, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_keepalive_v2", "Use version 2 of keepalive which includes first lsn. (Default: off)",
+REGISTER_TUNABLE("physrep_keepalive_v2",
+                 "Use version 2 of keepalive which also reports the oldest (first) lsn. Enable only after the metadb "
+                 "comdb2_physreps table has a firstfile column and the fleet is upgraded. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_keepalive_v2, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_verify_source_range",
+                 "Physrep verifies a candidate source's live log range covers its LSN before connecting. Schema-"
+                 "independent (queries the source directly); no compatibility concerns. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_verify_source_range, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_no_source_alarm_threshold",
+                 "Consecutive no-viable-source registration cycles before physrep latches the "
+                 "gbl_physrep_no_viable_source flag and logs 'PHYSREP NO VIABLE SOURCE'. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physrep_no_source_alarm_threshold, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
                  "Periodically send lsn to source node after this interval. (Default: 60)", TUNABLE_INTEGER,
                  &gbl_physrep_keepalive_freq_sec, 0, NULL, NULL, NULL, NULL);
