@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ "$debug" == "1" ]] && set -x
+
+# Force every commit to be reported non-durable on all nodes. This simulates a
+# master that cannot confirm the commit was replicated to a majority (e.g. under
+# I/O / replication load, or during a master swing) -- the condition that makes
+# osql_sock_commit() return SQLITE_CLIENT_CHANGENODE (rc 210).
+function force_all_non_durable
+{
+    typeset val=$1
+    if [[ -z "$CLUSTER" ]] ; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'debug_force_non_durable' = $val"
+    else
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $n "put tunable 'debug_force_non_durable' = $val"
+        done
+    fi
+}
+
+# Surface the non-durable rcode to the client instead of hiding it as durable,
+# so we can observe exactly what the client receives.
+function hide_non_durable_rcode
+{
+    typeset val=$1
+    if [[ -z "$CLUSTER" ]] ; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'hide_non_durable_rcode' = $val"
+    else
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $n "put tunable 'hide_non_durable_rcode' = $val"
+        done
+    fi
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int primary key)"
+
+hide_non_durable_rcode 0
+force_all_non_durable 1
+
+# An explicit socksql transaction whose commit cannot be confirmed durable comes
+# back as rc 210 (SQLITE_CLIENT_CHANGENODE). The client must receive a populated
+# error message -- "Transaction is not durable" -- not an empty errstr.
+x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<'EOF'
+set transaction blocksql
+begin
+insert into t1 values(1)
+commit
+EOF
+)
+
+echo "$x"
+
+force_all_non_durable 0
+
+if [[ "$x" != *"[commit] failed with rc 210 Transaction is not durable"* ]]; then
+    failexit "socksql commit should report rc 210 with a populated 'Transaction is not durable' message"
+fi
+
+echo "Success!"

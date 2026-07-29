@@ -1,0 +1,4 @@
+A socksql commit that cannot be confirmed durable (master could not replicate to
+a majority -- e.g. under load or a master swing) returns rc 210. Verify the
+client receives a populated "Transaction is not durable" message, not an empty
+errstr.
