@@ -33,6 +33,7 @@
 #include "machclass.h"
 #include "net_appsock.h"
 #include "machcache.h"
+#include "intern_strings.h"
 
 #define revconn_logmsg(lvl, ...)                                               \
     do {                                                                       \
@@ -92,6 +93,16 @@ enum {
 
 int gbl_revsql_force_rte = 1;
 int gbl_revconn_rdtimeout = 100;
+
+/* Returns 1 if 'host' is up per rtcpu, 0 if it is rtcpu'd-down or
+ * unknown/decommissioned. Used to gate whether *this* node should source reverse
+ * connections (an rtcpu-down machine should not initiate them); the target's
+ * rtcpu state is intentionally not consulted. */
+int physrep_revconn_host_is_up(const char *host)
+{
+    /* is_node_up() -> machine_is_up() aborts on a non-interned host. */
+    return is_node_up(intern(host)) == 1;
+}
 
 int send_reversesql_request(const char *dbname, const char *host, const char *command)
 {
@@ -192,6 +203,20 @@ static void *reverse_connection_worker(void *args) {
         if (!bdb_am_i_coherent(thedb->bdb_env)) {
             if (gbl_revsql_debug == 1) {
                 revconn_logmsg(LOGMSG_USER, "%s:%d not starting connection, not coherent\n", __func__, __LINE__);
+            }
+            sleep(1);
+            continue;
+        }
+
+        /* Don't initiate reverse connections while this node itself is rtcpu'd
+         * down -- an rtcpu-down machine should not act as a reverse-connection
+         * source. Replicants can pick up another source. The target's rtcpu
+         * state is intentionally not consulted. */
+        if (!physrep_revconn_host_is_up(gbl_myhostname)) {
+            if (gbl_revsql_debug == 1) {
+                revconn_logmsg(LOGMSG_USER,
+                               "%s:%d Not initiating reverse connections, this host (%s) is rtcpu'd down\n", __func__,
+                               __LINE__, gbl_myhostname);
             }
             sleep(1);
             continue;
