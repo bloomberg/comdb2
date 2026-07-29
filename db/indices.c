@@ -264,6 +264,21 @@ int track_record_index(struct ireq *iq, int ixnum, void *key, int ixkeylen)
     return is_dup;
 }
 
+static int check_upsert_index(struct ireq *iq, void *trans, int idx, blob_buffer_t *blobs, size_t maxblobs,
+                              int *opfailcode, int *ixfailnum, int *retrc, void *od_dta, size_t od_len,
+                              unsigned long long ins_keys)
+{
+    /* Ignore dup keys */
+    if (iq->usedb->ix_dupes[idx]) {
+        return 0;
+    }
+    /* Check for partial keys only when needed. */
+    if (gbl_partial_indexes && iq->usedb->ix_partial && !(ins_keys & (1ULL << idx))) {
+        return 0;
+    }
+    return check_index(iq, trans, idx, blobs, maxblobs, opfailcode, ixfailnum, retrc, od_dta, od_len, ins_keys);
+}
+
 /* If a specific index has been used in the ON CONFLICT (idx) DO NOTHING
  * clause (aka upsert target/index), then we must first perform check for
  * that particular index and bail out (ignore) if there's a similar entry
@@ -277,42 +292,21 @@ int check_for_upsert(struct ireq *iq, void *trans, blob_buffer_t *blobs, size_t 
     int upsert_idx = rec_flags >> 8;
 
    /* Perform the check for upsert index first. */
-    if (upsert_idx != MAXINDEX + 1) {
-
-        /* It must be a unique key. */
-        assert(iq->usedb->ix_dupes[upsert_idx] == 0);
-
-        /* Check for partial keys only when needed. */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-            !(ins_keys & (1ULL << upsert_idx))) {
-            /* NOOP */
-        } else {
-            rc = check_index(iq, trans, upsert_idx, blobs, maxblobs, opfailcode, ixfailnum, retrc, od_dta, od_len,
-                             ins_keys);
-            if (rc) {
-                return rc;
-            }
+    if (upsert_idx != UPSERT_CONFLICT_ALL_INDEXES) {
+        rc = check_upsert_index(iq, trans, upsert_idx, blobs, maxblobs, opfailcode, ixfailnum, retrc, od_dta, od_len,
+                                ins_keys);
+        if (rc) {
+            return rc;
         }
     }
 
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         /* Skip check for upsert index, was already checked above. */
-        if ((upsert_idx != MAXINDEX + 1) && (ixnum == upsert_idx)) {
+        if ((upsert_idx != UPSERT_CONFLICT_ALL_INDEXES) && (ixnum == upsert_idx)) {
             continue;
         }
-
-        /* Ignore dup keys */
-        if (iq->usedb->ix_dupes[ixnum] != 0) {
-            continue;
-        }
-
-        /* Check for partial keys only when needed. */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-            !(ins_keys & (1ULL << ixnum))) {
-            continue;
-        }
-
-        rc = check_index(iq, trans, ixnum, blobs, maxblobs, opfailcode, ixfailnum, retrc, od_dta, od_len, ins_keys);
+        rc = check_upsert_index(iq, trans, ixnum, blobs, maxblobs, opfailcode, ixfailnum, retrc, od_dta, od_len,
+                                ins_keys);
         if (rc) {
             return rc;
         }

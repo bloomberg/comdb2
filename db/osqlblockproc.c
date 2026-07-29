@@ -1183,6 +1183,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         hash_clear(iq->vfy_idx_hash);
     }
 
+    iq->upsert_ignored = 0;
+
     /* create a cursor */
     dbc = bdb_temp_table_cursor(thedb->bdb_env, tran->db, NULL, &bdberr);
     if (!dbc || bdberr) {
