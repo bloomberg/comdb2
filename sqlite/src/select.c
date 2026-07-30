@@ -1750,6 +1750,14 @@ static const char *columnTypeImpl(
               zType = "DATETIME";
               zOrigCol = "comdb2_rowtimestamp";
               break;
+            case -4:
+              zType = "DATETIME";
+              zOrigCol = "comdb2_insert_timestamp";
+              break;
+            case -5:
+              zType = "DATETIME";
+              zOrigCol = "comdb2_update_timestamp";
+              break;
           }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           zType = "INTEGER";
@@ -1935,6 +1943,12 @@ static void generateColumnNames(
             break;
           case -3:
             zCol = "comdb2_rowtimestamp";
+            break;
+          case -4:
+            zCol = "comdb2_insert_timestamp";
+            break;
+          case -5:
+            zCol = "comdb2_update_timestamp";
             break;
         }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
