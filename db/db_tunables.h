@@ -2486,14 +2486,14 @@ REGISTER_TUNABLE("sqlite_use_temptable_for_rowset",
                  "Use temptable instead of sqlite's binary search tree, for recording rowids (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_sqlite_use_temptable_for_rowset, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
-                 TUNABLE_INTEGER, &gbl_identity_cache_max, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 1000)", TUNABLE_INTEGER,
+                 &gbl_identity_cache_max, READONLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("authentication_cache_ageout", "Max age of authentication cache (Default: 900 seconds)",
                  TUNABLE_INTEGER, &gbl_authentication_cache_ageout, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("max_authorization_cache", "Max cache size of authorized identities (Default: 2000)",
-                 TUNABLE_INTEGER, &gbl_authorization_cache_max, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_authorization_cache", "Max cache size of authorized identities (Default: 4000)", TUNABLE_INTEGER,
+                 &gbl_authorization_cache_max, READONLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("authz_cache", "Enable per query caching of authorized tables.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_cache_authz_perms, 0, NULL, NULL, NULL, NULL);
