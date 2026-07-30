@@ -2739,6 +2739,8 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
              */
             pCur->bdbcur->get_found_data(pCur->bdbcur, &pCur->rrn, &pCur->genid,
                                          &sz, &buf, &ver);
+            pCur->insert_secs = pCur->bdbcur->insert_secs(pCur->bdbcur);
+            pCur->update_secs = pCur->bdbcur->update_secs(pCur->bdbcur);
             vtag_to_ondisk_vermap(pCur->db, buf, &sz, ver);
             if (sz > getdatsize(pCur->db)) {
                 /* This shouldn't happen, but check anyway */
@@ -4638,6 +4640,19 @@ i64 sqlite3BtreeIntegerKey(BtCursor *pCur)
     return size;
 }
 
+/* odh2 timestamps of the current row (epoch seconds), snapshotted at fetch
+ * time.  0 for an odh1 or synthetic row; the caller then falls back to the
+ * genid time (odh1) or NULL (synthetic). */
+u32 sqlite3BtreeInsertTimestamp(BtCursor *pCur)
+{
+    return pCur->insert_secs;
+}
+
+u32 sqlite3BtreeUpdateTimestamp(BtCursor *pCur)
+{
+    return pCur->update_secs;
+}
+
 /*
  ** Set size to the number of bytes of data in the entry the
  ** cursor currently points to.  Always return SQLITE_OK.
@@ -5986,6 +6001,11 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             }
             pCur->rrn = 2;
             pCur->genid = genid;
+            /* synthetic (uncommitted) row: no odh2 header timestamps.  Clear any
+             * value a previous fetch left on the cursor so the reader sees 0 and
+             * reports NULL rather than a stale time. */
+            pCur->insert_secs = 0;
+            pCur->update_secs = 0;
         } else {
             rc = ddguard_bdb_cursor_find(thd, pCur, pCur->bdbcur, &genid,
                                          sizeof(genid), 0, bias, &bdberr);
@@ -6001,6 +6021,8 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                  */
                 pCur->bdbcur->get_found_data(pCur->bdbcur, &pCur->rrn,
                                              &pCur->genid, &fndlen, &buf, &ver);
+                pCur->insert_secs = pCur->bdbcur->insert_secs(pCur->bdbcur);
+                pCur->update_secs = pCur->bdbcur->update_secs(pCur->bdbcur);
                 vtag_to_ondisk(pCur->db, buf, &fndlen, ver, pCur->genid);
             }
         }
