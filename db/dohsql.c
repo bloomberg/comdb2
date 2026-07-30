@@ -2093,7 +2093,7 @@ void dohsql_free_params(int *pnparams, struct param_data **pparams, int index)
 {
     struct param_data * params = *pparams;
 
-    if (index >= *pnparams)
+    if (index > *pnparams)
         abort();
 
     while (index--) {

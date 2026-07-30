@@ -330,4 +330,31 @@ if [[ $alerts != "1" ]] ; then
     exit 1
 fi
 
+# Regression test for the fdb_push bound-param leak.
+# A remote write with a single bound blob used to leak the cloned param on
+# every execution; watch the "uncategorized" memstat bucket for growth.
+echo "Test push-write bound-param leak"
+hex=`head -c 1048576 /dev/zero | tr '\0' 'a'`   # 1,048,576 hex chars -> 512KB blob
+memq="select coalesce(sum(used),0) from comdb2_memstats where lower(name)='uncategorized'"
+
+ins() {
+    cdb2sql -s ${SRC_CDB2_OPTIONS} --host $mach $a_dbname - >/dev/null 2>&1 << EOF
+@bind CDB2_BLOB b x'${hex}'
+insert into LOCAL_${a_remdbname}.t2(b) values (@b)
+EOF
+}
+
+for i in `seq 1 20`; do ins; done          # warm up caches for a steady baseline
+before=`$C --tabs "$memq"`
+for i in `seq 1 100`; do ins; done
+after=`$C --tabs "$memq"`
+
+grew=$(( after - before ))
+echo "uncategorized mem before=$before after=$after grew=$grew"
+# 100 leaked 512KB clones would be ~50MB; a fixed build stays well within jitter.
+if [ $grew -gt 10000000 ]; then
+    echo "push-write bound-param leak detected: uncategorized grew $grew bytes" >&2
+    exit 1
+fi
+
 echo "Testcase passed."
