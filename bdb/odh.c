@@ -299,10 +299,10 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
         odh->flags |= (bdb_state->compress & ODH_FLAG_COMPR_MASK);
     }
 
-    /* Write odh2 when the table opts in, or under genid48 -- a genid48 record
-     * must never be odh1, which carries no time of its own.  Both stamps get
-     * "now"; on an update the caller restores the original insert_secs. */
-    if (bdb_state->ondisk_header && (bdb_state->odh2 || bdb_state->genid_format == LLMETA_GENID_48BIT)) {
+    /* Write odh2 when the table opts in, or whenever the genid no longer
+     * carries an insert time (genid48) -- such a record must never be odh1.
+     * Both stamps get "now"; on an update the caller restores insert_secs. */
+    if (bdb_state->ondisk_header && (bdb_state->odh2 || !genid_contains_time(bdb_state))) {
         uint32_t now = (uint32_t)comdb2_time_epoch();
         odh->flags |= ODH2_FLAG;
         odh->insert_secs = now;

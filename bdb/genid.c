@@ -402,6 +402,10 @@ int get_epoch_plusplus(bdb_state_type *bdb_state)
 
 int genid_contains_time(bdb_state_type *bdb_state)
 {
+    /* genid_format lives only on the parent handle -- a child's is never set.
+     * Normalise so callers passing a table handle see the real format. */
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
     return bdb_state->genid_format == LLMETA_GENID_ORIGINAL;
 }
 
