@@ -188,6 +188,17 @@ void poke_update_secs(void *buf, uint32_t secs)
     out[15] = (secs & 0xff);
 }
 
+/* If the packed record in 'buf' is odh2, store its insert_secs and return 1;
+ * otherwise return 0. */
+int peek_odh2_insert_secs(const void *buf, size_t buflen, uint32_t *insert_secs)
+{
+    const uint8_t *in = buf;
+    if (buflen < ODH2_SIZE || !(in[0] & ODH2_FLAG))
+        return 0;
+    *insert_secs = ((uint32_t)in[8] << 24) | ((uint32_t)in[9] << 16) | ((uint32_t)in[10] << 8) | in[11];
+    return 1;
+}
+
 /* You MUST range check updateid and length before calling this or it can get
  * ugly if bits are set that shouldn't be set.  ODH2_FLAG selects the layout;
  * see the diagram above. */
@@ -886,6 +897,11 @@ int bdb_update_updateid(bdb_state_type *bdb_state, DBC *dbcp,
 
     myodh.updateid = newupdateid;
 
+    /* odh2: this is an update (updateid bump), so refresh the last-update time.
+     * insert_secs is preserved from the record we just read. */
+    if (myodh.flags & ODH2_FLAG)
+        myodh.update_secs = (uint32_t)comdb2_time_epoch();
+
     write_odh(ondiskh, &myodh, myodh.flags);
 
     /* Write back exactly the record's own header size (7 for odh1, 16 for
@@ -1162,9 +1178,8 @@ int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0, fn_malloc, fn_free);
 }
 
-int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
-                                  DBT *data, DBT *data2, int updateid,
-                                  void **freeptr, void *stackbuf, int odhready)
+int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob, DBT *data, DBT *data2, int updateid,
+                                  void **freeptr, void *stackbuf, int odhready, uint32_t preserve_insert_secs)
 {
     struct odh odh;
 
@@ -1182,6 +1197,13 @@ int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
 
         if (updateid > 0) {
             odh.updateid = updateid;
+        }
+
+        /* On an update, keep the record's original insert time; init_odh has
+         * already set update_secs to "now".  Only meaningful for odh2 records
+         * (the caller passes 0 for inserts and non-odh2 tables). */
+        if (preserve_insert_secs && (odh.flags & ODH2_FLAG)) {
+            odh.insert_secs = preserve_insert_secs;
         }
 
         rc = bdb_pack(bdb_state, &odh, stackbuf, odh.length + ODH_SIZE_RESERVE,
@@ -1266,9 +1288,8 @@ int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
         return db->put(db, tid, key, data, flags);
     }
 
-    rc = bdb_prepare_put_pack_updateid(
-        bdb_state, is_blob, data, &data2, updateid, &mallocmem,
-        ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), odhready);
+    rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, data, &data2, updateid, &mallocmem,
+                                       ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), odhready, 0);
 
     if (rc == 0) {
         rc = db->put(db, tid, key, &data2, flags);
@@ -1317,9 +1338,8 @@ int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
         return dbcp->c_put(dbcp, key, data, flags);
     }
 
-    rc = bdb_prepare_put_pack_updateid(
-        bdb_state, is_blob, data, &data2, updateid, &mallocmem,
-        ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), 0);
+    rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, data, &data2, updateid, &mallocmem,
+                                       ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), 0, 0);
 
     if (rc == 0) {
         rc = dbcp->c_put(dbcp, key, &data2, flags);
