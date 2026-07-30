@@ -534,7 +534,15 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         pCur->table = strdup((char *)(upd_dta->table.data));
     }
 
-    assert(dtalen <= PACKED_MEMORY_SIZE);
+    /* logicalops uses a fixed 256MB scratch buffer; records larger than that
+     * (only possible on odh2 tables) are not yet supported here -- error rather
+     * than overflow. */
+    if (dtalen > PACKED_MEMORY_SIZE) {
+        logmsg(LOGMSG_ERROR, "%s: record too large for logicalops (%d > %d)\n",
+               __func__, dtalen, PACKED_MEMORY_SIZE);
+        rc = SQLITE_INTERNAL;
+        goto done;
+    }
     ASSERT_PARAMETER(dtalen);
     genid_format(pCur, genid, pCur->genid, sizeof(pCur->genid));
     genid_format(pCur, oldgenid, pCur->oldgenid, sizeof(pCur->oldgenid));
@@ -813,7 +821,12 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         pCur->table = strdup((char *)(del_dta->table.data));
     }
 
-    assert(dtalen <= PACKED_MEMORY_SIZE);
+    if (dtalen > PACKED_MEMORY_SIZE) {
+        logmsg(LOGMSG_ERROR, "%s: record too large for logicalops (%d > %d)\n",
+               __func__, dtalen, PACKED_MEMORY_SIZE);
+        rc = SQLITE_INTERNAL;
+        goto done;
+    }
     genid_format(pCur, genid, pCur->oldgenid, sizeof(pCur->oldgenid));
 
     if (dtafile == 0) {
