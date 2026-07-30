@@ -57,66 +57,51 @@ static void read_odh(const void *buf, struct odh *odh);
 static void write_odh(void *buf, const struct odh *odh, uint8_t flags);
 
 /*
- * Map of the 7-byte on disk header:
+ * On-disk header layout.
  *
- *    fieldname       bit  byte-boundry
- * _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
- *    flags             . idx 0, byte 1
- *                      .
- *                      .
- *                      .
- *                      . 2 -+
- *                      . 1  |- Compress
- *                      . 0 _+
- * _ _ _ _ _ _ _ _ _ _ _._ _ _ _ _ _ _ _
- *    csc2vers          . idx 1, byte 2
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- * _ _ _ _ _ _ _ _ _ _ _._ _ _ _ _ _ _ _
- *    updateid          . idx 2, byte 3
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      ._ _ _ _ _ _ _ _
- *                      . idx 3, byte 4
- *                      .
- *                      .
- * _ _ _ _ _ _ _ _ _ _ _.
- *    length            .
- *                      .
- *                      .
- *                      ._ _ _ _ _ _ _ _
- *                      . idx 4, byte 5
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      ._ _ _ _ _ _ _ _
- *                      . idx 5, byte 6
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      ._ _ _ _ _ _ _ _
- *                      . idx 6, byte 7
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- *                      .
- * _ _ _ _ _ _ _ _ _ _ _._ _ _ _ _ _ _ _
+ * Two header formats coexist within the same table.  Bit 7 of the flags byte
+ * (ODH2_FLAG) selects which one a given record uses, so the two can always be
+ * told apart from the first byte alone.  odh2 is a strict superset of odh1:
+ * bytes 0-2 and the updateid nibble of byte 3 are encoded identically, which
+ * keeps odh1 readers/writers working unchanged.
+ *
+ * flags byte (byte 0), both formats:
+ *
+ *     bit  7     ODH2_FLAG -- 0 => odh1, 1 => odh2
+ *     bits 6-4   reserved
+ *     bit  3     reserved (future growth of the compression mask)
+ *     bits 2-0   compression algorithm (ODH_FLAG_COMPR_MASK)
+ *
+ * odh1 -- 7 bytes (ODH_SIZE).  length is packed into 28 bits, giving a maximum
+ * record/blob size of (1<<28)-1 (~256MB):
+ *
+ *     byte 0     flags (ODH2_FLAG clear)
+ *     byte 1     csc2vers
+ *     byte 2     updateid bits [11:4]
+ *     byte 3     updateid bits [3:0] (high nibble) | length bits [27:24] (low)
+ *     byte 4     length bits [23:16]
+ *     byte 5     length bits [15:8]
+ *     byte 6     length bits [7:0]
+ *
+ * odh2 -- 16 bytes (ODH2_SIZE).  length becomes a clean 32-bit field and two
+ * 32-bit timestamps are appended after it:
+ *
+ *     byte  0    flags (ODH2_FLAG set)
+ *     byte  1    csc2vers
+ *     byte  2    updateid bits [11:4]
+ *     byte  3    updateid bits [3:0] (high nibble) | reserved (low nibble, 0)
+ *     bytes 4-7  length       (32-bit big-endian)
+ *     bytes 8-11 insert_secs  (32-bit big-endian) -- record's insert time
+ *     bytes12-15 update_secs  (32-bit big-endian) -- record's last-update time
+ *
+ * The timestamps are seconds since the 1970 epoch, stored *unsigned* so they
+ * remain valid past the 2038 signed-time_t rollover (goals #1 and #2).  The
+ * 32-bit length lifts the odh1 256MB ceiling (goal #3): the field can hold up
+ * to 4GB-1, and the intent is to cap writes at INT_MAX (~2GB) so lengths stay
+ * safe in the signed-int code paths above bdb.  NB: as of this writing that cap
+ * is not yet enforced -- the existing MAXBLOBLENGTH check ((1<<28)-1) in
+ * db/toblock.c still gates blob writes, and nothing sets ODH2_FLAG yet, so no
+ * odh2 record is actually produced.  The codec below is ready for both.
  */
 
 /* Return 1 if ip-updates are enabled.  Does not care about schema-change */
@@ -196,32 +181,69 @@ void poke_updateid(void *buf, int updid)
     /**out = ((updid << 4) & 0xf0) | ((len >> 24) & 0x0f);*/
 }
 
+/* Subset of write_odh which pokes only the update timestamp.  odh2 only - the
+ * caller MUST have verified the buffer holds an odh2 record.  update_secs lives
+ * at bytes 12-15 (big-endian). */
+void poke_update_secs(void *buf, uint32_t secs)
+{
+    uint8_t *out = buf;
+    out[12] = (secs >> 24) & 0xff;
+    out[13] = (secs >> 16) & 0xff;
+    out[14] = (secs >> 8) & 0xff;
+    out[15] = (secs & 0xff);
+}
+
 /* You MUST range check updateid and length before calling this or it can get
- * ugly if bits are set that shouldn't be set */
+ * ugly if bits are set that shouldn't be set.
+ *
+ * odh2 is a strict superset of odh1: bytes 0-2 and the high nibble of byte 3
+ * (flags, csc2vers, updateid) are encoded identically.  The layouts diverge
+ * only for length (odh1 packs the top nibble into byte 3 and the low 24 bits
+ * into bytes 4-6; odh2 uses a clean 32-bit field at bytes 4-7) and for the two
+ * appended 32-bit timestamps.  The ODH2_FLAG bit in flags selects the layout.
+ */
 static void write_odh(void *buf, const struct odh *odh, uint8_t flags)
 {
     uint32_t len = odh->length;
     uint16_t updid = odh->updateid;
     uint8_t *out = buf;
 
-    /* byte 1: flags */
-    *out = flags;
-    out++;
-    /* byte 2: csc2 version */
-    *out = odh->csc2vers;
-    out++;
-    /* byte 3: high 8 bits of updateid */
-    *out = (updid >> 4);
-    out++;
-    /* byte 4: low 4 bits of updateid and then highest 4 bits of length */
-    *out = ((updid << 4) & 0xf0) | ((len >> 24) & 0x0f);
-    out++;
-    /* bytes 5-7: remaining bits of length */
-    *out = ((len >> 16) & 0xff);
-    out++;
-    *out = ((len >> 8) & 0xff);
-    out++;
-    *out = (len & 0xff);
+    /* byte 0: flags  (shared) */
+    out[0] = flags;
+    /* byte 1: csc2 version  (shared) */
+    out[1] = odh->csc2vers;
+    /* byte 2: high 8 bits of updateid  (shared) */
+    out[2] = (updid >> 4);
+
+    if (flags & ODH2_FLAG) {
+        uint32_t ins = odh->insert_secs;
+        uint32_t upd = odh->update_secs;
+        /* byte 3: low 4 bits of updateid; low nibble spare (0) */
+        out[3] = ((updid << 4) & 0xf0);
+        /* bytes 4-7: full 32-bit length */
+        out[4] = (len >> 24) & 0xff;
+        out[5] = (len >> 16) & 0xff;
+        out[6] = (len >> 8) & 0xff;
+        out[7] = (len & 0xff);
+        /* bytes 8-11: insert_secs */
+        out[8] = (ins >> 24) & 0xff;
+        out[9] = (ins >> 16) & 0xff;
+        out[10] = (ins >> 8) & 0xff;
+        out[11] = (ins & 0xff);
+        /* bytes 12-15: update_secs */
+        out[12] = (upd >> 24) & 0xff;
+        out[13] = (upd >> 16) & 0xff;
+        out[14] = (upd >> 8) & 0xff;
+        out[15] = (upd & 0xff);
+        return;
+    }
+
+    /* odh1: byte 3 low nibble holds the highest 4 bits of length */
+    out[3] = ((updid << 4) & 0xf0) | ((len >> 24) & 0x0f);
+    /* bytes 4-6: remaining bits of length */
+    out[4] = ((len >> 16) & 0xff);
+    out[5] = ((len >> 8) & 0xff);
+    out[6] = (len & 0xff);
 }
 
 static void read_odh(const void *buf, struct odh *odh)
@@ -230,29 +252,32 @@ static void read_odh(const void *buf, struct odh *odh)
     uint32_t len;
     uint16_t updid;
 
-    /* byte 1: flags */
-    odh->flags = *in;
-    in++;
-    /* byte 2: csc2 version */
-    odh->csc2vers = *in;
-    in++;
-    /* byte 3: high 8 bits of updateid */
-    updid = (*in << 4);
-    in++;
-    /* byte 4: low 4 bits of updateid and then highest 4 bits of length */
-    updid |= (*in >> 4);
+    /* byte 0: flags  (shared) */
+    odh->flags = in[0];
+    /* byte 1: csc2 version  (shared) */
+    odh->csc2vers = in[1];
+    /* bytes 2-3: high 8 bits then low 4 bits of updateid  (shared) */
+    updid = ((uint16_t)in[2] << 4);
+    updid |= (in[3] >> 4);
     odh->updateid = updid;
 
-    /* bytes 5-7: remaining bits of length */
-    len = ((*in & 0x0f) << 24);
-    in++;
-    len |= ((*in & 0xff) << 16);
-    in++;
-    len |= ((*in & 0xff) << 8);
-    in++;
-    len |= (*in & 0xff);
+    if (in[0] & ODH2_FLAG) {
+        /* odh2: clean 32-bit length + two 32-bit timestamps */
+        odh->length = ((uint32_t)in[4] << 24) | ((uint32_t)in[5] << 16) | ((uint32_t)in[6] << 8) | in[7];
+        odh->insert_secs = ((uint32_t)in[8] << 24) | ((uint32_t)in[9] << 16) | ((uint32_t)in[10] << 8) | in[11];
+        odh->update_secs = ((uint32_t)in[12] << 24) | ((uint32_t)in[13] << 16) | ((uint32_t)in[14] << 8) | in[15];
+        return;
+    }
 
+    /* odh1: byte 3 low nibble holds the highest 4 bits of length; bytes 4-6
+     * hold the remaining bits.  No timestamps. */
+    len = ((uint32_t)(in[3] & 0x0f) << 24);
+    len |= ((uint32_t)in[4] << 16);
+    len |= ((uint32_t)in[5] << 8);
+    len |= in[6];
     odh->length = len;
+    odh->insert_secs = 0;
+    odh->update_secs = 0;
 }
 
 void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
@@ -265,6 +290,8 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
     else
         odh->csc2vers = 0;
     odh->flags = 0;
+    odh->insert_secs = 0;
+    odh->update_secs = 0;
     odh->recptr = rec;
     if (is_blob) {
         odh->flags |= (bdb_state->compress_blobs & ODH_FLAG_COMPR_MASK);
@@ -307,6 +334,10 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
         void *mallocmem = NULL;
         uint8_t flags = odh->flags;
         int alg;
+        /* Header size implied by the flags we will actually write.  The
+         * compression-mask clear below never touches ODH2_FLAG, so this is
+         * stable for the whole function. */
+        const int hdrsz = odh_size_from_flags(flags);
 
         /* We will need a buffer to do this in.  Eventually we'll refactor all
          * the
@@ -314,7 +345,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
          * record we'll have ODH_SIZE_RESERVE spare before the record data so we
          * can avoid an allocate and copy here.. but for now we have to copy. */
         if (to) {
-            if (tolen < odh->length + ODH_SIZE) {
+            if (tolen < (size_t)odh->length + hdrsz) {
                 logmsg(LOGMSG_ERROR, "%s:ERROR: to buffer too small at %u bytes for "
                                 "%u byte record\n",
                         __func__, (unsigned)tolen, (unsigned)odh->length);
@@ -322,16 +353,14 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
             }
             mallocmem = NULL;
         } else {
-            if ((odh->length + ODH_SIZE) > bdb_state->bmaszthresh)
-                mallocmem =
-                    comdb2_bmalloc(bdb_state->bma, odh->length + ODH_SIZE);
+            if (((size_t)odh->length + hdrsz) > bdb_state->bmaszthresh)
+                mallocmem = comdb2_bmalloc(bdb_state->bma, (size_t)odh->length + hdrsz);
             else
-                mallocmem = malloc(odh->length + ODH_SIZE);
+                mallocmem = malloc((size_t)odh->length + hdrsz);
 
             if (!mallocmem) {
                 rc = errno;
-                logmsg(LOGMSG_ERROR, "%s: out of memory %u\n", __func__,
-                        (unsigned)odh->length + ODH_SIZE);
+                logmsg(LOGMSG_ERROR, "%s: out of memory %u\n", __func__, (unsigned)odh->length + hdrsz);
                 return rc;
             }
             to = mallocmem;
@@ -349,8 +378,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
              * then I'm not interested.
              */
             uLongf destLen = odh->length;
-            rc = compress2(((Bytef *)to) + ODH_SIZE, &destLen,
-                           (const Bytef *)odh->recptr, odh->length,
+            rc = compress2(((Bytef *)to) + hdrsz, &destLen, (const Bytef *)odh->recptr, odh->length,
                            bdb_state->attr->zlib_level);
             switch (rc) {
             default:
@@ -375,15 +403,14 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
                    logmsg(LOGMSG_USER, "%s compressed %u bytes -> %u\n", bdb_state->name,
                            (unsigned)odh->length, (unsigned)destLen);
                 }
-                *recsize = destLen + ODH_SIZE;
+                *recsize = destLen + hdrsz;
                 break;
             }
             break;
         }
 
         case BDB_COMPRESS_RLE8:
-            rc = rle8_compress(odh->recptr, odh->length,
-                               ((Bytef *)to) + ODH_SIZE, odh->length);
+            rc = rle8_compress(odh->recptr, odh->length, ((Bytef *)to) + hdrsz, odh->length);
             if (rc < 0) {
                 alg = BDB_COMPRESS_NONE;
                 if (bdb_state->attr->ztrace) {
@@ -396,38 +423,34 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
                            bdb_state->name, (unsigned)odh->length,
                            (unsigned)rc);
                 }
-                *recsize = rc + ODH_SIZE;
+                *recsize = rc + hdrsz;
             }
             break;
 
         case BDB_COMPRESS_CRLE: {
-            Comdb2RLE rle = {.in = odh->recptr,
-                             .insz = odh->length,
-                             .out = (uint8_t *)to + ODH_SIZE,
-                             .outsz = odh->length - 1};
+            Comdb2RLE rle = {
+                .in = odh->recptr, .insz = odh->length, .out = (uint8_t *)to + hdrsz, .outsz = odh->length - 1};
             uint16_t *fld_hints = pd_index != -1 ? bdb_state->fld_hints_pd[pd_index] : bdb_state->fld_hints;
             if (compressComdb2RLE_hints(&rle, fld_hints) == 0)
-                *recsize = rle.outsz + ODH_SIZE;
+                *recsize = rle.outsz + hdrsz;
             else
                 alg = BDB_COMPRESS_NONE;
             break;
         }
 
         case BDB_COMPRESS_LZ4:
-            if ((rc = LZ4_compress_default(
-                     odh->recptr, (char *)to + ODH_SIZE, odh->length,
-                     odh->length - 1)) == 0) {
+            if ((rc = LZ4_compress_default(odh->recptr, (char *)to + hdrsz, odh->length, odh->length - 1)) == 0) {
                 alg = BDB_COMPRESS_NONE;
             } else {
-                *recsize = rc + ODH_SIZE;
+                *recsize = rc + hdrsz;
             }
             break;
         }
 
         if (alg == BDB_COMPRESS_NONE) {
             /* No compression, or compression was no good. */
-            memcpy(((char *)to) + ODH_SIZE, odh->recptr, odh->length);
-            *recsize = odh->length + ODH_SIZE;
+            memcpy(((char *)to) + hdrsz, odh->recptr, odh->length);
+            *recsize = odh->length + hdrsz;
             flags &= ~ODH_FLAG_COMPR_MASK;
         }
         write_odh(to, odh, flags);
@@ -494,10 +517,19 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
     if (bdb_state->ondisk_header || force_odh) {
 
         int alg;
+        int hdrsz;
 
         if (fromlen < ODH_SIZE) {
             logmsg(LOGMSG_ERROR, "%s:ERROR: data size %u too small for ODH\n",
                     __func__, (unsigned)fromlen);
+            return DB_ODH_CORRUPT;
+        }
+
+        /* Peek at the flags byte to learn the actual header size, then make
+         * sure the record is large enough for a full (possibly odh2) header. */
+        hdrsz = odh_size_from_flags(*(const uint8_t *)from);
+        if (fromlen < hdrsz) {
+            logmsg(LOGMSG_ERROR, "%s:ERROR: data size %u too small for odh2\n", __func__, (unsigned)fromlen);
             return DB_ODH_CORRUPT;
         }
 
@@ -538,11 +570,11 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
                     do_uncompress = 0;
                 } else {
                     if (fn_malloc != NULL)
-                        to = fn_malloc((int)(odh->length + ver_bytes));
-                    else if ((odh->length + ver_bytes) > bdb_state->bmaszthresh)
-                        to = comdb2_bmalloc(bdb_state->bma, odh->length + ver_bytes);
+                        to = fn_malloc((size_t)odh->length + ver_bytes);
+                    else if (((size_t)odh->length + ver_bytes) > bdb_state->bmaszthresh)
+                        to = comdb2_bmalloc(bdb_state->bma, (size_t)odh->length + ver_bytes);
                     else
-                        to = malloc(odh->length + ver_bytes);
+                        to = malloc((size_t)odh->length + ver_bytes);
 
                     if (!to) {
                         rc = errno;
@@ -558,14 +590,11 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
             if (do_uncompress == 0) {
                 /* Do nothing */
             } else if (alg == BDB_COMPRESS_ZLIB) {
-                rc = uncompress(to, &destLen, ((Bytef *)from) + ODH_SIZE,
-                                fromlen - ODH_SIZE);
+                rc = uncompress(to, &destLen, ((Bytef *)from) + hdrsz, fromlen - hdrsz);
 
                 if (rc != Z_OK) {
-                    logmsg(LOGMSG_ERROR, "%s:uncompress gave %d %s %u->%u\n",
-                            __func__, rc, zError(rc),
-                            (unsigned)fromlen - ODH_SIZE,
-                            (unsigned)odh->length);
+                    logmsg(LOGMSG_ERROR, "%s:uncompress gave %d %s %u->%u\n", __func__, rc, zError(rc),
+                           (unsigned)fromlen - hdrsz, (unsigned)odh->length);
                     goto err;
                 }
 
@@ -576,19 +605,15 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_RLE8) {
-                rc = rle8_decompress(((const char *)from) + ODH_SIZE,
-                                     fromlen - ODH_SIZE, to, odh->length);
+                rc = rle8_decompress(((const char *)from) + hdrsz, fromlen - hdrsz, to, odh->length);
                 if (rc != odh->length) {
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:ERROR rle_decompress rc %d expected %u\n",
-                            __func__, rc, (unsigned)odh->length);
+                    logmsg(LOGMSG_ERROR, "%s:ERROR rle_decompress rc %d expected %u\n", __func__, rc,
+                           (unsigned)odh->length);
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_CRLE) {
-                Comdb2RLE rle = {.in = (uint8_t *)from + ODH_SIZE,
-                                 .insz = fromlen - ODH_SIZE,
-                                 .out = to,
-                                 .outsz = odh->length};
+                Comdb2RLE rle = {
+                    .in = (uint8_t *)from + hdrsz, .insz = fromlen - hdrsz, .out = to, .outsz = odh->length};
                 rc = decompressComdb2RLE(&rle);
                 if (rc || rle.outsz != odh->length) {
                     logmsg(LOGMSG_ERROR,
@@ -598,8 +623,7 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_LZ4) {
-                rc = LZ4_decompress_safe((char *)from + ODH_SIZE, to,
-                                         (fromlen - ODH_SIZE), odh->length);
+                rc = LZ4_decompress_safe((char *)from + hdrsz, to, (fromlen - hdrsz), odh->length);
                 if (rc != odh->length) {
                     goto err;
                 }
@@ -613,12 +637,12 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
         } else {
             /* No compression, just point to where the record data lives in
              * this record. */
-            if (odh->length != fromlen - ODH_SIZE) {
+            if (odh->length != fromlen - hdrsz) {
                 logmsg(LOGMSG_ERROR, "%s:ERROR: odh->length=%u, fromlen=%u\n",
                         __func__, (unsigned)odh->length, (unsigned)fromlen);
                 return DB_ODH_CORRUPT;
             }
-            odh->recptr = ((char *)from) + ODH_SIZE;
+            odh->recptr = ((char *)from) + hdrsz;
         }
 
         /* Older dbs with odh have version 0.
@@ -631,6 +655,8 @@ int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t from
         odh->updateid = 0;
         odh->csc2vers = 0;
         odh->flags = 0;
+        odh->insert_secs = 0;
+        odh->update_secs = 0;
         odh->recptr = (void *)from;
     }
 
@@ -811,8 +837,10 @@ int bdb_update_updateid(bdb_state_type *bdb_state, DBC *dbcp,
 {
     DBT key, data;
     struct odh myodh;
-    int rc, oldupdateid, newupdateid;
-    char ondiskh[ODH_SIZE];
+    int rc, oldupdateid, newupdateid, hdrsz;
+    /* Big enough for the largest (odh2) header.  We read up to the full size
+     * and then trim the write-back to the record's own header size. */
+    char ondiskh[ODH2_SIZE];
 
     /* fail if there are no ondisk headers */
     if (!ip_updates_enabled(bdb_state)) {
@@ -856,6 +884,12 @@ int bdb_update_updateid(bdb_state_type *bdb_state, DBC *dbcp,
 
     write_odh(ondiskh, &myodh, myodh.flags);
 
+    /* Write back exactly the record's own header size (7 for odh1, 16 for
+     * odh2) so the partial put neither over- nor under-writes the header. */
+    hdrsz = odh_size_from_flags(myodh.flags);
+    data.size = hdrsz;
+    data.dlen = hdrsz;
+
     return dbcp->c_put(dbcp, &key, &data, DB_CURRENT);
 }
 
@@ -867,7 +901,9 @@ int bdb_cposition(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
     struct odh odh_in;
     DBT data = {0};
     int updateid = -1, compare_upid = 0;
-    char ondiskh[ODH_SIZE];
+    /* Big enough for the largest (odh2) header; read_odh decodes the actual
+     * size from the flags byte. */
+    char ondiskh[ODH2_SIZE];
     unsigned long long *genptr = NULL;
 
     if (!ip_updates_enabled(bdb_state)) {
