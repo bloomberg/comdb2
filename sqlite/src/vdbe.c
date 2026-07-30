@@ -94,13 +94,33 @@ void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
     sqlite3VdbeMemSetStr(pOut, zRowId, nRowId, SQLITE_UTF8, sqlite3_free);
     return;
   }
-  if( p3==2 ){
+  /* p3==2: comdb2_rowtimestamp / comdb2_insert_timestamp (they are the same
+   *        value), p3==3: comdb2_insert_timestamp, p3==4: comdb2_update_timestamp.
+   * For an odh2 record the time is read from the record header (snapshotted on
+   * the cursor).  With no header timestamp we reason from the genid:
+   *   - a committed odh1 record encodes its insert time in the high 32 bits of
+   *     its time-based genid (odh1 never coexists with genid48), so use that;
+   *   - a synthetic genid is a transient row from the current, uncommitted
+   *     transaction and carries no time at all -- its high bits are the
+   *     synthetic marker, not a clock -- so report NULL. */
+  if( p3==2 || p3==3 || p3==4 ){
     unsigned long long genId = 0;
+    u32 secs;
     if( sqlite3BtreeGetGenId(rowId, &genId, 0, 0)!=SQLITE_OK ){
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
-    pOut->u.i = (genId & 0xffffffff00000000ull) >> 32;
+    secs = (p3==4) ? sqlite3BtreeUpdateTimestamp(pCursor)
+                   : sqlite3BtreeInsertTimestamp(pCursor);
+    if( secs==0 ){
+      /* GENID_SYNTHETIC_BIT (top bit) set => uncommitted synthetic row. */
+      if( genId & 0x8000000000000000ull ){
+        MemSetTypeFlag(pOut, MEM_Null);
+        return;
+      }
+      secs = (u32)((genId & 0xffffffff00000000ull) >> 32);
+    }
+    pOut->u.i = secs;
     MemSetTypeFlag(pOut, MEM_Int);
     sqlite3VdbeMemDatetimefy(pOut);
   }

@@ -434,6 +434,9 @@ struct bdb_cursor_impl_tag {
     /* cursor position */
     int rrn;                  /* == 2 (don't need this) */
     unsigned long long genid; /* genid of current entry */
+    uint32_t insert_secs;     /* odh2 insert time of current entry (0 if the
+                                 row is not odh2 / no odh was decoded) */
+    uint32_t update_secs;     /* odh2 update time of current entry (0 if none) */
     void *data;               /* points inside one of  bdb_berkdb_t if valid */
     int datalen;              /* size of payload */
 
