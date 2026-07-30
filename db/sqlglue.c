@@ -1166,14 +1166,18 @@ int mem_to_ondisk(void *outbuf, const struct field *f, struct mem_info *info, bi
         }
     }
 
-    if ((f->type == SERVER_BLOB || f->type == SERVER_BLOB2 ||
-         f->type == SERVER_VUTF8) &&
-        m->n > MAXBLOBLENGTH) {
-        rc = -1;
-        if (fail_reason) {
-            fail_reason->reason = CONVERT_FAILED_BLOB_SIZE;
+    /* Check the limit here, on the *uncompressed* value: a >256MB blob that
+     * compresses small would sail past check_blob_sizes() and be truncated
+     * into an odh1 header.  No per-table limit supplied => coarse bound. */
+    if (f->type == SERVER_BLOB || f->type == SERVER_BLOB2 || f->type == SERVER_VUTF8) {
+        unsigned int bloblimit = info->max_blob_length ? info->max_blob_length : MAXBLOBLENGTH2;
+        if ((unsigned int)m->n > bloblimit) {
+            rc = -1;
+            if (fail_reason) {
+                fail_reason->reason = CONVERT_FAILED_BLOB_SIZE;
+            }
+            return rc;
         }
-        return rc;
     }
 
     if (m->flags & MEM_Master) {
@@ -1504,7 +1508,7 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
     int clen = 0; /* converted sofar */
     int nblobs = 0;
 
-    struct mem_info info;
+    struct mem_info info = {0};
     struct field_conv_opts_tz convopts = {.flags = 0};
 
     info.s = s;
@@ -10216,7 +10220,7 @@ const char *sqlite3BtreeLastReleaseStr(BtCursor *pCur, char *buf, size_t sz)
 int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized)
 {
     struct sql_thread *thd = pCur->thd;
-    struct mem_info info;
+    struct mem_info info = {0};
     struct field_conv_opts_tz convopts = {.flags = 0};
     int nblobs = 0;
     int rc = 0;
@@ -10239,6 +10243,9 @@ int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized
     info.convopts = &convopts;
     info.outblob = pCur->wr_blob_buffers;
     info.maxblobs = MAXBLOBS;
+    /* Enforce this table's real blob limit (256MB for odh1, up to ~2GB for
+     * odh2) on the uncompressed value in mem_to_ondisk(), before compression. */
+    info.max_blob_length = max_blob_length_for_table(pCur->db);
 
     memset(info.outblob, 0, sizeof(blob_buffer_t) * MAXBLOBS);
     init_convert_failure_reason(info.fail_reason);
@@ -13795,7 +13802,7 @@ int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc, const
     Mem mout = {{0}};
     int nblobs = 0;
     struct field_conv_opts_tz convopts = {.flags = 0};
-    struct mem_info info;
+    struct mem_info info = {0};
     strbuf *sql;
     int i, rc;
     int exist = 0;
