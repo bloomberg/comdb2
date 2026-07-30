@@ -655,6 +655,15 @@ static void increment_sc_logbytes(int64_t bytes)
     Pthread_mutex_unlock(&sc_bps_lk);
 }
 
+/* Rewritten rows keep the source's odh2 times; an odh1 source (or unknown) uses its genid time. */
+static void keep_source_times(struct dbtable *from, uint32_t insert_secs, uint32_t update_secs,
+                              unsigned long long genid, int times_known)
+{
+    if (insert_secs == 0 && (times_known || genid_contains_time(from->handle)))
+        insert_secs = update_secs = bdb_genid_timestamp(genid);
+    bdb_odh2_keep_times(insert_secs, update_secs);
+}
+
 /* converts a single record and prepares for the next one
  * should be called from a while loop
  * param data: pointer to all the state information
@@ -670,6 +679,8 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
     int no_wait_rowlock = 0;
     int64_t estimate = 0;
+    uint32_t src_insert_secs = 0, src_update_secs = 0;
+    int src_times_known = 0;
 
     if (debug_switch_convert_record_sleep())
         sleep(5);
@@ -750,14 +761,13 @@ static int convert_record(struct convert_record_data *data)
 
     if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         if (data->scanmode == SCAN_PARALLEL) {
-            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                           data->dta_buf, data->trans, data->from->lrl, &dtalen,
-                           NULL);
+            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1, data->dta_buf, data->trans,
+                           data->from->lrl, &dtalen, NULL, &src_insert_secs, &src_update_secs);
         } else {
-            rc = dtas_next_pageorder(
-                &data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                data->dta_buf, data->trans, data->from->lrl, &dtalen, NULL);
+            rc = dtas_next_pageorder(&data->iq, data->sc_genids, &genid, &data->stripe, 1, data->dta_buf, data->trans,
+                                     data->from->lrl, &dtalen, NULL, &src_insert_secs, &src_update_secs);
         }
+        src_times_known = 1;
 
 #ifdef LOGICAL_LIVESC_DEBUG
         logmsg(LOGMSG_DEBUG, "(%u) %s rc=%d genid %llx (%llu)\n", (unsigned int)pthread_self(), __func__, rc, genid,
@@ -1058,6 +1068,7 @@ static int convert_record(struct convert_record_data *data)
             }
         }
 
+        keep_source_times(data->from, src_insert_secs, src_update_secs, genid, src_times_known);
         rc = add_record(
             &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
             p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,
@@ -1066,6 +1077,7 @@ static int convert_record(struct convert_record_data *data)
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
             addflags, 0);
+        bdb_odh2_keep_times(0, 0);
 
         if (rc && rc != RC_INTERNAL_RETRY) {
             logmsg(LOGMSG_ERROR, "Failed to add record %llx (%lld) in migration %s->%s rc %d\n", ngenid, ngenid,
@@ -1721,6 +1733,8 @@ static int upgrade_records(struct convert_record_data *data)
     int dtalen = 0;
     unsigned long long genid = 0;
     int recver;
+    uint32_t src_insert_secs = 0, src_update_secs = 0;
+    int src_times_known = 0;
     uint8_t *p_buf_data, *p_buf_data_end;
     u_int64_t logbytes = 0;
     db_seqnum_type ss;
@@ -1760,10 +1774,12 @@ static int upgrade_records(struct convert_record_data *data)
          rc == RC_INTERNAL_RETRY && nretries++ != gbl_maxretries;) {
 
         if (data->nrecs > 0 || data->sc_genids[data->stripe] == 0) {
-            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe,
-                           data->scanmode == SCAN_PARALLEL, data->dta_buf,
-                           data->trans, data->from->lrl, &dtalen, &recver);
+            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, data->scanmode == SCAN_PARALLEL,
+                           data->dta_buf, data->trans, data->from->lrl, &dtalen, &recver, &src_insert_secs,
+                           &src_update_secs);
+            src_times_known = 1;
         } else {
+            src_times_known = 0;
             genid = data->sc_genids[data->stripe];
             rc = ix_find_ver_by_rrn_and_genid_tran(
                 &data->iq, 2, genid, data->dta_buf, &dtalen, data->from->lrl,
@@ -1811,9 +1827,11 @@ static int upgrade_records(struct convert_record_data *data)
         // rewrite the record if not ondisk version
         p_buf_data = (uint8_t *)data->dta_buf;
         p_buf_data_end = p_buf_data + data->from->lrl;
+        keep_source_times(data->from, src_insert_secs, src_update_secs, genid, src_times_known);
         rc = upgrade_record(&data->iq, data->trans, genid, p_buf_data,
                             p_buf_data_end, &opfailcode, &ixfailnum,
                             BLOCK2_UPTBL, 0);
+        bdb_odh2_keep_times(0, 0);
     }
 
     // handle rc
@@ -2612,6 +2630,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
                __func__, __LINE__, rc);
         goto done;
     }
+    keep_source_times(data->from, data->odh.insert_secs, data->odh.update_secs, genid, 1);
 
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG, "dtalen %d\n", dtalen);
@@ -2730,6 +2749,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     }
 
 done:
+    bdb_odh2_keep_times(0, 0);
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
@@ -2988,6 +3008,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
                __func__, __LINE__, rc);
         goto done;
     }
+    keep_source_times(data->from, data->odh.insert_secs, data->odh.update_secs, genid, 1);
 
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG, "%s:%d old dtalen %d\n", __func__, __LINE__, prevlen);
@@ -3137,6 +3158,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     }
 
 done:
+    bdb_odh2_keep_times(0, 0);
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "

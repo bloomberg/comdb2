@@ -1076,6 +1076,9 @@ before_first_lookup:
 
                     *reqdtalen = odh.length;
                     *ver = odh.csc2vers;
+                    /* the data record's odh2 times (0 if odh1) */
+                    args->insert_secs = odh.insert_secs;
+                    args->update_secs = odh.update_secs;
                 }
             } else if (bdb_state->ondisk_header && bdb_state->ixdta[ixnum] &&
                        bdb_state->datacopy_odh) {
@@ -1644,6 +1647,9 @@ before_first_lookup:
 
                     *reqdtalen = odh.length;
                     *ver = odh.csc2vers;
+                    /* the data record's odh2 times (0 if odh1) */
+                    args->insert_secs = odh.insert_secs;
+                    args->update_secs = odh.update_secs;
                 }
             } else if (bdb_state->ondisk_header && bdb_state->ixdta[ixnum] &&
                        bdb_state->datacopy_odh) {

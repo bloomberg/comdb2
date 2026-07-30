@@ -2928,11 +2928,9 @@ retry:
     return ixrc;
 }
 
-static int dtas_next_int(struct ireq *iq,
-                         const unsigned long long *genid_vector,
-                         unsigned long long *genid, int *stripe,
-                         int stay_in_stripe, void *dta, void *trans, int dtalen,
-                         int *reqdtalen, int *ver, int page_order)
+static int dtas_next_int(struct ireq *iq, const unsigned long long *genid_vector, unsigned long long *genid,
+                         int *stripe, int stay_in_stripe, void *dta, void *trans, int dtalen, int *reqdtalen, int *ver,
+                         int page_order, uint32_t *insert_secs, uint32_t *update_secs)
 {
     struct dbtable *db = iq->usedb;
     int bdberr, retries = 0, rc;
@@ -2948,6 +2946,10 @@ retry:
         vtag_to_ondisk_vermap(iq->usedb, dta, reqdtalen, args.ver);
         if (ver != NULL)
             *ver = args.ver;
+        if (insert_secs) {
+            *insert_secs = args.insert_secs;
+            *update_secs = args.update_secs;
+        }
         return rc;
     }
     if (rc == 1) {
@@ -2972,21 +2974,20 @@ retry:
     return -1;
 }
 
-int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
-              unsigned long long *genid, int *stripe, int stay_in_stripe,
-              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+int dtas_next(struct ireq *iq, const unsigned long long *genid_vector, unsigned long long *genid, int *stripe,
+              int stay_in_stripe, void *dta, void *trans, int dtalen, int *reqdtalen, int *ver, uint32_t *insert_secs,
+              uint32_t *update_secs)
 {
-    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
-                         trans, dtalen, reqdtalen, ver, 0);
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta, trans, dtalen, reqdtalen, ver, 0,
+                         insert_secs, update_secs);
 }
 
-int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
-                        unsigned long long *genid, int *stripe,
-                        int stay_in_stripe, void *dta, void *trans, int dtalen,
-                        int *reqdtalen, int *ver)
+int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector, unsigned long long *genid, int *stripe,
+                        int stay_in_stripe, void *dta, void *trans, int dtalen, int *reqdtalen, int *ver,
+                        uint32_t *insert_secs, uint32_t *update_secs)
 {
-    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
-                         trans, dtalen, reqdtalen, ver, 1);
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta, trans, dtalen, reqdtalen, ver, 1,
+                         insert_secs, update_secs);
 }
 
 /* Get the next record in the database in one of the stripes.  Returns 0 on

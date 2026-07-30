@@ -2365,6 +2365,8 @@ int bdb_genid_format(bdb_state_type *bdb_state);
 int bdb_genid_set_format(bdb_state_type *bdb_state, int format);
 int bdb_genid_allow_original_format(bdb_state_type *bdb_state);
 int genid_contains_time(bdb_state_type *bdb_state);
+/* Make this thread's new odh2 records carry these times instead of "now"; 0,0 resets. */
+void bdb_odh2_keep_times(uint32_t insert_secs, uint32_t update_secs);
 
 int bdb_llmeta_get_lua_sfuncs(void *sfuncs, int *bdberr);
 int bdb_llmeta_add_lua_sfunc(char *, int *, int *bdberr);

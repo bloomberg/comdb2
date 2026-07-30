@@ -72,6 +72,8 @@ typedef struct {
     uint8_t for_write;
     void *(*fn_malloc)(size_t); /* user-specified malloc function */
     void (*fn_free)(void *); /* user-specified free function */
+    uint32_t insert_secs;    /* out: odh2 data-record insert time (0 if not odh2) */
+    uint32_t update_secs;    /* out: odh2 data-record last-update time (0 if not) */
 } bdb_fetch_args_t;
 
 int bdb_fetch(bdb_state_type *bdb_handle, void *ix, int ixnum, int ixlen,
