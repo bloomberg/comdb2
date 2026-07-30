@@ -48,6 +48,7 @@
 
 #include <lz4.h>
 #include <logmsg.h>
+#include <epochlib.h> /* comdb2_time_epoch() for odh2 record timestamps */
 
 #if LZ4_VERSION_NUMBER < 10701
 #define LZ4_compress_default LZ4_compress_limitedOutput
@@ -285,6 +286,16 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
         odh->flags |= (bdb_state->compress_blobs & ODH_FLAG_COMPR_MASK);
     } else {
         odh->flags |= (bdb_state->compress & ODH_FLAG_COMPR_MASK);
+    }
+
+    /* Write odh2 when the table opts in, or under genid48 -- a genid48 record
+     * must never be odh1, which carries no time of its own.  Both stamps get
+     * "now"; on an update the caller restores the original insert_secs. */
+    if (bdb_state->ondisk_header && (bdb_state->odh2 || bdb_state->genid_format == LLMETA_GENID_48BIT)) {
+        uint32_t now = (uint32_t)comdb2_time_epoch();
+        odh->flags |= ODH2_FLAG;
+        odh->insert_secs = now;
+        odh->update_secs = now;
     }
 }
 
@@ -1388,6 +1399,18 @@ inline void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
     }
     if (bdb_state->ondisk_header) {
         bdb_state->inplace_updates = ipu;
+    }
+}
+
+/* odh2 requires the ondisk header, exactly like inplace_updates. */
+inline void bdb_set_odh2(bdb_state_type *bdb_state, int odh2)
+{
+    if (bdb_state == NULL) {
+        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
+        return;
+    }
+    if (bdb_state->ondisk_header) {
+        bdb_state->odh2 = odh2;
     }
 }
 

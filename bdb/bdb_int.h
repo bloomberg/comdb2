@@ -889,6 +889,10 @@ struct bdb_state_tag {
 
     signed char instant_schema_change;
 
+    /* Write the odh2 on-disk header.  Requires ondisk_header; also forced at
+     * write time under genid48.  See init_odh(). */
+    signed char odh2;
+
     signed char rep_handle_dead;
 
     /* keep this as an int, it's read locklessly */
