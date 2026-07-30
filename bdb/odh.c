@@ -312,16 +312,18 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
         odh->flags |= (bdb_state->compress & ODH_FLAG_COMPR_MASK);
     }
 
-    /* Write the odh2 header when the table opts in, or when the database is in
-     * genid48 format.  The genid48 forcing preserves the project invariant that
-     * a genid48 record is never odh1 (an odh1 record has no timestamp of its
-     * own and relies on the genid carrying one, which genid48 does not).
+    /* Write the odh2 header when the table opts in, or whenever the genid no
+     * longer carries an insert time (i.e. genid48).  The latter preserves the
+     * project invariant that a genid48 record is never odh1: an odh1 record has
+     * no timestamp of its own and relies on the genid carrying one, which
+     * genid48 does not.  genid_contains_time() normalises to the parent handle,
+     * where the genid format actually lives.
      *
      * This stamps both timestamps with "now", which is correct for a fresh
      * insert.  On an *update* the caller must overwrite insert_secs with the
      * record's original insert time so it is not reset (update_secs stays now).
      */
-    if (bdb_state->ondisk_header && (bdb_state->odh2 || bdb_state->genid_format == LLMETA_GENID_48BIT)) {
+    if (bdb_state->ondisk_header && (bdb_state->odh2 || !genid_contains_time(bdb_state))) {
         uint32_t now = (uint32_t)comdb2_time_epoch();
         odh->flags |= ODH2_FLAG;
         odh->insert_secs = now;
