@@ -98,11 +98,12 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags);
  * The timestamps are seconds since the 1970 epoch, stored *unsigned* so they
  * remain valid past the 2038 signed-time_t rollover (goals #1 and #2).  The
  * 32-bit length lifts the odh1 256MB ceiling (goal #3): the field can hold up
- * to 4GB-1, and the intent is to cap writes at INT_MAX (~2GB) so lengths stay
- * safe in the signed-int code paths above bdb.  NB: as of this writing that cap
- * is not yet enforced -- the existing MAXBLOBLENGTH check ((1<<28)-1) in
- * db/toblock.c still gates blob writes, and nothing sets ODH2_FLAG yet, so no
- * odh2 record is actually produced.  The codec below is ready for both.
+ * to 4GB-1, but writes are capped at MAXBLOBLENGTH2 (INT_MAX, ~2GB) via
+ * max_blob_length_for_table() so lengths stay safe in the signed-int code paths
+ * above bdb; odh1 tables keep the old MAXBLOBLENGTH ((1<<28)-1) limit.
+ * ODH2_FLAG is set by init_odh() for odh2 tables and whenever the genid no
+ * longer carries a time (genid48), so both header formats are produced in
+ * practice and told apart on read by the flag byte.
  */
 
 /* Return 1 if ip-updates are enabled.  Does not care about schema-change */
@@ -370,6 +371,17 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
          * stable for the whole function. */
         const int hdrsz = odh_size_from_flags(flags);
 
+        /* Defence in depth: an odh1 header stores the length in only 28 bits.
+         * Refuse a record that does not fit rather than let write_odh()
+         * silently truncate the length (which yields an unreadable record).
+         * The db layer enforces the per-table limit on the uncompressed value
+         * before we get here; this catches any path that slips through. */
+        if (!(flags & ODH2_FLAG) && odh->length > (uint32_t)((1U << 28) - 1)) {
+            logmsg(LOGMSG_ERROR, "%s:ERROR: %u-byte record exceeds the odh1 (28-bit) maximum %u\n", __func__,
+                   (unsigned)odh->length, (unsigned)((1U << 28) - 1));
+            return EINVAL;
+        }
+
         /* We will need a buffer to do this in.  Eventually we'll refactor all
          * the
          * way down to db/ so that when we first allocate a data buffer for the
@@ -470,7 +482,12 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
         }
 
         case BDB_COMPRESS_LZ4:
-            if ((rc = LZ4_compress_default(odh->recptr, (char *)to + hdrsz, odh->length, odh->length - 1)) == 0) {
+            /* LZ4 takes int sizes and refuses input above LZ4_MAX_INPUT_SIZE
+             * (~2.1GB); store oversized payloads uncompressed. */
+            if (odh->length > LZ4_MAX_INPUT_SIZE) {
+                alg = BDB_COMPRESS_NONE;
+            } else if ((rc = LZ4_compress_default(odh->recptr, (char *)to + hdrsz, odh->length, odh->length - 1)) ==
+                       0) {
                 alg = BDB_COMPRESS_NONE;
             } else {
                 *recsize = rc + hdrsz;
