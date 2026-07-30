@@ -3574,6 +3574,7 @@ extern int gbl_debug_sql_opcodes;
 
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver, int compr, int blob_compr,
                           int datacopy_odh, int odh2);
+unsigned int max_blob_length_for_table(const struct dbtable *db);
 
 int init_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *);
 

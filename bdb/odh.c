@@ -96,8 +96,9 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags);
  *     bytes12-15 update_secs  (32-bit big-endian) -- record's last-update time
  *
  * Timestamps are epoch seconds, unsigned to survive the 2038 signed-time_t
- * rollover.  The 32-bit length lifts odh1's 256MB ceiling.  Codec only for
- * now: nothing sets ODH2_FLAG yet, so no odh2 record is produced.
+ * rollover.  The 32-bit length lifts odh1's 256MB ceiling, though writes are
+ * capped at MAXBLOBLENGTH2 (INT_MAX) to stay safe in the signed-int paths
+ * above bdb; odh1 tables keep the old MAXBLOBLENGTH.  See init_odh().
  */
 
 /* Return 1 if ip-updates are enabled.  Does not care about schema-change */
@@ -354,6 +355,15 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
          * stable for the whole function. */
         const int hdrsz = odh_size_from_flags(flags);
 
+        /* Defence in depth: refuse a record too long for odh1's 28-bit length
+         * rather than let write_odh() silently truncate it.  The db layer
+         * already checks the uncompressed value; this catches stray paths. */
+        if (!(flags & ODH2_FLAG) && odh->length > (uint32_t)((1U << 28) - 1)) {
+            logmsg(LOGMSG_ERROR, "%s:ERROR: %u-byte record exceeds the odh1 (28-bit) maximum %u\n", __func__,
+                   (unsigned)odh->length, (unsigned)((1U << 28) - 1));
+            return EINVAL;
+        }
+
         /* We will need a buffer to do this in.  Eventually we'll refactor all
          * the
          * way down to db/ so that when we first allocate a data buffer for the
@@ -454,7 +464,12 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
         }
 
         case BDB_COMPRESS_LZ4:
-            if ((rc = LZ4_compress_default(odh->recptr, (char *)to + hdrsz, odh->length, odh->length - 1)) == 0) {
+            /* LZ4 takes int sizes and refuses input above LZ4_MAX_INPUT_SIZE
+             * (~2.1GB); store oversized payloads uncompressed. */
+            if (odh->length > LZ4_MAX_INPUT_SIZE) {
+                alg = BDB_COMPRESS_NONE;
+            } else if ((rc = LZ4_compress_default(odh->recptr, (char *)to + hdrsz, odh->length, odh->length - 1)) ==
+                       0) {
                 alg = BDB_COMPRESS_NONE;
             } else {
                 *recsize = rc + hdrsz;
