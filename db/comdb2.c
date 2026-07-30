@@ -389,6 +389,11 @@ int gbl_init_with_queue_compr = BDB_COMPRESS_LZ4;
 int gbl_init_with_queue_persistent_seq = 0;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
+/* odh2 is on by default; legacy_defaults turns it off via "dont_init_with_odh2"
+ * (see legacy_options[] in config.c).  It is also forced at write time when the
+ * db is in genid48 format, regardless of this default (a genid48 record must
+ * never be odh1, or its insert time would be lost). */
+int gbl_init_with_odh2 = 1;
 int gbl_init_with_compr = BDB_COMPRESS_CRLE;
 int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;

@@ -894,6 +894,12 @@ struct bdb_state_tag {
 
     signed char instant_schema_change;
 
+    /* odh2: write the version-2 on-disk header (insert/update timestamps,
+     * 32-bit length).  Requires ondisk_header.  Also implicitly forced at
+     * write time when the database is in genid48 format (a genid48 record must
+     * never be written as odh1, or it would carry no insert timestamp). */
+    signed char odh2;
+
     signed char rep_handle_dead;
 
     /* keep this as an int, it's read locklessly */
