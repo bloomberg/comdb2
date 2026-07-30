@@ -429,6 +429,9 @@ struct bdb_cursor_impl_tag {
     /* cursor position */
     int rrn;                  /* == 2 (don't need this) */
     unsigned long long genid; /* genid of current entry */
+    uint32_t insert_secs;     /* odh2 insert time of current entry (0 if the
+                                 row is not odh2 / no odh was decoded) */
+    uint32_t update_secs;     /* odh2 update time of current entry (0 if none) */
     void *data;               /* points inside one of  bdb_berkdb_t if valid */
     int datalen;              /* size of payload */
 
@@ -1088,6 +1091,8 @@ void bdb_maybe_uncompress_data(bdb_state_type *bdb_state, DBT *data,
 
 int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
                     uint8_t *ver, u_int32_t flags);
+int bdb_cget_unpack_times(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
+                          int verify_updateid, uint32_t *insert_secs, uint32_t *update_secs);
 int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
                          void *(*fn_malloc)(size_t), void (*fn_free)(void *));
 int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
