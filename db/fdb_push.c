@@ -205,8 +205,7 @@ void fdb_push_free(fdb_push_connector_t **pp)
     fdb_push_connector_t *p = *pp;
     if (p) {
         if (p->nparams && p->params)
-            dohsql_free_params(&p->nparams, &p->params,
-                               p->nparams-1);
+            dohsql_free_params(&p->nparams, &p->params, p->nparams);
         free(p->remotedb);
         if (p->unprow) {
             sqlite3UnpackedResultFree(&p->unprow, p->ncols);
