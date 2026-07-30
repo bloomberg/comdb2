@@ -391,7 +391,7 @@ enum RMTDB_TYPE {
 };
 
 enum DB_METADATA {
-    META_SCHEMA_RRN = 0, /* use this rrn in the meta table for schema info */
+    META_SCHEMA_RRN = 0,     /* use this rrn in the meta table for schema info */
     META_SCHEMA_VERSION = 1, /* this key holds the current ONDISK schema version
                                 as a 32 bit int */
 
@@ -405,8 +405,8 @@ enum DB_METADATA {
     META_BLOBSTRIPE_GENID_RRN = -3, /* in this rrn store the genid of table
                                        when it was converted to blobstripe */
 
-    META_STUFF_RRN = -4, /* used by pushlogs.c to do "stuff" to the database
-                           until we get past a given lsn. */
+    META_STUFF_RRN = -4,          /* used by pushlogs.c to do "stuff" to the database
+                                    until we get past a given lsn. */
     META_ONDISK_HEADER_RRN = -5,  /* do we have the new ondisk header? */
     META_COMPRESS_RRN = -6,       /* which compression algorithm to use for new
                                      records (if any) */
@@ -420,7 +420,8 @@ enum DB_METADATA {
     META_QUEUE_ODH = -14,
     META_QUEUE_COMPRESS = -15,
     META_QUEUE_PERSISTENT_SEQ = -16,
-    META_QUEUE_SEQ = -17
+    META_QUEUE_SEQ = -17,
+    META_ODH2 = -18 /* write the odh2 on-disk header for this table */
 };
 
 enum CONSTRAINT_FLAGS {
@@ -770,6 +771,9 @@ typedef struct dbtable {
     int schema_version;
     int instant_schema_change;
     int inplace_updates;
+    /* write the odh2 on-disk header (insert/update timestamps, 32-bit length);
+     * also forced at write time when the db is in genid48 format */
+    int odh2;
     /* tableversion is an ever increasing counter which is incremented for
      * every schema change (add, alter, drop, etc.) but not for fastinit */
     unsigned long long tableversion;
@@ -1841,6 +1845,7 @@ extern int gbl_init_with_queue_odh;
 extern int gbl_init_with_queue_persistent_seq;
 extern int gbl_init_with_ipu;
 extern int gbl_init_with_instant_sc;
+extern int gbl_init_with_odh2;
 extern int gbl_init_with_compr;
 extern int gbl_init_with_queue_compr;
 extern int gbl_init_with_compr_blobs;
@@ -2567,6 +2572,9 @@ int get_db_bthash_tran(struct dbtable *, int *bthashsz, tran_type *);
 int put_db_instant_schema_change(struct dbtable *db, tran_type *tran, int isc);
 int get_db_instant_schema_change(struct dbtable *db, int *isc);
 int get_db_instant_schema_change_tran(struct dbtable *, int *isc, tran_type *tran);
+int put_db_odh2(struct dbtable *db, tran_type *tran, int odh2);
+int get_db_odh2(struct dbtable *db, int *odh2);
+int get_db_odh2_tran(struct dbtable *, int *odh2, tran_type *tran);
 
 int set_meta_odh_flags(struct dbtable *db, int odh, int compress, int compress_blobs,
                        int ipupates);
@@ -3561,8 +3569,8 @@ extern int gbl_check_wrong_db;
 
 extern int gbl_debug_sql_opcodes;
 
-void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh);
+void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver, int compr, int blob_compr,
+                          int datacopy_odh, int odh2);
 
 int init_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *);
 
