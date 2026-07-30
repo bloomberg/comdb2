@@ -780,6 +780,25 @@ struct sqlclntstate {
     int n_cmp_idx;
     sampled_idx_t *sampled_idx_tbl;
 
+    /* Rootpages to use for this client instead of the live sqlmaster set.
+     * Set only by the schema-change inline analyze, which must see the
+     * pre-commit newdb.  When non-NULL, prepare_engine() loads these instead
+     * of the live entries.  Owned by the caller; must outlive the clnt. */
+    struct master_entry *custom_rootpages;
+    int custom_rootpage_nentries;
+
+    /* Substitute dbtable for custom_rootpages.  Rootpages supply the schema,
+     * but get_sqlite_db() resolves storage by name through thedb->db_hash --
+     * and a pre-commit newdb is not in that hash, so it would otherwise
+     * resolve to the live table.  When set, get_sqlite_db() returns this
+     * table for its own name.  Not owned by the clnt. */
+    struct dbtable *custom_dbtable;
+
+    /* This analyze belongs to an in-flight schema change scanning the table it
+     * just built, so the "abort analyze while a schema change runs" guards do
+     * not apply to it. */
+    int sc_analyze;
+
     int last_check_time;
     int query_timeout;
     int statement_timedout;
@@ -1335,6 +1354,12 @@ struct sql_thread {
     struct master_entry *rootpages;
     int rootpage_nentries;
     int selective_rootpages;
+    /* Set when rootpages were loaded from a clnt's custom_rootpages rather
+     * than the live sqlmaster set.  rootpages_owner records which clnt they
+     * were loaded for, so a thread is not left holding another client's view
+     * and we avoid re-copying for the same clnt. */
+    int rootpages_custom;
+    void *rootpages_owner;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 

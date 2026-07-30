@@ -4400,6 +4400,15 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         sqlthd->clnt = clnt;
     }
 
+    /* The reload below only runs when the engine is opened or refreshed, so a
+     * thread with a warm engine keeps whatever rootpages it last loaded.  That
+     * is fine for the live set, but a client carrying custom rootpages (the
+     * schema-change inline analyze) must not inherit -- or leave behind -- the
+     * wrong view.  Reconcile here, on every query; the common case is two
+     * predictable tests. */
+    if (rootpages_need_reload_for_clnt(sqlthd, clnt))
+        get_copy_rootpages_for_clnt(sqlthd, clnt);
+
 check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt, flags)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
@@ -4470,7 +4479,7 @@ check_version:
         }
 
         comdb2_reset_authstate(thd);
-        get_copy_rootpages_nolock(thd->sqlthd);
+        get_copy_rootpages_for_clnt(thd->sqlthd, clnt);
         if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
                 const int latched_clnt_is_readonly = clnt->is_readonly;

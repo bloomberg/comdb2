@@ -1899,7 +1899,19 @@ int create_datacopy_array(struct dbtable *tbl)
 
 /* This creates SQL statements that correspond to a table's schema. These
    statements are used to bootstrap sqlite. */
-static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
+/* An in-flight schema change's index tags carry a ".NEW." prefix.  The
+ * schema-change inline analyze needs the names the indexes will have once it
+ * commits, so that the statistics it writes are keyed the way the planner will
+ * later look them up. */
+static const char *strip_new_tag_prefix(const char *csctag)
+{
+    static const char strnew[] = ".NEW.";
+    if (csctag && strncmp(csctag, strnew, sizeof(strnew) - 1) == 0)
+        return csctag + sizeof(strnew) - 1;
+    return csctag;
+}
+
+int create_sqlmaster_record_flags(struct dbtable *tbl, void *tran, int strip_new_prefix)
 {
     int field;
     char namebuf[128];
@@ -1995,8 +2007,10 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             return -1;
         }
 
-        sql_index_name_trans(namebuf, sizeof(namebuf), schema, tbl, ixnum,
-                             tran);
+        if (strip_new_prefix)
+            form_new_style_name(namebuf, sizeof(namebuf), schema, strip_new_tag_prefix(schema->csctag), tbl->tablename);
+        else
+            sql_index_name_trans(namebuf, sizeof(namebuf), schema, tbl, ixnum, tran);
         if (schema->sqlitetag)
             free(schema->sqlitetag);
         schema->sqlitetag = strdup(namebuf);
@@ -2092,6 +2106,11 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     logmsg(LOGMSG_DEBUG, "sql: %s\n", strbuf_buf(sql));
     strbuf_free(sql);
     return 0;
+}
+
+int create_sqlmaster_record(struct dbtable *tbl, void *tran)
+{
+    return create_sqlmaster_record_flags(tbl, tran, 0);
 }
 
 /* create and write SQL statements. uses ondisk schema */
@@ -2569,11 +2588,12 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
         }
     }
 
-    int inprogress;
-    if (clnt->is_analyze &&
-        ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
-                      get_analyze_abort_requested() ||
-                      db_is_exiting())) {
+    /* clnt->sc_analyze: the schema change is analyzing the table it just
+     * built, so schema_change_in_progress is expected and not a reason to
+     * abort. */
+    int inprogress = 0;
+    if (clnt->is_analyze && ((!clnt->sc_analyze && (inprogress = get_schema_change_in_progress(__func__, __LINE__))) ||
+                             get_analyze_abort_requested() || db_is_exiting())) {
         if (inprogress)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because schema_change_in_progress\n",
