@@ -19,10 +19,10 @@ select 1 from comdb2_clientstats limit 1
 select 1 from comdb2_locks limit 1
 select 1 from comdb2_metrics limit 1
 select 1 from comdb2_transaction_logs limit 1
-select 1 from comdb2_tunables limit 1
 
 # These should succeed - default user can access unrestricted system tables
 select " can access unrestricted system tables " as " default user "
 
 select 1 from comdb2_keywords limit 1
 select 1 from comdb2_limits limit 1
+select 1 from comdb2_tunables limit 1
