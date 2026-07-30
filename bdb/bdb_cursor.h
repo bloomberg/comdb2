@@ -80,6 +80,8 @@ typedef struct bdb_cursor_ifn {
     int (*datalen)(struct bdb_cursor_ifn *cur);
     int (*rrn)(struct bdb_cursor_ifn *cur);
     unsigned long long (*genid)(struct bdb_cursor_ifn *cur);
+    uint32_t (*insert_secs)(struct bdb_cursor_ifn *cur);
+    uint32_t (*update_secs)(struct bdb_cursor_ifn *cur);
     int (*dbnum)(struct bdb_cursor_ifn *cur);
     void *(*datacopy)(struct bdb_cursor_ifn *cur);
     uint8_t (*ver)(struct bdb_cursor_ifn *cur);
