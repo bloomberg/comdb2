@@ -2222,7 +2222,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
     int blbix = 0;
 
     if (!data->blb_buf) {
-        data->blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+        data->blb_buf = malloc(max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE);
         if (!data->blb_buf) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                    __func__, __LINE__);
@@ -2276,9 +2276,9 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             }
 
             /* Reconstruct the add. */
-            if ((rc = bdb_reconstruct_add(
-                     bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
-                     MAXBLOBLENGTH + ODH_SIZE, &dtalen, &ixlen)) != 0) {
+            if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
+                                          max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE, &dtalen, &ixlen)) !=
+                0) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
                        __func__, __LINE__, rc);
                 goto error;
@@ -2334,7 +2334,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
         case DB_llog_undo_upd_dta:
         case DB_llog_undo_upd_dta_lk:
             if (!data->old_blb_buf) {
-                data->old_blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+                data->old_blb_buf = malloc(max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE);
                 if (!data->old_blb_buf) {
                     logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                            __func__, __LINE__);
@@ -2371,7 +2371,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     bdb_state, &rec->lsn, data->old_blb_buf, &prevlen,
                     data->blb_buf, &updlen, NULL, NULL, NULL);
             } else {
-                prevlen = updlen = MAXBLOBLENGTH + ODH_SIZE;
+                prevlen = updlen = max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE;
                 rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
                                             NULL, NULL, data->old_blb_buf,
                                             &prevlen, NULL, NULL, data->blb_buf,

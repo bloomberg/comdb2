@@ -21,7 +21,13 @@
 ** to count the size: 2^31-1 or 2147483647.
 */
 #ifndef SQLITE_MAX_LENGTH
-# define SQLITE_MAX_LENGTH 1000000000
+/* Raised above the stock 1e9 so odh2 tables can round-trip large (~1GB)
+ * blobs/strings through SQL.  Capped at INT_MAX/2 rather than the 2^31-1 hard
+ * limit because a value is delivered inside one newsql message whose length is
+ * a *signed* 32-bit field; a value near INT_MAX plus protobuf/query framing
+ * would overflow it and could not be sent.  INT_MAX/2 leaves ample headroom.
+ * Supporting truly ~2GB values would require widening the wire length field. */
+# define SQLITE_MAX_LENGTH 1073741823
 #endif
 
 /*
