@@ -94,6 +94,27 @@ else
 fi
 
 echo ""
+echo "=== Test 2: trigger remote write is rejected when db identity revoked ==="
+sa_dst "$OP" "delete from comdb2_simple_auth where user='op' and bpkg='comdb2'" || true
+
+src "insert into src(id) values(2)" || failexit "insert src id=2"
+
+appeared=0
+for i in $(seq 1 10); do
+    out=$(sa_dst "$OP" "select count(*) as cnt from dst where id=2" 2>/dev/null)
+    if echo "$out" | grep -q "(cnt=1)"; then appeared=1; break; fi
+    sleep 1
+done
+
+if [[ "$appeared" == "0" ]]; then
+    echo "  PASS: trigger's remote write was rejected (db identity denied)"
+    passed=$((passed + 1))
+else
+    echo "  FAIL: trigger's remote write landed despite the db identity being denied"
+    failed=$((failed + 1))
+fi
+
+echo ""
 echo "=== Cleanup ==="
 cdb2sql ${SRC_OPT} $SRC_DB default "drop lua trigger remtrig" >/dev/null 2>&1 || true
 cdb2sql ${SRC_OPT} $SRC_DB default "drop procedure remtrig version 'v1'" >/dev/null 2>&1 || true

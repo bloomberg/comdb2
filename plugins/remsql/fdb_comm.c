@@ -454,12 +454,6 @@ int fdb_send_open(struct sqlclntstate *clnt, fdb_msg_t *msg, char *cid, fdb_tran
             logmsg(LOGMSG_ERROR, "%s: failed to serialize identity\n", __func__);
             return rc;
         }
-    } else if (!clnt->authdata && clnt->use_db_identity && fdb_auth_enabled()) {
-        rc = cdb2_serialize_db_identity(&msg->co.authdtalen, &msg->co.authdta);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed to serialize db identity\n", __func__);
-            return rc;
-        }
     }
 
     cdb2buf_printf(sb, "remsql\n");
@@ -3667,11 +3661,11 @@ int fdb_bend_trans_2pc_begin(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *
         rc = externalComdb2DeSerializeIdentity(&clnt->authdata, msg->tv.authdtalen, msg->tv.authdta);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
-            return rc;
         }
     }
 
-    /* Send response & version */
+    /* Send response & version (always, even on failure above, so the
+       coordinator does not block waiting for this rc). */
     fdb_send_tran_2pc_rc(FDB_2PC_VER, tid, rc, NULL, sb);
 
     return rc;
