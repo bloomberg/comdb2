@@ -412,6 +412,8 @@ REGISTER_TUNABLE("dont_init_with_ondisk_header",
                  "Disables 'init_with_ondisk_header'", TUNABLE_BOOLEAN,
                  &gbl_init_with_odh, INVERSE_VALUE | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_with_odh2", "Disables 'init_with_odh2'", TUNABLE_BOOLEAN, &gbl_init_with_odh2,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_init_queue_with_persistent_sequence",
                  "Disables 'init_queue_with_persistent_sequence'",
                  TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
@@ -654,6 +656,11 @@ REGISTER_TUNABLE("init_with_instant_schema_change",
                  "Same as 'instant_schema_change'", TUNABLE_BOOLEAN,
                  &gbl_init_with_instant_sc, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("init_with_odh2",
+                 "Initialize tables with the odh2 on-disk header "
+                 "(insert/update timestamps, 32-bit length). Requires "
+                 "on-disk header. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_odh2, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_ondisk_header",
                  "Initialize tables with on-disk header. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh, READONLY | NOARG, NULL,
