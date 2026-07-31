@@ -661,6 +661,16 @@ REGISTER_TUNABLE("init_with_odh2",
                  "(insert/update timestamps, 32-bit length). Requires "
                  "on-disk header. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh2, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("randomize_odh2",
+                 "Test/debug only: randomly upgrade records from odh1 to odh2 "
+                 "(never downgrade) while genids are time-based, so a table ends "
+                 "up with a mix of both header formats. No effect under genid48. "
+                 "Not for production use. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_randomize_odh2, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("odh2_random_upgrades",
+                 "Read-only count of records emitted as odh2 by 'randomize_odh2' "
+                 "(approximate). Lets a fuzz run confirm coexistence occurred.",
+                 TUNABLE_INTEGER, &gbl_odh2_random_upgrades, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_ondisk_header",
                  "Initialize tables with on-disk header. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh, READONLY | NOARG, NULL,
