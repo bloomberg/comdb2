@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Verify the odh2 insert/update timestamp columns.  The table is forced to odh2
+# (init_with_odh2) under time-based genids, with the coexistence randomizer off,
+# so the behavior is deterministic.  Assertions reduce to booleans / typeof /
+# server-side comparisons so no raw datetime is ever compared as text.
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+[[ -z "$dbname" ]] && failexit "dbname missing"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t { `cat t.csc2` }"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into t(a, c) values(1, 1)"
+
+# odh2 rows expose real datetime timestamps.
+r=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select typeof(comdb2_insert_timestamp) from t where a=1")
+assertres "$r" "datetime" "insert_timestamp is a datetime"
+
+r=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select typeof(comdb2_update_timestamp) from t where a=1")
+assertres "$r" "datetime" "update_timestamp is a datetime"
+
+# Right after insert: insert == update == rowtimestamp.
+r=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select comdb2_update_timestamp = comdb2_insert_timestamp \
+        and comdb2_rowtimestamp = comdb2_insert_timestamp from t where a=1")
+assertres "$r" "1" "insert==update==rowtimestamp on a fresh insert"
+
+# Capture the insert timestamp, wait, update the row, then confirm the insert
+# timestamp is preserved while the update timestamp advances.
+before=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select comdb2_insert_timestamp from t where a=1")
+sleep 2
+cdb2sql ${CDB2_OPTIONS} $dbname default "update t set c=100 where a=1"
+
+after=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select comdb2_insert_timestamp from t where a=1")
+assertres "$after" "$before" "insert_timestamp preserved across an update"
+
+r=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select comdb2_update_timestamp > comdb2_insert_timestamp from t where a=1")
+assertres "$r" "1" "update_timestamp advances after an update"
+
+echo "passed"
+exit 0
