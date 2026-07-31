@@ -294,6 +294,11 @@ static void read_odh(const void *buf, struct odh *odh)
     odh->update_secs = 0;
 }
 
+/* Test/debug coexistence fuzzer -- see db/comdb2.c and the "randomize_odh2"
+ * tunable.  Defined in the db layer; referenced here to gate init_odh(). */
+extern int gbl_randomize_odh2;
+extern int gbl_odh2_random_upgrades;
+
 void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
               size_t reclen, int is_blob)
 {
@@ -324,11 +329,26 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
      * insert.  On an *update* the caller must overwrite insert_secs with the
      * record's original insert time so it is not reset (update_secs stays now).
      */
-    if (bdb_state->ondisk_header && (bdb_state->odh2 || !genid_contains_time(bdb_state))) {
-        uint32_t now = (uint32_t)comdb2_time_epoch();
-        odh->flags |= ODH2_FLAG;
-        odh->insert_secs = now;
-        odh->update_secs = now;
+    if (bdb_state->ondisk_header) {
+        int use_odh2 = (bdb_state->odh2 || !genid_contains_time(bdb_state));
+
+        /* Test/debug coexistence fuzzer: for a record that would otherwise be
+         * odh1, flip a coin and write odh2 instead.  Only reachable when genids
+         * are time-based (odh1 is legal there), so the genid48-never-odh1
+         * invariant is untouched.  This is a fresh coin per write, so a record's
+         * format can change across updates -- fine, since reads decode each
+         * record from its own flag byte. */
+        if (!use_odh2 && gbl_randomize_odh2 && (rand() & 1)) {
+            use_odh2 = 1;
+            gbl_odh2_random_upgrades++; /* approximate; unlocked on purpose */
+        }
+
+        if (use_odh2) {
+            uint32_t now = (uint32_t)comdb2_time_epoch();
+            odh->flags |= ODH2_FLAG;
+            odh->insert_secs = now;
+            odh->update_secs = now;
+        }
     }
 }
 

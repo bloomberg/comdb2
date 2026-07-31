@@ -1846,6 +1846,8 @@ extern int gbl_init_with_queue_persistent_seq;
 extern int gbl_init_with_ipu;
 extern int gbl_init_with_instant_sc;
 extern int gbl_init_with_odh2;
+extern int gbl_randomize_odh2;
+extern int gbl_odh2_random_upgrades;
 extern int gbl_init_with_compr;
 extern int gbl_init_with_queue_compr;
 extern int gbl_init_with_compr_blobs;
