@@ -1,0 +1,11 @@
+# Keep the Docker build context small and reproducible.
+# Only the source tree is needed; build artifacts and VCS metadata are not.
+.git
+build/
+contrib/docker/build/
+contrib/docker/volumes/
+
+# Editor / OS cruft
+**/*.o
+**/*.swp
+.DS_Store
