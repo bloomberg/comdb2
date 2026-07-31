@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Logical live schema change over an odh2 table with small (on-page) blobs: the
+# redo path must not overflow its buffer length, and rows rewritten by either the
+# converter or redo must keep their insert/update timestamps.
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+[[ -z "$dbname" ]] && failexit "dbname missing"
+master=$(getmaster)
+[[ -z "$master" ]] && failexit "could not find master"
+
+function sqlm
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbname "$@"
+}
+
+function times_of
+{
+    sqlm "select id, comdb2_insert_timestamp, comdb2_update_timestamp from t where $1 order by id"
+}
+
+sqlm "create table t options blobfield none { schema { int id blob b null=yes } keys { \"id\" = id } }"
+sqlm "insert into t select value, x'DEADBEEF' from generate_series(1, 100)"
+untouched=$(times_of "id > 50 and id <= 100")
+sleep 2
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} --host $master $dbname -
+exec procedure sys.cmd.send('on logical_live_sc')
+exec procedure sys.cmd.send('scdelay 2000')
+PUT SCHEMACHANGE COMMITSLEEP 3
+PUT SCHEMACHANGE CONVERTSLEEP 3
+EOF
+
+sqlm "rebuild t" &
+rebuildpid=$!
+sleep 4
+
+# Adds and updates during the rebuild go through the logical redo path.
+sqlm "insert into t select value, x'CAFE' from generate_series(101, 200)"
+sqlm "update t set b=x'BEEF' where id <= 50"
+changed=$(times_of "id <= 50 or id > 100")
+
+wait $rebuildpid || failexit "rebuild failed"
+r=$(sqlm "select 1")
+assertres "$r" "1" "master survived the logical live schema change"
+assertcnt t 200
+
+assertres "$(times_of "id > 50 and id <= 100")" "$untouched" "converted rows keep their timestamps"
+assertres "$(times_of "id <= 50 or id > 100")" "$changed" "redone rows keep their timestamps"
+do_verify t
+
+echo "passed"
+exit 0
