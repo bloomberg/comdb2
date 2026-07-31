@@ -1,11 +1,80 @@
-FROM comdb2-standalone:7.0.0pre
+# Self-contained image used by compose.yaml: it builds Comdb2 from the
+# source tree and produces a runtime image that can act either as a cluster
+# node or as a client ("dev") container.
+#
+# Build context is the repository root, e.g.:
+#   docker build -f contrib/docker/Dockerfile.dev -t comdb2-dev:latest .
 
-ENV PATH      $PATH:/opt/bb/bin
+# ---- build stage: compile and install into /opt/bb ----
+FROM ubuntu:22.04 AS build
 
-RUN apt-get update && apt-get install -y vim gdb iputils-ping strace
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bc \
+    bison \
+    build-essential \
+    cmake \
+    flex \
+    gawk \
+    libevent-dev \
+    liblz4-dev \
+    libprotobuf-c-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    libunwind-dev \
+    ncurses-dev \
+    protobuf-c-compiler \
+    tcl-dev \
+    uuid-dev \
+    zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY . /comdb2.build
+# Install prefix defaults to /opt/bb; stage the install tree under /dest via
+# DESTDIR. /opt/bb/bin is put on PATH in the runtime stage below so nothing
+# downstream has to set it.
+RUN cd /comdb2.build \
+ && mkdir -p build && cd build \
+ && cmake .. \
+ && make -j "$(nproc)" \
+ && make install DESTDIR=/dest
+
+# ---- runtime stage: slim image with just the runtime deps + client tools ----
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Put the Comdb2 binaries on PATH once, here, so entrypoints/clients don't have
+# to set it themselves.
+ENV PATH=$PATH:/opt/bb/bin
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libevent-2.1-7 \
+    libevent-core-2.1-7 \
+    libevent-pthreads-2.1-7 \
+    libevent-extra-2.1-7 \
+    liblz4-1 \
+    libprotobuf-c1 \
+    libreadline8 \
+    libsqlite3-0 \
+    libssl3 \
+    libunwind8 \
+    libuuid1 \
+    libncurses6 \
+    libtinfo6 \
+    tcl \
+    zlib1g \
+    ca-certificates \
+    tzdata \
+    procps \
+    iputils-ping \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /dest/opt/bb /opt/bb
 
 EXPOSE 5105
 
-COPY contrib/docker/docker-dev-entrypoint.sh /
-
-ENTRYPOINT ["/docker-dev-entrypoint.sh"]
+# The default entrypoint spins up a database; docker-compose overrides the
+# entrypoint per-service (cluster node vs. client container).
+COPY contrib/docker/standalone-entrypoint.sh /standalone-entrypoint.sh
+RUN chmod +x /standalone-entrypoint.sh
+ENTRYPOINT ["/standalone-entrypoint.sh"]

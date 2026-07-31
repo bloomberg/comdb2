@@ -11,11 +11,11 @@ pmux -l
 host=$(hostname -i)
 
 if [[ -f /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl ]]; then
-    for dbname in /opt/bb/var/cdb2/*; do 
+    for dbname in /opt/bb/var/cdb2/*; do
         dbname=${dbname##*/}
         comdb2 $dbname > /opt/bb/var/log/$dbname.out 2>&1 &
     done
-else 
+else
     echo "hostname $host" > /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
 
     for dbname in $*; do
