@@ -281,6 +281,10 @@ static void read_odh(const void *buf, struct odh *odh)
     odh->update_secs = 0;
 }
 
+/* "randomize_odh2" coexistence fuzzer; defined in db/comdb2.c. */
+extern int gbl_randomize_odh2;
+extern int gbl_odh2_random_upgrades;
+
 /* Times for init_odh to stamp instead of "now" on this thread (0 = unset). */
 static __thread uint32_t keep_insert_secs, keep_update_secs;
 
@@ -312,11 +316,22 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
     /* Write odh2 when the table opts in, or whenever the genid no longer
      * carries an insert time (genid48) -- such a record must never be odh1.
      * Both stamps get "now"; on an update the caller restores insert_secs. */
-    if (bdb_state->ondisk_header && (bdb_state->odh2 || !genid_contains_time(bdb_state))) {
-        uint32_t now = (uint32_t)comdb2_time_epoch();
-        odh->flags |= ODH2_FLAG;
-        odh->insert_secs = keep_insert_secs ? keep_insert_secs : now;
-        odh->update_secs = keep_update_secs ? keep_update_secs : now;
+    if (bdb_state->ondisk_header) {
+        int use_odh2 = (bdb_state->odh2 || !genid_contains_time(bdb_state));
+
+        /* Fuzzer: coin-flip a would-be odh1 record into odh2.  Only reachable
+         * under time-based genids, so genid48 still always forces odh2. */
+        if (!use_odh2 && gbl_randomize_odh2 && (rand() & 1)) {
+            use_odh2 = 1;
+            gbl_odh2_random_upgrades++; /* approximate; unlocked on purpose */
+        }
+
+        if (use_odh2) {
+            uint32_t now = (uint32_t)comdb2_time_epoch();
+            odh->flags |= ODH2_FLAG;
+            odh->insert_secs = keep_insert_secs ? keep_insert_secs : now;
+            odh->update_secs = keep_update_secs ? keep_update_secs : now;
+        }
     }
 }
 
@@ -1217,7 +1232,8 @@ int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key
 }
 
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob, DBT *data, DBT *data2, int updateid,
-                                  void **freeptr, void *stackbuf, int odhready, uint32_t preserve_insert_secs)
+                                  void **freeptr, void *stackbuf, int odhready, uint32_t preserve_insert_secs,
+                                  int keep_odh2)
 {
     struct odh odh;
 
@@ -1237,9 +1253,13 @@ int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob, DBT *d
             odh.updateid = updateid;
         }
 
-        /* On an update, keep the record's original insert time; init_odh has
-         * already set update_secs to "now".  Only meaningful for odh2 records
-         * (the caller passes 0 for inserts and non-odh2 tables). */
+        /* Never downgrade: an update of an odh2 record stays odh2. */
+        if (keep_odh2 && !(odh.flags & ODH2_FLAG)) {
+            odh.flags |= ODH2_FLAG;
+            odh.update_secs = keep_update_secs ? keep_update_secs : (uint32_t)comdb2_time_epoch();
+        }
+
+        /* On an update, keep the record's original insert time (init_odh set "now"). */
         if (preserve_insert_secs && (odh.flags & ODH2_FLAG)) {
             odh.insert_secs = preserve_insert_secs;
         }
@@ -1327,7 +1347,7 @@ int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
     }
 
     rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, data, &data2, updateid, &mallocmem,
-                                       ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), odhready, 0);
+                                       ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), odhready, 0, 0);
 
     if (rc == 0) {
         rc = db->put(db, tid, key, &data2, flags);
@@ -1377,7 +1397,7 @@ int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
     }
 
     rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, data, &data2, updateid, &mallocmem,
-                                       ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), 0, 0);
+                                       ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), 0, 0, 0);
 
     if (rc == 0) {
         rc = dbcp->c_put(dbcp, key, &data2, flags);
