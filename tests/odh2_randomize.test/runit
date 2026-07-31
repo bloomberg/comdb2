@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Verify the randomize_odh2 coexistence fuzzer: under time-based genids with the
+# tunable on, individual records are randomly written as odh1 or odh2, so a
+# single table ends up with a mix.  We insert enough rows that the coin lands on
+# odh2 at least once (odh2_random_upgrades > 0), then confirm every record reads
+# back and verifies.
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+[[ -z "$dbname" ]] && failexit "dbname missing"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t { `cat t.csc2` }"
+
+# Insert plenty of rows so the randomizer produces both formats.
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "insert into t(a) select value from generate_series(1, 2000)"
+assertcnt t 2000
+
+# The randomizer counter must show that some records were emitted as odh2.  The
+# randomizer runs in init_odh on the master only (replicants apply already-packed
+# records), so read the counter from the master rather than via 'default', which
+# in a cluster can land on a replicant that never ran the randomizer.
+master=$(getmaster)
+[[ -z "$master" ]] && failexit "could not find master"
+upg=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $master \
+    "select value from comdb2_tunables where name='odh2_random_upgrades'")
+if ! [[ "$upg" =~ ^[0-9]+$ ]] || [[ "$upg" -le 0 ]] ; then
+    failexit "expected odh2_random_upgrades > 0, got '$upg'"
+fi
+
+# Mixed odh1/odh2 records must all decode.
+do_verify t
+
+nulls=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select count(*) from t where comdb2_rowtimestamp is null")
+assertres "$nulls" "0" "no null rowtimestamps across randomized formats"
+
+echo "passed"
+exit 0
