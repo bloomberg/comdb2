@@ -1,0 +1,10 @@
+schema
+{
+    int      a
+    cstring  b[8]
+}
+
+keys
+{
+    "PRIMARY" = a + b
+}

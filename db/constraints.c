@@ -2166,6 +2166,71 @@ static inline int key_has_expressions_members(struct schema *key)
     return 0;
 }
 
+/* Conversion-compatible classes of ondisk (server) types.  A foreign-key
+ * column can only map onto a parent-key column when both fall in the same
+ * class; otherwise stag_to_stag_buf_ckey() fails at runtime (rc -1) and the
+ * constraint can never be satisfied. */
+enum fk_type_class {
+    FK_TYPE_CLASS_INVALID = 0,
+    FK_TYPE_CLASS_NUMERIC,
+    FK_TYPE_CLASS_STRING,
+    FK_TYPE_CLASS_DATETIME,
+    FK_TYPE_CLASS_INTERVAL_YM,
+    FK_TYPE_CLASS_INTERVAL_DS,
+};
+
+static enum fk_type_class fk_type_class_of(int server_type)
+{
+    switch (server_type) {
+    case SERVER_UINT:
+    case SERVER_BINT:
+    case SERVER_BREAL:
+    case SERVER_DECIMAL:
+        return FK_TYPE_CLASS_NUMERIC;
+    case SERVER_BCSTR:
+    case SERVER_BYTEARRAY:
+    case SERVER_VUTF8:
+        return FK_TYPE_CLASS_STRING;
+    case SERVER_DATETIME:
+    case SERVER_DATETIMEUS:
+        return FK_TYPE_CLASS_DATETIME;
+    case SERVER_INTVYM:
+        return FK_TYPE_CLASS_INTERVAL_YM;
+    case SERVER_INTVDS:
+    case SERVER_INTVDSUS:
+        return FK_TYPE_CLASS_INTERVAL_DS;
+    default:
+        return FK_TYPE_CLASS_INVALID;
+    }
+}
+
+/* Verify that each positionally-corresponding pair of key columns is
+ * type-compatible.  comdb2 maps foreign-key columns by position (not name),
+ * converting only the first min(local, parent) members, so that's the range we
+ * check.  Guarded by gbl_fk_constraint_type_check.  Returns the number of
+ * incompatible columns found (0 == ok). */
+static int constraint_key_types_check(struct schema_change_type *s, struct dbtable *from_db, constraint_t *ct, int rule,
+                                      struct schema *fky, struct schema *bky)
+{
+    int n_errors = 0;
+    if (!gbl_fk_constraint_type_check || !fky || !bky)
+        return 0;
+    int ncmp = fky->nmembers < bky->nmembers ? fky->nmembers : bky->nmembers;
+    for (int c = 0; c < ncmp; c++) {
+        enum fk_type_class fc = fk_type_class_of(fky->member[c].type);
+        if (fc == FK_TYPE_CLASS_INVALID || fc != fk_type_class_of(bky->member[c].type)) {
+            char errs[256];
+            snprintf(errs, sizeof(errs),
+                     "incompatible types for key column %d: local '%s' vs "
+                     "parent '%s'",
+                     c + 1, fky->member[c].name, bky->member[c].name);
+            constraint_err(s, from_db, ct, rule, errs);
+            n_errors++;
+        }
+    }
+    return n_errors;
+}
+
 /* Verify that the tables and keys referred to by this table's constraints all
  * exist & have the correct column count.  If they don't it's a bit of a show
  * stopper. */
@@ -2251,6 +2316,9 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 constraint_err(s, from_db, ct, jj, "invalid number of columns");
                 n_errors++;
             }
+
+            /* Reject constraints whose key columns can never convert. */
+            n_errors += constraint_key_types_check(s, from_db, ct, jj, fky, bky);
         }
     }
 

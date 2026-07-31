@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+SQL="cdb2sql ${CDB2_OPTIONS} ${dbname} default"
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'`
+
+fail() { echo "FAIL: $1" ; exit 1 ; }
+
+# Toggle the type check on every node so it is in effect wherever the schema
+# change runs.
+set_type_check() {
+    val=$1
+    if [ -z "$cluster" ] ; then
+        cdb2sql ${CDB2_OPTIONS} $dbname default \
+            "put tunable 'fk_constraint_type_check' $val" || fail "put tunable"
+    else
+        for node in $cluster ; do
+            cdb2sql ${CDB2_OPTIONS} $dbname --host $node \
+                "put tunable 'fk_constraint_type_check' $val" || fail "put tunable"
+        done
+    fi
+}
+
+echo "create parent table p"
+$SQL "create table p { `cat p.csc2` }" || fail "could not create parent table"
+
+echo "=== 1. type-incompatible FK should be REJECTED (check on, the default) ==="
+out=$($SQL "create table c { `cat c_bad.csc2` }" 2>&1)
+rc=$?
+echo "$out"
+(( rc != 0 )) || fail "type-incompatible FK was accepted"
+echo "$out" | grep -qi "incompatible types" || fail "expected 'incompatible types' in error"
+echo "PASS: rejected with the expected error"
+
+echo "=== 2. type-compatible FK should be ACCEPTED ==="
+$SQL "create table c_ok { `cat c_good.csc2` }" || fail "type-compatible FK was rejected"
+echo "PASS: accepted"
+
+echo "=== 3. with fk_constraint_type_check OFF, incompatible FK is ALLOWED ==="
+set_type_check 0
+$SQL "create table c { `cat c_bad.csc2` }" || fail "with check off, incompatible FK should be allowed"
+echo "PASS: allowed when tunable is off"
+set_type_check 1
+
+echo "Testcase passed."
+exit 0

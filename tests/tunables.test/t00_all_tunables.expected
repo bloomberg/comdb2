@@ -387,6 +387,7 @@
 (name='fingerprint_queries', description='Compute fingerprint for SQL queries', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_cstr', description='Fix validation of cstrings', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_pinref', description='fix_pinref', type='BOOLEAN', value='ON', read_only='N')
+(name='fk_constraint_type_check', description='Reject foreign-key constraints whose key columns are not type-compatible, checked at schema-change time (default ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_check_active_peer', description='Check if still have active connection when trying to flush', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_on_prepare', description='Flush master log on prepare. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_replicant_on_prepare', description='Flush replicant log on prepare. (Default: on)', type='BOOLEAN', value='ON', read_only='N')

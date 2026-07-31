@@ -1,0 +1,18 @@
+// FK key lists b+a, but the referenced PRIMARY lists a+b.  FK columns are
+// matched positionally, so this maps cstring<->int and int<->cstring, which
+// can never convert.
+schema
+{
+    int      a
+    cstring  b[8]
+}
+
+keys
+{
+    dup "FK" = b + a
+}
+
+constraints
+{
+    "FK" -> <"p":"PRIMARY">
+}

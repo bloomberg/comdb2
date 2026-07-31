@@ -432,6 +432,10 @@ REGISTER_TUNABLE("dont_superset_foreign_keys",
                  "Disables 'superset_foreign_keys'", TUNABLE_BOOLEAN,
                  &gbl_fk_allow_superset_keys, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fk_constraint_type_check",
+                 "Reject foreign-key constraints whose key columns are not "
+                 "type-compatible, checked at schema-change time (default ON)",
+                 TUNABLE_BOOLEAN, &gbl_fk_constraint_type_check, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_sort_nulls_with_header",
                  "Disables 'sort_nulls_with_header'", TUNABLE_BOOLEAN,
                  &gbl_sort_nulls_correctly, INVERSE_VALUE | READONLY | NOARG,

@@ -1,0 +1,12 @@
+Foreign-key key-column type-compatibility check at schema-change time.
+
+comdb2 maps foreign-key columns to the referenced key positionally (not by
+name).  If the positionally-corresponding columns are not type-compatible the
+FK conversion (stag_to_stag_buf_ckey) fails at runtime and the constraint can
+never be satisfied -- leaving an un-writable table that only surfaces at insert
+or verify time.
+
+This test asserts that such a constraint is rejected at create/alter time
+(gbl_fk_constraint_type_check, default ON), that a type-compatible constraint
+is still accepted, and that turning the tunable off restores the old
+(permissive) behavior.

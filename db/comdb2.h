@@ -3461,6 +3461,7 @@ extern int gbl_use_block_mode_status_code;
 
 extern int gbl_fk_allow_prefix_keys;
 extern int gbl_fk_allow_superset_keys;
+extern int gbl_fk_constraint_type_check;
 extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;

@@ -1,0 +1,17 @@
+// Same columns as c_bad, but the FK key order matches the referenced PRIMARY
+// (a + b), so every positional pair is type-compatible.
+schema
+{
+    int      a
+    cstring  b[8]
+}
+
+keys
+{
+    dup "FK" = a + b
+}
+
+constraints
+{
+    "FK" -> <"p":"PRIMARY">
+}

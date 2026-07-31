@@ -642,6 +642,8 @@ int gbl_fk_allow_prefix_keys = 1;
 
 int gbl_fk_allow_superset_keys = 1;
 
+int gbl_fk_constraint_type_check = 1;
+
 int gbl_update_delete_limit = 1;
 
 int verbose_deadlocks = 0;
