@@ -396,6 +396,13 @@ int gbl_init_with_instant_sc = 1;
 /* On by default; legacy_defaults turns it off via "dont_init_with_odh2".  odh2
  * is forced at write time under genid48 regardless of this default. */
 int gbl_init_with_odh2 = 1;
+/* Test/debug only: randomly write would-be odh1 records as odh2 under
+ * time-based genids, so a table ends up with a mix of both formats.  No
+ * effect under genid48, where writes are already forced to odh2. */
+int gbl_randomize_odh2 = 0;
+/* Count of records the randomizer above emitted as odh2 (approximate -- bumped
+ * without locking; lets a fuzz run confirm coexistence was actually produced). */
+int gbl_odh2_random_upgrades = 0;
 int gbl_init_with_compr = BDB_COMPRESS_CRLE;
 int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;

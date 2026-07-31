@@ -281,6 +281,10 @@ static void read_odh(const void *buf, struct odh *odh)
     odh->update_secs = 0;
 }
 
+/* "randomize_odh2" coexistence fuzzer; defined in db/comdb2.c. */
+extern int gbl_randomize_odh2;
+extern int gbl_odh2_random_upgrades;
+
 void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
               size_t reclen, int is_blob)
 {
@@ -303,11 +307,22 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
     /* Write odh2 when the table opts in, or whenever the genid no longer
      * carries an insert time (genid48) -- such a record must never be odh1.
      * Both stamps get "now"; on an update the caller restores insert_secs. */
-    if (bdb_state->ondisk_header && (bdb_state->odh2 || !genid_contains_time(bdb_state))) {
-        uint32_t now = (uint32_t)comdb2_time_epoch();
-        odh->flags |= ODH2_FLAG;
-        odh->insert_secs = now;
-        odh->update_secs = now;
+    if (bdb_state->ondisk_header) {
+        int use_odh2 = (bdb_state->odh2 || !genid_contains_time(bdb_state));
+
+        /* Fuzzer: coin-flip a would-be odh1 record into odh2.  Only reachable
+         * under time-based genids, so genid48 still always forces odh2. */
+        if (!use_odh2 && gbl_randomize_odh2 && (rand() & 1)) {
+            use_odh2 = 1;
+            gbl_odh2_random_upgrades++; /* approximate; unlocked on purpose */
+        }
+
+        if (use_odh2) {
+            uint32_t now = (uint32_t)comdb2_time_epoch();
+            odh->flags |= ODH2_FLAG;
+            odh->insert_secs = now;
+            odh->update_secs = now;
+        }
     }
 }
 
