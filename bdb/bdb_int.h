@@ -1760,7 +1760,8 @@ int bdb_committed_durable(bdb_state_type *bdb_state);
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob, DBT *data, DBT *data2, int updateid,
-                                  void **freeptr, void *stackbuf, int odhready, uint32_t preserve_insert_secs);
+                                  void **freeptr, void *stackbuf, int odhready, uint32_t preserve_insert_secs,
+                                  int keep_odh2);
 int peek_odh2_insert_secs(const void *buf, size_t buflen, uint32_t *insert_secs);
 
 int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype);
