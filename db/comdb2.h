@@ -2106,6 +2106,9 @@ int ireq_forward_to_master(struct ireq *iq, int len);
 int getkeyrecnums(const struct dbtable *db, int ixnum);
 int getkeysize(const struct dbtable *db, int ixnum); /* get key size of db */
 int getdatsize(const struct dbtable *db);            /* get data size of db*/
+/* odh2 data-record insert/update timestamps by genid (0 if not odh2). */
+int get_ondisk_timestamps_by_genid(struct dbtable *db, int rrn, unsigned long long genid, uint32_t *insert_secs,
+                                   uint32_t *update_secs);
 int getdefaultdatsize(const struct dbtable *db);
 int getondiskclientdatsize(const struct dbtable *db);
 int getclientdatsize(const struct dbtable *db, char *sname);

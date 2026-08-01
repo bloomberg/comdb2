@@ -4637,18 +4637,39 @@ i64 sqlite3BtreeIntegerKey(BtCursor *pCur)
     return size;
 }
 
-/* odh2 insert/update timestamps of the current row (epoch seconds), snapshotted
- * on the cursor at fetch time.  0 when the row has no odh2 header -- an odh1 row
- * or a synthetic uncommitted row.  The caller disambiguates: an odh1 row falls
- * back to the insert time in its genid, a synthetic row has no time at all. */
+/* odh2 insert/update timestamps of the current row (epoch seconds).  For a data
+ * cursor these were snapshotted off the data record at fetch time.  For an index
+ * cursor the snapshot is the *index entry's* odh time, which is unrelated to the
+ * row and does not advance on a non-key update -- so read the DATA record's odh
+ * times by genid instead.  0 when the row has no odh2 header (odh1 or synthetic);
+ * the caller then falls back to the genid insert time (odh1) or NULL (synthetic). */
+static void odh2_row_timestamps(BtCursor *pCur, u32 *insert_secs, u32 *update_secs)
+{
+    *insert_secs = pCur->insert_secs;
+    *update_secs = pCur->update_secs;
+
+    /* Index cursor on a real (committed) row: source the data record's times. */
+    if (pCur->ixnum >= 0 && pCur->db && !is_genid_synthetic(pCur->genid)) {
+        uint32_t ins = 0, upd = 0;
+        if (get_ondisk_timestamps_by_genid(pCur->db, pCur->rrn, pCur->genid, &ins, &upd) == 0) {
+            *insert_secs = ins;
+            *update_secs = upd;
+        }
+    }
+}
+
 u32 sqlite3BtreeInsertTimestamp(BtCursor *pCur)
 {
-    return pCur->insert_secs;
+    u32 insert_secs, update_secs;
+    odh2_row_timestamps(pCur, &insert_secs, &update_secs);
+    return insert_secs;
 }
 
 u32 sqlite3BtreeUpdateTimestamp(BtCursor *pCur)
 {
-    return pCur->update_secs;
+    u32 insert_secs, update_secs;
+    odh2_row_timestamps(pCur, &insert_secs, &update_secs);
+    return update_secs;
 }
 
 /*
