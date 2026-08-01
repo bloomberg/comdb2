@@ -465,6 +465,42 @@ int bdb_fetch_blobs_by_rrn_and_genid_cursor(
         blobptrs, pparent, args, bdberr);
 }
 
+/* Read a data record's odh2 times under the parent cursor's curtran (its locker and snapshot). */
+int bdb_fetch_odh2_times_cursor(bdb_state_type *bdb_state, unsigned long long genid, bdb_cursor_ifn_t *pparent,
+                                uint32_t *insert_secs, uint32_t *update_secs, int *bdberr)
+{
+    bdb_cursor_impl_t *parent = pparent->impl;
+    DBT key = {0}, data = {0};
+    uint8_t ver;
+    int rc;
+
+    *insert_secs = *update_secs = 0;
+    *bdberr = 0;
+    if (is_genid_synthetic(genid))
+        return -1;
+
+    BDB_READLOCK("bdb_fetch_odh2_times_cursor");
+    DB *dbp = get_dbp_from_genid(bdb_state, 0, genid, NULL);
+    DBC *dbcp =
+        get_cursor_for_cursortran_flags(parent->curtran, dbp, parent->use_snapcur ? DB_CUR_SNAPSHOT : 0, bdberr);
+    if (!dbcp) {
+        BDB_RELLOCK();
+        return -1;
+    }
+    key.data = &genid;
+    key.size = key.ulen = sizeof(genid);
+    key.flags = DB_DBT_USERMEM;
+    data.flags = DB_DBT_MALLOC;
+    rc = bdb_cget_unpack_times(bdb_state, dbcp, &key, &data, &ver, DB_SET, 0, insert_secs, update_secs);
+    if (rc == 0)
+        free(data.data);
+    dbcp->c_close(dbcp);
+    BDB_RELLOCK();
+    if (rc == DB_LOCK_DEADLOCK)
+        *bdberr = BDBERR_DEADLOCK;
+    return rc ? -1 : 0;
+}
+
 int bdb_fetch_blobs_by_rrn_and_genid_tran(
     bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long genid, int numblobs, int *dtafilenums, size_t *blobsizes,
