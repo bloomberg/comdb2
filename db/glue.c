@@ -2010,6 +2010,39 @@ retry:
     return rc;
 }
 
+/* Fetch an odh2 data record's insert/update timestamps by genid.  On success
+ * returns 0 and fills in the insert and update seconds (both 0 if the record is
+ * not odh2); returns non-zero if the record cannot be read.  comdb2_*_timestamp
+ * needs the DATA record's odh times, but when a row is reached via a secondary
+ * index the cursor sits on the index entry (whose odh times are unrelated and do
+ * not advance on a non-key update), so we read the data record here.  The data
+ * record (dtafile 0) is bounded by the row size, so this is a small fetch. */
+int get_ondisk_timestamps_by_genid(struct dbtable *db, int rrn, unsigned long long genid, uint32_t *insert_secs,
+                                   uint32_t *update_secs)
+{
+    bdb_fetch_args_t args = {0};
+    int fndlen = 0, bdberr = 0, rc, maxlen;
+    void *buf;
+
+    *insert_secs = 0;
+    *update_secs = 0;
+    if (!db || !db->handle)
+        return -1;
+
+    maxlen = getdatsize(db);
+    if (maxlen <= 0)
+        return -1;
+    buf = alloca(maxlen);
+
+    rc = bdb_fetch_by_rrn_and_genid(db->handle, rrn, genid, buf, maxlen, &fndlen, &args, &bdberr);
+    if (rc != 0)
+        return -1;
+
+    *insert_secs = args.insert_secs;
+    *update_secs = args.update_secs;
+    return 0;
+}
+
 /* we dont want to retry on deadlock here. */
 int ix_find_auxdb_by_rrn_and_genid_dirty(int auxdb, struct ireq *iq, int rrn,
                                          unsigned long long genid, void *fnddta,

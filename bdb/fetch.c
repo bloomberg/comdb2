@@ -1076,6 +1076,11 @@ before_first_lookup:
 
                     *reqdtalen = odh.length;
                     *ver = odh.csc2vers;
+                    /* Surface the data record's odh2 timestamps so callers that
+                     * fetch by genid (e.g. comdb2_*_timestamp read via a
+                     * secondary index) get the row's real insert/update time. */
+                    args->insert_secs = odh.insert_secs;
+                    args->update_secs = odh.update_secs;
                 }
             } else if (bdb_state->ondisk_header && bdb_state->ixdta[ixnum] &&
                        bdb_state->datacopy_odh) {
@@ -1644,6 +1649,11 @@ before_first_lookup:
 
                     *reqdtalen = odh.length;
                     *ver = odh.csc2vers;
+                    /* Surface the data record's odh2 timestamps so callers that
+                     * fetch by genid (e.g. comdb2_*_timestamp read via a
+                     * secondary index) get the row's real insert/update time. */
+                    args->insert_secs = odh.insert_secs;
+                    args->update_secs = odh.update_secs;
                 }
             } else if (bdb_state->ondisk_header && bdb_state->ixdta[ixnum] &&
                        bdb_state->datacopy_odh) {
