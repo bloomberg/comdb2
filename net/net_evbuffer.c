@@ -824,8 +824,8 @@ struct accept_info {
     char *origin;
     int has_is_physrep;
     int is_physrep;
-    struct accept_info *hostcheck_next; /* hostcheck thread queue link */
-    int hostcheck_ok;                   /* result of the peer-hostname check */
+    TAILQ_ENTRY(accept_info) hostcheck_link; /* hostcheck thread queue link */
+    int hostcheck_ok;                        /* result of the peer-hostname check */
 };
 
 static int pending_connections; /* accepted, but not processed first-byte */
@@ -2599,8 +2599,8 @@ extern int gbl_rep_verify_peer_hostname;
 static pthread_t hostcheck_thd;
 static pthread_mutex_t hostcheck_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t hostcheck_cond = PTHREAD_COND_INITIALIZER;
-static struct accept_info *hostcheck_head;
-static struct accept_info *hostcheck_tail;
+static TAILQ_HEAD(, accept_info) hostcheck_list = TAILQ_HEAD_INITIALIZER(hostcheck_list);
+static int hostcheck_ctr; /* current depth of hostcheck_list */
 
 /* Back on the event base: act on the resolver's verdict. */
 static void hostcheck_resume(int dummyfd, short what, void *data)
@@ -2620,21 +2620,34 @@ static void hostcheck_resume(int dummyfd, short what, void *data)
 /* Dedicated thread: forward-resolve claimed hostnames off the event loop. */
 static void *hostcheck_fn(void *unused)
 {
+    int max_pending = 8;
     comdb2_name_thread("hostcheck");
     while (1) {
         Pthread_mutex_lock(&hostcheck_lk);
-        while (hostcheck_head == NULL) {
+        while (TAILQ_EMPTY(&hostcheck_list)) {
             Pthread_cond_wait(&hostcheck_cond, &hostcheck_lk);
         }
-        struct accept_info *a = hostcheck_head;
-        hostcheck_head = a->hostcheck_next;
-        if (hostcheck_head == NULL) {
-            hostcheck_tail = NULL;
-        }
-        a->hostcheck_next = NULL;
+        struct accept_info *a = TAILQ_FIRST(&hostcheck_list);
+        TAILQ_REMOVE(&hostcheck_list, a, hostcheck_link);
+        int pending = --hostcheck_ctr;
         Pthread_mutex_unlock(&hostcheck_lk);
 
+        struct timeval start, end, diff;
+        gettimeofday(&start, NULL);
         a->hostcheck_ok = (net_validate_connect_host(a->from_host_interned, &a->ss) == 0);
+        gettimeofday(&end, NULL);
+        timersub(&end, &start, &diff);
+
+        /* Peer connects are infrequent, so the queue should stay shallow. Warn if a
+           resolution blocks or the backlog grows - either delays accepting peers. */
+        if (diff.tv_sec >= 1) {
+            logmsg(LOGMSG_WARN, "%s: slow peer-hostname resolution %ld.%03lds host:%s pending:%d\n", __func__,
+                   (long)diff.tv_sec, (long)diff.tv_usec / 1000, a->from_host_interned, pending);
+        } else if (pending > max_pending) {
+            max_pending = pending;
+            logmsg(LOGMSG_WARN, "%s: peer-hostname resolution backlog pending:%d\n", __func__, pending);
+        }
+
         evtimer_once(base, hostcheck_resume, a); /* resume on the main event base */
     }
     return NULL;
@@ -2700,13 +2713,9 @@ static int validate_host(struct accept_info *a)
        resolution, so hand it to the hostcheck thread and resume acceptance in
        validate_host_finish() once it completes. */
     if (gbl_rep_verify_peer_hostname) {
-        a->hostcheck_next = NULL;
         Pthread_mutex_lock(&hostcheck_lk);
-        if (hostcheck_tail)
-            hostcheck_tail->hostcheck_next = a;
-        else
-            hostcheck_head = a;
-        hostcheck_tail = a;
+        TAILQ_INSERT_TAIL(&hostcheck_list, a, hostcheck_link);
+        ++hostcheck_ctr;
         Pthread_cond_signal(&hostcheck_cond); /* -> hostcheck_fn */
         Pthread_mutex_unlock(&hostcheck_lk);
         return 0;
