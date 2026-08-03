@@ -114,3 +114,27 @@ jobs:
         working-directory: build
         run: |
           make -j $(nproc) test-tools
+
+  contrib_docker:
+    name: Test contrib/docker
+    continue-on-error: true
+
+    # GitHub-hosted Ubuntu runners ship with Docker and the Compose plugin
+    # preinstalled.
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash -o errexit -o nounset -o pipefail {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show Docker version
+        run: |
+          docker version
+          docker compose version
+
+      - name: Run docker compose smoke test
+        run: ./tests/contrib_docker/runit
