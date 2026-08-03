@@ -61,6 +61,8 @@ static const char revid[] = "$Id: dbreg_rec.c,v 11.120 2003/10/27 15:54:31 sue E
 static int __dbreg_open_file __P((DB_ENV *,
     DB_TXN *, __dbreg_register_args *, void *));
 
+int gbl_test_force_dbreg_reopen = 0;
+
 int
 __dbreg_register_print(DB_ENV *dbenv, DBT *dbtp, DB_LSN *lsnp, db_recops notused2, void *notused3);
 
@@ -424,6 +426,12 @@ __dbreg_open_file(dbenv, txn, argp, info)
 			if (F_ISSET(dbp, DB_AM_RECOVER))
 				__db_close(dbp, NULL, DB_NOSYNC);
 
+			goto reopen;
+		}
+
+		if (gbl_test_force_dbreg_reopen) {
+			MUTEX_THREAD_UNLOCK(dbenv, lp->mutexp);
+			(void)__dbreg_revoke_id(dbp, 0, DB_LOGFILEID_INVALID);
 			goto reopen;
 		}
 

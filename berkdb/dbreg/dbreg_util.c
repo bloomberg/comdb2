@@ -456,7 +456,20 @@ __ufid_add_dbp(dbenv, dbp)
 			   master and later assigns a dbreg ID to a btree (see __dbreg_lazy_id).
 			   In this case, we need to take the old dbp off the hashtable so that
 			   __db_close() doesn't mistakenly clear the new dbp. */
-			ufid->dbp->added_to_ufid = 0;
+			DB *old_dbp = ufid->dbp;
+			old_dbp->added_to_ufid = 0;
+			if (F_ISSET(old_dbp, DB_AM_RECOVER)) {
+				/* Close the displaced DB_AM_RECOVER handle to prevent file
+				 * descriptor leaks. These handles accumulate when a regular
+				 * handle displaces a recovery handle in the ufid-hash without
+				 * closing it. When delfiles later deletes these old file
+				 * versions, the leaked handles keep the inodes alive. */
+				ufid->dbp = dbp;
+				dbp->added_to_ufid = 1;
+				Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+				__db_close(old_dbp, NULL, DB_NOSYNC);
+				return ret;
+			}
 		}
 	} else {
 		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {

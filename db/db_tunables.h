@@ -2701,4 +2701,6 @@ REGISTER_TUNABLE("clear_ufid_on_db_close", "Clear ufid hash on db->close", TUNAB
                  INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("get_peer_fqdn", "When set, use peer's FQDN", TUNABLE_BOOLEAN, &gbl_get_peer_fqdn, INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("test_force_dbreg_reopen", "Force dbreg reopen to test ufid displacement", TUNABLE_INTEGER,
+                 &gbl_test_force_dbreg_reopen, INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

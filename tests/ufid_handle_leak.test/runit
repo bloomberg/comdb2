@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Test that DB_AM_RECOVER handles displaced from the ufid-hash by
+# __ufid_add_dbp are properly closed, preventing file descriptor leaks.
+#
+# Uses the test_force_dbreg_reopen tunable to force __dbreg_open_file to
+# skip its early-return optimization when a dbreg slot already has a
+# matching handle. This causes __dbreg_do_open to create a DB_AM_RECOVER
+# handle that displaces the existing handle in the ufid-hash — the exact
+# scenario that occurs in prod during schema change replay.
+#
+# Without the fix in __ufid_add_dbp, each displacement leaks a handle
+# (visible as growth in dumpopendbs). With the fix, displaced DB_AM_RECOVER
+# handles are closed and the count stays stable.
+
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+    "SELECT host FROM comdb2_cluster WHERE is_master='Y'")
+replicant=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+    "SELECT host FROM comdb2_cluster WHERE is_master='N' LIMIT 1")
+
+echo "master=$master replicant=$replicant"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (i INT, b BLOB)"
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(1, x'DEADBEEF')"
+sleep 2
+
+# Measure BEFORE any explicit checkpoint. The test_force_dbreg_reopen
+# tunable hasn't fired yet because CHECKPOINTTIME is set very high.
+before=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $replicant \
+    "EXEC PROCEDURE sys.cmd.send('bdb dumpopendbs')" | grep -c 'XXX\.t1')
+echo "Open t1 handles on $replicant before checkpoint: $before"
+
+# Checkpoint generates dbreg_chkpnt log records. With test_force_dbreg_reopen,
+# the replicant's __dbreg_open_file skips its early return and calls
+# __dbreg_do_open, creating a DB_AM_RECOVER handle that displaces the
+# existing regular handle in the ufid-hash.
+cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('bdb checkpoint')"
+sleep 2
+
+# TRUNCATE creates new btree files, generating more dbreg_register records.
+for i in $(seq 1 3); do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "TRUNCATE TABLE t1"
+    cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('bdb checkpoint')"
+    sleep 2
+done
+
+after=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $replicant \
+    "EXEC PROCEDURE sys.cmd.send('bdb dumpopendbs')" | grep -c 'XXX\.t1')
+echo "Open t1 handles on $replicant after checkpoint+truncates: $after"
+
+# With the fix:    displaced DB_AM_RECOVER handles are closed → count stable
+# Without the fix: each checkpoint + truncate leaks handles → count grows
+threshold=$(( before + (before / 4) + 2 ))
+if [ "$after" -gt "$threshold" ]; then
+    echo "FAIL: handle count grew from $before to $after (threshold $threshold)" >&2
+    echo "Leaked DB_AM_RECOVER handles detected" >&2
+    echo "--- dumpopendbs t1 entries ---"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $replicant \
+        "EXEC PROCEDURE sys.cmd.send('bdb dumpopendbs')" | grep 'XXX\.t1'
+    echo "--- end ---"
+    exit 1
+fi
+
+echo "PASS: handle count stable ($before → $after, threshold $threshold)"
+exit 0

@@ -24,7 +24,7 @@ dbnm=$1
 
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
 replicant=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
-the_other_replicant=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT host FROM comdb2_cluster WHERE host <> '$master' AND host <> '$replicant'"`
+the_other_replicant=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT host FROM comdb2_cluster WHERE host <> '$master' AND host <> '$replicant' LIMIT 1"`
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (i integer, b blob)"
 sleep 2 # wait for the checkpoint thread to do its 1st checkpoint

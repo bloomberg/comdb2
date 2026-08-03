@@ -650,6 +650,7 @@ extern int gbl_accept_headroom;
 extern int gbl_db_track_open;
 extern int gbl_clear_ufid_on_db_close;
 extern int gbl_get_peer_fqdn;
+extern int gbl_test_force_dbreg_reopen;
 
 int parse_int64(const char *value, int64_t *num);
 
