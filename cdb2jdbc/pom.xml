@@ -15,9 +15,53 @@ limitations under the License. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <groupId>com.bloomberg.comdb2</groupId>
   <modelVersion>4.0.0</modelVersion>
-  <artifactId>cdb2jdbc</artifactId>
-  <version>source</version>
+  <artifactId>comdb2-driver</artifactId>
+  <version>3.2.0</version>
   <packaging>jar</packaging>
+
+  <name>Comdb2 JDBC Driver</name>
+  <description>JDBC Type 4 driver for Comdb2, a distributed RDBMS.</description>
+  <url>https://github.com/bloomberg/comdb2</url>
+  <organization>
+    <name>Bloomberg L.P.</name>
+    <url>https://www.bloomberg.com</url>
+  </organization>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>comdb2-oss</id>
+      <name>Comdb2 Contributors</name>
+      <email>opensource@bloomberg.net</email>
+      <organization>Bloomberg L.P.</organization>
+      <organizationUrl>https://github.com/bloomberg</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/bloomberg/comdb2.git</connection>
+    <developerConnection>scm:git:https://github.com/bloomberg/comdb2.git</developerConnection>
+    <tag>HEAD</tag>
+    <url>https://github.com/bloomberg/comdb2/tree/main/cdb2jdbc</url>
+  </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>ossrh</id>
+      <url>https://ossrh-staging-api.central.sonatype.com/service/local/</url>
+    </repository>
+    <snapshotRepository>
+      <id>ossrh</id>
+      <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+    </snapshotRepository>
+  </distributionManagement>
+
   <properties>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
@@ -214,6 +258,59 @@ limitations under the License. -->
     </plugins>
   </build>
   <profiles>
+    <!-- Activated by the "Publish to Maven Central" workflow to attach sources,
+         sign artifacts, and stage/release to Sonatype OSSRH. -->
+    <profile>
+      <id>ossrh</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.0</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+                <phase>verify</phase>
+                <configuration>
+                  <gpgArguments>
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.plugins</groupId>
+            <artifactId>nexus-staging-maven-plugin</artifactId>
+            <version>1.7.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <serverId>ossrh</serverId>
+              <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+              <autoReleaseAfterClose>true</autoReleaseAfterClose>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>doclint-java8-disable</id>
       <activation>

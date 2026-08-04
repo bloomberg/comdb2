@@ -1,0 +1,36 @@
+name: Publish to Maven Central
+
+# Publishes the cdb2jdbc driver to Maven Central. Triggered manually.
+on: workflow_dispatch
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # JDK 8: the driver targets 1.8 and its javadoc plugin (v2.9) does not run
+      # on newer JDKs.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 8
+          java-package: jdk
+          check-latest: true
+          server-id: ossrh
+          server-username: OSSRH_USERNAME
+          server-password: OSSRH_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_KEY }}
+          gpg-passphrase: GPG_KEY_PASSPHRASE
+
+      - name: Deploy to Maven Central
+        working-directory: cdb2jdbc
+        run: mvn --batch-mode -Possrh -Dmaven.test.skip=true -Dgpg.keyname=${{ secrets.GPG_KEY_ID }} -Dgpg.passphrase=${{ secrets.GPG_KEY_PASSPHRASE }} clean deploy
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          GPG_KEY_PASSPHRASE: ${{ secrets.GPG_KEY_PASSPHRASE }}
