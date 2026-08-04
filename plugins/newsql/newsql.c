@@ -2269,6 +2269,9 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
                          struct errstat *err)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    if (!appdata) /* e.g. internal/trigger clnt: nothing to forward */
+        return 0;
+
     CDB2SQLQUERY *sql_query = appdata->sqlquery;
     int rc = 0;
 
