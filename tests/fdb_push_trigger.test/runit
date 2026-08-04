@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# A Lua trigger's remote write runs on an internal clnt (built by
+# start_internal_sql_clnt), not a real newsql client connection. When
+# foreign_db_push_remote_writes routes that write through the cdb2api
+# "push" path (handle_fdb_push_write -> _hndl_open_int), forward_set_commands
+# used to dereference clnt->appdata unconditionally, which is NULL for an
+# internal clnt -> segv. This test exercises exactly that path.
+
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+SRC_DB=$DBNAME
+SRC_OPT="$CDB2_OPTIONS"
+DST_DB=$SECONDARY_DBNAME
+DST_OPT="$SECONDARY_CDB2_OPTIONS"
+
+src() { cdb2sql ${SRC_OPT} $SRC_DB default "$1"; }
+src_tabs() { cdb2sql --tabs ${SRC_OPT} $SRC_DB default "$1"; }
+dst_tabs() { cdb2sql --tabs ${DST_OPT} $DST_DB default "$1"; }
+
+echo "=== Setup: tables ==="
+cdb2sql ${DST_OPT} $DST_DB default "create table dst(id int)" || failexit "create dst.dst"
+src "create table src(id int)" || failexit "create src.src"
+
+echo "=== Setup: trigger on source db that writes to the remote db ==="
+cdb2sql ${SRC_OPT} $SRC_DB default - <<EOF || failexit "create trigger"
+create procedure remtrig version 'v1' {
+local function main(event)
+    if event.type == 'add' then
+        local _, rc = db:exec("insert into LOCAL_${DST_DB}.dst(id) values(" .. event.new.id .. ")")
+        if rc ~= 0 then return rc end
+    end
+    return 0
+end
+}\$\$
+create lua trigger remtrig on (table src for insert)
+EOF
+
+echo "  waiting for trigger to register..."
+cnt=0
+for i in $(seq 1 30); do
+    cnt=$(src_tabs "select count(*) from comdb2_triggers where tbl_name='src' and type='trigger'" 2>/dev/null)
+    [[ "$cnt" == "1" ]] && break
+    sleep 1
+done
+[[ "$cnt" == "1" ]] || failexit "trigger did not register"
+
+echo ""
+echo "=== Test: trigger's remote push write lands on the destination db ==="
+src "insert into src(id) values(1)" || failexit "insert src id=1"
+
+landed=0
+for i in $(seq 1 30); do
+    cnt=$(dst_tabs "select count(*) from dst where id=1" 2>/dev/null)
+    if [[ "$cnt" == "1" ]]; then
+        landed=1
+        break
+    fi
+    sleep 1
+done
+
+if [[ "$landed" != "1" ]]; then
+    failexit "trigger's remote push write never reached the remote db"
+fi
+
+echo "Success"
