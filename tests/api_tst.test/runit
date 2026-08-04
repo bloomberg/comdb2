@@ -138,4 +138,23 @@ EOF
 done
 echo "cfg - pass"
 
+# cdb2_open() lowercases hndl->dbname. Connect with an upper-cased db name
+# and confirm (a) the query still succeeds and (b) CDB2_LOG_CALLS shows
+# cdb2_open logging the lower-cased name (hndl->dbname), not the argument.
+upper_db=$(echo "${db}" | tr '[:lower:]' '[:upper:]')
+log=$(CDB2_LOG_CALLS=1 ${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs ${upper_db} ${tier} "select 1" 2>&1)
+if ! echo "${log}" | grep -qx "1"; then
+    echo >&2 "lowercase dbname: connect with '${upper_db}' failed: ${log} - fail"
+    exit 1
+fi
+if ! echo "${log}" | grep -qF "cdb2_open(dbname: \"${db}\""; then
+    echo >&2 "lowercase dbname: cdb2_open did not log lower-cased name: ${log} - fail"
+    exit 1
+fi
+if echo "${log}" | grep -qF "cdb2_open(dbname: \"${upper_db}\""; then
+    echo >&2 "lowercase dbname: cdb2_open logged upper-cased name '${upper_db}' - fail"
+    exit 1
+fi
+echo "lowercase dbname - pass"
+
 exit 0
