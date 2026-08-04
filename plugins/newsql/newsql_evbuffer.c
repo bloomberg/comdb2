@@ -1463,20 +1463,21 @@ static void *gethostname_fn(void *arg)
         timersub(&now, &arg->start, &q);
         if (diff.tv_sec) {
             last_report = now;
-            printf("%s  took %lds:%ldms  pending:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000L, pending);
+            logmsg(LOGMSG_WARN, "%s  took %lds:%ldms  pending:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000L,
+                   pending);
         } else if (q.tv_sec > 2) {
             last_report = now;
-            printf("%s  took %lds:%ldms  queue:%lds:%ldms  pending:%d\n", __func__,
-                    diff.tv_sec, diff.tv_usec / 1000L, q.tv_sec, q.tv_usec / 1000L, pending);
+            logmsg(LOGMSG_WARN, "%s  took %lds:%ldms  queue:%lds:%ldms  pending:%d\n", __func__, diff.tv_sec,
+                   diff.tv_usec / 1000L, q.tv_sec, q.tv_usec / 1000L, pending);
         } else if (pending > max_pending) {
             last_report = now;
             max_pending = pending;
-            printf("%s  pending:%d\n", __func__, pending);
+            logmsg(LOGMSG_WARN, "%s  pending:%d\n", __func__, pending);
         } else if (pending > 32) {
             timersub(&now, &last_report, &diff);
             if (diff.tv_sec > 10) {
                 last_report = now;
-                printf("%s  pending:%d\n", __func__, pending);
+                logmsg(LOGMSG_WARN, "%s  pending:%d\n", __func__, pending);
             }
         }
         evtimer_once(arg->base, newsql_setup_clnt_evbuffer, arg);
