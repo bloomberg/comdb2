@@ -3631,8 +3631,8 @@ static int archive_file(const char *fname, const char *savdir) {
  */
 static int does_file_have_db_extension(const char *fname) {
     const char * extension;
-    char * pos;
-    char * ext;
+    const char *pos;
+    const char *ext;
     int cmp;
 
     ext = strrchr(fname, '.');

@@ -93,7 +93,8 @@ void initresourceman(const char *newlrlname)
  */
 char *getdbrelpath(const char *relpath)
 {
-    char *index, *newpath;
+    const char *index;
+    char *newpath;
     size_t reltolen, relpathlen;
     const char *relto = lrlname;
 

@@ -214,7 +214,7 @@ static void remove_thd_funcs(Lua);
 */
 static int two_part_tbl_name(const char *name, char *n1, char *n2)
 {
-    char *dot;
+    const char *dot;
     if ((dot = strstr(name, ".")) != NULL) {
         if (dot - name >= MAXTABLELEN) {
             return -1;
