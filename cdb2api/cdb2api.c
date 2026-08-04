@@ -8959,6 +8959,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
     TAILQ_INIT(&hndl->queries);
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
+    for (char *p = hndl->dbname; *p; p++)
+        *p = tolower((unsigned char)*p);
     strncpy(hndl->type, type, sizeof(hndl->type) - 1);
     hndl->resolv_def = (strcasecmp(type, "default") == 0);
     hndl->flags = flags;
@@ -8980,9 +8982,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         hndl->db_default_type_override_env = 0;
         hndl->sockpool_enabled = 0;
         char *DEFAULT_TYPE_PREFIX = "COMDB2_CONFIG_DEFAULT_TYPE";
-        char COMDB2_CONFIG_DB_DEFAULT_TYPE[sizeof(char) * (strlen(dbname) + strlen(DEFAULT_TYPE_PREFIX) + 2)];
+        char COMDB2_CONFIG_DB_DEFAULT_TYPE[sizeof(char) * (strlen(hndl->dbname) + strlen(DEFAULT_TYPE_PREFIX) + 2)];
         snprintf(COMDB2_CONFIG_DB_DEFAULT_TYPE, sizeof(COMDB2_CONFIG_DB_DEFAULT_TYPE), "%s_%s", DEFAULT_TYPE_PREFIX,
-                 dbname);
+                 hndl->dbname);
         char *db_default_type = getenv(COMDB2_CONFIG_DB_DEFAULT_TYPE);
         if (db_default_type && hndl->resolv_def) {
             strncpy(hndl->type, db_default_type, sizeof(hndl->type) - 1);
@@ -9065,7 +9067,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             // just connects to these hosts (since sockpool
             // would potentially connect to other machines if the same hosts
             // aren't included in the database's global config file).
-            char *db_host_info = get_dbhosts_from_env(dbname);
+            char *db_host_info = get_dbhosts_from_env(hndl->dbname);
             hndl->sockpool_enabled = db_host_info ? -1 : 0;
         }
 
@@ -9179,7 +9181,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 out:
     if (rc != 0 && hndl)
         hndl->is_invalid = 1;
-    LOG_CALL("cdb2_open(dbname: \"%s\", type: \"%s\", flags: %x) = %d => %p\n", dbname, type, hndl->flags, rc, *handle);
+    LOG_CALL("cdb2_open(dbname: \"%s\", type: \"%s\", flags: %x) = %d => %p\n", hndl->dbname, type, hndl->flags, rc,
+             *handle);
     if (rc == 0 && hndl->sb != NULL) {
         LOG_CALL("cdb2_open success %p fd %d\n", *handle, cdb2buf_fileno(hndl->sb));
     }
