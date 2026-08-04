@@ -2701,4 +2701,7 @@ REGISTER_TUNABLE("clear_ufid_on_db_close", "Clear ufid hash on db->close", TUNAB
                  INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("get_peer_fqdn", "When set, use peer's FQDN", TUNABLE_BOOLEAN, &gbl_get_peer_fqdn, INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("panic_on_transaction_apply_error", "When set, panic if any LSN can't be applied (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_panic_on_transaction_apply_error, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

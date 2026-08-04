@@ -4913,6 +4913,7 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 }
 
 int gbl_debug_lock_get_list_copy_compare = 0;
+int gbl_panic_on_transaction_apply_error = 1;
 
 /*
  * __rep_process_txn --
@@ -5451,11 +5452,14 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 					needed_to_get_record_from_log ? &data_dbt :
 					&lcin_dbt, lsnp, DB_TXN_APPLY,
 					txninfo)) != 0) {
-				if (ret != DB_LOCK_DEADLOCK)
+				if (ret != DB_LOCK_DEADLOCK) {
 					__db_err(dbenv,
 						"transaction failed at [%lu][%lu]",
 						(u_long)lsnp->file,
 						(u_long)lsnp->offset);
+					if (gbl_panic_on_transaction_apply_error)
+						__db_panic(dbenv, ret);
+				}
 				if (ret == DB_LOCK_DEADLOCK && rectype >= 10000)
 					ret = DB_LOCK_DEADLOCK_CUSTOM;
 				line = __LINE__;

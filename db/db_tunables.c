@@ -651,6 +651,8 @@ extern int gbl_db_track_open;
 extern int gbl_clear_ufid_on_db_close;
 extern int gbl_get_peer_fqdn;
 
+extern int gbl_panic_on_transaction_apply_error;
+
 int parse_int64(const char *value, int64_t *num);
 
 /*
