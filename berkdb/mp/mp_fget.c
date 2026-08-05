@@ -54,7 +54,6 @@ extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
-extern void bb_fingerprint_rtstats_bump_pagein(int did_io);
 void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
@@ -313,9 +312,17 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 		++mfp->stat.st_map;
 		if (gbl_bb_berkdb_enable_memp_timing)
 			bb_memp_hit(start_time_us);
-		/* mmap fast-path: page is served from the mapping without a
-		 * cache fetch, so it never does fetch-time disk I/O. */
-		bb_fingerprint_rtstats_bump_pagein(0);
+		/*
+		 * mmap fast-path. In practice comdb2's b-tree files are never
+		 * mmap'd (they are read-write and register pgin/pgout, so
+		 * MP_CAN_MMAP is always cleared in __memp_fopen()), making this
+		 * branch dead for our data files. Even if a file were mapped,
+		 * the page is served straight from the mapping with no fetch-time
+		 * read syscall; any real disk I/O would happen lazily via a page
+		 * fault on later dereference, which is invisible here -- so we
+		 * record the page-in with did_io=0.
+		 */
+		bb_berkdb_fingerprint_rtstats_bump_pagein(0);
 		return (0);
 	}
 
@@ -848,7 +855,7 @@ alloc:		/*
 
 	if (gbl_bb_berkdb_enable_memp_timing)
 		bb_memp_hit(start_time_us);
-	bb_fingerprint_rtstats_bump_pagein(did_io != NULL && *did_io);
+	bb_berkdb_fingerprint_rtstats_bump_pagein(did_io != NULL && *did_io);
 	return (0);
 
 err:	/*
@@ -951,9 +958,17 @@ __memp_read_recovery_pages(dbmfp)
 			inpg = PGNO(pagep);
 		}
 
-		/* Read this page into the bufferpool.  Pass a real did_io so the
-		 * page-in I/O is attributed (to the NO-FINGERPRINT bucket, since
-		 * no fingerprint TLS is set during recovery). */
+		/*
+		 * Read this page into the bufferpool. We pass &did_io (not NULL)
+		 * on purpose: __memp_fget_internal() writes *did_io=1 when the
+		 * fetch actually hits disk and then, before returning, attributes
+		 * the page-in via bb_berkdb_fingerprint_rtstats_bump_pagein(). So
+		 * the local did_io is not read here -- it is the by-reference
+		 * mechanism the callee uses to record the I/O. This is I/O for
+		 * reading recovery pages (torn-page protection), which we do want
+		 * counted toward total I/O; it lands in the NO-FINGERPRINT bucket
+		 * since no fingerprint TLS is armed on this path.
+		 */
 		did_io = 0;
 		if (0 == __memp_fget_internal(dbmfp, &inpg,
 			DB_MPOOL_RECP, &fpage, &did_io))

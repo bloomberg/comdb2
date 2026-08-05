@@ -1182,6 +1182,19 @@ static int lua_prepare_sql(SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_temp_ddl(SP, const char *sql, sqlite3_stmt **);
 
 /*
+** Finalize a prepared statement from a Lua context. Clears this thread's
+** fingerprint runtime-stats TLS slot (armed at prepare time) before
+** finalizing, so page-ins from later work aren't misattributed to the
+** finalized statement's fingerprint. Keeping clear+finalize together means a
+** new finalize call site can't forget the clear.
+*/
+static void lua_finalize_sql(sqlite3_stmt *stmt)
+{
+    bdb_fingerprint_rtstats_clear();
+    sqlite3_finalize(stmt);
+}
+
+/*
 ** Lua stack:
 ** 1: Lua str (tmptbl name)
 ** 2: Lua tbl (tmptbl schema)
@@ -1254,8 +1267,7 @@ static struct sp_tmptbl *create_temp_table(Lua lua, const char **name)
     }
     lua_end_step(sp->clnt, sp, stmt);
     set_tmptbl(NULL);
-    bdb_fingerprint_rtstats_clear();
-    sqlite3_finalize(stmt);
+    lua_finalize_sql(stmt);
 
     if (rc == SQLITE_DONE) {
         return tmptbl;
@@ -2367,8 +2379,7 @@ out:if (rc) {
         sql_check_errors(sp->clnt, sqldb, stmt, &errstr);
         luabb_error(lua, sp, errstr);
     }
-    bdb_fingerprint_rtstats_clear();
-    sqlite3_finalize(stmt);
+    lua_finalize_sql(stmt);
     lua_pushinteger(lua, rc);
     return 1;
 }
@@ -2423,8 +2434,7 @@ static int dbtable_copyfrom(Lua lua)
     }
     lua_end_step(sp->clnt, sp, stmt);
 
-    bdb_fingerprint_rtstats_clear();
-    sqlite3_finalize(stmt);
+    lua_finalize_sql(stmt);
 
     lua_pushinteger(lua, 0); /* Success return code. */
     return 1;
@@ -3007,8 +3017,7 @@ static void drop_temp_tables(SP sp)
         do {
             rc = sqlite3_step(stmt);
         } while (rc == SQLITE_ROW);
-        bdb_fingerprint_rtstats_clear();
-        sqlite3_finalize(stmt);
+        lua_finalize_sql(stmt);
         if (rc != SQLITE_DONE) {
             expire = 1;
             logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
@@ -3660,8 +3669,7 @@ done:
     if (csv.z)
         free(csv.z);
     if (stmt) {
-        bdb_fingerprint_rtstats_clear();
-        sqlite3_finalize(stmt);
+        lua_finalize_sql(stmt);
     }
     if (fp)
         fclose(fp);
@@ -6669,8 +6677,7 @@ static void clone_temp_tables(SP sp)
         sqlite3_stmt *stmt;
         lua_prepare_sql_with_temp_ddl(sp, strbuf_buf(sql), &stmt);
         clone_temp_table(stmt, &tmp->tbl);
-        bdb_fingerprint_rtstats_clear();
-        sqlite3_finalize(stmt);
+        lua_finalize_sql(stmt);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
