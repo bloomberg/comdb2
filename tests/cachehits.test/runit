@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+# Regression test for DRQS 185346999.
+#
+# The 'stat' message-trap used to report leaf-page-only buffer-pool counters
+# (st_cache_lhit/st_cache_lmiss) as its "hits"/"misses", while comdb2_metrics
+# reported the total counters (st_cache_hit/st_cache_miss).  The fix makes the
+# trap report totals and exposes the leaf-page counters as their own metrics
+# (leaf_cache_hits / leaf_cache_misses / leaf_cache_hit_rate).
+#
+# This test asserts:
+#   1. the three new leaf_cache_* metrics exist,
+#   2. total counters are a superset of the leaf counters (single snapshot),
+#   3. the 'stat' trap now reports the total counters (not leaf), and
+#   4. both hit-rate metrics are in [0,100].
+
+dbnm=$1
+FAIL=0
+
+# Buffer-pool counters and the 'stat' trap are per-node, so pin every query to a
+# single host; otherwise, under CLUSTER, separate 'default' connections could hit
+# different nodes and make the cross-query comparisons below meaningless.
+host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()')
+
+runtabs() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$host" "$1"; }
+run() { cdb2sql ${CDB2_OPTIONS} $dbnm --host "$host" "$1"; }
+
+# 1) the new leaf_cache_* metrics are registered
+cnt=$(runtabs "select count(*) from comdb2_metrics where name in ('leaf_cache_hits','leaf_cache_misses','leaf_cache_hit_rate')")
+if [ "$cnt" != "3" ]; then
+    echo "FAIL: expected 3 leaf_cache_* metrics, got '$cnt'" >&2
+    FAIL=1
+fi
+
+# 2) drive buffer-pool activity so the counters are non-trivial
+run "create table t(a int, b blob)"
+for i in $(seq 1 20); do
+    run "insert into t select value, randomblob(64) from generate_series(1, 2500)" >/dev/null
+done
+for i in $(seq 1 10); do
+    runtabs "select count(*) from t" >/dev/null
+    runtabs "select count(*) from t where b is not null" >/dev/null
+    runtabs "select count(*) from t where a > 1000" >/dev/null
+done
+
+# 3) total counters are a superset of the leaf counters.  Reading all four in a
+#    single SELECT means they come from one refresh_metrics()/mpool snapshot, so
+#    the >= comparisons are race-free.  Rows come back ordered by name:
+#    cache_hits, cache_misses, leaf_cache_hits, leaf_cache_misses.
+vals=$(runtabs "select cast(value as integer) from comdb2_metrics where name in ('cache_hits','cache_misses','leaf_cache_hits','leaf_cache_misses') order by name")
+ch=$(echo "$vals" | sed -n 1p)
+cm=$(echo "$vals" | sed -n 2p)
+lh=$(echo "$vals" | sed -n 3p)
+lm=$(echo "$vals" | sed -n 4p)
+echo "cache_hits=$ch cache_misses=$cm leaf_cache_hits=$lh leaf_cache_misses=$lm"
+
+if [ -z "$ch" ] || [ -z "$cm" ] || [ -z "$lh" ] || [ -z "$lm" ]; then
+    echo "FAIL: could not read cache metrics from comdb2_metrics" >&2
+    FAIL=1
+else
+    if [ "$ch" -lt "$lh" ]; then
+        echo "FAIL: cache_hits($ch) < leaf_cache_hits($lh)" >&2
+        FAIL=1
+    fi
+    if [ "$cm" -lt "$lm" ]; then
+        echo "FAIL: cache_misses($cm) < leaf_cache_misses($lm)" >&2
+        FAIL=1
+    fi
+    if [ "$ch" -le 0 ]; then
+        echo "FAIL: cache_hits not positive ($ch)" >&2
+        FAIL=1
+    fi
+    if [ "$lh" -le 0 ]; then
+        echo "FAIL: leaf_cache_hits not positive ($lh)" >&2
+        FAIL=1
+    fi
+fi
+
+# 4) the 'stat' trap must report TOTAL hits/misses.  cache_hits is monotonic, so
+#    reading it just before firing the trap gives a lower bound the trap must
+#    meet or exceed.  The old (buggy) trap reported leaf hits, which are far
+#    below the total, so this comparison catches a regression.
+ch_before=$(runtabs "select cast(value as integer) from comdb2_metrics where name='cache_hits'")
+stat_out=$(runtabs 'exec procedure sys.cmd.send("stat")')
+trap_hits=$(echo "$stat_out" | awk '$1=="hits"{print $2; exit}')
+trap_misses=$(echo "$stat_out" | awk '$1=="misses"{print $2; exit}')
+echo "stat trap: hits=$trap_hits misses=$trap_misses (cache_hits before trap=$ch_before)"
+
+if ! [[ "$trap_hits" =~ ^[0-9]+$ ]]; then
+    echo "FAIL: could not parse a numeric 'hits' from stat trap output (got '$trap_hits')" >&2
+    FAIL=1
+elif ! [[ "$ch_before" =~ ^[0-9]+$ ]]; then
+    echo "FAIL: could not read cache_hits before trap (got '$ch_before')" >&2
+    FAIL=1
+elif [ "$trap_hits" -lt "$ch_before" ]; then
+    echo "FAIL: stat trap hits($trap_hits) < cache_hits($ch_before): trap is not reporting total counters" >&2
+    FAIL=1
+fi
+
+# 5) both hit-rate metrics are sane percentages
+inrange() { awk -v v="$1" 'BEGIN{ if (v == "") exit 1; exit !(v >= 0 && v <= 100) }'; }
+chr=$(runtabs "select value from comdb2_metrics where name='cache_hit_rate'")
+lhr=$(runtabs "select value from comdb2_metrics where name='leaf_cache_hit_rate'")
+echo "cache_hit_rate=$chr leaf_cache_hit_rate=$lhr"
+if ! inrange "$chr"; then
+    echo "FAIL: cache_hit_rate out of range: '$chr'" >&2
+    FAIL=1
+fi
+if ! inrange "$lhr"; then
+    echo "FAIL: leaf_cache_hit_rate out of range: '$lhr'" >&2
+    FAIL=1
+fi
+
+if [ "$FAIL" -ne 0 ]; then
+    echo "TESTCASE FAILED" >&2
+    exit 1
+fi
+
+echo "TESTCASE PASSED"
+exit 0
