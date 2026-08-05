@@ -788,7 +788,7 @@ LOG DELETE ENABLED
 LOG DELETE POLICY: delete all eligible log files
 # Database buffer pool size
 cachesize 64.000 mb
-# Cache hits and misses, page read/write information
+# Cache hits and misses, page read/write information (total buffer pool)
 hits        457
 misses      50
 page reads  102

@@ -218,20 +218,34 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
     return 0;
 }
 
-int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
-                           int64_t *bpool_misses, int64_t *rw_evicts)
+int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits, int64_t *bpool_misses, int64_t *bpool_lhits,
+                           int64_t *bpool_lmisses, int64_t *page_reads, int64_t *page_writes, int64_t *rw_evicts)
 {
     int rc;
     DB_MPOOL_STAT *mpool_stats;
 
-    rc = bdb_state->dbenv->memp_stat(bdb_state->dbenv, &mpool_stats, NULL,
-                                     0);
+    /* The eviction counters are only aggregated on a full stat; the
+       hit/miss and page-io counters are available under the cheaper
+       DB_STAT_MINIMAL, so avoid the full buffer-cache walk unless a
+       caller actually asks for evictions. */
+    rc = bdb_state->dbenv->memp_stat(bdb_state->dbenv, &mpool_stats, NULL, rw_evicts ? 0 : DB_STAT_MINIMAL);
     if (rc)
         return rc;
 
-    *bpool_hits = mpool_stats->st_cache_hit;
-    *bpool_misses = mpool_stats->st_cache_miss;
-    *rw_evicts = mpool_stats->st_rw_evict;
+    if (bpool_hits)
+        *bpool_hits = mpool_stats->st_cache_hit;
+    if (bpool_misses)
+        *bpool_misses = mpool_stats->st_cache_miss;
+    if (bpool_lhits)
+        *bpool_lhits = mpool_stats->st_cache_lhit;
+    if (bpool_lmisses)
+        *bpool_lmisses = mpool_stats->st_cache_lmiss;
+    if (page_reads)
+        *page_reads = mpool_stats->st_page_in;
+    if (page_writes)
+        *page_writes = mpool_stats->st_page_out;
+    if (rw_evicts)
+        *rw_evicts = mpool_stats->st_rw_evict;
 
     free(mpool_stats);
     return 0;

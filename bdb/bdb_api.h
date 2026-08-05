@@ -1264,9 +1264,7 @@ void bdb_temp_table_reset_datapointers(struct temp_cursor *cur);
 
 void *bdb_temp_table_get_cur(struct temp_cursor *skippy);
 
-void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
-                         uint64_t *misses, uint64_t *reads, uint64_t *writes,
-                         uint64_t *thits, uint64_t *tmisses);
+void bdb_get_temp_cache_stats(bdb_state_type *bdb_state, uint64_t *thits, uint64_t *tmisses);
 
 void bdb_stripe_get(bdb_state_type *bdb_state);
 void bdb_stripe_done(bdb_state_type *bdb_state);
@@ -2083,8 +2081,8 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
                           int64_t *deadlock_locks, int64_t *waits,
                           int64_t *requests);
 
-int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
-                           int64_t *bpool_misses, int64_t *rw_evicts);
+int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits, int64_t *bpool_misses, int64_t *bpool_lhits,
+                           int64_t *bpool_lmisses, int64_t *page_reads, int64_t *page_writes, int64_t *rw_evicts);
 
 int bdb_master_should_reject(bdb_state_type *bdb_state);
 

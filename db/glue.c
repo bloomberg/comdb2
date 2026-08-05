@@ -4366,22 +4366,6 @@ void backend_cleanup(struct dbenv *dbenv)
     }
 }
 
-void backend_get_cachestats(struct dbenv *dbenv, int *cachekb, int *hits,
-                            int *misses)
-{
-    if (dbenv->bdb_env == NULL)
-        return;
-
-    uint64_t h, m;
-
-    bdb_get_cache_stats(dbenv->bdb_env, &h, &m, NULL, NULL, NULL, NULL);
-
-    *cachekb = dbenv->cacheszkb;
-    /* lossy */
-    *hits = (int)h;
-    *misses = (int)m;
-}
-
 void backend_get_iostats(int *n_reads, int *l_reads, int *n_writes,
                          int *l_writes)
 {
@@ -4391,7 +4375,8 @@ void backend_get_iostats(int *n_reads, int *l_reads, int *n_writes,
 void backend_stat(struct dbenv *dbenv)
 {
     double f;
-    uint64_t hits, misses, reads, writes, thits, tmisses;
+    uint64_t thits = 0, tmisses = 0;
+    int64_t hits = 0, misses = 0, reads = 0, writes = 0;
     char *who = dbenv->master;
     int delay, delaymax;
     if (dbenv->bdb_env == NULL)
@@ -4406,16 +4391,16 @@ void backend_stat(struct dbenv *dbenv)
     else
         logmsg(LOGMSG_USER, "I AM NOT MASTER.  MASTER IS %s\n", who);
     backend_sync_stat(dbenv);
-    bdb_get_cache_stats(dbenv->bdb_env, &hits, &misses, &reads, &writes, &thits,
-                        &tmisses);
+    bdb_get_bpool_counters(dbenv->bdb_env, &hits, &misses, NULL, NULL, &reads, &writes, NULL);
+    bdb_get_temp_cache_stats(dbenv->bdb_env, &thits, &tmisses);
     if (!bdb_am_i_coherent(dbenv->bdb_env))
         logmsg(LOGMSG_USER, "!!! I AM NOT COHERENT !!!\n");
     f = dbenv->cacheszkb / 1024.0;
     logmsg(LOGMSG_USER, "cachesize %.3f mb\n", f);
-    logmsg(LOGMSG_USER, "hits        %" PRIu64 "\n", hits);
-    logmsg(LOGMSG_USER, "misses      %" PRIu64 "\n", misses);
-    logmsg(LOGMSG_USER, "page reads  %" PRIu64 "\n", reads);
-    logmsg(LOGMSG_USER, "page writes %" PRIu64 "\n", writes);
+    logmsg(LOGMSG_USER, "hits        %" PRId64 "\n", hits);
+    logmsg(LOGMSG_USER, "misses      %" PRId64 "\n", misses);
+    logmsg(LOGMSG_USER, "page reads  %" PRId64 "\n", reads);
+    logmsg(LOGMSG_USER, "page writes %" PRId64 "\n", writes);
     if ((hits + misses) == 0)
         f = 100.0;
     else

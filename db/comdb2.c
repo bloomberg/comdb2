@@ -4777,8 +4777,8 @@ void *statthd(void *p)
         curr_conns = net_get_num_current_non_appsock_accepts(thedb->handle_sibling)+ active_appsock_conns;
         conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
 
-        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
-                               (int64_t *)&bpool_misses, &rw_evicts);
+        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits, (int64_t *)&bpool_misses, NULL, NULL, NULL, NULL,
+                               &rw_evicts);
 
         bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlocks_aborted,
                               &nlockwaits, NULL);

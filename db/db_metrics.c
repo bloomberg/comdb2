@@ -38,6 +38,9 @@ struct comdb2_metrics_store {
     int64_t cache_hits;
     int64_t cache_misses;
     double  cache_hit_rate;
+    int64_t leaf_cache_hits;
+    int64_t leaf_cache_misses;
+    double leaf_cache_hit_rate;
     int64_t commits;
     int64_t connections;
     int64_t connection_timeouts;
@@ -169,10 +172,16 @@ static struct comdb2_metrics_store stats;
 comdb2_metric gbl_metrics[] = {
     {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits,
      NULL},
-    {"cache_misses", "Buffer pool misses", (int64_t)STATISTIC_COLLECTION_TYPE_CUMULATIVE, (int64_t)STATISTIC_INTEGER,
-     &stats.cache_misses, NULL},
+    {"cache_misses", "Buffer pool misses", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_misses,
+     NULL},
     {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.cache_hit_rate, NULL},
+    {"leaf_cache_hits", "Buffer pool leaf-page hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.leaf_cache_hits, NULL},
+    {"leaf_cache_misses", "Buffer pool leaf-page misses", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.leaf_cache_misses, NULL},
+    {"leaf_cache_hit_rate", "Buffer pool leaf-page request hit rate", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.leaf_cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.commits, NULL},
     {"concurrent_sql", "Concurrent SQL queries", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.concurrent_sql, NULL},
@@ -584,8 +593,8 @@ int refresh_metrics(void)
         return 1;
     }
 
-    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits,
-                                &stats.cache_misses, &stats.rw_evicts);
+    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits, &stats.cache_misses, &stats.leaf_cache_hits,
+                                &stats.leaf_cache_misses, NULL, NULL, &stats.rw_evicts);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -604,10 +613,11 @@ int refresh_metrics(void)
     int64_t total_reqs = stats.sql_count + stats.nonsql;
     stats.connection_to_sql_ratio = (total_reqs > 0) ? (stats.connections/(double)total_reqs) : 0;
 
-    /* cache hit rate */
-    uint64_t hits, misses;
-    bdb_get_cache_stats(thedb->bdb_env, &hits, &misses, NULL, NULL, NULL, NULL);
-    stats.cache_hit_rate = 100 * ((double) hits / ((double) hits + (double) misses));
+    /* cache hit rate (total) and leaf-page hit rate */
+    int64_t th = stats.cache_hits, tm = stats.cache_misses;
+    stats.cache_hit_rate = (th + tm) ? 100 * ((double)th / ((double)th + (double)tm)) : 100.0;
+    int64_t lh = stats.leaf_cache_hits, lm = stats.leaf_cache_misses;
+    stats.leaf_cache_hit_rate = (lh + lm) ? 100 * ((double)lh / ((double)lh + (double)lm)) : 100.0;
 
     stats.memory_ulimit = 0;
     stats.memory_usage = 0;
