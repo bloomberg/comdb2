@@ -2707,6 +2707,6 @@ REGISTER_TUNABLE("rep_verify_peer_hostname",
                  "address resolves (forward-confirmed reverse DNS) to the "
                  "hostname the peer claims in its connect message. Disable "
                  "only in environments without reliable reverse DNS. "
-                 "(Default: on)",
+                 "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

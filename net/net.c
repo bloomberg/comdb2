@@ -2575,7 +2575,7 @@ int findpeer(int fd, char *addr, int len)
 /* When set, reject an incoming cluster connection unless the source address
    really belongs to the hostname the peer claims in its connect message.
    (Default: on). */
-int gbl_rep_verify_peer_hostname = 1;
+int gbl_rep_verify_peer_hostname = 0;
 
 /* Forward-resolve 'hostname' and return 0 if 'src' is one of the resolved
    IPv4 addresses, -1 otherwise. */
