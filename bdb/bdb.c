@@ -240,34 +240,19 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
     free(txn_stats);
 }
 
-void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
-                         uint64_t *misses, uint64_t *reads, uint64_t *writes,
-                         uint64_t *thits, uint64_t *tmisses)
+/* Buffer-pool hit/miss statistics for the temp-table environment (a separate
+   mpool from the main database).  Main buffer-pool counters come from
+   bdb_get_bpool_counters(). */
+void bdb_get_temp_cache_stats(bdb_state_type *bdb_state, uint64_t *thits, uint64_t *tmisses)
 {
     DB_MPOOL_STAT *mpool_stats;
 
-    BDB_READLOCK("bdb_get_cache_stats");
-    bdb_state->dbenv->memp_stat(bdb_state->dbenv, &mpool_stats, NULL,
-                                DB_STAT_MINIMAL);
-
-    /* We find leaf pages only a more useful metric. */
-    if (hits)
-        *hits = mpool_stats->st_cache_lhit;
-    if (misses)
-        *misses = mpool_stats->st_cache_lmiss;
-    if (reads)
-        *reads = mpool_stats->st_page_in;
-    if (writes)
-        *writes = mpool_stats->st_page_out;
-
-    free(mpool_stats);
-
+    BDB_READLOCK("bdb_get_temp_cache_stats");
     bdb_temp_table_stat(bdb_state, &mpool_stats);
     if (thits)
         *thits = mpool_stats->st_cache_hit;
     if (tmisses)
         *tmisses = mpool_stats->st_cache_miss;
-
     BDB_RELLOCK();
 
     free(mpool_stats);

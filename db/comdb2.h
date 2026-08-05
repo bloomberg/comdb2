@@ -2136,8 +2136,6 @@ int open_bdb_env(struct dbenv *dbenv);
 int backend_close(struct dbenv *dbenv);
 void backend_cleanup(struct dbenv *dbenv);
 void backend_stat(struct dbenv *dbenv);
-void backend_get_cachestats(struct dbenv *dbenv, int *cachekb, int *hits,
-                            int *misses);
 
 void backend_get_iostats(int *n_reads, int *l_reads, int *n_writes,
                          int *l_writes);
