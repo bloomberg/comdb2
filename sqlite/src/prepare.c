@@ -277,7 +277,12 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   initData.mInitFlags = mFlags;
   initData.nInitRow = 0;
   initData.mxPage = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* We have an extra 'csc2' column. */
+  sqlite3InitCallback(&initData, 6, (char **)azArg, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3InitCallback(&initData, 5, (char **)azArg, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   db->mDbFlags &= mask;
   if( initData.rc ){
     rc = initData.rc;
