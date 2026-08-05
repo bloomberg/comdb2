@@ -26,7 +26,7 @@
 /*
  * Per-fingerprint runtime counters, gathered from low-level subsystems
  * (bufferpool page-ins today; other categories can be added as new fields
- * plus their own bb_fingerprint_rtstats_bump_*() entry point). Deliberately
+ * plus their own bb_berkdb_fingerprint_rtstats_bump_*() entry point). Deliberately
  * a separate structure/hash from db/db_fingerprint.c's gbl_fingerprint_hash:
  * a future write-side commit will need to attribute these on a machine
  * (e.g. a replication master applying a write schedule) that may never
@@ -66,7 +66,7 @@ static pthread_key_t fingerprint_rtstats_key;
 static int fingerprint_rtstats_inited = 0;
 
 void
-bb_fingerprint_rtstats_init(void)
+bb_berkdb_fingerprint_rtstats_init(void)
 {
 	Pthread_key_create(&fingerprint_rtstats_key, NULL);
 
@@ -84,7 +84,7 @@ bb_fingerprint_rtstats_init(void)
  * this fingerprint and points the calling thread's TLS slot at it.
  */
 void
-bb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
+bb_berkdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
 {
 	struct fingerprint_rtstats *t;
 
@@ -127,7 +127,7 @@ bb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int h
 
 /* Called when the statement is done (or on error paths). */
 void
-bb_fingerprint_rtstats_clear(void)
+bb_berkdb_fingerprint_rtstats_clear(void)
 {
 	if (!fingerprint_rtstats_inited)
 		return;
@@ -142,7 +142,7 @@ bb_fingerprint_rtstats_clear(void)
  * same fingerprint's stat entry concurrently.
  */
 void
-bb_fingerprint_rtstats_bump_pagein(int did_io)
+bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io)
 {
 	struct fingerprint_rtstats *t = NULL;
 
@@ -160,11 +160,11 @@ bb_fingerprint_rtstats_bump_pagein(int did_io)
  * Snapshot read for reporting (e.g. the comdb2_fingerprints systable).
  * Returns 1 and fills in *n_pagein_read / *n_pagein_read_io if an entry
  * exists for this fingerprint, 0 (with both outputs zeroed) otherwise.
- * Unlike bb_fingerprint_rtstats_bump_pagein(), this takes the hash mutex --
+ * Unlike bb_berkdb_fingerprint_rtstats_bump_pagein(), this takes the hash mutex --
  * it's called at query-time on the reporting path, not per-page-fetch.
  */
 int
-bb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
+bb_berkdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
     uint64_t *n_pagein_read, uint64_t *n_pagein_read_io)
 {
 	struct fingerprint_rtstats *t;

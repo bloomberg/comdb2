@@ -2476,7 +2476,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     count = 0;
 
     bb_berkdb_thread_stats_init();
-    bb_fingerprint_rtstats_init();
+    bb_berkdb_fingerprint_rtstats_init();
     myhost = net_get_mynode(bdb_state->repinfo->netinfo);
 
     if (!is_real_netinfo(bdb_state->repinfo->netinfo) ||

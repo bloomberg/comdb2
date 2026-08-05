@@ -702,18 +702,18 @@ const struct berkdb_thread_stats *bdb_get_thread_stats(void)
 
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
 {
-    bb_fingerprint_rtstats_set(fingerprint, fplen, has_main_entry);
+    bb_berkdb_fingerprint_rtstats_set(fingerprint, fplen, has_main_entry);
 }
 
 void bdb_fingerprint_rtstats_clear(void)
 {
-    bb_fingerprint_rtstats_clear();
+    bb_berkdb_fingerprint_rtstats_clear();
 }
 
 int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen, uint64_t *n_pagein_read,
                                 uint64_t *n_pagein_read_io)
 {
-    return bb_fingerprint_rtstats_get(fingerprint, fplen, n_pagein_read, n_pagein_read_io);
+    return bb_berkdb_fingerprint_rtstats_get(fingerprint, fplen, n_pagein_read, n_pagein_read_io);
 }
 
 /* Call this any time to get process wide stats (which get updated locklessly)

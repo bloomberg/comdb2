@@ -4117,7 +4117,9 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
-    bdb_fingerprint_rtstats_clear();
+    /* Mirror the guard on the paired ..._set() in get_prepared_stmt_int(). */
+    if (gbl_fingerprint_queries)
+        bdb_fingerprint_rtstats_clear();
 
     sqlite3_stmt *stmt = rec->stmt;
     int distributed = 0;
