@@ -56,6 +56,7 @@
 #include "gettimeofday_ms.h"
 #include "eventlog.h"
 #include <disttxn.h>
+#include "memory_sync.h"
 
 extern int gbl_reorder_idx_writes;
 extern uint32_t gbl_max_time_per_txn_ms;
@@ -1322,44 +1323,99 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
     }
 }
 
+static schema_change_status *_create_sc_status(struct ireq *iq, struct schema_change_type *sc)
+{
+    schema_change_status *ret = calloc(1, sizeof(schema_change_status));
+    if (!ret)
+        return NULL;
+    Pthread_mutex_init(&ret->mtx, NULL);
+    Pthread_cond_init(&ret->cond, NULL);
+    listc_abl(&iq->scs_status, ret);
+    MEMORY_SYNC;
+
+    return ret;
+}
+
+static void _destroy_sc_status(struct ireq *iq, struct schema_change_status *status)
+{
+    listc_rfl(&iq->scs_status, status);
+    Pthread_mutex_destroy(&status->mtx);
+    Pthread_cond_destroy(&status->cond);
+    free(status);
+}
+
 /**
- * Apply all schema changes and wait for them to finish
+ * Run the first part of the schema change (do_XX)
+ * NOTE:
+ *  - during normal run, pscs contains the list of schema change objects sent by replicant and stored in osqlsession
+ * object
+ *  - during resume run, pscs contains a malloced list (there is no osqlsession) of schema changes recovered from the
+ * persistent sclist
  */
-int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
+static int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
 {
     LISTC_T(struct schema_change_type) *scs = pscs;
     struct schema_change_type *sc, *tmp;
+    schema_change_status *status;
     int rc = 0;
 
     /* save this in iq for early sc aborts */
     comdb2uuidcpy(iq->scs_uuid, uuid);
 
-    /* run the asynchronous (do_XX) part of the schema changes */
+    /* run the asynchronous (do_XX) part of the schema changes;
+     * this will have the successfully started linked in iq->sc_pending;
+     * if an error is encounted, the unstarted sc-s are freed here, while
+     * the sc_pending liked ones are cleared by backout process in the caller
+     */
     LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk) {
-        iq->sc = sc;
-        iq->sc->iq = iq;
-        rc = osql_process_schemachange(sc, uuid);
-        /* remove this from session, cleanup will be done by bp writer */
-        listc_rfl(scs, sc);
-        if (rc)
-            break;
+        listc_rfl(scs, sc); /* take ownership of sc */
+        if (!rc) {
+            sc->status = status = _create_sc_status(iq, sc);
+            if (!sc->status) {
+                logmsg(LOGMSG_ERROR, "Failed to create sc status %s\n", sc->tablename);
+                errstat_set_rcstrf(&iq->errstat, rc = ERR_SC, "Failed to create sc status %s", sc->tablename);
+                free_schema_change_type(sc);
+                continue;
+            }
+            iq->sc = sc;
+            iq->sc->iq = iq;
+            /* following this call, sc is either in sc_pending or freed */
+            rc = osql_process_schemachange(sc, uuid);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "ERR_SC %s", status->xerr.errstr);
+                errstat_set_rcstrf(&iq->errstat, rc = ERR_SC, "ERR_SC %s", status->xerr.errstr);
+                continue;
+            }
+        } else {
+            /* if we had an error, and we have schema changes not submitted,
+             * free them here;
+             * the others, they are either freed early on or queued in
+             * iq->sc_pending, where will be cleaned by backup followup
+             */
+            free_schema_change_type(sc);
+        }
     }
-
-    if (rc)
-        logmsg(LOGMSG_DEBUG, "schema change %s returns rc %d\n",
-               sc->tablename, rc);
 
     return rc;
 }
 
-/* wait for all schema changes to finish */
+/* wait for all schema changes to finish;
+ * at this point any running schema change is linked in iq->sc_pending
+ */
 int bplog_schemachange_wait(struct ireq *iq, int rc)
 {
     struct schema_change_type *sc;
+    struct schema_change_status *status, *tmp;
+
+    /* lets free the status here, if any */
+    LISTC_FOR_EACH_SAFE(&iq->scs_status, status, tmp, lnk)
+    {
+        assert(status->async_done);
+        _destroy_sc_status(iq, status);
+    }
 
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
-
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
@@ -1477,6 +1533,11 @@ int bplog_schemachange(struct ireq *iq)
 
     rc = bplog_schemachange_run(iq, iq->sorese->uuid, &iq->sorese->scs);
 
+    /* this will handle the schema changes that were submitted and
+     * are now hanging in iq->sc_pending
+     */
+
+    /* TODO: review rc and replace that with iq->errstat */
     return bplog_schemachange_wait(iq, rc);
 }
 
@@ -1504,18 +1565,15 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
     return 0;
 }
 
-void *resume_sc_multiddl_txn_finalize(void *p)
+static int _resume_sc_multiddl_txn_finalize(struct ireq *iq)
 {
-    comdb2_name_thread(__func__);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
-
-    struct ireq *iq = (struct ireq*)p;
     struct schema_change_type *sc;
     tran_type *parent_trans = NULL;
     int error = 0;
     uuid_t uuid;
+    int rc = 0;
 
-    comdb2uuidcpy(uuid, iq->sc_pending->uuid);
+    comdb2uuidcpy(uuid, iq->scs_uuid);
 
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
@@ -1544,19 +1602,27 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     iq->sc_tran = NULL;
     iq->sc_logical_tran = NULL;
 
-    if (error) {
+    /* early error takes precedence here, i.e. not being able to submit all schema changes;
+     * we detect that by setting iq->errstat.errval
+     * if that is 0, it means all the schema changes were submitted; in that case, we check
+     * their global rc determined above to see if we failed or not
+     */
+    if (iq->errstat.errval) {
         logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
                __func__);
+        /* TODO: do we need to use iq->errstat.errstr here? */
+        rc = iq->errstat.errval;
+        goto abort_sc;
+    } else if (error) {
+        logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n", __func__);
+        rc = ERR_SC;
         goto abort_sc;
     }
 
-    int rc;
     if ((rc = get_schema_change_txns(iq, &iq->sc_logical_tran, &parent_trans,
                                      &iq->sc_tran))) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               -rc);
-        rc = -1;
+        logmsg(LOGMSG_ERROR, "%s:%d failed to start schema change transaction\n", __func__, rc);
+        rc = ERR_SC;
         goto abort_sc;
     }
 
@@ -1589,9 +1655,8 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     osql_clear_sc_running(iq);
 
     osql_postcommit_handle(iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
-
-    return NULL;
+    free(iq);
+    return 0;
 
 abort_sc:
     logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
@@ -1612,7 +1677,90 @@ abort_sc:
     }
 
     osql_postabort_handle(iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
+    free(iq);
+    return rc;
+}
+
+/* Finalize thread for the non-multitable_ddl timepart ALTER TABLE resume path.
+ * SCs were started by start_schema_change() in verify_sc_resumed_for_all_shards(),
+ * not by bplog_schemachange_run(), so no scs_status entries exist.
+ * Go directly to _resume_sc_multiddl_txn_finalize which uses nothrevent to sync. */
+void *resume_sc_tpt_finalize_thd(void *arg)
+{
+    struct ireq *iq = (struct ireq *)arg;
+
+    comdb2_name_thread(__func__);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+
+    int rc = _resume_sc_multiddl_txn_finalize(iq);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to finalize rc %d\n", __func__, rc);
+    }
+
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+    return NULL;
+}
+
+void *resume_sc_multiddl_txn_finalize_thd(void *arg)
+{
+    struct ireq *iq = (struct ireq *)arg;
+    struct errstat xerr = {0};
+
+    if (iq->scs_status.count == 0) {
+        if (iq->errstat.errval == 0) {
+            logmsg(LOGMSG_ERROR, "%s NULL sc status list?\n", __func__);
+        } else {
+            /* failed to dispatch any sc object */
+            logmsg(LOGMSG_ERROR, "Resuming sc failed with rc %d str \"%s\"\n", iq->errstat.errval, iq->errstat.errstr);
+        }
+        free(iq);
+        return NULL;
+    }
+
+    comdb2_name_thread(__func__);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+
+    /* we have submitted some schema changes;
+     * wait for the async threads to finish here
+     * NOTE: because the resume delegates most processing for a partition merge
+     * to a thread that runs before iq->sc_pending even gets a change to be populated,
+     * we first need to make sure we have that ran first and have the sc_pending updated
+     * before trying to again wait for the actual completion in _resume_sc_multiddl_txn_finalize
+     *
+     * TODO: could signal them to stop early if iq->errstat.errval is set
+     */
+    struct schema_change_status *status, *tmp;
+    LISTC_FOR_EACH_SAFE(&iq->scs_status, status, tmp, lnk)
+    {
+        /* wait for this sc to finish */
+        Pthread_mutex_lock(&status->mtx);
+        while (!status->async_done) {
+            Pthread_cond_wait(&status->cond, &status->mtx);
+        }
+        Pthread_mutex_unlock(&status->mtx);
+        if (!xerr.errval) {
+            /* retrieve the first error */
+            xerr = status->xerr;
+        }
+        _destroy_sc_status(iq, status);
+    }
+
+    if (xerr.errval) {
+        logmsg(LOGMSG_ERROR, "%s failed to resume schema change, error %d %s\n", __func__, xerr.errval, xerr.errstr);
+        free(iq);
+        goto done;
+    }
+
+    /* at this point, the schema changes have ran and are linked in sc_pending;
+     * run the regular finalize routine; this waits for schema changes to finish
+     */
+    int rc = _resume_sc_multiddl_txn_finalize(iq);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to finalize rc %d\n", __func__, rc);
+    }
+
+done:
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
 
     return NULL;
 }
@@ -1624,7 +1772,7 @@ abort_sc:
 int resume_sc_multiddl_txn(sc_list_t *scl)
 {
     LISTC_T(struct schema_change_type) scs;
-    struct schema_change_type *sc;
+    struct schema_change_type *sc, *tmp;
     int i, size;
     uuidstr_t us;
     int rc;
@@ -1642,39 +1790,58 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
 
         sc = new_schemachange_type();
         if (!sc) {
-            logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
-            return -1;
+            logmsg(LOGMSG_ERROR, "%s oom %d\n", __func__, __LINE__);
+            goto early_error;
         }
+        listc_abl(&scs, sc);
         if (!buf_get_schemachange(sc, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s uuid %s failed to retrieve sc\n",
                    __func__, us);
-            return -1;
+            goto early_error;
         }
         sc->resume = resume;
-
-        listc_abl(&scs, sc);
     }
 
-    /* this is freed in the wait thread */
+    /* this is freed in the finalizing thread resume_sc_multiddl_txn_finalize_thd */
     struct ireq *iq = calloc(1, sizeof(struct ireq));
+    if (!iq) {
+        logmsg(LOGMSG_ERROR, "%s oom %d\n", __func__, __LINE__);
+        goto early_error;
+    }
     init_fake_ireq(thedb, iq);
 
-    /* this starts schema changeas;
-     * the alters have to register themselves inline,
-     * but the rest of the execution is done in parallel
-     * waiting is done by a separate thread that will finalize
-     * the schema change
-     * NOTE: schema changes will be queued in iq->sc_pending
+    /* this starts schema changes;
+     * - the async phase is done here, though alter and merge operations
+     *   are executed in a parallel thread, spawn after we set sc_genids
+     *   for source database
+     * - yet another thread will finalize all sc-s in one transaction after
+     *   waiting for them to finish (by means of scs_status)
      *
      */
     rc = bplog_schemachange_run(iq, scl->uuid, &scs);
     if (rc) {
-        free(iq);
-        return -1;
+        logmsg(LOGMSG_ERROR, "%s uuid %s failed to run sc\n", __func__, us);
+        /* make sure we have an error code */
+        if (iq->errstat.errval == 0) {
+            errstat_set_rcstrf(&iq->errstat, rc = ERR_SC, "generic schema change error");
+        }
+        /* bplog_schemachange_run freed any sc that was not submitted successfully
+         * for the rest, we still need run finalize thread to sync with the async
+         * threads and backout any async phase artifacts before freeing the sc objects as well
+         * FALL-THROUGH HERE
+         */
     }
 
     pthread_t tid;
-    Pthread_create(&tid, &gbl_pthread_attr_detached,
-                        resume_sc_multiddl_txn_finalize, iq);
-    return 0;
+    Pthread_create(&tid, &gbl_pthread_attr_detached, resume_sc_multiddl_txn_finalize_thd, iq);
+    return rc;
+
+early_error:
+    /* free sc objects there if we fail early */
+    LISTC_FOR_EACH_SAFE(&scs, sc, tmp, scs_lnk)
+    {
+        listc_rfl(&scs, sc);
+        free_schema_change_type(sc);
+    }
+    return ERR_SC;
 }

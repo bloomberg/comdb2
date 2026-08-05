@@ -1,0 +1,429 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+set -x
+
+dbnm=$1
+if [[ -z "$dbnm" ]]; then
+    failexit "need a DB name"
+fi
+if [[ -z "$COMDB2_EXE" ]]; then
+    failexit '$COMDB2_EXE is not set'
+fi
+
+C="cdb2sql ${CDB2_OPTIONS} ${dbnm} default"
+CT="cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default"
+master=$(getmaster)
+CM="cdb2sql ${CDB2_OPTIONS} ${dbnm} --host ${master}"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+get_master_local() {
+    master=$(getmaster)
+    CM="cdb2sql ${CDB2_OPTIONS} ${dbnm} --host ${master}"
+}
+
+# Wait for a running schema change to appear in stat and then finish.
+# First polls until the SC shows up (max 30s), then polls until it's gone.
+wait_for_sc() {
+    local waited=0
+
+    # Phase 1: wait for SC to appear (the SC may not be in stat yet right
+    # after restart since sc_set_running is called asynchronously).
+    while true; do
+        local running
+        running=$($CM "exec procedure sys.cmd.send('stat')" 2>/dev/null \
+                  | grep -c "Schema change in progress" || true)
+        if [[ "$running" -gt 0 ]]; then
+            echo "SC detected after ${waited}s"
+            break
+        fi
+        sleep 2
+        waited=$((waited + 2))
+        if [[ $waited -ge 30 ]]; then
+            echo "No SC detected after 30s — assuming it completed already"
+            return 0
+        fi
+    done
+
+    # Phase 2: wait for SC to finish.
+    while true; do
+        local running
+        running=$($CM "exec procedure sys.cmd.send('stat')" 2>/dev/null \
+                  | grep -c "Schema change in progress" || true)
+        if [[ "$running" -eq 0 ]]; then
+            echo "Schema change finished after ${waited}s total"
+            return 0
+        fi
+        sleep 5
+        waited=$((waited + 5))
+        if [[ $waited -ge 300 ]]; then
+            failexit "Schema change did not finish within 300s"
+        fi
+    done
+}
+
+# Slow down the SC so the kill happens mid-way.
+# SC_FORCE_DELAY makes gbl_sc_usleep apply to every record (not just
+# when commitdelay is set). scdelay N sets gbl_sc_usleep = N*1000 µs.
+slow_down_sc() {
+    $CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" \
+        || failexit "failed to set SC_FORCE_DELAY"
+    $CM "exec procedure sys.cmd.send('scdelay 1000')" \
+        || failexit "failed to set scdelay"
+}
+
+# Re-enable normal SC speed after restart.
+speed_up_sc() {
+    $CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')" 2>/dev/null || true
+    $CM "exec procedure sys.cmd.send('scdelay 0')" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Scenario 1: basic collapse-resume after kill
+#
+# With SC_FORCE_DELAY + scdelay 1000ms and 100 rows per shard (3 shards),
+# each shard takes ~13s (100 rows / 8 stripes ≈ 13 rows/stripe × 1s).
+# Killing after 8s interrupts mid-way through the first shard's processing.
+# ---------------------------------------------------------------------------
+echo "=== Scenario 1: basic partition collapse resume after kill ==="
+
+$C "create table t1 (a int unique, b cstring(64))" \
+    || failexit "create table t1"
+
+$C "alter table t1 partitioned by time period 'daily' retention 3 start '2025-01-01T'" \
+    || failexit "partition t1"
+
+# Collect shard names dynamically (shards are ordered by name).
+mapfile -t SHARDS < <($CT "select shardname from comdb2_timepartshards where name='t1' order by shardname")
+if [[ "${#SHARDS[@]}" -ne 3 ]]; then
+    failexit "expected 3 shards for t1, got ${#SHARDS[@]}: ${SHARDS[*]}"
+fi
+echo "t1 shards: ${SHARDS[*]}"
+
+# 100 rows per shard — enough to make each shard take ~13s with scdelay 1s.
+$C "insert into '${SHARDS[0]}' (a,b) select value,'row'||value from generate_series(1,100)" \
+    || failexit "populate shard 0"
+$C "insert into '${SHARDS[1]}' (a,b) select value,'row'||value from generate_series(101,200)" \
+    || failexit "populate shard 1"
+$C "insert into '${SHARDS[2]}' (a,b) select value,'row'||value from generate_series(201,300)" \
+    || failexit "populate shard 2"
+
+assertcnt t1 300
+
+slow_down_sc
+
+# Start the collapse in the background.
+echo "Starting collapse of t1 (background)"
+$C "alter table t1 partitioned by none" &
+COLLAPSE_PID=$!
+
+# Let the SC process some rows, then kill master.
+sleep 8
+echo "Killing master $master mid-collapse"
+kill_restart_node $master 1
+
+# The client may have gotten a connection error; that is fine.
+wait $COLLAPSE_PID || true
+
+get_master_local
+echo "New master: $master"
+
+# Turn off the delay and wait for the SC to resume and complete.
+speed_up_sc
+wait_for_sc
+
+# Verify data integrity.
+assertcnt t1 300
+local cnt_part
+cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t1'")
+if [[ "$cnt_part" != "0" ]]; then
+    failexit "t1 still listed as partition after collapse (cnt=$cnt_part)"
+fi
+do_verify t1
+
+echo "Scenario 1 passed: t1 collapsed correctly after resume"
+
+# ---------------------------------------------------------------------------
+# Scenario 2: collapse-resume after a prior completed ALTER TABLE
+#
+# After alter1 (add column) completes, db->plan for t1 is set to NULL
+# (sc_alter_table.c:1116 clears newdb->plan before promoting it). A
+# subsequent collapse that is killed mid-way must still resume with the
+# correct sc_genids. Before the USE_NEWDB_FOR_SC_GENIDS fix this would
+# fail: is_dta_being_rebuilt(db->plan=NULL) always returned false, causing
+# the resume to read sc_genids from llmeta even when they were stored in the
+# new btree, resulting in genid=0 for all stripes and duplicate-key errors.
+# ---------------------------------------------------------------------------
+echo "=== Scenario 2: collapse-resume after prior ALTER TABLE ==="
+
+$C "create table t2 (a int unique, b cstring(64))" \
+    || failexit "create table t2"
+
+$C "alter table t2 partitioned by time period 'daily' retention 3 start '2025-01-01T'" \
+    || failexit "partition t2"
+
+mapfile -t SHARDS2 < <($CT "select shardname from comdb2_timepartshards where name='t2' order by shardname")
+if [[ "${#SHARDS2[@]}" -ne 3 ]]; then
+    failexit "expected 3 shards for t2, got ${#SHARDS2[@]}: ${SHARDS2[*]}"
+fi
+echo "t2 shards: ${SHARDS2[*]}"
+
+$C "insert into '${SHARDS2[0]}' (a,b) select value,'row'||value from generate_series(1,100)" \
+    || failexit "populate shard 0 of t2"
+$C "insert into '${SHARDS2[1]}' (a,b) select value,'row'||value from generate_series(101,200)" \
+    || failexit "populate shard 1 of t2"
+$C "insert into '${SHARDS2[2]}' (a,b) select value,'row'||value from generate_series(201,300)" \
+    || failexit "populate shard 2 of t2"
+
+assertcnt t2 300
+
+# Prior ALTER TABLE: add column c. After this completes, the promoted table
+# has db->plan = NULL. The subsequent collapse must still resolve sc_genids
+# correctly on resume (using newdb->plan, not db->plan).
+$C "alter table t2 { `cat t2_add_col.csc2` }" \
+    || failexit "prior alter table t2 (add column c)"
+
+assertcnt t2 300
+
+get_master_local
+slow_down_sc
+
+echo "Starting collapse of t2 (background)"
+$C "alter table t2 partitioned by none" &
+COLLAPSE2_PID=$!
+
+sleep 8
+echo "Killing master $master mid-collapse of t2"
+kill_restart_node $master 1
+
+wait $COLLAPSE2_PID || true
+
+get_master_local
+echo "New master: $master"
+
+speed_up_sc
+wait_for_sc
+
+assertcnt t2 300
+cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t2'")
+if [[ "$cnt_part" != "0" ]]; then
+    failexit "t2 still listed as partition after collapse (cnt=$cnt_part)"
+fi
+do_verify t2
+
+echo "Scenario 2 passed: t2 collapsed correctly after resume following prior ALTER TABLE"
+
+# ---------------------------------------------------------------------------
+# Scenario 3: two concurrent partition collapses of different kinds, both
+#             killed mid-way and resumed
+#
+# t3 is created by "CREATE TABLE ... PARTITIONED BY TIME" (non-aliased):
+#   the first shard is a separate $0_XXXX table; collapse creates a new
+#   target table from scratch and moves all shard rows into it.
+#
+# t4 is created by "CREATE TABLE + ALTER TABLE ... PARTITIONED BY TIME"
+# (aliased): the original table becomes shard 0, and collapse reuses it as
+# the target, moving the remaining shards into it.
+#
+# Both collapses run concurrently in the background.  After 8s — mid-way
+# through each collapse's first shard — the master is killed.  On restart
+# the resume path spawns two _partitioned_table_merge_resume_thd threads
+# concurrently (one per scl entry), exercising the sc_pending_mtx race fix
+# for concurrent merge threads sharing the same iq.
+# ---------------------------------------------------------------------------
+echo "=== Scenario 3: two concurrent partition collapses (non-aliased + aliased), resume after kill ==="
+
+# --- t3: non-aliased partition (CREATE TABLE ... PARTITIONED BY TIME) ---
+$C "create table t3 (a int unique, b cstring(64)) partitioned by time period 'daily' retention 3 start '2025-01-01T'" \
+    || failexit "create partitioned table t3"
+
+mapfile -t SHARDS3 < <($CT "select shardname from comdb2_timepartshards where name='t3' order by shardname")
+if [[ "${#SHARDS3[@]}" -ne 3 ]]; then
+    failexit "expected 3 shards for t3, got ${#SHARDS3[@]}: ${SHARDS3[*]}"
+fi
+echo "t3 shards (non-aliased): ${SHARDS3[*]}"
+
+$C "insert into '${SHARDS3[0]}' (a,b) select value,'row'||value from generate_series(1,100)" \
+    || failexit "populate shard 0 of t3"
+$C "insert into '${SHARDS3[1]}' (a,b) select value,'row'||value from generate_series(101,200)" \
+    || failexit "populate shard 1 of t3"
+$C "insert into '${SHARDS3[2]}' (a,b) select value,'row'||value from generate_series(201,300)" \
+    || failexit "populate shard 2 of t3"
+
+assertcnt t3 300
+
+# --- t4: aliased partition (CREATE TABLE + ALTER TABLE ... PARTITIONED BY TIME) ---
+$C "create table t4 (a int unique, b cstring(64))" \
+    || failexit "create table t4"
+$C "alter table t4 partitioned by time period 'daily' retention 3 start '2025-01-01T'" \
+    || failexit "partition t4 (aliased)"
+
+mapfile -t SHARDS4 < <($CT "select shardname from comdb2_timepartshards where name='t4' order by shardname")
+if [[ "${#SHARDS4[@]}" -ne 3 ]]; then
+    failexit "expected 3 shards for t4, got ${#SHARDS4[@]}: ${SHARDS4[*]}"
+fi
+echo "t4 shards (aliased, original table is shard 0): ${SHARDS4[*]}"
+
+$C "insert into '${SHARDS4[0]}' (a,b) select value,'row'||value from generate_series(301,400)" \
+    || failexit "populate shard 0 of t4"
+$C "insert into '${SHARDS4[1]}' (a,b) select value,'row'||value from generate_series(401,500)" \
+    || failexit "populate shard 1 of t4"
+$C "insert into '${SHARDS4[2]}' (a,b) select value,'row'||value from generate_series(501,600)" \
+    || failexit "populate shard 2 of t4"
+
+assertcnt t4 300
+
+get_master_local
+slow_down_sc
+
+# Launch both collapses concurrently in the background.  Each gets its own
+# scl entry in llmeta.  On restart the resume path calls
+# resume_sc_multiddl_txn once per scl, spawning a
+# _partitioned_table_merge_resume_thd thread per table — both run
+# concurrently, which is the scenario that sc_pending_mtx protects.
+echo "Starting concurrent collapse of t3 and t4 (both in background)"
+$C "alter table t3 partitioned by none" &
+COLLAPSE3_PID=$!
+$C "alter table t4 partitioned by none" &
+COLLAPSE4_PID=$!
+
+# Kill after 8s — mid-way through the first shard of each collapse
+# (100 rows / 8 stripes ≈ 13 rows/stripe × 1s/row = 13s per shard).
+sleep 8
+echo "Killing master $master mid concurrent-collapse"
+kill_restart_node $master 1
+
+wait $COLLAPSE3_PID || true
+wait $COLLAPSE4_PID || true
+
+get_master_local
+echo "New master: $master"
+
+# Turn off the delay and wait for both resume threads to finish.
+speed_up_sc
+wait_for_sc
+
+# Both tables must be fully collapsed with all rows intact.
+assertcnt t3 300
+cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t3'")
+if [[ "$cnt_part" != "0" ]]; then
+    failexit "t3 still listed as partition after concurrent collapse (cnt=$cnt_part)"
+fi
+do_verify t3
+
+assertcnt t4 300
+cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t4'")
+if [[ "$cnt_part" != "0" ]]; then
+    failexit "t4 still listed as partition after concurrent collapse (cnt=$cnt_part)"
+fi
+do_verify t4
+
+echo "Scenario 3 passed: both t3 (non-aliased) and t4 (aliased) collapsed correctly after concurrent resume"
+
+# ---------------------------------------------------------------------------
+# Scenario 4: transactional multi-DDL partition collapse with kill/resume
+#
+# Tests BEGIN; ALTER TABLE t5 PARTITIONED BY NONE; ALTER TABLE t6 PARTITIONED
+# BY NONE; COMMIT sent as four separate cdb2sql calls.  The first three return
+# immediately (cdb2api line-6391 optimization: non-read statements inside a
+# transaction skip reading the server response).  The final "commit" call has
+# is_commit=1, which blocks waiting for the server to finish
+# bplog_schemachange.  Killing the master during that blocking commit forces
+# the new master to resume both collapses from their scl entries in llmeta.
+#
+# t5: non-aliased partition (CREATE TABLE ... PARTITIONED BY TIME)
+# t6: aliased partition (CREATE TABLE + ALTER TABLE ... PARTITIONED BY TIME)
+# ---------------------------------------------------------------------------
+echo "=== Scenario 4: transactional multi-DDL partition collapse (BEGIN/COMMIT), resume after kill ==="
+
+# --- t5: non-aliased partition ---
+$C "create table t5 (a int unique, b cstring(64)) partitioned by time period 'daily' retention 3 start '2025-01-01T'" \
+    || failexit "create partitioned table t5"
+
+mapfile -t SHARDS5 < <($CT "select shardname from comdb2_timepartshards where name='t5' order by shardname")
+if [[ "${#SHARDS5[@]}" -ne 3 ]]; then
+    failexit "expected 3 shards for t5, got ${#SHARDS5[@]}: ${SHARDS5[*]}"
+fi
+echo "t5 shards (non-aliased): ${SHARDS5[*]}"
+
+$C "insert into '${SHARDS5[0]}' (a,b) select value,'row'||value from generate_series(1,100)" \
+    || failexit "populate shard 0 of t5"
+$C "insert into '${SHARDS5[1]}' (a,b) select value,'row'||value from generate_series(101,200)" \
+    || failexit "populate shard 1 of t5"
+$C "insert into '${SHARDS5[2]}' (a,b) select value,'row'||value from generate_series(201,300)" \
+    || failexit "populate shard 2 of t5"
+
+assertcnt t5 300
+
+# --- t6: aliased partition ---
+$C "create table t6 (a int unique, b cstring(64))" \
+    || failexit "create table t6"
+$C "alter table t6 partitioned by time period 'daily' retention 3 start '2025-01-01T'" \
+    || failexit "partition t6 (aliased)"
+
+mapfile -t SHARDS6 < <($CT "select shardname from comdb2_timepartshards where name='t6' order by shardname")
+if [[ "${#SHARDS6[@]}" -ne 3 ]]; then
+    failexit "expected 3 shards for t6, got ${#SHARDS6[@]}: ${SHARDS6[*]}"
+fi
+echo "t6 shards (aliased, original table is shard 0): ${SHARDS6[*]}"
+
+$C "insert into '${SHARDS6[0]}' (a,b) select value,'row'||value from generate_series(301,400)" \
+    || failexit "populate shard 0 of t6"
+$C "insert into '${SHARDS6[1]}' (a,b) select value,'row'||value from generate_series(401,500)" \
+    || failexit "populate shard 1 of t6"
+$C "insert into '${SHARDS6[2]}' (a,b) select value,'row'||value from generate_series(501,600)" \
+    || failexit "populate shard 2 of t6"
+
+assertcnt t6 300
+
+get_master_local
+slow_down_sc
+
+# Send BEGIN + two ALTER TABLE statements + COMMIT as separate cdb2sql calls.
+# begin/alter/alter return immediately (cdb2api in-trans optimization).
+# commit blocks waiting for bplog_schemachange to finish on the server.
+echo "Starting transactional collapse: BEGIN; ALTER t5; ALTER t6; COMMIT (background)"
+$C "begin"
+$C "alter table t5 partitioned by none"
+$C "alter table t6 partitioned by none"
+$C "commit" &
+COMMIT_PID=$!
+
+# Kill master mid-way through the blocking commit (SC is running with scdelay).
+sleep 8
+echo "Killing master $master mid transactional-collapse"
+kill_restart_node $master 1
+
+# The commit call returns error when the connection drops; that is expected.
+wait $COMMIT_PID || true
+
+get_master_local
+echo "New master: $master"
+
+speed_up_sc
+wait_for_sc
+
+# Both tables must be fully collapsed with all rows intact.
+assertcnt t5 300
+cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t5'")
+if [[ "$cnt_part" != "0" ]]; then
+    failexit "t5 still listed as partition after transactional collapse (cnt=$cnt_part)"
+fi
+do_verify t5
+
+assertcnt t6 300
+cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t6'")
+if [[ "$cnt_part" != "0" ]]; then
+    failexit "t6 still listed as partition after transactional collapse (cnt=$cnt_part)"
+fi
+do_verify t6
+
+echo "Scenario 4 passed: both t5 and t6 collapsed correctly after transactional multi-DDL resume"
+
+echo "SUCCESS"

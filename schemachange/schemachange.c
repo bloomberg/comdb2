@@ -59,6 +59,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (thedb->master != gbl_myhostname) {
         sc_errf(s, "I am not master; master is %s\n", thedb->master);
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_NOT_MASTER;
     }
 
@@ -70,10 +71,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!alter) {
             errstat_set_strf(&iq->errstat, "Invalid option");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_INVALID_OPTIONS;
         }
         free_schema_change_type(s);
         iq->sc = s = alter;
+        /* TODO: preempted is probably broken; when fixed, remember to replace this is scs list too */
         /* wait for previous schemachange thread to exit */
         while (1) {
             Pthread_mutex_lock(&s->mtx);
@@ -137,6 +140,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                      */
                     sc_errf(s, "schema change already in progress\n");
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     Pthread_mutex_unlock(&sc_resuming_mtx);
                     return SC_CANT_SET_RUNNING;
                 }
@@ -151,6 +155,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             stored_sc->tran = trans;
             stored_sc->iq = iq;
             free_schema_change_type(s);
+            /* TODO: this should not retry, see osql_sock_commit running_ddl flag; if we fixed that,
+             * make sure we replace sc in scs list too
+             */
             s = stored_sc;
             iq->sc = s;
             Pthread_mutex_lock(&s->mtx);
@@ -182,6 +189,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     logmsg(LOGMSG_ERROR, "%s: ran out of memory\n", __func__);
                     free(packed_sc_data);
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     return -1;
                 }
                 if (unpack_schema_change_type(stored_sc, packed_sc_data,
@@ -190,6 +198,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     free(packed_sc_data);
                     free_schema_change_type(stored_sc);
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     return -1;
                 }
                 free(packed_sc_data);
@@ -225,10 +234,13 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if ((rc = fetch_sc_seed(s->tablename, thedb, &seed, &host))) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return rc;
         }
         if (seed == 0 && host == 0) {
             logmsg(LOGMSG_ERROR, "Failed to determine host and seed!\n");
+            free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
         }
         logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
@@ -246,6 +258,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_MASTER_DOWNGRADE;
         }
     } else {
@@ -283,6 +296,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             }
         }
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_CANT_SET_RUNNING;
     }
 
@@ -300,7 +314,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,
                                  iq->sc_host, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
+            logmsg(LOGMSG_ERROR, "%s Couldn't save schema change seed %llx (%llu) rc %d bdberr %d\n", s->tablename,
+                   seed, seed, rc, bdberr);
         }
     }
     iq->sc_seed = seed;
@@ -348,8 +363,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             s->preempted == SC_ACTION_RESUME) {
             free(arg);
             arg = NULL;
-            Pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_locked, s);
+            Pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *))do_schema_change_locked, s);
         } else {
             Pthread_mutex_lock(&s->mtxStart);
             Pthread_create(&tid, &gbl_pthread_attr_detached,
