@@ -4574,7 +4574,6 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     thr_set_user("appsock", (intptr_t)clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_timeus = comdb2_time_epochus();
     clnt->thd = thd;
     /* Reset the cancel-statement flag */
     if (clnt->discard_this) {
@@ -4853,7 +4852,6 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     clnt->was_consumer = 0;
     clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_timeus = comdb2_time_epochus();
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
@@ -4948,6 +4946,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
 
     switch (op) {
     case THD_RUN:
+        clnt->deque_timeus = comdb2_time_epochus();
         if (clnt->exec_lua_thread)
             sqlengine_work_lua_thread(thddata, work);
         else
