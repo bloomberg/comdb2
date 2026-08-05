@@ -943,6 +943,10 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
             osql->tablename = NULL;
             osql->tablenamelen = 0;
         }
+        if (osql->partition_name) {
+            free(osql->partition_name);
+            osql->partition_name = NULL;
+        }
 
         if (!keep_session) {
             if (gbl_master_swing_osql_verbose)
@@ -1414,6 +1418,10 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
         clnt->osql.tablename = NULL;
         clnt->osql.tablenamelen = 0;
     }
+    if (clnt->osql.partition_name) {
+        free(clnt->osql.partition_name);
+        clnt->osql.partition_name = NULL;
+    }
 
     if (gbl_debug_disttxn_trace) {
         uuidstr_t us;
@@ -1472,6 +1480,49 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     }
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
+
+    if (rc != SQLITE_OK)
+        return rc;
+
+    /* If this table is a shard of a TRUNCATE partition with unique indexes,
+     * send the full shard list so the master can lock all sibling shards.
+     * Deduplicate by partition name — only send once per partition per txn. */
+    if (gbl_partition_unique) {
+        struct dbtable *db = get_dbtable_by_name(tablename);
+        const char *partname = db ? db->timepartition_name : NULL;
+        if (partname && (!osql->partition_name || strcmp(osql->partition_name, partname) != 0)) {
+            int nshards = 0;
+            struct errstat shard_err = {0};
+            char **shards = timepart_get_shard_names(partname, &nshards, &shard_err);
+            if (!shards && shard_err.errval != 0) {
+                logmsg(LOGMSG_ERROR, "%s: %s\n", __func__, shard_err.errstr);
+                return SQLITE_NOMEM;
+            }
+            if (shards) {
+                if (gbl_partition_unique_debug) {
+                    logmsg(LOGMSG_USER, "%s: [replicant] sending OSQL_PARTITION_SHARDS partition='%s' nshards=%d\n",
+                           __func__, partname, nshards);
+                    for (int i = 0; i < nshards; i++)
+                        logmsg(LOGMSG_USER, "%s: [replicant]   shard[%d]='%s'\n", __func__, i, shards[i]);
+                }
+                do {
+                    rc = osql_send_partition_shards(&osql->target, osql->rqid, osql->uuid, shards, nshards, nettype);
+                    RESTART_SOCKSQL;
+                } while (restarted);
+
+                for (int i = 0; i < nshards; i++)
+                    free(shards[i]);
+                free(shards);
+
+                if (rc == SQLITE_OK) {
+                    free(osql->partition_name);
+                    osql->partition_name = strdup(partname);
+                }
+                osql->replicant_numops++;
+                DEBUG_PRINT_NUMOPS();
+            }
+        }
+    }
 
     return rc;
 }
@@ -1607,6 +1658,10 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int ne
         free(osql->tablename);
         osql->tablename = NULL;
         osql->tablenamelen = 0;
+    }
+    if (osql->partition_name) {
+        free(osql->partition_name);
+        osql->partition_name = NULL;
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
 

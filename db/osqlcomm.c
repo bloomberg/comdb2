@@ -58,6 +58,7 @@
 #include "sc_logic.h"
 #include "eventlog.h"
 #include <disttxn.h>
+#include "indices.h"
 
 #define MAX_CLUSTER REPMAX
 
@@ -4122,6 +4123,60 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
 }
 
 /**
+ * Send OSQL_PARTITION_SHARDS op
+ * Informs the master of all shard table names belonging to a TRUNCATE
+ * partition so it can lock them before any writes arrive.
+ * Payload: 4-byte big-endian shard count followed by nshards null-terminated names.
+ */
+int osql_send_partition_shards(osql_target_t *target, unsigned long long rqid, uuid_t uuid, char **shards, int nshards,
+                               int type)
+{
+    if (check_master(target))
+        return OSQL_SEND_ERROR_WRONGMASTER;
+
+    /* compute total payload size: 4 bytes for count + names */
+    int payloadsz = sizeof(int);
+    for (int i = 0; i < nshards; i++)
+        payloadsz += strlen(shards[i]) + 1;
+
+    char *payload = malloc(payloadsz);
+    if (!payload)
+        return -1;
+
+    char *p = payload;
+    int nshards_wire = htonl(nshards);
+    memcpy(p, &nshards_wire, sizeof(int));
+    p += sizeof(int);
+    for (int i = 0; i < nshards; i++) {
+        int len = strlen(shards[i]) + 1;
+        memcpy(p, shards[i], len);
+        p += len;
+    }
+
+    uint8_t buf[OSQLCOMM_UUID_RPL_TYPE_LEN];
+    uint8_t *p_buf = buf;
+    uint8_t *p_buf_end = buf + sizeof(buf);
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t hdr = {0};
+        hdr.type = OSQL_PARTITION_SHARDS;
+        comdb2uuidcpy(hdr.uuid, uuid);
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+        osqlcomm_uuid_rpl_type_put(&hdr, p_buf, p_buf_end);
+    } else {
+        osql_rpl_t hdr_rqid = {0};
+        hdr_rqid.type = OSQL_PARTITION_SHARDS;
+        hdr_rqid.sid = rqid;
+        osqlcomm_rpl_type_put(&hdr_rqid, p_buf, p_buf_end);
+    }
+
+    int rc = target->send(target, type, buf, sizeof(buf), 0, payload, payloadsz);
+    free(payload);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s target->send returns rc=%d\n", __func__, rc);
+    return rc;
+}
+
+/**
  * Send UPDCOLS op
  * It handles remote/local connectivity
  *
@@ -7325,11 +7380,7 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
             if (err->errcode == OP_FAILED_UNIQ) {
                 if (iq->vfy_idx_track == 1 && iq->dup_key_insert == 1) {
                     rc = ERR_UNCOMMITTABLE_TXN;
-                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "Transaction is uncommittable: "
-                                                       "Duplicate insert on key '%s' "
-                                                       "in table '%s' index %d",
-                          get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                          iq->usedb->tablename, err->ixnum);
+                    reqerrstr_uncommittable_dup(iq, iq->usedb, err->ixnum);
                     err->errcode = ERR_UNCOMMITTABLE_TXN;
                     goto done_delete;
                 }
@@ -7360,11 +7411,7 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
 
                 if (rc != ERR_VERIFY) {
                     /* this can happen if we're skipping delayed key adds */
-                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
-                                                       "duplicate key '%s' on "
-                                                       "table '%s' index %d",
-                              get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                              iq->usedb->tablename, err->ixnum);
+                    reqerrstr_dup_key(iq, iq->usedb, err->ixnum);
                 }
             } else if (rc != RC_INTERNAL_RETRY) {
                 errstat_cat_strf(&iq->errstat, " unable to add record rc = %d",
@@ -7707,6 +7754,71 @@ done_delete:
              eventlog_debug("%s:%d uuid %s %s ix %d seq %"PRIx64"", __func__, __LINE__, ustr, isDelete ? "osql_delidx" : "osql_insidx", dt.ixnum, dt.seq);
         );
         memcpy(pIdx, pData, dt.nData);
+    } break;
+    case OSQL_PARTITION_SHARDS: {
+        /* Payload: 4-byte shard count followed by null-terminated shard names.
+         * Lock each shard table and store its dbtable pointer for use by
+         * add_record_indices() during cross-shard unique checks. */
+        const uint8_t *local_buf_end = (const uint8_t *)msg + msglen;
+        if (local_buf_end - p_buf < (ptrdiff_t)sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s: OSQL_PARTITION_SHARDS truncated\n", __func__);
+            return ERR_INTERNAL;
+        }
+        int nshards;
+        memcpy(&nshards, p_buf, sizeof(int));
+        nshards = ntohl(nshards);
+        if (nshards < 0 || nshards > 1024) {
+            logmsg(LOGMSG_ERROR, "%s: OSQL_PARTITION_SHARDS bad nshards=%d\n", __func__, nshards);
+            return ERR_INTERNAL;
+        }
+        const char *name = (const char *)p_buf + sizeof(int);
+        const char *payload_end = (const char *)local_buf_end;
+        /* free previous partition shard list if any */
+        free(iq->partition_shards);
+        iq->partition_shards = NULL;
+        iq->npartition_shards = 0;
+
+        iq->partition_shards = malloc(nshards * sizeof(struct dbtable *));
+        if (!iq->partition_shards)
+            return ERR_INTERNAL;
+
+        for (int i = 0; i < nshards; i++) {
+            /* ensure there is at least one byte and a NUL terminator in bounds */
+            const char *nul = memchr(name, '\0', payload_end - name);
+            if (!nul) {
+                logmsg(LOGMSG_ERROR, "%s: OSQL_PARTITION_SHARDS payload truncated at shard %d\n", __func__, i);
+                free(iq->partition_shards);
+                iq->partition_shards = NULL;
+                iq->npartition_shards = 0;
+                return ERR_INTERNAL;
+            }
+            rc = bdb_lock_tablename_read(thedb->bdb_env, name, trans);
+            if (rc == BDBERR_DEADLOCK) {
+                if (iq->debug)
+                    reqprintf(iq, "LOCK PARTITION SHARD READ DEADLOCK");
+                free(iq->partition_shards);
+                iq->partition_shards = NULL;
+                iq->npartition_shards = 0;
+                return RC_INTERNAL_RETRY;
+            } else if (rc) {
+                if (iq->debug)
+                    reqprintf(iq, "LOCK PARTITION SHARD READ ERROR: %d", rc);
+                free(iq->partition_shards);
+                iq->partition_shards = NULL;
+                iq->npartition_shards = 0;
+                return ERR_INTERNAL;
+            }
+            iq->partition_shards[iq->npartition_shards] = get_dbtable_by_name(name);
+            if (iq->partition_shards[iq->npartition_shards])
+                iq->npartition_shards++;
+            name = nul + 1;
+        }
+        if (gbl_partition_unique_debug) {
+            logmsg(LOGMSG_USER, "%s: [master] received OSQL_PARTITION_SHARDS nshards=%d stored=%d\n", __func__, nshards,
+                   iq->npartition_shards);
+            for (int i = 0; i < iq->npartition_shards; i++)
+                logmsg(LOGMSG_USER, "%s: [master]   shard[%d]='%s'\n", __func__, i, iq->partition_shards[i]->tablename);
+        }
     } break;
     case OSQL_QBLOB: {
         osql_qblob_t dt = {0};

@@ -1,0 +1,28 @@
+Performance test for the partition_unique tunable.
+
+The partition_unique tunable enforces unique index constraints across all
+shards of a TRUNCATE time partition. When enabled, each write that touches
+a unique index performs additional ix_find_by_key_tran lookups against every
+sibling shard before calling ix_addk on the target shard. This test measures
+the overhead of those extra lookups.
+
+Setup:
+  - Creates a TRUNCATE time partition with two shards (start date two days
+    in the past so both shards exist immediately without waiting for rollouts)
+  - Seeds the older shard with 1000 rows so the cross-shard BTree lookups
+    traverse real pages rather than empty trees
+
+Benchmark (NROWS=5000 per run):
+  1. INSERT NROWS rows with unique id and name columns
+  2. UPDATE val on all inserted rows (non-key column, no uniqueness check)
+  3. DELETE all inserted rows
+
+The benchmark is run twice: once with partition_unique disabled (baseline)
+and once with it enabled. Timing for each operation and the total overhead
+are printed to stdout.
+
+The test only fails on operational errors (a write returning a non-zero
+exit code). It always exits 0 on success regardless of the timing results,
+making it safe to run in CI without introducing flaky failures.
+
+To increase the signal-to-noise ratio, raise NROWS in runit.

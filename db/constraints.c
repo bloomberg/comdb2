@@ -243,6 +243,11 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
         free(iq->idxDelete);
         iq->idxInsert = iq->idxDelete = NULL;
     }
+    if (gbl_partition_unique_debug && iq->partition_shards)
+        logmsg(LOGMSG_USER, "%s: [master] freeing partition_shards nshards=%d\n", __func__, iq->npartition_shards);
+    free(iq->partition_shards);
+    iq->partition_shards = NULL;
+    iq->npartition_shards = 0;
 }
 
 enum ct_etype { CTE_ADD = 1, CTE_DEL, CTE_UPD };
@@ -1408,9 +1413,19 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             /* light the prefault kill bit for this subop - newkeys */
             prefault_kill_bits(iq, doidx, PFRQ_NEWKEY);
 
+            /* cross-shard unique check for TRUNCATE partitions */
+            rc = check_cross_shard_unique(iq, trans, doidx, key, ixkeylen, errout);
+            if (rc == RC_INTERNAL_RETRY) {
+                *blkpos = curop->blkpos;
+                close_constraint_table_cursor(cur);
+                free_cached_delayed_indexes(iq);
+                ERR(rc, "deadlock", 0);
+            }
+
             /* add the key */
-            rc = ix_addk(iq, trans, key, doidx, genid, addrrn, od_dta_tail,
-                         od_tail_len, ix_isnullk(iq->usedb, key, doidx));
+            if (!rc)
+                rc = ix_addk(iq, trans, key, doidx, genid, addrrn, od_dta_tail, od_tail_len,
+                             ix_isnullk(iq->usedb, key, doidx));
 
             if (iq->vfy_idx_track) {
                 dup_txn_insert = track_record_index(iq, doidx, key, ixkeylen);
@@ -1431,11 +1446,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                     *errout = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;
                 } else {
-                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
-                              "add key constraint duplicate key '%s' on table "
-                              "'%s' index %d",
-                              get_keynm_from_db_idx(iq->usedb, doidx),
-                              iq->usedb->tablename, doidx);
+                    reqerrstr_dup_key(iq, iq->usedb, doidx);
                     *errout = OP_FAILED_UNIQ;
                 }
 

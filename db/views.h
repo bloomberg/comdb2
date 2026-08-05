@@ -562,4 +562,13 @@ int timepart_analyze_partition(char *name, void *td, struct sqlclntstate *clnt,
  */
 struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned long long genid, const char *f, int l);
 
+/**
+ * Copy the table names of all shards belonging to a TRUNCATE partition into
+ * the caller-supplied array.  Returns the number of shards written (0 if the
+ * partition does not exist or is not a TRUNCATE partition).  The caller must
+ * supply an array of at least MAXTABLELEN+1 bytes per slot.
+ *
+ */
+char **timepart_get_shard_names(const char *partname, int *nshards, struct errstat *err);
+
 #endif

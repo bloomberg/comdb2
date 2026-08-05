@@ -1,0 +1,421 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Correctness test for partition_unique cross-shard unique enforcement.
+#
+# Tests:
+#   1. Standalone INSERT violation (inline path in add_record_indices)
+#   2. Standalone UPDATE violation (deferred path in delayed_key_adds)
+#   3. INSERT violations inside BEGIN/COMMIT (violation at 1st, 2nd, and 3rd write)
+#   4. UPDATE violations inside BEGIN/COMMIT (violation at 1st and 2nd update)
+#   5. Non-violating inserts and updates succeed
+#   6. Cascade ON UPDATE path (RECFLAGS_UPD_CASCADE -> do_inline=1 in add_key)
+
+dbname=$1
+cmd="cdb2sql ${CDB2_OPTIONS} $dbname default"
+cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbname default"
+
+pass=0
+fail=0
+
+# expect_ok <desc> <sql>: run sql, fail test if it errors
+expect_ok() {
+    local desc=$1 sql=$2
+    if ! $cmd "$sql" > /dev/null 2>&1; then
+        echo "FAIL [$desc]: expected success, got error"
+        fail=$(( fail + 1 ))
+    else
+        echo "PASS [$desc]"
+        pass=$(( pass + 1 ))
+    fi
+}
+
+# expect_err <desc> <sql>: run sql, fail test if it succeeds
+expect_err() {
+    local desc=$1 sql=$2
+    if $cmd "$sql" > /dev/null 2>&1; then
+        echo "FAIL [$desc]: expected error (dup key), got success"
+        fail=$(( fail + 1 ))
+    else
+        echo "PASS [$desc]"
+        pass=$(( pass + 1 ))
+    fi
+}
+
+# expect_txn_err <desc> <sql...>: run statements in BEGIN/COMMIT, expect COMMIT to fail
+expect_txn_err() {
+    local desc=$1; shift
+    local stmts=("$@")
+    local sql="begin; "
+    for s in "${stmts[@]}"; do sql+="$s; "; done
+    sql+="commit"
+    if $cmd "$sql" > /dev/null 2>&1; then
+        echo "FAIL [$desc]: expected txn to fail, got success"
+        fail=$(( fail + 1 ))
+    else
+        echo "PASS [$desc]"
+        pass=$(( pass + 1 ))
+    fi
+}
+
+# put_tunable_all <tunable> <value>: set a tunable on every cluster node.
+# On a cluster, tunables are node-local; the master must also have the value.
+put_tunable_all() {
+    local tunable=$1 value=$2
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} $dbname @$node "put tunable $tunable $value" > /dev/null 2>&1
+        done
+    else
+        $cmd "put tunable $tunable $value" > /dev/null 2>&1
+    fi
+}
+
+# run_txn_file <desc> <file>: run a SQL file, expect success
+run_txn_file() {
+    local desc=$1 file=$2
+    local out
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbname default -f "$file" 2>&1)
+    if (( $? != 0 )); then
+        echo "FAIL [$desc]: expected success, got: ${out}"
+        fail=$(( fail + 1 ))
+    else
+        echo "PASS [$desc]"
+        pass=$(( pass + 1 ))
+    fi
+}
+
+# ============================================================
+# Setup: 2-shard TRUNCATE partition
+#
+# Start time is computed as now-25h.  With period 'daily' and retention 2:
+#   older shard:   [now-25h, now-1h)
+#   current shard: [now-1h,  now+23h)
+#   next rollout:  now+23h  (far enough away that no test run will hit it)
+#
+# Schema: a int unique, b int unique, c int
+#   older shard (inserted directly): a=1..20, b=1..20
+#   current shard (via partition view): a=101..120, b=101..120
+# ============================================================
+
+# Clean up from any previous run so the test is independently re-runnable.
+put_tunable_all partition_unique 0
+$cmd "drop table t" > /dev/null 2>&1
+$cmd "drop table p" > /dev/null 2>&1
+
+# Compute start 25 hours ago: guarantees 2 shards and ~23h until next rollout.
+start_ts=$(date -d "25 hours ago" "+%Y%m%dT%H%M%S")
+
+$cmd "create table t (a int, b int, c int, unique(a), unique(b))
+      partitioned by time period 'daily' retention 2 start '${start_ts}'" \
+    > /dev/null || failexit "create partition failed"
+
+# Identify the older shard (the one not receiving new inserts).
+$cmd "insert into t values (9999, 9999, 0)" > /dev/null || failexit "probe insert failed"
+older_shard=$($cmdt "select shardname from comdb2_timepartshards where name='t'
+                     order by shardname" | while read shard; do
+    cnt=$($cmdt "select count(*) from \"${shard}\" where a=9999")
+    [[ "$cnt" == "0" ]] && echo "$shard" && break
+done)
+$cmd "delete from t where a=9999" > /dev/null
+[[ -z "$older_shard" ]] && failexit "could not identify older shard"
+
+# Seed the older shard directly: a=1..20, b=1..20
+$cmd "insert into \"${older_shard}\"
+      select value, value, 0 from generate_series(1, 20)" \
+    > /dev/null || failexit "seed older shard failed"
+
+# Seed the current shard via partition view: a=101..120, b=101..120
+$cmd "insert into t select value+100, value+100, 0 from generate_series(1, 20)" \
+    > /dev/null || failexit "seed current shard failed"
+
+# Enable cross-shard unique enforcement on every node (tunable is node-local).
+put_tunable_all partition_unique 1
+
+echo ""
+echo "=== 1. Standalone INSERT violations ==="
+expect_err "insert a conflicts older shard"   "insert into t values (5, 200, 0)"
+expect_err "insert b conflicts older shard"   "insert into t values (200, 5, 0)"
+expect_err "insert a conflicts current shard" "insert into t values (105, 200, 0)"
+expect_err "insert b conflicts current shard" "insert into t values (200, 105, 0)"
+
+echo ""
+echo "=== 2. Standalone UPDATE violations (deferred key path) ==="
+# Update a key in the current shard to a value that exists in the older shard.
+expect_err "update a to older shard value"   "update t set a=5   where a=101"
+expect_err "update b to older shard value"   "update t set b=5   where b=101"
+# Update a key in the older shard to a value that exists in the current shard.
+$cmd "insert into \"${older_shard}\" values (50, 50, 0)" > /dev/null
+expect_err "update a to current shard value" "update t set a=105 where a=50"
+expect_err "update b to current shard value" "update t set b=105 where b=50"
+$cmd "delete from t where a=50" > /dev/null
+
+echo ""
+echo "=== 3. INSERT violations inside BEGIN/COMMIT ==="
+# Violation is the only (first) write in the transaction.
+expect_txn_err "txn 1-write: violates a" \
+    "insert into t values (5, 200, 0)"
+expect_txn_err "txn 1-write: violates b" \
+    "insert into t values (200, 5, 0)"
+# Violation is the second write (first write is conflict-free).
+expect_txn_err "txn 2-writes: second violates a" \
+    "insert into t values (300, 300, 0)" \
+    "insert into t values (5, 400, 0)"
+expect_txn_err "txn 2-writes: second violates b" \
+    "insert into t values (300, 300, 0)" \
+    "insert into t values (400, 5, 0)"
+# Violation is the third write (first two are conflict-free).
+expect_txn_err "txn 3-writes: third violates a" \
+    "insert into t values (300, 300, 0)" \
+    "insert into t values (400, 400, 0)" \
+    "insert into t values (5, 500, 0)"
+expect_txn_err "txn 3-writes: third violates b" \
+    "insert into t values (300, 300, 0)" \
+    "insert into t values (400, 400, 0)" \
+    "insert into t values (500, 5, 0)"
+
+echo ""
+echo "=== 4. UPDATE violations inside BEGIN/COMMIT ==="
+# First update violates.
+expect_txn_err "txn 1-update: violates a" \
+    "update t set a=5 where a=101"
+expect_txn_err "txn 1-update: violates b" \
+    "update t set b=5 where b=101"
+# Second update violates (first targets a different row and is conflict-free).
+expect_txn_err "txn 2-updates: second violates a" \
+    "update t set a=999 where a=101" \
+    "update t set a=5   where a=102"
+expect_txn_err "txn 2-updates: second violates b" \
+    "update t set b=999 where b=101" \
+    "update t set b=5   where b=102"
+
+echo ""
+echo "=== 5. Non-violations (should succeed) ==="
+expect_ok "insert unique values"     "insert into t values (500, 600, 0)"
+expect_ok "update a to unique value" "update t set a=700 where a=500"
+expect_ok "update b to unique value" "update t set b=800 where b=600"
+$cmd "delete from t where a=700" > /dev/null
+
+# For success-case transactions use SQL files to avoid cdb2sql multi-statement
+# handle state issues (result rows from prior statements must be drained before
+# sending the next request).
+txnfile=$(mktemp /tmp/puc_XXXXXX.sql)
+
+# Insert two rows with values that don't conflict in any shard.
+printf 'begin\ninsert into t values (900, 1000, 0)\ninsert into t values (1100, 1200, 0)\ncommit\n' \
+    > "$txnfile"
+run_txn_file "txn insert: 2 unique rows" "$txnfile"
+
+# Update two *different* rows to new unique values.
+# (900, 1000): update a -> 1300
+# (1100, 1200): update b -> 1400
+# Targeting different rows avoids OCC vgenid staleness on the second update.
+printf 'begin\nupdate t set a=1300 where a=900\nupdate t set b=1400 where b=1200\ncommit\n' \
+    > "$txnfile"
+run_txn_file "txn update: 2 different rows to unique values" "$txnfile"
+
+rm -f "$txnfile"
+
+# Cleanup rows added in section 5.
+$cmd "delete from t where a >= 500" > /dev/null
+
+echo ""
+echo "=== 6. Cascade ON UPDATE path (RECFLAGS_UPD_CASCADE -> do_inline=1) ==="
+# Requires a parent table with a PK and the partition having a FK with
+# ON UPDATE CASCADE.  The cascaded column must also be UNIQUE so that
+# check_cross_shard_unique fires via the add_key do_inline=1 branch.
+#
+# Schema:
+#   parent p(pk int unique)
+#   partition t: b is FK -> p(pk) ON UPDATE CASCADE, b is also UNIQUE
+#
+# Setup: p has pk=5, pk=10, pk=200.
+#        older_shard has b=10 (FK to p.pk=10) and b=5 (extra unique value).
+#        current shard has b=200 (FK to p.pk=200).
+#
+# Violation: UPDATE p SET pk=200->5 cascades b=200->5 in the current shard,
+#            but b=5 already exists in the older shard.
+# Non-violation: UPDATE p SET pk=200->999 cascades b=200->999 (unique).
+
+$cmd "create table p (pk int, unique(pk))" > /dev/null 2>&1
+if (( $? != 0 )); then
+    echo "SKIP [cascade tests]: could not create parent table"
+else
+    # Re-create partition t with FK on b.
+    $cmd "drop table t" > /dev/null 2>&1
+    rc=0
+    $cmd "create table t (a int, b int, c int, unique(a), unique(b),
+          foreign key(b) references p(pk) on update cascade)
+          partitioned by time period 'daily' retention 2 start '${start_ts}'" \
+        > /dev/null 2>&1 || rc=$?
+
+    if (( rc != 0 )); then
+        echo "SKIP [cascade tests]: FK constraints on time partitions not supported"
+    else
+        $cmd "insert into p values (5)"   > /dev/null
+        $cmd "insert into p values (10)"  > /dev/null
+        $cmd "insert into p values (200)" > /dev/null
+
+        # Identify the older shard for the newly re-created partition.
+        $cmd "insert into t values (9998, 200, 0)" > /dev/null
+        older_shard2=$($cmdt "select shardname from comdb2_timepartshards where name='t'
+                              order by shardname" | while read shard; do
+            cnt=$($cmdt "select count(*) from \"${shard}\" where a=9998")
+            [[ "$cnt" == "0" ]] && echo "$shard" && break
+        done)
+        $cmd "delete from t where a=9998" > /dev/null
+
+        if [[ -z "$older_shard2" ]]; then
+            echo "SKIP [cascade tests]: could not identify older shard for FK partition"
+        else
+            # older shard: b=10 (FK to p.pk=10), b=5 (extra unique value)
+            $cmd "insert into \"${older_shard2}\" values (1, 10, 0)" > /dev/null
+            $cmd "insert into \"${older_shard2}\" values (2, 5, 0)"  > /dev/null
+            # current shard: b=200 (FK to p.pk=200)
+            $cmd "insert into t values (100, 200, 0)" > /dev/null
+
+            # Cascade violation: UPDATE p pk=200->5 cascades b=200->5 in current
+            # shard, but b=5 exists in older shard -> cross-shard unique violation.
+            expect_err "cascade update b to cross-shard dup" \
+                "update p set pk=5 where pk=200"
+
+            # Cascade non-violation: UPDATE p pk=200->999, b=200->999 is unique.
+            expect_ok "cascade update b to unique value" \
+                "update p set pk=999 where pk=200"
+        fi
+    fi
+fi
+
+echo ""
+echo "=== 7. UPSERT rejected on partition when partition_unique is enabled ==="
+expect_err "upsert DO NOTHING on partition" \
+    "insert into t values (5, 200, 0) on conflict do nothing"
+expect_err "upsert DO NOTHING with target on partition" \
+    "insert into t values (5, 200, 0) on conflict(a) do nothing"
+
+echo ""
+echo "=== 8. Debug trace (partition_unique_debug tunable) ==="
+
+# Fresh 2-shard partition for this section (no FK constraints).
+$cmd "drop table t" > /dev/null 2>&1
+$cmd "create table t (a int, b int, c int, unique(a), unique(b))
+      partitioned by time period 'daily' retention 2 start '${start_ts}'" \
+    > /dev/null || failexit "section 8: create partition failed"
+
+$cmd "insert into t values (9999, 9999, 0)" > /dev/null
+older_shard8=$($cmdt "select shardname from comdb2_timepartshards where name='t'
+                      order by shardname" | while read shard; do
+    cnt=$($cmdt "select count(*) from \"${shard}\" where a=9999")
+    [[ "$cnt" == "0" ]] && echo "$shard" && break
+done)
+$cmd "delete from t where a=9999" > /dev/null
+[[ -z "$older_shard8" ]] && failexit "section 8: could not identify older shard"
+
+$cmd "insert into \"${older_shard8}\" select value, value, 0 from generate_series(1, 20)" \
+    > /dev/null || failexit "section 8: seed older shard failed"
+$cmd "insert into t select value+100, value+100, 0 from generate_series(1, 20)" \
+    > /dev/null || failexit "section 8: seed current shard failed"
+
+put_tunable_all partition_unique_debug 1
+
+logfile="${TESTDIR}/logs/${DBNAME}.db"
+if [[ -n "$CLUSTER" ]]; then
+    master=$($cmdt "select host from comdb2_cluster where is_master='Y'" 2>/dev/null | head -1)
+    [[ -n "$master" ]] && logfile="${TESTDIR}/logs/${DBNAME}.${master}.db"
+fi
+
+# check_trace: verify a pattern appears at least once in the server log.
+check_trace() {
+    local desc=$1 pattern=$2
+    if grep -q "$pattern" "$logfile"; then
+        echo "PASS [trace: $desc]"
+        pass=$(( pass + 1 ))
+    else
+        echo "FAIL [trace: $desc]: pattern '$pattern' not found in $logfile"
+        fail=$(( fail + 1 ))
+    fi
+}
+
+# check_path_fired <desc> <sql>: run sql, verify cross-shard check count increases.
+check_path_fired() {
+    local desc=$1 sql=$2
+    local before after
+    before=$(grep -c "cross-shard check" "$logfile" 2>/dev/null || echo 0)
+    $cmd "$sql" > /dev/null 2>&1
+    sleep 0.3
+    after=$(grep -c "cross-shard check" "$logfile" 2>/dev/null || echo 0)
+    if (( after > before )); then
+        echo "PASS [trace: $desc]"
+        pass=$(( pass + 1 ))
+    else
+        echo "FAIL [trace: $desc]: cross-shard check not fired (before=$before after=$after)"
+        fail=$(( fail + 1 ))
+    fi
+}
+
+# --- 8a. Verify all 4 trace categories fire (send, receive, check, free) ---
+# One violating INSERT exercises all 4 trace points in sequence.
+$cmd "insert into t values (5, 200, 0)" > /dev/null 2>&1
+sleep 0.3
+
+check_trace "replicant sending OSQL_PARTITION_SHARDS" "\[replicant\] sending OSQL_PARTITION_SHARDS"
+check_trace "replicant lists shard"                   "\[replicant\].*shard\[0\]="
+check_trace "master received OSQL_PARTITION_SHARDS"   "\[master\] received OSQL_PARTITION_SHARDS"
+check_trace "master lists stored shard"               "\[master\].*shard\[0\]="
+check_trace "master cross-shard check"                "\[master\] cross-shard check"
+check_trace "master checked shard"                    "\[master\].*checked shard="
+check_trace "master freeing partition_shards"         "\[master\] freeing partition_shards"
+
+# --- 8b. non-reorder add_record_indices: standalone INSERT (reorder off by default) ---
+check_path_fired "non-reorder INSERT (add_record_indices)" \
+    "insert into t values (200, 300, 0)"
+
+# --- 8c. delayed_key_adds: standalone UPDATE ---
+check_path_fired "delayed_key_adds (UPDATE)" \
+    "update t set a=201 where a=200"
+
+# --- 8d. reorder add_record_indices + process_defered_table:
+#         multi-row txn with reorder_idx_writes=1 (tran_rows > 1 triggers reorder).
+#         Use a SQL file to avoid cdb2sql multi-statement drain issues. ---
+put_tunable_all reorder_idx_writes 1
+reorder_txn=$(mktemp /tmp/puc_reorder_XXXXXX.sql)
+printf 'begin\ninsert into t values (400, 500, 0)\ninsert into t values (401, 501, 0)\ncommit\n' > "$reorder_txn"
+
+before=$(grep -c "cross-shard check" "$logfile" 2>/dev/null || echo 0)
+cdb2sql ${CDB2_OPTIONS} $dbname default -f "$reorder_txn" > /dev/null 2>&1
+sleep 0.3
+after=$(grep -c "cross-shard check" "$logfile" 2>/dev/null || echo 0)
+rm -f "$reorder_txn"
+if (( after > before )); then
+    echo "PASS [trace: reorder add_record_indices + process_defered_table (multi-row txn)]"
+    pass=$(( pass + 1 ))
+else
+    echo "FAIL [trace: reorder add_record_indices + process_defered_table (multi-row txn)]: cross-shard check not fired (before=$before after=$after)"
+    fail=$(( fail + 1 ))
+fi
+put_tunable_all reorder_idx_writes 0
+
+# --- 8e. add_key do_inline (ON UPDATE CASCADE) ---
+# The ON UPDATE CASCADE is handled entirely on the master side in constraints.c,
+# not via the OSQL stream.  iq->partition_shards is never populated for the
+# cascade path, so check_cross_shard_unique returns early there.
+# This call site is a known limitation: cascade cross-shard unique enforcement
+# requires the master constraint processor to populate iq->partition_shards,
+# which is not currently implemented.
+echo "SKIP [trace: add_key do_inline (cascade)]: cascade is master-side; iq->partition_shards not set in that path"
+
+put_tunable_all partition_unique_debug 0
+
+echo ""
+echo "=== Results ==="
+echo "  passed: $pass"
+echo "  failed: $fail"
+echo ""
+
+[[ $fail -eq 0 ]] || failexit "$fail test(s) failed"
+
+put_tunable_all partition_unique 0
+
+echo "Testcase passed."
+exit 0

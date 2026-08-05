@@ -61,6 +61,15 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
                     char *tablename, int type, unsigned long long version);
 
 /**
+ * Send OSQL_PARTITION_SHARDS op
+ * Sends the list of shard table names for a TRUNCATE partition so the master
+ * can lock them before any writes arrive.
+ *
+ */
+int osql_send_partition_shards(osql_target_t *target, unsigned long long rqid, uuid_t uuid, char **shards, int nshards,
+                               int type);
+
+/**
  * Send INDEX op
  * It handles remote/local connectivity
  *

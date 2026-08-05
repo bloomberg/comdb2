@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/hrtime.sh
+
+# Performance test for partition_unique tunable.
+#
+# Measures two distinct impacts of cross-shard unique enforcement:
+#
+#   Part 1 — Extra processing (BTree lookups):
+#     Single-threaded inserts with a warmup pass to prime the buffer pool.
+#     Measures the per-row cost of the extra ix_find_by_key_tran calls in
+#     check_cross_shard_unique() across multiple iterations.
+#
+#   Part 2 — Lock footprint (contention):
+#     Concurrent workers each inserting a slice of rows simultaneously.
+#     Measures total throughput (rows/sec) to capture the impact of the
+#     BDB lock manager handling more lock objects per transaction.
+#
+# The test only fails on operational errors, not on performance results.
+
+dbname=$1
+cmd="cdb2sql ${CDB2_OPTIONS} $dbname default"
+cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbname default"
+
+# Part 1 parameters
+NROWS=30000        # rows per single-threaded iteration
+ITERATIONS=3       # iterations to average over
+
+# Part 2 parameters
+NWORKERS=8         # concurrent insert workers
+ROWS_PER_WORKER=5000
+
+# Part 3 parameters
+NWORKERS_UPD=8     # concurrent update workers
+ROWS_FOR_UPD=20000 # total rows pre-inserted for update benchmark
+
+# ============================================================
+# Helpers
+# ============================================================
+
+function run_or_die
+{
+    local sql=$1
+    local msg=$2
+    $cmd "$sql" > /dev/null || failexit "$msg"
+}
+
+function set_tunable
+{
+    local val=$1
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} --host $node $dbname default \
+                "put tunable partition_unique $val" > /dev/null \
+                || failexit "put tunable partition_unique $val on $node"
+        done
+    else
+        $cmd "put tunable partition_unique $val" > /dev/null \
+            || failexit "put tunable partition_unique $val"
+    fi
+}
+
+# insert_rows <base_id>: inserts NROWS rows starting at base_id
+function insert_rows
+{
+    local base=$1
+    $cmd "insert into t select value+${base}, 'name'||(value+${base}), value+${base} \
+          from generate_series(1, ${NROWS})" > /dev/null \
+        || failexit "insert failed at base ${base}"
+}
+
+# delete_rows <base_id>
+function delete_rows
+{
+    local base=$1
+    local lo=$(( base + 1 ))
+    local hi=$(( base + NROWS ))
+    $cmd "delete from t where id between ${lo} and ${hi}" > /dev/null \
+        || failexit "delete failed at base ${base}"
+}
+
+# ============================================================
+# Setup: TRUNCATE partition with 4 shards
+# Start 4 days + 1 hour in the past so all 4 shards exist immediately.
+# ============================================================
+
+NPARTITION_SHARDS=8
+
+starttime=$(get_timestamp '-(8*24*3600+3600)')
+run_or_die \
+    "create table t (id int, name cstring(64), val int,
+      unique (id), unique (name))
+     partitioned by time period 'daily' retention ${NPARTITION_SHARDS} start '${starttime}'" \
+    "create partitioned table failed"
+
+nshards=$($cmdt "select count(*) from comdb2_timepartshards where name='t'")
+if [[ "$nshards" != "$NPARTITION_SHARDS" ]]; then
+    failexit "expected ${NPARTITION_SHARDS} shards, got '$nshards'"
+fi
+
+# Identify the current shard (the one that receives partition view inserts)
+# by inserting a sentinel row and checking which shard contains it.
+$cmd "insert into t values (-1, 'sentinel', -1)" > /dev/null \
+    || failexit "sentinel insert failed"
+current_shard=""
+while IFS= read -r shard; do
+    cnt=$($cmdt "select count(*) from \"${shard}\" where id = -1")
+    if [[ "$cnt" == "1" ]]; then
+        current_shard="$shard"
+        break
+    fi
+done < <($cmdt "select shardname from comdb2_timepartshards where name='t'")
+$cmd "delete from t where id = -1" > /dev/null
+[[ -z "$current_shard" ]] && failexit "could not identify current shard"
+
+# Seed the 3 older shards with non-conflicting IDs so cross-shard lookups
+# traverse real BTree pages. Use IDs well above the benchmark range.
+seed_base=$(( NROWS * (ITERATIONS + NWORKERS + 10) ))
+seed_slot=0
+while IFS= read -r shard; do
+    [[ "$shard" == "$current_shard" ]] && continue
+    slot_base=$(( seed_base + seed_slot * 2000 ))
+    $cmd "insert into \"${shard}\" \
+          select value+${slot_base}, 'seed'||(value+${slot_base}), value+${slot_base} \
+          from generate_series(1, 2000)" > /dev/null \
+        || failexit "seed insert into shard ${shard} failed"
+    seed_slot=$(( seed_slot + 1 ))
+done < <($cmdt "select shardname from comdb2_timepartshards where name='t'")
+
+SIBLING_SHARDS=$(( NPARTITION_SHARDS - 1 ))
+EXTRA_LOOKUPS_PER_ROW=$(( 2 * SIBLING_SHARDS ))   # 2 unique indexes x sibling shards
+
+echo "Partition: ${NPARTITION_SHARDS} shards, ${SIBLING_SHARDS} older shards each seeded with 2000 rows"
+echo "Schema: 2 unique indexes (id, name) — each insert triggers ${EXTRA_LOOKUPS_PER_ROW} cross-shard BTree lookups"
+echo ""
+
+# ============================================================
+# PART 1: Single-threaded — isolate extra BTree lookup cost
+# ============================================================
+
+echo "======================================================"
+echo "PART 1: Single-threaded insert benchmark"
+echo "  ${NROWS} rows x ${ITERATIONS} iterations, buffer pool warmed up"
+echo "======================================================"
+
+# Warmup: one pass without measuring to prime the buffer pool
+set_tunable 0
+insert_rows 0
+delete_rows 0
+
+# Measure without partition_unique
+set_tunable 0
+total_off=0
+for i in $(seq 1 $ITERATIONS); do
+    t0=$(timems)
+    insert_rows $(( (i - 1) * NROWS ))
+    t1=$(timems)
+    ms=$(( t1 - t0 ))
+    echo "  [off] iter $i: ${ms} ms"
+    total_off=$(( total_off + ms ))
+    delete_rows $(( (i - 1) * NROWS ))
+done
+avg_off=$(( total_off / ITERATIONS ))
+echo "  [off] average: ${avg_off} ms"
+echo ""
+
+# Measure with partition_unique
+set_tunable 1
+total_on=0
+for i in $(seq 1 $ITERATIONS); do
+    t0=$(timems)
+    insert_rows $(( (i - 1) * NROWS ))
+    t1=$(timems)
+    ms=$(( t1 - t0 ))
+    echo "  [on]  iter $i: ${ms} ms"
+    total_on=$(( total_on + ms ))
+    delete_rows $(( (i - 1) * NROWS ))
+done
+avg_on=$(( total_on / ITERATIONS ))
+echo "  [on]  average: ${avg_on} ms"
+echo ""
+
+p1_overhead=$(( avg_on - avg_off ))
+p1_pct=$(( avg_off > 0 ? p1_overhead * 100 / avg_off : 0 ))
+echo "  Part 1 overhead: ${p1_overhead} ms avg per run (${p1_pct}% of baseline)"
+echo "  Extra BTree lookups per run: $(( NROWS * EXTRA_LOOKUPS_PER_ROW )) (${NROWS} rows x 2 unique indexes x ${SIBLING_SHARDS} sibling shards)"
+echo ""
+
+# ============================================================
+# PART 2: Concurrent — measure lock footprint under contention
+# ============================================================
+
+echo "======================================================"
+echo "PART 2: Concurrent insert benchmark"
+echo "  ${NWORKERS} workers x ${ROWS_PER_WORKER} rows each"
+echo "======================================================"
+
+# Each worker inserts its own non-overlapping ID range to avoid real conflicts.
+# Worker w uses IDs: w*ROWS_PER_WORKER+1 .. (w+1)*ROWS_PER_WORKER
+
+function run_concurrent
+{
+    local label=$1
+    local pids=()
+    local t0 t1 failed=0
+    local total_rows=$(( NWORKERS * ROWS_PER_WORKER ))
+
+    t0=$(timems)
+    for w in $(seq 0 $(( NWORKERS - 1 ))); do
+        local base=$(( w * ROWS_PER_WORKER ))
+        $cmd "insert into t \
+              select value+${base}, 'n'||(value+${base}), value+${base} \
+              from generate_series(1, ${ROWS_PER_WORKER})" > /dev/null \
+            || failexit "[${label}] worker ${w} insert failed" &
+        pids+=($!)
+    done
+
+    for pid in "${pids[@]}"; do
+        wait "$pid" || failed=1
+    done
+    t1=$(timems)
+
+    [[ $failed -ne 0 ]] && failexit "[${label}] one or more concurrent workers failed"
+
+    # store results in globals for use by caller
+    concurrent_ms=$(( t1 - t0 ))
+    concurrent_rps=$(( total_rows * 1000 / (concurrent_ms > 0 ? concurrent_ms : 1) ))
+    echo "  elapsed: ${concurrent_ms} ms  |  total rows: ${total_rows}  |  throughput: ${concurrent_rps} rows/sec"
+
+    $cmd "delete from t where id between 1 and ${total_rows}" \
+        > /dev/null || failexit "[${label}] cleanup failed"
+}
+
+# Without partition_unique
+set_tunable 0
+echo "  [off]"
+run_concurrent "off"
+off_rps=$concurrent_rps
+off_ms=$concurrent_ms
+
+echo ""
+
+# With partition_unique
+set_tunable 1
+echo "  [on]"
+run_concurrent "on"
+on_rps=$concurrent_rps
+on_ms=$concurrent_ms
+
+echo ""
+p2_overhead=$(( on_ms - off_ms ))
+p2_pct=$(( off_ms > 0 ? p2_overhead * 100 / off_ms : 0 ))
+echo "  Part 2 overhead: ${p2_overhead} ms  (${p2_pct}% of baseline)"
+echo "  Throughput change: ${off_rps} -> ${on_rps} rows/sec"
+echo ""
+
+# ============================================================
+# PART 3: Concurrent updates — non-key column vs unique key column
+# ============================================================
+
+echo "======================================================"
+echo "PART 3: Concurrent update benchmark"
+echo "  ${NWORKERS_UPD} workers, ${ROWS_FOR_UPD} rows pre-inserted"
+echo "  3a: update non-key column (val)  — baseline, no uniqueness check"
+echo "  3b: update unique key column (name) — triggers cross-shard check"
+echo "======================================================"
+
+# Pre-insert rows into the current shard for the update benchmark.
+# Use an ID range that doesn't overlap with Part 2's range.
+UPD_BASE=$(( NWORKERS * ROWS_PER_WORKER + 1 ))
+UPD_HI=$(( UPD_BASE + ROWS_FOR_UPD - 1 ))
+SLICE=$(( ROWS_FOR_UPD / NWORKERS_UPD ))
+
+$cmd "insert into t \
+      select value+${UPD_BASE}-1, 'n'||(value+${UPD_BASE}-1), value+${UPD_BASE}-1 \
+      from generate_series(1, ${ROWS_FOR_UPD})" > /dev/null \
+    || failexit "part3 setup insert failed"
+
+# run_concurrent_update <label> <set_clause>
+# Each worker updates its own non-overlapping slice of the ID range.
+function run_concurrent_update
+{
+    local label=$1
+    local set_clause=$2
+    local pids=()
+    local t0 t1 failed=0
+
+    t0=$(timems)
+    for w in $(seq 0 $(( NWORKERS_UPD - 1 ))); do
+        local lo=$(( UPD_BASE + w * SLICE ))
+        local hi=$(( lo + SLICE - 1 ))
+        $cmd "update t set ${set_clause} where id between ${lo} and ${hi}" \
+            > /dev/null || failexit "[${label}] worker ${w} update failed" &
+        pids+=($!)
+    done
+
+    for pid in "${pids[@]}"; do
+        wait "$pid" || failed=1
+    done
+    t1=$(timems)
+
+    [[ $failed -ne 0 ]] && failexit "[${label}] one or more concurrent workers failed"
+
+    concurrent_ms=$(( t1 - t0 ))
+    concurrent_rps=$(( ROWS_FOR_UPD * 1000 / (concurrent_ms > 0 ? concurrent_ms : 1) ))
+    echo "  elapsed: ${concurrent_ms} ms  |  rows: ${ROWS_FOR_UPD}  |  throughput: ${concurrent_rps} rows/sec"
+}
+
+# Part 3a: update non-key column — partition_unique has no effect here,
+# run with it on so conditions match Part 3b.
+set_tunable 1
+echo "  [3a] non-key update (val = val + 1), partition_unique on:"
+run_concurrent_update "3a" "val = val + 1"
+p3a_ms=$concurrent_ms
+p3a_rps=$concurrent_rps
+
+echo ""
+
+# Part 3b-off: update unique key column, partition_unique OFF (baseline for key update)
+set_tunable 0
+echo "  [3b-off] unique key update (name), partition_unique off:"
+run_concurrent_update "3b-off" "name = 'u'||cast(id as text)"
+p3b_off_ms=$concurrent_ms
+p3b_off_rps=$concurrent_rps
+
+echo ""
+
+# Part 3b-on: update unique key column, partition_unique ON (triggers cross-shard check)
+set_tunable 1
+echo "  [3b-on]  unique key update (name), partition_unique on:"
+run_concurrent_update "3b-on" "name = 'v'||cast(id as text)"
+p3b_on_ms=$concurrent_ms
+p3b_on_rps=$concurrent_rps
+
+echo ""
+p3_feature_overhead=$(( p3b_on_ms - p3b_off_ms ))
+p3_feature_pct=$(( p3b_off_ms > 0 ? p3_feature_overhead * 100 / p3b_off_ms : 0 ))
+echo "  Cross-shard check overhead (3b-on vs 3b-off): ${p3_feature_overhead} ms (${p3_feature_pct}%)"
+echo ""
+
+# cleanup
+$cmd "delete from t where id between ${UPD_BASE} and ${UPD_HI}" > /dev/null \
+    || failexit "part3 cleanup failed"
+
+# ============================================================
+# Final summary
+# ============================================================
+
+echo "======================================================"
+echo "SUMMARY"
+echo "======================================================"
+printf "  Part 1 (extra BTree lookups, single-threaded):\n"
+printf "    baseline avg: %d ms  |  with feature: %d ms  |  overhead: %d ms (%d%%)\n" \
+    $avg_off $avg_on $p1_overhead $p1_pct
+printf "  Part 2 (lock footprint, %d concurrent insert workers):\n" $NWORKERS
+printf "    baseline: %d rows/sec  |  with feature: %d rows/sec  |  elapsed overhead: %d ms (%d%%)\n" \
+    $off_rps $on_rps $p2_overhead $p2_pct
+printf "  Part 3 (concurrent updates, %d workers, %d rows):\n" $NWORKERS_UPD $ROWS_FOR_UPD
+printf "    3a non-key update:      %d ms (%d rows/sec)  [context only]\n" $p3a_ms $p3a_rps
+printf "    3b key update off:      %d ms (%d rows/sec)\n" $p3b_off_ms $p3b_off_rps
+printf "    3b key update on:       %d ms (%d rows/sec)  |  overhead: %d ms (%d%%)\n" \
+    $p3b_on_ms $p3b_on_rps $p3_feature_overhead $p3_feature_pct
+
+set_tunable 0
+
+echo ""
+echo "Testcase passed."
+exit 0
