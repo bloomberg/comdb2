@@ -3253,7 +3253,22 @@ static int cdb2_socket_pool_get_ll(cdb2_hndl_tp *hndl, const char *typestr, int 
  * success. Don't support local cache since it may not return fd */
 int cdb2_socket_pool_get_fd(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port)
 {
-    int fd = cdb2_socket_pool_get_ll(hndl, typestr, dbnum, port);
+    void *callbackrc;
+    int overwrite_rc = 0;
+    cdb2_event *e = NULL;
+    int fd = -1;
+
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_SOCKPOOL, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, overwrite_rc, callbackrc, overwrite_rc);
+    }
+    if (!overwrite_rc)
+        fd = cdb2_socket_pool_get_ll(hndl, typestr, dbnum, port);
+
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_SOCKPOOL, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)fd);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, overwrite_rc, callbackrc);
+    }
     LOG_CALL("%s(%s,%d,%p): fd=%d\n", __func__, typestr, dbnum, port, fd);
     return fd;
 }
@@ -3276,8 +3291,8 @@ static int typestr_type_is_default(const char *typestr)
 /* Get the sbuf of a socket matching the given type string from
  * the pool.  Returns NULL if none is available or the sbuf on
  * success. */
-static COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port,
-                                       int *was_from_local_cache)
+static COMDB2BUF *cdb2_socket_pool_get_int(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port,
+                                           int *was_from_local_cache)
 {
     COMDB2BUF *sb = NULL;
 
@@ -3332,6 +3347,31 @@ static COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, 
 
     LOG_CALL("%s(%s,%d,%p,%p[%d]): fd=%d\n", __func__, typestr, dbnum, port, was_from_local_cache,
              (was_from_local_cache ? *was_from_local_cache : 0), cdb2buf_fileno(sb));
+    return sb;
+}
+
+static COMDB2BUF *cdb2_socket_pool_get(cdb2_hndl_tp *hndl, const char *typestr, int dbnum, int *port,
+                                       int *was_from_local_cache)
+{
+    void *callbackrc;
+    int overwrite_rc = 0;
+    cdb2_event *e = NULL;
+    COMDB2BUF *sb = NULL;
+
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_SOCKPOOL, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, overwrite_rc, callbackrc, overwrite_rc);
+    }
+    if (overwrite_rc)
+        goto after_callback;
+
+    sb = cdb2_socket_pool_get_int(hndl, typestr, dbnum, port, was_from_local_cache);
+
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_SOCKPOOL, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)sb);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, overwrite_rc, callbackrc);
+    }
     return sb;
 }
 

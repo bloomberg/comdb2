@@ -276,14 +276,16 @@ typedef enum cdb2_event_type {
     CDB2_BEFORE_TCP_CONNECT = 1 << 10,
     CDB2_AFTER_TCP_CONNECT = 1 << 11,
     CDB2_AT_RECEIVE_HEARTBEAT = 1 << 12,
+    CDB2_BEFORE_SOCKPOOL = 1 << 13,
+    CDB2_AFTER_SOCKPOOL = 1 << 14,
 
     /* Logical operation events.
        A logicial operation event typically
        consists of multiple network events. */
-    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 13,
-    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 14,
-    CDB2_AT_ENTER_NEXT_RECORD = 1 << 15,
-    CDB2_AT_EXIT_NEXT_RECORD = 1 << 16,
+    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 20,
+    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 21,
+    CDB2_AT_ENTER_NEXT_RECORD = 1 << 22,
+    CDB2_AT_EXIT_NEXT_RECORD = 1 << 23,
 
     /* Lifecycle events */
     CDB2_AFTER_HNDL_ALLOC = 1 << 26,
