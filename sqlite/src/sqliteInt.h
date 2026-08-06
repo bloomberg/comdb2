@@ -3817,7 +3817,7 @@ struct Select {
 #define SF_Correlated   0x20000000 /* True if references the outer context */
 #define SF_OnToWhere    0x40000000 /* One or more ON clauses moved to WHERE */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SF_ASTIncluded  0x8000000  /* AST Generated. If SQLite adds more flags, 
+#define SF_ASTIncluded  0x80000000 /* AST Generated. If SQLite adds more flags,
                                    ** just increment this. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
