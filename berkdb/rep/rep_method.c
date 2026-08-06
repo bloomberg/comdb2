@@ -411,8 +411,10 @@ __rep_start(dbenv, dbt, gen, flags)
 		 */
 		logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
 				__func__, __LINE__);
-		(void)__rep_send_message_gen(dbenv,
-			db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, gen, NULL);
+		/* NEWMASTER must carry our committed gen; the wrapper reads rep->gen.
+		 * The old gen arg was stale/0 on the start-as-master path. */
+		(void)__rep_send_message(dbenv,
+			db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 		ret = 0;
 		if (role_chg) {
 			ret = __txn_reset(dbenv);
