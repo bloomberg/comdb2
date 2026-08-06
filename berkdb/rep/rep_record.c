@@ -2506,6 +2506,8 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
 			if (master == rep->eid) {
+				/* Tally our own vote; don't emit NEWMASTER here (no vote2
+				 * lock in the VOTE1 path -> would abort). The VOTE2 path does. */
 				(void)__rep_tally(dbenv, rep, rep->eid,
 					&rep->votes, egen, rep->v2tally_off, __func__, __LINE__);
 				goto errunlock;
@@ -2624,13 +2626,18 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 			__db_err(dbenv, "Counted vote %d", rep->votes);
 #endif
 		if (done) {
+			/* First majority-crossing vote2 of the term emits NEWMASTER (drives
+			 * bdb_upgrade); use REP_F_MASTERELECT, not the vote count, since the
+			 * self-vote can push the count past the bare-majority slot. */
+			int already_elected = F_ISSET(rep, REP_F_MASTERELECT);
 			logmsg(LOGMSG_USER,
-					"%s line %d elected master %s for egen %d\n",
-					__func__, __LINE__, rep->eid, vi_egen);
+					"%s line %d elected master %s for egen %d (votes %d, %s)\n",
+					__func__, __LINE__, rep->eid, vi_egen, rep->votes,
+					already_elected ? "already-elected" : "NEWMASTER");
 			__rep_elect_master(dbenv, rep, eidp);
 			if (newgen) *newgen = vi_egen;
 			if (newmaster) *newmaster = *eidp;
-			ret = (rep->votes > rep->nsites / 2 + 1) ? DB_HAS_MAJORITY : DB_REP_NEWMASTER;
+			ret = already_elected ? DB_HAS_MAJORITY : DB_REP_NEWMASTER;
 			goto errunlock;
 		} else {
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
