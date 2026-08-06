@@ -1082,7 +1082,7 @@ int sqlite3StrAccumEnlarge(StrAccum *p, i64 N){
       **/
       if( p->nAlloc >= p->mxAlloc ){
         sqlite3_str_reset(p);
-        setStrAccumError(p, SQLITE_TOOBIG);
+        sqlite3StrAccumSetError(p, SQLITE_TOOBIG);
         return 0;
       }
       szNew = p->mxAlloc;
