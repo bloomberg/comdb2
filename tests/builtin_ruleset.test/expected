@@ -1,12 +1,14 @@
-(ruleid=1, action='set_pool', flags='none', mode='exact', hits=0, pool='system', fingerprint='14d532803022f07f6a9db4caaffdaa75', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
-(ruleid=2, action='set_pool', flags='none', mode='exact', hits=0, pool='system', fingerprint='7549f81f7876a39f5b218547590760e2', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
-(ruleid=3, action='set_pool', flags='none', mode='exact', hits=0, pool='system', fingerprint='ebf7f5d84127ec96341ca52ed9a9797e', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=1, action='set_pool', flags='none', mode='exact', hits=0, pool='systemsqlpool', fingerprint='14d532803022f07f6a9db4caaffdaa75', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=2, action='set_pool', flags='none', mode='exact', hits=0, pool='systemsqlpool', fingerprint='ebf7f5d84127ec96341ca52ed9a9797e', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=3, action='set_pool', flags='none', mode='exact', hits=0, pool='systemsqlpool', fingerprint='512ec5eacc7776e1878a42258b635124', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=4, action='set_pool', flags='none', mode='exact', hits=0, pool='systemsqlpool', fingerprint='7549f81f7876a39f5b218547590760e2', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
 timed out
 [@bind CDB2_CSTRING a singlemeta] rc 0
 (value='1')
 [SELECT value FROM comdb2_tunables WHERE name=@a] rc 0
 (ruleid=1, action='reject_all', flags='none', mode='exact', hits=0, pool=NULL, fingerprint=NULL, host=NULL, user=NULL, task=NULL, sql=NULL, identity='imposter')
-(ruleid=2, action='set_pool', flags='none', mode='exact', hits=1, pool='system', fingerprint='7549f81f7876a39f5b218547590760e2', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
-(ruleid=3, action='set_pool', flags='none', mode='exact', hits=0, pool='system', fingerprint='ebf7f5d84127ec96341ca52ed9a9797e', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=2, action='set_pool', flags='none', mode='exact', hits=0, pool='systemsqlpool', fingerprint='ebf7f5d84127ec96341ca52ed9a9797e', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=3, action='set_pool', flags='none', mode='exact', hits=0, pool='systemsqlpool', fingerprint='512ec5eacc7776e1878a42258b635124', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
+(ruleid=4, action='set_pool', flags='none', mode='exact', hits=1, pool='systemsqlpool', fingerprint='7549f81f7876a39f5b218547590760e2', host=NULL, user=NULL, task=NULL, sql=NULL, identity=NULL)
 (1=1)
 [select 1] failed with rc 451 Rejected due to rule #1
