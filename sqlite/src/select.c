@@ -7262,7 +7262,14 @@ static int sql_has_remotes(
   int i;
 
   for(i=0;i<pList->nSrc; i++){
-    char *dbname = pList->a[i].zDatabase;
+    SrcItem *pItem = &pList->a[i];
+    /* Check preconditions for accessing u4.zDatabase.
+    **
+    ** Because remote databases/tables are not vanilla ATTACH'ed, u4.zDatabase
+    ** remains unresolved (fg.fixedSchema should not be set). Tables referenced
+    ** in subqueries will show up as separate SrcItems. */
+    char *dbname = (!pItem->fg.fixedSchema && !pItem->fg.isSubquery)
+                     ? pItem->u4.zDatabase : 0;
     if(dbname && strcasecmp(dbname,"main") && strcasecmp(dbname, "temp") &&
             strcasecmp(dbname, comdb2_get_dbname())) {
       return 1;
@@ -7903,10 +7910,18 @@ int sqlite3Select(
     pParse->azSrcListOnly = sqlite3DbMallocZero(db, pSrc->nSrc * sizeof(char*));
     if( db->mallocFailed ) goto select_end;
     for(iSrc=0; iSrc<pSrc->nSrc; iSrc++){
-      const char *zSrcDatabase = pSrc->a[iSrc].zDatabase;
-      if( !zSrcDatabase ) zSrcDatabase = "main";
+      SrcItem *pItem = &pSrc->a[iSrc];
+      const char *zSrcDatabase;
+      if( pItem->fg.fixedSchema ){
+        int iDb = sqlite3SchemaToIndex(db, pItem->u4.pSchema);
+        zSrcDatabase = db->aDb[iDb].zDbSName;
+      }else if( pItem->fg.isSubquery ){
+        zSrcDatabase = "main";
+      }else{
+        zSrcDatabase = pItem->u4.zDatabase ? pItem->u4.zDatabase : "main";
+      }
       pParse->azSrcListOnly[iSrc] = sqlite3MPrintf(db,
-          "%s.%s", zSrcDatabase, pSrc->a[iSrc].zName
+          "%s.%s", zSrcDatabase, pItem->zName
       );
       if( db->mallocFailed ) goto select_end;
     }
