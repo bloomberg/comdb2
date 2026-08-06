@@ -6043,22 +6043,6 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
         } else
             iammaster = 0;
 
-        if (is_real_netinfo(bdb_state->repinfo->netinfo) && iammaster) {
-
-            logmsg(LOGMSG_USER,
-                   "%s line %d calling rep_start as master with egen %d\n",
-                   __func__, __LINE__, gen);
-            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, gen,
-                                             DB_REP_MASTER);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "rep_start as master failed %d %s\n", rc,
-                        db_strerror(rc));
-            } else {
-                print(bdb_state, "bdb_open_int: started rep as MASTER\n");
-            }
-            defer_commits_for_upgrade(bdb_state, 0, __func__);
-        }
-
         /* we used to blindly set read_write to 1 on startup.  this caused
          * mayhem when we tried stopping unnecessary upgrades -- SJ */
         bdb_state->read_write = iammaster ? 1 : 0;
