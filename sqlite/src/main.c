@@ -4294,7 +4294,7 @@ int sqlite3_table_index_funcs(sqlite3 *db,            /* Connection handle */
   }
 
   pTab = sqlite3FindTable(db, zTableName, zDbName);
-  if (!pTab || pTab->pSelect) {
+  if (!pTab || IsView(pTab)) {
     pTab = 0;
     goto error_out;
   }
