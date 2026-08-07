@@ -21,7 +21,8 @@ jobs:
           java-version: 8
           java-package: jdk
           check-latest: true
-          server-id: ossrh
+          # Must match <publishingServerId> in cdb2jdbc/pom.xml's ossrh profile.
+          server-id: central
           server-username: OSSRH_USERNAME
           server-password: OSSRH_PASSWORD
           gpg-private-key: ${{ secrets.GPG_KEY }}
