@@ -1500,6 +1500,16 @@ void serialise_database(
         sha_file.write(sha.c_str(), 40);
     }
 
+    // If recovery (or another exclusive operation) ran on the database while we
+    // were copying, the pages we captured no longer reconcile with the forward
+    // log replay the archive relies on, so the copy is corrupt.  The database
+    // (logdelete4+) tells us via copy_complete; fail so the backup is discarded
+    // and retried rather than silently producing a bad copy.
+    if(log_holder.get() && !log_holder->copy_ok()) {
+        throw Error("recovery ran on the database during the copy; "
+                    "archive would be corrupt - aborting");
+    }
+
     // Release the database for log file deletion.
     if(log_holder.get()) {
         log_holder->close();

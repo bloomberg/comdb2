@@ -2375,6 +2375,10 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 int bdb_recoverlk_blocked(bdb_state_type *bdb_state);
+/* Take/release the recovery lock in read mode (held by a hot copy so recovery
+ * cannot rewind pages underneath it; poll bdb_recoverlk_blocked to yield). */
+int bdb_readlock_recovery(bdb_state_type *bdb_state);
+int bdb_unlock_recovery(bdb_state_type *bdb_state);
 
 void send_newmaster(bdb_state_type *bdb_state, int online);
 

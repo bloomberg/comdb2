@@ -45,22 +45,31 @@ void LogHolder_impl::reset(const std::string& dbname, const std::string& request
     }
 }
 
-LogHolder::LogHolder(const std::string& dbname) : impl(new LogHolder_impl(dbname, "logdelete3\n"))
+LogHolder::LogHolder(const std::string& dbname) : impl(new LogHolder_impl(dbname, "logdelete4\n"))
 {
-    
-    m_version = 3;
+
+    m_version = 4;
     if(impl->mp_appsock.get()
             && !impl->mp_appsock->response("log file deletion disabled\n")) {
         close();
 
-        std::clog << "Doesn't support logdelete3" << std::endl;
+        std::clog << "Doesn't support logdelete4" << std::endl;
 
-        impl->reset(dbname, "logdelete2\n");
-        m_version = 2;
+        impl->reset(dbname, "logdelete3\n");
+        m_version = 3;
         if(impl->mp_appsock.get()
                 && !impl->mp_appsock->response("log file deletion disabled\n")) {
             close();
-            throw Error("Log holder appsock: bad response from " + dbname);
+
+            std::clog << "Doesn't support logdelete3" << std::endl;
+
+            impl->reset(dbname, "logdelete2\n");
+            m_version = 2;
+            if(impl->mp_appsock.get()
+                    && !impl->mp_appsock->response("log file deletion disabled\n")) {
+                close();
+                throw Error("Log holder appsock: bad response from " + dbname);
+            }
         }
     }
 
@@ -97,4 +106,26 @@ std::string LogHolder::recovery_options()
     }
     else
         return "";
+}
+
+bool LogHolder::copy_ok()
+{
+    // logdelete4 holds locks that block recovery for the copy's duration and
+    // releases them (marking the copy aborted) if an exclusive operation needs
+    // to run.  Ask whether the hold stayed valid; a v4 database always answers,
+    // so anything but "ok" -- including a timeout or a dropped socket -- means
+    // the copy is not trustworthy.  Pre-v4 databases have no such handshake.
+    if(impl->mp_appsock.get() && m_version >= 4) {
+        std::ostringstream request ;
+        request << "copy_complete" << "\n";
+        impl->mp_appsock->request(request.str());
+        try {
+            return impl->mp_appsock->read_response() == "ok";
+        } catch(Error& e) {
+            std::clog << "copy_complete: no response from database: "
+                      << e.what() << std::endl;
+            return false;
+        }
+    }
+    return true;
 }

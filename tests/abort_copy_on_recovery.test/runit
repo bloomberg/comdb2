@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export archivepid=0
+export truncpid=0
+export archiveout=./archive.out.$$
+
+# Pin the node we operate on up front.  The copy connects here and the rewind and
+# the unblock all target this same node.
+export MASTER=$(getmaster)
+export MASTERLOG=${TESTDIR}/logs/${DBNAME}.${MASTER}.db
+
+# Create a table with some data and force a checkpoint so there is log history to
+# rewind to.
+function setup_data
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1 (id int)"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into t1 select * from generate_series(1, 1000)"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "exec procedure sys.cmd.send('flush')"
+}
+
+function set_online_recovery
+{
+    local val=$1
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable online_recovery $val"
+}
+
+# Start a copy against the master.  The remote copy stream (stdout) is discarded;
+# its stderr is forwarded to us so we can capture the exit status and messages.
+function start_archive
+{
+    rm -f $archiveout
+    ssh $MASTER "$COMDB2AR_EXE c ${DBDIR}/${DBNAME}.lrl 2>&1 >/dev/null" > $archiveout 2>&1 </dev/null &
+    archivepid=$!
+}
+
+# Count how many times a copy has parked in the debug_block loop.  The log is
+# shared across scenarios, so we wait for a *new* occurrence rather than any.
+function hold_count
+{
+    # egrep -c prints 0 and exits non-zero when there are no matches, so capture
+    # its output (a single integer, or empty if the log does not exist yet) and
+    # normalize -- avoid `|| echo 0`, which would emit a second line.
+    local n
+    n=$(egrep -c "blocking comdb2ar for testcase" "$MASTERLOG" 2>/dev/null)
+    echo "${n:-0}"
+}
+
+# Wait until the logdelete handler for THIS copy has connected, taken its read
+# locks, and parked in the debug_block_comdb2ar loop (so the locks are held
+# before we induce a rewind).  $1 is the hold_count captured before we started.
+function wait_for_hold
+{
+    local base=$1
+    local cnt=0
+    while :; do
+        if [[ "$(hold_count)" -gt "$base" ]]; then
+            return 0
+        fi
+        if ! kill -0 $archivepid 2>/dev/null; then
+            cat $archiveout
+            failexit "Archive process exited before it took the hold"
+        fi
+        let cnt=cnt+1
+        if [[ $cnt -gt 20 ]]; then
+            cat $archiveout
+            failexit "Timed out waiting for the copy to take the hold"
+        fi
+        sleep 1
+    done
+}
+
+# Scenario: a copy that overlaps a rewind must be aborted.
+function run_abort_scenario
+{
+    local online=$1
+    echo "=== abort scenario, online_recovery=$online ==="
+    set_online_recovery $online
+
+    # rewind target is now; the copy connects a moment later and the write below
+    # lands after it, so the truncate actually rolls something back.
+    local rewind_time=$(date +%s)
+
+    local base=$(hold_count)
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 1"
+    start_archive
+    wait_for_hold $base
+
+    # A write that lands after rewind_time; it proceeds under the copy's read
+    # locks (normal writes take neither the bdb write lock nor recoverlk).
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into t1 select * from generate_series(1, 100)" >/dev/null 2>&1
+
+    # Force the rewind while the copy still holds its locks (debug_block).  The
+    # truncate parks on the bdb write lock (offline) or recoverlk (online) that
+    # the copy holds; give it a few seconds to reach that block.
+    ( $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "exec procedure sys.cmd.truncate_time($rewind_time)" ) &
+    truncpid=$!
+    sleep 3
+
+    # Release the copy.  When it answers copy_complete the exclusive operation is
+    # still blocked behind its read locks, so it drops the locks, marks the copy
+    # aborted, and comdb2ar discards the archive.
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 0"
+
+    wait $archivepid
+    local rc=$?
+    wait $truncpid 2>/dev/null
+    cat $archiveout
+
+    if [[ $rc -eq 0 ]]; then
+        failexit "online_recovery=$online: archive succeeded but should have aborted"
+    fi
+    if ! egrep -q "recovery ran on the database during the copy" $archiveout; then
+        failexit "online_recovery=$online: archive aborted (rc=$rc) but not for the expected reason"
+    fi
+    echo "online_recovery=$online: archive correctly aborted (rc=$rc)"
+}
+
+# Scenario: a copy with no concurrent recovery must succeed (no false abort).
+function run_success_scenario
+{
+    local online=$1
+    echo "=== success scenario, online_recovery=$online ==="
+    set_online_recovery $online
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 0"
+    rm -f $archiveout
+
+    ssh $MASTER "$COMDB2AR_EXE c ${DBDIR}/${DBNAME}.lrl 2>/dev/null >/dev/null" > $archiveout 2>&1 </dev/null
+    local rc=$?
+    cat $archiveout
+    if [[ $rc -ne 0 ]]; then
+        failexit "online_recovery=$online: archive failed (rc=$rc) with no concurrent recovery"
+    fi
+    echo "online_recovery=$online: archive succeeded as expected"
+}
+
+function run_test
+{
+    setup_data
+    # Cover both online recovery (OSS default) and offline recovery (Bloomberg).
+    run_abort_scenario 1
+    run_abort_scenario 0
+    run_success_scenario 1
+    run_success_scenario 0
+}
+
+run_test
+echo "success"

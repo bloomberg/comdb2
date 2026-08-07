@@ -1,0 +1,23 @@
+This test verifies that a hot copy (comdb2ar) is aborted if the database runs
+recovery that rewinds the log (rep_verify_match) while the copy is in flight.
+
+Such a rewind -- which happens on a physical replicant when it truncates to
+resync, or on a normal replicant that connects to a new master -- rewrites data
+pages backwards, so the pages captured by an overlapping copy no longer
+reconcile with the forward log replay the archive relies on.  The copy would
+otherwise be silently corrupt.
+
+The copy (logdelete4) holds the recovery lock and the bdb lock in read mode for
+its duration; recovery write-locks these before it rewinds any page, in both
+online and offline recovery modes.  When recovery (or another exclusive
+operation) waits on one of those locks, the copy releases them and is marked
+aborted, and comdb2ar discards the archive.
+
+The test, for BOTH online_recovery on and off:
+  1. Connects a copy and holds it at connect (debug_block_comdb2ar) after it has
+     taken the read locks.
+  2. Forces a rewind with sys.cmd.truncate_time (blocks on the bdb write lock
+     when offline, on recoverlk when online).
+  3. Releases the copy and verifies comdb2ar aborts with a non-zero exit,
+     reporting that recovery ran during the copy.
+  4. Also verifies a copy with no concurrent recovery still succeeds.
