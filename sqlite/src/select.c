@@ -2875,6 +2875,7 @@ static int multiSelect(
     }
   #endif
   }
+  if( pParse->nErr ) goto multi_select_end;
   
   /* Compute collating sequences used by 
   ** temporary tables needed to implement the compound select.
@@ -3830,13 +3831,16 @@ static int flattenSubquery(
   **
   ** which is not at all the same thing.
   **
-  ** If the subquery is the right operand of a LEFT JOIN, then the outer
-  ** query cannot be an aggregate. (3c)  This is an artifact of the way
-  ** aggregates are processed - there is no mechanism to determine if
-  ** the LEFT JOIN table should be all-NULL.
-  **
-  ** See also tickets #306, #350, and #3300.
-  */
+** If the subquery is the right operand of a LEFT JOIN, then the outer
+** query cannot be an aggregate. (3c)  This is an artifact of the way
+** aggregates are processed - there is no mechanism to determine if
+** the LEFT JOIN table should be all-NULL.
+**
+** If the subquery is the right operand of a LEFT JOIN, then the outer
+** query may not be DISTINCT.  See ticket [862974312edf00e9].
+**
+** See also tickets #306, #350, and #3300.
+*/
   if( (pSubitem->fg.jointype & JT_OUTER)!=0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     extern int gbl_enable_sq_flattening_optimization;
@@ -3845,8 +3849,11 @@ static int flattenSubquery(
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     isLeftJoin = 1;
-    if( pSubSrc->nSrc>1 || isAgg || IsVirtual(pSubSrc->a[0].pTab) ){
-      /*  (3a)             (3c)     (3b) */
+    if( pSubSrc->nSrc>1                   /* (3a) */
+     || isAgg                             /* (3c) */
+     || IsVirtual(pSubSrc->a[0].pTab)     /* (3b) */
+     || (p->selFlags & SF_Distinct)!=0    /* (3d) */
+    ){
       return 0;
     }
   }
@@ -5045,7 +5052,7 @@ static int selectExpander(Walker *pWalker, Select *p){
 
   /* Process NATURAL keywords, and ON and USING clauses of joins.
   */
-  if( db->mallocFailed || sqliteProcessJoin(pParse, p) ){
+  if( pParse->nErr || db->mallocFailed || sqliteProcessJoin(pParse, p) ){
     return WRC_Abort;
   }
 
@@ -6209,6 +6216,7 @@ int sqlite3Select(
   */
   if( (p->selFlags & (SF_Distinct|SF_Aggregate))==SF_Distinct 
    && sqlite3ExprListCompare(sSort.pOrderBy, pEList, -1)==0
+   && p->pWin==0
   ){
     p->selFlags &= ~SF_Distinct;
     pGroupBy = p->pGroupBy = sqlite3ExprListDup(db, pEList, 0);
