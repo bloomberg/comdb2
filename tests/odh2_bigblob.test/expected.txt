@@ -1,0 +1,7 @@
+(a=1, length(b)=1)
+(a=2, length(b)=1000000)
+(a=3, length(b)=100000000)
+(a=4, length(b)=268435455)
+(a=5, length(b)=268435456)
+(a=6, length(b)=300000000)
+(a=7, length(b)=536870912)

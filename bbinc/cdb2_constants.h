@@ -19,7 +19,14 @@
 
 #define COMDB2_MAX_RECORD_SIZE 16384
 #define LONG_REQMS 2000
-#define MAXBLOBLENGTH ((1 << 28) - 1)   /* (1 << ODH_LENGTH_BITS) - 1 */
+#define MAXBLOBLENGTH                                                                                                  \
+    ((1 << 28) - 1) /* (1 << ODH_LENGTH_BITS) - 1; the odh1                                                            \
+                       limit -- odh1 packs length into 28                                                              \
+                       bits so it can never exceed this */
+#define MAXBLOBLENGTH2                                                                                                 \
+    0x7fffffff                          /* odh2 stores a full 32-bit length;                                           \
+                                          cap at INT_MAX to stay safe in the                                           \
+                                          signed-int paths above bdb */
 #define MAXBLOBS 15                     /* Should be bdb's MAXDTAFILES - 1 */
 #define MAXCOLNAME 99                   /* not incl. \0 */
 #define MAXCOLUMNS 1024

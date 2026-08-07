@@ -178,6 +178,8 @@ static int bdb_cursor_pause(bdb_cursor_ifn_t *pcur_ifn, int *bdberr);
 static void *bdb_cursor_data(bdb_cursor_ifn_t *cur);
 static int bdb_cursor_datalen(bdb_cursor_ifn_t *cur);
 static unsigned long long bdb_cursor_genid(bdb_cursor_ifn_t *cur);
+static uint32_t bdb_cursor_insert_secs(bdb_cursor_ifn_t *cur);
+static uint32_t bdb_cursor_update_secs(bdb_cursor_ifn_t *cur);
 static int bdb_cursor_rrn(bdb_cursor_ifn_t *cur);
 static int bdb_cursor_dbnum(bdb_cursor_ifn_t *cur);
 static void *bdb_cursor_datacopy(bdb_cursor_ifn_t *cur);
@@ -630,6 +632,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
     pcur_ifn->data = bdb_cursor_data;
     pcur_ifn->datalen = bdb_cursor_datalen;
     pcur_ifn->genid = bdb_cursor_genid;
+    pcur_ifn->insert_secs = bdb_cursor_insert_secs;
+    pcur_ifn->update_secs = bdb_cursor_update_secs;
     pcur_ifn->rrn = bdb_cursor_rrn;
     pcur_ifn->dbnum = bdb_cursor_dbnum;
     pcur_ifn->datacopy = bdb_cursor_datacopy;
@@ -3691,6 +3695,16 @@ static unsigned long long bdb_cursor_genid(bdb_cursor_ifn_t *cur)
     return cur->impl->genid;
 }
 
+static uint32_t bdb_cursor_insert_secs(bdb_cursor_ifn_t *cur)
+{
+    return cur->impl->insert_secs;
+}
+
+static uint32_t bdb_cursor_update_secs(bdb_cursor_ifn_t *cur)
+{
+    return cur->impl->update_secs;
+}
+
 static int bdb_cursor_rrn(bdb_cursor_ifn_t *cur) { return cur->impl->rrn; }
 
 static int serial_update_lastkey(bdb_cursor_impl_t *cur, char *key, int keylen)
@@ -3838,6 +3852,14 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
         cur->lastpage = page_rl;
         cur->lastindex = index_rl;
         cur->ver = ver_rl;
+        /* cur->rl is a live, callable cursor only when the merged record came
+         * from it.  Page-order / add-cursor paths supply the record from a temp
+         * table and leave cur->rl NULL; those rows carry synthetic genids and
+         * read back NULL timestamps regardless, so 0 is correct there. */
+        if (cur->rl)
+            cur->rl->odh2_times(cur->rl, &cur->insert_secs, &cur->update_secs);
+        else
+            cur->insert_secs = cur->update_secs = 0;
         if (cur->type == BDBC_IX && bdb_keycontainsgenid(cur->state, cur->idx))
             cur->datalen -= sizeof(unsigned long long);
         cur->genid = genid_rl;
@@ -3884,6 +3906,10 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
         /* This is a synthetic row- it's version will be the 'current' version.
          */
         cur->ver = bdb_state->version;
+        /* synthetic (shadow) row: no odh2 timestamps, and no time in the genid
+         * either -- it is transient; readers report NULL for it. */
+        cur->insert_secs = 0;
+        cur->update_secs = 0;
 
         if (cur->type == BDBC_IX && !cur->state->ixdta[cur->idx] &&
             pdatalen_sd > sizeof(unsigned long long)) {
@@ -3976,6 +4002,14 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
         cur->lastpage = page_rl;
         cur->lastindex = index_rl;
         cur->ver = ver_rl;
+        /* cur->rl is a live, callable cursor only when the merged record came
+         * from it.  Page-order / add-cursor paths supply the record from a temp
+         * table and leave cur->rl NULL; those rows carry synthetic genids and
+         * read back NULL timestamps regardless, so 0 is correct there. */
+        if (cur->rl)
+            cur->rl->odh2_times(cur->rl, &cur->insert_secs, &cur->update_secs);
+        else
+            cur->insert_secs = cur->update_secs = 0;
 
         if (cur->type == BDBC_IX && bdb_keycontainsgenid(cur->state, cur->idx))
             cur->datalen -= sizeof(unsigned long long);
@@ -4021,6 +4055,10 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
         cur->data = data_sd;
         cur->datalen = datalen_sd;
         cur->ver = bdb_state->version;
+        /* synthetic (shadow) row: no odh2 timestamps, and no time in the genid
+         * either -- it is transient; readers report NULL for it. */
+        cur->insert_secs = 0;
+        cur->update_secs = 0;
         if (cur->type == BDBC_IX)
             cur->datalen -= sizeof(unsigned long long);
         cur->genid = genid_sd;
