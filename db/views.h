@@ -341,6 +341,25 @@ int views_cron_restart(timepart_views_t *views);
 int timepart_update_retention(void *tran, const char *name, int value, struct errstat *err);
 
 /**
+ * Build a new view reflecting a retention change for a truncate partition.
+ * Produces *newview (the reconfigured ring, current shard at the last index)
+ * and the list of shard table names that must be physically added (increase)
+ * or dropped (decrease); *is_increase is set accordingly. If the retention is
+ * unchanged, newview and names are set to NULL and nnames is 0.
+ * The caller owns *newview (timepart_free_view) and the *names array (free
+ * each string then the array).
+ */
+int timepart_reconfigure_retention(const char *name, int new_retention, int is_manual, struct timepart_view **newview,
+                                   const char **partition_name, char ***names, int *nnames, int *is_increase,
+                                   struct errstat *err);
+
+/**
+ * Swap an existing partition's in-memory view for a reconfigured one with
+ * the same name (used after a retention change publishes).
+ */
+int timepart_replace_inmem_view(struct timepart_view *newview);
+
+/**
  * Locking the views subsystem, needed for ordering locks with schema
  *
  */
@@ -548,6 +567,12 @@ enum {
  *
  */
 int timepart_rollout(const char *partname);
+
+/**
+ * Return the rollout period (enum view_partition_period) of an existing
+ * partition, or VIEW_PARTITION_INVALID if the partition does not exist.
+ */
+int timepart_get_period(const char *partname);
 
 /**
  * Analyze all shards of a "name" partition

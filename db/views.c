@@ -2702,6 +2702,241 @@ done:
 }
 
 /**
+ * Build a reconfigured view reflecting a new retention for a truncate
+ * (TIME or MANUAL) partition, without mutating the live view.
+ *
+ * The shards are walked in rollout order starting right after the current
+ * shard (i.e. oldest-next-to-be-recycled first), ending with the current
+ * shard itself. The reconfigured ring is built so that the (unchanged)
+ * current shard always ends up at the last index:
+ *   - increase: new empty shards are prepended (consumed next, preserving
+ *     history), followed by the old shards in rollout order.
+ *   - decrease: the oldest shards are dropped from the front of the rollout
+ *     order, keeping the remaining ones (still ending with current).
+ * Returns *newview (caller frees via timepart_free_view) and the list of
+ * shard table names to physically create (increase) or drop (decrease).
+ */
+int timepart_reconfigure_retention(const char *name, int new_retention, int is_manual, timepart_view_t **newview_out,
+                                   const char **partition_name_out, char ***names_out, int *nnames_out,
+                                   int *is_increase_out, struct errstat *err)
+{
+    timepart_view_t *view;
+    timepart_view_t *newview = NULL;
+    timepart_shard_t *old_order = NULL;
+    char **names = NULL;
+    int old_retention;
+    int is_increase = 0;
+    int nnames = 0;
+    int i;
+    int rc = VIEW_NOERR;
+
+    *newview_out = NULL;
+    *partition_name_out = NULL;
+    *names_out = NULL;
+    *nnames_out = 0;
+    *is_increase_out = 0;
+
+    Pthread_rwlock_rdlock(&views_lk);
+
+    view = _get_view(thedb->timepart_views, name);
+    if (!view) {
+        errstat_set_strf(err, "Partition %s doesn't exist!", name);
+        errstat_set_rc(err, rc = VIEW_ERR_EXIST);
+        goto done_locked;
+    }
+
+    if (view->rolltype != TIMEPART_ROLLOUT_TRUNCATE) {
+        errstat_set_strf(err, "Partition %s is a legacy partition, use PUT instead", name);
+        errstat_set_rc(err, rc = VIEW_ERR_PARAM);
+        goto done_locked;
+    }
+
+    if ((view->period == VIEW_PARTITION_MANUAL) != (is_manual != 0)) {
+        errstat_set_strf(err, "Partition %s is %s, use PARTITIONED BY %s", name,
+                         view->period == VIEW_PARTITION_MANUAL ? "manual" : "time",
+                         view->period == VIEW_PARTITION_MANUAL ? "MANUAL" : "TIME");
+        errstat_set_rc(err, rc = VIEW_ERR_PARAM);
+        goto done_locked;
+    }
+
+    old_retention = view->retention;
+    if (new_retention == old_retention)
+        goto done_locked; /* no-op, nnames stays 0 */
+
+    if (new_retention >= VIEWS_MAX_RETENTION) {
+        errstat_set_strf(err, "Retention too high for \"%s\"", name);
+        errstat_set_rc(err, rc = VIEW_ERR_PARAM);
+        goto done_locked;
+    }
+
+    is_increase = new_retention > old_retention;
+
+    /* snapshot the old shards in rollout order (oldest-next .. current);
+     * these tblname pointers are borrowed from the live view, not owned */
+    old_order = malloc(sizeof(timepart_shard_t) * view->nshards);
+    if (!old_order) {
+        errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+        goto done_locked;
+    }
+    for (i = 0; i < view->nshards; i++) {
+        old_order[i] = view->shards[(view->current_shard + 1 + i) % view->nshards];
+    }
+
+    newview = (timepart_view_t *)calloc(1, sizeof(timepart_view_t));
+    if (!newview) {
+        errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+        goto done_locked;
+    }
+    newview->name = strdup(view->name);
+    newview->shard0name = strdup(view->shard0name);
+    if (!newview->name || !newview->shard0name) {
+        errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+        goto done_locked;
+    }
+    newview->period = view->period;
+    newview->starttime = view->starttime;
+    newview->roll_time = view->roll_time;
+    comdb2uuidcpy(newview->source_id, view->source_id);
+    newview->rolltype = TIMEPART_ROLLOUT_TRUNCATE;
+    newview->retention = new_retention;
+    newview->nshards = new_retention;
+    newview->shards = (timepart_shard_t *)calloc(new_retention, sizeof(timepart_shard_t));
+    if (!newview->shards) {
+        errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+        goto done_locked;
+    }
+
+    if (is_increase) {
+        int nnew = new_retention - old_retention;
+        char *prev_name = view->shards[view->current_shard].tblname;
+
+        names = calloc(nnew, sizeof(char *));
+        if (!names) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+            goto done_locked;
+        }
+        nnames = nnew; /* so the error path below frees any partial names[] */
+        for (i = 0; i < nnew; i++) {
+            char newname[MAXTABLELEN + 1];
+
+            rc = _generate_new_shard_name(prev_name, newname, sizeof(newname), old_retention + i, new_retention,
+                                          view->period == VIEW_PARTITION_TEST2MIN, err);
+            if (rc != VIEW_NOERR)
+                goto done_locked;
+            if (get_dbtable_by_name(newname)) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST, "shard %s exists", newname);
+                goto done_locked;
+            }
+            newview->shards[i].tblname = strdup(newname);
+            names[i] = strdup(newname);
+            if (!newview->shards[i].tblname || !names[i]) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+                goto done_locked;
+            }
+            newview->shards[i].low = INT_MAX;
+            newview->shards[i].high = INT_MAX;
+            prev_name = newname;
+        }
+        /* old shards, in rollout order, follow the new empties; current
+         * shard (old_order[old_retention-1]) lands last */
+        for (i = 0; i < old_retention; i++) {
+            newview->shards[nnew + i].tblname = strdup(old_order[i].tblname);
+            if (!newview->shards[nnew + i].tblname) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+                goto done_locked;
+            }
+            newview->shards[nnew + i].low = old_order[i].low;
+            newview->shards[nnew + i].high = old_order[i].high;
+        }
+        newview->current_shard = new_retention - 1;
+        nnames = nnew;
+    } else {
+        int ndrop = old_retention - new_retention;
+
+        names = calloc(ndrop, sizeof(char *));
+        if (!names) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+            goto done_locked;
+        }
+        nnames = ndrop; /* so the error path below frees any partial names[] */
+        for (i = 0; i < ndrop; i++) {
+            names[i] = strdup(old_order[i].tblname);
+            if (!names[i]) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+                goto done_locked;
+            }
+        }
+        for (i = 0; i < new_retention; i++) {
+            newview->shards[i].tblname = strdup(old_order[ndrop + i].tblname);
+            if (!newview->shards[i].tblname) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+                goto done_locked;
+            }
+            newview->shards[i].low = old_order[ndrop + i].low;
+            newview->shards[i].high = old_order[ndrop + i].high;
+        }
+        /* the dropped shards' data is discarded; the surviving shards keep
+         * their existing [low,high) coverage unchanged */
+        newview->current_shard = new_retention - 1;
+        nnames = ndrop;
+    }
+
+    rc = VIEW_NOERR;
+
+done_locked:
+    Pthread_rwlock_unlock(&views_lk);
+
+    free(old_order);
+
+    if (rc != VIEW_NOERR) {
+        if (newview) {
+            timepart_free_view(newview);
+            newview = NULL;
+        }
+        if (names) {
+            for (i = 0; i < nnames; i++)
+                free(names[i]);
+            free(names);
+            names = NULL;
+        }
+        return rc;
+    }
+
+    *newview_out = newview;
+    if (newview)
+        *partition_name_out = newview->name;
+    *names_out = names;
+    *nnames_out = nnames;
+    *is_increase_out = is_increase;
+    return VIEW_NOERR;
+}
+
+/**
+ * Swap an existing partition's in-memory view for a reconfigured one with
+ * the same name/source_id (used after a retention change). Pending cron
+ * events reference the partition by name and re-fetch the view when they
+ * fire, so this does not disturb rollout scheduling.
+ */
+int timepart_replace_inmem_view(timepart_view_t *newview)
+{
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *oldview;
+    int idx = -1;
+
+    Pthread_rwlock_wrlock(&views_lk);
+    oldview = _get_view_index(views, newview->name, &idx);
+    if (!oldview) {
+        Pthread_rwlock_unlock(&views_lk);
+        return VIEW_ERR_EXIST;
+    }
+    views->views[idx] = newview;
+    Pthread_rwlock_unlock(&views_lk);
+
+    timepart_free_view(oldview);
+    return VIEW_NOERR;
+}
+
+/**
  * Locking the views subsystem, needed for ordering locks with schema
  *
  */
@@ -3429,6 +3664,16 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
                 abort(); /* restart will fix this*/
             break;
         }
+        case PARTITION_RETENTION: {
+            assert(sc->newpartition != NULL);
+            rc = timepart_replace_inmem_view(sc->newpartition);
+            if (rc)
+                abort(); /* restart will fix this*/
+            /* ownership transferred to the views list; clear so backout does
+             * not free the now-live view */
+            sc->newpartition = NULL;
+            break;
+        }
         } /*switch */
         int bdberr = 0;
         rc = bdb_llog_partition(thedb->bdb_env, tran,
@@ -3461,6 +3706,17 @@ void partition_unpublish(struct schema_change_type *sc)
             int rc = timepart_create_inmem_view(sc->newpartition);
             if (rc)
                 abort(); /* restart will fix this*/
+            break;
+        }
+        case PARTITION_RETENTION: {
+            /* the pre-change view was already freed by a successful publish
+             * swap; a later sc's publish failing after this leaves us unable
+             * to cleanly revert in memory, restart will reload from llmeta */
+            logmsg(LOGMSG_ERROR,
+                   "%s: cannot revert retention change for %s in memory, "
+                   "restart required\n",
+                   __func__, sc->timepartition_name);
+            abort();
             break;
         }
         }
@@ -3509,7 +3765,7 @@ int timepart_rollout(const char *partname)
     timepart_view_t *view = _get_view(thedb->timepart_views, partname);
     if (!view) {
         goto done;
-    } 
+    }
 
     if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
         rc = ROLLOUT_TRUNC;
@@ -3520,6 +3776,19 @@ int timepart_rollout(const char *partname)
 done:
     Pthread_rwlock_unlock(&views_lk);
     return rc;
+}
+
+int timepart_get_period(const char *partname)
+{
+    int period = VIEW_PARTITION_INVALID;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    timepart_view_t *view = _get_view(thedb->timepart_views, partname);
+    if (view)
+        period = view->period;
+    Pthread_rwlock_unlock(&views_lk);
+
+    return period;
 }
 
 #ifdef COMDB2_TEST

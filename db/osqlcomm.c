@@ -6687,6 +6687,135 @@ static struct schema_change_type* _create_logical_cron_systable(const char *tbln
     return sc;
 }
 
+/**
+ * Change the retention of an existing truncate (TIME or MANUAL) partition.
+ * Reconfigures the ring in memory (see timepart_reconfigure_retention), then
+ * chains one schema change per shard that must be physically created
+ * (increase, SC_ADDTABLE, mirroring _process_single_table_sc_partitioning) or
+ * dropped (decrease, SC_DROPTABLE, mirroring the per-shard drop shape used by
+ * partition merge). The first chained schema change carries sc->newpartition
+ * and publish/unpublish, so the reconfigured view is swapped in and llmeta
+ * updated atomically with the whole chain, once all shards finalize.
+ */
+static int _process_partition_retention(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    struct errstat err = {0};
+    timepart_view_t *newview = NULL;
+    const char *partition_name = NULL;
+    char **names = NULL;
+    int nnames = 0;
+    int is_increase = 0;
+    int rc;
+    int i;
+
+    assert(sc->kind == SC_ALTERTABLE);
+
+    rc = timepart_reconfigure_retention(sc->tablename, sc->partition.u.tpt.retention,
+                                        sc->partition.u.tpt.period == VIEW_PARTITION_MANUAL, &newview, &partition_name,
+                                        &names, &nnames, &is_increase, &err);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to change retention for %s rc %d \"%s\"\n", sc->tablename, err.errval, err.errstr);
+        sc_errf(sc, "Failed to change retention for %s: %s", sc->tablename, err.errstr);
+        return ERR_SC;
+    }
+
+    if (nnames == 0) {
+        /* retention unchanged, nothing to do */
+        if (newview)
+            timepart_free_view(newview);
+        return SC_OK;
+    }
+
+    sc->timepartition_name = partition_name;
+    sc->force_rebuild = 0; /* no data movement */
+    sc->nothrevent = 1;    /* serialize, mirrors create/rollout paths */
+
+    rc = SC_OK;
+    for (i = 0; i < nnames; i++) {
+        struct schema_change_type *cur;
+
+        if (i == 0) {
+            cur = sc;
+        } else {
+            cur = clone_schemachange_type(sc);
+            if (!cur) {
+                rc = ERR_SC;
+                break;
+            }
+        }
+        cur->iq = iq;
+        cur->tran = sc->tran;
+        cur->finalize = 0; /* make sure */
+        strncpy0(cur->tablename, names[i], sizeof(cur->tablename));
+
+        if (is_increase) {
+            cur->kind = SC_ADDTABLE;
+        } else {
+            char *schemabuf = NULL;
+
+            cur->kind = SC_DROPTABLE;
+            cur->same_schema = 1;
+            free(cur->newcsc2);
+            cur->newcsc2 = NULL;
+            if (get_csc2_file(names[i], -1, &schemabuf, NULL)) {
+                sc_errf(cur, "could not get schema for shard '%s'", names[i]);
+                if (cur != sc)
+                    free_schema_change_type(cur);
+                rc = ERR_SC;
+                break;
+            }
+            cur->newcsc2 = schemabuf;
+        }
+
+        iq->sc = cur;
+        rc = start_schema_change_tran(iq, NULL);
+        if (rc != SC_OK || cur->preempted == SC_ACTION_RESUME || cur->kind == SC_ALTERTABLE_PENDING) {
+            iq->sc = NULL;
+            /* link even on failure so backout frees cur and clears any running
+             * state it registered (matches start_schema_change_tran_wrapper) */
+            if (cur->nothrevent) {
+                cur->sc_next = iq->sc_pending;
+                iq->sc_pending = cur;
+            } else if (cur != sc) {
+                free_schema_change_type(cur);
+            }
+            if (rc != SC_OK) {
+                if (rc != SC_MASTER_DOWNGRADE)
+                    iq->osql_flags |= OSQL_FLAGS_SCDONE;
+                else
+                    iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+                rc = ERR_SC;
+            }
+            break;
+        }
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+    }
+
+    if (rc == SC_OK) {
+        /* Attach the reconfigured view + publish/unpublish to the first shard
+         * sc. It is at the tail of sc_pending (LIFO) so it finalizes last,
+         * after every shard has been created/dropped, swapping the in-memory
+         * view and rewriting llmeta atomically with the whole chain.
+         * Deferred to here so newview is owned by an sc only once the chain is
+         * fully built -- otherwise (early failure below) we free it ourselves. */
+        sc->newpartition = newview;
+        sc->publish = partition_publish;
+        sc->unpublish = partition_unpublish;
+        iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    } else {
+        /* nothing was published; no sc owns newview, so free it here */
+        timepart_free_view(newview);
+    }
+
+    for (i = 0; i < nnames; i++)
+        free(names[i]);
+    free(names);
+
+    return rc;
+}
+
 static int _process_partition_alter_and_drop(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
@@ -6715,6 +6844,10 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
 
     if (sc->partition.type == PARTITION_MERGE) {
         return _process_partitioned_table_merge(iq);
+    }
+
+    if (sc->partition.type == PARTITION_RETENTION) {
+        return _process_partition_retention(iq);
     }
 
     timepart_sc_arg_t arg = {0};
