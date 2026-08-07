@@ -367,8 +367,19 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
          * of merging another table in, in which case tablename is provided)
          * Done only from one shard, the one that will publish results
          */
-    } else if (s->partition.type == PARTITION_MERGE &&
-               s->partition.u.mergetable.tablename[0] == '\0') {
+    } else if (s->partition.type == PARTITION_RETENTION && s->publish) {
+        /* increasing retention: persist the reconfigured (larger) ring after
+         * the last new empty shard has been created */
+        struct errstat err = {0};
+        assert(s->newpartition);
+        rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to update partition %s retention rc %d \"%s\"\n", s->timepartition_name, rc,
+                   err.errstr);
+            sc_errf(s, "partition_llmeta_write failed \"retention\"\n");
+            return -1;
+        }
+    } else if (s->partition.type == PARTITION_MERGE && s->partition.u.mergetable.tablename[0] == '\0') {
         struct errstat err = {0};
         if (partition_llmeta_delete(tran, s->timepartition_name, &err)) {
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);

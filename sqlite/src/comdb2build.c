@@ -2984,7 +2984,9 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         setError(pParse, SQLITE_ERROR, "Partition does not exist");
         goto clean_arg;
     } else if (rc == ROLLOUT_TRUNC) {
-        setError(pParse, SQLITE_ERROR, "Use alter to change partition config");
+        setError(pParse, SQLITE_ERROR,
+                 "Use 'ALTER TABLE <name> PARTITIONED BY TIME|MANUAL RETENTION "
+                 "<n>' to change a truncate partition's retention");
         goto clean_arg;
     }
 
@@ -5185,6 +5187,9 @@ void comdb2AlterTableEnd(Parse *pParse)
             }
         } else if (sc->partition.type == PARTITION_MERGE) {
             sc->force_rebuild = 1;
+        } else if (sc->partition.type == PARTITION_RETENTION) {
+            /* retention-only change: no column delta, no data movement, the
+               shards are added/dropped by the apply path itself. */
         }
     }
 
@@ -7948,6 +7953,16 @@ void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
 {
     struct comdb2_partition *partition;
 
+    /* "PARTITIONED BY MANUAL RETENTION <n>" (no START) against an existing
+       partition is an ALTER that changes the retention, not a create. */
+    if (!start) {
+        struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+        if (ctx && ctx->partition_first_shardname) {
+            comdb2AlterRetention(pParse, retention, 1 /* is_manual */);
+            return;
+        }
+    }
+
     if (!gbl_partitioned_table_enabled) {
         setError(pParse, SQLITE_ABORT, "Create manual partitioned table not enabled");
         return;
@@ -7967,6 +7982,79 @@ void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
         free_ddl_context(pParse);
     }
     partition->u.tpt.start = tmp;
+}
+
+/**
+ * Change the retention of an existing truncate time/manual partition:
+ *   ALTER TABLE <name> PARTITIONED BY TIME|MANUAL RETENTION <n>
+ * Only the shard count changes; the period and data layout are untouched.
+ */
+void comdb2AlterRetention(Parse *pParse, Token *retention, int is_manual)
+{
+    struct comdb2_partition *partition;
+    int32_t ret = 0;
+
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Partitioned table not enabled");
+        return;
+    }
+
+    /* remove=1: allowed to operate on an already-existing partition */
+    partition = _get_partition(pParse, 1);
+    if (!partition)
+        return;
+
+    if (_get_retention(retention, &ret)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid retention");
+        free_ddl_context(pParse);
+        return;
+    }
+    if (ret < 2) {
+        setError(pParse, SQLITE_ERROR, "Retention must be 2 or higher");
+        free_ddl_context(pParse);
+        return;
+    }
+
+    /* validate the target here so the client gets a clear message (apply-time
+     * schema-change errors are reported to the client only generically) */
+    {
+        struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+        const char *part = ctx ? ctx->tablename : "";
+        int rollout = timepart_rollout(part);
+        int period;
+
+        if (rollout == ROLLOUT_INVALID) {
+            setError(pParse, SQLITE_ERROR, "Partition does not exist");
+            free_ddl_context(pParse);
+            return;
+        }
+        if (rollout != ROLLOUT_TRUNC) {
+            setError(pParse, SQLITE_ERROR,
+                     "Legacy partition, use PUT TIME PARTITION ... RETENTION");
+            free_ddl_context(pParse);
+            return;
+        }
+        period = timepart_get_period(part);
+        if ((period == VIEW_PARTITION_MANUAL) != (is_manual != 0)) {
+            setError(pParse, SQLITE_ERROR,
+                     is_manual
+                         ? "Partition is time based, use PARTITIONED BY TIME"
+                         : "Partition is manual, use PARTITIONED BY MANUAL");
+            free_ddl_context(pParse);
+            return;
+        }
+    }
+
+    partition->type = PARTITION_RETENTION;
+    partition->u.tpt.retention = ret;
+    /* Stash the keyword used (TIME vs MANUAL) so the apply path can verify it
+       matches the partition kind; period is otherwise unused here. */
+    partition->u.tpt.period =
+        is_manual ? VIEW_PARTITION_MANUAL : VIEW_PARTITION_INVALID;
+    partition->u.tpt.start = 0;
 }
 
 
