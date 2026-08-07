@@ -382,13 +382,27 @@ int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
 
 int gbl_init_with_rowlocks = 0;
-int gbl_init_with_genid48 = 1;
+int gbl_init_with_genid48 = 0; /* TEST BRANCH: time-based genids so odh1 is legal */
 int gbl_init_with_odh = 1;
 int gbl_init_with_queue_odh = 1;
 int gbl_init_with_queue_compr = BDB_COMPRESS_LZ4;
 int gbl_init_with_queue_persistent_seq = 0;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
+/* odh2 is on by default; legacy_defaults turns it off via "dont_init_with_odh2"
+ * (see legacy_options[] in config.c).  It is also forced at write time when the
+ * db is in genid48 format, regardless of this default (a genid48 record must
+ * never be odh1, or its insert time would be lost). */
+int gbl_init_with_odh2 = 0; /* TEST BRANCH: baseline odh1 so the randomizer has something to flip */
+/* Test/debug only: when set, writes randomly UPGRADE records from odh1 to odh2
+ * (never downgrade) while genids are time-based, so a single table ends up with
+ * a mix of both header formats.  Off in normal operation; enable it to run the
+ * test suite as an odh1/odh2 coexistence fuzzer.  Has no effect under genid48
+ * (those writes are already forced to odh2). */
+int gbl_randomize_odh2 = 1; /* TEST BRANCH: randomly write odh1/odh2 per record */
+/* Count of records the randomizer above emitted as odh2 (approximate -- bumped
+ * without locking; lets a fuzz run confirm coexistence was actually produced). */
+int gbl_odh2_random_upgrades = 0;
 int gbl_init_with_compr = BDB_COMPRESS_CRLE;
 int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;

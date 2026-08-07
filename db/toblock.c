@@ -4367,10 +4367,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             } else {
                 blob_buffer_t *blob = &blobs[qblob.blobno];
                 if (!blob->exists) {
-                    if (qblob.length > MAXBLOBLENGTH) {
-                        reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_LARGE,
-                                  "blob %d too large (%u > max size %u)",
-                                  qblob.blobno, qblob.length, MAXBLOBLENGTH);
+                    unsigned int maxbloblen = max_blob_length_for_table(iq->usedb);
+                    if (qblob.length > (unsigned)maxbloblen) {
+                        reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_LARGE, "blob %d too large (%u > max size %d)",
+                                  qblob.blobno, qblob.length, maxbloblen);
                         rc = ERR_BLOB_TOO_LARGE;
                         GOTOBACKOUT;
                     }

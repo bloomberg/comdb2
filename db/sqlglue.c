@@ -1163,14 +1163,22 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
         }
     }
 
-    if ((f->type == SERVER_BLOB || f->type == SERVER_BLOB2 ||
-         f->type == SERVER_VUTF8) &&
-        m->n > MAXBLOBLENGTH) {
-        rc = -1;
-        if (fail_reason) {
-            fail_reason->reason = CONVERT_FAILED_BLOB_SIZE;
+    /* Enforce the blob/vutf8 length limit on the *uncompressed* sqlite value,
+     * here, before it is packed and compressed.  This MUST use the per-table
+     * limit (max_blob_length): an odh1 table can only store 28 bits of length,
+     * and a >256MB blob that compresses small would otherwise pass a downstream
+     * check_blob_sizes() (which sees the already-compressed size) and then be
+     * silently truncated into the odh1 header.  When the caller did not supply
+     * a per-table limit, fall back to the coarse MAXBLOBLENGTH2 upper bound. */
+    if (f->type == SERVER_BLOB || f->type == SERVER_BLOB2 || f->type == SERVER_VUTF8) {
+        unsigned int bloblimit = info->max_blob_length ? info->max_blob_length : MAXBLOBLENGTH2;
+        if ((unsigned int)m->n > bloblimit) {
+            rc = -1;
+            if (fail_reason) {
+                fail_reason->reason = CONVERT_FAILED_BLOB_SIZE;
+            }
+            return rc;
         }
-        return rc;
     }
 
     if (m->flags & MEM_Master) {
@@ -1501,7 +1509,7 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
     int clen = 0; /* converted sofar */
     int nblobs = 0;
 
-    struct mem_info info;
+    struct mem_info info = {0};
     struct field_conv_opts_tz convopts = {.flags = 0};
 
     info.s = s;
@@ -2739,6 +2747,8 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
              */
             pCur->bdbcur->get_found_data(pCur->bdbcur, &pCur->rrn, &pCur->genid,
                                          &sz, &buf, &ver);
+            pCur->insert_secs = pCur->bdbcur->insert_secs(pCur->bdbcur);
+            pCur->update_secs = pCur->bdbcur->update_secs(pCur->bdbcur);
             vtag_to_ondisk_vermap(pCur->db, buf, &sz, ver);
             if (sz > getdatsize(pCur->db)) {
                 /* This shouldn't happen, but check anyway */
@@ -4635,6 +4645,41 @@ i64 sqlite3BtreeIntegerKey(BtCursor *pCur)
     return size;
 }
 
+/* odh2 insert/update timestamps of the current row (epoch seconds).  For a data
+ * cursor these were snapshotted off the data record at fetch time.  For an index
+ * cursor the snapshot is the *index entry's* odh time, which is unrelated to the
+ * row and does not advance on a non-key update -- so read the DATA record's odh
+ * times by genid instead.  0 when the row has no odh2 header (odh1 or synthetic);
+ * the caller then falls back to the genid insert time (odh1) or NULL (synthetic). */
+static void odh2_row_timestamps(BtCursor *pCur, u32 *insert_secs, u32 *update_secs)
+{
+    *insert_secs = pCur->insert_secs;
+    *update_secs = pCur->update_secs;
+
+    /* Index cursor on a real (committed) row: source the data record's times. */
+    if (pCur->ixnum >= 0 && pCur->db && !is_genid_synthetic(pCur->genid)) {
+        uint32_t ins = 0, upd = 0;
+        if (get_ondisk_timestamps_by_genid(pCur->db, pCur->rrn, pCur->genid, &ins, &upd) == 0) {
+            *insert_secs = ins;
+            *update_secs = upd;
+        }
+    }
+}
+
+u32 sqlite3BtreeInsertTimestamp(BtCursor *pCur)
+{
+    u32 insert_secs, update_secs;
+    odh2_row_timestamps(pCur, &insert_secs, &update_secs);
+    return insert_secs;
+}
+
+u32 sqlite3BtreeUpdateTimestamp(BtCursor *pCur)
+{
+    u32 insert_secs, update_secs;
+    odh2_row_timestamps(pCur, &insert_secs, &update_secs);
+    return update_secs;
+}
+
 /*
  ** Set size to the number of bytes of data in the entry the
  ** cursor currently points to.  Always return SQLITE_OK.
@@ -5983,6 +6028,11 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             }
             pCur->rrn = 2;
             pCur->genid = genid;
+            /* synthetic (uncommitted) row: no odh2 header timestamps.  Clear any
+             * value a previous fetch left on the cursor so the reader sees 0 and
+             * reports NULL rather than a stale time. */
+            pCur->insert_secs = 0;
+            pCur->update_secs = 0;
         } else {
             rc = ddguard_bdb_cursor_find(thd, pCur, pCur->bdbcur, &genid,
                                          sizeof(genid), 0, bias, &bdberr);
@@ -5998,6 +6048,8 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                  */
                 pCur->bdbcur->get_found_data(pCur->bdbcur, &pCur->rrn,
                                              &pCur->genid, &fndlen, &buf, &ver);
+                pCur->insert_secs = pCur->bdbcur->insert_secs(pCur->bdbcur);
+                pCur->update_secs = pCur->bdbcur->update_secs(pCur->bdbcur);
                 vtag_to_ondisk(pCur->db, buf, &fndlen, ver, pCur->genid);
             }
         }
@@ -9451,7 +9503,7 @@ char *sqlite3BtreeGetTblName(BtCursor *pCur)
 int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized)
 {
     struct sql_thread *thd = pCur->thd;
-    struct mem_info info;
+    struct mem_info info = {0};
     struct field_conv_opts_tz convopts = {.flags = 0};
     int nblobs = 0;
     int rc = 0;
@@ -9474,6 +9526,9 @@ int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized
     info.convopts = &convopts;
     info.outblob = pCur->wr_blob_buffers;
     info.maxblobs = MAXBLOBS;
+    /* Enforce this table's real blob limit (256MB for odh1, up to ~2GB for
+     * odh2) on the uncompressed value in mem_to_ondisk(), before compression. */
+    info.max_blob_length = max_blob_length_for_table(pCur->db);
 
     memset(info.outblob, 0, sizeof(blob_buffer_t) * MAXBLOBS);
     init_convert_failure_reason(info.fail_reason);
@@ -12940,7 +12995,7 @@ int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc,
     Mem mout = {{0}};
     int nblobs = 0;
     struct field_conv_opts_tz convopts = {.flags = 0};
-    struct mem_info info;
+    struct mem_info info = {0};
     strbuf *sql;
     int i, rc;
     int exist = 0;

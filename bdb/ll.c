@@ -1097,11 +1097,21 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
              * Otherwise there could be splits in the middle of the btree,
              * which we can't handle under page-order tablescan.  */
 
+            /* For odh2 records, carry the original insert time forward so an
+             * update does not reset it (update_secs is refreshed to "now" by
+             * init_odh).  Source it from the old record's odh2 insert_secs, or
+             * from the old (time-based) genid for an odh1 record being
+             * upgraded.  Only the data record (dtafile 0) carries this. */
+            uint32_t preserve_insert_secs = 0;
+            if (dtafile == 0 && malloceddta) {
+                if (!peek_odh2_insert_secs(old_dta_out_lcl.data, old_dta_out_lcl.size, &preserve_insert_secs))
+                    preserve_insert_secs = (uint32_t)bdb_genid_timestamp(oldgenid);
+            }
+
             /* Format the payload. */
             DBT packeddta;
-            rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, dta,
-                                               &packeddta, -1, &freedtaptr,
-                                               formatted_record, odhready);
+            rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, dta, &packeddta, -1, &freedtaptr, formatted_record,
+                                               odhready, preserve_insert_secs);
             recptr = packeddta.data;
             formatted_record_len = packeddta.size;
 

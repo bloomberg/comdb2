@@ -2222,11 +2222,14 @@ static char *opstr(db_recops op)
     }
 }
 
+/* db_printlog-only scratch buffers (see callers under case DB_TXN_PRINT).  Sized
+ * to the odh2 maximum so a >256MB odh2 record isn't truncated in the log dump;
+ * this only ever allocates inside the standalone comdb2_db_printlog tool. */
 static char *printmemarg1(void)
 {
     static char *u = NULL;
     if (!u)
-        u = malloc(MAXBLOBLENGTH + 7);
+        u = malloc((size_t)MAXBLOBLENGTH2 + 7);
     return u;
 }
 
@@ -2234,7 +2237,7 @@ static char *printmemarg2(void)
 {
     static char *u = NULL;
     if (!u)
-        u = malloc(MAXBLOBLENGTH + 7);
+        u = malloc((size_t)MAXBLOBLENGTH2 + 7);
     return u;
 }
 
@@ -2309,9 +2312,8 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
 
             if (!llldta)
                 llldta = printmemarg1();
-            bdb_reconstruct_add(bdb_state, &lll, &lllgenid,
-                                sizeof(unsigned long long), llldta,
-                                MAXBLOBLENGTH + 7, &lllout, NULL);
+            bdb_reconstruct_add(bdb_state, &lll, &lllgenid, sizeof(unsigned long long), llldta, MAXBLOBLENGTH2, &lllout,
+                                NULL);
 
             printf(" --genid %16llx\n", lllgenid);
             printf(" --dta [%d]  ", lllout);
@@ -2403,9 +2405,8 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
              * db_printlog. */
             if (!llldta)
                 llldta = printmemarg1();
-            bdb_reconstruct_add(bdb_state, &lll, &lllgenid,
-                                sizeof(unsigned long long), llldta,
-                                MAXBLOBLENGTH + 7, &lllout, NULL);
+            bdb_reconstruct_add(bdb_state, &lll, &lllgenid, sizeof(unsigned long long), llldta, MAXBLOBLENGTH2, &lllout,
+                                NULL);
 
             printf(" --genid %16llx\n", lllgenid);
             printf(" --dta [%d]  ", lllout);

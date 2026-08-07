@@ -234,14 +234,17 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_to = db;
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
+    /* odh2 requires the ondisk header; new tables inherit the global default
+     * (there is no per-table odh2 schema option yet). */
+    db->odh2 = s->headers ? gbl_init_with_odh2 : 0;
     db->schema_version = 1;
     if (local_lock)
         unlock_schema_lk();
 
     /* compression algorithms set to 0 for new table - this
        will have to be changed manually by the operator */
-    set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc,
-                         db->schema_version, s->compress, s->compress_blobs, 1);
+    set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc, db->schema_version, s->compress,
+                         s->compress_blobs, 1, db->odh2);
 
     return 0;
 }

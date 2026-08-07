@@ -2222,7 +2222,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
     int blbix = 0;
 
     if (!data->blb_buf) {
-        data->blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+        data->blb_buf = malloc(max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE);
         if (!data->blb_buf) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                    __func__, __LINE__);
@@ -2276,9 +2276,9 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             }
 
             /* Reconstruct the add. */
-            if ((rc = bdb_reconstruct_add(
-                     bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
-                     MAXBLOBLENGTH + ODH_SIZE, &dtalen, &ixlen)) != 0) {
+            if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
+                                          max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE, &dtalen, &ixlen)) !=
+                0) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
                        __func__, __LINE__, rc);
                 goto error;
@@ -2334,7 +2334,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
         case DB_llog_undo_upd_dta:
         case DB_llog_undo_upd_dta_lk:
             if (!data->old_blb_buf) {
-                data->old_blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+                data->old_blb_buf = malloc(max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE);
                 if (!data->old_blb_buf) {
                     logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                            __func__, __LINE__);
@@ -2371,7 +2371,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     bdb_state, &rec->lsn, data->old_blb_buf, &prevlen,
                     data->blb_buf, &updlen, NULL, NULL, NULL);
             } else {
-                prevlen = updlen = MAXBLOBLENGTH + ODH_SIZE;
+                prevlen = updlen = max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE;
                 rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
                                             NULL, NULL, data->old_blb_buf,
                                             &prevlen, NULL, NULL, data->blb_buf,
@@ -2442,8 +2442,8 @@ static int unpack_and_upgrade_ondisk_record(struct convert_record_data *data,
                                             void *unpack, struct odh *odh)
 {
     int rc = 0;
-    if ((rc = bdb_unpack(data->from->handle, dta, *dtalen, unpack,
-                         data->from->lrl + ODH_SIZE, odh, NULL)) != 0) {
+    if ((rc = bdb_unpack(data->from->handle, dta, *dtalen, unpack, data->from->lrl + ODH_SIZE_RESERVE, odh, NULL)) !=
+        0) {
         logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n", __func__,
                __LINE__, rc);
         return rc;
@@ -2559,7 +2559,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_dta_lk_args *add_dta_lk = NULL;
 
-    dtalen = data->from->lrl + ODH_SIZE;
+    dtalen = data->from->lrl + ODH_SIZE_RESERVE;
     brecs.genid = rec->genid;
     pbrecs = hash_find(data->blob_hash, &brecs);
     if (pbrecs) {
@@ -2956,7 +2956,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     } else {
         unsigned long long prevgenid, newgenid;
         int prevgenidlen, newgenidlen;
-        prevlen = updlen = data->from->lrl + ODH_SIZE;
+        prevlen = updlen = data->from->lrl + ODH_SIZE_RESERVE;
         prevgenidlen = newgenidlen = sizeof(unsigned long long);
         rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
                                     &prevgenid, &prevgenidlen,
@@ -3568,10 +3568,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     }
 
     listc_init(&data->redo_lsns, offsetof(struct redo_genid_lsns, linkv));
-    data->dta_buf = malloc(data->from->lrl + ODH_SIZE);
-    data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
-    data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE);
-    data->unpack_old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
+    data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
+    data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
+    data->unpack_old_dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
     data->blb_buf = NULL;
     data->old_blb_buf = NULL;
     if (!data->dta_buf || !data->old_dta_buf || !data->unpack_dta_buf ||
