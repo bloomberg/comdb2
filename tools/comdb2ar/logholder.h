@@ -52,6 +52,13 @@ public:
 
     std::string recovery_options();
 
+    bool copy_ok();
+    // Ask the database (logdelete4+) whether the copy stayed valid -- i.e. no
+    // recovery or other exclusive operation ran during it.  Returns true if the
+    // database confirms the copy is good, or if it is too old to have the
+    // handshake (pre-v4); returns false if the database reports the copy was
+    // aborted, or does not answer (timeout / dropped connection).
+
     int version() { return m_version; };
 };
 
