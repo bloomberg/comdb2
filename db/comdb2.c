@@ -3814,6 +3814,16 @@ static int init(int argc, char **argv)
                MAX_DBNAME_LENGTH);
         return -1;
     }
+    /* Coerce the dbname to lower case. The client (cdb2_open) lower-cases the
+     * dbname it connects with, so the server must use the same canonical form
+     * for its name to match -- regardless of how it was cased on the command
+     * line or in the lrl file. This flows on to gbl_dbname, dbenv->envname and
+     * all the lrl/directory paths derived from dbname below. In import mode
+     * dbname is a read-only literal (and already lower case), so skip it. */
+    if (!gbl_import_mode) {
+        for (char *p = dbname; *p; p++)
+            *p = tolower((unsigned char)*p);
+    }
     strcpy(gbl_dbname, dbname);
 
     char tmpuri[1024];
