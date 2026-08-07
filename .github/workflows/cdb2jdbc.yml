@@ -1,0 +1,173 @@
+name: cdb2jdbc
+
+# Builds the comdb2 image from source and runs the cdb2jdbc (comdb2-driver) test
+# suite against a throwaway comdb2 container.
+#
+# It stands up one comdb2 container plus a JDK container that runs `mvn test`
+# against it. The driver defaults to pmux routing (pmuxrte=true, port 5105) and,
+# because "comdb2" is not a known comdb2 tier, treats it as a direct host --- so
+# the test runner reaches the database at comdb2:5105 over the compose network,
+# with no source changes needed for connectivity.
+
+on:
+  # Only build/run when something that affects the driver or the image changes.
+  pull_request:
+    branches: [main]
+    paths:
+      - "cdb2jdbc/**"
+      - "protobuf/**"
+      - "contrib/docker/**"
+      - ".github/workflows/cdb2jdbc.yml"
+
+  # Daily @ 6am Eastern, against the default branch (main).
+  schedule:
+    - cron: "0 11 * * *"
+
+  # Enable manually triggering the job.
+  workflow_dispatch:
+
+# Only keep the latest run per branch to avoid wasting runner minutes; always
+# run every commit on main.
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  jdbc-tests:
+    name: cdb2jdbc integration tests
+
+    # TODO: flip to false (and mark as a required check under branch protection)
+    # once this has proven stable, so a failure blocks the PR.
+    continue-on-error: true
+
+    # GitHub-hosted Ubuntu runners ship with Docker and the Compose plugin.
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        # Fail fast so a broken command doesn't silently pass the step.
+        shell: bash -o errexit -o nounset -o pipefail {0}
+
+    env:
+      # The image tag produced by contrib/docker/compose.yaml.
+      IMAGE: comdb2-dev:latest
+      # A user-defined bridge network so the test runner can resolve the
+      # database container by name ("comdb2") and still reach the internet
+      # (for Maven downloads).
+      NETWORK: cdb2net
+      # An empty database; the tests create and drop their own tables.
+      DBNAME: cdb2jdbctest
+      # Java 8 (the driver targets 1.8) + Maven. The raw openjdk:8 image has no
+      # Maven, so we use the official Maven image built on Temurin JDK 8.
+      RUNNER_IMAGE: maven:3.9-eclipse-temurin-8
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show Docker version
+        run: |
+          docker version
+          docker compose version
+
+      # Build comdb2-dev:latest exactly the way a user would --- `docker compose
+      # build` from contrib/docker. Every compose service shares this one image,
+      # so this builds it a single time.
+      - name: Build comdb2 image
+        run: docker compose -f contrib/docker/compose.yaml build
+
+      - name: Create docker network
+        run: docker network create "$NETWORK"
+
+      # Run a standalone (non-clustered) comdb2 database. The standalone
+      # entrypoint starts pmux on 5105 and registers the database, so a client
+      # on the same network can route to it via pmux.
+      - name: Start comdb2 container
+        run: docker run -d --init --name comdb2 --network "$NETWORK" "$IMAGE" "$DBNAME"
+
+      # No compose healthcheck here, so poll until the database answers a query.
+      - name: Wait for comdb2 to be ready
+        run: |
+          for _ in $(seq 1 60); do
+            if docker exec comdb2 cdb2sql "$DBNAME" local "select 1" >/dev/null 2>&1; then
+              echo "comdb2 is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "comdb2 did not become ready in time" >&2
+          docker logs comdb2 || true
+          exit 1
+
+      # Persist the Maven repository across runs. The runner mounts ~/.m2 into
+      # the test container (as /root/.m2), so cache the resolved artifacts here.
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-cdb2jdbc-${{ hashFiles('cdb2jdbc/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-cdb2jdbc-
+
+      # Run the suite from a Java 8 + Maven container joined to the same network.
+      # env.skipTests=false enables the DB-backed tests (skipped by default so a
+      # plain `mvn package` stays green with no server). SSLTest/SSLPreferTest are
+      # excluded in cdb2jdbc/pom.xml since a plain container can't provide SSL.
+      - name: Run cdb2jdbc tests
+        run: |
+          docker run --rm \
+            --network "$NETWORK" \
+            -v "$PWD":/work -w /work/cdb2jdbc \
+            -v "$HOME/.m2":/root/.m2 \
+            "$RUNNER_IMAGE" \
+            mvn --batch-mode \
+              -Denv.skipTests=false \
+              -Dmaven.javadoc.skip=true \
+              -Dcdb2jdbc.test.cluster=comdb2 \
+              -Dcdb2jdbc.test.database="$DBNAME" \
+              test
+
+      # Keep the raw surefire reports as an artifact (runs even when tests fail).
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdb2jdbc-surefire-reports
+          path: cdb2jdbc/target/surefire-reports/**
+          if-no-files-found: warn
+
+      # Surface pass/fail totals in the job summary so results are visible on the
+      # PR without digging through logs.
+      - name: Publish test summary
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, xml.etree.ElementTree as ET
+          total = fail = err = skip = 0
+          rows = []
+          for p in sorted(glob.glob("cdb2jdbc/target/surefire-reports/TEST-*.xml")):
+              r = ET.parse(p).getroot()
+              t = int(r.get("tests", 0)); f = int(r.get("failures", 0))
+              e = int(r.get("errors", 0)); s = int(r.get("skipped", 0))
+              total += t; fail += f; err += e; skip += s
+              rows.append((r.get("name", p), t, f, e, s))
+          print("## cdb2jdbc test results\n")
+          if not rows:
+              print("No surefire reports were produced.")
+          else:
+              print(f"**{total} tests, {fail} failures, {err} errors, {skip} skipped**\n")
+              print("| Suite | Tests | Failures | Errors | Skipped |")
+              print("|---|--:|--:|--:|--:|")
+              for n, t, f, e, s in rows:
+                  print(f"| {n} | {t} | {f} | {e} | {s} |")
+          PY
+
+      - name: Dump comdb2 logs on failure
+        if: failure()
+        run: docker logs comdb2 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f comdb2 >/dev/null 2>&1 || true
+          docker network rm "$NETWORK" >/dev/null 2>&1 || true
