@@ -21,7 +21,8 @@ jobs:
           java-version: 8
           java-package: jdk
           check-latest: true
-          server-id: ossrh
+          # Must match <publishingServerId> in cdb2jdbc/pom.xml's ossrh profile.
+          server-id: central
           server-username: OSSRH_USERNAME
           server-password: OSSRH_PASSWORD
           gpg-private-key: ${{ secrets.GPG_KEY }}
@@ -31,6 +32,9 @@ jobs:
         working-directory: cdb2jdbc
         run: mvn --batch-mode -Possrh -Dmaven.test.skip=true -Dgpg.keyname=${{ secrets.GPG_KEY_ID }} -Dgpg.passphrase=${{ secrets.GPG_KEY_PASSPHRASE }} clean deploy
         env:
+          # NOTE: these secrets must now hold a Central Portal user token
+          # (name + password from https://central.sonatype.com/account), NOT the
+          # legacy OSSRH credentials. An old OSSRH token returns 401.
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
           GPG_KEY_PASSPHRASE: ${{ secrets.GPG_KEY_PASSPHRASE }}
