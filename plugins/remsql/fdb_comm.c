@@ -356,6 +356,33 @@ fdb_svc_callback_t callbacks[] = {
 };
 // clang-format on
 
+/* Message types accepted on a remtran/rem2pc write (transaction) session:
+ * transaction control, the row write ops and their _PI variants, index ops,
+ * and heartbeats. Read/cursor ops and response types (e.g. FDB_MSG_TRAN_2PC_RC,
+ * which has no callback entry) belong to other paths and must not be dispatched
+ * here; rejecting them also keeps the callbacks[] index in range. */
+static int is_valid_remtran_msg(int type)
+{
+    switch (type & FD_MSG_TYPE) {
+    case FDB_MSG_TRAN_BEGIN:
+    case FDB_MSG_TRAN_PREPARE:
+    case FDB_MSG_TRAN_COMMIT:
+    case FDB_MSG_TRAN_ROLLBACK:
+    case FDB_MSG_TRAN_2PC_BEGIN:
+    case FDB_MSG_INSERT:
+    case FDB_MSG_INSERT_PI:
+    case FDB_MSG_DELETE:
+    case FDB_MSG_DELETE_PI:
+    case FDB_MSG_UPDATE:
+    case FDB_MSG_UPDATE_PI:
+    case FDB_MSG_INDEX:
+    case FDB_MSG_HBEAT:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 char *fdb_msg_type(int type)
 {
     switch (type) {
@@ -972,6 +999,24 @@ static int fdb_msg_prepare_message(fdb_msg_t *msg)
 }
 
 /* stuff comes in network endian fomat */
+/* Upper bounds for variable-length fields received off the wire, used to reject
+ * corrupt or hostile framing before allocating/reading. SQL text and row
+ * payloads reuse the SQLite limits they must satisfy anyway
+ * (SQLITE_MAX_SQL_LENGTH / SQLITE_MAX_LENGTH, from sqliteLimit.h via sql.h). */
+#define FDB_MAX_SRCNAME 1024 /* source hostname/uri */
+
+/* Single source of truth for the accepted wire lengths of the SQL statement and
+ * the serialized row payloads. Return non-zero if the length is acceptable. */
+static int fdb_valid_sqllen(int len)
+{
+    return len > 0 && len <= SQLITE_MAX_SQL_LENGTH;
+}
+
+static int fdb_valid_datalen(int len)
+{
+    return len >= 0 && len <= SQLITE_MAX_LENGTH;
+}
+
 int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flags,
                              const char *func, int line)
 {
@@ -1115,6 +1160,9 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             rc = cdb2buf_fread(msg->tv.authdta, 1, msg->tv.authdtalen, sb);
             if (rc != msg->tv.authdtalen)
                 return -1;
+        } else {
+            msg->tv.authdta = NULL;
+            msg->tv.authdtalen = 0;
         }
 
         break;
@@ -1147,12 +1195,17 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(msg->tr.authdtalen))
                 return -1;
             msg->tr.authdtalen = ntohl(msg->tr.authdtalen);
+            if (msg->tr.authdtalen <= 0 || msg->tr.authdtalen > 65536)
+                return -1;
             msg->tr.authdta = malloc(msg->tr.authdtalen);
             if (!msg->tr.authdta)
                 return -1;
             rc = cdb2buf_fread(msg->tr.authdta, 1, msg->tr.authdtalen, sb);
             if (rc != msg->tr.authdtalen)
                 return -1;
+        } else {
+            msg->tr.authdta = NULL;
+            msg->tr.authdtalen = 0;
         }
 
         break;
@@ -1181,14 +1234,14 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             return -1;
 
         if (msg->rv.errstrlen) {
-            msg->rv.errstr = (char *)malloc(msg->rv.errstrlen);
+            msg->rv.errstr = (char *)malloc(msg->rv.errstrlen + 1);
             if (!msg->rv.errstr)
                 return -1;
 
             rc = cdb2buf_fread(msg->rv.errstr, 1, msg->rv.errstrlen, sb);
             if (rc != msg->rv.errstrlen)
                 return -1;
-            msg->rv.errstr[msg->rv.errstrlen - 1] = '\0';
+            msg->rv.errstr[msg->rv.errstrlen] = '\0';
         } else {
             msg->rv.errstr = NULL;
         }
@@ -1211,15 +1264,18 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->rc.errstrlen))
             return -1;
         msg->rc.errstrlen = ntohl(msg->rc.errstrlen);
+        if (msg->rc.errstrlen < 0 || msg->rc.errstrlen > 4096)
+            return -1;
 
         if (msg->rc.errstrlen) {
-            msg->rc.errstr = (char *)malloc(msg->rc.errstrlen);
+            msg->rc.errstr = (char *)malloc(msg->rc.errstrlen + 1);
             if (!msg->rc.errstr)
                 return -1;
 
             rc = cdb2buf_fread(msg->rc.errstr, 1, msg->rc.errstrlen, sb);
             if (rc != msg->rc.errstrlen)
                 return -1;
+            msg->rc.errstr[msg->rc.errstrlen] = '\0';
         } else {
             msg->rc.errstr = NULL;
         }
@@ -1268,15 +1324,18 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->co.srcnamelen))
             return -1;
         msg->co.srcnamelen = ntohl(msg->co.srcnamelen);
+        if (msg->co.srcnamelen < 0 || msg->co.srcnamelen > FDB_MAX_SRCNAME)
+            return -1;
 
         if (msg->co.srcnamelen > 0) {
-            msg->co.srcname = (char *)malloc(msg->co.srcnamelen);
+            msg->co.srcname = (char *)malloc(msg->co.srcnamelen + 1);
             if (!msg->co.srcname)
                 return -1;
 
             rc = cdb2buf_fread(msg->co.srcname, 1, msg->co.srcnamelen, sb);
             if (rc != msg->co.srcnamelen)
                 return -1;
+            msg->co.srcname[msg->co.srcnamelen] = '\0';
         } else {
             msg->co.srcname = NULL;
         }
@@ -1309,12 +1368,19 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(msg->co.authdtalen))
                 return -1;
             msg->co.authdtalen = ntohl(msg->co.authdtalen);
+            if (msg->co.authdtalen <= 0 || msg->co.authdtalen > 65536)
+                return -1;
             msg->co.authdta = malloc(msg->co.authdtalen);
             if (!msg->co.authdta)
                 return -1;
             rc = cdb2buf_fread(msg->co.authdta, 1, msg->co.authdtalen, sb);
             if (rc != msg->co.authdtalen)
                 return -1;
+        } else {
+            /* No auth blob framed; NULL it (and its length) so the union does
+             * not leave a stale pointer for fdb_msg_clean_message() to free. */
+            msg->co.authdta = NULL;
+            msg->co.authdtalen = 0;
         }
 
         if (!fdb_is_dbname_in_whitelist(msg->co.srcname)) {
@@ -1389,6 +1455,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         msg->dr.datalen = (((unsigned)msg->dr.datalen) << 16) +
                           (((unsigned)msg->dr.datalen) >> 16);
         msg->dr.datacopylen = 0;
+        if (!fdb_valid_datalen(msg->dr.datalen))
+            return -1;
 
         if (msg->dr.datalen > 0 || msg->dr.datacopylen > 0) {
             msg->dr.data =
@@ -1482,10 +1550,12 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->sq.sqllen))
             return -1;
         msg->sq.sqllen = ntohl(msg->sq.sqllen);
+        if (!fdb_valid_sqllen(msg->sq.sqllen))
+            return -1;
         /*fprintf(stderr, "%d XYXY DONE calling cdb2buf_fread %llu\n", __LINE__,
          * osql_log_time());*/
 
-        msg->sq.sql = (char *)malloc(msg->sq.sqllen);
+        msg->sq.sql = (char *)malloc(msg->sq.sqllen + 1);
         if (!msg->sq.sql)
             return -1;
 
@@ -1494,6 +1564,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         rc = cdb2buf_fread(msg->sq.sql, 1, msg->sq.sqllen, sb);
         if (rc != msg->sq.sqllen)
             return -1;
+        msg->sq.sql[msg->sq.sqllen] = '\0';
         /*fprintf(stderr, "%d XYXY DONE calling cdb2buf_fread %llu\n", __LINE__,
          * osql_log_time());*/
 
@@ -1506,6 +1577,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(msg->sq.keylen))
                 return -1;
             msg->sq.keylen = ntohl(msg->sq.keylen);
+            if (msg->sq.keylen < 0 || msg->sq.keylen > MAXKEYSZ + MAXRECSZ)
+                return -1;
             /*fprintf(stderr, "%d XYXY DONE calling cdb2buf_fread %llu\n",
              * __LINE__, osql_log_time());*/
 
@@ -1570,7 +1643,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->in.datalen))
             return -1;
         msg->in.datalen = ntohl(msg->in.datalen);
-        if (msg->in.datalen < 0)
+        if (!fdb_valid_datalen(msg->in.datalen))
             return -1;
 
         rc = cdb2buf_fread((char *)&msg->in.seq, 1, sizeof(msg->in.seq), sb);
@@ -1595,7 +1668,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(tmp))
                 return -1;
             tmp = ntohl(tmp);
-            if (tmp <= 0 || tmp > MAXTABLELEN)
+            if (tmp <= 0 || tmp >= MAXTABLELEN)
                 return -1;
             msg->in.tblname = malloc(tmp + 1);
             if (!msg->in.tblname)
@@ -1604,6 +1677,10 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != tmp)
                 return -1;
             msg->in.tblname[tmp] = '\0';
+        } else {
+            /* No tblname framed for this message; NULL it so the union does not
+             * leave a stale pointer for fdb_msg_clean_message() to free. */
+            msg->in.tblname = NULL;
         }
 
         break;
@@ -1654,7 +1731,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(tmp))
                 return -1;
             tmp = ntohl(tmp);
-            if (tmp <= 0 || tmp > MAXTABLELEN)
+            if (tmp <= 0 || tmp >= MAXTABLELEN)
                 return -1;
             msg->de.tblname = malloc(tmp + 1);
             if (!msg->de.tblname)
@@ -1663,6 +1740,10 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != tmp)
                 return -1;
             msg->de.tblname[tmp] = '\0';
+        } else {
+            /* No tblname framed for this message; NULL it so the union does not
+             * leave a stale pointer for fdb_msg_clean_message() to free. */
+            msg->de.tblname = NULL;
         }
 
         break;
@@ -1721,7 +1802,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->up.datalen))
             return -1;
         msg->up.datalen = ntohl(msg->up.datalen);
-        if (msg->up.datalen < 0)
+        if (!fdb_valid_datalen(msg->up.datalen))
             return -1;
 
         rc = cdb2buf_fread((char *)&msg->up.seq, 1, sizeof(msg->up.seq), sb);
@@ -1746,7 +1827,7 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != sizeof(tmp))
                 return -1;
             tmp = ntohl(tmp);
-            if (tmp <= 0 || tmp > MAXTABLELEN)
+            if (tmp <= 0 || tmp >= MAXTABLELEN)
                 return -1;
             msg->up.tblname = malloc(tmp + 1);
             if (!msg->up.tblname)
@@ -1755,6 +1836,10 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
             if (rc != tmp)
                 return -1;
             msg->up.tblname[tmp] = '\0';
+        } else {
+            /* No tblname framed for this message; NULL it so the union does not
+             * leave a stale pointer for fdb_msg_clean_message() to free. */
+            msg->up.tblname = NULL;
         }
 
         break;
@@ -3209,9 +3294,20 @@ done:
     return rc;
 }
 
+/* Fetch the session's clnt for a write/row op, or NULL (with a log) if the
+ * cursor was never opened/registered -- callers must reject the op on NULL. */
+static struct sqlclntstate *fdb_bend_row_clnt(svc_callback_arg_t *arg, const char *func)
+{
+    if (!arg || !arg->clnt) {
+        logmsg(LOGMSG_ERROR, "%s: fdb op without a valid cursor/session\n", func);
+        return NULL;
+    }
+    return arg->clnt;
+}
+
 int fdb_bend_insert(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct sqlclntstate *clnt = arg->clnt;
+    struct sqlclntstate *clnt = fdb_bend_row_clnt(arg, __func__);
     unsigned long long genid = msg->in.genid;
     unsigned long long ins_keys = msg->in.ins_keys;
     char *data = msg->in.data;
@@ -3220,6 +3316,9 @@ int fdb_bend_insert(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int version = msg->in.version;
     int seq = msg->in.seq;
     int rc;
+
+    if (!clnt)
+        return -1;
 
     clnt->ins_keys = ins_keys;
     clnt->del_keys = 0ULL;
@@ -3237,13 +3336,16 @@ int fdb_bend_insert(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_delete(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct sqlclntstate *clnt = arg->clnt;
+    struct sqlclntstate *clnt = fdb_bend_row_clnt(arg, __func__);
     unsigned long long genid = msg->de.genid;
     unsigned long long del_keys = msg->de.del_keys;
     int rootpage = msg->de.rootpage;
     int version = msg->de.version;
     int seq = msg->de.seq;
     int rc;
+
+    if (!clnt)
+        return -1;
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = del_keys;
@@ -3261,7 +3363,7 @@ int fdb_bend_delete(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_update(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct sqlclntstate *clnt = arg->clnt;
+    struct sqlclntstate *clnt = fdb_bend_row_clnt(arg, __func__);
     unsigned long long oldgenid = msg->up.genid;
     unsigned long long genid = msg->up.genid;
     unsigned long long ins_keys = msg->up.ins_keys;
@@ -3272,6 +3374,9 @@ int fdb_bend_update(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int version = msg->up.version;
     int seq = msg->up.seq;
     int rc;
+
+    if (!clnt)
+        return -1;
 
     clnt->ins_keys = ins_keys;
     clnt->del_keys = del_keys;
@@ -3289,13 +3394,23 @@ int fdb_bend_update(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_index(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct sqlclntstate *clnt = arg->clnt;
+    struct sqlclntstate *clnt = fdb_bend_row_clnt(arg, __func__);
     int is_delete = msg->ix.is_delete;
     int ixnum = msg->ix.ixnum;
     char *ix = msg->ix.ix;
     int ixlen = msg->ix.ixlen;
 
     unsigned char *pIdx = NULL;
+
+    if (!clnt)
+        return -1;
+
+    /* ixnum indexes the fixed-size clnt->idx{Insert,Delete}[MAXINDEX] arrays;
+     * reject an out-of-range value off the wire before dereferencing. */
+    if (ixnum < 0 || ixnum >= MAXINDEX) {
+        logmsg(LOGMSG_ERROR, "%s: index number %d out of range\n", __func__, ixnum);
+        return -1;
+    }
 
     if (is_delete) {
         assert(clnt->idxDelete[ixnum] == NULL);
@@ -3771,12 +3886,36 @@ static int _check_code_release(COMDB2BUF *sb, char *cid, int code_release)
     return 0;
 }
 
+/* Message types accepted on a (read-only) remsql cursor session. Write row ops
+ * (INSERT/DELETE/UPDATE and their _PI variants), transaction/2pc control, and
+ * index ops belong to the remtran/rem2pc write paths, which run on a proper SQL
+ * thread with a transaction; they must never be dispatched from this appsock
+ * thread. */
+static int is_valid_remsql_session_msg(int type)
+{
+    switch (type & FD_MSG_TYPE) {
+    case FDB_MSG_CURSOR_OPEN:
+    case FDB_MSG_CURSOR_CLOSE:
+    case FDB_MSG_CURSOR_FIND:
+    case FDB_MSG_CURSOR_FIND_LAST:
+    case FDB_MSG_CURSOR_FIRST:
+    case FDB_MSG_CURSOR_LAST:
+    case FDB_MSG_CURSOR_NEXT:
+    case FDB_MSG_CURSOR_PREV:
+    case FDB_MSG_RUN_SQL:
+    case FDB_MSG_HBEAT:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int handle_remsql_session(COMDB2BUF *sb, struct dbenv *dbenv)
 {
     fdb_msg_cursor_open_t open_msg;
     fdb_msg_t msg;
     int rc = 0;
-    svc_callback_arg_t arg;
+    svc_callback_arg_t arg = {0};
     int flags;
 
     bzero(&msg, sizeof(msg));
@@ -3831,6 +3970,21 @@ static int handle_remsql_session(COMDB2BUF *sb, struct dbenv *dbenv)
             fdb_msg_print_message(sb, &msg, "received msg");
         }
 
+        /* A remsql cursor session only speaks read-cursor ops. Anything else
+         * (writes, transaction/2pc control, index ops) belongs to the
+         * remtran/rem2pc write paths and would be dispatched here without a SQL
+         * thread or a valid write cursor -- reject it and close the connection
+         * cleanly instead of continuing into cursor logic. */
+        if (!is_valid_remsql_session_msg(msg.hd.type)) {
+            logmsg(LOGMSG_ERROR, "%s: unexpected message type=%d on remsql session\n", __func__, msg.hd.type);
+            rc = -1;
+            /* Close a cursor opened earlier in the session, matching the
+             * error-path cleanup below, so the reject doesn't leak it. */
+            if (arg.clnt)
+                fdb_svc_cursor_close(open_msg.cid, &arg.clnt);
+            break;
+        }
+
         rc = callbacks[msg.hd.type](sb, &msg, &arg);
 
         if (msg.hd.type == FDB_MSG_CURSOR_CLOSE) {
@@ -3839,10 +3993,12 @@ static int handle_remsql_session(COMDB2BUF *sb, struct dbenv *dbenv)
         if (rc != 0) {
             int rc2;
 
-            rc2 = fdb_svc_cursor_close(open_msg.cid, &arg.clnt);
-            if (rc2) {
-                logmsg(LOGMSG_ERROR, "%s: fdb_svc_cursor_close failed rc=%d\n",
-                       __func__, rc2);
+            /* Only clean up a cursor that was actually opened/registered. */
+            if (arg.clnt) {
+                rc2 = fdb_svc_cursor_close(open_msg.cid, &arg.clnt);
+                if (rc2) {
+                    logmsg(LOGMSG_ERROR, "%s: fdb_svc_cursor_close failed rc=%d\n", __func__, rc2);
+                }
             }
             break;
         }
@@ -3987,6 +4143,15 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
 
         msg_type = (msg.hd.type & FD_MSG_TYPE);
 
+        /* Only transaction/write message types are valid here; reject anything
+         * else (read/cursor ops, response types, out-of-range) and roll back
+         * cleanly instead of dispatching it or indexing past callbacks[]. */
+        if (!is_valid_remtran_msg(msg_type)) {
+            logmsg(LOGMSG_ERROR, "%s: invalid message type=%d\n", __func__, msg_type);
+            rc = -1;
+            goto clear;
+        }
+
         rc = callbacks[msg_type](sb, &msg, &svc_cb_arg);
 
         if (msg_type == FDB_MSG_TRAN_COMMIT || msg_type == FDB_MSG_TRAN_PREPARE || msg_type == FDB_MSG_TRAN_ROLLBACK) {
@@ -4100,6 +4265,15 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
         }
 
         msg_type = (msg.hd.type & FD_MSG_TYPE);
+
+        /* Only transaction/write message types are valid here; reject anything
+         * else (read/cursor ops, response types, out-of-range) and roll back
+         * cleanly instead of dispatching it or indexing past callbacks[]. */
+        if (!is_valid_remtran_msg(msg_type)) {
+            logmsg(LOGMSG_ERROR, "%s: invalid message type=%d\n", __func__, msg_type);
+            rc = -1;
+            goto clear;
+        }
 
         rc = callbacks[msg_type](sb, &msg, &svc_cb_arg);
 
