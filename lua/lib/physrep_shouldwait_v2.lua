@@ -10,8 +10,11 @@
 local function main(dbname, hostname, tier, cluster)
     db:begin()
 
+    -- Match dbname case-insensitively: a db canonicalizes its name to lower
+    -- case (see cdb2_open and the server's init()), but the operator-supplied
+    -- comdb2_physrep_sources rows may be cased differently.
     local sql = ("SELECT count(*) as cnt from comdb2_physrep_sources " ..
-                 "    WHERE dbname = '" .. dbname .. "' AND " ..
+                 "    WHERE lower(dbname) = lower('" .. dbname .. "') AND " ..
                  "        ( host LIKE '" .. hostname .. "' OR " ..
                  "          host LIKE '" .. tier .. "' OR " ..
                  "          host LIKE '" .. cluster .. "')")
