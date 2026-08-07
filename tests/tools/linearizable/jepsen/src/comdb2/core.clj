@@ -248,8 +248,8 @@
             :db       (db)
             :nemesis  (nemesis/partition-random-halves)
             :nodes    (cluster-nodes)
-            :ssh {:username "root"
-                  :password "shadow"
+            :ssh {:username "ubuntu"
+                  :password "cdb2test"
                   :strict-host-key-checking false}
             :generator generator
             :checker (checker/compose

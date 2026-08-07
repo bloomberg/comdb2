@@ -238,7 +238,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (clnt->selectv_arr &&
         bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
                               &(clnt->selectv_arr->file),
-                              &(clnt->selectv_arr->offset), 0)) {
+                              &(clnt->selectv_arr->offset), 0,
+                              clnt->selectv_arr->log_cursor_gen)) {
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
         rc = SQLITE_ABORT;
@@ -466,7 +467,8 @@ int selectv_range_commit(struct sqlclntstate *clnt)
 
     if (bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
                               &(clnt->selectv_arr->file),
-                              &(clnt->selectv_arr->offset), 0)) {
+                              &(clnt->selectv_arr->offset), 0,
+                              clnt->selectv_arr->log_cursor_gen)) {
         rc = SQLITE_ABORT;
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
