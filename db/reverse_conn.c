@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <ctype.h>
 #include <event2/buffer.h>
 #include <poll.h>
 #include <pthread.h>
@@ -107,6 +108,18 @@ int physrep_revconn_host_is_up(const char *host)
 int send_reversesql_request(const char *dbname, const char *host, const char *command)
 {
     int rc = 0;
+
+    /* The target dbname comes from operator-supplied physrep metadb config and
+     * may be cased differently than the target's actual (canonical) name. A
+     * server registers with portmux under its lower-cased name (matching the
+     * cdb2_open canonicalization), so lower-case the name before connecting or
+     * the portmux lookup won't find it. */
+    char lc_dbname[MAX_DBNAME_LENGTH];
+    strncpy(lc_dbname, dbname, sizeof(lc_dbname) - 1);
+    lc_dbname[sizeof(lc_dbname) - 1] = '\0';
+    for (char *p = lc_dbname; *p; p++)
+        *p = tolower((unsigned char)*p);
+    dbname = lc_dbname;
 
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d Sending reversesql request to %s@%s\n", __func__, __LINE__, dbname, host);
