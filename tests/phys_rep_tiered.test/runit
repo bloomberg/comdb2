@@ -173,10 +173,10 @@ function create_physrep_tables()
 function add_to_physrep_sources() {
     local _repl_metadb_name=$1
     local _repl_metadb_host=$2
-    local _source_dbname=$3
-    local _source_host=$4
-    local _repl_dbname=$5
-    local _repl_host=$6
+    local _source_dbname=${3,,}
+    local _source_host=${4,,}
+    local _repl_dbname=${5,,}
+    local _repl_host=${6,,}
 
     echo "== Adding ${_source_dbname}@${_source_host} -> ${_repl_dbname}@${_repl_host} to comdb2_physrep_sources table =="
 
@@ -2412,15 +2412,23 @@ function test_sp_no_readonly
 trap - INT EXIT
 
 # 1. Setup replication metadata cluster
+#
+# A database canonicalizes its name to lower case (cdb2_open on the client and
+# init() on the server), and physrep matches these names in the metadb config
+# tables, the machine cache, comdb2_physreps, etc. Define every physrep db name
+# in lower case so the test's references match the servers' canonical names.
 REPL_META_DBNAME=${TESTCASE}_${TESTID}_META
+REPL_META_DBNAME=${REPL_META_DBNAME,,}
 REPL_META_DBDIR=${DBDIR}/${REPL_META_DBNAME}
 REPL_META_HOST=""
 
 REPL_ALTMETA_DBNAME=${TESTCASE}_${TESTID}_ALTMETA
+REPL_ALTMETA_DBNAME=${REPL_ALTMETA_DBNAME,,}
 REPL_ALTMETA_DBDIR=${DBDIR}/${REPL_ALTMETA_DBNAME}
 REPL_ALTMETA_HOST=""
 
 REPL_ALTMETA_DBNAME2=${TESTCASE}_${TESTID}_ALTMETA2
+REPL_ALTMETA_DBNAME2=${REPL_ALTMETA_DBNAME2,,}
 REPL_ALTMETA_DBDIR2=${DBDIR}/${REPL_ALTMETA_DBNAME2}
 REPL_ALTMETA_HOST2=""
 
@@ -2478,16 +2486,19 @@ fi
 
 # 3. Setup physical replication cluster (nodes share same hosts as the source cluster)
 REPL_CLUS_DBNAME=${TESTCASE}_${TESTID}_CLUS
+REPL_CLUS_DBNAME=${REPL_CLUS_DBNAME,,}
 REPL_CLUS_DBDIR=${DBDIR}/${REPL_CLUS_DBNAME}
 REPL_CLUS_HOST=${REPL_META_HOST}
 setup_physrep_cluster ${REPL_CLUS_DBNAME} ${REPL_CLUS_DBDIR} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR} ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${REPL_ALTMETA_DBDIR} ${REPL_ALTMETA_DBNAME2} ${REPL_ALTMETA_HOST2} ${REPL_ALTMETA_DBDIR2}
 
 # 4. Setup physical replicants
 REPL_DBNAME_PREFIX=${TESTCASE}_${TESTID}_REPL
+REPL_DBNAME_PREFIX=${REPL_DBNAME_PREFIX,,}
 REPL_ALT_HOST=$first
 REPL_DBDIR_PREFIX=${DBDIR}/${REPL_DBNAME_PREFIX}
 
 REPL_ALT_DBNAME=${REPL_DBNAME_PREFIX}_${TESTID}_${REPL_ALT_HOST}_ALT
+REPL_ALT_DBNAME=${REPL_ALT_DBNAME,,}
 REPL_ALT_DBDIR=${REPL_DBDIR_PREFIX}/${REPL_ALT_DBNAME}
 REPL_ALT_PIDFILE=${REPL_ALT_DBDIR}/${REPL_ALT_DBNAME}.pid
 
