@@ -1291,6 +1291,7 @@ struct BtCursor {
     void *query_preparer_data;
 
     int permissions; /* permissions for read/write access to table */
+    BtCursor *pCursorHintTableCursor;
 };
 
 struct sql_hist {
@@ -1506,6 +1507,7 @@ int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
 int release_locks_on_emit_row(struct sqlclntstate *clnt);
+void sync_index_data_cursors(struct sql_thread *thd);
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);

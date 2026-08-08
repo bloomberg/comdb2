@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Test: DeferredSeek data lookup failure after recover_deadlock (non-snapshot)
+#
+# Scenario:
+#   A 2-table join uses a non-covering index on the outer table. The outer index
+#   cursor positions on row R and DeferredSeek records R's rowid (data cursor
+#   deferred -- still at its initial position). The inner loop scans slowly
+#   (debug_sleep_in_cursor_move injects a delay on each Next), giving a
+#   concurrent DELETE time to block on the outer index page lock.
+#   When cursor_move_postop detects the waiter it runs recover_deadlock: releases
+#   all locks (letting the DELETE commit), then repositions cursors. The inner
+#   loop eventually finds a match. To produce output the join must access
+#   outer_t.data_col via the deferred seek -- but the row was deleted during
+#   recover_deadlock. This should produce a DTA lookup failure.
+#
+#   Pass 1 (tunable off) demonstrates the bug: the join fails with a DTA lookup
+#   error. Pass 2 (tunable on) exercises the fix: the deferred data is captured
+#   before the lock release, so the join handles the deleted row gracefully.
+#
+# Cluster note:
+#   The RLOCKS_REASON_LOCKWAIT release path ("replication is waiting on session")
+#   fires on a REPLICANT, whose replication thread blocks on the reader's page
+#   lock while applying the master's DELETE. So on a cluster we pin the SELECT to
+#   a replicant, run the DELETE on the master, set the timing tunables on the
+#   replicant, and inspect that replicant's server log. On a single node
+#   everything runs on the one node via 'default'.
+
+set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+# 100 inner rows is enough -- the sleep tunable slows each cursor move.
+INNER_ROWS=${INNER_ROWS:-100}
+# ms to sleep on each inner cursor move
+CURSOR_SLEEP_MS=${CURSOR_SLEEP_MS:-100}
+
+CDB2SQL="${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm default"
+
+echo "Creating tables"
+$CDB2SQL "drop table if exists outer_t" >/dev/null
+$CDB2SQL "drop table if exists inner_t" >/dev/null
+
+# outer_t: key_col is indexed but data_col is NOT -- forces DeferredSeek.
+$CDB2SQL "create table outer_t (
+    id       int,
+    key_col  int,
+    data_col int,
+    primary key (id),
+    index \"outer_key_idx\" (key_col)
+)" >/dev/null
+
+# inner_t: outer_key indexed for join; val NOT indexed -- forces a full index
+# scan of all inner rows (one Next per row) to find the single matching row.
+$CDB2SQL "create table inner_t (
+    id        int,
+    outer_key int,
+    val       int,
+    primary key (id),
+    index \"inner_outer_key_idx\" (outer_key)
+)" >/dev/null
+
+echo "Populating outer_t (1 row)"
+$CDB2SQL "insert into outer_t values(1, 1, 42)" >/dev/null
+
+echo "Populating inner_t ($INNER_ROWS rows, match only on last)"
+$CDB2SQL "insert into inner_t
+    select value, 1, value from generate_series(1, $INNER_ROWS)" >/dev/null
+
+echo "Data population complete"
+
+# Decide where the SELECT runs (a replicant on a cluster), where the DELETE runs
+# (the master), and which server log records the DTA path.
+if [[ -n "$CLUSTER" ]]; then
+    master=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default \
+        "select host from comdb2_cluster where is_master='Y'" | tr -d '[:space:]')
+    [[ -z "$master" ]] && failexit "could not determine master (cluster=$CLUSTER)"
+    sel_node=""
+    for node in $CLUSTER; do
+        if [[ "$node" != "$master" ]]; then
+            sel_node=$node
+            break
+        fi
+    done
+    [[ -z "$sel_node" ]] && failexit "no replicant found (master=$master, cluster=$CLUSTER)"
+    SELHOST="--host $sel_node"
+    DELHOST="--host $master"
+    DB_LOG=${TESTDIR}/logs/${dbnm}.${sel_node}.db
+    echo "cluster: SELECT on replicant $sel_node, DELETE on master $master"
+else
+    SELHOST="default"
+    DELHOST="default"
+    DB_LOG=${TESTDIR}/logs/${dbnm}.db
+    echo "single node: SELECT and DELETE on default"
+fi
+
+# All lock-release/timing tunables must be set on the node that runs the SELECT,
+# because that is where cursor_move_postop, recover_deadlock and the deferred
+# seek execute.
+SELSQL="${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm $SELHOST"
+
+# Ensure page-lock waiter checking is on (fires the RLOCKS_REASON_LOCKWAIT path).
+$SELSQL "put tunable 'locks_check_waiters' 1" >/dev/null
+
+# Slow down each cursor move so the DELETE has time to block on the outer index
+# page lock before the inner scan completes.
+$SELSQL "put tunable 'debug_sleep_in_cursor_move' $CURSOR_SLEEP_MS" >/dev/null
+
+# The join: outer_t uses outer_key_idx (non-covering), inner loop scans all
+# inner_t rows via inner_outer_key_idx checking val = INNER_ROWS (last row).
+# CROSS JOIN forces outer_t as the outer loop.
+# DeferredSeek on outer_t data cursor is set before the inner loop starts and
+# is only executed when a match is found (at val = INNER_ROWS).
+JOIN_SQL="select outer_t.data_col
+    from outer_t
+    cross join inner_t on inner_t.outer_key = outer_t.key_col
+    where outer_t.key_col > 0
+    and inner_t.val = $INNER_ROWS"
+
+# Verify query plan: outer_t uses index (DeferredSeek), inner_t uses index.
+echo "Checking query plan"
+EXPLAIN=$($SELSQL "explain $JOIN_SQL" 2>&1) \
+    || failexit "explain failed: $EXPLAIN"
+echo "$EXPLAIN"
+
+if ! echo "$EXPLAIN" | grep -qi "OUTER_KEY_IDX"; then
+    failexit "outer_t does not use outer_key_idx -- DeferredSeek won't fire; test setup invalid"
+fi
+if ! echo "$EXPLAIN" | grep -qi "INNER_OUTER_KEY_IDX"; then
+    failexit "inner_t does not use inner_outer_key_idx -- test setup invalid"
+fi
+if ! echo "$EXPLAIN" | grep -q "DeferredSeek"; then
+    failexit "no DeferredSeek in plan -- outer data cursor not deferred; test setup invalid"
+fi
+echo "Query plan ok"
+
+# Helper: set the fix tunable on the node that runs the SELECT.
+set_tunable() {
+    local tunable=$1
+    local value=$2
+    $SELSQL "put tunable '$tunable' $value" >/dev/null
+}
+
+# Helper: count DTA-lookup-race log lines currently in the SELECT node's log.
+# (grep -c prints 0 and exits 1 on no match, so swallow the non-zero exit.)
+dta_race_count() {
+    if [[ -f "$DB_LOG" ]]; then
+        grep -c "Dta lookup lost the race" "$DB_LOG" || true
+    else
+        echo 0
+    fi
+}
+
+# Helper: run the join + concurrent DELETE, check expected outcome.
+# $1 = pass label, $2 = expect_error (1=error expected), $3 = expect_dta_log (1/0)
+run_pass() {
+    local label=$1
+    local expect_error=$2
+    local expect_dta_log=$3
+
+    # Re-insert outer_t row (may have been deleted by previous pass)
+    $CDB2SQL "delete from outer_t where id = 1" >/dev/null 2>&1 || true
+    $CDB2SQL "insert into outer_t values(1, 1, 42)" >/dev/null
+
+    # Count DTA races logged before this pass so we only look at new ones.
+    local dta_before
+    dta_before=$(dta_race_count)
+
+    (sleep 1 && ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+        "delete from outer_t where id = 1" >/dev/null 2>&1) &
+    local DELETE_PID=$!
+
+    echo "[$label] Running join (inner scan ~$((INNER_ROWS * CURSOR_SLEEP_MS / 1000))s, DELETE after 1s)"
+    set +e
+    local result
+    result=$($SELSQL "$JOIN_SQL" 2>&1)
+    local rc=$?
+    set -e
+
+    wait $DELETE_PID 2>/dev/null || true
+    echo "[$label] rc=$rc result='$result'"
+
+    # Verify server hit (or avoided) the DTA code path during THIS pass.
+    local dta_after
+    dta_after=$(dta_race_count)
+    local dta_new=$((dta_after - dta_before))
+    if [ "$dta_new" -gt 0 ]; then
+        echo "[$label] server logged 'Dta lookup lost the race' ($dta_new new) -- scenario triggered"
+    else
+        if [ "$expect_dta_log" -eq 1 ]; then
+            failexit "[$label] 'Dta lookup lost the race' not logged -- scenario not triggered"
+        fi
+        echo "[$label] no new 'Dta lookup lost the race' -- race avoided"
+    fi
+
+    if [ "$expect_error" -eq 1 ]; then
+        if [ $rc -eq 0 ]; then
+            failexit "[$label] expected join error but got rc=0"
+        fi
+        echo "[$label] ok: join correctly returned error (rc=$rc)"
+    else
+        if [ $rc -ne 0 ]; then
+            failexit "[$label] join returned error -- DTA lookup not handled: $result"
+        fi
+        echo "[$label] ok: join succeeded (rc=0), result='$result'"
+    fi
+}
+
+# Pass 1: tunable OFF -- fix not active, expect DTA lookup failure (rc 203)
+echo "=== Pass 1: recover_deadlock_sync_dta=0 (bug expected) ==="
+set_tunable "recover_deadlock_sync_dta" 0
+run_pass "tunable=off" 1 1
+
+# Pass 2: tunable ON -- fix active, expect graceful result (no new DTA race)
+echo "=== Pass 2: recover_deadlock_sync_dta=1 (fix expected) ==="
+set_tunable "recover_deadlock_sync_dta" 1
+run_pass "tunable=on" 0 0
+
+echo "Test passed"
