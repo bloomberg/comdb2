@@ -115,7 +115,7 @@ static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
         return -1;
     }
 
-    rc = compare_all_tags(db->tablename, stderr);
+    rc = compare_all_tags(db->tablename, stderr, 0);
 
     backout_schemas(db->tablename);
 
