@@ -59,7 +59,7 @@
      (c/with-conn [c conn]
        (c/with-logical-failures op
          (try+
-           (c/with-timeout
+           (c/with-timeout c
              (j/with-db-transaction [c c {:isolation :read-committed}]
                (case (:f op)
                  ; skip initial records - not all threads are done initial
