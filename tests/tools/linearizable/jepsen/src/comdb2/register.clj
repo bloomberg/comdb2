@@ -40,7 +40,7 @@
        (c/with-io-failures op
          (c/with-conn [c conn]
            (c/with-logical-failures op
-             (c/with-timeout
+             (c/with-timeout c
                (c/with-txn-prep! c
                  (case (:f op)
                    :read
