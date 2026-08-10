@@ -799,7 +799,7 @@ void clear_query_hash(hash_t *h, int destroy)
         hash_free(h);
 }
 
-static void addSorterCost(const VdbeSorter *pSorter, hash_t *h, void *l)
+static void addSorterCost(int nfind, int nmove, int nwrite, hash_t *h, void *l)
 {
     struct query_path_component fnd = {{0}}, *qc;
 
@@ -812,10 +812,10 @@ static void addSorterCost(const VdbeSorter *pSorter, hash_t *h, void *l)
         listc_abl(l, qc);
     }
 
-    qc->nfind += pSorter->nfind;
-    qc->nnext += pSorter->nmove;
+    qc->nfind += nfind;
+    qc->nnext += nmove;
     /* note: we record writes in record routines on the master */
-    qc->nwrite += pSorter->nwrite;
+    qc->nwrite += nwrite;
 }
 
 static void addCursorCost(BtCursor *pCur, hash_t *h, void *l)
@@ -6491,15 +6491,15 @@ void addVdbeToThdCost(int type, int *data)
 }
 
 /* append the costs of the sorter to the thd query stats */
-void addVdbeSorterCost(const VdbeSorter *pSorter)
+void addVdbeSorterCost(int nfind, int nmove, int nwrite)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd == NULL)
         return;
 
     if (!thd->clnt->loading_stat) {
-        addSorterCost(pSorter, thd->query_hash, &thd->query_stats);
-        addSorterCost(pSorter, thd->query_hash_subrequest, &thd->query_stats_subrequest);
+        addSorterCost(nfind, nmove, nwrite, thd->query_hash, &thd->query_stats);
+        addSorterCost(nfind, nmove, nwrite, thd->query_hash_subrequest, &thd->query_stats_subrequest);
     }
 }
 

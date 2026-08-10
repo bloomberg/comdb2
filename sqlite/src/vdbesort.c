@@ -165,20 +165,15 @@ int comdb2_tmpdir_space_low();
 /*
 ** Private objects used by the sorter
 */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 typedef struct MergeEngine MergeEngine;     /* Merge PMAs together */
 typedef struct PmaReader PmaReader;         /* Incrementally read one PMA */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 typedef struct PmaWriter PmaWriter;         /* Incrementally write one PMA */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 typedef struct SorterRecord SorterRecord;   /* A record being sorted */
 typedef struct SortSubtask SortSubtask;     /* A sub-task in the sort process */
 typedef struct SorterFile SorterFile;       /* Temporary file object wrapper */
 typedef struct SorterList SorterList;       /* In-memory list of records */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 typedef struct IncrMerger IncrMerger;       /* Read & merge multiple PMAs */
 
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 ** A container for a temp file handle and the current amount of data
 ** stored in the file.
@@ -201,7 +196,6 @@ struct SorterList {
   u8 *aMemory;                    /* If non-NULL, bulk memory to hold pList */
   i64 szPMA;                      /* Size of pList as PMA in bytes */
 };
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** The MergeEngine object is used to combine two or more smaller PMAs into
@@ -274,7 +268,6 @@ struct MergeEngine {
   PmaReader *aReadr;         /* Array of PmaReaders to merge data from */
 };
 
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 ** This object represents a single thread of control in a sort operation.
 ** Exactly VdbeSorter.nTask instances of this object are allocated
@@ -348,9 +341,15 @@ struct VdbeSorter {
   u8 iPrev;                       /* Previous thread used to flush PMA */
   u8 nTask;                       /* Size of aTask[] array */
   u8 typeMask;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* For tracking query cost. These must come before `aTask` because a FLEXARRAY
+  ** must be the last member of a struct. */
+  int nfind;
+  int nmove;
+  int nwrite;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   SortSubtask aTask[FLEXARRAY];   /* One or more subtasks */
 };
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Size (in bytes) of a VdbeSorter object that works with N or fewer subtasks */
 #define SZ_VDBESORTER(N)  (offsetof(VdbeSorter,aTask)+(N)*sizeof(SortSubtask))
@@ -1330,7 +1329,7 @@ void sqlite3VdbeSorterClose(sqlite3 *db, VdbeCursor *pCsr){
   pSorter = pCsr->uc.pSorter;
   if( pSorter ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    addVdbeSorterCost(pSorter);
+    addVdbeSorterCost(pSorter->nfind, pSorter->nmove, pSorter->nwrite);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* Increment db->nSpill by the total number of bytes of data written
     ** to temp files by this sort operation.  */

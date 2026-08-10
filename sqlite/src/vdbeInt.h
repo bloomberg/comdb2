@@ -57,83 +57,15 @@ typedef struct VdbeOp Op;
 typedef unsigned Bool;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* Sorter cost-accounting hooks implemented in sqlglue.c. The counters are
+** passed by value so sqlglue.c does not need the definition of VdbeSorter. */
 enum { VDBESORTER_FIND, VDBESORTER_MOVE, VDBESORTER_WRITE };
-/* moved vdbesorter here because is needed in sqlglue.c */
-/* Opaque type used by code in vdbesort.c */
-typedef struct PmaReader PmaReader;
-typedef struct MergeEngine MergeEngine;
-typedef struct SorterRecord SorterRecord;
+void addVdbeSorterCost(int nfind, int nmove, int nwrite);
+void addVdbeToThdCost(int type, int *data);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Opaque type used by code in vdbesort.c */
 typedef struct VdbeSorter VdbeSorter;
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-typedef struct SorterList SorterList;
-typedef struct SortSubtask SortSubtask;
-typedef struct SorterFile SorterFile;
-
-void addVdbeSorterCost(const VdbeSorter *);
-void addVdbeToThdCost(int type, int *data);
-
-struct SorterFile {
-  sqlite3_file *pFd;              /* File handle */
-  i64 iEof;                       /* Bytes of data stored in pFd */
-};
-
-/*
-** An in-memory list of objects to be sorted.
-**
-** If aMemory==0 then each object is allocated separately and the objects
-** are connected using SorterRecord.u.pNext.  If aMemory!=0 then all objects
-** are stored in the aMemory[] bulk memory, one right after the other, and
-** are connected using SorterRecord.u.iNext.
-*/
-struct SorterList {
-  SorterRecord *pList;            /* Linked list of records */
-  u8 *aMemory;                    /* If non-NULL, bulk memory to hold pList */
-  int szPMA;                      /* Size of pList as PMA in bytes */
-};
-
-typedef int (*SorterCompare)(SortSubtask*,int*,const void*,int,const void*,int);
-struct SortSubtask {
-  SQLiteThread *pThread;          /* Background thread, if any */
-  int bDone;                      /* Set if thread is finished but not joined */
-  VdbeSorter *pSorter;            /* Sorter that owns this sub-task */
-  UnpackedRecord *pUnpacked;      /* Space to unpack a record */
-  SorterList list;                /* List for thread to write to a PMA */
-  int nPMA;                       /* Number of PMAs currently in file */
-  SorterCompare xCompare;         /* Compare function to use */
-  SorterFile file;                /* Temp file for level-0 PMAs */
-  SorterFile file2;               /* Space for other PMAs */
-};
-
-
-struct VdbeSorter {
-  int mnPmaSize;                  /* Minimum PMA size, in bytes */
-  int mxPmaSize;                  /* Maximum PMA size, in bytes.  0==no limit */
-  int mxKeysize;                  /* Largest serialized key seen so far */
-  int pgsz;                       /* Main database page size */
-  PmaReader *pReader;             /* Readr data from here after Rewind() */
-  MergeEngine *pMerger;           /* Or here, if bUseThreads==0 */
-  sqlite3 *db;                    /* Database connection */
-  KeyInfo *pKeyInfo;              /* How to compare records */
-  UnpackedRecord *pUnpacked;      /* Used by VdbeSorterCompare() */
-  SorterList list;                /* List of in-memory records */
-  int iMemory;                    /* Offset of free space in list.aMemory */
-  int nMemory;                    /* Size of list.aMemory allocation in bytes */
-  u8 bUsePMA;                     /* True if one or more PMAs created */
-  u8 bUseThreads;                 /* True to use background threads */
-  u8 iPrev;                       /* Previous thread used to flush PMA */
-  u8 nTask;                       /* Size of aTask[] array */
-  u8 typeMask;
-  SortSubtask aTask[1];           /* One or more subtasks */
-
-  int nfind;
-  int nmove;
-  int nwrite;
-};
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Elements of the linked list at Vdbe.pAuxData */
 typedef struct AuxData AuxData;
