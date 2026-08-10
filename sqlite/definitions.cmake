@@ -45,9 +45,12 @@ list(APPEND SQLITE_FLAGS
   -DSQLITE_USE_MALLOC_USABLE_SIZE
 )
 
-if(${CMAKE_BUILD_TYPE} STREQUAL Debug)
+if(CMAKE_BUILD_TYPE STREQUAL Debug)
   add_definitions(-DSQLITE_DEBUG)
   add_definitions(-DSQLITE_ENABLE_EXPENSIVE_ASSERT)
+else()
+  # Avoid extra runtime overhead of fault simulation code.
+  add_definitions(-DSQLITE_UNTESTABLE)
 endif()
 
 if (EXTRA_PLUGINS)
