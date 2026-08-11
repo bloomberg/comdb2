@@ -45,8 +45,10 @@ public:
     // Send a request to the database.
 
     bool response(const std::string& rsp);
-    // Listen for a response froom the database, returns true if the expected
-    // response was received.
+    // Listen for a response from the database.  True on the expected response,
+    // false if a different line came back (an older database).  Throws on a
+    // timeout or a closed connection, so logdelete4 negotiation fails hard
+    // instead of downgrading.
 
     std::string read_response();
 };

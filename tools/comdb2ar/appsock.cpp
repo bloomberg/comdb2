@@ -329,14 +329,17 @@ bool Appsock::response(const std::string& rsp)
 {
     SigPipeBlocker block_sigpipe;
 
-    // Get the response - we expect "log file deletion disable"
+    // No line within the timeout means the database took the request but is
+    // stuck (for logdelete4: blocked on the copy locks behind a recovery) --
+    // throw, so the caller fails hard rather than downgrading.  A wrong line
+    // means it doesn't understand the request -- return false so it steps down.
     cdb2buf_settimeout(impl->m_sb, 10 * 1000, 10 * 1000);
     char line[256];
     if(cdb2buf_gets(line, sizeof(line), impl->m_sb) <= 0) {
-        std::clog << "no response from " << impl->m_dbname << " expected " 
-            << rsp << std::endl;
-        return false;
-    } else if(std::strcmp(line, rsp.c_str()) != 0) {
+        throw Error("no response from " + impl->m_dbname +
+                    " (timeout or closed connection)");
+    }
+    if(std::strcmp(line, rsp.c_str()) != 0) {
         std::clog << "bad response from " << impl->m_dbname << " expected "
             << rsp << std::endl;
         return false;
