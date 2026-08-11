@@ -9998,14 +9998,21 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
     } else {
         /* comdb2 normalized */
         unmake_order_decimal32(pdec32, (char *)decimals, &exponent);
-    }
 
-    if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
-        logmsg(LOGMSG_ERROR, "%s; format issues with decimal32: exponent=%d\n",
-                __func__, exponent);
-        hexdump(LOGMSG_USER, (const char *)pdec32, sizeof(*pdec32));
-        logmsg(LOGMSG_USER, "\n");
-        exponent ^= 0x080;
+        if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
+            /* unmake handed back the biased single-byte on-disk exponent.
+               This is defensive - it only happens if unmake_order_decimal32 failed.
+               undo the ^0x80 bias. Casting to signed char discards the
+               sign-extension bits so we don't produce a bogus exponent that
+               overruns DECCOMBFROM in decSingleFromPacked -- this is the 1-byte
+               analogue of int2b_to_int2() on the 2-byte paths. */
+            exponent = (signed char)(exponent ^ 0x080);
+            if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
+                logmsg(LOGMSG_ERROR, "%s; format issues with decimal32: exponent=%d\n", __func__, exponent);
+                hexdump(LOGMSG_USER, (const char *)pdec32, sizeof(*pdec32));
+                logmsg(LOGMSG_USER, "\n");
+            }
+        }
     }
 
     decSingleFromPacked(dn, exponent, (uint8_t *)decimals);
@@ -10038,12 +10045,14 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
 
         if (exponent < DECDOUBLE_Emin - 16 || exponent > DECDOUBLE_Emax + 16) {
             comdb2_int2 tmp;
-            logmsg(LOGMSG_ERROR, "%s; format issues with decimal64: exponent=%d\n",
-                    __func__, exponent);
-            hexdump(LOGMSG_ERROR, (const char *)pdec64, sizeof(*pdec64));
-            logmsg(LOGMSG_ERROR, "\n");
+            /* see corresponding comment in decimal32_ondisk_to_single */
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
+            if (exponent < DECDOUBLE_Emin - 16 || exponent > DECDOUBLE_Emax + 16) {
+                logmsg(LOGMSG_ERROR, "%s; format issues with decimal64: exponent=%d\n", __func__, exponent);
+                hexdump(LOGMSG_ERROR, (const char *)pdec64, sizeof(*pdec64));
+                logmsg(LOGMSG_ERROR, "\n");
+            }
         }
     }
 
@@ -10077,12 +10086,14 @@ static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
 
         if (exponent < DECQUAD_Emin - 34 || exponent > DECQUAD_Emax + 34) {
             comdb2_int2 tmp;
-            logmsg(LOGMSG_USER, "%s; format issues with decimal128: exponent=%d\n",
-                    __func__, exponent);
-            hexdump(LOGMSG_USER, (const char *)pdec128, sizeof(*pdec128));
-            logmsg(LOGMSG_USER, "\n");
+            /* see corresponding comment in decimal32_ondisk_to_single */
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
+            if (exponent < DECQUAD_Emin - 34 || exponent > DECQUAD_Emax + 34) {
+                logmsg(LOGMSG_USER, "%s; format issues with decimal128: exponent=%d\n", __func__, exponent);
+                hexdump(LOGMSG_USER, (const char *)pdec128, sizeof(*pdec128));
+                logmsg(LOGMSG_USER, "\n");
+            }
         }
     }
 

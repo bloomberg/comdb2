@@ -1,0 +1,109 @@
+[drop table if exists t6] rc 0
+[create table t6 {
+    schema {
+        int       id
+        decimal32 d32
+    }
+    keys {
+        "ID"      = id
+        dup "D32" = d32
+    }
+}] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(1, '0')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(2, '0.000001e-95')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(3, '-0.000001e-95')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(4, '1')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(5, '-1')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(6, '9999999e89')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(7, '-9999999e89')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(8, 'inf')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(9, '-inf')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(10, 'NaN')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(11, '-NaN')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(12, '-0')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(13, '0.0')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(14, '0.00')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(15, '-0.00')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(16, '0e-50')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(17, '0e50')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(18, '0e-101')] rc 0
+(rows inserted=1)
+[insert into t6(id, d32) values(19, '0e90')] rc 0
+[analyze t6] rc 0
+(id=1, d32='0')
+(id=2, d32='1E-101')
+(id=3, d32='-1E-101')
+(id=4, d32='1')
+(id=5, d32='-1')
+(id=6, d32='9.999999E+95')
+(id=7, d32='-9.999999E+95')
+(id=8, d32='Infinity')
+(id=9, d32='-Infinity')
+(id=10, d32='NaN')
+(id=11, d32='NaN')
+(id=12, d32='-0')
+(id=13, d32='0.0')
+(id=14, d32='0.00')
+(id=15, d32='-0.00')
+(id=16, d32='0E-50')
+(id=17, d32='0E+50')
+(id=18, d32='0E-101')
+(id=19, d32='0E+90')
+[select * from t6 order by id] rc 0
+(id=1)
+(id=12)
+(id=13)
+(id=14)
+(id=15)
+(id=16)
+(id=17)
+(id=18)
+(id=19)
+[select id from t6 where d32 = '0' order by id] rc 0
+(id=1, cast(d32 as text)='0')
+(id=12, cast(d32 as text)='-0')
+(id=13, cast(d32 as text)='0.0')
+(id=14, cast(d32 as text)='0.00')
+(id=15, cast(d32 as text)='-0.00')
+(id=16, cast(d32 as text)='0E-50')
+(id=17, cast(d32 as text)='0E+50')
+(id=18, cast(d32 as text)='0E-101')
+(id=19, cast(d32 as text)='0E+90')
+[select id, cast(d32 as text) from t6 where d32 = '0' order by id] rc 0
+(id=2)
+[select id from t6 where d32 = '0.000001e-95'] rc 0
+(id=3)
+[select id from t6 where d32 = '-0.000001e-95'] rc 0
+(id=4)
+[select id from t6 where d32 = '1'] rc 0
+(id=5)
+[select id from t6 where d32 = '-1'] rc 0
+(id=6)
+[select id from t6 where d32 = '9999999e89'] rc 0
+(id=7)
+[select id from t6 where d32 = '-9999999e89'] rc 0
+(id=8)
+[select id from t6 where d32 = 'inf'] rc 0
+(id=9)
+[select id from t6 where d32 = '-inf'] rc 0
+(id=10)
+(id=11)
+[select id from t6 where d32 <> d32 order by id] rc 0
