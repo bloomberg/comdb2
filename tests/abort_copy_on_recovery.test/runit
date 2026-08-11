@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export archivepid=0
+export truncpid=0
+export archiveout=./archive.out.$$
+
+# Pin the node we operate on up front.  The copy connects here and the rewind and
+# the unblock all target this same node.
+export MASTER=$(getmaster)
+export MASTERLOG=${TESTDIR}/logs/${DBNAME}.${MASTER}.db
+
+# Create a table with some data and force a checkpoint so there is log history to
+# rewind to.
+function setup_data
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1 (id int)"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into t1 select * from generate_series(1, 1000)"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "exec procedure sys.cmd.send('flush')"
+}
+
+function set_online_recovery
+{
+    local val=$1
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable online_recovery $val"
+}
+
+# Start a copy against the master.  The remote copy stream (stdout) is discarded;
+# its stderr is forwarded to us so we can capture the exit status and messages.
+function start_archive
+{
+    rm -f $archiveout
+    ssh $MASTER "$COMDB2AR_EXE c ${DBDIR}/${DBNAME}.lrl 2>&1 >/dev/null" > $archiveout 2>&1 </dev/null &
+    archivepid=$!
+}
+
+# Count how many times a copy has parked in the debug_block loop.  The log is
+# shared across scenarios, so we wait for a *new* occurrence rather than any.
+function hold_count
+{
+    # egrep -c exits non-zero with no matches; capture and normalize rather than
+    # `|| echo 0`, which would emit a second line.
+    local n
+    n=$(egrep -c "blocking comdb2ar for testcase" "$MASTERLOG" 2>/dev/null)
+    echo "${n:-0}"
+}
+
+# Wait until the logdelete handler for THIS copy has taken its read locks and
+# parked in the debug_block_comdb2ar loop.  $1 is the hold_count from before.
+function wait_for_hold
+{
+    local base=$1
+    local cnt=0
+    while :; do
+        if [[ "$(hold_count)" -gt "$base" ]]; then
+            return 0
+        fi
+        if ! kill -0 $archivepid 2>/dev/null; then
+            cat $archiveout
+            failexit "Archive process exited before it took the hold"
+        fi
+        let cnt=cnt+1
+        if [[ $cnt -gt 20 ]]; then
+            cat $archiveout
+            failexit "Timed out waiting for the copy to take the hold"
+        fi
+        sleep 1
+    done
+}
+
+# Scenario: a copy that overlaps a rewind must be aborted.
+function run_abort_scenario
+{
+    local online=$1
+    echo "=== abort scenario, online_recovery=$online ==="
+    set_online_recovery $online
+
+    # rewind target is now; the copy connects a moment later and the write below
+    # lands after it, so the truncate actually rolls something back.
+    local rewind_time=$(date +%s)
+
+    local base=$(hold_count)
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 1"
+    start_archive
+    wait_for_hold $base
+
+    # A write that lands after rewind_time; it proceeds under the copy's read
+    # locks (normal writes take neither the bdb write lock nor recoverlk).
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into t1 select * from generate_series(1, 100)" >/dev/null 2>&1
+
+    # Force the rewind while the copy still holds its locks.  The truncate parks
+    # on the bdb write lock (offline) or recoverlk (online); give it a moment.
+    ( $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "exec procedure sys.cmd.truncate_time($rewind_time)" ) &
+    truncpid=$!
+    sleep 3
+
+    # Release the copy.  The truncate is still blocked behind its read locks, so
+    # it drops them, marks the copy aborted, and comdb2ar discards the archive.
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 0"
+
+    wait $archivepid
+    local rc=$?
+    wait $truncpid 2>/dev/null
+    cat $archiveout
+
+    if [[ $rc -eq 0 ]]; then
+        failexit "online_recovery=$online: archive succeeded but should have aborted"
+    fi
+    if ! egrep -q "recovery ran on the database during the copy" $archiveout; then
+        failexit "online_recovery=$online: archive aborted (rc=$rc) but not for the expected reason"
+    fi
+    echo "online_recovery=$online: archive correctly aborted (rc=$rc)"
+}
+
+# Scenario: a copy with no concurrent recovery must succeed (no false abort).
+function run_success_scenario
+{
+    local online=$1
+    echo "=== success scenario, online_recovery=$online ==="
+    set_online_recovery $online
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 0"
+    rm -f $archiveout
+
+    ssh $MASTER "$COMDB2AR_EXE c ${DBDIR}/${DBNAME}.lrl 2>/dev/null >/dev/null" > $archiveout 2>&1 </dev/null
+    local rc=$?
+    cat $archiveout
+    if [[ $rc -ne 0 ]]; then
+        failexit "online_recovery=$online: archive failed (rc=$rc) with no concurrent recovery"
+    fi
+    echo "online_recovery=$online: archive succeeded as expected"
+}
+
+# Scenario: if the v4 handshake stalls -- as it does when the database is busy
+# taking the copy locks behind an in-flight recovery -- comdb2ar must fail rather
+# than downgrade to logdelete3 and copy unprotected.  debug_block_comdb2ar parks
+# the v4 handler so the handshake times out; the block is gated to v4, so a
+# downgrade *would* have succeeded -- proving comdb2ar does not take it.
+function run_hardfail_on_stalled_v4_scenario
+{
+    local online=$1
+    echo "=== hard-fail on stalled v4 handshake, online_recovery=$online ==="
+    set_online_recovery $online
+
+    local base=$(hold_count)
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 1"
+    start_archive
+    # Wait until the v4 handler has connected, taken its locks and parked; from
+    # here comdb2ar's 10s handshake read timeout runs and, with the fix, aborts.
+    wait_for_hold $base
+
+    wait $archivepid
+    local rc=$?
+
+    # Release the parked v4 handler so it drops its read locks before we finish.
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $MASTER "put tunable debug_block_comdb2ar 0"
+    sleep 2
+    cat $archiveout
+
+    if [[ $rc -eq 0 ]]; then
+        failexit "online_recovery=$online: archive succeeded but a stalled v4 handshake should have failed it"
+    fi
+    if ! egrep -q "refusing to fall back to an unprotected copy" $archiveout; then
+        failexit "online_recovery=$online: archive failed (rc=$rc) but not with the expected hard-fail reason"
+    fi
+    # It must NOT have quietly stepped down to a lower, unprotected version.
+    if egrep -q "Doesn't support logdelete4" $archiveout; then
+        failexit "online_recovery=$online: comdb2ar downgraded from logdelete4 instead of failing hard"
+    fi
+    echo "online_recovery=$online: stalled v4 handshake correctly failed the archive (rc=$rc)"
+}
+
+function run_test
+{
+    setup_data
+    # Cover both online recovery (OSS default) and offline recovery (Bloomberg).
+    run_abort_scenario 1
+    run_abort_scenario 0
+    run_success_scenario 1
+    run_success_scenario 0
+    # A stalled v4 handshake must fail the copy, not silently downgrade.
+    run_hardfail_on_stalled_v4_scenario 0
+}
+
+run_test
+echo "success"

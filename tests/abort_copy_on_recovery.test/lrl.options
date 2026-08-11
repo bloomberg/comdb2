@@ -1,0 +1,5 @@
+# Hold the copy open at connect time so we can force a rewind underneath it.
+debug_block_comdb2ar 1
+# Keep checkpoints frequent so there is log history to rewind to.
+setattr CHECKPOINTTIME 5
+setattr CHECKPOINTRAND 2
