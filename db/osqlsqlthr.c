@@ -248,9 +248,23 @@ retry:
     rc = clnt_check_bdb_lock_desired(clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-        rc = osql_end(clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
+        /* Only tear the session down (and zero rqid) if the caller isn't
+         * expecting to reuse it -- a keep_rqid restart (eg. from
+         * osql_sock_restart with keep_session=1) relies on osql->rqid
+         * staying valid across a transient SQLITE_BUSY here, otherwise a
+         * later osql_send_commit_logic() call can end up sending an
+         * OSQL_STARTGEN with rqid==0 (see osqlcomm_rpl_type_put's sid==0
+         * abort). */
+        if (!keep_rqid) {
+            rc = osql_end(clnt);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
+            }
+        } else if (gbl_master_swing_osql_verbose) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER,
+                   "%s: bdb lock desired, keep_rqid set, leaving session intact (rqid=%llx uuid=%s)\n",
+                   __func__, osql->rqid, comdb2uuidstr(osql->uuid, us));
         }
         return SQLITE_BUSY;
     }
