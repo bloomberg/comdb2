@@ -1648,8 +1648,8 @@ lookagain:
                 rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_NEXT);
                 bdb_state->qpriv->stats.n_physical_gets++;
                 if (rc != 0) {
+                    size_t fragn;
                     switch (rc) {
-                        size_t fragn;
 
                     case DB_NOTFOUND:
                     case DB_KEYEMPTY:
