@@ -7273,14 +7273,23 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
                     decimal_quantum_set(new_in, f->len, &ch,
                                         (sign == -1) ? NULL : &sign);
                 } else {
-                    decimal_quantum_set(new_in, f->len, NULL, NULL);
+                    // We don't have a quantum.  If this happens to be a zero, we'll
+                    // still return a zero, but not as originally inserted, eg 0 instead of 0.00
+                    short quantum = 1;
+                    decimal_quantum_set(new_in, f->len, &quantum, NULL);
                 }
 
             } else {
                 /* This code path is only hit for analyze (or I suppose if
-                 * anyone tries
-                 * the no cursor setting again).  Choose an arbitrary scale. */
-                decimal_quantum_set(new_in, f->len, NULL, NULL);
+                 * anyone tries the no cursor setting again).  Choose an
+                 * arbitrary scale.  Pass one explicitly: the key has had its
+                 * quantum scrubbed out (see _scrub_zero_decimal32()), and for
+                 * a zero that scrub also clears the exponent, so passing NULL
+                 * makes decimal_quantum_set() take its "already has a quantum"
+                 * early-out and leave behind an exponent that is not in
+                 * on-disk biased form. */
+                short quantum = 1;
+                decimal_quantum_set(new_in, f->len, &quantum, NULL);
             }
 
             if (bdb_attr_get(thedb->bdb_attr,

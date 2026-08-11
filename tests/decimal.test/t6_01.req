@@ -1,0 +1,43 @@
+drop table if exists t6
+create table t6 {
+    schema {
+        int       id
+        decimal32 d32
+    }
+    keys {
+        "ID"      = id
+        dup "D32" = d32
+    }
+}$$
+insert into t6(id, d32) values(1, '0')
+insert into t6(id, d32) values(2, '0.000001e-95')
+insert into t6(id, d32) values(3, '-0.000001e-95')
+insert into t6(id, d32) values(4, '1')
+insert into t6(id, d32) values(5, '-1')
+insert into t6(id, d32) values(6, '9999999e89')
+insert into t6(id, d32) values(7, '-9999999e89')
+insert into t6(id, d32) values(8, 'inf')
+insert into t6(id, d32) values(9, '-inf')
+insert into t6(id, d32) values(10, 'NaN')
+insert into t6(id, d32) values(11, '-NaN')
+insert into t6(id, d32) values(12, '-0')
+insert into t6(id, d32) values(13, '0.0')
+insert into t6(id, d32) values(14, '0.00')
+insert into t6(id, d32) values(15, '-0.00')
+insert into t6(id, d32) values(16, '0e-50')
+insert into t6(id, d32) values(17, '0e50')
+insert into t6(id, d32) values(18, '0e-101')
+insert into t6(id, d32) values(19, '0e90')
+analyze t6
+select * from t6 order by id
+select id from t6 where d32 = '0' order by id
+select id, cast(d32 as text) from t6 where d32 = '0' order by id
+select id from t6 where d32 = '0.000001e-95'
+select id from t6 where d32 = '-0.000001e-95'
+select id from t6 where d32 = '1'
+select id from t6 where d32 = '-1'
+select id from t6 where d32 = '9999999e89'
+select id from t6 where d32 = '-9999999e89'
+select id from t6 where d32 = 'inf'
+select id from t6 where d32 = '-inf'
+select id from t6 where d32 <> d32 order by id
