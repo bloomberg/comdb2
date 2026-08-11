@@ -1485,15 +1485,28 @@ void serialise_database(
     }
 
     // Generate fingerprint SHA file
+    std::string sha;
     if(incr_create || incr_gen){
-        std::string sha = generate_fingerprint();
+        sha = generate_fingerprint();
 
         std::clog << "Calculated SHA fingerprint as: " << sha << std::endl;
 
         // Serialise the SHA file
         serialise_string("fingerprint.sha", sha);
+    }
 
-        // Write the SHA file so that the next increment can know it
+    // If recovery ran while we were copying, the pages we captured no longer
+    // reconcile with the forward log replay, so the archive would be corrupt.
+    // Fail, so it is discarded and retried instead.
+    if(log_holder.get() && !log_holder->copy_ok()) {
+        throw Error("recovery ran on the database during the copy; "
+                    "archive would be corrupt - aborting");
+    }
+
+    // Only now record the fingerprint for the next increment to diff against.
+    // Persisting it before the check above would advance the incremental chain
+    // to an archive that was then discarded.
+    if(incr_create || incr_gen){
         std::string sha_filename = incr_path + "/fingerprint.sha";
         std::ofstream sha_file(sha_filename, std::ofstream::trunc);
 

@@ -33,10 +33,11 @@ public:
 
     LogHolder(const std::string& dbname);
     // Construct a log holder object, opening the socket to the database and
-    // telling it to hold off on log file deletion.  If this cannot be done
-    // for some reason then we will log this to std::clog but still construct
-    // a valid (inert) object.  This is because the database might be down,
-    // so failure here is not an error.
+    // telling it to hold off on log file deletion.  If the database cannot be
+    // reached at all (e.g. it is down) we log to std::clog and construct an
+    // inert object, which is not an error.  But if a logdelete4 connection is
+    // accepted and the handshake then times out, we throw rather than fall back
+    // to an older, unprotected version.
 
     virtual ~LogHolder();
     // Destroy the object, closing our socket interface.
@@ -51,6 +52,11 @@ public:
     // the database in the first place.
 
     std::string recovery_options();
+
+    bool copy_ok();
+    // Ask the database (logdelete4+) whether the copy stayed valid -- no recovery
+    // or other exclusive operation ran during it.  True if confirmed good or the
+    // database is pre-v4; false if it reports an abort or does not answer.
 
     int version() { return m_version; };
 };

@@ -2062,6 +2062,20 @@ int bdb_recoverlk_blocked(bdb_state_type *bdb_state)
     return bdb_state->dbenv->wrlock_recovery_blocked(bdb_state->dbenv);
 }
 
+/* Take/release the recovery lock in read mode.  Recovery write-locks recoverlk
+ * before it rewinds any page, in both online and offline modes, so a reader
+ * blocks it.  A copy holds this for its duration and polls
+ * bdb_recoverlk_blocked() to learn when to yield. */
+int bdb_readlock_recovery(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv, __func__, __LINE__);
+}
+
+int bdb_unlock_recovery(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv, __func__, __LINE__);
+}
+
 void send_newmaster(bdb_state_type *bdb_state, int online)
 {
     bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
