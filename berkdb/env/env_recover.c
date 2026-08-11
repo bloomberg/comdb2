@@ -60,6 +60,7 @@ extern void invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(DB_ENV *dbenv
 extern int __txn_commit_map_set_modsnap_start_lsn(DB_ENV *, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN*);
+extern int gbl_utxnid_log;
 
 #ifndef TESTSUITE
 
@@ -2171,7 +2172,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				GOTOERR;
 			}
 			free_ptr = txn_gen_args;
-			if ((txn_gen_args->opcode == TXN_COMMIT) && 
+			/* Only build the commit-lsn (utxnid) map when utxnid logging is on. */
+			if (gbl_utxnid_log && (txn_gen_args->opcode == TXN_COMMIT) &&
 					(ret = __txn_commit_map_add(dbenv, txn_gen_args->txnid->utxnid, lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
@@ -2184,7 +2186,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				GOTOERR;
 			}
 			free_ptr = txn_args;
-			if ((txn_args->opcode == TXN_COMMIT) && 
+			if (gbl_utxnid_log && (txn_args->opcode == TXN_COMMIT) &&
 				(ret = __txn_commit_map_add(dbenv, txn_args->txnid->utxnid, lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
@@ -2198,7 +2200,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				GOTOERR;
 			}
 			free_ptr = txn_rl_args;
-			if ((txn_rl_args->opcode == TXN_COMMIT) && 
+			if (gbl_utxnid_log && (txn_rl_args->opcode == TXN_COMMIT) &&
 				(ret = __txn_commit_map_add(dbenv, txn_rl_args->txnid->utxnid, lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
@@ -2213,7 +2215,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 			free_ptr = txn_child_args;
 
 			DB_LSN parent_commit_lsn;
-			if (!__txn_commit_map_get(dbenv, txn_child_args->txnid->utxnid, &parent_commit_lsn)
+			if (gbl_utxnid_log
+				&& !__txn_commit_map_get(dbenv, txn_child_args->txnid->utxnid, &parent_commit_lsn)
 				&& (ret = __txn_commit_map_add(dbenv, txn_child_args->child_utxnid, parent_commit_lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
