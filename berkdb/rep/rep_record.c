@@ -155,7 +155,7 @@ extern void wait_for_sc_to_stop(const char *operation, const char *func, int lin
 extern void allow_sc_to_run(void);
 extern int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
-extern int gbl_utxnid_log;
+extern int __txn_commit_map_enabled(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -4763,7 +4763,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 	
-	if (gbl_utxnid_log && (rp->lc.child_utxnids != NULL)) {
+	if (__txn_commit_map_enabled() && (rp->lc.child_utxnids != NULL)) {
 		UTXNID *elt;
 
 		LISTC_FOR_EACH(rp->lc.child_utxnids, elt, lnk) {
@@ -5325,8 +5325,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			p->rep_lock_time_us += d;
 		}
 
-		if (gbl_utxnid_log) {
-			if ((ret = __txn_commit_map_add(dbenv, 
+		if (__txn_commit_map_enabled()) {
+			if ((ret = __txn_commit_map_add(dbenv,
 					utxnid, rctl->lsn)), ret != 0) {
 				line = __LINE__;
 				goto err;
@@ -5486,7 +5486,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 
-	if (gbl_utxnid_log && (lc.child_utxnids != NULL)) {
+	if (__txn_commit_map_enabled() && (lc.child_utxnids != NULL)) {
 		UTXNID *elt;
 
 		LISTC_FOR_EACH(lc.child_utxnids, elt, lnk) {
@@ -6226,8 +6226,8 @@ bad_resize:	;
 		goto err;
 	}
 
-	if (gbl_utxnid_log) {
-		if ((ret = __txn_commit_map_add(dbenv, 
+	if (__txn_commit_map_enabled()) {
+		if ((ret = __txn_commit_map_add(dbenv,
 				utxnid, ctrllsn)), ret != 0) {
 			logmsg(LOGMSG_ERROR, "%s failed at line %d\n", __func__, __LINE__);
 			goto err;

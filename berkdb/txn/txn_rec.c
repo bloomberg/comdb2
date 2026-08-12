@@ -58,7 +58,6 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
 extern int gbl_recovery_ckp;
-extern int gbl_utxnid_log;
 int gbl_retrieve_gen_from_ckp = 1;
 int gbl_recovery_gen = 0;
 
@@ -68,6 +67,7 @@ int set_commit_context(unsigned long long context, uint32_t *generation,
 extern int __txn_commit_map_remove(DB_ENV *, u_int64_t);
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+extern int __txn_commit_map_enabled(void);
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 /*
@@ -165,7 +165,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	commit_lsn_map = gbl_utxnid_log;
+	commit_lsn_map = __txn_commit_map_enabled();
 
 	if ((ret = __txn_dist_commit_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
@@ -451,7 +451,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	commit_lsn_map = gbl_utxnid_log;
+	commit_lsn_map = __txn_commit_map_enabled();
 
 	if ((ret = __txn_regop_gen_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
@@ -597,7 +597,7 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 	(void)__txn_regop_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
-	commit_lsn_map = gbl_utxnid_log;
+	commit_lsn_map = __txn_commit_map_enabled();
 
 	if ((ret = __txn_regop_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
@@ -760,7 +760,7 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	(void)__txn_regop_rowlocks_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
-	commit_lsn_map = gbl_utxnid_log;
+	commit_lsn_map = __txn_commit_map_enabled();
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
@@ -1178,7 +1178,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 	(void)__txn_child_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
-	commit_lsn_map = gbl_utxnid_log;
+	commit_lsn_map = __txn_commit_map_enabled();
 
 	if ((ret = __txn_child_read(dbenv, dbtp->data, &argp)) != 0) {
 		abort();

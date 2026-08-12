@@ -125,7 +125,6 @@ extern struct interned_string *gbl_myhostname_interned;
 extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 struct timeval last_pstack_time;
-extern int gbl_utxnid_log;
 
 #define FILENAMELEN 100
 
@@ -171,6 +170,7 @@ static int close_dbs_flush(bdb_state_type *bdb_state);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
 
 int __txn_commit_map_delete_logfile_txns(DB_ENV *, int);
+int __txn_commit_map_enabled(void);
 
 void berkdb_set_recovery(DB_ENV *dbenv);
 void watchdog_set_alarm(int seconds);
@@ -3917,7 +3917,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
             }
 
             /* Delete transactions that committed in this file from the commit LSN map. */
-            if (gbl_utxnid_log) {
+            if (__txn_commit_map_enabled()) {
                 __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, filenum);
             }
 

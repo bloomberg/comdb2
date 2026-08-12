@@ -504,6 +504,16 @@ REGISTER_TUNABLE("enable_serial_isolation",
                  "the database. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_serializable, NOARG | READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("enable_snapshot_isolation",
+                 "Enable to allow SNAPSHOT level transactions to run against "
+                 "the database. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_isolation, NOARG | READONLY | READEARLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("disable_snapshot_isolation",
+                 "Disable SNAPSHOT and SERIALIZABLE level transactions.  This also stops "
+                 "us from maintaining the commit-LSN (utxnid) map, reducing the memory "
+                 "footprint of nodes which never serve snapshot queries. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_isolation, INVERSE_VALUE | NOARG | READONLY | READEARLY, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("use_current_lsn_for_non_snapshot",
                  "comdb2_snapshot_lsn provide current LSN if not using snapshot isolation. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_use_current_lsn_for_non_snapshot, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL,
