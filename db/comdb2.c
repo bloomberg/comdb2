@@ -6408,7 +6408,6 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
     extern int gbl_watcher_thread_ran;
     uint64_t format;
     int bdberr = 0;
-    int rlstate;
     int rc;
     int ii;
     int stripes, blobstripe;
@@ -6486,23 +6485,7 @@ retry_tran:
         abort();
     }
 
-    if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n",
-               rc, bdberr);
-        abort();
-    }
-
-    switch (rlstate) {
-    case LLMETA_ROWLOCKS_ENABLED:
-    case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
-        gbl_rowlocks = 1;
-        gbl_sql_tranlevel_default = TRANLEVEL_SNAPISOL;
-    case LLMETA_ROWLOCKS_DISABLED:
-        gbl_rowlocks = 0;
-        gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
-    default:
-        break;
-    }
+    /* Rowlocks state is applied by backend_open_tran() below. */
 
     bdb_get_genid_format(&format, &bdberr);
     bdb_genid_set_format(thedb->bdb_env, format);
