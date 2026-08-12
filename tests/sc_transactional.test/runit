@@ -3,7 +3,7 @@ bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
-set -x
+
 
 dbnm=$1
 
@@ -316,5 +316,35 @@ assert_schema t4 "schema{int a int b} keys{\"A\" = a}"
 do_verify t1
 do_verify t2
 do_verify t3
+
+# skip this test if rowlocks, cause this will set the isolation level to SNAPISOL and 
+# so this will skip SOSQL DDL/DML conflict detection step
+if [[ x"$dbnm" != x*"rowlocks"* ]]; then
+
+echo "TEST TRAN: TRUNCATE T; INSERT T (same table, DDL then DML) (expected: fail, must not deadlock)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tdml"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table tdml(i int)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into tdml values(1)"
+assertcnt tdml 1
+
+# ddl-dml overlap
+out=$(timeout --kill-after=5s 60s cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF" 2>&1
+begin
+truncate tdml
+insert into tdml values(2)
+commit
+EOF
+)
+echo "$out"
+if ! echo "$out" | grep -q "Transactional DDL Error"; then
+    failexit "TRUNCATE T; INSERT T did not report a transactional DDL error: $out"
+fi
+# table must survive with original row intact
+assertcnt tdml 1
+do_verify tdml
+
+else
+    echo "TEST TRAN: TRUNCATE T; INSERT T skipped (rowlocks/SNAPISOL mode bypasses SOSQL DDL/DML conflict detection)"
+fi
 
 echo "Success"

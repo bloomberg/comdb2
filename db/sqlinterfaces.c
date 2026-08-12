@@ -1610,10 +1610,11 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
             clnt->in_client_trans = 1;
 
-            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL &&
-                   clnt->ddl_contexts == NULL);
+            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL && clnt->ddl_contexts == NULL &&
+                   clnt->ddl_new_tables == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
             clnt->dml_tables = hash_init_strcase(0);
+            clnt->ddl_new_tables = hash_init_strcase(0);
             clnt->ddl_contexts = hash_init_strcaseptr(offsetof(struct clnt_ddl_context, name));
         }
     } else if (meta == TSMC_COMMIT) {
@@ -2438,8 +2439,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
+    destroy_hash(clnt->ddl_new_tables, free_it);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
+    clnt->ddl_new_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
     clnt->ddl_contexts = NULL;
 
@@ -5414,8 +5417,10 @@ void cleanup_clnt(struct sqlclntstate *clnt)
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
+    destroy_hash(clnt->ddl_new_tables, free_it);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
+    clnt->ddl_new_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
     clnt->ddl_contexts = NULL;
 
