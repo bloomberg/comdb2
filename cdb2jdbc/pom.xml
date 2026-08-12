@@ -112,10 +112,13 @@ limitations under the License. -->
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.3.0</version>
         <configuration>
-          <archive>                   
+          <archive>
             <manifest>
               <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
             </manifest>
+            <manifestEntries>
+              <Implementation-Title>${project.artifactId}</Implementation-Title>
+            </manifestEntries>
           </archive>
         </configuration>
       </plugin>
