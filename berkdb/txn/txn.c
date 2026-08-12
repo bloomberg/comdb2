@@ -91,12 +91,12 @@ int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
 int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
+int __txn_commit_map_enabled(void);
 
 extern int gbl_is_physical_replicant;
 extern int gbl_fullrecovery;
 extern int gbl_recovery_gen;
 extern int gbl_reproduce_ckp_bug;
-extern int gbl_utxnid_log;
 int gbl_recovery_ckp = 1;
 
 #else
@@ -1066,7 +1066,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	int endianize_locklist = gbl_endianize_locklist;
 
 	dbenv = txnp->mgrp->dbenv;
-	commit_lsn_map = gbl_utxnid_log;
+	commit_lsn_map = __txn_commit_map_enabled();
 
 	PANIC_CHECK(dbenv);
 

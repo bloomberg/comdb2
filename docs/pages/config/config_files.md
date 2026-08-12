@@ -811,6 +811,7 @@ These options are toggle-able at runtime.
 |disable_partial_indexes | | Disables partial indices
 |disable_prefault_udp | | Disable `enable_prefault_udp`
 |disable_replicant_latches | | Turns off page latches on replicants
+|disable_snapshot_isolation | not set | Disables SNAPSHOT and SERIALIZABLE level transactions.  Also stops the database from maintaining the commit-LSN (utxnid) map, which holds one entry per committed transaction until the log file containing the commit is deleted.  Reduces the memory footprint of nodes which never serve snapshot queries.
 |disable_sparse_lockerid_map | | Disables enable_sparse_lockerid_map
 |disable_sql_dlmalloc | not set | If set, will use default system malloc for SQL state machines.  By default, each thread running SQL gets a dedicated memory pool.
 |disable_temptable_pool | | Disables the pool of temp tables set by `temptable_limit`, temp tables are created as needed.
@@ -833,6 +834,7 @@ These options are toggle-able at runtime.
 |enable_prefault_udp | not set |  Send lossy prefault requests to replicants 
 |enable_selectv_range_check | not set | ***Experimental*** If set, SELECTV will send ranges for verification, not every touched record.
 |enable_serial_isolation | 0 | Enable to allow SERIALIZABLE level transactions to run against the database
+|enable_snapshot_isolation | set | Enable to allow SNAPSHOT level transactions to run against the database.  On by default; see `disable_snapshot_isolation`.
 |enable_sparse_lockerid_map | set | If set, allocates a sparse map of lockers for deadlock resolution
 |enable_sql_stmt_caching | not set | Enable caching of query plans.  If followed by "all" will cache all queries, including those without parameters.
 |enable_tagged_api | 0 |

@@ -3756,7 +3756,10 @@ done:
 
 static int snapisol_enabled_correctly()
 {
-    return gbl_rowlocks || gbl_utxnid_log;
+    /* gbl_snapshot_isolation is authoritative: rowlocks can be turned on at
+     * runtime (and flips the default tranlevel to snapisol), but the
+     * commit-lsn map is not populated when snapshot isolation is disabled. */
+    return gbl_snapshot_isolation && (gbl_rowlocks || gbl_utxnid_log);
 }
 
 static int serial_enabled_correctly()

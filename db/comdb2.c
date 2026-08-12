@@ -478,6 +478,11 @@ int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
+/* Snapshot isolation.  Turning this off (lrl 'disable_snapshot_isolation')
+ * rejects SNAPSHOT/SERIALIZABLE transactions and stops us from maintaining the
+ * commit-LSN (utxnid) map, which is a per-committed-transaction memory cost
+ * that only snapshot isolation needs. */
+int gbl_snapshot_isolation = 1;
 int gbl_test_commit_lsn_map = 0;
 
 /* how many times we retry osql for verify */

@@ -39,6 +39,22 @@ int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 
 extern int set_commit_context_prepared(unsigned long long context);
 extern int gbl_utxnid_log;
+extern int gbl_snapshot_isolation;
+
+/*
+ * __txn_commit_map_enabled --
+ *	The commit-LSN map exists only to serve snapshot isolation, and is only
+ *	correct if utxnids are being logged.  When snapshot isolation is turned
+ *	off we skip populating it entirely: one entry per committed transaction
+ *	is retained until the log file holding the commit is deleted, which is
+ *	the dominant memory cost on a node that never runs a snapshot query.
+ *
+ * PUBLIC: int __txn_commit_map_enabled __P((void));
+ */
+int __txn_commit_map_enabled()
+{
+	return gbl_utxnid_log && gbl_snapshot_isolation;
+}
 
 /*
  * Count of times we were asked to remove a utxnid that wasn't present in the
@@ -2122,7 +2138,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	/* Update commit-lsn map */
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
-	if (gbl_utxnid_log) {
+	if (__txn_commit_map_enabled()) {
 
 		if ((ret = __txn_commit_map_add_nolock(dbenv, p->utxnid, lsn_out)) != 0) {
 			logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %"PRIu64"\n", p->utxnid);
