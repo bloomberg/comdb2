@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ -z "$CLUSTER" ]] && nodes=$(hostname) || nodes=$CLUSTER
+
+function write_some_data
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int)" || \
+        failexit "failed to create t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default \
+        "insert into t1 select * from generate_series(1, 10000)" >/dev/null || \
+        failexit "failed to insert into t1"
+
+    cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    assertres "$cnt" "10000" "row count after insert"
+}
+
+# Snapshot isolation is disabled, so we should be refused up-front rather than
+# failing later when we can't find a commit-lsn for a page we are rebuilding.
+function verify_snapshot_is_rejected
+{
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1 <<EOF
+set transaction snapshot isolation
+begin
+select count(*) from t1
+commit
+EOF
+)
+    rc=$?
+    echo "snapshot transaction rc=$rc output: $out"
+
+    if (( rc == 0 )) && ! echo "$out" | grep -q "Failed to set transaction mode" ; then
+        failexit "snapshot transaction should have been rejected"
+    fi
+}
+
+# The point of 'disable_snapshot_isolation': we should not be adding utxnids to
+# the commit-lsn map.  Check every node -- replicants populate the map from the
+# apply path, which is where the footprint of a physical replicant comes from.
+function verify_commit_map_is_empty
+{
+    for node in $nodes ; do
+        cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $node \
+            "select count(*) from comdb2_transaction_commit")
+        assertres "$cnt" "0" "commit-lsn map entries on $node"
+    done
+}
+
+# Default isolation levels are unaffected.
+function verify_writes_still_work
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF || failexit "write transaction failed"
+begin
+insert into t1 values (1)
+commit
+EOF
+
+    cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    assertres "$cnt" "10001" "row count after transaction"
+}
+
+write_some_data
+verify_snapshot_is_rejected
+verify_commit_map_is_empty
+verify_writes_still_work
+verify_commit_map_is_empty
+
+echo "Success"
+exit 0
