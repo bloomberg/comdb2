@@ -949,6 +949,11 @@ struct sqlclntstate {
     hash_t *ddl_tables;
     hash_t *dml_tables;
     hash_t *ddl_contexts;
+    /* Names introduced as brand-new tables in this transaction (CREATE target
+     * and RENAME target). Used to reject two statements introducing the same
+     * name (e.g. "rename a to c; create c"), which otherwise deadlocks the
+     * abort handler at finalize. */
+    hash_t *ddl_new_tables;
 
     int statement_query_effects;
 

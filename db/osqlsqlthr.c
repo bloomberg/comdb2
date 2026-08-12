@@ -32,6 +32,7 @@
  */
 
 #include <poll.h>
+#include <strings.h>
 #include <util.h>
 #include <unistd.h>
 #include "sql.h"
@@ -170,11 +171,12 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
             }                                                                                                          \
         }                                                                                                              \
         if (rc) {                                                                                                      \
-            logmsg(LOGMSG_ERROR,                                                                                       \
-                   "%s: error writting record to master in offload mode "                                              \
-                   "rc=%d!\n",                                                                                         \
-                   __func__, rc);                                                                                      \
-            if (rc != SQLITE_TOOBIG && rc != ERR_SC)                                                                   \
+            if (rc != SQLITE_DDL_MISUSE)                                                                               \
+                logmsg(LOGMSG_ERROR,                                                                                   \
+                       "%s: error writting record to master in offload mode "                                          \
+                       "rc=%d!\n",                                                                                     \
+                       __func__, rc);                                                                                  \
+            if (rc != SQLITE_TOOBIG && rc != ERR_SC && rc != SQLITE_DDL_MISUSE)                                        \
                 rc = SQLITE_INTERNAL;                                                                                  \
         } else {                                                                                                       \
             rc = SQLITE_OK;                                                                                            \
@@ -1428,6 +1430,33 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
  * ***********************************************/
 int gbl_reject_mixed_ddl_dml = 1;
 
+static int check_for_overlap(struct sqlclntstate *clnt, struct schema_change_type *sc)
+{
+    if (!clnt->ddl_tables)
+        return SQLITE_OK;
+
+    if (hash_find_readonly(clnt->ddl_tables, sc->tablename))
+        return SQLITE_DDL_MISUSE;
+
+    /* sqlite can't hold a tablename and an aliasname that collide, so filter
+     * out introduced-name conflicts here before sending to master for SC_ALIASTABLE as well. */
+    const char *newname = NULL;
+    if (sc->kind == SC_ADDTABLE) {
+        newname = sc->tablename;
+    } else if ((sc->kind == SC_RENAMETABLE || sc->kind == SC_ALIASTABLE) &&
+               strcasecmp(sc->tablename, sc->newtable) != 0) {
+        newname = sc->newtable;
+    }
+    if (newname && clnt->ddl_new_tables && hash_find_readonly(clnt->ddl_new_tables, newname))
+        return SQLITE_DDL_MISUSE;
+
+    hash_add(clnt->ddl_tables, strdup(sc->tablename));
+    if (newname && clnt->ddl_new_tables)
+        hash_add(clnt->ddl_new_tables, strdup(newname));
+
+    return SQLITE_OK;
+}
+
 static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                                      int nettype)
 {
@@ -1897,10 +1926,8 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         }
     }
 
-    if (clnt->dml_tables &&
-        hash_find_readonly(clnt->dml_tables, sc->tablename)) {
-        return SQLITE_DDL_MISUSE;
-    }
+    if ((rc = check_for_overlap(clnt, sc)) != SQLITE_OK)
+        return rc;
 
     if (clnt->remsql_set.is_remsql == IS_REMCREATE) {
         /* this is a distributed create for a partition, creating individual shard here, info passed from
@@ -1928,13 +1955,6 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         for (int i = 0; i < clnt->remsql_set.numdbs; i++) {
             sc->partition.u.genshard.shardnames[i] = strdup(clnt->remsql_set.shardnames[i]);
         }
-    }
-
-    if (clnt->ddl_tables) {
-        if (hash_find_readonly(clnt->ddl_tables, sc->tablename)) {
-            return SQLITE_DDL_MISUSE;
-        } else
-            hash_add(clnt->ddl_tables, strdup(sc->tablename));
     }
 
     sc->usedbtablevers = comdb2_table_version(sc->tablename);

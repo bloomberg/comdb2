@@ -107,6 +107,17 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
+# Tests "removing an alias" exception in sqlite3AlterRenameTable
+# (comdb2build.c): get_dbtable_by_name(target) finds the same table via its
+# physical name, which must NOT be flagged as a collision.
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists ra"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table ra(i int)"
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
+alter table ra rename to ra2\$\$
+alter table ra2 rename to ra\$\$
+EOF
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists ra"
+
 # Rename after dropping table with target name in txn
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2(i int)"
 cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
@@ -140,6 +151,53 @@ alter table t rename to dummy\$\$
 alter table t2 rename to t\$\$
 commit
 EOF
+
+# TEST TRAN: CREATE TR2; RENAME TR->TR2 (expected: fail, must not deadlock)
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table tr {schema{int i}}"
+cat <<EOF | timeout --kill-after=5s 60s cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
+begin
+create table tr2 {schema{int i}}\$\$
+alter table tr rename to tr2\$\$
+commit
+EOF
+
+# TEST TRAN: RENAME TR->TR2; CREATE TR2 (expected: fail, must not deadlock)
+# should fail, check comment in osqlsqlthr.c:check_for_overlap
+# this creates a sqlaliasname tr2 for tr, but when we create tr2, sqlite will err
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table tr {schema{int i}}"
+cat <<EOF | timeout --kill-after=5s 60s cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
+begin
+alter table tr rename to tr2\$\$
+create table tr2(i int)\$\$
+commit
+EOF
+
+# TEST TRAN: RENAME TR->TR2; TRUNCATE TR (DDL on introduced name) (expected: fail, must not deadlock)
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table tr {schema{int i}}"
+cat <<EOF | timeout --kill-after=5s 60s cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
+begin
+alter table tr rename to tr2\$\$
+truncate tr
+commit
+EOF
+
+# TEST TRAN: TRUNCATE TR; RENAME TR->TR2 (DDL on introduced name) (expected: fail, must not deadlock)
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists tr2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table tr {schema{int i}}"
+cat <<EOF | timeout --kill-after=5s 60s cdb2sql ${CDB2_OPTIONS} $dbnm default - >> $OUT 2>&1
+begin
+truncate tr
+alter table tr rename to tr2\$\$
+commit
+EOF
+
 
 df=$(diff $OUT $EXP)
 if [ $? -ne 0 ] ; then
