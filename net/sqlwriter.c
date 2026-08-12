@@ -204,7 +204,7 @@ static void sql_flush_cb(int fd, short what, void *arg)
     if (!(what & EV_WRITE)) {
         return;
     }
-    int n;
+    int n = 0;
     LOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
     while (evbuffer_get_length(writer->wr_buf)) {
         if ((n = wr_evbuffer(writer, fd)) <= 0) break;
