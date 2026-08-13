@@ -514,13 +514,15 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                 goto done;
             } else if (rc != 0) {
                 *ixfailnum = ixnum;
-                /* If following changes, update OSQL_INSREC in osqlcomm.c */
-                *opfailcode = OP_FAILED_UNIQ; /* really? */
-
-                // If this transaction has already added this key and adding this key again
-                // violates a duplicate key constraint, then this txn is uncommittable. 
-                if (dup_txn_insert == 1) {
-                    iq->dup_key_insert = 1;
+                if (rc == IX_DUP) {
+                    *opfailcode = OP_FAILED_UNIQ;
+                    // If this transaction has already added this key and adding this key again
+                    // violates a duplicate key constraint, then this txn is uncommittable.
+                    if (dup_txn_insert) {
+                        iq->dup_key_insert = 1;
+                    }
+                } else {
+                    *opfailcode = OP_FAILED_INTERNAL;
                 }
 
                 ERR(rc, "add error", 0);

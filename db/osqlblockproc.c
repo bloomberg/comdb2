@@ -1181,6 +1181,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     if (iq->vfy_idx_track) {
         hash_clear(iq->vfy_idx_hash);
+        iq->dup_key_insert = 0;
     }
 
     /* create a cursor */
