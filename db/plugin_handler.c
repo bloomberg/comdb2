@@ -337,11 +337,12 @@ const char *comdb2_plugin_type_to_str(int type)
 
 int run_init_plugins(int phase)
 {
-    for (int i = 0; gbl_plugins[i]; ++i) {
+    int plugin_num = 0;
+    int rc = 0;
+    for (plugin_num = 0; gbl_plugins[plugin_num]; ++plugin_num) {
         struct comdb2_initializer *initer;
-        int rc = 0;
-        if (gbl_plugins[i]->type == COMDB2_PLUGIN_INITIALIZER) {
-            initer = gbl_plugins[i]->data;
+        if (gbl_plugins[plugin_num]->type == COMDB2_PLUGIN_INITIALIZER) {
+            initer = gbl_plugins[plugin_num]->data;
             rc = 0;
             switch (phase) {
                 case COMDB2_PLUGIN_INITIALIZER_PRE:
@@ -359,11 +360,16 @@ int run_init_plugins(int phase)
 
             }
             if (rc) {
-                return 1;
+                break;
             }
         }
     }
-    return 0;
+    if (gbl_plugins[plugin_num] != NULL) {
+        logmsg(LOGMSG_FATAL, "Init of plugin failed: %s phase %d\n",
+               gbl_plugins[plugin_num]->name ? gbl_plugins[plugin_num]->name : "???", phase);
+        abort();
+    }
+    return rc;
 }
 
 static LISTC_T(struct lrl_handler) lrl_handlers;

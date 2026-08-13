@@ -1252,12 +1252,6 @@ int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileN
                                      lineNo, zField, zTok);
                             goto failure;
                         }
-                        int nMaxThreads = get_default_sql_pool_max_threads();
-                        if (pool.nThreads > nMaxThreads) {
-                            snprintf(zError, sizeof(zError), "%s:%d, bad %s value '%s', cannot exceed %d", zFileName,
-                                     lineNo, zField, zTok, nMaxThreads);
-                            goto failure;
-                        }
                         zTok = strtok_r(NULL, RULESET_DELIM, &zSav);
                         continue;
                     }
