@@ -362,6 +362,7 @@
 (name='eventlog_fullhintsql', description='Log full sql statement in the event log for hint abbreviated sql. (Default : on)', type='BOOLEAN', value='ON', read_only='N')
 (name='eventlog_nkeep', description='Keep this many eventlog files (Default: 2)', type='INTEGER', value='0', read_only='N')
 (name='exclusive_blockop_qconsume', description='Enables serialization of blockops and queue consumes. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='exit_flush_timeout_sec', description='While exiting, give up on a client write that has made no progress for this long.  0 disables.  (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='exit_on_internal_failure', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='exitalarmsec', description='', type='INTEGER', value='10', read_only='Y')
 (name='extended_sql_debug_trace', description='Print extended trace for durable sql debugging', type='BOOLEAN', value='OFF', read_only='N')
