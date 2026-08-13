@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+
+# Physreps use the same blocking comdb2_transaction_logs() path as sql-logfill,
+# so a source node that isn't exit-aware hangs in clean_exit while a physrep is
+# parked in a blocking tranlog request against it.
+#
+# Attach a physrep, keep it streaming, then exit the source node it is attached
+# to and require that node to reach 'goodbye' promptly.
+
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+set -x
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+
+dbname=$1
+destdb=${TESTCASE}dest${TESTID}
+
+COPY_DBDIR=${DBDIR}/$destdb
+DEST_DBDIR=${COPY_DBDIR}/$dbname
+
+# A healthy clean exit takes a couple of seconds.  The unfixed failure mode is
+# an indefinite hang, so anything in this range separates the two cleanly.
+EXIT_DEADLINE=60
+
+writer_pid=0
+
+if [[ -z "$TEST_TIMEOUT" ]] ; then
+    export TEST_TIMEOUT=5m
+fi
+
+function cleanup
+{
+    [[ $writer_pid != 0 ]] && kill -9 $writer_pid 2>/dev/null
+    [[ -f $DEST_DBDIR/${destdb}.pid ]] && kill -9 $(cat $DEST_DBDIR/${destdb}.pid) 2>/dev/null
+    return 0
+}
+
+function override_physrep_sp()
+{
+    local mnode=`getmaster`
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $dbname --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua` }"
+}
+
+function setup_replicant()
+{
+    mkdir -p $DEST_DBDIR
+
+    if [[ -z "$CLUSTER" ]]; then
+        cl="-y @localhost"
+    else
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+        if [[ ! "$CLUSTER" =~ .*$myhost.* ]]; then
+            clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR \
+        || failexit "copycomdb2 failed"
+
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
+
+    if [ -n "$PMUXPORT" ] ; then
+        echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
+        echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
+    fi
+
+    replog=$TESTDIR/logs/$destdb.db
+
+    (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+
+    local retries=0
+    while [[ "$(${CDB2SQL_EXE} --tabs $destdb --host localhost 'select 1' 2>/dev/null)" != "1" ]]; do
+        sleep 1
+        let retries=retries+1
+        [[ $retries -eq 30 ]] && failexit "Timeout waiting for physrep to come up"
+    done
+}
+
+# Returns the source host the physrep attached to, per its own log.
+function physrep_source_host()
+{
+    local elapsed=0
+    while [[ $elapsed -lt 60 ]]; do
+        local host=$(grep "Physical replicant is now replicating from" $replog 2>/dev/null \
+                        | tail -1 | sed 's/.*@//' | tr -d '[:space:]')
+        if [[ -n "$host" ]]; then
+            echo "$host"
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    return 1
+}
+
+# Keep the log moving so the physrep stays engaged with the source.
+function start_writer
+{
+    (
+        while :; do
+            ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default \
+                "insert into t1 select * from generate_series(1, 200)" &>/dev/null
+        done
+    ) &
+    writer_pid=$!
+}
+
+function wait_goodbye
+{
+    local node=$1
+    local logfile
+
+    if [[ -z "$CLUSTER" ]]; then
+        logfile="${TESTDIR}/logs/${dbname}.db"
+    else
+        logfile="${TESTDIR}/logs/${dbname}.${node}.db"
+    fi
+
+    local elapsed=0
+    while [[ $elapsed -lt $EXIT_DEADLINE ]]; do
+        if grep -q "goodbye" "$logfile" 2>/dev/null; then
+            echo "$node exited cleanly after ${elapsed}s"
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+trap cleanup EXIT
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "create table t1 (id int)" \
+    || failexit "Failed to create t1"
+
+override_physrep_sp
+setup_replicant
+start_writer
+
+source_host=$(physrep_source_host) \
+    || failexit "physrep never attached to a source -- test is vacuous"
+echo "physrep is attached to $source_host"
+
+# Give the in-flight tranlog request a moment to settle into its blocking wait.
+sleep 5
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname --host $source_host \
+    "exec procedure sys.cmd.send('exit')" &>/dev/null
+
+wait_goodbye "$source_host" \
+    || failexit "source $source_host did not exit within ${EXIT_DEADLINE}s"
+
+cleanup
+echo "Success"
+exit 0
