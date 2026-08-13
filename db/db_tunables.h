@@ -1360,6 +1360,11 @@ REGISTER_TUNABLE("debug.omit_dta_write", "Deliberately corrupt insertion randoml
                  &gbl_debug_omit_dta_write, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.omit_idx_write", "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_idx_write, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.ix_addk_nomaster",
+                 "Fail this many subsequent key adds with ERR_NOMASTER, as if downgraded mid-transaction",
+                 TUNABLE_INTEGER, &gbl_debug_ix_addk_nomaster, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.ix_addk_nomaster_skip", "Let this many key adds through before debug.ix_addk_nomaster kicks in",
+                 TUNABLE_INTEGER, &gbl_debug_ix_addk_nomaster_skip, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.omit_blob_write", "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.skip_constraintscheck_on_insert",

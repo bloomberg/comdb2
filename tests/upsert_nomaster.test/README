@@ -1,0 +1,19 @@
+Regression test for "Handle ix_addk rcode correctly during master swing".
+
+ix_addk() returns ERR_NOMASTER when the node is downgraded in the middle of a
+transaction. add_record_indices() used to report every ix_addk() failure as
+OP_FAILED_UNIQ (duplicate key), which upsert (insert ... on conflict do
+nothing) is entitled to ignore. Two things went wrong:
+
+  1) the upsert was told it succeeded, but the data record was left without its
+     index entry, and
+  2) the transaction was marked as having inserted a duplicate key, i.e.
+     uncommittable, which is a permanent failure instead of a retry.
+
+The test drives ERR_NOMASTER out of ix_addk() directly through the
+debug.ix_addk_nomaster[_skip] tunables instead of racing a real master swing.
+
+Not covered: apply_changes() also resets iq->dup_key_insert when it clears the
+per-attempt index hash. That only matters when an attempt that saw a genuine
+duplicate is retried (e.g. a deadlock later in the same block), which this test
+does not force.

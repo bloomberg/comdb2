@@ -477,6 +477,8 @@ extern int gbl_abort_on_dangling_stringrefs;
 extern int gbl_debug_alter_sequences_sleep;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_ix_addk_nomaster;
+extern int gbl_debug_ix_addk_nomaster_skip;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int gbl_debug_pb_connectmsg_dbname_check;

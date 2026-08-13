@@ -1,0 +1,4 @@
+# Index tracking (and therefore the "uncommittable txn" check) is only armed
+# after this many verify-retries. Arm it from the very first attempt so that
+# the second part of this test is deterministic.
+osql_verify_ext_chk 0
