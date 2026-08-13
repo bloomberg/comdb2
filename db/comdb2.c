@@ -180,6 +180,7 @@ int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
 int gbl_perform_full_clean_exit = 1;
 int gbl_abort_on_dangling_stringrefs = 0;
+int gbl_abort_on_stalled_exit = 1;
 struct ruleset *gbl_ruleset = NULL;
 
 void myctrace(const char *c) { ctrace("%s", c); }
@@ -1671,8 +1672,10 @@ static void finish_clean()
         abort();
 }
 
-void call_abort(int s)
+/* exit-alarm fired: core-dump so we can see what we are stuck on */
+static void abort_stalled_exit(int signum)
 {
+    logmsg(LOGMSG_FATAL, "CLEAN EXIT: stalled, aborting\n");
     abort();
 }
 
@@ -1687,9 +1690,9 @@ static void begin_clean_exit(void)
 
     logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
 
-#ifndef NDEBUG
-    signal(SIGALRM, call_abort);
-#endif
+    if (gbl_abort_on_stalled_exit)
+        signal(SIGALRM, abort_stalled_exit);
+
     /* this defaults to 5 minutes */
     alarm(alarmtime);
 
@@ -1748,6 +1751,9 @@ void clean_exit(void)
     int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
     logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
+
+    if (gbl_abort_on_stalled_exit)
+        signal(SIGALRM, abort_stalled_exit);
 
     /* this defaults to 5 minutes */
     alarm(alarmtime);
