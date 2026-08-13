@@ -3,3 +3,8 @@ verbose_normalized_queries
 verbose_prioritize_queries 1
 sqlenginepool maxt 1
 sqlenginepool maxq 1
+
+# The expected output includes LOGMSG_INFO messages (e.g. "thdpool_destroy: pool
+# ... wait done"), which are filtered out at the default log level.  Do not rely on
+# tests/setup adding this, it is skipped when SKIPDEBUG is set.
+logmsg level debug
