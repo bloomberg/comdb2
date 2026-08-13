@@ -154,6 +154,8 @@ extern int gbl_lost_master_time;
 extern int gbl_use_fastseed_for_comdb2_seqno;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_ix_addk_nomaster;
+extern int gbl_debug_ix_addk_nomaster_skip;
 
 extern int gbl_import_mode;
 extern int bulk_import_tmpdb_should_ignore_table(const char *table);
@@ -1075,6 +1077,18 @@ int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
 {
     if (gbl_debug_omit_idx_write) {
         return 0;
+    }
+    /* Simulate a master swing: after letting gbl_debug_ix_addk_nomaster_skip
+     * key adds through, the next gbl_debug_ix_addk_nomaster key adds fail as
+     * if we had been downgraded mid-transaction. */
+    if (gbl_debug_ix_addk_nomaster > 0) {
+        if (gbl_debug_ix_addk_nomaster_skip > 0 && ATOMIC_ADD32(gbl_debug_ix_addk_nomaster_skip, -1) >= 0) {
+            /* not yet */
+        } else if (ATOMIC_ADD32(gbl_debug_ix_addk_nomaster, -1) >= 0) {
+            logmsg(LOGMSG_USER, "%s: returning ERR_NOMASTER for table '%s' ix %d\n", __func__, iq->usedb->tablename,
+                   ixnum);
+            return ERR_NOMASTER;
+        }
     }
     int rc;
     ACCUMULATE_TIMING(CHR_IXADDK,

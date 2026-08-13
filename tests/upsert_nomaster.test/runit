@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [[ -z $dbnm ]] ; then
+    failexit "need a DB name"
+fi
+
+master=$(getmaster)
+[[ -z $master ]] && failexit "could not find master"
+
+# ix_addk returns ERR_NOMASTER when we get downgraded in the middle of a
+# transaction. Simulate that: let $1 key adds through on the master, then fail
+# the next $2 of them with ERR_NOMASTER.
+function arm_nomaster
+{
+    typeset skip=$1
+    typeset nfail=$2
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+        "put tunable 'debug.ix_addk_nomaster_skip' $skip" >/dev/null || failexit "could not arm skip"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+        "put tunable 'debug.ix_addk_nomaster' $nfail" >/dev/null || failexit "could not arm nomaster"
+}
+
+function disarm_nomaster
+{
+    arm_nomaster 0 0
+}
+
+# Report every symptom in one run rather than stopping at the first one.
+failures=0
+function fail
+{
+    echo "FAILED: $1"
+    failures=$((failures+1))
+}
+
+# 1) An upsert must not silently lose its index entry.
+#
+# ERR_NOMASTER used to be reported as a duplicate key error, which
+# 'insert ... on conflict do nothing' happily ignores. The data record was
+# added, its key was not, and the client was told the insert succeeded.
+echo "part 1: upsert must not lose its index entry"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t1" >/dev/null
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (i int primary key)" >/dev/null || failexit "create t1"
+
+arm_nomaster 0 1
+out=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values(3) on conflict do nothing" 2>&1)
+disarm_nomaster
+echo "insert returned: $out"
+
+# The insert is allowed to fail (ERR_NOMASTER is retryable), but it is not
+# allowed to report success and leave the row unindexed.
+scan=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1 where i+0 = 3")
+idx=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1 where i = 3")
+echo "rows found by scan: $scan, rows found through the index: $idx"
+if [[ "$scan" != "$idx" ]] ; then
+    fail "row 3 is in the data file ($scan) but not in the index ($idx)"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_t1.out
+if ! grep -q succeeded verify_t1.out ; then
+    cat verify_t1.out
+    fail "verify of t1 failed"
+fi
+
+# 2) An upsert must not turn the transaction uncommittable.
+#
+# The same mismapping marked the transaction as one that inserted a duplicate
+# key, which is a permanent (non-retryable) failure.
+echo "part 2: upsert must not make the transaction uncommittable"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t2" >/dev/null
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)" >/dev/null || failexit "create t2"
+
+# Both key adds of key 6 fail: the first one because of the injected
+# ERR_NOMASTER, and the second one because the first one never made it into the
+# btree and so gets re-added within the same transaction.
+arm_nomaster 0 2
+cat > uncommittable.sql <<'EOF'
+begin
+insert into t2 values(6) on conflict do nothing
+insert into t2 values(6) on conflict do nothing
+commit
+EOF
+out=$(cdb2sql ${CDB2_OPTIONS} $dbnm default -f uncommittable.sql 2>&1)
+disarm_nomaster
+echo "$out"
+
+if echo "$out" | grep -qi uncommittable ; then
+    fail "transaction was incorrectly marked uncommittable"
+fi
+
+cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t2 where i = 6")
+if [[ "$cnt" != "1" ]] ; then
+    fail "expected exactly one row with i=6, found $cnt"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t2')" &> verify_t2.out
+if ! grep -q succeeded verify_t2.out ; then
+    cat verify_t2.out
+    fail "verify of t2 failed"
+fi
+
+if [[ $failures != 0 ]] ; then
+    failexit "$failures check(s) failed"
+fi
+
+echo "Testcase passed."
+exit 0

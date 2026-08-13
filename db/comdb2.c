@@ -370,6 +370,8 @@ static int gbl_db_is_exiting = 0; /* Indicates this process is exiting */
 
 int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
+int gbl_debug_ix_addk_nomaster;
+int gbl_debug_ix_addk_nomaster_skip;
 int gbl_debug_omit_blob_write;
 int gbl_debug_omit_zap_on_rebuild = 0;
 int gbl_debug_txn_sleep = 0;
