@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+
+# A blocking comdb2_transaction_logs() request runs on an appsock-sql thread,
+# and clean_exit waits for those threads.  Replicants running sql-logfill
+# re-issue these against the master in a loop, so if tranlog isn't exit-aware
+# the exiting master never drains and dies on the exit alarm.
+#
+# Exit the master while replicants are actively logfilling, and require that it
+# reaches 'goodbye' promptly.
+
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+
+# A healthy clean exit takes a couple of seconds.  The unfixed failure mode is
+# an indefinite hang, so anything in this range separates the two cleanly.
+EXIT_DEADLINE=60
+
+writer_pid=0
+
+function cleanup
+{
+    [[ $writer_pid != 0 ]] && kill -9 $writer_pid 2>/dev/null
+}
+
+# Keep the log moving so the replicants' logfill threads stay engaged with the
+# master rather than idling on an empty gap.
+function start_writer
+{
+    (
+        while :; do
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db default \
+                "insert into t1 select * from generate_series(1, 200)" &>/dev/null
+        done
+    ) &
+    writer_pid=$!
+}
+
+# Verify replicants are actually issuing logfill requests -- otherwise the test
+# would pass vacuously.
+function wait_logfill_active
+{
+    local master=$1
+    local elapsed=0
+
+    while [[ $elapsed -lt 60 ]]; do
+        for node in $CLUSTER; do
+            [[ "$node" == "$master" ]] && continue
+            if grep -q "requesting logs from master" \
+                    "${TESTDIR}/logs/${db}.${node}.db" 2>/dev/null; then
+                echo "logfill is active on $node"
+                return 0
+            fi
+        done
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    return 1
+}
+
+function wait_goodbye
+{
+    local node=$1
+    local logfile="${TESTDIR}/logs/${db}.${node}.db"
+    local elapsed=0
+
+    while [[ $elapsed -lt $EXIT_DEADLINE ]]; do
+        if grep -q "^.*goodbye" "$logfile" 2>/dev/null; then
+            echo "$node exited cleanly after ${elapsed}s"
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+function run_test
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "create table t1 (id int)" \
+        || failexit "Failed to create t1"
+
+    start_writer
+
+    local master=$(get_master)
+    [[ -z "$master" ]] && failexit "No master"
+    echo "master is $master"
+
+    wait_logfill_active "$master" \
+        || failexit "No replicant issued a logfill request -- test is vacuous"
+
+    # Give the in-flight requests a moment to settle into their blocking wait.
+    sleep 5
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master \
+        "exec procedure sys.cmd.send('exit')" &>/dev/null
+
+    wait_goodbye "$master" \
+        || failexit "master $master did not exit within ${EXIT_DEADLINE}s"
+}
+
+cnt=$(echo $CLUSTER | wc -w)
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    failexit "This test requires a clustered installation of at least 3 nodes"
+fi
+
+trap cleanup EXIT
+
+run_test
+
+cleanup
+echo "Success"
