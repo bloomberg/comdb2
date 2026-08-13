@@ -620,9 +620,13 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
         }
         sql_nexts++;
 
-        int desired = 0, exiting = 0;
-        while (!(desired = bdb_lock_desired(bdb_state)) && !(exiting = db_is_exiting()) &&
-               (rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        int desired = 0, exiting = 0, consumed = 0;
+        while (!(desired = bdb_lock_desired(bdb_state)) && !(exiting = db_is_exiting())) {
+
+            if ((rc = cdb2_next_record(hndl)) != CDB2_OK) {
+                consumed = 1;
+                break;
+            }
 
             sql_nexts++;
             if (gbl_debug_sql_logfill) {
@@ -651,6 +655,7 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: apply_record failed rc=%d - exiting apply loop\n", __func__, rc);
                 BDB_RELLOCK();
+                disconnect_from_master();
                 return 0;
             }
 
@@ -671,7 +676,12 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
         }
 
         if (gbl_debug_sql_logfill) {
-            logmsg(LOGMSG_USER, "%s: done, desired=%d exiting=%d rc=%d\n", __func__, desired, exiting, rc);
+            logmsg(LOGMSG_USER, "%s: done, desired=%d exiting=%d consumed=%d rc=%d\n", __func__, desired, exiting,
+                   consumed, rc);
+        }
+
+        if (!consumed) {
+            disconnect_from_master();
         }
     }
     return 0;
