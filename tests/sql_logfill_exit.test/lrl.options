@@ -1,0 +1,4 @@
+sql_logfill 1
+sql_logfill_debug 1
+
+logmsg level debug
