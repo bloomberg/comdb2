@@ -220,8 +220,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
         goto out;
 
     if (par->verify_mode == VERIFY_SERIAL) {
-        locprint(par, "!%s, did %d records, %d per second", par->header,
-                 par->nrecs_progress,
+        locprint(par, "!%s, did %llu records, %d per second", par->header, (unsigned long long)par->records_processed,
                  par->nrecs_progress / par->progress_report_seconds);
         par->nrecs_progress = 0;
     } else {
@@ -1186,14 +1185,14 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     int nblobs = get_numblobs(par->db_table);
     for (int blobno = 0; blobno < nblobs && !par->client_dropped_connection;
          blobno++) {
-        par->records_processed = 0;
-        par->nrecs_progress = 0;
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
              dtastripe++) {
             char header[256];
             snprintf(header, sizeof(header), "verifying blob %d stripe %d",
                      blobno, dtastripe);
             par->header = header;
+            par->records_processed = 0;
+            par->nrecs_progress = 0;
             bdb_verify_blob(par, blobno, dtastripe, lid);
         }
     }
