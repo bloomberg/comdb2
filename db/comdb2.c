@@ -1704,6 +1704,10 @@ static void begin_clean_exit(void)
 
     wait_for_transactions();
 
+    /* The transaction grace period above is an intended wait; restart the
+     * stall watchdog so it times only the exit work that follows. */
+    alarm(alarmtime);
+
     print_all_time_accounting();
     wait_for_sc_to_stop("exit", __func__, __LINE__);
 
@@ -1765,6 +1769,10 @@ void clean_exit(void)
     block_new_requests(thedb);
 
     wait_for_transactions();
+
+    /* The transaction grace period above is an intended wait; restart the
+     * stall watchdog so it times only the exit work that follows. */
+    alarm(alarmtime);
 
     print_all_time_accounting();
     wait_for_sc_to_stop("exit", __func__, __LINE__);
