@@ -633,6 +633,43 @@ struct __db_ltran {
 #define	DB_user_BEGIN		10000
 #define	DB_debug_FLAG		0x80000000
 
+/*
+ * Log-record format tags.  An on-disk rectype is
+ * [DB_user_BEGIN] + (tags * 1000) + base, tags in [0, 7].  Use
+ * __rectype_tags() rather than open-coding range tests: they shift
+ * every time a tag is added.
+ */
+#define	DB_RECTYPE_TAG_UNIT	1000
+#define	DB_RECTAG_UFID		0x1	/* carries a ufid, not a dbreg fileid */
+#define	DB_RECTAG_UTXNID	0x2	/* carries a u_int64_t utxnid */
+#define	DB_RECTAG_CKSUM_PREV	0x4	/* carries the previous record's checksum */
+
+/*
+ * Returns the tag bitmask; stores the untagged base type in *basep
+ * (logical records keep their DB_user_BEGIN offset).
+ */
+static inline u_int32_t
+__rectype_tags(u_int32_t rectype, u_int32_t *basep)
+{
+	u_int32_t logical = 0;
+
+	rectype &= ~DB_debug_FLAG;
+	if (rectype >= DB_user_BEGIN) {
+		logical = DB_user_BEGIN;
+		rectype -= DB_user_BEGIN;
+	}
+	if (basep != NULL)
+		*basep = logical + (rectype % DB_RECTYPE_TAG_UNIT);
+	return (rectype / DB_RECTYPE_TAG_UNIT);
+}
+
+#define	DB_RECTYPE_HAS_UFID(t)		(__rectype_tags((t), NULL) & DB_RECTAG_UFID)
+#define	DB_RECTYPE_HAS_UTXNID(t)	(__rectype_tags((t), NULL) & DB_RECTAG_UTXNID)
+#define	DB_RECTYPE_HAS_CKSUM_PREV(t)	(__rectype_tags((t), NULL) & DB_RECTAG_CKSUM_PREV)
+
+/* Is this a bdb logical (llog) record rather than a berkdb physical one? */
+#define	DB_RECTYPE_IS_LOGICAL(t)	(((t) & ~DB_debug_FLAG) >= DB_user_BEGIN)
+
 struct __db_log_cursor_stat {
     int incursor_count;
     int ondisk_count;

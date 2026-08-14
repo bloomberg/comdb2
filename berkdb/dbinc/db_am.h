@@ -53,7 +53,7 @@ extern __thread DB_LSN commit_lsn;
 		CHECK_ABORT \
 		goto out;						\
 	}								   \
-	if (argp->type > 3000 || (argp->type > 1000 && argp->type < 2000)) { \
+	if (DB_RECTYPE_HAS_UFID(argp->type)) { \
 		ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, argp->ufid_fileid, &log_trigger, lsnp); \
 		if ((ret == 0 || ret == DB_DELETED || ret == DB_IGNORED) && op == DB_TXN_APPLY && log_trigger != NULL && dbenv->rep_log_trigger_cb) { \
 			char *fname = NULL; \
@@ -108,7 +108,7 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 		__log_flush(dbenv, NULL); 				\
 		abort(); 						\
 	}								\
-	if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {					\
+	if (DB_RECTYPE_HAS_UFID(argp->type)) {					\
 		ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp,	\
 			argp->ufid_fileid, &log_trigger, lsnp);			\
 	}								\
