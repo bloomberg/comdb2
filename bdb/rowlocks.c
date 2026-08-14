@@ -1557,11 +1557,8 @@ static int find_last_logical_lsn(bdb_state_type *bdb_state, DB_LSN *last_lsn,
                 goto done;
             }
 
-            bp += sizeof(u_int32_t);
-            LOGCOPY_32(&txnid, bp);
-
-            bp += sizeof(u_int32_t);
-            LOGCOPY_TOLSN(&lsn, bp);
+            LOGCOPY_32(&txnid, bp + DB_REC_OFF_TXNID);
+            LOGCOPY_TOLSN(&lsn, bp + DB_REC_OFF_PREV_LSN);
         } while (lsn.file != 0);
     } while (commit_lsn.file != 0);
 

@@ -673,8 +673,7 @@ __rectype_tags(u_int32_t rectype, u_int32_t *basep)
 /*
  * Length of the common record prefix:
  *	type(4) | txnid(4) | prev_lsn(8) | [utxnid(8)] | [prev_cksum(4)]
- * The tagged fields are only present when their tag is set.  Use this
- * instead of open-coding "4 + 4 + 8 + (utxnid ? 8 : 0)".
+ * where the tagged fields are only present when their tag is set.
  */
 static inline u_int32_t
 __rectype_prefix_len(u_int32_t rectype)
@@ -690,6 +689,16 @@ __rectype_prefix_len(u_int32_t rectype)
 /* Offset of prev_cksum.  Only valid if tagged DB_RECTAG_CKSUM_PREV. */
 #define	DB_RECTYPE_CKSUM_PREV_OFF(t) \
 	(__rectype_prefix_len(t) - (u_int32_t)sizeof(u_int32_t))
+
+/*
+ * Offsets of the fixed prefix fields.  Read prefix fields at these offsets
+ * and reach the body with __rectype_prefix_len().  Do not walk the prefix
+ * field by field: such a walk silently skips any field added later.
+ */
+#define	DB_REC_OFF_TYPE		((u_int32_t)0)
+#define	DB_REC_OFF_TXNID	(DB_REC_OFF_TYPE + (u_int32_t)sizeof(u_int32_t))
+#define	DB_REC_OFF_PREV_LSN	(DB_REC_OFF_TXNID + (u_int32_t)sizeof(u_int32_t))
+#define	DB_REC_OFF_UTXNID	(DB_REC_OFF_PREV_LSN + (u_int32_t)sizeof(DB_LSN))
 
 struct __db_log_cursor_stat {
     int incursor_count;
@@ -3362,8 +3371,9 @@ int __checkpoint_ok_to_delete_log(DB_ENV *dbenv, int logfile);
 int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	int check_checkpoint);
 
+/* 'prefix' is __rectype_prefix_len() of the record's raw (tagged) rectype. */
 int ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
-	int rectype, u_int8_t *ufid, DBT *dbt, int utxnid_logged);
+	int rectype, u_int8_t *ufid, DBT *dbt, u_int32_t prefix);
 
 int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);

@@ -3165,9 +3165,9 @@ __txn_force_abort(dbenv, buffer)
 
 	u_int32_t rectype = 0;
 	LOGCOPY_32(&rectype, buffer + hdrsize);
-	int utxnid_logged = normalize_rectype(&rectype);
 
-	offset = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + (utxnid_logged ? sizeof(u_int64_t) : 0);
+	/* opcode is the first field after the common prefix. */
+	offset = __rectype_prefix_len(rectype);
 	if (CRYPTO_ON(dbenv)) {
 		key = db_cipher->mac_key;
 		sum_len = DB_MAC_KEY;
