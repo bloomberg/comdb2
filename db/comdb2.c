@@ -134,6 +134,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "time_accounting.h"
 #include <build/db.h>
 #include "comdb2_ruleset.h"
+#include "seqnum_wait.h"
 #include <hostname_support.h>
 #include "string_ref.h"
 #include "sql_stmt_cache.h"
@@ -817,6 +818,13 @@ int64_t gbl_temptable_spills;
 int gbl_osql_odh_blob = 1;
 
 int gbl_clean_exit_on_sigterm = 1;
+
+/* Asynchronous distributed commit -- see db/seqnum_wait.c */
+int gbl_async_dist_commit = 0;
+int gbl_async_dist_commit_max_outstanding_trans = 8;
+/* instrumentation: commits handed to the waiter vs waited on inline */
+int64_t gbl_async_dist_commit_enqueued = 0;
+int64_t gbl_async_dist_commit_inline = 0;
 
 int gbl_is_physical_replicant;
 int gbl_server_admin_mode = 0;
@@ -4390,6 +4398,14 @@ static int init(int argc, char **argv)
     }
 
     load_dbstore_tableversion(thedb, NULL);
+
+    /* Started unconditionally (it is idle unless work is queued) so that
+     * async_dist_commit can be toggled at runtime. */
+    if (seqnum_wait_gbl_mem_init() != 0) {
+        logmsg(LOGMSG_ERROR, "Could not start the seqnum-wait thread; "
+                             "disabling async_dist_commit\n");
+        gbl_async_dist_commit = 0;
+    }
 
     gbl_backend_opened = 1;
 
