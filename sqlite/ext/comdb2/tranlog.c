@@ -416,12 +416,16 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_MAXUTXNID: 
         if (pCur->data.data) {
-            LOGCOPY_32(&rectype, pCur->data.data); 
-            if (rectype == DB___txn_ckp+2000 || rectype == DB___txn_ckp_recovery+2000) {
+            u_int32_t base, tags;
+            LOGCOPY_32(&rectype, pCur->data.data);
+            tags = __rectype_tags(rectype, &base);
+            /* max_utxnid only exists on utxnid-tagged checkpoints. */
+            if ((tags & DB_RECTAG_UTXNID) &&
+                (base == DB___txn_ckp || base == DB___txn_ckp_recovery)) {
                 LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
                 sqlite3_result_int64(ctx, maxutxnid);
                 break;
-            } 
+            }
         }
         sqlite3_result_null(ctx);
         break;
@@ -490,9 +494,9 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_UTXNID:
         if (pCur->data.data) {
-            LOGCOPY_32(&rectype, pCur->data.data); 
-            if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]); 
+            LOGCOPY_32(&rectype, pCur->data.data);
+            if (DB_RECTYPE_HAS_UTXNID(rectype)) {
+                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]);
                 sqlite3_result_int64(ctx, utxnid);
                 break;
             }
@@ -507,32 +511,32 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_TIMESTAMP:
         if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); 
+            LOGCOPY_32(&rectype, pCur->data.data);
 
-        if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
-            rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
+        /* Dispatch on the base type; the accessors handle the tags. */
+        (void)__rectype_tags(rectype, &rectype);
+
+        if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize) {
             timestamp = logrecord_timestamp_regop_gen(pCur->data.data);
         }
 
-        if (rectype == DB___txn_dist_commit || (rectype == DB___txn_dist_commit+2000)){
+        if (rectype == DB___txn_dist_commit){
             timestamp = logrecord_timestamp_dist_commit(pCur->data.data);
         }
 
-        if (rectype == DB___txn_dist_abort || (rectype == DB___txn_dist_abort+2000)){
+        if (rectype == DB___txn_dist_abort){
             timestamp = logrecord_timestamp_dist_abort(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
-            rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
+        if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
             timestamp = logrecord_timestamp_regop_rowlocks(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
+        if (rectype == DB___txn_regop) {
             timestamp = logrecord_timestamp_regop(pCur->data.data);
         }
 
-		if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000) ||
-			rectype == DB___txn_ckp_recovery || (rectype == DB___txn_ckp_recovery+2000)) {
+		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
 			timestamp = logrecord_timestamp_ckp(pCur->data.data);
 		}
 
@@ -553,9 +557,13 @@ static int tranlogColumn(
         if (pCur->data.data)
                 LOGCOPY_32(&rectype, pCur->data.data);
 
-        if (rectype == DB___txn_child+2000 || rectype == DB___txn_child+3000)
-        { 
-                LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[4 + 4 + 8 + 8 + 4]); 
+        /* child_utxnid only exists on utxnid-tagged child records. */
+        if (DB_RECTYPE_HAS_UTXNID(rectype)) {
+                u_int32_t base;
+                (void)__rectype_tags(rectype, &base);
+                if (base == DB___txn_child) {
+                        LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[4 + 4 + 8 + 8 + 4]);
+                }
         }
 
         if (childutxnid > 0) {

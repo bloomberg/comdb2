@@ -17,15 +17,9 @@
 /*
  * Fast field accessors for packed log record buffers.
  *
- * These retrieve individual fields from raw log record data without fully
- * unpacking the record, avoiding the overhead of a complete unpack.  Each
- * function peeks at the rectype first so it can choose the correct field
- * offset (the layout differs between "normal" and "apprec" record types).
- *
- * The rectype range check:
- *   (rectype < 10000 && rectype > 2000) || rectype > 12000
- * identifies the "apprec" (application-record / endianize) variants whose
- * on-disk layout includes an extra 8-byte field before the normal fields.
+ * These retrieve individual fields from raw log record data without
+ * fully unpacking the record.  Field offsets are relative to the common
+ * prefix, whose width depends on the rectype's tags.
  */
 
 #include "logrecord.h"
@@ -36,7 +30,7 @@
 #include "logmsg.h"
 
 /* True when the record is an utxnid variant. */
-#define IS_UTXNID(rectype) (((rectype) < 10000 && (rectype) > 2000) || (rectype) > 12000)
+#define IS_UTXNID(rectype) DB_RECTYPE_HAS_UTXNID(rectype)
 
 uint64_t logrecord_timestamp_regop_gen(char *data)
 {
@@ -189,7 +183,7 @@ uint32_t logrecord_generation_ckp(char *data)
 
 uint64_t logrecord_timestamp_matchable(char *data)
 {
-    uint32_t rectype = 0;
+    uint32_t rectype = 0, base = 0;
     if (data) {
         LOGCOPY_32(&rectype, data);
         logmsg(LOGMSG_DEBUG, "%s rec: %u\n", __func__, rectype);
@@ -197,30 +191,30 @@ uint64_t logrecord_timestamp_matchable(char *data)
         logmsg(LOGMSG_DEBUG, "%s: no data, can't get rectype\n", __func__);
     }
 
-    if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen + 2000) ||
-        rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize + 2000)) {
+    /* Dispatch on the base type; the accessors handle the tags themselves. */
+    (void)__rectype_tags(rectype, &base);
+
+    if (base == DB___txn_regop_gen || base == DB___txn_regop_gen_endianize) {
         return logrecord_timestamp_regop_gen(data);
     }
 
-    if (rectype == DB___txn_dist_commit || (rectype == DB___txn_dist_commit + 2000)) {
+    if (base == DB___txn_dist_commit) {
         return logrecord_timestamp_dist_commit(data);
     }
 
-    if (rectype == DB___txn_dist_abort || (rectype == DB___txn_dist_abort + 2000)) {
+    if (base == DB___txn_dist_abort) {
         return logrecord_timestamp_dist_abort(data);
     }
 
-    if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks + 2000) ||
-        rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize + 2000)) {
+    if (base == DB___txn_regop_rowlocks || base == DB___txn_regop_rowlocks_endianize) {
         return logrecord_timestamp_regop_rowlocks(data);
     }
 
-    if (rectype == DB___txn_regop || (rectype == DB___txn_regop + 2000)) {
+    if (base == DB___txn_regop) {
         return logrecord_timestamp_regop(data);
     }
 
-    if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp + 2000) || rectype == DB___txn_ckp_recovery ||
-        (rectype == DB___txn_ckp_recovery + 2000)) {
+    if (base == DB___txn_ckp || base == DB___txn_ckp_recovery) {
         return logrecord_timestamp_ckp(data);
     }
 
