@@ -26,7 +26,7 @@ int __txn_checkpoint_pp __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 int __txn_checkpoint __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 int __txn_getckp __P((DB_ENV *, DB_LSN *));
 int __txn_activekids __P((DB_ENV *, u_int32_t, DB_TXN *));
-int __txn_force_abort __P((DB_ENV *, u_int8_t *));
+int __txn_force_abort __P((DB_ENV *, u_int8_t *, u_int32_t *));
 int __txn_preclose __P((DB_ENV *));
 int __txn_reset __P((DB_ENV *));
 int __txn_recycle_after_upgrade_prepared __P((DB_ENV *));
