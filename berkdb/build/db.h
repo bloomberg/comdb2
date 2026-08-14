@@ -723,6 +723,7 @@ struct __db_log_cursor {
 	DB_LSN	  c_lsn;		/* Cursor: LSN */
 	u_int32_t c_len;		/* Cursor: record length */
 	u_int32_t c_prev;		/* Cursor: previous record's offset */
+	u_int32_t c_chksum;		/* Cursor: record's stored checksum */
 
 	DBT	  c_dbt;		/* Return DBT. */
 
