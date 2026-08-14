@@ -29,97 +29,80 @@
 #include "dbinc_auto/txn_auto.h"
 #include "logmsg.h"
 
-/* True when the record is an utxnid variant. */
-#define IS_UTXNID(rectype) DB_RECTYPE_HAS_UTXNID(rectype)
-
 uint64_t logrecord_timestamp_regop_gen(char *data)
 {
     uint64_t timestamp;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 8 + 4 + 4 + 8]);
-    } else {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 4 + 4 + 8]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_64(&timestamp, &data[prefix + 4 + 4 + 8]);
     return timestamp;
 }
 
 uint32_t logrecord_generation_regop_gen(char *data)
 {
     uint32_t generation;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8 + 8 + 4]);
-    } else {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8 + 4]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_32(&generation, &data[prefix + 4]);
     return generation;
 }
 
 uint64_t logrecord_timestamp_dist_commit(char *data)
 {
     uint64_t timestamp;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 4 + 8 + 8]);
-    } else {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 4 + 8]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_64(&timestamp, &data[prefix + 4 + 8]);
     return timestamp;
 }
 
 uint32_t logrecord_generation_dist_commit(char *data)
 {
     uint32_t generation;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8 + 8]);
-    } else {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_32(&generation, &data[prefix]);
     return generation;
 }
 
 uint64_t logrecord_timestamp_dist_abort(char *data)
 {
     uint64_t timestamp;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 4 + 8]);
-    } else {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 4]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_64(&timestamp, &data[prefix + 4]);
     return timestamp;
 }
 
 uint32_t logrecord_generation_dist_abort(char *data)
 {
     uint32_t generation;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8 + 8]);
-    } else {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_32(&generation, &data[prefix]);
     return generation;
 }
 
 uint64_t logrecord_timestamp_regop_rowlocks(char *data)
 {
     uint64_t timestamp;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8]);
-    } else {
-        LOGCOPY_64(&timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_64(&timestamp, &data[prefix + 4 + 8 + 8 + 8 + 8]);
     return timestamp;
 }
 
@@ -130,11 +113,7 @@ uint32_t logrecord_generation_regop_rowlocks(char *data)
     off_t loff;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        loff = 4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8;
-    } else {
-        loff = 4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8;
-    }
+    loff = __rectype_prefix_len(rectype) + 4 + 8 + 8 + 8 + 8 + 8;
     LOGCOPY_32(&lflags, &data[loff]);
     if (lflags & DB_TXN_LOGICAL_GEN) {
         LOGCOPY_32(&generation, &data[loff + 4]);
@@ -145,39 +124,33 @@ uint32_t logrecord_generation_regop_rowlocks(char *data)
 uint32_t logrecord_timestamp_regop(char *data)
 {
     uint32_t timestamp;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_32(&timestamp, &data[4 + 4 + 8 + 8 + 4]);
-    } else {
-        LOGCOPY_32(&timestamp, &data[4 + 4 + 8 + 4]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_32(&timestamp, &data[prefix + 4]);
     return timestamp;
 }
 
 uint32_t logrecord_timestamp_ckp(char *data)
 {
     uint32_t timestamp;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_32(&timestamp, &data[4 + 4 + 8 + 8 + 8 + 8]);
-    } else {
-        LOGCOPY_32(&timestamp, &data[4 + 4 + 8 + 8 + 8]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_32(&timestamp, &data[prefix + 8 + 8]);
     return timestamp;
 }
 
 uint32_t logrecord_generation_ckp(char *data)
 {
     uint32_t generation;
+    uint32_t prefix;
     uint32_t rectype;
     LOGCOPY_32(&rectype, data);
-    if (IS_UTXNID(rectype)) {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8 + 8 + 8 + 8 + 4]);
-    } else {
-        LOGCOPY_32(&generation, &data[4 + 4 + 8 + 8 + 8 + 4]);
-    }
+    prefix = __rectype_prefix_len(rectype);
+    LOGCOPY_32(&generation, &data[prefix + 8 + 8 + 4]);
     return generation;
 }
 
