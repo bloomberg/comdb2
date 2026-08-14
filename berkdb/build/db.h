@@ -670,6 +670,27 @@ __rectype_tags(u_int32_t rectype, u_int32_t *basep)
 /* Is this a bdb logical (llog) record rather than a berkdb physical one? */
 #define	DB_RECTYPE_IS_LOGICAL(t)	(((t) & ~DB_debug_FLAG) >= DB_user_BEGIN)
 
+/*
+ * Length of the common record prefix:
+ *	type(4) | txnid(4) | prev_lsn(8) | [utxnid(8)] | [prev_cksum(4)]
+ * The tagged fields are only present when their tag is set.  Use this
+ * instead of open-coding "4 + 4 + 8 + (utxnid ? 8 : 0)".
+ */
+static inline u_int32_t
+__rectype_prefix_len(u_int32_t rectype)
+{
+	u_int32_t tags = __rectype_tags(rectype, NULL);
+
+	return ((u_int32_t)(sizeof(u_int32_t) + sizeof(u_int32_t) +
+		sizeof(DB_LSN)) +
+	    ((tags & DB_RECTAG_UTXNID) ? (u_int32_t)sizeof(u_int64_t) : 0) +
+	    ((tags & DB_RECTAG_CKSUM_PREV) ? (u_int32_t)sizeof(u_int32_t) : 0));
+}
+
+/* Offset of prev_cksum.  Only valid if tagged DB_RECTAG_CKSUM_PREV. */
+#define	DB_RECTYPE_CKSUM_PREV_OFF(t) \
+	(__rectype_prefix_len(t) - (u_int32_t)sizeof(u_int32_t))
+
 struct __db_log_cursor_stat {
     int incursor_count;
     int ondisk_count;
