@@ -259,8 +259,8 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
         *nextlsn = prevlsn;
 
         normalize_rectype(&rectype);
-        if ((rectype < 10000) && (rectype > 1000)) {
-            rectype -= 1000;
+        if (!DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
+            rectype -= DB_RECTYPE_TAG_UNIT;
         }
 
         if (rectype == DB___db_pg_free || rectype == DB___db_pg_freedata)
@@ -743,8 +743,8 @@ int bdb_reconstruct_key_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                       (u_int8_t *)logent.data + 2 * sizeof(u_int32_t));
 
         normalize_rectype(&rectype);
-        if ((rectype < 10000) && (rectype > 1000)) {
-            rectype -= 1000;
+        if (!DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
+            rectype -= DB_RECTYPE_TAG_UNIT;
         }
 
         if (rectype == DB___bam_repl) {
@@ -843,8 +843,8 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                       (u_int8_t *)logent.data + 2 * sizeof(u_int32_t));
 
         normalize_rectype(&rectype);
-        if ((rectype < 10000) && (rectype > 1000)) {
-            rectype -= 1000;
+        if (!DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
+            rectype -= DB_RECTYPE_TAG_UNIT;
         }
 
         /* Find a btree-replace log record. */
@@ -1283,8 +1283,8 @@ int undo_commit(bdb_state_type *bdb_state, tran_type *tran,
 char *rectypestr(u_int32_t rectype)
 {
     normalize_rectype(& rectype);
-    if ((rectype < 10000) && (rectype > 1000)) {
-        rectype -= 1000;
+    if (!DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
+        rectype -= DB_RECTYPE_TAG_UNIT;
     }
     switch (rectype) {
     case DB_llog_savegenid:
