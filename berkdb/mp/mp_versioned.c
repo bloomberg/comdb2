@@ -97,8 +97,7 @@ static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t 
 
 	*p_rectype = rectype;
 
-	data += sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
-	LOGCOPY_64(utxnid, data);
+	LOGCOPY_64(utxnid, data + DB_REC_OFF_UTXNID);
 
 	switch (rectype) {
 		case DB___db_addrem:
