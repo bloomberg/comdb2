@@ -252,7 +252,9 @@ void cdb2_enable_sockpool();
 void cdb2_disable_sockpool();
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
+#ifdef CDB2API_SERVER
 const char *cdb2_host(cdb2_hndl_tp *hndl);
+#endif
 
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 
@@ -317,7 +319,9 @@ void cdb2_use_hint(cdb2_hndl_tp *);
 
 typedef const char *(*RETRY_CALLBACK)(void *);
 
+#ifdef CDB2API_SERVER
 int cdb2_register_retry_callback(cdb2_hndl_tp *hndl, RETRY_CALLBACK f);
+#endif
 
 void cdb2_identity_create();
 void cdb2_identity_destroy(int is_task_exit);
