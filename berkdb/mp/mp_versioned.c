@@ -91,8 +91,8 @@ static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t 
 		ret = 1;
 		goto done;
 	}
-	if ((rectype > 1000 && rectype < 10000) || rectype > 11000) {
-		rectype -= 1000; // For logs with ufid
+	if (DB_RECTYPE_HAS_UFID(rectype)) {
+		rectype -= DB_RECTYPE_TAG_UNIT; // For logs with ufid
 	}
 
 	*p_rectype = rectype;
