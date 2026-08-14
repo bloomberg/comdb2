@@ -422,7 +422,9 @@ static int tranlogColumn(
             /* max_utxnid only exists on utxnid-tagged checkpoints. */
             if ((tags & DB_RECTAG_UTXNID) &&
                 (base == DB___txn_ckp || base == DB___txn_ckp_recovery)) {
-                LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+                /* <prefix>+ckp_lsn(8)+last_ckp(8)+timestamp(4)+rep_gen(4) */
+                LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[
+                    __rectype_prefix_len(rectype) + 8 + 8 + 4 + 4]);
                 sqlite3_result_int64(ctx, maxutxnid);
                 break;
             }
@@ -488,7 +490,7 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_TXNID:
         if (pCur->data.data) {
-            LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+            LOGCOPY_32(&txnid, &((char *) pCur->data.data)[DB_REC_OFF_TXNID]);
         }
         sqlite3_result_int64(ctx, txnid);
         break;
@@ -496,7 +498,7 @@ static int tranlogColumn(
         if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data);
             if (DB_RECTYPE_HAS_UTXNID(rectype)) {
-                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]);
+                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[DB_REC_OFF_UTXNID]);
                 sqlite3_result_int64(ctx, utxnid);
                 break;
             }
@@ -562,7 +564,9 @@ static int tranlogColumn(
                 u_int32_t base;
                 (void)__rectype_tags(rectype, &base);
                 if (base == DB___txn_child) {
-                        LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[4 + 4 + 8 + 8 + 4]);
+                        /* <prefix>+child(4) */
+                        LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[
+                            __rectype_prefix_len(rectype) + 4]);
                 }
         }
 

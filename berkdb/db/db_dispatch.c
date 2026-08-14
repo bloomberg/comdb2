@@ -286,7 +286,7 @@ optostr(int op)
 
 int
 ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
-		u_int8_t *fuid, DBT *dbt, int utxnid_logged)
+		u_int8_t *fuid, DBT *dbt, u_int32_t prefix)
 {
 	int off = -1;
 	u_int32_t fileid = UINT32_MAX;
@@ -337,10 +337,7 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 	case DB___qam_del:
 	case DB___qam_add:
 	case DB___qam_delext:
-		if (utxnid_logged)
-			off = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + sizeof(u_int64_t);
-		else
-			off = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
+		off = prefix;
 		break;
 
 	case DB___db_addrem:
@@ -353,13 +350,7 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 		 * These records take an additional 'opcode' parameter
 		 * before the fileid
 		 */
-		if (utxnid_logged)
-			off =
-				sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + sizeof(u_int64_t) +
-				sizeof(u_int32_t);
-		else
-			off =
-				sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + sizeof(u_int32_t);
+		off = prefix + sizeof(u_int32_t);
 		break;
 
 	case DB___dbreg_register:
@@ -481,11 +472,14 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 	int make_call, ret;
 
 	LOGCOPY_32(&rectype, db->data);
-	
+	u_int32_t rec_prefix = __rectype_prefix_len(rectype);
+
 	if (normalize_rectype(&rectype) && (redo == DB_TXN_OPENFILES)) {
 		LOGCOPY_64(&utxnid, &((char*)db->data)[4 + 4 + 8]);
 		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
-			LOGCOPY_64(&maxutxnid, &((char*)db->data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+			/* ckp_lsn(8) + last_ckp(8) + timestamp(4) + rep_gen(4) */
+			LOGCOPY_64(&maxutxnid,
+			    &((char*)db->data)[rec_prefix + 8 + 8 + 4 + 4]);
 		}
 		Pthread_mutex_lock(&dbenv->utxnid_lock);
 		if (utxnid > dbenv->next_utxnid) {
