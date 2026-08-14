@@ -1,0 +1,4 @@
+# Small log files so the rollover case is reached quickly.
+# LOGFILESIZE must be >= 4 * LOGMEMSIZE.
+setattr LOGMEMSIZE 131072
+setattr LOGFILESIZE 1048576
