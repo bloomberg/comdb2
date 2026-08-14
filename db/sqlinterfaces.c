@@ -7230,9 +7230,16 @@ int gbl_transaction_grace_period = 60;
 void wait_for_transactions(void) {
     int ntrans;
     int nwaits = 0;
+    int maxwaits = gbl_transaction_grace_period;
+    extern int gbl_abort_on_stalled_exit;
+    extern int gbl_exit_alarm_sec;
 
+    /* This is an intended wait, not a stall: never let it outlive the
+     * exit alarm, which aborts under gbl_abort_on_stalled_exit. */
+    if (gbl_abort_on_stalled_exit && gbl_exit_alarm_sec > 2 && gbl_exit_alarm_sec - 2 < maxwaits)
+        maxwaits = gbl_exit_alarm_sec - 2;
 
-    for (nwaits = 0; nwaits < gbl_transaction_grace_period; nwaits++) {
+    for (nwaits = 0; nwaits < maxwaits; nwaits++) {
         ntrans = 0;
         struct connection_info *connections;
         int nconnections;
