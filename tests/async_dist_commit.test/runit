@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Tests async_dist_commit: the master hands the wait for replicant acks to a
+# background thread instead of blocking a block processor.  Turning it on must
+# not change what the client sees -- only who waits.
+bash -n "$0" | exit 1
+
+set -e
+
+dbname=$1
+[ -z "$dbname" ] && { echo "usage: runit <dbname>" >&2; exit 1; }
+
+sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1"; }
+# A statement we expect to fail: swallow the error, print only our own verdict.
+sql_expect_fail() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1" >/dev/null 2>&1 || true; }
+
+# Only the master runs block processors, so the tunable and its counters live
+# there.  "default" load-balances across the cluster, so anything that touches
+# them has to be pinned to the master or it reads a replicant's zeroes.
+master=$(sql "select host from comdb2_cluster where is_master='Y'")
+[ -z "$master" ] && { echo "could not find the master" >&2; exit 1; }
+
+master_sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $master "$1"; }
+
+counter() {
+    master_sql "select value from comdb2_tunables where name='async_dist_commit_$1'"
+}
+
+set_tunable() {
+    cdb2sql ${CDB2_OPTIONS} $dbname --host $master \
+        "exec procedure sys.cmd.send('$1 $2')" >/dev/null
+}
+
+fail() { echo "FAILED: $1" >&2; exit 1; }
+
+sql "create table t(a int unique, b int not null)" >/dev/null
+
+################################################################
+# 1. Off by default, and commits go down the inline path.
+################################################################
+[ "$(master_sql "select value from comdb2_tunables where name='async_dist_commit'")" = "OFF" ] \
+    || fail "async_dist_commit should default to OFF"
+
+before=$(counter enqueued)
+sql "insert into t values(1, 1)" >/dev/null
+[ "$(counter enqueued)" = "$before" ] || fail "nothing should be enqueued while the feature is off"
+
+################################################################
+# 2. Turn it on at runtime; commits are handed to the waiter thread
+#    and the data is still there.
+################################################################
+set_tunable async_dist_commit 1
+
+before=$(counter enqueued)
+for i in $(seq 2 21); do
+    sql "insert into t values($i, $i)" >/dev/null
+done
+after=$(counter enqueued)
+
+[ "$after" -gt "$before" ] || fail "commits were not handed to the seqnum-wait thread"
+[ "$(sql 'select count(*) from t')" = "21" ] || fail "rows went missing under async_dist_commit"
+[ "$(sql 'select sum(a) from t')" = "231" ] || fail "row contents are wrong under async_dist_commit"
+
+################################################################
+# 3. Failures are still reported.  The waiter -- not the block
+#    processor -- sends the error back, so this is the path that
+#    regresses if the rc plumbing is wrong.
+################################################################
+sql_expect_fail "insert into t values(1, 99)"          # duplicate key
+[ "$(sql 'select count(*) from t where b=99')" = "0" ] || fail "duplicate-key insert was not rejected"
+
+sql_expect_fail "insert into t values(999, NULL)"      # null constraint
+[ "$(sql 'select count(*) from t where a=999')" = "0" ] || fail "null-constraint insert was not rejected"
+
+################################################################
+# 4. Transactions: commit and rollback both still behave.
+################################################################
+cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null <<'EOF'
+begin
+insert into t values(100, 100)
+insert into t values(101, 101)
+commit
+EOF
+[ "$(sql 'select count(*) from t where a>=100')" = "2" ] || fail "committed transaction did not persist"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null 2>&1 <<'EOF' || true
+begin
+insert into t values(200, 200)
+rollback
+EOF
+[ "$(sql 'select count(*) from t where a=200')" = "0" ] || fail "rolled-back transaction persisted"
+
+################################################################
+# 5. Queue full -> fall back to waiting inline.  With a cap of 0
+#    every commit must take the fallback, and must still work.
+################################################################
+set_tunable async_dist_commit_max_outstanding_trans 0
+
+before_inline=$(counter inline)
+before_enq=$(counter enqueued)
+sql "insert into t values(300, 300)" >/dev/null
+[ "$(counter inline)" -gt "$before_inline" ] || fail "full queue did not fall back to the inline wait"
+[ "$(counter enqueued)" = "$before_enq" ] || fail "commit was enqueued even though the queue was full"
+[ "$(sql 'select count(*) from t where a=300')" = "1" ] || fail "inline fallback lost the row"
+
+set_tunable async_dist_commit_max_outstanding_trans 8
+
+################################################################
+# 6. Turning it back off returns to the inline path cleanly.
+################################################################
+set_tunable async_dist_commit 0
+before=$(counter enqueued)
+sql "insert into t values(400, 400)" >/dev/null
+[ "$(counter enqueued)" = "$before" ] || fail "commit was enqueued after the feature was turned off"
+[ "$(sql 'select count(*) from t where a=400')" = "1" ] || fail "row lost after turning the feature off"
+
+echo "SUCCESS"
