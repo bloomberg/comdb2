@@ -485,6 +485,7 @@ int gbl_utxnid_log = 1;
  * commit-LSN (utxnid) map, which is a per-committed-transaction memory cost
  * that only snapshot isolation needs. */
 int gbl_snapshot_isolation = 1;
+int gbl_log_cksum_prev = 1;
 int gbl_test_commit_lsn_map = 0;
 
 /* how many times we retry osql for verify */

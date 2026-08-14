@@ -2256,6 +2256,12 @@ REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: on)", TUNABLE_BOOLE
 REGISTER_TUNABLE("utxnid_log", "Generate utxnid logs. (Default: on)", TUNABLE_BOOLEAN, &gbl_utxnid_log,
                  NOARG|READEARLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("log_cksum_prev",
+                 "Write the checksum of the previous log record into each log record, chaining the log so that a "
+                 "checksum transitively covers every record before it.  Lets a replicant match on any record "
+                 "rather than only on a commit record.  Off under legacy-defaults. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_log_cksum_prev, NOARG | READEARLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: off)", TUNABLE_BOOLEAN, 
                  &gbl_ufid_add_on_collect, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
