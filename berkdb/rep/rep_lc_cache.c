@@ -256,19 +256,18 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 		}
 		goto done;
 	}
-	LOGCOPY_32(&type, logrec);
-	logrec += sizeof(u_int32_t);
-	LOGCOPY_32(&txnid, logrec);
-	logrec += sizeof(u_int32_t);
-	LOGCOPY_TOLSN(&prevlsn, logrec);
-	logrec += sizeof(DB_LSN);
+	LOGCOPY_32(&type, logrec + DB_REC_OFF_TYPE);
+	LOGCOPY_32(&txnid, logrec + DB_REC_OFF_TXNID);
+	LOGCOPY_TOLSN(&prevlsn, logrec + DB_REC_OFF_PREV_LSN);
 
-	int have_child_utxnid;
+	int have_child_utxnid = DB_RECTYPE_HAS_UTXNID(type) ? 1 : 0;
 
-	if ((have_child_utxnid = normalize_rectype(&type)) != 0) {
-		LOGCOPY_64(&utxnid, logrec);
-		logrec += sizeof(u_int64_t);
-	}
+	if (have_child_utxnid)
+		LOGCOPY_64(&utxnid, logrec + DB_REC_OFF_UTXNID);
+
+	/* Step over the whole prefix; the body starts here. */
+	logrec += __rectype_prefix_len(type);
+	normalize_rectype(&type);
 
 	/* dump our current state */
 	if (dbenv->attr.cache_lc_debug) {
