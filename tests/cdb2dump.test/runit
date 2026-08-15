@@ -32,11 +32,11 @@ else
     ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} " > $out
 fi
 
-lc=$(wc $out | awk '{print $1,$2,$3}')
-if [ "$lc" != "207 207 209284" ] ; then
-    if [ "$lc" != "207 207 211084" ]; then
-        failexit "wc is not correct for $out: $lc"
-    fi
+# 207 rows; bytes range from all-odh1 (209284) to all-odh2 (211084).  The
+# randomize_odh2 fuzzer writes a per-record mix, so accept anything between.
+read -r lines words bytes < <(wc $out | awk '{print $1,$2,$3}')
+if [ "$lines" != "207" ] || [ "$words" != "207" ] || [ "$bytes" -lt 209284 ] || [ "$bytes" -gt 211084 ]; then
+    failexit "wc is not correct for $out: $lines $words $bytes"
 fi
 
 
