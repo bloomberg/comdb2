@@ -208,4 +208,4 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_dupe_delete_2()" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_dupe_delete_3()" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_dupe_delete_4()" >delete4.out 2>&1
-cat delete4.out | sed 's/genid =[0-9]\+/genid =XXXXXX/g'
+cat delete4.out | sed 's/genid =[0-9a-f]\+/genid =XXXXXX/g'
