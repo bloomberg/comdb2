@@ -3012,6 +3012,17 @@ again:
         }
         return 0;
     }
+
+    /* on our way out and this node hasn't acked: nothing is going to arrive,
+     * so don't burn the full replication timeout waiting for it */
+    if (bdb_state->exiting) {
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        if (bdb_state->attr->wait_for_seqnum_trace) {
+            logmsg(LOGMSG_USER, PR_LSN " %s exiting, not waiting\n", PARM_LSN(seqnum->lsn), host->str);
+        }
+        return 1;
+    }
+
     /* this node may have been decommissioned, in which case we
      * get woken up.  Check that this node still exists. */
     if (!bdb_state->attr->repalwayswait) {
@@ -3328,8 +3339,7 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
                 goto got_ack;
             }
         }
-    } while (comdb2_time_epochms() - begin_time <
-                 bdb_state->attr->rep_timeout_maxms &&
+    } while (comdb2_time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms && !bdb_state->exiting &&
              !(lock_desired = bdb_lock_desired(bdb_state)));
 
     /* if we get here then we timed out without finding even one good node.
@@ -3343,7 +3353,9 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
         bdb_state->attr->rep_timeout_minms - bdb_state->attr->rep_timeout_maxms;
     if (waitms < 0)
         waitms = 0;
-    if(!lock_desired)
+    if (bdb_state->exiting)
+        logmsg(LOGMSG_WARN, "exiting, not waiting for initial replication of <%s>\n", lsn_to_str(str, &(seqnum->lsn)));
+    else if (!lock_desired)
         logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
                lsn_to_str(str, &(seqnum->lsn)));
     else
@@ -3740,6 +3752,10 @@ void bdb_exiting(bdb_state_type *bdb_state)
 
     bdb_state->exiting = 1;
     MEMORY_SYNC;
+
+    /* wake seqnum waiters.  no lock: clean exit can run on the SIGTERM
+     * handler, and waiters recheck ->exiting every seqnum_wait_interval */
+    Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
 }
 
 void bdb_set_seqnum(void *in_bdb_state)
