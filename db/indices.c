@@ -349,7 +349,6 @@ static inline void append_genid_to_key(dtikey_t *ditk, int ixkeylen)
         goto done; \
     } while (0);
 
-
 int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        size_t maxblobs, int *opfailcode, int *ixfailnum,
                        int *rrn, unsigned long long *genid,
@@ -440,6 +439,14 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         if (reorder) {
+            /* cross-shard unique check before deferring the key */
+            rc = check_cross_shard_unique(iq, trans, ixnum, key, ixkeylen, opfailcode);
+            if (rc == RC_INTERNAL_RETRY) {
+                ERR(rc, "deadlock", 0);
+            } else if (rc) {
+                *ixfailnum = ixnum;
+                ERR(rc, "partition unique constraint violation", 0);
+            }
             // if not datacopy, no need to save od_dta_tail
             void *data = NULL;
             int datalen = 0;
@@ -488,6 +495,15 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                 vgenid = 0; // no need to verify again
             }
 
+            /* cross-shard unique check for TRUNCATE partitions */
+            rc = check_cross_shard_unique(iq, trans, ixnum, key, ixkeylen, opfailcode);
+            if (rc == RC_INTERNAL_RETRY) {
+                ERR(rc, "deadlock", 0);
+            } else if (rc) {
+                *ixfailnum = ixnum;
+                ERR(rc, "partition unique constraint violation", 0);
+            }
+
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
                          od_tail_len, isnullk);
@@ -534,6 +550,71 @@ done:
 }
 
 /*
+ * Cross-shard unique check for TRUNCATE time partitions.
+ * Returns IX_DUP if the key exists in any sibling shard, RC_INTERNAL_RETRY on
+ * deadlock, 0 if no violation found.  Sets *opfailcode on violation.
+ */
+int check_cross_shard_unique(struct ireq *iq, void *trans, int ixnum, char *key, int keylen, int *opfailcode)
+{
+    if (!gbl_partition_unique || !iq->partition_shards)
+        return 0;
+    if (iq->usedb->ix_dupes[ixnum] != 0)
+        return 0;
+    if (ix_isnullk(iq->usedb, key, ixnum))
+        return 0;
+
+    int rc = 0;
+    struct dbtable *saveddb = iq->usedb;
+    if (gbl_partition_unique_debug)
+        logmsg(LOGMSG_USER, "%s: [master] cross-shard check table='%s' ix=%d nshards=%d\n", __func__,
+               saveddb->tablename, ixnum, iq->npartition_shards);
+    for (int s = 0; s < iq->npartition_shards && !rc; s++) {
+        if (iq->partition_shards[s] == saveddb)
+            continue;
+        int fndrrn = 0;
+        unsigned long long fndgenid = 0;
+        iq->usedb = iq->partition_shards[s];
+        int src = ix_find_by_key_tran(iq, key, keylen, ixnum, NULL, &fndrrn, &fndgenid, NULL, NULL, 0, trans);
+        if (gbl_partition_unique_debug)
+            logmsg(LOGMSG_USER, "%s: [master]   checked shard='%s' ix=%d rc=%d\n", __func__, iq->usedb->tablename,
+                   ixnum, src);
+        if (src == IX_FND) {
+            *opfailcode = OP_FAILED_UNIQ;
+            rc = IX_DUP;
+        } else if (src == RC_INTERNAL_RETRY) {
+            rc = RC_INTERNAL_RETRY;
+        }
+    }
+    iq->usedb = saveddb;
+    return rc;
+}
+
+void reqerrstr_dup_key(struct ireq *iq, struct dbtable *db, int ixnum)
+{
+    if (gbl_partition_unique && db->timepartition_name)
+        reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
+                  "add key constraint duplicate key '%s' on partition '%s' shard '%s' index %d",
+                  get_keynm_from_db_idx(db, ixnum), db->timepartition_name, db->tablename, ixnum);
+    else
+        reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint duplicate key '%s' on table '%s' index %d",
+                  get_keynm_from_db_idx(db, ixnum), db->tablename, ixnum);
+}
+
+void reqerrstr_uncommittable_dup(struct ireq *iq, struct dbtable *db, int ixnum)
+{
+    if (gbl_partition_unique && db->timepartition_name)
+        reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
+                  "Transaction is uncommittable: Duplicate insert on key '%s' "
+                  "on partition '%s' shard '%s' index %d",
+                  get_keynm_from_db_idx(db, ixnum), db->timepartition_name, db->tablename, ixnum);
+    else
+        reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
+                  "Transaction is uncommittable: Duplicate insert on key '%s' "
+                  "in table '%s' index %d",
+                  get_keynm_from_db_idx(db, ixnum), db->tablename, ixnum);
+}
+
+/*
  * Add an individual key.  The operation
  * is defered until the end of the block op (we call insert_add_op).
  *
@@ -560,8 +641,19 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
             return ERR_INTERNAL;
         }
 
-        rc = ix_addk(iq, trans, newkey, ixnum, genid, rrn, od_dta_tail,
-                     od_tail_len, ix_isnullk(iq->usedb, newkey, ixnum));
+        /* cross-shard unique check for TRUNCATE partitions.
+         * NOTE: this check is currently a no-op for the cascade path.
+         * ON UPDATE CASCADE is handled entirely on the master side in
+         * constraints.c without going through the OSQL stream, so
+         * iq->partition_shards is never populated here and
+         * check_cross_shard_unique returns 0 immediately.
+         * This should become effective once cascading on time partitions
+         * is implemented and the master cascade processor populates
+         * iq->partition_shards before invoking upd_record_indices. */
+        rc = check_cross_shard_unique(iq, trans, ixnum, newkey, getkeysize(iq->usedb, ixnum), opfailcode);
+        if (!rc)
+            rc = ix_addk(iq, trans, newkey, ixnum, genid, rrn, od_dta_tail, od_tail_len,
+                         ix_isnullk(iq->usedb, newkey, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d RRN %d KEY ", ixnum, rrn);
             reqdumphex(iq, newkey, getkeysize(iq->usedb, ixnum));
@@ -569,7 +661,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         }
         if (rc == IX_DUP)
             *opfailcode = OP_FAILED_UNIQ;
-        else if (rc != 0)
+        else if (rc != 0 && rc != RC_INTERNAL_RETRY)
             *opfailcode = OP_FAILED_INTERNAL;
     }
 
@@ -1371,6 +1463,19 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
 
         if (ditk->type == DIT_ADD) {
             int addrrn = 2;
+            /* cross-shard unique check for TRUNCATE partitions */
+            int opfailcode_tmp = 0;
+            rc = check_cross_shard_unique(iq, trans, ditk->ixnum, ditk->ixkey, getkeysize(iq->usedb, ditk->ixnum),
+                                          &opfailcode_tmp);
+            if (rc == IX_DUP) {
+                reqerrstr_dup_key(iq, ditk->usedb, ditk->ixnum);
+                *errout = OP_FAILED_UNIQ;
+                *ixout = ditk->ixnum;
+                goto done;
+            } else if (rc == RC_INTERNAL_RETRY) {
+                *errout = OP_FAILED_INTERNAL;
+                goto done;
+            }
             /* add the key */
             rc = ix_addk(iq, trans, ditk->ixkey, ditk->ixnum, ditk->genid,
                          addrrn, od_dta_tail, od_tail_len,
@@ -1385,15 +1490,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             }
 
             if (rc == IX_DUP) {
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
-                          "add key constraint "
-                          "duplicate key '%s' on "
-                          "table '%s' index %d",
-                          get_keynm_from_db_idx(ditk->usedb, ditk->ixnum),
-                          ditk->usedb->tablename, ditk->ixnum);
-
-                //*blkpos = curop->blkpos;
-
+                reqerrstr_dup_key(iq, ditk->usedb, ditk->ixnum);
                 *errout = OP_FAILED_UNIQ;
                 *ixout = ditk->ixnum;
                 goto done;

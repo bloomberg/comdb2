@@ -1434,6 +1434,10 @@ struct ireq {
     uint8_t **idxInsert;
     uint8_t **idxDelete;
 
+    /* shard dbtables for cross-shard unique check (TRUNCATE partitions) */
+    struct dbtable **partition_shards;
+    int npartition_shards;
+
     /* osql prefault step index */
     int *osql_step_ix;
 
@@ -3556,6 +3560,8 @@ extern int gbl_repscore;
 extern int gbl_max_verify_retries;
 
 extern int gbl_surprise;
+extern int gbl_partition_unique;
+extern int gbl_partition_unique_debug;
 
 extern int gbl_check_wrong_db;
 

@@ -9150,6 +9150,14 @@ int sqlite3BtreeInsert(
                 }
             }
 
+            if ((rec_flags & OSQL_IGNORE_FAILURE) && gbl_partition_unique && pCur->db->timepartition_name) {
+                sqlite3VdbeError(pCur->vdbe,
+                                 "UPSERT is not supported on time partition '%s' "
+                                 "when partition_unique is enabled",
+                                 pCur->db->timepartition_name);
+                return SQLITE_ERROR;
+            }
+
             if (is_update) { /* Updating an existing record. */
                 rc = osql_updrec(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), pCur->vdbe->updCols, pblobs,
                                  MAXBLOBS, rec_flags);

@@ -48,8 +48,8 @@ If the client would choose periodicity `daily`, and retention 31, at all time th
 ## Current limitations
 
 * The name space for tables and partitions is the same. Creating a partition name cannot reuse an existing table name. This is inconvenient and it will be addressed by future efforts.
-* Enforcing unique constraints is not possible across shards of a time partition.  An option to allow this at the expense of commit performance will be goal of a future project.
-* UPSERT is not supported
+* Cross-shard unique constraint enforcement is available for TRUNCATE partitions via the `partition_unique` tunable.  When enabled, every unique index is enforced across all shards at the cost of additional index lookups per write.  Note that enabling this tunable does not validate pre-existing data: any cross-shard duplicates present before the tunable is turned on will remain and are the user's responsibility to detect and resolve.
+* UPSERT is not supported on time partitions.
 
 ## Rollout implementation details
 

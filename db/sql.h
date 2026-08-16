@@ -144,6 +144,7 @@ typedef struct osqlstate {
     uuid_t uuid;             /* session id, take 2 */
     char *tablename;         /* malloc-ed cache of send tablename for usedb */
     int tablenamelen;        /* tablename length */
+    char *partition_name;    /* malloc-ed cache of last sent partition name for OSQL_PARTITION_SHARDS */
     int sentops;             /* number of operations per statement */
     int tran_ops;            /* actual number of operations for a transaction */
     int replicant_numops; /* total num of ops sent by replicant to master which

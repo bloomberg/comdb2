@@ -506,6 +506,7 @@ static int setup_reorder_key(blocksql_tran_t *tran, int type, osql_sess_t *sess,
         break;
     }
     /* This doesn't touch btrees and should be processed first */
+    case OSQL_PARTITION_SHARDS:
     case OSQL_SERIAL:
     case OSQL_SELECTV:
         key->tbl_idx = 0;
@@ -518,6 +519,7 @@ static int setup_reorder_key(blocksql_tran_t *tran, int type, osql_sess_t *sess,
     }
 
     switch (type) {
+    case OSQL_PARTITION_SHARDS:
     case OSQL_QBLOB:
     case OSQL_DELIDX:
     case OSQL_INSIDX:

@@ -3613,6 +3613,38 @@ struct dbtable *timepart_retro_route(struct timepart_retro *retros, unsigned lon
     return ret;
 }
 
+/**
+ * Return a heap-allocated array of strdup'd shard table names for a TRUNCATE
+ * partition.  *nshards is set to the number of entries.  Returns NULL if the
+ * partition does not exist or is not a TRUNCATE partition.  On allocation
+ * failure, returns NULL and sets err.  The caller must free each string and
+ * then the array itself.
+ *
+ */
+char **timepart_get_shard_names(const char *partname, int *nshards, struct errstat *err)
+{
+    *nshards = 0;
+
+    views_lock();
+    timepart_view_t *view = _get_view(thedb->timepart_views, partname);
+    if (!view || view->rolltype != TIMEPART_ROLLOUT_TRUNCATE) {
+        views_unlock();
+        return NULL;
+    }
+
+    char **shards = malloc(view->nshards * sizeof(char *));
+    if (!shards) {
+        errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "out of memory getting shard names for partition '%s'", partname);
+        views_unlock();
+        return NULL;
+    }
+    for (int i = 0; i < view->nshards; i++)
+        shards[(*nshards)++] = strdup(view->shards[i].tblname);
+    views_unlock();
+
+    return shards;
+}
+
 #include "views_systable.c"
 
 #include "views_serial.c"

@@ -81,6 +81,7 @@
 #include "schemachange.h"
 #include "views.h"
 #include <disttxn.h>
+#include "indices.h"
 
 #if 0
 #define TEST_OSQL
@@ -5126,11 +5127,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (iq->vfy_idx_track == 1 && iq->dup_key_insert == 1) {
                 rc = ERR_UNCOMMITTABLE_TXN;
                 errout = ERR_UNCOMMITTABLE_TXN;
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "Transaction is uncommittable: "
-                                                   "Duplicate insert on key '%s' "
-                                                   "in table '%s' index %d",
-                      get_keynm_from_db_idx(iq->usedb, ixout),
-                      iq->usedb->tablename, ixout);
+                reqerrstr_uncommittable_dup(iq, iq->usedb, ixout);
             } else {
                 check_serializability = 1;
             }
