@@ -387,6 +387,41 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         if (usedio && ((++nread) % FADVISE_THRESH) == 0)
             (void)posix_fadvise(fd, (nread - FADVISE_THRESH) * pgsz, FADVISE_THRESH * pgsz, POSIX_FADV_DONTNEED);
 #endif
+        /* Check disk space, schema changes, analyze abort request etc.
+           Every page: unsampled and non-leaf pages have to abort too. */
+        now = comdb2_time_epoch();
+        if (now - last >= 10) {
+            last = now;
+            rc = check_free_space(bdb_state->dir);
+            if (rc != BDBERR_NOERROR) {
+                *bdberr = rc;
+                rc = -1;
+                goto done;
+            }
+        }
+
+        int inprogress;
+        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) || get_analyze_abort_requested() ||
+            db_is_exiting()) {
+            if (inprogress)
+                logmsg(LOGMSG_ERROR,
+                       "%s: Aborting Analyze because "
+                       "schema_change_in_progress\n",
+                       __func__);
+            if (get_analyze_abort_requested())
+                logmsg(LOGMSG_ERROR,
+                       "%s: Aborting Analyze because "
+                       "of send analyze abort\n",
+                       __func__);
+            if (db_is_exiting())
+                logmsg(LOGMSG_ERROR,
+                       "%s: Aborting Analyze because "
+                       "db is exiting\n",
+                       __func__);
+            rc = -1;
+            goto done;
+        }
+
         /* If it is not a leaf page, continue reading the file. */
         if (!ISLEAF(page))
             continue;
@@ -463,34 +498,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             continue;
         NUM_ENT(page) = n;
         nrecs += (n >> 1);
-
-        /* Check disk space, schema changes, analyze abort request etc. */
-        now = comdb2_time_epoch();
-        if (now - last >= 10) {
-            last = now;
-            rc = check_free_space(bdb_state->dir);
-            if (rc != BDBERR_NOERROR) {
-                *bdberr = rc;
-                rc = -1;
-                goto done;
-            }
-        }
-
-        int inprogress;
-        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
-            get_analyze_abort_requested() || db_is_exiting()) {
-            if (inprogress)
-                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
-                        "schema_change_in_progress\n", __func__);
-            if (get_analyze_abort_requested())
-                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
-                        "of send analyze abort\n", __func__);
-            if (db_is_exiting())
-                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
-                        "db is exiting\n", __func__);
-            rc = -1;
-            goto done;
-        }
 
         db_indx_t *inp = P_INP(dbp, page);
         /* Remember the value before byteswap.

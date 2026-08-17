@@ -66,6 +66,13 @@ function runtest {
     if [ $sample -eq 1 ]; then
         cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('analyze sample')" >/dev/null
         cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('analyze thresh 1000')" >/dev/null
+
+        # Pin coverage low so nearly every page is skipped by the sampling
+        # filter.  At the default 20% this only stalled the exit now and then.
+        for table in t v;
+        do
+            cdb2sql $dbnm --host $master "put analyze coverage $table 1" >/dev/null
+        done
     else
         cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('analyze nosample')" >/dev/null
     fi
