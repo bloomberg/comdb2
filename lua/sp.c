@@ -7004,11 +7004,15 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     SP sp = clnt->sp;
     sp->thd = thd;
     Lua L = sp->lua;
-    clone_temp_tables(sp);
-    int args = lua_gettop(L) - 1;
     int rc;
     char *err = NULL;
     if ((rc = begin_sp(clnt, &err)) != 0) return rc;
+    /* Clone inside the implicit transaction: begin_sp populates the modsnap
+       state for a snapshot client, which these prepares need in order to
+       open cursors (e.g. sqlite schema init reading sqlite_stat1). */
+    clone_temp_tables(sp);
+    /* Count args after the clone: it can leave values on the lua stack. */
+    int args = lua_gettop(L) - 1;
     if ((rc = run_sp(clnt, args, &err)) != 0) return rc;
     return commit_sp(L, &err);
 }
