@@ -361,6 +361,22 @@ I started tracking this when I got to more important files (`where.c`,
 
 - We have a patch to initialize comdb2's SQLite tunables in our build of the
   SQLite shell.
+- Dropped this file entirely.
+
+  ```
+  commit 760b68a100908af2ab3355eb5ff186415707f40e
+  Author: Shoumyo Chakravorti <schakravorti@bloomberg.net>
+  Date:   Mon Aug 10 16:34:47 2026 +0000
+
+      `shell.c`/`shell.c.in`: drop unbuilt `sqlite3` CLI
+
+      These files were introduced in our source tree in previous SQLite upgrades but
+      we currently don't build them. In the latest SQLite upgrade, these files have
+      humongous diffs (+6,870 -2,294). Getting this to build is a low priority.
+      Remove the files to avoid leaving things in an inconsistent/confusing state.
+
+      Signed-off-by: Shoumyo Chakravorti <schakravorti@bloomberg.net>
+  ```
 
 ### `sqlite_btree.{h,c}`
 
