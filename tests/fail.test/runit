@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# we expect this to abort, but the test runner looks for cores, so don't generate one
+# or the test will count a failure
+ulimit -c 0
+
+export LOGDIR=$TESTDIR/logs
+mkdir -p $LOGDIR
+$COMDB2_EXE ${DBNAME} --create --dir ${DBDIR}
+echo "pluginfail 1" >> ${DBDIR}/${DBNAME}.lrl
+cat ${DBDIR}/${DBNAME}.lrl
+# run in foreground - we want a timeout here
+timeout 1m $COMDB2_EXE ${DBNAME} --lrl ${DBDIR}/${DBNAME}.lrl > out 2>&1
+rc=$?
+# if we timed out, the db came up - we failed to fail
+[[ $rc -eq 124 ]] && exit 1
+# make sure we aborted (128 + 6 - SIGABRT)
+[[ $rc -ne 134 ]] && exit 1
+grep "Init of plugin failed" out

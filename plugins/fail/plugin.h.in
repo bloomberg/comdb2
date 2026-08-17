@@ -1,0 +1,13 @@
+struct comdb2_plugin @PLUGIN_SYM@[] = {
+    {
+        "fail",                   /* Plugin identifier */
+        "FAIL plugin",              /* Plugin description */
+        COMDB2_PLUGIN_INITIALIZER, /* Plugin type */
+        1,                         /* Plugin version */
+        1,                         /* Plugin interface version */
+        0,                         /* Plugin flags */
+        fail_init,                /* Initialization function */
+        fail_destroy,             /* Destroy function */
+        &fail_plugin              /* Plugin-specific data */
+    },
+    {0, 0, 0, 0, 0, 0, 0, 0, 0}};
