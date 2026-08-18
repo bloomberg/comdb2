@@ -1102,6 +1102,29 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
             rc = bdb_prepare_put_pack_updateid(bdb_state, is_blob, dta,
                                                &packeddta, -1, &freedtaptr,
                                                formatted_record, odhready);
+            if (rc != 0) {
+                /* packeddta still aliases the caller's unpacked record.  Writing
+                 * it would store a record with no ODH, and poke_updateid() below
+                 * would stamp the updateid over the first bytes of the payload.
+                 * Fail the update instead. */
+                logmsg(LOGMSG_ERROR, "%s: bdb_prepare_put_pack_updateid rc %d for %u bytes\n", __func__, rc,
+                       (unsigned)dta->size);
+                if (malloceddta)
+                    free(malloceddta);
+                if (old_dta_out)
+                    old_dta_out->data = NULL;
+                if (freeptr)
+                    free(freeptr);
+                if (freedtaptr)
+                    free(freedtaptr);
+                if (formatted_record_needsfree)
+                    free(formatted_record);
+                crc = dbcp->c_close(dbcp);
+                dbcp = NULL;
+                if (crc == DB_LOCK_DEADLOCK)
+                    rc = DB_LOCK_DEADLOCK;
+                goto done;
+            }
             recptr = packeddta.data;
             formatted_record_len = packeddta.size;
 

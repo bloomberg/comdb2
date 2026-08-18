@@ -480,6 +480,7 @@ extern int gbl_debug_alter_sequences_sleep;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_pack_fail_size;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int gbl_debug_pb_connectmsg_dbname_check;
 extern int gbl_debug_pb_connectmsg_physrep_check;

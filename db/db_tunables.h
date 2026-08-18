@@ -1372,6 +1372,10 @@ REGISTER_TUNABLE("debug.omit_idx_write", "Deliberately corrupt insertion randoml
                  &gbl_debug_omit_idx_write, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.omit_blob_write", "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.pack_fail_size",
+                 "Make bdb_pack() fail for records of at least this many bytes, as if the allocation had failed. "
+                 "0 disables. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_pack_fail_size, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.skip_constraintscheck_on_insert",
                  "Deliberately allow insertion without constraint check to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL, NULL, NULL, NULL);
