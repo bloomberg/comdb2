@@ -457,6 +457,8 @@ static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, 
 
         int max_connect_attempts = 10 * (*host_count);
         for (int i = 0; i < max_connect_attempts; ++i) {
+            if (db_is_exiting())
+                break;
             char *direct_host = (*hosts)[*host_index];
 
             // Move to the next host for the next attempt
