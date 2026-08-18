@@ -5500,57 +5500,6 @@ static int pushDownWhereTerms(
 }
 #endif /* !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW) */
 
-
-/*
-** Check to see if a subquery contains result-set columns that are
-** never used.  If it does, change the value of those result-set columns
-** to NULL so that they do not cause unnecessary work to compute.
-**
-** Return the number of column that were changed to NULL.
-*/
-static int disableUnusedSubqueryResultColumns(struct SrcList_item *pItem){
-  int nCol;
-  Select *pSub;      /* The subquery to be simplified */
-  Select *pX;        /* For looping over compound elements of pSub */
-  Table *pTab;       /* The table that describes the subquery */
-  int j;             /* Column number */
-  int nChng = 0;     /* Number of columns converted to NULL */
-
-  assert( pItem!=0 );
-  assert( pItem->pTab!=0 );
-  pTab = pItem->pTab;
-  if( pTab->tabFlags & TF_Ephemeral ) return 0;
-  assert( pItem->pSelect!=0 );
-  pSub = pItem->pSelect;
-  assert( pSub->pEList->nExpr==pTab->nCol );
-  for(pX=pSub; pX; pX=pX->pPrior){
-    if( pX->pPrior && pX->op!=TK_ALL ){
-      /* This optimization does not work for compound subqueries that
-      ** use UNION, INTERSECT, or EXCEPT.  Only UNION ALL is allowed. */
-      return 0;
-    }
-    if( pX->pWin ){
-      /* This optimization does not work for subqueries that use window
-      ** functions. */
-      return 0;
-    }
-  }
-  nCol = pTab->nCol;
-  for(j=0; j<nCol; j++){
-    Select *pX;
-    Bitmask m = j<BMS-1 ? MASKBIT(j) : (((Bitmask)1)<<(BMS-1));
-    if( (m & pItem->colUsed)!=0 ) continue;
-    for(pX=pSub; pX; pX=pX->pPrior) {
-      Expr *pY = pX->pEList->a[j].pExpr;
-      if( pY->op==TK_NULL ) continue;
-      pY->op = TK_NULL;
-      /* pX->selFlags |= SF_PushDown; */
-      nChng++;
-    }
-  }
-  return nChng;
-}
-
 /*
 ** Check to see if a subquery contains result-set columns that are
 ** never used.  If it does, change the value of those result-set columns
