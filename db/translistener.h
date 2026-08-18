@@ -87,18 +87,16 @@ int javasp_do_procedure_op(int op, const char *name, const char *param,
  * of these other calls. */
 void javasp_once_init(void);
 
-int javasp_add_procedure(const char *name, const char *jar, const char *param);
+int javasp_add_procedure(const char *name, const char *param);
 
 /* Load the stored procedures contained in the given jar file.  param must be
  * a NULL terminated string which will be trimmed and split into whitespace
  * delimted arguments.
  */
-int javasp_load_procedure(const char *name, const char *jarfile,
-                          const char *param);
+int javasp_load_procedure(const char *name, const char *param);
 
 /* Reload the given stored procedure in one operation. */
-int javasp_reload_procedure(const char *name, const char *jarfile,
-                            const char *param);
+int javasp_reload_procedure(const char *name, const char *param);
 
 int javasp_unload_procedure(const char *name);
 

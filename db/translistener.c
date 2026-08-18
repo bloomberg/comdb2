@@ -148,7 +148,7 @@ int javasp_init_procedures(void)
 
     p = listc_rtl(&delayed_stored_procs);
     while (p) {
-        rc = javasp_load_procedure(p->name, NULL, p->param);
+        rc = javasp_load_procedure(p->name, p->param);
         if (rc)
             return rc;
 
@@ -1122,8 +1122,7 @@ done:
     return rc;
 }
 
-int javasp_reload_procedure(const char *name, const char *jarfile,
-                            const char *param)
+int javasp_reload_procedure(const char *name, const char *param)
 {
     int rc;
     SP_WRITELOCK();
@@ -1142,7 +1141,7 @@ done:
     return rc;
 }
 
-int javasp_add_procedure(const char *name, const char *jar, const char *param)
+int javasp_add_procedure(const char *name, const char *param)
 {
     struct stored_proc *p;
     p = malloc(sizeof(struct stored_proc));
@@ -1271,9 +1270,8 @@ int javasp_load_procedure_int(const char *name, const char *param,
         int fd;
         f = tmpfile();
         if (f == NULL) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: can't create temp file for queue config %d %s\n",
-                    __func__, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR, "%s: can't create temp file for queue config %d %s\n", __func__, errno,
+                   strerror(errno));
             rc = -1;
             goto done;
         }
@@ -1300,8 +1298,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
 
         if (strcasecmp(s, "queue") == 0) {
             if (paramvalue) {
-                logmsg(LOGMSG_ERROR, 
-                        "queue parameter ignored for new queue definition\n");
+                logmsg(LOGMSG_ERROR, "queue parameter ignored for new queue definition\n");
             } else {
                 queue = strtok_r(NULL, toksep, &endp);
                 if (queue == NULL) {
@@ -1371,9 +1368,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
             LISTC_FOR_EACH(&table->fields, field, lnk)
             {
                 if (strcasecmp(field->name, fieldname) == 0) {
-                    logmsg(LOGMSG_ERROR, 
-                            "field %s already defined (config file %s)\n",
-                            field->name, argv[0]);
+                    logmsg(LOGMSG_ERROR, "field %s already defined (config file %s)\n", field->name, argv[0]);
                     rc = -1;
                     goto done;
                 }
@@ -1418,9 +1413,8 @@ int javasp_load_procedure_int(const char *name, const char *param,
             listc_abl(&table->fields, field);
             p->flags |= flags;
         } else {
-            logmsg(LOGMSG_ERROR, 
-                "unknown translisten config directive %s (config file %s)\n", s,
-                param ? argv[0] : "<from comdb2sc>");
+            logmsg(LOGMSG_ERROR, "unknown translisten config directive %s (config file %s)\n", s,
+                   param ? argv[0] : "<from comdb2sc>");
             rc = -1;
             goto done;
         }
@@ -1435,8 +1429,7 @@ done:
     return rc;
 }
 
-int javasp_load_procedure(const char *name, const char *jarfile,
-                          const char *param)
+int javasp_load_procedure(const char *name, const char *param)
 {
     int rc;
     SP_WRITELOCK();

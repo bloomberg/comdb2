@@ -220,8 +220,6 @@ int dump_qresources(const char *dir)
         }
 
         /* raw byte copy - resources may be binary (.jar) files */
-        // TODO: is this really needed? ( /bb/bin/comdb2translisten.jar )
-        // does this need dumping?
         char buf[4096];
         size_t nr;
         int err = 0;

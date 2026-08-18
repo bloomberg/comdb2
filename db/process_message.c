@@ -1277,7 +1277,6 @@ clipper_usage:
             char *name;
             char *jarres;
             char *param;
-            const char *jarfile;
 
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
@@ -1299,23 +1298,16 @@ clipper_usage:
             tok = seglinel(line, lline, &st, &ltok);
             param = tokdup(tok, ltok);
 
-            jarfile = getresourcepath(jarres);
-            if (!jarfile) {
-                logmsg(LOGMSG_ERROR, "resource '%s' not found\n", jarres);
-            } else {
-                int rc;
-                if (strcasecmp(opname, "reload") == 0)
-                    rc = javasp_reload_procedure(name, jarfile, param);
-                else
-                    rc = javasp_load_procedure(name, jarfile, param);
+            int rc;
+            if (strcasecmp(opname, "reload") == 0)
+                rc = javasp_reload_procedure(name, param);
+            else
+                rc = javasp_load_procedure(name, param);
 
-                if (rc == 0)
-                    logmsg(LOGMSG_USER, "%sed stored procedure '%s': SUCCESS\n", opname,
-                            name);
-                else
-                    logmsg(LOGMSG_ERROR, "%sing stored procedure '%s' FAILED\n", opname,
-                            name);
-            }
+            if (rc == 0)
+                logmsg(LOGMSG_USER, "%sed stored procedure '%s': SUCCESS\n", opname, name);
+            else
+                logmsg(LOGMSG_ERROR, "%sing stored procedure '%s' FAILED\n", opname, name);
 
             free(name);
             free(opname);

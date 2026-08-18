@@ -1272,7 +1272,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         }
         jartok = tokdup(tok, ltok);
-        if (javasp_add_procedure(name, jartok, line + st) != 0) return -1;
+        if (javasp_add_procedure(name, line + st) != 0)
+            return -1;
         free(name);
         free(jartok);
     } else if (tokcmp(tok, ltok, "use_parallel_schema_change") == 0) {
