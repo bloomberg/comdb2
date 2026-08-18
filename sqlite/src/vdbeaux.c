@@ -3560,6 +3560,7 @@ void sqlite3VdbeDelete(Vdbe *p){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 char *sqlite3BtreeGetTblName(BtCursor *pCur);
+const char *sqlite3BtreeLastReleaseStr(BtCursor *pCur, char *buf, size_t sz);
 int sqlite3BtreeCursorRestore(BtCursor*, int*);
 unsigned long long bdb_genid_to_host_order(unsigned long long genid);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3593,12 +3594,13 @@ int SQLITE_NOINLINE sqlite3VdbeFinishMoveto(VdbeCursor *p){
   if( rc ) return rc;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( res!=0 ){
-    char errmsg[256];
+    char errmsg[256], rel[128];
     snprintf(errmsg, sizeof(errmsg),
-             "Dta lookup lost the race for tbl %s genid=%llu (%llx) [new]\n",
+             "Dta lookup lost the race for tbl %s genid=%llu (%llx) [new]  %s\n",
              sqlite3BtreeGetTblName(p->uc.pCursor),
-             bdb_genid_to_host_order(p->movetoTarget), 
-             bdb_genid_to_host_order(p->movetoTarget));
+             bdb_genid_to_host_order(p->movetoTarget),
+             bdb_genid_to_host_order(p->movetoTarget),
+             sqlite3BtreeLastReleaseStr(p->uc.pCursor, rel, sizeof(rel)));
     logmsg(LOGMSG_ERROR, "%s\n", errmsg);
     if (gbl_abort_on_dta_lookup_error)
         abort();
@@ -3612,10 +3614,12 @@ int SQLITE_NOINLINE sqlite3VdbeFinishMoveto(VdbeCursor *p){
     i64 genid;
     sqlite3BtreeKey(p->uc.pCursor, 0, sizeof(i64), &genid);
     if( p->movetoTarget!=genid ){
-      logmsg(LOGMSG_ERROR, 
-             "Dta lookup lost the race for tbl %s genid=%llu found=%llu\n",
+      char rel[128];
+      logmsg(LOGMSG_ERROR,
+             "Dta lookup lost the race for tbl %s genid=%llu found=%llu  %s\n",
              sqlite3BtreeGetTblName(p->uc.pCursor),
-             p->movetoTarget, genid);
+             p->movetoTarget, genid,
+             sqlite3BtreeLastReleaseStr(p->uc.pCursor, rel, sizeof(rel)));
       if (gbl_abort_on_dta_lookup_error)
           abort();
       return SQLITE_DEADLOCK;

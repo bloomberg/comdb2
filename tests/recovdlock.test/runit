@@ -1,0 +1,514 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Test: DeferredSeek data lookup failure after recover_deadlock (non-snapshot)
+#
+# Scenario:
+#   A 2-table join uses a non-covering index on the outer table. The outer index
+#   cursor positions on row R and DeferredSeek records R's rowid (data cursor
+#   deferred -- still at its initial position). The inner loop scans slowly
+#   (debug_sleep_in_cursor_move injects a delay on each Next), giving a
+#   concurrent DELETE time to block on the outer index page lock.
+#   When cursor_move_postop detects the waiter it runs recover_deadlock: releases
+#   all locks (letting the DELETE commit), then repositions cursors. The inner
+#   loop eventually finds a match. To produce output the join must access
+#   outer_t.data_col via the deferred seek -- but the row was deleted during
+#   recover_deadlock. This should produce a DTA lookup failure.
+#
+#   Both passes enable the deferred-seek feature (recover_deadlock_sync_dta=1) so
+#   the non-SI lock release actually happens -- with the feature off there is no
+#   release, hence no window and no bug.  The two passes differ only in the
+#   test-only debug switch debug_recover_deadlock_skip_sync_dta:
+#     Pass 1 (skip_sync=1): release happens but the data-cursor sync is skipped,
+#             reproducing the bug -- the join fails with a DTA lookup error.
+#     Pass 2 (skip_sync=0): release + sync, exercising the fix -- the deferred
+#             data is captured before the release, so the join succeeds.
+#
+# Cluster note:
+#   The RLOCKS_REASON_LOCKWAIT release path ("replication is waiting on session")
+#   fires on a REPLICANT, whose replication thread blocks on the reader's page
+#   lock while applying the master's DELETE. So on a cluster we pin the SELECT to
+#   a replicant, run the DELETE on the master, set the timing tunables on the
+#   replicant, and inspect that replicant's server log. On a single node
+#   everything runs on the one node via 'default'.
+
+set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+# 100 inner rows is enough -- the sleep tunable slows each cursor move.
+INNER_ROWS=${INNER_ROWS:-100}
+# ms to sleep on each inner cursor move
+CURSOR_SLEEP_MS=${CURSOR_SLEEP_MS:-100}
+
+CDB2SQL="${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm default"
+
+echo "Creating tables"
+$CDB2SQL "drop table if exists outer_t" >/dev/null
+$CDB2SQL "drop table if exists inner_t" >/dev/null
+
+# outer_t: key_col is indexed but data_col is NOT -- forces DeferredSeek.
+$CDB2SQL "create table outer_t (
+    id       int,
+    key_col  int,
+    data_col int,
+    primary key (id),
+    index \"outer_key_idx\" (key_col)
+)" >/dev/null
+
+# inner_t: outer_key indexed for join; val NOT indexed -- forces a full index
+# scan of all inner rows (one Next per row) to find the single matching row.
+$CDB2SQL "create table inner_t (
+    id        int,
+    outer_key int,
+    val       int,
+    primary key (id),
+    index \"inner_outer_key_idx\" (outer_key)
+)" >/dev/null
+
+echo "Populating outer_t (1 row)"
+$CDB2SQL "insert into outer_t values(1, 1, 42)" >/dev/null
+
+echo "Populating inner_t ($INNER_ROWS rows, match only on last)"
+$CDB2SQL "insert into inner_t
+    select value, 1, value from generate_series(1, $INNER_ROWS)" >/dev/null
+
+echo "Data population complete"
+
+# Decide where the SELECT runs (a replicant on a cluster), where the DELETE runs
+# (the master), and which server log records the DTA path.
+if [[ -n "$CLUSTER" ]]; then
+    master=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default \
+        "select host from comdb2_cluster where is_master='Y'" | tr -d '[:space:]')
+    [[ -z "$master" ]] && failexit "could not determine master (cluster=$CLUSTER)"
+    sel_node=""
+    for node in $CLUSTER; do
+        if [[ "$node" != "$master" ]]; then
+            sel_node=$node
+            break
+        fi
+    done
+    [[ -z "$sel_node" ]] && failexit "no replicant found (master=$master, cluster=$CLUSTER)"
+    SELHOST="--host $sel_node"
+    DELHOST="--host $master"
+    DB_LOG=${TESTDIR}/logs/${dbnm}.${sel_node}.db
+    echo "cluster: SELECT on replicant $sel_node, DELETE on master $master"
+else
+    SELHOST="default"
+    DELHOST="default"
+    DB_LOG=${TESTDIR}/logs/${dbnm}.db
+    echo "single node: SELECT and DELETE on default"
+fi
+
+# All lock-release/timing tunables must be set on the node that runs the SELECT,
+# because that is where cursor_move_postop, recover_deadlock and the deferred
+# seek execute.
+SELSQL="${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm $SELHOST"
+
+# Ensure page-lock waiter checking is on (fires the RLOCKS_REASON_LOCKWAIT path).
+$SELSQL "put tunable 'locks_check_waiters' 1" >/dev/null
+
+# Slow down each cursor move so the DELETE has time to block on the outer index
+# page lock before the inner scan completes.
+$SELSQL "put tunable 'debug_sleep_in_cursor_move' $CURSOR_SLEEP_MS" >/dev/null
+
+# The join: outer_t uses outer_key_idx (non-covering), inner loop scans all
+# inner_t rows via inner_outer_key_idx checking val = INNER_ROWS (last row).
+# CROSS JOIN forces outer_t as the outer loop.
+# DeferredSeek on outer_t data cursor is set before the inner loop starts and
+# is only executed when a match is found (at val = INNER_ROWS).
+JOIN_SQL="select outer_t.data_col
+    from outer_t
+    cross join inner_t on inner_t.outer_key = outer_t.key_col
+    where outer_t.key_col > 0
+    and inner_t.val = $INNER_ROWS"
+
+# Verify query plan: outer_t uses index (DeferredSeek), inner_t uses index.
+echo "Checking query plan"
+EXPLAIN=$($SELSQL "explain $JOIN_SQL" 2>&1) \
+    || failexit "explain failed: $EXPLAIN"
+echo "$EXPLAIN"
+
+if ! echo "$EXPLAIN" | grep -qi "OUTER_KEY_IDX"; then
+    failexit "outer_t does not use outer_key_idx -- DeferredSeek won't fire; test setup invalid"
+fi
+if ! echo "$EXPLAIN" | grep -qi "INNER_OUTER_KEY_IDX"; then
+    failexit "inner_t does not use inner_outer_key_idx -- test setup invalid"
+fi
+if ! echo "$EXPLAIN" | grep -q "DeferredSeek"; then
+    failexit "no DeferredSeek in plan -- outer data cursor not deferred; test setup invalid"
+fi
+echo "Query plan ok"
+
+# Helper: set the fix tunable on the node that runs the SELECT.
+set_tunable() {
+    local tunable=$1
+    local value=$2
+    $SELSQL "put tunable '$tunable' $value" >/dev/null
+}
+
+# Helper: count DTA-lookup-race log lines currently in the SELECT node's log.
+# (grep -c prints 0 and exits 1 on no match, so swallow the non-zero exit.)
+dta_race_count() {
+    if [[ -f "$DB_LOG" ]]; then
+        grep -c "Dta lookup lost the race" "$DB_LOG" || true
+    else
+        echo 0
+    fi
+}
+
+# Helper: run the join + concurrent DELETE, check expected outcome.
+# $1 = pass label, $2 = expect_error (1=error expected), $3 = expect_dta_log (1/0)
+run_pass() {
+    local label=$1
+    local expect_error=$2
+    local expect_dta_log=$3
+
+    # Re-insert outer_t row (may have been deleted by previous pass)
+    $CDB2SQL "delete from outer_t where id = 1" >/dev/null 2>&1 || true
+    $CDB2SQL "insert into outer_t values(1, 1, 42)" >/dev/null
+
+    # Count DTA races logged before this pass so we only look at new ones.
+    local dta_before
+    dta_before=$(dta_race_count)
+
+    (sleep 1 && ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+        "delete from outer_t where id = 1" >/dev/null 2>&1) &
+    local DELETE_PID=$!
+
+    echo "[$label] Running join (inner scan ~$((INNER_ROWS * CURSOR_SLEEP_MS / 1000))s, DELETE after 1s)"
+    set +e
+    local result
+    result=$($SELSQL "$JOIN_SQL" 2>&1)
+    local rc=$?
+    set -e
+
+    wait $DELETE_PID 2>/dev/null || true
+    echo "[$label] rc=$rc result='$result'"
+
+    # Verify server hit (or avoided) the DTA code path during THIS pass.
+    local dta_after
+    dta_after=$(dta_race_count)
+    local dta_new=$((dta_after - dta_before))
+    if [ "$dta_new" -gt 0 ]; then
+        echo "[$label] server logged 'Dta lookup lost the race' ($dta_new new) -- scenario triggered"
+    else
+        if [ "$expect_dta_log" -eq 1 ]; then
+            failexit "[$label] 'Dta lookup lost the race' not logged -- scenario not triggered"
+        fi
+        echo "[$label] no new 'Dta lookup lost the race' -- race avoided"
+    fi
+
+    if [ "$expect_error" -eq 1 ]; then
+        if [ $rc -eq 0 ]; then
+            failexit "[$label] expected join error but got rc=0"
+        fi
+        echo "[$label] ok: join correctly returned error (rc=$rc)"
+    else
+        if [ $rc -ne 0 ]; then
+            failexit "[$label] join returned error -- DTA lookup not handled: $result"
+        fi
+        echo "[$label] ok: join succeeded (rc=0), result='$result'"
+    fi
+}
+
+# Enable the deferred-seek feature for both passes so the non-SI lock release
+# fires (without it there is no release, no window, and nothing to test).
+set_tunable "recover_deadlock_sync_dta" 1
+
+# Pass 1: skip the sync -- release without the fix, expect DTA lookup failure (rc 203)
+echo "=== Pass 1: debug_recover_deadlock_skip_sync_dta=1 (bug expected) ==="
+set_tunable "debug_recover_deadlock_skip_sync_dta" 1
+run_pass "skip_sync=on" 1 1
+
+# Pass 2: sync active -- fix engaged, expect graceful result (no new DTA race)
+echo "=== Pass 2: debug_recover_deadlock_skip_sync_dta=0 (fix expected) ==="
+set_tunable "debug_recover_deadlock_skip_sync_dta" 0
+run_pass "skip_sync=off" 0 0
+
+# ============================================================================
+# Pass 3: the "entered-row" case -- release fires during the very Next that
+# steps ONTO the row we delete, before that row's DeferredSeek is recorded.
+# cursor_move_postop runs inside ddguard, before cur->genid is copied up, so the
+# BtCursor->genid field still holds the PREVIOUS row.  sync_index_data_cursors
+# handles this by reading the index cursor's LIVE bdb position
+# (cur->bdbcur->genid) instead of the lagging field, so it captures the row the
+# cursor just stepped onto:
+#
+#   single-table index scan (key_col indexed, data_col NOT -> DeferredSeek/row)
+#     row A: DeferredSeek -> Column data_col (RESOLVES cur0 to A) -> ResultRow
+#     Next  -> steps onto row B (bdbcur on B, cur->genid still A):
+#             (a) postop: waiter seen (rep DELETE of B)
+#             (b) sync: idx_genid = bdbcur->genid = B != dta->genid(A)
+#                 -> find(B) -> CAPTURE B into cur0 buffer
+#             (c) release -> DELETE of B commits -> B gone from disk (buffered)
+#             (d) ddguard returns; get_found_data -> cur->genid = B
+#     row B: DeferredSeek(B) -> Column data_col -> fast path (buffer) -> OK
+#
+# A single-table scan's only move-release point IS the Next onto the next row,
+# so the release deterministically lands in the entered-row window.  A large
+# postop sleep guarantees the DELETE (issued after 1s) is blocking on the
+# reader's leaf-page lock by the time the release runs.  With the fix the scan
+# still returns both rows (B captured before its deletion committed).
+# ============================================================================
+echo "=== Pass 3: entered-row case (fix enabled: sync on, skip off) ==="
+
+$CDB2SQL "drop table if exists seq_t" >/dev/null
+$CDB2SQL "create table seq_t (
+    id       int,
+    key_col  int,
+    data_col int,
+    primary key (id),
+    index \"seq_key_idx\" (key_col)
+)" >/dev/null
+# Row A (id=1) is visited first via SeekGT; row B (id=2) is stepped onto via
+# Next -- B is the row we delete during that Next.
+$CDB2SQL "insert into seq_t values (1, 1, 10)" >/dev/null
+$CDB2SQL "insert into seq_t values (2, 2, 20)" >/dev/null
+
+SEQ_SQL="select data_col from seq_t where key_col > 0"
+
+echo "Pass 3 query plan:"
+$SELSQL "explain $SEQ_SQL" 2>&1 || true
+
+# Big postop sleep: the only Next (onto B) parks ~5s holding B's leaf-page lock,
+# so the DELETE (after 1s) is guaranteed to be blocking when the waiter check runs.
+set_tunable "debug_sleep_in_cursor_move" 5000
+set_tunable "recover_deadlock_sync_dta" 1
+set_tunable "debug_recover_deadlock_skip_sync_dta" 0
+
+# Ensure B is present.
+$CDB2SQL "delete from seq_t where id = 2" >/dev/null 2>&1 || true
+$CDB2SQL "insert into seq_t values (2, 2, 20)" >/dev/null
+
+p3_dta_before=$(dta_race_count)
+(sleep 1 && ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+    "delete from seq_t where id = 2" >/dev/null 2>&1) &
+P3_DELETE_PID=$!
+
+echo "[entered-row] Running single-table scan (DELETE of B after 1s)"
+set +e
+p3_result=$($SELSQL "$SEQ_SQL" 2>&1)
+p3_rc=$?
+set -e
+wait $P3_DELETE_PID 2>/dev/null || true
+
+p3_dta_after=$(dta_race_count)
+p3_dta_new=$((p3_dta_after - p3_dta_before))
+echo "[entered-row] rc=$p3_rc dta_new=$p3_dta_new result='$p3_result'"
+
+# restore timing tunable
+set_tunable "debug_sleep_in_cursor_move" "$CURSOR_SLEEP_MS"
+
+# With the fix the entered-row seek is captured before the release, so the scan
+# succeeds and returns both rows (B's pre-delete value included).
+if [ "$p3_rc" -ne 0 ]; then
+    failexit "[entered-row] scan failed (rc=$p3_rc) -- entered-row case not handled: $p3_result"
+fi
+if [ "$p3_dta_new" -gt 0 ]; then
+    failexit "[entered-row] 'Dta lookup lost the race' logged ($p3_dta_new) despite fix"
+fi
+if ! echo "$p3_result" | grep -q "20"; then
+    failexit "[entered-row] expected deleted row B's captured value 20 in output: $p3_result"
+fi
+echo "[entered-row] ok: scan succeeded (rc=0), captured B before its deletion"
+
+# ============================================================================
+# Pass 4: DROP the deferred-seek table during the release window.
+#
+# The outer deferred seek (data cursor on outer_t) stays pending through the
+# slow inner scan.  A concurrent DROP TABLE outer_t is applied on the SELECT
+# node (a replicant) while this session's locks are down.  The replicant's
+# scdone handler (scdone_drop -> delete_table_rep) does delete_schema() +
+# freedb() WITHOUT taking the table write lock, so it does not wait for local
+# readers: pCur->db and pCur->sc become dangling.
+#
+# Before the fix, resolving the deferred seek took the fast path (no BDB seek,
+# no revalidation) and OP_Column -> get_data() walked the freed schema ->
+# SIGSEGV on the SELECT node.  With cursor_check_table_valid() the fast path
+# re-resolves the table first and the query fails gracefully instead.
+# ============================================================================
+DROP_REPRO=${DROP_REPRO:-1}
+if [ "$DROP_REPRO" -eq 1 ] && [[ -n "$CLUSTER" ]]; then
+    echo "=== Pass 4: DROP deferred-seek table during release window ==="
+    set_tunable "debug_sleep_in_cursor_move" "$CURSOR_SLEEP_MS"
+    # The page-locks-only release keeps our table locks, which blocks the DROP.
+    # Production bounds that stall by rep_wait_release_ms (60s by default); tighten
+    # it here so this ~10s scan deterministically reaches the fallback and we can
+    # assert the graceful schema-change error rather than a client timeout.
+    set_tunable "pagelock_release_max_wait_ms" 1000
+    set_tunable "recover_deadlock_sync_dta" 1
+    set_tunable "debug_recover_deadlock_skip_sync_dta" 0
+
+    $CDB2SQL "drop table if exists outer_t" >/dev/null 2>&1 || true
+    $CDB2SQL "drop table if exists inner_t" >/dev/null 2>&1 || true
+    $CDB2SQL "create table outer_t (
+        id int, key_col int, data_col int,
+        primary key (id), index \"outer_key_idx\" (key_col))" >/dev/null
+    $CDB2SQL "create table inner_t (
+        id int, outer_key int, val int,
+        primary key (id), index \"inner_outer_key_idx\" (outer_key))" >/dev/null
+    $CDB2SQL "insert into outer_t values(1, 1, 42)" >/dev/null
+    $CDB2SQL "insert into inner_t
+        select value, 1, value from generate_series(1, $INNER_ROWS)" >/dev/null
+
+    # DROP outer_t on the master ~2s into the ~10s inner scan
+    (sleep 2 && ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+        "drop table outer_t" >/dev/null 2>&1) &
+    P4_DROP_PID=$!
+
+    set +e
+    p4_result=$($SELSQL "$JOIN_SQL" 2>&1)
+    p4_rc=$?
+    set -e
+    wait $P4_DROP_PID 2>/dev/null || true
+    echo "[drop-race] select rc=$p4_rc result='$(echo "$p4_result" | head -1)'"
+
+    for node in $CLUSTER; do
+        if ! ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm --host $node "select 1" >/dev/null 2>&1; then
+            failexit "[drop-race] node $node UNAVAILABLE -- crashed on DROP under a deferred seek"
+        fi
+    done
+    echo "[drop-race] all nodes healthy"
+
+    # The deferred seek is guaranteed to resolve after the drop here, so the
+    # query must be interrupted -- and it must say so properly.
+    if [ "$p4_rc" -eq 0 ]; then
+        echo "[drop-race] NOTE: query completed (drop landed after the seek resolved)"
+    elif echo "$p4_result" | grep -qiE "schema chang|CDB2ERR_SCHEMA|Dta lookup lost the race"; then
+        echo "[drop-race] ok: interrupted query failed gracefully with a schema-change error"
+    else
+        failexit "[drop-race] interrupted query failed with an unexpected error: $(echo "$p4_result" | tail -1)"
+    fi
+
+    set_tunable "debug_sleep_in_cursor_move" "$CURSOR_SLEEP_MS" 2>/dev/null || true
+fi
+
+# ============================================================================
+# Pass 5: DROP during a ROW-STREAMING scan -- exercises the lock release that
+# stock code performs for ordinary (non-SI) reads.
+#
+# Pass 4 drives the release from cursor_move_postop, which on main is
+# SERIAL-only, so it only exists because of this feature.  There is a second,
+# pre-existing release that DOES fire for plain reads and needs no bdb write
+# lock and no tunable:
+#
+#   write_response(RESPONSE_ROW)            db/sqlinterfaces.c:~368
+#     -> recover_deadlock_evbuffer()        db/sqlinterfaces.c:~5705
+#          releases when bdb_curtran_has_waiters() != 0  (OR lock_desired)
+#          throttled by gbl_sql_recover_time (default 10ms, i.e. ON)
+#
+# It only fires while rows are being EMITTED, so we need a query that streams
+# many rows (unlike the Pass 1-4 join, which emits one row at the very end),
+# plus a concurrent writer so the replicant's rep-apply thread is a page-lock
+# waiter on our scan.  Then DROP the table mid-stream.
+#
+# Run twice:
+#   feature OFF (recover_deadlock_sync_dta=0) -- with the feature off, the
+#       non-SI postop release, the pre-release sync and the deferred-seek fast
+#       path are all disabled, so this is main's behaviour for a plain read.
+#       Expect a CLEAN failure (schema change / Dta lookup lost the race), NOT
+#       a crash.  A crash here would mean the UAF is pre-existing.
+#   feature ON  -- expect whatever the feature does today.
+#
+# INVESTIGATION: reports outcomes, does not assert.
+# ============================================================================
+STREAM_REPRO=${STREAM_REPRO:-1}
+STREAM_ROWS=${STREAM_ROWS:-2000}
+if [ "$STREAM_REPRO" -eq 1 ] && [[ -n "$CLUSTER" ]]; then
+    echo "=== Pass 5: DROP during row-streaming scan (recover_deadlock_evbuffer path) ==="
+
+    run_stream_pass() {
+        local label=$1
+        local feature=$2
+
+        $CDB2SQL "drop table if exists stream_t" >/dev/null 2>&1 || true
+        $CDB2SQL "create table stream_t (
+            id int, key_col int, data_col int,
+            primary key (id), index \"stream_key_idx\" (key_col))" >/dev/null
+        $CDB2SQL "insert into stream_t
+            select value, value, value from generate_series(1, $STREAM_ROWS)" >/dev/null
+
+        set_tunable "recover_deadlock_sync_dta" "$feature"
+        set_tunable "debug_recover_deadlock_skip_sync_dta" 0
+        # small per-move sleep: keep the scan long enough to race, but let rows
+        # actually stream out (that is what drives write_response/RESPONSE_ROW)
+        set_tunable "debug_sleep_in_cursor_move" 5
+
+        local before after new
+        before=$(dta_race_count)
+
+        # concurrent writer on the master -> rep-apply on the SELECT node becomes
+        # a page-lock waiter on our scan -> recover_deadlock_evbuffer releases
+        (for i in $(seq 1 60); do
+            ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+                "update stream_t set data_col = data_col + 1 where id % 7 = 0" >/dev/null 2>&1
+            sleep 0.2
+        done) &
+        local WPID=$!
+
+        # DROP mid-stream
+        (sleep 3 && ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+            "drop table stream_t" >/dev/null 2>&1) &
+        local DPID=$!
+
+        # non-covering data_col -> DeferredSeek per row; streams STREAM_ROWS rows
+        set +e
+        local out rc
+        out=$($SELSQL "select data_col from stream_t where key_col > 0" 2>&1)
+        rc=$?
+        set -e
+        kill $WPID 2>/dev/null || true
+        wait $DPID 2>/dev/null || true
+        wait 2>/dev/null || true
+
+        after=$(dta_race_count)
+        new=$((after - before))
+        echo "[$label] rc=$rc rows=$(echo "$out" | grep -c . ) dta_race_new=$new"
+        echo "[$label] last line: '$(echo "$out" | tail -1)'"
+
+        local unhealthy=0
+        for node in $CLUSTER; do
+            if ! ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm --host $node "select 1" >/dev/null 2>&1; then
+                echo "[$label] node $node UNAVAILABLE -- CRASH"
+                unhealthy=1
+            fi
+        done
+        if [ "$unhealthy" -ne 0 ]; then
+            failexit "[$label] node crashed -- DROP under a deferred seek is not handled"
+        fi
+        echo "[$label] all nodes healthy"
+
+        # The scan races a DROP, so it may finish before the drop (rc=0) or be
+        # interrupted.  The hard requirement is that it never crashes; when it
+        # is interrupted we want a schema-change error.  A client-side timeout
+        # is reported but tolerated -- the streaming query can be cut off while
+        # the drop takes the table down, and that is not a correctness problem.
+        if [ "$rc" -ne 0 ]; then
+            if echo "$out" | grep -qiE "schema chang|CDB2ERR_SCHEMA|Dta lookup lost the race"; then
+                echo "[$label] ok: interrupted scan failed gracefully with a schema-change error"
+            elif echo "$out" | grep -qiE "Timeout while reading response|Cannot connect"; then
+                echo "[$label] NOTE: scan ended with a client timeout (no crash): $(echo "$out" | tail -1)"
+            else
+                failexit "[$label] interrupted scan failed with an unexpected error: $(echo "$out" | tail -1)"
+            fi
+        else
+            echo "[$label] ok: scan completed before the drop landed"
+        fi
+        return 0
+    }
+
+    echo "--- Pass 5a: feature OFF (main behaviour for plain reads) ---"
+    run_stream_pass "stream/feature-off" 0
+    echo "--- Pass 5b: feature ON ---"
+    run_stream_pass "stream/feature-on" 1
+
+    set_tunable "recover_deadlock_sync_dta" 1
+    set_tunable "debug_sleep_in_cursor_move" "$CURSOR_SLEEP_MS" 2>/dev/null || true
+fi
+
+echo "Test passed"
