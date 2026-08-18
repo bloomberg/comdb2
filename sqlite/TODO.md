@@ -166,7 +166,7 @@
 - [ ] 1362 ./src/func.c.patch
 - [ ] 1378 ./src/expr.c.patch
 - [ ] 1551 ./src/build.c.patch
-- [ ] 1671 ./parse.y.patch
+- [x] 1671 ./parse.y.patch
 - [ ] 1719 ./src/vdbeaux.c.patch
 - [ ] 1805 ./src/vdbemem.c.patch
 - [ ] 2332 ./src/vdbe.c.patch
