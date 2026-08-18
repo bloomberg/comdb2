@@ -373,6 +373,7 @@ int gbl_debug_omit_idx_write;
 int gbl_debug_ix_addk_nomaster;
 int gbl_debug_ix_addk_nomaster_skip;
 int gbl_debug_omit_blob_write;
+int gbl_debug_pack_fail_size;
 int gbl_debug_omit_zap_on_rebuild = 0;
 int gbl_debug_txn_sleep = 0;
 int gbl_debug_skip_constraintscheck_on_insert;

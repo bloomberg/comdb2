@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+[ "x$dbnm" == "x" ] && failexit "need a DB name"
+
+# Records at or above this size fail to pack.  The blob below is bigger; the
+# ondisk data record, the keys and everything the database writes for its own
+# bookkeeping are all smaller, so only the blob write is affected.
+threshold=8000
+blobsz=10000
+
+# The tunable has to be set everywhere, not just on the master.  The replicant
+# packs the blob first, and if that succeeds it sets OSQL_BLOB_ODH_BIT and the
+# master passes the payload through without ever calling bdb_pack().  Both packs
+# have to fail to reach the bug.
+packfail()
+{
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "put tunable 'debug.pack_fail_size' $1" \
+                || failexit "could not set debug.pack_fail_size on $node"
+        done
+    else
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "put tunable 'debug.pack_fail_size' $1" \
+            || failexit "could not set debug.pack_fail_size"
+    fi
+}
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t(id int primary key, b blob)" \
+    || failexit "create table failed"
+
+# 0x30 has no compression bits set, so a header read out of this payload lands
+# in bdb_unpack_updateid()'s uncompressed branch -- the same one production hit.
+old=$(printf '3080%.0s' $(seq $blobsz))
+new=$(printf '4090%.0s' $(seq $blobsz))
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values(1, x'$old')" \
+    || failexit "insert failed"
+
+# osql_odh_blob is left at its default.  The replicant tries to pack the blob
+# first (odhfy_blob_buffer -> bdb_pack_heap); that allocation fails too, so it
+# clears the ODH bit and ships the payload raw, and the master packs it itself.
+# There bdb_prepare_put_pack_updateid() leaves the DBT aliasing the unpacked
+# payload; writing it stores a blob with no ODH, and poke_updateid() then stamps
+# the updateid over the first bytes of the payload.  Nothing reads the blob back
+# before commit, so the corruption survives.  The update must fail instead.
+packfail $threshold
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t set b = x'$new' where id = 1"
+rc=$?
+packfail 0
+
+# Check the damage before checking the return code -- if the update wrongly
+# succeeded, the verify output names the corrupt genid and is far more use than
+# "update succeeded".
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t')" > verify.out 2>&1
+grep -q "Verify succeeded" verify.out || failexit "verify failed: $(cat verify.out)"
+
+# The blob must still be readable and still hold the original value.
+got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select quote(b) from t where id = 1")
+want="X'$(echo $old | tr '[:lower:]' '[:upper:]')'"
+[ "$got" == "$want" ] || failexit "blob was modified: ${#got} bytes"
+
+[ $rc -eq 0 ] && failexit "update succeeded while packing was failing"
+
+echo "Success"

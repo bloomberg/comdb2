@@ -43,6 +43,7 @@
 
 #include "compress.h"
 #include <zlib.h>
+
 #include <comdb2rle.h>
 
 #include <lz4.h>
@@ -52,6 +53,7 @@
 #define LZ4_compress_default LZ4_compress_limitedOutput
 #endif
 
+extern int gbl_debug_pack_fail_size;
 
 static void read_odh(const void *buf, struct odh *odh);
 static void write_odh(void *buf, const struct odh *odh, uint8_t flags);
@@ -302,6 +304,11 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
     int rc;
 
     *freeptr = NULL;
+
+    if (gbl_debug_pack_fail_size > 0 && odh->length >= gbl_debug_pack_fail_size) {
+        logmsg(LOGMSG_ERROR, "%s: failing pack of %u bytes (debug.pack_fail_size)\n", __func__, (unsigned)odh->length);
+        return ENOMEM;
+    }
 
     if (bdb_state->ondisk_header) {
         void *mallocmem = NULL;
