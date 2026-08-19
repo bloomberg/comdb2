@@ -29,10 +29,10 @@
 
 ### Wednesday, Mar 25th, 2026
 
-- [x] `src/vdbe.c`: we needed to expand prepare mask to accomodate our
-  custom flags. Some flags needed to be shifted over in `sqlite.h.in`
-  to avoid conflict with `SQLITE_PREPARE_DONT_LOG`. So the prepare mask
-  also needed to be extended.
+- [x] `src/vdbe.c`: we needed to expand prepare mask to accomodate our custom
+  flags. Some flags needed to be shifted over in `sqlite3.h` to avoid conflict
+  with `SQLITE_PREPARE_DONT_LOG`. So the prepare mask also needed to be
+  extended.
 - [x] `src/util.c`: dropping `sqlite3GetVarint32` patch because that branch
   can't possibly be hit anymore.
 - [x] `tool/mkkeywordhash.c`: what should we set as priorities for custom
@@ -149,7 +149,7 @@
 - [x] 205  ./src/vdbesort.c.patch
 - [x] 221  ./src/util.c.patch
 - [x] 221  ./tool/mkkeywordhash.c.patch
-- [x] 252  ./src/sqlite.h.in.patch
+- [x] 289  ./src/sqlite3.h (regenerated from 3.51.2; `sqlite.h.in` dropped)
 - [x] 258  ./src/resolve.c.patch
 - [x] 368  ./src/vdbeInt.h.patch
 - [x] 334  ./src/attach.c.patch
