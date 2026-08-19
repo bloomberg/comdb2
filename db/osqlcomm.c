@@ -6177,10 +6177,14 @@ int dbtable_get_highest_genid(struct dbtable *table, unsigned long long *genids)
         if (rc == IX_FND)
             logmsg(LOGMSG_INFO, "%s: LOOKING FOR %s STRIPE %d found genid %llx (%lld)\n", __func__, table->tablename, i,
                    genids[i], genids[i]);
-        else if (rc == 1)
+        else if (rc == 1) {
+            /* nothing in this stripe: say so explicitly rather than relying on
+             * the caller having zeroed the array
+             */
+            genids[i] = 0ULL;
             logmsg(LOGMSG_INFO, "%s: LOOKING FOR %s STRIPE %d empty stripe, genid will be 0\n", __func__,
                    table->tablename, i);
-        else if (rc < 0 || bdberr != BDBERR_NOERROR) {
+        } else if (rc < 0 || bdberr != BDBERR_NOERROR) {
             return -1;
         }
     }
@@ -6554,6 +6558,7 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     struct errstat err = {0};
     int rc = 0;
     int ii;
+    int attached = 0; /* set once the table owns retros */
 
     /* determine retroactive time boundaries for the shards */
     int len = sizeof(struct timepart_retro) +
@@ -6572,6 +6577,11 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
                                                 sc->partition.u.tpt.retention * sizeof(int));
     retros->cs = (timepart_retro_ctr_t *)((char *)retros + sizeof(struct timepart_retro) +
                                           sc->partition.u.tpt.retention * (sizeof(int) + sizeof(int *)));
+    /* set n before initializing the mutexes: timepart_retro_free() uses it to
+     * know how many to destroy, and we can fail before
+     * timepart_populate_timelimits() gets to set it to the same value
+     */
+    retros->n = sc->partition.u.tpt.retention;
     for (ii = 0; ii < sc->partition.u.tpt.retention; ii++) {
         pthread_mutex_init(&retros->cs[ii].mtx, 0);
     }
@@ -6607,19 +6617,11 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     }
     retros->ss[sc->partition.u.tpt.retention - 1] = arg->s;
 
-    /* set the maximum genid for each stripe */
-    for (int stripe = 0; stripe < sc->newdb->dtastripe; stripe++) {
-        for (ii = 0; ii < sc->partition.u.tpt.retention; ii++) {
-            unsigned long long genid = retros->cs[ii].resume_genids[stripe];
-            if (genid > retros->resume_genids[stripe]) {
-                logmsg(LOGMSG_INFO,
-                       "%s: increased stripe %d resume genid from %llx (%lld) to %llx (%lld) per shard %s\n", __func__,
-                       stripe, retros->resume_genids[stripe], retros->resume_genids[stripe], genid, genid,
-                       sc->tablename);
-                retros->resume_genids[stripe] = genid;
-            }
-        }
-    }
+    /* NOTE: the per shard cs[].resume_genids collected above are consumed by
+     * do_alter_table(), which maxes them into the existing table's sc_genids
+     * so that a resume does not redo rows the previous master already
+     * distributed
+     */
 
     /* alter existing shard */
     arg->indx = 0;
@@ -6628,8 +6630,10 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
     sc = arg->s;
     sc->kind = SC_ALTERTABLE;
     struct dbtable *db = get_dbtable_by_name(arg->part_name);
+    /* from here on the table owns retros, live_sc_off() frees it */
     db->sharding_arg = retros;
     db->sharding_func = timepart_retro_route;
+    attached = 1;
     sc->newpartition = newpartition;
     sc->force_rebuild = 1;
     /* run this async, this can be in upgrade thread */
@@ -6653,7 +6657,15 @@ static int _process_partitioning_retro(timepart_sc_arg_t *arg)
         goto err;
     }
 err:
-    return 0;
+    if (!attached) {
+        /* the table never took ownership, nothing else is going to free it */
+        timepart_retro_free(&arg->retros);
+    }
+    /* rc is 0 when we get here from the success path; the failures above all
+     * set it, and the caller has to see them: schema changes that never got
+     * started leave nothing behind for bplog_schemachange_wait to notice
+     */
+    return rc;
 }
 
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);

@@ -1230,6 +1230,27 @@ int resume_schema_change(void)
                 continue; /* unmark all ongoing schema changes */
             }
 
+            if (s->partition.type == PARTITION_ADD_TIMED_RETRO) {
+                /* retroactive partitioning distributes the rows of the existing
+                 * table into the past shards; the shard routing is rebuilt by
+                 * _process_partitioning_retro(), which only runs on the
+                 * multiddl resume path.  Without it there is no way to know
+                 * where the rows go, so cancel the schema change instead of
+                 * restarting an alter that would collapse the partition back
+                 * into a single table.
+                 */
+                logmsg(LOGMSG_ERROR,
+                       "%s: Cancelling resume of retroactive partitioning of "
+                       "'%s', multitable_ddl is not set\n",
+                       __func__, thedb->dbs[i]->tablename);
+                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename, NULL, 0, &bdberr);
+                if (rc)
+                    logmsg(LOGMSG_ERROR, "Failed to cancel resuming schema change %d %d\n", rc, bdberr);
+                sc_del_unused_files(thedb->dbs[i]);
+                free_schema_change_type(s);
+                continue;
+            }
+
             if (IS_UPRECS(s)) {
                 logmsg(LOGMSG_DEBUG,
                        "%s: This was a table upgrade. Skipping...\n", __func__);

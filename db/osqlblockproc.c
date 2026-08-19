@@ -1596,6 +1596,11 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     osql_postcommit_handle(iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
 
+    /* the callback above freed every schema change and cleared sc_pending,
+     * so nothing refers to this fake ireq anymore
+     */
+    free(iq);
+
     return NULL;
 
 abort_sc:
@@ -1618,6 +1623,11 @@ abort_sc:
 
     osql_postabort_handle(iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
+
+    /* same as the commit path: the abort callback freed the schema changes,
+     * this fake ireq is ours to release
+     */
+    free(iq);
 
     return NULL;
 }
@@ -1673,10 +1683,16 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
      *
      */
     rc = bplog_schemachange_run(iq, scl->uuid, &scs);
-    if (rc) {
+    if (rc && !iq->sc_pending) {
+        /* nothing got started, there is nothing to unwind */
+        logmsg(LOGMSG_ERROR, "%s uuid %s failed to start, rc %d\n", __func__, us, rc);
         free(iq);
         return -1;
     }
+    /* if some of them did start, the finalize thread has to run: it checks
+     * sc_rc for each schema change and backs the whole set out.  Return 0 so
+     * that the remaining sc lists still get resumed.
+     */
 
     pthread_t tid;
     Pthread_create(&tid, &gbl_pthread_attr_detached,

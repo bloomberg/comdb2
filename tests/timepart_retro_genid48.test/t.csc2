@@ -1,0 +1,9 @@
+schema
+{
+   int      a
+   cstring  b[10] null=yes
+}
+keys
+{
+   "pk"  = a
+}

@@ -600,10 +600,26 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
         /* we have more shards here where we put data,
-         * update newdb->sc_genids with the max of all shard stripes
+         * update db->sc_genids with the max of all shard stripes
          */
-        assert(db->sharding_arg);
-        assert(db->sharding_func);
+        if (!db->sharding_arg || !db->sharding_func) {
+            /* the shard routing is built by _process_partitioning_retro(),
+             * which only runs on the multiddl resume path; without it we
+             * would rebuild the table instead of partitioning it
+             */
+            sc_errf(s,
+                    "Cannot resume retroactive partitioning of %s, shard "
+                    "routing is missing (multitable_ddl not set?)\n",
+                    s->tablename);
+            logmsg(LOGMSG_ERROR,
+                   "%s: no shard routing to resume retroactive partitioning "
+                   "of %s, multitable_ddl not set?\n",
+                   __func__, s->tablename);
+            delete_temp_table(iq, newdb);
+            change_schemas_recover(s->tablename);
+            decrement_sc_yet_to_resume_counter();
+            return -1;
+        }
         for (i = 0; i < newdb->dtastripe; i++) {
             for (int shard = 0; shard < db->sharding_arg->n - 1; shard++) {
                 if (db->sc_genids[i] < db->sharding_arg->cs[shard].resume_genids[i]) {

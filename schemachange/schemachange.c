@@ -41,6 +41,7 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
 
 extern int gbl_test_sc_resume_race;
+extern int gbl_retro_tpt_verbose;
 
 /* If this is successful, it increments */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
@@ -828,11 +829,36 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                       oldgenid, newgenid,
                       get_genid_stripe_pointer(oldgenid, sc_genids));
         rc = unodhfy_if_necessary(iq, blobs, maxblobs);
-        if (rc == 0)
-            rc = live_sc_post_upd_record(iq, trans, oldgenid, old_dta, newgenid,
-                                         new_dta, ins_keys, del_keys, od_len,
-                                         updCols, blobs, deferredAdd, oldblobs,
-                                         newblobs);
+        if (rc == 0) {
+            /* A retro-partitioned table can route oldgenid and newgenid to
+             * different shards.  An in-place update would then leave the row
+             * in the wrong shard (or, with a deferred index add, split the
+             * row from its own keys, since the add would be routed
+             * separately by newgenid).  Do a genuine delete from the old
+             * destination plus add to the new one instead -- this is what a
+             * not-yet-converted row gets anyway once the forward scan
+             * reaches it, so placement stays consistent regardless of scan
+             * timing.
+             */
+            struct dbtable *dest_old = _distribute_rows(iq->usedb, iq->usedb->sc_to, oldgenid);
+            struct dbtable *dest_new = _distribute_rows(iq->usedb, iq->usedb->sc_to, newgenid);
+            if (dest_old && dest_new && dest_old != dest_new) {
+                if (gbl_retro_tpt_verbose)
+                    logmsg(LOGMSG_DEBUG,
+                           "%s: routing update across shard boundary, oldgenid 0x%llx dest %s, newgenid 0x%llx dest "
+                           "%s\n",
+                           __func__, oldgenid, dest_old->tablename, newgenid, dest_new->tablename);
+                rc = live_sc_post_del_record(iq, trans, oldgenid, old_dta, del_keys, oldblobs);
+                if (rc == 0) {
+                    int fabricated_rrn = 2;
+                    rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys, blobs, maxblobs, origflags,
+                                                 &fabricated_rrn);
+                }
+            } else {
+                rc = live_sc_post_upd_record(iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
+                                             od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
+            }
+        }
     }
 
     if (iq->debug) reqpopprefixes(iq, 1);

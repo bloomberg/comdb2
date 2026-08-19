@@ -447,6 +447,27 @@ void timepart_free_view(timepart_view_t *view)
 }
 
 /**
+ * Free the retroactive partitioning routing object and clear the caller's
+ * reference; the limits, ss and cs arrays are carved out of the same
+ * allocation, only the per shard mutexes need to be destroyed first
+ *
+ */
+void timepart_retro_free(timepart_retro_t **pretros)
+{
+    timepart_retro_t *retros = *pretros;
+
+    if (!retros)
+        return;
+
+    for (int i = 0; i < retros->n; i++) {
+        Pthread_mutex_destroy(&retros->cs[i].mtx);
+    }
+
+    free(retros);
+    *pretros = NULL;
+}
+
+/**
  * Delete partime view
  *
  * NOTE: the tables are not affected, but the sqlite engines will

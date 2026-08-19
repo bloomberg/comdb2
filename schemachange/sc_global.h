@@ -27,6 +27,7 @@ extern pthread_mutex_t csc2_subsystem_mtx;
 extern struct schema_change_type *sc_resuming;
 extern volatile int gbl_lua_version;
 extern int gbl_default_livesc;
+extern int gbl_debug_retro_resume_fail_shard;
 extern int gbl_default_plannedsc;
 extern int gbl_default_sc_scanmode;
 

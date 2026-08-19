@@ -130,7 +130,14 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (s && s->resume && s->partition.type == PARTITION_ADD_TIMED_RETRO) {
         /* this is adding a shard, we need to try to open an existing shard, which may have data */
-        if ((rc = open_temp_db_resume(newdb, newdb->tablename, s->resume))) {
+        if (gbl_debug_retro_resume_fail_shard) {
+            logmsg(LOGMSG_WARN, "%s: failing shard %s, debug_retro_resume_fail_shard is set\n", __func__,
+                   newdb->tablename);
+            rc = -1;
+        } else {
+            rc = open_temp_db_resume(newdb, newdb->tablename, s->resume);
+        }
+        if (rc) {
             sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
             reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
         }
