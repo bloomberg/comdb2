@@ -116,6 +116,10 @@ extern "C" {
 # undef SQLITE_VERSION_NUMBER
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <types.h>
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Compile-Time Library Version Numbers
 **
@@ -478,6 +482,39 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_WARNING     28   /* Warnings from sqlite3_log() */
 #define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
 #define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_SCHEMA_REMOTE              50 /* distributed schema has inconsistent 
+                                              * local cache */
+#define SQLITE_SCHEMA_DOHSQL              51 /* see dohsql */
+#define SQLITE_EARLYSTOP_DOHSQL           52 /* see dohsql */
+#define SQLITE_SCHEMA_PUSH_REMOTE         53 /* push query to remote node */
+#define SQLITE_SCHEMA_PUSH_REMOTE_WRITE   54 /* push write query to remote node */
+#define SQLITE_DEADLOCK                  200 /* deadlock happened, transaction aborted */
+#define SQLITE_ACCESS                    201 /* failed permissions */
+#define SQLITE_LIMIT_DEPRECATED          202 /* SQLITE_LIMIT -- no longer used */
+#define SQLITE_TRANTOOCOMPLEX            204 /* I refuse to use 203 for this */
+#define SQLITE_TRAN_CANCELLED            205 /* resource had to be freed, transaction
+                                              * was aborted */
+#define SQLITE_TRAN_NOLOG                206 /* log has been freed, unable to maintain
+                                              * snapshot */
+#define SQLITE_TRAN_NOUNDO               207 /* the database suffered an NON-undoable
+                                              * operation: fastinit, sc */
+#define SQLITE_CONV_ERROR                208 /* error converting types, sqlite_column_*
+                                              * routines */
+#define SQLITE_COMDB2SCHEMA              209 /* The current Vdbe has been changed under
+                                              * the hood (the compiled statement
+                                              * executed comdb2 custom code) */
+#define SQLITE_CLIENT_CHANGENODE         210 /* Ask the client api to retry against
+                                              * another node */
+#define SQLITE_DDL_MISUSE                211 /* overlapping tables detected in
+                                              * transactional DDLs */
+#define SQLITE_TIMEDOUT                  212 /* query timed out */
+#define SQLITE_COST_TOO_HIGH             213 /* query cost too high */
+#define SQLITE_NO_TEMPTABLES             214 /* temporary tables disallowed */
+#define SQLITE_NO_TABLESCANS             215 /* table scans disallowed */
+#define SQLITE_ANALYZE_ALREADY_RUNNING   216 /* analyze is already running on some table */
+#define SQLITE_MISSING_SEMI              217 /* statement not terminated with semicolon */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* end-of-error-codes */
 
 /*
@@ -1805,7 +1842,7 @@ SQLITE_API int sqlite3_db_config(sqlite3*, int op, ...);
 */
 typedef struct sqlite3_mem_methods sqlite3_mem_methods;
 struct sqlite3_mem_methods {
-  void *(*xMalloc)(int);         /* Memory allocation function */
+  void *(*xMalloc)(size_t);         /* Memory allocation function */
   void (*xFree)(void*);          /* Free a prior allocation */
   void *(*xRealloc)(void*,int);  /* Resize an allocation */
   int (*xSize)(void*);           /* Return the size of an allocation */
@@ -3504,6 +3541,27 @@ SQLITE_API int sqlite3_set_authorizer(
 #define SQLITE_SAVEPOINT            32   /* Operation       Savepoint Name  */
 #define SQLITE_COPY                  0   /* No longer used */
 #define SQLITE_RECURSIVE            33   /* NULL            NULL            */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_REBUILD_TABLE       160   /* NULL            NULL            */
+#define SQLITE_REBUILD_INDEX       161   /* NULL            NULL            */
+#define SQLITE_REBUILD_DATA        162   /* NULL            NULL            */
+#define SQLITE_REBUILD_DATABLOB    163   /* NULL            NULL            */
+#define SQLITE_TRUNCATE_TABLE      164   /* NULL            NULL            */
+#define SQLITE_CREATE_PROC         166   /* NULL            NULL            */
+#define SQLITE_DROP_PROC           168   /* NULL            NULL            */
+#define SQLITE_CREATE_PART         169   /* NULL            NULL            */
+#define SQLITE_DROP_PART           170   /* NULL            NULL            */
+#define SQLITE_GET_TUNABLE         171   /* NULL            NULL            */
+#define SQLITE_PUT_TUNABLE         172   /* NULL            NULL            */
+#define SQLITE_GRANT               173   /* NULL            NULL            */
+#define SQLITE_REVOKE              174   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_FUNCTION 175   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_FUNCTION   176   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_TRIGGER  177   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_TRIGGER    178   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_CONSUMER 179   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_CONSUMER   180   /* NULL            NULL            */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Deprecated Tracing And Profiling Functions
@@ -3956,9 +4014,15 @@ SQLITE_API void sqlite3_progress_handler(sqlite3*, int, int(*)(void*), void*);
 **
 ** See also: [sqlite3_temp_directory]
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+struct sqlthdstate;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 SQLITE_API int sqlite3_open(
   const char *filename,   /* Database filename (UTF-8) */
   sqlite3 **ppDb          /* OUT: SQLite db handle */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,struct sqlthdstate *
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 );
 SQLITE_API int sqlite3_open16(
   const void *filename,   /* Database filename (UTF-16) */
@@ -4429,7 +4493,14 @@ SQLITE_API int sqlite3_limit(sqlite3*, int id, int newVal);
 #define SQLITE_PREPARE_PERSISTENT              0x01
 #define SQLITE_PREPARE_NORMALIZE               0x02
 #define SQLITE_PREPARE_NO_VTAB                 0x04
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PREPARE_ONLY                    0x08
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define SQLITE_PREPARE_DONT_LOG                0x10
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PREPARE_SRCLIST_ONLY            0x20
+#define SQLITE_PREPARE_REQUIRE_SEMI            0x40
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Compiling An SQL Statement
@@ -4788,6 +4859,29 @@ SQLITE_API int sqlite3_stmt_busy(sqlite3_stmt*);
 */
 typedef struct sqlite3_value sqlite3_value;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* Reset tspec of Prepared Statement. */
+SQLITE_API int sqlite3_resetclock(sqlite3_stmt *pStmt);
+char *stmt_tzname(sqlite3_stmt *);
+void stmt_set_dtprec(sqlite3_stmt *, int);
+
+int stmt_cached_column_count(sqlite3_stmt *);
+char *stmt_cached_column_name(sqlite3_stmt *, int);
+char *stmt_column_name(sqlite3_stmt *, int);
+char *stmt_column_decltype(sqlite3_stmt *pStmt, int index);
+char *stmt_cached_column_decltype(sqlite3_stmt *pStmt, int index);
+void stmt_set_cached_columns(sqlite3_stmt *, char **, char **, int);
+void stmt_set_vlock_tables(sqlite3_stmt *, char **, int, int, int);
+void stmt_set_has_scalar_func(sqlite3_stmt *, int);
+int stmt_do_column_names_match(sqlite3_stmt *);
+int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3_is_preparer(sqlite3 *db);
+#endif
+
+
 /*
 ** CAPI3REF: SQL Function Context Object
 **
@@ -4959,6 +5053,11 @@ SQLITE_API int sqlite3_bind_value(sqlite3_stmt*, int, const sqlite3_value*);
 SQLITE_API int sqlite3_bind_pointer(sqlite3_stmt*, int, void*, const char*,void(*)(void*));
 SQLITE_API int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
 SQLITE_API int sqlite3_bind_zeroblob64(sqlite3_stmt*, int, sqlite3_uint64);
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API int sqlite3_bind_datetime(sqlite3_stmt *pStmt, int i, dttz_t *dt, char *tz);
+SQLITE_API int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t *it);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Number Of SQL Parameters
@@ -5132,6 +5231,11 @@ SQLITE_API const void *sqlite3_column_table_name16(sqlite3_stmt*,int);
 SQLITE_API const char *sqlite3_column_origin_name(sqlite3_stmt*,int);
 SQLITE_API const void *sqlite3_column_origin_name16(sqlite3_stmt*,int);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API const dttz_t *sqlite3_value_datetime(sqlite3_value*);
+SQLITE_API const intv_t *sqlite3_value_interval(sqlite3_value*, int type);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Declared Datatype Of A Query Result
 ** METHOD: sqlite3_stmt
@@ -5301,6 +5405,16 @@ SQLITE_API int sqlite3_data_count(sqlite3_stmt *pStmt);
 # define SQLITE_TEXT     3
 #endif
 #define SQLITE3_TEXT     3
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_DATETIME       6
+#define SQLITE_INTERVAL_YM    7
+#define SQLITE_INTERVAL_DS    8
+#define SQLITE_DATETIMEUS     9
+#define SQLITE_INTERVAL_DSUS 10
+#define SQLITE_DECIMAL       11
+#define SQLITE_NEXTSEQ       (SQLITE_MAX_U32-2)
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Result Values From A Query
@@ -5525,6 +5639,15 @@ SQLITE_API sqlite3_value *sqlite3_column_value(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_column_bytes(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_column_bytes16(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_column_type(sqlite3_stmt*, int iCol);
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
+SQLITE_API const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
+
+SQLITE_API int sqlite3_hasResultSet(sqlite3_stmt*);
+SQLITE_API int sqlite3_hasNColumns(sqlite3_stmt*, int iCol);
+SQLITE_API int sqlite3_isColumnNullType(sqlite3_stmt*, int iCol);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Destroy A Prepared Statement Object
@@ -6319,6 +6442,10 @@ typedef void (*sqlite3_destructor_type)(void*);
 #define SQLITE_STATIC      ((sqlite3_destructor_type)0)
 #define SQLITE_TRANSIENT   ((sqlite3_destructor_type)-1)
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API int sqlite3_stmt_has_remotes(sqlite3_stmt *stmt);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Setting The Result Of An SQL Function
 ** METHOD: sqlite3_context
@@ -6489,6 +6616,11 @@ SQLITE_API void sqlite3_result_pointer(sqlite3_context*, void*,const char*,void(
 SQLITE_API void sqlite3_result_zeroblob(sqlite3_context*, int n);
 SQLITE_API int sqlite3_result_zeroblob64(sqlite3_context*, sqlite3_uint64 n);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API void sqlite3_result_datetime(sqlite3_context*, dttz_t*, const char *tz);
+SQLITE_API void sqlite3_result_interval(sqlite3_context*, intv_t*);
+SQLITE_API void sqlite3_result_decimal(sqlite3_context*, decQuad*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Setting The Subtype Of An SQL Function
@@ -7409,6 +7541,17 @@ SQLITE_API int sqlite3_table_column_metadata(
   int *pAutoinc               /* OUTPUT: True if column is auto-increment */
 );
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+char* sqlite3_prepare_plan(sqlite3_stmt *stmt);
+int sqlite3_table_index_funcs(
+  sqlite3 *db,                  /* Connection handle */
+  const char *zDbName,          /* Database name or NULL */
+  const char *zTableName,       /* Table name */
+  char *** pzFuncs,             /* OUTPUT: The application defined functions */
+  int*nFuncs                    /* OUTPUT: The number of application defined functions used */
+);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Load An Extension
 ** METHOD: sqlite3
@@ -7609,7 +7752,22 @@ struct sqlite3_module {
   ** Those below are for version 4 and greater. */
   int (*xIntegrity)(sqlite3_vtab *pVTab, const char *zSchema,
                     const char *zTabName, int mFlags, char **pzErr);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int access_flag;
+  int systable_lock_count;
+  const char **systable_locks;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+enum {
+  CDB2_ALLOW_ALL  = 1<<0, /* Allow access to all */
+  CDB2_ALLOW_USER = 1<<1, /* Limit access only to permitted users */
+  CDB2_HIDDEN     = 1<<2, /* Remove it from system table list
+                             (comdb2_systables) */
+  CDB2_STRICT     = 1<<3, /* Always enforce access check */
+};
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Virtual Table Indexing Information
@@ -7745,6 +7903,9 @@ struct sqlite3_index_info {
   int idxFlags;              /* Mask of SQLITE_INDEX_SCAN_* flags */
   /* Fields below are only available in SQLite 3.10.0 and later */
   sqlite3_uint64 colUsed;    /* Input: Mask of columns used by statement */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  char *zTable;
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 };
 
 /*
