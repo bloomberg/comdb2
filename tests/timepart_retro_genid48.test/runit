@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+# args
+# <dbname>
+DBN=$1
+
+C="cdb2sql ${CDB2_OPTIONS} ${DBN} default"
+CT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} default"
+
+# This db was created with the default lrl (no init_with_genid48 override),
+# so genid48 was on at creation and the format persisted to llmeta is
+# LLMETA_GENID_48BIT.  Retroactive partitioning routes rows by reading a
+# timestamp out of the top 32 bits of the genid, which only exists for the
+# original genid format -- confirm it is rejected here.
+$C "create table t { `cat t.csc2` }" || failexit "failed to create t"
+
+# force a checkpoint: the node gets kill -9'd below, and without one the table
+# just created may not have made it to disk yet
+$C "exec procedure sys.cmd.send('bdb checkpoint')" || failexit "failed to checkpoint"
+sleep 2
+
+start=`${CT} "select now() + cast(1 as days)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "Using ${start} as the rollout edge"
+
+out=`$C "ALTER TABLE t PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" 2>&1`
+echo "attempt on a genid48 table -> ${out}"
+if [[ "${out}" != *"not working for genid48"* ]] ; then
+    failexit "retroactive partition on a genid48 table should have been rejected: ${out}"
+fi
+
+# gbl_init_with_genid48 is a create-time-only knob (READONLY, consulted only
+# under gbl_create_mode); overriding it in the lrl after the table already
+# exists does not change the genid format stored in llmeta.  The parser check
+# has to consult the live per-database format (bdb_genid_format()), not this
+# tunable, or a genid48 table would be let through here.
+#
+# The tunable is per node while the genid format is per database, so from
+# here on everything has to be aimed at the one node whose lrl we rewrite:
+# the statement is parsed by the node that receives it, and that is the node
+# that has to disagree with llmeta for this to prove anything.
+node=`getmaster`
+CN="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${node}"
+CNT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${node}"
+
+if [[ -z "${CLUSTER}" ]] ; then
+    echo "init_with_genid48 0" >> ${DBDIR}/${DBNAME}.lrl || \
+        failexit "failed to append init_with_genid48 to ${DBDIR}/${DBNAME}.lrl"
+else
+    # each node keeps its own copy of the db directory, the local one is not
+    # the one ${node} will read on the way back up
+    ssh -n -o StrictHostKeyChecking=no ${node} \
+        "echo 'init_with_genid48 0' >> ${DBDIR}/${DBNAME}.lrl" < /dev/null || \
+        failexit "failed to append init_with_genid48 to ${DBDIR}/${DBNAME}.lrl on ${node}"
+fi
+
+echo "Bouncing ${node} with init_with_genid48 now off in its lrl"
+kill_restart_node ${node} 0 0
+
+echo "Waiting for ${node} to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`${CNT} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+if [[ "${up}" != "1" ]] ; then
+    failexit "${node} did not come back after the restart"
+fi
+
+echo "Checking that init_with_genid48 actually reads 0 on ${node} now"
+tun=`${CNT} "select value from comdb2_tunables where name='init_with_genid48'"`
+if [[ "${tun}" != "0" ]] ; then
+    failexit "expected init_with_genid48 to read 0 on ${node} after restart, got '${tun}'"
+fi
+
+start=`${CNT} "select now() + cast(1 as days)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "Using ${start} as the rollout edge"
+
+out=`$CN "ALTER TABLE t PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" 2>&1`
+echo "attempt after init_with_genid48 was turned off in the lrl -> ${out}"
+if [[ "${out}" != *"not working for genid48"* ]] ; then
+    failexit "retroactive partition on a genid48 table must still be rejected even though init_with_genid48 now reads 0: ${out}"
+fi
+
+echo "SUCCESS"

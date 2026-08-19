@@ -2644,6 +2644,10 @@ REGISTER_TUNABLE(
     "partition_retroactively_start",
     "Block any retroactively time partitioning if start is earlier that that many hours in the future (Default: 24)",
     TUNABLE_INTEGER, &gbl_retro_tpt_start, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_retro_resume_fail_shard",
+                 "Test only: fail reopening a shard while resuming a retroactively time partitioning, to exercise the "
+                 "schema change unwind (Default: OFF)",
+                 TUNABLE_BOOLEAN, &gbl_debug_retro_resume_fail_shard, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("dohsql_joins", "Enable to support joins in parallel sql execution (default: on)", TUNABLE_BOOLEAN,
                  &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);

@@ -5178,7 +5178,7 @@ void comdb2AlterTableEnd(Parse *pParse)
                     setError(pParse, SQLITE_MISUSE, "Retroactively partition feature disabled");
                     goto cleanup;
                 }
-                if (gbl_init_with_genid48) {
+                if (bdb_genid_format(thedb->bdb_env) == LLMETA_GENID_48BIT) {
                     setError(pParse, SQLITE_MISUSE, "Retroactively partition not working for genid48");
                     goto cleanup;
                 }
@@ -7924,7 +7924,11 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
                                      (int32_t*)&partition->u.tpt.period,
                                      (int32_t*)&partition->u.tpt.retention,
                                      (int64_t*)&partition->u.tpt.start)) {
+        /* the error is already set; free_ddl_context frees partition, so
+         * there is nothing left to look at below
+         */
         free_ddl_context(pParse);
+        return;
     }
 
     /* if retroactively partitioning, make sure the start is one day in the future */

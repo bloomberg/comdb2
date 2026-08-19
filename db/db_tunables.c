@@ -622,6 +622,7 @@ extern int gbl_partition_sc_reorder;
 extern int gbl_retro_tpt;
 extern int gbl_retro_tpt_verbose;
 extern int gbl_retro_tpt_start;
+extern int gbl_debug_retro_resume_fail_shard;
 extern int gbl_legacy_tpt;
 extern int gbl_dohsql_joins;
 extern int gbl_altersc_latency;

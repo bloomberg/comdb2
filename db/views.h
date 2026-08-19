@@ -85,7 +85,6 @@ typedef struct timepart_retro {
     int *limits;
     struct schema_change_type **ss;
     timepart_retro_ctr_t *cs;
-    unsigned long long resume_genids[MAXDTASTRIPE];
 } timepart_retro_t;
 
 enum shard_pos { /* keep them bits */
@@ -435,6 +434,12 @@ int timepart_populate_shards(timepart_view_t *view, int retro_partition, struct 
  *
  */
 int timepart_populate_timelimits(timepart_view_t *view, timepart_retro_t *retros, struct errstat *err);
+
+/**
+ * Free a retroactive partitioning routing object and clear the reference
+ *
+ */
+void timepart_retro_free(timepart_retro_t **pretros);
 
 /**
  * Create partition llmeta entry

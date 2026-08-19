@@ -16,6 +16,8 @@
 
 #include <unistd.h>
 #include <ctrace.h>
+#include <views.h>
+
 #include "schemachange.h"
 #include "sc_global.h"
 #include "logmsg.h"
@@ -42,6 +44,11 @@ pthread_mutex_t ongoing_alter_mtx = PTHREAD_MUTEX_INITIALIZER;
 hash_t *ongoing_alters = NULL;
 
 int gbl_abort_during_downgrade_if_scs_dont_stop = 0;
+
+/* test only: fail reopening a shard while resuming a retroactive time
+ * partition, so that the resume fails with schema changes already started
+ */
+int gbl_debug_retro_resume_fail_shard = 0;
 
 /* monitor queue latency on master during alter schema changes */
 int gbl_altersc_latency = 1; /* enable alter sc latency check and delay */
@@ -439,7 +446,10 @@ void live_sc_off(struct dbtable *db)
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sharding_func = NULL;
-    db->sharding_arg = NULL;
+    /* retroactive partitioning attached this in _process_partitioning_retro;
+     * we hold the write lock, so no router can be looking at it
+     */
+    timepart_retro_free(&db->sharding_arg);
     db->sc_abort = 0;
     db->sc_downgrading = 0;
     db->sc_adds = 0;

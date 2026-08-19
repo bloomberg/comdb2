@@ -26,6 +26,8 @@ int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
 unsigned long long get_genid_stripe_pointer(unsigned long long genid,
                                             unsigned long long *sc_genids);
 
+struct dbtable *_distribute_rows(struct dbtable *usedb, struct dbtable *usedb_new, unsigned long long genid);
+
 int live_sc_post_del_record(struct ireq *iq, void *trans,
                             unsigned long long genid, const void *old_dta,
                             unsigned long long del_keys,

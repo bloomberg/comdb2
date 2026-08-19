@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 # args
 # <dbname>
@@ -36,6 +37,23 @@ delayed_writes()
         $CM "exec procedure sys.cmd.send('downgrade')"
     fi
 }
+
+# a malformed retroactive spec has to come back as an error: the parser used
+# to keep reading the partition after freeing it, see comdb2CreateTimePartition
+echo "Checking that malformed retroactive specs are rejected"
+badspecs=("PERIOD 'bogus' RETENTION 2 START '2030-01-01T000000 America/New_York'"
+          "PERIOD 'daily' RETENTION 99999 START '2030-01-01T000000 America/New_York'"
+          "PERIOD 'daily' RETENTION 2 START 'not-a-date'")
+for bad in "${badspecs[@]}" ; do
+    out=`$C "ALTER TABLE t PARTITIONED BY TIME ${bad} RETROACTIVELY" 2>&1`
+    if [[ -z "${out}" ]] ; then
+        failexit "bad retroactive spec was accepted: ${bad}"
+    fi
+    echo "rejected [${bad}] -> ${out}"
+done
+if [[ `${CT} "select 1"` != "1" ]] ; then
+    failexit "the database is gone after parsing a bad retroactive spec"
+fi
 
 echo "Inserting the first set"
 echo "Time `${CT} 'select now()'`"
@@ -143,5 +161,332 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    # quit
    exit 1
 fi
+
+# Retroactive partitioning can only be resumed through the multiddl resume
+# path, the only one that rebuilds the shard routing.  With multitable_ddl
+# off the schema change has to be cancelled when the master goes away: it
+# must not take the resuming master down, and it must not silently rebuild
+# the table into itself.
+echo "Checking that a resume without multitable_ddl is cancelled"
+
+$C "create table t2 { `cat t.csc2` }" || failexit "failed to create t2"
+$C "insert into t2(a) select * from generate_series(1, 60)" || failexit "failed to fill t2"
+
+# turn it off before the alter is submitted, so that no sc_list is written
+# and the resume has to go through the legacy per-table path
+for n in `getclusternodes` ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable multitable_ddl 0" || \
+        failexit "failed to unset multitable_ddl on $n"
+done
+
+# a restarted node reads the tunable back from its lrl, turn it off there too
+if [[ -z "${CLUSTER}" ]] ; then
+    sed -i "s/^multitable_ddl 1$/multitable_ddl 0/" ${DBDIR}/${DBNAME}.lrl || \
+        failexit "failed to rewrite ${DBDIR}/${DBNAME}.lrl"
+    if ! grep -q "^multitable_ddl 0$" ${DBDIR}/${DBNAME}.lrl ; then
+        failexit "multitable_ddl is still on in ${DBDIR}/${DBNAME}.lrl"
+    fi
+fi
+
+master=`getmaster`
+CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+echo "Master is ${master}"
+
+# both are needed, and a restart resets them: scdelay alone is ignored
+$CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" || failexit "failed to set sc_force_delay"
+$CM "exec procedure sys.cmd.send('scdelay 1000')" || failexit "failed to scdelay"
+
+start=`${CT} "select now() + cast(1 as days)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "Using ${start} as the rollout edge for t2"
+
+$C "ALTER TABLE t2 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" &> alter2.out &
+alterpid=$!
+
+echo "Waiting for the conversion of t2 to start"
+converted=0
+for i in `seq 1 60` ; do
+    converted=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} \
+        "select coalesce(max(converted), 0) from comdb2_sc_status where name='t2'" 2>/dev/null`
+    [[ -z "${converted}" ]] && converted=0
+    (( converted > 0 )) && break
+    sleep 1
+done
+(( converted > 0 )) || failexit "the retroactive alter of t2 never started converting"
+echo "Converted ${converted} rows, bouncing ${master}"
+
+# stop the client first: cdb2sql reconnects transparently, and it would
+# resubmit the alter as soon as the node is back, running the partitioning
+# we are trying to see cancelled
+kill -9 ${alterpid} 2>/dev/null
+wait ${alterpid} 2>/dev/null
+echo "alter client output:"
+cat alter2.out
+
+# do not let kill_restart_node wait for us: if the resume takes the database
+# down, waitmach would spin until the testcase times out
+kill_restart_node ${master} 0 0
+
+echo "Waiting for the database to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`${CT} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+if [[ "${up}" != "1" ]] ; then
+    failexit "the database did not come back, did resuming the partitioning crash it?"
+fi
+
+echo "Waiting for the resume to be cancelled"
+cancelled=0
+for i in `seq 1 60` ; do
+    if grep -q "Cancelling resume of retroactive partitioning" ${TESTDIR}/logs/${DBNAME}*.db* ; then
+        cancelled=1
+        break
+    fi
+    sleep 1
+done
+(( cancelled == 1 )) || failexit "the retroactive partitioning of t2 was not cancelled on resume"
+
+echo "t2 has to be left intact and unpartitioned"
+nparts=`${CT} "select count(*) from comdb2_timepartitions where name='t2'"`
+if [[ "${nparts}" != "0" ]] ; then
+    failexit "t2 should not be partitioned, found ${nparts}"
+fi
+nrows=`${CT} "select count(*) from t2"`
+if [[ "${nrows}" != "60" ]] ; then
+    failexit "expected 60 rows in t2, got ${nrows}"
+fi
+
+echo "t2 must not be left stuck in a schema change"
+$C "alter table t2 add column c int" || failexit "follow-up schema change on t2 failed"
+
+for n in `getclusternodes` ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable multitable_ddl 1"
+done
+
+# A resume that fails *after* some schema changes have already started must
+# hand the unwind to the finalize thread instead of freeing the ireq and
+# walking away: that thread is what backs the set out and drops the sc_list,
+# so without it the same doomed resume is retried on every startup.
+# Force such a failure by removing a shard btree while the master is down,
+# which makes open_temp_db_resume() fail for that shard with the shard schema
+# change already registered in iq->sc_pending.
+echo "Checking that a resume failing mid-flight unwinds through the finalize thread"
+
+# this one has to go through the multiddl resume path
+for n in `getclusternodes` ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable multitable_ddl 1" || \
+        failexit "failed to set multitable_ddl on $n"
+done
+if [[ -z "${CLUSTER}" ]] ; then
+    sed -i "s/^multitable_ddl 0$/multitable_ddl 1/" ${DBDIR}/${DBNAME}.lrl || \
+        failexit "failed to rewrite ${DBDIR}/${DBNAME}.lrl"
+    if ! grep -q "^multitable_ddl 1$" ${DBDIR}/${DBNAME}.lrl ; then
+        failexit "multitable_ddl is still off in ${DBDIR}/${DBNAME}.lrl"
+    fi
+fi
+
+$C "create table t3 { `cat t.csc2` }" || failexit "failed to create t3"
+$C "insert into t3(a) select * from generate_series(1, 60)" || failexit "failed to fill t3"
+
+master=`getmaster`
+CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+echo "Master is ${master}"
+# phase 2 restarted the node, which reset both of these
+$CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" || failexit "failed to set sc_force_delay"
+$CM "exec procedure sys.cmd.send('scdelay 1000')" || failexit "failed to scdelay"
+
+start=`${CT} "select now() + cast(1 as days)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "Using ${start} as the rollout edge for t3"
+
+$C "ALTER TABLE t3 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" &> alter3.out &
+alterpid=$!
+
+echo "Waiting for the conversion of t3 to start"
+converted=0
+for i in `seq 1 60` ; do
+    converted=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} \
+        "select coalesce(max(converted), 0) from comdb2_sc_status where name='t3'" 2>/dev/null`
+    [[ -z "${converted}" ]] && converted=0
+    (( converted > 0 )) && break
+    sleep 1
+done
+(( converted > 0 )) || failexit "the retroactive alter of t3 never started converting"
+
+echo "Converted ${converted} rows"
+
+# do not let the client resubmit the alter once the node is back
+kill -9 ${alterpid} 2>/dev/null
+wait ${alterpid} 2>/dev/null
+
+# Make the shard fail to reopen on the way back up.  Deleting the btree does
+# not work: bdb_open_more() simply recreates it and the resume succeeds
+# against an empty shard.  Every node has to have it set, we cannot tell in
+# advance which one wins the election and resumes.
+echo "Arming debug_retro_resume_fail_shard"
+for n in `getclusternodes` ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable debug_retro_resume_fail_shard 1" || \
+        failexit "failed to arm debug_retro_resume_fail_shard on $n"
+done
+# a restarted node reads its tunables back from the lrl
+if [[ -z "${CLUSTER}" ]] ; then
+    echo "debug_retro_resume_fail_shard 1" >> ${DBDIR}/${DBNAME}.lrl || \
+        failexit "failed to arm debug_retro_resume_fail_shard in the lrl"
+fi
+
+kill_restart_node ${master} 0 0
+
+echo "Waiting for the database to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`${CT} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+if [[ "${up}" != "1" ]] ; then
+    failexit "the database did not come back after the failed resume"
+fi
+
+# only reachable if the finalize thread ran, which is what we are testing:
+# before the fix the ireq was freed and the thread was never started
+echo "The failed resume has to unwind through the finalize thread"
+unwound=0
+for i in `seq 1 60` ; do
+    if grep -q "Aborting schema change because of errors" ${TESTDIR}/logs/${DBNAME}*.db* ; then
+        unwound=1
+        break
+    fi
+    sleep 1
+done
+(( unwound == 1 )) || failexit "the failed resume of t3 did not unwind through the finalize thread"
+
+echo "t3 data has to survive the failed resume"
+nrows=`${CT} "select count(*) from t3"`
+if [[ "${nrows}" != "60" ]] ; then
+    failexit "expected 60 rows in t3, got ${nrows}"
+fi
+
+# NOTE: t3 is deliberately left with a stale in_schema_change marker.  The
+# resume dies at the shard add and never reaches t3, and nothing on that path
+# clears it.  That is a known gap in resuming retroactive partitioning, not
+# something this phase asserts.
+
+# A non-in-place update can produce a newgenid whose timestamp is far from
+# oldgenid's -- not just via 'ipu off', but on any table once a single row
+# has been updated enough times (4096) to exhaust the genid's updateid space,
+# forcing a fresh genid stamped with the current time.  If that update lands
+# after its shard's conversion has finished (so it takes the live "already
+# converted" update path) and the new timestamp now belongs to a different
+# shard than the old one, the record and its index entries used to be
+# routed independently and could end up in different shards.
+echo "Checking that an update crossing a shard boundary keeps data and index consistent"
+
+for n in `getclusternodes` ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable multitable_ddl 1" || \
+        failexit "failed to set multitable_ddl on $n"
+    # use a short test-only period so a shard boundary can be crossed within
+    # this phase's own runtime, instead of needing to wait real days
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable partition_retroactively_start 0" || \
+        failexit "failed to relax partition_retroactively_start on $n"
+done
+
+$C "create table t4 { `cat t.csc2` }" || failexit "failed to create t4"
+$C "insert into t4(a, b) values (100000, 'x')" || failexit "failed to insert into t4"
+# with only our one row, the conversion (and the whole schema change) would
+# finish in under a second regardless of scdelay -- there is nothing for the
+# per-record delay below to multiply against.  Filler rows spread across all
+# 8 stripes keep the schema change genuinely live for several minutes, long
+# enough to span the sleep further down; the target row is inserted first so
+# it is early in its own stripe's queue and converts within the first few
+# seconds, same as it would with no filler at all.
+$C "insert into t4(a) select * from generate_series(1, 3000)" || failexit "failed to fill t4 with filler rows"
+
+master=`getmaster`
+CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+echo "Master is ${master}"
+$CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" || failexit "failed to set sc_force_delay"
+$CM "exec procedure sys.cmd.send('scdelay 1000')" || failexit "failed to scdelay"
+
+# period test2min puts a shard boundary about 2 minutes from now (retention 3
+# steps back 2 periods from START), while START itself stays a comfortable
+# 6 minutes out -- far enough that the scheduled rollout at START cannot fire
+# before this phase is done
+start=`${CT} "select now() + cast(6 as minutes)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "Using ${start} as the rollout edge for t4 (period test2min, retention 3)"
+
+$C "ALTER TABLE t4 PARTITIONED BY TIME PERIOD 'test2min' RETENTION 3 START ${start} RETROACTIVELY" &> alter4.out &
+alterpid=$!
+
+echo "Waiting for the conversion of t4 to start"
+converted=0
+for i in `seq 1 60` ; do
+    converted=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} \
+        "select coalesce(max(converted), 0) from comdb2_sc_status where name='t4'" 2>/dev/null`
+    [[ -z "${converted}" ]] && converted=0
+    (( converted > 0 )) && break
+    sleep 1
+done
+(( converted > 0 )) || failexit "the retroactive alter of t4 never started converting"
+
+# converted>0 only proves *some* row converted; give the target row (inserted
+# first, so early in its stripe's queue) a little extra margin to be sure it
+# specifically has been converted before we start updating it
+sleep 10
+
+echo "Doing 4095 in-place updates to exhaust the row's updateid space"
+updscript="updateid_rollover.sql"
+> ${updscript}
+for i in `seq 1 4095` ; do
+    echo "update t4 set a = -a where a = 100000 or a = -100000;" >> ${updscript}
+done
+$C - < ${updscript} > update_rollover.out 2>&1
+if (( $? != 0 )) ; then
+    cat update_rollover.out
+    failexit "failed to run the 4095 in-place updates on t4"
+fi
+
+echo "Sleeping past a shard boundary so the update that forces a new genid lands in a different time bucket"
+sleep 150
+
+echo "Doing the update that forces a fresh (non-inplace) genid"
+$C "update t4 set a = -a where a = 100000 or a = -100000" || \
+    failexit "the rollover update on t4 failed"
+
+echo "Letting the schema change finish"
+$CM "exec procedure sys.cmd.send('scdelay 0')" || failexit "failed to clear scdelay"
+wait ${alterpid}
+echo "alter output:"
+cat alter4.out
+if [[ -s alter4.out ]] ; then
+    failexit "the retroactive alter of t4 reported an error"
+fi
+
+echo "Checking that the update crossing the shard boundary took the delete+add split path"
+if ! grep -q "routing update across shard boundary" ${TESTDIR}/logs/${DBNAME}*.db* ; then
+    failexit "no update on t4 was ever routed across a shard boundary -- the test did not exercise the fix"
+fi
+
+echo "t4 has to have all filler rows plus the target row intact"
+totalrows=`${CT} "select count(*) from t4"`
+if [[ "${totalrows}" != "3001" ]] ; then
+    failexit "expected 3001 total rows in t4, got ${totalrows}"
+fi
+nrows=`${CT} "select count(*) from t4 where a = 100000 or a = -100000"`
+if [[ "${nrows}" != "1" ]] ; then
+    failexit "expected 1 row for the target key in t4, got ${nrows}"
+fi
+aval=`${CT} "select a from t4 where a = 100000 or a = -100000"`
+bval=`${CT} "select b from t4 where a = 100000 or a = -100000"`
+if [[ "${aval}" != "100000" || "${bval}" != "x" ]] ; then
+    failexit "expected (100000, x) in t4, got (${aval}, ${bval})"
+fi
+
+for n in `getclusternodes` ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable partition_retroactively_start 1"
+done
 
 echo "SUCCESS"
