@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# An sp thread (db:create_thread) clones the parent's temp tables.  If the
+# thread lands on a sql engine thread that has not opened its sqlite handle
+# yet, the clone's CREATE TEMP TABLE prepare runs sqlite schema init, which
+# opens a cursor on sqlite_stat1.  Before the fix the clone ran ahead of
+# begin_sp, so a snapshot client had no modsnap state at that point and the
+# cursor tripped the assert in sqlite3BtreeCursor_cursor.
+#
+# This test runs at snapshot isolation (see lrl.options) and spawns enough
+# threads to force the sql thread pool to grow, so at least some threads get
+# a fresh sqlite handle.
+
+set -x
+
+dbname=$1
+if [[ -z "$dbname" ]] ; then
+    echo "dbname missing"
+    exit 1
+fi
+
+# sqlite_stat1 is what schema init reads - give it something to read.
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t(i int)" || exit 1
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "insert into t select * from generate_series(1, 1000)" || exit 1
+cdb2sql ${CDB2_OPTIONS} $dbname default "analyze t" || exit 1
+
+cdb2sql ${CDB2_OPTIONS} $dbname default - <<'EOF' || exit 1
+create procedure tmptbl_thd version 'test' {
+local function worker(tbl)
+    tbl:insert({i = 1})
+end
+local function main(nthd)
+    local tbl = db:table("tbl", {{"i", "int"}})
+    local thds = {}
+    for i = 1, nthd do
+        table.insert(thds, db:create_thread(worker, tbl))
+    end
+    for _, thd in ipairs(thds) do
+        thd:join()
+    end
+    db:emit("ok")
+end
+}$$
+put default procedure tmptbl_thd 'test'
+EOF
+
+for i in $(seq 1 5); do
+    out=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbname default \
+        "exec procedure tmptbl_thd(20)")
+    if [[ "$out" != "ok" ]]; then
+        echo "iteration $i: expected 'ok', got '$out'"
+        exit 1
+    fi
+done
+
+# The assert would have taken the node down - make sure it is still serving.
+cdb2sql ${CDB2_OPTIONS} $dbname default "select 1" >/dev/null || exit 1
+
+echo "SUCCESS"
