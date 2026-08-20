@@ -1119,8 +1119,9 @@ int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, in
     else
         cdb2buf_printf(sb, "FAILED\n");
 
-    cdb2buf_flush(sb);
+    /* clear before flush: client can act on the response as soon as it's sent */
     analyze_running_flag = 0;
+    cdb2buf_flush(sb);
     return rc;
 }
 
@@ -1191,13 +1192,13 @@ int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta)
         cdb2buf_printf(sb, "SUCCESS\n");
         cleanup_stats(sb);
     }
+
+    /* reset running flag before flush: client can act on the response as soon as it's sent */
+    analyze_running_flag = 0;
     cdb2buf_flush(sb);
 
     /* free descriptor */
     free(td);
-
-    /* reset running flag */
-    analyze_running_flag = 0;
 
     return rc;
 }
