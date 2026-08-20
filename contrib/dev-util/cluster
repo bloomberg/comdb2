@@ -808,7 +808,11 @@ function usage {
 	exit 1
 }
 
-if [[ ! -d "${dir}" ]]; then
+# "setup" re-runs this script inside m0, which has a config dir only because
+# "build" bakes a copy of one into the image. Don't insist on it there: the
+# in-container half of setup reads $CLUSTER from .bash_profile and never opens
+# config.sqlite, so a container without the copy can still do the work.
+if [[ ! -d "${dir}" ]] && ! [[ "$1" == "setup" && -f /.dockerenv ]]; then
     if [[ "$1" != "init" ]]; then
         echo "Can't find my config files, did you run \"$(basename $0) init\"?"
         exit 1
@@ -822,7 +826,7 @@ if [[ ! -d "${dir}" ]]; then
     fi
 fi
 
-init-globals
+[[ -d "${dir}" ]] && init-globals
 
 if [[ "$1" == "build" ]]; then
 	build
