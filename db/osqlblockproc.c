@@ -1210,6 +1210,10 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     out_rc = process_this_session(iq, iq_tran, iq->sorese, &bdberr, nops, err,
                                   dbc, dbc_ins, func);
 
+    /* Disarm: this pooled thread must not bill later work to the session's
+     * fingerprint. */
+    bdb_fingerprint_rtstats_clear();
+
     Pthread_mutex_unlock(&tran->store_mtx);
 
     /* close the cursor */

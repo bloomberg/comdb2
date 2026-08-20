@@ -144,6 +144,9 @@ typedef struct osqlstate {
     uuid_t uuid;             /* session id, take 2 */
     char *tablename;         /* malloc-ed cache of send tablename for usedb */
     int tablenamelen;        /* tablename length */
+    unsigned char last_fingerprint[FINGERPRINTSZ]; /* last fingerprint sent to
+                                                      the master this session */
+    int fingerprint_sent;                          /* set once we've sent an OSQL_FINGERPRINT */
     int sentops;             /* number of operations per statement */
     int tran_ops;            /* actual number of operations for a transaction */
     int replicant_numops; /* total num of ops sent by replicant to master which
@@ -1613,6 +1616,8 @@ void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
 void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 
 int clear_fingerprints(int *plans_count);
+int fingerprint_has_main_entry(const unsigned char fingerprint[FINGERPRINTSZ]);
+int fingerprint_is_zero(const unsigned char fingerprint[FINGERPRINTSZ]);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, struct string_ref *, const char *, int64_t, int64_t,

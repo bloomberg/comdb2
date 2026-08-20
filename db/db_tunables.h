@@ -1759,6 +1759,22 @@ REGISTER_TUNABLE("osql_send_startgen",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("osql_send_fingerprint",
+                 "Send SQL fingerprint in the osql stream so the master can "
+                 "attribute write-apply page-in I/O to it. Keep off until the "
+                 "whole cluster is upgraded. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_osql_send_fingerprint, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("log_fingerprint",
+                 "Master logs the SQL fingerprint it received in the osql "
+                 "stream, so replicants can attribute the page-in I/O they do "
+                 "applying the transaction to it. Requires "
+                 "osql_send_fingerprint. Keep off until the whole cluster is "
+                 "upgraded -- a replicant that does not know the record type "
+                 "aborts -- and turn it off before downgrading any node. "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_log_fingerprint, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("client_heartbeat_ms",
                  "Number of milliseconds between client api heartbeats.  "
                  "(Default: 100)",

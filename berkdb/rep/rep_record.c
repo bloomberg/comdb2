@@ -157,6 +157,12 @@ extern int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_enabled(void);
 
+/* DB_llog_fingerprint (bdb/llog.src), spelled numerically because berkdb cannot
+ * include llog_auto.h -- as with the other llog rectypes named in this file. */
+#define REP_LLOG_FINGERPRINT 10022
+extern int gbl_log_fingerprint;
+extern int bdb_fingerprint_from_logrec(DB_ENV *, void *, unsigned char *, size_t);
+
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
 	0, gbl_rep_rowlocks_multifile = 0;
@@ -4244,6 +4250,12 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	rr = listc_rtl(&rq->records);
 
 	while (rr) {
+		/* Per record, not per queue: fileid fan-out splits a txn across
+		 * workers, and a txn can span statements. */
+		if (rr->have_fingerprint)
+			bb_berkdb_fingerprint_rtstats_set_apply(rr->fingerprint,
+				sizeof(rr->fingerprint), 0);
+
 		if (rr->logdbt.data == NULL) {
 			if (logc == NULL) {
 				if (__log_cursor(dbenv, &logc)) {
@@ -4300,6 +4312,9 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 		rr = listc_rtl(&rq->records);
 	}
+
+	/* Disarm: the next txn on this pooled thread must not inherit it. */
+	bb_berkdb_fingerprint_rtstats_clear();
 
 	if (logc) {
 		if (tmpdbt.data)
@@ -4508,8 +4523,14 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	int fileid = 0;
 	int max_fileid = 0;
 
+	/* Fingerprint in effect here. This is the last point the records are in
+	 * LSN order, so stamp each one; the worker arms from the stamp. */
+	u_int8_t cur_fingerprint[16];
+	int have_cur_fingerprint = 0;
+
 	for (i = 0; i < rp->lc.nlsns; i++) {
 		u_int32_t rectype;
+		void *recdata;
 
 		lsnp = &rp->lc.array[i].lsn;
 
@@ -4523,18 +4544,28 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 					(u_long)lsnp->file, (u_long)lsnp->offset);
 				goto err;
 			}
+			recdata = data_dbt.data;
 			LOGCOPY_32(&rectype, data_dbt.data);
 			int utxnid_logged = normalize_rectype(&rectype);
 			found_ufid =
 				(int)ufid_for_recovery_record(dbenv, NULL,
 				rectype, fuid, &data_dbt, utxnid_logged);
 		} else {
+			recdata = rp->lc.array[i].rec.data;
 			LOGCOPY_32(&rectype, rp->lc.array[i].rec.data);
 			int utxnid_logged = normalize_rectype(&rectype);
 			found_ufid =
 				(int)ufid_for_recovery_record(dbenv, NULL,
 				rectype, fuid, &rp->lc.array[i].rec, utxnid_logged);
 		}
+
+		/* No physical work of its own, but still queued and dispatched
+		 * (to a no-op handler) so nothing downstream treats it specially. */
+		if (gbl_log_fingerprint && rectype == REP_LLOG_FINGERPRINT)
+			have_cur_fingerprint =
+				bdb_fingerprint_from_logrec(dbenv, recdata,
+				cur_fingerprint, sizeof(cur_fingerprint));
+
 		if (found_ufid) {
 			if (!fuid_hash)
 				fuid_hash = hash_init(DB_FILE_ID_LEN);
@@ -4597,6 +4628,10 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			rr->logdbt.data = NULL;
 		rr->lsn = *lsnp;
 		rr->fileid = fileid;
+		rr->have_fingerprint = have_cur_fingerprint;
+		if (have_cur_fingerprint)
+			memcpy(rr->fingerprint, cur_fingerprint,
+				sizeof(rr->fingerprint));
 
 		listc_abl(&rp->recovery_queues[fileid]->records, rr);
 	}
@@ -5414,6 +5449,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	if (td_stats)
 		x1 = bb_berkdb_fasttime();
 
+	/* Fingerprint in effect here. Unlike processor_thd this loop is already
+	 * in LSN order on one thread, so it arms as it goes. */
+	u_int8_t cur_fingerprint[16];
+	int have_cur_fingerprint = 0;
+
 	/* Phase 2: Apply updates. */
 	for (i = 0; i < lc.nlsns; i++) {
 		DBT lcin_dbt = { 0 };
@@ -5452,12 +5492,24 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 		normalize_rectype(&rectype);
 
+		if (gbl_log_fingerprint && rectype == REP_LLOG_FINGERPRINT) {
+			have_cur_fingerprint = bdb_fingerprint_from_logrec(dbenv,
+				needed_to_get_record_from_log ? data_dbt.data :
+				lcin_dbt.data, cur_fingerprint,
+				sizeof(cur_fingerprint));
+		}
+
 		if (dispatch_rectype(rectype)) {
-			if ((ret = __db_dispatch(dbenv, dbenv->recover_dtab,
-					dbenv->recover_dtab_size,
-					needed_to_get_record_from_log ? &data_dbt :
-					&lcin_dbt, lsnp, DB_TXN_APPLY,
-					txninfo)) != 0) {
+			if (have_cur_fingerprint)
+				bb_berkdb_fingerprint_rtstats_set_apply(
+					cur_fingerprint, sizeof(cur_fingerprint), 0);
+
+			ret = __db_dispatch(dbenv, dbenv->recover_dtab,
+				dbenv->recover_dtab_size,
+				needed_to_get_record_from_log ? &data_dbt :
+				&lcin_dbt, lsnp, DB_TXN_APPLY, txninfo);
+
+			if (ret != 0) {
 				if (ret != DB_LOCK_DEADLOCK)
 					__db_err(dbenv,
 						"transaction failed at [%lu][%lu]",
@@ -5509,6 +5561,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	}
 
 err:
+
+	/* Disarm. Normal completion falls through here too, not just errors. */
+	bb_berkdb_fingerprint_rtstats_clear();
 
 	memset(&req, 0, sizeof(req));
 

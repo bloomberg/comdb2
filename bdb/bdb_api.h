@@ -1372,10 +1372,28 @@ void bdb_reset_thread_stats(void);
 const struct berkdb_thread_stats *bdb_get_thread_stats(void);
 const struct berkdb_thread_stats *bdb_get_process_stats(void);
 
+/* Must match FINGERPRINTSZ (db/fingerprint.h) and berkdb's FP_RTSTATS_KEYSZ. */
+#define BDB_FINGERPRINTSZ 16
+
+/* counts[] for _get()/_foreach(): (total, disk-I/O subset) pairs for
+ * [0][1] SQL execution, [2][3] master write-apply, [4][5] replicant apply. */
+#define BDB_FINGERPRINT_RTSTATS_NCOUNTS 6
+
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_clear(void);
-int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen, uint64_t *n_pagein_read,
-                                uint64_t *n_pagein_read_io);
+int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
+                                uint64_t counts[BDB_FINGERPRINT_RTSTATS_NCOUNTS]);
+typedef void (*bdb_fingerprint_rtstats_enum_fn)(const unsigned char *fingerprint, const uint64_t *counts,
+                                                int has_main_entry, void *arg);
+void bdb_fingerprint_rtstats_foreach(bdb_fingerprint_rtstats_enum_fn fn, void *arg);
+
+/* Log the fingerprint so replicants can attribute their apply I/O to it.
+ * Caller gates on gbl_log_fingerprint. */
+extern int gbl_log_fingerprint;
+int bdb_llog_fingerprint_tran(bdb_state_type *bdb_state, tran_type *tran, const unsigned char *fingerprint,
+                              int *bdberr);
 
 /* Format and print the thread stats.  printfn() is a function which accepts
  * a line to print (\n\0 terminated) and a context pointer. Its return value

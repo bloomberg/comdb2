@@ -67,6 +67,15 @@ typedef struct rec_flags {
     int flags;
 } rec_flags_t;
 
+extern int gbl_osql_send_fingerprint;
+
+/* Per-row fingerprint, in a shad_tbl side hash keyed the way the drain loop
+ * looks rows up: seq for inserts/updates, genid for deletes. */
+typedef struct rec_fingerprint {
+    unsigned long long seq; /* seq (ins/upd) or genid (del) */
+    unsigned char fingerprint[FINGERPRINTSZ];
+} rec_fingerprint_t;
+
 static shad_tbl_t *get_shadtbl(struct BtCursor *pCur);
 static shad_tbl_t *open_shadtbl(struct BtCursor *pCur);
 static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
@@ -173,6 +182,10 @@ static int destroy_shadtbl(shad_tbl_t *tbl)
         destroy_idx_hash(tbl->ins_rec_hash);
     if (tbl->upd_rec_hash)
         destroy_idx_hash(tbl->upd_rec_hash);
+    if (tbl->ins_fp_hash)
+        destroy_idx_hash(tbl->ins_fp_hash);
+    if (tbl->del_fp_hash)
+        destroy_idx_hash(tbl->del_fp_hash);
 
     if (tbl->delidx_tbl)
         destroy_tablecursor(tbl->env->bdb_env, tbl->delidx_cur, tbl->delidx_tbl,
@@ -515,6 +528,8 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
         hash_init_o(offsetof(rec_flags_t, seq), sizeof(unsigned long long));
     tbl->upd_rec_hash =
         hash_init_o(offsetof(rec_flags_t, seq), sizeof(unsigned long long));
+    tbl->ins_fp_hash = hash_init_o(offsetof(rec_fingerprint_t, seq), sizeof(unsigned long long));
+    tbl->del_fp_hash = hash_init_o(offsetof(rec_fingerprint_t, seq), sizeof(unsigned long long));
 
     listc_abl(&clnt->osql.shadtbls, tbl);
     pCur->shadtbl = tbl;
@@ -906,6 +921,51 @@ static int get_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
     return 0;
 }
 
+/* Remember this row's fingerprint for the drain loop. Allocates nothing when
+ * the feature is off or the fingerprint is unset. */
+static int save_rec_fingerprint(struct sqlclntstate *clnt, shad_tbl_t *tbl, unsigned long long key, int is_del)
+{
+    hash_t *h;
+    rec_fingerprint_t tmp;
+    rec_fingerprint_t *rf;
+
+    if (!gbl_osql_send_fingerprint || fingerprint_is_zero(clnt->work.aFingerprint))
+        return 0;
+
+    h = is_del ? tbl->del_fp_hash : tbl->ins_fp_hash;
+    if (h == NULL)
+        return 0;
+
+    tmp.seq = key;
+    if (hash_find(h, &tmp) != NULL) /* already recorded for this key */
+        return 0;
+
+    rf = calloc(1, sizeof(rec_fingerprint_t));
+    if (!rf) {
+        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__, sizeof(rec_fingerprint_t));
+        return -1;
+    }
+    rf->seq = key;
+    memcpy(rf->fingerprint, clnt->work.aFingerprint, FINGERPRINTSZ);
+    hash_add(h, rf);
+
+    return 0;
+}
+
+/* Returns a pointer to the 16-byte fingerprint stored for this row, or NULL. */
+static const unsigned char *get_rec_fingerprint(shad_tbl_t *tbl, unsigned long long key, int is_del)
+{
+    hash_t *h = is_del ? tbl->del_fp_hash : tbl->ins_fp_hash;
+    rec_fingerprint_t tmp;
+    rec_fingerprint_t *rf;
+
+    if (h == NULL)
+        return NULL;
+    tmp.seq = key;
+    rf = hash_find(h, &tmp);
+    return rf ? rf->fingerprint : NULL;
+}
+
 /*
  * NOTE:
  * Handle upd table for multiple updates of synthetic rows
@@ -1082,6 +1142,10 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
+    if (save_rec_fingerprint(thd->clnt, tbl, tmp, 0 /* upd keyed by seq */)) {
+        return -1;
+    }
+
 #ifdef TEST_OSQL
     uuidstr_t us;
     fprintf(stdout,
@@ -1164,6 +1228,10 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
+    if (save_rec_fingerprint(thd->clnt, tbl, tmp, 0 /* ins */)) {
+        return -1;
+    }
+
     tbl->seq = increment_seq(tbl->seq);
     /*++tbl->seq;*/
 
@@ -1207,6 +1275,10 @@ int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if (gbl_partial_indexes && pCur->db->ix_partial &&
         save_del_keys(thd->clnt, tbl, pCur->genid)) {
         logmsg(LOGMSG_ERROR, "%s: error saving the shadow dirty keys\n", __func__);
+        return -1;
+    }
+
+    if (save_rec_fingerprint(thd->clnt, tbl, pCur->genid, 1 /* del */)) {
         return -1;
     }
 
@@ -1531,6 +1603,9 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
     if (rc)
         return -1;
 
+    /* The master clears its TLS per session, so always send on the first row. */
+    osql->fingerprint_sent = 0;
+
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {
         /* we need to reset any cached nops in tbl */
@@ -1653,6 +1728,30 @@ int osql_shadtbl_cleartbls(struct sqlclntstate *clnt)
 /****************************************** INTERNALS
  * **************************************/
 
+/* Emit OSQL_FINGERPRINT ahead of the row op it describes, deduped against the
+ * last one sent this drain. NULL fingerprint means nothing was recorded. */
+static int process_local_shadtbl_fingerprint(struct sqlclntstate *clnt, const unsigned char *fingerprint,
+                                             int osql_nettype)
+{
+    osqlstate_t *osql = &clnt->osql;
+    int rc;
+
+    if (fingerprint == NULL)
+        return 0;
+    if (osql->fingerprint_sent && memcmp(osql->last_fingerprint, fingerprint, FINGERPRINTSZ) == 0)
+        return 0;
+
+    rc = osql_send_fingerprint(&osql->target, osql->rqid, osql->uuid, fingerprint, osql_nettype);
+    if (rc)
+        return rc;
+
+    memcpy(osql->last_fingerprint, fingerprint, FINGERPRINTSZ);
+    osql->fingerprint_sent = 1;
+    osql->replicant_numops++;
+    DEBUG_PRINT_NUMOPS();
+    return 0;
+}
+
 static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
                                        char *tablename, int tableversion)
 {
@@ -1704,6 +1803,10 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 return SQLITE_TOOBIG;
             }
+
+            rc = process_local_shadtbl_fingerprint(clnt, get_rec_fingerprint(tbl, genid, 1 /* del */), osql_nettype);
+            if (rc)
+                return SQLITE_INTERNAL;
 
             if (osql->is_reorder_on) {
                 rc = osql_send_delrec(&osql->target, osql->rqid, osql->uuid,
@@ -1997,6 +2100,10 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         else if (rc == IX_FND)
             goto next;
 
+        rc = process_local_shadtbl_fingerprint(clnt, get_rec_fingerprint(tbl, key, 0 /* ins */), osql_nettype);
+        if (rc)
+            return SQLITE_INTERNAL;
+
         if (osql->is_reorder_on) {
             rc = osql_send_insrec(&osql->target, osql->rqid, osql->uuid, key,
                                   (gbl_partial_indexes && tbl->ix_partial)
@@ -2112,6 +2219,12 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
             return SQLITE_TOOBIG;
         }
+
+        rc = process_local_shadtbl_fingerprint(clnt, get_rec_fingerprint(tbl, seq, 0 /* upd keyed by seq */),
+                                               osql_nettype);
+        if (rc)
+            return SQLITE_INTERNAL;
+
         if (osql->is_reorder_on) {
             rc = osql_send_updrec(&osql->target, osql->rqid, osql->uuid, genid,
                                   (gbl_partial_indexes && tbl->ix_partial)

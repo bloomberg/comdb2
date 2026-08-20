@@ -1149,6 +1149,10 @@ void bdb_queue_init_priv(bdb_state_type *bdb_state);
 
 int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 
+/* Read a DB_llog_fingerprint payload; 1 on success. berkdb's apply paths
+ * declare this extern rather than including this header. */
+int bdb_fingerprint_from_logrec(DB_ENV *dbenv, void *logrec, unsigned char *fingerprint, size_t fplen);
+
 int bdb_rowlock_int(DB_ENV *dbenv, DB_TXN *txn, unsigned long long genid,
                     int exclusive);
 

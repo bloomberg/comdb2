@@ -264,3 +264,9 @@ DBT lock2     DBT s
 POINTER prevllsn  DB_LSN * lu
 END
 
+/* Informational: the fingerprint of the statement whose write schedule the
+ * following records belong to. Redoes and undoes to nothing. */
+BEGIN fingerprint 10022
+DBT fingerprint   DBT s
+END
+
