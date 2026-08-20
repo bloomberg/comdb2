@@ -759,6 +759,7 @@
 (name='physrep_hung_replicant_check_freq_sec', description='Check for hung physical replicant this often. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_hung_replicant_threshold', description='Report if the physical replicant has been inactive for this duration. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_i_am_metadb', description='I am physical replication metadb (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='physrep_ignore_legacy_queues', description='Don't replicate legacy queues.', type='BOOLEAN', value='ON', read_only='Y')
 (name='physrep_ignore_queues', description='Don't replicate queues.', type='BOOLEAN', value='ON', read_only='Y')
 (name='physrep_keepalive_freq_sec', description='Periodically send lsn to source node after this interval. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_keepalive_v2', description='Use version 2 of keepalive which also reports the oldest (first) lsn. Enable only after the metadb comdb2_physreps table has a firstfile column and the fleet is upgraded. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')

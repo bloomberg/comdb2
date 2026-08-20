@@ -4518,7 +4518,9 @@ deadlock_again:
         else
             pagesize = bdb_state->attr->pagesizedta;
 
-        if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
+        extern int gbl_physrep_ignore_legacy_queues;
+        if (gbl_is_physical_replicant &&
+            (physrep_ignore_table(bdb_state->name) || (bdbtype == BDBTYPE_QUEUE && gbl_physrep_ignore_legacy_queues))) {
             char new[PATH_MAX];
             print(bdb_state, "truncating ignored queue %s\n", bdb_trans(tmpname, new));
             rc = truncate(bdb_trans(tmpname, new), pagesize * 2);

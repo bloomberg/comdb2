@@ -92,10 +92,8 @@ extern char *gbl_file_copier;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char *gbl_dbdir;
 
-extern int should_ignore_btree(const char *filename,
-                               int (*should_ignore_table)(const char *),
-                               int should_ignore_queues,
-                               int name_boundary_exists);
+extern int should_ignore_btree(const char *filename, int (*should_ignore_table)(const char *), int should_ignore_queues,
+                               int should_ignore_legacy_queues, int name_boundary_exists);
 
 static uint64_t gbl_import_id = 0;
 pthread_mutex_t import_id_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -145,7 +143,7 @@ int bulk_import_tmpdb_should_ignore_table(const char *table) {
 
 int bulk_import_tmpdb_should_ignore_btree(const char *filename)
 {
-    return should_ignore_btree(filename, bulk_import_tmpdb_should_ignore_table, 0, 1);
+    return should_ignore_btree(filename, bulk_import_tmpdb_should_ignore_table, 0, 0, 1);
 }
 
 static void get_import_dbdir(char *import_dbdir, size_t sz_import_dbdir, const uint64_t import_id) {
@@ -1382,7 +1380,7 @@ static enum comdb2_import_tmpdb_op comdb2_files_tmpdb_process_filenames(cdb2_hnd
             goto err;
         }
 
-        if (!should_ignore_btree(fname, bulk_import_tmpdb_should_ignore_table, 0, 0)) {
+        if (!should_ignore_btree(fname, bulk_import_tmpdb_should_ignore_table, 0, 0, 0)) {
             str_list_elt * const elt = calloc(1, sizeof(str_list_elt));
             if (!elt) {
                 __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");

@@ -51,7 +51,8 @@ static inline int nameboundary(char c)
 	}
 }
 
-int should_ignore_btree(const char *filename, int (*should_ignore_table)(const char *), int should_ignore_queues, int name_boundary_exists)
+int should_ignore_btree(const char *filename, int (*should_ignore_table)(const char *), int should_ignore_queues,
+    int should_ignore_legacy_queues, int name_boundary_exists)
 {
 	char *start = (char *)&filename[0];
 	char *end = (char *)&filename[strlen(filename) - 1];
@@ -60,6 +61,9 @@ int should_ignore_btree(const char *filename, int (*should_ignore_table)(const c
 		end--;
 	}
 	if (should_ignore_queues && !strcmp(end, ".queuedb")) {
+		return 1;
+	}
+	if (should_ignore_legacy_queues && !strcmp(end, ".queue")) {
 		return 1;
 	}
 	end -= 17;
