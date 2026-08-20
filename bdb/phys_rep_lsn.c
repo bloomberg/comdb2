@@ -21,14 +21,13 @@
 
 int matchable_log_type(DB_ENV *dbenv, int rectype);
 
-extern int should_ignore_btree(const char *filename,
-                               int (*should_ignore_table)(const char *),
-                               int should_ignore_queues,
-                               int name_boundary_exists);
+extern int should_ignore_btree(const char *filename, int (*should_ignore_table)(const char *), int should_ignore_queues,
+                               int should_ignore_legacy_queues, int name_boundary_exists);
 extern int gbl_import_mode;
 extern int gbl_physrep_debug;
 int gbl_physrep_exit_on_invalid_logstream = 0;
 int gbl_physrep_ignore_queues = 1;
+int gbl_physrep_ignore_legacy_queues = 1;
 
 int compare_log(DBT *logrec, void *blob, unsigned int blob_len)
 {
@@ -647,5 +646,6 @@ int physrep_ignore_table_count()
 
 int physrep_ignore_btree(const char *filename)
 {
-    return should_ignore_btree(filename, physrep_ignore_table, gbl_physrep_ignore_queues, 1);
+    return should_ignore_btree(filename, physrep_ignore_table, gbl_physrep_ignore_queues,
+                               gbl_physrep_ignore_legacy_queues, 1);
 }
