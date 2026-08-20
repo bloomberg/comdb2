@@ -3,16 +3,50 @@ stored procedures end up being normalized and added to the fingerprints system
 table, along with their cost metrics.
 
 "t10.req" verifies that the comdb2_fingerprints systable also exposes
-bufferpool page-in counters (total_pagein_read, total_pagein_read_io) for a
+bufferpool page-in counters (total_sql_pagein_read, total_sql_pagein_read_io) for a
 fingerprint. Since the exact page counts depend on bufferpool cache state and
 are not deterministic across environments, the test checks structural
-invariants instead of exact values: total_pagein_read is at least the
-execution count, and total_pagein_read_io never exceeds total_pagein_read.
+invariants instead of exact values: total_sql_pagein_read is at least the
+execution count, and total_sql_pagein_read_io never exceeds total_sql_pagein_read.
 
 "t11.req" checks the same page-in invariants for two distinct SQL statements
 executed inside a single stored procedure (Lua inner statements), verifying
 each gets its own independently-tracked page-in counters rather than one
 statement's counters leaking into the other's.
+
+"t12.req" (driven by "fpwrite.sh") verifies the write-side counterpart: writes
+are applied on the master, which attributes the page-in I/O it generates to the
+originating statement's fingerprint (comdb2_fingerprints.total_write_pagein_read
+/ total_write_pagein_read_io). This relies on the "osql_send_fingerprint"
+tunable, enabled in lrl.options, which has the replicant transmit the
+fingerprint to the master. Because writes are applied on the master -- which
+need not be the node the client connected to -- the test looks the fingerprint
+up on the connected node (where the query text exists) and then asserts its
+write counters on the master by fingerprint hash. As with t10/t11, only
+structural invariants are checked (write page-ins were attributed, and the
+disk-I/O subset never exceeds the total), since exact counts are not
+deterministic.
+
+"t13.req" (driven by "fpwrite2.sh") verifies the same master write-apply
+attribution for the non-SOSQL isolation levels -- read committed, snapshot
+isolation, and serial -- which buffer writes in shadow tables and drain them to
+the master at commit. serial is enabled via "enable_serial_isolation" in
+lrl.options (which also brings up the snapshot machinery); the levels are then
+selected per transaction with "set transaction ...". For each level it runs an
+UPDATE and DELETE against pre-existing (committed) rows and asserts those
+fingerprints carry write page-ins on the master. Rows updated/deleted must be
+pre-existing: deleting a row inserted in the same transaction cancels in the
+shadow table and never reaches the master.
+
+"t14.req" (driven by "fpapply.sh") carries the attribution one hop further, to
+the replicants. With "log_fingerprint 1" in lrl.options the master writes the
+fingerprint it received into the transaction log, and every node applying that
+log attributes its page-ins to it -- reported separately from the master's own
+write-apply counters, as total_replication_pagein_read. The test asserts those
+counters on a non-master node, again structurally only, after giving
+replication a bounded window to catch up. A single-node run has nothing
+applying a replication stream, so the test is vacuously satisfied there and
+emits the same line.
 
 -------------------------------- SPECIAL NOTES --------------------------------
 

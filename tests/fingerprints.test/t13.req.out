@@ -1,0 +1,6 @@
+(level='read committed', op='update', writes_present=1, io_le_total=1)
+(level='read committed', op='delete', writes_present=1, io_le_total=1)
+(level='snapshot isolation', op='update', writes_present=1, io_le_total=1)
+(level='snapshot isolation', op='delete', writes_present=1, io_le_total=1)
+(level='serial', op='update', writes_present=1, io_le_total=1)
+(level='serial', op='delete', writes_present=1, io_le_total=1)

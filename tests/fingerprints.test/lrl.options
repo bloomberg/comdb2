@@ -1,1 +1,4 @@
 verbose_normalized_queries
+osql_send_fingerprint 1
+log_fingerprint 1
+enable_serial_isolation
