@@ -58,6 +58,7 @@
 #include "sc_logic.h"
 #include "eventlog.h"
 #include <disttxn.h>
+#include "fingerprint.h"
 
 #define MAX_CLUSTER REPMAX
 
@@ -1711,6 +1712,83 @@ osqlcomm_usedb_rpl_uuid_type_get(osql_usedb_rpl_uuid_t *p_osql_usedb_uuid_rpl,
                                        p_buf_end);
     p_buf =
         osqlcomm_usedb_type_get(&(p_osql_usedb_uuid_rpl->dt), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_fingerprint {
+    unsigned char fingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL */
+} osql_fingerprint_t;
+
+enum { OSQLCOMM_FINGERPRINT_TYPE_LEN = FINGERPRINTSZ };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_fingerprint_type_len, sizeof(osql_fingerprint_t) == OSQLCOMM_FINGERPRINT_TYPE_LEN);
+
+static uint8_t *osqlcomm_fingerprint_type_put(const osql_fingerprint_t *p_osql_fingerprint, uint8_t *p_buf,
+                                              const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_FINGERPRINT_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    /* raw opaque bytes, no byte-swap (like a uuid) */
+    p_buf =
+        buf_no_net_put(&(p_osql_fingerprint->fingerprint), sizeof(p_osql_fingerprint->fingerprint), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *osqlcomm_fingerprint_type_get(osql_fingerprint_t *p_osql_fingerprint, const uint8_t *p_buf,
+                                                    const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_FINGERPRINT_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf =
+        buf_no_net_get(&(p_osql_fingerprint->fingerprint), sizeof(p_osql_fingerprint->fingerprint), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_fingerprint_rpl {
+    osql_rpl_t hd;
+    osql_fingerprint_t dt;
+} osql_fingerprint_rpl_t;
+
+enum { OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN = OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_FINGERPRINT_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_fingerprint_rpl_type_len,
+                       sizeof(osql_fingerprint_rpl_t) == OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN);
+
+static uint8_t *osqlcomm_fingerprint_rpl_type_put(const osql_fingerprint_rpl_t *p_fingerprint_rpl, uint8_t *p_buf,
+                                                  uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_rpl_type_put(&(p_fingerprint_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_fingerprint_type_put(&(p_fingerprint_rpl->dt), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_fingerprint_rpl_uuid {
+    osql_uuid_rpl_t hd;
+    osql_fingerprint_t dt;
+} osql_fingerprint_rpl_uuid_t;
+
+enum { OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN = OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_FINGERPRINT_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_fingerprint_rpl_uuid_type_len,
+                       sizeof(osql_fingerprint_rpl_uuid_t) == OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN);
+
+static uint8_t *osqlcomm_fingerprint_uuid_rpl_type_put(const osql_fingerprint_rpl_uuid_t *p_fingerprint_uuid_rpl,
+                                                       uint8_t *p_buf, uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_uuid_rpl_type_put(&(p_fingerprint_uuid_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_fingerprint_type_put(&(p_fingerprint_uuid_rpl->dt), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -4117,6 +4195,64 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
                d_ms);
         usleep(1000 * d_ms);
     }
+
+    return rc;
+}
+
+/**
+ * Send OSQL_FINGERPRINT op: tells the master which statement the following
+ * write ops belong to. Fixed 16-byte payload, so no trailing send.
+ */
+int osql_send_fingerprint(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const unsigned char *fingerprint,
+                          int type)
+{
+    int msglen;
+    int rc = 0;
+
+    uint8_t buf[(int)OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN > (int)OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN
+                    ? OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN
+                    : OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN];
+
+    if (check_master(target))
+        return OSQL_SEND_ERROR_WRONGMASTER;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_fingerprint_rpl_uuid_t fp_uuid_rpl = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN);
+
+        msglen = OSQLCOMM_FINGERPRINT_RPL_UUID_TYPE_LEN;
+
+        fp_uuid_rpl.hd.type = OSQL_FINGERPRINT;
+        comdb2uuidcpy(fp_uuid_rpl.hd.uuid, uuid);
+        memcpy(fp_uuid_rpl.dt.fingerprint, fingerprint, FINGERPRINTSZ);
+
+        if (!(p_buf = osqlcomm_fingerprint_uuid_rpl_type_put(&fp_uuid_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_fingerprint_uuid_rpl_type_put");
+            return -1;
+        }
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+    } else {
+        osql_fingerprint_rpl_t fp_rpl = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN);
+
+        msglen = OSQLCOMM_FINGERPRINT_RPL_TYPE_LEN;
+
+        fp_rpl.hd.type = OSQL_FINGERPRINT;
+        fp_rpl.hd.sid = rqid;
+        memcpy(fp_rpl.dt.fingerprint, fingerprint, FINGERPRINTSZ);
+
+        if (!(p_buf = osqlcomm_fingerprint_rpl_type_put(&fp_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_fingerprint_rpl_type_put");
+            return -1;
+        }
+    }
+
+    rc = target->send(target, type, &buf, msglen, 0, NULL, 0);
+
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s target->send returns rc=%d\n", __func__, rc);
 
     return rc;
 }
@@ -7419,6 +7555,28 @@ done_delete:
                    "%u, cur_gen %u\n",
                    comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
             return ERR_VERIFY;
+        }
+    } break;
+
+    case OSQL_FINGERPRINT: {
+        osql_fingerprint_t dt = {{0}};
+        /* p_buf_end from the struct size, as OSQL_USEDB / OSQL_STARTGEN do;
+         * the _get below still bounds-checks against it. */
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_fingerprint_t);
+        if (!osqlcomm_fingerprint_type_get(&dt, p_buf, p_buf_end)) {
+            logmsg(LOGMSG_ERROR, "%s: failed to read OSQL_FINGERPRINT\n", __func__);
+            break;
+        }
+        /* Arm this thread; cleared once the session finishes applying. */
+        bdb_fingerprint_rtstats_set_write(dt.fingerprint, FINGERPRINTSZ, fingerprint_has_main_entry(dt.fingerprint));
+
+        /* Relay to the replicants, which redo this work from the log. Purely
+         * diagnostic, so a failure here must not fail the transaction. */
+        if (gbl_log_fingerprint && trans) {
+            int fingerprint_bdberr = 0;
+            if (bdb_llog_fingerprint_tran(thedb->bdb_env, trans, dt.fingerprint, &fingerprint_bdberr) != 0) {
+                logmsg(LOGMSG_ERROR, "%s: failed to log fingerprint, bdberr %d\n", __func__, fingerprint_bdberr);
+            }
         }
     } break;
 

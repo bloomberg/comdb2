@@ -61,6 +61,14 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
                     char *tablename, int type, unsigned long long version);
 
 /**
+ * Send FINGERPRINT op
+ * Carries the originating statement's SQL fingerprint to the master for
+ * write-I/O accounting. It handles remote/local connectivity.
+ */
+int osql_send_fingerprint(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const unsigned char *fingerprint,
+                          int type);
+
+/**
  * Send INDEX op
  * It handles remote/local connectivity
  *

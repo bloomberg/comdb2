@@ -78,6 +78,26 @@ int clear_fingerprints(int *plans_count)
     return count;
 }
 
+/* 1 if this node has the query text for this fingerprint. Feeds has_main_entry
+ * on the master's write-side arm. */
+int fingerprint_has_main_entry(const unsigned char fingerprint[FINGERPRINTSZ])
+{
+    int found = 0;
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    if (gbl_fingerprint_hash != NULL && hash_find(gbl_fingerprint_hash, fingerprint) != NULL)
+        found = 1;
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+    return found;
+}
+
+/* 1 if the fingerprint is all-zeros, which is what a statement with no
+ * normalized SQL gets. Senders skip those rather than pool them under one key. */
+int fingerprint_is_zero(const unsigned char fingerprint[FINGERPRINTSZ])
+{
+    static const unsigned char zero[FINGERPRINTSZ] = {0};
+    return memcmp(fingerprint, zero, FINGERPRINTSZ) == 0;
+}
+
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]) {
     memset(fingerprint, 0, FINGERPRINTSZ);

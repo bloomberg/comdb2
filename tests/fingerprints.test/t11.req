@@ -22,5 +22,5 @@ PUT DEFAULT PROCEDURE fp_pagein_sp 'test'
 EXEC PROCEDURE fp_pagein_sp()
 EXEC PROCEDURE fp_pagein_sp()
 EXEC PROCEDURE fp_pagein_sp()
-SELECT (total_pagein_read >= count) AS reads_ge_count, (total_pagein_read_io <= total_pagein_read) AS io_le_total FROM comdb2_fingerprints WHERE normalized_sql LIKE 'SELECT%fp_pagein_a%';
-SELECT (total_pagein_read >= count) AS reads_ge_count, (total_pagein_read_io <= total_pagein_read) AS io_le_total FROM comdb2_fingerprints WHERE normalized_sql LIKE 'SELECT%fp_pagein_b%';
+SELECT (total_sql_pagein_read >= count) AS reads_ge_count, (total_sql_pagein_read_io <= total_sql_pagein_read) AS io_le_total FROM comdb2_fingerprints WHERE normalized_sql LIKE 'SELECT%fp_pagein_a%';
+SELECT (total_sql_pagein_read >= count) AS reads_ge_count, (total_sql_pagein_read_io <= total_sql_pagein_read) AS io_le_total FROM comdb2_fingerprints WHERE normalized_sql LIKE 'SELECT%fp_pagein_b%';

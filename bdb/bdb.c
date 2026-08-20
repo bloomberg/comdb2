@@ -700,9 +700,23 @@ const struct berkdb_thread_stats *bdb_get_thread_stats(void)
     return (const struct berkdb_thread_stats *)bb_berkdb_get_thread_stats();
 }
 
+/* The bdb-level counts[] and the berkdb-level one are the same array. */
+BB_COMPILE_TIME_ASSERT(bdb_fingerprint_rtstats_ncounts,
+                       BDB_FINGERPRINT_RTSTATS_NCOUNTS == BB_BERKDB_FP_RTSTATS_NCOUNTS);
+
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
 {
     bb_berkdb_fingerprint_rtstats_set(fingerprint, fplen, has_main_entry);
+}
+
+void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
+{
+    bb_berkdb_fingerprint_rtstats_set_write(fingerprint, fplen, has_main_entry);
+}
+
+void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
+{
+    bb_berkdb_fingerprint_rtstats_set_apply(fingerprint, fplen, has_main_entry);
 }
 
 void bdb_fingerprint_rtstats_clear(void)
@@ -710,10 +724,15 @@ void bdb_fingerprint_rtstats_clear(void)
     bb_berkdb_fingerprint_rtstats_clear();
 }
 
-int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen, uint64_t *n_pagein_read,
-                                uint64_t *n_pagein_read_io)
+int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
+                                uint64_t counts[BDB_FINGERPRINT_RTSTATS_NCOUNTS])
 {
-    return bb_berkdb_fingerprint_rtstats_get(fingerprint, fplen, n_pagein_read, n_pagein_read_io);
+    return bb_berkdb_fingerprint_rtstats_get(fingerprint, fplen, counts);
+}
+
+void bdb_fingerprint_rtstats_foreach(bdb_fingerprint_rtstats_enum_fn fn, void *arg)
+{
+    bb_berkdb_fingerprint_rtstats_foreach((bb_berkdb_fingerprint_rtstats_enum_fn)fn, arg);
 }
 
 /* Call this any time to get process wide stats (which get updated locklessly)

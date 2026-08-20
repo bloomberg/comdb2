@@ -40,6 +40,10 @@ struct shad_tbl {
     hash_t *ins_rec_hash;
     hash_t *upd_rec_hash;
 
+    hash_t *ins_fp_hash; /* per-row SQL fingerprint, keyed by seq (inserts and
+                            updates) */
+    hash_t *del_fp_hash; /* per-row SQL fingerprint, keyed by genid (deletes) */
+
     struct tmp_table *upd_tbl; /* all updates go here also,
                                   key=tbl->seq, data=original_genid */
     struct tmp_table *blb_tbl; /* all blobs go here,
