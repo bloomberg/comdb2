@@ -101,7 +101,11 @@ function interactive-init {
     clean-persist
     docker-sanity-check
 
-    local defsource="ubuntu:22.04"
+    # Only used on hosts that are not Ubuntu - an Ubuntu host matches its own
+    # release below. Unpinned on purpose, so a new container tracks the current
+    # Ubuntu instead of an increasingly stale one; "set base ubuntu:<release>"
+    # pins it if a new release ever breaks the build.
+    local defsource="ubuntu:latest"
     if [[ -f /etc/lsb-release ]]; then
         source /etc/lsb-release
         if [[ $? -eq 0 ]]; then
@@ -246,7 +250,11 @@ function build {
 		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_sqlreply
 		RUN ln -s /opt/bb/bin/comdb2	/opt/bb/bin/cdb2_verify
 		RUN ln -s ${HOME}/src/build-docker/cdb2api/libcdb2api.so /opt/bb/lib/libcdb2api.so
-		RUN mkdir ${HOME}/.ssh /var/run/sshd
+		# sshd is the container's entrypoint and won't start without its
+		# privilege-separation directory. -p because /var/run is a symlink to
+		# /run and the openssh-server install may have created /run/sshd
+		# already; a bare mkdir then fails and takes the build down with it.
+		RUN mkdir -p ${HOME}/.ssh /var/run/sshd
 		RUN touch		${HOME}/.hushlogin
 		COPY config		${HOME}/.ssh/config
 		COPY id_rsa		${HOME}/.ssh/id_rsa
