@@ -59,7 +59,7 @@ XXXXX we should see to empty partitions with no counters
 (name='Truncate', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
 (rows inserted=1)
 (rows inserted=1)
-XXXXX we should see the data in part1, and the counter, no rollout yet
+XXXXX we should see the data in part1, the counter, and the rollout
 (a=1, alltypes_vutf8='hi')
 (a=2, alltypes_vutf8='ho')
 [
@@ -79,8 +79,8 @@ XXXXX we should see the data in part1, and the counter, no rollout yet
   },
   {
    "TABLENAME"    : "$1_7DA96DB",
-   "LOW"          : 2147483647,
-   "HIGH"         : 2147483647
+   "LOW"          : 1,
+   "HIGH"         : 2
   }
   ]
  }

@@ -33,15 +33,17 @@ function gorun_filter
 
 function timepart_stats
 {
-    # check the current partitions 
+    #a rollout or drop triggered by the caller runs on a cron thread and lands
+    #whenever it lands; sleep first so every read below sees the same side of it
+    sleep 6
+
+    # check the current partitions
     gorun_filter "exec procedure sys.cmd.send('partitions')" "SOURCE_ID"
 
     gorun "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions "
 
     gorun "select name, shardname from comdb2_timepartshards"
 
-    #randomly we catch a drop event here; sleep to skip the deterministically
-    sleep 6
     gorun_master "select name, arg1, arg2, arg3 from comdb2_timepartevents"
 
     gorun_master "select * from comdb2_cron_schedulers where name not like 'QueueDB %'"
@@ -85,7 +87,7 @@ gorun "put counter testpart1 increment"
 gorun "insert into testpart1 values (1, 'hi')"
 gorun "insert into testpart1 values (2, 'ho')"
 
-echo "XXXXX we should see the data in part1, and the counter, no rollout yet" >> $output
+echo "XXXXX we should see the data in part1, the counter, and the rollout" >> $output
 gorun "select * from testpart1 order by a"
 timepart_stats
 
