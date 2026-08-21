@@ -1185,6 +1185,9 @@ function run_generated_tests()
         while [[ $rc != 0 && $cnt -lt 10 ]] ; do
             echo "Result not matching, retrying $cnt"
             sleep 5
+            # Refetch the source too: a replicant read mid-truncate_time
+            # serves the pre-truncate state, and never converges otherwise.
+            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -v -f $query_cmd ${CDB2_OPTIONS} $dbname default 2> src.err > src.out
             ${CDB2SQL_EXE} -s --tabs -f $query_cmd ${REPL_CLUS_DBNAME} --host ${REPL_CLUS_HOST} 2> dest.err > dest.out
             diff src.out dest.out
             rc=$?
@@ -2187,19 +2190,186 @@ function phys_rep_verify_tunable_defaults
 {
     echo "== phys_rep_verify_tunable_defaults =="
     local q="select value from comdb2_tunables where name="
-    local vsr ka2 thr
+    local vsr ka2 thr snt
     vsr=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_verify_source_range'")
     ka2=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_keepalive_v2'")
     thr=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_no_source_alarm_threshold'")
-    echo "verify_source_range=$vsr keepalive_v2=$ka2 no_source_alarm_threshold=$thr FIRSTFILE=$FIRSTFILE"
+    snt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "${q}'physrep_skip_noop_truncation'")
+    echo "verify_source_range=$vsr keepalive_v2=$ka2 no_source_alarm_threshold=$thr skip_noop_truncation=$snt FIRSTFILE=$FIRSTFILE"
     [[ "$vsr" == "ON" ]] || cleanFailExit "physrep_verify_source_range should default ON (got '$vsr')"
     [[ "$thr" == "10" ]] || cleanFailExit "physrep_no_source_alarm_threshold should default 10 (got '$thr')"
+    [[ "$snt" == "ON" ]] || cleanFailExit "physrep_skip_noop_truncation should default ON (got '$snt')"
     if [[ "$FIRSTFILE" == "1" ]]; then
         [[ "$ka2" == "ON" ]] || cleanFailExit "physrep_keepalive_v2 should be ON in firstfile variant (got '$ka2')"
     else
         [[ "$ka2" == "OFF" ]] || cleanFailExit "physrep_keepalive_v2 should default OFF (got '$ka2')"
     fi
     return 0
+}
+
+# A re-registering physrep rewinds unconditionally, but it is normally a
+# byte-exact prefix of its source and has nothing to unwind.  Re-register
+# under write load, so the end-of-log sits mid-stream past the last commit --
+# the case only the forward compare catches -- and verify we log the skip and
+# leave log_cursor_gen (which every tier below watches) alone.
+function physrep_skip_noop_truncation_test
+{
+    echo "== physrep_skip_noop_truncation_test =="
+    local skipmsg="skipping truncation"
+    local lcq="select logcgen from comdb2_transaction_logs(NULL, NULL, 0x8) limit 1"
+    local rewindmsg="Rewind to lsn"
+    local name logFile before after gen_before gen_after x cnt rw_before rw_after tries
+    local stopfile=$TESTDIR/ckskipnoop.stop.$$
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists ckskipnoop(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into ckskipnoop select * from generate_series(1, 100)"
+
+    # Catch up before the writer starts -- after that the count moves.
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=0
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckskipnoop" 2>/dev/null)
+        while [[ "$x" != "100" ]]; do
+            sleep 1
+            let cnt=cnt+1
+            if [[ $cnt -gt 60 ]]; then
+                cleanFailExit "$name on $node never caught up (count='$x')"
+            fi
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckskipnoop" 2>/dev/null)
+        done
+        echo "$name on $node has caught up"
+    done
+
+    # Keep the log advancing so each physrep re-registers with a non-commit
+    # record at its end-of-log.
+    rm -f $stopfile
+    (
+        while [[ ! -f $stopfile ]]; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default \
+                "insert into ckskipnoop select * from generate_series(1, 50)" >/dev/null 2>&1
+            sleep 1
+        done
+    ) &
+    local writerpid=$!
+
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        logFile=$TESTDIR/logs/${name}.log
+
+        # Re-registration may land on a source behind our end-of-log (tiers
+        # chase the same log at different offsets); that legitimately trims to
+        # the anchor and bumps logcgen.  Only a skip with no interleaved
+        # rewind must hold logcgen; retry until we observe one.
+        tries=0
+        while : ; do
+            before=$(egrep "$skipmsg" $logFile | wc -l)
+            rw_before=$(egrep "$rewindmsg" $logFile | wc -l)
+            gen_before=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "$lcq")
+            echo "Forcing re-registration on $name@$node (skips=$before rewinds=$rw_before logcgen=$gen_before)"
+            $CDB2SQL_EXE --admin ${CDB2_OPTIONS} --host $node $name "exec procedure sys.cmd.send('physrep_force_registration')"
+
+            # Wait for either outcome -- a pure rewind must reach the retry
+            # below, not time out here.
+            cnt=0
+            after=$before
+            rw_after=$rw_before
+            while [[ "$after" == "$before" && "$rw_after" == "$rw_before" ]]; do
+                sleep 1
+                let cnt=cnt+1
+                if [[ $cnt -gt 60 ]]; then
+                    touch $stopfile
+                    cleanFailExit "$name on $node neither skipped nor rewound after re-registration"
+                fi
+                after=$(egrep "$skipmsg" $logFile | wc -l)
+                rw_after=$(egrep "$rewindmsg" $logFile | wc -l)
+            done
+
+            # Skipped means __log_vtruncate() never ran, so logcgen must hold.
+            gen_after=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "$lcq")
+            # Re-sample rewinds after reading logcgen: a rewind landing between
+            # the loop's last sample and the query must retry, not fail below.
+            rw_after=$(egrep "$rewindmsg" $logFile | wc -l)
+            if [[ "$rw_after" != "$rw_before" ]]; then
+                let tries=tries+1
+                if [[ $tries -gt 5 ]]; then
+                    touch $stopfile
+                    cleanFailExit "$name on $node rewound across $tries re-registrations"
+                fi
+                echo "$name on $node rewound mid-check (source switch), retrying"
+                continue
+            fi
+            if [[ "$gen_after" != "$gen_before" ]]; then
+                touch $stopfile
+                cleanFailExit "$name on $node bumped logcgen ($gen_before -> $gen_after) despite skipping the rewind"
+            fi
+            echo "$name on $node skipped the no-op rewind, logcgen held at $gen_after"
+            break
+        done
+    done
+
+    touch $stopfile
+    wait $writerpid 2>/dev/null
+    rm -f $stopfile
+}
+
+# A clustered physrep must not skip while log_gen is ahead of rep->gen: only the
+# rewind lifts rep->gen and lets its own replicants move again.  Bump the source
+# generation, then check every node of the physrep cluster still advances.
+function physrep_gen_guard_test
+{
+    echo "== physrep_gen_guard_test =="
+    local name="${REPL_CLUS_DBNAME}"
+    local rw_before rw_after x cnt
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists ckgenguard(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into ckgenguard select * from generate_series(1, 100)"
+
+    for node in $CLUSTER ; do
+        cnt=0
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckgenguard" 2>/dev/null)
+        while [[ "$x" != "100" ]]; do
+            sleep 1
+            let cnt=cnt+1
+            if [[ $cnt -gt 60 ]]; then
+                cleanFailExit "$name on $node never caught up (count='$x')"
+            fi
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckgenguard" 2>/dev/null)
+        done
+    done
+
+    rw_before=0
+    for node in $CLUSTER ; do
+        let rw_before=rw_before+$(egrep "Rewind to lsn" $TESTDIR/logs/${name}.${node}.log | wc -l)
+    done
+
+    # New source generation: the physrep sees a higher rec-gen and re-truncates.
+    downgradeonce $DBNAME
+    sleep 10
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into ckgenguard select * from generate_series(1, 100)"
+
+    # The whole physrep cluster must reach 200, not just its master.
+    for node in $CLUSTER ; do
+        cnt=0
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckgenguard" 2>/dev/null)
+        while [[ "$x" != "200" ]]; do
+            sleep 1
+            let cnt=cnt+1
+            if [[ $cnt -gt 120 ]]; then
+                cleanFailExit "$name on $node stalled at '$x' after the source changed generation"
+            fi
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckgenguard" 2>/dev/null)
+        done
+        echo "$name on $node advanced past the generation change"
+    done
+
+    rw_after=0
+    for node in $CLUSTER ; do
+        let rw_after=rw_after+$(egrep "Rewind to lsn" $TESTDIR/logs/${name}.${node}.log | wc -l)
+    done
+    if [[ "$rw_after" == "$rw_before" ]]; then
+        cleanFailExit "$name skipped the rewind across a generation change (rewinds=$rw_after)"
+    fi
+    echo "$name rewound across the generation change ($rw_before -> $rw_after)"
 }
 
 # DRQS 185276960: exercise the production rollout end to end, in the order it will
@@ -3380,6 +3550,18 @@ function run_tests
     testcase="phys_rep_verify_tunable_defaults"
     testcase_preamble $testcase
     phys_rep_verify_tunable_defaults
+    testcase_finish $testcase
+
+    # Run before verify_log_cursor_gen, which downgrades the source master and
+    # so provokes real (non-skippable) truncations.
+    testcase="physrep_skip_noop_truncation_test"
+    testcase_preamble $testcase
+    physrep_skip_noop_truncation_test
+    testcase_finish $testcase
+
+    testcase="physrep_gen_guard_test"
+    testcase_preamble $testcase
+    physrep_gen_guard_test
     testcase_finish $testcase
 
     testcase="tranlog_timeout"
