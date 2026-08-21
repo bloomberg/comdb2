@@ -775,6 +775,7 @@
 (name='physrep_repl_name', description='Current physrep parent.', type='STRING', value=NULL, read_only='Y')
 (name='physrep_revconn_check_interval', description='Physrep recheck revconn interval.  (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_shuffle_host_list', description='Shuffle the host list returned by register_replicant() before connecting to the hosts. (Default: OFF)', type='BOOLEAN', value='OFF', read_only='N')
+(name='physrep_skip_noop_truncation', description='Skip the physrep rewind when the source already matches our end-of-log, i.e. when there is nothing to unwind. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='physrep_slow_replicant_check_freq_sec', description='Check for slow physical replicant this often. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='physrep_source_dbname', description='Physical replication source cluster dbname.', type='STRING', value=NULL, read_only='Y')
 (name='physrep_source_dbnum', description='Physical replication source cluster db number.', type='INTEGER', value='0', read_only='Y')

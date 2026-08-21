@@ -1502,6 +1502,7 @@ static void *physrep_worker(void *args)
     size_t sql_cmd_len = 150;
     char sql_cmd[sql_cmd_len];
     int do_truncate = 0;
+    int source_gen_changed = 0;
     int rc;
     int now;
     int is_revconn = -1;
@@ -1693,7 +1694,7 @@ repl_loop:
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto sleep_and_retry;
             }
-            prev_info = handle_truncation(repl_db, info);
+            prev_info = handle_truncation(repl_db, info, source_gen_changed);
             if (prev_info.file == 0) {
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto sleep_and_retry;
@@ -1703,6 +1704,7 @@ repl_loop:
             if (gbl_physrep_debug)
                 physrep_logmsg(LOGMSG_USER, "%s: gen: %" PRId64 "\n", __func__, gen);
             do_truncate = 0;
+            source_gen_changed = 0;
         }
 
         if (repl_db_connected == 0)
@@ -1779,6 +1781,7 @@ repl_loop:
                 }
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 do_truncate = 1;
+                source_gen_changed = 1;
                 highest_gen = new_gen;
                 goto repl_loop;
             }
