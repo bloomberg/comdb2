@@ -561,6 +561,129 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
     return info;
 }
 
+/*
+ * physrep_logged_gen_ahead --
+ *
+ * Returns 1 when we have applied commits from a newer source generation than
+ * our own cluster is running (rep->log_gen > rep->gen).  Applying a commit
+ * from a new source generation lifts only log_gen; rep->gen moves when the
+ * rewind's recovery replays the gen record and rep_start broadcasts the new
+ * generation to our replicants.  Until that happens we ignore their messages
+ * (rep_record.c gen check), so a rewind in this state is not a no-op.
+ */
+int physrep_logged_gen_ahead(void *in_bdb_state)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    u_int32_t gen = 0, log_gen = 0;
+
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
+    bdb_state->dbenv->get_rep_log_gen(bdb_state->dbenv, &log_gen);
+    return log_gen > gen;
+}
+
+/*
+ * physrep_find_last_match --
+ *
+ * Walk forward from find_match_lsn()'s anchor comparing both logs record for
+ * record.  Returns 0 if we agree through my_end (nothing to unwind), else 1.
+ * *last_match is the newest agreed record -- the furthest we may rewind to.
+ */
+int physrep_find_last_match(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO match_info, LOG_INFO my_end,
+                            LOG_INFO *last_match)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    char sql_cmd[128];
+    DB_LOGC *logc = NULL;
+    DBT logrec = {0};
+    DB_LSN lsn;
+    int rc, diverged = 1, queried = 0;
+
+    *last_match = match_info;
+
+    /* Anchor is our end-of-log: nothing past it. */
+    if (match_info.file == my_end.file && match_info.offset == my_end.offset)
+        return 0;
+
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s: Can't get log cursor rc %d\n", __func__, rc);
+        return 1;
+    }
+
+    logrec.flags = DB_DBT_REALLOC;
+    lsn.file = match_info.file;
+    lsn.offset = match_info.offset;
+
+    if ((rc = logc->get(logc, &lsn, &logrec, DB_SET)) != 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s: Can't position at {%u:%u} rc %d\n", __func__, match_info.file,
+                       match_info.offset, rc);
+        goto done;
+    }
+
+    snprintf(sql_cmd, sizeof(sql_cmd), "select * from comdb2_transaction_logs('{%u:%u}','{%u:%u}', 0)", match_info.file,
+             match_info.offset, my_end.file, my_end.offset);
+
+    if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s: %s returns %d, '%s'\n", __func__, sql_cmd, rc, cdb2_errstr(repl_db));
+        goto done;
+    }
+    queried = 1;
+
+    /* Anchor was already compared; step the source past it. */
+    if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
+        goto done;
+
+    while ((rc = logc->get(logc, &lsn, &logrec, DB_NEXT)) == 0) {
+        unsigned int src_file, src_offset;
+        char *src_lsn;
+        void *blob;
+        int blob_len;
+        int64_t *gen;
+
+        /* Source ran out: we hold records it does not. */
+        if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
+            goto done;
+
+        src_lsn = (char *)cdb2_column_value(repl_db, 0);
+        if (!src_lsn || char_to_lsn(src_lsn, &src_file, &src_offset) != 0)
+            goto done;
+
+        if (src_file != lsn.file || src_offset != lsn.offset)
+            goto done;
+
+        blob = cdb2_column_value(repl_db, 4);
+        blob_len = cdb2_column_size(repl_db, 4);
+        if (compare_log(&logrec, blob, blob_len) != 0) {
+            if (gbl_physrep_debug) {
+                physrep_logmsg(LOGMSG_USER, "%s: diverged at {%u:%u}\n", __func__, lsn.file, lsn.offset);
+            }
+            goto done;
+        }
+
+        last_match->file = lsn.file;
+        last_match->offset = lsn.offset;
+        last_match->size = blob_len;
+        /* Only commits carry a gen; keep the newest seen. */
+        if ((gen = (int64_t *)cdb2_column_value(repl_db, 2)) != NULL)
+            last_match->gen = *gen;
+
+        if (lsn.file == my_end.file && lsn.offset == my_end.offset) {
+            diverged = 0;
+            goto done;
+        }
+    }
+
+done:
+    /* Drain: cdb2api disconnects rather than auto-consume a long result set. */
+    while (queried && cdb2_next_record(repl_db) == CDB2_OK)
+        ;
+    logc->close(logc, 0);
+    if (logrec.data) {
+        free(logrec.data);
+        logrec.data = NULL;
+    }
+    return diverged;
+}
+
 int physrep_bdb_wait_for_seqnum(bdb_state_type *bdb_state, DB_LSN *lsn, void *data) {
     u_int32_t rectype;
 

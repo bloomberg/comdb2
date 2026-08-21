@@ -1942,6 +1942,10 @@ REGISTER_TUNABLE("physrep_verify_source_range",
                  "Physrep verifies a candidate source's live log range covers its LSN before connecting. Schema-"
                  "independent (queries the source directly); no compatibility concerns. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_physrep_verify_source_range, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_skip_noop_truncation",
+                 "Skip the physrep rewind when the source already matches our end-of-log, i.e. when there is nothing "
+                 "to unwind. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_skip_noop_truncation, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_no_source_alarm_threshold",
                  "Consecutive no-viable-source registration cycles before physrep latches the "
                  "gbl_physrep_no_viable_source flag and logs 'PHYSREP NO VIABLE SOURCE'. (Default: 10)",
