@@ -581,6 +581,13 @@ int stop_reverse_connections_manager() {
 
     stop_reverse_conn_manager = 1;
 
+    /* May be blocked in a cdb2 call to a dead metadb -- don't let the
+     * join outlive the exit stall alarm. */
+    if (db_is_exiting()) {
+        revconn_logmsg(LOGMSG_USER, "Exiting: abandoning the reverse connections manager thread\n");
+        return 0;
+    }
+
     if ((rc = pthread_join(reverse_conn_manager, NULL)) != 0) {
         revconn_logmsg(LOGMSG_ERROR, "Reverse connections manager thread failed to join (rc : %d)\n", rc);
         return 1;

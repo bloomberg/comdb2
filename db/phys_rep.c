@@ -2021,6 +2021,13 @@ static int stop_physrep_watcher_thread() {
 
     stop_physrep_watcher = 1;
 
+    /* May be blocked in a cdb2 call to a dead metadb -- don't let the
+     * join outlive the exit stall alarm. */
+    if (db_is_exiting()) {
+        physrep_logmsg(LOGMSG_USER, "Exiting: abandoning the watcher thread\n");
+        return 0;
+    }
+
     if ((rc = pthread_join(physrep_watcher_thread, NULL)) != 0) {
         logmsg(LOGMSG_ERROR, "Watcher thread failed to join (rc : %d)\n", rc);
         return 1;
