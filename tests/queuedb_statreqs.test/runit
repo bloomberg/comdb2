@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Verify that queuedbs (lua consumers / triggers) are accounted for in the
+# statreqs diff-stat log and in the on-demand 'stat long' dump: the osql op
+# counters, plus the enqueued/dequeued row counters.
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ $debug == "1" ]] && set -x
+
+dbnm=$1
+
+# events enqueued on each of the two queues
+NEVENTS_CONSUME=10
+NEVENTS_NEXT=5
+
+if [[ -n "$CLUSTER" ]]; then
+    master=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} ${dbnm} default \
+        "select host from comdb2_cluster where is_master='Y'")
+    [[ -z "$master" ]] && failexit "could not determine master"
+    hostopt="--host $master"
+else
+    master=""
+    hostopt=""
+fi
+
+run() {
+    timeout 90 ${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} ${dbnm} default "$@"
+}
+
+# counters live on the master, so message traps have to land there
+mtrap() {
+    ${CDB2SQL_EXE} --tabs $hostopt ${CDB2_OPTIONS} ${dbnm} default \
+        "exec procedure sys.cmd.send('$1')"
+}
+
+# ... and so does the statreqs file
+statreqs() {
+    local log=${TESTDIR}/var/log/cdb2/${dbnm}.statreqs
+    if [[ -n "$CLUSTER" ]]; then
+        ssh -o StrictHostKeyChecking=no $master "cat $log" </dev/null
+    else
+        cat $log
+    fi
+}
+
+# Sum one counter across every diff bucket of one queue's block, reading the
+# log from stdin.  Blocks look like:
+#   08/22 11:32:49:   DIFF REQUEST STATS FOR QUEUE '__qsp_next'
+#   08/22 11:32:49:       OSQL_DELREC            5
+#   08/22 11:32:49:       enqueued               5
+# and end at the next header or at the first line that is not an indented
+# "<label> <count>" pair.
+sum_counter() {
+    local qname=$1 label=$2
+    awk -v q="'${qname}'" -v lbl="$label" '
+        index($0, "DIFF REQUEST STATS FOR") { inblk = (index($0, "QUEUE " q) > 0); next }
+        inblk && !match($0, "^.*:[ ]+[A-Za-z_][A-Za-z0-9_ ]*[ ]+[0-9]+$") { inblk = 0; next }
+        inblk && match($0, "[ ]" lbl "[ ]+[0-9]+$") {
+            s = substr($0, RSTART); n = split(s, a, " "); total += a[n]
+        }
+        END { print total + 0 }
+    '
+}
+
+# dump the diff stats every 5s so they land well inside the test
+mtrap "reql diffstat 5"
+
+err=$(statreqs 2>&1 >/dev/null) ||
+    failexit "cannot read the master's statreqs log: $err"
+
+run "create table ta(i int)" || failexit "create table ta failed"
+run "create table tb(i int)" || failexit "create table tb failed"
+
+# sp_consume: consumes exactly one event per invocation via consumer:consume(),
+# which reaches the master as OSQL_DBQ_CONSUME
+run "create procedure sp_consume version 'statreqs' {
+local function main()
+    local c = db:consumer()
+    if c:poll(60000) == nil then return -1, 'no event' end
+    c:consume()
+end}" || failexit "create procedure sp_consume failed"
+run "create lua consumer sp_consume on (table ta for insert)" ||
+    failexit "create lua consumer sp_consume failed"
+
+# sp_next: consumes exactly one event per invocation via consumer:next(), which
+# reaches the master as OSQL_DELREC against the queue
+run "create procedure sp_next version 'statreqs' {
+local function main()
+    local c = db:consumer()
+    if c:poll(60000) == nil then return -1, 'no event' end
+    db:begin()
+    c:next()
+    db:commit()
+end}" || failexit "create procedure sp_next failed"
+run "create lua consumer sp_next on (table tb for insert)" ||
+    failexit "create lua consumer sp_next failed"
+
+# each insert fires its trigger, which enqueues one event
+i=0
+while [[ $i -lt $NEVENTS_CONSUME ]]; do
+    run "insert into ta values($i)" >/dev/null || failexit "insert into ta failed"
+    i=$((i + 1))
+done
+
+i=0
+while [[ $i -lt $NEVENTS_NEXT ]]; do
+    run "insert into tb values($i)" >/dev/null || failexit "insert into tb failed"
+    i=$((i + 1))
+done
+
+# drain both queues, one event per invocation
+i=0
+while [[ $i -lt $NEVENTS_CONSUME ]]; do
+    run "exec procedure sp_consume()" >/dev/null || failexit "sp_consume failed"
+    i=$((i + 1))
+done
+
+i=0
+while [[ $i -lt $NEVENTS_NEXT ]]; do
+    run "exec procedure sp_next()" >/dev/null || failexit "sp_next failed"
+    i=$((i + 1))
+done
+
+depth=$(timeout 90 ${CDB2SQL_EXE} --tabs $hostopt ${CDB2_OPTIONS} ${dbnm} default \
+    "select coalesce(sum(depth), 0) from comdb2_queues")
+[[ "$depth" != "0" ]] && failexit "queues not drained, depth is '$depth'"
+
+# statthd dumps on a 5s cadence; poll until the counters catch up.  The
+# counters are bumped pre-commit, so a deadlock-retried transaction can inflate
+# them - assert a lower bound rather than exact equality.
+ok=0
+i=0
+while [[ $i -lt 90 ]]; do
+    snap=$(statreqs 2>/dev/null)
+    enq_c=$(printf '%s\n' "$snap" | sum_counter __qsp_consume enqueued)
+    deq_c=$(printf '%s\n' "$snap" | sum_counter __qsp_consume dequeued)
+    osql_c=$(printf '%s\n' "$snap" | sum_counter __qsp_consume OSQL_DBQ_CONSUME)
+    enq_n=$(printf '%s\n' "$snap" | sum_counter __qsp_next enqueued)
+    deq_n=$(printf '%s\n' "$snap" | sum_counter __qsp_next dequeued)
+    osql_n=$(printf '%s\n' "$snap" | sum_counter __qsp_next OSQL_DELREC)
+
+    if [[ $enq_c -ge $NEVENTS_CONSUME && $deq_c -ge $NEVENTS_CONSUME &&
+          $osql_c -ge $NEVENTS_CONSUME && $enq_n -ge $NEVENTS_NEXT &&
+          $deq_n -ge $NEVENTS_NEXT && $osql_n -ge $NEVENTS_NEXT ]]; then
+        ok=1
+        break
+    fi
+    sleep 1
+    i=$((i + 1))
+done
+
+if [[ $ok -ne 1 ]]; then
+    echo "statreqs queue counters wrong after $i polls:"
+    echo "  __qsp_consume enqueued=$enq_c dequeued=$deq_c" \
+         "OSQL_DBQ_CONSUME=$osql_c (want >= $NEVENTS_CONSUME each)"
+    echo "  __qsp_next    enqueued=$enq_n dequeued=$deq_n" \
+         "OSQL_DELREC=$osql_n (want >= $NEVENTS_NEXT each)"
+    statreqs 2>/dev/null | grep -A 8 "STATS FOR QUEUE"
+    failexit "queue counters missing or wrong in statreqs"
+fi
+
+# the on-demand dump should report the queues too
+statlong=$(mtrap "stat long")
+for q in __qsp_consume __qsp_next; do
+    echo "$statlong" | grep -q "REQUEST STATS FOR QUEUE '$q'" ||
+        failexit "'stat long' is missing queue $q"
+done
+echo "$statlong" | grep -q "OSQL_DBQ_CONSUME" ||
+    failexit "'stat long' is missing OSQL_DBQ_CONSUME for a queue"
+
+echo "__qsp_consume: enqueued=$enq_c dequeued=$deq_c OSQL_DBQ_CONSUME=$osql_c"
+echo "__qsp_next:    enqueued=$enq_n dequeued=$deq_n OSQL_DELREC=$osql_n"
+
+run "drop lua consumer sp_consume" >/dev/null
+run "drop lua consumer sp_next" >/dev/null
+
+echo "passed queuedb_statreqs"
+exit 0

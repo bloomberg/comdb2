@@ -5271,6 +5271,7 @@ int dbq_add_recno(struct ireq *iq, void *trans, uint32_t recno, const void *dta,
 
     if (bdberr == 0) {
         struct dbtable *qdb = iq->usedb;
+        ATOMIC_ADD64(qdb->write_count[RECORD_WRITE_INS], 1);
         if (qdb->dbtype == DBTYPE_QUEUEDB) {
             return 0;
         }
@@ -5317,8 +5318,10 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_que
     bdb_queue_consume(bdb_handle, trans, consumer, fnd, &bdberr);
     iq->gluewhere = "bdb_queue_consume done";
 
-    if (bdberr == 0)
+    if (bdberr == 0) {
+        ATOMIC_ADD64(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
         return 0;
+    }
     if (bdberr == BDBERR_DEADLOCK)
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_READONLY)

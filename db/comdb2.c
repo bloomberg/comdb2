@@ -4686,7 +4686,9 @@ static inline void log_tbl_item(int64_t curr, int64_t *prev, const char *(*type_
     int diff = curr - *prev;
     if (diff > 0) {
         if (*hdr_p == 0) {
-            const char hdr_fmt[] = "DIFF REQUEST STATS FOR TABLE '%s'\n";
+            int is_queue = (tbl->dbtype == DBTYPE_QUEUE || tbl->dbtype == DBTYPE_QUEUEDB);
+            const char *hdr_fmt =
+                is_queue ? "DIFF REQUEST STATS FOR QUEUE '%s'\n" : "DIFF REQUEST STATS FOR TABLE '%s'\n";
             reqlog_logf(statlogger, REQL_INFO, hdr_fmt, tbl->tablename);
             *hdr_p = 1;
         }
@@ -4694,6 +4696,14 @@ static inline void log_tbl_item(int64_t curr, int64_t *prev, const char *(*type_
                     (type_to_str ? type_to_str(type) : string), diff);
     }
     *prev = curr;
+}
+
+static inline void log_osql_tbl_stats(struct reqlogger *statlogger, dbtable *tbl, int *hdr_p)
+{
+    for (int jj = 0; jj < MAX_OSQL_TYPES; jj++) {
+        log_tbl_item(tbl->blockosqltypcnt[jj], &tbl->prev_blockosqltypcnt[jj], osql_reqtype_str, jj, NULL, hdr_p,
+                     statlogger, tbl, 0);
+    }
 }
 
 void *statthd(void *p)
@@ -4970,10 +4980,7 @@ void *statthd(void *p)
                     log_tbl_item(tbl->blocktypcnt[jj], &tbl->prev_blocktypcnt[jj], breq2a, jj, NULL, &hdr, statlogger,
                                  tbl, 0);
                 }
-                for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
-                    log_tbl_item(tbl->blockosqltypcnt[jj], &tbl->prev_blockosqltypcnt[jj], osql_reqtype_str, jj, NULL,
-                                 &hdr, statlogger, tbl, 0);
-                }
+                log_osql_tbl_stats(statlogger, tbl, &hdr);
 
                 log_tbl_item(dbenv->txns_committed, &dbenv->prev_txns_committed, NULL, 0, "txns committed", &hdr,
                              statlogger, tbl, 0);
@@ -5003,6 +5010,18 @@ void *statthd(void *p)
                              &hdr, statlogger, tbl, 0);
                 log_tbl_item(tbl->deadlock_count, &tbl->saved_deadlock_count, NULL, 0, "deadlock count", &hdr,
                              statlogger, tbl, 0);
+            }
+
+            for (ii = 0; ii < dbenv->num_qdbs; ++ii) {
+                dbtable *qdb = dbenv->qdbs[ii];
+                int hdr = 0;
+
+                log_osql_tbl_stats(statlogger, qdb, &hdr);
+
+                log_tbl_item(qdb->write_count[RECORD_WRITE_INS], &qdb->saved_write_count[RECORD_WRITE_INS], NULL, 0,
+                             "enqueued", &hdr, statlogger, qdb, 0);
+                log_tbl_item(qdb->write_count[RECORD_WRITE_DEL], &qdb->saved_write_count[RECORD_WRITE_DEL], NULL, 0,
+                             "dequeued", &hdr, statlogger, qdb, 0);
             }
 
             int num_sc = 0;
