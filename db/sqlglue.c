@@ -10268,7 +10268,11 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         clnt->recover_deadlock_thd = pthread_self();
         comdb2_cheapstack_char_array(clnt->recover_deadlock_stack, RECOVER_DEADLOCK_MAX_STACK);
 #endif
-        recover_deadlock_sc_cleanup(clnt->thd->sqlthd);
+        /* use TLS thd (as recover_deadlock_flags_int does): clnt->thd may
+         * already be cleared when called from the post-done flush path */
+        struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
+        if (sqlthd)
+            recover_deadlock_sc_cleanup(sqlthd);
         assert(bdb_lockref() == 0);
     } else {
         assert(bdb_lockref() > 0);

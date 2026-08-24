@@ -246,9 +246,12 @@ retry:
     rc = clnt_check_bdb_lock_desired(clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-        rc = osql_end(clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
+        /* keep_rqid: session is being restarted, don't zero rqid */
+        if (!keep_rqid) {
+            rc = osql_end(clnt);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
+            }
         }
         return SQLITE_BUSY;
     }
@@ -1211,7 +1214,8 @@ retry:
                         int keep_session = !is_final || (get_cnonce(clnt, &snap) == 0);
 
                         rc = osql_sock_restart(clnt, 1, keep_session, is_final);
-                        if (sock_restart_retryable_rcode(rc) && !clnt->is_coordinator) {
+                        /* don't resend on an ended session (rqid 0) */
+                        if (sock_restart_retryable_rcode(rc) && osql->rqid && !clnt->is_coordinator) {
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);
                             }
