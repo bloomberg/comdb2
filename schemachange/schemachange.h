@@ -428,6 +428,15 @@ typedef struct sc_list sc_list_t;
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
 
 size_t schemachange_packed_size(struct schema_change_type *s);
+
+/* Returns 1 if schema changes of this kind run through do_ddl(), which is the
+ * only path that marks the schema change in llmeta and, on completion, calls
+ * mark_schemachange_over_tran() to remove those objects.  Kinds that return 0
+ * (sp, trigger, lua func, ...) must not persist any per-table sc state: there
+ * is nothing that would ever clean it up.
+ */
+int sc_kind_runs_do_ddl(int kind);
+
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
 int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize);

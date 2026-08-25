@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 source ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 # args
 # <dbname>
@@ -122,9 +123,9 @@ testcase_output=$(cat $OUT)
 expected_output=$(cat output.log)
 if [[ "$testcase_output" != "$expected_output" ]]; then
 
-   # print message 
+   # print message
    echo "  ^^^^^^^^^^^^"
-   echo "The above testcase (${testcase}) has failed!!!" 
+   echo "The above testcase (${testcase}) has failed!!!"
    echo " "
    echo "Use 'diff <expected-output> <my-output>' to see why:"
    echo "> diff ${PWD}/{output.log,run.log}"
@@ -133,6 +134,188 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    echo " "
 
    # quit
+   exit 1
+fi
+
+# TEST 2 dropped the limit to one, put it back so the rest can run ddl
+echo "restoring the sc list limit"
+$CM "put tunable max_sc_lists 10000"
+if (( $? != 0 )) ; then
+   echo "FAILURE to restore max_sc_lists"
+   exit 1
+fi
+
+failed=0
+scl_count=0
+seed_count=0
+
+llmeta_sc()
+{
+    $C "exec procedure sys.cmd.send('llmeta list')" 2>/dev/null
+}
+
+# both counts must match what they were after the previous check; the sc_list
+# and the sc seed are removed when a schema change finishes, so anything left
+# behind is a leaked llmeta object
+check_no_leak()
+{
+    local what=$1
+    local dump=$(llmeta_sc)
+    local n=$(echo "$dump" | grep -c "LLMETA_SCHEMACHANGE_LIST")
+    local s=$(echo "$dump" | grep -c "LLMETA_SC_SEEDS")
+
+    if (( n != scl_count )) ; then
+        echo "LEAK: ${what}: scl count ${scl_count} -> ${n}"
+        failed=1
+    else
+        echo "OK: ${what}: scl count stable at ${n}"
+    fi
+    if (( s != seed_count )) ; then
+        echo "LEAK: ${what}: seed count ${seed_count} -> ${s}"
+        failed=1
+    else
+        echo "OK: ${what}: seed count stable at ${s}"
+    fi
+    scl_count=$n
+    seed_count=$s
+}
+
+echo "TEST 3: ddl must not leak scl or sc seed at any transaction level"
+
+dump=$(llmeta_sc)
+scl_count=$(echo "$dump" | grep -c "LLMETA_SCHEMACHANGE_LIST")
+seed_count=$(echo "$dump" | grep -c "LLMETA_SC_SEEDS")
+echo "baseline scl count ${scl_count} seed count ${seed_count}"
+
+$C "create table s1(a int)" >/dev/null
+sleep 2
+check_no_leak "autocommit sosql create table"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+create table s2(a int)
+EOF
+sleep 2
+check_no_leak "read committed create table"
+
+$C - <<'EOF' >/dev/null
+set transaction snapshot isolation
+create table s3(a int)
+EOF
+sleep 2
+check_no_leak "snapshot isolation create table"
+
+$C "alter table s1 add column c int" >/dev/null
+sleep 2
+check_no_leak "autocommit sosql alter table"
+
+$C "create procedure p1 version 'v1' {local function main() end}" >/dev/null
+sleep 2
+check_no_leak "autocommit sosql create procedure"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+create procedure p2 version 'v1' {local function main() end}
+EOF
+sleep 2
+check_no_leak "read committed create procedure"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+put default procedure p2 'v1'
+EOF
+sleep 2
+check_no_leak "read committed put default procedure"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+begin
+create table s8(a int)$$
+commit
+EOF
+sleep 2
+check_no_leak "begin/commit read committed create table"
+
+$C "drop procedure p1 'v1'" >/dev/null
+sleep 2
+check_no_leak "drop procedure"
+
+echo "TEST 4: resuming a mixed table+sp transaction must not leak llmeta objects"
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "skipping TEST 4, it needs a cluster to swing the master"
+else
+    echo "inserting rows so the alter takes a while"
+    $C "insert into t(a) select * from generate_series(1000, 1060)" >/dev/null
+    if (( $? != 0 )) ; then
+       echo "FAILURE inserting rows"
+       exit 1
+    fi
+
+    # create procedure runs in a transaction of its own, so it cannot be part
+    # of the one below; put default procedure can, and is equally a kind that
+    # keeps no resume state
+    $C "create procedure swingsp version 'v1' {local function main() end}" >/dev/null
+    if (( $? != 0 )) ; then
+       echo "FAILURE creating the procedure"
+       exit 1
+    fi
+
+    master=`getmaster`
+    CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+    $CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" >/dev/null
+    $CM "exec procedure sys.cmd.send('scdelay 1000')" >/dev/null
+
+    # one sc_list holding an alter, which persists resume state, and a default
+    # procedure change, which does not; the new master resumes both from the
+    # saved sc_list and removes it when done.  The client is expected to get an
+    # error here, the schema changes still go through.
+    # the alter adds a key, which has to walk every record and so is still
+    # running when the master goes away -- adding a column would be an instant
+    # schema change and would be long done by then.  cdb2sql reads alter as a
+    # $$ delimited block; put default procedure is a plain single line
+    ( $C - > swing.out 2>&1 <<'EOF'
+set transaction read committed
+begin
+alter table t {schema{int a cstring b[10] null=yes} keys{"pk"=a dup "bkey"=b}}$$
+put default procedure swingsp 'v1'
+commit
+EOF
+    ) &
+
+    sleep 5
+    echo "downgrading master to force a resume"
+    downgrade_master
+
+    wait
+    echo "client returned:"
+    cat swing.out
+
+    # the new master has to finish the alter off the saved sc_list; if the list
+    # were dropped instead, the key would never show up
+    echo "waiting for the resumed schema change to finish"
+    found=0
+    i=0
+    while (( i < 180 )) ; do
+        found=$($CT "select count(*) from comdb2_keys where tablename='t' and keyname like '%BKEY%'" 2>/dev/null)
+        [[ "$found" == "1" ]] && break
+        sleep 1
+        let i=i+1
+    done
+
+    if [[ "$found" != "1" ]]; then
+        echo "FAILURE: new master did not resume the alter from the saved sc_list"
+        failed=1
+    else
+        echo "OK: new master resumed and completed the alter"
+    fi
+
+    sleep 10
+    check_no_leak "mixed table+sp ddl resumed after master swing"
+fi
+
+if (( failed != 0 )) ; then
+   echo "FAILURE"
    exit 1
 fi
 
