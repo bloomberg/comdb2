@@ -64,6 +64,8 @@ include_directories(
 )
 add_dependencies(schemachange mem proto bdb)
 target_link_libraries(schemachange PUBLIC bdb)
+# db/sqlinterfaces.h includes <sqlite3.h>, which is generated at build time.
+target_link_libraries(schemachange PRIVATE sqlite3_header)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(schemachange)
 endif()
