@@ -367,7 +367,7 @@ int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                                           access_type, bdberr);
 }
 
-int gbl_create_dba_user = 1;
+int gbl_create_dba_user = 0;
 
 int bdb_create_dba_user(bdb_state_type *bdb_state)
 {

@@ -1,6 +1,6 @@
 (authentication_status='disabled')
 (username='dba', isOP='Y')
-(name='create_dba_user', description='Automatically create 'dba' user if it does not exist already (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
+(name='create_dba_user', description='Automatically create 'dba' user if it does not exist already (Default: off)', type='BOOLEAN', value='ON', read_only='Y')
 (name='lock_dba_user', description='When enabled, 'dba' user cannot be removed and its access permissions cannot be modified. (Default: off)', type='BOOLEAN', value='ON', read_only='Y')
 (rows inserted=1)
 (i=1)
