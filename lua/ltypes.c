@@ -644,6 +644,10 @@ static int l_datetime_change_timezone(lua_State *lua)
     luaL_checkudata(lua, 1, dbtypes.datetime);
     d = (lua_datetime_t *) lua_topointer(lua, 1);
     newtimezone = lua_tostring(lua,2);
+    if (newtimezone == NULL) {
+        lua_pushinteger(lua, -1);
+        return 1;
+    }
     sdt.sec = db_struct2time(d->val.tzname, &(d->val.tm));
     if( db_time2struct(newtimezone, &sdt.sec, &(newtm)) == 0) {
         strncpy(d->val.tzname, newtimezone, sizeof(d->val.tzname) - 1);
