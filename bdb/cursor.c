@@ -4726,6 +4726,15 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
     char *data = NULL;
     int rc = 0;
+    /* The row this cursor was on before it was invalidated.  A DB_NEXT/PREV
+       reposition that lands past this key because the row was rewritten
+       in-place while we were unlocked (masked genid unchanged -- see
+       bdb_inplace_cmp_genids) must not hand that rewrite back as "the next
+       row": it is the same logical row we already returned.  Snapshotting
+       cur->genid here, before any of the calls below can overwrite it, lets
+       both DB_NEXT below and both callers of this function (bdb_cursor_reposition
+       and bdb_cursor_reorder) share one check regardless of cursor type. */
+    unsigned long long original_genid = cur->genid;
 
     assert(how == DB_NEXT || how == DB_PREV);
 
@@ -4738,51 +4747,80 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
 
     switch (how) {
     case DB_NEXT: {
-        rc = bdb_cursor_find_and_skip(cur, berkdb, key, keylen, DB_SET_RANGE, 0,
-                                      1, bdberr);
-        if (rc < 0)
-            return rc;
+        char keybuf[MAXKEYSZ];
+        char *searchkey = key;
+        int searchkeylen = keylen;
 
-        if (rc == IX_FND) {
-            /* is this the key we really want, or the next one? */
-            char *found_key = NULL;
-            int found_keylen = 0;
-
-            rc = berkdb->key(berkdb, &found_key, bdberr);
-            if (rc < 0)
-                return rc;
-            rc = berkdb->keysize(berkdb, &found_keylen, bdberr);
+        for (;;) {
+            rc = bdb_cursor_find_and_skip(cur, berkdb, searchkey, searchkeylen, DB_SET_RANGE, 0, 1, bdberr);
             if (rc < 0)
                 return rc;
 
-            assert(keylen <= found_keylen);
+            if (rc == IX_FND) {
+                /* is this the key we really want, or the next one? */
+                char *found_key = NULL;
+                int found_keylen = 0;
 
-            rc = memcmp(key, found_key, keylen);
+                rc = berkdb->key(berkdb, &found_key, bdberr);
+                if (rc < 0)
+                    return rc;
+                rc = berkdb->keysize(berkdb, &found_keylen, bdberr);
+                if (rc < 0)
+                    return rc;
 
-            assert(rc <= 0);
+                assert(searchkeylen <= found_keylen);
 
-            if (rc < 0) {
-                rc = IX_NOTFND; /* found the next in order */
-            } else if (rc > 0) {
-                rc = IX_PASTEOF; /* last gave us a smaller row */
-            } else {
-                rc = IX_FND; /* bingo */
+                rc = memcmp(searchkey, found_key, searchkeylen);
+
+                assert(rc <= 0);
+
+                if (rc < 0) {
+                    /* found something past our search key.  If it is an
+                       in-place rewrite of the row we started from (same
+                       masked genid, i.e. only the update counter differs --
+                       see set_updateid()), it is not a new row: the write
+                       cannot have produced a THIRD version while we hold the
+                       lock we just took getting here (an update targeting
+                       this exact genid needs a conflicting lock, so it
+                       blocks), so searching forward from this exact position
+                       terminates in a bounded number of retries. */
+                    unsigned long long found_genid = 0;
+                    int grc = berkdb_get_genid(cur, berkdb, &found_genid, bdberr);
+                    if (grc < 0)
+                        return grc;
+
+                    if (!is_genid_synthetic(found_genid) && !is_genid_synthetic(original_genid) &&
+                        0 == bdb_inplace_cmp_genids(cur->state, original_genid, found_genid)) {
+                        assert(found_keylen <= sizeof(keybuf));
+                        memcpy(keybuf, found_key, found_keylen);
+                        searchkey = keybuf;
+                        searchkeylen = found_keylen;
+                        continue;
+                    }
+
+                    rc = IX_NOTFND; /* found the next in order */
+                } else if (rc > 0) {
+                    rc = IX_PASTEOF; /* last gave us a smaller row */
+                } else {
+                    rc = IX_FND; /* bingo */
+                }
+
+                /*
+                logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx
+                found_key=%llx\n",
+                      pthread_self(), __FILE__, __LINE__, rc, searchkeylen,
+                      *(unsigned long long*)searchkey, *(unsigned long long*)found_key
+                      );
+                 */
             }
-
             /*
-            logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx
-            found_key=%llx\n",
-                  pthread_self(), __FILE__, __LINE__, rc, keylen,
-                  *(unsigned long long*)key, *(unsigned long long*)found_key
-                  );
+            else
+               logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
+                     pthread_self(), __FILE__, __LINE__, rc, searchkeylen,
+                     *(unsigned long long*)searchkey);
              */
+            break;
         }
-        /*
-        else
-           logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
-                 pthread_self(), __FILE__, __LINE__, rc, keylen,
-                 *(unsigned long long*)key);
-         */
         break;
     }
     case DB_PREV: {
