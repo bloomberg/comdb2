@@ -3068,6 +3068,7 @@ static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
     if (!gbl_exit && comdb2_ipc_master_set) {
         comdb2_ipc_master_set(host);
     }
+    osql_noleader_broadcast();
     gbl_lost_master_time = 0;
     osql_checkboard_for_each(thedb->master, osql_checkboard_master_changed);
 }
@@ -3767,7 +3768,7 @@ int open_bdb_env(struct dbenv *dbenv)
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_SIGNAL_LOGFILL, signal_logfill);
 
 #if 0
-    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_CATCHUP, 
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_CATCHUP,
             catchup_callback);
 #endif
 
@@ -3817,10 +3818,8 @@ int open_bdb_env(struct dbenv *dbenv)
                 dbenv->handle_sibling, intern(dbenv->sibling_hostname[ii]),
                 dbenv->sibling_port[ii][NET_REPLICATION]);
             if (rcv == 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "open_bdb_env:failed add_to_netinfo host %s port %d\n",
-                        dbenv->sibling_hostname[ii],
-                        dbenv->sibling_port[ii][NET_REPLICATION]);
+                logmsg(LOGMSG_ERROR, "open_bdb_env:failed add_to_netinfo host %s port %d\n",
+                       dbenv->sibling_hostname[ii], dbenv->sibling_port[ii][NET_REPLICATION]);
                 return -1;
             }
         }
@@ -4008,8 +4007,7 @@ static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
     free(str);
 }
 
-
-void get_disable_skipscan_all() 
+void get_disable_skipscan_all()
 {
 #ifdef DEBUGSKIPSCAN
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
@@ -4021,8 +4019,6 @@ void get_disable_skipscan_all()
     }
     curtran_puttran(tran);
 }
- 
-
 
 /* open the db files, etc */
 int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
@@ -6155,8 +6151,8 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr)
     int rc = bdb_table_version_upsert(db->handle, trans, bdberr);
     if(rc) return rc;
 
-    //select needs to be done with the same transaction to avoid 
-    //undetectable deadlock for writing and reading from same thread
+    // select needs to be done with the same transaction to avoid
+    // undetectable deadlock for writing and reading from same thread
     unsigned long long version;
     rc = bdb_table_version_select(db->tablename, trans, &version, bdberr);
     if (rc || *bdberr) {
