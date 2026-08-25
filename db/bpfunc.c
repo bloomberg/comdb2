@@ -66,6 +66,11 @@ static int _get_bpfunc(bpfunc_t *func, int32_t data_len, const uint8_t *data)
 {
     init_bpfunc(func);
 
+    if (data_len < 0 || (data_len > 0 && data == NULL)) {
+        logmsg(LOGMSG_ERROR, "%s: invalid bpfunc length %d\n", __func__, data_len);
+        return -1;
+    }
+
     func->arg = bpfunc_arg__unpack(&pb_alloc, data_len, data);
 
     if (!func->arg)
@@ -77,20 +82,17 @@ static int _get_bpfunc(bpfunc_t *func, int32_t data_len, const uint8_t *data)
 int bpfunc_prepare(bpfunc_t **f, int32_t data_len, uint8_t *data,
                    bpfunc_info *info)
 {
-    bpfunc_t *func = *f = (bpfunc_t *)malloc(sizeof(bpfunc_t));
-
-    if (func == NULL)
-        goto end;
-
+    *f = NULL;
+    bpfunc_t *func = malloc(sizeof(bpfunc_t));
+    if (func == NULL) return -1;
     if (_get_bpfunc(func, data_len, data))
         goto fail_arg;
-
-    if (!prepare_methods(func, info))
-        return 0;
-
+    if (prepare_methods(func, info))
+        goto fail_arg;
+    *f = func;
+    return 0;
 fail_arg:
     free_bpfunc(func);
-end:
     return -1;
 }
 
