@@ -118,6 +118,8 @@ include_directories(
 )
 add_dependencies(bdb db mem proto)
 target_link_libraries(bdb PUBLIC db)
+# db/sqlinterfaces.h includes <sqlite3.h>, which is generated at build time.
+target_link_libraries(bdb PRIVATE sqlite3_header)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(bdb)
 endif()

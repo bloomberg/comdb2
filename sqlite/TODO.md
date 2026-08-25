@@ -149,7 +149,8 @@
 - [x] 205  ./src/vdbesort.c.patch
 - [x] 221  ./src/util.c.patch
 - [x] 221  ./tool/mkkeywordhash.c.patch
-- [x] 289  ./src/sqlite3.h (regenerated from 3.51.2; `sqlite.h.in` dropped)
+- [x] 289  ./src/sqlite.h.in (patched for 3.51.2; `sqlite3.h` now generated at
+           build time from it rather than checked in)
 - [x] 258  ./src/resolve.c.patch
 - [x] 368  ./src/vdbeInt.h.patch
 - [x] 334  ./src/attach.c.patch
