@@ -3642,11 +3642,28 @@ static void net_block_req(void *hndl, void *uptr, char *fromhost,
                           struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
+    /* The payload starts at 'data'; sizeof() may include trailing padding. */
+    const size_t header_len = offsetof(net_block_msg_t, data);
+
+    /* Validate the received message before reading any of its fields. */
+    if (dtap == NULL || dtalen < 0 || (size_t)dtalen < header_len) {
+        logmsg(LOGMSG_ERROR, "%s: invalid block request message length %d\n", __func__, dtalen);
+        return;
+    }
 
     net_block_msg_t *net_msg = dtap;
-    handle_buf_block_offload(thedb, (uint8_t *)net_msg->data,
-                             (uint8_t *)net_msg->data + net_msg->datalen, 0,
-                             fromhost, net_msg->rqid);
+    int datalen = net_msg->datalen;
+    size_t available = (size_t)dtalen - header_len;
+
+    /* The declared payload length has to fit in what was actually received
+     * and in the buffer it will be copied into. */
+    if (datalen < 0 || (size_t)datalen > available || (size_t)datalen > MAX_BUFFER_SIZE) {
+        logmsg(LOGMSG_ERROR, "%s: invalid block request payload length %d\n", __func__, datalen);
+        return;
+    }
+
+    handle_buf_block_offload(thedb, (uint8_t *)net_msg->data, (uint8_t *)net_msg->data + datalen, 0, fromhost,
+                             net_msg->rqid);
 }
 
 int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
