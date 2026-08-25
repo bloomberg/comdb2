@@ -1799,6 +1799,7 @@ repl_loop:
                 if (gbl_physrep_debug) {
                     logmsg(LOGMSG_USER, "Checking reverse connection status\n");
                 }
+                close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto repl_loop;
             }
 
