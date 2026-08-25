@@ -1488,3 +1488,32 @@ end
 }$$
 EXEC PROCEDURE emit2()
 EOF
+
+cdb2sql $SP_OPTIONS - <<'EOF'
+create procedure change_tz version 'test' {
+local function try(label, tz)
+    local d = db:cast("2015-02-23T095959.999", "datetime")
+    local before = d.timezone
+    local rc = d:change_timezone(tz)
+    local verdict = "changed-to:" .. tostring(d.timezone)
+    if d.timezone == before then
+        verdict = "unchanged"
+    end
+    db:emit(label .. " " .. tostring(rc) .. " " .. verdict)
+end
+
+local function main()
+    -- a real zone still works
+    local d = db:cast("2015-02-23T095959.999", "datetime")
+    local rc = d:change_timezone("Europe/London")
+    db:emit("valid " .. tostring(rc) .. " " .. tostring(d.timezone))
+
+    try("len39", string.rep('A', 39))
+    try("len40", string.rep('A', 40))
+    try("len41", string.rep('A', 41))
+    try("nil", nil)
+end
+}$$
+put default procedure change_tz 'test'
+exec procedure change_tz()
+EOF

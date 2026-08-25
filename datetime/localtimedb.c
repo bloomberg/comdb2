@@ -2173,21 +2173,18 @@ static void db_settzname(void)
 }
 
 #include <plhash_glue.h>
-
-#define NAME_KEY_MAX 40
+#include <stddef.h>
 
 static hash_t *tz_hash_tbl;
 
 typedef struct {
-    char key[NAME_KEY_MAX];
     struct db_state db_mem;
+    char key[]; /* nul terminated tz name, sized to fit by add_tz() */
 } tz_hash_entry_type;
 
 void tz_hash_init(void)
 {
-    tz_hash_tbl = hash_init(NAME_KEY_MAX);
-
-    logmsg(LOGMSG_INFO, "initialized tz hash table\n");
+    tz_hash_tbl = hash_init_str(offsetof(tz_hash_entry_type, key));
 }
 
 void tz_hash_free(void)
@@ -2197,34 +2194,16 @@ void tz_hash_free(void)
 
 static struct db_state *find_tz(const char *name)
 {
-    char key[NAME_KEY_MAX];
-    tz_hash_entry_type *ptr;
-
-    if (strlen(name) > NAME_KEY_MAX) {
-        logmsg(LOGMSG_ERROR, "%s: key name too long. max: %d\n",
-                __func__, NAME_KEY_MAX);
-        return NULL;
-    }
-
-    bzero(key, NAME_KEY_MAX);
-    strcpy(key, name);
-
-    ptr = hash_find(tz_hash_tbl, key);
-
-    if (ptr) {
-        return &(ptr->db_mem);
-    } else {
-        /*fprintf(stderr, "didnt find %s in hash\n", name); */
-        return NULL;
-    }
+    tz_hash_entry_type *ptr = hash_find(tz_hash_tbl, name);
+    return ptr ? &(ptr->db_mem) : NULL;
 }
 
 static void add_tz(const char *name, struct db_state *ptr)
 {
-    tz_hash_entry_type *hash_entry_ptr = malloc(sizeof(tz_hash_entry_type));
-    memset(&hash_entry_ptr->key, 0, sizeof(hash_entry_ptr->key));
-    strncpy0(hash_entry_ptr->key, name, sizeof(hash_entry_ptr->key));
+    size_t len = strlen(name);
+    tz_hash_entry_type *hash_entry_ptr = malloc(sizeof(tz_hash_entry_type) + len + 1);
     memcpy(&hash_entry_ptr->db_mem, ptr, sizeof(struct db_state));
+    memcpy(hash_entry_ptr->key, name, len + 1);
     hash_add(tz_hash_tbl, hash_entry_ptr);
 }
 
