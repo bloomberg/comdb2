@@ -1,1 +1,2 @@
+create_dba_user on
 lock_dba_user on

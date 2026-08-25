@@ -168,9 +168,8 @@ REGISTER_TUNABLE("crc32c",
                  NULL, NULL);
 REGISTER_TUNABLE("create_dba_user",
                  "Automatically create 'dba' user if it does not exist already "
-                 "(Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_create_dba_user, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_create_dba_user, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("create_default_user",
                  "Automatically create 'default' user when authentication is "
                  "enabled. (Default: off)",
