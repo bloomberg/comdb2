@@ -747,6 +747,9 @@ static const uint8_t *osqlcomm_bpfunc_type_get(osql_bpfunc_t **p_osql_bpfunc,
 
     p_buf = buf_get(&data_len, sizeof(data_len), p_buf, p_buf_end);
 
+    if (data_len < 0 || data_len > (p_buf_end - p_buf))
+        return NULL;
+
     *p_osql_bpfunc = malloc(sizeof(osql_bpfunc_t) + data_len);
 
     if (!*p_osql_bpfunc)
@@ -7755,10 +7758,22 @@ done_delete:
     } break;
     case OSQL_UPDCOLS: {
         osql_updcols_t dt = {0};
-        const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
+        const uint8_t *p_buf_end = (const uint8_t *)msg + msglen;
         int i;
-
         p_buf = (uint8_t *)osqlcomm_updcols_type_get(&dt, p_buf, p_buf_end);
+
+        if (!p_buf) {
+            logmsg(LOGMSG_ERROR, "%s: truncated OSQL_UPDCOLS, msglen %d\n", __func__, msglen);
+            return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+        }
+
+        if (dt.ncols <= 0 ||
+            (size_t)dt.ncols > (size_t)(p_buf_end - p_buf) / sizeof(int)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: OSQL_UPDCOLS with invalid ncols %d, msglen %d\n",
+                   __func__, dt.ncols, msglen);
+            return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+        }
 
         if (gbl_enable_osql_logging) {
             int jj;
@@ -7777,8 +7792,6 @@ done_delete:
             int sz = sizeof(int) * (dt.ncols + 1);
             *updCols = (int *)malloc(sz);
 
-            /* reset to the end of the buffer */
-            p_buf_end = p_buf + sz;
             if (!*updCols) {
                 logmsg(LOGMSG_ERROR, "%s failed to allocate memory for an upd_cols "
                                 "request, size %d\n",
@@ -8066,7 +8079,7 @@ done_delete:
 
         if (n_p_buf && rpl) {
             bpfunc_lstnode_t *lnode;
-            bpfunc_t *func;
+            bpfunc_t *func = NULL;
             bpfunc_info info;
 
             info.iq = iq;
