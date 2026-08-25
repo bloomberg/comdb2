@@ -474,16 +474,6 @@ void sqlite3Update(
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto update_cleanup;
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* create our updCols array. */
-  if( isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
-                        strlen("__hidden__rowid")+1)==0 ){
-    sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
-  } else {
-    sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
-  }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Resolve the column names in all the expressions of the
   ** of the UPDATE statement.  Also find the column index
   ** for each column to be updated in the pChanges array.  For each
@@ -623,6 +613,18 @@ void sqlite3Update(
     ** indexes in case they are needed to delete records.  */
     memset(aToOpen, 1, nIdx+1);
   }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* This must happen after aXRef[] has been fully resolved above.
+  ** Otherwise, all columns will appear unchanged and the blob-update
+  ** optimization will not work correctly. */
+  if( isView && strncmp(pTab->aCol[0].zCnName, "__hidden__rowid",
+                        strlen("__hidden__rowid")+1)==0 ){
+    sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
+  } else {
+    sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pTrigger || hasFK, iDb);
@@ -855,10 +857,11 @@ void sqlite3Update(
       }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
-                                 aToOpen, 0, 0, OE_None, 0);
+                                 aToOpen, &iNotUsed1, &iNotUsed2, OE_None, 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
                                  aToOpen, &iNotUsed1, &iNotUsed2);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( addrOnce ){
         sqlite3VdbeJumpHereOrPopInst(v, addrOnce);
       }
