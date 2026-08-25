@@ -879,9 +879,24 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
                              const uint8_t *p_buf_end, int debug,
                              char *frommach, unsigned long long rqid)
 {
-    int length = p_buf_end - p_buf;
+    if (p_buf == NULL || p_buf_end == NULL || p_buf_end < p_buf) {
+        logmsg(LOGMSG_ERROR, "%s: invalid block request buffer\n", __func__);
+        return ERR_INTERNAL;
+    }
+
+    ptrdiff_t length = p_buf_end - p_buf;
+    if (length > MAX_BUFFER_SIZE) {
+        logmsg(LOGMSG_ERROR, "%s: invalid block request length %td\n", __func__, length);
+        return ERR_INTERNAL;
+    }
+
     uint8_t *p_bigbuf = get_bigbuf();
-    memcpy(p_bigbuf, p_buf, length);
+    if (p_bigbuf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: unable to acquire block request buffer\n", __func__);
+        return ERR_INTERNAL;
+    }
+
+    memcpy(p_bigbuf, p_buf, (size_t)length);
     if (length < EXTRA_RESPONSE_ROOM)
         length = EXTRA_RESPONSE_ROOM;
     int rc = handle_buf_main(dbenv, NULL, p_bigbuf, p_bigbuf + length, debug,
