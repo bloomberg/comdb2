@@ -352,15 +352,34 @@ fdb_svc_callback_t callbacks[] = {
 
     fdb_bend_index,
 
-    fdb_bend_trans_2pc_begin
+    fdb_bend_trans_2pc_begin, fdb_bend_trans_2pc_rc
 };
 // clang-format on
+
+/* callbacks[] is indexed by opcode, so it must have an entry for every
+ * FDB_MSG_* value; a short table means a dispatch reads past the end. Break the
+ * build if a new opcode is added without a matching callback. */
+typedef char callbacks_covers_every_opcode[(sizeof(callbacks) / sizeof(callbacks[0]) == FDB_MSG_MAX_OP) ? 1 : -1];
+
+/* Dispatch an incoming message to its backend callback. Callers must already
+ * have vetted the opcode against the whitelist for their session type; this is
+ * the last line of defence -- an opcode outside the table fails the request
+ * rather than calling through an out-of-bounds function pointer. */
+static int fdb_dispatch_msg(int type, COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
+{
+    if (type < 0 || type >= FDB_MSG_MAX_OP) {
+        logmsg(LOGMSG_ERROR, "%s: opcode %d out of range, failing request\n", __func__, type);
+        return -1;
+    }
+
+    return callbacks[type](sb, msg, arg);
+}
 
 /* Message types accepted on a remtran/rem2pc write (transaction) session:
  * transaction control, the row write ops and their _PI variants, index ops,
  * and heartbeats. Read/cursor ops and response types (e.g. FDB_MSG_TRAN_2PC_RC,
- * which has no callback entry) belong to other paths and must not be dispatched
- * here; rejecting them also keeps the callbacks[] index in range. */
+ * which the coordinator reads synchronously in fdb_recv_2pc_rc) belong to other
+ * paths and must not be dispatched here. */
 static int is_valid_remtran_msg(int type)
 {
     switch (type & FD_MSG_TYPE) {
@@ -3849,6 +3868,15 @@ int fdb_bend_trans_rc(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     return -1;
 }
 
+/* FDB_MSG_TRAN_2PC_RC is a response the participant sends back to the
+ * coordinator (see fdb_send_tran_2pc_rc), which reads it synchronously off the
+ * transaction socket in fdb_recv_2pc_rc. It is never a request, so receiving
+ * one here means the peer is out of protocol: fail the request. */
+int fdb_bend_trans_2pc_rc(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
+{
+    return -1;
+}
+
 int fdb_bend_trans_hbeat(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
     /*fprintf(stderr, "Bingo!\n");*/
@@ -3940,8 +3968,14 @@ static int handle_remsql_session(COMDB2BUF *sb, struct dbenv *dbenv)
     }
 
     memcpy(&open_msg, &msg, sizeof open_msg);
+    /* The copy's cid/tid still point into msg, whose union is overwritten by
+     * every subsequent fdb_msg_read_message(). Re-point them at open_msg's own
+     * embedded uuids (as the remtran/rem2pc handlers do) so the error paths
+     * below close the cursor we actually opened instead of a clobbered id. */
+    open_msg.cid = (char *)open_msg.ciduuid;
+    open_msg.tid = (char *)open_msg.tiduuid;
 
-    /* let transactional cursors go through */ 
+    /* let transactional cursors go through */
     if (gbl_fdb_incoherence_percentage) {
         if (gbl_fdb_incoherence_percentage <= (rand() % 100)) {
             logmsg(LOGMSG_ERROR, "Test incoherent rejection\n");
@@ -3985,7 +4019,7 @@ static int handle_remsql_session(COMDB2BUF *sb, struct dbenv *dbenv)
             break;
         }
 
-        rc = callbacks[msg.hd.type](sb, &msg, &arg);
+        rc = fdb_dispatch_msg(msg.hd.type, sb, &msg, &arg);
 
         if (msg.hd.type == FDB_MSG_CURSOR_CLOSE) {
             break;
@@ -4113,15 +4147,17 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n", __func__, rc);
-        fdb_msg_clean_message(&msg);
-        return rc;
+        goto done;
     }
 
+    /* No transaction exists yet, so there is nothing to roll back and no rc to
+     * send; drop the connection through the common exit so the message buffer
+     * and the sql thread registration are released. */
     if ((msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_2PC_BEGIN) {
         logmsg(LOGMSG_ERROR, "%s: received wrong packet type=%d, expecting tran begin\n", __func__,
                (msg.hd.type & FD_MSG_TYPE));
-        fdb_msg_clean_message(&msg);
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     memcpy(&open_msg, &msg, sizeof open_msg);
@@ -4152,7 +4188,7 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
             goto clear;
         }
 
-        rc = callbacks[msg_type](sb, &msg, &svc_cb_arg);
+        rc = fdb_dispatch_msg(msg_type, sb, &msg, &svc_cb_arg);
 
         if (msg_type == FDB_MSG_TRAN_COMMIT || msg_type == FDB_MSG_TRAN_PREPARE || msg_type == FDB_MSG_TRAN_ROLLBACK) {
             /* Sanity check:
@@ -4237,14 +4273,17 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n", __func__, rc);
-        fdb_msg_clean_message(&msg);
-        return rc;
+        goto done;
     }
 
+    /* No transaction exists yet, so there is nothing to roll back and no rc to
+     * send; drop the connection through the common exit so the message buffer
+     * and the sql thread registration are released. */
     if ((msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_BEGIN) {
         logmsg(LOGMSG_ERROR, "%s: received wrong packet type=%d, expecting tran begin\n", __func__,
                (msg.hd.type & FD_MSG_TYPE));
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     memcpy(&open_msg, &msg, sizeof open_msg);
@@ -4275,7 +4314,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
             goto clear;
         }
 
-        rc = callbacks[msg_type](sb, &msg, &svc_cb_arg);
+        rc = fdb_dispatch_msg(msg_type, sb, &msg, &svc_cb_arg);
 
         if (msg_type == FDB_MSG_TRAN_COMMIT ||
             msg_type == FDB_MSG_TRAN_ROLLBACK) {
@@ -4327,10 +4366,14 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
         svc_cb_arg.clnt->idxInsert = svc_cb_arg.clnt->idxDelete = NULL;
     }
     if (fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
-        rc = externalComdb2DeSerializeIdentity(&(svc_cb_arg.clnt->authdata), 0, NULL);
-        if (rc) {
+        int rc2 = externalComdb2DeSerializeIdentity(&(svc_cb_arg.clnt->authdata), 0, NULL);
+        if (rc2) {
+            /* Report the failure, but keep tearing the session down: returning
+             * here would strand the clnt, the message buffer and the sql
+             * thread registration. */
             logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
-            return rc;
+            if (!rc)
+                rc = rc2;
         }
     }
     cleanup_clnt(svc_cb_arg.clnt);
