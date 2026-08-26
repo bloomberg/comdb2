@@ -6124,6 +6124,12 @@ static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
         ret = rc;
         break;
 
+    case ERR_BADREQ:
+        /* A malformed osql packet. The caller describes the specific problem
+           through reqerrstr() before it calls us. */
+        ret = rc;
+        break;
+
     default:
         reqerrstr(iq, COMDB2_BLK_RC_FAIL_COMMIT,
                   "generic internal exception rc = %d", rc);
@@ -7886,6 +7892,21 @@ done_delete:
 
         dt.id &= ~OSQL_BLOB_ODH_BIT;
 
+        if (iq->debug)
+            reqprintf(iq, "OSQL_QBLOB id %d seq %llu bloblen %d odh %d", dt.id, dt.seq, dt.bloblen, odhready ? 1 : 0);
+
+        if (dt.id < 0 || dt.id >= MAXBLOBS) {
+            uuidstr_t us;
+            if (iq->debug)
+                reqprintf(iq, "QBLOB ID OUT OF RANGE %d (0..%d)", dt.id, MAXBLOBS - 1);
+            logmsg(LOGMSG_ERROR,
+                   "%s %s OSQL_QBLOB blob id %d out of range, failing the "
+                   "transaction\n",
+                   __func__, comdb2uuidstr(uuid, us), dt.id);
+            reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB, "blob id %d out of range (0..%d)", dt.id, MAXBLOBS - 1);
+            return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+        }
+
         if (gbl_enable_osql_logging) {
             int jj = 0;
             uuidstr_t us;
@@ -7897,6 +7918,8 @@ done_delete:
         }
 
         if (blobs[dt.id].exists) {
+            if (iq->debug)
+                reqprintf(iq, "QBLOB DUPLICATE ID %d (ignored)", dt.id);
             logmsg(LOGMSG_ERROR, 
                     "%s received a duplicated blob id %d! (ignoring duplicates)\n",
                     __func__, dt.id);
@@ -7904,6 +7927,8 @@ done_delete:
         /* Blob isn't used so we sent a short token rather than the entire blob.
            */
         else if (dt.bloblen == OSQL_BLOB_FILLER_LENGTH) {
+            if (iq->debug)
+                reqprintf(iq, "QBLOB FILLER ID %d", dt.id);
             *flags |= OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION;
             blobs[dt.id].length = dt.bloblen;
             blobs[dt.id].exists = 1;
@@ -7929,6 +7954,8 @@ done_delete:
 
             } else {
                 /* null blob */
+                if (iq->debug)
+                    reqprintf(iq, "QBLOB NULL ID %d", dt.id);
                 blobs[dt.id].exists = 0;
                 blobs[dt.id].data = NULL;
                 blobs[dt.id].length = 0;
@@ -8074,6 +8101,7 @@ done_delete:
                         "failing the transaction\n",
                 __func__, comdb2uuidstr(uuid, us), type);
 
+        reqerrstr(iq, COMDB2_BLK_RC_UNKN_OP, "unknown osql opcode %u", type);
         return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
     }
     }
