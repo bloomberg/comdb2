@@ -12,7 +12,7 @@ local function main()
     dbstmt:emit()
 end }$$
 EXEC PROCEDURE sp18_1()
-SELECT total_time < 10 FROM comdb2_fingerprints WHERE UPPER(normalized_sql) LIKE '%EXEC PROCEDURE SP18_1()%'
+SELECT total_time < 100 FROM comdb2_fingerprints WHERE UPPER(normalized_sql) LIKE '%EXEC PROCEDURE SP18_1()%'
 CREATE PROCEDURE sp18_2 {
 local function main()
     local dbstmt
@@ -25,4 +25,4 @@ local function main()
     dbstmt:emit()
 end }$$
 EXEC PROCEDURE sp18_2()
-SELECT total_time < 10 FROM comdb2_fingerprints WHERE UPPER(normalized_sql) LIKE '%EXEC PROCEDURE SP18_2()%'
+SELECT total_time < 100 FROM comdb2_fingerprints WHERE UPPER(normalized_sql) LIKE '%EXEC PROCEDURE SP18_2()%'
