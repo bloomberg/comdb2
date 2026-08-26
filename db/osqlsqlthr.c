@@ -1955,7 +1955,20 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         /* this is a distributed create for a partition, creating individual shard here, info passed from
          * SET OPTIONS through clnt struct
          */
-        if (sc->kind == SC_ADDTABLE) { 
+        /* the SET PARTITION commands are independent of each other, so a client
+         * can announce a count without ever sending the matching names; refuse
+         * rather than walk an array that was never built. A DROP legitimately
+         * has no partitioning columns. */
+        if (clnt->remsql_set.numdbs == 0 || !clnt->remsql_set.dbnames || !clnt->remsql_set.shardnames ||
+            (clnt->remsql_set.numcols > 0 && !clnt->remsql_set.columns)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: incomplete SET PARTITION state (numdbs=%u dbnames=%p shardnames=%p numcols=%d columns=%p)\n",
+                   __func__, clnt->remsql_set.numdbs, clnt->remsql_set.dbnames, clnt->remsql_set.shardnames,
+                   clnt->remsql_set.numcols, clnt->remsql_set.columns);
+            return SQLITE_ERROR;
+        }
+
+        if (sc->kind == SC_ADDTABLE) {
             sc->partition.type = PARTITION_ADD_GENSHARD;
         } else {
             sc->partition.type = PARTITION_REM_GENSHARD;
@@ -1963,18 +1976,24 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename),
                  "%s", clnt->remsql_set.tablename);
         sc->partition.u.genshard.numdbs = clnt->remsql_set.numdbs;
-        sc->partition.u.genshard.dbnames = malloc(sizeof(char*) * clnt->remsql_set.numdbs);
-        for (int i = 0; i < clnt->remsql_set.numdbs; i++) {
+        sc->partition.u.genshard.dbnames = calloc(clnt->remsql_set.numdbs, sizeof(char *));
+        /* +1: a DROP has numcols=0 and calloc(0) may return NULL */
+        sc->partition.u.genshard.columns = calloc(clnt->remsql_set.numcols + 1, sizeof(char *));
+        sc->partition.u.genshard.shardnames = calloc(clnt->remsql_set.numdbs, sizeof(char *));
+        if (!sc->partition.u.genshard.dbnames || !sc->partition.u.genshard.columns ||
+            !sc->partition.u.genshard.shardnames) {
+            logmsg(LOGMSG_ERROR, "%s: out of memory for genshard partition\n", __func__);
+            return SQLITE_NOMEM;
+        }
+        for (uint32_t i = 0; i < clnt->remsql_set.numdbs; i++) {
             sc->partition.u.genshard.dbnames[i] = strdup(clnt->remsql_set.dbnames[i]);
         }
 
         sc->partition.u.genshard.numcols = clnt->remsql_set.numcols;
-        sc->partition.u.genshard.columns = malloc(sizeof(char*) * clnt->remsql_set.numcols);
-        for(int i=0;i<clnt->remsql_set.numcols;i++) {
+        for (int i = 0; i < clnt->remsql_set.numcols; i++) {
             sc->partition.u.genshard.columns[i] = strdup(clnt->remsql_set.columns[i]);
         }
-        sc->partition.u.genshard.shardnames = malloc(sizeof(char*) * clnt->remsql_set.numdbs);
-        for (int i = 0; i < clnt->remsql_set.numdbs; i++) {
+        for (uint32_t i = 0; i < clnt->remsql_set.numdbs; i++) {
             sc->partition.u.genshard.shardnames[i] = strdup(clnt->remsql_set.shardnames[i]);
         }
     }

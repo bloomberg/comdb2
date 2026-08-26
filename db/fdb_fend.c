@@ -6057,6 +6057,8 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
             return -1;
         }
 
+        free(clnt->remsql_set.srcdbname); /* re-issued set */
+        clnt->remsql_set.srcdbname = NULL;
         GET_PCSTR(sqlstr, "srcdbname", clnt->remsql_set.srcdbname);
 
         if (!fdb_is_dbname_in_whitelist(clnt->remsql_set.srcdbname)) {
