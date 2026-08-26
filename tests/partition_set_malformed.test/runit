@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+set -x
+
+# The SET PARTITION ... commands feed the generic-shard DDL that a coordinator
+# sends to its participants. They are processed at query intake, before the SQL
+# engine authenticates, and each one is independent of the others -- so a client
+# can send them out of order, with a count that does not match the names, or
+# with no count at all. None of that may corrupt the heap or take the db down.
+
+SQL="cdb2sql ${CDB2_OPTIONS} $DBNAME default"
+
+nfail=0
+
+# $1 description, $2 statement that makes the buffered SET commands take effect,
+# rest: the SET commands. The statement must fail and the db must stay up. Cases
+# all run even after one fails, so a single run reports the whole matrix.
+function expect_failure
+{
+    local desc=$1
+    local trigger=$2
+    shift 2
+    local out
+
+    out=$(printf '%s\n' "$@" "$trigger" | $SQL - 2>&1)
+    if [[ $? -eq 0 ]]; then
+        echo "FAIL: '$desc' was accepted, expected an error; got: $out"
+        nfail=$((nfail+1))
+    else
+        echo "ok: '$desc' rejected with: $out"
+    fi
+
+    if ! $SQL "select 1" >/dev/null 2>&1; then
+        echo "FAIL: db is not serving after '$desc'"
+        nfail=$((nfail+1))
+    fi
+}
+
+# No PARTITION NUMDBS at all: numdbs defaults to 0, so the names array is
+# zero-length and must not be written to.
+expect_failure "dbs without numdbs" "select 1;" "set partition dbs adb bdb"
+expect_failure "shards without numdbs" "select 1;" "set partition shards ashard bshard"
+
+# Count set back to zero is refused outright, so the names still have no array.
+expect_failure "numdbs 0 then dbs" "select 1;" "set partition numdbs 0" "set partition dbs adb bdb"
+
+# Fewer names than the announced count: the tail of the array would otherwise be
+# left uninitialized and strdup'd later.
+expect_failure "numdbs 3 with one dbname" "select 1;" "set partition numdbs 3" "set partition dbs onlydb"
+expect_failure "numdbs 3 with one shardname" "select 1;" "set partition numdbs 3" "set partition shards onlyshard"
+expect_failure "numcols 2 with one column" "select 1;" "set partition numcols 2" "set partition cols onlycol"
+
+# Count raised after the names were extracted: the array is sized by the old
+# count, the loop that consumes it uses the new one.
+expect_failure "numdbs raised after dbs" "select 1;" \
+    "set partition numdbs 1" "set partition dbs adb" "set partition numdbs 4096" \
+    "set partition shards ashard"
+
+# A create that claims to be a distributed shard create but never sends the
+# dbnames/shardnames: the DDL path used to walk NULL arrays here.
+expect_failure "remcreate with counts but no names" "create table t1(a int);" \
+    "set partition name p1" "set partition numdbs 2" "set partition numcols 1"
+
+# Same, but with dbnames present and shardnames missing.
+expect_failure "remcreate missing shardnames" "create table t1(a int);" \
+    "set partition name p1" "set partition numdbs 2" "set partition dbs adb bdb" \
+    "set partition numcols 1" "set partition cols acol"
+
+# Re-issuing the names is legal -- the second set replaces the first -- but it
+# must release the previous array rather than leak or reuse it.
+for i in $(seq 1 50); do
+    out=$(printf '%s\n' "set partition numdbs 2" "set partition dbs adb bdb" \
+        "set partition dbs cdb ddb" "set partition shards ashard bshard" "select 1;" | $SQL - 2>&1)
+    if [[ $? -ne 0 ]]; then
+        echo "FAIL: re-issued dbs/shards #$i was rejected: $out"
+        nfail=$((nfail+1))
+        break
+    fi
+done
+
+# The db has to be healthy and usable at the end of all of that.
+$SQL "create table t2(a int)" || nfail=$((nfail+1))
+$SQL "insert into t2 values(1)" || nfail=$((nfail+1))
+count=$($SQL --tabs "select count(*) from t2")
+if [[ $count != "1" ]]; then
+    echo "FAIL: expected 1 row in t2, got '$count'"
+    nfail=$((nfail+1))
+fi
+
+if [[ $nfail -ne 0 ]]; then
+    echo "$nfail check(s) failed"
+    exit 1
+fi
+
+echo "Success"

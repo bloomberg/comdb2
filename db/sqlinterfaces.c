@@ -5456,6 +5456,29 @@ int cdb2_in_client_trans() {
     return clnt->in_client_trans;
 }
 
+/* Release one of the genshard partition arrays built by the SET PARTITION
+ * DBS/COLS/SHARDS commands. nelems must be the count the array was allocated
+ * with; the SET handlers keep remsql_set.numdbs/numcols in sync with the
+ * allocation by freeing an array whenever its count changes. */
+void free_partition_string_array(char ***arr, uint32_t nelems)
+{
+    if (!*arr)
+        return;
+    for (uint32_t i = 0; i < nelems; i++)
+        free((*arr)[i]);
+    free(*arr);
+    *arr = NULL;
+}
+
+static void free_remsql_set(struct sqlclntstate *clnt)
+{
+    free_partition_string_array(&clnt->remsql_set.dbnames, clnt->remsql_set.numdbs);
+    free_partition_string_array(&clnt->remsql_set.shardnames, clnt->remsql_set.numdbs);
+    free_partition_string_array(&clnt->remsql_set.columns, clnt->remsql_set.numcols);
+    free(clnt->remsql_set.srcdbname);
+    clnt->remsql_set.srcdbname = NULL;
+}
+
 void reset_clnt(struct sqlclntstate *clnt, int initial)
 {
     if (initial) {
@@ -5646,6 +5669,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         clear_modsnap_state(clnt);
     }
 
+    free_remsql_set(clnt);
     bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
     _free_set_commands(clnt);
 }

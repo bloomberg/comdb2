@@ -1437,6 +1437,7 @@ void reset_clnt(struct sqlclntstate *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
 void free_client_info(struct sqlclntstate *);
 void free_client_adj_col_names(struct sqlclntstate *);
+void free_partition_string_array(char ***arr, uint32_t nelems);
 void reset_query_effects(struct sqlclntstate *, int, int);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
