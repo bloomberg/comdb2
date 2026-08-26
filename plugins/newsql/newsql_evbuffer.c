@@ -876,7 +876,10 @@ static void process_disttxn(struct newsql_appdata_evbuffer *appdata, CDB2DISTTXN
 
 sendresponse:
     if (disttxn->disttxn && disttxn->disttxn->async) {
-        rd_hdr(-1, 0, appdata);
+        /* Async: no response.  Defer the next read rather than calling rd_hdr
+           inline- our caller still dereferences appdata, and a nested read can
+           tear the connection down. */
+        evtimer_once(appdata->base, rd_hdr, appdata);
         return;
     }
 
