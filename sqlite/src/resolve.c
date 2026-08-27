@@ -654,14 +654,14 @@ static int lookupName(
     ** the vm sniffs this out when it runs OP_Rowid and executes the comdb2
     ** backend call to get the rrn+genid.
     */
-    else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2Rowid(pMatch->pTab, zCol) ){
+    else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2Rowid(pMatch->pSTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -2;
-       pExpr->affinity = SQLITE_AFF_TEXT;
-    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
+       pExpr->affExpr = SQLITE_AFF_TEXT;
+    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pSTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -3;
-       pExpr->affinity = SQLITE_AFF_TEXT;
+       pExpr->affExpr = SQLITE_AFF_TEXT;
     }
 
     /* Check if a partial index or an expression index contains blob fields. */
@@ -1320,7 +1320,7 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         }else if( no_such_func && (pNC->ncFlags & (NC_IdxExpr|NC_PartIdx)) ){
           sqlite3ErrorMsg(pParse, "no such function: %#T", pExpr);
-          pNC->nErr++;
+          pNC->nNcErr++;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }else if( wrong_num_args ){
           sqlite3ErrorMsg(pParse,"wrong number of arguments to function %#T()",
