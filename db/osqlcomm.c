@@ -7843,6 +7843,16 @@ done_delete:
         p_buf_end = p_buf + sizeof(osql_index_t);
 
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
+        if (dt.ixnum < 0 || dt.ixnum >= MAXINDEX) {
+            logmsg(LOGMSG_ERROR, "%s %s invalid ixnum %d\n", __func__, isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX",
+                   dt.ixnum);
+            return ERR_BADREQ;
+        }
+        if (dt.nData < 0 || pData == NULL || (size_t)dt.nData > (size_t)(((const uint8_t *)msg + msglen) - pData)) {
+            logmsg(LOGMSG_ERROR, "%s %s invalid nData %d\n", __func__, isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX",
+                   dt.nData);
+            return ERR_BADREQ;
+        }
         if (gbl_enable_osql_logging) {
             int jj = 0;
             uuidstr_t us;
