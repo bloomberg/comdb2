@@ -4076,6 +4076,13 @@ struct Parse {
   u8 hasCompound;      /* Need to invoke convertCompoundSelectToSubquery() */
   u8 disableLookaside; /* Number of times lookaside has been disabled */
   u8 prepFlags;        /* SQLITE_PREPARE_* flags */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+                       /* The prepare flags are of interest to the DDL
+                        * integration code in the "comdb2build.c" and
+                        * "comdb2lua.c" files.  It can also be used to extract
+                        * qualified table names from an arbitrary SELECT query
+                        * (useful for FDB integration). */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   u8 withinRJSubrtn;   /* Nesting level for RIGHT JOIN body subroutines */
   u8 bHasExists;       /* Has a correlated "EXISTS (SELECT ....)" expression */
   u8 mSubrtnSig;       /* mini Bloom filter on available SubrtnSig.selId */
@@ -4192,13 +4199,6 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
-  int prepFlags;            /* Prepare-only mode flags, skip all schema changes
-                             * that originate from DDL, etc.  This is primarily
-                             * of interest to the DDL integration code in the
-                             * "comdb2build.c" and "comdb2lua.c" files.  It can
-                             * also be used to extract qualified table names
-                             * from an arbitrary SELECT query (useful for FDB
-                             * integration). */
   int nSrcListOnly;         /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
                              * enabled, this will contain the number of table
                              * names in the azSrcListOnly array. */
