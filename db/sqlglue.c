@@ -9620,7 +9620,7 @@ int sqlite3BtreeInsert(
                                 "sqlite3VdbeAllocUnpackedRecord()\n");
                 return 0;
             }
-            sqlite3VdbeRecordUnpack(pCur->pKeyInfo, nKey, pKey, rec);
+            sqlite3VdbeRecordUnpack(nKey, pKey, rec);
         }
 
         if (pCur->ixnum == -1) {
