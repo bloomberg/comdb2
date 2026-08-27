@@ -1239,7 +1239,7 @@ int mem_to_ondisk(void *outbuf, const struct field *f, struct mem_info *info, bi
                 } else
                     s = m->z;
 
-                if (sqlite3AtoF(s, &rValue, sqlite3Strlen30(s), SQLITE_UTF8) ==
+                if (sqlite3AtoF(s, &rValue, sqlite3Strlen30(s), SQLITE_UTF8) <=
                         0 &&
                     rc != -1) {
                     static int once = 1;
