@@ -33,6 +33,7 @@ extern int __berkdb_read_alarm_ms;
 #include <ctrace.h>
 
 #include "comdb2.h"
+#include "cluster_allow_list.h"
 #include "timer.h"
 #include "sigutil.h"
 #include "memdebug.h"
@@ -1821,9 +1822,12 @@ clipper_usage:
                        allow_cluster_from_remote(host) ? "YES" : "NO");
                 logmsg(LOGMSG_USER, "Allow queue broadcast to %s ? %s\n", host,
                        allow_broadcast_to_remote(host) ? "YES" : "NO");
-            }
-            else
+                logmsg(LOGMSG_USER, "Cluster allow list permits %s ? %s\n", host,
+                       cluster_allow_list_permits(host) ? "YES" : "NO");
+            } else {
                 dump_remote_policy();
+                cluster_allow_list_dump();
+            }
         } else if (tokcmp(tok, ltok, "size") == 0) {
             dump_table_sizes(thedb);
         } else if (tokcmp(tok, ltok, "reql") == 0) {
