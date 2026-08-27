@@ -30,11 +30,20 @@
 #include <segstr.h>
 
 #include "comdb2.h"
+#include "cluster_allow_list.h"
 #include "intern_strings.h"
 #include <clienthost.h>
+#include "epochlib.h"
 #include "util.h"
 #include "rtcpu.h"
 #include "logmsg.h"
+
+/* How often we repeat the "the cluster allow list would reject this host"
+ * warning for one host.  A host that cannot connect retries about once a
+ * second, so a warning with no rate limit would flood the log. */
+#define WOULD_REJECT_WARN_INTERVAL 60
+
+int gbl_enforce_cluster_allow_list = 0;
 
 struct rmtpol {
     const char *descr;
@@ -146,6 +155,23 @@ int allow_cluster_from_remote(const char *host)
         else
             rc = 0;
     }
+
+    if (gbl_enforce_cluster_allow_list)
+        return cluster_allow_list_permits(host);
+
+    /* The cluster allow list is not enforced yet.  Tell the operator which
+     * hosts it would turn away, so that they can fix the list first. */
+    if (rc && !cluster_allow_list_permits(host)) {
+        int now = comdb2_time_epoch();
+        if (now - c->cluster_warn_time >= WOULD_REJECT_WARN_INTERVAL) {
+            c->cluster_warn_time = now;
+            logmsg(LOGMSG_WARN,
+                   "host %s clusters with us now, but the cluster allow list "
+                   "would reject it.  Run \"allow cluster with %s\" to keep it "
+                   "once the list is enforced.\n",
+                   host, host);
+        }
+    }
     return rc;
 }
 
@@ -214,6 +240,7 @@ int process_allow_command(char *line, int lline)
     struct clienthost *r = NULL;
     int ii, mark;
     char *new_mach = NULL;
+    char *new_group = NULL;
 
     /* scan for end of line */
     for (mark = 0, ii = 0; ii < lline; ii++)
@@ -277,8 +304,17 @@ int process_allow_command(char *line, int lline)
     tok = segtok(line, lline, &st, &ltok);
     if (ltok == 0)
         goto bad;
-    if (parse_mach_or_group(tok, ltok, &new_mach, &cls) != 0)
+    /* "allow cluster with group <name>" names a machine group.  A plugin
+     * decides who belongs to a group.  Only the cluster allow list understands
+     * groups, so leave the write and broadcast policies alone. */
+    if (pol == &cluster_pol && tokcmp(tok, ltok, "group") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0)
+            goto bad;
+        new_group = tokdup(tok, ltok);
+    } else if (parse_mach_or_group(tok, ltok, &new_mach, &cls) != 0) {
         goto bad;
+    }
     if (new_mach) {
         struct interned_string *new_mach_interned = intern_ptr(new_mach);
         r = retrieve_clienthost(new_mach_interned);
@@ -302,7 +338,17 @@ int process_allow_command(char *line, int lline)
             goto ignore;
     }
 
-    if (r != NULL) {
+    if (new_group != NULL) {
+        /* Only the cluster allow list knows about groups.  There is no old
+         * list to update here. */
+        if (allow == 1) {
+            cluster_allow_list_add_group(new_group);
+            logmsg(LOGMSG_USER, "allowing %s group %s\n", pol->descr, new_group);
+        } else {
+            cluster_allow_list_del_group(new_group);
+            logmsg(LOGMSG_USER, "no longer allowing %s group %s\n", pol->descr, new_group);
+        }
+    } else if (r != NULL) {
         if (allow == 1) {
             hostpol->explicit_allow = 1;
             hostpol->explicit_disallow = 0;
@@ -315,6 +361,14 @@ int process_allow_command(char *line, int lline)
             hostpol->explicit_disallow = 0;
             hostpol->explicit_allow = 0;
             logmsg(LOGMSG_USER, "resetting policy for %s machine %s\n", pol->descr, new_mach);
+        }
+        /* The cluster allow list is a pure allow list.  Both "disallow" and
+         * "clrpol" drop the entry. */
+        if (pol == &cluster_pol) {
+            if (allow == 1)
+                cluster_allow_list_add_host(new_mach);
+            else
+                cluster_allow_list_del_host(new_mach);
         }
     } else if (cls != CLASS_UNKNOWN) {
         if (allow == 1) {
@@ -333,18 +387,27 @@ int process_allow_command(char *line, int lline)
             logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n",
                    pol->descr, mach_class_class2name(cls));
         }
+        if (pol == &cluster_pol) {
+            logmsg(LOGMSG_WARN,
+                   "the cluster allow list ignores machine class %s.  Name a "
+                   "host or a group instead.\n",
+                   mach_class_class2name(cls));
+        }
     } else {
         goto bad;
     }
 
     logmsg(LOGMSG_DEBUG, "processed <%*.*s>\n", lline, lline, line);
+    free(new_group);
     return 0;
 
 ignore:
     logmsg(LOGMSG_WARN, "ignoring command <%*.*s>\n", lline, lline, line);
+    free(new_group);
     return 0;
 bad:
     logmsg(LOGMSG_ERROR, "bad command <%*.*s>\n", lline, lline, line);
+    free(new_group);
     return -1;
 }
 

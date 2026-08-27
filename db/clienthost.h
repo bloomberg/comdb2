@@ -30,6 +30,18 @@ struct clienthost {
     int mach_class;
     struct interned_string *s;
     int machine_dc;
+    /* Interned resolved name of this host, as the cluster allow list keys on
+     * it.  Resolved once by comdb2_gethostbyname(). */
+    const char *resolved_host;
+    /* Cached group-membership verdict for the cluster allow list.  The
+     * generation goes stale when the allowed group set changes. */
+    int cluster_group_gen;
+    int cluster_group_time;
+    int cluster_group_ok;
+    /* Epoch of the last "the cluster allow list would reject this host"
+     * warning.  Rate limits the warning while we still enforce the old
+     * policy. */
+    int cluster_warn_time;
     LINKC_T (struct clienthost) lnk;
 };
 
