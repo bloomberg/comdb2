@@ -94,6 +94,7 @@
 #include <logmsg.h>
 
 #include <build/db_int.h>
+#include <dbinc/db_page.h>
 #include "dbinc/db_swap.h"
 
 #include <dbinc/db_am.h>
@@ -4149,6 +4150,58 @@ int calc_pagesize(int initsize, int recsize)
     return (initsize >= pagesize) ? initsize : pagesize;
 }
 
+/* Pagesize recorded in this file's meta-page, or 0 if we can't read it. */
+static int ondisk_pagesize(const char *path)
+{
+    uint32_t buf[DBMETASIZE / sizeof(uint32_t)];
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return 0;
+    ssize_t nr = read(fd, buf, sizeof(buf));
+    Close(fd);
+    if (nr != (ssize_t)sizeof(buf))
+        return 0;
+
+    DBMETA *meta = (DBMETA *)buf;
+    uint32_t magic = meta->magic, pagesize = meta->pagesize;
+    if (magic != DB_BTREEMAGIC && magic != DB_HASHMAGIC && magic != DB_QAMMAGIC) {
+        magic = flibc_intflip(magic);
+        pagesize = flibc_intflip(pagesize);
+        if (magic != DB_BTREEMAGIC && magic != DB_HASHMAGIC && magic != DB_QAMMAGIC)
+            return 0;
+    }
+    return (pagesize >= 512 && pagesize <= 65536) ? (int)pagesize : 0;
+}
+
+/* Shrink a queue we aren't replicating down to its first two pages.  Size must
+   stay a multiple of the file's own pagesize, which is not necessarily the
+   pagesize we would pick for it today -- recovery has already opened the file
+   by the time we get here and will not survive a partial page. */
+static void physrep_truncate_ignored_queue(bdb_state_type *bdb_state, const char *tmpname)
+{
+    char path[PATH_MAX];
+    struct stat st;
+
+    bdb_trans(tmpname, path);
+    if (stat(path, &st) != 0)
+        return;
+
+    int pagesize = ondisk_pagesize(path);
+    if (pagesize <= 0) {
+        logmsg(LOGMSG_WARN, "%s: no meta-page in %s, leaving it alone\n", __func__, path);
+        return;
+    }
+
+    /* Never grow: an extent-based queue's file is just the meta-page. */
+    off_t want = (off_t)pagesize * 2;
+    if (st.st_size <= want)
+        return;
+
+    print(bdb_state, "truncating ignored queue %s to %lld\n", path, (long long)want);
+    if (truncate(path, want) != 0)
+        logmsg(LOGMSG_ERROR, "truncate %s error %d\n", path, errno);
+}
+
 int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid, uint32_t flags,
              int *bdberr)
 {
@@ -4429,12 +4482,7 @@ deadlock_again:
 
             extern int gbl_physrep_ignore_queues;
             if (gbl_is_physical_replicant && gbl_physrep_ignore_queues) {
-                char new[PATH_MAX];
-                print(bdb_state, "truncating ignored queuedb %s\n", bdb_trans(tmpname, new));
-                rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
-                if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "truncate %s error %d\n", bdb_trans(tmpname, new), errno);
-                }
+                physrep_truncate_ignored_queue(bdb_state, tmpname);
             }
 
             rc = dbp->set_pagesize(dbp, pagesize);
@@ -4521,12 +4569,7 @@ deadlock_again:
         extern int gbl_physrep_ignore_legacy_queues;
         if (gbl_is_physical_replicant &&
             (physrep_ignore_table(bdb_state->name) || (bdbtype == BDBTYPE_QUEUE && gbl_physrep_ignore_legacy_queues))) {
-            char new[PATH_MAX];
-            print(bdb_state, "truncating ignored queue %s\n", bdb_trans(tmpname, new));
-            rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "truncate %s error %d\n", bdb_trans(tmpname, new), errno);
-            }
+            physrep_truncate_ignored_queue(bdb_state, tmpname);
         }
 
         rc = dbp->set_pagesize(dbp, pagesize);
