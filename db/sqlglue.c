@@ -3409,7 +3409,7 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
                         "sqlite3VdbeAllocUnpackedRecord()\n");
         return 0;
     }
-    sqlite3VdbeRecordUnpack(pKeyInfo, k2len, key2, rec);
+    sqlite3VdbeRecordUnpack(k2len, key2, rec);
 
     int cmp = sqlite3VdbeRecordCompare(k1len, key1, rec);
     sqlite3DbFree(pKeyInfo->db, rec);
