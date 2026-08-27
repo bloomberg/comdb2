@@ -616,7 +616,7 @@ inline int sqlite3_hasResultSet(
   sqlite3_stmt *pStmt
 ){
   Vdbe *pVm = (Vdbe *)pStmt;
-  if( pVm && pVm->pResultSet!=0 ){
+  if( pVm && pVm->pResultRow!=0 ){
     return 1;
   }
   return 0;
@@ -626,7 +626,7 @@ inline int sqlite3_hasNColumns(
   int n
 ){
   Vdbe *pVm = (Vdbe *)pStmt;
-  if( pVm && pVm->pResultSet!=0 && n==pVm->nResColumn ){
+  if( pVm && pVm->pResultRow!=0 && n==pVm->nResColumn ){
     return 1;
   }
   return 0;
@@ -636,7 +636,7 @@ inline int sqlite3_isColumnNullType(
   int i
 ){
   Vdbe *pVm = (Vdbe *)pStmt;
-  Mem *pOut = &pVm->pResultSet[i];
+  Mem *pOut = &pVm->pResultRow[i];
   return pOut->flags & 0x1; /* odd last bit is SQLITE_NULL */
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2084,7 +2084,7 @@ static int bindDatetime(
   Mem *pVar;
   int rc;
 
-  rc = vdbeUnbind(p, i);
+  rc = vdbeUnbind(p, (u32)(i-1));
   if( rc==SQLITE_OK ){
     pVar = &p->aVar[i-1];
     pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
@@ -2106,7 +2106,7 @@ static int bindInterval(
   Mem *pVar;
   int rc;
 
-  rc = vdbeUnbind(p, i);
+  rc = vdbeUnbind(p, (u32)(i-1));
   if( rc==SQLITE_OK ){
     pVar = &p->aVar[i-1];
     pVar->flags = MEM_Interval;
