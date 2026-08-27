@@ -5127,7 +5127,6 @@ char *sqlite3MAppendf(sqlite3*,char*,const char*,...);
   void sqlite3TreeViewWindow(TreeView*, const Window*, u8);
   void sqlite3TreeViewWinFunc(TreeView*, const Window*, u8);
 #endif
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
   void sqlite3ShowExpr(const Expr*);
   void sqlite3ShowExprList(const ExprList*);
   void sqlite3ShowIdList(const IdList*);
@@ -5146,7 +5145,7 @@ char *sqlite3MAppendf(sqlite3*,char*,const char*,...);
   void sqlite3ShowWinFunc(const Window*);
 #endif
   void sqlite3ShowBitvec(Bitvec*);
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 
 void sqlite3SetString(char **, sqlite3*, const char*);
 void sqlite3ProgressCheck(Parse*);
