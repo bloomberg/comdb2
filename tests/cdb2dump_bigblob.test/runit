@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Size of the oversized blob.  cdb2_dump bulk-reads into a 1MB buffer, so
+# anything comfortably over 1MB exercises the ENOMEM/realloc path.
+BIG=4194304
+SMALL=1024
+CNT=10
+
+dbnm=$1
+set -e
+set -x
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 options rec none, blobfield none { `cat t1.csc2 ` }"
+
+i=0
+while [ $i -lt $CNT ] ; do
+ let i=i+1
+ echo "insert into t1(a, b) values ($i, zeroblob($SMALL))"
+done | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a, b) values (999, zeroblob($BIG))"
+
+assertres "$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select length(b) from t1 where a=999')" "$BIG"
+
+master=`getmaster`
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+for node in $cluster ; do
+    cdb2sql ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('flush')"
+done
+
+out=$TMPDIR/t1_blob_dump.txt
+err=$TMPDIR/t1_blob_dump.err
+
+hnamelist="`hostname` `hostname -f` `hostname -s` localhost"
+if [[ " $hnamelist " =~ .*\ $master\ .* ]] ; then
+    find $DBDIR | grep '/t1_.*\.blob' | xargs ${CDB2DUMP_EXE} -f $out 2> $err
+else
+    ssh -o StrictHostKeyChecking=no $master "ln -f ${COMDB2_EXE} ${CDB2DUMP_EXE}"
+    ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*\.blob' | xargs ${CDB2DUMP_EXE} " > $out 2> $err
+fi
+
+if [ -s $err ] ; then
+    cat $err
+    failexit "cdb2_dump wrote to stderr"
+fi
+
+# The blob is dumped as hex, so the record is twice its size on one line.
+nbig=`awk -v n=$((BIG * 2)) 'length($0) >= n' $out | wc -l`
+if [ $nbig -ne 1 ] ; then
+    failexit "expected 1 record of at least $BIG bytes in $out, found $nbig"
+fi
+
+echo Success
