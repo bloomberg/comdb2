@@ -1520,10 +1520,10 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
     if (fail_reason)
         init_convert_failure_reason(fail_reason);
 
-    hdroffset = sqlite3GetVarint32(in, &hdrsz);
+    hdroffset = getVarint32(in, hdrsz);
     dataoffset = hdrsz;
     while (hdroffset < hdrsz) {
-        hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
+        hdroffset += getVarint32(in + hdroffset, type);
         info.null = (type == 0);
         f = &s->member[fld];
         dataoffset += sqlite3VdbeSerialGet(in + dataoffset, type, &m);
@@ -11811,10 +11811,9 @@ int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
     Mem m = {{0}};
 
     /* extract genid */
-    hdroffset = sqlite3GetVarint32((unsigned char *)key, &hdrsz);
+    hdroffset = getVarint32((unsigned char *)key, hdrsz);
     dataoffset = hdrsz;
-    hdroffset +=
-        sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
+    hdroffset += getVarint32((unsigned char *)key + hdroffset, type);
 
     /* Sanity checks */
     if (type != 6 || hdroffset != dataoffset) {
@@ -11845,12 +11844,11 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
     int fld;
     char *str = NULL;
 
-    hdroffset = sqlite3GetVarint32((unsigned char *)row, &hdrsz);
+    hdroffset = getVarint32((unsigned char *)row, hdrsz);
     dataoffset = hdrsz;
     fld = 0;
     while (hdroffset < hdrsz) {
-        hdroffset +=
-            sqlite3GetVarint32((unsigned char *)row + hdroffset, &type);
+        hdroffset += getVarint32((unsigned char *)row + hdroffset, type);
         prev_dataoffset = dataoffset;
         dataoffset += sqlite3VdbeSerialGet(
             (unsigned char *)row + prev_dataoffset, type, &m);
@@ -12029,17 +12027,16 @@ void stat4dump(int more, char *table, int istrace)
                 continue;
             }
             outFunc("]  sample:{");
-            void *in = idx->aSample[k].p;
+            u8 *in = idx->aSample[k].p;
             u32 hdrsz;
-            u8 hdroffset = sqlite3GetVarint32(in, &hdrsz);
+            u8 hdroffset = getVarint32(in, hdrsz);
             u32 dataoffset = hdrsz;
             sep = "";
             while (hdroffset < hdrsz) {
                 u32 type;
                 Mem m = {{0}};
-                hdroffset += sqlite3GetVarint32(((uint8_t*)in) + hdroffset, &type);
-                dataoffset +=
-                    sqlite3VdbeSerialGet(((uint8_t*)in) + dataoffset, type, &m);
+                hdroffset += getVarint32(in + hdroffset, type);
+                dataoffset += sqlite3VdbeSerialGet(in + dataoffset, type, &m);
                 if (m.flags & MEM_Null) {
                     outFunc("%sNULL", sep);
                 } else if (m.flags & MEM_Int) {
