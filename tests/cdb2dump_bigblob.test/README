@@ -1,0 +1,8 @@
+cdb2_dump reads a btree with a bulk (DB_MULTIPLE_KEY) cursor into a 1MB
+buffer.  A key/data pair larger than the buffer makes berkeley db return
+ENOMEM while leaving the cursor parked on that pair so the caller can grow
+the buffer and re-read it with DB_CURRENT.  cdb2_dump used to resume with
+DB_NEXT instead, silently stepping over the oversized record.
+
+This testcase stores a blob comfortably larger than 1MB next to a handful of
+small ones and checks that cdb2_dump emits the big one too.

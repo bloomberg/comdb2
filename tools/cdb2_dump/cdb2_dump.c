@@ -516,6 +516,7 @@ dump(dbp, pflag, keyflag)
 	DBT keyret, dataret;
 	db_recno_t recno;
 	int is_recno, failed, ret;
+	u_int32_t getflags;
 	void *pointer;
 
 	/*
@@ -544,10 +545,12 @@ dump(dbp, pflag, keyflag)
 		keyret.data = &recno;
 		keyret.size = sizeof(recno);
 	}
+	getflags = DB_NEXT;
 
 retry:
-	while ((ret =
-	    dbcp->c_get(dbcp, &key, &data, DB_NEXT | DB_MULTIPLE_KEY)) == 0) {
+	while ((ret = dbcp->c_get(dbcp,
+	    &key, &data, getflags | DB_MULTIPLE_KEY)) == 0) {
+		getflags = DB_NEXT;
 		DB_MULTIPLE_INIT(pointer, &data);
 		for (;;) {
 			if (is_recno)
@@ -581,6 +584,12 @@ retry:
 			goto err;
 		}
 		data.ulen = data.size;
+		/*
+		 * The cursor is still parked on the key/data pair that did
+		 * not fit; re-read it with DB_CURRENT, otherwise DB_NEXT
+		 * steps over it and it is silently dropped from the dump.
+		 */
+		getflags = DB_CURRENT;
 		goto retry;
 	}
 

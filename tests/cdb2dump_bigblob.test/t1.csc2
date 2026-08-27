@@ -1,0 +1,5 @@
+schema
+{
+   int      a null=yes
+   blob     b null=yes
+}
