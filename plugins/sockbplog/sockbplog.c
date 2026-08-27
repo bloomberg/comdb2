@@ -19,8 +19,12 @@
 #include "osqlsession.h"
 #include "osqlcomm.h"
 #include "osqlsqlsocket.h"
+#include "hostname_support.h"
 
 extern int gbl_sockbplog_debug;
+extern int gbl_uses_password;
+extern int gbl_uses_externalauth;
+
 int handle_sockbplog_request(comdb2_appsock_arg_t *arg);
 
 comdb2_appsock_t sockbplog_plugin = {
@@ -100,11 +104,45 @@ err_nomsg:
 int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
 {
     struct comdb2buf *sb;
-    char *host = "localhost";
+    char *host = NULL;
     char line[128];
     int rc = 0;
+    int fd;
 
     sb = arg->sb;
+    fd = cdb2buf_fileno(sb);
+
+    host = get_hostname_by_fileno(fd);
+    if (!host) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get peer hostname\n", __func__);
+        cdb2buf_printf(sb, "Error: Unable to determine peer host\n");
+        cdb2buf_flush(sb);
+        return APPSOCK_RETURN_ERR;
+    }
+
+    if (gbl_uses_password || gbl_uses_externalauth) {
+        int is_peer_cluster_node = 0;
+
+        if (thedb->nsiblings > 0) {
+            for (int i = 0; i < thedb->nsiblings; i++) {
+                if (strcasecmp(host, thedb->sibling_hostname[i]) == 0) {
+                    is_peer_cluster_node = 1;
+                    break;
+                }
+            }
+        }
+
+        if (!is_peer_cluster_node) {
+            logmsg(LOGMSG_ERROR, "%s: sockbplog rejected from unauthorized peer %s - not a cluster member\n", __func__,
+                   host);
+            cdb2buf_printf(sb, "Error: sockbplog access denied\n");
+            cdb2buf_flush(sb);
+            return APPSOCK_RETURN_ERR;
+        }
+    }
+
+    if (gbl_sockbplog_debug)
+        logmsg(LOGMSG_ERROR, "%s: sockbplog connection from %s\n", __func__, host);
 
     while (!rc) {
         rc = handle_sockbplog_request_session(sb, host);
