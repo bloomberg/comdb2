@@ -2202,8 +2202,10 @@ clipper_usage:
         }
         hostname = alloca(ltok + 1);
         tokcpy(tok, ltok, hostname);
-        int rtn = physrep_allowed_source(dbname, hostname);
-        logmsg(LOGMSG_USER, "physrep_allowed_source dbname=%s hostname=%s rtn=%d\n", dbname, hostname, rtn);
+        char reason[128];
+        int rtn = physrep_allowed_source_reason(dbname, hostname, reason, sizeof(reason));
+        logmsg(LOGMSG_USER, "physrep_allowed_source dbname=%s hostname=%s rtn=%d%s%s\n", dbname, hostname, rtn,
+               rtn ? "" : " reason=", rtn ? "" : reason);
     } else if (tokcmp(tok, ltok, "revconn_host_is_up") == 0) {
         char *hostname = NULL;
         tok = segtok(line, lline, &st, &ltok);

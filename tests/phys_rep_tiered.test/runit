@@ -2708,6 +2708,14 @@ function check_metadb_memstat
     fi
 }
 
+# The 'physrep_allowed_source' message command appends a ' reason=<text>' suffix
+# when it rejects a source, so the return code is no longer the text following
+# the last '=' in its output.  Pull 'rtn=<n>' out explicitly instead.
+function parse_rtn
+{
+    echo "$1" | sed -n 's/.*rtn=\(-*[0-9][0-9]*\).*/\1/p' | head -1
+}
+
 # Verify allowed-source behavior
 function physrep_allowed_source
 {
@@ -2724,7 +2732,7 @@ function physrep_allowed_source
         cmd="physrep_allowed_source $DBNAME $node"
         sql="exec procedure sys.cmd.send(\"$cmd\")"
         out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-        rc=${out##*=}
+        rc=$(parse_rtn "$out")
         [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source allowed source within cluster on node $node"
     done
 
@@ -2758,7 +2766,7 @@ function physrep_allowed_source
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
     out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=${out##*=}
+    rc=$(parse_rtn "$out")
     [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source allowed test as source for beta"
 
     echo "Set machine 'foobar1' to class 'uat'"
@@ -2770,7 +2778,7 @@ function physrep_allowed_source
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
     out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=${out##*=}
+    rc=$(parse_rtn "$out")
     [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow uat as source for beta"
 
     echo "Set machine 'foobar1' to class 'prod'"
@@ -2782,7 +2790,7 @@ function physrep_allowed_source
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
     out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=${out##*=}
+    rc=$(parse_rtn "$out")
     [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow prod as source for beta"
 
     echo "Set machine 'foobar1' to class 'beta'"
@@ -2794,7 +2802,7 @@ function physrep_allowed_source
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
     out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=${out##*=}
+    rc=$(parse_rtn "$out")
     [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow beta as source for beta"
 
     echo "Set machine class back to prod"
@@ -2808,7 +2816,7 @@ function physrep_allowed_source
         cmd="physrep_allowed_source $name $node"
         sql="exec procedure sys.cmd.send(\"$cmd\")"
         out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-        rc=${out##*=}
+        rc=$(parse_rtn "$out")
         [[ "$rc" == 0 ]] || cleanFailExit "physrep_allowed_source $name allowed self as source"
     done
 }
@@ -2833,7 +2841,7 @@ function physrep_rtcpu_source
             cmd="physrep_allowed_source $DBNAME $src_node"
             sql="exec procedure sys.cmd.send(\"$cmd\")"
             out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-            rc=${out##*=}
+            rc=$(parse_rtn "$out")
             [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source should allow $src_node before rtcpu, got rc=$rc"
         done
 
@@ -2846,7 +2854,7 @@ function physrep_rtcpu_source
             cmd="physrep_allowed_source $DBNAME $src_node"
             sql="exec procedure sys.cmd.send(\"$cmd\")"
             out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-            rc=${out##*=}
+            rc=$(parse_rtn "$out")
             [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source should reject rtcpu'd node $src_node on $name, got rc=$rc"
         done
 
@@ -2859,7 +2867,7 @@ function physrep_rtcpu_source
             cmd="physrep_allowed_source $DBNAME $src_node"
             sql="exec procedure sys.cmd.send(\"$cmd\")"
             out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-            rc=${out##*=}
+            rc=$(parse_rtn "$out")
             [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source should allow $src_node after removing rtcpu, got rc=$rc"
         done
     done
@@ -3197,6 +3205,104 @@ function physrep_max_pending
         $CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physreps where dbname='$fakedb'"
         [[ $? == 0 ]] || cleanFailExit "Failed to delete pending physrep for $fakedb on iteration $j"
         let j=j+1
+    done
+}
+
+# register-replicant must not hand out a physrep which is not yet replicating.
+# comdb2_physreps.state is a case-sensitive CSTRING, and start_physrep_threads()
+# used to write 'InActive' while register_self() wrote 'Inactive'.  The SP's
+# case-sensitive NOT IN ('Pending', 'Inactive') let the 'InActive' rows through,
+# so a physrep which had restarted but not begun replicating was handed out as a
+# viable source; the requesting replicant then rejected it locally in
+# physrep_allowed_source(), found no candidate leaders and retried forever.
+# Verify the filter ignores case, using a synthetic source row so that no live
+# node's registration is disturbed.
+function physrep_register_state_case
+{
+    local srchost="fakecasehost"
+    local reqdb="fakecasedb"
+    local reqhost="fakecasemach"
+    local sp="exec procedure sys.physrep.register_replicant('$reqdb', '$reqhost', '1:1', '$DBNAME', \"'$srchost'\")"
+    local cols
+    local x
+    local state
+
+    echo "== physrep_register_state_case =="
+
+    # Registering emits a 'Pending' row for the requester; drop both the
+    # requester and the synthetic source between subcases.
+    function _statecase_cleanup
+    {
+        $CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST \
+            "delete from comdb2_physreps where dbname='$reqdb' or host='$srchost'" >/dev/null 2>&1
+    }
+
+    # The firstfile column is optional (and phys_rep_firstfile_rollout may add it
+    # mid-run), so detect it rather than relying on the test variant.  The
+    # synthetic source must cover the requester's lsn of 1:1.
+    cols=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST \
+        "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'")
+
+    _statecase_cleanup
+
+    # 'state' is the only thing varying across the subcases below: an eligible
+    # source must come back, and every spelling of a not-yet-replicating one
+    # must not.
+    for state in "Active" "Inactive" "InActive" "INACTIVE" "Pending" "PENDING" "Active" ; do
+
+        _statecase_cleanup
+
+        if [[ "$cols" == "1" ]]; then
+            $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST \
+                "insert into comdb2_physreps(dbname, host, file, firstfile, last_keepalive, state) values ('$DBNAME', '$srchost', 1000000, 1, now(), '$state')" >/dev/null
+        else
+            $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST \
+                "insert into comdb2_physreps(dbname, host, file, last_keepalive, state) values ('$DBNAME', '$srchost', 1000000, now(), '$state')" >/dev/null
+        fi
+        [[ $? == 0 ]] || cleanFailExit "Failed to insert synthetic source with state '$state'"
+
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "$sp")
+
+        if [[ "$state" == "Active" ]]; then
+            # Sanity: the synthetic source is otherwise a viable candidate, so a
+            # miss here means the subcases below prove nothing.
+            [[ "$x" == *"$srchost"* ]] || \
+                cleanFailExit "register_replicant did not return the '$state' source $srchost, got '$x'"
+        else
+            [[ "$x" == *"$srchost"* ]] && \
+                cleanFailExit "register_replicant handed out '$state' source $srchost, got '$x'"
+        fi
+        echo "state '$state' handled correctly"
+    done
+
+    _statecase_cleanup
+    unset -f _statecase_cleanup
+}
+
+# start_physrep_threads() and register_self() must agree on the casing they write
+# to comdb2_physreps.state -- see physrep_register_state_case.  The column is a
+# case-sensitive CSTRING, so an exact-match count catches any node still writing
+# the old 'InActive' spelling.  This is checked as an invariant at the end of the
+# run rather than by observing the transient state, which flips to 'Active' as
+# soon as the physrep starts replicating.
+function physrep_no_stale_state_casing
+{
+    local metadb
+    local metahost
+    local cnt
+
+    echo "== physrep_no_stale_state_casing =="
+
+    for metadb in "$REPL_META_DBNAME:$REPL_META_HOST" "$REPL_ALTMETA_DBNAME:$REPL_ALTMETA_HOST" \
+                  "$REPL_ALTMETA_DBNAME2:$REPL_ALTMETA_HOST2" ; do
+        metahost=${metadb##*:}
+        metadb=${metadb%%:*}
+        [[ -z "$metadb" || -z "$metahost" ]] && continue
+
+        cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $metahost \
+            "select count(*) from comdb2_physreps where state='InActive'" 2>/dev/null)
+        [[ "$cnt" == "0" ]] || \
+            cleanFailExit "Found $cnt physrep(s) with the stale 'InActive' state casing in $metadb"
     done
 }
 
@@ -3727,6 +3833,11 @@ function run_tests
     physrep_max_pending
     testcase_finish $testcase
 
+    testcase="physrep_register_state_case"
+    testcase_preamble $testcase
+    physrep_register_state_case
+    testcase_finish $testcase
+
     testcase="physrep_revconn_populate_error"
     testcase_preamble $testcase
     physrep_revconn_populate_error
@@ -3756,6 +3867,13 @@ function run_tests
     testcase="phys_rep_firstfile_rollout"
     testcase_preamble $testcase
     phys_rep_firstfile_rollout
+    testcase_finish $testcase
+
+    # Invariant over every state written during the whole run; must come after
+    # the restarts above so it sees the states they produced.
+    testcase="physrep_no_stale_state_casing"
+    testcase_preamble $testcase
+    physrep_no_stale_state_casing
     testcase_finish $testcase
 }
 

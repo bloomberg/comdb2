@@ -885,9 +885,17 @@ static int physrep_class_allow_source(const char *hostname)
     return rtn;
 }
 
-int physrep_allowed_source(const char *dbname, const char *hostname)
+/* Same as physrep_allowed_source(), but on rejection also fills 'reason' with a
+ * short description of which check rejected the source.  Callers log this: a
+ * bare "blocking source" line is not enough to tell a same-cluster node from an
+ * rtcpu'd one when a replicant is stuck finding no candidate leaders. */
+int physrep_allowed_source_reason(const char *dbname, const char *hostname, char *reason, size_t reason_len)
 {
     bdb_state_type *bdb_state = gbl_bdb_state;
+
+    if (reason && reason_len > 0) {
+        reason[0] = '\0';
+    }
 
     /* Exclude anything which is part of this cluster */
     if (!strcmp(dbname, gbl_dbname)) {
@@ -896,8 +904,8 @@ int physrep_allowed_source(const char *dbname, const char *hostname)
         num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
         for (int i = 0; i < num_nodes; ++i) {
             if (!strcmp(nodes[i].host, hostname)) {
-                if (gbl_physrep_debug) {
-                    physrep_logmsg(LOGMSG_USER, "%s: discarding same-cluster mach %s\n", __func__, hostname);
+                if (reason) {
+                    snprintf(reason, reason_len, "same-cluster node");
                 }
                 return 0;
             }
@@ -906,22 +914,29 @@ int physrep_allowed_source(const char *dbname, const char *hostname)
 
     /* Exclude any lower tier */
     if (gbl_physrep_filter_by_class && !physrep_class_allow_source(hostname)) {
-        if (gbl_physrep_debug) {
-            enum mach_class class = get_mach_class(hostname);
-            physrep_logmsg(LOGMSG_USER, "%s: discard lower-tier source, %s\n", __func__, mach_class_class2tier(class));
+        if (reason) {
+            enum mach_class src_class = normalize_class(get_mach_class(hostname));
+            enum mach_class my_class = normalize_class(get_my_mach_class());
+            snprintf(reason, reason_len, "lower-tier source, class %s (my class is %s)",
+                     mach_class_class2tier(src_class), mach_class_class2tier(my_class));
         }
         return 0;
     }
 
     /* Exclude any rtcpu'd node */
     if (bdb_state->callback->nodeup_rtn && !bdb_state->callback->nodeup_rtn(bdb_state, intern(hostname))) {
-        if (gbl_physrep_debug) {
-            physrep_logmsg(LOGMSG_USER, "%s: discarding rtcpu'd node %s\n", __func__, hostname);
+        if (reason) {
+            snprintf(reason, reason_len, "rtcpu'd node");
         }
         return 0;
     }
 
     return 1;
+}
+
+int physrep_allowed_source(const char *dbname, const char *hostname)
+{
+    return physrep_allowed_source_reason(dbname, hostname, NULL, 0);
 }
 
 static int register_self(cdb2_hndl_tp *repl_metadb)
@@ -993,11 +1008,13 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
                 char *dbname = (char *)cdb2_column_value(repl_metadb, 1);
                 char *hostname = (char *)cdb2_column_value(repl_metadb, 2);
 
-                if (physrep_allowed_source(dbname, hostname)) {
+                char reason[128];
+                if (physrep_allowed_source_reason(dbname, hostname, reason, sizeof(reason))) {
                     add_replicant_host(hostname, dbname);
                     ++candidate_leaders_count;
                 } else {
-                    physrep_logmsg(LOGMSG_USER, "%s:%d blocking source %s/%s\n", __func__, __LINE__, dbname, hostname);
+                    physrep_logmsg(LOGMSG_USER, "%s:%d blocking source %s/%s: %s\n", __func__, __LINE__, dbname,
+                                   hostname, reason);
                 }
             }
             last_register = time(NULL);
@@ -2073,16 +2090,17 @@ int start_physrep_threads() {
         return 0;
     }
 
-    // Sources are 'Active' or 'InActive'
+    // Sources are 'Active' or 'Inactive'.  The casing has to match the state
+    // that sys.physrep.register_replicant filters on -- see register_self().
     if (gbl_physrep_source_dbname == NULL) {
         send_reset_nodes("Active", 0);
-        // Physreps are 'InActive' until they begin replicating
+        // Physreps are 'Inactive' until they begin replicating
     } else {
-        send_reset_nodes("InActive", 0);
+        send_reset_nodes("Inactive", 0);
     }
 
     // Treat altmeta like a source: physreps which list it as primary meta
-    // should only see 'Active' or 'InActive'
+    // should only see 'Active' or 'Inactive'
     send_reset_nodes_altmeta("Active");
 
     // If this is a 'physical replication' source, we would need to actively
