@@ -1526,7 +1526,8 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
         hdroffset += getVarint32(in + hdroffset, type);
         info.null = (type == 0);
         f = &s->member[fld];
-        dataoffset += sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+        sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+        dataoffset += sqlite3VdbeSerialTypeLen(type);
 
         info.fldidx = fld;
 
@@ -12539,8 +12540,9 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
     while (hdroffset < hdrsz) {
         hdroffset += getVarint32((unsigned char *)row + hdroffset, type);
         prev_dataoffset = dataoffset;
-        dataoffset += sqlite3VdbeSerialGet(
+        sqlite3VdbeSerialGet(
             (unsigned char *)row + prev_dataoffset, type, &m);
+        dataoffset += sqlite3VdbeSerialTypeLen(type);
 
         if (fld < 7 && fld != 3 && fld != 6) {
             str = (char *)malloc(m.n + 1);
@@ -12725,7 +12727,8 @@ void stat4dump(int more, char *table, int istrace)
                 u32 type;
                 Mem m = {{0}};
                 hdroffset += getVarint32(in + hdroffset, type);
-                dataoffset += sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+                sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+                dataoffset += sqlite3VdbeSerialTypeLen(type);
                 if (m.flags & MEM_Null) {
                     outFunc("%sNULL", sep);
                 } else if (m.flags & MEM_Int) {
