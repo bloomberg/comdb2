@@ -452,6 +452,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int changed;
     int i;
     struct scinfo scinfo;
+    /* Set below only on the non-SC_PREEMPT_RESUME path; initialized here so it
+     * is well-defined on the "goto convert_records" path too, which skips that
+     * assignment entirely. */
+    int newdb_borrowed_from_partition = 0;
 
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
@@ -512,8 +516,13 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         local_lock = 1;
     }
 
+    /* A merge resume hands us a target it already built and pointed every shard
+     * at.  We only borrow it: tearing it down here would leave those shards'
+     * sc_to dangling, so every failure path below leaves it alone and
+     * cleanup_merge_resume_newdb() disposes of it once, in the caller. */
     if (s->resume && s->partition.type == PARTITION_MERGE) {
         newdb = s->partition.newdb;
+        newdb_borrowed_from_partition = (newdb != NULL);
     }
     if (!newdb) {
         Pthread_mutex_lock(&csc2_subsystem_mtx);
@@ -534,7 +543,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         if (local_lock)
             unlock_schema_lk();
         backout(newdb);
-        cleanup_newdb(newdb);
+        if (!newdb_borrowed_from_partition)
+            cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
         rc = ERR_SC;
         goto earlyfail;
@@ -546,7 +556,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         backout(newdb);
         if (local_lock)
             unlock_schema_lk();
-        cleanup_newdb(newdb);
+        if (!newdb_borrowed_from_partition)
+            cleanup_newdb(newdb);
         sc_errf(s, "Internal error");
         rc = SC_INTERNAL_ERROR;
         goto earlyfail;
@@ -558,8 +569,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/
+    int newdb_created_fresh = 0;
     if (!newdb->handle) {
-        rc = open_temp_newdb_resume(newdb, s->resume);
+        rc = open_temp_newdb_resume(newdb, s->resume, &newdb_created_fresh);
     } else
         rc = 0;
     if (rc) {
@@ -626,12 +638,25 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                          newdb->instant_schema_change, newdb->schema_version,
                          s->compress, s->compress_blobs, datacopy_odh);
 
+    /* We are resuming, but there was no temp btree to reopen and we created a
+     * fresh one.  Nothing was ever converted into it, so any sc_genids still
+     * recorded for this table are stale: resuming from them would skip every
+     * row at or below the mark.  Reset them and start from the beginning. */
+    if (s->resume && newdb_created_fresh && reset_stale_sc_genids(s, db->tablename, db->dtastripe)) {
+        sc_errf(s, "failed resetting stale sc_genids\n");
+        delete_temp_table(iq, newdb);
+        change_schemas_recover(s->tablename);
+        rc = SC_INTERNAL_ERROR;
+        goto earlyfail;
+    }
+
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */
     if (init_sc_genids(s, db->tablename, db->dtastripe, USE_NEWDB_FOR_SC_GENIDS ? newdb->handle : NULL,
                        &db->sc_genids)) {
         sc_errf(s, "failed initilizing sc_genids\n");
-        delete_temp_table(iq, newdb);
+        if (!newdb_borrowed_from_partition)
+            delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
         rc = SC_INTERNAL_ERROR;
         goto earlyfail;
@@ -674,6 +699,26 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     for (i = 0; i < newdb->dtastripe; i++) {
         logmsg(LOGMSG_INFO, "%s: %s stripe %d result resume genid %llx (%lld)\n", __func__, s->tablename, i,
                db->sc_genids[i], db->sc_genids[i]);
+    }
+
+    /* The temp btree was created from scratch, so it holds no converted rows
+     * and every stripe must start at 0.  This catches a non-zero mark from
+     * either source - llmeta or the newdb handle - since a surviving mark would
+     * make convert_all_records skip every row at or below it. */
+    if (s->resume && newdb_created_fresh) {
+        for (i = 0; i < db->dtastripe; i++) {
+            if (db->sc_genids[i] != 0ULL) {
+                logmsg(LOGMSG_ERROR, "%s: %s stripe %d resumed at 0x%016llx but its temp btree was just created\n",
+                       __func__, db->tablename, i, db->sc_genids[i]);
+                sc_errf(s, "stripe %2d resume genid 0x%016llx with a freshly created temp\n", i, db->sc_genids[i]);
+                delete_temp_table(iq, newdb);
+                change_schemas_recover(s->tablename);
+                rc = SC_INTERNAL_ERROR;
+                goto earlyfail;
+            }
+        }
+        logmsg(LOGMSG_INFO, "%s: %s starting conversion from 0 on all %d stripes (temp created fresh)\n", __func__,
+               db->tablename, db->dtastripe);
     }
 
     s->newdb = newdb;
@@ -784,7 +829,8 @@ errout:
         }
 
         backout_constraint_pointers(newdb, db);
-        delete_temp_table(iq, newdb);
+        if (!newdb_borrowed_from_partition)
+            delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
         return rc;
     }

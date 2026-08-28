@@ -99,6 +99,8 @@ void convert_record_data_cleanup(struct convert_record_data *data);
 int init_sc_genids(struct schema_change_type *s, const char *tablename, int stripes, bdb_state_type *handle,
                    unsigned long long **p_sc_genids);
 
+int reset_stale_sc_genids(struct schema_change_type *s, const char *tablename, int stripes);
+
 void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
 
 void *live_sc_logical_redo_thd(struct convert_record_data *data);

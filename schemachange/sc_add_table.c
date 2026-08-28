@@ -89,8 +89,13 @@ int add_table_to_environment(char *table, const char *csc2,
         s->newdb = newdb = NULL;
 
     /* do we already have newdb created by resuming code ? */
+    /* If so we only borrow it: the merge resume already pointed every shard's
+     * sc_to at it, so freeing it here would leave those dangling.  The err path
+     * below leaves it alone and cleanup_merge_resume_newdb() disposes of it. */
+    int newdb_borrowed_from_partition = 0;
     if (s && s->resume && s->partition.type == PARTITION_MERGE && s->partition.newdb) {
         newdb = s->partition.newdb;
+        newdb_borrowed_from_partition = 1;
         assert(newdb->handle);
     } else {
         newdb = do_add_table_newdb(table, csc2, s, iq, timepartition_name);
@@ -122,7 +127,7 @@ int add_table_to_environment(char *table, const char *csc2,
                        newdb->tablename);
                 rc = -1;
             } else {
-                rc = open_temp_db_resume(newdb, newdb->tablename, 1);
+                rc = open_temp_db_resume(newdb, newdb->tablename, 1, NULL);
             }
             if (rc) {
                 sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
@@ -176,7 +181,8 @@ int add_table_to_environment(char *table, const char *csc2,
 err:
     newdb->iq = NULL;
     backout_schemas(newdb->tablename);
-    cleanup_newdb(newdb);
+    if (!newdb_borrowed_from_partition)
+        cleanup_newdb(newdb);
     return rc;
 }
 

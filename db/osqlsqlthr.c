@@ -1180,6 +1180,9 @@ retry:
                                      BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
                         !in_client_trans(clnt) && osql->running_ddl) {
                         clnt->osql.xerr.errval = ERR_SC;
+                        /* keep the master's error, if any, readable */
+                        if (clnt->osql.xerr.errstr[0])
+                            errstat_cat_str(&(clnt->osql.xerr), "; ");
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "Master node downgrading - new "
                                         "master will resume schemachange");

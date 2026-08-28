@@ -6,6 +6,7 @@
 (name='abort_during_downgrade_if_scs_dont_stop', description='Abort if scs don't stop within 60 secondsafter starting a downgrade (default OFF)', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_invalid_query_info_key', description='Abort in thread-teardown for invalid query_info_key', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_on_dangling_string_refs', description='Abort-on-exit on dangling stringrefs.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='abort_on_dirty_ireq_release', description='Abort if an ireq is returned to the pool with schema change state still attached.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_on_in_use_rqid', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='abort_on_invalid_context', description='abort_on_invalid_context', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_on_replicant_log_write', description='Abort if replicant is writing to logs', type='BOOLEAN', value='OFF', read_only='N')
