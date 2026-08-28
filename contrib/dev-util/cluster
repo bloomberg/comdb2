@@ -88,7 +88,7 @@ function create-persist {
 function interactive-init {
     clean-persist
     docker-sanity-check
-    
+
     local defsource="ubuntu:latest"
     if [[ -f /etc/lsb-release ]]; then
         source /etc/lsb-release
@@ -212,6 +212,7 @@ function build {
 			valgrind		\
 			vim                     \
 			tclsh
+        RUN getent passwd ${uid} && userdel -r \$(getent passwd ${uid} | cut -d: -f1) || true
         RUN useradd -d ${HOME} -m -u ${uid} ${id} -s /bin/bash
 	EOF
 	create-or-copy $HOME/.vimrc vimrc
@@ -267,7 +268,7 @@ function build {
 		RUN chmod -R 777 /opt/bb/
 		RUN chown -R ${id}:${id} ${HOME}
 	EOF
-	#if having problems with missing packages build with --no-cache=true 
+	#if having problems with missing packages build with --no-cache=true
 	docker build -t comdb2:dev .
 	popd
 	rm -rf $DIR
@@ -302,7 +303,7 @@ function run {
 		name=$(container-name $i)
 		[[ $i -gt 0 ]] && names+=(${name})
         local dbfs=""
-        if [[ $persist -eq 1 ]]; then 
+        if [[ $persist -eq 1 ]]; then
             dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
         else
             dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
@@ -315,7 +316,7 @@ function run {
 	for ((i=0;i<=$n;++i)); do
 		name=$(container-name $i)
 		cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
-        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+        docker exec --user $(id -u) ${name} /bin/bash -c "${cluster_cmd}"
 	done
 
     if [[ $(get auto-db) = 1 ]]; then
@@ -493,7 +494,7 @@ function docker-status {
             err=1
         fi
     done
-    [[ $err -ne 0 ]] && return $err 
+    [[ $err -ne 0 ]] && return $err
     echo "pmux up"
 
     for i in $(seq 1 $(get clusternum)); do
@@ -504,7 +505,7 @@ function docker-status {
             err=1
         fi
     done
-    [[ $err -ne 0 ]] && return $err 
+    [[ $err -ne 0 ]] && return $err
     echo "Databases set up"
 
     for i in $(seq 1 $(get clusternum)); do
@@ -515,7 +516,7 @@ function docker-status {
             err=1
         fi
     done
-    [[ $err -ne 0 ]] && return $err 
+    [[ $err -ne 0 ]] && return $err
 
     echo "Databases running."
     return 0
@@ -554,8 +555,12 @@ function usage {
 	exit 1
 }
 
-if [[ ! -d "${dir}" ]]; then 
-    if [[ "$1" != "init" ]]; then
+if [[ ! -d "${dir}" ]]; then
+    # Inside container running setup doesn't require config files
+    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
+    if [[ "$1" == "setup" && ( -f /.dockerenv || "$isdocker" == "docker" ) ]]; then
+        :  # Skip config check for in-container setup
+    elif [[ "$1" != "init" ]]; then
         echo "Can't find my config files, did you run \"$(basename $0) init\"?"
         exit 1
     else
@@ -566,7 +571,10 @@ if [[ ! -d "${dir}" ]]; then
     fi
 fi
 
-init-globals
+# Only load globals if config directory exists
+if [[ -d "${dir}" ]]; then
+    init-globals
+fi
 
 if [[ "$1" == "build" ]]; then
 	build
