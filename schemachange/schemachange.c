@@ -43,7 +43,40 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 extern int gbl_test_sc_resume_race;
 extern int gbl_retro_tpt_verbose;
 
-/* If this is successful, it increments */
+/* If this is successful, it increments
+ *
+ * OWNERSHIP CONTRACT: on failure this may or may not have freed iq->sc, and the
+ * return code cannot tell the two apart (SC_MASTER_DOWNGRADE, for instance, is
+ * returned both from the early exit below and from do_alter_table()).  So every
+ * path that frees iq->sc also sets it to NULL, which makes the caller's test:
+ *
+ *   iq->sc == NULL  <=>  the schema change was freed here
+ *
+ * A freed sc was always released before sc_set_running() succeeded, so it never
+ * registered as running, never wrote an sc seed and never opened a temp btree:
+ * there is nothing to back out and nothing to release.  A surviving sc, failed
+ * or not, still owns its running mark, so the caller must either link it into
+ * iq->sc_pending (whose walkers release the mark) or release it itself.
+ * Callers must therefore check iq->sc before dereferencing it.
+ *
+ * NOTE: the iq->sc == NULL equivalence above holds for the OSQL callers, which
+ * are the ones that test it.  It does not hold for s->is_osql == 0: an inline
+ * non-OSQL schema change is freed by stop_and_free_sc() inside
+ * do_schema_change_tran_int(), which releases the running mark but leaves
+ * iq->sc dangling.  Only start_schema_change() takes that path, with an ireq it
+ * discards immediately, so nothing dereferences it.
+ *
+ * Only an inline (nothrevent) schema change can return an error with the sc
+ * still alive: rc is last assigned by sc_set_running() below, a non-zero there
+ * returns straight away, and the asynchronous branch never touches rc.  So a
+ * caller seeing rc != SC_OK with iq->sc != NULL is always looking at a schema
+ * change that ran to completion inline and failed.
+ *
+ * NOTE: iq->sc, iq->sc_seed and iq->usedb are single-slot, so one ireq cannot
+ * carry two schema changes at once.  Callers that share an ireq between merge
+ * threads must therefore serialise on iq->sc_pending_mtx - see
+ * sc_pending_lock() in osqlcomm.c.
+ */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -53,6 +86,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (!bdb_iam_master(thedb->bdb_env)) {
         sc_errf(s, "I am not master\n");
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_NOT_MASTER;
     }
 
@@ -978,7 +1012,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
-    rc = open_temp_newdb_resume(newdb, 1);
+    rc = open_temp_newdb_resume(newdb, 1, NULL);
     if (rc) {
         backout_schemas(newdb->tablename);
         abort();

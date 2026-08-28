@@ -108,6 +108,9 @@ struct timepart_view;
 struct schema_change_status {
     int async_done;
     struct errstat xerr;
+    char tablename[MAXTABLELEN]; /* copied at creation time, while the owning sc is
+                                  * still guaranteed live; never read back from sc,
+                                  * which may be freed by the time this is used */
     LINKC_T(struct schema_change_status) lnk;
     pthread_mutex_t mtx;
     pthread_cond_t cond;

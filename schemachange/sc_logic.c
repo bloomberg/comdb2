@@ -718,9 +718,16 @@ downgraded:
             if (!trans)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
-            /* return NOMASTER for live schemachange writes */
+            /* return NOMASTER for live schemachange writes.  NOTE: this only
+             * clears s->db; for a merge every other shard was pointed at the
+             * target too, which is why that case goes through
+             * cleanup_merge_resume_newdb() below. */
             sc_set_downgrading(s);
-            if (!s->newdb_borrowed) {
+            if (s->partition.type == PARTITION_MERGE && s->partition.newdb == s->newdb) {
+                /* takes the shards off the target first, and keeps the temp
+                 * btree on disk so the new master can resume this merge */
+                cleanup_merge_resume_newdb(iq, s, 1 /*downgrade*/);
+            } else if (!s->newdb_borrowed) {
                 bdb_close_only(s->newdb->handle, &bdberr);
                 freedb(s->newdb);
             }
@@ -1391,12 +1398,12 @@ char *get_prefixed_tablename(const char *tablename)
     return tmpname;
 }
 
-int open_temp_newdb_resume(struct dbtable *db, int resume)
+int open_temp_newdb_resume(struct dbtable *db, int resume, int *created_fresh)
 {
     char *tblname = get_prefixed_tablename(db->tablename);
     int rc;
 
-    rc = open_temp_db_resume(db, tblname, resume);
+    rc = open_temp_db_resume(db, tblname, resume, created_fresh);
 
     free(tblname);
 
@@ -1418,11 +1425,28 @@ void *open_temp_db_resume_early(struct dbtable *db, char *tablename)
     return handle;
 }
 
-int open_temp_db_resume(struct dbtable *db, char *tablename, int resume)
+/* Open the temp btree for a schema change.
+ *
+ * When 'resume' is set we first try to reopen the temp left behind by the
+ * schema change we are resuming.  If there isn't one, we create a fresh one
+ * and start the conversion from the beginning rather than failing: a schema
+ * change can legitimately be recorded as in-progress without ever having
+ * created its temp, e.g. the second and later statements of a transactional
+ * multi-DDL (BEGIN; ALTER t5 ...; ALTER t6 ...; COMMIT) when the master dies
+ * while the first one is still converting.
+ *
+ * 'created_fresh' (optional) is set to 1 when we had to create the temp
+ * instead of reopening one.  A resuming caller must then reset any sc_genids
+ * recorded for the table - see reset_stale_sc_genids() - because they describe
+ * progress into a btree that no longer exists.
+ */
+int open_temp_db_resume(struct dbtable *db, char *tablename, int resume, int *created_fresh)
 {
     int bdberr;
 
     db->handle = NULL;
+    if (created_fresh)
+        *created_fresh = 0;
 
     /* open existing temp db if it's there (ie we're resuming after a master switch) */
     if (resume) {
@@ -1433,8 +1457,12 @@ int open_temp_db_resume(struct dbtable *db, char *tablename, int resume)
                    "progress schema change\n",
                    tablename);
         else {
-            logmsg(LOGMSG_ERROR, "Didn't find existing tempdb: %s, aborting schema change\n", tablename);
-            return -1;
+            logmsg(LOGMSG_WARN,
+                   "Didn't find existing tempdb: %s, creating a new one and "
+                   "restarting the conversion from the beginning\n",
+                   tablename);
+            if (created_fresh)
+                *created_fresh = 1;
         }
     }
 

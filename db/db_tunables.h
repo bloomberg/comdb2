@@ -2155,6 +2155,10 @@ REGISTER_TUNABLE("abort_on_dangling_string_refs", "Abort-on-exit on dangling str
 REGISTER_TUNABLE("abort_on_stalled_exit", "Core-dump if the clean-exit alarm fires.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_abort_on_stalled_exit, NOARG, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("abort_on_dirty_ireq_release",
+                 "Abort if an ireq is returned to the pool with schema change state still attached.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_dirty_ireq_release, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("msgwaittime", "Network timeout for pushnext & queue changes.  (Default: 10000)", TUNABLE_INTEGER,
                  &gbl_msgwaittime, 0, NULL, NULL, NULL, NULL);
 

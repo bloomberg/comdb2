@@ -1335,6 +1335,9 @@ static schema_change_status *_create_sc_status(struct ireq *iq, struct schema_ch
         return NULL;
     Pthread_mutex_init(&ret->mtx, NULL);
     Pthread_cond_init(&ret->cond, NULL);
+    /* copy now, while sc is guaranteed live: by the time an error is signalled,
+     * start_schema_change_tran() may already have freed sc */
+    strncpy0(ret->tablename, sc->tablename, sizeof(ret->tablename));
     listc_abl(&iq->scs_status, ret);
     MEMORY_SYNC;
 
@@ -1347,6 +1350,55 @@ static void _destroy_sc_status(struct ireq *iq, struct schema_change_status *sta
     Pthread_mutex_destroy(&status->mtx);
     Pthread_cond_destroy(&status->cond);
     free(status);
+}
+
+void init_ireq_sc_state(struct ireq *iq)
+{
+    listc_init(&iq->scs_status, offsetof(struct schema_change_status, lnk));
+    Pthread_mutex_init(&iq->sc_pending_mtx, NULL);
+    iq->sc_state_inited = IREQ_SC_STATE_INITED;
+}
+
+void init_ireq_sc_state_once(struct ireq *iq)
+{
+    if (iq->sc_state_inited == IREQ_SC_STATE_INITED)
+        return;
+    init_ireq_sc_state(iq);
+}
+
+void check_ireq_sc_state_clean(struct ireq *iq)
+{
+    struct schema_change_status *status, *tmp;
+    int locked;
+
+    /* this ireq was never used for a schema change */
+    if (iq->sc_state_inited != IREQ_SC_STATE_INITED)
+        return;
+
+    /* sample the mutex; if we got it, we know nobody else holds it */
+    locked = (pthread_mutex_trylock(&iq->sc_pending_mtx) != 0);
+    if (!locked)
+        Pthread_mutex_unlock(&iq->sc_pending_mtx);
+
+    if (iq->scs_status.count == 0 && !locked)
+        return;
+
+    logmsg(LOGMSG_ERROR, "%s: dirty ireq %p opcode %d: scs_status.count=%d mtx_locked=%d\n", __func__, iq, iq->opcode,
+           iq->scs_status.count, locked);
+    if (gbl_abort_on_dirty_ireq_release)
+        abort();
+
+    /* repair, so that whoever gets this ireq next starts clean */
+    LISTC_FOR_EACH_SAFE(&iq->scs_status, status, tmp, lnk)
+    {
+        _destroy_sc_status(iq, status);
+    }
+
+    /* we cannot unlock a mutex this thread does not own, so retire it instead:
+     * clearing the flag makes the next init_ireq_sc_state_once() build a new one
+     */
+    if (locked)
+        iq->sc_state_inited = 0;
 }
 
 /**
@@ -1366,6 +1418,15 @@ static int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
 
     /* save this in iq for early sc aborts */
     comdb2uuidcpy(iq->scs_uuid, uuid);
+
+    /* Decide up front - before anything can be dispatched - whether this ireq
+     * can end up with more than one writer of iq->sc / iq->sc_pending.  A
+     * resumed partition merge runs in its own thread, so with two or more
+     * schema changes in the transaction one can still be running while the next
+     * is processed.  With a single schema change that cannot happen and
+     * sc_pending_mtx is not needed.  Computed here, never from inside the loop,
+     * so a thread already dispatched can never observe a stale value. */
+    iq->sc_shared = (scs->count > 1);
 
     /* run the asynchronous (do_XX) part of the schema changes;
      * this will have the successfully started linked in iq->sc_pending;
@@ -1387,8 +1448,12 @@ static int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
             /* following this call, sc is either in sc_pending or freed */
             rc = osql_process_schemachange(sc, uuid);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "ERR_SC %s", status->xerr.errstr);
-                errstat_set_rcstrf(&iq->errstat, rc = ERR_SC, "ERR_SC %s", status->xerr.errstr);
+                /* status->xerr was populated by _signal_sc_done() inside
+                 * osql_process_schemachange(); propagate it as-is instead of
+                 * re-wrapping, since it already carries the real error */
+                logmsg(LOGMSG_ERROR, "%s\n", status->xerr.errstr);
+                iq->errstat = status->xerr;
+                rc = ERR_SC;
                 continue;
             }
         } else {
@@ -1415,7 +1480,27 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
     /* lets free the status here, if any */
     LISTC_FOR_EACH_SAFE(&iq->scs_status, status, tmp, lnk)
     {
-        assert(status->async_done);
+        Pthread_mutex_lock(&status->mtx);
+        if (!status->async_done) {
+            /* Not expected on this path: every osql_process_schemachange()
+             * sub-path signals its status before returning.  The one that
+             * dispatches a thread instead - the partition merge resume - is
+             * waited on by resume_sc_multiddl_txn_finalize_thd(), not here.
+             *
+             * Wait rather than assert.  asserts are compiled out of the default
+             * RelWithDebInfo build (-DNDEBUG), so an unsignalled status would
+             * silently be destroyed here while the thread that owns it still
+             * holds sc->status and is going to call _signal_sc_done() on it -
+             * a write to a freed mutex.  Blocking keeps that safe, and the
+             * warning makes the situation visible instead of silent.
+             */
+            logmsg(LOGMSG_WARN, "%s: waiting for async schema change on table %s to finish\n", __func__,
+                   status->tablename);
+            do {
+                Pthread_cond_wait(&status->cond, &status->mtx);
+            } while (!status->async_done);
+        }
+        Pthread_mutex_unlock(&status->mtx);
         _destroy_sc_status(iq, status);
     }
 
@@ -1758,8 +1843,16 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
 
     if (xerr.errval) {
         logmsg(LOGMSG_ERROR, "%s failed to resume schema change, error %d %s\n", __func__, xerr.errval, xerr.errstr);
-        free(iq);
-        goto done;
+        /* Record the failure and still run the finalize routine: it checks
+         * iq->errstat.errval and takes its abort_sc path, which is what backs
+         * out the schema changes, clears sc_running and calls
+         * osql_postabort_handle().  Returning early here instead would leak the
+         * still-running state - the tables stay marked "schema change running"
+         * forever and any merge thread already dispatched keeps going orphaned.
+         * Keep any earlier error (bplog_schemachange_run may have set one).
+         */
+        if (!iq->errstat.errval)
+            iq->errstat = xerr;
     }
 
     /* at this point, the schema changes have ran and are linked in sc_pending;
@@ -1770,13 +1863,10 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
         logmsg(LOGMSG_ERROR, "%s failed to finalize rc %d\n", __func__, rc);
     }
 
-done:
+    /* _resume_sc_multiddl_txn_finalize() frees iq on every return path (both
+     * its commit and abort_sc labels), so iq must not be dereferenced or
+     * freed again here. */
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
-
-    /* same as the commit path: the abort callback freed the schema changes,
-     * this fake ireq is ours to release
-     */
-    free(iq);
 
     return NULL;
 }

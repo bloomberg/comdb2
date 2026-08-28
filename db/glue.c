@@ -235,6 +235,7 @@ void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
     memset(iq, 0, sizeof(struct ireq));
     iq->is_fake = 1;
     iq->dbenv = dbenv;
+    init_ireq_sc_state(iq);
 }
 
 void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
@@ -256,8 +257,9 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
     iq->dbenv = dbenv;
     iq->is_fake = 1;
     iq->helper_thread = -1;
-    listc_init(&iq->scs_status, offsetof(struct schema_change_status, lnk));
-    Pthread_mutex_init(&iq->sc_pending_mtx, NULL);
+    /* callers of init_fake_ireq always hand us a fresh ireq (stack or calloc),
+     * so there is no previous state to preserve here */
+    init_ireq_sc_state(iq);
 }
 
 void set_tran_verify_updateid(tran_type *tran)
