@@ -140,7 +140,6 @@ wait_for_sc
 
 # Verify data integrity.
 assertcnt t1 300
-local cnt_part
 cnt_part=$($CT "select count(*) from comdb2_timepartitions where name='t1'")
 if [[ "$cnt_part" != "0" ]]; then
     failexit "t1 still listed as partition after collapse (cnt=$cnt_part)"
@@ -330,12 +329,14 @@ echo "Scenario 3 passed: both t3 (non-aliased) and t4 (aliased) collapsed correc
 # Scenario 4: transactional multi-DDL partition collapse with kill/resume
 #
 # Tests BEGIN; ALTER TABLE t5 PARTITIONED BY NONE; ALTER TABLE t6 PARTITIONED
-# BY NONE; COMMIT sent as four separate cdb2sql calls.  The first three return
+# BY NONE; COMMIT sent down a single connection.  begin/alter/alter return
 # immediately (cdb2api line-6391 optimization: non-read statements inside a
-# transaction skip reading the server response).  The final "commit" call has
+# transaction skip reading the server response).  The final "commit" has
 # is_commit=1, which blocks waiting for the server to finish
 # bplog_schemachange.  Killing the master during that blocking commit forces
-# the new master to resume both collapses from their scl entries in llmeta.
+# the new master to resume both collapses from their scl entries in llmeta -
+# this is the only scenario here that covers resume_sc_multiddl_txn_finalize_thd,
+# i.e. several schema changes finalized atomically by one resumed transaction.
 #
 # t5: non-aliased partition (CREATE TABLE ... PARTITIONED BY TIME)
 # t6: aliased partition (CREATE TABLE + ALTER TABLE ... PARTITIONED BY TIME)
@@ -385,14 +386,26 @@ assertcnt t6 300
 get_master_local
 slow_down_sc
 
-# Send BEGIN + two ALTER TABLE statements + COMMIT as separate cdb2sql calls.
-# begin/alter/alter return immediately (cdb2api in-trans optimization).
-# commit blocks waiting for bplog_schemachange to finish on the server.
+# Send BEGIN + two ALTER TABLE statements + COMMIT down a SINGLE connection.
+# This must be one cdb2sql invocation: a separate process per statement would
+# put each ALTER in its own autocommit transaction (and leave "commit" with no
+# transaction to commit, failing with "Wrong sql handle state"), so each ALTER
+# would run to completion here rather than being killed mid-flight - never
+# exercising the multi-DDL resume path this scenario exists to cover.
+# Within one connection, begin/alter/alter return immediately (cdb2api in-trans
+# optimization) and commit blocks on bplog_schemachange, which is what lets the
+# kill below land mid-schema-change.
+# The '$$' terminators are required: cdb2sql's is_multi_line_ddl() treats ANY
+# line starting with "alter table" as the opening of a '$$'-delimited block, so
+# without them the ALTER would swallow the following lines (including commit)
+# into a single statement and nothing would run.
 echo "Starting transactional collapse: BEGIN; ALTER t5; ALTER t6; COMMIT (background)"
-$C "begin"
-$C "alter table t5 partitioned by none"
-$C "alter table t6 partitioned by none"
-$C "commit" &
+cdb2sql ${CDB2_OPTIONS} ${dbnm} default - > /dev/null 2>&1 <<"EOF" &
+begin
+alter table t5 partitioned by none$$
+alter table t6 partitioned by none$$
+commit
+EOF
 COMMIT_PID=$!
 
 # Kill master mid-way through the blocking commit (SC is running with scdelay).
