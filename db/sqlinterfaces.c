@@ -194,6 +194,7 @@ void rcache_destroy(void);
 void sql_reset_sqlthread(struct sql_thread *thd);
 int blockproc2sql_error(int rc, const char *func, int line);
 static int test_no_btcursors(struct sqlthdstate *thd);
+static void clnt_detach_thd(struct sqlclntstate *clnt, struct sql_thread *sqlthd);
 static void sql_thread_describe(void *obj, FILE *out);
 static char *get_query_cost_as_string(struct sql_thread *, struct sqlclntstate *);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
@@ -4626,6 +4627,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     osql_log_time_done(clnt);
 
     debug_close_clnt(clnt);
+    clnt_detach_thd(clnt, thd->sqlthd);
     signal_clnt_as_done(clnt);
 
     thrman_setid(thrman_self(), "[done]");
@@ -4858,6 +4860,22 @@ static int can_execute_sql_query_now(
   return 1;
 }
 
+/* clear before signal: signal hands clnt back to the event thread.
+ * nested replay call: outer frame still owns thd.
+ * only call this while we still own clnt (ie not after a redispatch) */
+static void clnt_detach_thd(struct sqlclntstate *clnt, struct sql_thread *sqlthd)
+{
+    if (clnt->osql.in_replay_nested)
+        return;
+    Pthread_mutex_lock(&gbl_sql_lock);
+    sqlthd->clnt = NULL;
+    Pthread_mutex_unlock(&gbl_sql_lock);
+    /* sql_lk: watchdog reads clnt->thd under it */
+    Pthread_mutex_lock(&clnt->sql_lk);
+    clnt->thd = NULL; /* thd is about to go away */
+    Pthread_mutex_unlock(&clnt->sql_lk);
+}
+
 void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     struct sql_thread *sqlthd = thd->sqlthd;
@@ -4891,7 +4909,10 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (srs_tran_replay(clnt) == RC_INTERNAL_RETRY) {
             /* Another iteration was scheduled on a new worker.
              * That worker now owns the clnt; do NOT signal_clnt_as_done
-             * here or it would race with the new worker's enqueue. */
+             * here or it would race with the new worker's enqueue.
+             * Do NOT clnt_detach_thd() either: enqueue_sql_query() already
+             * cleared clnt->thd before dispatching, and the new owner may
+             * have finished and freed clnt by now. */
             thrman_setid(thrman_self(), "[done]");
             return;
         }
@@ -4908,6 +4929,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
         clnt_change_state(clnt, CONNECTION_IDLE);
+        clnt_detach_thd(clnt, sqlthd);
         signal_clnt_as_done(clnt);
         return;
     }
@@ -4960,6 +4982,7 @@ done:
     osql_log_time_done(clnt);
     clnt_change_state(clnt, CONNECTION_IDLE);
     debug_close_clnt(clnt);
+    clnt_detach_thd(clnt, sqlthd);
     signal_clnt_as_done(clnt);
 
     thrman_setid(thrman_self(), "[done]");
