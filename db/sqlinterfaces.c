@@ -4081,8 +4081,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             if (rc)
                 return rc;
         } else {
-            postponed_write = 1;
-            send_row(clnt, stmt, row_id, 1, NULL);
+            /* only claim a postponed row if the save succeeded */
+            postponed_write = (send_row(clnt, stmt, row_id, 1, NULL) == 0);
         }
 
         rowcount++;
