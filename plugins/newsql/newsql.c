@@ -616,6 +616,8 @@ static int newsql_save_postponed_row(struct sqlclntstate *clnt,
 static int newsql_send_postponed_row(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata->postponed == NULL)
+        return -1;
     return appdata->write_postponed(clnt);
 }
 
