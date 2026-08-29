@@ -1080,6 +1080,11 @@ typedef struct {
     int cap;
     unsigned int file;
     unsigned int offset;
+    /* Snapshot of the log's truncation counter when the read-set LSN was
+     * recorded.  -1 means not captured.  If this differs from the current
+     * counter when osql_serial_check runs, the log was truncated since the
+     * transaction started and we cannot safely scan it. */
+    int64_t log_cursor_gen;
     hash_t *hash;
     CurRange **ranges;
 } CurRangeArr;

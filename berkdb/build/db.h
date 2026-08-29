@@ -3322,6 +3322,7 @@ int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
 	unsigned long long *ret_context);
 
 void __log_txn_lsn(DB_ENV *, DB_LSN *, u_int32_t *, u_int32_t *);
+int64_t __log_get_cursor_gen(DB_ENV *);
 
 int normalize_rectype(u_int32_t* rectype);
 

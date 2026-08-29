@@ -17,6 +17,7 @@ static const char revid[] = "$Id: log_get.c,v 11.98 2003/09/13 19:20:38 bostic E
 #endif
 
 #include <assert.h>
+#include <cheapstack.h>
 #include "db_int.h"
 #include "dbinc/crypto.h"
 #include "dbinc/db_page.h"
@@ -184,6 +185,30 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
 
 	*logcp = logc;
 	return (0);
+}
+
+/*
+ * __log_get_cursor_gen --
+ *	Return the current log cursor generation counter.  This counter is
+ *	incremented each time the log is truncated.  Callers can snapshot it
+ *	before a long operation and compare on re-entry to detect truncation.
+ *
+ * PUBLIC: int64_t __log_get_cursor_gen __P((DB_ENV *));
+ */
+int64_t
+__log_get_cursor_gen(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_LOG *dblp;
+	LOG *lp;
+	int64_t gen;
+
+	dblp = (DB_LOG *)dbenv->lg_handle;
+	lp = (LOG *)dblp->reginfo.primary;
+	Pthread_rwlock_rdlock(&dbenv->loglk);
+	gen = lp->log_cursor_gen;
+	Pthread_rwlock_unlock(&dbenv->loglk);
+	return gen;
 }
 
 /*
@@ -761,6 +786,7 @@ cksum:	/*
 			if (!F_ISSET(logc, DB_LOG_NO_PANIC)) {
 				__db_err(dbenv,
 		    "DB_LOGC->get: catastrophic recovery may be required");
+				abort();
 				ret = __db_panic(dbenv, DB_RUNRECOVERY);
 			} else
 				ret = DB_NOTFOUND;

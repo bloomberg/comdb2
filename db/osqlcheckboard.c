@@ -269,6 +269,15 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     }
 #endif
 
+    if (gbl_master_swing_osql_verbose) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER,
+               "%s: zeroing rqid (was %llx) uuid %s sock_started=%d\n",
+               __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
+               clnt->osql.sock_started);
+        cheap_stack_trace();
+    }
+
     /*reset rqid */
     clnt->osql.rqid = 0;
 
@@ -665,8 +674,17 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  */
 int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master)
 {
-    if (clnt->osql.rqid == 0)
+    if (clnt->osql.rqid == 0) {
+        if (gbl_master_swing_osql_verbose) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER,
+                   "%s: called with rqid already 0, no-op (uuid %s master %s)\n",
+                   __func__, comdb2uuidstr(clnt->osql.uuid, us),
+                   master ? master : "(null)");
+            cheap_stack_trace();
+        }
         return 0;
+    }
 
     Pthread_mutex_lock(&checkboard->mtx);
 

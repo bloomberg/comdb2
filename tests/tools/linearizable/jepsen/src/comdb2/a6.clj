@@ -78,7 +78,7 @@
 
   (invoke! [this test op]
     (c/with-conn [c conn]
-      (c/with-timeout
+      (c/with-timeout c
         (let [[k _] (:value op)]
           (c/hasql! c)
           (j/with-db-transaction [c c {:isolation :serializable}]

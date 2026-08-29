@@ -108,11 +108,29 @@
    :subname     (str "//" (name node)
                      "/"  (System/getenv "COMDB2_DBNAME"))})
 
-(defn close-conn!
-  "Given a JDBC connection, closes it and returns the underlying spec."
+(defn close-jdbc-conn-async!
+  "Closes the underlying java.sql.Connection on a throwaway daemon thread,
+  without blocking the caller. Connection/close() can itself perform network
+  I/O (flushing/notifying the server) and hang against an unreachable node.
+  jepsen.reconnect's open!/close!/reopen! call our :close fn synchronously
+  while holding the wrapper's write lock and ignore its return value, so a
+  blocking close() there wedges the calling worker thread -- and every other
+  thread waiting on that same lock -- indefinitely."
   [conn]
   (when-let [c (j/db-find-connection conn)]
-    (.close c))
+    (doto (Thread. (fn []
+                     (try
+                       (.close c)
+                       (catch Exception e
+                         nil))))
+      (.setDaemon true)
+      (.start))))
+
+(defn close-conn!
+  "Given a JDBC connection, closes it (without blocking -- see
+  close-jdbc-conn-async!) and returns the underlying spec."
+  [conn]
+  (close-jdbc-conn-async! conn)
   (dissoc conn :connection))
 
 (defn wait-for-conn
@@ -171,14 +189,33 @@
 
 ;; Error handling
 
+(def close-conn-quietly!
+  "Force-closes the underlying JDBC connection without blocking the caller
+  (see close-jdbc-conn-async!). The calling (jepsen worker) thread must
+  return promptly no matter what the driver does, or it never gets back to
+  the generator to register at gen/phases' CyclicBarrier, and nemesis can
+  never heal the network."
+  close-jdbc-conn-async!)
+
 (defmacro with-timeout
   "Like util/timeout, but throws (RuntimeException. \"timeout\") for timeouts.
   Throwing means that when we time out inside a with-conn, the connection state
   gets reset, so we don't accidentally hand off the connection to a later
-  invocation with some incomplete transaction."
-  [& body]
+  invocation with some incomplete transaction.
+
+  Also force-closes `conn` on timeout. Interrupting the calling thread alone
+  doesn't stop the JDBC driver: with hasql on and max_retries 100000
+  (see hasql!), a query stuck talking to a node that's lost its path to the
+  master retries internally on its own thread, sleeping between attempts, for
+  as long as max_retries allows -- oblivious to our interrupt, and holding the
+  connection's lock the whole time. Closing the socket is what actually
+  unblocks that thread; the next op then sees the connection closed (per
+  with-conn above) and reconnects."
+  [conn & body]
   `(util/timeout (+ 1000 timeout-delay)
-                 (throw (RuntimeException. "timeout"))
+                 (do
+                   (close-conn-quietly! ~conn)
+                   (throw (RuntimeException. "timeout")))
                  ~@body))
 
 ; TODO: can we unify this with errorCodes?
@@ -248,8 +285,8 @@
             :db       (db)
             :nemesis  (nemesis/partition-random-halves)
             :nodes    (cluster-nodes)
-            :ssh {:username "root"
-                  :password "shadow"
+            :ssh {:username "ubuntu"
+                  :password "cdb2test"
                   :strict-host-key-checking false}
             :generator generator
             :checker (checker/compose

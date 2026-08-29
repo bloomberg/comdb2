@@ -163,6 +163,10 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
         restarted = 0;                                                                                                 \
         if (osql_should_restart(clnt, rc, retries)) {                                                                  \
             int final = (retries >= gbl_allow_bplog_restarts);                                                         \
+            if (gbl_master_swing_osql_verbose)                                                                        \
+                logmsg(LOGMSG_USER,                                                                                    \
+                       "%s:%d RESTART_SOCKSQL_KEEP_RQID rqid=%llx retries(as keep_session)=%d final=%d\n",             \
+                       __func__, __LINE__, clnt->osql.rqid, retries, final);                                           \
             rc = osql_sock_restart(clnt, gbl_allow_bplog_restarts, retries, final);                                    \
             if (rc) {                                                                                                  \
                 logmsg(LOGMSG_ERROR, "%s: failed to restart socksql session rc=%d\n", __func__, rc);                   \
@@ -246,9 +250,23 @@ retry:
     rc = clnt_check_bdb_lock_desired(clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-        rc = osql_end(clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
+        /* Only tear the session down (and zero rqid) if the caller isn't
+         * expecting to reuse it -- a keep_rqid restart (eg. from
+         * osql_sock_restart with keep_session=1) relies on osql->rqid
+         * staying valid across a transient SQLITE_BUSY here, otherwise a
+         * later osql_send_commit_logic() call can end up sending an
+         * OSQL_STARTGEN with rqid==0 (see osqlcomm_rpl_type_put's sid==0
+         * abort). */
+        if (!keep_rqid) {
+            rc = osql_end(clnt);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
+            }
+        } else if (gbl_master_swing_osql_verbose) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER,
+                   "%s: bdb lock desired, keep_rqid set, leaving session intact (rqid=%llx uuid=%s)\n",
+                   __func__, osql->rqid, comdb2uuidstr(osql->uuid, us));
         }
         return SQLITE_BUSY;
     }
@@ -327,6 +345,12 @@ retry:
             osql_begin_participant(thd);
         osql->sock_started = 1;
     } else if (!keep_rqid) {
+        if (gbl_master_swing_osql_verbose) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER,
+                   "%s: osql_sock_start_int failed rc=%d, tearing down session (rqid was %llx uuid %s)\n",
+                   __func__, rc, osql->rqid, comdb2uuidstr(osql->uuid, us));
+        }
         int irc = osql_end(clnt);
         if (irc) {
             logmsg(LOGMSG_ERROR, "%s failed to end osql rc %d irc %d\n",
@@ -914,6 +938,13 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
                clnt->dist_txnid ? clnt->dist_txnid : "(nodisttxn)", comdb2uuidstr(clnt->osql.uuid, us), keep_session);
     }
 
+    if (gbl_master_swing_osql_verbose) {
+        logmsg(LOGMSG_USER,
+               "%s: enter rqid=%llx uuid=%s maxretries=%d keep_session=%d is_final=%d sock_started=%d\n",
+               __func__, osql->rqid, comdb2uuidstr(osql->uuid, us), maxretries, keep_session, is_final,
+               osql->sock_started);
+    }
+
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
         cheap_stack_trace();
@@ -973,8 +1004,9 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
         if (rc) {
             sql_debug_logf(clnt, __func__, __LINE__,
                            "osql_sock_start returns %d\n", rc);
-            logmsg(LOGMSG_ERROR, "osql_sock_start error rc=%d, retries=%d\n",
-                   rc, retries);
+            logmsg(LOGMSG_ERROR,
+                   "osql_sock_start error rc=%d, retries=%d, rqid now %llx\n",
+                   rc, retries, clnt->osql.rqid);
             if (rc == SQLITE_ABORT)
                 break;
             continue;
@@ -1009,9 +1041,14 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
         sql_debug_logf(clnt, __func__, __LINE__,
                        "failed %d times to restart socksql session\n", retries);
         logmsg(LOGMSG_ERROR,
-               "%s:%d %s failed %d times to restart socksql session\n",
-               __FILE__, __LINE__, __func__, retries);
+               "%s:%d %s failed %d times to restart socksql session, rqid left at %llx\n",
+               __FILE__, __LINE__, __func__, retries, clnt->osql.rqid);
         return -1;
+    }
+
+    if (gbl_master_swing_osql_verbose) {
+        logmsg(LOGMSG_USER, "%s: exit ok rqid=%llx uuid=%s\n", __func__,
+               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
     }
 
     return 0;
@@ -1210,7 +1247,20 @@ retry:
                         snap_uid_t snap = {{0}};
                         int keep_session = !is_final || (get_cnonce(clnt, &snap) == 0);
 
+                        if (gbl_master_swing_osql_verbose)
+                            logmsg(LOGMSG_USER,
+                                   "%s:%d pre-restart rqid=%llx retries=%d is_final=%d keep_session=%d xerr=%d\n",
+                                   __func__, __LINE__, osql->rqid, retries, is_final, keep_session,
+                                   osql->xerr.errval);
+
                         rc = osql_sock_restart(clnt, 1, keep_session, is_final);
+
+                        if (gbl_master_swing_osql_verbose)
+                            logmsg(LOGMSG_USER,
+                                   "%s:%d post-restart rc=%d retryable=%d rqid=%llx is_coordinator=%d\n",
+                                   __func__, __LINE__, rc, sock_restart_retryable_rcode(rc), osql->rqid,
+                                   clnt->is_coordinator);
+
                         if (sock_restart_retryable_rcode(rc) && !clnt->is_coordinator) {
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);
@@ -1710,6 +1760,16 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int ne
 
         if (rc == 0 && gbl_osql_send_startgen && clnt->start_gen > 0) {
             osql->replicant_numops++;
+            if (osql->rqid == 0) {
+                uuidstr_t us;
+                logmsg(LOGMSG_ERROR,
+                       "%s: about to send OSQL_STARTGEN with rqid==0! retries=%d sock_started=%d "
+                       "target.host=%s uuid=%s start_gen=%u dbtran.mode=%d nettype=%d\n",
+                       __func__, retries, osql->sock_started,
+                       osql->target.host ? osql->target.host : "(null)",
+                       comdb2uuidstr(osql->uuid, us), clnt->start_gen, clnt->dbtran.mode, nettype);
+                cheap_stack_trace();
+            }
             rc = osql_send_startgen(&osql->target, osql->rqid, osql->uuid,
                                     clnt->start_gen, nettype);
         }

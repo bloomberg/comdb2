@@ -129,7 +129,7 @@ limitations under the License. -->
         <configuration>
           <protoSourceRoot>${basedir}/../protobuf/</protoSourceRoot>
           <outputDirectory>${project.build.directory}/generated-sources/protobuf</outputDirectory>
-          <protocExecutable>${project.build.directory}/protoc</protocExecutable>
+          <protocExecutable>/usr/bin/protoc</protocExecutable>
         </configuration>
         <executions>
           <execution>
@@ -215,7 +215,7 @@ limitations under the License. -->
         <executions>
           <execution>
             <id>copy-protoc</id>
-            <phase>generate-sources</phase>
+            <phase>none</phase>
             <goals>
               <goal>copy</goal>
             </goals>
@@ -243,7 +243,7 @@ limitations under the License. -->
         <executions>
           <execution>
             <id>exec-protoc</id>
-            <phase>generate-sources</phase>
+            <phase>none</phase>
             <configuration>
               <target>
                 <property name="protoc.filename" value="protoc"/>
