@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+a_dbn=$1
+
+run_sql() {
+	cdb2sql ${CDB2_OPTIONS} --tabs $a_dbn default "$1"
+}
+
+fail() {
+	echo "$1"
+	exit 1
+}
+
+# csc2 is multi-line and indented. Collapse every run of whitespace to a single
+# space so the expected blocks below do not depend on exact newlines, tabs or
+# trailing spaces.
+normalize_ws() {
+	tr -s '[:space:]' ' ' | sed -e 's/^ *//' -e 's/ *$//'
+}
+
+assert_schemas() {
+	local label=$1
+
+	local expected=$(printf '%s\n' "$2" | normalize_ws)
+    local query="select * from comdb2_schemas where tablename not like 'sqlite_stat%' order by tablename"
+	local actual=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "${query}" | normalize_ws)
+
+	if [[ "${actual}" != "${expected}" ]]; then
+		echo "FAILED: comdb2_schemas output wrong after ${label}"
+		echo "--- expected ---"
+		echo "${expected}"
+		echo "--- actual ---"
+		echo "${actual}"
+		exit 1
+	fi
+}
+
+### A bare table
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t(i int)"
+
+assert_schemas "create table t" "$(cat <<'EOF'
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+    }
+')
+EOF
+)"
+
+### The reported csc2 can be fed straight back into a create
+
+csc2=$(run_sql "select csc2 from comdb2_schemas where tablename='t'")
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t_cpy {${csc2}}"
+
+assert_schemas "create table t_cpy from t's csc2" "$(cat <<'EOF'
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+    }
+')
+(tablename='t_cpy', csc2='schema
+    {
+        int i null = yes
+    }')
+EOF
+)"
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t values(1)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t_cpy select * from t"
+
+res=$(run_sql "select max(i) from t_cpy")
+if (( res != 1 )); then
+	fail "Copy of t built from its comdb2_schemas csc2 did not take the row"
+fi
+
+### csc2 tracks schema changes
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "alter table t add j int"
+
+assert_schemas "alter table t add j int" "$(cat <<'EOF'
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+        int j null = yes
+    }
+')
+(tablename='t_cpy', csc2='schema
+    {
+        int i null = yes
+    }')
+EOF
+)"
+
+### A time partition looks just like a bare table: one row under the partition
+### name, no rows for its shards
+
+starttime=$(get_timestamp 3600)
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table p(a int, b char(16)) partitioned by time period 'daily' retention 3 start '${starttime}'"
+
+assert_schemas "create time partition p" "$(cat <<'EOF'
+(tablename='p', csc2='schema
+    {
+        int a null = yes
+        cstring b[17] null = yes
+    }
+')
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+        int j null = yes
+    }
+')
+(tablename='t_cpy', csc2='schema
+    {
+        int i null = yes
+    }')
+EOF
+)"
+
+### A partition's csc2 is usable the same way a bare table's is
+
+csc2=$(run_sql "select csc2 from comdb2_schemas where tablename='p'")
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table p_cpy {${csc2}}"
+
+assert_schemas "create table p_cpy from partition p's csc2" "$(cat <<'EOF'
+(tablename='p', csc2='schema
+    {
+        int a null = yes
+        cstring b[17] null = yes
+    }
+')
+(tablename='p_cpy', csc2='schema
+    {
+        int a null = yes
+        cstring b[17] null = yes
+    }')
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+        int j null = yes
+    }
+')
+(tablename='t_cpy', csc2='schema
+    {
+        int i null = yes
+    }')
+EOF
+)"
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into p values(1, 'hello')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into p_cpy select * from p"
+
+res=$(run_sql "select b from p_cpy")
+if [[ "${res}" != "hello" ]]; then
+	fail "Copy of partition p built from its comdb2_schemas csc2 did not take the row, got '${res}'"
+fi
+
+### The partition really does have shards, so the assertions above are
+### meaningfully excluding them
+
+count=$(run_sql "select count(*) from comdb2_timepartshards where name='p'")
+if (( count != 3 )); then
+	fail "Expected partition p to have 3 shards, got ${count}"
+fi
+
+count=$(run_sql "select count(*) from comdb2_schemas s, comdb2_timepartshards p where s.tablename = p.shardname")
+if (( count != 0 )); then
+	fail "comdb2_schemas lists ${count} time partition shard(s)"
+fi
+
+### comdb2_schemas and comdb2_tables agree on the row set
+
+count=$(run_sql "select count(*) from comdb2_tables t left join comdb2_schemas s on t.tablename = s.tablename where s.tablename is null")
+if (( count != 0 )); then
+	fail "${count} comdb2_tables row(s) missing from comdb2_schemas"
+fi
+
+count=$(run_sql "select count(*) from comdb2_schemas s left join comdb2_tables t on t.tablename = s.tablename where t.tablename is null")
+if (( count != 0 )); then
+	fail "${count} comdb2_schemas row(s) missing from comdb2_tables"
+fi
+
+### Dropping a table removes it from the systable
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table t_cpy"
+
+assert_schemas "drop table t_cpy" "$(cat <<'EOF'
+(tablename='p', csc2='schema
+    {
+        int a null = yes
+        cstring b[17] null = yes
+    }
+')
+(tablename='p_cpy', csc2='schema
+    {
+        int a null = yes
+        cstring b[17] null = yes
+    }')
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+        int j null = yes
+    }
+')
+EOF
+)"
+
+### Dropping a time partition removes it too, along with its shards
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table p"
+
+assert_schemas "drop time partition p" "$(cat <<'EOF'
+(tablename='p_cpy', csc2='schema
+    {
+        int a null = yes
+        cstring b[17] null = yes
+    }')
+(tablename='t', csc2='schema
+    {
+        int i null = yes
+        int j null = yes
+    }
+')
+EOF
+)"
+
+count=$(run_sql "select count(*) from comdb2_timepartshards where name='p'")
+if (( count != 0 )); then
+	fail "Dropped partition p still has ${count} shard(s)"
+fi
+
+echo "Success"
