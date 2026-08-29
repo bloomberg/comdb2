@@ -9,6 +9,19 @@ plus a client container, with a single command and no manual steps.
 - [Docker Engine](https://docs.docker.com/engine/install/) with the
   [Compose](https://docs.docker.com/compose/install/) plugin (`docker compose`).
 
+## Using the published image
+
+To skip compiling, pull the prebuilt image (`linux/amd64` and `linux/arm64`, tagged
+`latest` and `sha-<short>`):
+
+```sh
+docker run -d --name comdb2 ghcr.io/bloomberg/comdb2:latest mydb
+docker exec comdb2 cdb2sql mydb local "select 1"
+```
+
+See [Running a standalone database](#running-a-standalone-database) below. Build from
+source instead to run a cluster or to test changes in your working tree.
+
 ## Quick start
 
 From this directory (`contrib/docker/`):
@@ -109,7 +122,8 @@ docker compose ps
 The same image can also run one or more **standalone** (non-clustered)
 databases in a single container.
 
-First make sure the image is built (Compose builds it, or build it directly):
+First make sure the image is built (Compose builds it, or build it directly), or
+substitute the published image for `comdb2-dev:latest` below:
 
 ```sh
 docker compose build
