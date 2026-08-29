@@ -288,6 +288,7 @@ update_startlsn_printstep|  off |Print steps walked in update_startlsn code
 use_blkseq|  on |Enable blkseq
 use_fastseed_for_comdb2_seqno|  off |Use fastseed instead of context for comdb2_seqno unique values
 utxnid_log|on|When enabled, 8-byte transaction IDs will be written to log records.
+log_cksum_prev|on|When enabled, the checksum of the previous log record is written into each log record.  This chains the log, so a record's checksum transitively covers every record before it, letting a replicant match on any log record instead of only on a commit record.  Disabled under `legacy_defaults`.
 verbose_net|  off |Net prints lots of messages
 verbose_toblock_backouts|  off |print verbose toblock backout trace
 verbose_waiter_flag|  off |Print trace setting the waiter flag in lock code

@@ -365,6 +365,7 @@ extern double gbl_query_plan_percentage;
 extern int gbl_ufid_log;
 extern int gbl_utxnid_log;
 extern int gbl_snapshot_isolation;
+extern int gbl_log_cksum_prev;
 extern int gbl_ufid_add_on_collect;
 extern int gbl_collect_before_locking;
 extern unsigned gbl_ddlk;

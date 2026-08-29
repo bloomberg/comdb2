@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+a_dbn=$1
+kill_wait_time=10
+
+# Verify the prev-record checksum chain is unbroken, including across a log
+# file rollover and a bounce (which re-derives the chain head at recovery).
+
+function failif
+{
+    if [[ $1 -ne 0 ]]; then
+        echo "FAILED: $2"
+        exit 1
+    fi
+}
+
+function scalar
+{
+    cdb2sql ${CDB2_OPTIONS} --tabs $a_dbn default "$1" 2>/dev/null
+}
+
+# Check each record's prevcksum against the previous record's cksum.
+# Untagged records report NULL and are skipped.
+function verify_chain
+{
+    local out
+    out=$(cdb2sql ${CDB2_OPTIONS} --tabs $a_dbn default \
+        "select lsn, cksum, prevcksum from comdb2_transaction_logs" 2>/dev/null | awk -F'\t' '
+        {
+            n++
+            if (have && $3 != "NULL" && $3 != prev) {
+                breaks++
+                if (breaks <= 5)
+                    print "  break at " $1 ": prevcksum=" $3 " but " prevlsn " cksum=" prev
+            }
+            if ($3 != "NULL")
+                tagged++
+            prev = $2; prevlsn = $1; have = 1
+        }
+        END { print "records=" n " tagged=" tagged+0 " breaks=" breaks+0 }')
+    echo "$1: $out"
+    echo "$out" | grep -q "breaks=0"
+    failif $? "$1: checksum chain is broken"
+    echo "$out" | grep -q "tagged=0"
+    if [[ $? -eq 0 ]]; then
+        echo "FAILED: $1: no record carried a prevcksum"
+        exit 1
+    fi
+}
+
+function insert_rows
+{
+    local i
+    for ((i = 0; i < $1; i++)); do
+        cdb2sql ${CDB2_OPTIONS} $a_dbn default \
+            "insert into t values($i, '$(printf 'x%.0s' {1..200})')" >/dev/null 2>&1
+    done
+}
+
+function set_cksum_prev
+{
+    local node
+    for node in ${CLUSTER:-$(hostname)}; do
+        cdb2sql ${CDB2_OPTIONS} --host $node $a_dbn \
+            "exec procedure sys.cmd.send('log_cksum_prev $1')" >/dev/null 2>&1
+    done
+}
+
+function untagged_count
+{
+    scalar "select count(*) from comdb2_transaction_logs where prevcksum is null"
+}
+
+function bounce
+{
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            kill_restart_node $node $kill_wait_time &
+        done
+        sleep $kill_wait_time
+        for node in $CLUSTER; do
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $a_dbn 'select 1' 2>/dev/null)
+            while [[ "$out" != "1" ]]; do
+                sleep $kill_wait_time
+                out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $a_dbn 'select 1' 2>/dev/null)
+            done
+        done
+    else
+        kill_restart_node $(hostname) $kill_wait_time
+    fi
+}
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t(i int, c char(300))" >/dev/null 2>&1
+failif $? "create table"
+
+insert_rows 200
+verify_chain "steady state"
+
+# Roll to a new log file: LOGP is excluded from the chain, so the first
+# record of the new file must chain to the last record of the old one.
+# pushlogs is asynchronous (it spawns a writer thread on the master), so
+# it must go to the master, and the rollover must be polled for.
+master=$(get_master)
+before=$(scalar "select max(lsnfile) from comdb2_transaction_logs")
+cdb2sql ${CDB2_OPTIONS} --host $master $a_dbn \
+    "exec procedure sys.cmd.send('pushlogs $((before + 1))')" >/dev/null 2>&1
+deadline=$((SECONDS + 120))
+after=$(scalar "select max(lsnfile) from comdb2_transaction_logs")
+while [[ "$after" -le "$before" && $SECONDS -lt $deadline ]]; do
+    sleep 2
+    after=$(scalar "select max(lsnfile) from comdb2_transaction_logs")
+done
+echo "log file: $before -> $after"
+if [[ "$after" -le "$before" ]]; then
+    echo "FAILED: log did not roll over, rollover case not covered"
+    exit 1
+fi
+insert_rows 50
+verify_chain "after log rollover"
+
+# __log_recover() re-derives the chain head from the tail of the log.
+bounce
+insert_rows 50
+verify_chain "after bounce"
+
+# Toggling the tunable mid-run leaves tagged and untagged records mixed in one
+# log.  last_cksum advances over every record whether or not it is tagged, so a
+# tagged record written after the tunable comes back on has to chain to the
+# untagged record before it.  That boundary is the point of this section.
+set_cksum_prev 0
+before_off=$(untagged_count)
+insert_rows 50
+after_off=$(untagged_count)
+echo "untagged records: $before_off -> $after_off"
+if [[ "$after_off" -le "$before_off" ]]; then
+    echo "FAILED: disabling log_cksum_prev did not stop records being tagged"
+    exit 1
+fi
+verify_chain "with tunable off"
+
+set_cksum_prev 1
+insert_rows 50
+after_on=$(untagged_count)
+echo "untagged records after re-enabling: $after_on"
+if [[ "$after_on" -gt "$after_off" ]]; then
+    echo "FAILED: re-enabling log_cksum_prev did not resume tagging ($after_off -> $after_on)"
+    exit 1
+fi
+verify_chain "after re-enabling"
+
+# Flush every node so the harness's post-test physical verify sees fully
+# written files.  A flush that hangs here (seen once on a freshly
+# re-elected master) is itself a bug: fail loudly rather than let the
+# harness's silent flush time out and blame the datafiles.
+for node in ${CLUSTER:-$(hostname)}; do
+    ok=1
+    for attempt in 1 2; do
+        timeout 30 cdb2sql ${CDB2_OPTIONS} --tabs --host $node $a_dbn \
+            "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1 && ok=0 && break
+        echo "flush attempt $attempt timed out on $node"
+    done
+    if [[ $ok -ne 0 ]]; then
+        echo "FAILED: flush hung on $node"
+        exit 1
+    fi
+done
+
+echo "SUCCESS"
+exit 0

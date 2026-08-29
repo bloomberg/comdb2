@@ -5,6 +5,7 @@
 
 #include "bdb_int.h"
 #include <dbinc/db_swap.h>
+#include <dbinc_auto/txn_auto.h>
 #include "phys_rep_lsn.h"
 #include "tranlog.h"
 #include "logrecord.h"
@@ -20,6 +21,29 @@
     } while (0)
 
 int matchable_log_type(DB_ENV *dbenv, int rectype);
+
+/*
+ * Is this record a safe anchor to compare against a source?
+ *
+ * A chained record is: its checksum transitively covers the whole log
+ * prefix, so matching it byte-for-byte at the same LSN implies identical
+ * history.  Decided from the record's own tag, so an unchained source
+ * falls back to the commit-only test.
+ */
+static int physrep_matchable_log_type(DB_ENV *dbenv, u_int32_t raw_rectype, int normalized_rectype)
+{
+    /*
+     * One exclusion survives: matchable_log_type() carries an explicit
+     * "do not ever match DB___txn_ckp_recovery" warning.  Chaining makes the
+     * record identity-safe, but the warning is about something else, so keep
+     * honouring it.
+     */
+    if (normalized_rectype == DB___txn_ckp_recovery)
+        return 0;
+    if (DB_RECTYPE_HAS_CKSUM_PREV(raw_rectype))
+        return 1;
+    return matchable_log_type(dbenv, normalized_rectype);
+}
 
 extern int should_ignore_btree(const char *filename, int (*should_ignore_table)(const char *), int should_ignore_queues,
                                int should_ignore_legacy_queues, int name_boundary_exists);
@@ -119,7 +143,7 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
                               DB_LSN *parent_lowest)
 {
     int rc;
-    u_int32_t rectype;
+    u_int32_t rectype, raw_rectype;
 
     /* get db internals */
     DB_LSN match_lsn;
@@ -146,9 +170,11 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
         }
 
         LOGCOPY_32(&rectype, logrec->data);
+        raw_rectype = rectype;
         normalize_rectype(&rectype);
 
-        if (matchable_log_type(logc->dbenv, rectype) && in_parent_range(&match_lsn, parent_highest, parent_lowest)) {
+        if (physrep_matchable_log_type(logc->dbenv, raw_rectype, rectype) &&
+            in_parent_range(&match_lsn, parent_highest, parent_lowest)) {
             if (gbl_physrep_debug) {
                 physrep_logmsg(LOGMSG_USER, "%s: Initial rec {%u:%u} is matchable\n",
                                __func__, info->file, info->offset);
@@ -181,9 +207,10 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
         }
 
         LOGCOPY_32(&rectype, logrec->data);
+        raw_rectype = rectype;
         normalize_rectype(&rectype);
-        matchable =
-            (matchable_log_type(logc->dbenv, rectype) && in_parent_range(&match_lsn, parent_highest, parent_lowest));
+        matchable = (physrep_matchable_log_type(logc->dbenv, raw_rectype, rectype) &&
+                     in_parent_range(&match_lsn, parent_highest, parent_lowest));
     } while (!matchable);
 
     info->file = match_lsn.file;
@@ -401,6 +428,50 @@ int physrep_source_covers_me(void *in_bdb_state, cdb2_hndl_tp *repl_db)
     return rc;
 }
 
+/*
+ * Generation in effect at {file:offset} on the source.  Only commits carry
+ * one, and we now anchor on any record, so walk back to the most recent
+ * commit.  Returns 0 and sets *gen on success.
+ */
+static int physrep_source_generation(cdb2_hndl_tp *repl_db, unsigned int file, unsigned int offset, int64_t *gen)
+{
+    char sql_cmd[320];
+    int rc, notfound = 1;
+
+    /*
+     * TRANLOG_FLAGS_DESCENDING: seek to the match point, then walk back.
+     * maxlsn must be given as well as minlsn -- with maxlsn unset the vtab
+     * overrides the seek and starts a descending scan at the end of the log,
+     * which reports the source's newest generation rather than the one here.
+     *
+     * Skip recovery checkpoints.  Recovering a *copy* of a database emits one
+     * at a generation above what the cluster is running, so its generation is
+     * an artifact of that recovery rather than a statement about the stream.
+     * Comparing the base rectype keeps this right as format tags are added.
+     */
+    snprintf(sql_cmd, sizeof(sql_cmd),
+             "select generation from comdb2_transaction_logs('{%u:%u}', '{%u:%u}', 4) "
+             "where generation is not null and rectype %% 1000 != %d limit 1",
+             file, offset, file, offset, DB___txn_ckp_recovery);
+
+    if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s: %s returns %d, '%s'\n", __func__, sql_cmd, rc, cdb2_errstr(repl_db));
+        return 1;
+    }
+
+    if (cdb2_next_record(repl_db) == CDB2_OK) {
+        int64_t *g = (int64_t *)cdb2_column_value(repl_db, 0);
+
+        if (g != NULL) {
+            *gen = *g;
+            notfound = 0;
+        }
+    }
+    while (cdb2_next_record(repl_db) == CDB2_OK)
+        ;
+    return notfound;
+}
+
 LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO start_info)
 {
     int rc;
@@ -505,16 +576,40 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
                     info.offset = match_offset;
                     info.size = blob_len;
                     int64_t *gen = (int64_t *)cdb2_column_value(repl_db, 2);
-                    if (gen == NULL) {
-                        info.gen = 0;
-                        if (gbl_physrep_exit_on_invalid_logstream) {
-                            physrep_logmsg(LOGMSG_FATAL, "Require elect-highest-committed-gen on source- exiting\n");
-                            exit(1);
-                        }
-                        physrep_logmsg(LOGMSG_ERROR, "Require elect-highest-committed-gen source {%d:%d}\n", info.file,
-                                       info.offset);
-                    } else {
+                    if (gen != NULL) {
                         info.gen = *gen;
+                    } else {
+                        /* Not a commit: ask the source.  Consumes the
+                         * current result set. */
+                        int64_t srcgen = 0;
+                        u_int32_t mtype, mbase;
+
+                        info.gen = 0;
+                        if (physrep_source_generation(repl_db, info.file, info.offset, &srcgen) == 0) {
+                            info.gen = srcgen;
+                        } else {
+                            /*
+                             * Only a record that should have carried a
+                             * generation of its own tells us anything about
+                             * the source.  Now that we anchor on any chained
+                             * record, finding no generation at or before an
+                             * ordinary record is normal, not a bad logstream.
+                             */
+                            LOGCOPY_32(&mtype, logrec.data);
+                            (void)__rectype_tags(mtype, &mbase);
+                            if (matchable_log_type(logc->dbenv, mbase)) {
+                                if (gbl_physrep_exit_on_invalid_logstream) {
+                                    physrep_logmsg(LOGMSG_FATAL,
+                                                   "Require elect-highest-committed-gen on source- exiting\n");
+                                    exit(1);
+                                }
+                                physrep_logmsg(LOGMSG_ERROR, "Require elect-highest-committed-gen source {%d:%d}\n",
+                                               info.file, info.offset);
+                            } else if (gbl_physrep_debug) {
+                                physrep_logmsg(LOGMSG_USER, "%s: no generation at or before {%u:%u}\n", __func__,
+                                               info.file, info.offset);
+                            }
+                        }
                     }
                     logc->close(logc, 0);
                     free(logrec.data);

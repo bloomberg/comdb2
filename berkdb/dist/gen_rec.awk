@@ -71,6 +71,7 @@ BEGIN {
 	printf("#include \"db_config.h\"\n\n") >> CFILE
 	printf("extern int gbl_ufid_log;\n") >> CFILE
 	printf("extern int gbl_utxnid_log;\n") >> CFILE
+	printf("extern int gbl_log_cksum_prev;\n") >> CFILE
 	printf("extern int gbl_ufid_dbreg_test;\n") >> CFILE
 
 	if (!dbprivate) {
@@ -194,6 +195,7 @@ BEGIN {
 	# Here are the required fields for every structure
 	printf("\tu_int32_t type;\n\tDB_TXN *txnid;\n") >> HFILE
 	printf("\tDB_LSN prev_lsn;\n") >>HFILE
+	printf("\tu_int32_t prev_cksum;\n") >>HFILE
 
 	# Here are the specified fields.
 	for (i = 0; i < nvars; i++) {
@@ -430,6 +432,7 @@ function log_function() {
 		printf("\tint ufid_log = gbl_ufid_log || (gbl_ufid_dbreg_test ? rand() %% 2 : 0);\n") >> CFILE;
 	}
 	printf("\tint utxnid_log = gbl_utxnid_log;\n") >> CFILE;
+	printf("\tint cksum_prev_log = gbl_log_cksum_prev;\n") >> CFILE;
 	if (dbprivate)
 		printf("\tDB_TXNLOGREC *lr;\n") >> CFILE;
 	printf("\tDB_LSN *lsnp, null_lsn;\n") >> CFILE;
@@ -442,6 +445,7 @@ function log_function() {
 	if (is_uint64 == 1)
 		printf("\tu_int64_t uint64tmp;\n") >> CFILE;
 	printf("\tu_int64_t txn_num_uint64;\n") >> CFILE;
+	printf("\tu_int32_t cksum_prev;\n") >> CFILE;
 	printf("\tu_int npad;\n") >> CFILE;
 	printf("\tu_int8_t *bp;\n") >> CFILE;
 	printf("\tint ") >> CFILE;
@@ -465,6 +469,8 @@ function log_function() {
 	printf("\t\trectype += 2000;\n") >> CFILE;
 	printf("\telse if (txnid != NULL)\n") >> CFILE;
 	printf("\t\tF_SET(txnid, TXN_NOPREP);\n") >> CFILE;
+	printf("\tif (cksum_prev_log)\n") >> CFILE;
+	printf("\t\trectype += 4000;\n") >> CFILE;
 	if (has_dbp == 1) {
 		printf("\tif (ufid_log)\n") >> CFILE;
 		printf("\t\trectype += 1000;\n") >> CFILE;
@@ -513,6 +519,7 @@ function log_function() {
 	printf("\tlogrec.size = sizeof(rectype) + ") >> CFILE;
 	printf("sizeof(txn_num) + sizeof(DB_LSN)") >> CFILE;
 	printf(" + (utxnid_log ? sizeof(txn_num_uint64) : 0)") >> CFILE;
+	printf(" + (cksum_prev_log ? sizeof(u_int32_t) : 0)") >> CFILE;
 	for (i = 0; i < nvars; i++)
 		printf("\n\t    + %s", sizes[i]) >> CFILE;
 	printf(";\n") >> CFILE
@@ -571,6 +578,12 @@ function log_function() {
 	printf("\tif (utxnid_log) {\n") >> CFILE;
 	printf("\t\tLOGCOPY_64(bp, &txn_num_uint64);\n") >> CFILE;
 	printf("\t\tbp += sizeof(txn_num_uint64);\n") >> CFILE;
+	printf("\t}\n") >> CFILE;
+	# Reserve space; __log_put_next() stamps it under the region lock.
+	printf("\tif (cksum_prev_log) {\n") >> CFILE;
+	printf("\t\tcksum_prev = 0;\n") >> CFILE;
+	printf("\t\tLOGCOPY_32(bp, &cksum_prev);\n") >> CFILE;
+	printf("\t\tbp += sizeof(cksum_prev);\n") >> CFILE;
 	printf("\t}\n") >> CFILE;
 
 	for (i = 0; i < nvars; i ++) {
@@ -795,7 +808,7 @@ function print_function() {
 	printf("\t(void)printf(\n\t    \"[%%lu][%%lu]%s%%s: ",\
 	     funcname) >> CFILE;
 	printf("rec: %%lu txnid %%lx prevlsn [%%lu][%%lu] ") >> CFILE;
-	printf("utxnid %%\"PRIx64\" \\n\",\n") >> CFILE;
+	printf("utxnid %%\"PRIx64\" prevcksum %%08lx \\n\",\n") >> CFILE;
 	printf("\t    (u_long)lsnp->file,\n") >> CFILE;
 	printf("\t    (u_long)lsnp->offset,\n") >> CFILE;
 	printf("\t    (argp->type & DB_debug_FLAG) ? \"_debug\" : \"\",\n") \
@@ -804,7 +817,8 @@ function print_function() {
 	printf("\t    (u_long)argp->txnid->txnid,\n") >> CFILE;
 	printf("\t    (u_long)argp->prev_lsn.file,\n") >> CFILE;
 	printf("\t    (u_long)argp->prev_lsn.offset,\n") >> CFILE;
-	printf("\t    argp->txnid->utxnid);\n") >> CFILE;
+	printf("\t    argp->txnid->utxnid,\n") >> CFILE;
+	printf("\t    (u_long)argp->prev_cksum);\n") >> CFILE;
 
 	# Now print fields of argp
 	for (i = 0; i < nvars; i ++) {
@@ -943,12 +957,19 @@ function read_function_int() {
 	printf("\tLOGCOPY_TOLSN(&argp->prev_lsn, bp);\n") >> CFILE;
 	printf("\tbp += sizeof(DB_LSN);\n\n") >> CFILE;
 
-	# Only read utxnid if it was logged (indicated by +2000 or +3000 in the rectype)
-	printf("\tif ((argp->type == (DB_%s + 2000)) || (argp->type == (DB_%s + 3000))) {\n", funcname, funcname) >> CFILE;
+	# The utxnid and prev_cksum prefix fields are only present when the
+	# rectype is tagged for them.
+	printf("\tif (DB_RECTYPE_HAS_UTXNID(argp->type)) {\n") >> CFILE;
 	printf("\t\tLOGCOPY_64(&argp->txnid->utxnid,  bp);\n") >> CFILE;
 	printf("\t\tbp += sizeof(argp->txnid->utxnid);\n") >> CFILE;
 	printf("\t} else {\n") >> CFILE;
 	printf("\t\targp->txnid->utxnid=0;\n\t}\n") >> CFILE;
+
+	printf("\tif (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {\n") >> CFILE;
+	printf("\t\tLOGCOPY_32(&argp->prev_cksum,  bp);\n") >> CFILE;
+	printf("\t\tbp += sizeof(argp->prev_cksum);\n") >> CFILE;
+	printf("\t} else {\n") >> CFILE;
+	printf("\t\targp->prev_cksum=0;\n\t}\n") >> CFILE;
 
 	# Now get rest of data.
 	for (i = 0; i < nvars; i ++) {
@@ -985,7 +1006,7 @@ function read_function_int() {
 			}
 		} else if (modes[i] == "DB") {
 			printf("\tDB *dbp = NULL;\n") >> CFILE;
-			printf("\tif ((argp->type == (DB_%s + 1000)) || (argp->type == (DB_%s + 3000))) {\n", funcname, funcname) >> CFILE;
+			printf("\tif (DB_RECTYPE_HAS_UFID(argp->type)) {\n") >> CFILE;
 			printf("\t\tmemcpy(argp->ufid_%s, bp, DB_FILE_ID_LEN);\n", vars[i]) >> CFILE;
 			printf("\t\targp->%s = -1;\n", vars[i]) >> CFILE;
 			printf("\t\tbp += DB_FILE_ID_LEN;\n") >> CFILE;

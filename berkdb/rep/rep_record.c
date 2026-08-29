@@ -433,20 +433,14 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 }
 
 int normalize_rectype(u_int32_t *rectype) {
-	// If 2000 has been added to a rectype, then this function 
-	// subtracts 2000 from a rectype and returns 1; otherwise, 
-	// it does nothing and returns 0. It does not subtract 1000 
-	// from a rectype if 1000 has been added because this is already 
-	// done by existing code where it is appropriate. If log records 
-	// are versioned further in the future, then this function may 
-	// be extended to normalize rectypes of these versions as well.
+	// Strips the utxnid and cksum-prev tags, returning 1 if utxnid was
+	// present.  Leaves the ufid tag alone; callers strip that themselves.
 
-	if (*rectype > 12000 || (*rectype > 2000 && *rectype < 10000)) {
-		*rectype -= 2000;
-		return 1;
-	} else {
-		return 0;
-	}
+	u_int32_t base, tags = __rectype_tags(*rectype, &base);
+
+	*rectype = base +
+	    ((tags & DB_RECTAG_UFID) ? DB_RECTYPE_TAG_UNIT : 0);
+	return (tags & DB_RECTAG_UTXNID) ? 1 : 0;
 }
 
 int gbl_match_on_ckp = 1;
@@ -2096,7 +2090,8 @@ more:
 
 		LOGCOPY_32(&rectype, mylog.data);
 
-		int utxnid_logged = normalize_rectype(&rectype);
+		u_int32_t rec_prefix = __rectype_prefix_len(rectype);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_regop) {
 			/* If it's a commit, copy the timestamp - if we're about to unroll too
 			 * far, we want to notice and not do it. */
@@ -2108,9 +2103,7 @@ more:
 			 * __txn_regop_read_int per record just to perform this check, and the log format 
 			 * is not likely to change without notice. */
 			LOGCOPY_32(&timestamp,
-				(uint8_t *)mylog.data + sizeof(a.type) +
-				sizeof(a.txnid->txnid) + sizeof(DB_LSN) +
-				(utxnid_logged ? sizeof(u_int64_t) : 0) + sizeof(u_int32_t));
+				(uint8_t *)mylog.data + rec_prefix + sizeof(a.opcode));
 			t = timestamp;
 			if (dbenv->newest_rep_verify_tran_time == 0) {
 				dbenv->newest_rep_verify_tran_time = t;
@@ -2738,8 +2731,8 @@ __rep_classify_type(u_int32_t type, int *had_serializable_records)
 	extern int gbl_allow_parallel_rep_on_prefix;
 
 	/* ufid -> non-ufid */
-	if (type < 10000 && type > 1000) {
-		type -= 1000;
+	if (!DB_RECTYPE_IS_LOGICAL(type) && DB_RECTYPE_HAS_UFID(type)) {
+		type -= DB_RECTYPE_TAG_UNIT;
 	}
 
 	if (had_serializable_records && (type == DB___dbreg_register ||
@@ -2793,7 +2786,8 @@ __rep_check_applied_lsns(dbenv, lc, in_recovery_verify)
 			ERR;
 
 		LOGCOPY_32(&type, logrec.data);
-		int utxnid_logged = normalize_rectype(&type);
+		u_int32_t rec_prefix = __rectype_prefix_len(type);
+		normalize_rectype(&type);
 
 		t.npages = 0;
 
@@ -2902,10 +2896,7 @@ __rep_check_applied_lsns(dbenv, lc, in_recovery_verify)
 				 * }
 				 */
 				LOGCOPY_32(&opcode,
-					(u_int8_t *)logrec.data +
-					sizeof(u_int32_t) /*type */ +
-					sizeof(u_int32_t) /*txn */ +sizeof(DB_LSN)
-					/*prevlsn */ + (utxnid_logged ? sizeof(u_int64_t) : 0) /*utxnid*/);
+					(u_int8_t *)logrec.data + rec_prefix);
 				if (opcode == DB_REM_BIG &&
 					strcmp(t.array[i].comment,
 					"prev_pgno") == 0) {
@@ -4546,17 +4537,19 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			}
 			recdata = data_dbt.data;
 			LOGCOPY_32(&rectype, data_dbt.data);
-			int utxnid_logged = normalize_rectype(&rectype);
+			u_int32_t prefix = __rectype_prefix_len(rectype);
+			normalize_rectype(&rectype);
 			found_ufid =
 				(int)ufid_for_recovery_record(dbenv, NULL,
-				rectype, fuid, &data_dbt, utxnid_logged);
+				rectype, fuid, &data_dbt, prefix);
 		} else {
 			recdata = rp->lc.array[i].rec.data;
 			LOGCOPY_32(&rectype, rp->lc.array[i].rec.data);
-			int utxnid_logged = normalize_rectype(&rectype);
+			u_int32_t prefix = __rectype_prefix_len(rectype);
+			normalize_rectype(&rectype);
 			found_ufid =
 				(int)ufid_for_recovery_record(dbenv, NULL,
-				rectype, fuid, &rp->lc.array[i].rec, utxnid_logged);
+				rectype, fuid, &rp->lc.array[i].rec, prefix);
 		}
 
 		/* No physical work of its own, but still queued and dispatched
@@ -5515,7 +5508,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 						"transaction failed at [%lu][%lu]",
 						(u_long)lsnp->file,
 						(u_long)lsnp->offset);
-				if (ret == DB_LOCK_DEADLOCK && rectype >= 10000)
+				if (ret == DB_LOCK_DEADLOCK && DB_RECTYPE_IS_LOGICAL(rectype))
 					ret = DB_LOCK_DEADLOCK_CUSTOM;
 				line = __LINE__;
 				goto err;
@@ -6647,7 +6640,8 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 			goto err;
 		}
 		LOGCOPY_32(&rectype, data.data);
-		int utxnid_logged = normalize_rectype(&rectype);
+		u_int32_t rec_prefix = __rectype_prefix_len(rectype);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_child) {
 			if ((ret = __txn_child_read(dbenv,
 					data.data, &argp)) != 0)
@@ -6672,10 +6666,10 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 		} else {
 
 			__rep_classify_type(rectype, had_serializable_records);
-			if (gbl_ufid_add_on_collect && rectype < 10000 && rectype > 1000) {
+			if (gbl_ufid_add_on_collect && !DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
 				DB *file_dbp;
 				u_int8_t ufid[DB_FILE_ID_LEN] = {0};
-				if ((int)ufid_for_recovery_record(dbenv, NULL, rectype, ufid, &data, utxnid_logged)) {
+				if ((int)ufid_for_recovery_record(dbenv, NULL, rectype, ufid, &data, rec_prefix)) {
 					__ufid_to_db(dbenv, NULL, &file_dbp, ufid, NULL, NULL);
 				}
 			}
@@ -6712,14 +6706,11 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 			lc->nlsns++;
 
 			/*
-			 * Explicitly copy the previous lsn.  The record
-			 * starts with a u_int32_t record type, a u_int32_t
-			 * txn id, and then the DB_LSN (prev_lsn) that we
-			 * want.  We copy explicitly because we have no idea
+			 * Copy the previous lsn explicitly: we have no idea
 			 * what kind of record this is.
 			 */
-			LOGCOPY_TOLSN(lsnp, (u_int8_t *)data.data +
-				sizeof(u_int32_t) + sizeof(u_int32_t));
+			LOGCOPY_TOLSN(lsnp,
+				(u_int8_t *)data.data + DB_REC_OFF_PREV_LSN);
 		}
 
 		/* If we are still allocating our own memory for log records,

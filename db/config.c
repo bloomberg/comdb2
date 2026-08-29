@@ -419,6 +419,7 @@ static char *legacy_options[] = {
     "enable_tagged_api",
     "init_with_time_based_genids",
     "legacy_schema on",
+    "log_cksum_prev 0",
     "logmsg level info",
     "logmsg notimestamp",
     "logmsg skiplevel",

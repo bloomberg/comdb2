@@ -1181,7 +1181,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 		if (is_prepared) {
 			logmsg(LOGMSG_INFO, "%s ignoring unresolved prepared txn %u\n", __func__,
                 argp->txnid->txnid);
-		} else if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
+		} else if (DB_RECTYPE_HAS_UFID(argp->type)) {
 			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
 					argp->pgno, 1);
 		} else {
@@ -1466,7 +1466,7 @@ __db_pg_new_recover(dbenv, dbtp, lsnp, op, info)
 	REC_INTRO(__db_pg_free_read, 1);
 	COMPQUIET(op, 0);
 
-	if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
+	if (DB_RECTYPE_HAS_UFID(argp->type)) {
 		if ((ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
 						argp->pgno, 1)) == 0)
 			*lsnp = argp->prev_lsn;
@@ -1577,7 +1577,7 @@ int __db_pg_prepare_undo(DB_ENV *dbenv, DB *file_dbp, PAGE *pagep, __db_pg_prepa
 	ZERO_LSN(pagep->lsn);
 
 	if (update_limbo) {
-		if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
+		if (DB_RECTYPE_HAS_UFID(argp->type)) {
 			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid, argp->pgno, 1);
 		} else {
 			ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);

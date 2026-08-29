@@ -271,6 +271,13 @@ struct __log {
 	u_int64_t    last_log_record_time;
 	u_int32_t    records_last_second;
 	int64_t log_cursor_gen;
+
+	/*
+	 * Checksum of the last record written, which the next record chains
+	 * to (gbl_log_cksum_prev).  In-memory only: it is recoverable from
+	 * the tail record's own HDR.  LOGP records do not update it.
+	 */
+	u_int32_t last_cksum;
 };
 
 /*

@@ -517,6 +517,7 @@
 (name='lockerid_node_step', description='Stepup for preallocated lids', type='INTEGER', value='128', read_only='N')
 (name='locks_check_waiters', description='Light a flag if a lockid has waiters', type='BOOLEAN', value='ON', read_only='N')
 (name='log_applied_lsns', description='Log applied LSNs to log', type='BOOLEAN', value='OFF', read_only='N')
+(name='log_cksum_prev', description='Write the checksum of the previous log record into each log record, chaining the log so that a checksum transitively covers every record before it.  Lets a replicant match on any record rather than only on a commit record.  Off under legacy-defaults. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='log_cursor_cache', description='Cache log cursors', type='BOOLEAN', value='OFF', read_only='N')
 (name='log_debug_ctrace_threshold', description='Limit trace about log file deletion to this many events.', type='INTEGER', value='20', read_only='N')
 (name='log_delete_age', description='Log deletion policy', type='INTEGER', value='0', read_only='Y')

@@ -43,10 +43,12 @@
 #define TRANLOG_COLUMN_TXNID        10
 #define TRANLOG_COLUMN_UTXNID       11
 #define TRANLOG_COLUMN_LOGCGEN      12
-#define TRANLOG_COLUMN_MAXUTXNID    13
-#define TRANLOG_COLUMN_CHILDUTXNID  14
-#define TRANLOG_COLUMN_LSN_FILE     15 /* Useful for sorting records by LSN */
-#define TRANLOG_COLUMN_LSN_OFFSET   16
+#define TRANLOG_COLUMN_PREVCKSUM    13
+#define TRANLOG_COLUMN_CKSUM        14
+#define TRANLOG_COLUMN_MAXUTXNID    15
+#define TRANLOG_COLUMN_CHILDUTXNID  16
+#define TRANLOG_COLUMN_LSN_FILE     17 /* Useful for sorting records by LSN */
+#define TRANLOG_COLUMN_LSN_OFFSET   18
 
 extern int gbl_apprec_gen;
 int gbl_tranlog_default_timeout = 30;
@@ -88,7 +90,7 @@ static int tranlogConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,blocklsn hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,logcgen integer, maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,blocklsn hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,logcgen integer,prevcksum integer,cksum integer, maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -416,12 +418,18 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_MAXUTXNID: 
         if (pCur->data.data) {
-            LOGCOPY_32(&rectype, pCur->data.data); 
-            if (rectype == DB___txn_ckp+2000 || rectype == DB___txn_ckp_recovery+2000) {
-                LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+            u_int32_t base, tags;
+            LOGCOPY_32(&rectype, pCur->data.data);
+            tags = __rectype_tags(rectype, &base);
+            /* max_utxnid only exists on utxnid-tagged checkpoints. */
+            if ((tags & DB_RECTAG_UTXNID) &&
+                (base == DB___txn_ckp || base == DB___txn_ckp_recovery)) {
+                /* <prefix>+ckp_lsn(8)+last_ckp(8)+timestamp(4)+rep_gen(4) */
+                LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[
+                    __rectype_prefix_len(rectype) + 8 + 8 + 4 + 4]);
                 sqlite3_result_int64(ctx, maxutxnid);
                 break;
-            } 
+            }
         }
         sqlite3_result_null(ctx);
         break;
@@ -484,15 +492,15 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_TXNID:
         if (pCur->data.data) {
-            LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+            LOGCOPY_32(&txnid, &((char *) pCur->data.data)[DB_REC_OFF_TXNID]);
         }
         sqlite3_result_int64(ctx, txnid);
         break;
     case TRANLOG_COLUMN_UTXNID:
         if (pCur->data.data) {
-            LOGCOPY_32(&rectype, pCur->data.data); 
-            if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]); 
+            LOGCOPY_32(&rectype, pCur->data.data);
+            if (DB_RECTYPE_HAS_UTXNID(rectype)) {
+                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[DB_REC_OFF_UTXNID]);
                 sqlite3_result_int64(ctx, utxnid);
                 break;
             }
@@ -505,34 +513,56 @@ static int tranlogColumn(
         }
         sqlite3_result_int64(ctx, logcgen);
         break;
+    case TRANLOG_COLUMN_PREVCKSUM:
+        /* Checksum of the preceding record; NULL if untagged. */
+        if (pCur->data.data) {
+            LOGCOPY_32(&rectype, pCur->data.data);
+            if (DB_RECTYPE_HAS_CKSUM_PREV(rectype)) {
+                u_int32_t prevcksum;
+                LOGCOPY_32(&prevcksum, &((char *)pCur->data.data)[
+                    DB_RECTYPE_CKSUM_PREV_OFF(rectype)]);
+                sqlite3_result_int64(ctx, (sqlite3_int64)prevcksum);
+                break;
+            }
+        }
+        sqlite3_result_null(ctx);
+        break;
+    case TRANLOG_COLUMN_CKSUM:
+        /* This record's own checksum, i.e. what the next record chains to. */
+        if (pCur->openCursor) {
+            sqlite3_result_int64(ctx, (sqlite3_int64)pCur->logc->c_chksum);
+        } else {
+            sqlite3_result_null(ctx);
+        }
+        break;
     case TRANLOG_COLUMN_TIMESTAMP:
         if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); 
+            LOGCOPY_32(&rectype, pCur->data.data);
 
-        if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000) ||
-            rectype == DB___txn_regop_gen_endianize || (rectype == DB___txn_regop_gen_endianize+2000)) {
+        /* Dispatch on the base type; the accessors handle the tags. */
+        (void)__rectype_tags(rectype, &rectype);
+
+        if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_gen_endianize) {
             timestamp = logrecord_timestamp_regop_gen(pCur->data.data);
         }
 
-        if (rectype == DB___txn_dist_commit || (rectype == DB___txn_dist_commit+2000)){
+        if (rectype == DB___txn_dist_commit){
             timestamp = logrecord_timestamp_dist_commit(pCur->data.data);
         }
 
-        if (rectype == DB___txn_dist_abort || (rectype == DB___txn_dist_abort+2000)){
+        if (rectype == DB___txn_dist_abort){
             timestamp = logrecord_timestamp_dist_abort(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000) ||
-            rectype == DB___txn_regop_rowlocks_endianize || (rectype == DB___txn_regop_rowlocks_endianize+2000)) {
+        if (rectype == DB___txn_regop_rowlocks || rectype == DB___txn_regop_rowlocks_endianize) {
             timestamp = logrecord_timestamp_regop_rowlocks(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
+        if (rectype == DB___txn_regop) {
             timestamp = logrecord_timestamp_regop(pCur->data.data);
         }
 
-		if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000) ||
-			rectype == DB___txn_ckp_recovery || (rectype == DB___txn_ckp_recovery+2000)) {
+		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
 			timestamp = logrecord_timestamp_ckp(pCur->data.data);
 		}
 
@@ -553,9 +583,15 @@ static int tranlogColumn(
         if (pCur->data.data)
                 LOGCOPY_32(&rectype, pCur->data.data);
 
-        if (rectype == DB___txn_child+2000 || rectype == DB___txn_child+3000)
-        { 
-                LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[4 + 4 + 8 + 8 + 4]); 
+        /* child_utxnid only exists on utxnid-tagged child records. */
+        if (DB_RECTYPE_HAS_UTXNID(rectype)) {
+                u_int32_t base;
+                (void)__rectype_tags(rectype, &base);
+                if (base == DB___txn_child) {
+                        /* <prefix>+child(4) */
+                        LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[
+                            __rectype_prefix_len(rectype) + 4]);
+                }
         }
 
         if (childutxnid > 0) {

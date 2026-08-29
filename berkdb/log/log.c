@@ -354,7 +354,7 @@ __log_recover(dblp)
 	DB_LSN lsn;
 	LOG *lp;
 	u_int32_t cnt, rectype;
-	int ret;
+	int ret, saw_rec;
 	logfile_validity status;
 
 	logc = NULL;
@@ -410,7 +410,13 @@ __log_recover(dblp)
 	 * turn off error messages.
 	 */
 	F_SET(logc, DB_LOG_SILENT_ERR);
+	/* Re-establish the checksum chain.  DB_NEXT never returns a LOGP
+	 * header, so this ends at the last real record in this file. */
+	lp->last_cksum = 0;
+	saw_rec = 0;
 	while (__log_c_get(logc, &lsn, &dbt, DB_NEXT) == 0) {
+		lp->last_cksum = logc->c_chksum;
+		saw_rec = 1;
 		if (dbt.size < sizeof(u_int32_t))
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
@@ -440,6 +446,20 @@ __log_recover(dblp)
 	lp->b_off = 0;
 	lp->l_off = 0;
 	lp->w_off = lp->lsn.offset;
+
+	/*
+	 * A crash between writing a new file's LOGP header and the record that
+	 * triggered the rollover leaves this file holding nothing but the
+	 * header.  The chain does not restart there: step back to the last real
+	 * record, which is in the previous file.  This runs after lp->len has
+	 * taken logc->c_len, which the get below overwrites.
+	 */
+	if (!saw_rec) {
+		DB_LSN plsn = lsn;
+
+		if (__log_c_get(logc, &plsn, &dbt, DB_PREV) == 0)
+			lp->last_cksum = logc->c_chksum;
+	}
 
 skipsearch:
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_RECOVERY))
@@ -1150,7 +1170,7 @@ __log_vtruncate(dbenv, lsn, ckplsn, trunclsn)
 	DB_LSN end_lsn;
 	DB_MUTEX *flush_mutexp;
 	LOG *lp;
-	u_int32_t bytes, c_len;
+	u_int32_t bytes, c_len, c_chksum;
 	int ret, t_ret;
 
 	/* Need to find out the length of this soon-to-be-last record. */
@@ -1159,6 +1179,18 @@ __log_vtruncate(dbenv, lsn, ckplsn, trunclsn)
 	memset(&log_dbt, 0, sizeof(log_dbt));
 	ret = __log_c_get(logc, lsn, &log_dbt, DB_SET);
 	c_len = logc->c_len;
+	/*
+	 * Re-anchor the chain on the last real record at or before the
+	 * truncation point.  A LOGP file header is never in the chain, so if we
+	 * truncated to one, step back -- which may cross into the previous file.
+	 */
+	c_chksum = logc->c_chksum;
+	if (ret == 0 && lsn->offset == 0) {
+		DB_LSN plsn = *lsn;
+
+		c_chksum = (__log_c_get(logc, &plsn, &log_dbt, DB_PREV) == 0) ?
+		    logc->c_chksum : 0;
+	}
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 	if (ret != 0)
@@ -1181,6 +1213,7 @@ __log_vtruncate(dbenv, lsn, ckplsn, trunclsn)
 	end_lsn = lp->lsn;
 	lp->lsn = *lsn;
 	lp->len = c_len;
+	lp->last_cksum = c_chksum;
 	lp->lsn.offset += lp->len;
 
 	/*

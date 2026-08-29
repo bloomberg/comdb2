@@ -633,6 +633,74 @@ struct __db_ltran {
 #define	DB_user_BEGIN		10000
 #define	DB_debug_FLAG		0x80000000
 
+/*
+ * Log-record format tags.  An on-disk rectype is
+ * [DB_user_BEGIN] + (tags * 1000) + base, tags in [0, 7].  Use
+ * __rectype_tags() rather than open-coding range tests: they shift
+ * every time a tag is added.
+ */
+#define	DB_RECTYPE_TAG_UNIT	1000
+#define	DB_RECTAG_UFID		0x1	/* carries a ufid, not a dbreg fileid */
+#define	DB_RECTAG_UTXNID	0x2	/* carries a u_int64_t utxnid */
+#define	DB_RECTAG_CKSUM_PREV	0x4	/* carries the previous record's checksum */
+
+/*
+ * Returns the tag bitmask; stores the untagged base type in *basep
+ * (logical records keep their DB_user_BEGIN offset).
+ */
+static inline u_int32_t
+__rectype_tags(u_int32_t rectype, u_int32_t *basep)
+{
+	u_int32_t logical = 0;
+
+	rectype &= ~DB_debug_FLAG;
+	if (rectype >= DB_user_BEGIN) {
+		logical = DB_user_BEGIN;
+		rectype -= DB_user_BEGIN;
+	}
+	if (basep != NULL)
+		*basep = logical + (rectype % DB_RECTYPE_TAG_UNIT);
+	return (rectype / DB_RECTYPE_TAG_UNIT);
+}
+
+#define	DB_RECTYPE_HAS_UFID(t)		(__rectype_tags((t), NULL) & DB_RECTAG_UFID)
+#define	DB_RECTYPE_HAS_UTXNID(t)	(__rectype_tags((t), NULL) & DB_RECTAG_UTXNID)
+#define	DB_RECTYPE_HAS_CKSUM_PREV(t)	(__rectype_tags((t), NULL) & DB_RECTAG_CKSUM_PREV)
+
+/* Is this a bdb logical (llog) record rather than a berkdb physical one? */
+#define	DB_RECTYPE_IS_LOGICAL(t)	(((t) & ~DB_debug_FLAG) >= DB_user_BEGIN)
+
+/*
+ * Length of the common record prefix:
+ *	type(4) | txnid(4) | prev_lsn(8) | [utxnid(8)] | [prev_cksum(4)]
+ * The tagged fields are only present when their tag is set.  Use this
+ * instead of open-coding "4 + 4 + 8 + (utxnid ? 8 : 0)".
+ */
+static inline u_int32_t
+__rectype_prefix_len(u_int32_t rectype)
+{
+	u_int32_t tags = __rectype_tags(rectype, NULL);
+
+	return ((u_int32_t)(sizeof(u_int32_t) + sizeof(u_int32_t) +
+		sizeof(DB_LSN)) +
+	    ((tags & DB_RECTAG_UTXNID) ? (u_int32_t)sizeof(u_int64_t) : 0) +
+	    ((tags & DB_RECTAG_CKSUM_PREV) ? (u_int32_t)sizeof(u_int32_t) : 0));
+}
+
+/* Offset of prev_cksum.  Only valid if tagged DB_RECTAG_CKSUM_PREV. */
+#define	DB_RECTYPE_CKSUM_PREV_OFF(t) \
+	(__rectype_prefix_len(t) - (u_int32_t)sizeof(u_int32_t))
+
+/*
+ * Offsets of the fixed prefix fields.  Read prefix fields at these offsets
+ * and reach the body with __rectype_prefix_len().  Do not walk the prefix
+ * field by field: such a walk silently skips any field added later.
+ */
+#define	DB_REC_OFF_TYPE		((u_int32_t)0)
+#define	DB_REC_OFF_TXNID	(DB_REC_OFF_TYPE + (u_int32_t)sizeof(u_int32_t))
+#define	DB_REC_OFF_PREV_LSN	(DB_REC_OFF_TXNID + (u_int32_t)sizeof(u_int32_t))
+#define	DB_REC_OFF_UTXNID	(DB_REC_OFF_PREV_LSN + (u_int32_t)sizeof(DB_LSN))
+
 struct __db_log_cursor_stat {
     int incursor_count;
     int ondisk_count;
@@ -655,6 +723,7 @@ struct __db_log_cursor {
 	DB_LSN	  c_lsn;		/* Cursor: LSN */
 	u_int32_t c_len;		/* Cursor: record length */
 	u_int32_t c_prev;		/* Cursor: previous record's offset */
+	u_int32_t c_chksum;		/* Cursor: record's stored checksum */
 
 	DBT	  c_dbt;		/* Return DBT. */
 
@@ -3304,8 +3373,9 @@ int __checkpoint_ok_to_delete_log(DB_ENV *dbenv, int logfile);
 int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	int check_checkpoint);
 
+/* 'prefix' is __rectype_prefix_len() of the record's raw (untagged) rectype. */
 int ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
-	int rectype, u_int8_t *ufid, DBT *dbt, int utxnid_logged);
+	int rectype, u_int8_t *ufid, DBT *dbt, u_int32_t prefix);
 
 int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);

@@ -65,7 +65,7 @@ static int __log_newfh __P((DB_LOG *));
 static int __log_put_next __P((DB_ENV *,
 	DB_LSN *, u_int64_t *, DBT *, const DBT *, HDR *, DB_LSN *, int,
 	u_int8_t *key, u_int32_t));
-static int __log_putr __P((DB_LOG *, DB_LSN *, const DBT *, u_int32_t, HDR *));
+static int __log_putr __P((DB_LOG *, DB_LSN *, const DBT *, u_int32_t, HDR *, int));
 static int __log_write __P((DB_LOG *, void *, u_int32_t));
 static void __log_sync_range __P((DB_LOG *, off_t));
 
@@ -186,7 +186,8 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	t = *udbt;
 	u_int8_t *pp;
     int adjsize = 0;
-	int utxnid_logged = 0;
+	u_int32_t prefix = 0;
+	int chained = 0;
 
 	lock_held = need_free = 0;
 	flags &= (~(DB_LOG_DONT_LOCK | DB_LOG_DONT_INFLATE));
@@ -194,7 +195,9 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	{
 		pp = udbt->data;
 		LOGCOPY_32(&rectype, pp);
-		utxnid_logged = normalize_rectype(&rectype);
+		prefix = __rectype_prefix_len(rectype);
+		chained = DB_RECTYPE_HAS_CKSUM_PREV(rectype) ? 1 : 0;
+		normalize_rectype(&rectype);
 	}
 
     /* prevent local replicant from generating logs */
@@ -249,12 +252,15 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	}
 	unsigned long long ltranid = 0;
 	if (10006 == rectype) {
-		/* Find the logical tranid.  Offset should be (rectype + txn_num + last_lsn + txn_unum) */
-		ltranid = *(unsigned long long *)(&pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0)]);
+		/* The logical tranid is the first field after the common prefix. */
+		ltranid = *(unsigned long long *)(&pp[prefix]);
 	}
 
-    /* try to do this before grabbing the region lock */
-    if (!(off_context >= 0 && IS_REP_MASTER(dbenv))) {
+    /*
+     * Records still to be patched under the lock (commit context and/or
+     * prev_cksum) defer encrypt+checksum to __log_put_next().
+     */
+    if (!(off_context >= 0 || chained)) {
         if ((ret = __log_encrypt_record(dbenv, dbt, &hdr, udbt->size)) != 0)
             goto err;
         if (CRYPTO_ON(dbenv))
@@ -731,7 +737,11 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 
 	pp = udbt->data;
 	LOGCOPY_32(&rectype, pp);
-	int utxnid_logged = normalize_rectype(&rectype);
+	u_int32_t prefix = __rectype_prefix_len(rectype);
+	int chained = DB_RECTYPE_HAS_CKSUM_PREV(rectype) ? 1 : 0;
+	/* Must be taken from the tagged rectype, before it is normalized. */
+	u_int32_t cksum_off = chained ? DB_RECTYPE_CKSUM_PREV_OFF(rectype) : 0;
+	normalize_rectype(&rectype);
 
 	/* we have the log lsn value, can get context */
 	if (off_context >= 0) {
@@ -748,23 +758,23 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 		if (rectype == DB___txn_regop_rowlocks ||
 			rectype == DB___txn_regop_rowlocks_endianize)
 		{
-			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+LTRANID(8)+begin_lsn(8)+last_commit_lsn(8)+context(8)+timestamp(8)+lflags(4)+GENERATION(4) */
-			ltranid = (unsigned long long *)(&pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4]);
-			LOGCOPY_32( &generation, &pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+			/* <prefix>+opcode(4)+LTRANID(8)+begin_lsn(8)+last_commit_lsn(8)+context(8)+timestamp(8)+lflags(4)+GENERATION(4) */
+			ltranid = (unsigned long long *)(&pp[prefix + 4]);
+			LOGCOPY_32( &generation, &pp[prefix + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
 			pushlog = (flags & DB_LOG_LOGICAL_COMMIT);
 		}
 
 		if (rectype == DB___txn_regop_gen ||
 			rectype == DB___txn_regop_gen_endianize)
 		{
-			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+GENERATION(4) */
-			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4] );
+			/* <prefix>+opcode(4)+GENERATION(4) */
+			LOGCOPY_32( &generation, &pp[prefix + 4] );
 		}
 
 		if (rectype == DB___txn_dist_commit)
 		{
-			/* rectype(4)+txn_num(4)+db_lsn(8)+GENERATION(4)*/
-			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + 4] );
+			/* <prefix>+GENERATION(4) */
+			LOGCOPY_32( &generation, &pp[prefix] );
 		}
 
 		bdb_push_pglogs_commit(dbenv->app_private, *lsn, generation, *ltranid, pushlog);
@@ -781,7 +791,19 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 			sizeof(unsigned long long));
 		memcpy((char *)udbt->data + off_context, &ctx,
 			sizeof(unsigned long long));
+	}
 
+	/* Chain to the previous record.  dbt is our log, udbt is what a
+	 * master ships to replicants; both need the value. */
+	if (chained) {
+		LOGCOPY_32((u_int8_t *)dbt->data + cksum_off, &lp->last_cksum);
+		if (udbt->data != dbt->data)
+			LOGCOPY_32((u_int8_t *)udbt->data + cksum_off,
+			    &lp->last_cksum);
+	}
+
+	/* Mirrors the deferral test in __log_put_int_int(). */
+	if (off_context >= 0 || chained) {
 		if ((ret = __log_encrypt_record(dbenv, dbt, hdr, udbt->size)) != 0) {
 			return ret;
 		}
@@ -795,7 +817,8 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 	}
 
 	/* Actually put the record. */
-	return (__log_putr(dblp, lsn, dbt, lp->lsn.offset - lp->len, hdr));
+	return (__log_putr(dblp, lsn, dbt, lp->lsn.offset - lp->len, hdr,
+	    1 /* chain */));
 }
 
 /*
@@ -974,6 +997,7 @@ __log_flush_commit(dbenv, lsnp, flags)
 	DB_LOG *dblp;
 	DB_LSN flush_lsn;
 	LOG *lp;
+	u_int32_t new_chksum;
 	int ret;
 
 	dblp = dbenv->lg_handle;
@@ -1019,8 +1043,11 @@ __log_flush_commit(dbenv, lsnp, flags)
 	 * it out to disk before there was a failure, we can't know for sure.
 	 */
 	if (__txn_force_abort(dbenv,
-	    dblp->bufp + flush_lsn.offset - lp->w_off) == 0)
+	    dblp->bufp + flush_lsn.offset - lp->w_off, &new_chksum) == 0) {
+		/* Still the last record (we hold the lock), so re-anchor. */
+		lp->last_cksum = new_chksum;
 		(void)__log_flush_int(dblp, &flush_lsn, 0);
+	}
 
 	return (ret);
 }
@@ -1126,8 +1153,14 @@ __log_newfile(dblp, lsnp)
 	__db_chksum(t.data, t.size,
 	    (CRYPTO_ON(dbenv)) ? db_cipher->mac_key : NULL, hdr.chksum);
 	lsn = lp->lsn;
+	/*
+	 * LOGP stays out of the chain: it carries log_size, which may differ
+	 * between nodes.  The first real record of this file chains to the
+	 * last real record of the previous one.
+	 */
 	if ((ret = __log_putr(dblp, &lsn,
-		    &t, lastoff == 0 ? 0 : lastoff - lp->len, &hdr)) != 0)
+		    &t, lastoff == 0 ? 0 : lastoff - lp->len, &hdr,
+		    0 /* no chain */)) != 0)
 		goto err;
 
 	/* Update the LSN information returned to the caller. */
@@ -1145,12 +1178,13 @@ err:
  *	Actually put a record into the log.
  */
 static int
-__log_putr(dblp, lsn, dbt, prev, h)
+__log_putr(dblp, lsn, dbt, prev, h, chain)
 	DB_LOG *dblp;
 	DB_LSN *lsn;
 	const DBT *dbt;
 	u_int32_t prev;
 	HDR *h;
+	int chain;		/* Advance lp->last_cksum to this record. */
 {
 	DB_CIPHER *db_cipher;
 	DB_ENV *dbenv;
@@ -1199,6 +1233,10 @@ __log_putr(dblp, lsn, dbt, prev, h)
 		__db_chksum(dbt->data, dbt->size,
 		    (CRYPTO_ON(dbenv)) ? db_cipher->mac_key : NULL,
 		    hdr->chksum);
+
+	/* Capture in native byte order, before __log_hdrswap() below. */
+	if (chain)
+		memcpy(&lp->last_cksum, hdr->chksum, sizeof(lp->last_cksum));
 
 	nr = hdr->size;
 	if (LOG_SWAPPED())
@@ -2312,7 +2350,8 @@ __log_rep_put(dbenv, lsnp, rec)
 	    (CRYPTO_ON(dbenv)) ? db_cipher->mac_key : NULL, hdr.chksum);
 
 	DB_ASSERT(log_compare(lsnp, &lp->lsn) == 0);
-	ret = __log_putr(dblp, lsnp, dbt, lp->lsn.offset - lp->len, &hdr);
+	ret = __log_putr(dblp, lsnp, dbt, lp->lsn.offset - lp->len, &hdr,
+	    1 /* chain */);
 
         /* Physical replication:
 

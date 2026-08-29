@@ -42,6 +42,7 @@
 #include "dbinc/txn.h"
 
 extern int gbl_utxnid_log;
+extern int gbl_log_cksum_prev;
 extern int gbl_is_physical_replicant;
 
 /*
@@ -72,6 +73,8 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	int used_malloc = 0;
 	int off_context = -1;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 #if 0
 	u_int32_t gen = 0;
 #endif
@@ -83,6 +86,9 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	rectype = DB___txn_regop;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -110,7 +116,7 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 		+ sizeof(u_int32_t)
 		+ sizeof(u_int32_t)
 		+ sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size);
@@ -174,6 +180,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)opcode;
@@ -392,11 +403,17 @@ __txn_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_regop + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -442,7 +459,7 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_regop_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_regop%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+	    "[%lu][%lu]__txn_regop%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -450,7 +467,8 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+	    argp->txnid->utxnid,
+	    (u_long)argp->prev_cksum);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	time_t timestamp = argp->timestamp;
@@ -553,6 +571,8 @@ __txn_ckp_log(dbenv, txnid, rectype, ret_lsnp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 	if (last_ckp->file == 0 && last_ckp->offset == 0 && ckp_lsn->file != 1 && ckp_lsn->offset != 28) {
 		__db_err(dbenv, "Logging a non-first checkpoint with a 0:0 last checkpoint lsn\n");
@@ -565,6 +585,9 @@ __txn_ckp_log(dbenv, txnid, rectype, ret_lsnp, flags,
 
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -592,7 +615,7 @@ __txn_ckp_log(dbenv, txnid, rectype, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 	    + sizeof(*ckp_lsn)
 	    + sizeof(*last_ckp)
 	    + sizeof(u_int32_t)
@@ -658,6 +681,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	if (ckp_lsn != NULL)
@@ -837,11 +865,17 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_ckp + 2000 || argp->type == DB___txn_ckp_recovery + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_TOLSN(&argp->ckp_lsn, bp);
@@ -858,7 +892,7 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->rep_gen = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
 
-	if (argp->type == DB___txn_ckp + 2000 || argp->type == DB___txn_ckp_recovery + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->max_utxnid, bp);
 		bp += sizeof(argp->max_utxnid);
 	} else {
@@ -893,7 +927,7 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if (type > 2000)
 		type -= 2000;
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		(type == DB___txn_ckp_recovery) ? "__txn_ckp_recovery" : "__txn_ckp",
@@ -902,7 +936,8 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		argp->txnid->utxnid);
+		argp->txnid->utxnid,
+		(u_long)argp->prev_cksum);
 	(void)printf("\tckp_lsn: [%lu][%lu]\n",
 		(u_long)argp->ckp_lsn.file, (u_long)argp->ckp_lsn.offset);
 	fflush(stdout);
@@ -972,6 +1007,8 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_child_log: begin\n");
@@ -980,6 +1017,9 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 	rectype = DB___txn_child;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -1007,7 +1047,7 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 	    + sizeof(u_int32_t) + (utxnid_log ? sizeof(c_utxnid) : 0)
 	    + sizeof(*c_lsn);
 	if (CRYPTO_ON(dbenv)) {
@@ -1070,6 +1110,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)child;
@@ -1238,18 +1283,24 @@ __txn_child_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 	
-	if (argp->type == DB___txn_child + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
 	argp->child = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
 
-	if (argp->type == DB___txn_child + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->child_utxnid, bp);
 		bp += sizeof(argp->child_utxnid);
 	} else {
@@ -1284,7 +1335,7 @@ __txn_child_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_child_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_child%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+	    "[%lu][%lu]__txn_child%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -1292,7 +1343,8 @@ __txn_child_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+	    argp->txnid->utxnid,
+	    (u_long)argp->prev_cksum);
 	(void)printf("\tchild: 0x%lx\n", (u_long)argp->child);
 	(void)printf("\tchild_utxnid: %"PRIx64"\n", argp->child_utxnid);
 	fflush(stdout);
@@ -1348,6 +1400,8 @@ __txn_xa_regop_log(dbenv, txnid, ret_lsnp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_xa_regop_log: begin\n");
@@ -1356,6 +1410,9 @@ __txn_xa_regop_log(dbenv, txnid, ret_lsnp, flags,
 	rectype = DB___txn_xa_regop;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -1383,7 +1440,7 @@ __txn_xa_regop_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t) + (xid == NULL ? 0 : xid->size)
 	    + sizeof(u_int32_t)
@@ -1451,6 +1508,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)opcode;
@@ -1654,11 +1716,17 @@ __txn_xa_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_xa_regop + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -1717,7 +1785,7 @@ __txn_xa_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_xa_regop_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_xa_regop%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+	    "[%lu][%lu]__txn_xa_regop%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -1725,7 +1793,8 @@ __txn_xa_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+	    argp->txnid->utxnid,
+	    (u_long)argp->prev_cksum);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\txid: \n");
@@ -1786,6 +1855,8 @@ __txn_recycle_log(dbenv, txnid, ret_lsnp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_recycle_log: begin\n");
@@ -1794,6 +1865,9 @@ __txn_recycle_log(dbenv, txnid, ret_lsnp, flags,
 	rectype = DB___txn_recycle;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -1821,7 +1895,7 @@ __txn_recycle_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t);
 	if (CRYPTO_ON(dbenv)) {
@@ -1884,6 +1958,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)min;
@@ -2045,11 +2124,17 @@ __txn_recycle_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_recycle + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -2085,7 +2170,7 @@ __txn_recycle_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if ((ret = __txn_recycle_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 	(void)printf(
-	    "[%lu][%lu]__txn_recycle%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+	    "[%lu][%lu]__txn_recycle%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -2093,7 +2178,8 @@ __txn_recycle_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+	    argp->txnid->utxnid,
+	    (u_long)argp->prev_cksum);
 	(void)printf("\tmin: %u\n", argp->min);
 	fflush(stdout);
 	(void)printf("\tmax: %u\n", argp->max);
@@ -2157,6 +2243,8 @@ __txn_regop_rowlocks_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 	int used_malloc = 0;
     int off_context = -1;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_regop_rowlocks_log: begin\n");
@@ -2165,6 +2253,9 @@ __txn_regop_rowlocks_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 	rectype = inrectype;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -2192,7 +2283,7 @@ __txn_regop_rowlocks_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int64_t)
 	    + sizeof(*begin_lsn)
@@ -2263,6 +2354,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)opcode;
@@ -2508,12 +2604,17 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_regop_rowlocks + 2000 ||
-		argp->type == DB___txn_regop_rowlocks_endianize + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -2595,7 +2696,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	const char *prrec = type == DB___txn_regop_rowlocks ? "__txn_regop_rowlocks" : "__txn_regop_rowlocks_endianize";
 
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		prrec,
@@ -2604,7 +2705,8 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		argp->txnid->utxnid);
+		argp->txnid->utxnid,
+		(u_long)argp->prev_cksum);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tltranid: %"PRIx64"\n", argp->ltranid);
@@ -2716,6 +2818,8 @@ __txn_regop_gen_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 	int used_malloc = 0;
 	int off_context = -1;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_regop_gen_log: begin\n");
@@ -2724,6 +2828,9 @@ __txn_regop_gen_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 	rectype = inrectype;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -2751,7 +2858,7 @@ __txn_regop_gen_log(dbenv, inrectype, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int64_t)
@@ -2818,6 +2925,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)opcode;
@@ -3002,12 +3114,17 @@ __txn_regop_gen_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_regop_gen + 2000 ||
-		argp->type == DB___txn_regop_gen_endianize + 2000) {
-		LOGCOPY_64(&argp->txnid->utxnid,  bp);
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
+		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
 		argp->txnid->utxnid = 0;
+	}
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+	} else {
+		argp->prev_cksum = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -3066,7 +3183,7 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 				"__txn_regop_gen_endianize";
 
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		prrec,
@@ -3075,7 +3192,8 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		argp->txnid->utxnid);
+		argp->txnid->utxnid,
+		(u_long)argp->prev_cksum);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tgeneration: %u\n", argp->generation);
@@ -3172,6 +3290,8 @@ __txn_dist_prepare_log(dbenv, inrectype, txnid, ret_lsnp, flags, generation, beg
 	int is_durable, ret;
 	int used_malloc = 0;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_dist_prepare_log: begin\n");
@@ -3180,6 +3300,9 @@ __txn_dist_prepare_log(dbenv, inrectype, txnid, ret_lsnp, flags, generation, beg
 	rectype = inrectype;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -3215,7 +3338,7 @@ __txn_dist_prepare_log(dbenv, inrectype, txnid, ret_lsnp, flags, generation, beg
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 		+ sizeof(DB_LSN)	/* begin_lsn */
 		+ sizeof(u_int32_t) /* generation */
 		+ sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size)
@@ -3287,6 +3410,11 @@ do_malloc:
     if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+    }
+    if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
     }
 
 	uinttmp = (u_int32_t)generation;
@@ -3522,12 +3650,17 @@ __txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_dist_prepare + 2000 ||
-		argp->type == DB___txn_dist_prepare_endianize + 2000) {
+	if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
     } else {
 		argp->txnid->utxnid = 0;
+    }
+	if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+    } else {
+		argp->prev_cksum = 0;
     }
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -3625,7 +3758,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 				"__txn_dist_prepare_endianize";
 
 	(void)printf(
-		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		prrec,
@@ -3634,7 +3767,8 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		argp->txnid->utxnid);
+		argp->txnid->utxnid,
+		(u_long)argp->prev_cksum);
 	(void)printf("\tgeneration: %lu\n", (u_long)argp->generation);
 	fflush(stdout);
 	(void)printf("\tbegin-lsn: [%lu][%lu]\n",
@@ -3723,6 +3857,8 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	int is_durable, ret;
 	int used_malloc = 0;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_dist_abort_log: begin\n");
@@ -3732,6 +3868,9 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	if (utxnid_log) {
 		rectype += 2000;
 	}
+	if (cksum_prev_log) {
+		rectype += 4000;
+	}
 	npad = 0;
 
 	is_durable = 1;
@@ -3740,7 +3879,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	txn_unum = txnid->utxnid;
 	lsnp = &txnid->last_lsn;
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 		+ sizeof(u_int32_t)
 		+ sizeof(u_int64_t)
 		+ sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size);
@@ -3805,6 +3944,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)generation;
@@ -3967,11 +4111,17 @@ __txn_dist_abort_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-    if (argp->type == DB___txn_dist_abort + 2000) {
+    if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
     } else {
 		argp->txnid->utxnid = 0;
+    }
+    if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+    } else {
+		argp->prev_cksum = 0;
     }
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -4015,7 +4165,7 @@ __txn_dist_abort_print(dbenv, dbtp, lsnp, notused2, notused3)
 		return (ret);
 
 	(void)printf(
-		"[%lu][%lu]__txn_dist_abort%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]__txn_dist_abort%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		(argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -4023,7 +4173,8 @@ __txn_dist_abort_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		argp->txnid->utxnid);
+		argp->txnid->utxnid,
+		(u_long)argp->prev_cksum);
 
 	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
 	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
@@ -4098,6 +4249,8 @@ __txn_dist_commit_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	int used_malloc = 0;
 	int off_context = -1;
 	int utxnid_log = gbl_utxnid_log;
+	int cksum_prev_log = gbl_log_cksum_prev;
+	u_int32_t cksum_prev;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_dist_commit_log: begin\n");
@@ -4106,6 +4259,9 @@ __txn_dist_commit_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	rectype = DB___txn_dist_commit;
 	if (utxnid_log) {
 		rectype += 2000;
+	}
+	if (cksum_prev_log) {
+		rectype += 4000;
 	}
 	npad = 0;
 
@@ -4133,7 +4289,7 @@ __txn_dist_commit_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0) + (cksum_prev_log ? sizeof(u_int32_t) : 0)
 		+ sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size)
 		+ sizeof(u_int32_t)	/* generation */
 		+ sizeof(u_int64_t)	/* context */
@@ -4198,6 +4354,11 @@ do_malloc:
 	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
+	}
+	if (cksum_prev_log) {
+		cksum_prev = 0;
+		LOGCOPY_32(bp, &cksum_prev);
+		bp += sizeof(cksum_prev);
 	}
 
 	uinttmp = (u_int32_t)generation;
@@ -4365,11 +4526,17 @@ __txn_dist_commit_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-    if (argp->type == DB___txn_dist_commit + 2000) {
+    if (DB_RECTYPE_HAS_UTXNID(argp->type)) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
     } else {
 		argp->txnid->utxnid = 0;
+    }
+    if (DB_RECTYPE_HAS_CKSUM_PREV(argp->type)) {
+		LOGCOPY_32(&argp->prev_cksum, bp);
+		bp += sizeof(argp->prev_cksum);
+    } else {
+		argp->prev_cksum = 0;
     }
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -4416,7 +4583,7 @@ __txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 		return (ret);
 
 	(void)printf(
-		"[%lu][%lu]__txn_dist_commit%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64"\n",
+		"[%lu][%lu]__txn_dist_commit%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid %"PRIx64" prevcksum %08lx\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		(argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -4424,7 +4591,8 @@ __txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		argp->txnid->utxnid);
+		argp->txnid->utxnid,
+		(u_long)argp->prev_cksum);
 
     char *dist_txnid = (char *)alloca(argp->dist_txnid.size + 1);
     memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);

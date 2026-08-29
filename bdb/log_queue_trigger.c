@@ -295,8 +295,8 @@ static int log_queue_trigger_callback(const DB_LSN *lsn, const DB_LSN *commit_ls
     }
 
     int rc = normalize_rectype(&rectype);
-    if (rectype > 1000 && rectype < 10000) {
-        rectype = rectype - 1000;
+    if (!DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
+        rectype = rectype - DB_RECTYPE_TAG_UNIT;
     }
 
     switch (rectype) {
