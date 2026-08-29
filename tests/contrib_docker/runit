@@ -80,6 +80,17 @@ if [ -n "$run_standalone" ]; then
         docker compose build
     fi
 
+    # Match the message, not just a non-zero exit: a failed pull is also non-zero.
+    if usage="$(docker run --rm "$IMAGE" 2>&1)"; then
+        echo "expected a usage error when no database is named" >&2
+        exit 1
+    fi
+    if ! grep -q '^usage: ' <<<"$usage"; then
+        echo "expected a usage message when no database is named; got:" >&2
+        echo "$usage" >&2
+        exit 1
+    fi
+
     container="$(docker run -d "$IMAGE" db1 db2)"
     trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
 
