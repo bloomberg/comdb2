@@ -557,6 +557,10 @@ REGISTER_TUNABLE("erron", NULL, TUNABLE_BOOLEAN, &db->errstaton, READONLY | NOAR
 REGISTER_TUNABLE("exclusive_blockop_qconsume", "Enables serialization of blockops and queue consumes. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_exclusive_blockop_qconsume, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("exitalarmsec", NULL, TUNABLE_INTEGER, &gbl_exit_alarm_sec, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("exit_flush_timeout_sec",
+                 "While exiting, give up on a client write that has made no progress for this long.  0 disables.  "
+                 "(Default: 10)",
+                 TUNABLE_INTEGER, &gbl_exit_flush_timeout_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("exit_on_internal_failure", NULL, TUNABLE_BOOLEAN, &gbl_exit_on_internal_error, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_version_emulate_precdbapi",

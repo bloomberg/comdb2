@@ -147,6 +147,19 @@ int gbl_tranlog_maxpoll = 60;
 extern int comdb2_sql_tick();
 extern int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
+/* A tranlog request runs on an appsock-sql thread, and clean_exit waits for
+ * those threads to *exit* in thrman_wait_for_all(), under a 300s alarm.
+ * Replicants (sqllogfill, physrep) re-issue immediately on a successful empty
+ * result, so ending the scan quietly just hands the thread another request and
+ * the exiting node never drains.  Fail instead: the client disconnects, the
+ * appsock thread exits, and no_more_sql_connections keeps it from coming back. */
+static int tranlog_exit_error(sqlite3_vtab_cursor *cur)
+{
+    sqlite3_free(cur->pVtab->zErrMsg);
+    cur->pVtab->zErrMsg = sqlite3_mprintf("database is exiting");
+    return SQLITE_ABORT;
+}
+
 /*
 ** Advance a tranlog cursor to the next log entry
 */
@@ -165,6 +178,10 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
 
   if (pCur->notDurable || pCur->hitLast)
       return SQLITE_OK;
+
+  /* Don't start (or continue) a scan while we are shutting down */
+  if (db_is_exiting())
+      return tranlog_exit_error(cur);
 
   if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
       pCur->hitLast = 1;
@@ -225,6 +242,9 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
               pCur->notDurable = 1;
               break;
           }
+
+          if (db_is_exiting())
+              return tranlog_exit_error(cur);
 
           /* We want to downgrade */
           if (bdb_the_lock_desired()) {
@@ -323,7 +343,10 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
                   }
               }
 
-              if (db_is_exiting() || pCur->startAppRecGen != gbl_apprec_gen) {
+              if (db_is_exiting())
+                    return tranlog_exit_error(cur);
+
+              if (pCur->startAppRecGen != gbl_apprec_gen) {
                     pCur->hitLast = 1;
                     return SQLITE_OK;
               }
@@ -341,12 +364,15 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
               --gbl_num_logput_listeners;
               Pthread_mutex_unlock(&gbl_logput_lk);
 
-              while (bdb_the_lock_desired()) {
+              while (bdb_the_lock_desired() && !db_is_exiting()) {
                   if (thd == NULL) {
                       thd = pthread_getspecific(query_info_key);
                   }
                   recover_deadlock_simple(thedb->bdb_env);
               }
+
+              if (db_is_exiting())
+                  return tranlog_exit_error(cur);
           } while ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT)));
       } else {
           pCur->hitLast = 1;
@@ -612,6 +638,13 @@ static int tranlogFilter(
 ){
   tranlog_cursor *pCur = (tranlog_cursor *)pVtabCursor;
   int i = 0;
+
+  /* This is the reliable place to refuse a request: sqlite treats the xEof
+   * return as a boolean, so an error raised from tranlogNext() by way of
+   * tranlogEof() is read as a plain end-of-scan and the client sees an empty
+   * result it will just ask for again.  xFilter errors propagate. */
+  if (db_is_exiting())
+      return tranlog_exit_error(pVtabCursor);
 
   bzero(&pCur->minLsn, sizeof(pCur->minLsn));
   if( idxNum & 1 ){
