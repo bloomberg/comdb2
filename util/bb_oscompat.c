@@ -50,7 +50,7 @@ static int os_get_host_and_cname_by_name(char **name_ptr, struct in_addr *addr,
     }
 
     if (cname != NULL)
-        *cname = strdup(res->ai_canonname);
+        *cname = res->ai_canonname ? strdup(res->ai_canonname) : NULL;
 
     freeaddrinfo(res);
     return 0;
