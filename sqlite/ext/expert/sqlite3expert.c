@@ -1848,15 +1848,15 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
         " AND sql NOT LIKE 'CREATE VIRTUAL %%'"
     );
     while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
-      const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+      const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
       char *coll = NULL;
       // transform all the "collate DATACOPY" instances from:
       // create index "$I1_792AC8AF" on "t1" ("i", "b" collate DATACOPY, "c");
       // to 
       // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") INCLUDE ALL;
       // note that there is enough space because 'INCLUDE ALL' is less characters than 'collate DATACOPY'
-      if ((coll = strstr(zSql, " collate DATACOPY"))) {
+      if ((coll = strstr((char *)zSql, " collate DATACOPY"))) {
         char *end = coll + sizeof(" collate DATACOPY") - 1;
         while(*end != ';') {
             *coll = *end;
@@ -1871,6 +1871,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
       rc = sqlite3_exec(pNew->dbm, newSql, 0, 0, pzErrmsg);
       sqlite3_free(newSql);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
       rc = sqlite3_exec(pNew->dbm, zSql, 0, 0, pzErrmsg);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }

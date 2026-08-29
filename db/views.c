@@ -801,7 +801,7 @@ static int _extract_shardname_index(const char *tblName,
         nextNum = atoi(tblName + 1); /* skip $ */
 
         if (span) {
-            char *_ = strchr(tblName, '_');
+            const char *_ = strchr(tblName, '_');
             if (_) {
                 *span = _ - tblName - 1;
             }
