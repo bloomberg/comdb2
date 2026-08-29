@@ -7,77 +7,117 @@
 # would run. It checks two things: that a fresh `docker compose up` stands up a
 # cluster you can query, and that the image's standalone (non-clustered) mode
 # runs and serves databases. It is not an exhaustive functional test.
+#
+# usage: runit [all|cluster|standalone]. COMDB2_DOCKER_IMAGE overrides the image
+# for the standalone section; the cluster section always builds from source.
 
 set -euo pipefail
+
+DEFAULT_IMAGE=comdb2-dev:latest
+IMAGE="${COMDB2_DOCKER_IMAGE:-$DEFAULT_IMAGE}"
+
+run_cluster=
+run_standalone=
+case "${1:-all}" in
+    all)        run_cluster=1; run_standalone=1 ;;
+    cluster)    run_cluster=1 ;;
+    standalone) run_standalone=1 ;;
+    *)
+        echo "usage: ${0##*/} [all|cluster|standalone]" >&2
+        exit 1
+        ;;
+esac
+
+if [ -n "$run_cluster" ] && [ "$IMAGE" != "$DEFAULT_IMAGE" ]; then
+    echo "COMDB2_DOCKER_IMAGE only applies to the standalone section;" >&2
+    echo "the cluster section builds from the source tree. Run 'standalone'." >&2
+    exit 1
+fi
 
 # Run from contrib/docker so the commands match the README verbatim.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir/../../contrib/docker"
 
-# Not really necessary in ephemeral CI environments but nice for local dev.
-trap 'docker compose down -v' EXIT
-
 # ----------------------------------------------------------------------------
 # Clustered setup: 3-node cluster + client container.
 # ----------------------------------------------------------------------------
 
-# Start the cluster + client. Nodes declare a healthcheck, so by the time this
-# returns the cluster can serve queries.
-docker compose up -d
+if [ -n "$run_cluster" ]; then
+    # Not really necessary in ephemeral CI environments but nice for local dev.
+    trap 'docker compose down -v' EXIT
 
-# `-T` disables pseudo-TTY allocation, which is required when there's no
-# terminal (e.g. CI).
-docker compose exec -T dev cdb2sql testdb default "select 1"
-docker compose exec -T dev cdb2sql testdb default "create table t(i int)"
-docker compose exec -T dev cdb2sql testdb default "insert into t values(42)"
+    # Start the cluster + client. Nodes declare a healthcheck, so by the time this
+    # returns the cluster can serve queries.
+    docker compose up -d
 
-out="$(docker compose exec -T dev cdb2sql testdb default "select * from t")"
-echo "$out"
-echo "$out" | grep -q 'i=42'
+    # `-T` disables pseudo-TTY allocation, which is required when there's no
+    # terminal (e.g. CI).
+    docker compose exec -T dev cdb2sql testdb default "select 1"
+    docker compose exec -T dev cdb2sql testdb default "create table t(i int)"
+    docker compose exec -T dev cdb2sql testdb default "insert into t values(42)"
 
-# Test that the `docker compose run` variant works as well.
-out="$(docker compose run --rm dev cdb2sql testdb default "select * from t")"
-echo "$out"
-echo "$out" | grep -q 'i=42'
+    out="$(docker compose exec -T dev cdb2sql testdb default "select * from t")"
+    echo "$out"
+    echo "$out" | grep -q 'i=42'
 
-# Disarm the cleanup trap to prevent double-`down`.
-trap - EXIT
-docker compose down -v
+    # Test that the `docker compose run` variant works as well.
+    out="$(docker compose run --rm dev cdb2sql testdb default "select * from t")"
+    echo "$out"
+    echo "$out" | grep -q 'i=42'
+
+    # Disarm the cleanup trap to prevent double-`down`.
+    trap - EXIT
+    docker compose down -v
+fi
 
 # ----------------------------------------------------------------------------
 # Standalone setup: one or more non-clustered databases in a single container.
 # ----------------------------------------------------------------------------
 
-# Ordering: the comdb2-dev:latest image is built and tagged by the earlier
-# `docker compose up -d` step.
-container="$(docker run -d comdb2-dev:latest db1 db2)"
-trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+if [ -n "$run_standalone" ]; then
+    # The cluster section would have built this as a side effect.
+    if [ "$IMAGE" = "$DEFAULT_IMAGE" ] && ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+        docker compose build
+    fi
 
-# No compose healthcheck here, so wait until each db answers before querying it.
-for db in db1 db2; do
-    for _ in $(seq 1 60); do
-        docker exec "$container" cdb2sql "$db" local "select 1" >/dev/null 2>&1 && break
-        sleep 1
+    container="$(docker run -d "$IMAGE" db1 db2)"
+    trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+
+    # No compose healthcheck here, so wait until each db answers before querying it.
+    for db in db1 db2; do
+        ready=
+        for _ in $(seq 1 120); do
+            if docker exec "$container" cdb2sql "$db" local "select 1" >/dev/null 2>&1; then
+                ready=1
+                break
+            fi
+            sleep 1
+        done
+        if [ -z "$ready" ]; then
+            echo "$db did not come up; container logs follow:" >&2
+            docker logs "$container" >&2 || true
+            exit 1
+        fi
     done
-done
 
-# db1
-docker exec "$container" cdb2sql db1 local "create table t(i int)"
-docker exec "$container" cdb2sql db1 local "insert into t values(1)"
-out="$(docker exec "$container" cdb2sql db1 local "select * from t")"
-echo "$out"
-echo "$out" | grep -q 'i=1'
+    # db1
+    docker exec "$container" cdb2sql db1 local "create table t(i int)"
+    docker exec "$container" cdb2sql db1 local "insert into t values(1)"
+    out="$(docker exec "$container" cdb2sql db1 local "select * from t")"
+    echo "$out"
+    echo "$out" | grep -q 'i=1'
 
-# db2 (a separate database running in the same container)
-docker exec "$container" cdb2sql db2 local "create table t(i int)"
-docker exec "$container" cdb2sql db2 local "insert into t values(2)"
-out="$(docker exec "$container" cdb2sql db2 local "select * from t")"
-echo "$out"
-echo "$out" | grep -q 'i=2'
+    # db2 (a separate database running in the same container)
+    docker exec "$container" cdb2sql db2 local "create table t(i int)"
+    docker exec "$container" cdb2sql db2 local "insert into t values(2)"
+    out="$(docker exec "$container" cdb2sql db2 local "select * from t")"
+    echo "$out"
+    echo "$out" | grep -q 'i=2'
 
-# Disarm the cleanup trap to prevent double-`rm`.
-docker stop "$container" >/dev/null
-trap - EXIT
-docker rm -f "$container" >/dev/null
+    # Disarm the cleanup trap to prevent double-`rm`.
+    docker stop "$container" >/dev/null
+    trap - EXIT
+    docker rm -f "$container" >/dev/null
+fi
 
 echo "PASSED"
