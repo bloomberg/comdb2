@@ -1203,6 +1203,9 @@ REGISTER_TUNABLE("temptable_limit",
                  "create. (Default: 8192)",
                  TUNABLE_INTEGER, &gbl_temptable_pool_capacity, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("test_emit_race_delay",
+                 "Delay in seconds before pushing columns (push_clnt_cols) and sending row data (l_send_back_row)",
+                 TUNABLE_INTEGER, &gbl_test_emit_race_delay, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("test_tunable_nozero", NULL, TUNABLE_INTEGER, &gbl_test_tunable_nozero,
                  NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("test_tunable_int_limit", NULL, TUNABLE_INTEGER, &gbl_test_tunable_int_limit,
