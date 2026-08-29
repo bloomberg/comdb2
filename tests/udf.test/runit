@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -x
-for t in *.req; do
+for t in `ls *.req | sort`; do
     cdb2sql --tabs --script --cdb2cfg ${CDB2_CONFIG} ${1} default - 2> ${t}.output 1>&2 < ${t}
     set -e
     diff ${t}.expected ${t}.output
