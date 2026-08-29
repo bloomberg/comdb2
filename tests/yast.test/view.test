@@ -731,5 +731,32 @@ do_execsql_test view-26.0 {
   1 1 2 2 
   1 1 3 3
 }
-
+ifcapable subquery {
+  # 2023-09-15
+  # Query planner performance regression reported by private email 
+  # on 2023-09-14, caused by VIEWSCAN optimization of check-in 609fbb94b8f01d67
+  # from 2022-09-01.
+  #
+  reset_db
+  do_execsql_test subquery-10.1 {
+    CREATE TABLE t1(aa, bb, cc);
+    CREATE INDEX x11 on t1(bb);
+    CREATE INDEX x12 on t1(aa);
+    CREATE TABLE t2(aa, xx);
+    ANALYZE;
+    INSERT INTO sqlite_stat1(tbl, idx, stat) VALUES('t1', 'x11', '156789 28');
+    INSERT INTO sqlite_stat1(tbl, idx, stat) VALUES('t1', 'x12', '156789 1');
+    ANALYZE;
+  } {}
+  do_eqp_test subquery-10.2 {
+    WITH v1(aa,cc,bb) AS (SELECT aa, cc, bb FROM t1 WHERE bb=12345),
+         v2(aa,mx)    AS (SELECT aa, max(xx) FROM t2 GROUP BY aa)
+    SELECT * FROM v1 JOIN v2 ON v1.aa=v2.aa;
+  } { 3 0 0 {MATERIALIZE 2}
+      11 3 0 {SCAN TABLE t2 (~1048576 rows)} 
+      13 3 0 {USE TEMP B-TREE FOR GROUP BY}
+      58 0 0 {SEARCH TABLE t1 USING INDEX $X11_8306D9B6 (bb=?) (~10 rows)}
+      72 0 0 {SEARCH SUBQUERY 2 USING AUTOMATIC COVERING INDEX (aa=?) (~20 rows)}
+  }
+} ;#ifcable subquery
 finish_test
