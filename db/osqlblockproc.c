@@ -1184,6 +1184,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         iq->dup_key_insert = 0;
     }
 
+    iq->upsert_ignored = 0;
+
     /* create a cursor */
     dbc = bdb_temp_table_cursor(thedb->bdb_env, tran->db, NULL, &bdberr);
     if (!dbc || bdberr) {

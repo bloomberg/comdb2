@@ -57,6 +57,7 @@
 #include "logical_cron.h"
 #include "sc_logic.h"
 #include "eventlog.h"
+#include "indices.h"
 #include <disttxn.h>
 #include "fingerprint.h"
 
@@ -7485,7 +7486,7 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
                           iq->usedb->tablename, err->ixnum);
                     err->errcode = ERR_UNCOMMITTABLE_TXN;
-                    goto done_delete;
+                    goto done_insert;
                 }
 
                 if (upsert_collision_should_force_verify_error(dt.upsert_flags, err->ixnum)) {
@@ -7495,20 +7496,23 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
 
                 if ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) {
                     const int upsert_idx = dt.upsert_flags >> 8;
-                    if (upsert_idx == MAXINDEX + 1) {
+                    if (upsert_idx == UPSERT_CONFLICT_ALL_INDEXES) {
                         /* We're asked to ignore DUPs for all unique indices, no insert took place.*/
+                        iq->upsert_ignored = 1;
                         err->errcode = 0;
                         rc = 0;
-                        goto done_delete;
+                        goto done_insert;
                     } else if ((dt.upsert_flags & OSQL_FORCE_VERIFY) == 1) {
+                        iq->upsert_ignored = 0;
                         err->errcode = 0;
                         rc = 0;
-                        goto done_delete;
+                        goto done_insert;
                     } else if (upsert_idx == err->ixnum) {
                         /* We're asked to ignore DUPs for this particular * index, no insert took place.*/
+                        iq->upsert_ignored = 1;
                         err->errcode = 0;
                         rc = 0;
-                        goto done_delete;
+                        goto done_insert;
                     }
                 }
 
@@ -7531,7 +7535,7 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
                        rrn, bdb_genid_to_host_order(newgenid));
 
             if (0) {
-done_delete:
+            done_insert:
                 EVENTLOG_DEBUG(
                     uuidstr_t ustr;
                     comdb2uuidstr(uuid, ustr);
