@@ -8688,6 +8688,76 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     sqlite3VdbeError(vdbe, "%s", errstr);                                      \
     sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
+/* Committing a chunk drops the curtran table locks, which lets a concurrent
+ * schema change finalize and replace the dbtable behind our back.  The dbtable
+ * itself is recycled in place (see free_db_and_replace), but its schemas are
+ * not: commit_schemas frees the old ".ONDISK" and index schemas, leaving every
+ * open cursor with a dangling pCur->sc.
+ *
+ * Once the locks are back, re-derive db and sc for each local cursor.  Bail out
+ * if the table went away or its version moved: the rest of the cursor state
+ * (ondisk_buf/keybuf sizes, numblobs, ...) was sized at open time and would be
+ * stale as well.
+ */
+static int refresh_chunk_cursors(struct sql_thread *thd)
+{
+    BtCursor *cur = NULL;
+    int rc = SQLITE_OK;
+
+    if (!thd->bt)
+        return SQLITE_OK;
+
+    Pthread_mutex_lock(&thd->lk);
+
+    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+    {
+        struct dbtable *db;
+        struct schema *sc;
+
+        /* temp tables, sqlite_master and remotes don't cache a dbtable schema */
+        if (!cur->db || (cur->bt && cur->bt->is_remote))
+            continue;
+
+        db = get_sqlite_db(thd, cur->rootpage, NULL);
+        if (!db) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: table for rootpage %d was dropped during chunk "
+                   "transaction\n",
+                   __func__, cur->rootpage);
+            rc = SQLITE_SCHEMA;
+            break;
+        }
+
+        if (cur->tableversion != db->tableversion || cur->ixnum >= db->nix) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: table %s schema changed during chunk transaction, "
+                   "version %d -> %llu\n",
+                   __func__, db->tablename, cur->tableversion, db->tableversion);
+            rc = SQLITE_SCHEMA;
+            break;
+        }
+
+        sc = (cur->ixnum == -1) ? db->schema : db->ixschema[cur->ixnum];
+
+        /* A same-schema change (rebuild, truncate, timepart truncate rollout)
+         * keeps the table version, so the check above lets it through: say so,
+         * this is the case that used to leave cur->sc dangling.
+         */
+        if (cur->sc != sc)
+            logmsg(LOGMSG_INFO,
+                   "%s: refreshed stale schema for table %s cursor %d ixnum "
+                   "%d\n",
+                   __func__, db->tablename, cur->cursorid, cur->ixnum);
+
+        cur->db = db;
+        cur->sc = sc;
+    }
+
+    Pthread_mutex_unlock(&thd->lk);
+
+    return rc;
+}
+
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                              struct sql_thread *thd)
 {
@@ -8829,6 +8899,14 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             if (newlocks_rc == 0)
                 newlocks_rc = sqlite3LockStmtTables(clnt->dbtran.pStmt);
             unlock_schema_lk();
+
+            /* sqlite3LockStmtTables() re-checked the versions of the tables
+             * registered by the statement, but the cursors still cache the
+             * dbtable and schema pointers they latched at open time.  Now that
+             * we hold the table locks again, refresh them.
+             */
+            if (newlocks_rc == 0)
+                newlocks_rc = refresh_chunk_cursors(thd);
 
             if (newlocks_rc) {
                 comdb2_sqlite3VdbeError(

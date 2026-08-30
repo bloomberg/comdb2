@@ -479,6 +479,7 @@ extern int gbl_stack_string_refs;
 extern int gbl_abort_on_dangling_stringrefs;
 extern int gbl_abort_on_stalled_exit;
 extern int gbl_debug_alter_sequences_sleep;
+extern int gbl_debug_poison_freed_schemas;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_ix_addk_nomaster;
