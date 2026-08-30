@@ -91,5 +91,101 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
 
 fi
 
+################################################################################
+# Race a chunked delete against a table rebuild.
+#
+# The two races above (alter, drop) are both caught when the chunk transaction
+# reacquires its table locks, because they move the table version.  A rebuild
+# does not: it sets same_schema, so finalize_alter_table keeps the version.
+# The version check therefore lets it through, even though the rebuild has
+# already replaced the dbtable and commit_schemas() has freed the schemas the
+# open cursors latched at cursor-open time.  Those cursors have to be
+# refreshed, or they are left pointing at freed memory.
+#
+# The delete has to go through the index: cursor_move_index() is what reads
+# pCur->sc (via ondisk_to_sqlite_tz).  A "where 1" table scan never looks at
+# it and the stale pointer goes unnoticed.
+################################################################################
+
+echo "Deleting the rows, will rebuild the table after the first chunk"
+
+# Make a stale schema reference fail immediately instead of reading memory
+# that happens to still look valid.  COMDB2_TEST builds only, so best effort.
+for node in $(cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select host from comdb2_cluster"); do
+    cdb2sql -s -n ${node} ${CDB2_OPTIONS} $a_dbn default "put tunable debug.poison_freed_schemas 1"
+    # lrl throttles chunks by 20s, more than this scenario needs
+    cdb2sql -s -n ${node} ${CDB2_OPTIONS} $a_dbn default "put tunable throttle_txn_chunks_msec 3000"
+done
+
+# the drop above took the table with it
+$rt "create table t {`cat t.csc2`}"
+if (( $? != 0 )) ; then
+    echo "FAILURE: could not recreate t"
+    exit 1
+fi
+
+$r << "EOF"
+set transaction chunk 10
+begin
+insert into t select value from generate_series(1, 60)
+commit
+EOF
+if (( $? != 0 )) ; then
+    echo "FAILURE: could not populate t"
+    exit 1
+fi
+
+$r << "EOF" &
+set transaction chunk 10
+begin
+delete from t where a > 0
+commit
+EOF
+delete_pid=$!
+
+sleep 4
+
+$rt "rebuild t"
+if (( $? != 0 )) ; then
+    echo "FAILURE: rebuild failed"
+    exit 1
+fi
+
+# If the delete already finished the rebuild did not land inside a chunk
+# window and this run proved nothing.
+if ! kill -0 $delete_pid 2>/dev/null ; then
+    echo "FAILURE: chunked delete completed before the rebuild, race did not happen"
+    exit 1
+fi
+
+wait $delete_pid
+
+# The server is expected to survive this and finish the delete.  Without the
+# cursor refresh it reads a freed schema here and dies.
+cnt=$($rt --tabs "select count(*) from t")
+if (( $? != 0 )) ; then
+    echo "FAILURE: database is not reachable after racing a rebuild against a chunked delete"
+    exit 1
+fi
+if [[ "$cnt" != "0" ]] ; then
+    echo "FAILURE: expected the chunked delete to remove every row, $cnt left"
+    exit 1
+fi
+
+# Single node only: on a cluster we do not know which node ran the delete.
+if [[ -z "$CLUSTER" ]] ; then
+    dbglog="${TESTDIR}/logs/${a_dbn}.db"
+    if ! grep -q "refreshed stale schema for table t" $dbglog ; then
+        echo "FAILURE: no cursor was refreshed, the rebuild did not land in a chunk window"
+        echo "         (expected 'refreshed stale schema' in $dbglog)"
+        exit 1
+    fi
+    if ! grep -q "refreshed stale schema for table t cursor .* ixnum 0" $dbglog ; then
+        echo "FAILURE: the index cursor was not refreshed, pCur->sc would still be stale"
+        grep "refreshed stale schema" $dbglog
+        exit 1
+    fi
+fi
+
 echo "Testcase passed."
 

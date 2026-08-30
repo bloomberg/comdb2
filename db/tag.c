@@ -69,6 +69,7 @@ const int gbl_ondisk_ver_len = sizeof ".ONDISK.VER.255xx";
 
 int _dbg_tags = 0;
 int gbl_debug_alter_sequences_sleep = 0;
+int gbl_debug_poison_freed_schemas = 0;
 
 #define TAGLOCK_RW_LOCK
 #ifdef TAGLOCK_RW_LOCK
@@ -5479,8 +5480,17 @@ void commit_schemas(const char *tblname)
         }
 
         /* free schemas themselves */
-        for (i = 0; i < count; i++)
+        for (i = 0; i < count; i++) {
+#ifdef COMDB2_TEST
+            /* Anything still pointing here is a bug (a BtCursor that cached
+             * db->schema and outlived a schema change, for example).  Poison
+             * the schema so such a reference fails loudly instead of reading
+             * plausible-looking recycled memory. */
+            if (gbl_debug_poison_freed_schemas)
+                memset(s[i], 0xff, sizeof(struct schema));
+#endif
             free(s[i]);
+        }
         free(s);
     }
 

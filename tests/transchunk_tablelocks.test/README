@@ -1,1 +1,10 @@
-This test checks the case of altering and dropping a table while running a chunk transaction.
+This test checks the case of altering, dropping and rebuilding a table while
+running a chunk transaction.
+
+Committing a chunk releases the curtran table locks, so a schema change can
+finalize before the next chunk reacquires them.  The alter and the drop are
+caught by the table version check in sqlite3LockStmtTables().  The rebuild is
+not: it sets same_schema, so the table version does not move even though the
+dbtable has been replaced and the old schemas freed.  The open cursors have to
+have their cached dbtable/schema pointers refreshed, otherwise pCur->sc points
+at freed memory.

@@ -1342,6 +1342,12 @@ REGISTER_TUNABLE("debug.alter_sequences_sleep",
                  "Sleep for 10 seconds before setting sequence to highest value found in existing column during alter "
                  "table 10 seconds prior (Default: 0)",
                  TUNABLE_BOOLEAN, &gbl_debug_alter_sequences_sleep, INTERNAL, NULL, NULL, NULL, NULL);
+#ifdef COMDB2_TEST
+REGISTER_TUNABLE("debug.poison_freed_schemas",
+                 "Poison the schemas freed by commit_schemas so that a stale reference to one (e.g. a BtCursor that "
+                 "outlived a schema change) crashes instead of reading recycled memory (Default: OFF)",
+                 TUNABLE_BOOLEAN, &gbl_debug_poison_freed_schemas, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+#endif
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.thdpool_queue_only",
