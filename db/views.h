@@ -340,6 +340,33 @@ int views_cron_restart(timepart_views_t *views);
 int timepart_update_retention(void *tran, const char *name, int value, struct errstat *err);
 
 /**
+ * Validate a pending retention change against the live partition: it must
+ * exist, be a truncate partition of the kind the statement named, and the
+ * retention must actually change. Fills "err" and returns non zero otherwise.
+ */
+int timepart_validate_retention_change(const char *name, int new_retention, int is_manual, struct errstat *err);
+
+/**
+ * Build a new view reflecting a retention change for a truncate partition.
+ * Produces *newview (the reconfigured ring, current shard at the last index)
+ * and the list of shard table names that must be physically added (increase)
+ * or dropped (decrease); *is_increase is set accordingly. The change is
+ * validated first (see timepart_validate_retention_change), so nnames is
+ * always at least 1 on success.
+ * The caller owns *newview (timepart_free_view) and the *names array (free
+ * each string then the array).
+ */
+int timepart_reconfigure_retention(const char *name, int new_retention, int is_manual, struct timepart_view **newview,
+                                   const char **partition_name, char ***names, int *nnames, int *is_increase,
+                                   struct errstat *err);
+
+/**
+ * Swap an existing partition's in-memory view for a reconfigured one with
+ * the same name (used after a retention change publishes).
+ */
+int timepart_replace_inmem_view(struct timepart_view *newview);
+
+/**
  * Locking the views subsystem, needed for ordering locks with schema
  *
  */

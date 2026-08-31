@@ -183,6 +183,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_TIMED_RETRO:
     case PARTITION_ADD_MANUAL:
+    case PARTITION_RETENTION:
         return sizeof(p->type) + sizeof(p->u.tpt.period) +
                sizeof(p->u.tpt.retention) + sizeof(p->u.tpt.start);
     case PARTITION_MERGE:
@@ -349,7 +350,8 @@ int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, 
     switch (s->partition.type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_TIMED_RETRO:
-    case PARTITION_ADD_MANUAL: {
+    case PARTITION_ADD_MANUAL:
+    case PARTITION_RETENTION: {
         sc.has_tpperiod = 1;
         sc.has_tpretention = 1;
         sc.has_tpstart = 1;
@@ -668,7 +670,8 @@ int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc,
     switch (sc->partition_type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_TIMED_RETRO:
-    case PARTITION_ADD_MANUAL: {
+    case PARTITION_ADD_MANUAL:
+    case PARTITION_RETENTION: {
         s->partition.u.tpt.period = sc->tpperiod;
         s->partition.u.tpt.retention = sc->tpretention;
         s->partition.u.tpt.start = sc->tpstart;
@@ -856,7 +859,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
                     p_buf_end);
     switch (s->partition.type) {
     case PARTITION_ADD_TIMED:
-    case PARTITION_ADD_MANUAL: {
+    case PARTITION_ADD_MANUAL:
+    case PARTITION_RETENTION: {
         p_buf = buf_put(&s->partition.u.tpt.period,
                         sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
         p_buf = buf_put(&s->partition.u.tpt.retention,
@@ -1301,7 +1305,8 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
     switch (s->partition.type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_TIMED_RETRO:
-    case PARTITION_ADD_MANUAL: {
+    case PARTITION_ADD_MANUAL:
+    case PARTITION_RETENTION: {
         p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.period, sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
         p_buf =
             (uint8_t *)buf_get(&s->partition.u.tpt.retention, sizeof(s->partition.u.tpt.retention), p_buf, p_buf_end);
