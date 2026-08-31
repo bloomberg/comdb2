@@ -117,6 +117,7 @@ void berk_memp_sync_alarm_ms(int);
 
 #include "intern_strings.h"
 #include "bb_oscompat.h"
+#include "cluster_allow_list.h"
 #include "comdb2uuid.h"
 #include "debug_switches.h"
 #include "eventlog.h"
@@ -4171,6 +4172,10 @@ static int init(int argc, char **argv)
         }
         csc2_disallow_bools();
     }
+
+    /* Seed the cluster allow list with the "cluster nodes" hosts.  The saved
+     * "allow cluster with" directives below then extend it. */
+    cluster_allow_list_init();
 
     /* Now process all the directives we saved up from the lrl file. */
     for (ii = 0; ii < thedb->num_allow_lines; ii++) {

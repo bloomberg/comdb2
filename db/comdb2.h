@@ -1728,6 +1728,9 @@ extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_myhostname; /* my hostname */
 extern struct interned_string *gbl_myhostname_interned;
 extern char *gbl_machine_class; /* my machine class */
+/* 0: enforce the "cluster with" remote policy, warn about the hosts the
+ * cluster allow list would reject.  1: enforce the cluster allow list. */
+extern int gbl_enforce_cluster_allow_list;
 extern struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
 extern pid_t gbl_mypid;      /* my pid */

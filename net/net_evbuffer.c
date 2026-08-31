@@ -44,6 +44,7 @@
 
 #include <bb_oscompat.h>
 #include <berkdb/dbinc/rep_types.h>
+#include <cluster_allow_list.h>
 #include <comdb2_atomic.h>
 #include <comdb2buf.h>
 #include <compat.h>
@@ -1464,13 +1465,26 @@ static int hello_msg_common(struct event_info *e)
             if (need_free) free(host);
             continue;
         }
-        struct host_info *hi = host_info_find(host);
+        char *ihost = intern(host);
+        if (need_free)
+            free(host);
+        /* We already cluster with the peer that sent this hello, and it says
+         * that ihost is in the cluster with it.  Take its word and add ihost,
+         * the same as "bdb add" does.
+         *
+         * Do this before both skips below.  We must learn a host even when we
+         * already have an event for it, which is the case for the peer that
+         * sent the hello and for any host we tried to connect to.  We must
+         * also learn it before the allow check, so that the cluster allow list
+         * does not turn away a node that the rest of the cluster knows. */
+        if (cluster_allow_list_add_host(ihost)) {
+            logmsg(LOGMSG_WARN, "host %s joins the cluster allow list, named by %s\n", ihost,
+                   e->host_node_ptr ? e->host_node_ptr->host : "a peer");
+        }
+        struct host_info *hi = host_info_find(ihost);
         if (hi && event_info_find(e->net_info, hi)) {
-            if (need_free) free(host);
             continue;
         }
-        char *ihost = intern(host);
-        if (need_free) free(host);
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
         if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, ihost)) { /* net_allow_node */
             logmsg(LOGMSG_ERROR, "connection to host:%s not allowed\n", ihost);

@@ -359,6 +359,7 @@
 (name='enable_upgrade_ahead', description='Occasionally update read records to the newest schema version (saves some processing when reading them later). (Default: off)', type='INTEGER', value='0', read_only='Y')
 (name='enablecursorser', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='endianize_locklist', description='Endianize locklist before writing to txnlog.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='enforce_cluster_allow_list', description='Enforce the cluster allow list, which names the hosts and machine groups that may cluster with us. When off, enforce the older cluster remote policy instead and only warn about the hosts the allow list would reject. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='epochms_repts', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='erroff', description='Disables 'erron'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='erron', description='', type='BOOLEAN', value='ON', read_only='Y')

@@ -443,6 +443,12 @@ REGISTER_TUNABLE("early",
                  "point, and reads on that node will either see the records or "
                  "block. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_early, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("enforce_cluster_allow_list",
+                 "Enforce the cluster allow list, which names the hosts and "
+                 "machine groups that may cluster with us. When off, enforce "
+                 "the older cluster remote policy instead and only warn about "
+                 "the hosts the allow list would reject. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_enforce_cluster_allow_list, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_berkdb_retry_deadlock_bias", NULL, TUNABLE_BOOLEAN,
                  &gbl_enable_berkdb_retry_deadlock_bias, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
