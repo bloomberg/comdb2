@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a CLUSTER"
+
+# Pretend that a node is rtcpu'd off on 1 of every RTCPU_ODDS upgrades.
+export RTCPU_ODDS=2
+
+# Maximum number of downgrade/election rounds.
+export MAX_ROUNDS=40
+
+# Always run this many rounds.
+export MIN_ROUNDS=10
+
+# Stop after the rtcpu branch fires this many times.
+export TARGET_FIRES=5
+
+export LOGDIR=${TESTDIR}/logs
+export PIDSNAP=${TMPDIR}/${TESTCASE}.${DBNAME}.pids
+export RTCPU_MSG="not upgrading because I am rtcpu'd"
+export TUNABLE=debug_random_rtcpu_upgrade
+
+# The nodes of the cluster.  comdb2_cluster reports the same list.
+export NODES=$CLUSTER
+
+function nodelog
+{
+    echo "${LOGDIR}/${DBNAME}.${1}.db"
+}
+
+# Count the times that the rtcpu branch fired on any node.
+function count_fires
+{
+    typeset count=0
+    typeset f=""
+    typeset c=0
+    for n in $NODES ; do
+        f=$(nodelog $n)
+        [[ -f "$f" ]] || continue
+        c=$(grep -c "$RTCPU_MSG" $f)
+        let count=count+c
+    done
+    echo $count
+}
+
+# Remember the pid of every node.  A node that goes down loses its pid.
+function save_pids
+{
+    typeset p=""
+    rm -f $PIDSNAP
+    for n in $NODES ; do
+        p=$(cat ${TMPDIR}/${DBNAME}.${n}.pid 2>/dev/null)
+        [[ -z "$p" ]] && failexit "no pidfile for node $n"
+        echo "$n $p" >> $PIDSNAP
+    done
+    echo "Node pids:"
+    cat $PIDSNAP
+}
+
+# Fail if a node went down.
+function check_pids
+{
+    typeset ctx=$1
+    typeset n=""
+    typeset p=""
+    while read n p ; do
+        kill -0 $p >/dev/null 2>&1
+        [[ $? != 0 ]] && failexit "node $n (pid $p) went down: $ctx"
+    done < $PIDSNAP
+}
+
+# Fail if a node does not answer a query within the timeout.
+function check_nodes_answer
+{
+    typeset ctx=$1
+    typeset countdown=60
+    typeset bad=1
+    typeset out=""
+    while [[ $bad == 1 && $countdown -gt 0 ]]; do
+        bad=0
+        for n in $NODES ; do
+            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS --host $n $DBNAME "select comdb2_host()" 2>/dev/null | tr -d '[:space:]')
+            if [[ "$out" != "$n" ]]; then
+                bad=1
+            fi
+        done
+        if [[ $bad == 1 ]]; then
+            check_pids "$ctx"
+            sleep 2
+            let countdown=countdown-2
+        fi
+    done
+    [[ $bad == 1 ]] && failexit "a node stopped answering queries: $ctx"
+}
+
+function check_nodes_up
+{
+    typeset ctx=$1
+    check_pids "$ctx"
+    check_nodes_answer "$ctx"
+}
+
+# Set the tunable on every node.  PUT TUNABLE is local to the node that runs
+# it, so send it to each host.
+function set_tunable
+{
+    typeset value=$1
+    typeset rc=0
+    for n in $NODES ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --host $n $DBNAME "put tunable '$TUNABLE' $value" >/dev/null 2>&1
+        rc=$?
+        [[ $rc != 0 ]] && failexit "could not set $TUNABLE to $value on node $n"
+    done
+    echo "Set $TUNABLE to $value on every node"
+}
+
+# Print the master, or nothing if there is no master.
+function wait_for_master
+{
+    typeset countdown=$1
+    typeset m=""
+    while [[ -z "$m" && $countdown -gt 0 ]]; do
+        m=$(getmaster 2>/dev/null | tr -d '[:space:]')
+        if [[ -z "$m" ]]; then
+            sleep 2
+            let countdown=countdown-2
+        fi
+    done
+    echo "$m"
+}
+
+# Insert one record.  Retry while the cluster has no master.
+function insert_record
+{
+    typeset value=$1
+    typeset countdown=60
+    while [[ $countdown -gt 0 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values($value)" >/dev/null 2>&1
+        if [[ $? == 0 ]]; then
+            return 0
+        fi
+        sleep 2
+        let countdown=countdown-2
+    done
+    return 1
+}
+
+# The old code exited the process here.  Make sure that it does not happen.
+function check_no_fatal_upgrade
+{
+    typeset f=""
+    for n in $NODES ; do
+        f=$(nodelog $n)
+        [[ -f "$f" ]] || continue
+        if grep -q "upgrade failed rcode" $f ; then
+            failexit "node $n exited on a failed upgrade"
+        fi
+        if grep -q "bdb_upgrade returned bad rcode" $f ; then
+            failexit "node $n exited on a failed upgrade"
+        fi
+    done
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "could not create t1"
+
+save_pids
+set_tunable $RTCPU_ODDS
+
+start_fires=$(count_fires)
+echo "rtcpu branch fired $start_fires times before the test"
+
+round=0
+records=0
+fires=$start_fires
+
+while [[ $round -lt $MAX_ROUNDS ]]; do
+    let round=round+1
+
+    master=$(wait_for_master 120)
+    [[ -z "$master" ]] && failexit "round $round: no master"
+
+    echo "round $round: downgrading master $master"
+    $CDB2SQL_EXE --admin $CDB2_OPTIONS --host $master $DBNAME "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1
+
+    sleep 2
+
+    newmaster=$(wait_for_master 120)
+    [[ -z "$newmaster" ]] && failexit "round $round: the cluster did not elect a master"
+    echo "round $round: master is $newmaster"
+
+    insert_record $round
+    [[ $? != 0 ]] && failexit "round $round: could not insert a record"
+    let records=records+1
+
+    check_nodes_up "round $round"
+    check_no_fatal_upgrade
+
+    fires=$(count_fires)
+    echo "round $round: rtcpu branch fired $fires times"
+    if [[ $round -ge $MIN_ROUNDS && $((fires - start_fires)) -ge $TARGET_FIRES ]]; then
+        break
+    fi
+done
+
+set_tunable 0
+
+master=$(wait_for_master 120)
+[[ -z "$master" ]] && failexit "no master at the end of the test"
+
+wait_for_cluster
+check_nodes_up "end of test"
+check_no_fatal_upgrade
+
+assertcnt t1 $records "after $round rounds of election"
+
+fires=$(count_fires)
+let fires=fires-start_fires
+echo "The rtcpu branch fired $fires times in $round rounds"
+[[ $fires -lt 1 ]] && failexit "the rtcpu branch never fired"
+
+echo "Success!"
+exit 0
