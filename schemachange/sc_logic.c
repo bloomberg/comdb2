@@ -1802,6 +1802,13 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             }
         }
         /* TODO: (NC) Also delete view? */
+        /* a retention change carries a reconfigured view that publish would
+         * have handed to the views list; since we are backing out (publish did
+         * not run, or it cleared newpartition on success), free it here */
+        if (s->partition.type == PARTITION_RETENTION && s->newpartition) {
+            timepart_free_view(s->newpartition);
+            s->newpartition = NULL;
+        }
         sc_del_unused_files_tran(s->db, tran);
         s = iq->sc = s->sc_next;
     }

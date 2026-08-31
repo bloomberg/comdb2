@@ -251,7 +251,12 @@ partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
     comdb2CreateManualPartition(pParse, &R, &S);
 }
 partition_options ::= MANUAL RETENTION INTEGER(R). {
+    /* On an existing partition this is an ALTER ... RETENTION change; on a new
+       table it creates a manual partition (handled inside the callee). */
     comdb2CreateManualPartition(pParse, &R, 0);
+}
+partition_options ::= TIME RETENTION INTEGER(R). {
+    comdb2AlterRetention(pParse, &R, 0);
 }
 partition_options ::= COLUMNS LP idlist(X) RP ON LP idlist(Y) RP. {
     comdb2CreateGenShard(pParse, X, Y);

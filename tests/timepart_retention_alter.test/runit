@@ -1,0 +1,362 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Test: change retention of a truncate time partition via
+#   ALTER TABLE <name> PARTITIONED BY TIME|MANUAL RETENTION <n>
+# applied inline (increase creates empty shards consumed-next; decrease drops
+# the oldest shards). Also checks legacy PUT retention still works and that the
+# two surfaces reject each other's partition type.
+
+dbnm=$1
+output=run.log
+[ "x$dbnm" = "x" ] && { echo "need a DB name"; exit 1; }
+
+rm -f $output 2>/dev/null
+touch $output
+
+CDB2="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+
+fail() { echo "FAILURE: $1"; echo "FAILURE: $1" >> $output; dump_state; exit 1; }
+
+# run a statement, log it, require success
+gorun() {
+    echo "> $1" >> $output
+    $CDB2 "$1" >> $output 2>&1 || fail "unexpected error running: $1"
+}
+
+# scalar query value (tabs, trimmed)
+sqlval() {
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1" 2>/dev/null | tr -d '[:space:]'
+}
+
+dump_state() {
+    echo "---- state dump ----" >> $output
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default \
+        "select name, period, retention, nshards from comdb2_timepartitions" >> $output 2>&1
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default \
+        "select name, shardname from comdb2_timepartshards order by name, shardname" >> $output 2>&1
+}
+
+assert_shards() {  # partition, expected count
+    local got=$(sqlval "select count(*) from comdb2_timepartshards where name='$1'")
+    echo "assert_shards($1): got=$got want=$2" >> $output
+    [ "$got" = "$2" ] || fail "partition '$1' shard count $got != $2"
+}
+
+assert_retention() {  # partition, expected retention (comdb2_timepartitions)
+    local got=$(sqlval "select retention from comdb2_timepartitions where name='$1'")
+    echo "assert_retention($1): got=$got want=$2" >> $output
+    [ "$got" = "$2" ] || fail "partition '$1' retention $got != $2"
+}
+
+assert_total() {  # partition(table), expected row count
+    local got=$(sqlval "select count(*) from $1")
+    echo "assert_total($1): got=$got want=$2" >> $output
+    [ "$got" = "$2" ] || fail "table '$1' row count $got != $2"
+}
+
+assert_present() {  # table, value of column a
+    local got=$(sqlval "select count(*) from $1 where a=$2")
+    echo "assert_present($1,$2): got=$got" >> $output
+    [ "$got" = "1" ] || fail "table '$1' expected row a=$2 present"
+}
+
+assert_absent() {  # table, predicate
+    local got=$(sqlval "select count(*) from $1 where $2")
+    echo "assert_absent($1,[$2]): got=$got" >> $output
+    [ "$got" = "0" ] || fail "table '$1' expected no rows where $2 (got $got)"
+}
+
+# query -> newline separated values, whitespace-trimmed (unlike sqlval, does
+# not collapse multiple rows into one)
+sqllist() {
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1" 2>/dev/null | sed 's/[[:space:]]*$//'
+}
+
+# log the shard ring (array order, with bounds) -- invaluable when the shard
+# the rollout picks does not match expectations
+dump_shards() {  # partition, label
+    echo "-- shards($1) $2:" >> $output
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default \
+        "select shardname, low, high from comdb2_timepartshards where name='$1'" >> $output 2>&1
+}
+
+# value, shard-list (newline separated) -> count of that value across those
+# physical shard tables (shard names need single-quoting, they start with '$')
+count_in_shards() {
+    local val=$1 shards=$2 total=0 s c
+    while IFS= read -r s; do
+        [ -z "$s" ] && continue
+        c=$(sqlval "select count(*) from '$s' where a=$val")
+        total=$((total + c))
+    done <<< "$shards"
+    echo $total
+}
+
+# run a statement expected to FAIL; optionally require message pattern
+expect_fail() {  # query, pattern
+    local err
+    echo "> (expect fail) $1" >> $output
+    err=$($CDB2 "$1" 2>&1)
+    if [ $? -eq 0 ]; then fail "expected failure but succeeded: $1"; fi
+    echo "$err" >> $output
+    if [ -n "$2" ] && ! grep -qiE "$2" <<< "$err"; then
+        fail "error for '$1' did not match '/$2/': $err"
+    fi
+}
+
+# largest high among the shards already rolled into (unused ones are INT_MAX);
+# every rollout hands the newly current shard a real, larger high
+max_used_high() {  # partition
+    sqlval "select coalesce(max(high),0) from comdb2_timepartshards
+             where name='$1' and high != 2147483647"
+}
+
+# schema changes still in flight on this partition's shards. Scoped to the
+# live shards on purpose: tables dropped by an earlier resize can leave stale
+# non-terminal rows behind, and those must not block us forever.
+sc_in_flight() {  # partition
+    sqlval "select count(*) from comdb2_sc_status
+             where status in ('RUNNING','PAUSED','COMMIT PENDING')
+               and name in (select shardname from comdb2_timepartshards
+                             where name='$1')"
+}
+
+# Force a rollout on a manual partition and wait for it to actually take
+# effect. Both waits are observable, replicated state (shard bounds and sc
+# status), so this works the same on one node or a cluster -- and a rollout
+# that never happens fails right here instead of quietly corrupting a much
+# later assertion.
+roll() {  # partition
+    local part=$1 before cur i
+
+    before=$(max_used_high "$part")
+    gorun "put counter $part increment"
+
+    for ((i = 0; i < 120; i++)); do
+        [ "$(max_used_high "$part")" != "$before" ] && break
+        sleep 0.5
+    done
+    if [ "$(max_used_high "$part")" = "$before" ]; then
+        dump_shards "$part" "rollout did not happen"
+        fail "partition '$part' did not roll out (max used high stuck at $before)"
+    fi
+
+    # the recycled shard is emptied by a truncate schema change; wait for it,
+    # otherwise rows inserted next could be wiped when it finally lands
+    for ((i = 0; i < 120; i++)); do
+        [ "$(sc_in_flight "$part")" = "0" ] && break
+        sleep 0.5
+    done
+    if [ "$(sc_in_flight "$part")" != "0" ]; then
+        echo "-- schema changes still in flight:" >> $output
+        cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default \
+            "select name, status from comdb2_sc_status
+              where status in ('RUNNING','PAUSED','COMMIT PENDING')" >> $output 2>&1
+        dump_shards "$part" "rollout schema change stuck"
+        fail "rollout schema change for '$part' did not finish"
+    fi
+
+    # the current shard is the newest *used* one; unused shards have the
+    # largest possible high (INT_MAX) and must be excluded
+    cur=$(sqlval "select shardname from comdb2_timepartshards
+                   where name='$part' and high != 2147483647
+                   order by high desc limit 1")
+    [ "$(sqlval "select count(*) from '$cur'")" = "0" ] ||
+        fail "partition '$part' current shard $cur was not truncated by the rollout"
+
+    echo "rolled $part: max used high $before -> $(max_used_high "$part"), current $cur" >> $output
+}
+
+################################################################################
+echo "=== Section A: inline retention change, shard count + data preservation ===" >> $output
+
+gorun "create table t(a int) partitioned by manual retention 3 start 1"
+assert_shards t 3
+assert_retention t 3
+
+gorun "insert into t values(100)"
+gorun "insert into t values(101)"
+assert_total t 2
+
+echo "--- increase 3 -> 5 (immediate) ---" >> $output
+gorun "alter table t partitioned by manual retention 5"
+assert_shards t 5
+assert_retention t 5
+assert_total t 2         # existing data preserved
+
+echo "--- decrease 5 -> 2 (immediate, empty shards dropped) ---" >> $output
+gorun "alter table t partitioned by manual retention 2"
+assert_shards t 2
+assert_retention t 2
+assert_total t 2         # data still there (dropped shards were empty)
+
+################################################################################
+echo "=== Section B: multiple rows/shard, rollouts after resize: increase keeps all data and uses the new shards, decrease drops the oldest data ===" >> $output
+
+gorun "create table tb(a int) partitioned by manual retention 2 start 1"
+assert_shards tb 2
+
+# seed each of the 2 original shards directly (by physical table name) with
+# several rows, rather than relying on rollout timing via the partition alias
+orig_shards=$(sqllist "select shardname from comdb2_timepartshards where name='tb' order by shardname")
+old_values=""
+i=0
+while IFS= read -r s; do
+    [ -z "$s" ] && continue
+    i=$((i+1))
+    for v in $((i*10+1)) $((i*10+2)) $((i*10+3)); do
+        gorun "insert into '$s' values($v)"
+        old_values="$old_values $v"
+    done
+done <<< "$orig_shards"
+assert_total tb 6
+dump_shards tb "after seeding (before growth)"
+
+echo "--- grow to 4 BEFORE any rollout: all existing (per-shard) data must survive ---" >> $output
+gorun "alter table tb partitioned by manual retention 4"
+assert_shards tb 4
+assert_total tb 6
+dump_shards tb "after growth 2->4"
+
+all_shards=$(sqllist "select shardname from comdb2_timepartshards where name='tb' order by shardname")
+new_shards=$(comm -13 <(sort <<< "$orig_shards") <(sort <<< "$all_shards"))
+echo "new shards after growth: $new_shards" >> $output
+[ "$(wc -l <<< "$new_shards")" = "2" ] || fail "expected 2 new shards after growing retention, got: $new_shards"
+
+echo "--- 2 manual rollouts: each insert (via the partition alias) must land on a newly created shard ---" >> $output
+roll tb
+gorun "insert into tb values(101)"
+dump_shards tb "after rollout #1"
+c=$(count_in_shards 101 "$new_shards")
+echo "row 101 (post rollout #1) found in $c new shard(s)" >> $output
+[ "$c" = "1" ] || fail "row 101 was not written to one of the newly created shards"
+
+roll tb
+gorun "insert into tb values(102)"
+dump_shards tb "after rollout #2"
+c=$(count_in_shards 102 "$new_shards")
+echo "row 102 (post rollout #2) found in $c new shard(s)" >> $output
+[ "$c" = "1" ] || fail "row 102 was not written to one of the newly created shards"
+
+echo "--- no data lost across growth + 2 rollouts ---" >> $output
+assert_total tb 8
+for v in $old_values 101 102; do assert_present tb $v; done
+
+echo "--- shrink to 2: the two OLDEST shards (all pre-growth, per-shard-seeded data) are dropped ---" >> $output
+# snapshot every shard's [low,high] before the shrink; decrease must drop the
+# oldest shards but leave every surviving shard's limits untouched
+bounds_before=$(sqllist "select shardname||' '||low||' '||high from comdb2_timepartshards where name='tb'")
+gorun "alter table tb partitioned by manual retention 2"
+dump_shards tb "after shrink 4->2"
+assert_shards tb 2
+assert_absent tb "a in ($(echo $old_values | tr ' ' ','))"
+assert_present tb 101
+assert_present tb 102
+assert_total tb 2
+
+while read -r sn lo hi; do
+    [ -z "$sn" ] && continue
+    after=$(sqlval "select low||'/'||high from comdb2_timepartshards where name='tb' and shardname='$sn'")
+    [ -z "$after" ] && continue  # this shard was one of the dropped oldest ones
+    echo "surviving shard $sn [low/high] across decrease: $lo/$hi -> $after" >> $output
+    [ "$after" = "$lo/$hi" ] || fail "decrease altered surviving shard $sn limits: $lo/$hi -> $after"
+done <<< "$bounds_before"
+
+################################################################################
+echo "=== Section BB: increase AFTER rollouts, on a fully wrapped ring ===" >> $output
+# Section B grows a partition that has never rolled (current shard 0, every
+# other shard unused). Here the ring has already wrapped, so the current shard
+# sits mid-array and every shard carries real bounds -- that is the state where
+# the rollout order the resize has to preserve actually matters.
+
+gorun "create table tc(a int) partitioned by manual retention 2 start 1"
+assert_shards tc 2
+
+# roll 3 times so the ring wraps and the current shard is no longer index 0;
+# each shard is truncated as it is recycled, so only the last 2 rows survive
+gorun "insert into tc values(1000)"
+roll tc
+gorun "insert into tc values(1001)"
+roll tc
+gorun "insert into tc values(1002)"
+roll tc
+gorun "insert into tc values(1003)"
+dump_shards tc "after 3 rollouts (wrapped ring)"
+assert_total tc 2          # 1000/1001 were recycled away
+assert_present tc 1002
+assert_present tc 1003
+
+wrapped_shards=$(sqllist "select shardname from comdb2_timepartshards where name='tc' order by shardname")
+
+echo "--- increase 2 -> 4 on the wrapped ring: surviving data must be kept ---" >> $output
+gorun "alter table tc partitioned by manual retention 4"
+dump_shards tc "after growth 2->4 (post rollout)"
+assert_shards tc 4
+assert_total tc 2
+assert_present tc 1002
+assert_present tc 1003
+
+tc_all=$(sqllist "select shardname from comdb2_timepartshards where name='tc' order by shardname")
+tc_new=$(comm -13 <(sort <<< "$wrapped_shards") <(sort <<< "$tc_all"))
+echo "new shards after growth: $tc_new" >> $output
+[ "$(wc -l <<< "$tc_new")" = "2" ] || fail "expected 2 new shards growing a wrapped ring, got: $tc_new"
+
+echo "--- next 2 rollouts must consume the new shards, keeping the older data ---" >> $output
+roll tc
+gorun "insert into tc values(1004)"
+c=$(count_in_shards 1004 "$tc_new")
+echo "row 1004 (post rollout #1) found in $c new shard(s)" >> $output
+[ "$c" = "1" ] || fail "row 1004 did not land on a newly created shard"
+
+roll tc
+gorun "insert into tc values(1005)"
+c=$(count_in_shards 1005 "$tc_new")
+echo "row 1005 (post rollout #2) found in $c new shard(s)" >> $output
+[ "$c" = "1" ] || fail "row 1005 did not land on a newly created shard"
+
+# at retention 2 these 2 rollouts would have recycled 1002/1003; at retention 4
+# the empty shards absorb them and all four rows are still here
+dump_shards tc "after 2 post-growth rollouts"
+assert_total tc 4
+for v in 1002 1003 1004 1005; do assert_present tc $v; done
+
+################################################################################
+echo "=== Section C: validation / error cases ===" >> $output
+
+# retention below the minimum
+expect_fail "alter table t partitioned by manual retention 1" "2 or higher"
+# wrong keyword for the partition kind (t is manual)
+expect_fail "alter table t partitioned by time retention 4" "manual|MANUAL"
+# truncate partition cannot use the legacy PUT surface
+expect_fail "put time partition t retention 4" "alter"
+# a retention change that changes nothing is rejected rather than silently
+# running a schema change (t is at retention 2 by now)
+expect_fail "alter table t partitioned by manual retention 2" "already 2"
+# the target has to be a time partition at all. NOTE: the MANUAL form cannot
+# reach this -- "PARTITIONED BY MANUAL RETENTION n" on a plain table is the
+# syntax that *creates* a manual partition; only an existing partition is
+# routed to the retention change. The TIME form has no such overload.
+gorun "create table plain(a int)"
+expect_fail "alter table plain partitioned by time retention 3" "not a time partition"
+
+################################################################################
+echo "=== Section D: legacy add&drop partition still uses PUT ===" >> $output
+
+gorun "create table lt(a int)"
+starttime=$(get_timestamp 3600)  # get_timestamp already appends the timezone
+gorun "CREATE TIME PARTITION ON lt as ltp PERIOD 'daily' RETENTION 2 START '$starttime'"
+assert_retention ltp 2
+
+echo "--- legacy PUT retention still works ---" >> $output
+gorun "put time partition ltp retention 3"
+assert_retention ltp 3
+
+echo "--- ALTER retention rejected on a legacy partition ---" >> $output
+expect_fail "alter table ltp partitioned by time retention 4" "legacy|put|PUT"
+
+################################################################################
+dump_state
+echo "SUCCESS" >> $output
+echo "SUCCESS"

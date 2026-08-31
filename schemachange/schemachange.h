@@ -66,6 +66,7 @@ enum comdb2_partition_type {
     PARTITION_NONE = 0,
     PARTITION_REMOVE = 1,
     PARTITION_MERGE = 2,
+    PARTITION_RETENTION = 3, /* change retention of an existing truncate partition */
     PARTITION_ADD_TIMED = 20,
     PARTITION_ADD_MANUAL = 21,
     PARTITION_ADD_COL_RANGE = 40,

@@ -141,6 +141,25 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
             return SC_INTERNAL_ERROR;
         }
+    } else if (s->partition.type == PARTITION_RETENTION && s->publish) {
+        /* decreasing retention: persist the reconfigured (smaller) ring
+         * after the last oldest shard has been dropped */
+        struct errstat err = {0};
+        assert(s->newpartition);
+        /* we hold the schema lock here; revalidate so a partition dropped
+         * since the alter started fails cleanly rather than having its llmeta
+         * entry recreated by the upsert below */
+        rc = timepart_validate_retention_change(s->timepartition_name, s->partition.u.tpt.retention,
+                                                s->partition.u.tpt.period == VIEW_PARTITION_MANUAL, &err);
+        if (rc) {
+            sc_errf(s, "%s\n", err.errstr);
+            return SC_INTERNAL_ERROR;
+        }
+        rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
+        if (rc) {
+            sc_errf(s, "Failed to update partition %s retention rc %d\n", s->timepartition_name, err.errval);
+            return SC_INTERNAL_ERROR;
+        }
     } else if (s->partition.type == PARTITION_REM_GENSHARD) {
         struct errstat err = {0};
         rc = gen_shard_llmeta_remove(tran, db->sqlaliasname, &err);

@@ -1,0 +1,14 @@
+Change the retention of a truncate-rollout time partition via
+  ALTER TABLE <name> PARTITIONED BY TIME RETENTION <n>
+
+The change is applied inline/atomically: increasing retention creates new empty
+shards (inserted so they are filled next, preserving existing data); decreasing
+retention drops the oldest shards. Uses a manual (logical-cron) partition so
+rollouts can be forced deterministically with `put counter`.
+
+Also checks that the legacy `PUT TIME PARTITION ... RETENTION` path still works for
+legacy add&drop partitions, and that the two surfaces reject each other's partition
+type.
+
+This test is self-validating (asserts and exits non-zero on failure); it does not
+diff against a golden file.
