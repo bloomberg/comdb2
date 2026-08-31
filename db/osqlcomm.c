@@ -7083,16 +7083,12 @@ void osql_clear_sc_running(struct ireq *iq)
 int osql_finalize_scs(struct ireq *iq, tran_type *trans)
 {
     int rc;
-    uuid_t uuid;
 
     // TODO (NC): Check why iq->sc_pending is not getting set for views
     iq->sc = iq->sc_pending;
 
     if (!iq->sc)
         return 0;
-
-    /* scl uuid */
-    comdb2uuidcpy(uuid, iq->sc_pending->uuid);
 
     while (iq->sc != NULL) {
         if (!iq->sc_locked) {
@@ -7150,8 +7146,10 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
         create_sqlite_master();
     }
 
-    /* remove scl */
-    rc = osql_delete_sc_list(uuid, iq->sc_tran);
+    /* remove scl; the object is keyed by the osql session uuid, saved in
+     * iq->scs_uuid -- sc->uuid is only set for TRANLEVEL_SOSQL
+     */
+    rc = osql_delete_sc_list(iq->scs_uuid, iq->sc_tran);
     if (rc) {
         error = ERR_SC;
     }

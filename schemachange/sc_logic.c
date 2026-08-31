@@ -662,6 +662,13 @@ struct {
     {0, 0, NULL, NULL, do_default_cons, finalize_default_cons},
 };
 
+int sc_kind_runs_do_ddl(int kind)
+{
+    if (kind <= SC_INVALID || kind >= SC_LAST)
+        return 0;
+    return do_schema_change_if[kind].run_do_ddl;
+}
+
 static int do_schema_change_tran_int(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
@@ -1086,36 +1093,48 @@ int resume_sc_multiddl(int scabort)
     }
 
     for (i = 0; i < num; i++) {
+        int irc;
+
+        bzero(&scl, sizeof(scl));
+
         p_buf_key = keys[i];
         p_buf_key_end = p_buf_key + keylen;
         if (!osqlcomm_scl_get_key(&scl, p_buf_key, p_buf_key_end)) {
+            logmsg(LOGMSG_ERROR, "%s failed to decode sc list key %d\n", __func__, i);
             rc = -1;
-            goto freetime;
+            continue;
         }
 
         p_buf = dtas[i];
         p_buf_end = p_buf + dtalens[i];
         if (!osqlcomm_scl_get(&scl, p_buf, p_buf_end)) {
+            logmsg(LOGMSG_ERROR, "%s failed to decode sc list %d\n", __func__, i);
+            free(scl.offsets);
+            free(scl.ser_scs);
             rc = -1;
-            goto freetime;
+            continue;
         }
 
-        rc = resume_sc_multiddl_txn(&scl);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rc);
+        irc = resume_sc_multiddl_txn(&scl);
+        if (irc) {
+            /* keep going: each sc list is an independent transaction, and
+             * skipping the rest would leave them in llmeta with nobody to
+             * ever resume or remove them
+             */
+            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, irc);
+            rc = irc;
+        }
 
         free(scl.offsets);
         free(scl.ser_scs);
-
-        if (rc)
-            goto freetime;
     }
 
-freetime:
     for (i = 0; i < num; i++) {
         free(dtas[i]);
         free(keys[i]);
     }
+    free(dtas);
+    free(keys);
     free(dtalens);
     return rc;
 }
