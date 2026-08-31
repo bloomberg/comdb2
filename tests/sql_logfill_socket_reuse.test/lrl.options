@@ -1,0 +1,6 @@
+# sql_logfill is READONLY - must be set at startup.  The debug trace is what
+# the test counts: it logs every log-request and every master disconnect.
+sql_logfill 1
+sql_logfill_debug 1
+
+logmsg level debug
