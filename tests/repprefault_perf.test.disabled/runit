@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+# Sweep rep_prefault_lookahead against a workload that can actually stress it.
+# See README for how to read the output.
+
+dbnm=$1
+
+# ~110MB of data pages against the 16MB cache in lrl.options.  The payload has
+# to be an inline column, not a blob: comdb2 keeps blobs in a separate file, so
+# a blob table's data pages -- the only ones an update of an int column touches
+# -- are tiny no matter how big the blobs are.
+ROWS=${ROWS:-50000}
+BATCH=2500
+# The passes partition the table by residue, so one phase sweeps every row.
+# That matters: if a phase's working set fits in cache, the first phase warms
+# it and every later phase reads a hit rate it did not earn.
+PASSES=${PASSES:-12}
+SCATTER=$PASSES
+# 'off' at both ends: if the two off rows disagree, the sweep is measuring
+# cache warmth or drift rather than the lookahead.  'adapt' runs the adaptive
+# controller instead of a static lookahead; run it twice to see convergence
+# (first phase adapting, second from the converged state), and put it after
+# the static rows -- the controller only grows the pool, and a static phase
+# run after it would inherit the bigger pool.
+LOOKAHEADS=${LOOKAHEADS:-"off 4 16 64 256 adapt adapt off"}
+
+if [ -z "${CLUSTER}" ]; then
+    echo "this harness needs a cluster: the master does not apply replication," >&2
+    echo "so there is nothing to prefault on a single node" >&2
+    exit 1
+fi
+
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+    'select host from comdb2_cluster where is_master="Y"')
+rep=""
+for node in ${CLUSTER}; do
+    [ "$node" != "$master" ] && rep=$node && break
+done
+if [ -z "$rep" ]; then
+    echo "no replicant in CLUSTER='${CLUSTER}'" >&2
+    exit 1
+fi
+echo "master=$master replicant=$rep rows=$ROWS passes=$PASSES"
+
+m() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$master" "$1"; }
+r() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$rep" "$1"; }
+
+# Six counters off the replicant, as one line, so a phase is a pair of these.
+snap() {
+    r 'exec procedure sys.cmd.send("bdb cachestat")' 2>/dev/null | awk '
+        /^st_apply_miss:/      {miss=$2}
+        /^st_page_pf_in:/      {pfin=$2}
+        /^st_page_pf_in_late:/ {late=$2}
+        /^st_pf_hit_ready:/    {ready=$2}
+        /^st_pf_hit_inflight:/ {infl=$2}
+        /^st_pf_evict_unused:/ {evun=$2}
+        END {printf "%d %d %d %d %d %d\n", miss, pfin, late, ready, infl, evun}'
+}
+
+# One full sweep of updates.  $1 labels it in the log.
+sweep() {
+    local k=0
+    while [ $k -lt $PASSES ]; do
+        m "update t set c = c + 1 where a % $SCATTER = $k" >/dev/null
+        k=$((k + 1))
+    done
+}
+
+echo "loading ${ROWS} rows..."
+m "create table t(a int, pad char(2000), c int)" >/dev/null
+m "create index ta on t(a)" >/dev/null
+loaded=0
+while [ $loaded -lt $ROWS ]; do
+    # hex(randomblob()) so the column really holds 2000 bytes: a short value in
+    # a char(2000) is stored short, and random data will not compress away.
+    m "insert into t select value + $loaded, hex(randomblob(1000)), 0
+         from generate_series(1, $BATCH)" >/dev/null
+    loaded=$((loaded + BATCH))
+done
+echo "loaded $(m 'select count(*) from t') rows"
+
+# Check the preconditions rather than assume them.  Two runs of this harness
+# were wasted measuring a workload that fit in cache.
+cache_kb=$(r "select value from comdb2_tunables where name='cachekb'")
+tbl_b=$(m "select * from comdb2_tablesizes" | awk '$1=="t"{print $2}')
+tbl_kb=$((tbl_b / 1024))
+echo "replicant cache ${cache_kb}kb, table ${tbl_kb}kb"
+if [ "$tbl_kb" -lt $((cache_kb * 3)) ]; then
+    echo "WARNING: table is not much bigger than the cache, so the apply thread" >&2
+    echo "will not fault and the sweep will show nothing.  Raise ROWS or lower" >&2
+    echo "cachekb AND cachekbmin in lrl.options." >&2
+fi
+
+# Let the replicant finish applying the load.  No need to cold the cache: the
+# table is several times larger than it, so the scattered updates below will
+# miss regardless of what the load left behind.
+sleep 10
+
+# The sweep loop owns every knob from here; warm up with the controller off so
+# it cannot grow the pool before the static phases measure it.
+r "put tunable 'rep_prefault_adaptive' '0'" >/dev/null 2>&1
+
+# Throwaway sweep so the measured phases all start from the same steady state
+# rather than the first one paying for everyone's cold cache.
+echo "warming up..."
+sweep
+sleep 8
+
+printf '\n%-10s %6s %11s %9s %9s %8s %9s %12s\n' \
+    lookahead secs apply_miss pf_in pf_late ready inflight evict_unused
+
+for la in ${LOOKAHEADS}; do
+    if [ "$la" = "off" ]; then
+        r "put tunable 'rep_prefault' '0'" >/dev/null 2>&1
+    elif [ "$la" = "adapt" ]; then
+        r "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+        r "put tunable 'rep_prefault_adaptive' '1'" >/dev/null 2>&1
+        # A fresh phase starts from the default state unless a previous adapt
+        # phase already converged -- leave its budget alone in that case.
+        b=$(r "select value from comdb2_tunables where name='rep_prefault_budget'")
+        [ "$b" = "0" ] && r "put tunable 'rep_prefault_budget' '64'" >/dev/null 2>&1
+    else
+        r "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+        r "put tunable 'rep_prefault_adaptive' '0'" >/dev/null 2>&1
+        r "put tunable 'rep_prefault_lookahead' '$la'" >/dev/null 2>&1
+    fi
+
+    before=$(snap)
+    # Time the writes only.  The drain below is a fixed sleep, so folding it in
+    # would make every row look the same regardless of what the replicant did.
+    start=$SECONDS
+    sweep
+    elapsed=$((SECONDS - start))
+    # Let the replicant finish applying before reading its counters.
+    sleep 8
+    after=$(snap)
+
+    set -- $before; b1=$1 b2=$2 b3=$3 b4=$4 b5=$5 b6=$6
+    set -- $after;  a1=$1 a2=$2 a3=$3 a4=$4 a5=$5 a6=$6
+    printf '%-10s %6s %11s %9s %9s %8s %9s %12s\n' \
+        "$la" "$elapsed" $((a1-b1)) $((a2-b2)) $((a3-b3)) \
+        $((a4-b4)) $((a5-b5)) $((a6-b6))
+    if [ "$la" = "adapt" ]; then
+        b=$(r "select value from comdb2_tunables where name='rep_prefault_budget'")
+        t=$(r "select value from comdb2_tunables where name='rep_prefault_threads'")
+        echo "  (adapt phase ended at budget=$b threads=$t)"
+    fi
+done
+
+# Leave it as we found it.
+r "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+r "put tunable 'rep_prefault_lookahead' '16'" >/dev/null 2>&1
+r "put tunable 'rep_prefault_budget' '64'" >/dev/null 2>&1
+r "put tunable 'rep_prefault_adaptive' '1'" >/dev/null 2>&1
+
+echo
+echo "--- replicant prefault totals ---"
+r 'exec procedure sys.cmd.send("repprefault")'
+
+echo
+echo "TESTCASE PASSED"
+exit 0

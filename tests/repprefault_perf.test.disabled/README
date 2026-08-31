@@ -1,0 +1,90 @@
+Does replication prefault actually help, and what lookahead is right?
+
+Disabled on purpose: this is an evaluation harness, not a regression test.  It
+takes minutes and needs a cluster.
+
+The test Makefile matches directories named <name>.test, so rename it to run:
+
+    cd tests
+    mv repprefault_perf.test.disabled repprefault_perf.test
+    make repprefault_perf          # with your usual clustered setup
+    mv repprefault_perf.test repprefault_perf.test.disabled
+
+ROWS, PASSES and LOOKAHEADS are environment overrides if the defaults do not
+put enough pressure on the buffer pool.
+
+LOOKAHEADS entries: 'off' disables prefault, a number is a static lookahead
+(adaptive control off), and 'adapt' runs the adaptive controller.  Run 'adapt'
+twice in a row -- the first phase spends part of its time converging from the
+default budget, the second measures the converged state.  Each adapt row also
+prints the budget and thread count the phase ended at; compare the second
+adapt row against the best static row to see what the controller found on its
+own.  Keep adapt phases after the static rows: the controller only grows the
+thread pool, and a static phase run after it would inherit the bigger pool.
+
+The regular repprefault.test proves the machinery works.  It cannot say whether
+the machinery is worth anything, because its workload is the worst possible
+case for prefault: pure inserts into a fresh table, so ~96% of the pages a log
+record names do not exist on disk yet, and the working set fits in cache so the
+apply thread never waits for I/O anyway.
+
+This harness builds the opposite workload.  It loads a table several times the
+size of the replicant's cache (see lrl.options), then drives scattered UPDATEs
+against rows that already exist.
+
+The payload column is an inline char(2000), not a blob, and it is filled with
+hex(randomblob(1000)) rather than a short string.  Both details matter: comdb2
+stores blobs in a separate file, so updating an int column on a blob table
+touches only the tiny data pages, and a char(2000) holding 'x' is stored short.
+Get either wrong and the working set is under a megabyte.  Those read-modify-write pages that are really
+on disk and really evicted, which is the only situation prefault can help.
+
+It then sweeps rep_prefault_lookahead and prints one row per setting.  Read it
+top to bottom:
+
+  secs          wall time of the master's updates only, not the drain wait.
+  apply_miss    page faults taken by the replication apply thread.  This is the
+                thing prefault exists to remove.  If it does not fall as the
+                lookahead rises, prefault is not helping and nothing else in
+                the table matters.
+  pf_in         prefaults that did real I/O.
+  pf_late       prefaults that found the page already cached, so did nothing.
+                If this is most of them, the working set is fitting in cache
+                and the run cannot tell you anything -- shrink cachekb.
+  ready         prefaulted pages that were already in memory when apply reached
+                them -- prefault won the race.
+  inflight      apply arrived while the prefault read was still running.  It
+                still waited, just less.  Rising means the lookahead is short.
+  evict_unused  prefaulted, never used, evicted.  Rising means the lookahead
+                reaches further than the cache can hold, and the reads are
+                being thrown away.
+
+The useful lookahead is the largest one where inflight is small and
+evict_unused has not started to climb.  If both stay at zero across the whole
+sweep, the workload still is not stressing the buffer pool -- shrink cachekb in
+lrl.options or grow ROWS in runit and try again.  Note that lowering cachekb
+also means lowering cachekbmin, or the clamp puts it straight back up to 64MB;
+check the effective size with
+
+    select value from comdb2_tunables where name='cachekb'
+
+'off' is measured twice, first and last.  Those two rows should be close.  If
+they are not, the sweep is drifting -- most likely the phases are not returning
+to the same cache state -- and the settings between them cannot be compared.
+
+Findings from the o1/o2/o3 sweep (Aug 2026), for whoever runs this next:
+
+The counters obey two identities, and checking them tells you whether a run is
+trustworthy: pf_in + pf_late = the off-row apply_miss (every needed page gets
+requested exactly once), and apply_miss = pf_late + evict_unused (every
+residual miss is a request that ran after apply already faulted the page, or a
+page read too early and evicted).  If they do not close, something new is
+leaking pages past the parser.
+
+pf_late is the pool-capacity signal, not a lookahead signal: it climbs when
+requests sit in the pool queue until they are stale.  8 threads saturated on
+this hardware; 32 was past the knee.  The pool can be resized live with
+    exec procedure sys.cmd.send("repprefault maxt N")
+On this hardware the parallel path measured best at lookahead 8 with 32
+threads (54k misses down to 9.2k); the serial path plateaus at 16-64.  The
+shipped defaults (16/32) sit near both optima.
