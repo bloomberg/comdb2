@@ -5213,6 +5213,21 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
 void defer_commits_for_upgrade(bdb_state_type *bdb_state, const char *host,
                                const char *func);
 
+/* Test-only: pretend that this node is rtcpu'd off once every this many
+   upgrades.  0 disables. */
+int gbl_debug_random_rtcpu_upgrade = 0;
+
+/* Return 0 if this node must not become master because it is rtcpu'd off. */
+static int upgrade_node_is_up(bdb_state_type *bdb_state)
+{
+    if (gbl_debug_random_rtcpu_upgrade > 0 && (rand() % gbl_debug_random_rtcpu_upgrade) == 0) {
+        logmsg(LOGMSG_WARN, "%s: pretending that I am rtcpu'd off for this upgrade\n", __func__);
+        return 0;
+    }
+
+    return bdb_state->callback->nodeup_rtn(bdb_state, bdb_state->repinfo->myhost);
+}
+
 static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
                            int *upgraded)
 {
@@ -5269,19 +5284,39 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
     }
 
     /* If this node is rtcpu'd off don't upgrade. */
-    if ((bdb_state->callback->nodeup_rtn) &&
-        !(bdb_state->callback->nodeup_rtn(bdb_state,
-                                          bdb_state->repinfo->myhost))) {
+    if ((bdb_state->callback->nodeup_rtn) && !upgrade_node_is_up(bdb_state)) {
         /* Make sure that we will allow ourselves to upgrade, and that we won't
            transfer our mastership immediately. */
         if (bdb_state->attr->allow_offline_upgrades) {
             logmsg(LOGMSG_ERROR, "%s: rtcpu'd but allowing an upgrade because "
                             "'allow_offline_upgrades' is true.\n",
                     __func__);
+        } else if (net_count_nodes(bdb_state->repinfo->netinfo) <= 1) {
+            /* We are the only node.  Nobody else can take the master role, and
+               a downgrade only makes us flip in and out of read-only state
+               until this node is routed on again. */
+            logmsg(LOGMSG_WARN,
+                   "%s: rtcpu'd but allowing an upgrade because I "
+                   "am the only node.\n",
+                   __func__);
         } else {
-            logmsg(LOGMSG_WARN, "%s: not upgrading because I am rtcpu'd.\n",
-                    __func__);
-            return -1;
+            /* Give the master role to another node.  Do not return an error:
+               our callers exit the process if this upgrade fails. */
+            logmsg(LOGMSG_WARN,
+                   "%s: not upgrading because I am rtcpu'd.  "
+                   "Downgrading and calling for an election.\n",
+                   __func__);
+
+            bdb_downgrade_int(bdb_state, 1 /* noelect */, NULL);
+
+            if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+                set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
+            }
+
+            call_for_election_and_lose(bdb_state, __func__, __LINE__);
+
+            /* upgraded stays 0: the caller must not mark us as master. */
+            return 0;
         }
     }
 

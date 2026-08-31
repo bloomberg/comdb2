@@ -1813,6 +1813,11 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_random_rtcpu_upgrade",
+                 "Pretend that this node is rtcpu'd off 1/this many upgrades.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_random_rtcpu_upgrade, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dont_block_delete_files_thread", "Ignore files that would block delete-files thread.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_txn_fop_noblock, 0, NULL, NULL, NULL, NULL);
 

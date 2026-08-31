@@ -1,0 +1,18 @@
+Test the rtcpu'd-off upgrade path.
+
+A node that wins an election but sees itself as rtcpu'd off must not become
+master.  It downgrades and calls for a new election instead.  Before this
+test existed, bdb_upgrade returned an error in this case, and the caller
+exited the process.
+
+The test sets the 'debug_random_rtcpu_upgrade' tunable on every node.  Each
+upgrade then pretends that the node is rtcpu'd off 1 time out of N.  The test
+downgrades the master in a loop, so the cluster runs several rounds of
+election.  It checks that:
+
+  - the branch fires at least once (the log message is present),
+  - every node stays up,
+  - the cluster elects a master again after each downgrade,
+  - writes still work.
+
+The test needs a cluster.
