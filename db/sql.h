@@ -1213,6 +1213,10 @@ struct BtCursor {
     char sqlrrn[5];
     int sqlrrnlen;
     unsigned long long genid;
+    /* odh2 timestamps of the current row (0 when the row is not odh2 or the
+     * fetch path carries none -> callers fall back to the genid-based time) */
+    uint32_t insert_secs;
+    uint32_t update_secs;
 
     struct KeyInfo *pKeyInfo;
 

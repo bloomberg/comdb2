@@ -62,18 +62,30 @@ enum {
     ODH_UPDATEID_BITS = 12,
     ODH_LENGTH_BITS = 28,
 
-    ODH_SIZE = 7, /* We may extend for larger headers in the future,
-                     but the minimum size shall always be 7 bytes. */
+    ODH_SIZE = 7, /* Size of the original (odh1) on-disk header.  This is the
+                     minimum ODH size and shall always be 7 bytes. */
 
-    ODH_SIZE_RESERVE = 7, /* Callers wishing to provide a buffer into which
-                             a record will be packed should allow this many
-                             bytes on top of the record size for the ODH.
-                             Right now this is the same as ODH_SIZE - one
-                             day it may be the max possible ODH size if we
-                             start adding fields. */
+    ODH2_SIZE = 16, /* Size of the version-2 (odh2) on-disk header, flagged by
+                       ODH2_FLAG.  See the layout diagram in odh.c. */
 
-    ODH_FLAG_COMPR_MASK = 0x7
+    ODH_SIZE_RESERVE = ODH2_SIZE, /* Bytes to allow on top of the record size
+                             when providing a pack buffer.  Must be the MAXIMUM
+                             header size so the buffer fits either format. */
+
+    ODH_FLAG_COMPR_MASK = 0x7, /* flags bits 0-2: compression algorithm */
+
+    ODH2_FLAG = 0x80 /* flags bit 7: set on odh2 records.  odh1 records only
+                        ever set the compression bits (0-2), so this bit is an
+                        unambiguous odh1/odh2 discriminator.  bit 3 is reserved
+                        for future compression-mask growth. */
 };
+
+/* Actual on-disk header size implied by a record's flags byte.  Only valid
+ * when ondisk_header is enabled for the table. */
+static inline int odh_size_from_flags(uint8_t flags)
+{
+    return (flags & ODH2_FLAG) ? ODH2_SIZE : ODH_SIZE;
+}
 
 /* snapisol log ops */
 typedef enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 } log_ops_t;
@@ -82,12 +94,18 @@ typedef enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 } log_op
  * representation but a convenient format for passing the header around in
  * our code. */
 struct odh {
-    uint32_t length;   /* actually only 28 bits of this can be used leading to
-                          a max value of (1<<ODH_LENGTH_BITS)-1 */
+    uint32_t length;   /* For odh1 only 28 bits are usable (max
+                          (1<<ODH_LENGTH_BITS)-1).  For odh2 the full 32 bits
+                          are stored, though writes are capped at INT_MAX. */
     uint16_t updateid; /* actually only 12 bits of this can be used leading to
                           a max value of (1<<ODH_UPDATEID_BITS)-1 */
     uint8_t csc2vers;
     uint8_t flags;
+
+    uint32_t insert_secs; /* odh2 only: unsigned seconds since the 1970 epoch
+                             when the record was first inserted (0 for odh1). */
+    uint32_t update_secs; /* odh2 only: unsigned seconds since the 1970 epoch
+                             of the most recent update (0 for odh1). */
 
     void *recptr; /* Some functions set this to point to the
                      decompressed record data. */
@@ -411,6 +429,9 @@ struct bdb_cursor_impl_tag {
     /* cursor position */
     int rrn;                  /* == 2 (don't need this) */
     unsigned long long genid; /* genid of current entry */
+    uint32_t insert_secs;     /* odh2 insert time of current entry (0 if the
+                                 row is not odh2 / no odh was decoded) */
+    uint32_t update_secs;     /* odh2 update time of current entry (0 if none) */
     void *data;               /* points inside one of  bdb_berkdb_t if valid */
     int datalen;              /* size of payload */
 
@@ -870,6 +891,10 @@ struct bdb_state_tag {
     signed char inplace_updates;
 
     signed char instant_schema_change;
+
+    /* Write the odh2 on-disk header.  Requires ondisk_header; also forced at
+     * write time under genid48.  See init_odh(). */
+    signed char odh2;
 
     signed char rep_handle_dead;
 
@@ -1633,6 +1658,7 @@ uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
 const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
                                const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);
+void poke_update_secs(void *buf, uint32_t secs);
 
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,
                             int stripe);
@@ -1723,9 +1749,9 @@ int bdb_committed_durable(bdb_state_type *bdb_state);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 
-int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
-                                  DBT *data, DBT *data2, int updateid,
-                                  void **freeptr, void *stackbuf, int odhready);
+int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob, DBT *data, DBT *data2, int updateid,
+                                  void **freeptr, void *stackbuf, int odhready, uint32_t preserve_insert_secs);
+int peek_odh2_insert_secs(const void *buf, size_t buflen, uint32_t *insert_secs);
 
 int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype);
 void pstack_self(void);

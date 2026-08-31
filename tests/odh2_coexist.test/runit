@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Verify odh1 and odh2 records coexist in one table and are read back correctly.
+# The db starts with time-based genids and odh2 off, so early rows are odh1.  We
+# then convert the db to genid48 (the real migration path), which forces every
+# subsequent write to odh2: new inserts are odh2, and updating an original row
+# upgrades it from odh1 to odh2.  The randomizer is off so the split is
+# deterministic.
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+[[ -z "$dbname" ]] && failexit "dbname missing"
+
+master=$(getmaster)
+[[ -z "$master" ]] && failexit "could not find master"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t { `cat t.csc2` }"
+
+# Phase 1: odh1 rows (time-based genids, odh2 attr off).
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "insert into t(a, c) select value, value from generate_series(1, 100)"
+assertcnt t 100
+
+# Convert the db to genid48; subsequent writes must be odh2.
+cdb2sql ${CDB2_OPTIONS} $dbname --host $master "put genid48 enable"
+sleep 2
+
+# Phase 2: new odh2 rows, plus updates that upgrade some original odh1 rows.
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "insert into t(a, c) select value, value from generate_series(101, 200)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "update t set c = c + 1000 where a <= 50"
+
+# The table now holds odh1 rows (a=51..100, untouched) and odh2 rows
+# (a=1..50 upgraded, a=101..200 fresh).  Everything must read back.
+assertcnt t 200
+
+# verify drives read_odh() over every record regardless of header format.
+do_verify t
+
+# Every row must report a sane (non-null) rowtimestamp: odh1 rows from the
+# time-based genid, odh2 rows from the header.
+nulls=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select count(*) from t where comdb2_rowtimestamp is null")
+assertres "$nulls" "0" "no null rowtimestamps across mixed formats"
+
+# The updated rows kept their values.
+updated=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "select count(*) from t where a <= 50 and c = a + 1000")
+assertres "$updated" "50" "updated (upgraded) rows kept their new values"
+
+echo "passed"
+exit 0

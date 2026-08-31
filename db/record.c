@@ -2693,14 +2693,21 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs, size_t maxb
     return 0;
 }
 
+/* Maximum blob/record length for a table: INT_MAX for odh2, odh1's 28 bits
+ * otherwise.  The odh2 test mirrors init_odh(). */
+unsigned int max_blob_length_for_table(const struct dbtable *db)
+{
+    if (db && db->odh && (db->odh2 || !genid_contains_time(db->handle)))
+        return MAXBLOBLENGTH2;
+    return MAXBLOBLENGTH;
+}
+
 static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
 {
+    unsigned int maxlen = max_blob_length_for_table(iq->usedb);
     for (int i = 0; i < maxblobs; i++) {
-        if (blobs[i].exists && blobs[i].length != OSQL_BLOB_FILLER_LENGTH &&
-            blobs[i].length > MAXBLOBLENGTH) {
-            reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
-                      "blob size (%zu) exceeds maximum (%d)", blobs[i].length,
-                      MAXBLOBLENGTH);
+        if (blobs[i].exists && blobs[i].length != OSQL_BLOB_FILLER_LENGTH && blobs[i].length > maxlen) {
+            reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB, "blob size (%zu) exceeds maximum (%d)", blobs[i].length, maxlen);
             return ERR_BLOB_TOO_LARGE;
         }
     }
