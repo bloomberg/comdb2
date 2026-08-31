@@ -6,6 +6,11 @@ while [[ $1 = -* ]]; do
     shift
 done
 
+if [[ $# -eq 0 ]]; then
+    echo "usage: docker run <image> DBNAME [DBNAME...]" >&2
+    exit 1
+fi
+
 pmux -l
 
 host=$(hostname -i)
