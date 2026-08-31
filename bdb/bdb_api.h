@@ -1368,6 +1368,14 @@ extern int gbl_bb_berkdb_enable_lock_timing;
 extern int gbl_bb_berkdb_enable_memp_timing;
 extern int gbl_bb_berkdb_enable_memp_pg_timing;
 extern int gbl_bb_berkdb_enable_shalloc_timing;
+
+/* Replication apply-path page prefault (berkdb/rep/rep_prefault.c). */
+extern int gbl_rep_prefault;
+extern int gbl_rep_prefault_lookahead;
+extern int gbl_rep_prefault_threads;
+void __rep_prefault_process_message(char *line, int lline, int st);
+void bdb_rep_prefault_verify(bdb_state_type *bdb_state, int nrecs, int touch);
+
 void bdb_reset_thread_stats(void);
 const struct berkdb_thread_stats *bdb_get_thread_stats(void);
 const struct berkdb_thread_stats *bdb_get_process_stats(void);

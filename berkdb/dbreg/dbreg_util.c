@@ -13,6 +13,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
+#include <sys/time.h>
 #include <string.h>
 #endif
 
@@ -155,12 +156,20 @@ __dbreg_rem_dbentry(dblp, ndx)
 	int32_t ndx;
 {
 	uint32_t count = 0;
+	struct timeval start, end;
+	int waited = 0;
 
 	MUTEX_THREAD_LOCK(dblp->dbenv, dblp->mutexp);
 	if (dblp->dbentry_cnt > ndx) {
 		dblp->dbentry[ndx].dbp = NULL;
 
+		/* We hold dblp->mutexp here, so this blocks every dbreg add and
+		 * remove until the in-flight prefaults let go.  Timed below. */
 		while (dblp->dbentry[ndx].pfcnt > 0) {
+			if (!waited) {
+				waited = 1;
+				gettimeofday(&start, NULL);
+			}
 			poll(NULL, 0, 10);
 
 			if (0 == ++count % 100) {
@@ -172,6 +181,13 @@ __dbreg_rem_dbentry(dblp, ndx)
 	}
 
 	MUTEX_THREAD_UNLOCK(dblp->dbenv, dblp->mutexp);
+
+	if (waited) {
+		gettimeofday(&end, NULL);
+		__rep_prefault_dbreg_wait(
+		    (int64_t)(end.tv_sec - start.tv_sec) * 1000000 +
+		    (end.tv_usec - start.tv_usec));
+	}
 }
 
 /*
@@ -650,6 +666,80 @@ __ufid_find_db_for_removal(dbenv, txn, dbpp, inufid, lsnp)
 	DB_LSN *lsnp;
 {
 	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, NULL, 0, 0, 1);
+}
+
+/*
+ * __ufid_find_db_prefault --
+ *	ufid analogue of __dbreg_id_to_db_prefault.  The other __ufid_to_db_int
+ *	wrappers all abort, open, or mutate; a prefault must do none of those.
+ *	*ndxp is the pinned dbreg index, to be released with
+ *	__dbreg_prefault_complete.  *whyp, if given, reports which step failed
+ *	(UFID_PF_* below) so callers can tell a missing file from an unpinnable
+ *	one.
+ *
+ * PUBLIC: int __ufid_find_db_prefault __P((DB_ENV *, DB **, u_int8_t *, int32_t *, int *));
+ */
+int
+__ufid_find_db_prefault(dbenv, dbpp, inufid, ndxp, whyp)
+	DB_ENV *dbenv;
+	DB **dbpp;
+	u_int8_t *inufid;
+	int32_t *ndxp;
+	int *whyp;
+{
+	struct __ufid_to_db_t *ufid;
+	DB_LOG *dblp;
+	DB *dbp;
+	int32_t ndx;
+	int why;
+
+#define UFID_PF_DONE(x) do { why = (x); goto done; } while (0)
+
+	*dbpp = NULL;
+	*ndxp = -1;
+	why = UFID_PF_OK;
+
+	if ((dblp = dbenv->lg_handle) == NULL) {
+		if (whyp != NULL)
+			*whyp = UFID_PF_NO_LOG;
+		return (ENOENT);
+	}
+
+	/* dblp->mutexp before ufid_to_db_lk, the order __dbreg_id_to_db_int_int
+	 * uses.  Holding it across the pfcnt bump is what makes this safe
+	 * against __dbreg_rem_dbentry. */
+	MUTEX_THREAD_LOCK(dbenv, dblp->mutexp);
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	ufid = hash_find(dbenv->ufid_to_db_hash, inufid);
+	dbp = (ufid == NULL || ufid->ignore) ? NULL : ufid->dbp;
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+
+	if (ufid == NULL)
+		UFID_PF_DONE(UFID_PF_NO_UFID);
+	if (dbp == NULL)
+		UFID_PF_DONE(UFID_PF_NO_DBP);
+	if (dbp->log_filename == NULL)
+		UFID_PF_DONE(UFID_PF_NO_FNAME);
+
+	/* Only pin it if the dbreg table still maps this index to this handle;
+	 * if not, the handle is on its way out. */
+	ndx = dbp->log_filename->id;
+	if (ndx < 0 || ndx >= dblp->dbentry_cnt)
+		UFID_PF_DONE(UFID_PF_BAD_NDX);
+	if (dblp->dbentry[ndx].dbp != dbp)
+		UFID_PF_DONE(UFID_PF_NDX_MISMATCH);
+
+	ATOMIC_ADD32(dblp->dbentry[ndx].pfcnt, 1);
+	*dbpp = dbp;
+	*ndxp = ndx;
+
+done:	MUTEX_THREAD_UNLOCK(dbenv, dblp->mutexp);
+	if (whyp != NULL)
+		*whyp = why;
+	return (why == UFID_PF_OK ? 0 : DB_DELETED);
+
+#undef UFID_PF_DONE
 }
 
 // PUBLIC: int __ufid_to_fname __P(( DB_ENV *, char **, u_int8_t *));

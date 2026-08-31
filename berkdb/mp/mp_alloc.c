@@ -509,6 +509,10 @@ found:		if (offsetp != NULL)
 
 		if (F_ISSET(bhp, BH_PREFAULT)) {
 			++c_mp->stat.st_pf_evict;
+			/* Prefaulted and evicted without ever being used: the
+			 * lookahead reached further than the cache. */
+			if (!F_ISSET(bhp, BH_PREFAULT_USED))
+				++c_mp->stat.st_pf_evict_unused;
 		}
 
 		/* 

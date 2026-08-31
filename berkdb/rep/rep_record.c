@@ -46,6 +46,7 @@ static const char revid[] =
 #include "dbinc/hmac.h"
 #include <ctrace.h>
 #include <sys/poll.h>
+#include "comdb2_atomic.h"
 
 #include "dbinc_auto/fileops_auto.h"
 #include "dbinc_auto/qam_auto.h"
@@ -4236,10 +4237,18 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	DBT tmpdbt;
 	u_int32_t rectype;
 	LISTC_T(struct recovery_record) q;
+	/* Sliding prefault window: pf_next is the first record the processor
+	 * did not prime; each pop below prefaults one more, so the window
+	 * stays a constant lookahead ahead of the apply. */
+	struct __recovery_record *pf_next;
+	REP_PREFAULT_CTX pf_ctx;
+	DBT pf_dbt = { 0 };
+	int pf_on = 0;
+	int was_applying;
 
 	listc_init(&q, offsetof(struct __recovery_record, lnk));
 
-	/* TODO: pass empty dbt if a transaction gets large - worker 
+	/* TODO: pass empty dbt if a transaction gets large - worker
 	 * should then get a cursor and read the record itself */
 
 	rq = (struct __recovery_queue *)work;
@@ -4247,9 +4256,65 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	dbenv = rq->processor->dbenv;
 	commit_lsn = rp->commit_lsn;
 
+	bzero(&tmpdbt, sizeof(DBT));
+	tmpdbt.flags = DB_DBT_REALLOC;
+
+	pf_next = rq->pf_cursor;
+	if (gbl_rep_prefault && pf_next != NULL) {
+		pf_on = 1;
+		__rep_prefault_ctx_init(&pf_ctx);
+		pf_dbt.flags = DB_DBT_REALLOC;
+	}
+
 	rr = listc_rtl(&rq->records);
 
+	/* Save and restore: this also runs inline on the processor's thread. */
+	was_applying = berkdb_applying_rep;
+	berkdb_applying_rep = 1;
 	while (rr) {
+		/* Keep the window ahead before paying for this record.  A
+		 * record read from the log for the parse is stashed into its
+		 * queue entry so the apply below does not read it again.
+		 * Shares logc with that apply read: both use DB_SET. */
+		if (pf_on && pf_next != NULL) {
+			struct __recovery_record *pf = pf_next;
+
+			pf_next = pf->lnk.next;
+			if (pf->logdbt.data != NULL)
+				__rep_prefault_record(dbenv, &pf->logdbt,
+				    &pf->lsn, &pf_ctx);
+			else {
+				/* __log_c_get writes through its lsn arg */
+				DB_LSN pflsn = pf->lsn;
+
+				if (logc == NULL &&
+				    __log_cursor(dbenv, &logc) != 0)
+					logc = NULL;
+				if (logc != NULL && __log_c_get(logc, &pflsn,
+				    &pf_dbt, DB_SET) == 0 &&
+				    pf_dbt.size >= sizeof(u_int32_t)) {
+					void *stash;
+
+					__rep_prefault_record(dbenv, &pf_dbt,
+					    &pf->lsn, &pf_ctx);
+					/* recpool blocks are recycled, not
+					 * zeroed: build the whole DBT. */
+					if ((stash = malloc(pf_dbt.size)) !=
+					    NULL) {
+						memcpy(stash, pf_dbt.data,
+						    pf_dbt.size);
+						bzero(&pf->logdbt, sizeof(DBT));
+						pf->logdbt.data = stash;
+						pf->logdbt.size = pf_dbt.size;
+						pf->logdbt_owned = 1;
+						ATOMIC_ADD64(
+						    gbl_rep_prefault_stashed,
+						    1);
+					}
+				}
+			}
+		}
+
 		/* Per record, not per queue: fileid fan-out splits a txn across
 		 * workers, and a txn can span statements. */
 		if (rr->have_fingerprint)
@@ -4264,8 +4329,6 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 						rr->lsn.file, rr->lsn.offset);
 					abort();
 				}
-				bzero(&tmpdbt, sizeof(DBT));
-				tmpdbt.flags = DB_DBT_REALLOC;
 			}
 			if ((rc = __log_c_get(logc, &rr->lsn, &tmpdbt, DB_SET))) {
 				__db_err(dbenv, "worker can't get lsn %u:%u\n",
@@ -4307,18 +4370,31 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			abort();
 		}
 
+		if (rr->logdbt_owned) {
+			free(rr->logdbt.data);
+			rr->logdbt.data = NULL;
+			rr->logdbt_owned = 0;
+		}
+
 		/* mempool? */
 		listc_abl(&q, rr);
 
 		rr = listc_rtl(&rq->records);
 	}
+	berkdb_applying_rep = was_applying;
 
 	/* Disarm: the next txn on this pooled thread must not inherit it. */
 	bb_berkdb_fingerprint_rtstats_clear();
 
+	if (pf_on)
+		__rep_prefault_ctx_destroy(dbenv, &pf_ctx);
+	/* DB_DBT_REALLOC buffers come from __os_urealloc; free them through its
+	 * counterpart rather than relying on berkdb's free() macro. */
+	if (tmpdbt.data)
+		__os_ufree(dbenv, tmpdbt.data);
+	if (pf_dbt.data)
+		__os_ufree(dbenv, pf_dbt.data);
 	if (logc) {
-		if (tmpdbt.data)
-			free(tmpdbt.data);
 		if ((rc = __log_c_close(logc))) {
 			__db_err(dbenv, "__log_c_close rc %d\n", rc);
 			abort();
@@ -4432,6 +4508,9 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	DB_LSN *lsnp;
 	int j;
 	LISTC_T(struct __recovery_queue) queues;
+	REP_PREFAULT_CTX pf_ctx_buf;
+	REP_PREFAULT_CTX *pf_ctx = NULL;
+	int pf_lookahead = 0;
 
 	DB_REP *db_rep;
 	REP *rep;
@@ -4515,6 +4594,12 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
+
+	if (gbl_rep_prefault &&
+	    (pf_lookahead = gbl_rep_prefault_lookahead) > 0) {
+		pf_ctx = &pf_ctx_buf;
+		__rep_prefault_ctx_init(pf_ctx);
+	}
 
 	/* First, bucket records per queue. */
 	data_dbt.flags = DB_DBT_REALLOC;
@@ -4617,6 +4702,8 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		}
 		if (!rp->recovery_queues[fileid]->used) {
 			rp->recovery_queues[fileid]->used = 1;
+			rp->recovery_queues[fileid]->pf_cursor = NULL;
+			rp->recovery_queues[fileid]->pf_count = 0;
 			rp->num_busy_workers++;
 			listc_abl(&queues, rp->recovery_queues[fileid]);
 		}
@@ -4626,6 +4713,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			rr->logdbt = rp->lc.array[i].rec;
 		else
 			rr->logdbt.data = NULL;
+		rr->logdbt_owned = 0;
 		rr->lsn = *lsnp;
 		rr->fileid = fileid;
 		rr->have_fingerprint = have_cur_fingerprint;
@@ -4634,6 +4722,25 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 				sizeof(rr->fingerprint));
 
 		listc_abl(&rp->recovery_queues[fileid]->records, rr);
+
+		/* Prime only the first lookahead records of each queue while
+		 * the data is in hand; the worker slides the window from
+		 * pf_cursor as it applies.  Prefaulting the whole txn here
+		 * floods the pool and, under cache pressure, evicts pages
+		 * before the workers ever reach them. */
+		if (pf_ctx != NULL) {
+			struct __recovery_queue *pfq =
+			    rp->recovery_queues[fileid];
+
+			if (pfq->pf_count < pf_lookahead) {
+				__rep_prefault_record(dbenv,
+				    rp->lc.array[i].rec.data != NULL ?
+				    &rp->lc.array[i].rec : &data_dbt, lsnp,
+				    pf_ctx);
+				pfq->pf_count++;
+			} else if (pfq->pf_cursor == NULL)
+				pfq->pf_cursor = rr;
+		}
 	}
 
 	if (fuid_hash) {
@@ -4825,6 +4932,9 @@ err:
 	if (data_dbt.data)
 		free(data_dbt.data);
 
+	if (pf_ctx != NULL)
+		__rep_prefault_ctx_destroy(dbenv, pf_ctx);
+
 	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 
@@ -4957,6 +5067,88 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 int gbl_debug_lock_get_list_copy_compare = 0;
 
 /*
+ * __rep_prefault_ahead --
+ *	Warm the pages of collection entry j, which the apply loop has not
+ *	reached yet.  A record we had to read from the log is stashed back into
+ *	the collection, so the apply loop's rec.data branch picks it up instead
+ *	of reading it again -- the read moves earlier, it is not duplicated.
+ *	lc_free releases stashed entries by flags, so this is safe whether the
+ *	collection is ours or the recovery processor's.
+ */
+static void
+__rep_prefault_ahead(dbenv, lc, j, logcp, scratch, ctx)
+	DB_ENV *dbenv;
+	LSN_COLLECTION *lc;
+	int j;
+	DB_LOGC **logcp;
+	DBT *scratch;
+	REP_PREFAULT_CTX *ctx;
+{
+	DB_LSN lsn;
+
+	if (!gbl_rep_prefault || j >= lc->nlsns)
+		return;
+
+	if (lc->array[j].rec.data != NULL) {
+		__rep_prefault_record(dbenv, &lc->array[j].rec,
+		    &lc->array[j].lsn, ctx);
+		return;
+	}
+
+	if (*logcp == NULL && __log_cursor(dbenv, logcp) != 0) {
+		*logcp = NULL;
+		return;
+	}
+
+	/* __log_c_get writes through its lsn argument; keep the collection's
+	 * copy pristine, as the apply loop does. */
+	lsn = lc->array[j].lsn;
+	if (__log_c_get(*logcp, &lsn, scratch, DB_SET) != 0)
+		return;
+
+	__rep_prefault_record(dbenv, scratch, &lsn, ctx);
+
+	if (scratch->size < sizeof(u_int32_t))
+		return;
+	if (__os_malloc(dbenv, scratch->size, &lc->array[j].rec.data) != 0) {
+		lc->array[j].rec.data = NULL;
+		return;
+	}
+	memcpy(lc->array[j].rec.data, scratch->data, scratch->size);
+	lc->array[j].rec.size = scratch->size;
+	lc->array[j].rec.flags = 0;	/* lc_free will __os_free this */
+	lc->memused += scratch->size;
+	gbl_rep_prefault_stashed++;
+}
+
+/*
+ * __rep_prefault_start --
+ *	Prime the lookahead window as soon as the collection exists.  Getting
+ *	locks and sending the early ack takes real time that the page reads can
+ *	overlap with, so this runs before that rather than at the apply loop.
+ */
+static void
+__rep_prefault_start(dbenv, lc, logcp, scratch, ctx, lookaheadp)
+	DB_ENV *dbenv;
+	LSN_COLLECTION *lc;
+	DB_LOGC **logcp;
+	DBT *scratch;
+	REP_PREFAULT_CTX *ctx;
+	int *lookaheadp;
+{
+	int i;
+
+	*lookaheadp = gbl_rep_prefault ? gbl_rep_prefault_lookahead : 0;
+	if (*lookaheadp <= 0)
+		return;
+
+	F_SET(scratch, DB_DBT_REALLOC);
+	__rep_prefault_ctx_init(ctx);
+	for (i = 0; i < *lookaheadp; i++)
+		__rep_prefault_ahead(dbenv, lc, i, logcp, scratch, ctx);
+}
+
+/*
  * __rep_process_txn --
  *
  * This is the routine that actually gets a transaction ready for
@@ -5008,6 +5200,13 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
 	int endianize = 0;
+	/* Prefault lookahead: started at collect time, its own cursor so it
+	 * never shares position with the apply loop's. */
+	DB_LOGC *pf_logc = NULL;
+	DBT pf_dbt = { 0 };
+	REP_PREFAULT_CTX pf_ctx;
+	int pf_lookahead = 0;
+	int was_applying = 0;
 
 	logmsg(LOGMSG_DEBUG, "%s processing [%d:%d]\n", __func__, rctl->lsn.file,
 			rctl->lsn.offset);
@@ -5238,6 +5437,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
 					__rep_lsn_cmp);
 		}
+		__rep_prefault_start(dbenv, &lc, &pf_logc, &pf_dbt, &pf_ctx,
+		    &pf_lookahead);
 	}
 
 	if (lockid) {
@@ -5416,6 +5617,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
 					__rep_lsn_cmp);
 		}
+		__rep_prefault_start(dbenv, &lc, &pf_logc, &pf_dbt, &pf_ctx,
+		    &pf_lookahead);
 	}
 
 	if (dist_txnid && (ret = __rep_commit_dist_prepared(dbenv, dist_txnid)) != 0) {
@@ -5454,12 +5657,21 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	u_int8_t cur_fingerprint[16];
 	int have_cur_fingerprint = 0;
 
-	/* Phase 2: Apply updates. */
+	/* Phase 2: Apply updates.  The first window was already prefaulted
+	 * back when the collection was built; keep one window ahead.  Cleared
+	 * in the cleanup below, not here: the loop can goto err. */
+	was_applying = berkdb_applying_rep;
+	berkdb_applying_rep = 1;
 	for (i = 0; i < lc.nlsns; i++) {
 		DBT lcin_dbt = { 0 };
 		uint32_t rectype = 0;
 		int needed_to_get_record_from_log;
 		DB_LSN lsn;
+
+		if (pf_lookahead > 0)
+			__rep_prefault_ahead(dbenv, &lc, i + pf_lookahead,
+			    &pf_logc, &pf_dbt, &pf_ctx);
+
 		lsn = lc.array[i].lsn;
 		lsnp = &lsn;
 
@@ -5635,6 +5847,16 @@ err1:
 
 	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
+
+	/* Pooled thread: leaving this set mis-attributes its later faults. */
+	berkdb_applying_rep = was_applying;
+
+	if (pf_logc != NULL)
+		(void)__log_c_close(pf_logc);
+	if (pf_dbt.data != NULL)
+		__os_ufree(dbenv, pf_dbt.data);
+	if (pf_lookahead > 0)
+		__rep_prefault_ctx_destroy(dbenv, &pf_ctx);
 
 	if (txninfo != NULL)
 		__db_txnlist_end(dbenv, txninfo);

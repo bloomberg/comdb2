@@ -218,6 +218,18 @@ typedef struct __txn_recs {
 } TXN_RECS;
 
 /*
+ * Per-transaction scratch for the apply-path prefaulter.  recs is reused so the
+ * LSN_PAGE array is realloc'd once per transaction, not once per record; dedup
+ * keeps repeat requests for the same hot btree pages out of the pool.
+ */
+#define	REP_PREFAULT_DEDUP_SLOTS	512	/* must be a power of two */
+
+typedef struct __rep_prefault_ctx {
+	TXN_RECS	recs;
+	u_int32_t	dedup[REP_PREFAULT_DEDUP_SLOTS];
+} REP_PREFAULT_CTX;
+
+/*
  * This is used by the page-prep routines to do the lock_vec call to
  * apply the updates for a single transaction or a collection of
  * transactions.

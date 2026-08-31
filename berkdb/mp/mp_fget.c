@@ -50,6 +50,7 @@ struct bdb_state_tag;
 typedef struct bdb_state_tag bdb_state_type;
 
 extern int gbl_prefault_udp;
+extern __thread int berkdb_applying_rep;
 extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
@@ -411,6 +412,22 @@ retry:	st_hsearch = 0;
 
         if (LF_ISSET(DB_MPOOL_PFGET))
             ++c_mp->stat.st_page_pf_in_late;
+		else if (F_ISSET(bhp, BH_PREFAULT) &&
+		    !F_ISSET(bhp, BH_PREFAULT_USED)) {
+			/*
+			 * First use of a prefaulted page.  'first' is still 1
+			 * only if we never entered the BH_LOCKED wait above, so
+			 * first == 0 means the prefault read was still running
+			 * and we blocked on it: issued, but too late.
+			 */
+			if (first)
+				++c_mp->stat.st_pf_hit_ready;
+			else
+				++c_mp->stat.st_pf_hit_inflight;
+			F_SET(bhp, BH_PREFAULT_USED);
+		}
+		if (berkdb_applying_rep)
+			++c_mp->stat.st_apply_hit;
 
 		break;
 	}
@@ -731,6 +748,9 @@ alloc:		/*
 
 			F_SET(bhp, BH_TRASH);
 			++mfp->stat.st_cache_miss;
+			/* A fault the prefaulter did not cover for us. */
+			if (berkdb_applying_rep)
+				++c_mp->stat.st_apply_miss;
 			if (LF_ISSET(DB_MPOOL_PFGET)) {
 				++c_mp->stat.st_page_pf_in;
                 
