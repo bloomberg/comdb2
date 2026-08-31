@@ -1,0 +1,3 @@
+# Source nodes: cache the whole working set so the source can outrun
+# the physrep, whose lrl gets a small cache appended by runit.
+cachekb 262144
