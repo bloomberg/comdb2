@@ -1389,11 +1389,25 @@ static void heartbeat_send(int dummyfd, short what, void *data)
     }
 }
 
-static void hello_hdr_common(struct event_info *e)
+/* Largest well-formed hello msg: total len + host count, then for each of at
+ * most REPMAX hosts a 16 byte name, a port, a node number and (for hosts whose
+ * name did not fit in 16 bytes) a long hostname. */
+#define MAX_HELLO_SZ                                                                                                   \
+    (2 * sizeof(uint32_t) + (size_t)REPMAX * (HOSTNAME_LEN + 2 * sizeof(uint32_t) + (size_t)HOST_NAME_MAX))
+
+static int hello_hdr_common(struct event_info *e)
 {
     uint32_t n;
     memcpy(&n, e->rd_buf, sizeof(n));
-    e->need = htonl(n) - sizeof(n);
+    n = htonl(n);
+    /* The advertised length covers itself and is followed by at least the
+     * host count. */
+    if (n < 2 * sizeof(uint32_t) || n > MAX_HELLO_SZ) {
+        hprintf("RECV'd BAD HELLO LEN:%u (max:%zu)\n", n, (size_t)MAX_HELLO_SZ);
+        return -1;
+    }
+    e->need = n - sizeof(n);
+    return 0;
 }
 
 struct add_host_info {
@@ -1423,13 +1437,27 @@ static int hello_msg_common(struct event_info *e)
     int rc = -1;
     uint32_t nn;
     uint8_t *buf = e->rd_buf;
+    size_t remaining = e->need; /* bytes available in e->rd_buf */
+    if (remaining < sizeof(nn)) {
+        hprintf("RECV'd TRUNCATED HELLO len:%zu\n", remaining);
+        return -1;
+    }
     memcpy(&nn, buf, sizeof(nn));
     buf += sizeof(nn);
+    remaining -= sizeof(nn);
     const uint32_t n = htonl(nn);
     if (n > REPMAX) {
         hprintf("RECV'd BAD COUNT OF HOSTS:%u (max:%d)\n", n, REPMAX);
         return -1;
     }
+    /* hostname, port and node number for each host. n <= REPMAX so this
+     * can't overflow. */
+    const size_t fixed = (size_t)n * (HOSTNAME_LEN + 2 * sizeof(uint32_t));
+    if (remaining < fixed) {
+        hprintf("RECV'd TRUNCATED HELLO hosts:%u len:%zu (need:%zu)\n", n, remaining, fixed);
+        return -1;
+    }
+    remaining -= fixed;
     char **hosts = malloc(sizeof(char *) * n);
     for (uint32_t i = 0; i < n; ++i) {
         hosts[i] = malloc(HOSTNAME_LEN + 1);
@@ -1454,6 +1482,11 @@ static int hello_msg_common(struct event_info *e)
                 hprintf("RECV'd BAD HOSTNAME len:%u (max:%d)\n", s, HOST_NAME_MAX);
                 goto out;
             }
+            if (s > remaining) {
+                hprintf("RECV'd TRUNCATED HOSTNAME len:%u (have:%zu)\n", s, remaining);
+                goto out;
+            }
+            remaining -= s;
             need_free = 1;
             host = malloc(s + 1);
             memcpy(host, buf, s);
@@ -1502,8 +1535,7 @@ static int process_hello_msg(struct event_info *e)
 {
     if (e->state == 0) {
         ++e->state;
-        hello_hdr_common(e);
-        return 0;
+        return hello_hdr_common(e);
     }
     clear_distress(e);
     int send_reply = 0;
@@ -1526,8 +1558,7 @@ static int process_hello_reply(struct event_info *e)
 {
     if (e->state == 0) {
         ++e->state;
-        hello_hdr_common(e);
-        return 0;
+        return hello_hdr_common(e);
     }
     clear_distress(e);
     if (!e->got_hello_reply) {
