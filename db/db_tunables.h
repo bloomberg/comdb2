@@ -1105,10 +1105,23 @@ REGISTER_TUNABLE("rep_prefault_lookahead",
                  "How many log records ahead of the serial apply loop to "
                  "prefault. (Default: 16)",
                  TUNABLE_INTEGER, &gbl_rep_prefault_lookahead, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_prefault_adaptive",
+                 "Adapt the replication prefault window and pool from its "
+                 "hit/miss feedback; off uses rep_prefault_lookahead as-is. "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_prefault_adaptive, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_prefault_budget",
+                 "Total prefault window shared by concurrently applying "
+                 "transactions. Setting it re-seeds the adaptive controller, "
+                 "which then steers from there without writing back. "
+                 "(Default: 64)",
+                 TUNABLE_INTEGER, &gbl_rep_prefault_budget, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_prefault_adapt_trace", "Log each adaptive prefault decision. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_rep_prefault_adapt_trace, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_prefault_threads",
-                 "Number of threads servicing replication prefault requests. "
-                 "(Default: 32)",
-                 TUNABLE_INTEGER, &gbl_rep_prefault_threads, READONLY, NULL, NULL, NULL, NULL);
+                 "Number of threads servicing replication prefault requests; "
+                 "the adaptive controller also steers this. (Default: 32)",
+                 TUNABLE_INTEGER, &gbl_rep_prefault_threads, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("emit_gen_commits", "Emit commit-records which include cluster generation.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_emit_gen_commits, 0, NULL, NULL, NULL, NULL);
 /* 'retrieve_gen_from_ckp' / 'recovery_ckp' disabled under legacy_defaults until db moves */

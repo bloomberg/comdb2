@@ -4272,10 +4272,8 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	was_applying = berkdb_applying_rep;
 	berkdb_applying_rep = 1;
 	while (rr) {
-		/* Keep the window ahead before paying for this record.  A
-		 * record read from the log for the parse is stashed into its
-		 * queue entry so the apply below does not read it again.
-		 * Shares logc with that apply read: both use DB_SET. */
+		/* Keep the window ahead, stashing anything we read so the apply
+		 * does not read it twice.  Shares logc: both use DB_SET. */
 		if (pf_on && pf_next != NULL) {
 			struct __recovery_record *pf = pf_next;
 
@@ -4386,6 +4384,10 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	/* Disarm: the next txn on this pooled thread must not inherit it. */
 	bb_berkdb_fingerprint_rtstats_clear();
 
+	if (rq->pf_window) {
+		rq->pf_window = 0;
+		__rep_prefault_window_close();
+	}
 	if (pf_on)
 		__rep_prefault_ctx_destroy(dbenv, &pf_ctx);
 	/* DB_DBT_REALLOC buffers come from __os_urealloc; free them through its
@@ -4595,8 +4597,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
 
-	if (gbl_rep_prefault &&
-	    (pf_lookahead = gbl_rep_prefault_lookahead) > 0) {
+	if ((pf_lookahead = __rep_prefault_window()) > 0) {
 		pf_ctx = &pf_ctx_buf;
 		__rep_prefault_ctx_init(pf_ctx);
 	}
@@ -4704,6 +4705,11 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			rp->recovery_queues[fileid]->used = 1;
 			rp->recovery_queues[fileid]->pf_cursor = NULL;
 			rp->recovery_queues[fileid]->pf_count = 0;
+			rp->recovery_queues[fileid]->pf_window = 0;
+			if (pf_ctx != NULL) {
+				rp->recovery_queues[fileid]->pf_window = 1;
+				__rep_prefault_window_open();
+			}
 			rp->num_busy_workers++;
 			listc_abl(&queues, rp->recovery_queues[fileid]);
 		}
@@ -4932,6 +4938,16 @@ err:
 	if (data_dbt.data)
 		free(data_dbt.data);
 
+	/* The worker normally closes these, but a failed log read or enqueue
+	 * gets here without one.  The count never resets: a leak is forever. */
+	for (j = 0; j < rp->num_fileids; j++) {
+		if (rp->recovery_queues[j] != NULL &&
+			rp->recovery_queues[j]->pf_window) {
+			rp->recovery_queues[j]->pf_window = 0;
+			__rep_prefault_window_close();
+		}
+	}
+
 	if (pf_ctx != NULL)
 		__rep_prefault_ctx_destroy(dbenv, pf_ctx);
 
@@ -5138,10 +5154,16 @@ __rep_prefault_start(dbenv, lc, logcp, scratch, ctx, lookaheadp)
 {
 	int i;
 
-	*lookaheadp = gbl_rep_prefault ? gbl_rep_prefault_lookahead : 0;
+	/* Both collection-build branches call here; only the one that ran
+	 * counts, or the window count and ctx would double up. */
+	if (*lookaheadp > 0)
+		return;
+
+	*lookaheadp = __rep_prefault_window();
 	if (*lookaheadp <= 0)
 		return;
 
+	__rep_prefault_window_open();
 	F_SET(scratch, DB_DBT_REALLOC);
 	__rep_prefault_ctx_init(ctx);
 	for (i = 0; i < *lookaheadp; i++)
@@ -5855,8 +5877,10 @@ err1:
 		(void)__log_c_close(pf_logc);
 	if (pf_dbt.data != NULL)
 		__os_ufree(dbenv, pf_dbt.data);
-	if (pf_lookahead > 0)
+	if (pf_lookahead > 0) {
+		__rep_prefault_window_close();
 		__rep_prefault_ctx_destroy(dbenv, &pf_ctx);
+	}
 
 	if (txninfo != NULL)
 		__db_txnlist_end(dbenv, txninfo);

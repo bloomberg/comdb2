@@ -3171,6 +3171,14 @@ extern __thread int berkdb_applying_rep;
 extern int gbl_rep_prefault;
 extern int gbl_rep_prefault_lookahead;
 extern int gbl_rep_prefault_threads;
+extern int gbl_rep_prefault_adaptive;
+extern int gbl_rep_prefault_budget;
+extern int gbl_rep_prefault_adapt_trace;
+/* Fast copies of the prefault region stats, for the adaptive controller. */
+extern int64_t gbl_rep_pf_ready_ct;
+extern int64_t gbl_rep_pf_inflight_ct;
+extern int64_t gbl_rep_pf_late_ct;
+extern int64_t gbl_rep_pf_evict_unused_ct;
 extern int64_t gbl_rep_prefault_records;
 extern int64_t gbl_rep_prefault_pages;
 extern int64_t gbl_rep_prefault_dedup;
@@ -3271,9 +3279,12 @@ struct __recovery_queue {
 	int used;
 	/* Prefault window state: the processor primes the first lookahead
 	 * records at bucket time; pf_cursor is where the worker's sliding
-	 * window continues from (NULL when the whole queue fit the window). */
+	 * window continues from (NULL when the whole queue fit the window).
+	 * pf_window means this queue holds an open-window count the worker
+	 * must release. */
 	struct __recovery_record *pf_cursor;
 	int pf_count;
+	int pf_window;
 	LISTC_T(struct __recovery_record) records;
 	LINKC_T(struct __recovery_queue) lnk;
 };

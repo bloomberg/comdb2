@@ -54,6 +54,12 @@ extern __thread int berkdb_applying_rep;
 extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
+/* Fast copies of the rep-prefault region stats for the adaptive controller.
+ * Atomic: the per-bucket mutex does not serialize these across buckets. */
+int64_t gbl_rep_pf_ready_ct = 0;
+int64_t gbl_rep_pf_inflight_ct = 0;
+int64_t gbl_rep_pf_late_ct = 0;
+
 extern int db_is_exiting(void);
 void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
     unsigned int pgno);
@@ -410,9 +416,10 @@ retry:	st_hsearch = 0;
 
 		++mfp->stat.st_cache_hit;
 
-        if (LF_ISSET(DB_MPOOL_PFGET))
+        if (LF_ISSET(DB_MPOOL_PFGET)) {
             ++c_mp->stat.st_page_pf_in_late;
-		else if (F_ISSET(bhp, BH_PREFAULT) &&
+			ATOMIC_ADD64(gbl_rep_pf_late_ct, 1);
+		} else if (F_ISSET(bhp, BH_PREFAULT) &&
 		    !F_ISSET(bhp, BH_PREFAULT_USED)) {
 			/*
 			 * First use of a prefaulted page.  'first' is still 1
@@ -420,10 +427,13 @@ retry:	st_hsearch = 0;
 			 * first == 0 means the prefault read was still running
 			 * and we blocked on it: issued, but too late.
 			 */
-			if (first)
+			if (first) {
 				++c_mp->stat.st_pf_hit_ready;
-			else
+				ATOMIC_ADD64(gbl_rep_pf_ready_ct, 1);
+			} else {
 				++c_mp->stat.st_pf_hit_inflight;
+				ATOMIC_ADD64(gbl_rep_pf_inflight_ct, 1);
+			}
 			F_SET(bhp, BH_PREFAULT_USED);
 		}
 		if (berkdb_applying_rep)

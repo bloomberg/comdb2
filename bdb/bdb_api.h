@@ -1373,6 +1373,9 @@ extern int gbl_bb_berkdb_enable_shalloc_timing;
 extern int gbl_rep_prefault;
 extern int gbl_rep_prefault_lookahead;
 extern int gbl_rep_prefault_threads;
+extern int gbl_rep_prefault_adaptive;
+extern int gbl_rep_prefault_budget;
+extern int gbl_rep_prefault_adapt_trace;
 void __rep_prefault_process_message(char *line, int lline, int st);
 void bdb_rep_prefault_verify(bdb_state_type *bdb_state, int nrecs, int touch);
 

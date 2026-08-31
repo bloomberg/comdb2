@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <unistd.h>
+#include <pthread.h>
 #endif
 
 #include <db.h>
@@ -32,8 +34,6 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
-/* rep_prefault and rep_prefault_lookahead are runtime settable; the thread
- * count sizes the pool and is read-only. */
 /* Set while this thread is applying replication, so the buffer pool can
  * attribute its hits and misses to the apply path. */
 __thread int berkdb_applying_rep = 0;
@@ -42,13 +42,45 @@ extern int db_is_exiting(void);
 
 int gbl_rep_prefault = 1;
 int gbl_rep_prefault_lookahead = 16;
-/* 8 leaves the pool I/O-bound under load: requests go stale in its queue and
- * the apply thread faults the page first.  Threads are created on demand and
- * linger 10s, so an idle pool costs nothing.  Resize live with
- * "repprefault maxt N". */
+/* Sizes the pool; the controller steers it too.  Kept in step with the pool
+ * by __rep_prefault_sync_threads.  Threads linger 10s, so idle is free. */
 int gbl_rep_prefault_threads = 32;
 
+/* Adaptive control: one global pages-in-flight budget, split across the open
+ * windows.  64 reproduces the serial and parallel optima from the sweep. */
+int gbl_rep_prefault_adaptive = 1;
+int gbl_rep_prefault_budget = 64;
+int gbl_rep_prefault_adapt_trace = 0;
+
+#define REP_PF_WINDOW_MIN	4	/* per-queue clamp when budget > 0 */
+#define REP_PF_WINDOW_MAX	256
+#define REP_PF_BUDGET_MIN	8
+#define REP_PF_BUDGET_MAX	1024
+#define REP_PF_THREADS_MIN	8
+#define REP_PF_THREADS_MAX	64
+#define REP_PF_PROBE_BUDGET	16	/* budget while probing a dead regime */
+#define REP_PF_PROBE_EPOCHS	30	/* epochs between probes */
+#define REP_PF_MIN_ACTIVITY	100	/* requests/epoch below which we hold */
 #define REP_PF_VERIFY_MAX	1000000	/* cap on "verify N" */
+
+/* The live budget the controller steers.  We adopt the tunable when it moves
+ * and never write it back, so an operator's setting survives. */
+static int rep_pf_budget = 64;
+static int rep_pf_budget_seed = 64;
+
+/* Last value we pushed at the pool, so an operator change to the tunable is
+ * distinguishable from our own. */
+static int rep_pf_threads_seed = 32;
+
+/* Windows currently open across every applying transaction. */
+static int32_t rep_pf_open_windows = 0;
+
+/* Controller decision counters, dumped by the message trap. */
+static int64_t rep_pf_adapt_grow = 0;
+static int64_t rep_pf_adapt_shrink = 0;
+static int64_t rep_pf_adapt_threads = 0;
+static int64_t rep_pf_adapt_useless = 0;
+static int64_t rep_pf_adapt_probes = 0;
 
 /* Counters, dumped by the "repprefault" message trap.  Atomic: bumped from
  * every pool and apply thread, and the controller steers off them. */
@@ -82,6 +114,53 @@ int64_t gbl_rep_prefault_ufid_why[UFID_PF_NREASON];
 static struct thdpool *rep_prefault_thdpool = NULL;
 
 /*
+ * __rep_prefault_window --
+ *	Per-transaction lookahead.  Static mode returns the tunable; adaptive
+ *	splits the budget across the open windows plus the one about to open.
+ *
+ * PUBLIC: int __rep_prefault_window __P((void));
+ */
+int
+__rep_prefault_window()
+{
+	int k, n;
+
+	if (!gbl_rep_prefault)
+		return (0);
+	if (!gbl_rep_prefault_adaptive)
+		return (gbl_rep_prefault_lookahead);
+	if ((k = rep_pf_budget) <= 0)
+		return (0);
+	n = ATOMIC_LOAD32(rep_pf_open_windows);
+	if (n > 0)
+		k /= (n + 1);
+	if (k < REP_PF_WINDOW_MIN)
+		k = REP_PF_WINDOW_MIN;
+	if (k > REP_PF_WINDOW_MAX)
+		k = REP_PF_WINDOW_MAX;
+	return (k);
+}
+
+/*
+ * Window accounting, one open per sliding window (per recovery queue in the
+ * parallel path, per transaction in the serial path).
+ *
+ * PUBLIC: void __rep_prefault_window_open __P((void));
+ * PUBLIC: void __rep_prefault_window_close __P((void));
+ */
+void
+__rep_prefault_window_open()
+{
+	ATOMIC_ADD32(rep_pf_open_windows, 1);
+}
+
+void
+__rep_prefault_window_close()
+{
+	ATOMIC_ADD32(rep_pf_open_windows, -1);
+}
+
+/*
  * __rep_prefault_dbreg_wait --
  *	Record that __dbreg_rem_dbentry blocked for usecs waiting on prefault
  *	pins.  Reported by the message trap; see the counters above.
@@ -103,6 +182,211 @@ __rep_prefault_dbreg_wait(usecs)
 	cur = ATOMIC_LOAD64(gbl_rep_prefault_dbreg_wait_max_us);
 	if (usecs > cur)
 		gbl_rep_prefault_dbreg_wait_max_us = usecs;
+}
+
+/*
+ * __rep_prefault_sync_threads --
+ *	Reconcile the three writers of the pool's thread count: the tunable,
+ *	the controller, and "repprefault maxt N".  Returns the live value.
+ */
+static int
+__rep_prefault_sync_threads()
+{
+	int live;
+
+	if (rep_prefault_thdpool == NULL)
+		return (gbl_rep_prefault_threads);
+
+	live = thdpool_get_maxthds(rep_prefault_thdpool);
+
+	/* Operator moved our tunable: that wins over whatever the pool says. */
+	if (gbl_rep_prefault_threads != rep_pf_threads_seed) {
+		live = gbl_rep_prefault_threads;
+		if (live < 1)
+			live = 1;
+		if (live > REP_PF_THREADS_MAX)
+			live = REP_PF_THREADS_MAX;
+		thdpool_set_maxthds(rep_prefault_thdpool, live);
+	}
+
+	rep_pf_threads_seed = gbl_rep_prefault_threads = live;
+	return (live);
+}
+
+/*
+ * __rep_prefault_set_threads --
+ *	Resize the pool from the controller, keeping the tunable in step.
+ */
+static void
+__rep_prefault_set_threads(n)
+	int n;
+{
+	if (n < REP_PF_THREADS_MIN)
+		n = REP_PF_THREADS_MIN;
+	if (n > REP_PF_THREADS_MAX)
+		n = REP_PF_THREADS_MAX;
+	thdpool_set_maxthds(rep_prefault_thdpool, n);
+	rep_pf_threads_seed = gbl_rep_prefault_threads = n;
+}
+
+/*
+ * __rep_prefault_adapt_thd --
+ *	One-second control epochs over counter deltas: hold when idle, adopt
+ *	tunable changes, probe, size the pool, then steer the budget.
+ */
+static void *
+__rep_prefault_adapt_thd(arg)
+	void *arg;
+{
+	int64_t l_ready = 0, l_infl = 0, l_evict = 0, l_late = 0, l_touch = 0;
+	int64_t d_ready, d_infl, d_evict, d_late, d_touch, used;
+	int probe_countdown = REP_PF_PROBE_EPOCHS;
+	int budget, step, depth, threads;
+
+	COMPQUIET(arg, NULL);
+
+	for (;;) {
+		sleep(1);
+
+		if (db_is_exiting())
+			break;
+
+		/* Unconditional: this is how rep_prefault_threads reaches the
+		 * pool at all, and it has to work with adaptive control off. */
+		threads = __rep_prefault_sync_threads();
+
+		if (!gbl_rep_prefault || !gbl_rep_prefault_adaptive ||
+		    rep_prefault_thdpool == NULL) {
+			/* Stay current so re-enabling starts from clean deltas. */
+			l_ready = ATOMIC_LOAD64(gbl_rep_pf_ready_ct);
+			l_infl = ATOMIC_LOAD64(gbl_rep_pf_inflight_ct);
+			l_evict = ATOMIC_LOAD64(gbl_rep_pf_evict_unused_ct);
+			l_late = ATOMIC_LOAD64(gbl_rep_pf_late_ct);
+			l_touch = ATOMIC_LOAD64(gbl_rep_prefault_touched);
+			continue;
+		}
+
+		d_ready = ATOMIC_LOAD64(gbl_rep_pf_ready_ct) - l_ready;
+		d_infl = ATOMIC_LOAD64(gbl_rep_pf_inflight_ct) - l_infl;
+		d_evict = ATOMIC_LOAD64(gbl_rep_pf_evict_unused_ct) - l_evict;
+		d_late = ATOMIC_LOAD64(gbl_rep_pf_late_ct) - l_late;
+		d_touch = ATOMIC_LOAD64(gbl_rep_prefault_touched) - l_touch;
+		l_ready += d_ready;
+		l_infl += d_infl;
+		l_evict += d_evict;
+		l_late += d_late;
+		l_touch += d_touch;
+
+		/* Adopt an operator change to the budget tunable, including one
+		 * made while we had steered ourselves to zero. */
+		if (gbl_rep_prefault_budget != rep_pf_budget_seed) {
+			rep_pf_budget_seed = gbl_rep_prefault_budget;
+			rep_pf_budget = gbl_rep_prefault_budget;
+			probe_countdown = REP_PF_PROBE_EPOCHS;
+			if (gbl_rep_prefault_adapt_trace)
+				logmsg(LOGMSG_USER,
+				    "rep_prefault adapt: adopting budget %d "
+				    "from tunable\n", rep_pf_budget);
+		}
+
+		budget = rep_pf_budget;
+
+		/* Turned off by the useless rule: hold, and periodically
+		 * re-open a small window to see if the workload changed. */
+		if (budget <= 0) {
+			if (--probe_countdown <= 0) {
+				rep_pf_budget = REP_PF_PROBE_BUDGET;
+				probe_countdown = REP_PF_PROBE_EPOCHS;
+				rep_pf_adapt_probes++;
+				if (gbl_rep_prefault_adapt_trace)
+					logmsg(LOGMSG_USER,
+					    "rep_prefault adapt: probe\n");
+			}
+			continue;
+		}
+
+		/* Not enough traffic to read anything from the deltas. */
+		if (d_touch < REP_PF_MIN_ACTIVITY)
+			continue;
+
+		/* Requests execute but almost never help: cache-resident or
+		 * insert-heavy workload.  Stop paying for the parses. */
+		used = d_ready + d_infl;
+		if (used * 20 < d_touch) {
+			rep_pf_budget = 0;
+			probe_countdown = REP_PF_PROBE_EPOCHS;
+			rep_pf_adapt_useless++;
+			if (gbl_rep_prefault_adapt_trace)
+				logmsg(LOGMSG_USER,
+				    "rep_prefault adapt: off (used %" PRId64
+				    " of %" PRId64 ")\n", used, d_touch);
+			continue;
+		}
+
+		/* Stale requests: the pool cannot drain what the windows
+		 * enqueue, so pages get applied before their prefault runs.
+		 * More window would only deepen the queue; add drain. */
+		depth = thdpool_get_queue_depth(rep_prefault_thdpool);
+		if (d_late * 4 > d_touch && depth > 2 * threads &&
+		    threads < REP_PF_THREADS_MAX) {
+			__rep_prefault_set_threads(threads + 8);
+			rep_pf_adapt_threads++;
+			if (gbl_rep_prefault_adapt_trace)
+				logmsg(LOGMSG_USER,
+				    "rep_prefault adapt: threads -> %d\n",
+				    gbl_rep_prefault_threads);
+			continue;
+		}
+
+		/* Give them back once the queue drains, so the next burst does
+		 * not start with the whole fleet before we know it needs it. */
+		if (depth == 0 && d_late * 20 < d_touch &&
+		    threads > REP_PF_THREADS_MIN) {
+			__rep_prefault_set_threads(threads - 8);
+			rep_pf_adapt_threads++;
+			if (gbl_rep_prefault_adapt_trace)
+				logmsg(LOGMSG_USER,
+				    "rep_prefault adapt: threads -> %d\n",
+				    gbl_rep_prefault_threads);
+			continue;
+		}
+
+		/* Steer toward evict-unused at a quarter to a half of inflight,
+		 * not parity: an unused evict wasted a read and still costs a
+		 * full miss later, while an inflight hit only waited out the
+		 * tail of one.  The measured optimum sits at ~0.35.  Steps
+		 * shrink with the budget or the controller orbits the target
+		 * instead of settling. */
+		step = budget / 8;
+		if (step < 2)
+			step = 2;
+		if (d_infl > 4 * d_evict + 50) {
+			budget += step;
+			if (budget > REP_PF_BUDGET_MAX)
+				budget = REP_PF_BUDGET_MAX;
+			if (budget != rep_pf_budget) {
+				rep_pf_budget = budget;
+				rep_pf_adapt_grow++;
+				if (gbl_rep_prefault_adapt_trace)
+					logmsg(LOGMSG_USER,
+					    "rep_prefault adapt: budget -> %d\n",
+					    budget);
+			}
+		} else if (2 * d_evict > d_infl + 50) {
+			budget -= step;
+			if (budget < REP_PF_BUDGET_MIN)
+				budget = REP_PF_BUDGET_MIN;
+			if (budget != rep_pf_budget) {
+				rep_pf_budget = budget;
+				rep_pf_adapt_shrink++;
+				if (gbl_rep_prefault_adapt_trace)
+					logmsg(LOGMSG_USER,
+					    "rep_prefault adapt: budget -> %d\n",
+					    budget);
+			}
+		}
+	}
+	return (NULL);
 }
 
 struct rep_pf_work {
@@ -224,6 +508,16 @@ __rep_prefault_init(dbenv)
 		gbl_rep_prefault = 0;
 		return;
 	}
+	if (gbl_rep_prefault_threads < 1)
+		gbl_rep_prefault_threads = 1;
+	if (gbl_rep_prefault_threads > REP_PF_THREADS_MAX)
+		gbl_rep_prefault_threads = REP_PF_THREADS_MAX;
+	rep_pf_threads_seed = gbl_rep_prefault_threads;
+
+	/* Seed the live budget from the tunable, so an lrl setting is what the
+	 * controller starts steering from. */
+	rep_pf_budget = rep_pf_budget_seed = gbl_rep_prefault_budget;
+
 	thdpool_set_minthds(rep_prefault_thdpool, 0);
 	thdpool_set_maxthds(rep_prefault_thdpool, gbl_rep_prefault_threads);
 	thdpool_set_maxqueue(rep_prefault_thdpool, 1000);
@@ -231,6 +525,19 @@ __rep_prefault_init(dbenv)
 	thdpool_set_linger(rep_prefault_thdpool, 10);
 	thdpool_set_longwaitms(rep_prefault_thdpool, 10000);
 	thdpool_set_wait(rep_prefault_thdpool, 0);
+
+	{
+		pthread_t tid;
+
+		if (pthread_create(&tid, NULL, __rep_prefault_adapt_thd,
+		    NULL) != 0) {
+			logmsg(LOGMSG_ERROR,
+			    "%s: no adapt thread, adaptive control off\n",
+			    __func__);
+			gbl_rep_prefault_adaptive = 0;
+		} else
+			pthread_detach(tid);
+	}
 }
 
 /*
@@ -253,6 +560,16 @@ __rep_prefault_process_message(line, lline, st)
 	logmsg(LOGMSG_USER, "rep prefault: %s, lookahead %d\n",
 	    gbl_rep_prefault ? "enabled" : "disabled",
 	    gbl_rep_prefault_lookahead);
+	logmsg(LOGMSG_USER,
+	    "adaptive: %s, budget %d (tunable %d), windows %d, threads %d\n",
+	    gbl_rep_prefault_adaptive ? "on" : "off", rep_pf_budget,
+	    gbl_rep_prefault_budget, ATOMIC_LOAD32(rep_pf_open_windows),
+	    thdpool_get_maxthds(rep_prefault_thdpool));
+	logmsg(LOGMSG_USER,
+	    "  adapt grow/shrink/threads/off/probe: %" PRId64 "/%" PRId64
+	    "/%" PRId64 "/%" PRId64 "/%" PRId64 "\n",
+	    rep_pf_adapt_grow, rep_pf_adapt_shrink, rep_pf_adapt_threads,
+	    rep_pf_adapt_useless, rep_pf_adapt_probes);
 	logmsg(LOGMSG_USER, "  records parsed   : %" PRId64 "\n",
 	    gbl_rep_prefault_records);
 	logmsg(LOGMSG_USER, "  records stashed  : %" PRId64 "\n",
@@ -296,7 +613,11 @@ __rep_prefault_process_message(line, lline, st)
 	    PRId64 " us)\n", gbl_rep_prefault_dbreg_waits,
 	    gbl_rep_prefault_dbreg_wait_us, gbl_rep_prefault_dbreg_wait_max_us);
 
+	/* "repprefault maxt N" lands here; pick the change up rather than let
+	 * the controller overwrite it from a stale tunable next epoch. */
 	thdpool_process_message(rep_prefault_thdpool, line, lline, st);
+	rep_pf_threads_seed = gbl_rep_prefault_threads =
+	    thdpool_get_maxthds(rep_prefault_thdpool);
 }
 
 /*
