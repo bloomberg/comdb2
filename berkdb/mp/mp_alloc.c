@@ -18,6 +18,11 @@ static const char revid[] = "$Id: mp_alloc.c,v 11.40 2003/07/03 02:24:34 bostic 
 #include "db_int.h"
 #include "dbinc/db_shash.h"
 #include "dbinc/mp.h"
+#include "comdb2_atomic.h"
+
+/* Atomic: read as a delta by the rep-prefault adaptive controller, and bumped
+ * under a per-bucket mutex that does not serialize it across buckets. */
+int64_t gbl_rep_pf_evict_unused_ct = 0;
 
 #include <stdio.h>
 #include <unistd.h>
@@ -511,8 +516,10 @@ found:		if (offsetp != NULL)
 			++c_mp->stat.st_pf_evict;
 			/* Prefaulted and evicted without ever being used: the
 			 * lookahead reached further than the cache. */
-			if (!F_ISSET(bhp, BH_PREFAULT_USED))
+			if (!F_ISSET(bhp, BH_PREFAULT_USED)) {
 				++c_mp->stat.st_pf_evict_unused;
+				ATOMIC_ADD64(gbl_rep_pf_evict_unused_ct, 1);
+			}
 		}
 
 		/* 
