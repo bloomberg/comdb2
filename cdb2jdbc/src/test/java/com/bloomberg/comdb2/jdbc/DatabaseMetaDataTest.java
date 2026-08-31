@@ -85,6 +85,21 @@ public class DatabaseMetaDataTest {
         stmt.executeUpdate("drop table t1");
     }
 
+    @Test public void testGetTablesResultSetSurvivesProductVersionLookup() throws SQLException {
+        stmt.executeUpdate("create table t1 (i int, j text)");
+
+        rs = dmd.getTables(null, null, "t1", null);
+        String version = dmd.getDatabaseProductVersion();
+
+        assertNotNull(version);
+        assertTrue(rs.next());
+        assertEquals(rs.getString("TABLE_NAME"), "t1");
+        assertFalse(rs.next());
+        rs.close();
+
+        stmt.executeUpdate("drop table t1");
+    }
+
     @Test public void testGetColumns() throws SQLException {
         stmt.executeUpdate("create table t1 (i int, j text)");
         stmt.executeUpdate("create table t2 (i int, j text)");
