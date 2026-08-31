@@ -310,6 +310,7 @@ struct __bh {
 #define	BH_TRASH	0x020		/* Page is garbage. */
 #define BH_NOINCR	0x040		/* Don't increment lru_cache. */
 #define BH_PREFAULT	0x080		/* prefault pages */
+#define BH_PREFAULT_USED 0x100		/* prefaulted page was later used */
 	u_int16_t	flags;
 	u_int16_t	generation;	/* This changes before page changes */
 	u_int32_t	priority;	/* LRU priority. */

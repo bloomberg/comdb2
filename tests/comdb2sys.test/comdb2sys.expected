@@ -351,6 +351,7 @@
 (name='pgcompactpool')
 (name='recovery_processors')
 (name='recovery_workers')
+(name='repprefaultpool')
 (name='sqlenginepool')
 (name='systemsqlpool')
 (name='udppfaultpool')
