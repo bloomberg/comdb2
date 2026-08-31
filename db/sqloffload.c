@@ -641,7 +641,9 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
             abort();
     }
 
+    int in_replay_nested = osql->in_replay_nested; /* call-stack state, not txn state */
     bzero(osql, sizeof(*osql));
+    osql->in_replay_nested = in_replay_nested;
     listc_init(&osql->shadtbls, offsetof(struct shad_tbl, linkv));
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
