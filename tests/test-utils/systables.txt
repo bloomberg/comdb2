@@ -41,6 +41,7 @@ comdb2_ruleset
 comdb2_sample_queries
 comdb2_sc_history
 comdb2_sc_status
+comdb2_schemas
 comdb2_schemaversions
 comdb2_sql_client_stats
 comdb2_sqlpool_queue

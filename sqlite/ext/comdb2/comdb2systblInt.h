@@ -104,6 +104,7 @@ int systblMemstatsInit(sqlite3 *db);
 int systblStacks(sqlite3 *db);
 int systblPreparedInit(sqlite3 *db);
 int systblSchemaVersionsInit(sqlite3 *db);
+int systblSchemasInit(sqlite3 *db);
 int systblTableMetricsInit(sqlite3 *db);
 int systblApiHistoryInit(sqlite3 *db);
 int systblDbInfoInit(sqlite3 *db);
