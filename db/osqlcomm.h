@@ -28,6 +28,12 @@
 
 enum { OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION = 0x00000001, };
 
+/* on-the-wire length of the header every osql message starts with */
+enum {
+    OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8,
+    OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16
+};
+
 /**
  * Initializes this node for osql communication
  * Creates the offload net.
