@@ -281,7 +281,6 @@ static void currangearr_merge_neighbor(CurRangeArr *arr)
     i = 1;
     int n = arr->size;
     CurRange *p, *q;
-    void *tmp;
     if (!n)
         return;
     while (i < n) {
@@ -307,9 +306,12 @@ static void currangearr_merge_neighbor(CurRangeArr *arr)
                                       (p->rkeylen < q->rkeylen ? p->rkeylen
                                                                : q->rkeylen)) <
                                0) {
-                        tmp = q->rkey;
+                        void *tmp = q->rkey;
+                        int tmplen = q->rkeylen;
                         q->rkey = p->rkey;
+                        q->rkeylen = p->rkeylen;
                         p->rkey = tmp;
+                        p->rkeylen = tmplen;
                     }
                     currange_free(q);
                     arr->ranges[i] = NULL;

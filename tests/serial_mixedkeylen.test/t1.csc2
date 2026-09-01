@@ -1,0 +1,14 @@
+// Two-column key so that a partial-key probe (a only) and a full-key probe
+// (a + b) produce read-set ranges with different key lengths on the same index.
+
+schema
+{
+    int         a
+    cstring     b[24]
+    int         c
+}
+
+keys
+{
+    "KEY_AB" = a + b
+}
