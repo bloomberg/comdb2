@@ -133,6 +133,13 @@ add_executable(crc32c_test crc32c_test.c)
 target_link_libraries(crc32c_test crc32c_ubsan)
 list(APPEND test-tools crc32c_test)
 
+# Tests that live outside this repo. Included before the link loop below so
+# the tools it adds pick up cdb2api and the common deps like any other one.
+set(COMDB2_EXTRA_TESTS ${EXTRA_TESTS} CACHE PATH "Path to additional tests")
+if (COMDB2_EXTRA_TESTS)
+  include(${COMDB2_EXTRA_TESTS}/CMakeLists.txt)
+endif()
+
 list(APPEND common-deps
   ${READLINE_LIBRARIES}
   ${SQLite3_LIBRARIES}

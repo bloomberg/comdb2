@@ -24,6 +24,9 @@ while [[ $1 = -* ]]; do
     elif [[ "$1" = "-a" ]] || [[ "$1" = "--file-arg" ]]; then
         shift
         script_args+=("$1")
+    elif [[ "$1" = "-e" ]] || [[ "$1" = "--extra-tests" ]]; then
+        shift
+        extra_tests=$1
     elif [[ "$1" = "--coverage" ]]; then
         cmake_flags+=(-DGENERATE_COVERAGE=1)
     fi
@@ -68,6 +71,14 @@ if [[ "$script" != "" ]]; then
 fi
 if ((${#script_args[@]} > 0)); then
     printf '%s ' "${script_args[@]}" > common/user_script_args
+fi
+
+# Stage extra tests into the build context. The Dockerfile COPYs the context
+# to /comdb2, so that is where cmake will find them inside the image.
+if [[ "$extra_tests" != "" ]]; then
+    rm -rf "$src/extra_tests"
+    cp -r "$extra_tests" "$src/extra_tests"
+    cmake_flags+=(-DEXTRA_TESTS=/comdb2/extra_tests)
 fi
 
 # use current user's maven settings
