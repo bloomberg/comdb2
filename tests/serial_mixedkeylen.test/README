@@ -1,0 +1,45 @@
+Serializable read-set coalescing with mixed key lengths.
+
+At commit time sqlite3BtreeCommit() calls currangearr_coalesce(), which sorts the
+transaction's read set and then merges neighbouring ranges in
+currangearr_merge_neighbor() (db/sqlglue.c).  When two ranges on the same
+(table, index) are coalesced the merged upper bound has to be
+max(p->rkey, q->rkey), so the two ranges swap their rkey pointers.  rkeylen has
+to move with rkey; if it does not, the surviving range is left describing one
+buffer with another buffer's length.
+
+The two ranges' rkey lengths are not necessarily equal.  A range bound that came
+from a partial-key probe handed down by sqlite carries the probe length, while
+one that came from a cursor move carries the full found-key length.  On this
+schema those are 5 and 29 bytes respectively:
+
+    select c from t1 where a = 2 limit 1      seeks on a partial key and never
+                                              advances, so the range keeps the
+                                              5-byte probe as its upper bound
+
+    select count(*) from t1 where a = 2       scans to the first a=3 row, so the
+                                              range's upper bound is that full
+                                              29-byte index key
+
+Both cover a=2, so they are coalesced, and the partial bound sorts below the
+full one, so the merge takes the swapping branch with two different lengths in
+play.
+
+Test 2 is the regression check.  After the merge the range's upper bound is the
+full key (3,'k00').  It then writes (3,'k05x') from another session: that shares
+the a portion of the bound but sorts after it, so a correct comparison places it
+outside the range and the transaction commits.  With rkeylen left behind, the
+range holds the 29-byte key with a stale 5-byte length, serial_check_this_txn()
+in db/glue.c compares with memcmp(key, r->rkey, min(r->rkeylen, keylen)) and so
+truncates to the a field alone, a=3 equals a=3, the write looks like it landed
+inside the range, and the transaction aborts with rc 230 for no reason.
+
+The same mismatch also makes db/osqlcomm.c ship the read set to the master with
+buf_put(cr->rkey, cr->rkeylen, ...) over a buffer of a different size.  In the
+other direction (a range that adopts a shorter key while keeping a longer
+length) that is a heap over-read whose outcome depends on adjacent heap
+contents; this test does not try to pin that case down.
+
+The rest of the file checks that serializable semantics still hold across the
+merge: a phantom inside the range aborts (test 1), a write well clear of it does
+not (test 3), and the path survives repeated execution (test 4).

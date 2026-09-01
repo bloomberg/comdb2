@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Grab my database name.
+dbnm=$1
+
+if [[ -z "$dbnm" ]]; then
+    echo "Testcase requires <dbname> argument."
+    exit 1
+fi
+
+# Sentinel used to find the end of a statement's output in the session below.
+readonly sync_tag=ZZSYNCZZ
+
+# Output of the last run_sql, one line per row.
+out=
+
+# fastinit
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1" &> truncate.log
+
+# Rows are a in 1..6, b in 'k00'..'k09', c = a * 100 + i.  Every serializable
+# transaction below reads a=2 only, so its read set covers a=2 and stops at the
+# first a=3 row; everything from a=3 up is outside the range.
+{
+    for a in 1 2 3 4 5 6 ; do
+        for i in $(seq 0 9) ; do
+            printf "insert into t1(a,b,c) values (%d,'k%02d',%d)\n" $a $i $((a * 100 + i))
+        done
+    done
+} | cdb2sql ${CDB2_OPTIONS} $dbnm default - &> insert.log
+
+assertcnt t1 60 "after load"
+
+# Interactive session that all of the serializable transactions run in.  stderr
+# is folded into stdout so that "[commit] failed with rc 230 ..." shows up on
+# the same descriptor as the row output.
+coproc SESS { stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default - 2>&1 ; }
+spid=$!
+
+trap "kill -9 $spid" INT EXIT
+
+# Run a statement in the session and collect everything it printed into $out.
+# A trailing constant select acts as a sentinel: it touches no table, so it adds
+# nothing to the read set, and it still runs if the preceding statement aborted
+# the transaction.
+run_sql()
+{
+    typeset stmt="$1"
+    typeset line
+
+    out=
+    echo "$stmt" >&${SESS[1]}
+    echo "select '$sync_tag' as sync" >&${SESS[1]}
+
+    while IFS= read -r -u ${SESS[0]} -t 60 line ; do
+        case "$line" in
+            *$sync_tag*) return 0 ;;
+        esac
+        out="${out}${out:+$'\n'}${line}"
+    done
+
+    failexit "timed out waiting for session output after: $stmt"
+}
+
+# Build a read set holding two ranges on KEY_AB whose rkey lengths differ.
+#
+# The "limit 1" lookup seeks on a partial key and never advances the cursor, so
+# its range keeps the 5-byte probe as its upper bound.  The count scans to the
+# first a=3 row, so its range's upper bound is that full 29-byte index key.
+# Both cover a=2, so currangearr_merge_neighbor() coalesces them, and because
+# the partial bound sorts below the full one it takes the branch that swaps the
+# two rkeys - with two different lengths in play.
+mixed_read_set()
+{
+    run_sql "select c from t1 where a = 2 limit 1"
+    assertres "$out" "(c=200)" "partial-key probe on a=2"
+
+    run_sql "select count(*) from t1 where a = 2"
+    assertres "$out" "(count(*)=10)" "partial-key scan of a=2"
+}
+
+# Start a serializable transaction.  The isolation level is set outside the
+# transaction every time so that an aborted transaction cannot leave the session
+# on a different level for the next test.
+begin_serial()
+{
+    run_sql "set transaction serial"
+    run_sql "begin"
+}
+
+################################################################################
+# 1. A phantom inserted inside the read range must abort the transaction.
+################################################################################
+
+echo "Test 1: phantom inside the coalesced read range"
+
+begin_serial
+mixed_read_set
+run_sql "update t1 set c = c + 1 where a = 2 and b = 'k09'"
+
+# 'k045' sorts between 'k04' and 'k05', so this lands inside the a=2 range.
+cdb2sql ${CDB2_OPTIONS} $dbnm default \
+    "insert into t1(a,b,c) values (2,'k045',2045)" &> phantom.log
+if [[ $? != 0 ]] ; then
+    failexit "could not insert the phantom row"
+fi
+
+run_sql "commit"
+if [[ "$out" != *"failed with rc 230"* ]] ; then
+    failexit "expected rc 230 (not serializable), got: $out"
+fi
+
+# Put the table back the way mixed_read_set expects to find it.
+cdb2sql ${CDB2_OPTIONS} $dbnm default \
+    "delete from t1 where a = 2 and b = 'k045'" &> phantom_cleanup.log
+assertcnt t1 60 "after removing the phantom"
+
+echo "Test 1 passed"
+
+################################################################################
+# 2. A write just past the right edge of the read range must not abort it.
+#
+# This is the regression check.  The coalesced range's upper bound is the full
+# key (3,'k00').  The write below is (3,'k05x'): it shares the a portion of that
+# bound but sorts after it, so a correct comparison places it outside the range.
+#
+# If rkeylen does not travel with rkey through the merge, the range is left
+# holding the 29-byte key with the stale 5-byte length.  serial_check_this_txn()
+# in db/glue.c compares with memcmp(key, r->rkey, min(r->rkeylen, keylen)),
+# which truncates to the a field alone; a=3 equals a=3, the write looks like it
+# landed inside the range, and the transaction aborts with rc 230 for no reason.
+################################################################################
+
+echo "Test 2: write immediately past the right edge of the read range"
+
+begin_serial
+mixed_read_set
+run_sql "update t1 set c = c + 1 where a = 2 and b = 'k09'"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default \
+    "insert into t1(a,b,c) values (3,'k05x',305)" &> edge.log
+if [[ $? != 0 ]] ; then
+    failexit "could not insert the edge row"
+fi
+
+run_sql "commit"
+if [[ -n "$out" ]] ; then
+    failexit "commit should have succeeded for a write past the range edge, got: $out"
+fi
+
+echo "Test 2 passed"
+
+################################################################################
+# 3. A write well clear of the read range must not abort it either.
+################################################################################
+
+echo "Test 3: write well outside the coalesced read range"
+
+begin_serial
+mixed_read_set
+run_sql "update t1 set c = c + 1 where a = 2 and b = 'k09'"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default \
+    "insert into t1(a,b,c) values (6,'k99',699)" &> outside.log
+if [[ $? != 0 ]] ; then
+    failexit "could not insert the out-of-range row"
+fi
+
+run_sql "commit"
+if [[ -n "$out" ]] ; then
+    failexit "commit should have succeeded, got: $out"
+fi
+
+echo "Test 3 passed"
+
+################################################################################
+# 4. Hammer the mixed-length coalesce path.
+################################################################################
+
+echo "Test 4: repeated mixed-length coalesce"
+
+iter=0
+while [[ $iter -lt 50 ]] ; do
+    begin_serial
+    mixed_read_set
+    run_sql "update t1 set c = c + 1 where a = 2 and b = 'k09'"
+    run_sql "commit"
+    if [[ -n "$out" ]] ; then
+        failexit "iteration $iter: commit should have succeeded, got: $out"
+    fi
+    let iter=iter+1
+done
+
+echo "Test 4 passed"
+
+# "quit" ends the session, so it gets no sentinel.
+echo "quit" >&${SESS[1]}
+
+# 209 to start with, then one increment for each of tests 2, 3 and 4's 50.
+x=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+    "select c from t1 where a = 2 and b = 'k09'")
+assertres "$x" "261" "52 committed increments of a=2,b='k09'"
+
+# The original 60 rows plus the edge insert and the out-of-range insert.
+assertcnt t1 62 "at end of test"
+
+trap - INT EXIT
+kill -9 $spid &> /dev/null
+
+echo "Success"
