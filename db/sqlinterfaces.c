@@ -4759,7 +4759,7 @@ void clnt_to_ruleset_item_criteria(
       clnt->current_user.have_name ? clnt->current_user.name : NULL;
   context->zSql = clnt->sql;
   context->pFingerprint = clnt->work.aFingerprint;
-  clnt->plugin.get_authdata(clnt);
+  clnt->authdata = clnt->plugin.get_authdata(clnt);
   context->zIdentity = clnt->externalAuthUser;
 }
 
