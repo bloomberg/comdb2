@@ -517,6 +517,12 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
     int rc = 0;
     struct errstat *perr = NULL;
 
+    if (datalen < OSQLCOMM_UUID_RPL_TYPE_LEN) {
+        logmsg(LOGMSG_ERROR, "%s: truncated osql message, datalen %d\n",
+               __func__, datalen);
+        return ERR_BADREQ;
+    }
+
     *is_msg_done =
         osql_comm_is_done(sess, type, data, datalen, &perr, NULL) != 0;
 

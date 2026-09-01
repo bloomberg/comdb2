@@ -416,8 +416,6 @@ typedef struct osql_rpl {
     unsigned long long sid; /* concurrent access */
 } osql_rpl_t;
 
-enum { OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8 };
-
 BB_COMPILE_TIME_ASSERT(osqlcomm_rpl_type_len,
                        sizeof(osql_rpl_t) == OSQLCOMM_RPL_TYPE_LEN);
 
@@ -463,8 +461,6 @@ typedef struct osql_rpl_uuid {
     int padding;
     uuid_t uuid;
 } osql_uuid_rpl_t;
-
-enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_rpl_uuid_type_len,
                        sizeof(osql_uuid_rpl_t) == OSQLCOMM_UUID_RPL_TYPE_LEN);
@@ -1050,67 +1046,101 @@ static uint8_t *serial_readset_put(const CurRangeArr *arr, int buf_size,
                 buf_put(&(cr->idxnum), sizeof(cr->idxnum), p_buf, p_buf_end);
             p_buf = buf_put(&(cr->lflag), sizeof(cr->lflag), p_buf, p_buf_end);
             if (!cr->lflag) {
-                p_buf = buf_put(&(cr->lkeylen), sizeof(cr->lkeylen), p_buf,
-                                p_buf_end);
-                p_buf = buf_put(cr->lkey, cr->lkeylen, p_buf, p_buf_end);
+                int keylen = cr->lkey ? cr->lkeylen : 0;
+                p_buf = buf_put(&keylen, sizeof(keylen), p_buf, p_buf_end);
+                if (keylen)
+                    p_buf = buf_put(cr->lkey, keylen, p_buf, p_buf_end);
             }
 
             p_buf = buf_put(&(cr->rflag), sizeof(cr->rflag), p_buf, p_buf_end);
             if (!cr->rflag) {
-                p_buf = buf_put(&(cr->rkeylen), sizeof(cr->rkeylen), p_buf,
-                                p_buf_end);
-                p_buf = buf_put(cr->rkey, cr->rkeylen, p_buf, p_buf_end);
+                int keylen = cr->rkey ? cr->rkeylen : 0;
+                p_buf = buf_put(&keylen, sizeof(keylen), p_buf, p_buf_end);
+                if (keylen)
+                    p_buf = buf_put(cr->rkey, keylen, p_buf, p_buf_end);
             }
         }
     }
     return p_buf;
 }
 
+/* Read one {keylen, key} pair as written by serial_readset_put().  The key is
+ * allocated even when empty: currangearr_merge_neighbor() asserts that a range
+ * with a clear flag has a key. */
+static const uint8_t *serial_readset_key_get(void **key, int *keylen,
+                                             const uint8_t *p_buf,
+                                             const uint8_t *p_buf_end)
+{
+    p_buf = buf_get(keylen, sizeof(*keylen), p_buf, p_buf_end);
+    if (!p_buf || *keylen < 0 || *keylen > (p_buf_end - p_buf))
+        return NULL;
+    if ((*key = malloc(*keylen ? *keylen : 1)) == NULL)
+        return NULL;
+    return buf_get(*key, *keylen, p_buf, p_buf_end);
+}
+
 static const uint8_t *serial_readset_get(CurRangeArr *arr, int buf_size,
                                          int arr_size, const uint8_t *p_buf,
                                          const uint8_t *p_buf_end)
 {
-    int i;
-    int tmp = 0;
-    CurRange *cr;
+    CurRange *cr = NULL;
+
     if (p_buf_end < p_buf || buf_size > (p_buf_end - p_buf))
         return NULL;
-    for (i = 0; i < arr_size; i++) {
+
+    for (int i = 0; i < arr_size; i++) {
+        int tmp;
+
         cr = currange_new();
 
+        /* buf_get() returns NULL if handed a NULL buffer, so a failed get
+         * short-circuits the ones after it; only check before acting on a
+         * value we just decoded. */
         p_buf = buf_get(&tmp, sizeof(tmp), p_buf, p_buf_end);
-        cr->tbname = malloc(sizeof(char) * tmp);
+        if (!p_buf || tmp < 1 || tmp > (p_buf_end - p_buf))
+            goto err;
+
+        if ((cr->tbname = malloc(tmp)) == NULL)
+            goto err;
+
         p_buf = buf_get(cr->tbname, tmp, p_buf, p_buf_end);
+        p_buf = buf_get(&(cr->islocked), sizeof(cr->islocked), p_buf, p_buf_end);
+        if (!p_buf || cr->tbname[tmp - 1] != '\0')
+            goto err;
 
-        p_buf =
-            buf_get(&(cr->islocked), sizeof(cr->islocked), p_buf, p_buf_end);
-
-        if (!cr->islocked) {
-            p_buf =
-                buf_get(&(cr->idxnum), sizeof(cr->idxnum), p_buf, p_buf_end);
-            p_buf = buf_get(&(cr->lflag), sizeof(cr->lflag), p_buf, p_buf_end);
-            if (!cr->lflag) {
-                p_buf = buf_get(&(cr->lkeylen), sizeof(cr->lkeylen), p_buf,
-                                p_buf_end);
-                cr->lkey = malloc(cr->lkeylen);
-                p_buf = buf_get(cr->lkey, cr->lkeylen, p_buf, p_buf_end);
-            }
-
-            p_buf = buf_get(&(cr->rflag), sizeof(cr->rflag), p_buf, p_buf_end);
-            if (!cr->rflag) {
-                p_buf = buf_get(&(cr->rkeylen), sizeof(cr->rkeylen), p_buf,
-                                p_buf_end);
-                cr->rkey = malloc(cr->rkeylen);
-                p_buf = buf_get(cr->rkey, cr->rkeylen, p_buf, p_buf_end);
-            }
-        } else {
+        if (cr->islocked) {
             cr->lflag = 1;
             cr->rflag = 1;
+            currangearr_append(arr, cr);
+            continue;
         }
+
+        p_buf = buf_get(&(cr->idxnum), sizeof(cr->idxnum), p_buf, p_buf_end);
+        p_buf = buf_get(&(cr->lflag), sizeof(cr->lflag), p_buf, p_buf_end);
+        if (!p_buf)
+            goto err;
+
+        if (!cr->lflag &&
+            !(p_buf = serial_readset_key_get(&cr->lkey, &cr->lkeylen, p_buf,
+                                             p_buf_end)))
+            goto err;
+
+        p_buf = buf_get(&(cr->rflag), sizeof(cr->rflag), p_buf, p_buf_end);
+        if (!p_buf)
+            goto err;
+
+        if (!cr->rflag &&
+            !(p_buf = serial_readset_key_get(&cr->rkey, &cr->rkeylen, p_buf,
+                                             p_buf_end)))
+            goto err;
 
         currangearr_append(arr, cr);
     }
     return p_buf;
+
+err:
+    currange_free(cr);
+    return NULL;
 }
 
 enum { OSQLCOMM_QUERY_EFFECTS_LEN = sizeof(struct query_effects) };
@@ -4963,17 +4993,17 @@ int osql_send_serial(osql_target_t *target, unsigned long long rqid,
                 assert(!cr->lflag || !cr->rflag);
                 cr_sz += sizeof(cr->idxnum);
                 cr_sz += sizeof(cr->lflag);
-                if (!cr->lflag)
-                    if (cr->lkey) {
-                        cr_sz += sizeof(cr->lkeylen);
+                if (!cr->lflag) {
+                    cr_sz += sizeof(cr->lkeylen);
+                    if (cr->lkey)
                         cr_sz += cr->lkeylen;
-                    }
+                }
                 cr_sz += sizeof(cr->rflag);
-                if (!cr->rflag)
-                    if (cr->rkey) {
-                        cr_sz += sizeof(cr->rkeylen);
+                if (!cr->rflag) {
+                    cr_sz += sizeof(cr->rkeylen);
+                    if (cr->rkey)
                         cr_sz += cr->rkeylen;
-                    }
+                }
             }
         }
     }
@@ -6912,6 +6942,9 @@ struct schema_change_type *osqlcomm_get_schemachange(char *msg, int msglen)
     const uint8_t *p_buf_end;
     int type;
 
+    if (msglen < (int)sizeof(osql_uuid_rpl_t))
+        return NULL;
+
     p_buf = _get_txn_info(msg, &type);
     if (!p_buf)
         return NULL;
@@ -6919,10 +6952,12 @@ struct schema_change_type *osqlcomm_get_schemachange(char *msg, int msglen)
 
     sc = new_schemachange_type();
 
-    p_buf_end = p_buf + msglen;
+    p_buf_end = (const uint8_t *)msg + msglen;
     p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
-    if (!p_buf)
+    if (!p_buf) {
+        free_schema_change_type(sc);
         return NULL;
+    }
 
     return sc;
 }
@@ -6980,17 +7015,27 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
 
 /* get the table name part of the rpl request
  */
-const char *get_tablename_from_rpl(int is_uuid, const uint8_t *rpl,
+const char *get_tablename_from_rpl(int is_uuid, const uint8_t *rpl, int rpllen,
                                    int *tableversion)
 {
     osql_usedb_t dt;
     const uint8_t *p_buf =
         rpl + (is_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
     const uint8_t *p_buf_end = p_buf + sizeof(osql_usedb_t);
+    const uint8_t *p_rpl_end = rpl + rpllen;
     const char *tablename;
 
+    if (p_buf_end > p_rpl_end)
+        return NULL;
+
     tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-    if (tableversion && tablename)
+
+    if (dt.tablenamelen == 0 ||
+        dt.tablenamelen > p_rpl_end - (const uint8_t *)tablename ||
+        tablename[dt.tablenamelen - 1] != '\0')
+        return NULL;
+
+    if (tableversion)
         *tableversion = dt.tableversion;
     return tablename;
 }
@@ -7180,6 +7225,16 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
     char *msg = *pmsg;
+    const uint8_t *p_msg_end;
+
+    if (msglen < (int)sizeof(osql_uuid_rpl_t)) {
+        logmsg(LOGMSG_ERROR, "%s: truncated osql message, msglen %d\n",
+               __func__, msglen);
+        reqerrstr(iq, COMDB2_BLK_RC_BUF_SZ, "truncated osql message");
+        return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+    }
+
+    p_msg_end = (const uint8_t *)msg + msglen;
 
     p_buf = _get_txn_info(msg, &type);
 
@@ -7199,6 +7254,9 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
     case OSQL_DONE_SNAP: {
         p_buf_end = p_buf + sizeof(osql_done_t);
         osql_done_t dt = {0};
+
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
 
         p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
 
@@ -7265,7 +7323,16 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
             process_defered_table(iq, ...);
         }
         */
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
         const char *tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+
+        if (dt.tablenamelen == 0 ||
+            dt.tablenamelen > p_msg_end - (const uint8_t *)tablename ||
+            tablename[dt.tablenamelen - 1] != '\0')
+            goto badmsg;
+
         if (iq->usedb && strcmp(iq->usedb->tablename, tablename) == 0) {
             assert(bdb_has_trans_tablename_locked(thedb->bdb_env, tablename, trans, TABLENAME_LOCKED_READ));
             return 0; /* already have tbl lock from before */
@@ -7303,6 +7370,10 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
     case OSQL_DBQ_CONSUME: {
         genid_t *genid = (genid_t *)p_buf;
 
+        p_buf_end = p_buf + sizeof(genid_t);
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
         rc = dbq_consume_genid(iq, trans, 0, *genid);
         EVENTLOG_DEBUG(
             uuidstr_t ustr;
@@ -7324,6 +7395,9 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
             p_buf_end = p_buf + sizeof(osql_del_t);
         else
             p_buf_end = p_buf + sizeof(osql_del_t) - sizeof(unsigned long long);
+
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
 
         p_buf =
             (uint8_t *)osqlcomm_del_type_get(&dt, p_buf, p_buf_end, recv_dk);
@@ -7424,8 +7498,14 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
         else
             p_buf_end = p_buf + OSQLCOMM_INS_TYPE_LEN;
 
+        if (p_buf_end > p_msg_end)
+            p_buf_end = p_msg_end;
+
         pData =
             (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end, is_legacy);
+
+        if (!pData || dt.nData < 0 || dt.nData > p_msg_end - pData)
+            goto badmsg;
 
         if (gbl_enable_osql_logging) {
             int jj = 0;
@@ -7566,6 +7646,8 @@ done_delete:
         uint32_t cur_gen;
         const uint8_t *p_buf_end;
         p_buf_end = p_buf + sizeof(osql_startgen_t);
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
         osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
         cur_gen = bdb_get_rep_gen(thedb->bdb_env);
         if (cur_gen != dt.start_gen) {
@@ -7581,9 +7663,9 @@ done_delete:
 
     case OSQL_FINGERPRINT: {
         osql_fingerprint_t dt = {{0}};
-        /* p_buf_end from the struct size, as OSQL_USEDB / OSQL_STARTGEN do;
-         * the _get below still bounds-checks against it. */
         const uint8_t *p_buf_end = p_buf + sizeof(osql_fingerprint_t);
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
         if (!osqlcomm_fingerprint_type_get(&dt, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s: failed to read OSQL_FINGERPRINT\n", __func__);
             break;
@@ -7615,8 +7697,15 @@ done_delete:
             p_buf_end = p_buf + sizeof(osql_upd_t) -
                         sizeof(unsigned long long) - sizeof(unsigned long long);
 
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
         pData =
             (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end, recv_dk);
+
+        if (dt.nData < 0 || dt.nData > p_msg_end - pData)
+            goto badmsg;
+
         if (!recv_dk) {
             dt.ins_keys = -1ULL;
             dt.del_keys = -1ULL;
@@ -7758,32 +7847,17 @@ done_delete:
     } break;
     case OSQL_UPDCOLS: {
         osql_updcols_t dt = {0};
-        const uint8_t *p_buf_end = (const uint8_t *)msg + msglen;
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int i;
+
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
         p_buf = (uint8_t *)osqlcomm_updcols_type_get(&dt, p_buf, p_buf_end);
 
-        if (!p_buf) {
-            logmsg(LOGMSG_ERROR, "%s: truncated OSQL_UPDCOLS, msglen %d\n", __func__, msglen);
-            return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
-        }
-
         if (dt.ncols <= 0 ||
-            (size_t)dt.ncols > (size_t)(p_buf_end - p_buf) / sizeof(int)) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: OSQL_UPDCOLS with invalid ncols %d, msglen %d\n",
-                   __func__, dt.ncols, msglen);
-            return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
-        }
-
-        if (gbl_enable_osql_logging) {
-            int jj;
-            uuidstr_t us;
-            logmsg(LOGMSG_DEBUG, "%s OSQL_UPDCOLS %d [\n",
-                   comdb2uuidstr(uuid, us), dt.ncols);
-            for (jj = 0; jj < dt.ncols; jj++)
-                logmsg(LOGMSG_DEBUG, "%d ", dt.clist[jj]);
-            logmsg(LOGMSG_DEBUG, "\n");
-        }
+            dt.ncols > (p_msg_end - p_buf_end) / (int)sizeof(int))
+            goto badmsg;
 
         if (NULL != *updCols) {
             logmsg(LOGMSG_WARN, "%s recieved multiple update columns!  (ignoring duplicates)\n",
@@ -7800,9 +7874,28 @@ done_delete:
                                          0);
             }
             (*updCols)[0] = dt.ncols;
+
+            /* reset to the end of the column list */
+            p_buf_end = p_buf + sizeof(int) * dt.ncols;
             for (i = 0; i < dt.ncols; i++) {
                 p_buf = (uint8_t *)buf_get(&(*updCols)[i + 1], sizeof(int),
                                            p_buf, p_buf_end);
+            }
+
+            if (!p_buf) {
+                free(*updCols);
+                *updCols = NULL;
+                goto badmsg;
+            }
+
+            if (gbl_enable_osql_logging) {
+                int jj;
+                uuidstr_t us;
+                logmsg(LOGMSG_DEBUG, "%s OSQL_UPDCOLS %d [\n",
+                       comdb2uuidstr(uuid, us), dt.ncols);
+                for (jj = 0; jj < dt.ncols; jj++)
+                    logmsg(LOGMSG_DEBUG, "%d ", (*updCols)[jj + 1]);
+                logmsg(LOGMSG_DEBUG, "\n");
             }
         }
         EVENTLOG_DEBUG(
@@ -7816,10 +7909,20 @@ done_delete:
         uint8_t *p_buf = (uint8_t *)&((osql_serial_uuid_rpl_t *)msg)->dt;
         uint8_t *p_buf_end = p_buf + sizeof(osql_serial_t);
         osql_serial_t dt = {0};
-        CurRangeArr *arr = malloc(sizeof(CurRangeArr));
-        currangearr_init(arr);
+        CurRangeArr *arr;
+
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
 
         p_buf = (uint8_t *)osqlcomm_serial_type_get(&dt, p_buf, p_buf_end);
+
+        if (dt.buf_size < 0 || dt.buf_size > p_msg_end - p_buf ||
+            dt.arr_size < 0)
+            goto badmsg;
+
+        arr = malloc(sizeof(CurRangeArr));
+        currangearr_init(arr);
+
         arr->file = dt.file;
         arr->offset = dt.offset;
 
@@ -7827,6 +7930,11 @@ done_delete:
 
         p_buf = (uint8_t *)serial_readset_get(arr, dt.buf_size, dt.arr_size,
                                               p_buf, p_buf_end);
+
+        if (!p_buf) {
+            currangearr_free(arr);
+            goto badmsg;
+        }
 
         /* build up range hash */
         currangearr_build_hash(arr);
@@ -7861,7 +7969,15 @@ done_delete:
 
         p_buf_end = p_buf + sizeof(osql_index_t);
 
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
+
+        if (dt.ixnum < 0 || dt.ixnum >= MAXINDEX || dt.nData < 0 ||
+            dt.nData > p_msg_end - pData)
+            goto badmsg;
+
         if (gbl_enable_osql_logging) {
             int jj = 0;
             uuidstr_t us;
@@ -7899,8 +8015,16 @@ done_delete:
     } break;
     case OSQL_QBLOB: {
         osql_qblob_t dt = {0};
-        const uint8_t *p_buf_end = p_buf + sizeof(osql_qblob_t),
-                      *blob = osqlcomm_qblob_type_get(&dt, p_buf, p_buf_end);
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_qblob_t);
+
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
+        const uint8_t *blob = osqlcomm_qblob_type_get(&dt, p_buf, p_buf_end);
+
+        if (dt.bloblen > p_msg_end - blob)
+            goto badmsg;
+
         int odhready = (dt.id & OSQL_BLOB_ODH_BIT);
 
         dt.id &= ~OSQL_BLOB_ODH_BIT;
@@ -7986,6 +8110,9 @@ done_delete:
         const uint8_t *p_buf = (const uint8_t *)msg;
         const uint8_t *p_buf_end = p_buf + sizeof(osql_dbglog_t);
 
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
         osqlcomm_dbglog_type_get(&dbglog, p_buf, p_buf_end);
 
         if (!iq->dbglog_file)
@@ -8000,6 +8127,9 @@ done_delete:
         unsigned long long lclgenid;
 
         const uint8_t *p_buf_end = p_buf + sizeof(osql_recgenid_t);
+
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
 
         osqlcomm_recgenid_type_get(&dt, p_buf, p_buf_end);
 
@@ -8072,7 +8202,7 @@ done_delete:
     } break;
 
     case OSQL_BPFUNC: {
-        uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
+        const uint8_t *p_buf_end = p_msg_end;
         osql_bpfunc_t *rpl = NULL;
 
         const uint8_t *n_p_buf = osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
@@ -8120,6 +8250,17 @@ done_delete:
     }
 
     return 0;
+
+badmsg: {
+    uuidstr_t us;
+    logmsg(LOGMSG_ERROR,
+           "%s %s malformed osql opcode %u, msglen %d, failing the "
+           "transaction\n",
+           __func__, comdb2uuidstr(uuid, us), type, msglen);
+
+    reqerrstr(iq, COMDB2_BLK_RC_BUF_SZ, "malformed osql opcode %u", type);
+    return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+}
 }
 
 void signal_replicant_error(osql_target_t *target, unsigned long long rqid,
@@ -9030,27 +9171,34 @@ error:
 int need_views_lock(char *msg, int msglen, int use_uuid)
 {
     const uint8_t *p_buf, *p_buf_end;
+    size_t hdrlen = use_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t);
+    int rc;
+
+    if (msglen < (int)hdrlen)
+        return -1;
+
+    p_buf = (const uint8_t *)msg;
+    p_buf_end = (const uint8_t *)msg + msglen;
 
     if (use_uuid) {
         osql_uuid_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf + sizeof(rpl));
     } else {
         osql_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf + sizeof(rpl));
     }
 
     osql_bpfunc_t *rpl = NULL;
-    p_buf_end = (const uint8_t *)p_buf + sizeof(osql_bpfunc_t) + msglen;
     const uint8_t *n_p_buf = osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
 
-    if (!n_p_buf || !rpl)
+    if (!n_p_buf || !rpl) {
+        free(rpl);
         return -1;
+    }
 
-    return bpfunc_check(rpl->data, rpl->data_len, BPFUNC_TIMEPART_RETENTION);
+    rc = bpfunc_check(rpl->data, rpl->data_len, BPFUNC_TIMEPART_RETENTION);
+    free(rpl);
+    return rc;
 }
 
 #define GETI(field) \
