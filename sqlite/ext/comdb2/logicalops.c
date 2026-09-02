@@ -910,6 +910,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
             return SQLITE_INTERNAL;
         }
         LOGCOPY_32(&rectype, logdta.data);
+        normalize_rectype(&rectype);
         assert(rectype == rec->type);
 
         switch(rec->type) {
