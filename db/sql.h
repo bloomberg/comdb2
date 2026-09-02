@@ -778,6 +778,16 @@ struct sqlclntstate {
     int last_release_ms;         /* comdb2_time_epochms() at release */
     int last_release_count;      /* how many releases so far this request */
 
+    /* Per-query cost of releasing locks, for the event log.  Reset at the top
+       of each query; only filled in when the lock_instrumentation tunable is
+       on.  reacquire is the only one of these that is time waiting for locks --
+       see the note on the gbl_rdlk_* counters in sqlglue.c. */
+    uint64_t rdlk_total_us;
+    uint64_t rdlk_reacquire_us;
+    uint64_t rdlk_revalidate_us;
+    uint64_t rdlk_sleep_us;
+    uint64_t sync_dta_us;
+
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     pthread_mutex_t sql_lk;

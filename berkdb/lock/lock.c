@@ -74,6 +74,12 @@ extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
+/* Attribute lock-wait time to the role of the waiting locker, so a reader's
+ * wait can be told apart from a writer's.  Off by default: this is measurement
+ * for the recover_deadlock_sync_dta A/B, not something to pay for normally. */
+int gbl_lock_instrumentation = 0;
+static struct lock_role_stats lock_role_stats;
+
 static int __lock_freelock __P((DB_LOCKTAB *,
 	struct __db_lock *, DB_LOCKER *, u_int32_t));
 static void __lock_expires __P((DB_ENV *, db_timeval_t *, db_timeout_t));
@@ -325,7 +331,8 @@ __lock_id_flags(dbenv, idp, flags)
 	ret = __lock_getlocker(lt, *idp, locker_ndx, glflags, &lk);
 
 	if (!ret) {
-		F_CLR(lk, DB_LOCK_ID_TRACK | DB_LOCKER_READONLY | DB_LOCKER_KILLME);
+		F_CLR(lk, DB_LOCK_ID_TRACK | DB_LOCKER_READONLY | DB_LOCKER_KILLME |
+		    DB_LOCKER_SQL_READER | DB_LOCKER_SQL_WRITER);
 
 		if (LF_ISSET(DB_LOCK_ID_LOWPRI) || pthread_getspecific(lockmgr_key))
 			F_SET(lk, DB_LOCKER_KILLME);
@@ -335,6 +342,12 @@ __lock_id_flags(dbenv, idp, flags)
 
 		if (LF_ISSET(DB_LOCK_ID_TRACK))
 			F_SET(lk, DB_LOCKER_TRACK);
+
+		if (LF_ISSET(DB_LOCK_ID_SQL_READER))
+			F_SET(lk, DB_LOCKER_SQL_READER);
+
+		if (LF_ISSET(DB_LOCK_ID_SQL_WRITER))
+			F_SET(lk, DB_LOCKER_SQL_WRITER);
 	}
 
 	UNLOCKREGION(dbenv, lt);
@@ -2965,6 +2978,22 @@ upgrade:
 			t->n_locks++;
 			p->n_locks++;
 
+			/* Same wait, bucketed by who was waiting.  Reuses d, so
+			 * it rides on the (default-on) thread-stats and
+			 * lock-timing flags above. */
+			if (gbl_lock_instrumentation) {
+				if (F_ISSET(sh_locker, DB_LOCKER_SQL_READER)) {
+					lock_role_stats.reader_wait_us += d;
+					lock_role_stats.reader_waits++;
+				} else if (F_ISSET(sh_locker, DB_LOCKER_SQL_WRITER)) {
+					lock_role_stats.writer_wait_us += d;
+					lock_role_stats.writer_waits++;
+				} else {
+					lock_role_stats.other_wait_us += d;
+					lock_role_stats.other_waits++;
+				}
+			}
+
 			if (gbl_bb_log_lock_waits_fn) {
 				/* We had to wait on this lock - call our
 				 * callback to record some basic info about
@@ -3925,6 +3954,14 @@ __lock_addfamilylocker_with_prop(dbenv, pid, id, prop)
 }
 
 
+// PUBLIC: void __lock_get_role_stats __P((struct lock_role_stats *));
+void
+__lock_get_role_stats(out)
+	struct lock_role_stats *out;
+{
+	*out = lock_role_stats;
+}
+
 // PUBLIC: int __lock_locker_set_lowpri __P((DB_ENV *, u_int32_t));
 int
 __lock_locker_set_lowpri(dbenv, locker)
@@ -4349,6 +4386,10 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 		sh_locker->num_retries = prop ? prop->retries : 0;
 		if (prop && prop->flags & DB_LOCK_ID_LOWPRI)
 			F_SET(sh_locker, DB_LOCKER_KILLME);
+		if (prop && prop->flags & DB_LOCK_ID_SQL_READER)
+			F_SET(sh_locker, DB_LOCKER_SQL_READER);
+		if (prop && prop->flags & DB_LOCK_ID_SQL_WRITER)
+			F_SET(sh_locker, DB_LOCKER_SQL_WRITER);
 #if TEST_DEADLOCKS
 		printf("%p %s:%d lockerid %x setting priority to %d\n",
 		    (void*)pthread_self(), __FILE__, __LINE__, sh_locker->id, sh_locker->priority);

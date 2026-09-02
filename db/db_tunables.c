@@ -320,6 +320,7 @@ extern int gbl_pagelock_release_interval_ms;
 extern int gbl_pagelock_release_max_wait_ms;
 extern int gbl_debug_pagelock_release_trace;
 extern int gbl_debug_recover_deadlock_skip_sync_dta;
+extern int gbl_lock_instrumentation;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_debug_random_rtcpu_upgrade;

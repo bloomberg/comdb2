@@ -1809,6 +1809,11 @@ REGISTER_TUNABLE("recover_deadlock_sync_dta",
                  "Sync index/data cursors before lock release in recover_deadlock.  (Default: 1)", TUNABLE_BOOLEAN,
                  &gbl_recover_deadlock_sync_dta, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("lock_instrumentation",
+                 "Attribute lock-wait time to readers vs writers and time the parts of a lock release.  Needs the "
+                 "default-on bb_berkdb_enable_thread_stats/lock_timing to collect lock waits.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_lock_instrumentation, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_recover_deadlock_skip_sync_dta",
                  "Test only: with recover_deadlock_sync_dta on, still release non-SI locks but skip the "
                  "index/data cursor sync, to reproduce the 'Dta lookup lost the race' bug.  (Default: 0)",

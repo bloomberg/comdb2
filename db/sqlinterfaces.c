@@ -2871,8 +2871,24 @@ int release_locks_int(rlocks_reason_t reason, const char *func, int line, struct
        resolved after the release still finds its row (see
        sync_index_data_cursors). */
     if ((reason == RLOCKS_REASON_LOCKWAIT || (rd_flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY)) && thd &&
-        clnt->recover_deadlock_sync_dta && !clnt->recover_deadlock_skip_sync_dta)
+        clnt->recover_deadlock_sync_dta && !clnt->recover_deadlock_skip_sync_dta) {
+        /* Runs only with the feature on, so this is its added reader cost: a
+           blob capture per cursor plus, for index cursors whose paired data
+           cursor is lagging, a find and a record stash -- work that may turn
+           out not to be needed.  Charged here, before and disjoint from
+           gbl_rdlk_total_us. */
+        extern int gbl_lock_instrumentation;
+        extern uint64_t gbl_sync_dta_us, gbl_sync_dta_count;
+        extern int64_t comdb2_time_epochus(void);
+        int64_t sync_start = gbl_lock_instrumentation ? comdb2_time_epochus() : 0;
         sync_index_data_cursors(thd);
+        if (gbl_lock_instrumentation) {
+            uint64_t d = (uint64_t)(comdb2_time_epochus() - sync_start);
+            __sync_fetch_and_add(&gbl_sync_dta_us, d);
+            __sync_fetch_and_add(&gbl_sync_dta_count, 1);
+            clnt->sync_dta_us += d;
+        }
+    }
     return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, -1, func, line, rd_flags);
 }
 
@@ -2960,6 +2976,10 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* berkdb stats */
     bdb_reset_thread_stats();
+
+    /* per-query release-cost tallies, reported by eventlog_perfdata */
+    clnt->rdlk_total_us = clnt->rdlk_reacquire_us = clnt->rdlk_revalidate_us = 0;
+    clnt->rdlk_sleep_us = clnt->sync_dta_us = 0;
 
     if (clnt->rawnodestats) {
         clnt->rawnodestats->sql_queries++;

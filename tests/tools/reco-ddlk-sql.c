@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <poll.h>
 #include <pthread.h>
@@ -59,6 +60,13 @@ static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
  * Per-thread read slots also give the spread across readers, not just an
  * average: if releasing locks hurts reads, it may hurt them unevenly.
  */
+struct lockstats {
+    long long rd_wait_us, rd_waits;
+    long long wr_wait_us, wr_waits;
+    long long rel_total_us, rel_reacquire_us, rel_revalidate_us, rel_count;
+    long long sync_dta_us, sync_dta_count;
+};
+
 struct rd_slot {
     long long scans;
     long long rows;
@@ -101,7 +109,7 @@ static void metrics_add_read(int idx, long long ms, int rows)
     s->total_ms += ms;
 }
 
-static void metrics_report(const char *phase, long long phase_ms)
+static void metrics_report(const char *phase, long long phase_ms, const struct lockstats *lk)
 {
     long long scans = 0, rows = 0, total = 0, mn = 0, mx = 0;
 
@@ -118,9 +126,15 @@ static void metrics_report(const char *phase, long long phase_ms)
     Printf("METRIC phase=%s phase_ms=%lld "
            "wr_count=%lld wr_avg_ms=%.1f wr_max_ms=%lld "
            "rd_scans=%lld rd_rows=%lld rd_avg_ms=%.1f rd_min_ms=%lld rd_max_ms=%lld "
-           "incoherent=%d data_errors=%d\n",
+           "incoherent=%d data_errors=%d "
+           "lk_rd_wait_us=%lld lk_rd_waits=%lld lk_wr_wait_us=%lld lk_wr_waits=%lld "
+           "lk_rel_us=%lld lk_rel_reacq_us=%lld lk_rel_reval_us=%lld lk_rel_count=%lld "
+           "lk_sync_us=%lld lk_sync_count=%lld\n",
            phase, phase_ms, wr_count, wr_count ? (double)wr_total_ms / wr_count : 0.0, wr_max_ms, scans, rows,
-           scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors);
+           scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors,
+           lk->rd_wait_us, lk->rd_waits, lk->wr_wait_us, lk->wr_waits,
+           lk->rel_total_us, lk->rel_reacquire_us, lk->rel_revalidate_us, lk->rel_count,
+           lk->sync_dta_us, lk->sync_dta_count);
 }
 
 static char *tohex(char *in, int len, char *out)
@@ -171,6 +185,93 @@ static void who_master(void)
     }
     cdb2_close(db);
 }
+/*
+ * Server-side lock instrumentation (the 'lock_instrumentation' tunable).
+ *
+ * These counters are per node and cumulative, so a phase's cost is the delta
+ * across every node: on a cluster the readers run on the replicants while the
+ * writes commit on the master, so reading one node would see only half of it.
+ */
+static void lockstats_add_host(struct lockstats *acc, const char *host)
+{
+    static const struct {
+        const char *name;
+        size_t off;
+    } map[] = {
+        {"lockwait_reader_time", offsetof(struct lockstats, rd_wait_us)},
+        {"lockwait_reader_count", offsetof(struct lockstats, rd_waits)},
+        {"lockwait_writer_time", offsetof(struct lockstats, wr_wait_us)},
+        {"lockwait_writer_count", offsetof(struct lockstats, wr_waits)},
+        {"release_locks_time", offsetof(struct lockstats, rel_total_us)},
+        {"release_locks_reacquire_time", offsetof(struct lockstats, rel_reacquire_us)},
+        {"release_locks_revalidate_time", offsetof(struct lockstats, rel_revalidate_us)},
+        {"release_locks_count", offsetof(struct lockstats, rel_count)},
+        {"sync_dta_time", offsetof(struct lockstats, sync_dta_us)},
+        {"sync_dta_count", offsetof(struct lockstats, sync_dta_count)},
+    };
+    cdb2_hndl_tp *db = hndl((char *)host);
+    int rc = cdb2_run_statement(db, "SELECT name, value FROM comdb2_metrics");
+    if (rc != 0) {
+        /* Not fatal: an older server simply will not have these. */
+        Printf("%s cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(db));
+        cdb2_close(db);
+        return;
+    }
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        const char *name = cdb2_column_value(db, 0);
+        void *val = cdb2_column_value(db, 1);
+        if (!name || !val) continue;
+        /* the value column comes back typed, not as text */
+        long long v;
+        switch (cdb2_column_type(db, 1)) {
+        case CDB2_INTEGER: v = *(int64_t *)val; break;
+        case CDB2_REAL: v = (long long)*(double *)val; break;
+        default: continue;
+        }
+        for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); ++i) {
+            if (strcmp(name, map[i].name) == 0) {
+                *(long long *)((char *)acc + map[i].off) += v;
+                break;
+            }
+        }
+    }
+    cdb2_close(db);
+}
+
+static void lockstats_snapshot(struct lockstats *out)
+{
+    memset(out, 0, sizeof(*out));
+    cdb2_hndl_tp *db = hndl(NULL);
+    if (cdb2_run_statement(db, "SELECT host FROM comdb2_cluster") != 0) {
+        cdb2_close(db);
+        lockstats_add_host(out, NULL); /* single node */
+        return;
+    }
+    char *hosts[16];
+    int nhosts = 0, rc;
+    while ((rc = cdb2_next_record(db)) == CDB2_OK && nhosts < 16) {
+        const char *h = cdb2_column_value(db, 0);
+        if (h) hosts[nhosts++] = strdup(h);
+    }
+    cdb2_close(db);
+    if (nhosts == 0) {
+        lockstats_add_host(out, NULL);
+        return;
+    }
+    for (int i = 0; i < nhosts; ++i) {
+        lockstats_add_host(out, hosts[i]);
+        free(hosts[i]);
+    }
+}
+
+static void lockstats_diff(struct lockstats *d, const struct lockstats *a, const struct lockstats *b)
+{
+    long long *pd = (long long *)d;
+    const long long *pa = (const long long *)a, *pb = (const long long *)b;
+    for (size_t i = 0; i < sizeof(*d) / sizeof(long long); ++i)
+        pd[i] = pb[i] - pa[i];
+}
+
 static int num_incoherent(void)
 {
     cdb2_hndl_tp *master = hndl(master_node);
@@ -615,8 +716,11 @@ static void run_phase(const char *name, void (*body)(void), int settle)
 {
     pthread_t thd;
     struct timeval start;
+    struct lockstats before, after, delta;
 
     metrics_reset();
+    memset(&delta, 0, sizeof(delta));
+    if (perf_mode) lockstats_snapshot(&before);
     gettimeofday(&start, NULL);
 
     done = 0;
@@ -627,7 +731,12 @@ static void run_phase(const char *name, void (*body)(void), int settle)
     done = 1;
     pthread_join(thd, NULL);
 
-    if (perf_mode) metrics_report(name, ms_since(&start));
+    if (perf_mode) {
+        long long ms = ms_since(&start);
+        lockstats_snapshot(&after);
+        lockstats_diff(&delta, &before, &after);
+        metrics_report(name, ms, &delta);
+    }
 }
 
 static int runit(void)

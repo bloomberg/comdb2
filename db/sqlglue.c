@@ -162,6 +162,67 @@ extern int gbl_enable_internal_sql_stmt_caching;
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
 
+/* What a lock release actually costs, broken into its parts.  Collected only
+   when gbl_lock_instrumentation is on.
+
+   Only reacquire_us is time spent waiting to get locks back.  revalidate_us is
+   NOT: under the default new_mode, set_curtran just stores the curtran pointer
+   and the cursors stay invalidated (bdb_cursor_set_curtran, bdb/cursor.c), so
+   that block is a pointer store plus a schema-version check.  It acquires locks
+   only on the legacy new_mode==0 path, which calls bdbcur->lock().  It is timed
+   so the parts account for the total, not because it is contention.
+
+   The two paths drop locks in different places, so they are timed separately:
+   the page-locks-only path (the one recover_deadlock_sync_dta uses) does its
+   work in unlock_bdb_cursors and returns before put_curtran, so it never
+   contributes to release_us/reacquire_us/revalidate_us.  Its page locks are
+   retaken lazily on the next cursor move, landing in ordinary reader lock-wait
+   instead -- which is why reacquire_us is expected to be ~0 for the feature.
+
+   gbl_sync_dta_us is charged in release_locks_int, outside recover_deadlock and
+   before it, so it does not overlap gbl_rdlk_total_us; the two are disjoint and
+   sum to total release-related cost.  They cover different populations though:
+   the sync runs only for release_locks_int callers, while recover_deadlock is
+   also entered directly by sql_tick, ddguard_bdb_cursor_move, analyze, lua and
+   others that never sync. */
+extern int gbl_lock_instrumentation;
+uint64_t gbl_rdlk_total_us = 0;
+uint64_t gbl_rdlk_unlock_us = 0;
+uint64_t gbl_rdlk_release_us = 0;
+uint64_t gbl_rdlk_sleep_us = 0;
+uint64_t gbl_rdlk_reacquire_us = 0;
+uint64_t gbl_rdlk_revalidate_us = 0;
+uint64_t gbl_rdlk_count = 0;
+uint64_t gbl_rdlk_pagelocks_only_count = 0;
+uint64_t gbl_sync_dta_us = 0;
+uint64_t gbl_sync_dta_count = 0;
+
+extern int64_t comdb2_time_epochus(void);
+
+/* Read the clock only when we are measuring. */
+static inline int64_t rdlk_now(void)
+{
+    return gbl_lock_instrumentation ? comdb2_time_epochus() : 0;
+}
+
+/* Charge an elapsed segment to the global counter and, when given, to the
+   query's own tally.  Both are updated at the source: differencing the globals
+   would pick up whatever other threads did in the same window. */
+static inline void rdlk_add2(uint64_t *acc, uint64_t *clnt_acc, int64_t start)
+{
+    if (gbl_lock_instrumentation) {
+        uint64_t d = (uint64_t)(comdb2_time_epochus() - start);
+        __sync_fetch_and_add(acc, d);
+        if (clnt_acc)
+            *clnt_acc += d;
+    }
+}
+
+static inline void rdlk_add(uint64_t *acc, int64_t start)
+{
+    rdlk_add2(acc, NULL, start);
+}
+
 extern int sqldbgflag;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 
@@ -10796,7 +10857,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     clnt->last_release_ms = comdb2_time_epochms();
     clnt->last_release_count++;
 
+    /* This is where the page locks actually go for the page-locks-only path,
+       which returns below without ever reaching put_curtran. */
+    int64_t rdlk_t = rdlk_now();
     unlock_bdb_cursors(thd, bdbcur, &bdberr);
+    rdlk_add(&gbl_rdlk_unlock_us, rdlk_t);
 
     /* Page-locks-only release: closing the bdb cursors above already dropped
      * their page locks (they are opened on the curtran's bare lockerid with no
@@ -10812,12 +10877,16 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
      * will lazily re-position on next use. */
     if (flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY) {
         assert(bdb_lockref() > 0);
+        if (gbl_lock_instrumentation)
+            __sync_fetch_and_add(&gbl_rdlk_pagelocks_only_count, 1);
         return 0;
     }
 
     curtran_flags = CURTRAN_RECOVERY;
     /* free curtran */
+    rdlk_t = rdlk_now();
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+    rdlk_add(&gbl_rdlk_release_us, rdlk_t);
     assert(bdb_lockref() == 0);
     if (rc) {
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
@@ -10849,6 +10918,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
        gobbler
        */
 
+    /* Deliberate backoff, not contention -- tracked separately so it cannot be
+       mistaken for time spent waiting to get the locks back. */
+    rdlk_t = rdlk_now();
     if (debug_switch_poll_on_lock_desired()) {
         if (bdb_lock_desired(thedb->bdb_env)) {
             while (bdb_lock_desired(thedb->bdb_env)) {
@@ -10868,6 +10940,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (sleepms > 0)
             poll(NULL, 0, sleepms);
     }
+    rdlk_add2(&gbl_rdlk_sleep_us, &clnt->rdlk_sleep_us, rdlk_t);
 
     /* Fake generation-changed failure */
     if (force_fail) {
@@ -10878,7 +10951,10 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             rc = SQLITE_SCHEMA;
         }
     } else {
+        /* This is the "waiting to get the locks back" number. */
+        rdlk_t = rdlk_now();
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+        rdlk_add2(&gbl_rdlk_reacquire_us, &clnt->rdlk_reacquire_us, rdlk_t);
     }
 
     if (rc) {
@@ -10913,6 +10989,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 
     /* now that we have a new curtran, try to reposition them */
     int schema_rc = 0;
+
+    /* Now that we have a new curtran, try to reposition them.  Under the
+       default new_mode this is a pointer store plus a schema check, not lock
+       acquisition -- timed only so the parts account for the total. */
+    rdlk_t = rdlk_now();
     Pthread_mutex_lock(&thd->lk);
     if (thd->bt) {
         LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
@@ -10928,6 +11009,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                     Pthread_mutex_unlock(&thd->lk);
                     logmsg(LOGMSG_ERROR, "bdb_cursor_lock returned %d %d\n", rc,
                             bdberr);
+                    rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
                     return -700;
                 }
             }
@@ -10962,6 +11044,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 
     if (schema_rc) {
         Pthread_mutex_unlock(&thd->lk);
+        rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
         return schema_rc;
     }
 
@@ -10970,11 +11053,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returned %d %d\n", __func__, rc, bdberr);
             Pthread_mutex_unlock(&thd->lk);
+            rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
             return -800;
         }
     }
 
     Pthread_mutex_unlock(&thd->lk);
+    rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
 
     return 0;
 }
@@ -10992,7 +11077,14 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
 {
+    /* Total for every recover_deadlock caller, whatever return path it takes.
+       Disjoint from gbl_sync_dta_us, which is charged before this in
+       release_locks_int. */
+    int64_t rdlk_start = rdlk_now();
     int rc = clnt->recover_deadlock_rcode = recover_deadlock_flags_int(bdb_state, clnt, bdbcur, sleepms, func, line, flags);
+    if (gbl_lock_instrumentation)
+        __sync_fetch_and_add(&gbl_rdlk_count, 1);
+    rdlk_add2(&gbl_rdlk_total_us, &clnt->rdlk_total_us, rdlk_start);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, clnt, CURTRAN_RECOVERY);
 #if INSTRUMENT_RECOVER_DEADLOCK_FAILURE

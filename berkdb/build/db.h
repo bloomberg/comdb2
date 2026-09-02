@@ -432,6 +432,8 @@ struct txn_properties;
 #define DB_LOCK_ID_LOWPRI   0x001	/* Choose this as a deadlock victim */
 #define DB_LOCK_ID_TRACK    0x002	/* Track this lockid */
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
+#define DB_LOCK_ID_SQL_READER 0x008	/* Locker belongs to a SQL read cursor */
+#define DB_LOCK_ID_SQL_WRITER 0x010	/* Locker belongs to a SQL write txn */
 
 /* Flag values for lock_abort_waiters */
 #define DB_LOCK_ABORT_LOGICAL   0x0001 /* Only abort logical waiters */
@@ -499,6 +501,20 @@ typedef enum  {
 	DB_LSTAT_WAITING=8,/* Lock is on the wait queue. */
 	DB_LSTAT_WAITDIE=9
 }db_status_t;
+
+/*
+ * Lock-wait time attributed to the role of the waiting locker.  Collected only
+ * when gbl_lock_instrumentation is on.  "other" is everything that is neither a
+ * SQL read cursor nor a SQL write transaction (replication, utilities, ...).
+ */
+struct lock_role_stats {
+	u_int64_t reader_wait_us;
+	u_int64_t reader_waits;
+	u_int64_t writer_wait_us;
+	u_int64_t writer_waits;
+	u_int64_t other_wait_us;
+	u_int64_t other_waits;
+};
 
 /* Lock statistics structure. */
 struct __db_lock_stat {
