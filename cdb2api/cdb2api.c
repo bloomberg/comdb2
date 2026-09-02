@@ -4810,7 +4810,19 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     req_info.num_retries = retries_done;
     sqlquery.req_info = &req_info;
 
-    int len = cdb2__query__get_packed_size(&query);
+    size_t packed_len = cdb2__query__get_packed_size(&query);
+
+    /* The newsql wire length is a signed 32-bit field, so a query packing to
+     * more than INT_MAX cannot be represented.  Reject it rather than overflow
+     * len; the connection stays healthy and retrying cannot help. */
+    if (packed_len > INT_MAX) {
+        if (hndl)
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "query too large to send (%zu bytes exceeds wire maximum %d)",
+                     packed_len, INT_MAX);
+        rc = CDB2ERR_REJECTED;
+        goto after_callback;
+    }
+    int len = (int)packed_len;
 
     unsigned char *buf;
     int on_heap = 1;
@@ -6333,6 +6345,12 @@ after_delay:
     }
 #endif
     if (rc) {
+        /* A client-side rejection (e.g. the query is too large to send) leaves
+         * the connection healthy and cannot be helped by retrying; return it
+         * (with its errstr) to the caller as-is instead of disconnecting. */
+        if (rc == CDB2ERR_REJECTED) {
+            PRINT_AND_RETURN(rc);
+        }
         debugprint("cdb2_send_query rc = %d\n", rc);
         sprintf(hndl->errstr, "%s: Can't send query to the db", __func__);
         newsql_disconnect(hndl, hndl->sb, __LINE__);

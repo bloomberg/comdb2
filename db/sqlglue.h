@@ -32,6 +32,10 @@ struct mem_info {
     int maxblobs;
     struct convert_failure *fail_reason;
     int fldidx;
+    /* Per-table maximum blob/vutf8 length, checked against the *uncompressed*
+     * sqlite value in mem_to_ondisk() before it is packed/compressed.  0 means
+     * "unknown" -- fall back to the coarse MAXBLOBLENGTH2 upper bound. */
+    unsigned int max_blob_length;
 };
 
 typedef struct {

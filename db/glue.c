@@ -2024,6 +2024,35 @@ retry:
     return rc;
 }
 
+/* Fetch a data record's odh2 timestamps by genid: 0 on success (both times 0
+ * if the record is not odh2), non-zero if it cannot be read.  Used when a row
+ * is reached via an index, where the cursor sits on the index entry instead. */
+int get_ondisk_timestamps_by_genid(struct dbtable *db, int rrn, unsigned long long genid, uint32_t *insert_secs,
+                                   uint32_t *update_secs)
+{
+    bdb_fetch_args_t args = {0};
+    int fndlen = 0, bdberr = 0, rc, maxlen;
+    void *buf;
+
+    *insert_secs = 0;
+    *update_secs = 0;
+    if (!db || !db->handle)
+        return -1;
+
+    maxlen = getdatsize(db);
+    if (maxlen <= 0)
+        return -1;
+    buf = alloca(maxlen);
+
+    rc = bdb_fetch_by_rrn_and_genid(db->handle, rrn, genid, buf, maxlen, &fndlen, &args, &bdberr);
+    if (rc != 0)
+        return -1;
+
+    *insert_secs = args.insert_secs;
+    *update_secs = args.update_secs;
+    return 0;
+}
+
 /* we dont want to retry on deadlock here. */
 int ix_find_auxdb_by_rrn_and_genid_dirty(int auxdb, struct ireq *iq, int rrn,
                                          unsigned long long genid, void *fnddta,
@@ -3910,6 +3939,7 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
         gbl_init_with_compr_blobs = 0;
         gbl_init_with_ipu = 0;
         gbl_init_with_instant_sc = 0;
+        gbl_init_with_odh2 = 0; /* odh2 requires the ondisk header */
     }
     if (put_db_odh(d, NULL, gbl_init_with_odh) != 0)
         return -1;
@@ -3921,11 +3951,14 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
         return -1;
     if (put_db_instant_schema_change(d, NULL, gbl_init_with_instant_sc) != 0)
         return -1;
+    if (put_db_odh2(d, NULL, gbl_init_with_odh2) != 0)
+        return -1;
     d->odh = gbl_init_with_odh;
     *compr = gbl_init_with_compr;
     *compr_blobs = gbl_init_with_compr_blobs;
     d->inplace_updates = gbl_init_with_ipu;
     d->instant_schema_change = gbl_init_with_instant_sc;
+    d->odh2 = gbl_init_with_odh2;
     return 0;
 }
 
@@ -3979,6 +4012,7 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
         d->inplace_updates = 0;
         d->instant_schema_change = 0;
         *datacopy_odh = 0;
+        d->odh2 = 0;
         return 0;
     }
 
@@ -3987,6 +4021,7 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
     get_db_instant_schema_change_tran(d, &d->instant_schema_change, tran);
     get_db_inplace_updates_tran(d, &d->inplace_updates, tran);
     get_db_datacopy_odh_tran(d, datacopy_odh, tran);
+    get_db_odh2_tran(d, &d->odh2, tran);
 
     return 0;
 }
@@ -4212,9 +4247,8 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
-        set_bdb_option_flags(tbl, tbl->odh, tbl->inplace_updates,
-                             tbl->instant_schema_change, tbl->schema_version,
-                             compress, compress_blobs, datacopy_odh);
+        set_bdb_option_flags(tbl, tbl->odh, tbl->inplace_updates, tbl->instant_schema_change, tbl->schema_version,
+                             compress, compress_blobs, datacopy_odh, tbl->odh2);
 
         ctrace("Table %s  "
                "ver %d  "
@@ -4665,6 +4699,9 @@ get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
 
 // get_db_datacopy_odh, get_db_datacopy_odh_tran, put_db_datacopy_odh
 get_put_db(datacopy_odh, META_DATACOPY_ODH)
+
+// get_db_odh2, get_db_odh2_tran, put_db_odh2
+get_put_db(odh2, META_ODH2)
 
 // get_db_queue_odh, get_db_queue_odh_tran, put_db_queue_odh
 get_put_db(queue_odh, META_QUEUE_ODH)
