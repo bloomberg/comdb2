@@ -3668,18 +3668,13 @@ const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
         return NULL;
     }
 
-    dbName = zDatabase;
-
     if ((strcasecmp(zDatabase, temp_dbname) == 0)) {
         dbName = temp_dbname;
-    }
-    /* extract location hint, if any */
-    else if ((*fqDbname = strchr(dbName, '_')) != NULL) {
-        dbName = (++(*fqDbname));
-        *fqDbname = zDatabase;
     } else {
-        *fqDbname = zDatabase;
+        /* extract recognized class/LOCAL prefix, if any */
+        dbName = _strip_class_prefix(zDatabase);
     }
+    *fqDbname = zDatabase;
 
     /* NOTE: _ notation is invalidated if dbname is the same as local */
     if (strcasecmp(thedb->envname, dbName) == 0) /* local name */
