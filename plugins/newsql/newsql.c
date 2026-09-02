@@ -2599,7 +2599,11 @@ static void *newsql_get_authdata(struct sqlclntstate *clnt)
         if (sql_query && sql_query->identity) {
             clnt->externalAuthUser = sql_query->identity->principal;
             if (externalMakeNewsqlAuthData) {
-                return externalMakeNewsqlAuthData(clnt->authdata, sql_query->identity);
+                void *authdata = externalMakeNewsqlAuthData(clnt->authdata, sql_query->identity);
+                if (authdata) {
+                    clnt->authdata = authdata;
+                    return authdata;
+                }
             }
         } else {
             clnt->externalAuthUser = NULL;
