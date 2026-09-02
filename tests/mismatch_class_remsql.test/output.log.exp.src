@@ -9,3 +9,5 @@
 (id=1, b1=x'11')
 (id=2, b1=x'22')
 (id=5, b1=x'55')
+(rows inserted=1)
+(id=7)

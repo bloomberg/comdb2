@@ -57,6 +57,18 @@ $cmd "select * from LOCAL_${a_remdbname}.t2" >> ${output} 2>&1
 echo "Accessing again same db, and same old table"
 $cmd "select * from LOCAL_${a_remdbname}.trem" >> ${output} 2>&1
 
+# regression check: $a_dbname (the querying db) now embeds an
+# underscore in its own name (SECONDARY_DB_PREFIX=src_db) whose prefix
+# ("src") is not LOCAL nor a recognized class. Bare self-qualification
+# with the db's own name must still resolve locally instead of being
+# misrouted through fdb parsing.
+echo "Creating local table on querying db (whose name contains an underscore)"
+$cmd "create table tself (id int)" >> ${output} 2>&1
+$cmd "insert into tself values (7)" >> ${output} 2>&1
+
+echo "Self-qualifying own dbname (contains underscore) with bare name"
+$cmd "select * from ${a_dbname}.tself" >> ${output} 2>&1
+
 
 # get testcase output
 echo "Comparing output"
