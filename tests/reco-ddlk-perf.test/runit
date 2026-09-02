@@ -152,8 +152,9 @@ write_phase_tables()
         echo "$heading $title"
         echo
         for f in phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors \
-         lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits \
-         lk_rel_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count lk_sync_us lk_sync_count ; do
+         lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits lk_other_wait_us lk_other_waits \
+         lk_rel_us lk_rel_unlock_us lk_rel_sleep_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count \
+         lk_sync_us lk_sync_count ; do
             local off on
             off=$(metric "$offfile" $phase $f)
             on=$(metric "$onfile" $phase $f)
@@ -172,8 +173,9 @@ write_average_tables()
         echo "### $title (average of $nruns runs)"
         echo
         for f in phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors \
-         lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits \
-         lk_rel_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count lk_sync_us lk_sync_count ; do
+         lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits lk_other_wait_us lk_other_waits \
+         lk_rel_us lk_rel_unlock_us lk_rel_sleep_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count \
+         lk_sync_us lk_sync_count ; do
             local offs=() ons=() run
             for run in $(seq 1 $nruns) ; do
                 offs+=("$(metric "$(off_file $run)" $phase $f)")
@@ -213,7 +215,11 @@ print_result()
     echo "| \`lk_rd_waits\`  | Number of such reader lock waits. |"
     echo "| \`lk_wr_wait_us\` | Time SQL write transactions spent blocked waiting for locks, summed over every node. |"
     echo "| \`lk_wr_waits\`  | Number of such writer lock waits. |"
-    echo "| \`lk_rel_us\`    | Total time inside recover_deadlock (releasing locks), all callers. |"
+    echo "| \`lk_other_wait_us\` | Lock wait by threads that are neither -- replication apply, utilities.  On a cluster this is where the write-side contention shows up, since SQL does not run on the master. |"
+    echo "| \`lk_other_waits\` | Number of those waits. |"
+    echo "| \`lk_rel_us\`    | Total time inside recover_deadlock (releasing locks), all callers.  Read it with lk_rel_sleep_us: much of it is deliberate backoff, not work. |"
+    echo "| \`lk_rel_unlock_us\` | Of that, dropping the cursor page locks -- the real work on the feature's path. |"
+    echo "| \`lk_rel_sleep_us\` | Of that, the deliberate poll() backoff.  Not contention and not work; subtract it before calling lk_rel_us an overhead. |"
     echo "| \`lk_rel_reacq_us\` | Of that, time waiting to get the locks back (get_curtran).  **This is the only figure here that is a lock wait.**  Expected to be ~0 for the feature, whose page-locks-only path returns before re-acquiring and retakes page locks lazily on the next cursor move -- that cost lands in \`lk_rd_wait_us\` instead. |"
     echo "| \`lk_rel_reval_us\` | Of that, cursor revalidation after the release.  Not a lock wait: under the default new_mode this is a pointer store plus a schema-version check. |"
     echo "| \`lk_rel_count\` | Number of recover_deadlock calls. |"

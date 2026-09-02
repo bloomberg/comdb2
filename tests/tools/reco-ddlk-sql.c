@@ -63,7 +63,8 @@ static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
 struct lockstats {
     long long rd_wait_us, rd_waits;
     long long wr_wait_us, wr_waits;
-    long long rel_total_us, rel_reacquire_us, rel_revalidate_us, rel_count;
+    long long other_wait_us, other_waits;
+    long long rel_total_us, rel_unlock_us, rel_sleep_us, rel_reacquire_us, rel_revalidate_us, rel_count;
     long long sync_dta_us, sync_dta_count;
 };
 
@@ -128,12 +129,16 @@ static void metrics_report(const char *phase, long long phase_ms, const struct l
            "rd_scans=%lld rd_rows=%lld rd_avg_ms=%.1f rd_min_ms=%lld rd_max_ms=%lld "
            "incoherent=%d data_errors=%d "
            "lk_rd_wait_us=%lld lk_rd_waits=%lld lk_wr_wait_us=%lld lk_wr_waits=%lld "
-           "lk_rel_us=%lld lk_rel_reacq_us=%lld lk_rel_reval_us=%lld lk_rel_count=%lld "
+           "lk_other_wait_us=%lld lk_other_waits=%lld "
+           "lk_rel_us=%lld lk_rel_unlock_us=%lld lk_rel_sleep_us=%lld "
+           "lk_rel_reacq_us=%lld lk_rel_reval_us=%lld lk_rel_count=%lld "
            "lk_sync_us=%lld lk_sync_count=%lld\n",
            phase, phase_ms, wr_count, wr_count ? (double)wr_total_ms / wr_count : 0.0, wr_max_ms, scans, rows,
            scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors,
            lk->rd_wait_us, lk->rd_waits, lk->wr_wait_us, lk->wr_waits,
-           lk->rel_total_us, lk->rel_reacquire_us, lk->rel_revalidate_us, lk->rel_count,
+           lk->other_wait_us, lk->other_waits,
+           lk->rel_total_us, lk->rel_unlock_us, lk->rel_sleep_us,
+           lk->rel_reacquire_us, lk->rel_revalidate_us, lk->rel_count,
            lk->sync_dta_us, lk->sync_dta_count);
 }
 
@@ -202,7 +207,11 @@ static void lockstats_add_host(struct lockstats *acc, const char *host)
         {"lockwait_reader_count", offsetof(struct lockstats, rd_waits)},
         {"lockwait_writer_time", offsetof(struct lockstats, wr_wait_us)},
         {"lockwait_writer_count", offsetof(struct lockstats, wr_waits)},
+        {"lockwait_other_time", offsetof(struct lockstats, other_wait_us)},
+        {"lockwait_other_count", offsetof(struct lockstats, other_waits)},
         {"release_locks_time", offsetof(struct lockstats, rel_total_us)},
+        {"release_locks_unlock_time", offsetof(struct lockstats, rel_unlock_us)},
+        {"release_locks_sleep_time", offsetof(struct lockstats, rel_sleep_us)},
         {"release_locks_reacquire_time", offsetof(struct lockstats, rel_reacquire_us)},
         {"release_locks_revalidate_time", offsetof(struct lockstats, rel_revalidate_us)},
         {"release_locks_count", offsetof(struct lockstats, rel_count)},
