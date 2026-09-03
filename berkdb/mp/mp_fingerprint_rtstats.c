@@ -69,11 +69,14 @@ int gbl_fingerprint_rtstats_max_entries = 5000;
 static struct fingerprint_rtstats gbl_fingerprint_rtstats_nofingerprint;
 
 static pthread_key_t fingerprint_rtstats_key;
-/* Which counter pair bump_pagein() increments. Per-thread, not on the entry:
- * one entry is shared by all three roles at once, even on a single node. */
-#define FP_RTSTATS_MODE_SQL	0
-#define FP_RTSTATS_MODE_WRITE	1
-#define FP_RTSTATS_MODE_APPLY	2
+/*
+ * Which counter pair bump_pagein() increments, and the role locks report.
+ * Per-thread; BB_BERKDB_FP_ROLE_* (db.h), NONE for a thread that never armed.
+ */
+#define FP_RTSTATS_MODE_NONE	BB_BERKDB_FP_ROLE_NONE
+#define FP_RTSTATS_MODE_SQL	BB_BERKDB_FP_ROLE_SQL
+#define FP_RTSTATS_MODE_WRITE	BB_BERKDB_FP_ROLE_WRITE
+#define FP_RTSTATS_MODE_APPLY	BB_BERKDB_FP_ROLE_APPLY
 static pthread_key_t fingerprint_rtstats_mode_key;
 static int fingerprint_rtstats_inited = 0;
 
@@ -168,6 +171,18 @@ bb_berkdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t
 	fingerprint_rtstats_set_internal(fingerprint, fplen, has_main_entry, FP_RTSTATS_MODE_APPLY);
 }
 
+/*
+ * Declare a role without naming a fingerprint. Deliberately leaves the
+ * fingerprint TLS alone: a _set_apply()/_set_write() may arrive later.
+ */
+void
+bb_berkdb_fingerprint_rtstats_set_role(int role)
+{
+	if (!fingerprint_rtstats_inited)
+		return;
+	Pthread_setspecific(fingerprint_rtstats_mode_key, (void *)(intptr_t)role);
+}
+
 /* Called when the statement is done (or on error paths). */
 void
 bb_berkdb_fingerprint_rtstats_clear(void)
@@ -175,7 +190,32 @@ bb_berkdb_fingerprint_rtstats_clear(void)
 	if (!fingerprint_rtstats_inited)
 		return;
 	Pthread_setspecific(fingerprint_rtstats_key, NULL);
-	Pthread_setspecific(fingerprint_rtstats_mode_key, (void *)(intptr_t)FP_RTSTATS_MODE_SQL);
+	Pthread_setspecific(fingerprint_rtstats_mode_key, (void *)(intptr_t)FP_RTSTATS_MODE_NONE);
+}
+
+/*
+ * Current attribution, for stamping onto something that outlives the call. *role
+ * is always set; returns 1 with fingerprint[] (FP_RTSTATS_KEYSZ) filled, else 0.
+ */
+int
+bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role)
+{
+	struct fingerprint_rtstats *t = NULL;
+
+	*role = BB_BERKDB_FP_ROLE_NONE;
+
+	if (fingerprint_rtstats_inited) {
+		t = pthread_getspecific(fingerprint_rtstats_key);
+		*role = (int)(intptr_t)pthread_getspecific(fingerprint_rtstats_mode_key);
+	}
+
+	if (t == NULL) {
+		memset(fingerprint, 0, FP_RTSTATS_KEYSZ);
+		return 0;
+	}
+
+	memcpy(fingerprint, t->fingerprint, FP_RTSTATS_KEYSZ);
+	return 1;
 }
 
 /*
@@ -189,7 +229,7 @@ void
 bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io)
 {
 	struct fingerprint_rtstats *t = NULL;
-	int mode = FP_RTSTATS_MODE_SQL;
+	int mode = FP_RTSTATS_MODE_NONE;
 
 	if (fingerprint_rtstats_inited) {
 		t = pthread_getspecific(fingerprint_rtstats_key);
@@ -209,7 +249,8 @@ bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io)
 		if (did_io)
 			ATOMIC_ADD64(t->n_apply_pagein_read_io, 1);
 		break;
-	default:
+	default: /* SQL, and NONE -- which only reaches the no-fingerprint bucket,
+		  * where an unarmed thread landed before NONE was split out. */
 		ATOMIC_ADD64(t->n_pagein_read, 1);
 		if (did_io)
 			ATOMIC_ADD64(t->n_pagein_read_io, 1);

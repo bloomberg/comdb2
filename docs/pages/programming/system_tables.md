@@ -257,7 +257,8 @@ Describes all the hard limits in the database.
 
 Lists all active comdb2 locks.
 
-   comdb2_locks(thread, lockerid, mode, status, object, locktype, page)
+   comdb2_locks(thread, lockerid, mode, status, object, locktype, page,
+                fingerprint, fingerprint_role)
 
 * `thread` - Thread Id of the owner thread
 * `lockerid` - Locker Id
@@ -269,6 +270,12 @@ Lists all active comdb2 locks.
 * `locktype` - Lock type (`PAGE`, `HANDLE`, `KEYHASH`, `ROWLOCK`, `MINMAX`,
               `TABLELOCK`, `STRIPELOCK`, `LSN`, `ENV`)
 * `page` - Page number
+* `fingerprint` - Fingerprint of the SQL statement that took the lock, NULL if
+                  not known
+* `fingerprint_role` - What the owner was doing when it took the lock: `R`
+                       (executing a SQL statement), `W` (master applying a
+                       write), `A` (replicant applying the replication stream);
+                       NULL if not known
 
 ## comdb2_logical_operations
 
