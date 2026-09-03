@@ -3,4 +3,14 @@ bash -n "$0" | exit 1
 
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
 [ $? -eq 0 ] || exit 1
+
+shopt -s nullglob
+dblogs=("${TESTDIR}/logs/${DBNAME}"*.db)
+[ ${#dblogs[@]} -gt 0 ] || exit 1
+
+grep -q "Password authentication enabled for user 'dba' with an empty password" \
+    "${dblogs[@]}" || exit 1
+grep -q "Password authentication enabled for user 'root' with an empty password" \
+    "${dblogs[@]}" && exit 1
+
 exit 0
