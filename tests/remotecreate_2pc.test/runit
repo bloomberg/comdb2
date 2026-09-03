@@ -13,7 +13,6 @@ set -x
 #  5. Participant crash after prepare on DROP: same as above but for drop
 #  6. Verify non-key sharding still fails properly with 2PC enabled
 #  7. Multiple create/drop cycles: stress test for resource leaks
-#  8. disttxn_ddl_resolve_fatal tunable: verify tunable can be toggled
 #  9. Crash after PREPARED sent — coordinator commits: participant crashes after
 #     sending PREPARED, coordinator commits, verify resume re-runs finalize
 # 10. Crash after PREPARED sent — coordinator aborts: participant crashes after
@@ -183,7 +182,7 @@ function kill_restart_cluster
         else
             mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.old 2>/dev/null
             CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
-            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $LOGDIR/${dbname}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $LOGDIR/${dbname}.${node}.db) 2>&1 &
             echo $! > ${TMPDIR}/${dbname}.${node}.pid
         fi
     done
@@ -627,35 +626,6 @@ function test_multiple_create_drop
 }
 
 ########################################
-# TEST 8: Verify disttxn_ddl_resolve_fatal tunable
-# When set to 0, startup should abort the DDL txn
-# instead of aborting startup if coordinator is unreachable.
-# (This test just verifies the tunable can be set without error.)
-########################################
-function test_ddl_resolve_tunable
-{
-    echo "=== TEST: test_ddl_resolve_tunable ==="
-
-    for node in $CLUSTER; do
-        $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $node \
-            "put tunable disttxn_ddl_resolve_fatal '0'" 2>&1
-        if (( $? != 0 )); then
-            fail_exit "test_ddl_resolve_tunable: failed to set disttxn_ddl_resolve_fatal to 0"
-            return
-        fi
-
-        $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $node \
-            "put tunable disttxn_ddl_resolve_fatal '1'" 2>&1
-        if (( $? != 0 )); then
-            fail_exit "test_ddl_resolve_tunable: failed to set disttxn_ddl_resolve_fatal to 1"
-            return
-        fi
-    done
-
-    echo "test_ddl_resolve_tunable PASSED"
-}
-
-########################################
 # TEST 9: Crash after PREPARED sent — coordinator commits
 #
 # Participant (tertiary) sends CDB2_DIST__PREPARED then crashes.
@@ -736,9 +706,8 @@ function test_crash_after_prepared_commit
 # Primary (coordinator) is also killed immediately after the tertiary crashes,
 # before it can send its decision back to the tertiary.
 # On restart, tertiary's disttxn_resolve_ddl_prepared() cannot reach the
-# coordinator → DDL_RESOLVE_TIMEOUT_SEC (30s) timeout.
-# With disttxn_ddl_resolve_fatal=0 (written to lrl before restart),
-# the DDL txn is aborted and startup continues cleanly.
+# coordinator → DDL_RESOLVE_TIMEOUT_SEC (30s) timeout, after which the DDL txn
+# is aborted and startup continues cleanly.
 # Expected: tertiary comes up without deadlock, table NOT on tertiary.
 ########################################
 function test_crash_after_prepared_abort
@@ -751,10 +720,6 @@ function test_crash_after_prepared_abort
 
     typeset tertiary_master=$(find_tertiary_master)
     [[ -z "$tertiary_master" ]] && { fail_exit "test_crash_after_prepared_abort: cannot find tertiary master"; return; }
-
-    # Write disttxn_ddl_resolve_fatal=0 to lrl so tertiary aborts (not fatal)
-    # on coordinator timeout during restart.
-    echo "disttxn_ddl_resolve_fatal 0" >> $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl
 
     # Enable crash-after-prepare on tertiary
     $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $tertiary_master \
@@ -798,13 +763,13 @@ function test_crash_after_prepared_abort
         else
             mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.old 2>/dev/null
             CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
-            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null \
-                > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$LOGDIR/${DBNAME}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null \
+                > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$LOGDIR/${DBNAME}.${node}.db) 2>&1 &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done
 
-    echo "Waiting for tertiary to come back up (with disttxn_ddl_resolve_fatal=0)..."
+    echo "Waiting for tertiary to come back up..."
     block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120
     if (( $? != 0 )); then
         fail_exit "test_crash_after_prepared_abort: tertiary did not come up"
@@ -830,15 +795,6 @@ function test_crash_after_prepared_abort
     fi
 
     echo "Table correctly absent on tertiary after abort."
-
-    # Remove the lrl override
-    sed -i '/disttxn_ddl_resolve_fatal 0/d' $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl
-
-    # Reset tunable on tertiary
-    typeset new_master=$(find_tertiary_master)
-    [[ -n "$new_master" ]] && \
-        $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $new_master \
-            "put tunable disttxn_ddl_resolve_fatal '1'" 2>/dev/null
 
     echo "test_crash_after_prepared_abort PASSED"
 }
@@ -1044,9 +1000,6 @@ test_nonkey_sharding_fails
 [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
 
 test_multiple_create_drop
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-test_ddl_resolve_tunable
 [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
 
 echo "========================================="
