@@ -45,6 +45,16 @@ Set these on the make command line, the same way as CLUSTER:
                                    result is not an artifact of arm ordering
                                    (the first arm runs against a colder cache).
 
+  RECO_DDLK_PERF_LOCKSTATS=0|1     Collect the server-side lock-wait and
+                                   lock-release counters.  Default 0.  With 1
+                                   the report gains the lk_ columns described
+                                   below; with 0 neither the tunable nor the
+                                   columns appear.  Raise TEST_TIMEOUT when
+                                   turning it on -- a single-node run measured
+                                   13m off and 17.5m on, over the 15m default:
+
+                                     TEST_TIMEOUT=30m RECO_DDLK_PERF_LOCKSTATS=1 make reco-ddlk-perf
+
 Default runs measured 7.5 to 12 minutes single-node, so the timeout is 15m and
 the test is part of the normal sweep.  Run it on its own with:
 
@@ -81,6 +91,34 @@ update phase and for the delete phase:
   rd_max_ms    slowest single reader scan
   data_errors  soft errors so far (see below)
   % diff       (on - off) / off * 100
+
+Lock counters
+-------------
+
+RECO_DDLK_PERF_LOCKSTATS=1 turns on the server's lock_instrumentation tunable
+and adds a second block of columns, summed over every node because readers and
+writers block on different ones:
+
+  lk_rd_wait_us    lock wait by SQL read cursors
+  lk_wr_wait_us    lock wait by SQL write transactions
+  lk_other_wait_us lock wait by neither -- replication apply, utilities.  On a
+                   cluster this is where the write-side contention lands, since
+                   SQL does not run on the master
+  lk_rel_us        total time inside recover_deadlock, all callers, split into
+                   lk_rel_unlock_us (dropping the cursor page locks),
+                   lk_rel_sleep_us (deliberate poll() backoff),
+                   lk_rel_reacq_us (waiting to get the locks back) and
+                   lk_rel_reval_us (cursor revalidation)
+  lk_sync_us       pre-release data cursor and blob sync, which runs only with
+                   the feature on and is therefore its added reader cost
+
+Each has a matching _waits or _count column.  Only lk_rel_reacq_us is a lock
+wait; lk_rel_sleep_us in particular is backoff, and in practice dominates
+lk_rel_us, so subtract it before reading lk_rel_us as overhead.
+
+It is off by default because the counters are not free and the point of the
+test is to compare two arms under otherwise stock conditions.  Turn it on when
+you want to know where the time went rather than how much of it there was.
 
 Reading the two phases
 ----------------------

@@ -19,6 +19,13 @@ bash -n "$0" | exit 1
 # Env vars (set on the make command line, same convention as CLUSTER etc.):
 #   RECO_DDLK_PERF_RUNS=<N>          how many off/on cycles to run (default 1)
 #   RECO_DDLK_PERF_FIRST_ARM=off|on  which arm runs first each cycle (default off)
+#   RECO_DDLK_PERF_LOCKSTATS=0|1     collect the server-side lock-wait and
+#                                    lock-release counters (default 0).  Adds
+#                                    the lk_ columns to the report, at the cost
+#                                    of turning on a tunable the server keeps
+#                                    off -- so the arms are no longer measured
+#                                    under stock conditions.  It also costs
+#                                    real time: raise TEST_TIMEOUT with it.
 
 dbnm=$1
 if [[ -z "$dbnm" ]] ; then
@@ -47,6 +54,23 @@ if [[ $first_arm == off ]] ; then
     arm_order=(off on)
 else
     arm_order=(on off)
+fi
+
+lockstats=${RECO_DDLK_PERF_LOCKSTATS:-0}
+if [[ "$lockstats" != 0 && "$lockstats" != 1 ]] ; then
+    echo "RECO_DDLK_PERF_LOCKSTATS must be 0 or 1, got: $lockstats"
+    exit 1
+fi
+
+# Columns of the comparison tables.  The lk_ family exists in the tool's output
+# only when the counters were sampled, so listing it otherwise would print a
+# block of empty rows that reads like a measurement of zero.
+report_fields="phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors"
+if [[ $lockstats == 1 ]] ; then
+    report_fields="$report_fields \
+     lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits lk_other_wait_us lk_other_waits \
+     lk_rel_us lk_rel_unlock_us lk_rel_sleep_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count \
+     lk_sync_us lk_sync_count"
 fi
 
 # Tunables are per-node and the readers connect via 'default', so they spread
@@ -151,10 +175,7 @@ write_phase_tables()
         local title=${phase_label#*:}
         echo "$heading $title"
         echo
-        for f in phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors \
-         lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits lk_other_wait_us lk_other_waits \
-         lk_rel_us lk_rel_unlock_us lk_rel_sleep_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count \
-         lk_sync_us lk_sync_count ; do
+        for f in $report_fields ; do
             local off on
             off=$(metric "$offfile" $phase $f)
             on=$(metric "$onfile" $phase $f)
@@ -172,10 +193,7 @@ write_average_tables()
         local title=${phase_label#*:}
         echo "### $title (average of $nruns runs)"
         echo
-        for f in phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors \
-         lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits lk_other_wait_us lk_other_waits \
-         lk_rel_us lk_rel_unlock_us lk_rel_sleep_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count \
-         lk_sync_us lk_sync_count ; do
+        for f in $report_fields ; do
             local offs=() ons=() run
             for run in $(seq 1 $nruns) ; do
                 offs+=("$(metric "$(off_file $run)" $phase $f)")
@@ -211,20 +229,22 @@ print_result()
     echo "| \`rd_min_ms\`   | Fastest single reader scan observed in the phase. |"
     echo "| \`rd_max_ms\`   | Slowest single reader scan observed in the phase (in the update phase, usually close to \`phase_ms\`, since one scan can span nearly the whole phase). |"
     echo "| \`data_errors\` | Cumulative (not reset per phase) count of soft errors so far in the run.  Two very different things land here: a statement that failed outright -- in practice usually CDB2ERR_DEADLOCK (203), a write starved out by reader contention rather than anything wrong with the data -- and a genuine data mismatch (unexpected row payload, or num_updated/num_deleted not matching what was written).  A non-zero value is not by itself evidence of a correctness problem; check the arm's raw output to see which kind it was. |"
-    echo "| \`lk_rd_wait_us\` | Time SQL read cursors spent blocked waiting for locks, summed over every node.  Needs the lock_instrumentation tunable (the harness sets it). |"
-    echo "| \`lk_rd_waits\`  | Number of such reader lock waits. |"
-    echo "| \`lk_wr_wait_us\` | Time SQL write transactions spent blocked waiting for locks, summed over every node. |"
-    echo "| \`lk_wr_waits\`  | Number of such writer lock waits. |"
-    echo "| \`lk_other_wait_us\` | Lock wait by threads that are neither -- replication apply, utilities.  On a cluster this is where the write-side contention shows up, since SQL does not run on the master. |"
-    echo "| \`lk_other_waits\` | Number of those waits. |"
-    echo "| \`lk_rel_us\`    | Total time inside recover_deadlock (releasing locks), all callers.  Read it with lk_rel_sleep_us: much of it is deliberate backoff, not work. |"
-    echo "| \`lk_rel_unlock_us\` | Of that, dropping the cursor page locks -- the real work on the feature's path. |"
-    echo "| \`lk_rel_sleep_us\` | Of that, the deliberate poll() backoff.  Not contention and not work; subtract it before calling lk_rel_us an overhead. |"
-    echo "| \`lk_rel_reacq_us\` | Of that, time waiting to get the locks back (get_curtran).  **This is the only figure here that is a lock wait.**  Expected to be ~0 for the feature, whose page-locks-only path returns before re-acquiring and retakes page locks lazily on the next cursor move -- that cost lands in \`lk_rd_wait_us\` instead. |"
-    echo "| \`lk_rel_reval_us\` | Of that, cursor revalidation after the release.  Not a lock wait: under the default new_mode this is a pointer store plus a schema-version check. |"
-    echo "| \`lk_rel_count\` | Number of recover_deadlock calls. |"
-    echo "| \`lk_sync_us\`   | Time syncing data cursors and blobs before a release (sync_index_data_cursors).  Runs **only when the feature is on**, so it is the feature's added reader cost -- and some of it is speculative work that turns out not to be needed. |"
-    echo "| \`lk_sync_count\` | Number of those pre-release syncs. |"
+    if [[ $lockstats == 1 ]] ; then
+        echo "| \`lk_rd_wait_us\` | Time SQL read cursors spent blocked waiting for locks, summed over every node.  Needs the lock_instrumentation tunable, which RECO_DDLK_PERF_LOCKSTATS=1 turned on for this run. |"
+        echo "| \`lk_rd_waits\`  | Number of such reader lock waits. |"
+        echo "| \`lk_wr_wait_us\` | Time SQL write transactions spent blocked waiting for locks, summed over every node. |"
+        echo "| \`lk_wr_waits\`  | Number of such writer lock waits. |"
+        echo "| \`lk_other_wait_us\` | Lock wait by threads that are neither -- replication apply, utilities.  On a cluster this is where the write-side contention shows up, since SQL does not run on the master. |"
+        echo "| \`lk_other_waits\` | Number of those waits. |"
+        echo "| \`lk_rel_us\`    | Total time inside recover_deadlock (releasing locks), all callers.  Read it with lk_rel_sleep_us: much of it is deliberate backoff, not work. |"
+        echo "| \`lk_rel_unlock_us\` | Of that, dropping the cursor page locks -- the real work on the feature's path. |"
+        echo "| \`lk_rel_sleep_us\` | Of that, the deliberate poll() backoff.  Not contention and not work; subtract it before calling lk_rel_us an overhead. |"
+        echo "| \`lk_rel_reacq_us\` | Of that, time waiting to get the locks back (get_curtran).  **This is the only figure here that is a lock wait.**  Expected to be ~0 for the feature, whose page-locks-only path returns before re-acquiring and retakes page locks lazily on the next cursor move -- that cost lands in \`lk_rd_wait_us\` instead. |"
+        echo "| \`lk_rel_reval_us\` | Of that, cursor revalidation after the release.  Not a lock wait: under the default new_mode this is a pointer store plus a schema-version check. |"
+        echo "| \`lk_rel_count\` | Number of recover_deadlock calls. |"
+        echo "| \`lk_sync_us\`   | Time syncing data cursors and blobs before a release (sync_index_data_cursors).  Runs **only when the feature is on**, so it is the feature's added reader cost -- and some of it is speculative work that turns out not to be needed. |"
+        echo "| \`lk_sync_count\` | Number of those pre-release syncs. |"
+    fi
     echo "| \`% diff\`      | \`(on - off) / off * 100\`. Negative = lower with the feature on; positive = higher. |"
     echo
     echo "lower wr_avg_ms/wr_max_ms on = writes benefit; higher rd_avg_ms on = readers pay for it"
@@ -246,9 +266,15 @@ print_result()
     fi
 }
 
-# Server-side lock-wait / release accounting.  Off by default in the server, so
-# the harness turns it on explicitly; the tool reads the counters per phase.
-set_tunable lock_instrumentation 1
+# Server-side lock-wait / release accounting.  Off by default in the server and
+# opt-in here, since collecting it perturbs the very thing being measured; when
+# asked for, turn the tunable on and let the tool read the counters per phase.
+if [[ $lockstats == 1 ]] ; then
+    set_tunable lock_instrumentation 1
+    tool_flags=(-p -l)
+else
+    tool_flags=(-p)
+fi
 
 for run in $(seq 1 $nruns) ; do
     echo "=== run $run/$nruns (arm order: ${arm_order[*]}) ==="
@@ -260,7 +286,7 @@ for run in $(seq 1 $nruns) ; do
         set_feature $val
 
         outfile=$([[ $arm == off ]] && off_file $run || on_file $run)
-        $TESTSBUILDDIR/reco-ddlk-sql -p $dbnm > $outfile 2>&1
+        $TESTSBUILDDIR/reco-ddlk-sql "${tool_flags[@]}" $dbnm > $outfile 2>&1
         echo "arm $arm exited $?"
 
         grep "^METRIC" $outfile || echo "(no METRIC lines -- arm did not get far enough)"

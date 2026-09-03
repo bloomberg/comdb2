@@ -26,6 +26,13 @@ static int total_incoherent;
 static int perf_mode;
 static int data_errors;
 
+/* Lock stats (-l): also sample the server's lock_instrumentation counters
+   around each phase and add the lk_ fields to the METRIC line.  Separate from
+   -p because it is not free -- the counters need a tunable the server keeps
+   off by default, so measuring them changes what is being measured.  Without
+   -l the METRIC line simply stops after data_errors. */
+static int lockstats_mode;
+
 static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
 #define Printf(...)                         \
 ({                                          \
@@ -124,22 +131,30 @@ static void metrics_report(const char *phase, long long phase_ms, const struct l
         total += s->total_ms;
     }
 
+    /* Appended only when the counters were actually sampled (-l), so a run
+       without them reports a short line rather than a row of zeros that reads
+       like a measurement. */
+    char lkbuf[768]; /* 14 fields at their int64 widest come to 492 */
+    lkbuf[0] = 0;
+    if (lk)
+        snprintf(lkbuf, sizeof(lkbuf),
+                 " lk_rd_wait_us=%lld lk_rd_waits=%lld lk_wr_wait_us=%lld lk_wr_waits=%lld"
+                 " lk_other_wait_us=%lld lk_other_waits=%lld"
+                 " lk_rel_us=%lld lk_rel_unlock_us=%lld lk_rel_sleep_us=%lld"
+                 " lk_rel_reacq_us=%lld lk_rel_reval_us=%lld lk_rel_count=%lld"
+                 " lk_sync_us=%lld lk_sync_count=%lld",
+                 lk->rd_wait_us, lk->rd_waits, lk->wr_wait_us, lk->wr_waits,
+                 lk->other_wait_us, lk->other_waits,
+                 lk->rel_total_us, lk->rel_unlock_us, lk->rel_sleep_us,
+                 lk->rel_reacquire_us, lk->rel_revalidate_us, lk->rel_count,
+                 lk->sync_dta_us, lk->sync_dta_count);
+
     Printf("METRIC phase=%s phase_ms=%lld "
            "wr_count=%lld wr_avg_ms=%.1f wr_max_ms=%lld "
            "rd_scans=%lld rd_rows=%lld rd_avg_ms=%.1f rd_min_ms=%lld rd_max_ms=%lld "
-           "incoherent=%d data_errors=%d "
-           "lk_rd_wait_us=%lld lk_rd_waits=%lld lk_wr_wait_us=%lld lk_wr_waits=%lld "
-           "lk_other_wait_us=%lld lk_other_waits=%lld "
-           "lk_rel_us=%lld lk_rel_unlock_us=%lld lk_rel_sleep_us=%lld "
-           "lk_rel_reacq_us=%lld lk_rel_reval_us=%lld lk_rel_count=%lld "
-           "lk_sync_us=%lld lk_sync_count=%lld\n",
+           "incoherent=%d data_errors=%d%s\n",
            phase, phase_ms, wr_count, wr_count ? (double)wr_total_ms / wr_count : 0.0, wr_max_ms, scans, rows,
-           scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors,
-           lk->rd_wait_us, lk->rd_waits, lk->wr_wait_us, lk->wr_waits,
-           lk->other_wait_us, lk->other_waits,
-           lk->rel_total_us, lk->rel_unlock_us, lk->rel_sleep_us,
-           lk->rel_reacquire_us, lk->rel_revalidate_us, lk->rel_count,
-           lk->sync_dta_us, lk->sync_dta_count);
+           scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors, lkbuf);
 }
 
 static char *tohex(char *in, int len, char *out)
@@ -192,6 +207,7 @@ static void who_master(void)
 }
 /*
  * Server-side lock instrumentation (the 'lock_instrumentation' tunable).
+ * Reached only under -l; with the tunable off every counter below reads zero.
  *
  * These counters are per node and cumulative, so a phase's cost is the delta
  * across every node: on a cluster the readers run on the replicants while the
@@ -727,9 +743,11 @@ static void run_phase(const char *name, void (*body)(void), int settle)
     struct timeval start;
     struct lockstats before, after, delta;
 
+    int lk = perf_mode && lockstats_mode;
+
     metrics_reset();
     memset(&delta, 0, sizeof(delta));
-    if (perf_mode) lockstats_snapshot(&before);
+    if (lk) lockstats_snapshot(&before);
     gettimeofday(&start, NULL);
 
     done = 0;
@@ -742,9 +760,11 @@ static void run_phase(const char *name, void (*body)(void), int settle)
 
     if (perf_mode) {
         long long ms = ms_since(&start);
-        lockstats_snapshot(&after);
-        lockstats_diff(&delta, &before, &after);
-        metrics_report(name, ms, &delta);
+        if (lk) {
+            lockstats_snapshot(&after);
+            lockstats_diff(&delta, &before, &after);
+        }
+        metrics_report(name, ms, lk ? &delta : NULL);
     }
 }
 
@@ -779,11 +799,13 @@ int main(int argc, char **argv)
     char *conf = getenv("CDB2_CONFIG");
     if (conf) cdb2_set_comdb2db_config(conf);
 
-    /* usage: reco-ddlk-sql [-p] dbname [tier] */
+    /* usage: reco-ddlk-sql [-p] [-l] dbname [tier] */
     int npos = 0;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-p") == 0) {
             perf_mode = 1;
+        } else if (strcmp(argv[i], "-l") == 0) {
+            lockstats_mode = 1;
         } else if (npos == 0) {
             dbname = argv[i];
             npos = 1;
@@ -793,7 +815,7 @@ int main(int argc, char **argv)
         }
     }
     if (!dbname) {
-        fprintf(stderr, "usage: %s [-p] dbname [tier]\n", argv[0]);
+        fprintf(stderr, "usage: %s [-p] [-l] dbname [tier]\n", argv[0]);
         return 1;
     }
     if (!tier) tier = "default";
