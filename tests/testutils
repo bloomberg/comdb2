@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 function testdb_start_run {
     [[ -z "$TESTCASEDB" || -z "$TESTCASETIER" || -z "$TESTUUID" ]] && return 0

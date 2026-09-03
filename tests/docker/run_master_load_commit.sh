@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 cd /comdb2/tests
 export CLUSTER="$(cat /common/cluster)"
 make master_load_commit SKIPSSL=1

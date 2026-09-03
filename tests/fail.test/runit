@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # we expect this to abort, but the test runner looks for cores, so don't generate one
 # or the test will count a failure

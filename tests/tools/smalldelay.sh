@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 if [ "$TOTAL" -gt "100" ] ; then 
     for i in `seq 1 79` ; do 
         echo -n "."  1>&2; 
