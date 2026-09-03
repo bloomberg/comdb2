@@ -1379,9 +1379,19 @@ const struct berkdb_thread_stats *bdb_get_process_stats(void);
  * [0][1] SQL execution, [2][3] master write-apply, [4][5] replicant apply. */
 #define BDB_FINGERPRINT_RTSTATS_NCOUNTS 6
 
+/* Mirrors BB_BERKDB_FP_ROLE_* (berkdb/build/db.h), asserted equal in bdb.c. Picks
+ * the page-in counter pair to bill and the role comdb2_locks reports. */
+#define BDB_FP_ROLE_NONE 0
+#define BDB_FP_ROLE_SQL 1   /* 'R' -- SQL statement execution */
+#define BDB_FP_ROLE_WRITE 2 /* 'W' -- master applying a write schedule */
+#define BDB_FP_ROLE_APPLY 3 /* 'A' -- replicant applying from the log */
+
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+/* Declare a role with no fingerprint, so work that has none is still
+ * attributable. Pairs with bdb_fingerprint_rtstats_clear(). */
+void bdb_fingerprint_rtstats_set_role(int role);
 void bdb_fingerprint_rtstats_clear(void);
 int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
                                 uint64_t counts[BDB_FINGERPRINT_RTSTATS_NCOUNTS]);
