@@ -3444,6 +3444,23 @@ clipper_usage:
         thdpool_process_message(gbl_osqlpfault_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "udppfaultpool") == 0) {
         thdpool_process_message(gbl_udppfault_thdpool, line, lline, st);
+    } else if (tokcmp(tok, ltok, "repprefault") == 0) {
+        int pf_st = st;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 0 && tokcmp(tok, ltok, "verify") == 0) {
+            int nrecs = 0, touch = 0;
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok > 0)
+                nrecs = toknum(tok, ltok);
+            /* 'touch' drives the real pool instead of just reporting. */
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok > 0 && tokcmp(tok, ltok, "touch") == 0)
+                touch = 1;
+            bdb_rep_prefault_verify(thedb->bdb_env, nrecs, touch);
+        } else {
+            /* Anything else is for the pool itself. */
+            __rep_prefault_process_message(line, lline, pf_st);
+        }
     } else if (tokcmp(tok, ltok, "pgcompactpool") == 0) {
         thdpool_process_message(gbl_pgcompact_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "verifypool") == 0) {

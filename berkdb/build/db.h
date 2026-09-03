@@ -941,6 +941,12 @@ struct __db_mpool_stat {
 	u_int64_t st_alloc_max_buckets;	/* Max checked during allocation. */
 	u_int64_t st_alloc_pages;	/* Pages checked during allocation. */
 	u_int64_t st_alloc_max_pages;	/* Max checked during allocation. */
+	/* Prefault effectiveness, for tuning the replication lookahead. */
+	u_int64_t st_pf_hit_ready;	/* Prefaulted page, read had finished. */
+	u_int64_t st_pf_hit_inflight;	/* Prefaulted page, still reading. */
+	u_int64_t st_pf_evict_unused;	/* Prefaulted, never used, evicted. */
+	u_int64_t st_apply_hit;		/* Rep apply found the page resident. */
+	u_int64_t st_apply_miss;	/* Rep apply had to read it. */
 	u_int64_t st_ckp_pages_sync;	/* Number of pages sync'd using perfect ckp. */
 	u_int64_t st_ckp_pages_skip;	/* Number of pages skipped using perfect ckp. */
 };
@@ -3150,6 +3156,43 @@ extern int gbl_bb_berkdb_enable_memp_timing;
 extern int gbl_bb_berkdb_enable_memp_pg_timing;
 extern int gbl_bb_berkdb_enable_shalloc_timing;
 
+/* Why __ufid_find_db_prefault could not hand back a pinned handle. */
+#define UFID_PF_OK		0
+#define UFID_PF_NO_LOG		1	/* no log handle */
+#define UFID_PF_NO_UFID		2	/* ufid not in the hash */
+#define UFID_PF_NO_DBP		3	/* known ufid, no open dbp */
+#define UFID_PF_NO_FNAME	4	/* dbp has no log_filename */
+#define UFID_PF_BAD_NDX		5	/* dbreg id unset or out of range */
+#define UFID_PF_NDX_MISMATCH	6	/* dbreg slot points elsewhere */
+#define UFID_PF_NREASON		7
+
+/* Replication apply-path page prefault (berkdb/rep/rep_prefault.c). */
+extern __thread int berkdb_applying_rep;
+extern int gbl_rep_prefault;
+extern int gbl_rep_prefault_lookahead;
+extern int gbl_rep_prefault_threads;
+extern int gbl_rep_prefault_adaptive;
+extern int gbl_rep_prefault_budget;
+extern int gbl_rep_prefault_adapt_trace;
+/* Fast copies of the prefault region stats, for the adaptive controller. */
+extern int64_t gbl_rep_pf_ready_ct;
+extern int64_t gbl_rep_pf_inflight_ct;
+extern int64_t gbl_rep_pf_late_ct;
+extern int64_t gbl_rep_pf_evict_unused_ct;
+extern int64_t gbl_rep_prefault_records;
+extern int64_t gbl_rep_prefault_pages;
+extern int64_t gbl_rep_prefault_dedup;
+extern int64_t gbl_rep_prefault_filtered;
+extern int64_t gbl_rep_prefault_enq_fail;
+extern int64_t gbl_rep_prefault_parse_fail;
+extern int64_t gbl_rep_prefault_stashed;
+extern int64_t gbl_rep_prefault_dbreg_waits;
+extern int64_t gbl_rep_prefault_dbreg_wait_us;
+extern int64_t gbl_rep_prefault_dbreg_wait_max_us;
+void __rep_prefault_process_message(char *line, int lline, int st);
+void __rep_prefault_verify(DB_ENV *dbenv, int nrecs, int touch);
+void __rep_prefault_dbreg_wait(int64_t usecs);
+
 struct berkdb_deadlock_info {
 	u_int32_t lid;
 };
@@ -3219,6 +3262,9 @@ struct __recovery_record {
 	DBT logdbt;	/* log record to apply */
 	DB_LSN lsn;	/* LSN of log record to apply */
 	int fileid;
+	/* logdbt.data is a prefault-time stash owned by this record (freed
+	 * after apply) rather than a borrow from the collection. */
+	int logdbt_owned;
 	/* Statement this record belongs to, from the DB_llog_fingerprint record
 	 * preceding it. Stamped while the txn is still in LSN order. */
 	int have_fingerprint;
@@ -3231,6 +3277,14 @@ struct __recovery_queue {
 	struct __recovery_processor *processor;
 	int fileid;
 	int used;
+	/* Prefault window state: the processor primes the first lookahead
+	 * records at bucket time; pf_cursor is where the worker's sliding
+	 * window continues from (NULL when the whole queue fit the window).
+	 * pf_window means this queue holds an open-window count the worker
+	 * must release. */
+	struct __recovery_record *pf_cursor;
+	int pf_count;
+	int pf_window;
 	LISTC_T(struct __recovery_record) records;
 	LINKC_T(struct __recovery_queue) lnk;
 };
