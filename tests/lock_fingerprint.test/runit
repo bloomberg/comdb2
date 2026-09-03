@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export stopfile=./stop.test
+
+# Locks are short-lived, so every check here is "generate load, then poll
+# comdb2_locks until the row we want shows up or we give up".
+export poll_iters=60
+
+function failexit
+{
+    touch $stopfile
+    echo "Failed: $1: $2"
+    exit -1
+}
+
+# Every check pins its load and its poll to the SAME node.  comdb2_locks is
+# per-node, so a reader on one node and a poll on another would silently never
+# intersect.  An empty node means an unclustered run, where 'default' is the
+# only node there is.
+function query_node
+{
+    typeset node=$1
+    typeset sql=$2
+    if [[ -z "$node" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "$sql" 2>/dev/null
+    else
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "$sql" 2>/dev/null
+    fi
+}
+
+function sql_on
+{
+    typeset node=$1
+    typeset sql=$2
+    if [[ -z "$node" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$sql" >/dev/null 2>&1
+    else
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "$sql" >/dev/null 2>&1
+    fi
+}
+
+function background_write_thread
+{
+    typeset table=$1
+    typeset node=$2
+    typeset j=0
+    while [[ $j -lt 200 && ! -f $stopfile ]]; do
+        sql_on "$node" "insert into $table(a) select * from generate_series(1, 1000)"
+        let j=j+1
+    done
+}
+
+function background_read_thread
+{
+    typeset table=$1
+    typeset node=$2
+    typeset j=0
+    while [[ $j -lt 1000 && ! -f $stopfile ]]; do
+        sql_on "$node" "select count(*) from $table where a > 0"
+        let j=j+1
+    done
+}
+
+function background_writeload
+{
+    typeset table=$1
+    typeset node=$2
+    typeset i=0
+    while [[ $i -lt 10 ]]; do
+        background_write_thread "$table" "$node" &
+        let i=i+1
+    done
+    wait
+}
+
+function background_readload
+{
+    typeset table=$1
+    typeset node=$2
+    typeset i=0
+    while [[ $i -lt 10 ]]; do
+        background_read_thread "$table" "$node" &
+        let i=i+1
+    done
+    wait
+}
+
+# Poll $node's comdb2_locks until 'select count(*) ... where $where' is
+# non-zero.  Returns 0 on success, 1 if we ran out of iterations.
+#
+# 'select count(*)' always returns exactly one row, so empty output means the
+# query itself failed -- an unreachable node, say.  Treating that as "not yet"
+# would burn the full poll budget and then report the far more interesting-
+# sounding "never saw this lock", so call it out instead.
+function poll_for_locks
+{
+    typeset node=$1
+    typeset where=$2
+    typeset j=0
+    typeset empties=0
+    typeset x=
+
+    while [[ ! -f $stopfile && $j -lt $poll_iters ]]; do
+        x=$(query_node "$node" "select count(*) from comdb2_locks where $where")
+        if [[ -z "$x" ]]; then
+            let empties=empties+1
+            if [[ $empties -ge 3 ]]; then
+                stop_load
+                failexit "poll_for_locks" "querying comdb2_locks on ${node:-default} failed 3x -- node unreachable?"
+            fi
+        else
+            empties=0
+            [[ "$x" != "0" ]] && return 0
+        fi
+        let j=j+1
+        sleep 1
+    done
+    return 1
+}
+
+# Called before giving up, so a failure says what the node actually looked like
+# rather than only what it was missing.
+function dump_diagnostics
+{
+    typeset node=$1
+    write_prompt "diagnostics" "State of ${node:-default}:"
+    echo "  total locks: $(query_node "$node" "select count(*) from comdb2_locks")"
+    echo "  by role:"
+    query_node "$node" "select coalesce(fingerprint_role,'NULL'), count(*), count(fingerprint) from comdb2_locks group by fingerprint_role" | sed 's/^/    /'
+    echo "  t1 rows: $(query_node "$node" "select count(*) from t1")"
+    echo "  fingerprint_queries: $(query_node "$node" "select value from comdb2_tunables where name='fingerprint_queries'")"
+}
+
+# A pinned node that cannot be queried makes every later check fail in a way
+# that looks like a product bug.  Fail here instead, with the real error.
+function preflight_node
+{
+    typeset func="preflight_node"
+    typeset node=$1
+    typeset label=$2
+    typeset out=
+
+    [[ -z "$node" ]] && return 0
+
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "select 1" 2>&1)
+    [[ "$out" != "1" ]] && failexit $func "cannot query $label node '$node': $out"
+    write_prompt $func "$label node '$node' is reachable"
+}
+
+function stop_load
+{
+    touch $stopfile
+    wait
+    rm $stopfile >/dev/null 2>&1
+}
+
+# The two columns must never disagree with the contract: role is one of R/W/A
+# or NULL, and a fingerprint is either NULL or 32 lowercase hex characters.
+# Checked under load, so it sees the widest variety of lock holders.
+function verify_column_contract
+{
+    typeset func="verify_column_contract"
+    typeset node=$1
+    write_prompt $func "Verify fingerprint/fingerprint_role are well-formed on ${node:-default}"
+
+    x=$(query_node "$node" "select count(*) from comdb2_locks where fingerprint_role is not null and fingerprint_role not in ('R','W','A')")
+    [[ "$x" != "0" ]] && failexit $func "$x locks have an unexpected fingerprint_role"
+
+    x=$(query_node "$node" "select count(*) from comdb2_locks where fingerprint is not null and (length(fingerprint) != 32 or fingerprint != lower(fingerprint))")
+    [[ "$x" != "0" ]] && failexit $func "$x locks have a malformed fingerprint"
+
+    # A fingerprint without a role would mean we stamped one half and not the
+    # other -- the role is always set at least as early as the fingerprint.
+    x=$(query_node "$node" "select count(*) from comdb2_locks where fingerprint is not null and fingerprint_role is null")
+    [[ "$x" != "0" ]] && failexit $func "$x locks have a fingerprint but no role"
+
+    write_prompt $func "Columns are well-formed on ${node:-default}"
+}
+
+# Locks taken by SQL execution report role 'R', and (fingerprinting being on by
+# default) at least some of them name the statement that took them.  Readers
+# and poll both pinned to $node.
+function verify_read_locks
+{
+    typeset func="verify_read_locks"
+    typeset node=$1
+    write_prompt $func "Verify SQL read locks on ${node:-default} are attributed to their fingerprint"
+
+    background_readload t1 "$node" &
+
+    if ! poll_for_locks "$node" "fingerprint_role='R'"; then
+        dump_diagnostics "$node" ; stop_load
+        failexit $func "Never saw a lock with role 'R' on ${node:-default}"
+    fi
+    write_prompt $func "Found locks with role 'R'"
+
+    if ! poll_for_locks "$node" "fingerprint_role='R' and fingerprint is not null"; then
+        dump_diagnostics "$node" ; stop_load
+        failexit $func "Never saw an 'R' lock carrying a fingerprint"
+    fi
+    write_prompt $func "Found 'R' locks carrying a fingerprint"
+
+    # Every fingerprint we stamp should be one the SQL layer knows about.  Not
+    # fatal: a statement on its very first execution has no comdb2_fingerprints
+    # row yet, and both tables are sampled at different instants.
+    x=$(query_node "$node" "select count(*) from comdb2_locks l where l.fingerprint_role='R' and l.fingerprint is not null and not exists (select 1 from comdb2_fingerprints f where f.fingerprint=l.fingerprint)")
+    [[ "$x" != "0" ]] && write_prompt $func "Note: $x 'R' fingerprints not yet in comdb2_fingerprints (in-flight first execution)"
+
+    verify_column_contract "$node"
+
+    stop_load
+}
+
+# Locks the master takes applying a write schedule report role 'W'.  Writes are
+# routed to the master no matter where they are submitted, so submit them there
+# directly and poll the same node.  With osql_send_fingerprint on (lrl.options)
+# they also carry the fingerprint of the statement that produced the schedule.
+function verify_write_locks
+{
+    typeset func="verify_write_locks"
+    typeset master=$1
+    write_prompt $func "Verify master write-apply locks on ${master:-default} are attributed to their fingerprint"
+
+    background_writeload t1 "$master" &
+
+    if ! poll_for_locks "$master" "fingerprint_role='W'"; then
+        dump_diagnostics "$master" ; stop_load
+        failexit $func "Never saw a lock with role 'W' on the master"
+    fi
+    write_prompt $func "Found locks with role 'W'"
+
+    if ! poll_for_locks "$master" "fingerprint_role='W' and fingerprint is not null"; then
+        dump_diagnostics "$master" ; stop_load
+        failexit $func "Never saw a 'W' lock carrying a fingerprint"
+    fi
+    write_prompt $func "Found 'W' locks carrying a fingerprint"
+
+    verify_column_contract "$master"
+
+    stop_load
+}
+
+# Locks a replicant takes applying the stream report role 'A'.  Here the load
+# and the poll are deliberately on different nodes -- the writes have to happen
+# on the master for the replicant to have anything to apply.  Clustered runs
+# only: there is nothing applying a stream on a single node.
+function verify_apply_locks
+{
+    typeset func="verify_apply_locks"
+    typeset master=$1
+    typeset replicant=$2
+
+    if [[ -z "$replicant" ]]; then
+        write_prompt $func "Not a clustered run, skipping role 'A'"
+        return 0
+    fi
+
+    write_prompt $func "Verify replication apply locks report role 'A' on $replicant"
+
+    background_writeload t1 "$master" &
+
+    if ! poll_for_locks "$replicant" "fingerprint_role='A'"; then
+        dump_diagnostics "$replicant" ; stop_load
+        failexit $func "Never saw a lock with role 'A' on $replicant"
+    fi
+    write_prompt $func "Found locks with role 'A'"
+
+    # log_fingerprint is on, so the apply side should also see fingerprints --
+    # but a NULL fingerprint next to an 'A' is legal, so this is informational.
+    x=$(query_node "$replicant" "select count(*) from comdb2_locks where fingerprint_role='A' and fingerprint is not null")
+    write_prompt $func "$x 'A' locks carry a fingerprint"
+
+    verify_column_contract "$replicant"
+
+    stop_load
+}
+
+function run_test
+{
+    typeset func="run_test"
+    typeset master=
+    typeset replicant=
+
+    write_prompt $func "Running $func"
+
+    if [[ -n "$CLUSTER" ]]; then
+        master=$(get_master)
+        [[ -z "$master" ]] && failexit $func "Could not determine the master"
+        replicant=$(query_node "" "select host from comdb2_cluster where is_master='N' limit 1")
+        [[ -z "$replicant" ]] && failexit $func "Could not find a replicant"
+        write_prompt $func "master=$master replicant=$replicant"
+        preflight_node "$master" "master"
+        preflight_node "$replicant" "replicant"
+    fi
+
+    sql_on "" "create table t1(a int)"
+    x=$(query_node "" "select count(*) from comdb2_tables where tablename='t1'")
+    [[ "$x" != "1" ]] && failexit $func "Failed to create t1"
+
+    # Seed enough rows that a scan lasts long enough to be caught mid-flight.
+    # Chunked: one 100k-row insert is a big enough transaction to risk rc 202
+    # 'transaction too big', and a silently empty t1 makes every later check
+    # fail as "never saw a lock".
+    typeset i=0
+    while [[ $i -lt 10 ]]; do
+        sql_on "" "insert into t1(a) select * from generate_series(1, 10000)"
+        let i=i+1
+    done
+    x=$(query_node "$master" "select count(*) from t1")
+    [[ "$x" != "100000" ]] && failexit $func "t1 seed incomplete: $x rows on ${master:-default}, wanted 100000"
+    write_prompt $func "Seeded t1 with $x rows"
+
+    # Reads can run anywhere; pin them to the master so a single-node run and a
+    # clustered run exercise the same node, and so the poll cannot miss them.
+    verify_read_locks "$master"
+    verify_write_locks "$master"
+    verify_apply_locks "$master" "$replicant"
+}
+
+rm $stopfile >/dev/null 2>&1
+run_test
+wait
+
+echo "Success"

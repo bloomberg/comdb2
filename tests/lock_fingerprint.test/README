@@ -1,0 +1,12 @@
+Verify that comdb2_locks attributes each lock to the statement that took it,
+via the 'fingerprint' and 'fingerprint_role' columns.
+
+Roles are always available: 'R' for SQL execution, 'W' for the master applying
+a write schedule, 'A' for a replicant applying from the log.  The fingerprint
+beside a role is only populated when the corresponding tunable carried one
+there -- gbl_fingerprint_queries for 'R', osql_send_fingerprint for 'W',
+log_fingerprint for 'A' -- so 'A' rows with a NULL fingerprint are expected and
+valid.  Unattributed locks (recovery, schema change, and everything else that
+is not SQL) report NULL for both columns.
+
+'A' is only exercised in a clustered run.
