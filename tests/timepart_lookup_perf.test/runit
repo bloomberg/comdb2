@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Point-lookup latency on a plain table vs. the same table converted to a TIME
+# partition, measured three ways:
+#
+#   plain            classifications is an ordinary table
+#   partition        classifications is a TIME partition, RETENTION 2
+#   partition_nodoh  same partition, distributed execution turned off
+#
+# The query is always the same unique-index equality seek with a bound
+# parameter:
+#
+#   SELECT security_identifier, classification_value
+#     FROM classifications WHERE security_identifier = ?
+#
+# A point lookup on a partition cannot be routed to a single shard -- the
+# partition key is insert time, not security_identifier -- so it has to probe
+# every shard's unique index and union the results.  dohsql runs those shard
+# probes in parallel worker threads; with dohsql_disable set they run serially
+# on the sql thread.  The third arm separates "cost of being a partition at
+# all" from "cost of the parallel machinery".
+#
+# Report-only: it fails on load/query errors and lost rows, never on a
+# regression.  Latency thresholds on a shared host are not worth gating on.
+
+dbnm=$1
+if [[ -z "$dbnm" ]] ; then
+    failexit "need a DB name"
+fi
+
+ROWS=${ROWS:-200000}       # rows loaded into classifications
+NLOOKUPS=${NLOOKUPS:-2000} # timed lookups per arm
+WARMUP=${WARMUP:-200}      # untimed lookups before each timed run
+REPEATS=${REPEATS:-3}      # timed runs per arm; the fastest one is compared
+CHUNK=${CHUNK:-20000}      # rows per load transaction
+RETENTION=2
+
+C="${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm default"
+CT="${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default"
+TOOL=${TESTSBUILDDIR}/timepart-lookup-perf
+
+if [[ ! -x $TOOL ]] ; then
+    failexit "$TOOL is missing -- rebuild the tests/tools directory"
+fi
+
+# dohsql_disable is a per-node tunable and the driver connects to 'default',
+# so it can land on any node -- it has to be set everywhere.
+set_doh_disable()
+{
+    local val=$1 nodes
+    nodes=`getclusternodes`
+    if [[ -z "$nodes" ]] ; then
+        $C "put tunable 'dohsql_disable' $val" >/dev/null || failexit "put tunable dohsql_disable $val"
+    else
+        for n in $nodes ; do
+            ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm --host $n "put tunable 'dohsql_disable' $val" >/dev/null \
+                || failexit "put tunable dohsql_disable $val on $n"
+        done
+    fi
+}
+
+# Pull one field out of an arm's repeats.
+#
+#   mode=best   the value from the repeat with the lowest avg_us
+#   mode=mean   the arithmetic mean across all repeats
+#
+# Both are reported, because neither alone is honest here.  'best' is the least
+# contaminated by whatever else is running on the box, but it systematically
+# flatters whichever arm is noisier -- it picks that arm's luckiest repeat.
+# These arms do not have equal variance (doh's p50 is stable to a few us while
+# nodoh's swings by 100us+), so best-of-N overstates the doh/nodoh gap.  'mean'
+# folds the noise in but does not play favourites.
+agg()
+{
+    local file=$1 field=$2 mode=$3
+    awk -v field="$field" -v mode="$mode" '
+        /^METRIC/ {
+            avg = ""; val = ""
+            for (i = 1; i <= NF; i++) {
+                split($i, kv, "=")
+                if (kv[1] == "avg_us") avg = kv[2]
+                if (kv[1] == field)    val = kv[2]
+            }
+            if (val == "") next
+            sum += val; n++
+            if (avg != "" && (bestavg == "" || avg + 0 < bestavg + 0)) { bestavg = avg; best = val }
+        }
+        END {
+            if (n == 0) { print ""; exit }
+            if (mode == "best") print best
+            else printf "%.1f", sum / n
+        }
+    ' "$file"
+}
+
+# Three-arm table for one aggregation mode.
+arm_table()
+{
+    local mode=$1 f
+    printf '%-10s %14s %16s %20s\n' metric plain partition partition_nodoh
+    for f in total_ms avg_us min_us p50_us p95_us p99_us max_us qps ; do
+        printf '%-10s %14s %16s %20s\n' "$f" \
+            "`agg arm_plain.out $f $mode`" \
+            "`agg arm_partition.out $f $mode`" \
+            "`agg arm_partition_nodoh.out $f $mode`"
+    done
+}
+
+run_arm()
+{
+    local arm=$1 out=arm_$1.out r
+    : > $out
+
+    echo "--- query plan for arm '$arm' ---"
+    $C "EXPLAIN QUERY PLAN SELECT security_identifier, classification_value FROM classifications WHERE security_identifier = 'SEC000000001'"
+
+    for r in `seq 1 $REPEATS` ; do
+        $TOOL $dbnm default -t classifications -f ids.txt -n $NLOOKUPS -w $WARMUP -l "$arm" >> $out 2>&1
+        if (( $? != 0 )) ; then
+            cat $out
+            failexit "lookup arm '$arm' repeat $r reported errors"
+        fi
+    done
+
+    grep "^METRIC" $out
+    echo
+}
+
+echo "=== loading $ROWS rows into classifications ==="
+lo=1
+while (( lo <= ROWS )) ; do
+    hi=$(( lo + CHUNK - 1 ))
+    (( hi > ROWS )) && hi=$ROWS
+    $C "insert into classifications(security_identifier, classification_value)
+        select printf('SEC%09d', value), value % 997 from generate_series($lo, $hi)" >/dev/null \
+        || failexit "insert of rows $lo..$hi"
+    lo=$(( hi + 1 ))
+done
+
+cnt=`$CT "select count(*) from classifications"`
+if [[ "$cnt" != "$ROWS" ]] ; then
+    failexit "loaded $cnt rows, expected $ROWS"
+fi
+echo "loaded $cnt rows"
+echo
+
+# Sampled once, up front, and reused by every arm: the arms must differ only
+# in the state of the database, not in which keys they ask for.
+echo "=== sampling $NLOOKUPS random identifiers ==="
+$CT "select security_identifier from classifications order by random() limit $NLOOKUPS" |
+    sed 's/^"//; s/"$//' > ids.txt
+nids=`wc -l < ids.txt`
+if [[ "$nids" != "$NLOOKUPS" ]] ; then
+    failexit "sampled $nids identifiers, expected $NLOOKUPS"
+fi
+echo "sampled $nids identifiers, first few:"
+head -3 ids.txt
+echo
+
+echo "=== arm 1: plain table ==="
+run_arm plain
+
+# START is a day out so no rollout fires mid-test (with RETENTION 2 the first
+# rollout would drop a shard and take rows with it).  RETROACTIVELY is what
+# makes this interesting: it materialises both shards immediately, so the
+# lookups actually have to union across shards.  Without it there is a single
+# shard, no union, and arm 3 would measure nothing.
+echo "=== converting classifications to a TIME partition (retention $RETENTION) ==="
+start=`$CT "select now() + cast(1 as days)"`
+start=`echo ${start} | sed "s/\"/'/g"`
+echo "rollout edge: ${start}"
+
+out=`$C "ALTER TABLE classifications PARTITIONED BY TIME PERIOD 'daily' RETENTION $RETENTION START ${start} RETROACTIVELY" 2>&1`
+if [[ -n "$out" ]] ; then
+    failexit "retroactive partitioning failed: $out"
+fi
+
+i=0
+while (( i < 120 )) ; do
+    nshards=`$CT "select count(*) from comdb2_timepartshards where name='classifications'" 2>/dev/null`
+    [[ "$nshards" == "$RETENTION" ]] && break
+    sleep 1
+    i=$(( i + 1 ))
+done
+if [[ "$nshards" != "$RETENTION" ]] ; then
+    failexit "expected $RETENTION shards after partitioning, have '${nshards}'"
+fi
+
+cnt=`$CT "select count(*) from classifications"`
+if [[ "$cnt" != "$ROWS" ]] ; then
+    failexit "partitioning lost rows: $cnt, expected $ROWS"
+fi
+echo "$nshards shards, $cnt rows still visible through the partition"
+
+# Where the rows actually landed matters for reading the numbers: they were
+# all inserted inside one period, so one shard holds everything and the other
+# is empty.  The lookup still has to probe both.
+for shard in `$CT "select shardname from comdb2_timepartshards where name='classifications'"` ; do
+    scnt=`$CT "select count(*) from \"$shard\""`
+    echo "  shard $shard: $scnt rows"
+done
+echo
+
+echo "=== arm 2: TIME partition, distributed execution on ==="
+set_doh_disable 0
+run_arm partition
+
+echo "=== arm 3: TIME partition, distributed execution off (dohsql_disable=1) ==="
+set_doh_disable 1
+run_arm partition_nodoh
+
+set_doh_disable 0
+
+# Every repeat, so the spread is visible rather than hidden behind an
+# aggregate.  Unequal variance between the arms is the whole reason two
+# aggregation modes are reported below.
+echo "=== every repeat ($NLOOKUPS lookups each) ==="
+printf '%-16s %4s %9s %8s %8s %8s %8s %9s %9s\n' arm rep avg_us min_us p50_us p95_us p99_us max_us qps
+for arm in plain partition partition_nodoh ; do
+    awk -v arm="$arm" '
+        /^METRIC/ {
+            rep++
+            delete v
+            for (i = 1; i <= NF; i++) { split($i, kv, "="); v[kv[1]] = kv[2] }
+            printf "%-16s %4d %9s %8s %8s %8s %8s %9s %9s\n", arm, rep, v["avg_us"], v["min_us"],
+                   v["p50_us"], v["p95_us"], v["p99_us"], v["max_us"], v["qps"]
+        }' arm_$arm.out
+done
+echo
+
+echo "=== comparison: mean of $REPEATS repeats ==="
+arm_table mean
+echo
+
+echo "=== comparison: fastest of $REPEATS repeats ==="
+arm_table best
+echo
+
+# The headline number: what parallel execution costs on an identical partition
+# over identical keys.  Both aggregation modes, because they disagree.
+echo "=== doh vs nodoh on the partition (cost of parallel execution) ==="
+printf '%-18s %10s %10s %8s %10s\n' statistic doh nodoh ratio delta_us
+for mode in mean best ; do
+    for f in avg_us p50_us p95_us ; do
+        d=`agg arm_partition.out $f $mode`
+        n=`agg arm_partition_nodoh.out $f $mode`
+        awk -v lbl="$mode $f" -v d="$d" -v n="$n" 'BEGIN {
+            if (n + 0 > 0)
+                printf "%-18s %10s %10s %7.2fx %+10.1f\n", lbl, d, n, d / n, d - n
+        }'
+    done
+done
+echo
+
+pm=`agg arm_plain.out avg_us mean`
+qm=`agg arm_partition.out avg_us mean`
+rm_=`agg arm_partition_nodoh.out avg_us mean`
+awk -v p="$pm" -v q="$qm" -v r="$rm_" 'BEGIN {
+    if (p > 0) {
+        printf "partition vs plain:            %+.1f%% mean avg latency\n", (q - p) * 100.0 / p
+        printf "partition_nodoh vs plain:      %+.1f%% mean avg latency\n", (r - p) * 100.0 / p
+    }
+    if (q > 0)
+        printf "partition_nodoh vs partition:  %+.1f%% mean avg latency\n", (r - q) * 100.0 / q
+}'
+echo
+echo "partition slower than plain = cost of probing every shard for one key."
+echo "nodoh faster than partition = the parallel scatter costs more than it saves"
+echo "at this row count; nodoh slower = the parallel shard probes are paying off."
+echo "Compare p50 against p95/max: a gap concentrated in the tail is a teardown"
+echo "or wakeup problem, a gap that shows up at p50 is per-query overhead."
+
+echo "Success"
+exit 0

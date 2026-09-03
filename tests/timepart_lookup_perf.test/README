@@ -1,0 +1,117 @@
+timepart_lookup_perf
+====================
+
+Measures single-row lookup latency against `classifications` in three states,
+using the same query and the same keys throughout:
+
+    SELECT security_identifier, classification_value
+      FROM classifications WHERE security_identifier = ?
+
+  arm 1  plain            ordinary table, 200k rows
+  arm 2  partition        same table converted to a TIME partition, RETENTION 2
+  arm 3  partition_nodoh  same partition, dohsql_disable=1 on every node
+
+`security_identifier` carries a unique key, so every arm is a unique-index
+equality seek returning exactly one row.
+
+Why the partition is slower
+---------------------------
+A time partition is keyed on insert time, not on `security_identifier`, so a
+lookup by identifier cannot be routed to one shard -- it has to probe the
+unique index of *every* shard and union the results.  With RETENTION 2 that is
+two index probes and a union instead of one probe.
+
+dohsql (distributed/parallel sql, "doh") executes those shard probes in
+parallel worker threads.  For a large scan that is a win; for a sub-millisecond
+point lookup the per-query thread handoff can easily cost more than the second
+index probe it is hiding.  Arm 3 disables it so the shards are probed serially
+on the sql thread, which separates "cost of being a partition" from "cost of
+the parallel machinery".
+
+Partitioning is done with
+
+    ALTER TABLE classifications PARTITIONED BY TIME
+        PERIOD 'daily' RETENTION 2 START <tomorrow> RETROACTIVELY
+
+`RETROACTIVELY` matters: it materialises both shards at once, so the union is
+real.  Without it there is a single shard until the first rollout, no union,
+and arm 3 would measure nothing.  `START` is a day out so no rollout fires
+mid-test -- with RETENTION 2 the first rollout drops the oldest shard, which
+would take the loaded rows with it.  Because every row is inserted inside a
+single period, one shard ends up holding all 200k rows and the other is empty;
+the test prints the per-shard counts so this is visible in the output.  The
+lookup still probes both.
+
+Running it
+----------
+    cd tests && make timepart_lookup_perf
+
+Knobs (environment variables):
+
+    ROWS       rows loaded             default 200000
+    NLOOKUPS   timed lookups per arm   default 2000
+    WARMUP     untimed lookups first   default 200
+    REPEATS    timed runs per arm      default 3
+    CHUNK      rows per load txn       default 20000
+
+Quick smoke run:
+
+    ROWS=20000 NLOOKUPS=200 REPEATS=1 make timepart_lookup_perf
+
+Reading the output
+------------------
+Each arm emits `METRIC` lines (one per repeat) with avg/min/p50/p95/p99/max in
+microseconds plus qps.  The comparison table at the end uses the *fastest*
+repeat of each arm -- on a shared host the fastest run is the least polluted by
+co-tenants; averaging repeats would just fold the noise in.
+
+This is a report-only test.  It fails on load errors, query errors, or rows
+lost during partitioning -- never on a latency regression, which is not
+trustworthy enough to gate on.
+
+Watch the spread, not just the average, on the `partition` arm.  A single-node
+run at the defaults looked like this:
+
+    metric              plain        partition      partition_nodoh
+    avg_us              252.7           1191.3                341.5
+    p50_us                250              470                  312
+    p95_us                342            10809                  480
+    p99_us                490            11268                  637
+
+The doh arm is bimodal, and the gap to arm 3 has two independent causes that
+are worth keeping apart.
+
+The tail -- p95/p99 parked just past 10ms -- is the hardcoded
+`poll(NULL, 0, 10)` in `dohsql_end_distribute` (db/dohsql.c).  Once the lookup
+itself is done, the coordinator waits for each child shard to reach
+DOH_CLIENT_DONE on a flat 10ms sleep rather than a condvar; `_mark_shard_done`
+sets that status under the connector mutex and signals nothing.  Rebuilding
+with the constant at 3ms moves p95 from 10809us to 3856us and p99 from 11268us
+to 4217us, while the plain and nodoh arms do not budge -- the cliff tracks the
+constant.  Restoring only the coordinator poll to 10ms (leaving the child-side
+poll in `dohsql_wait_for_master` at 3ms) puts the cliff straight back at
+10774us, so the coordinator loop is solely responsible.
+
+The median is a different story, and the sleep does not explain it.  Only about
+3.5% of lookups hit the sleep at all, so it accounts for roughly 350us of the
+~850us average gap; extrapolating the quantum to zero still leaves doh ~500us
+and ~2.5x slower than nodoh.  The `min_us` column makes this plain -- a minimum
+is a query that hit no sleep, and there doh is only ~40-65us behind nodoh, yet
+by the median it is 150-600us behind and varies widely run to run (doh p50
+ranged 442-901us across nine repeats against a steady 311-367us for nodoh).
+That profile -- cheap floor, expensive and noisy middle -- is the cost of
+running the shard in parallel at all: enqueueing it on the sql thread pool,
+waiting for it to get CPU, preparing a second sqlite engine, taking its own
+curtran, and handing rows back through the queue.  On a 300us point lookup that
+setup costs more than the second index probe it hides, which is why disabling
+doh wins here.
+
+So: fixing the poll would flatten the tail dramatically and pull the average
+from ~1190us to ~840us, but it would not close the gap to the 340us nodoh arm.
+Read avg_us as a blend of the two effects and look at min/p50 versus p95/p99 to
+tell them apart.
+
+The driver is `tests/tools/timepart-lookup-perf.c`.  The identifier list is
+sampled once, before arm 1, and written to `ids.txt`; every arm replays that
+same list in the same order, so the only thing varying between arms is the
+state of the database.

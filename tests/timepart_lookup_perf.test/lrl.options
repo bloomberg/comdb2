@@ -1,0 +1,9 @@
+table classifications classifications.csc2
+cache 1 gb
+# Retroactive partitioning is rejected outright under genid48, and it needs the
+# multitable ddl path (it is the only one that rebuilds the shard routing).
+init_with_genid48 0
+multitable_ddl 1
+# Default is 24: a retroactive START closer than that many hours out is blocked.
+# The test uses now+1day, which is right on the boundary.
+partition_retroactively_start 1

@@ -63,6 +63,7 @@ struct dohsql_connector {
     int selected;        /* true if a row from this engine is being used by
                              coordinator */
     pthread_mutex_t mtx;  /* mutex for queueing operations and related counts */
+    pthread_cond_t cond;  /* signalled when status becomes DOH_CLIENT_DONE */
     char *thr_where;      /* cached where status */
     my_col_t *cols;       /* cached cols values */
     int ncols;            /* number of columns */
@@ -184,6 +185,8 @@ static void _mark_shard_done(dohsql_connector_t *conn)
 {
     Pthread_mutex_lock (&conn->mtx);
     conn->status = DOH_CLIENT_DONE;
+    /* the coordinator blocks on this in dohsql_end_distribute */
+    Pthread_cond_signal(&conn->cond);
     Pthread_mutex_unlock (&conn->mtx);
 }
 
@@ -1023,6 +1026,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
         return SHARD_ERR_MALLOC;
     }
     Pthread_mutex_init(&conn->mtx, NULL);
+    Pthread_cond_init(&conn->cond, NULL);
 
     comdb2uuid(conn->clnt->osql.uuid);
     conn->clnt->appsock_id = getarchtid();
@@ -1076,6 +1080,41 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     clnt->argv0 = NULL;
     cleanup_clnt(clnt);
     free(clnt);
+
+    Pthread_mutex_destroy(&conn->mtx);
+    Pthread_cond_destroy(&conn->cond);
+}
+
+/* Block until conn reaches DOH_CLIENT_DONE.  Timed rather than indefinite:
+ * the shard signals us as soon as it is done, but we still have to surface
+ * every 10msec to check whether replication wants the bdb lock back.
+ * Returns 0 once the shard is done, or a recover_deadlock error. */
+static int _wait_shard_done(dohsql_connector_t *conn)
+{
+    int rc = 0;
+
+    Pthread_mutex_lock(&conn->mtx);
+    while (conn->status != DOH_CLIENT_DONE) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += 10 * 1000000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec++;
+            ts.tv_nsec -= 1000000000;
+        }
+        pthread_cond_timedwait(&conn->cond, &conn->mtx, &ts);
+        Pthread_mutex_unlock(&conn->mtx);
+        if (bdb_lock_desired(thedb->bdb_env)) {
+            rc = recover_deadlock_simple(thedb->bdb_env);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n", __func__, rc);
+                return rc;
+            }
+        }
+        Pthread_mutex_lock(&conn->mtx);
+    }
+    Pthread_mutex_unlock(&conn->mtx);
+    return rc;
 }
 
 static void _master_clnt_set(struct sqlclntstate *clnt)
@@ -1160,6 +1199,42 @@ static void _rem_parallel_load(void)
     Pthread_mutex_unlock(&parallel_load_mtx);
 }
 
+/* Unwind everything dohsql_distribute had already set up when _shard_connect
+ * fails partway through: shards [0, nconnected) have live connectors, and
+ * shards [1, nconnected) may already have a worker thread dispatched and
+ * running (only shard 0 runs inline on the coordinator).  Those threads have
+ * to be told to stop and reaped -- the same way normal distribution end does
+ * it -- before anything they own is freed out from under them.  Also restores
+ * the plugin vtable _master_clnt_set swapped in, since without that the
+ * caller's fallback to non-distributed execution would run with a clnt still
+ * wired for distributed sql. */
+static void _dohsql_distribute_unwind(struct sqlclntstate *clnt, dohsql_t *conns, int nconnected)
+{
+    int i;
+
+    for (i = 1; i < nconnected; i++) {
+        Pthread_mutex_lock(&conns->conns[i].mtx);
+        if (conns->conns[i].status != DOH_CLIENT_DONE)
+            conns->conns[i].status = DOH_MASTER_DONE;
+        Pthread_mutex_unlock(&conns->conns[i].mtx);
+    }
+    for (i = 1; i < nconnected; i++)
+        _wait_shard_done(&conns->conns[i]);
+
+    for (i = 0; i < nconnected; i++)
+        _shard_disconnect(&conns->conns[i]);
+
+    if (conns->order) {
+        free(conns->order);
+        free(conns->order_dir);
+    }
+    clnt_plugin_reset(clnt);
+    clnt->conns = NULL;
+    free(conns);
+
+    _rem_parallel_load();
+}
+
 int dohsql_distribute(dohsql_node_t *node)
 {
     GET_CLNT;
@@ -1218,9 +1293,12 @@ int dohsql_distribute(dohsql_node_t *node)
         struct param_data *params;
         int nparams;
         _save_params(node->nodes[i], &params, &nparams);
-        if ((rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql,
-                                 nparams, params)) != 0)
+        if ((rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql, nparams, params)) != 0) {
+            /* shards [0, i) are already live -- and, for i>1, already running
+             * on a worker thread -- so they cannot just be freed here. */
+            _dohsql_distribute_unwind(clnt, conns, i);
             return rc;
+        }
 
         if (i > 0) {
             struct string_ref *sr = create_string_ref(node->nodes[i]->sql);
@@ -1271,21 +1349,9 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
     donate_current_row(conns, 0);
 
     for (i = 1; i < conns->nconns; i++) {
-        Pthread_mutex_lock(&conns->conns[i].mtx);
-        while (conns->conns[i].status != DOH_CLIENT_DONE) {
-            Pthread_mutex_unlock(&conns->conns[i].mtx);
-            poll(NULL, 0, 10);
-            if (bdb_lock_desired(thedb->bdb_env)) {
-                rc = recover_deadlock_simple(thedb->bdb_env);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
-                           __func__, rc);
-                    goto done;
-                }
-            }
-            Pthread_mutex_lock(&conns->conns[i].mtx);
-        }
-        Pthread_mutex_unlock(&conns->conns[i].mtx);
+        rc = _wait_shard_done(&conns->conns[i]);
+        if (rc)
+            goto done;
     }
 
     for (i = 0; i < conns->nconns; i++) {
