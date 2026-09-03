@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 cdb2sql="${CDB2SQL_EXE} -r 1 ${CDB2_OPTIONS} $DBNAME default"
 c=8

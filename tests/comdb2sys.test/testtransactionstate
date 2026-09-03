@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 a_dbn=$1
 master=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="Y"')

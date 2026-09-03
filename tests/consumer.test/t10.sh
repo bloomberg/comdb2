@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Test: consumer:next() followed by DML in an explicit transaction.
 # Reproduces bug where consumer:next() did not initialize shadow_tran,

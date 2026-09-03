@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
