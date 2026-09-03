@@ -1210,6 +1210,10 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
+    /* Unconditional: show role 'W' even when osql_send_fingerprint is off and
+     * no OSQL_FINGERPRINT arrives to name the statement. */
+    bdb_fingerprint_rtstats_set_role(BDB_FP_ROLE_WRITE);
+
     /* go through the complete list and apply all the changes */
     out_rc = process_this_session(iq, iq_tran, iq->sorese, &bdberr, nops, err,
                                   dbc, dbc_ins, func);

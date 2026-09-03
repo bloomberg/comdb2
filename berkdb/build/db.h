@@ -2296,9 +2296,12 @@ struct __ufid_to_db_t {
 	DB *dbp;
 };
 
+/* fingerprint is the acquirer's 16-byte fingerprint or NULL; fingerprint_role is
+ * 'R', 'W', 'A' or 0. Independent: apply reports 'A' with a NULL fingerprint. */
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
-		int64_t page, const char *rectype, int stackid);
+		int64_t page, const char *rectype, int stackid,
+		const unsigned char *fingerprint, char fingerprint_role);
 
 typedef int (*collect_prepared_f)(void *args, char *dist_txnid, uint32_t flags,
 		DB_LSN *lsn, DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name,
@@ -3132,10 +3135,19 @@ void bb_berkdb_thread_stats_reset(void);
  * [0][1] SQL execution, [2][3] master write-apply, [4][5] replicant apply. */
 #define BB_BERKDB_FP_RTSTATS_NCOUNTS 6
 
+/* Which counter pair a thread's page-ins bill to, and the role its locks report.
+ * NONE must stay 0: it is what an unarmed thread reads out of TLS. */
+#define BB_BERKDB_FP_ROLE_NONE	0
+#define BB_BERKDB_FP_ROLE_SQL	1	/* 'R' -- SQL statement execution */
+#define BB_BERKDB_FP_ROLE_WRITE	2	/* 'W' -- master applying a write schedule */
+#define BB_BERKDB_FP_ROLE_APPLY	3	/* 'A' -- replicant applying from the log */
+
 void bb_berkdb_fingerprint_rtstats_init(void);
 void bb_berkdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bb_berkdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bb_berkdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+void bb_berkdb_fingerprint_rtstats_set_role(int role);
+int bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role);
 void bb_berkdb_fingerprint_rtstats_clear(void);
 void bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io);
 int bb_berkdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
