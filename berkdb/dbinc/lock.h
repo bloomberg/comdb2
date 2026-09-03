@@ -355,6 +355,13 @@ struct __db_lock {
 	u_int32_t nlsns;
 
     int         stackid;
+
+	/*
+	 * Acquirer, stamped from TLS at allocation and reported by comdb2_locks.
+	 * All-zero fingerprint means unknown; fp_role is a BB_BERKDB_FP_ROLE_*.
+	 */
+	u_int8_t	fingerprint[16];
+	u_int8_t	fp_role;
 };
 
 /*

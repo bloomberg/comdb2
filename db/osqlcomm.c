@@ -3809,6 +3809,9 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
     case OSQL_DELIDX:
     case OSQL_QBLOB:
     case OSQL_STARTGEN:
+    /* Diagnostic only: must not mark the session delayed, or every insert
+     * loses the no-constraints fast path in osql_process_packet. */
+    case OSQL_FINGERPRINT:
         break;
     case OSQL_DONE_SNAP:
         osql_extract_snap_info(sess, rpl, rpllen);
