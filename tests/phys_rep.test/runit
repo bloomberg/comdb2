@@ -222,10 +222,11 @@ function set_revconn_interval()
         "put tunable physrep_revconn_check_interval $1"
 }
 
-# The revconn check in physrep_worker's record loop abandons an in-flight
-# comdb2_transaction_logs result-set.  Drive it hard and verify the replicant
-# tears the connection down rather than reusing the handle, which would leave
-# the newsql stream out of sync.
+# The revconn check in physrep_worker's record loop used to bail out of an
+# in-flight comdb2_transaction_logs result-set.  Drive it hard and verify the
+# replicant re-checks in place: the mode never flips here, so the source
+# connection has to survive every check.  Tearing it down would cost a
+# re-registration and a source reselection per interval.
 #
 # Note this runs after run_tests, which drops t1 and t2, so use our own table.
 function test_revconn_churn()
@@ -255,22 +256,39 @@ function test_revconn_churn()
 
     tail -n +$((logmark+1)) $replog > revconn.log
 
-    # Guard against a vacuous pass: the path has to have actually run
     local checks=$(grep -c "Checking reverse connection status" revconn.log)
+    local flips=$(grep -c "Revconn changed" revconn.log)
     local closes=$(grep -c "Handle closed (called from physrep_worker" revconn.log)
 
+    # Guard against a vacuous pass: the path has to have actually run
     if [ "$checks" -lt 1 ] ; then
         failexit "revconn check never fired, test did not exercise the path"
     fi
 
-    # Every check has to be paired with a close of the physrep connection
-    if [ "$closes" -lt "$checks" ] ; then
-        failexit "revconn check abandoned the stream without closing the connection (checks=$checks closes=$closes)"
+    # Nothing here changes the revconn mode, so no check should have concluded
+    # that it had.  If one did, the close below is not attributable to the fix.
+    if [ "$flips" -ne 0 ] ; then
+        failexit "revconn mode flipped unexpectedly ($flips times), test is not measuring what it thinks"
     fi
 
-    local src=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $dbname default 'select count(*) from trc')
-    local dest=$(${CDB2SQL_EXE} -s --tabs $destdb --host localhost 'select count(*) from trc')
-    if [ "$src" != "$dest" ] ; then
+    # physrep_reconnect_interval is an hour and nothing else here drops the
+    # source, so any close in this window came from the revconn check.
+    if [ "$closes" -ne 0 ] ; then
+        failexit "revconn check tore down the source connection (checks=$checks closes=$closes)"
+    fi
+
+    # The replicant may still be applying the tail of the churn
+    local src="" dest="" waited=0
+    while [ $waited -lt 20 ] ; do
+        src=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $dbname default 'select count(*) from trc')
+        dest=$(${CDB2SQL_EXE} -s --tabs $destdb --host localhost 'select count(*) from trc')
+        [ -n "$src" ] && [ "$src" == "$dest" ] && break
+        sleep 1
+        let waited=waited+1
+    done
+
+    # -z guards against both queries failing and comparing equal-and-empty
+    if [ -z "$src" ] || [ "$src" != "$dest" ] ; then
         failexit "Replicant out of sync after revconn churn: src=$src dest=$dest"
     fi
 }
