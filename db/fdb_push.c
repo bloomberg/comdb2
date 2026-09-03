@@ -703,7 +703,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
     }
 
     cdb2_effects_tp effects = {0};
-    if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
+    if (!clnt->in_client_trans || clnt->verifyretry_off || (clnt->use_2pc && !clnt->use_2pc_ddl)) {
         rc = cdb2_get_effects(hndl, &effects);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d err \"%s\" sql \"%s\"\n", __func__, __LINE__, rc,

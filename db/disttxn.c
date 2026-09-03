@@ -2399,120 +2399,44 @@ void disttxn_resolve_ddl_prepared(void)
 
     logmsg(LOGMSG_INFO, "%s: found %d DDL prepared transactions to resolve\n", __func__, count);
 
+    /* Send async queries to all coordinators (reuses existing callback mechanism) */
     for (int i = 0; i < count; i++) {
-        if (!strcmp(coordinator_tiers[i], COORDINATOR_LOCAL))
-            continue;
-        Pthread_mutex_lock(&part_lk);
-        if (!hash_find(participant_hash, &dist_txnids[i]))
-            add_participant_lk(dist_txnids[i], I_AM_PREPARED);
-        Pthread_mutex_unlock(&part_lk);
+        recover_prepared_transaction(dist_txnids[i], coordinator_names[i], coordinator_tiers[i]);
     }
 
-    for (int i = 0; i < count; i++) {
-        const char *dist_txnid = dist_txnids[i];
-        const char *coord_name = coordinator_names[i];
-        const char *coord_tier = coordinator_tiers[i];
-
-        logmsg(LOGMSG_INFO, "%s: resolving DDL prepared txn %s coordinator %s/%s\n", __func__, dist_txnid, coord_name,
-               coord_tier);
-
-        if (!strcmp(coord_tier, COORDINATOR_LOCAL)) {
-            /* Local coordinator: check in-memory hash for commit status.
-             * If committed, recovery would have seen the dist-commit record.
-             * If not committed, coordinator crashed before deciding = abort. */
-            int is_committed = bdb_is_dist_committed(thedb->bdb_env, dist_txnid);
-            bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnid, is_committed);
-            logmsg(LOGMSG_INFO, "%s: local DDL txn %s resolved as %s\n", __func__, dist_txnid,
-                   is_committed ? "committed" : "aborted");
-            continue;
-        }
-
-        /* Remote coordinator: contact synchronously with retry */
-        int resolved = 0;
-        time_t start_time = comdb2_time_epoch();
-
-        while (!resolved && (comdb2_time_epoch() - start_time) < DDL_RESOLVE_TIMEOUT_SEC) {
-            cdb2_hndl_tp *hndl = NULL;
-            int flags = CDB2_MASTER;
-
-            if ((rc = cdb2_open(&hndl, coord_name, coord_tier, flags)) != 0) {
-                logmsg(LOGMSG_INFO, "%s: error opening handle to %s:%s for %s, rc=%d, retrying\n", __func__, coord_name,
-                       coord_tier, dist_txnid, rc);
-                poll(NULL, 0, DDL_RESOLVE_RETRY_MS);
-                continue;
-            }
-
-            const char *pname = gbl_dbname;
-            const char *ptier = gbl_machine_class ? gbl_machine_class : gbl_myhostname;
-
-            rc = cdb2_send_2pc(hndl, (char *)coord_name, (char *)pname, (char *)ptier, gbl_myhostname,
-                               CDB2_DIST__PREPARED, (char *)dist_txnid, 0, 0, NULL, 0 /* synchronous */);
-
-            /* Safe to close: coordinator response arrives via net layer (disttxn protocol),
-             * not via this cdb2api handle. The response lands in participant_hash via
-             * coordinator_committed()/coordinator_aborted(). */
-            cdb2_close(hndl);
-
-            if (rc != 0) {
-                logmsg(LOGMSG_INFO, "%s: error sending to %s:%s for %s, rc=%d, retrying\n", __func__, coord_name,
-                       coord_tier, dist_txnid, rc);
-                poll(NULL, 0, DDL_RESOLVE_RETRY_MS);
-                continue;
-            }
-
-            /* Wait for coordinator response via participant_hash */
-            int wait_start = comdb2_time_epochms();
-            while ((comdb2_time_epochms() - wait_start) < 5000) {
-                Pthread_mutex_lock(&part_lk);
-                participant_t *p = hash_find(participant_hash, &dist_txnid);
-                if (p && p->state != I_AM_PREPARED) {
-                    int committed = (p->state == I_AM_COMMITTED);
-                    Pthread_mutex_unlock(&part_lk);
-                    bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnid, committed);
-                    logmsg(LOGMSG_INFO, "%s: remote DDL txn %s resolved as %s\n", __func__, dist_txnid,
-                           committed ? "committed" : "aborted");
-                    resolved = 1;
-                    break;
-                }
-                Pthread_mutex_unlock(&part_lk);
-                poll(NULL, 0, DDL_RESOLVE_POLL_MS);
-            }
-
-            if (!resolved) {
-                logmsg(LOGMSG_INFO, "%s: no response from coordinator for %s, retrying\n", __func__, dist_txnid);
-            }
-        }
-
-        if (!resolved) {
-            if (gbl_disttxn_ddl_resolve_fatal) {
-                logmsg(LOGMSG_FATAL,
-                       "%s: unable to resolve DDL prepared txn %s "
-                       "after %d seconds, aborting startup\n",
-                       __func__, dist_txnid, DDL_RESOLVE_TIMEOUT_SEC);
-                abort();
-            } else {
-                logmsg(LOGMSG_WARN,
-                       "%s: unable to resolve DDL prepared txn %s "
-                       "after %d seconds, aborting transaction\n",
-                       __func__, dist_txnid, DDL_RESOLVE_TIMEOUT_SEC);
-                bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnid, 0 /* abort */);
-            }
-        }
-
+    /* Wait for all responses to arrive in participant_hash via callbacks */
+    time_t start_time = comdb2_time_epoch();
+    while ((comdb2_time_epoch() - start_time) < DDL_RESOLVE_TIMEOUT_SEC) {
         Pthread_mutex_lock(&part_lk);
-        participant_t *cleanup_p = hash_find(participant_hash, &dist_txnid);
-        if (cleanup_p) {
-            hash_del(participant_hash, cleanup_p);
-            Pthread_mutex_unlock(&part_lk);
-            /* Take p->lk to wait for any in-flight coordinator_committed/aborted signal
-             * before freeing, avoiding use-after-free on p->lk. */
-            Pthread_mutex_lock(&cleanup_p->lk);
-            Pthread_mutex_unlock(&cleanup_p->lk);
-            free(cleanup_p->dist_txnid);
-            free(cleanup_p);
-        } else {
-            Pthread_mutex_unlock(&part_lk);
+        int all_resolved = 1;
+        for (int i = 0; i < count; i++) {
+            participant_t *p = hash_find(participant_hash, &dist_txnids[i]);
+            /* Check if this transaction is resolved (not in I_AM_PREPARED state) */
+            if (!p || p->state == I_AM_PREPARED) {
+                all_resolved = 0;
+                break;
+            }
         }
+        Pthread_mutex_unlock(&part_lk);
+
+        if (all_resolved) {
+            logmsg(LOGMSG_INFO, "%s: all %d DDL prepared transactions resolved\n", __func__, count);
+            break;
+        }
+
+        poll(NULL, 0, DDL_RESOLVE_POLL_MS);
+    }
+
+    /* Mark all resolved transactions in Berkeley DB log */
+    for (int i = 0; i < count; i++) {
+        Pthread_mutex_lock(&part_lk);
+        participant_t *p = hash_find(participant_hash, &dist_txnids[i]);
+        int committed = (p && p->state == I_AM_COMMITTED) ? 1 : 0;
+        Pthread_mutex_unlock(&part_lk);
+
+        bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnids[i], committed);
+        logmsg(LOGMSG_INFO, "%s: marked DDL txn %s as %s\n", __func__, dist_txnids[i],
+               committed ? "committed" : "aborted");
     }
 
     bdb_free_ddl_prepared(thedb->bdb_env, dist_txnids, coordinator_names, coordinator_tiers, count);

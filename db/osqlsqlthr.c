@@ -1073,10 +1073,9 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
                clnt->dbtran.dtran ? " has remote writes" : " no remote writes", comdb2uuidstr(clnt->osql.uuid, us));
     }
 
-    /* is it distributed? (but not DDL 2PC which uses push-write coordination) */
+    /* is it distributed? */
 
-    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran && !clnt->use_2pc_ddl)
-    {
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran) {
         if (gbl_is_physical_replicant) {
             logmsg(LOGMSG_ERROR, "%s attempted fdb write on physical replicant\n", __func__);
             osql_sock_abort(clnt, type);

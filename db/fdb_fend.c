@@ -4224,7 +4224,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
                 fdb_client_set_identityBlob(clnt, tran->fcon.hndl);
                 rc = cdb2_run_statement(tran->fcon.hndl, "commit");
                 if (!rc) {
-                    cdb2_effects_tp effects;
+                    cdb2_effects_tp effects = {0};
                     int irc;
                     if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
                         logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n", __func__, irc,
@@ -4235,14 +4235,14 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
                         clnt->remote_effects.num_updated += effects.num_updated;
                         clnt->remote_effects.num_deleted += effects.num_deleted;
                         clnt->remote_effects.num_inserted += effects.num_inserted;
-                    }
-                    /* 2pc case; if the remote did no generate any writes, there is no
-                     * remote bplog, so do not include this fdb as a participant
-                     */
-                    tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
-                    if (tran->nwrites) {
-                        tran->writes_status = FDB_TRAN_WRITES;
-                        *is_distributed = 1;
+                        /* 2pc case; if the remote did no generate any writes, there is no
+                         * remote bplog, so do not include this fdb as a participant
+                         */
+                        tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
+                        if (tran->nwrites) {
+                            tran->writes_status = FDB_TRAN_WRITES;
+                            *is_distributed = 1;
+                        }
                     }
                 }
                 if (gbl_debug_disttxn_trace)
@@ -6271,7 +6271,9 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     /* Mark this as DDL 2PC: uses push-write coordination (not standard prepare/commit),
      * but participates in 2PC-aware recovery via disttxn_resolve_ddl_prepared() */
-    clnt->use_2pc_ddl = 1;
+    if (clnt->use_2pc) {
+        clnt->use_2pc_ddl = 1;
+    }
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
@@ -6405,6 +6407,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
         }
     }
 
+    clnt->use_2pc_ddl = 0;
     return 0;
 
 abort:
@@ -6423,6 +6426,7 @@ setup_error:
             fdb_push_free(&pushes[i]);
         }
     }
+    clnt->use_2pc_ddl = 0;
     return -1;
 }
 

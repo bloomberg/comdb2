@@ -183,7 +183,7 @@ function kill_restart_cluster
         else
             mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.old 2>/dev/null
             CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
-            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $LOGDIR/${dbname}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $LOGDIR/${dbname}.${node}.db) 2>&1 &
             echo $! > ${TMPDIR}/${dbname}.${node}.pid
         fi
     done
@@ -798,8 +798,8 @@ function test_crash_after_prepared_abort
         else
             mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.old 2>/dev/null
             CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
-            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null \
-                > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$LOGDIR/${DBNAME}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null \
+                > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$LOGDIR/${DBNAME}.${node}.db) 2>&1 &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done
