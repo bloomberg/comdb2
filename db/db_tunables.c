@@ -93,7 +93,6 @@ extern int gbl_verify_retry_backoff_ms;
 extern int gbl_verify_retry_count_before_backoff;
 extern int gbl_disttxn_handle_cache;
 extern int gbl_disttxn_handle_linger_time;
-extern int gbl_disttxn_ddl_resolve_fatal;
 extern int gbl_disttxn_async_messages;
 extern int gbl_debug_sleep_before_dispatch;
 extern int gbl_debug_sleep_in_sqlsession_rc;
