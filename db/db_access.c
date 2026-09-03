@@ -493,4 +493,3 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
     assert(0);
     return 0;
 }
-

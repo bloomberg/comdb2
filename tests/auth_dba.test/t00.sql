@@ -24,6 +24,7 @@ set user 'root'
 set password 'root'
 select 'root' as current_user;
 put authentication on
+put tunable max_password_cache_size 101
 
 select 'enabled' as authentication_status;
 

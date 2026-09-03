@@ -39,6 +39,7 @@
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
+extern int gbl_uses_password;
 extern int get_csc2_version_tran(const char *table, tran_type *tran);
 extern int get_csc2_file_tran(const char *table, int version, char **text, int *len,
                                 tran_type *tran);
@@ -10803,15 +10804,34 @@ static int password_cmp(const void *key1, const void *key2, int len)
     return CRYPTO_memcmp(key1, key2, PASSWD_HASH_SZ);
 }
 
-void init_password_cache()
+static void warn_empty_passwords(void)
 {
-    if (gbl_max_password_cache_size <= 0) {
+    char **users;
+    int nusers;
+
+    if (!gbl_uses_password)
+        return;
+
+    if (bdb_user_get_all(&users, &nusers) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve users\n", __func__);
         return;
     }
-    password_cache = lrucache_init(password_hash, password_cmp, free,
-                                   offsetof(password_cache_entry_t, lnk),
-                                   offsetof(password_cache_entry_t, key),
-                                   PASSWD_HASH_SZ, gbl_max_password_cache_size);
+
+    for (int i = 0; i < nusers; ++i) {
+        if (bdb_user_password_check(NULL, users[i], "", NULL) == 0)
+            logmsg(LOGMSG_WARN, "Password authentication enabled for user '%s' with an empty password\n", users[i]);
+        free(users[i]);
+    }
+    free(users);
+}
+
+void init_password_cache()
+{
+    if (gbl_max_password_cache_size > 0)
+        password_cache =
+            lrucache_init(password_hash, password_cmp, free, offsetof(password_cache_entry_t, lnk),
+                          offsetof(password_cache_entry_t, key), PASSWD_HASH_SZ, gbl_max_password_cache_size);
+    warn_empty_passwords();
 }
 
 void destroy_password_cache()
