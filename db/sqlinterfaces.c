@@ -4365,7 +4365,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt)) {
         clnt->use_2pc = gbl_2pc;
-        clnt->use_2pc_ddl = 0;  /* Not a DDL transaction */
+        clnt->use_2pc_ddl = 0; /* Not a DDL transaction */
     }
 
     /* is this a snapshot? special processing */

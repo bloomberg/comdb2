@@ -1405,9 +1405,6 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 		abort();
 	}
 	F_SET(p, DB_DIST_RECOVERED);
-	if (lflags & DB_TXN_SCHEMA_LOCK) {
-		F_SET(p, DB_DIST_NEEDS_SCHEMA_LK);
-	}
 
 	hash_add(dbenv->prepared_txn_hash, p);
 	hash_add(dbenv->prepared_utxnid_hash, p);
@@ -1579,7 +1576,7 @@ static int __collect_ddl_prepared_cb(void *obj, void *arg)
 	struct __collect_ddl_disttxns *collect = (struct __collect_ddl_disttxns *)arg;
 	int ret;
 
-	if (!F_ISSET(p, DB_DIST_NEEDS_SCHEMA_LK))
+	if (!(p->lflags & DB_TXN_SCHEMA_LOCK))
 		return 0;
 	if (F_ISSET(p, DB_DIST_HAVELOCKS | DB_DIST_COMMITTED | DB_DIST_ABORTED))
 		return 0;

@@ -1072,7 +1072,7 @@ struct sqlclntstate {
 
     // fdb 2pc
     int use_2pc;
-    int use_2pc_ddl;  // DDL transactions use different coordination (no prepare phase)
+    int use_2pc_ddl; // DDL transactions use different coordination (no prepare phase)
     int is_participant;
     int is_coordinator;
 

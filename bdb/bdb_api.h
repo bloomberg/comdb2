@@ -1972,7 +1972,6 @@ int bdb_collect_ddl_prepared(bdb_state_type *bdb_state, char ***dist_txnids, cha
 void bdb_free_ddl_prepared(bdb_state_type *bdb_state, char **dist_txnids, char **coordinator_names,
                            char **coordinator_tiers, int count);
 int bdb_mark_prepared_resolved(bdb_state_type *bdb_state, const char *dist_txnid, int committed);
-int bdb_is_dist_committed(bdb_state_type *bdb_state, const char *dist_txnid);
 
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
