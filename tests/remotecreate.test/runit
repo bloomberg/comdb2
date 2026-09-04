@@ -30,6 +30,19 @@ echo "s3$cluster_line" >> $DBDIR/comdb2db.cfg
 
 echo "partition partitiondb:$SHARDS_LIST" >> $DBDIR/comdb2db.cfg
 
+# Detect if 2PC is enabled (twopc.testopts appends enable_2pc to lrl)
+is_2pc=0
+if grep -q 'enable_2pc' ${DBDIR}/${DBNAME}.lrl 2>/dev/null; then
+    is_2pc=1
+    # For 2PC, secondary databases need to resolve primary and other secondaries
+    for cfgfile in $SECONDARY_DBDIR/comdb2db.cfg $TERTIARY_DBDIR/comdb2db.cfg $QUATERNARY_DBDIR/comdb2db.cfg; do
+        echo "s1$cluster_line" >> $cfgfile
+        echo "s2$cluster_line" >> $cfgfile
+        echo "s3$cluster_line" >> $cfgfile
+        echo "${cluster_line}" >> $cfgfile 2>/dev/null
+    done
+fi
+
 P_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} partitiondb default"
 P_SQL="cdb2sql ${CDB2_OPTIONS} partitiondb default"
 S0_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default"
@@ -141,7 +154,7 @@ function run_test {
 	test_creation_nonkey
 }
 
-rm $stopfile >/dev/null 2>&1 
+rm $stopfile >/dev/null 2>&1
 
 
 for shard in $SHARDS_LIST; do
@@ -151,6 +164,62 @@ done
 # remove the last ','
 shards=`echo $shards | sed 's/.$//'`
 echo $shards
+
+if [[ $is_2pc -eq 1 ]]; then
+    COORDINATOR_TIER="local"
+
+    # Set up coordinator permissions - all databases must allow all others as coordinators
+    all_dbs="$DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME"
+    db_opts_pairs=(
+        "$DBNAME|$CDB2_OPTIONS"
+        "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS"
+        "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS"
+        "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"
+    )
+    # allow-coordinator is per-node; in cluster mode send to every node
+    for pair in "${db_opts_pairs[@]}"; do
+        IFS='|' read -r db opts <<< "$pair"
+        for coord_db in $all_dbs; do
+            if [[ -n "$CLUSTER" ]]; then
+                for node in $CLUSTER; do
+                    cdb2sql -admin $opts $db --host $node \
+                        "exec procedure sys.cmd.send('allow-coordinator ${coord_db}/${COORDINATOR_TIER}')" 2>/dev/null
+                done
+            else
+                cdb2sql -admin $opts $db default \
+                    "exec procedure sys.cmd.send('allow-coordinator ${coord_db}/${COORDINATOR_TIER}')" 2>/dev/null
+            fi
+        done
+    done
+
+    # Wait for comdb2_distributed_transactions table on all databases
+    echo "Waiting for comdb2_distributed_transactions table..."
+    max_wait=60
+    all_opts=(
+        "$CDB2_OPTIONS|$DBNAME"
+        "$SECONDARY_CDB2_OPTIONS|$SECONDARY_DBNAME"
+        "$TERTIARY_CDB2_OPTIONS|$TERTIARY_DBNAME"
+        "$QUATERNARY_CDB2_OPTIONS|$QUATERNARY_DBNAME"
+    )
+    for pair in "${all_opts[@]}"; do
+        IFS='|' read -r opts db <<< "$pair"
+        elapsed=0
+        while [[ "$elapsed" -lt "$max_wait" ]]; do
+            tbl=$(cdb2sql --tabs $opts $db default \
+                "select tablename from comdb2_tables where tablename='comdb2_distributed_transactions'" 2>/dev/null)
+            if [[ "$tbl" == "comdb2_distributed_transactions" ]]; then
+                echo "  $db: table ready"
+                break
+            fi
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+        if [[ "$elapsed" -ge "$max_wait" ]]; then
+            fail_exit "comdb2_distributed_transactions table not created on $db after ${max_wait}s"
+        fi
+    done
+    echo "All databases have comdb2_distributed_transactions table"
+fi
 
 run_test
 

@@ -397,7 +397,8 @@ static int osql_wait(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     errstat_t dummy = {0};
 
-    /* if this is a 2pc participant, we don't need to wait here */
+    /* 2pc participants don't wait here; the coordinator handles synchronization
+     * via participant_wait/coordinator_wait in toblock.c. */
     if (clnt->is_participant)
         return 0;
 
@@ -1074,8 +1075,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
 
     /* is it distributed? */
 
-    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
-    {
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran) {
         if (gbl_is_physical_replicant) {
             logmsg(LOGMSG_ERROR, "%s attempted fdb write on physical replicant\n", __func__);
             osql_sock_abort(clnt, type);
@@ -1956,7 +1956,7 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
         return rc;
 
     if (clnt->remsql_set.is_remsql == IS_REMCREATE) {
-        /* this is a distributed create for a partition, creating individual shard here, info passed from
+        /* this is a distributed DDL for a partition, info passed from
          * SET OPTIONS through clnt struct
          */
         /* the SET PARTITION commands are independent of each other, so a client
@@ -1974,8 +1974,10 @@ int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
 
         if (sc->kind == SC_ADDTABLE) {
             sc->partition.type = PARTITION_ADD_GENSHARD;
-        } else {
+        } else if (sc->kind == SC_DROPTABLE) {
             sc->partition.type = PARTITION_REM_GENSHARD;
+        } else {
+            sc->partition.type = PARTITION_ALTER_GENSHARD;
         }
         snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename),
                  "%s", clnt->remsql_set.tablename);

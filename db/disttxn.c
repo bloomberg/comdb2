@@ -1,6 +1,7 @@
 #include <disttxn.h>
 #include <sqlquery.pb-c.h>
 #include <pthread.h>
+#include <poll.h>
 #include <epochlib.h>
 #include <plhash_glue.h>
 #include <stdlib.h>
@@ -175,6 +176,8 @@ int gbl_disttxn_handle_cache = 1;
 int gbl_disttxn_async_messages = 1;
 int gbl_coordinator_sync_on_commit = 1;
 int gbl_coordinator_block_until_durable = 1;
+
+int gbl_disttxn_ddl_resolve_fatal = 1;
 
 /* Debug tunables */
 int gbl_debug_exit_participant_after_prepare = 0;
@@ -2371,6 +2374,72 @@ static int coord_cmp(const char *key1, const char *key2, int len)
     if ((cmp = strcmp(c1->dbname, c2->dbname)))
         return cmp;
     return strcmp(c1->tier, c2->tier);
+}
+
+/* Synchronously resolve DDL prepared transactions before schema lock acquisition.
+ * This prevents deadlock during bdb_upgrade_all_prepared() when a recovered
+ * prepared DDL transaction needs the schema lock.
+ */
+#define DDL_RESOLVE_TIMEOUT_SEC 30
+#define DDL_RESOLVE_RETRY_MS 1000
+#define DDL_RESOLVE_POLL_MS 100
+
+void disttxn_resolve_ddl_prepared(void)
+{
+    char **dist_txnids = NULL, **coordinator_names = NULL, **coordinator_tiers = NULL;
+    int count = 0;
+
+    int rc = bdb_collect_ddl_prepared(thedb->bdb_env, &dist_txnids, &coordinator_names, &coordinator_tiers, &count);
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "%s: failed to collect DDL prepared transactions rc=%d\n", __func__, rc);
+        abort();
+    }
+    if (count == 0)
+        return;
+
+    logmsg(LOGMSG_INFO, "%s: found %d DDL prepared transactions to resolve\n", __func__, count);
+
+    /* Send async queries to all coordinators (reuses existing callback mechanism) */
+    for (int i = 0; i < count; i++) {
+        recover_prepared_transaction(dist_txnids[i], coordinator_names[i], coordinator_tiers[i]);
+    }
+
+    /* Wait for all responses to arrive in participant_hash via callbacks */
+    time_t start_time = comdb2_time_epoch();
+    while ((comdb2_time_epoch() - start_time) < DDL_RESOLVE_TIMEOUT_SEC) {
+        Pthread_mutex_lock(&part_lk);
+        int all_resolved = 1;
+        for (int i = 0; i < count; i++) {
+            participant_t *p = hash_find(participant_hash, &dist_txnids[i]);
+            /* Check if this transaction is resolved (not in I_AM_PREPARED state) */
+            if (!p || p->state == I_AM_PREPARED) {
+                all_resolved = 0;
+                break;
+            }
+        }
+        Pthread_mutex_unlock(&part_lk);
+
+        if (all_resolved) {
+            logmsg(LOGMSG_INFO, "%s: all %d DDL prepared transactions resolved\n", __func__, count);
+            break;
+        }
+
+        poll(NULL, 0, DDL_RESOLVE_POLL_MS);
+    }
+
+    /* Mark all resolved transactions in Berkeley DB log */
+    for (int i = 0; i < count; i++) {
+        Pthread_mutex_lock(&part_lk);
+        participant_t *p = hash_find(participant_hash, &dist_txnids[i]);
+        int committed = (p && p->state == I_AM_COMMITTED) ? 1 : 0;
+        Pthread_mutex_unlock(&part_lk);
+
+        bdb_mark_prepared_resolved(thedb->bdb_env, dist_txnids[i], committed);
+        logmsg(LOGMSG_INFO, "%s: marked DDL txn %s as %s\n", __func__, dist_txnids[i],
+               committed ? "committed" : "aborted");
+    }
+
+    bdb_free_ddl_prepared(thedb->bdb_env, dist_txnids, coordinator_names, coordinator_tiers, count);
 }
 
 void disttxn_cleanup(void)
