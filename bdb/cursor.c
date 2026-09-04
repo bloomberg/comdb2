@@ -4710,7 +4710,14 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
         char *searchkey = key;
         int searchkeylen = keylen;
 
-        for (;;) {
+        /* At most one retry.  SET_RANGE finds a row past our search key only
+           because we hold that row's lock; if it is an in-place rewrite of
+           the row we started from (same masked genid -- see set_updateid()),
+           a SECOND rewrite of that identical genid before we search again
+           would need a conflicting lock, which the one we're holding blocks.
+           So one retry always suffices -- no loop needed, just a bounded
+           attempt count of 2. */
+        for (int attempt = 0; attempt < 2; attempt++) {
             rc = bdb_cursor_find_and_skip(cur, berkdb, searchkey, searchkeylen, DB_SET_RANGE, 0, 1, bdberr);
             if (rc < 0)
                 return rc;
@@ -4747,26 +4754,32 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                 assert(rc <= 0);
 
                 if (rc < 0) {
-                    /* found something past our search key.  If it is an
-                       in-place rewrite of the row we started from (same
-                       masked genid, i.e. only the update counter differs --
-                       see set_updateid()), it is not a new row: the write
-                       cannot have produced a THIRD version while we hold the
-                       lock we just took getting here (an update targeting
-                       this exact genid needs a conflicting lock, so it
-                       blocks), so searching forward from this exact position
-                       terminates in a bounded number of retries. */
+                    /* found something past our search key -- see if it is an
+                       in-place rewrite of the row we started from. */
                     unsigned long long found_genid = 0;
                     int grc = berkdb_get_genid(cur, berkdb, &found_genid, bdberr);
                     if (grc < 0)
                         return grc;
 
-                    if (bdb_same_row_inplace(cur->state, original_genid, found_genid)) {
+                    int same_row = bdb_same_row_inplace(cur->state, original_genid, found_genid);
+
+                    if (same_row && attempt == 0) {
                         /* bounded above, right after keysize() */
                         memcpy(keybuf, found_key, found_keylen);
                         searchkey = keybuf;
                         searchkeylen = found_keylen;
                         continue;
+                    }
+
+                    if (same_row) {
+                        /* Should be unreachable per the argument above: a
+                           second rewrite of the identical genid while we
+                           still hold its lock.  Fail safe -- report it as the
+                           next row rather than trust an invariant that just
+                           broke and retry again. */
+                        logmsg(LOGMSG_ERROR,
+                               "%s: same-row rewrite persisted past the one retry the lock allows, tbl %s\n",
+                               __func__, cur->state->name);
                     }
 
                     rc = IX_NOTFND; /* found the next in order */
@@ -4775,21 +4788,7 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                 } else {
                     rc = IX_FND; /* bingo */
                 }
-
-                /*
-                logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx
-                found_key=%llx\n",
-                      pthread_self(), __FILE__, __LINE__, rc, searchkeylen,
-                      *(unsigned long long*)searchkey, *(unsigned long long*)found_key
-                      );
-                 */
             }
-            /*
-            else
-               logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
-                     pthread_self(), __FILE__, __LINE__, rc, searchkeylen,
-                     *(unsigned long long*)searchkey);
-             */
             break;
         }
         break;

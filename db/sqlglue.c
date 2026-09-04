@@ -3549,7 +3549,11 @@ static void sync_capture_blobs(BtCursor *dta, int rrn, unsigned long long genid)
             continue;
         blob = &dta->rd_blob_buffers[f->blob_index];
 
-        if (blob->capacity < length) {
+        /* Grow to fit, and shrink back only when badly oversized (a single
+           outlier row shouldn't pin a large buffer for the rest of a long
+           scan) -- not on every smaller row, which would just trade the
+           original waste for realloc churn. */
+        if (blob->capacity < length || blob->capacity > 4 * length) {
             char *newz = realloc(blob->z, length);
             if (!newz)
                 continue;
@@ -7446,9 +7450,15 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
         blob = &pCur->rd_blob_buffers[f->blob_index];
     }
     int length = blobs.bloblens[0];
-    if (blob->capacity < length) {
-        free(blob->z);
-        blob->z = malloc(length);
+    /* Grow to fit, and shrink back only when badly oversized -- see
+       sync_capture_blobs(), which manages this same cache and shares the
+       policy. */
+    if (blob->capacity < length || blob->capacity > 4 * length) {
+        char *newz = realloc(blob->z, length);
+        if (!newz)
+            return 0; /* m->z is already set from the live fetch above; the
+                         cache update is best-effort, leave it as it was */
+        blob->z = newz;
         blob->capacity = length;
     }
     blob->n = m->n;

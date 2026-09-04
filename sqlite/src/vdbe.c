@@ -6563,13 +6563,16 @@ case OP_IdxRowid: {           /* out2 */
       assert( pTabCur->eCurType==CURTYPE_BTREE );
       assert( pTabCur->uc.pCursor!=0 );
       assert( pTabCur->isTable );
+#ifdef SQLITE_ENABLE_CURSOR_HINTS
       /* 0 when the pairing was deliberately not recorded (remote cursors --
       ** see sqlite3BtreeCursorHint_TableCursor); otherwise it must be this
-      ** table cursor. */
+      ** table cursor.  sqlite3BtreeCursorHintTblCsr() is only declared under
+      ** this same flag. */
       assert(
           sqlite3BtreeCursorHintTblCsr(pC->uc.pCursor)==0
        || sqlite3BtreeCursorHintTblCsr(pC->uc.pCursor)==pTabCur->uc.pCursor
       );
+#endif /* SQLITE_ENABLE_CURSOR_HINTS */
       pTabCur->nullRow = 0;
       pTabCur->movetoTarget = rowid;
       pTabCur->deferredMoveto = 1;
@@ -8685,9 +8688,9 @@ case OP_Init: {          /* jump */
 */
 case OP_CursorHint: {
   VdbeCursor *pC;
-  pC = p->apCsr[pOp->p1];
 
   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  pC = p->apCsr[pOp->p1];
 
   if( pC ){
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -8696,10 +8699,13 @@ case OP_CursorHint: {
     if( pOp->p4type==P4_EXPR ){
       sqlite3BtreeCursorHint(pC->uc.pCursor, BTREE_HINT_RANGE,
           pOp->p4.pExpr, aMem);
-    }else if( p->apCsr[pOp->p3] ){
-      sqlite3BtreeCursorHint(
-          pC->uc.pCursor, BTREE_HINT_TABLECURSOR, p->apCsr[pOp->p3]->uc.pCursor
-      );
+    }else{
+      assert( pOp->p3>=0 && pOp->p3<p->nCursor );
+      if( p->apCsr[pOp->p3] ){
+        sqlite3BtreeCursorHint(
+            pC->uc.pCursor, BTREE_HINT_TABLECURSOR, p->apCsr[pOp->p3]->uc.pCursor
+        );
+      }
     }
   }
   break;
