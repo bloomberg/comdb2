@@ -2675,6 +2675,170 @@ static int get_matching_genid(BtCursor *cur, int rrn, unsigned long long *genid)
     return 0;
 }
 
+/* Store found-record bytes into a cursor buffer (ondisk_buf / dtabuf),
+ * respecting ownership.
+ *
+ * For a write-transaction cursor the destination is an owned buffer -- malloc'd
+ * at cursor open and freed at cursor close -- so we must COPY into it.  Aliasing
+ * it to a bdb-owned buffer would leak the owned allocation and, because the
+ * field is freed at close, later double-free the shared buffer.  For a read
+ * cursor the destination is an unowned alias that is never freed, so we just
+ * point it at the source. */
+static inline void cursor_stash_found_buf(BtCursor *pCur, void **dst, void *src, int len)
+{
+    if (pCur->writeTransaction)
+        memcpy(*dst, src, len);
+    else
+        *dst = src;
+}
+
+char *sqlite3BtreeGetTblName(BtCursor *pCur);
+
+/* Describe the release that most likely explains a lost race -- entry point,
+ * whether it kept our table locks, how long ago, and how many releases this
+ * request has done.  Call sites pass their own buffer; returns it so it can be
+ * used directly as a "%s" argument. */
+const char *clnt_last_release_str(struct sqlclntstate *clnt, char *buf, size_t sz)
+{
+    if (!clnt || !clnt->last_release_func) {
+        snprintf(buf, sz, "no lock release on this request");
+        return buf;
+    }
+    snprintf(buf, sz, "last release %s:%d (%s) %dms ago, #%d this request", clnt->last_release_func,
+             clnt->last_release_line,
+             (clnt->last_release_flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY) ? "pagelocks-only" : "full",
+             comdb2_time_epochms() - clnt->last_release_ms, clnt->last_release_count);
+    return buf;
+}
+
+/* Clear the lock-release pacing and last-release state at the start of a run.
+ *
+ * sqlclntstate is reused for the life of the connection and reset_clnt() only
+ * zeroes it on the initial reset, so without this it carries over:
+ * pagelock_release_first_ms, only cleared by a move that sees NO waiter,
+ * survives a request that ends with one parked and makes the next request take
+ * the max_wait FULL release on its first waiter; and clnt_last_release_str()
+ * reports last_release_* as "this request" when they may be an earlier one. */
+void clnt_reset_release_state(struct sqlclntstate *clnt)
+{
+    clnt->pagelock_release_first_ms = 0;
+    clnt->pagelock_release_last_ms = 0;
+    clnt->dbg_pagelock_releases = 0;
+    clnt->sync_dta_generation = 0;
+
+    clnt->last_release_func = NULL;
+    clnt->last_release_line = 0;
+    clnt->last_release_flags = 0;
+    clnt->last_release_ms = 0;
+    clnt->last_release_count = 0;
+}
+
+/* Re-validate a cursor's cached table pointers (pCur->db / pCur->sc) after a
+ * window in which this session's locks were dropped -- either recover_deadlock
+ * itself, or a deferred seek resolved after such a release.
+ *
+ * Must NOT dereference pCur->db: it may already be freed.  A DROP replicated to
+ * this node applies its recorded lock set (including the table write lock the
+ * master held) via __lock_get_list() before running, so an ordinary reader that
+ * never gives up its own table lock is protected exactly like on the master --
+ * the drop simply blocks until the reader finishes.  The exposure is narrower:
+ * a reader can be made to voluntarily give up that lock mid-scan (the
+ * pre-existing sql_tick random-release path, or this feature's own
+ * pagelock_release_max_wait_ms starvation fallback), and if a replicated DROP
+ * was waiting on exactly that lock, it proceeds and frees the dbtable/schema
+ * while this cursor still holds a pointer to them.  We therefore re-resolve the
+ * table from the thread's rootpage map (which looks it up by name against the
+ * live thedb->dbs) and only compare afterwards.
+ *
+ * Compares TABLE VERSION, not schema object identity:
+ *   db == NULL                     -> dropped (or renamed out from under us)
+ *   ixnum >= db->nix               -> this specific index no longer exists
+ *                                      (DROP INDEX shrinks db->ixschema[],
+ *                                      which is sized to db->nix, not a fixed
+ *                                      MAXINDEX table -- bounds-check before
+ *                                      ever indexing into it)
+ *   db->tableversion == cached     -> no OBSERVABLE change.  table_version_upsert()
+ *                                      (the only writer of the persisted counter)
+ *                                      is called for rename, drop, and alter with
+ *                                      same_schema==false -- i.e. every schema
+ *                                      change that can alter column/index layout.
+ *                                      It is NOT called for truncate, rebuild, or
+ *                                      rebuild index (all of them force
+ *                                      same_schema=1, since none can change
+ *                                      layout by construction), even though all
+ *                                      three route through reload_csc2_schema(),
+ *                                      which unconditionally reallocates fresh
+ *                                      schema objects regardless of whether
+ *                                      anything actually changed.  So schema
+ *                                      object identity is the wrong thing to
+ *                                      compare -- it flags truncate/rebuild as
+ *                                      "changed" even though nothing is -- while
+ *                                      tableversion tracks exactly what matters
+ *                                      for cursor safety.  Confirmed empirically
+ *                                      (docker cluster, DIAGCTV instrumentation):
+ *                                      tableversion is unchanged across both a
+ *                                      truncate and a rebuild, while the schema
+ *                                      pointer differs both times.
+ *   db->tableversion != cached     -> real change: fail
+ *
+ * On a match, refresh pCur->sc to the live object (cheap, and correct even
+ * though truncate/rebuild already reallocated a content-identical one) --
+ * everything else BtCursor caches (bdbcur, blob_descriptor, ...) either holds
+ * plain values immune to the schema object's address, or is already refreshed
+ * by the reposition step that runs before this check.
+ *
+ * Returns 0 when the cursor may keep using its cached pointers, else
+ * SQLITE_COMDB2SCHEMA with a "table ... was schema changed" message left on the
+ * vdbe, so the client gets CDB2ERR_SCHEMA instead of a crash. */
+static int cursor_check_table_valid(BtCursor *pCur)
+{
+    struct dbtable *db;
+    const char *tblname;
+
+    /* only local cursors that cache a dbtable are affected */
+    if (!pCur->db || pCur->rootpage < RTPAGE_START || (pCur->bt && (pCur->bt->is_remote || pCur->bt->is_temporary)))
+        return 0;
+
+    db = get_sqlite_db(pCur->thd, pCur->rootpage, NULL);
+
+    if (db && (pCur->ixnum == -1 || pCur->ixnum < db->nix) && db->tableversion == pCur->tableversion) {
+        /* A version match proves this is the same table the cursor opened:
+           tableversion is monotonic per table NAME -- drop bumps it and llmeta
+           keeps the entry keyed by name, so a recreate reads the bumped value
+           back rather than restarting at 0.  Refresh pCur->db as well as
+           pCur->sc, so the cursor cannot be left holding a dbtable that was
+           freed and replaced during the window. */
+        pCur->db = db;
+        pCur->sc = (pCur->ixnum == -1) ? db->schema : db->ixschema[pCur->ixnum];
+        return 0;
+    }
+
+    /* name comes from the rootpage map, which outlives a dropped dbtable */
+    tblname = sqlite3BtreeGetTblName(pCur);
+
+    logmsg(LOGMSG_ERROR,
+           "%s: table \"%s\" changed under cursor (rootpage %d): db %p -> %p, tableversion %llu -> %llu\n", __func__,
+           tblname, pCur->rootpage, (void *)pCur->db, (void *)db, (unsigned long long)pCur->tableversion,
+           (unsigned long long)(db ? db->tableversion : 0));
+
+    if (pCur->vdbe) {
+        sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
+        sqlite3VdbeError(pCur->vdbe, "table \"%s\" was schema changed", tblname);
+        sqlite3VdbeTransferError(pCur->vdbe);
+        sqlite3MakeSureDbHasErr(pCur->vdbe->db, SQLITE_OK);
+        sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+    }
+
+    /* The dbtable may already be freed (a replicant DROP does freedb() without
+       waiting for local readers).  Drop the reference now that we are failing
+       the query: teardown -- sqlite3BtreeCloseCursor's use counts and
+       addCursorCost -- guards on pCur->db, so clearing it keeps that off the
+       freed object.  Done last: the trace above still reports the old pointer. */
+    pCur->db = NULL;
+
+    return SQLITE_COMDB2SCHEMA;
+}
+
 static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 {
     struct sql_thread *thd = pCur->thd;
@@ -2724,6 +2888,10 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return SQLITE_DEADLOCK;
     }
 
+    /* schema change detected during lock-release/recover_deadlock */
+    if (rc == SQLITE_COMDB2SCHEMA)
+        return SQLITE_COMDB2SCHEMA;
+
     if (rc == IX_FND || rc == IX_NOTFND) {
         void *buf;
         int sz;
@@ -2747,11 +2915,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
                logmsg(LOGMSG_ERROR, "%s: incorrect datsize %d\n", __func__, sz);
                 return SQLITE_INTERNAL;
             }
-            if (pCur->writeTransaction) {
-                memcpy(pCur->dtabuf, buf, sz);
-            } else {
-                pCur->dtabuf = buf;
-            }
+            cursor_stash_found_buf(pCur, &pCur->dtabuf, buf, sz);
         }
     }
 
@@ -2860,6 +3024,10 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
                    : 0);
         return SQLITE_DEADLOCK;
     }
+
+    /* schema change detected during lock-release/recover_deadlock */
+    if (rc == SQLITE_COMDB2SCHEMA)
+        return SQLITE_COMDB2SCHEMA;
 
     if (rc == IX_FND || rc == IX_NOTFND) {
         void *buf;
@@ -3248,6 +3416,282 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
 }
 
 unsigned long long release_locks_on_si_lockwait_cnt = 0;
+int gbl_debug_pagelock_release_trace = 0;
+/* Do not re-release page locks more often than this while a waiter persists;
+   without it we release once per cursor move for the life of the scan. */
+int gbl_pagelock_release_interval_ms = 100;
+/* If a waiter is still parked after this long, page locks were not what it
+   wanted (a schema change wants our table lock): fall back to a full release
+   so it can proceed, rather than starving it for the length of the query.
+   Defaults to the same 60s the emit-row release path uses via
+   gbl_rep_wait_release_ms.  0 disables the fallback entirely (page locks only,
+   forever -- a long scan can then starve a schema change indefinitely). */
+int gbl_pagelock_release_max_wait_ms = 60000;
+int gbl_debug_sleep_in_cursor_move = 0;           /* ms to sleep on each cursor move (testing only) */
+int gbl_recover_deadlock_sync_dta = 1;            /* sync index/data cursors before lock release */
+int gbl_debug_recover_deadlock_skip_sync_dta = 0; /* test only: release but skip the
+                                                     dta sync, to reproduce the
+                                                     "Dta lookup lost the race" bug */
+
+/*
+ * Capture this data cursor's out-of-line blobs for the row it is now sitting
+ * on, into the per-cursor genid-keyed blob cache (pCur->rd_blob_buffers), the
+ * same cache fetch_blob_into_sqlite_mem() consults before doing a live fetch.
+ *
+ * Why this is needed: the deferred-seek fast path serves the main record from
+ * the buffer captured below, but an unbounded BLOB/VUTF8 lives out-of-line in a
+ * blob file and is fetched separately, live, keyed on pCur->genid.  After the
+ * lock release the row can be rewritten (comdb2 bumps the genid even for a
+ * logically identical rewrite), and that live lookup then finds nothing for the
+ * old genid -- returning a zero-length blob rather than an error.  The result is
+ * a silently truncated column next to a correct inline twin.  Pre-filling the
+ * cache here, while we still hold locks and the row is still current, means the
+ * later read hits the cache and never issues the doomed lookup.
+ *
+ * Applies to any cursor that can serve blob columns -- both a paired data
+ * cursor and a datacopy index cursor, which serves inline columns from the
+ * index but still fetches blobs live by genid.
+ *
+ * Caches every blob of the row (a column-used hint is not reachable from
+ * BtCursor).  NULL blobs are intentionally not cached: a cache miss on those
+ * falls through to the live fetch, which correctly yields NULL regardless.
+ */
+static void sync_capture_blobs(BtCursor *dta, int rrn, unsigned long long genid)
+{
+    struct dbtable *db = dta->db;
+    blob_status_t blobs;
+    bdb_fetch_args_t args = {0};
+    int dtafilenums[MAXBLOBS];
+    int bdberr, rc, i;
+    struct schema *sc;
+
+    if (!db || db->numblobs <= 0 || !dta->bdbcur)
+        return;
+    if (genid == 0)
+        return;
+    /* shadow/synthetic genids are served from the shadow blobs, not here */
+    if (is_genid_synthetic(genid))
+        return;
+    /* Only capture at a cursor that can itself serve blob columns:
+         ixnum == -1      -- a data cursor, which serves them directly
+         DATACOPY index   -- sqlite reads inline columns straight from the index
+                             and never opens a table cursor, but blobs cannot
+                             live in the datacopy, so they are still fetched
+                             live by genid
+       A plain index cursor serves no blobs -- they arrive through its paired
+       data cursor, which is captured separately -- so fetching them here is
+       discarded work, O(open cursors x blobs per row) on every release. */
+    if (dta->ixnum >= 0 &&
+        !(db->schema && db->schema->ix && (db->schema->ix[dta->ixnum]->flags & SCHEMA_DATACOPY)))
+        return;
+    /* A partial-datacopy index gathers its blob descriptor against the index's
+       partial_datacopy schema, not .ONDISK, and dta->blob_descriptor is shared
+       with fetch_blob_into_sqlite_mem() -- gathering it here with a different
+       schema would corrupt what that path later reads back.  Skip: the live
+       fetch still serves those, and now reports the lost race instead of
+       silently truncating. */
+    if (dta->ixnum >= 0 && db->schema && db->schema->ix && (db->schema->ix[dta->ixnum]->flags & SCHEMA_PARTIALDATACOPY))
+        return;
+
+    if (!dta->have_blob_descriptor) {
+        if (gather_blob_data_byname(db, ".ONDISK", &dta->blob_descriptor, NULL))
+            return;
+        dta->have_blob_descriptor = 1;
+    }
+    memcpy(&blobs, &dta->blob_descriptor, sizeof(blobs));
+    if (blobs.numcblobs <= 0 || blobs.numcblobs > MAXBLOBS)
+        return;
+
+    for (i = 0; i < blobs.numcblobs; ++i)
+        dtafilenums[i] = i + 1;
+
+    /* use sqlite's allocator, to match how the live path frees these */
+    args.fn_malloc = sqlite3GlobalConfig.m.xMalloc;
+    args.fn_free = sqlite3GlobalConfig.m.xFree;
+
+    rc = bdb_fetch_blobs_by_rrn_and_genid_cursor(db->handle, rrn, genid, blobs.numcblobs, dtafilenums, blobs.bloblens,
+                                                 blobs.bloboffs, (void **)blobs.blobptrs, dta->bdbcur, &args, &bdberr);
+    if (rc) {
+        /* Not fatal -- leave the cache alone and let the normal path deal.
+           Still fall through to the free loop: a mid-way failure (e.g. the
+           updateid check firing on the third of four blobs) returns non-zero
+           with the earlier slots already allocated. */
+        goto freeblobs;
+    }
+
+    if (!dta->rd_blob_buffers) {
+        dta->rd_blob_buffers = calloc(MAXBLOBS, sizeof(struct rd_blob_buffer));
+        if (!dta->rd_blob_buffers)
+            goto freeblobs;
+    }
+
+    /* cblob_tag_ixs indexes the table's .ONDISK schema (that's what
+     * gather_blob_data_byname() was called against above) -- NOT dta->sc,
+     * which for a datacopy index cursor is the INDEX's own schema (a handful
+     * of members) and would index out of bounds. */
+    sc = db->schema;
+
+    for (i = 0; i < blobs.numcblobs; ++i) {
+        int length = blobs.bloblens[i];
+        int tagidx = blobs.cblob_tag_ixs[i];
+        struct field *f;
+        struct rd_blob_buffer *blob;
+
+        if (blobs.blobptrs[i] == NULL) /* NULL blob: see comment above */
+            continue;
+        if (tagidx < 0 || !sc || tagidx >= sc->nmembers)
+            continue;
+        f = &sc->member[tagidx];
+        /* cache slot is the field's own blob_index, not the fetch loop
+         * counter -- they need not coincide (e.g. a partial datacopy or a
+         * different member ordering). */
+        if (f->blob_index < 0 || f->blob_index >= MAXBLOBS)
+            continue;
+        blob = &dta->rd_blob_buffers[f->blob_index];
+
+        /* Grow to fit, and shrink back only when badly oversized (a single
+           outlier row shouldn't pin a large buffer for the rest of a long
+           scan) -- not on every smaller row, which would just trade the
+           original waste for realloc churn. */
+        if (blob->capacity < length || blob->capacity > 4 * length) {
+            char *newz = realloc(blob->z, length);
+            if (!newz)
+                continue;
+            blob->z = newz;
+            blob->capacity = length;
+        }
+        memcpy(blob->z, blobs.blobptrs[i], length);
+        blob->length = length;
+        /* mirror fetch_blob_into_sqlite_mem's conversion exactly */
+        if (f->type == SERVER_VUTF8) {
+            blob->flags = (MEM_Term | MEM_Str);
+            blob->n = length > 0 ? length - 1 : length;
+        } else {
+            blob->flags = MEM_Blob;
+            blob->n = length;
+        }
+        blob->genid = genid;
+    }
+
+freeblobs:
+    for (i = 0; i < blobs.numcblobs; ++i) {
+        if (blobs.blobptrs[i]) {
+            args.fn_free(blobs.blobptrs[i]);
+            blobs.blobptrs[i] = NULL;
+        }
+    }
+}
+
+/*
+ * Before releasing cursor locks, walk all open index cursors and sync each
+ * one's paired data cursor (set via BTREE_HINT_TABLECURSOR) to the index
+ * cursor's current genid if they differ.  Must be called while locks are
+ * still held so the target row is guaranteed to exist at find time.
+ *
+ * Buffer-lifetime dependency: we stash pointers into the data cursor's
+ * per-cursor row buffer (dta->ondisk_buf/dtabuf via get_found_data) and rely
+ * on that buffer surviving the lock release that follows.  recover_deadlock
+ * merely invalidates the cursor -- unlock closes the berkdb dbc but does NOT
+ * free the USERMEM row buffer -- and re-positions lazily on next reuse, and
+ * the deferred-seek fast path in sqlite3BtreeMovetoUnpacked skips that
+ * re-position, so the buffer is never overwritten before it is read.
+ */
+void sync_index_data_cursors(struct sql_thread *thd)
+{
+    BtCursor *cur;
+    struct sqlclntstate *clnt = thd->clnt;
+    int gen;
+
+    if (!clnt)
+        return;
+
+    Pthread_mutex_lock(&thd->lk);
+
+    /* Open a new capture generation, before examining any cursor: this
+       invalidates every stamp from the previous pass, so a cursor this pass
+       does not capture cannot authorise a skip on the strength of an older
+       one. */
+    gen = ++clnt->sync_dta_generation;
+
+    if (!thd->bt)
+        goto done;
+
+    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+    {
+        if (!cur->bdbcur)
+            continue;
+        if (cur->cursor_class != CURSORCLASS_INDEX)
+            continue;
+
+        BtCursor *dta = cur->pCursorHintTableCursor;
+        if (!dta) {
+            /* Covering index: no table cursor exists, so blobs -- which cannot
+               live in the datacopy -- are fetched live by THIS cursor's genid.
+               Capture here; nothing else will. */
+            sync_capture_blobs(cur, cur->bdbcur->rrn(cur->bdbcur), cur->bdbcur->genid(cur->bdbcur));
+            continue;
+        }
+        if (!dta->bdbcur)
+            continue;
+        /* Use the index cursor's LIVE bdb position, not cur->genid.  This runs
+         * from cursor_move_postop, which executes inside ddguard_bdb_cursor_move
+         * BEFORE cursor_move_index copies the freshly-moved-to genid up into
+         * cur->genid.  cur->genid therefore still holds the PREVIOUS row, while
+         * cur->bdbcur is already positioned on the row the cursor just stepped
+         * onto.  Reading the lagging cur->genid would miss that just-entered row
+         * (the "entered-row" case in tests/recovdlock.test), so consult the
+         * bdbcur directly to capture the row the cursor actually landed on. */
+        unsigned long long idx_genid = cur->bdbcur->genid(cur->bdbcur);
+        if (idx_genid == 0)
+            continue;
+        if (idx_genid == dta->genid) {
+            /* Already caught up: an earlier seek left this row in dta's
+               buffers, the same state the find below would produce, so stamp
+               it rather than sending a servable seek back to bdb. */
+            dta->synced_at_generation = gen;
+            continue;
+        }
+        /* data cursor hasn't caught up to the index cursor -- find it now.
+         * use bdbcur->find directly (not ddguard) to avoid re-entering
+         * recover_deadlock which also needs thd->lk */
+        int bdberr;
+        int rc = dta->bdbcur->find(dta->bdbcur, &idx_genid, sizeof(idx_genid), 0, &bdberr);
+        if (rc != IX_FND)
+            continue;
+        int fndlen;
+        void *buf;
+        uint8_t ver;
+        dta->bdbcur->get_found_data(dta->bdbcur, &dta->rrn, &dta->genid, &fndlen, &buf, &ver);
+        vtag_to_ondisk(dta->db, buf, &fndlen, ver, dta->genid);
+        if (fndlen > getdatsize(dta->db)) {
+            logmsg(LOGMSG_ERROR, "%s: unexpected fndlen %d for tbl %s\n", __func__, fndlen, dta->db->tablename);
+            continue;
+        }
+        cursor_stash_found_buf(dta, &dta->ondisk_buf, buf, fndlen);
+        cursor_stash_found_buf(dta, &dta->dtabuf, buf, fndlen);
+        dta->dtabuflen = fndlen;
+        /* Row is in the buffers: authorise the skip.  Every bail-out above
+           leaves the stamp clear, so those seeks run for real. */
+        dta->synced_at_generation = gen;
+    }
+
+    /* Blobs are fetched live by genid, so capture them too -- but only after
+       the loop above, which may reposition a data cursor onto a different row.
+       Index cursors are done: a covering one captured itself, any other serves
+       its blobs through its paired data cursor. */
+    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+    {
+        if (!cur->bdbcur)
+            continue;
+        if (cur->cursor_class == CURSORCLASS_INDEX)
+            continue;
+        sync_capture_blobs(cur, cur->bdbcur->rrn(cur->bdbcur), cur->bdbcur->genid(cur->bdbcur));
+    }
+
+done:
+    Pthread_mutex_unlock(&thd->lk);
+}
+
 /* Release pagelocks if the replicant is waiting on this sql thread */
 static int cursor_move_postop(BtCursor *pCur)
 {
@@ -3257,15 +3701,96 @@ static int cursor_move_postop(BtCursor *pCur)
     extern int gbl_locks_check_waiters;
     int rc = 0;
 
-    /* FIXME modsnap does not handle repositioning correctly? */
-    if (gbl_locks_check_waiters && gbl_sql_release_locks_on_si_lockwait && clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-        extern int gbl_sql_random_release_interval;
+    if (gbl_debug_sleep_in_cursor_move)
+        poll(NULL, 0, gbl_debug_sleep_in_cursor_move);
+
+    if (!gbl_locks_check_waiters)
+        return 0;
+
+    /* SNAPISOL (modsnap) repositioning after a lock release is not handled
+       correctly here, so we never release for it. */
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL)
+        return 0;
+
+    extern int gbl_sql_random_release_interval;
+
+    if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+        /* SERIAL keeps the historical SI release path (a full release). */
+        if (!gbl_sql_release_locks_on_si_lockwait)
+            return 0;
         if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
-            rc = release_locks("replication is waiting on si-session");
+            rc = release_locks(RLOCKS_REASON_SI_LOCKWAIT);
             release_locks_on_si_lockwait_cnt++;
-        } else if (gbl_sql_random_release_interval &&
-                   !(rand() % gbl_sql_random_release_interval)) {
-            rc = release_locks("random release cursor_move_postop");
+        } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
+            rc = release_locks(RLOCKS_REASON_RANDOM);
+            release_locks_on_si_lockwait_cnt++;
+        }
+        return rc;
+    }
+
+    /* Non-SI deferred-seek release.  Only when the feature is on for this
+       request. */
+    if (!clnt->recover_deadlock_sync_dta)
+        return 0;
+
+    /* If the global bdb write lock is wanted (master upgrade/downgrade,
+       recovery) a narrow page-lock release does not help -- that needs
+       everything dropped, which the pre-existing release points already do.
+       Stay out of it here. */
+    if (bdb_lock_desired(thedb->bdb_env))
+        return 0;
+
+    /* Release PAGE LOCKS ONLY, keeping the curtran and therefore our table
+       read locks.  That is enough to unblock the page-lock waiter that brought
+       us here, while ensuring no schema change can run inside the window: a
+       DROP/ALTER transaction is replayed on a replicant by __lock_get_list()
+       acquiring the lock set the master recorded, which includes the table
+       write lock, so it blocks on our retained table read lock. */
+    if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
+        extern int gbl_rep_lock_time_ms;
+        int now = comdb2_time_epochms();
+
+        if (!clnt->pagelock_release_first_ms)
+            clnt->pagelock_release_first_ms = now;
+
+        /* Same policy (and default) as the emit-row release path: bound how
+           long the replication thread may stay blocked.  Prefer
+           gbl_rep_lock_time_ms -- when the rep thread is parked in
+           __lock_get_list that is exactly how long it has been waiting -- and
+           fall back to when we first saw a waiter, which also covers
+           non-replication waiters. */
+        int max_wait = gbl_pagelock_release_max_wait_ms; /* 0 disables the fallback */
+        int rep_lock_time_ms = gbl_rep_lock_time_ms;
+        int blocked_since = rep_lock_time_ms ? rep_lock_time_ms : clnt->pagelock_release_first_ms;
+
+        if (max_wait && (now - blocked_since) > max_wait) {
+            /* The waiter has been parked for too long, which means page locks
+               were never what it wanted -- almost certainly a schema change
+               after the table write lock we are retaining.  Stop starving it:
+               do a FULL release so it can proceed.  Correctness is then on
+               cursor_check_table_valid(), which fails this query cleanly with
+               "table ... was schema changed" if the table goes away. */
+            rc = release_locks(RLOCKS_REASON_LOCKWAIT);
+            release_locks_on_si_lockwait_cnt++;
+            clnt->pagelock_release_first_ms = clnt->pagelock_release_last_ms = 0;
+            if (gbl_debug_pagelock_release_trace)
+                logmsg(LOGMSG_USER, "%s: waiter parked >%dms, falling back to a full release\n", __func__, max_wait);
+        } else if (!clnt->pagelock_release_last_ms ||
+                   (now - clnt->pagelock_release_last_ms) >= gbl_pagelock_release_interval_ms) {
+            /* Rate-limited: re-releasing on every cursor move against a waiter
+               that is still present accomplishes nothing but closing and
+               reopening every cursor (measured: ~1 release per move for the
+               whole scan). */
+            rc = release_pagelocks(RLOCKS_REASON_LOCKWAIT);
+            release_locks_on_si_lockwait_cnt++;
+            clnt->pagelock_release_last_ms = now;
+            clnt->dbg_pagelock_releases++;
+        }
+    } else {
+        /* no waiter: reset pacing state */
+        clnt->pagelock_release_first_ms = clnt->pagelock_release_last_ms = 0;
+        if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
+            rc = release_pagelocks(RLOCKS_REASON_RANDOM);
             release_locks_on_si_lockwait_cnt++;
         }
     }
@@ -5953,6 +6478,39 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             }
         }
 
+        /* The last pre-release sync captured this cursor's row into its
+         * buffers, so serve it and skip the BDB seek -- which would lose the
+         * race if the row was deleted during the release window.  The stamp,
+         * not the tunable, is what authorises this: it is set only on cursors
+         * a sync actually captured, and is single-use.
+         *
+         * Skipping the seek also skips the BDB-level detection of a table that
+         * went away, so re-validate the cached table first: the row we are
+         * about to hand back is read via pCur->sc (get_data), and a concurrent
+         * DROP can have freed both it and pCur->db during that same window. */
+        if (bias == OP_DeferredSeek && pCur->synced_at_generation &&
+            pCur->synced_at_generation == clnt->sync_dta_generation && pCur->genid == (unsigned long long)intKey &&
+            !pCur->eof) {
+            pCur->synced_at_generation = 0;
+            rc = cursor_check_table_valid(pCur);
+            if (rc)
+                goto done;
+            /* Serving from the buffers still has to record the genid for
+               SELECTV, or the row is read inside the transaction without
+               joining the set verified at commit.  (No sqlrrn refresh: it is
+               only read for index cursors, and a deferred seek is always on a
+               table cursor.) */
+            if (!gbl_selectv_rangechk && pCur->is_recording &&
+                clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+                int grc = osql_record_genid(pCur, thd, pCur->genid);
+                if (grc)
+                    logmsg(LOGMSG_ERROR, "%s: failed to record genid %llx (%llu)\n", __func__, pCur->genid,
+                           pCur->genid);
+            }
+            *pRes = 0;
+            goto done;
+        }
+
         /* TODO: we already found the data record.  find some way to map between
          * index/data cursors and don't do extra data fetches unless we
          * move the cursor */
@@ -6014,11 +6572,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                 rc = SQLITE_INTERNAL; /* YO, this is IX_NOTFND !!!! */
                 goto done;
             }
-            if (pCur->writeTransaction) {
-                memcpy(pCur->ondisk_buf, buf, fndlen);
-            } else {
-                pCur->ondisk_buf = buf;
-            }
+            cursor_stash_found_buf(pCur, &pCur->ondisk_buf, buf, fndlen);
         }
 
         if ((rc == IX_NOTFND) || (rc == IX_PASTEOF)) {
@@ -6036,12 +6590,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                                     &pCur->dtabuflen);
             } else {
                 /* DTA FILE - DONT CONVERT */
-                if (pCur->writeTransaction) {
-                    memcpy(pCur->dtabuf, pCur->ondisk_buf,
-                           getdatsize(pCur->db));
-                } else {
-                    pCur->dtabuf = pCur->ondisk_buf;
-                }
+                cursor_stash_found_buf(pCur, &pCur->dtabuf, pCur->ondisk_buf, getdatsize(pCur->db));
             }
             pCur->sqlrrnlen =
                 sqlite3PutVarint((unsigned char *)pCur->sqlrrn, pCur->rrn);
@@ -6345,8 +6894,10 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
 done:
-    /* early verification error */
-    if (verify && !pCur->bt->is_temporary &&
+    /* early verification error.  pCur->db can be NULL here: a failed
+       cursor_check_table_valid() clears it, and is_genid_recorded() needs the
+       table name and version. */
+    if (verify && pCur->db && !pCur->bt->is_temporary &&
         pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
         pCur->vdbe->readOnly == 0 && pCur->ixnum == -1) {
         int irc = is_genid_recorded(thd, pCur, genid);
@@ -6645,6 +7196,10 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
                  */
                 rc = SQLITE_DEADLOCK;
             }
+            /* Gone: drop the pointer so nothing can follow it, and a second
+               close cannot free it twice.  Cleared even on error -- the code
+               below treats the cursor as closed either way. */
+            pCur->bdbcur = NULL;
         }
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_cursor_close: rc %d\n", bdberr);
@@ -6661,6 +7216,15 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         Pthread_mutex_lock(&thd->lk);
         if (pCur->on_list)
             listc_rfl(&pCur->bt->cursors, pCur);
+        if (pCur->bt) {
+            /* Drop any index cursor's pairing with this one: it is a raw
+               pointer, and the vdbe reuses this memory for the next cursor
+               opened in the same slot. */
+            BtCursor *other;
+            LISTC_FOR_EACH(&pCur->bt->cursors, other, lnk)
+                if (other->pCursorHintTableCursor == pCur)
+                    other->pCursorHintTableCursor = NULL;
+        }
         Pthread_mutex_unlock(&thd->lk);
     }
 
@@ -6821,8 +7385,33 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     }
 
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s error  genid:%llx blob-index:%d\n", __func__, pCur->genid, f->blob_index);
+        char rel[128];
+        logmsg(LOGMSG_ERROR, "%s error  genid:%llx blob-index:%d  %s\n", __func__, pCur->genid, f->blob_index,
+               clnt_last_release_str(pCur->clnt, rel, sizeof(rel)));
         return SQLITE_DEADLOCK;
+    }
+
+    /* The blob file has no record for this genid, yet the row we are reading
+       says the column holds out-of-line data.  That is a lost race, not
+       corruption: the row was rewritten (comdb2 gives it a new genid even for a
+       logically identical rewrite) after we dropped the page lock that was
+       pinning it.  Do not hand this to check_one_blob_consistency(): for an
+       UNBOUNDED blob/vutf8 -- the only kind that is always out-of-line, since
+       its inline capacity (f->len - 5) is 0 -- it takes the "expected a blob
+       but found none, and there's no alternative inline data" repair branch
+       (db/toblob.c) and rewrites the column to an EMPTY value, returning
+       success.  The read then silently yields a zero-length blob next to a
+       correct bounded twin.  Report the race so the query is retried. */
+    if (blobs.blobptrs[0] == NULL && !is_genid_synthetic(pCur->genid)) {
+        uint8_t *hdr = (uint8_t *)dta + f->offset;
+        int reclen;
+        memcpy(&reclen, &hdr[1], sizeof(reclen));
+        if (!stype_is_null(hdr) && ntohl(reclen) > 0) {
+            char rel[128];
+            logmsg(LOGMSG_WARN, "%s blob vanished under us  genid:%llx blob-index:%d  %s\n", __func__, pCur->genid,
+                   f->blob_index, clnt_last_release_str(pCur->clnt, rel, sizeof(rel)));
+            return SQLITE_DEADLOCK;
+        }
     }
 
     init_fake_ireq(thedb, &iq);
@@ -6830,7 +7419,9 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
 
     if (check_one_blob_consistency(&iq, iq.usedb, ".ONDISK", &blobs, dta, f->blob_index, 0, pd)) {
         free_blob_status_data(&blobs);
-        logmsg(LOGMSG_ERROR, "%s inconsistent blob  genid:%llx, blob-index:%d\n", __func__, pCur->genid, f->blob_index);
+        char rel[128];
+        logmsg(LOGMSG_ERROR, "%s inconsistent blob  genid:%llx, blob-index:%d  %s\n", __func__, pCur->genid,
+               f->blob_index, clnt_last_release_str(pCur->clnt, rel, sizeof(rel)));
         return SQLITE_CORRUPT;
     }
 
@@ -6859,9 +7450,15 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
         blob = &pCur->rd_blob_buffers[f->blob_index];
     }
     int length = blobs.bloblens[0];
-    if (blob->capacity < length) {
-        free(blob->z);
-        blob->z = malloc(length);
+    /* Grow to fit, and shrink back only when badly oversized -- see
+       sync_capture_blobs(), which manages this same cache and shares the
+       policy. */
+    if (blob->capacity < length || blob->capacity > 4 * length) {
+        char *newz = realloc(blob->z, length);
+        if (!newz)
+            return 0; /* m->z is already set from the live fetch above; the
+                         cache update is best-effort, leave it as it was */
+        blob->z = newz;
         blob->capacity = length;
     }
     blob->n = m->n;
@@ -9535,9 +10132,30 @@ i64 sqlite3BtreeNewRowid(BtCursor *pCur)
     return bdb_recno_to_genid(++thd->clnt->recno);
 }
 
+/* Table name for a cursor, for error messages.
+ *
+ * Resolved from the thread's rootpage map rather than pCur->db->tablename: this
+ * is called from failure paths (e.g. "Dta lookup lost the race" in
+ * sqlite3VdbeFinishMoveto) that can run precisely when a concurrent DROP has
+ * freed the dbtable, so dereferencing pCur->db here would be a use-after-free.
+ * Falls back to the dbtable only when the rootpage map has no entry. */
 char *sqlite3BtreeGetTblName(BtCursor *pCur)
 {
-    return pCur->db->tablename;
+    const char *name = get_sqlite_tblname(pCur->thd, pCur->rootpage);
+    if (name)
+        return (char *)name;
+    /* Never fall back to pCur->db->tablename: this is called from paths that
+       run precisely when a concurrent DROP has freed the dbtable, which is the
+       whole reason we resolve from the rootpage map. */
+    return "<unknown>";
+}
+
+/* clnt_last_release_str() for the sqlite side, which only has an opaque
+ * BtCursor.  Used by the "Dta lookup lost the race" reports, whose whole
+ * explanation is the release that dropped the lock pinning that genid. */
+const char *sqlite3BtreeLastReleaseStr(BtCursor *pCur, char *buf, size_t sz)
+{
+    return clnt_last_release_str(pCur ? pCur->clnt : NULL, buf, sz);
 }
 
 int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized)
@@ -9866,6 +10484,18 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt, uint
                __LINE__);
     }
 
+    /* Snapshot the deferred-seek feature tunable once per request, so the
+       non-SI release gate (cursor_move_postop), the pre-release sync
+       (sync_index_data_cursors, from release_locks_int) and the deferred-seek
+       skip (sqlite3BtreeMovetoUnpacked) all agree for the whole run.  Skip on the
+       recover_deadlock re-acquire (CURTRAN_RECOVERY), which happens mid-run, so a
+       mid-query toggle cannot desync those sites. */
+    if (!(flags & CURTRAN_RECOVERY)) {
+        clnt->recover_deadlock_sync_dta = gbl_recover_deadlock_sync_dta;
+        clnt->recover_deadlock_skip_sync_dta = gbl_debug_recover_deadlock_skip_sync_dta;
+        clnt_reset_release_state(clnt);
+    }
+
     clnt->recover_deadlock_rcode = 0;
 retry:
     bdberr = 0;
@@ -10145,7 +10775,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     }
 
     assert(bdb_lockref() > 0);
-    int new_mode = debug_switch_recover_deadlock_newmode();
 
     if (ignore_desired || bdb_lock_desired(thedb->bdb_env)) {
         if (!sleepms)
@@ -10158,7 +10787,33 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;
 
+    /* Remember who dropped the locks.  Everything funnels through here, so this
+       is the one place that sees every release; downstream failures that are
+       really lost races (see clnt_last_release_str) report it. */
+    clnt->last_release_func = func;
+    clnt->last_release_line = line;
+    clnt->last_release_flags = flags;
+    clnt->last_release_ms = comdb2_time_epochms();
+    clnt->last_release_count++;
+
     unlock_bdb_cursors(thd, bdbcur, &bdberr);
+
+    /* Page-locks-only release: closing the bdb cursors above already dropped
+     * their page locks (they are opened on the curtran's bare lockerid with no
+     * txn, so __db_lput releases at c_close), which is enough to let the
+     * page-lock waiter that triggered us proceed.  Stop here and keep the
+     * curtran: its lockerid owns our table read locks, and retaining those is
+     * what prevents a schema change from running inside this window -- the SC
+     * transaction is replayed on a replicant by __lock_get_list() acquiring the
+     * lock set the master recorded, which includes the table write lock.
+     *
+     * Skipping put_curtran/get_curtran also means no cursor repositioning and
+     * no re-acquisition of table locks; the cursors are left invalidated and
+     * will lazily re-position on next use. */
+    if (flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY) {
+        assert(bdb_lockref() > 0);
+        return 0;
+    }
 
     curtran_flags = CURTRAN_RECOVERY;
     /* free curtran */
@@ -10257,18 +10912,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     /* no need to mess with our shadow tran, right? */
 
     /* now that we have a new curtran, try to reposition them */
+    int schema_rc = 0;
     Pthread_mutex_lock(&thd->lk);
     if (thd->bt) {
         LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
         {
             if (cur->bdbcur) {
-                if (new_mode)
-                    rc = cur->bdbcur->set_curtran(cur->bdbcur,
-                                                  clnt->dbtran.cursor_tran);
-                else
-                    rc =
-                        cur->bdbcur->lock(cur->bdbcur, clnt->dbtran.cursor_tran,
-                                          BDB_SET, &bdberr);
+                rc = cur->bdbcur->lock(cur->bdbcur, clnt->dbtran.cursor_tran);
                 if (rc != 0) {
                     /* it is possible that the row is already gone
                      * when we try to reposition, since the lock is lost
@@ -10283,20 +10933,23 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             }
 
             if (!cur->bt->is_remote && cur->db) {
-                if (cur->tableversion != cur->db->tableversion) {
-                    Pthread_mutex_unlock(&thd->lk);
-                    logmsg(LOGMSG_ERROR,
-                           "%s: table version for %s changed from %d to %lld\n",
-                           __func__, cur->db->tablename, cur->tableversion,
-                           cur->db->tableversion);
-                    sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
-                    sqlite3VdbeError(cur->vdbe,
-                                     "table \"%s\" was schema changed",
-                                     cur->db->tablename);
-                    sqlite3VdbeTransferError(cur->vdbe);
-                    sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
-                    sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
-                    return SQLITE_COMDB2SCHEMA;
+                /* Existence + schema-identity check, run BEFORE cur->sc is
+                 * refreshed below (the check compares cur->sc against the
+                 * live schema object; refreshing first would make it trivially
+                 * pass).  Note this also must run before any dereference of
+                 * cur->db: the old inline check read cur->db->tableversion
+                 * directly, which is itself unsafe if a concurrent DROP
+                 * already freed the dbtable. */
+                rc = cursor_check_table_valid(cur);
+                if (rc) {
+                    /* Do not stop the walk: every remaining cursor still needs
+                       its curtran rebound above, and a second cursor on the
+                       same dropped table needs its freed cur->db cleared too --
+                       otherwise teardown writes through it.  Report the first
+                       failure once the walk is done. */
+                    if (!schema_rc)
+                        schema_rc = rc;
+                    continue;
                 }
 
                 if (cur->ixnum == -1)
@@ -10307,13 +10960,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         }
     }
 
+    if (schema_rc) {
+        Pthread_mutex_unlock(&thd->lk);
+        return schema_rc;
+    }
+
     if (bdbcur) {
-        if (new_mode) {
-            assert(bdbcur != NULL);
-            rc = bdbcur->set_curtran(bdbcur, clnt->dbtran.cursor_tran);
-        } else
-            rc = bdbcur->lock(bdbcur, clnt->dbtran.cursor_tran, BDB_SET,
-                              &bdberr);
+        rc = bdbcur->lock(bdbcur, clnt->dbtran.cursor_tran);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returned %d %d\n", __func__, rc, bdberr);
             Pthread_mutex_unlock(&thd->lk);
@@ -10845,14 +11498,24 @@ static int ddguard_bdb_cursor_move(BtCursor *pCur, int flags, int *bdberr, int h
         int rc2 = cursor_move_postop(pCur);
         if (rc2) {
             logmsg(LOGMSG_ERROR, "cursor_move_postop returned %d\n", rc2);
-            *bdberr = BDBERR_DEADLOCK;
-            if (rc2 < 0) {
-                rc = SQLITE_BUSY;
-            } else if (rc2 == SQLITE_CLIENT_CHANGENODE) {
+            if (rc2 == SQLITE_CLIENT_CHANGENODE) {
                 rc = SQLITE_CLIENT_CHANGENODE;
                 *bdberr = BDBERR_NOT_DURABLE;
+            } else if (rc2 == SQLITE_COMDB2SCHEMA || rc2 == SQLITE_SCHEMA) {
+                /* A schema change was detected while releasing locks /
+                 * recovering from deadlock (e.g. the table was dropped or
+                 * altered under us).  Surface it as a schema-change error so
+                 * the client gets CDB2ERR_SCHEMA -- do NOT mask it as a
+                 * deadlock, which would be reported as a (retryable)
+                 * CDB2ERR_DEADLOCK. */
+                rc = SQLITE_COMDB2SCHEMA;
+                *bdberr = 0;
+            } else if (rc2 < 0) {
+                rc = SQLITE_BUSY;
+                *bdberr = BDBERR_DEADLOCK;
             } else {
                 rc = rc2;
+                *bdberr = BDBERR_DEADLOCK;
             }
         }
     }
@@ -11704,6 +12367,19 @@ const char *comdb2_get_sql(void)
 }
 
 int gbl_fdb_track_hints = 0;
+static void sqlite3BtreeCursorHint_TableCursor(BtCursor *pCur, BtCursor *pTableCsr)
+{
+    /* where.c emits OP_CursorHint for every HasRowid index scan, including one
+       over a remote table -- whose index AND table cursor are both
+       CURSORCLASS_REMOTE.  The pairing only means anything for a local
+       index/table pair (sync_index_data_cursors ignores anything else), so skip
+       rather than assert: asserting here aborts the db on any fdb index scan. */
+    if (pCur->cursor_class != CURSORCLASS_INDEX || pTableCsr->cursor_class != CURSORCLASS_TABLE)
+        return;
+    assert(pCur->db == pTableCsr->db);
+    pCur->pCursorHintTableCursor = pTableCsr;
+}
+
 static void sqlite3BtreeCursorHint_Range(BtCursor *pCur, const Expr *pExpr)
 {
     char *expr = "?no vdbe engine?";
@@ -11759,8 +12435,18 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
 
         break;
     }
+
+    case BTREE_HINT_TABLECURSOR: {
+        sqlite3BtreeCursorHint_TableCursor(pCur, va_arg(ap, BtCursor *));
+        break;
+    }
     }
     va_end(ap);
+}
+
+BtCursor *sqlite3BtreeCursorHintTblCsr(BtCursor *pCsr)
+{
+    return pCsr->pCursorHintTableCursor;
 }
 
 int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)

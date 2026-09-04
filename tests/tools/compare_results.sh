@@ -78,7 +78,12 @@ for sqlfile in $sqlfiles; do
 
     cmd="cdb2sql ${CDB2_OPTIONS} $script_mode -f $sqlfile $dbname default "
     echo $cmd "> $testname.output"
-    eval $cmd 2>&1 | sed 's/rrn 2 genid 0x[[:alnum:]]\+/rrn xx genid xx/' > $testname.output
+    # The EXPLAIN QUERY PLAN "id" is the address of the OP_Explain instruction,
+    # so any codegen change renumbers it and every plan expectation goes stale
+    # even though the plan itself is unchanged.  Scrub it; the detail string
+    # still asserts the index, the constraints and the row estimate.
+    eval $cmd 2>&1 | sed -e 's/rrn 2 genid 0x[[:alnum:]]\+/rrn xx genid xx/' \
+                         -e 's/(id=[0-9]\+, parent=/(id=xx, parent=/' > $testname.output
     
     inject_systables_in_expected_files "$testname.$exp_extn" 
     
