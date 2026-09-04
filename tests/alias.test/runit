@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # remote db config
 REM_CDB2_OPTIONS="--cdb2cfg ${SECONDARY_CDB2_CONFIG}"

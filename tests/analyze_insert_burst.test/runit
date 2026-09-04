@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
@@ -7,7 +7,7 @@ source ${TESTSROOTDIR}/tools/runit_common.sh
 # Verify that analyze works correctly under high rate insertion. #
 ##################################################################
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 dbnm=$1
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'CREATE TABLE t (i INT)'

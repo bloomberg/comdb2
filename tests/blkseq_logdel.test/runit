@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # bdb_blkseq_clean_int drops the blkseq mutex before calling DB_FIRST on
 # a log cursor. If log deletion removes the first log file during that

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # Reproduce the race between sc_set_running(0) and trans_commit:
 #

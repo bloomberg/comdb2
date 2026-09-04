@@ -1,7 +1,7 @@
 #### Verify that serializing protobuf directly to fd reduces memory footprint
 
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 dbnm=$1
 

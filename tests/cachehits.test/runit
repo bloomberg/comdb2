@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # Regression test for DRQS 185346999.
 #

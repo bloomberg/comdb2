@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # Tests the queue resource config safe copying through repopnewlrl:
 #   1. repopnewlrl copies the queue .cfg into the repop dir and points

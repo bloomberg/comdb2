@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 ###################################################################################
 # Verify that the OP_MakeRecord Optimization runs faster and requires less memory #

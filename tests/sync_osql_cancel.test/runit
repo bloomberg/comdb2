@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # Verify that a large number of rollbacks or disconnects won't cause bplog to
 # pile up on the master, by using synchronous osql cancellation.

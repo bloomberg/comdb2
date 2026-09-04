@@ -6,7 +6,7 @@
 # We should be seeing the replicant is behind the master in master's
 # comdb2_repl_stats table.
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 [ -z "${CLUSTER}" ] && { echo "skipping, it's a cluster test"; exit 0; }
 

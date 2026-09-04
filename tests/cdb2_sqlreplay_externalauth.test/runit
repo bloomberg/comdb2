@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # Verify that cdb2_sqlreplay skips 'PUT TUNABLE externalauth' by default, and
 # replays it when --replay-externalauth is given.  We assert on the tool's own

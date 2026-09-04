@@ -2,7 +2,7 @@
 
 # Test live schema change of preprocessed (ODH prefixed) vutf8 data.
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 dbnm=$1
 
 set -e

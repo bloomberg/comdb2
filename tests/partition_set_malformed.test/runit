@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 set -x
 
 # The SET PARTITION ... commands feed the generic-shard DDL that a coordinator

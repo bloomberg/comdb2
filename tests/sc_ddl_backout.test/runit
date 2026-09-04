@@ -2,7 +2,7 @@
 
 # Test DDL backout in various error scenarios.
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 dbnm=$1
 
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"'`
