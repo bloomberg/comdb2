@@ -757,6 +757,12 @@ struct sqlclntstate {
     int pagelock_release_first_ms; /* when this waiter was first seen */
     int dbg_pagelock_releases;     /* count, for trace/diagnostics */
 
+    /* Bumped by every sync_index_data_cursors() pass and stamped into the
+       cursors it captured, so the deferred-seek skip can tell "captured by the
+       release that just happened" from "feature is enabled".  Always >= 1 once
+       a sync has run, so an untouched cursor's 0 never matches. */
+    int sync_dta_generation;
+
     /* Where this session last dropped its bdb locks.  Recorded in
        recover_deadlock_flags_int(), which every release funnels through: the
        release_locks()/release_pagelocks() macros via release_locks_int(), and
@@ -1333,6 +1339,9 @@ struct BtCursor {
 
     int permissions; /* permissions for read/write access to table */
     BtCursor *pCursorHintTableCursor;
+    /* sync_dta_generation of the pre-release sync that captured this cursor's
+       row, or 0 if none did.  Cleared by the skip that consumes it. */
+    int synced_at_generation;
 };
 
 struct sql_hist {
@@ -1551,6 +1560,8 @@ void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
 int release_locks_on_emit_row(struct sqlclntstate *clnt);
 void sync_index_data_cursors(struct sql_thread *thd);
 const char *clnt_last_release_str(struct sqlclntstate *clnt, char *buf, size_t sz);
+/* clear the release pacing / last-release state; call once per run */
+void clnt_reset_release_state(struct sqlclntstate *clnt);
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);

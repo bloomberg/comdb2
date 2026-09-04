@@ -6563,8 +6563,12 @@ case OP_IdxRowid: {           /* out2 */
       assert( pTabCur->eCurType==CURTYPE_BTREE );
       assert( pTabCur->uc.pCursor!=0 );
       assert( pTabCur->isTable );
+      /* 0 when the pairing was deliberately not recorded (remote cursors --
+      ** see sqlite3BtreeCursorHint_TableCursor); otherwise it must be this
+      ** table cursor. */
       assert(
-          sqlite3BtreeCursorHintTblCsr(pC->uc.pCursor)==pTabCur->uc.pCursor
+          sqlite3BtreeCursorHintTblCsr(pC->uc.pCursor)==0
+       || sqlite3BtreeCursorHintTblCsr(pC->uc.pCursor)==pTabCur->uc.pCursor
       );
       pTabCur->nullRow = 0;
       pTabCur->movetoTarget = rowid;

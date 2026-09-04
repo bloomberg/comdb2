@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
 
 # Test: DeferredSeek data lookup failure after recover_deadlock (non-snapshot)
 #
@@ -318,7 +317,147 @@ fi
 echo "[entered-row] ok: scan succeeded (rc=0), captured B before its deletion"
 
 # ============================================================================
-# Pass 4: DROP the deferred-seek table during the release window.
+# Pass 4: out-of-line blobs must be captured before a release.
+#
+# A blob is not in the row buffer: fetch_blob_into_sqlite_mem() looks it up
+# live, keyed on the cursor's genid.  If the row is rewritten while locks are
+# down that genid is gone and the lookup finds nothing.  sync_capture_blobs()
+# pre-loads the per-cursor cache so the read never issues that lookup.
+#
+# Uses the same join shape as pass 1 for the same reason: the outer cursor sits
+# on its row for the whole slow inner scan, so there is a wide window between
+# the release and the blob read.  A plain scan reads the blob microseconds
+# after the release and the race practically never lands.
+#
+# Two shapes, because a different cursor fetches the blob in each:
+#   full scan      -- an unpaired data cursor, captured by the second loop of
+#                     sync_index_data_cursors()
+#   datacopy index -- covering, so no table cursor exists and the index cursor
+#                     serves the blob itself, captured by the first loop
+#
+# An unbounded blob is always out-of-line (inline capacity is f->len - 5 = 0),
+# so a small one exercises this as well as a large one.
+# ============================================================================
+echo "=== Pass 4: blob capture across a release ==="
+
+BLOBSZ=${BLOBSZ:-64}
+BLOBHEX=$(printf 'ab%.0s' $(seq 1 $BLOBSZ))
+
+set_tunable "debug_sleep_in_cursor_move" 0
+
+# blob_t has no index on key_col -- the join scans it with a bare data cursor.
+$CDB2SQL "drop table if exists blob_t" >/dev/null
+$CDB2SQL 'create table blob_t {
+schema
+{
+    int  id
+    int  key_col
+    blob b
+}
+keys
+{
+    "bpk" = id
+}
+}' >/dev/null
+# blobdc_t indexes key_col with datacopy, making the outer access covering.
+$CDB2SQL "drop table if exists blobdc_t" >/dev/null
+$CDB2SQL 'create table blobdc_t {
+schema
+{
+    int  id
+    int  key_col
+    blob b
+}
+keys
+{
+    "dcpk" = id
+    dup datacopy "dck" = key_col
+}
+}' >/dev/null
+
+# Count blob-lost-race lines currently in the SELECT node's log.
+blob_lost_count() {
+    if [[ -f "$DB_LOG" ]]; then
+        grep -c "blob vanished under us" "$DB_LOG" || true
+    else
+        echo 0
+    fi
+}
+
+# $1 label, $2 table, $3 query, $4 expect_ok (1 = blob must survive).
+# One outer row holds the blob; the inner scan keeps the outer cursor parked on
+# it while a writer rewrites it, giving the row a new genid.
+run_blob_pass() {
+    local label=$1 tbl=$2 sql=$3 expect_ok=$4
+    local before after new rc result
+
+    $CDB2SQL "delete from $tbl" >/dev/null 2>&1 || true
+    $CDB2SQL "insert into $tbl values (1, 1, x'$BLOBHEX')" >/dev/null
+
+    before=$(blob_lost_count)
+
+    (sleep 1 && ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm $DELHOST \
+        "update $tbl set b = x'$BLOBHEX' where id = 1" >/dev/null 2>&1) &
+    local UPD_PID=$!
+
+    set +e
+    result=$($SELSQL "$sql" 2>&1)
+    rc=$?
+    set -e
+    wait $UPD_PID 2>/dev/null || true
+
+    after=$(blob_lost_count)
+    new=$((after - before))
+    echo "[$label] rc=$rc blob_lost=$new result='$result'"
+
+    if [ "$expect_ok" -ne 1 ]; then
+        # Control: with the sync suppressed the blob MUST go missing.  If it
+        # survives, the window never opened and the checks below prove nothing.
+        if [ $rc -eq 0 ] && [ "$new" -eq 0 ]; then
+            failexit "[$label] control did not lose the blob -- release window never opened, test is vacuous"
+        fi
+        echo "[$label] ok: blob lost as expected without the capture"
+        return 0
+    fi
+    if [ $rc -ne 0 ]; then
+        failexit "[$label] scan failed (rc=$rc): $result"
+    fi
+    if [ "$new" -gt 0 ]; then
+        failexit "[$label] $new 'blob vanished under us' -- blob not captured before the release"
+    fi
+    if [ "$result" != "$BLOBSZ" ]; then
+        failexit "[$label] blob came back truncated: length '$result', want $BLOBSZ"
+    fi
+    echo "[$label] ok: blob survived the release, $BLOBSZ bytes"
+}
+
+BLOB_SQL="select length(bo.b)
+    from blob_t bo
+    cross join inner_t i on i.outer_key = bo.key_col
+    where i.val = $INNER_ROWS"
+BLOBDC_SQL="select length(bd.b)
+    from blobdc_t bd
+    cross join inner_t i on i.outer_key = bd.key_col
+    where bd.key_col > 0 and i.val = $INNER_ROWS"
+
+set_tunable "debug_sleep_in_cursor_move" "$CURSOR_SLEEP_MS"
+
+echo "Pass 4 plans:"
+$SELSQL "explain query plan $BLOB_SQL" 2>&1 || true
+$SELSQL "explain query plan $BLOBDC_SQL" 2>&1 || true
+
+# Controls first: suppress the sync and confirm each shape really does lose the
+# blob, so a pass below means the capture worked rather than the race not firing.
+set_tunable "debug_recover_deadlock_skip_sync_dta" 1
+run_blob_pass "ctl/full-scan" blob_t "$BLOB_SQL" 0
+run_blob_pass "ctl/datacopy-idx" blobdc_t "$BLOBDC_SQL" 0
+
+set_tunable "debug_recover_deadlock_skip_sync_dta" 0
+run_blob_pass "blob/full-scan" blob_t "$BLOB_SQL" 1
+run_blob_pass "blob/datacopy-idx" blobdc_t "$BLOBDC_SQL" 1
+
+# ============================================================================
+# Pass 5: DROP the deferred-seek table during the release window.
 #
 # The outer deferred seek (data cursor on outer_t) stays pending through the
 # slow inner scan.  A concurrent DROP TABLE outer_t is applied on the SELECT
@@ -334,7 +473,7 @@ echo "[entered-row] ok: scan succeeded (rc=0), captured B before its deletion"
 # ============================================================================
 DROP_REPRO=${DROP_REPRO:-1}
 if [ "$DROP_REPRO" -eq 1 ] && [[ -n "$CLUSTER" ]]; then
-    echo "=== Pass 4: DROP deferred-seek table during release window ==="
+    echo "=== Pass 5: DROP deferred-seek table during release window ==="
     set_tunable "debug_sleep_in_cursor_move" "$CURSOR_SLEEP_MS"
     # The page-locks-only release keeps our table locks, which blocks the DROP.
     # Production bounds that stall by rep_wait_release_ms (60s by default); tighten
@@ -420,7 +559,7 @@ fi
 STREAM_REPRO=${STREAM_REPRO:-1}
 STREAM_ROWS=${STREAM_ROWS:-2000}
 if [ "$STREAM_REPRO" -eq 1 ] && [[ -n "$CLUSTER" ]]; then
-    echo "=== Pass 5: DROP during row-streaming scan (recover_deadlock_evbuffer path) ==="
+    echo "=== Pass 6: DROP during row-streaming scan (recover_deadlock_evbuffer path) ==="
 
     run_stream_pass() {
         local label=$1

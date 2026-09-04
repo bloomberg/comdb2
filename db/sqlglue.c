@@ -2711,6 +2711,28 @@ const char *clnt_last_release_str(struct sqlclntstate *clnt, char *buf, size_t s
     return buf;
 }
 
+/* Clear the lock-release pacing and last-release state at the start of a run.
+ *
+ * sqlclntstate is reused for the life of the connection and reset_clnt() only
+ * zeroes it on the initial reset, so without this it carries over:
+ * pagelock_release_first_ms, only cleared by a move that sees NO waiter,
+ * survives a request that ends with one parked and makes the next request take
+ * the max_wait FULL release on its first waiter; and clnt_last_release_str()
+ * reports last_release_* as "this request" when they may be an earlier one. */
+void clnt_reset_release_state(struct sqlclntstate *clnt)
+{
+    clnt->pagelock_release_first_ms = 0;
+    clnt->pagelock_release_last_ms = 0;
+    clnt->dbg_pagelock_releases = 0;
+    clnt->sync_dta_generation = 0;
+
+    clnt->last_release_func = NULL;
+    clnt->last_release_line = 0;
+    clnt->last_release_flags = 0;
+    clnt->last_release_ms = 0;
+    clnt->last_release_count = 0;
+}
+
 /* Re-validate a cursor's cached table pointers (pCur->db / pCur->sc) after a
  * window in which this session's locks were dropped -- either recover_deadlock
  * itself, or a deferred seek resolved after such a release.
@@ -3436,6 +3458,18 @@ static void sync_capture_blobs(BtCursor *dta, int rrn, unsigned long long genid)
     /* shadow/synthetic genids are served from the shadow blobs, not here */
     if (is_genid_synthetic(genid))
         return;
+    /* Only capture at a cursor that can itself serve blob columns:
+         ixnum == -1      -- a data cursor, which serves them directly
+         DATACOPY index   -- sqlite reads inline columns straight from the index
+                             and never opens a table cursor, but blobs cannot
+                             live in the datacopy, so they are still fetched
+                             live by genid
+       A plain index cursor serves no blobs -- they arrive through its paired
+       data cursor, which is captured separately -- so fetching them here is
+       discarded work, O(open cursors x blobs per row) on every release. */
+    if (dta->ixnum >= 0 &&
+        !(db->schema && db->schema->ix && (db->schema->ix[dta->ixnum]->flags & SCHEMA_DATACOPY)))
+        return;
     /* A partial-datacopy index gathers its blob descriptor against the index's
        partial_datacopy schema, not .ONDISK, and dta->blob_descriptor is shared
        with fetch_blob_into_sqlite_mem() -- gathering it here with a different
@@ -3554,8 +3588,20 @@ freeblobs:
 void sync_index_data_cursors(struct sql_thread *thd)
 {
     BtCursor *cur;
+    struct sqlclntstate *clnt = thd->clnt;
+    int gen;
+
+    if (!clnt)
+        return;
 
     Pthread_mutex_lock(&thd->lk);
+
+    /* Open a new capture generation, before examining any cursor: this
+       invalidates every stamp from the previous pass, so a cursor this pass
+       does not capture cannot authorise a skip on the strength of an older
+       one. */
+    gen = ++clnt->sync_dta_generation;
+
     if (!thd->bt)
         goto done;
 
@@ -3563,22 +3609,18 @@ void sync_index_data_cursors(struct sql_thread *thd)
     {
         if (!cur->bdbcur)
             continue;
-
-        /* Capture THIS cursor's own out-of-line blobs.  Needed independently of
-         * the paired-data-cursor sync below: with a datacopy index (INCLUDE
-         * ALL) sqlite reads every inline column straight from the index and
-         * never opens a table cursor at all, yet blob columns cannot live in
-         * the datacopy -- fetch_blob_into_sqlite_mem() still does a live fetch
-         * keyed on THIS cursor's genid.  Without capturing here, that lookup
-         * happens after the release against a genid the row no longer has, and
-         * silently yields a zero-length blob.  Key the cache off the live bdb
-         * position for the same reason idx_genid does below. */
-        sync_capture_blobs(cur, cur->bdbcur->rrn(cur->bdbcur), cur->bdbcur->genid(cur->bdbcur));
+        if (cur->cursor_class != CURSORCLASS_INDEX)
+            continue;
 
         BtCursor *dta = cur->pCursorHintTableCursor;
-        if (!dta || !dta->bdbcur)
+        if (!dta) {
+            /* Covering index: no table cursor exists, so blobs -- which cannot
+               live in the datacopy -- are fetched live by THIS cursor's genid.
+               Capture here; nothing else will. */
+            sync_capture_blobs(cur, cur->bdbcur->rrn(cur->bdbcur), cur->bdbcur->genid(cur->bdbcur));
             continue;
-        if (cur->cursor_class != CURSORCLASS_INDEX)
+        }
+        if (!dta->bdbcur)
             continue;
         /* Use the index cursor's LIVE bdb position, not cur->genid.  This runs
          * from cursor_move_postop, which executes inside ddguard_bdb_cursor_move
@@ -3589,8 +3631,15 @@ void sync_index_data_cursors(struct sql_thread *thd)
          * (the "entered-row" case in tests/recovdlock.test), so consult the
          * bdbcur directly to capture the row the cursor actually landed on. */
         unsigned long long idx_genid = cur->bdbcur->genid(cur->bdbcur);
-        if (idx_genid == 0 || idx_genid == dta->genid)
+        if (idx_genid == 0)
             continue;
+        if (idx_genid == dta->genid) {
+            /* Already caught up: an earlier seek left this row in dta's
+               buffers, the same state the find below would produce, so stamp
+               it rather than sending a servable seek back to bdb. */
+            dta->synced_at_generation = gen;
+            continue;
+        }
         /* data cursor hasn't caught up to the index cursor -- find it now.
          * use bdbcur->find directly (not ddguard) to avoid re-entering
          * recover_deadlock which also needs thd->lk */
@@ -3610,10 +3659,22 @@ void sync_index_data_cursors(struct sql_thread *thd)
         cursor_stash_found_buf(dta, &dta->ondisk_buf, buf, fndlen);
         cursor_stash_found_buf(dta, &dta->dtabuf, buf, fndlen);
         dta->dtabuflen = fndlen;
-        /* The main record is captured; out-of-line blobs are fetched separately
-           and live, so capture them too or they will be looked up after the
-           release against a genid that no longer exists. */
-        sync_capture_blobs(dta, dta->rrn, dta->genid);
+        /* Row is in the buffers: authorise the skip.  Every bail-out above
+           leaves the stamp clear, so those seeks run for real. */
+        dta->synced_at_generation = gen;
+    }
+
+    /* Blobs are fetched live by genid, so capture them too -- but only after
+       the loop above, which may reposition a data cursor onto a different row.
+       Index cursors are done: a covering one captured itself, any other serves
+       its blobs through its paired data cursor. */
+    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+    {
+        if (!cur->bdbcur)
+            continue;
+        if (cur->cursor_class == CURSORCLASS_INDEX)
+            continue;
+        sync_capture_blobs(cur, cur->bdbcur->rrn(cur->bdbcur), cur->bdbcur->genid(cur->bdbcur));
     }
 
 done:
@@ -6406,18 +6467,20 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             }
         }
 
-        /* If the cursor was pre-synced by sync_index_data_cursors before a
-         * lock release, the cursor is already positioned at the requested
-         * genid and the data is in the cursor's buffers.  Skip the BDB seek
-         * to avoid a "Dta lookup lost the race" failure if the row was deleted
-         * during the lock-release window.
+        /* The last pre-release sync captured this cursor's row into its
+         * buffers, so serve it and skip the BDB seek -- which would lose the
+         * race if the row was deleted during the release window.  The stamp,
+         * not the tunable, is what authorises this: it is set only on cursors
+         * a sync actually captured, and is single-use.
          *
          * Skipping the seek also skips the BDB-level detection of a table that
          * went away, so re-validate the cached table first: the row we are
          * about to hand back is read via pCur->sc (get_data), and a concurrent
          * DROP can have freed both it and pCur->db during that same window. */
-        if (clnt->recover_deadlock_sync_dta && !clnt->recover_deadlock_skip_sync_dta && bias == OP_DeferredSeek &&
-            pCur->genid == (unsigned long long)intKey && !pCur->eof) {
+        if (bias == OP_DeferredSeek && pCur->synced_at_generation &&
+            pCur->synced_at_generation == clnt->sync_dta_generation && pCur->genid == (unsigned long long)intKey &&
+            !pCur->eof) {
+            pCur->synced_at_generation = 0;
             rc = cursor_check_table_valid(pCur);
             if (rc)
                 goto done;
@@ -10383,6 +10446,7 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt, uint
     if (!(flags & CURTRAN_RECOVERY)) {
         clnt->recover_deadlock_sync_dta = gbl_recover_deadlock_sync_dta;
         clnt->recover_deadlock_skip_sync_dta = gbl_debug_recover_deadlock_skip_sync_dta;
+        clnt_reset_release_state(clnt);
     }
 
     clnt->recover_deadlock_rcode = 0;
@@ -12258,8 +12322,13 @@ const char *comdb2_get_sql(void)
 int gbl_fdb_track_hints = 0;
 static void sqlite3BtreeCursorHint_TableCursor(BtCursor *pCur, BtCursor *pTableCsr)
 {
-    assert(pCur->cursor_class == CURSORCLASS_INDEX);
-    assert(pTableCsr->cursor_class == CURSORCLASS_TABLE);
+    /* where.c emits OP_CursorHint for every HasRowid index scan, including one
+       over a remote table -- whose index AND table cursor are both
+       CURSORCLASS_REMOTE.  The pairing only means anything for a local
+       index/table pair (sync_index_data_cursors ignores anything else), so skip
+       rather than assert: asserting here aborts the db on any fdb index scan. */
+    if (pCur->cursor_class != CURSORCLASS_INDEX || pTableCsr->cursor_class != CURSORCLASS_TABLE)
+        return;
     assert(pCur->db == pTableCsr->db);
     pCur->pCursorHintTableCursor = pTableCsr;
 }

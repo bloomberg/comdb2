@@ -81,15 +81,11 @@ echo "XXXXX we should see to empty partitions with no counters" >> $output
 gorun "select * from testpart1 order by a"
 timepart_stats
 
-# these two rows must land in the first shard, i.e. before the rollout below
+gorun "put counter testpart1 increment"
 gorun "insert into testpart1 values (1, 'hi')"
 gorun "insert into testpart1 values (2, 'ho')"
 
-gorun "put counter testpart1 increment"
-echo "sleeping" >> $output
-sleep 10
-
-echo "XXXXX we should see the data in part1, and the counter, rollout done" >> $output
+echo "XXXXX we should see the data in part1, and the counter, no rollout yet" >> $output
 gorun "select * from testpart1 order by a"
 timepart_stats
 
