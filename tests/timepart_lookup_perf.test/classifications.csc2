@@ -1,0 +1,10 @@
+schema
+{
+        cstring security_identifier[100]
+        int classification_value
+}
+keys
+{
+        "KEY_SECURITY_IDENTIFIER" = security_identifier
+        dup "VALUE" = classification_value
+}
