@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 source ${TESTSROOTDIR}/tools/cluster_utils.sh
 a_dbn=$1
 ckp_rectype=2011

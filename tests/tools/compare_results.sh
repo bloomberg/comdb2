@@ -2,7 +2,7 @@
 
 # Execute sql scripts and compare the results against expected output
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 script_mode=""
 dbname=

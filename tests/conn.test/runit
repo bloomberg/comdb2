@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 ADMINSQL="$CDB2SQL_EXE -admin -tabs --cdb2cfg $CDB2_CONFIG $DBNAME default"

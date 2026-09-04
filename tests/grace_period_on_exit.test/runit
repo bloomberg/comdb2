@@ -3,7 +3,7 @@
 # On clean exit, we wait up to 5 minutes for queries to finish.
 # Verify it works.
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 dbnm=$1
 

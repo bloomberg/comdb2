@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 a_dbn=$1
 
 ### Verify comdb2_schemaversions state after table create

@@ -2,7 +2,7 @@
 
 # Verify that a chunked transaction returns total query effects from all chunks
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 dbnm=$1
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 mach=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'select comdb2_host()'`
 echo "target machine is $mach"

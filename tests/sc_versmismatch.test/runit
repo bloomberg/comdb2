@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 source ${TESTSROOTDIR}/tools/runit_common.sh
 # Remember if we've started the coprocess.
 stco=1

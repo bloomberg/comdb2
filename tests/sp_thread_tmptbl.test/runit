@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # An sp thread (db:create_thread) clones the parent's temp tables.  If the
 # thread lands on a sql engine thread that has not opened its sqlite handle

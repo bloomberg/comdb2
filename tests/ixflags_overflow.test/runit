@@ -14,7 +14,7 @@
 #   2. ALTER TABLE to add a 51st key -- must be rejected, server stays alive.
 #   3. CREATE TABLE with 256 keys -- must be rejected, server stays alive.
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 set -x

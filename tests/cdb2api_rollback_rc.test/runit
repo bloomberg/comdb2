@@ -2,7 +2,7 @@
 
 #!/usr/bin/env bash
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 [ -z "${CLUSTER}" ] && { echo "Test only suitable for a clustered setup"; exit 0; }
 

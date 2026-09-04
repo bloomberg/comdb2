@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 # Test input validation for SET PARTITION NUMDBS / NUMCOLS / DBS / COLS / SHARDS.
 # Regression test for crash: SET PARTITION NUMDBS <huge> followed by SET PARTITION DBS x

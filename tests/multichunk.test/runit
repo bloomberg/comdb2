@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 cdb2="cdb2sql --tabs -s ${CDB2_OPTIONS} $1 default "
 

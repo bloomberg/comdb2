@@ -6,7 +6,7 @@
 source ${TESTSROOTDIR}/tools/runit_common.sh
 source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 [ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
 
 dbnm=$1

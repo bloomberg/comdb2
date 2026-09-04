@@ -2,7 +2,7 @@
 
 # Verify that if a datacenter is down, we connect to a random node in the other data center
 
-bash -n "$0" | exit 1
+bash -n "$0" || exit 1
 
 dbnm=$1
 auxdbnm="aux$dbnm"
