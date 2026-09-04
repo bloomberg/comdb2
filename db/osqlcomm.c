@@ -59,6 +59,7 @@
 #include "eventlog.h"
 #include <disttxn.h>
 #include "fingerprint.h"
+#include "sc_records.h"
 
 #define MAX_CLUSTER REPMAX
 
@@ -6284,14 +6285,20 @@ static int start_schema_change_tran_wrapper(const char *tblname,
 
     /* user suspended sc */
     if (rc != SC_OK || sc->preempted == SC_ACTION_RESUME || sc->kind == SC_ALTERTABLE_PENDING) {
-        iq->sc = NULL;
-        if (sc->nothrevent) {
+        /* Use iq->sc, not the local sc: if start_schema_change_tran() freed the
+         * schema change it also cleared iq->sc, leaving sc dangling, and there
+         * is nothing to link since nothing was ever registered.  It may also
+         * have swapped in a different sc (preempt/resume adopt), in which case
+         * sc is stale too.  See the contract on start_schema_change_tran().
+         */
+        if (iq->sc && iq->sc->nothrevent) {
             /* we need to link the sc into sc_pending so that backout
              * picks it up
              */
-            sc->sc_next = iq->sc_pending;
-            iq->sc_pending = sc;
+            iq->sc->sc_next = iq->sc_pending;
+            iq->sc_pending = iq->sc;
         }
+        iq->sc = NULL;
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
             if (rc != SC_MASTER_DOWNGRADE)
@@ -6353,24 +6360,114 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     return rc;
 }
 
-static int _process_single_table_sc(struct ireq *iq)
+/* rc is the result of this schema change's async phase: SC_OK/0 on success,
+ * an error code otherwise.  On error, status->xerr is populated (unless
+ * already set) so that whoever waits on this status - bplog_schemachange_run's
+ * caller, or resume_sc_multiddl_txn_finalize_thd - can tell the failure
+ * happened and report or act on it, instead of silently treating it as done.
+ * Only status->tablename is used for the message, never sc/iq->sc: by the
+ * time an error is known here, start_schema_change_tran() may already have
+ * freed the sc. */
+static void _signal_sc_done(schema_change_status *status, int rc)
+{
+    Pthread_mutex_lock(&status->mtx);
+    if (rc && !status->xerr.errval) {
+        errstat_set_rcstrf(&status->xerr, rc, "schema change failed for table %s rc %d", status->tablename, rc);
+    }
+    status->async_done = 1;
+    Pthread_cond_signal(&status->cond);
+    Pthread_mutex_unlock(&status->mtx);
+}
+
+/* Release a schema change that failed inside start_schema_change_tran() and is
+ * not being linked into iq->sc_pending.
+ *
+ * A surviving sc still holds the running mark sc_set_running() took.  Only an
+ * inline (nothrevent) schema change can report an error with the sc still
+ * alive - the async path hands the sc to its own thread and always returns 0 -
+ * and nothing releases that mark for an sc that never reached iq->sc_pending,
+ * which is the only list osql_clear_sc_running() and
+ * osql_scdone_abort_callback() walk.  Leaking it leaves the table reported as
+ * "schema change running" until the db is bounced, and makes the next
+ * downgrade abort in sc_assert_clear().
+ *
+ * The mark and the object are all that is left to clean: by the time we get
+ * here do_ddl() has already called mark_schemachange_over_tran() - which also
+ * drops the sc seed and the start LSN - and recorded BDB_SC_ABORTED, while
+ * do_alter_table() / add_table_to_environment() have undone their temp btree,
+ * tags and live-sc fields on the way out.
+ *
+ * A freed sc leaves iq->sc NULL and has nothing to release; see the ownership
+ * contract on start_schema_change_tran().
+ */
+static void _release_failed_sc(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
+
+    if (!sc)
+        return;
+
+    if (sc->set_running)
+        sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__, __LINE__);
+
+    free_schema_change_type(sc);
+    iq->sc = NULL;
+}
+
+static int _process_single_table_sc(struct ireq *iq)
+{
     int rc;
+    schema_change_status *status = iq->sc->status;
 
     /* schema change for a regular table */
     rc = start_schema_change_tran(iq, NULL);
-    if (rc != SC_OK || sc->preempted == SC_ACTION_RESUME || sc->kind == SC_ALTERTABLE_PENDING) {
+    if (rc != SC_OK || iq->sc->preempted == SC_ACTION_RESUME || iq->sc->kind == SC_ALTERTABLE_PENDING) {
+        /* Only a genuine failure releases the sc.  A detached one
+         * (preempt/pending) returns SC_OK and is owned by the ongoing-alter
+         * machinery, which finalizes it later - releasing it here would pull
+         * it out from under that. */
+        if (rc != SC_OK)
+            _release_failed_sc(iq);
         iq->sc = NULL;
         /* mark scdone so that cleanup removes llmeta */
-        if (rc != SC_OK && rc != SC_MASTER_DOWNGRADE)
+        if (rc != SC_OK && rc != SC_MASTER_DOWNGRADE) {
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        }
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
         iq->osql_flags |= OSQL_FLAGS_SCDONE;
     }
+    /* status is owned by iq->scs_status, not by the sc, so it stays valid even
+     * though the sc may have just been released above */
+    _signal_sc_done(status, rc);
     return rc;
+}
+
+/* iq->sc, iq->sc_seed and iq->usedb are single-slot, so an ireq can only carry
+ * one schema change at a time; when a transaction has several and a resumed
+ * merge runs in its own thread, sc_pending_mtx is what keeps them from
+ * overlapping.  A transaction with a single schema change has exactly one
+ * writer, so the mutex is pure overhead there - skip it, but prove the claim
+ * while asserts are compiled in: if anyone else were running against this ireq
+ * the trylock would fail. */
+static void sc_pending_lock(struct ireq *iq)
+{
+    if (iq->sc_shared) {
+        Pthread_mutex_lock(&iq->sc_pending_mtx);
+        return;
+    }
+#ifndef NDEBUG
+    int trylock_rc = pthread_mutex_trylock(&iq->sc_pending_mtx);
+    assert(trylock_rc == 0 && "unshared ireq has a concurrent schema change");
+    Pthread_mutex_unlock(&iq->sc_pending_mtx);
+#endif
+}
+
+static void sc_pending_unlock(struct ireq *iq)
+{
+    if (iq->sc_shared)
+        Pthread_mutex_unlock(&iq->sc_pending_mtx);
 }
 
 static int start_schema_change_tran_wrapper_merge(const char *tblname,
@@ -6399,9 +6496,6 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     alter_sc->force_rebuild = 1; /* we are moving rows here */
     /* alter only in parallel mode for live */
     alter_sc->scanmode = SCAN_PARALLEL;
-    /* link the sc */
-    iq->sc = alter_sc;
-
     /**
      * if view is provided, this is part of a shard walk;
      * release views lock here since sc can take awhile
@@ -6410,12 +6504,20 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     if (arg->lockless)
         views_unlock();
 
+    /* Protect iq->sc and iq->sc_pending: concurrent merge threads for different
+     * tables share the same iq and would otherwise race on these fields. */
+    sc_pending_lock(iq);
+    iq->sc = alter_sc;
     rc = start_schema_change_tran(iq, NULL);
 
-    /* link the alter */
-    iq->sc->sc_next = iq->sc_pending;
-    iq->sc_pending = iq->sc;
-    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+    /* link the alter, but only if it survived: a freed sc leaves iq->sc NULL
+     * and has nothing to back out (see start_schema_change_tran) */
+    if (iq->sc) {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+    }
+    sc_pending_unlock(iq);
 
     if (arg->lockless) {
         *pview = timepart_reaquire_view(arg->part_name);
@@ -6428,6 +6530,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 
     /* mark scdone so that cleanup removes llmeta */
     if (rc != SC_OK) {
+        iq->sc = NULL;
         if (rc != SC_MASTER_DOWNGRADE)
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         else {
@@ -6441,6 +6544,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 static int _process_single_table_sc_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
+    schema_change_status *status = sc->status;
     int rc;
 
     assert(sc->partition.type == PARTITION_MERGE);
@@ -6460,18 +6564,29 @@ static int _process_single_table_sc_merge(struct ireq *iq)
 
     rc = start_schema_change_tran(iq, NULL);
 
-    iq->sc->sc_next = iq->sc_pending;
-    iq->sc_pending = iq->sc;
+    /* link it only if it survived: a freed sc leaves iq->sc NULL and has
+     * nothing to back out (see start_schema_change_tran) */
+    if (iq->sc) {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+    }
     /* mark scdone so that cleanup removes llmeta */
     if (rc != SC_OK) {
+        iq->sc = NULL;
         if (rc != SC_MASTER_DOWNGRADE)
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         else {
             /* potential downgrade during the last shard processing */
             iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
         }
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
+
+    /* not working now, but if we reactivate resume on replicant, sc can be freed here
+     * and replaced with iq->sc
+     */
+    sc = iq->sc;
 
     /* at this point we have created the future btree, launch an alter
      * for the to-be-merged table
@@ -6489,14 +6604,145 @@ static int _process_single_table_sc_merge(struct ireq *iq)
             sc->partition.u.mergetable.tablename, NULL, &arg);
     sc->partition.type = old_part_type;
 
+done:
+    _signal_sc_done(status, rc);
     return rc;
 }
+
+static int _shard_set_sc_genids(const char *tablename, timepart_view_t **pview, timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    int rc = 0;
+
+    struct dbtable *shard = get_dbtable_by_name(tablename);
+    if (!shard) {
+        logmsg(LOGMSG_ERROR, "%s: failed to find shard %s\n", __func__, tablename);
+        return -1;
+    }
+
+    rc = init_sc_genids(sc, shard->tablename, shard->dtastripe, NULL /* use llmeta */, &shard->sc_genids);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get high genids for shard %s\n", __func__, shard->tablename);
+        return -1;
+    }
+
+    /* link the newdb into db so live writes to target it */
+    dbtable_set_alter_fields(shard, sc->partition.newdb);
+
+    return rc;
+}
+
+/* Called for every shard when the destination could not be reopened and has to
+ * be created fresh (the "no state" branch of _process_partitioned_table_merge).
+ * That destination is shared by every shard's do_merge_table(), so no shard can
+ * have converted anything into it - any high-genid mark still recorded for a
+ * shard was written against a destination that no longer exists and would make
+ * do_merge_table() silently skip that shard's rows on resume.  Reset it,
+ * exactly like the destination's own mark is reset in do_alter_table().
+ *
+ * For an aliased partition this runs for shard 0 too, which is harmless: it is
+ * about to be reset again by do_alter_table() when it processes shard 0 as the
+ * destination.  For a non-aliased partition shard 0 has no such second reset -
+ * it is merged in through do_merge_table() exactly like every other shard - so
+ * this is the only place its mark gets cleared. */
+static int _shard_reset_stale_sc_genids(const char *tablename, timepart_view_t **pview, timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+
+    struct dbtable *shard = get_dbtable_by_name(tablename);
+    if (!shard) {
+        logmsg(LOGMSG_ERROR, "%s: failed to find shard %s\n", __func__, tablename);
+        return -1;
+    }
+
+    if (reset_stale_sc_genids(sc, shard->tablename, shard->dtastripe)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to reset stale sc_genids for shard %s\n", __func__, shard->tablename);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int _shard_undo_alter_fields(const char *tablename, timepart_view_t **unused, timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct dbtable *shard = get_dbtable_by_name(tablename);
+    if (!shard) {
+        logmsg(LOGMSG_ERROR, "%s Unable to find table %s\n", __func__, tablename);
+        return 0; /* best effort */
+    }
+    Pthread_rwlock_rdlock(&shard->sc_live_lk);
+    int was_set = (shard->sc_to == sc->partition.newdb);
+    Pthread_rwlock_unlock(&shard->sc_live_lk);
+    if (was_set)
+        live_sc_off(shard);
+    return 0;
+}
+
+/* Tear down the merge target that the resume path set up in
+ * sc->partition.newdb.
+ *
+ * This is the only safe way to get rid of that dbtable.  _shard_set_sc_genids()
+ * pointed every shard's sc_to at it and put them in live-schema-change mode, so
+ * the shards have to be taken off it first - otherwise their sc_to dangles and
+ * live writes follow a freed pointer, and their doing_conversion stays set.
+ * The borrowers (do_alter_table, add_table_to_environment) therefore leave the
+ * object alone on failure and let us do it here, once.
+ *
+ * 'downgrade' decides the fate of the temp btree, following the same rule as
+ * do_alter_table's errout: path: on a master downgrade it is only closed, so
+ * the new master can resume the merge from it; otherwise nobody is going to
+ * resume this merge and the btree is removed along with the dbtable.
+ */
+void cleanup_merge_resume_newdb(struct ireq *iq, struct schema_change_type *sc, int downgrade)
+{
+    struct dbtable *newdb = sc->partition.newdb;
+
+    if (!newdb)
+        return;
+
+    /* undo dbtable_set_alter_fields on every shard still pointing at newdb */
+    timepart_sc_arg_t cleanup_arg = {0};
+    cleanup_arg.s = sc;
+    cleanup_arg.part_name = strdup(sc->tablename);
+    if (cleanup_arg.part_name) {
+        timepart_foreach_shard(_shard_undo_alter_fields, &cleanup_arg);
+        free(cleanup_arg.part_name);
+    }
+
+    if (newdb->handle) {
+        if (!downgrade) {
+            /* delete_temp_table() closes the handle and removes the btree */
+            if (delete_temp_table(iq, newdb))
+                logmsg(LOGMSG_ERROR, "%s: failed to delete temp table for %s\n", __func__, sc->tablename);
+        } else {
+            int bdberr = 0;
+            bdb_close_only_sc(newdb->handle, NULL, &bdberr);
+        }
+        newdb->handle = NULL;
+    }
+
+    /* drop both references before the object goes away */
+    if (sc->newdb == newdb)
+        sc->newdb = NULL;
+    sc->partition.newdb = NULL;
+
+    cleanup_newdb(newdb);
+}
+
+typedef struct {
+    struct ireq *iq;
+    struct schema_change_type *sc;
+} merge_resume_arg_t;
+
+static int _do_process_partitioned_table_merge(struct ireq *iq, struct schema_change_type *sc);
+static void *_partitioned_table_merge_resume_thd(void *arg);
 
 static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    timepart_sc_arg_t arg = {0};
+    pthread_t tid;
 
     assert(sc->kind == SC_ALTERTABLE);
 
@@ -6515,13 +6761,149 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
     sc->newdb_borrowed = 0;
 
-    /* 
-    * The first shard sc always needs to run synchronously.
-    * The later shard scs can theoretically run asynchronously but
-    * it doesn't work right now.
-    */
-    sc->nothrevent = 1; 
+    if (sc->resume) {
+        /* we are trying to open the existing table;
+         * 1) if new table does not exist, dispatch this to a separate thread
+         * 2) if new table exists
+         *  2.1) for each shard, collect llmeta entry for sc_genids
+         *  2.2) for each shard, set the schema change alter fields (sc_to, sc_genids)
+         *  2.3) dispatch to a separate thread
+         */
+        int local_sc = 0;
+        if (!sc->iq->sc_locked) {
+            wrlock_schema_lk();
+            local_sc = 1;
+        }
+        char *prefixed_tblname;
+        if (first_shard->sqlaliasname) {
+            /* if the table was aliased, we reuse it and first sc is an alter table */
+            prefixed_tblname = get_prefixed_tablename(first_shard->tablename);
+        } else {
+            /* if the table is not aliased, first sc is an add table */
+            prefixed_tblname = strdup(first_shard->timepartition_name);
+        }
+        void *newdb_handle = open_temp_db_resume_early(first_shard, prefixed_tblname);
+        free(prefixed_tblname);
+        if (newdb_handle) {
+            /* we have state, for each shard collect sc_genids and set alter fields */
+            struct dbtable *newdb;
+            Pthread_mutex_lock(&csc2_subsystem_mtx);
+            /* use sc->newcsc2, not first_shard->csc2_schema: the on-disk temp file
+             * being reopened here was built (before the crash) from sc->newcsc2,
+             * which is what the non-resume path also uses. first_shard->csc2_schema
+             * is the shard's *current* schema, which only happens to match
+             * sc->newcsc2 when this collapse carries no schema change of its own
+             * (e.g. "ALTER TABLE t {new schema} PARTITIONED BY NONE" would resume
+             * with the wrong, stale schema otherwise). */
+            if (!first_shard->sqlaliasname) {
+                /* this is a "create table partitioned" partition;
+                 * pass sc->timepartition_name (always NULL for a merge/collapse,
+                 * matching the non-resume path), not first_shard->timepartition_name:
+                 * the latter is a raw pointer into the partition view's own name
+                 * string, which partition_publish() frees once the collapse
+                 * finishes, leaving newdb->timepartition_name dangling on what is
+                 * about to become a live, plain table in thedb->dbs */
+                newdb =
+                    do_add_table_newdb(first_shard->timepartition_name, sc->newcsc2, sc, iq, sc->timepartition_name);
+            } else {
+                /* this is a "alter table partitioned" partition */
+                newdb = do_alter_table_newdb(first_shard->tablename, sc->newcsc2, first_shard->dbnum, sc, iq);
+            }
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            if (newdb) {
+                newdb->handle = newdb_handle;
+                sc->partition.newdb = newdb;
+            }
+            if (local_sc) {
+                unlock_schema_lk();
+                local_sc = 0;
+            }
+            if (!newdb) {
+                int bdberr;
+                bdb_close_only_sc(newdb_handle, NULL, &bdberr);
+                _signal_sc_done(sc->status, ERR_SC);
+                return ERR_SC;
+            }
 
+            /* need to set the sc_genids for each shard */
+            timepart_sc_arg_t arg = {0};
+            arg.s = sc;
+            arg.s->iq = iq;
+            arg.part_name = strdup(sc->tablename);
+            if (!arg.part_name)
+                rc = VIEW_ERR_MALLOC;
+            else {
+                rc = timepart_foreach_shard(_shard_set_sc_genids, &arg);
+                free(arg.part_name);
+            }
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: %s failed to retrieve sc_genids rc %d\n", __func__, sc->tablename, rc);
+                cleanup_merge_resume_newdb(iq, sc, 0 /*not a downgrade*/);
+                _signal_sc_done(sc->status, rc);
+                return ERR_SC;
+            }
+        } else {
+            /* No destination temp to reopen: nothing has ever been converted
+             * into it from any shard, so every shard's own high-genid mark -
+             * if one survived from an earlier, now-defunct destination - is
+             * stale.  Reset them all before dispatching; for an aliased
+             * partition this harmlessly repeats what do_alter_table() will
+             * independently redo for shard 0 as the destination. */
+            timepart_sc_arg_t reset_arg = {0};
+            reset_arg.s = sc;
+            reset_arg.part_name = strdup(sc->tablename);
+            if (!reset_arg.part_name) {
+                _signal_sc_done(sc->status, ERR_SC);
+                return ERR_SC;
+            }
+            rc = timepart_foreach_shard(_shard_reset_stale_sc_genids, &reset_arg);
+            free(reset_arg.part_name);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: %s failed to reset stale shard sc_genids rc %d\n", __func__, sc->tablename,
+                       rc);
+                _signal_sc_done(sc->status, rc);
+                return ERR_SC;
+            }
+        }
+
+        if (local_sc) {
+            unlock_schema_lk();
+            local_sc = 0;
+        }
+
+        /* no state, merging start from the beginning, do not keep the master upgrade waiting */
+        merge_resume_arg_t *thd_arg = malloc(sizeof(*thd_arg));
+        if (!thd_arg) {
+            _signal_sc_done(sc->status, ERR_SC);
+            return ERR_SC;
+        }
+        thd_arg->iq = iq;
+        thd_arg->sc = sc; /* capture sc NOW before bplog_schemachange_run advances iq->sc */
+        Pthread_create(&tid, &gbl_pthread_attr_detached, _partitioned_table_merge_resume_thd, thd_arg);
+        return 0;
+    }
+
+    return _do_process_partitioned_table_merge(iq, iq->sc);
+}
+
+static int _do_process_partitioned_table_merge(struct ireq *iq, struct schema_change_type *sc)
+{
+    /* sc is passed explicitly and must be used directly throughout this function.
+     * Do NOT read iq->sc here: multiple merge threads share the same iq, so
+     * iq->sc may have been advanced to a different schema change by the time
+     * this thread runs. iq->sc is only written under iq->sc_pending_mtx when
+     * calling start_schema_change_tran(), and restored to the local sc afterward. */
+    schema_change_status *status = sc->status;
+    int rc = SC_OK;
+
+    /* run one shard at a time */
+    sc->nothrevent = 1;
+
+    char *first_shard_name = timepart_shard_name(sc->tablename, 0, 0, NULL);
+    struct dbtable *first_shard = get_dbtable_by_name(first_shard_name);
+    free(first_shard_name);
+
+    timepart_sc_arg_t arg = {0};
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition
@@ -6529,19 +6911,38 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         sc->finalize = 0;   /* make sure */
         sc->kind = SC_ADDTABLE;
 
+        strncpy(sc->tablename, first_shard->timepartition_name, sizeof(sc->tablename));
+
+        /* Protect iq->sc and iq->sc_pending from concurrent merge threads */
+        sc_pending_lock(iq);
+        iq->sc = sc;
         rc = start_schema_change_tran(iq, NULL);
 
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
+            /* the resume path pointed every shard at sc->partition.newdb, so
+             * that target has to come down before the sc goes away; the
+             * borrowers deliberately left it alone.  Safe under
+             * sc_pending_mtx: start_schema_change_tran() above already runs the
+             * whole inline schema change while holding it. */
+            if (iq->sc)
+                cleanup_merge_resume_newdb(iq, iq->sc, rc == SC_MASTER_DOWNGRADE);
+            /* this merge forces nothrevent, so a failure here always means the
+             * sc ran inline and still owns its running mark */
+            _release_failed_sc(iq);
+            sc_pending_unlock(iq);
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
                 iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-            return ERR_SC;
+            rc = ERR_SC;
+            goto done;
         }
 
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
+        sc = iq->sc; /* may have been updated by start_schema_change_tran */
+        sc_pending_unlock(iq);
     } else {
         /*
          * use the first shard as the destination, after first altering it
@@ -6550,23 +6951,40 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
 
+        /* Protect iq->sc and iq->sc_pending from concurrent merge threads */
+        sc_pending_lock(iq);
+        iq->sc = sc;
         rc = start_schema_change_tran(iq, NULL);
 
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
+            /* the resume path pointed every shard at sc->partition.newdb, so
+             * that target has to come down before the sc goes away; the
+             * borrowers deliberately left it alone.  Safe under
+             * sc_pending_mtx: start_schema_change_tran() above already runs the
+             * whole inline schema change while holding it. */
+            if (iq->sc)
+                cleanup_merge_resume_newdb(iq, iq->sc, rc == SC_MASTER_DOWNGRADE);
+            /* this merge forces nothrevent, so a failure here always means the
+             * sc ran inline and still owns its running mark */
+            _release_failed_sc(iq);
+            sc_pending_unlock(iq);
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
                 iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-            return ERR_SC;
+            rc = ERR_SC;
+            goto done;
         }
 
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
+        sc = iq->sc; /* may have been updated by start_schema_change_tran */
 
         arg.check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
         arg.start = 1;
+        sc_pending_unlock(iq);
         /* since this is a partition drop, we do not need to set/reset arg.pos here */
     }
 
@@ -6576,8 +6994,10 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     arg.s = sc;
     arg.s->iq = iq;
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
-    if (!arg.part_name)
-        return VIEW_ERR_MALLOC;
+    if (!arg.part_name) {
+        rc = VIEW_ERR_MALLOC;
+        goto done;
+    }
     arg.lockless = 1;   
 
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
@@ -6588,7 +7008,35 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         sc->publish = partition_publish;
         sc->unpublish = partition_unpublish;
     }
+done:
+    _signal_sc_done(status, rc);
     return rc;
+}
+
+static void *_partitioned_table_merge_resume_thd(void *arg)
+{
+    merge_resume_arg_t *thd_arg = (merge_resume_arg_t *)arg;
+    struct ireq *iq = thd_arg->iq;
+    struct schema_change_type *sc = thd_arg->sc;
+    free(thd_arg);
+
+    comdb2_name_thread(__func__);
+    int rc;
+
+    thread_started("partition_merge");
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+    rc = _do_process_partitioned_table_merge(iq, sc);
+    if (rc == SC_COMMIT_PENDING) {
+        rc = SC_OK;
+    }
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+
+    /* NOTE: the finalizing is done in a separate thread, which commits
+     * all scs in this list atomically
+     */
+
+    long long out_rc = rc;
+    return (void *)out_rc;
 }
 
 static int _process_partitioning_retro(timepart_sc_arg_t *arg)
@@ -6712,19 +7160,22 @@ static struct schema_change_type* _create_logical_cron_systable(const char *tbln
 static int _process_single_table_sc_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
+    schema_change_status *status = sc->status;
     int rc;
     int retro_partition = gbl_retro_tpt && sc->kind == SC_ALTERTABLE && sc->partition.type == PARTITION_ADD_TIMED_RETRO;
 
     if (sc->partition.type == PARTITION_ADD_TIMED_RETRO && !gbl_retro_tpt) {
         logmsg(LOGMSG_ERROR, "Retroactively partition disabled %s\n", sc->tablename);
         sc_errf(sc, "Retroactively partition disabled %s\n", sc->tablename);
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
     if (sc->partition.type == PARTITION_REMOVE) {
         logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
         sc_errf(sc, "Partition %s does not exist\n", sc->tablename);
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
     assert(sc->partition.type == PARTITION_ADD_TIMED || sc->partition.type == PARTITION_ADD_TIMED_RETRO ||
@@ -6747,7 +7198,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         sc_errf(sc, "Creating a new time partition failed rc %d \"%s\"",
                 err.errval, err.errstr);
         rc = ERR_SC;
-        goto out;
+        goto done;
     }
 
     /* create shards for the partition */
@@ -6761,22 +7212,24 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         sc_errf(sc, "Failed to pre-populate the shards rc %d \"%s\"",
                 err.errval, err.errstr);
         rc = ERR_SC;
-        goto out;
+        goto done;
     }
 
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
     arg.part_name = strdup(sc->tablename);
-    if (!arg.part_name)
-        return ERR_SC;
+    if (!arg.part_name) {
+        rc = ERR_SC;
+        goto done;
+    }
     arg.lockless = 0; /* the partition does not exist */
 
     if (retro_partition) {
         /* we want to retroactively populate the shards with existing data */
         rc = _process_partitioning_retro(&arg);
         free(arg.part_name);
-        return rc;
+        goto done;
     }
 
     /* is this an alter? preserve existing table as first shard */
@@ -6801,7 +7254,8 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
                     "partitioning rc %d",
                     sc->tablename, rc);
             free(arg.part_name);
-            return ERR_SC;
+            rc = ERR_SC;
+            goto done;
         }
         /* we need to  generate retention-1 table adds, with schema provided
          * by previous alter; we need to convert an alter to a add sc
@@ -6810,27 +7264,37 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.start = 1; /* first shard is already there */
         arg.pos = 0; /* reset this so we do not set publish on additional shards */
     }
-    /* should we serialize ? */
-    arg.s->nothrevent = sc->partition.u.tpt.retention > gbl_dohsql_sc_max_threads;
+    /* since we use sc_seed for multiple tables, they will race to set it which can
+       result in the write sc_seed failing (deadlocks), which will break resume;
+       we could retry the write, but at this PIT we prefer to run the partition changes serial
+       */
+    arg.s->nothrevent = 1;
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
     if (!rc && sc->partition.type == PARTITION_ADD_MANUAL) {
         if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
             struct schema_change_type *lcsc = _create_logical_cron_systable(LOGICAL_CRON_SYSTABLE);
-            if (!lcsc)
-                return -1;
+            if (!lcsc) {
+                rc = ERR_SC;
+                goto done;
+            }
 
             iq->sc = lcsc;
             iq->sc->iq = iq;
 
             rc = start_schema_change_tran(iq, NULL);
 
-            iq->sc->sc_next = iq->sc_pending;
-            iq->sc_pending = iq->sc;
+            /* link it only if it survived: a freed sc leaves iq->sc NULL and
+             * has nothing to back out (see start_schema_change_tran) */
+            if (iq->sc) {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+            }
 
             /* mark scdone so that cleanup removes llmeta */
             if (rc != SC_OK) {
+                iq->sc = NULL;
                 if (rc != SC_MASTER_DOWNGRADE)
                     iq->osql_flags |= OSQL_FLAGS_SCDONE;
                 else
@@ -6839,7 +7303,8 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         }
     }
     free(arg.part_name);
-out:
+done:
+    _signal_sc_done(status, rc);
     return rc;
 }
 
@@ -6877,6 +7342,7 @@ static struct schema_change_type* _create_logical_cron_systable(const char *tbln
 static int _process_partition_alter_and_drop(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
+    schema_change_status *status = sc->status;
     int rc;
 
     if (sc->kind == SC_ADDTABLE) {
@@ -6884,7 +7350,7 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
         logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
         sc_errf(sc, "Duplicate partition %s!", sc->tablename);
         rc = SC_TABLE_ALREADY_EXIST;
-        goto out;
+        goto done;
     }
 
     int nshards = timepart_get_num_shards(sc->tablename);
@@ -6894,29 +7360,33 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
                sc->tablename);
         sc_errf(sc, "Failed to retrieve nshards in sc for %s",
                sc->tablename);
-        return ERR_SC;
+        rc = ERR_SC;
+        goto done;
     }
 
-    /* should we serialize ? */
-    sc->nothrevent = nshards > gbl_dohsql_sc_max_threads;
 
     if (sc->partition.type == PARTITION_MERGE) {
         return _process_partitioned_table_merge(iq);
     }
+
+    sc->nothrevent = nshards > gbl_dohsql_sc_max_threads;
 
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
     arg.check_extra_shard = 1;
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
-    if (!arg.part_name)
-        return VIEW_ERR_MALLOC;
+    if (!arg.part_name) {
+        rc = VIEW_ERR_MALLOC;
+        goto done;
+    }
     arg.cur_last = gbl_partition_sc_reorder ?  sc->nothrevent : 0;
     arg.lockless = 1;
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper, &arg);
     free(arg.part_name);
 
-out:
+done:
+    _signal_sc_done(status, rc);
     return rc;
 }
 

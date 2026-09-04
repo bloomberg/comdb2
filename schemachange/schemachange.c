@@ -43,7 +43,40 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 extern int gbl_test_sc_resume_race;
 extern int gbl_retro_tpt_verbose;
 
-/* If this is successful, it increments */
+/* If this is successful, it increments
+ *
+ * OWNERSHIP CONTRACT: on failure this may or may not have freed iq->sc, and the
+ * return code cannot tell the two apart (SC_MASTER_DOWNGRADE, for instance, is
+ * returned both from the early exit below and from do_alter_table()).  So every
+ * path that frees iq->sc also sets it to NULL, which makes the caller's test:
+ *
+ *   iq->sc == NULL  <=>  the schema change was freed here
+ *
+ * A freed sc was always released before sc_set_running() succeeded, so it never
+ * registered as running, never wrote an sc seed and never opened a temp btree:
+ * there is nothing to back out and nothing to release.  A surviving sc, failed
+ * or not, still owns its running mark, so the caller must either link it into
+ * iq->sc_pending (whose walkers release the mark) or release it itself.
+ * Callers must therefore check iq->sc before dereferencing it.
+ *
+ * NOTE: the iq->sc == NULL equivalence above holds for the OSQL callers, which
+ * are the ones that test it.  It does not hold for s->is_osql == 0: an inline
+ * non-OSQL schema change is freed by stop_and_free_sc() inside
+ * do_schema_change_tran_int(), which releases the running mark but leaves
+ * iq->sc dangling.  Only start_schema_change() takes that path, with an ireq it
+ * discards immediately, so nothing dereferences it.
+ *
+ * Only an inline (nothrevent) schema change can return an error with the sc
+ * still alive: rc is last assigned by sc_set_running() below, a non-zero there
+ * returns straight away, and the asynchronous branch never touches rc.  So a
+ * caller seeing rc != SC_OK with iq->sc != NULL is always looking at a schema
+ * change that ran to completion inline and failed.
+ *
+ * NOTE: iq->sc, iq->sc_seed and iq->usedb are single-slot, so one ireq cannot
+ * carry two schema changes at once.  Callers that share an ireq between merge
+ * threads must therefore serialise on iq->sc_pending_mtx - see
+ * sc_pending_lock() in osqlcomm.c.
+ */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -53,6 +86,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (!bdb_iam_master(thedb->bdb_env)) {
         sc_errf(s, "I am not master\n");
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_NOT_MASTER;
     }
 
@@ -60,6 +94,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (thedb->master != gbl_myhostname) {
         sc_errf(s, "I am not master; master is %s\n", thedb->master);
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_NOT_MASTER;
     }
 
@@ -71,10 +106,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!alter) {
             errstat_set_strf(&iq->errstat, "Invalid option");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_INVALID_OPTIONS;
         }
         free_schema_change_type(s);
         iq->sc = s = alter;
+        /* TODO: preempted is probably broken; when fixed, remember to replace this is scs list too */
         /* wait for previous schemachange thread to exit */
         while (1) {
             Pthread_mutex_lock(&s->mtx);
@@ -138,6 +175,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                      */
                     sc_errf(s, "schema change already in progress\n");
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     Pthread_mutex_unlock(&sc_resuming_mtx);
                     return SC_CANT_SET_RUNNING;
                 }
@@ -152,6 +190,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             stored_sc->tran = trans;
             stored_sc->iq = iq;
             free_schema_change_type(s);
+            /* TODO: this should not retry, see osql_sock_commit running_ddl flag; if we fixed that,
+             * make sure we replace sc in scs list too
+             */
             s = stored_sc;
             iq->sc = s;
             Pthread_mutex_lock(&s->mtx);
@@ -183,6 +224,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     logmsg(LOGMSG_ERROR, "%s: ran out of memory\n", __func__);
                     free(packed_sc_data);
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     return -1;
                 }
                 if (unpack_schema_change_type(stored_sc, packed_sc_data,
@@ -191,6 +233,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     free(packed_sc_data);
                     free_schema_change_type(stored_sc);
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     return -1;
                 }
                 free(packed_sc_data);
@@ -226,10 +269,13 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if ((rc = fetch_sc_seed(s->tablename, thedb, &seed, &host))) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return rc;
         }
         if (seed == 0 && host == 0) {
             logmsg(LOGMSG_ERROR, "Failed to determine host and seed!\n");
+            free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
         }
         logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
@@ -247,6 +293,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_MASTER_DOWNGRADE;
         }
     } else {
@@ -284,6 +331,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             }
         }
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_CANT_SET_RUNNING;
     }
 
@@ -301,7 +349,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,
                                  iq->sc_host, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
+            logmsg(LOGMSG_ERROR, "%s Couldn't save schema change seed %llx (%llu) rc %d bdberr %d\n", s->tablename,
+                   seed, seed, rc, bdberr);
         }
     }
     iq->sc_seed = seed;
@@ -349,8 +398,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             s->preempted == SC_ACTION_RESUME) {
             free(arg);
             arg = NULL;
-            Pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_locked, s);
+            Pthread_create(&tid, &gbl_pthread_attr_detached, (void *(*)(void *))do_schema_change_locked, s);
         } else {
             Pthread_mutex_lock(&s->mtxStart);
             Pthread_create(&tid, &gbl_pthread_attr_detached,
@@ -964,7 +1012,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
-    rc = open_temp_newdb_resume(newdb, 1);
+    rc = open_temp_newdb_resume(newdb, 1, NULL);
     if (rc) {
         backout_schemas(newdb->tablename);
         abort();

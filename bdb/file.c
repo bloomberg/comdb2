@@ -6176,7 +6176,8 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
-                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
+                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d rc %d bdberr %d\n", __func__, __LINE__, rc,
+                       *bdberr);
                 return NULL;
             } else {
                 logmsg(LOGMSG_FATAL, "error opening parent\n");

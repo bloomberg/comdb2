@@ -1293,7 +1293,7 @@ struct osql_sess {
 
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
-    LISTC_T(struct schema_change_type) scs; /* schema changes in session */
+    LISTC_T(struct schema_change_type) scs; /* schema changes in this transaction */
     int is_tptlock;   /* needs tpt locking */
     int is_cancelled; /* 1 if session is cancelled */
 
@@ -1365,11 +1365,21 @@ struct ireq {
 
     /************/
     /* REGION 2 */
+    /* NOT cleared by any init path: init_fake_ireq() bzeroes regions 1 and 3,
+     * init_ireq_legacy() bzeroes region 3 only.  State that must survive an
+     * ireq being recycled through the p_reqs pool belongs here. */
     /************/
     uint8_t region2; /* used for offsetof */
     char corigin[200];
     char debug_buf[256];
     char tzname[DB_MAX_TZNAMEDB];
+
+    /* schema change state, set up once per ireq by init_ireq_sc_state();
+     * sc_state_inited must stay in region 2 so that a recycled pool block
+     * knows to skip re-initialization */
+    int sc_state_inited;
+    pthread_mutex_t sc_pending_mtx;                  /* protects sc_pending/iq->sc against async merge threads */
+    LISTC_T(struct schema_change_status) scs_status; /* status of schema changes in this transaction */
 
     /************/
     /* REGION 3 */
@@ -1441,8 +1451,12 @@ struct ireq {
     tran_type *sc_tran;
     tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
-    LISTC_T(struct schema_change_type) scs; /* all schema changes in this txn */
-    uuid_t scs_uuid;                        /* on resume, there is no sorese, but we need to know uuid for scs */
+    /* set when this transaction carries more than one schema change, i.e. when
+     * a resumed partition merge can dispatch a thread that runs alongside the
+     * rest.  Only then can sc_pending/iq->sc have more than one writer, and
+     * only then is sc_pending_mtx worth taking - see sc_pending_lock(). */
+    int sc_shared;
+    uuid_t scs_uuid; /* on resume, there is no sorese, but we need to know uuid for scs */
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;
@@ -1515,6 +1529,27 @@ struct ireq {
     char *api_driver_version;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
+
+/* The schema change state is initialized once per ireq and must therefore live
+ * in region 2, the only region no init path bzeroes.  Keep it that way. */
+BB_COMPILE_TIME_ASSERT(ireq_sc_state_in_region2,
+                       offsetof(struct ireq, sc_state_inited) > offsetof(struct ireq, region2) &&
+                           offsetof(struct ireq, scs_status) < offsetof(struct ireq, region3));
+
+/* stamped into iq->sc_state_inited by init_ireq_sc_state() */
+#define IREQ_SC_STATE_INITED 0x5C1417ED
+
+/* Set up iq->sc_pending_mtx and iq->scs_status.  The caller must hand over a
+ * freshly allocated ireq (stack, calloc, or a never-used pool block). */
+void init_ireq_sc_state(struct ireq *iq);
+
+/* Same, but a no-op if this ireq has already been initialized.  For p_reqs
+ * blocks, which are recycled and keep their region 2 across reuse. */
+void init_ireq_sc_state_once(struct ireq *iq);
+
+/* Verify the schema change state is clean before an ireq goes back to the pool:
+ * empty scs_status and an unlocked sc_pending_mtx.  Complains and repairs if not. */
+void check_ireq_sc_state_clean(struct ireq *iq);
 
 /* comdb array struct */
 struct array {
@@ -1684,6 +1719,7 @@ extern unsigned long long gbl_sqltick;
 extern int gbl_nonames;
 extern int gbl_reject_osql_mismatch;
 extern int gbl_abort_on_clear_inuse_rqid;
+extern int gbl_abort_on_dirty_ireq_release;
 
 extern int gbl_exit_on_pthread_create_fail;
 extern int gbl_exit_on_internal_error;
@@ -2517,6 +2553,7 @@ int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
 
 void cleanup_newdb(struct dbtable *);
+void cleanup_merge_resume_newdb(struct ireq *iq, struct schema_change_type *sc, int downgrade);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
@@ -3655,8 +3692,9 @@ const char *sc_tag_change_subtype_text(sc_tag_change_subtype);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
 int get_dbtable_idx_by_name(const char *tablename);
-int open_temp_db_resume(struct dbtable *db, char *tablename, int resume);
-int open_temp_newdb_resume(struct dbtable *db, int resume);
+int open_temp_db_resume(struct dbtable *db, char *tablename, int resume, int *created_fresh);
+int open_temp_newdb_resume(struct dbtable *db, int resume, int *created_fresh);
+void *open_temp_db_resume_early(struct dbtable *db, char *tablename);
 int find_constraint(struct dbtable *db, constraint_t *ct);
 
 /* END OF SCHEMACHANGE DECLARATIONS*/

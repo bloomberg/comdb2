@@ -28,6 +28,35 @@ delayed_writes()
     sleep 10
     echo "Sleeping 10 more seconds finally"
     $C "insert into t(a) select * from generate_series(2001, 2010)"
+    if [[ -z "${CLUSTER}" ]] ; then
+        echo "Skipping master downgrade test since we are single node"
+    else
+        echo "Sleeping 10 more seconds finally for master downgrade ${master}"
+        sleep 10
+        $CM "exec procedure sys.cmd.send('downgrade')"
+    fi
+}
+
+delayed_writes2()
+{
+    $CM "exec procedure sys.cmd.send('debg 500')"
+    $CM "exec procedure sys.cmd.send('ndebg 500')"
+    echo "Sleeping 10 seconds"
+    sleep 10
+    $C "delete from tt where a between 1 and 5 or a between 11 and 15"
+    echo "Sleeping 10 more seconds"
+    sleep 10
+    $C "update tt set a = a + 1000 where a between 21 and 25 or a between 41 and 45"
+    sleep 10
+    echo "Sleeping 10 more seconds finally"
+    $C "insert into tt(a) select * from generate_series(2001, 2010)"
+    if [[ -z "${CLUSTER}" ]] ; then
+        echo "Skipping master downgrade test since we are single node"
+    else
+        echo "Sleeping 10 more seconds finally for master downgrade ${master}"
+        sleep 10
+        $CM "exec procedure sys.cmd.send('downgrade')"
+    fi
 }
 
 function timepart_stats
@@ -150,14 +179,23 @@ delayed_writes &
 echo "Time `${CT} 'select now()'`"
 
 echo "Partitioning the table"
-$C "ALTER TABLE T PARTITIONED BY NONE" 
-if (( $? != 0 )) ; then
-   echo "FAILURE to launch schema change"
-   exit 1
+output=`$C "ALTER TABLE t PARTITIONED BY NONE"`
+echo ${output} >> $OUT
+if [[ ! -z "${output}" ]] ; then
+    echo "Received error ${output}"
+    if [[ "${output}" == *"Master node downgrading"* ]] ; then
+        echo "Master downgrading error, ignoring, we'll check resume results"
+    else
+        echo "FAILURE to collapse the partition"
+        exit 1
+    fi
 fi
 
 echo "Waiting for delayed writers to finish"
 wait
+
+echo "Allowing the schema change to finish"
+sleep 30
 
 timepart_stats
 
@@ -167,6 +205,129 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 $C "select * from t order by 1" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to select rows"
+   exit 1
+fi
+
+echo "Testing merging a partition without an alias"
+
+echo "Creating new 7 days time partition"
+echo $C "create table tt(a int unique)  partitioned by time period 'daily' retention 7 start '2026-01-01T'"
+$C "create table tt(a int unique)  partitioned by time period 'daily' retention 7 start '2026-01-01T'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE creating the partition table"
+   exit 1
+fi
+
+timepart_stats
+
+#"$0_D637F0D7",
+#"$1_B62FB41E",
+#"$2_7E5AED68",
+#"$3_5AB90DD5",
+#"$4_8F9F9891",
+#"$5_4014B10E",
+#"$6_27D8FE9",
+
+master=`getmaster`
+CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+
+echo "Time `${CT} 'select now()'`"
+
+echo "Populating shard 0 first half \$0_D637F0D7"
+$C "insert into '\$0_D637F0D7' (a) select * from generate_series(6, 10)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 0 first half (2)"
+   exit 1
+fi
+echo "Populating shard 1 \$1_B62FB41E"
+$C "insert into '\$1_B62FB41E' (a) select * from generate_series(11, 20)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 1 (2)"
+   exit 1
+fi
+echo "Populating shard 2 \$2_7E5AED68"
+$C "insert into '\$2_7E5AED68' (a) select * from generate_series(21, 30)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 2 (2)"
+   exit 1
+fi
+echo "Populating shard 3 \$3_5AB90DD5"
+$C "insert into '\$3_5AB90DD5' (a) select * from generate_series(31, 40)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 3 (2)"
+   exit 1
+fi
+echo "Populating shard 4 \$4_8F9F9891"
+$C "insert into '\$4_8F9F9891' (a) select * from generate_series(41, 50)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 4 (2)"
+   exit 1
+fi
+echo "Populating shard 5 \$5_4014B10E"
+$C "insert into '\$5_4014B10E' (a) select * from generate_series(51, 60)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 5 (2)"
+   exit 1
+fi
+echo "Populating shard 6 \$6_27D8FE9"
+$C "insert into '\$6_27D8FE9' (a) select * from generate_series(61, 70)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 6 (2)"
+   exit 1
+fi
+echo "Populating shard 0 second half \$0_D637F0D7"
+$C "insert into '\$0_D637F0D7' (a) select * from generate_series(1, 5)" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE populating shard 0 second half (2)"
+   exit 1
+fi
+
+echo "Slow down the schema change"
+$CM "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+if (( $? != 0 )) ; then
+   echo "FAILURE to setattr sc_force_delay"
+   exit 1
+fi
+$CM "exec procedure sys.cmd.send('scdelay 1000')"
+if (( $? != 0 )) ; then
+   echo "FAILURE to scdelay"
+   exit 1
+fi
+
+echo "Launching delayed writes"
+delayed_writes2 &
+
+echo "Time `${CT} 'select now()'`"
+
+echo "Partitioning the table"
+output=`$C "ALTER TABLE tt PARTITIONED BY NONE"`
+echo ${output} >> $OUT
+if [[ ! -z "${output}" ]] ; then
+    echo "Received error ${output}"
+    if [[ "${output}" == *"Master node downgrading"* ]] ; then
+        echo "Master downgrading error, ignoring, we'll check resume results"
+    else
+        echo "FAILURE to collapse the partition"
+        exit 1
+    fi
+fi
+
+echo "Waiting for delayed writers to finish"
+wait
+
+echo "Allowing the schema change to finish"
+sleep 30
+
+timepart_stats
+
+$C "select count(*) from tt" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to count total rows"
+   exit 1
+fi
+$C "select * from tt order by 1" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE to select rows"
    exit 1

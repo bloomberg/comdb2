@@ -718,9 +718,16 @@ downgraded:
             if (!trans)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
-            /* return NOMASTER for live schemachange writes */
+            /* return NOMASTER for live schemachange writes.  NOTE: this only
+             * clears s->db; for a merge every other shard was pointed at the
+             * target too, which is why that case goes through
+             * cleanup_merge_resume_newdb() below. */
             sc_set_downgrading(s);
-            if (!s->newdb_borrowed) {
+            if (s->partition.type == PARTITION_MERGE && s->partition.newdb == s->newdb) {
+                /* takes the shards off the target first, and keeps the temp
+                 * btree on disk so the new master can resume this merge */
+                cleanup_merge_resume_newdb(iq, s, 1 /*downgrade*/);
+            } else if (!s->newdb_borrowed) {
                 bdb_close_only(s->newdb->handle, &bdberr);
                 freedb(s->newdb);
             }
@@ -915,7 +922,7 @@ struct timepart_sc_resuming {
     int nshards;
 };
 
-void *resume_sc_multiddl_txn_finalize(void *p);
+void *resume_sc_tpt_finalize_thd(void *p);
 static int process_tpt_sc_hash(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
@@ -935,8 +942,7 @@ static int process_tpt_sc_hash(void *obj, void *arg)
         s = s->sc_next;
     }
 
-    Pthread_create(&tid, &gbl_pthread_attr_detached,
-                        resume_sc_multiddl_txn_finalize, iq);
+    Pthread_create(&tid, &gbl_pthread_attr_detached, resume_sc_tpt_finalize_thd, iq);
     return 0;
 }
 
@@ -979,7 +985,7 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     if (rc != SC_OK) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
                __func__, shardname, rc);
-        /* resume_sc_multiddl_txn_finalize will check rc */
+        /* _resume_sc_multiddl_txn_finalize will check rc */
         new_sc->sc_rc = rc;
     }
     return 0;
@@ -1085,6 +1091,8 @@ int resume_sc_multiddl(int scabort)
         return -1;
     }
 
+    logmsg(LOGMSG_DEBUG, "%s: found %d scl objects\n", __func__, num);
+
     for (i = 0; i < num; i++) {
         p_buf_key = keys[i];
         p_buf_key_end = p_buf_key + keylen;
@@ -1099,6 +1107,9 @@ int resume_sc_multiddl(int scabort)
             rc = -1;
             goto freetime;
         }
+
+        uuidstr_t us;
+        logmsg(LOGMSG_INFO, "%s Resuming schema change %s\n", __func__, comdb2uuidstr(scl.uuid, us));
 
         rc = resume_sc_multiddl_txn(&scl);
         if (rc)
@@ -1368,51 +1379,90 @@ int resume_schema_change(void)
 /****************** Table functions ***********************************/
 /****************** Functions down here will likely be moved elsewhere *****/
 
-int open_temp_newdb_resume(struct dbtable *db, int resume)
+char *get_prefixed_tablename(const char *tablename)
 {
     char *tmpname;
+    char prefix[32];
     int bdberr;
     int nbytes;
-    char prefix[32];
-    int rc;
 
     bdb_get_new_prefix(prefix, sizeof(prefix), &bdberr);
 
-    nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
+    nbytes = snprintf(NULL, 0, "%s%s", prefix, tablename);
     if (nbytes <= 0) nbytes = 2;
     nbytes++;
+
     tmpname = malloc(nbytes);
-    snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
+    snprintf(tmpname, nbytes, "%s%s", prefix, tablename);
 
-    rc = open_temp_db_resume(db, tmpname, resume);
+    return tmpname;
+}
 
-    free(tmpname);
+int open_temp_newdb_resume(struct dbtable *db, int resume, int *created_fresh)
+{
+    char *tblname = get_prefixed_tablename(db->tablename);
+    int rc;
+
+    rc = open_temp_db_resume(db, tblname, resume, created_fresh);
+
+    free(tblname);
 
     return rc;
 }
 
-int open_temp_db_resume(struct dbtable *db, char *tablename, int resume)
+void *open_temp_db_resume_early(struct dbtable *db, char *tablename)
+{
+    int bdberr;
+    void *handle;
+
+    handle = bdb_open_more(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen, db->ix_dupes,
+                           db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
+                           db->numblobs + 1, /* one main record + the blobs blobs */
+                           db->dbenv->bdb_env, &bdberr);
+    if (!handle) {
+        logmsg(LOGMSG_ERROR, "%s: failed to open temp file bdberr %d\n", __func__, bdberr);
+    }
+    return handle;
+}
+
+/* Open the temp btree for a schema change.
+ *
+ * When 'resume' is set we first try to reopen the temp left behind by the
+ * schema change we are resuming.  If there isn't one, we create a fresh one
+ * and start the conversion from the beginning rather than failing: a schema
+ * change can legitimately be recorded as in-progress without ever having
+ * created its temp, e.g. the second and later statements of a transactional
+ * multi-DDL (BEGIN; ALTER t5 ...; ALTER t6 ...; COMMIT) when the master dies
+ * while the first one is still converting.
+ *
+ * 'created_fresh' (optional) is set to 1 when we had to create the temp
+ * instead of reopening one.  A resuming caller must then reset any sc_genids
+ * recorded for the table - see reset_stale_sc_genids() - because they describe
+ * progress into a btree that no longer exists.
+ */
+int open_temp_db_resume(struct dbtable *db, char *tablename, int resume, int *created_fresh)
 {
     int bdberr;
 
     db->handle = NULL;
+    if (created_fresh)
+        *created_fresh = 0;
 
-    /* open existing temp db if it's there (ie we're resuming after a master
-     * switch) */
+    /* open existing temp db if it's there (ie we're resuming after a master switch) */
     if (resume) {
-        db->handle = bdb_open_more(tablename, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
-                                   db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
-                                   db->ix_nullsallowed, db->numblobs + 1, /* one main record + the blobs blobs */
-                                   db->dbenv->bdb_env, &bdberr);
-
+        db->handle = open_temp_db_resume_early(db, tablename);
         if (db->handle)
             logmsg(LOGMSG_INFO,
                    "Found existing tempdb: %s, attempting to resume an in "
                    "progress schema change\n",
                    tablename);
         else {
-            logmsg(LOGMSG_ERROR, "Didn't find existing tempdb: %s, aborting schema change\n", tablename);
-            return -1;
+            logmsg(LOGMSG_WARN,
+                   "Didn't find existing tempdb: %s, creating a new one and "
+                   "restarting the conversion from the beginning\n",
+                   tablename);
+            if (created_fresh)
+                *created_fresh = 1;
         }
     }
 
