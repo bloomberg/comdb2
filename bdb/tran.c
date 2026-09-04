@@ -2444,7 +2444,10 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
-        unsigned int loc_flags = DB_LOCK_ID_READONLY;
+        /* SQL_READER, not just READONLY: bdb_verify and other utilities also
+           take READONLY lockers, and lumping those in with the SQL readers
+           would skew the per-role lock-wait attribution. */
+        unsigned int loc_flags = DB_LOCK_ID_READONLY | DB_LOCK_ID_SQL_READER;
         extern int gbl_track_curtran_locks;
 
         if (lowpri)

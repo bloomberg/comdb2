@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# A/B the non-SI page-lock release (recover_deadlock_sync_dta) using the
+# reco-ddlk-sql workload: 16 readers scanning a 3-way join while a single
+# writer rewrites rows underneath them.
+#
+# Expectation being tested: releasing page locks lets a blocked writer through
+# sooner, so writes should finish faster with the feature on -- at the cost of
+# readers, which give up their locks and have to reposition.
+#
+# Reports only; it does not fail on a regression.  Perf thresholds on a shared
+# host are not trustworthy enough to gate on, and either arm can lose a
+# statement to contention -- the 1000-row UPDATEs on c routinely exhaust their
+# 500 block-transaction retries against 16 scanning readers and come back
+# CDB2ERR_DEADLOCK (203).  That is why the tool is run with -p: count the soft
+# error, keep going, so the arm still produces numbers.
+#
+# Env vars (set on the make command line, same convention as CLUSTER etc.):
+#   RECO_DDLK_PERF_RUNS=<N>          how many off/on cycles to run (default 1)
+#   RECO_DDLK_PERF_FIRST_ARM=off|on  which arm runs first each cycle (default off)
+#   RECO_DDLK_PERF_LOCKSTATS=0|1     collect the server-side lock-wait and
+#                                    lock-release counters (default 0).  Adds
+#                                    the lk_ columns to the report, at the cost
+#                                    of turning on a tunable the server keeps
+#                                    off -- so the arms are no longer measured
+#                                    under stock conditions.  It also costs
+#                                    real time: raise TEST_TIMEOUT with it.
+
+dbnm=$1
+if [[ -z "$dbnm" ]] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+if [[ ! -x "$TESTSBUILDDIR/reco-ddlk-sql" ]] ; then
+    echo "reco-ddlk-sql tool not found or not executable at '$TESTSBUILDDIR/reco-ddlk-sql'"
+    echo "build it with: cmake --build <builddir> --target reco-ddlk-sql -j\$(nproc)"
+    exit 1
+fi
+
+nruns=${RECO_DDLK_PERF_RUNS:-1}
+if ! [[ "$nruns" =~ ^[0-9]+$ ]] || [[ "$nruns" -lt 1 ]] ; then
+    echo "RECO_DDLK_PERF_RUNS must be a positive integer, got: $nruns"
+    exit 1
+fi
+
+first_arm=${RECO_DDLK_PERF_FIRST_ARM:-off}
+if [[ "$first_arm" != off && "$first_arm" != on ]] ; then
+    echo "RECO_DDLK_PERF_FIRST_ARM must be 'off' or 'on', got: $first_arm"
+    exit 1
+fi
+if [[ $first_arm == off ]] ; then
+    arm_order=(off on)
+else
+    arm_order=(on off)
+fi
+
+lockstats=${RECO_DDLK_PERF_LOCKSTATS:-0}
+if [[ "$lockstats" != 0 && "$lockstats" != 1 ]] ; then
+    echo "RECO_DDLK_PERF_LOCKSTATS must be 0 or 1, got: $lockstats"
+    exit 1
+fi
+
+# Columns of the comparison tables.  The lk_ family exists in the tool's output
+# only when the counters were sampled, so listing it otherwise would print a
+# block of empty rows that reads like a measurement of zero.
+report_fields="phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors"
+if [[ $lockstats == 1 ]] ; then
+    report_fields="$report_fields \
+     lk_rd_wait_us lk_rd_waits lk_wr_wait_us lk_wr_waits lk_other_wait_us lk_other_waits \
+     lk_rel_us lk_rel_unlock_us lk_rel_sleep_us lk_rel_reacq_us lk_rel_reval_us lk_rel_count \
+     lk_sync_us lk_sync_count"
+fi
+
+# Tunables are per-node and the readers connect via 'default', so they spread
+# across the cluster -- they have to be set everywhere, not just on one node.
+set_tunable()
+{
+    local tunable=$1 val=$2
+    if [[ -n "$CLUSTER" ]] ; then
+        for n in $CLUSTER ; do
+            cdb2sql ${CDB2_OPTIONS} --host $n $dbnm \
+                "put tunable '$tunable' $val" >/dev/null
+        done
+    else
+        cdb2sql ${CDB2_OPTIONS} $dbnm default \
+            "put tunable '$tunable' $val" >/dev/null
+    fi
+}
+
+set_feature()
+{
+    set_tunable recover_deadlock_sync_dta $1
+}
+
+# Pull one field out of the METRIC line for a given phase.  The leading
+# [[:space:]] anchors the field name so a short name cannot match the tail of a
+# longer one (e.g. max_ms vs wr_max_ms).
+metric()
+{
+    local file=$1 phase=$2 field=$3
+    grep "METRIC phase=$phase " "$file" 2>/dev/null | tail -1 |
+        grep -o "[[:space:]]$field=[^[:space:]]*" | head -1 | cut -d= -f2
+}
+
+# % change from off to on.  Near-zero baselines make the ratio meaningless
+# (e.g. 1ms -> 14410ms is a real jump but not usefully expressed as a
+# percentage), so those are called out instead of printed as a number.
+pct()
+{
+    local off=$1 on=$2
+    awk -v off="$off" -v on="$on" 'BEGIN {
+        if (off == "" || on == "") { printf "n/a"; exit }
+        if (off == 0) { printf "n/a (off=0)"; exit }
+        if (off <= 2 && off >= -2) { printf "n/a (off~0)"; exit }
+        printf "%+.1f%%", (on - off) / off * 100
+    }'
+}
+
+# Read "metric|off|on|%diff" rows on stdin and print them as a markdown table
+# with every column padded to its widest value, so the numbers line up in the
+# testcase log.  Widths are per-table, since magnitudes differ a lot between
+# phases (a delete phase_ms is far shorter than an update one).
+emit_table()
+{
+    awk -F'|' '
+    {
+        m[NR] = $1; o[NR] = $2; n[NR] = $3; d[NR] = $4
+        if (length($1) > wm) wm = length($1)
+        if (length($2) > wo) wo = length($2)
+        if (length($3) > wn) wn = length($3)
+        if (length($4) > wd) wd = length($4)
+    }
+    END {
+        if (length("metric") > wm) wm = length("metric")
+        if (length("off")    > wo) wo = length("off")
+        if (length("on")     > wn) wn = length("on")
+        if (length("% diff") > wd) wd = length("% diff")
+
+        printf "| %-*s | %*s | %*s | %*s |\n", wm, "metric", wo, "off", wn, "on", wd, "% diff"
+
+        sep = "|"
+        for (i = 0; i < wm + 2; i++) sep = sep "-"
+        sep = sep "|"
+        for (i = 0; i < wo + 1; i++) sep = sep "-"
+        sep = sep ":|"
+        for (i = 0; i < wn + 1; i++) sep = sep "-"
+        sep = sep ":|"
+        for (i = 0; i < wd + 1; i++) sep = sep "-"
+        sep = sep ":|"
+        print sep
+
+        for (i = 1; i <= NR; i++)
+            printf "| %-*s | %*s | %*s | %*s |\n", wm, m[i], wo, o[i], wn, n[i], wd, d[i]
+    }'
+}
+
+# Arithmetic mean of any number of values.
+avg()
+{
+    awk 'BEGIN{s=0;n=0} {s+=$1; n++} END{ if (n==0) printf ""; else printf "%.1f", s/n }' < <(printf '%s\n' "$@")
+}
+
+off_file() { echo "arm_off_run$1.out" ; }
+on_file()  { echo "arm_on_run$1.out" ; }
+
+# Print the update/delete comparison tables for one off/on pair of files, at
+# the given markdown heading level.
+write_phase_tables()
+{
+    local offfile=$1 onfile=$2 heading=$3
+    for phase_label in "update:Update phase (writer vs. 16 concurrent readers)" "delete:Delete phase" ; do
+        local phase=${phase_label%%:*}
+        local title=${phase_label#*:}
+        echo "$heading $title"
+        echo
+        for f in $report_fields ; do
+            local off on
+            off=$(metric "$offfile" $phase $f)
+            on=$(metric "$onfile" $phase $f)
+            echo "$f|$off|$on|$(pct "$off" "$on")"
+        done | emit_table
+        echo
+    done
+}
+
+# Same shape as write_phase_tables, but off/on are the mean across all runs.
+write_average_tables()
+{
+    for phase_label in "update:Update phase (writer vs. 16 concurrent readers)" "delete:Delete phase" ; do
+        local phase=${phase_label%%:*}
+        local title=${phase_label#*:}
+        echo "### $title (average of $nruns runs)"
+        echo
+        for f in $report_fields ; do
+            local offs=() ons=() run
+            for run in $(seq 1 $nruns) ; do
+                offs+=("$(metric "$(off_file $run)" $phase $f)")
+                ons+=("$(metric "$(on_file $run)" $phase $f)")
+            done
+            local avg_off avg_on
+            avg_off=$(avg "${offs[@]}")
+            avg_on=$(avg "${ons[@]}")
+            echo "$f|$avg_off|$avg_on|$(pct "$avg_off" "$avg_on")"
+        done | emit_table
+        echo
+    done
+}
+
+# Print the metric legend, an average-across-runs table (only when
+# RECO_DDLK_PERF_RUNS > 1), and the off/on/%-diff tables for every run.
+# Printed to stdout so it lands directly in the test's .testcase log --
+# no separate result file.
+print_result()
+{
+    echo "=== reco-ddlk-perf result ==="
+    echo
+    echo "## Metric legend"
+    echo
+    echo "| Metric        | Meaning |"
+    echo "|---------------|---------|"
+    echo "| \`phase_ms\`    | Wall-clock duration of the phase, in milliseconds. |"
+    echo "| \`wr_count\`    | Number of writer statements completed during the phase. |"
+    echo "| \`wr_avg_ms\`   | Average writer statement latency, in milliseconds. |"
+    echo "| \`wr_max_ms\`   | Slowest single writer statement observed in the phase. |"
+    echo "| \`rd_scans\`    | Number of reader scans completed during the phase, summed across all 16 reader threads. |"
+    echo "| \`rd_avg_ms\`   | Average reader scan latency, in milliseconds, across all 16 threads. |"
+    echo "| \`rd_min_ms\`   | Fastest single reader scan observed in the phase. |"
+    echo "| \`rd_max_ms\`   | Slowest single reader scan observed in the phase (in the update phase, usually close to \`phase_ms\`, since one scan can span nearly the whole phase). |"
+    echo "| \`data_errors\` | Cumulative (not reset per phase) count of soft errors so far in the run.  Two very different things land here: a statement that failed outright -- in practice usually CDB2ERR_DEADLOCK (203), a write starved out by reader contention rather than anything wrong with the data -- and a genuine data mismatch (unexpected row payload, or num_updated/num_deleted not matching what was written).  A non-zero value is not by itself evidence of a correctness problem; check the arm's raw output to see which kind it was. |"
+    if [[ $lockstats == 1 ]] ; then
+        echo "| \`lk_rd_wait_us\` | Time SQL read cursors spent blocked waiting for locks, summed over every node.  Needs the lock_instrumentation tunable, which RECO_DDLK_PERF_LOCKSTATS=1 turned on for this run. |"
+        echo "| \`lk_rd_waits\`  | Number of such reader lock waits. |"
+        echo "| \`lk_wr_wait_us\` | Time SQL write transactions spent blocked waiting for locks, summed over every node. |"
+        echo "| \`lk_wr_waits\`  | Number of such writer lock waits. |"
+        echo "| \`lk_other_wait_us\` | Lock wait by threads that are neither -- replication apply, utilities.  On a cluster this is where the write-side contention shows up, since SQL does not run on the master. |"
+        echo "| \`lk_other_waits\` | Number of those waits. |"
+        echo "| \`lk_rel_us\`    | Total time inside recover_deadlock (releasing locks), all callers.  Read it with lk_rel_sleep_us: much of it is deliberate backoff, not work. |"
+        echo "| \`lk_rel_unlock_us\` | Of that, dropping the cursor page locks -- the real work on the feature's path. |"
+        echo "| \`lk_rel_sleep_us\` | Of that, the deliberate poll() backoff.  Not contention and not work; subtract it before calling lk_rel_us an overhead. |"
+        echo "| \`lk_rel_reacq_us\` | Of that, time waiting to get the locks back (get_curtran).  **This is the only figure here that is a lock wait.**  Expected to be ~0 for the feature, whose page-locks-only path returns before re-acquiring and retakes page locks lazily on the next cursor move -- that cost lands in \`lk_rd_wait_us\` instead. |"
+        echo "| \`lk_rel_reval_us\` | Of that, cursor revalidation after the release.  Not a lock wait: under the default new_mode this is a pointer store plus a schema-version check. |"
+        echo "| \`lk_rel_count\` | Number of recover_deadlock calls. |"
+        echo "| \`lk_sync_us\`   | Time syncing data cursors and blobs before a release (sync_index_data_cursors).  Runs **only when the feature is on**, so it is the feature's added reader cost -- and some of it is speculative work that turns out not to be needed. |"
+        echo "| \`lk_sync_count\` | Number of those pre-release syncs. |"
+    fi
+    echo "| \`% diff\`      | \`(on - off) / off * 100\`. Negative = lower with the feature on; positive = higher. |"
+    echo
+    echo "lower wr_avg_ms/wr_max_ms on = writes benefit; higher rd_avg_ms on = readers pay for it"
+    echo
+
+    if [[ $nruns -gt 1 ]] ; then
+        echo "## Average across $nruns runs"
+        echo
+        write_average_tables
+
+        local run
+        for run in $(seq 1 $nruns) ; do
+            echo "## Run $run"
+            echo
+            write_phase_tables "$(off_file $run)" "$(on_file $run)" "###"
+        done
+    else
+        write_phase_tables "$(off_file 1)" "$(on_file 1)" "##"
+    fi
+}
+
+# Server-side lock-wait / release accounting.  Off by default in the server and
+# opt-in here, since collecting it perturbs the very thing being measured; when
+# asked for, turn the tunable on and let the tool read the counters per phase.
+if [[ $lockstats == 1 ]] ; then
+    set_tunable lock_instrumentation 1
+    tool_flags=(-p -l)
+else
+    tool_flags=(-p)
+fi
+
+for run in $(seq 1 $nruns) ; do
+    echo "=== run $run/$nruns (arm order: ${arm_order[*]}) ==="
+
+    for arm in "${arm_order[@]}" ; do
+        [[ $arm == off ]] && val=0 || val=1
+
+        echo "=== arm: recover_deadlock_sync_dta=$val ($arm) ==="
+        set_feature $val
+
+        outfile=$([[ $arm == off ]] && off_file $run || on_file $run)
+        $TESTSBUILDDIR/reco-ddlk-sql "${tool_flags[@]}" $dbnm > $outfile 2>&1
+        echo "arm $arm exited $?"
+
+        grep "^METRIC" $outfile || echo "(no METRIC lines -- arm did not get far enough)"
+        echo
+    done
+done
+
+print_result
+
+echo "Success"
+exit 0

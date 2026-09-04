@@ -52,6 +52,23 @@ struct comdb2_metrics_store {
     int64_t lockrequests;
     int64_t lockwaits;
     int64_t lock_wait_time_us;
+    /* Only non-zero with the lock_instrumentation tunable on. */
+    int64_t lockwait_reader_us;
+    int64_t lockwait_reader_count;
+    int64_t lockwait_writer_us;
+    int64_t lockwait_writer_count;
+    int64_t lockwait_other_us;
+    int64_t lockwait_other_count;
+    int64_t release_locks_total_us;
+    int64_t release_locks_unlock_us;
+    int64_t release_locks_putcurtran_us;
+    int64_t release_locks_sleep_us;
+    int64_t release_locks_reacquire_us;
+    int64_t release_locks_revalidate_us;
+    int64_t release_locks_count;
+    int64_t release_locks_pagelocks_only_count;
+    int64_t sync_dta_us;
+    int64_t sync_dta_count;
     int64_t memory_ulimit;
     int64_t memory_usage;
     int64_t preads;
@@ -216,6 +233,40 @@ comdb2_metric gbl_metrics[] = {
      NULL},
     {"lockwait_time", "Time spent in lock waits (us)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.lock_wait_time_us, NULL},
+    /* The rest of the lockwait_/release_locks_/sync_dta_ family stays zero
+       unless the lock_instrumentation tunable is on. */
+    {"lockwait_reader_time", "Lock wait time by SQL read cursors (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwait_reader_us, NULL},
+    {"lockwait_reader_count", "Lock waits by SQL read cursors", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.lockwait_reader_count, NULL},
+    {"lockwait_writer_time", "Lock wait time by SQL write transactions (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwait_writer_us, NULL},
+    {"lockwait_writer_count", "Lock waits by SQL write transactions", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwait_writer_count, NULL},
+    {"lockwait_other_time", "Lock wait time by neither (replication, utilities) (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwait_other_us, NULL},
+    {"lockwait_other_count", "Lock waits by neither (replication, utilities)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwait_other_count, NULL},
+    {"release_locks_time", "Total time in recover_deadlock, all callers (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_total_us, NULL},
+    {"release_locks_unlock_time", "Dropping cursor page locks (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_unlock_us, NULL},
+    {"release_locks_putcurtran_time", "Dropping the curtran, full release only (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_putcurtran_us, NULL},
+    {"release_locks_sleep_time", "Deliberate backoff inside a release, not contention (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_sleep_us, NULL},
+    {"release_locks_reacquire_time", "Waiting to get the locks back (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_reacquire_us, NULL},
+    {"release_locks_revalidate_time", "Cursor revalidation after a release; not a lock wait (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_revalidate_us, NULL},
+    {"release_locks_count", "Number of recover_deadlock calls", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.release_locks_count, NULL},
+    {"release_locks_pagelocks_only_count", "Of those, page-locks-only releases", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.release_locks_pagelocks_only_count, NULL},
+    {"sync_dta_time", "Syncing data cursors and blobs before a release (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sync_dta_us, NULL},
+    {"sync_dta_count", "Number of pre-release data cursor syncs", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sync_dta_count, NULL},
     {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.memory_ulimit, NULL},
     {"memory_usage", "Address space size", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_usage,
@@ -595,6 +646,31 @@ int refresh_metrics(void)
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
         return 1;
+    }
+
+    {
+        struct lock_role_stats role;
+        bdb_get_lock_role_counters(&role);
+        stats.lockwait_reader_us = role.reader_wait_us;
+        stats.lockwait_reader_count = role.reader_waits;
+        stats.lockwait_writer_us = role.writer_wait_us;
+        stats.lockwait_writer_count = role.writer_waits;
+        stats.lockwait_other_us = role.other_wait_us;
+        stats.lockwait_other_count = role.other_waits;
+
+        extern uint64_t gbl_rdlk_total_us, gbl_rdlk_unlock_us, gbl_rdlk_release_us, gbl_rdlk_sleep_us,
+            gbl_rdlk_reacquire_us, gbl_rdlk_revalidate_us, gbl_rdlk_count, gbl_rdlk_pagelocks_only_count,
+            gbl_sync_dta_us, gbl_sync_dta_count;
+        stats.release_locks_total_us = gbl_rdlk_total_us;
+        stats.release_locks_unlock_us = gbl_rdlk_unlock_us;
+        stats.release_locks_putcurtran_us = gbl_rdlk_release_us;
+        stats.release_locks_sleep_us = gbl_rdlk_sleep_us;
+        stats.release_locks_reacquire_us = gbl_rdlk_reacquire_us;
+        stats.release_locks_revalidate_us = gbl_rdlk_revalidate_us;
+        stats.release_locks_count = gbl_rdlk_count;
+        stats.release_locks_pagelocks_only_count = gbl_rdlk_pagelocks_only_count;
+        stats.sync_dta_us = gbl_sync_dta_us;
+        stats.sync_dta_count = gbl_sync_dta_count;
     }
 
     rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits, &stats.cache_misses, &stats.leaf_cache_hits,

@@ -293,6 +293,11 @@ typedef struct __db_locker {
 #define DB_LOCKER_TRACK         	0x0100
 #define DB_LOCKER_READONLY      	0x0200
 #define DB_LOCKER_IN_LOGICAL_ABORT 	0x0800
+/* Role of the comdb2 thread that owns this locker, used to attribute lock-wait
+ * time to readers vs writers.  DB_LOCKER_READONLY is not enough on its own: it
+ * is also set for bdb_verify and other utility lockers. */
+#define DB_LOCKER_SQL_READER            0x0400
+#define DB_LOCKER_SQL_WRITER            0x1000
 #define DB_LOCKER_TRACK_WRITELOCKS      0x8000
 	u_int8_t has_waiters;
 	u_int32_t flags;

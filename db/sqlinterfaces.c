@@ -2832,19 +2832,64 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
     return SQLITE_OK;
 }
 
-int release_locks_int(const char *trace, const char *func, int line, struct sqlclntstate *clnt)
+static const char *rlocks_reason_str(rlocks_reason_t reason)
 {
+    switch (reason) {
+    case RLOCKS_REASON_SI_LOCKWAIT:
+        return "replication is waiting on si-session";
+    case RLOCKS_REASON_LOCKWAIT:
+        return "replication is waiting on session";
+    case RLOCKS_REASON_RANDOM:
+        return "random release";
+    case RLOCKS_REASON_LOCK_DESIRED:
+        return "release locks on emit-row for lock-desired";
+    case RLOCKS_REASON_EMIT_ROW:
+        return "release locks on emit-row";
+    case RLOCKS_REASON_LONG_REPWAIT:
+        return "long repwait at emit-row";
+    case RLOCKS_REASON_SLOW_READER:
+        return "slow reader";
+    default:
+        return "unknown";
+    }
+}
+
+int release_locks_int(rlocks_reason_t reason, const char *func, int line, struct sqlclntstate *clnt, uint32_t rd_flags)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (!clnt) {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
         if (thd) clnt = thd->clnt;
     }
     if (!clnt || !clnt->dbtran.cursor_tran) return -1;
     extern int gbl_sql_release_locks_trace;
     if (gbl_sql_release_locks_trace) {
         logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
-               bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), trace);
+               bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), rlocks_reason_str(reason));
     }
-    return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, -1, func, line, 0);
+    /* Before dropping locks for a page-lock waiter, sync any lagging deferred
+       data cursors to their paired index cursor's genid so a deferred seek
+       resolved after the release still finds its row (see
+       sync_index_data_cursors). */
+    if ((reason == RLOCKS_REASON_LOCKWAIT || (rd_flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY)) && thd &&
+        clnt->recover_deadlock_sync_dta && !clnt->recover_deadlock_skip_sync_dta) {
+        /* Runs only with the feature on, so this is its added reader cost: a
+           blob capture per cursor plus, for index cursors whose paired data
+           cursor is lagging, a find and a record stash -- work that may turn
+           out not to be needed.  Charged here, before and disjoint from
+           gbl_rdlk_total_us. */
+        extern int gbl_lock_instrumentation;
+        extern uint64_t gbl_sync_dta_us, gbl_sync_dta_count;
+        extern int64_t comdb2_time_epochus(void);
+        int64_t sync_start = gbl_lock_instrumentation ? comdb2_time_epochus() : 0;
+        sync_index_data_cursors(thd);
+        if (gbl_lock_instrumentation) {
+            uint64_t d = (uint64_t)(comdb2_time_epochus() - sync_start);
+            __sync_fetch_and_add(&gbl_sync_dta_us, d);
+            __sync_fetch_and_add(&gbl_sync_dta_count, 1);
+            clnt->sync_dta_us += d;
+        }
+    }
+    return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, -1, func, line, rd_flags);
 }
 
 /* Release-locks if rep-thread is blocked longer than this many ms */
@@ -2860,7 +2905,7 @@ int release_locks_on_emit_row(struct sqlclntstate *clnt)
 
     /* Always release if we're emitting during a master change */
     if (bdb_lock_desired(thedb->bdb_env))
-        return release_locks_int("release locks on emit-row for lock-desired", __func__, __LINE__, clnt);
+        return release_locks_int(RLOCKS_REASON_LOCK_DESIRED, __func__, __LINE__, clnt, 0);
 
     /* Short circuit if check-waiters or tunable is disabled */
     if (!gbl_locks_check_waiters)
@@ -2872,7 +2917,7 @@ int release_locks_on_emit_row(struct sqlclntstate *clnt)
     /* Release locks randomly for testing */
     if (gbl_sql_random_release_interval &&
         !(rand() % gbl_sql_random_release_interval))
-        return release_locks_int("random release emit-row", __func__, __LINE__, clnt);
+        return release_locks_int(RLOCKS_REASON_RANDOM, __func__, __LINE__, clnt, 0);
 
     /* Short circuit if we don't have any waiters */
     if (!bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran))
@@ -2880,12 +2925,12 @@ int release_locks_on_emit_row(struct sqlclntstate *clnt)
 
     /* We're emitting a row & have waiters */
     if (!gbl_rep_wait_release_ms || thedb->master == gbl_myhostname)
-        return release_locks_int("release locks on emit-row", __func__, __LINE__, clnt);
+        return release_locks_int(RLOCKS_REASON_EMIT_ROW, __func__, __LINE__, clnt, 0);
 
     /* We're emitting a row and are blocking replication */
     if (rep_lock_time_ms &&
         (comdb2_time_epochms() - rep_lock_time_ms) > gbl_rep_wait_release_ms)
-        return release_locks_int("long repwait at emit-row", __func__, __LINE__, clnt);
+        return release_locks_int(RLOCKS_REASON_LONG_REPWAIT, __func__, __LINE__, clnt, 0);
 
     return 0;
 }
@@ -2931,6 +2976,10 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* berkdb stats */
     bdb_reset_thread_stats();
+
+    /* per-query release-cost tallies, reported by eventlog_perfdata */
+    clnt->rdlk_total_us = clnt->rdlk_reacquire_us = clnt->rdlk_revalidate_us = 0;
+    clnt->rdlk_sleep_us = clnt->sync_dta_us = 0;
 
     if (clnt->rawnodestats) {
         clnt->rawnodestats->sql_queries++;
@@ -5738,7 +5787,7 @@ static int recover_deadlock_sbuf(struct sqlclntstate *clnt)
 
     /* Sql thread */
     if (thd) {
-        if (release_locks_int("slow reader", __func__, __LINE__, clnt) != 0) {
+        if (release_locks_int(RLOCKS_REASON_SLOW_READER, __func__, __LINE__, clnt, 0) != 0) {
             assert(bdb_lockref() == 0);
             logmsg(LOGMSG_ERROR, "%s release_locks failed\n", __func__);
             return 1;

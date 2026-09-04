@@ -739,6 +739,55 @@ struct sqlclntstate {
                                   for races betweem sql thread created and
                                   other readers, like appsock */
 
+    /* Per-request snapshot of gbl_recover_deadlock_sync_dta, taken in
+       get_curtran so the non-SI lock-release gate, the pre-release sync, and
+       the deferred-seek skip all see one consistent value for the whole run
+       (immune to the tunable being toggled mid-query). */
+    int recover_deadlock_sync_dta;
+    /* Per-request snapshot of gbl_debug_recover_deadlock_skip_sync_dta (test
+       only): when set (and the feature above is on) the non-SI lock release
+       still happens but the pre-release sync and the deferred-seek skip are
+       suppressed, so the "Dta lookup lost the race" bug can be reproduced. */
+    int recover_deadlock_skip_sync_dta;
+    /* Page-lock-only release pacing (see cursor_move_postop).  A waiter that
+       is not page-lock bound -- typically a schema change wanting the table
+       write lock we retain -- stays present no matter how often we release, so
+       we rate-limit re-releases and bound how long we let it stall. */
+    int pagelock_release_last_ms;  /* when we last released page locks */
+    int pagelock_release_first_ms; /* when this waiter was first seen */
+    int dbg_pagelock_releases;     /* count, for trace/diagnostics */
+
+    /* Bumped by every sync_index_data_cursors() pass and stamped into the
+       cursors it captured, so the deferred-seek skip can tell "captured by the
+       release that just happened" from "feature is enabled".  Always >= 1 once
+       a sync has run, so an untouched cursor's 0 never matches. */
+    int sync_dta_generation;
+
+    /* Where this session last dropped its bdb locks.  Recorded in
+       recover_deadlock_flags_int(), which every release funnels through: the
+       release_locks()/release_pagelocks() macros via release_locks_int(), and
+       the half-dozen sites that call recover_deadlock*() directly.  Several
+       failures downstream (a blob or a row that vanished, a table that was
+       schema changed) are only explicable as a lost race against one of those
+       releases, and which one it was is the first thing you need; without it
+       the error names the reader, never the release that exposed it.
+       last_release_func points at a __func__ literal, so it outlives the call. */
+    const char *last_release_func;
+    int last_release_line;
+    uint32_t last_release_flags; /* RECOVER_DEADLOCK_* the release ran with */
+    int last_release_ms;         /* comdb2_time_epochms() at release */
+    int last_release_count;      /* how many releases so far this request */
+
+    /* Per-query cost of releasing locks, for the event log.  Reset at the top
+       of each query; only filled in when the lock_instrumentation tunable is
+       on.  reacquire is the only one of these that is time waiting for locks --
+       see the note on the gbl_rdlk_* counters in sqlglue.c. */
+    uint64_t rdlk_total_us;
+    uint64_t rdlk_reacquire_us;
+    uint64_t rdlk_revalidate_us;
+    uint64_t rdlk_sleep_us;
+    uint64_t sync_dta_us;
+
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     pthread_mutex_t sql_lk;
@@ -1299,6 +1348,10 @@ struct BtCursor {
     void *query_preparer_data;
 
     int permissions; /* permissions for read/write access to table */
+    BtCursor *pCursorHintTableCursor;
+    /* sync_dta_generation of the pre-release sync that captured this cursor's
+       row, or 0 if none did.  Cleared by the skip that consumes it. */
+    int synced_at_generation;
 };
 
 struct sql_hist {
@@ -1515,6 +1568,10 @@ int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
 int release_locks_on_emit_row(struct sqlclntstate *clnt);
+void sync_index_data_cursors(struct sql_thread *thd);
+const char *clnt_last_release_str(struct sqlclntstate *clnt, char *buf, size_t sz);
+/* clear the release pacing / last-release state; call once per run */
+void clnt_reset_release_state(struct sqlclntstate *clnt);
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);

@@ -2104,6 +2104,9 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
                           int64_t *deadlock_locks, int64_t *waits,
                           int64_t *requests);
 
+struct lock_role_stats;
+void bdb_get_lock_role_counters(struct lock_role_stats *out);
+
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits, int64_t *bpool_misses, int64_t *bpool_lhits,
                            int64_t *bpool_lmisses, int64_t *page_reads, int64_t *page_writes, int64_t *rw_evicts);
 
@@ -2522,8 +2525,22 @@ int bdb_queuedb_has_seq(bdb_state_type *);
 void dispatch_waiting_clients(void);
 
 struct sqlclntstate;
-int release_locks_int(const char *trace, const char *func, int line, struct sqlclntstate *);
-#define release_locks(trace) release_locks_int(trace, __func__, __LINE__, NULL)
+typedef enum {
+    RLOCKS_REASON_SI_LOCKWAIT,  /* page lock waiter on SI/serial session */
+    RLOCKS_REASON_LOCKWAIT,     /* page lock waiter on non-SI session */
+    RLOCKS_REASON_RANDOM,       /* random release (testing) */
+    RLOCKS_REASON_LOCK_DESIRED, /* global BDB write lock desired */
+    RLOCKS_REASON_EMIT_ROW,     /* waiters at row emit */
+    RLOCKS_REASON_LONG_REPWAIT, /* long rep wait at row emit */
+    RLOCKS_REASON_SLOW_READER,  /* slow reader */
+} rlocks_reason_t;
+int release_locks_int(rlocks_reason_t reason, const char *func, int line, struct sqlclntstate *, uint32_t rd_flags);
+/* full release: drops page locks AND the curtran (hence table locks) */
+#define release_locks(reason) release_locks_int(reason, __func__, __LINE__, NULL, 0)
+/* narrow release: drops page locks but keeps the curtran, so table locks are
+ * retained and a schema change cannot run inside the window (see
+ * RECOVER_DEADLOCK_PAGELOCKS_ONLY) */
+#define release_pagelocks(reason) release_locks_int(reason, __func__, __LINE__, NULL, RECOVER_DEADLOCK_PAGELOCKS_ONLY)
 
 int bdb_keylen(bdb_state_type *bdb_state, int ixnum);
 

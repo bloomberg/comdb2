@@ -43,7 +43,6 @@ int debug_switch_pause_moveto(void);                     /* 0 */
 int debug_switch_simulate_verify_error(void);            /* 0 */
 int debug_switch_reset_deadlock_race(void);              /* 0 */
 int debug_switch_cursor_deadlock(void);                  /* 0 */
-int debug_switch_recover_deadlock_newmode(void);         /* 1 - not debug */
 int debug_switch_poll_on_lock_desired(void);             /* 1 - not debug */
 int debug_switch_simulate_find_deadlock(void);           /* 0 */
 int debug_switch_simulate_find_deadlock_retry(void);     /* 0 */

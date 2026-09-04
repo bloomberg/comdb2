@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <poll.h>
 #include <pthread.h>
@@ -16,6 +17,22 @@ static const int C2 = 1000; // for each row in b, number of rows in c
 static char *master_node;
 static int total_incoherent;
 
+#define NREADERS 16
+
+/* Perf mode (-p): emit per-phase METRIC lines, and count data mismatches
+   instead of exiting on the first one.  Both matter for an A/B run: the
+   numbers are the point, and an arm that aborts part way yields nothing to
+   compare against.  Without -p the tool behaves exactly as before. */
+static int perf_mode;
+static int data_errors;
+
+/* Lock stats (-l): also sample the server's lock_instrumentation counters
+   around each phase and add the lk_ fields to the METRIC line.  Separate from
+   -p because it is not free -- the counters need a tunable the server keeps
+   off by default, so measuring them changes what is being measured.  Without
+   -l the METRIC line simply stops after data_errors. */
+static int lockstats_mode;
+
 static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
 #define Printf(...)                         \
 ({                                          \
@@ -24,6 +41,121 @@ static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_unlock(&printlk);         \
     (void)printf_rc;                        \
 })
+
+/* Exit on a soft error, unless we are measuring -- see perf_mode.  Callers use
+   this both for a failed statement (often just a deadlock) and for a real data
+   mismatch, so a non-zero data_errors does not on its own mean bad data. */
+#define data_error_exit()                                                   \
+    do {                                                                    \
+        if (!perf_mode) exit(1);                                            \
+        __sync_fetch_and_add(&data_errors, 1);                              \
+    } while (0)
+
+/*
+ * Phase metrics.
+ *
+ * The tool's pre-existing timings are all whole seconds, which rounds every
+ * sub-second write to 0 -- useless for comparing write latency, which is the
+ * main thing an A/B of the lock-release feature wants to see.
+ *
+ * No locking on either path:
+ *   writes -- test_stmt() is only reached from update()/delete(), both strictly
+ *             sequential on the main thread, so these are single-writer.
+ *   reads  -- each reader thread owns its own slot, indexed by the thread id it
+ *             is already passed.  metrics_report() runs after pthread_join(),
+ *             which is a memory barrier, so every slot write is visible.
+ * Per-thread read slots also give the spread across readers, not just an
+ * average: if releasing locks hurts reads, it may hurt them unevenly.
+ */
+struct lockstats {
+    long long rd_wait_us, rd_waits;
+    long long wr_wait_us, wr_waits;
+    long long other_wait_us, other_waits;
+    long long rel_total_us, rel_unlock_us, rel_sleep_us, rel_reacquire_us, rel_revalidate_us, rel_count;
+    long long sync_dta_us, sync_dta_count;
+};
+
+struct rd_slot {
+    long long scans;
+    long long rows;
+    long long total_ms;
+    long long min_ms;
+    long long max_ms;
+};
+static struct rd_slot rd_slots[NREADERS + 1]; /* +1: the standalone reader */
+
+static long long wr_count, wr_total_ms, wr_max_ms;
+
+static long long ms_since(const struct timeval *start)
+{
+    struct timeval now, d;
+    gettimeofday(&now, NULL);
+    timersub(&now, start, &d);
+    return (long long)d.tv_sec * 1000 + d.tv_usec / 1000;
+}
+
+static void metrics_reset(void)
+{
+    memset(rd_slots, 0, sizeof(rd_slots));
+    wr_count = wr_total_ms = wr_max_ms = 0;
+}
+
+static void metrics_add_write(long long ms)
+{
+    wr_count++;
+    wr_total_ms += ms;
+    if (ms > wr_max_ms) wr_max_ms = ms;
+}
+
+static void metrics_add_read(int idx, long long ms, int rows)
+{
+    struct rd_slot *s = &rd_slots[(idx >= 0 && idx < NREADERS) ? idx : NREADERS];
+    if (!s->scans || ms < s->min_ms) s->min_ms = ms;
+    if (ms > s->max_ms) s->max_ms = ms;
+    s->scans++;
+    s->rows += rows;
+    s->total_ms += ms;
+}
+
+static void metrics_report(const char *phase, long long phase_ms, const struct lockstats *lk)
+{
+    long long scans = 0, rows = 0, total = 0, mn = 0, mx = 0;
+
+    for (int i = 0; i <= NREADERS; ++i) {
+        struct rd_slot *s = &rd_slots[i];
+        if (!s->scans) continue;
+        if (!scans || s->min_ms < mn) mn = s->min_ms;
+        if (s->max_ms > mx) mx = s->max_ms;
+        scans += s->scans;
+        rows += s->rows;
+        total += s->total_ms;
+    }
+
+    /* Appended only when the counters were actually sampled (-l), so a run
+       without them reports a short line rather than a row of zeros that reads
+       like a measurement. */
+    char lkbuf[768]; /* 14 fields at their int64 widest come to 492 */
+    lkbuf[0] = 0;
+    if (lk)
+        snprintf(lkbuf, sizeof(lkbuf),
+                 " lk_rd_wait_us=%lld lk_rd_waits=%lld lk_wr_wait_us=%lld lk_wr_waits=%lld"
+                 " lk_other_wait_us=%lld lk_other_waits=%lld"
+                 " lk_rel_us=%lld lk_rel_unlock_us=%lld lk_rel_sleep_us=%lld"
+                 " lk_rel_reacq_us=%lld lk_rel_reval_us=%lld lk_rel_count=%lld"
+                 " lk_sync_us=%lld lk_sync_count=%lld",
+                 lk->rd_wait_us, lk->rd_waits, lk->wr_wait_us, lk->wr_waits,
+                 lk->other_wait_us, lk->other_waits,
+                 lk->rel_total_us, lk->rel_unlock_us, lk->rel_sleep_us,
+                 lk->rel_reacquire_us, lk->rel_revalidate_us, lk->rel_count,
+                 lk->sync_dta_us, lk->sync_dta_count);
+
+    Printf("METRIC phase=%s phase_ms=%lld "
+           "wr_count=%lld wr_avg_ms=%.1f wr_max_ms=%lld "
+           "rd_scans=%lld rd_rows=%lld rd_avg_ms=%.1f rd_min_ms=%lld rd_max_ms=%lld "
+           "incoherent=%d data_errors=%d%s\n",
+           phase, phase_ms, wr_count, wr_count ? (double)wr_total_ms / wr_count : 0.0, wr_max_ms, scans, rows,
+           scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors, lkbuf);
+}
 
 static char *tohex(char *in, int len, char *out)
 {
@@ -73,6 +205,98 @@ static void who_master(void)
     }
     cdb2_close(db);
 }
+/*
+ * Server-side lock instrumentation (the 'lock_instrumentation' tunable).
+ * Reached only under -l; with the tunable off every counter below reads zero.
+ *
+ * These counters are per node and cumulative, so a phase's cost is the delta
+ * across every node: on a cluster the readers run on the replicants while the
+ * writes commit on the master, so reading one node would see only half of it.
+ */
+static void lockstats_add_host(struct lockstats *acc, const char *host)
+{
+    static const struct {
+        const char *name;
+        size_t off;
+    } map[] = {
+        {"lockwait_reader_time", offsetof(struct lockstats, rd_wait_us)},
+        {"lockwait_reader_count", offsetof(struct lockstats, rd_waits)},
+        {"lockwait_writer_time", offsetof(struct lockstats, wr_wait_us)},
+        {"lockwait_writer_count", offsetof(struct lockstats, wr_waits)},
+        {"lockwait_other_time", offsetof(struct lockstats, other_wait_us)},
+        {"lockwait_other_count", offsetof(struct lockstats, other_waits)},
+        {"release_locks_time", offsetof(struct lockstats, rel_total_us)},
+        {"release_locks_unlock_time", offsetof(struct lockstats, rel_unlock_us)},
+        {"release_locks_sleep_time", offsetof(struct lockstats, rel_sleep_us)},
+        {"release_locks_reacquire_time", offsetof(struct lockstats, rel_reacquire_us)},
+        {"release_locks_revalidate_time", offsetof(struct lockstats, rel_revalidate_us)},
+        {"release_locks_count", offsetof(struct lockstats, rel_count)},
+        {"sync_dta_time", offsetof(struct lockstats, sync_dta_us)},
+        {"sync_dta_count", offsetof(struct lockstats, sync_dta_count)},
+    };
+    cdb2_hndl_tp *db = hndl((char *)host);
+    int rc = cdb2_run_statement(db, "SELECT name, value FROM comdb2_metrics");
+    if (rc != 0) {
+        /* Not fatal: an older server simply will not have these. */
+        Printf("%s cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(db));
+        cdb2_close(db);
+        return;
+    }
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        const char *name = cdb2_column_value(db, 0);
+        void *val = cdb2_column_value(db, 1);
+        if (!name || !val) continue;
+        /* the value column comes back typed, not as text */
+        long long v;
+        switch (cdb2_column_type(db, 1)) {
+        case CDB2_INTEGER: v = *(int64_t *)val; break;
+        case CDB2_REAL: v = (long long)*(double *)val; break;
+        default: continue;
+        }
+        for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); ++i) {
+            if (strcmp(name, map[i].name) == 0) {
+                *(long long *)((char *)acc + map[i].off) += v;
+                break;
+            }
+        }
+    }
+    cdb2_close(db);
+}
+
+static void lockstats_snapshot(struct lockstats *out)
+{
+    memset(out, 0, sizeof(*out));
+    cdb2_hndl_tp *db = hndl(NULL);
+    if (cdb2_run_statement(db, "SELECT host FROM comdb2_cluster") != 0) {
+        cdb2_close(db);
+        lockstats_add_host(out, NULL); /* single node */
+        return;
+    }
+    char *hosts[16];
+    int nhosts = 0, rc;
+    while ((rc = cdb2_next_record(db)) == CDB2_OK && nhosts < 16) {
+        const char *h = cdb2_column_value(db, 0);
+        if (h) hosts[nhosts++] = strdup(h);
+    }
+    cdb2_close(db);
+    if (nhosts == 0) {
+        lockstats_add_host(out, NULL);
+        return;
+    }
+    for (int i = 0; i < nhosts; ++i) {
+        lockstats_add_host(out, hosts[i]);
+        free(hosts[i]);
+    }
+}
+
+static void lockstats_diff(struct lockstats *d, const struct lockstats *a, const struct lockstats *b)
+{
+    long long *pd = (long long *)d;
+    const long long *pa = (const long long *)a, *pb = (const long long *)b;
+    for (size_t i = 0; i < sizeof(*d) / sizeof(long long); ++i)
+        pd[i] = pb[i] - pa[i];
+}
+
 static int num_incoherent(void)
 {
     cdb2_hndl_tp *master = hndl(master_node);
@@ -97,24 +321,42 @@ static int num_incoherent(void)
     cdb2_close(master);
     return count;
 }
-static void run_stmt_(const char *where, cdb2_hndl_tp *db_hndl, const char *sql)
+/* Returns 0 on success.  On failure: if !soft, exits (matching the tool's
+   original, always-fatal behaviour); if soft, counts a soft error (or exits,
+   if perf_mode is off -- see data_error_exit()) and returns the failing rc,
+   leaving db open for the caller to close.  soft is for test_stmt(): under
+   perf_mode a failing UPDATE should be counted and measured, not kill the arm
+   before any numbers come out of it.  The common failure here is not corrupt
+   data but CDB2ERR_DEADLOCK (203): the multi-row UPDATEs on c hold write locks
+   on 1000 rows plus their INCLUDE ALL index entries until commit, and with 16
+   readers churning the same index the block transaction can exhaust its 500
+   retries and be abandoned. */
+static int run_stmt_(const char *where, cdb2_hndl_tp *db_hndl, const char *sql, int soft)
 {
     cdb2_hndl_tp *db = db_hndl ? db_hndl : hndl(NULL);
     int rc = cdb2_run_statement(db, sql);
     if (rc != 0) {
         Printf("%s: cdb2_run_statement rc:%d err:%s sql:%s\n", where, rc, cdb2_errstr(db), sql);
-        exit(1);
+        if (!soft) exit(1);
+        data_error_exit();
+        if (!db_hndl) cdb2_close(db);
+        return rc;
     }
     do {
         rc = cdb2_next_record(db);
     } while (rc == CDB2_OK);
     if (rc != CDB2_OK_DONE) {
         Printf("%s: cdb2_run_statement rc:%d err:%s sql:%s\n", where, rc, cdb2_errstr(db), sql);
-        exit(1);
+        if (!soft) exit(1);
+        data_error_exit();
+        if (!db_hndl) cdb2_close(db);
+        return rc;
     }
     if (!db_hndl) cdb2_close(db);
+    return 0;
 }
-#define run_stmt(...) run_stmt_(__func__, __VA_ARGS__)
+#define run_stmt(...) run_stmt_(__func__, __VA_ARGS__, 0)
+#define run_stmt_soft(...) run_stmt_(__func__, __VA_ARGS__, 1)
 
 static void insert_a(void)
 {
@@ -194,6 +436,8 @@ static void *reader(void *data)
     int i = (intptr_t)data;
     char *order = i % 2 == 0 ? "ASC" : "DESC";
     char buf[1024];
+    struct timeval scan_start;
+    gettimeofday(&scan_start, NULL);
     snprintf(buf, sizeof(buf),
              "SELECT "
              "a1, a2, a3, a33, a4, a44, hex(a2), "
@@ -297,7 +541,23 @@ static void *reader(void *data)
             c4l != sizeof(g00df00f) ||
             c4l != c44l
         ){
-            Printf("%s %2d: cdb2_next_record UNEXPECTED lengths  =>  ", __func__, i);
+            Printf("%s %2d: cdb2_next_record UNEXPECTED lengths  =>  "
+                    "a1:%d b1:%d c1:%d  "
+                    "a3l:%d ahl:%d a33l:%d  "
+                    "b3l:%d bhl:%d b33l:%d  "
+                    "c3l:%d chl:%d c33l:%d  "
+                    "a4l:%d(want %zu) a44l:%d  "
+                    "b4l:%d(want %zu) b44l:%d  "
+                    "c4l:%d(want %zu) c44l:%d  "
+                    "counter:%d\n", __func__, i,
+                    a1, b1, c1,
+                    a3l, ahl, a33l,
+                    b3l, bhl, b33l,
+                    c3l, chl, c33l,
+                    a4l, sizeof(g00d), a44l,
+                    b4l, sizeof(f0000f), b44l,
+                    c4l, sizeof(g00df00f), c44l,
+                    counter);
             do_exit = 1;
         } else if (memcmp(a3, ah, a3l)) {
             Printf("%s %2d: cdb2_next_record UNEXPECTED a3 payload =>  ", __func__, i);
@@ -349,14 +609,15 @@ static void *reader(void *data)
             do_exit = 1;
         }
         if (do_exit) {
-            exit(1);
+            data_error_exit();
         }
     }
     if (rc != CDB2_OK_DONE) {
         Printf("%s: cdb2_next_record rc:%d %s\n", __func__, rc, cdb2_errstr(db));
-        exit(1);
+        data_error_exit();
     }
     cdb2_close(db);
+    metrics_add_read(i, ms_since(&scan_start), counter);
     if (counter) Printf("%s %2d: rows:%d\n", __func__, i, counter);
     return NULL;
 }
@@ -385,24 +646,28 @@ static void *readers(void *data)
 static void test_stmt(const char *sql, int upd, int del)
 {
     cdb2_hndl_tp *db;
-    cdb2_effects_tp effects;
+    cdb2_effects_tp effects = {0};
     struct timeval start, finish, elapsed;
     gettimeofday(&start, NULL);
     db = hndl(NULL);
-    run_stmt(db, sql);
-    cdb2_get_effects(db, &effects);
+    int rc = run_stmt_soft(db, sql);
+    /* record the statement latency before the checks below, which can bail */
+    metrics_add_write(ms_since(&start));
     gettimeofday(&finish, NULL);
     timersub(&finish, &start, &elapsed);
-    if (upd) {
-        if (effects.num_updated != upd) {
-            Printf("%s: cdb2_get_effects unexpected num_updated:%d (wanted:%d)\n", sql, effects.num_updated, upd);
-            exit(1);
+    if (rc == 0) {
+        cdb2_get_effects(db, &effects);
+        if (upd) {
+            if (effects.num_updated != upd) {
+                Printf("%s: cdb2_get_effects unexpected num_updated:%d (wanted:%d)\n", sql, effects.num_updated, upd);
+                data_error_exit();
+            }
         }
-    }
-    if (del) {
-        if (effects.num_deleted != del) {
-            Printf("%s: cdb2_get_effects unexpected num_deleted:%d (wanted:%d)\n", sql, effects.num_deleted, del);
-            exit(1);
+        if (del) {
+            if (effects.num_deleted != del) {
+                Printf("%s: cdb2_get_effects unexpected num_deleted:%d (wanted:%d)\n", sql, effects.num_deleted, del);
+                data_error_exit();
+            }
         }
     }
     cdb2_close(db);
@@ -468,33 +733,48 @@ static void delete(void)
     timersub(&finish, &start, &elapsed);
     Printf("%s  finished  total-time:%ldsec\n", __func__, elapsed.tv_sec);
 }
-static int runit(void)
+/* Run one phase: readers in the background, `body` (the writer) in front.
+   Metrics are reset before the readers start and reported after they are
+   joined, so reads and writes are scoped to the same window and are directly
+   comparable across an A/B run. */
+static void run_phase(const char *name, void (*body)(void), int settle)
 {
     pthread_t thd;
+    struct timeval start;
+    struct lockstats before, after, delta;
+
+    int lk = perf_mode && lockstats_mode;
+
+    metrics_reset();
+    memset(&delta, 0, sizeof(delta));
+    if (lk) lockstats_snapshot(&before);
+    gettimeofday(&start, NULL);
 
     done = 0;
     pthread_create(&thd, NULL, readers, NULL);
-    insert();
+    if (settle) sleep(1); /* give time for readers to start */
+    body();
     wait_for_coherent();
     done = 1;
     pthread_join(thd, NULL);
+
+    if (perf_mode) {
+        long long ms = ms_since(&start);
+        if (lk) {
+            lockstats_snapshot(&after);
+            lockstats_diff(&delta, &before, &after);
+        }
+        metrics_report(name, ms, lk ? &delta : NULL);
+    }
+}
+
+static int runit(void)
+{
+    run_phase("insert", insert, 0);
     reader((void *)(intptr_t)99);
 
-    done = 0;
-    pthread_create(&thd, NULL, readers, NULL);
-    sleep(1); /* give time for readers to start */
-    update();
-    wait_for_coherent();
-    done = 1;
-    pthread_join(thd, NULL);
-
-    done = 0;
-    pthread_create(&thd, NULL, readers, NULL);
-    sleep(1); /* give time for readers to start */
-    delete();
-    wait_for_coherent();
-    done = 1;
-    pthread_join(thd, NULL);
+    run_phase("update", update, 1);
+    run_phase("delete", delete, 1);
 
     return total_incoherent;
 }
@@ -518,8 +798,27 @@ int main(int argc, char **argv)
 {
     char *conf = getenv("CDB2_CONFIG");
     if (conf) cdb2_set_comdb2db_config(conf);
-    dbname = argv[1];
-    tier = argc >= 3 ? argv[2] : "default";
+
+    /* usage: reco-ddlk-sql [-p] [-l] dbname [tier] */
+    int npos = 0;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-p") == 0) {
+            perf_mode = 1;
+        } else if (strcmp(argv[i], "-l") == 0) {
+            lockstats_mode = 1;
+        } else if (npos == 0) {
+            dbname = argv[i];
+            npos = 1;
+        } else if (npos == 1) {
+            tier = argv[i];
+            npos = 2;
+        }
+    }
+    if (!dbname) {
+        fprintf(stderr, "usage: %s [-p] [-l] dbname [tier]\n", argv[0]);
+        return 1;
+    }
+    if (!tier) tier = "default";
 
     who_master();
     setup();
@@ -535,5 +834,8 @@ int main(int argc, char **argv)
     } else {
         Printf("passed  =>  time:%ldsec\n", elapsed.tv_sec);
     }
+    /* In perf mode a data error is counted rather than fatal, so surface it
+       here -- the A/B driver reports it alongside the timings. */
+    if (perf_mode) Printf("METRIC total data_errors=%d incoherent=%d\n", data_errors, total_incoherent);
     return rc;
 }
