@@ -3380,6 +3380,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
 
+        /* Unconditional: show role 'R' even when fingerprinting is off and there
+         * is no fingerprint to pair with it. Cleared in sqlite_done(). */
+        bdb_fingerprint_rtstats_set_role(BDB_FP_ROLE_SQL);
+
         /* t is this fingerprint's gbl_fingerprint_hash entry (NULL until its
          * first execution completes); pass its presence as has_main_entry. */
         if (gbl_fingerprint_queries)
@@ -4131,9 +4135,9 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
-    /* Mirror the guard on the paired ..._set() in get_prepared_stmt_int(). */
-    if (gbl_fingerprint_queries)
-        bdb_fingerprint_rtstats_clear();
+    /* Unguarded, mirroring the unconditional ..._set_role() in
+     * get_prepared_stmt_int(): a role is armed even with fingerprinting off. */
+    bdb_fingerprint_rtstats_clear();
 
     sqlite3_stmt *stmt = rec->stmt;
     int distributed = 0;

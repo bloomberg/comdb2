@@ -1,0 +1,12 @@
+nowatch
+logmsg level info
+dtastripe   1
+osql_send_fingerprint 1
+log_fingerprint 1
+
+# Locks are held across the page fetch, so a nanosleep at the top of
+# __memp_fget widens the window in which comdb2_locks can see them.  Applies to
+# read, write-apply and replication-apply alike.  READONLY, so it has to be set
+# here rather than with 'put tunable'.  Effective sleep is timer-slack bound
+# (~50us), which is plenty; larger values just slow the whole test down.
+slowfget 1000

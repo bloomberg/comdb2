@@ -2016,6 +2016,17 @@ stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock, int ishandle, int isw
 					 stackutil_get_stack_id("getlock") : -1;
 }
 
+/* Stamp the acquirer for comdb2_locks: two TLS reads and a 16-byte copy. Stamped
+ * once, so re-acquire (the refcount++/UPGRADE paths below) keeps the original. */
+static inline void
+stamp_fingerprint(struct __db_lock *lockp)
+{
+	int role;
+
+	bb_berkdb_fingerprint_rtstats_current(lockp->fingerprint, &role);
+	lockp->fp_role = (u_int8_t)role;
+}
+
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */
 static inline int
 is_comdb2_rowlock(u_int32_t sz)
@@ -2672,6 +2683,10 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		newl->refcount = 1;
 		newl->mode = lock_mode;
 		newl->lockobj = sh_obj;
+
+		/* Before the wait, unlike stack_at_get_lock() below: a lock
+		 * parked in DB_LSTAT_WAITING is collectable and needs a stamp. */
+		stamp_fingerprint(newl);
 
 		/*
 		 * Now, insert the lock onto its locker's list.

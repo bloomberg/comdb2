@@ -24,6 +24,7 @@
 #include "ezsystables.h"
 #include "cdb2api.h"
 #include "str0.h"
+#include "tohex.h"
 #include <stackutil.h>
 
 typedef struct systable_activelocks {
@@ -37,6 +38,10 @@ typedef struct systable_activelocks {
     int                     page_isnull;
     int                     frames;
     char                    *stack;
+    /* Both NULL when unknown (ezsystables renders that as SQL NULL), and they
+     * move independently: apply reports 'A' with no fingerprint. */
+    char                    *fingerprint;
+    const char              *fingerprint_role;
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -45,9 +50,20 @@ typedef struct getactivelocks {
     systable_activelocks_t *records;
 } getactivelocks_t;
 
+static const char *fingerprint_role_str(char role)
+{
+    switch (role) {
+    case 'R': return "R";
+    case 'W': return "W";
+    case 'A': return "A";
+    default: return NULL;
+    }
+}
+
 static int collect(void *args, int64_t threadid, int32_t lockerid,
         const char *mode, const char *status, const char *object,
-        int64_t page, const char *rectype, int stackid)
+        int64_t page, const char *rectype, int stackid,
+        const unsigned char *fingerprint, char fingerprint_role)
 {
     int64_t hits;
     int nframes;
@@ -73,6 +89,17 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
     }
     l->object = strdup(object ? object : "");
     l->type = strdup(rectype ? rectype : "");
+
+    /* strdup rather than an inline buffer: a->records is realloc'd, which would
+     * dangle a pointer into it. */
+    if (fingerprint) {
+        char hex[BDB_FINGERPRINTSZ * 2 + 1];
+        util_tohex(hex, (const char *)fingerprint, BDB_FINGERPRINTSZ);
+        l->fingerprint = strdup(hex);
+    } else {
+        l->fingerprint = NULL;
+    }
+    l->fingerprint_role = fingerprint_role_str(fingerprint_role);
 
     if ((l->stack = stackutil_get_stack_str(stackid, &type, &nframes, &hits)) == NULL) {
         l->stack = strdup("(no-stack)");
@@ -100,6 +127,7 @@ static void free_activelocks(void *p, int n)
         free(a->object);
         free(a->type);
         free(a->stack);
+        free(a->fingerprint);
     }
     free(p);
 }
@@ -119,5 +147,7 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_CSTRING, "locktype", -1, offsetof(systable_activelocks_t, type),
             CDB2_INTEGER, "page", offsetof(systable_activelocks_t, page_isnull), offsetof(systable_activelocks_t, page),
             CDB2_CSTRING, "stack", -1, offsetof(systable_activelocks_t, stack),
+            CDB2_CSTRING, "fingerprint", -1, offsetof(systable_activelocks_t, fingerprint),
+            CDB2_CSTRING, "fingerprint_role", -1, offsetof(systable_activelocks_t, fingerprint_role),
             SYSTABLE_END_OF_FIELDS);
 }
