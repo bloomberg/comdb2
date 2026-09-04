@@ -2,6 +2,12 @@
 
 export PATH=$PATH:/opt/bb/bin
 
+# Absolute path to this script, resolved before any pushd/cd so it stays valid.
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+# figlet is only in the container image; fall back to a plain banner on hosts
+# (e.g. macOS) that don't have it.
+command -v figlet >/dev/null || figlet() { echo "=== $* ==="; }
+
 dir=$HOME/.local/share/comdb2-util
 config=$dir/config.sqlite
 
@@ -44,10 +50,12 @@ function container-name {
 }
 
 function sanity-checks {
-    env=$(systemctl  show --property=Environment docker | sed 's/Environment=//g')
-    if [[ -z "$env" ]]; then
-        echo "\$ systemctl  show --property=Environment docker"
-        echo "WARNING: Docker doesn't have any environment settings.  Missing proxy settings?"
+    if [[ $(uname) == Linux ]]; then
+        env=$(systemctl  show --property=Environment docker | sed 's/Environment=//g')
+        if [[ -z "$env" ]]; then
+            echo "\$ systemctl  show --property=Environment docker"
+            echo "WARNING: Docker doesn't have any environment settings.  Missing proxy settings?"
+        fi
     fi
     if [[ ! -s ${dir}/proxy.conf ]]; then
         echo "WARNING: Didn't find a proxy.conf, created an empty one.  "
@@ -65,14 +73,18 @@ function create-or-copy {
 }
 
 function docker-sanity-check {
-    id | grep -q '(docker)'
-    if [[ $? -ne 0 ]]; then
+    # The docker group only exists on Linux; Docker Desktop (macOS) has none.
+    if [[ $(uname) == Linux ]] && ! id | grep -q '(docker)'; then
         echo "Current user not in the docker group - may not be able to use docker"
     fi
     docker info >/dev/null 2>/dev/null
     if [[ $? -ne 0 ]]; then
-        echo "Can't run docker commands - is docker installed? (apt install docker.io docker-compose)"
-        echo "Can't run docker commands - is docker running    (sudo systemctl restart docker)"
+        echo "Can't run docker commands - is docker installed and running?"
+        if [[ $(uname) == Linux ]]; then
+            echo "  (apt install docker.io docker-compose; sudo systemctl restart docker)"
+        else
+            echo "  (start Docker Desktop and wait for it to come up)"
+        fi
         return 1
     fi
     return 0
@@ -88,7 +100,11 @@ function create-persist {
 function interactive-init {
     clean-persist
     docker-sanity-check
-    
+
+    # Only used on hosts that are not Ubuntu - an Ubuntu host matches its own
+    # release below. Unpinned on purpose, so a new container tracks the current
+    # Ubuntu instead of an increasingly stale one; "set base ubuntu:<release>"
+    # pins it if a new release ever breaks the build.
     local defsource="ubuntu:latest"
     if [[ -f /etc/lsb-release ]]; then
         source /etc/lsb-release
@@ -183,43 +199,25 @@ function build {
 		ENV LD_LIBRARY_PATH=/opt/bb/lib
 		$(cat ${dir}/proxy.conf)
 		RUN apt-get update
-		RUN apt-get install -y		\
-			bc			\
-			cmake			\
-			figlet			\
-			gawk			\
-			gdb			\
-			jq			\
-			less			\
-			libevent-2.1		\
-			libevent-core-2.1	\
-			libevent-openssl-2.1	\
-			libevent-pthreads-2.1	\
-			libprotobuf-c1		\
-			libreadline-dev		\
-			libsqlite3-0		\
-			libunwind8		\
-			liblz4-tool		\
-			make			\
-			netcat-openbsd		\
-			openssh-client		\
-			openssh-server		\
-			openssl			\
-			psmisc			\
-			sqlite3                 \
-			strace			\
-			tzdata			\
-			valgrind		\
-			vim                     \
-			tclsh
-        RUN useradd -d ${HOME} -m -u ${uid} ${id} -s /bin/bash
+		RUN apt-get install -y --no-install-recommends \
+		bc bison build-essential cmake figlet file flex gawk gdb git \
+		inetutils-ping jq less libevent-dev liblz4-dev libprotobuf-c-dev \
+		libreadline-dev libsqlite3-dev libssl-dev libunwind-dev make \
+		ncurses-dev net-tools netcat-openbsd ninja-build openssh-client \
+		openssh-server openssl protobuf-c-compiler psmisc rsync sqlite3 \
+		strace sudo tcl-dev tzdata uuid-dev valgrind vim zlib1g-dev
+        # Ubuntu images from noble on ship a stock "ubuntu" user on uid 1000,
+        # which is exactly the uid of the first account on most Linux hosts -
+        # useradd then fails with "UID 1000 is not unique". Give up that uid to
+        # the user we actually want, so the container writes files the host can
+        # read back through the source mount.
+        RUN old=\$(getent passwd ${uid} | cut -d: -f1); [ -z "\$old" ] || userdel -r "\$old"; useradd -d ${HOME} -m -u ${uid} ${id} -s /bin/bash
 	EOF
 	create-or-copy $HOME/.vimrc vimrc
 	create-or-copy $HOME/.inputrc inputrc
 	create-or-copy $HOME/.gdbinit gdbinit
 	create-or-copy $HOME/.bash_aliases bash_profile
     create-or-copy ${dir}/proxy.conf proxy.conf
-    create-or-copy $0 cluster
     mkdir comdb2-util
     cp ${dir}/config.sqlite ${dir}/proxy.conf comdb2-util
 	cat >> bash_profile <<- EOF
@@ -239,20 +237,24 @@ function build {
 	EOF
 	cat >> Dockerfile <<- EOF
 		RUN mkdir -p /opt/bb/bin /opt/bb/etc/cdb2/config.d /opt/bb/include /opt/bb/lib/cdb2 /opt/bb/lib/pkgconfig /opt/bb/lib/systemd /opt/bb/lib/systemd/system /opt/bb/log/cdb2 /opt/bb/var/cdb2 /opt/bb/var/lib/cdb2 /opt/bb/var/log/cdb2 /opt/bb/tmp
-		RUN ln -s ${HOME}/src/build/db/comdb2			/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/db/comdb2dumpcsc		/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/db/copycomdb2			/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/tools/pmux/pmux		/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/tools/comdb2ar/comdb2ar	/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/tools/cdb2sql/cdb2sql		/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build-docker/db/comdb2			/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build-docker/db/comdb2dumpcsc		/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build-docker/db/copycomdb2			/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build-docker/tools/pmux/pmux		/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build-docker/tools/comdb2ar/comdb2ar	/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build-docker/tools/cdb2sql/cdb2sql		/opt/bb/bin/
 		RUN ln -s /opt/bb/bin/comdb2	/opt/bb/bin/cdb2_dump
 		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_printlog
 		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_stat
 		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_load
 		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_sqlreply
 		RUN ln -s /opt/bb/bin/comdb2	/opt/bb/bin/cdb2_verify
-		RUN ln -s ${HOME}/src/build/cdb2api/libcdb2api.so /opt/bb/lib/libcdb2api.so
-		RUN mkdir ${HOME}/.ssh /var/run/sshd
+		RUN ln -s ${HOME}/src/build-docker/cdb2api/libcdb2api.so /opt/bb/lib/libcdb2api.so
+		# sshd is the container's entrypoint and won't start without its
+		# privilege-separation directory. -p because /var/run is a symlink to
+		# /run and the openssh-server install may have created /run/sshd
+		# already; a bare mkdir then fails and takes the build down with it.
+		RUN mkdir -p ${HOME}/.ssh /var/run/sshd
 		RUN touch		${HOME}/.hushlogin
 		COPY config		${HOME}/.ssh/config
 		COPY id_rsa		${HOME}/.ssh/id_rsa
@@ -263,30 +265,37 @@ function build {
 		COPY bash_profile	${HOME}/.bash_profile
 		COPY gdbinit		${HOME}/.gdbinit
 		COPY comdb2-util    ${HOME}/.local/share/comdb2-util/
-		COPY cluster    ${HOME}/bin/cluster
+		# Point at the mounted source tree rather than baking in a copy: "setup"
+		# re-runs this script inside m0, and a copy would silently be whatever
+		# the tree looked like at the last "build".
+		RUN mkdir -p ${HOME}/bin && ln -s ${HOME}/src/contrib/dev-util/cluster ${HOME}/bin/cluster
 		RUN chmod -R 777 /opt/bb/
 		RUN chown -R ${id}:${id} ${HOME}
 	EOF
-	#if having problems with missing packages build with --no-cache=true 
+	#if having problems with missing packages build with --no-cache=true
 	docker build -t comdb2:dev .
 	popd
 	rm -rf $DIR
 }
 
 function start-cluster-jobs {
+    # Read the cluster size instead of inheriting "run"'s global $n: "start"
+    # calls this too, and there $n is unset, so the loops below died with
+    # "((: i<=: operand expected" and brought nothing up.
+    local n=$(get clusternum) name db
     if [[ $(get auto-pmux) = 1 ]]; then
         echo "starting pmux"
     	for ((i=0;i<=$n;++i)); do
             name=$(container-name $i)
-            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux 2>&1
         done
         sleep 1
     fi
     if [[ $(get auto-db) = 1 ]]; then
         echo "starting db"
+        db=$(get defaultdb)
     	for ((i=0;i<=$n;++i)); do
             name=$(container-name $i)
-            db=$(get defaultdb)
             docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $db > ${dir}/persist/logs/${name}.${db} 2>&1 &
         done
     fi
@@ -296,33 +305,70 @@ function run {
 	n=$1
     [[ $n -lt 1 ]] && n=$(get clusternum)
     [[ $n -lt 1 ]] && usage
+    # Bail if the containers already exist - otherwise docker run hits name
+    # conflicts and we'd half-recreate a live cluster.
+    if docker ps -a --format '{{.Names}}' | grep -qx "$(container-name 0)"; then
+        echo "Cluster containers already exist. '$(basename $0) clean' to remove them"
+        echo "first, or '$(basename $0) start' if they are only stopped."
+        exit 1
+    fi
 	put clusternum $n
 	declare -a names
 	for ((i=0;i<=$n;++i)); do
 		name=$(container-name $i)
 		[[ $i -gt 0 ]] && names+=(${name})
+        # persist=0 keeps the db in the container's own layer, so it goes away
+        # with the container. It used to ask for a tmpfs here, but "exec" is an
+        # option of --tmpfs, not a suffix of --mount's destination: docker took
+        # the whole string as a path and mounted an empty tmpfs on the literal
+        # "/opt/bb:exec" while the db kept using the layer. A real tmpfs on
+        # /opt/bb can't work anyway - it would hide the /opt/bb/bin symlinks the
+        # image installs.
         local dbfs=""
-        if [[ $persist -eq 1 ]]; then 
-            dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
-        else
-            dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
-        fi
-        docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
-		    -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+        [[ $persist -eq 1 ]] && dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
+        docker run --restart unless-stopped --ulimit nofile=10000:10000 -d --privileged $dbfs --network comdb2 \
+		    -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
 		    --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
 	done
 	wait
 	for ((i=0;i<=$n;++i)); do
 		name=$(container-name $i)
 		cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
-        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+        docker exec --user $(id -u) ${name} /bin/bash -c "${cluster_cmd}"
 	done
+
+    update   # build comdb2 in-container so /opt/bb/bin symlinks resolve on all nodes
 
     if [[ $(get auto-db) = 1 ]]; then
         echo "setting up databases"
-        cluster setup
+        "$self" setup
     fi
     start-cluster-jobs
+}
+
+# Build comdb2 inside the cluster. The source tree is bind-mounted into every
+# node, so a single build in m0 populates src/build-docker for all of them and
+# the image's /opt/bb/bin symlinks resolve everywhere. Incremental after first.
+#
+# We build in build-docker/, NOT build/, on purpose: the container sees the
+# source at a different absolute path than the host (~/src vs the real repo
+# path), and cmake bakes that path into the cache. Sharing build/ with a host
+# build would make each side wipe+rebuild the other's cache on every switch.
+function update {
+    local m0=$(container-name 0)
+    echo "building comdb2 in ${m0} (shared with all nodes via the source mount)"
+    docker exec --user $(id -u) ${m0} bash -lc '
+        cd ~/src || exit 1
+        cfg="-G Ninja -DCMAKE_BUILD_TYPE=Debug -DCOMDB2_TEST=1 -DWITH_TCL=1"
+        cmake -B build-docker $cfg || { echo "reconfiguring clean"; rm -rf build-docker; cmake -B build-docker $cfg; } &&
+        ninja -C build-docker && ninja -C build-docker test-tools' || return $?
+
+    # ninja replaces the binary, but a running server goes on executing the one
+    # it started with - so a build looks like it had no effect until a restart.
+    local running=$(db-running-on)
+    [[ -n "$running" ]] && echo "note: databases are running on ${running} - if this build" \
+        "changed anything, \"$(basename $0) stopdb\" then \"$(basename $0) startdb\" to pick it up"
+    return 0
 }
 
 function do_docker {
@@ -334,62 +380,229 @@ function do_docker {
 	docker $1 ${names[@]}
 }
 
+# Open a window with one pane per node and echo its target, for the caller to
+# pass to sync_panes/send-keys. $1 is an optional session to open it in; empty
+# means the session we're already inside. Every command targets the window
+# explicitly: an untargeted tmux command goes to whatever session a client is
+# attached to, which is not necessarily the one we just created the window in.
+#
+# A non-empty $2 also stacks the cluster nodes on the right and gives the left
+# column a local (non-container) shell above the client node m0. Callers that
+# broadcast a command must leave it empty: synchronize-panes is a window option
+# with no way to exclude a pane, so those two would be told to start a server.
 function tmux_int {
-	tmux new-window
-	tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
-	tmux send-keys "${HOME}/bin/cluster c 1" Enter
+	local prefix=$(get mach-prefix) win client
+	win=$(tmux new-window ${1:+-t "$1"} -P -F '#{session_name}:#{window_index}') || return 1
+	if [[ -n "$2" ]]; then
+		client=$(tmux display-message -p -t "$win" '#{pane_id}')
+		tmux send-keys -t "$win" "printf '"'\033]2;%s\033\\'"' ${prefix}0" Enter
+		tmux send-keys -t "$win" "$self c 0" Enter
+		tmux split-window -h -t "$win"
+	fi
+	tmux send-keys -t "$win" "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
+	tmux send-keys -t "$win" "$self c 1" Enter
 	n=$(get clusternum)
 	for ((i=2;i<=$n;++i)); do
-		tmux split-window
-		tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
-		tmux send-keys "$HOME/bin/cluster c ${i}" Enter
-		tmux select-layout tiled
+		tmux split-window -t "$win"
+		tmux send-keys -t "$win" "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
+		tmux send-keys -t "$win" "$self c ${i}" Enter
+		[[ -z "$2" ]] && tmux select-layout -t "$win" tiled
 	done
+	if [[ -n "$2" ]]; then
+		# main-vertical puts pane 0 (the client) full-height on the left and
+		# spreads the nodes evenly on the right; splitting the left pane
+		# afterwards leaves that right-hand column alone.
+		tmux select-layout -t "$win" main-vertical
+		# A local shell above the client - this one is on the host, not in a
+		# container, for git/build/editor work next to the cluster.
+		tmux split-window -b -v -t "$client" -c "$(get src)"
+		tmux send-keys -t "$win" "printf '"'\033]2;%s\033\\'"' local" Enter
+	fi
+	echo "$win"
 }
 
 function sync_panes {
-	tmux set-window-option synchronize-panes
-	tmux set-option window-status-style "bg=colour124"
-	tmux set-option pane-active-border-style "fg=colour124"
+	tmux set-window-option -t "$1" synchronize-panes
+	tmux set-option -t "$1" window-status-style "bg=colour124"
+	tmux set-option -t "$1" pane-active-border-style "fg=colour124"
+}
+
+# Lay out one pane per node (each pane is a shell on that node), then optionally
+# broadcast a command to all of them. With a command the panes are synchronized;
+# without one ($2 = client) we add a client pane instead and leave sync off, so
+# you can drive cdb2sql from m0 while watching the cluster. tmux_int uses
+# "new-window", which needs a running server, so when we're not already inside
+# tmux we create (or reuse) a detached session, lay it out, and attach - this
+# lets tmux/gdb/vg work from a plain shell too.
+function tmux-broadcast {
+	local cmd=$1 client=$2 session=
+	if [[ -z "$TMUX" ]]; then
+		# Reuse the session an earlier run left behind - creating it again
+		# fails with "duplicate session".
+		tmux has-session -t comdb2 2>/dev/null || tmux new-session -d -s comdb2 || exit 1
+		session=comdb2
+	fi
+	local win
+	win=$(tmux_int "$session" "$client") || exit 1
+	[[ -z "$client" ]] && sync_panes "$win"
+	if [[ -n "$cmd" ]]; then
+		# Wait for the node shells (each a "docker exec -ti" into a container)
+		# to finish attaching before broadcasting, else the keystrokes race the
+		# attach - which is slow on Docker Desktop's VM - and get dropped. Break
+		# as soon as the last pane shows its node prompt; give up after ~10s.
+		local prefix=$(get mach-prefix) n=$(get clusternum) i=0
+		while (( i++ < 20 )); do
+			tmux capture-pane -p -t "$win" 2>/dev/null | grep -q "@${prefix}${n}" && break
+			sleep 0.5
+		done
+		tmux send-keys -t "$win" "$cmd" Enter
+	fi
+	[[ -n "$session" ]] && exec tmux attach -t "$session"
+	return 0
 }
 
 function do_tmux {
-	tmux_int
-	sync_panes
+	tmux-broadcast "" client
 }
 
-function db {
-    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
+function startdb {
+    isdocker=$(cat /proc/self/cgroup 2>/dev/null | cut -d/ -f2 | head -1)
     if [[ "$isdocker" == "docker" ]]; then
         echo "Please run this outside docker"
         exit 1
     fi
+    check-db "$1" || exit 1
 
-    if [[ -n "$TMUX" ]]; then
-        tmux_int
-        sync_panes
-        tmux send-keys "comdb2 $1" Enter
+    # Start the servers in the background, whether or not we're inside tmux.
+    # This used to open a synchronized window and run them in the foreground
+    # there, which is a surprise now that "tmux" leaves you sitting in a pane:
+    # every "startdb" would spawn another window. gdb/vg still open one, because
+    # a debugger has to own a terminal.
+    local n=$(get clusternum) mach started=0 pat=$(db-pattern "$1")
+    for ((i=1;i<=$n;++i)); do
+        mach=$(container-name $i)
+        # Skip a node that already serves this db: a second server there just
+        # dies with "pmux register ... service already active", and the failure
+        # would only show up in the log file.
+        if docker exec $mach pgrep -f "$pat" >/dev/null 2>&1; then
+            echo "${mach}: $1 already running"
+            continue
+        fi
+        docker exec --user $(id -u) ${mach} /opt/bb/bin/comdb2 $1 \
+            > ${dir}/persist/logs/${mach}.$1 2>&1 &
+        started=$((started + 1))
+    done
+    (( started )) && echo "starting $1 on $started node(s); logs in ${dir}/persist/logs/"
+    return 0
+}
+
+# Fail early on a database that was never created - otherwise every node just
+# prints "[FATAL] DB directory ... does not exist", and under "vg" that is
+# buried in valgrind output. Easy to hit: the default db name comes from init
+# ($(whoami)db) and is often not the one you actually set up.
+function check-db {
+    local m=$(container-name 1)
+    docker exec $m test -d /opt/bb/var/cdb2/"$1" 2>/dev/null && return 0
+    echo "no database '$1' on ${m}."
+    echo "  databases there: $(docker exec $m ls /opt/bb/var/cdb2 2>/dev/null | tr '\n' ' ')"
+    echo "  create it with \"$(basename $0) setup $1\", name one on the command line,"
+    echo "  or change the default with \"$(basename $0) set defaultdb <name>\"."
+    return 1
+}
+
+# pgrep/pkill -f pattern matching a running database, optionally a named one.
+# Matching the command line is deliberate: "pgrep -x comdb2" misses a live
+# server because comdb2 renames its main thread (the process shows up as
+# clean_exit_thd). "valgrind comdb2 <db>" has to match too - valgrind execs
+# valgrind.bin and keeps its own argv, so an anchored pattern would let "status"
+# call a valgrind cluster dead and let "stopdb" leave it running. "gdb -args
+# comdb2 <db>" deliberately doesn't: the inferior it forks is a plain
+# "comdb2 <db>" and matches on its own, and killing the debugger isn't the same
+# as stopping the db.
+function db-pattern {
+    if [[ -n "$1" ]]; then
+        echo "(^|/|valgrind[^ ]* )comdb2 $1\$"
     else
-        local n=$(get clusternum)
-        for ((i=1;i<=$n;++i)); do
-            local mach=$(container-name $i)
-            docker exec --user $(id -u) ${mach} /opt/bb/bin/comdb2 $1 &
-        done
+        echo "(^|/|valgrind[^ ]* )comdb2( |\$)"
     fi
 }
 
-function pmux {
-    if [[ -n "$TMUX" && "$1" != "-n" ]]; then
-        tmux_int
-        sync_panes
-        tmux send-keys "pmux -f" Enter
-    else
-        local n=$(get clusternum)
-        for ((i=1;i<=$n;++i)); do
-            local mach=$(container-name $i)
-            docker exec --user $(id -u) ${mach} /opt/bb/bin/pmux
-        done
+function db-running-on {
+    local pat=$(db-pattern "$1") mach out=""
+    for ((i=0;i<=$(get clusternum);++i)); do
+        mach=$(container-name $i)
+        docker exec $mach pgrep -f "$pat" >/dev/null 2>&1 && out+="$mach "
+    done
+    echo "${out% }"
+}
+
+# "db" skips a node that already serves the db, but gdb/vg can't: a debugger
+# owns its pane, so all it can do is start a server that dies on the spot with
+# "pmux register ... service already active" - a FATAL that scrolls past unread
+# in a window of N panes. Stop the db for them, and wait for it to be gone:
+# pkill only sends the signal, and pmux holds the registration until the server
+# actually exits.
+function stop-db-first {
+    [[ -z "$(db-running-on "$1")" ]] && return 0
+    echo "'$1' is running - stopping it first"
+    stopdb "$1" >/dev/null
+    for _ in $(seq 20); do
+        [[ -z "$(db-running-on "$1")" ]] && return 0
+        sleep 0.5
+    done
+    echo "'$1' is still running on $(db-running-on "$1") after stopdb - giving up"
+    return 1
+}
+
+# Stop the databases but leave the containers (and pmux) up, so you can restart
+# them with "startdb" without a full container cycle. Covers m0 too: auto-db
+# starts a db on every node, while "startdb" only starts the cluster nodes.
+# With no argument every database stops; name one to stop just that database.
+function stopdb {
+    local pat=$(db-pattern "$1")
+    for ((i=0;i<=$(get clusternum);++i)); do
+        # As root, not --user: a db someone started as root would otherwise
+        # survive the signal and "stopdb" would quietly do nothing.
+        docker exec $(container-name $i) pkill -f "$pat" 2>/dev/null
+    done
+    echo "stopped ${1:-all databases}"
+    return 0
+}
+
+# Delete a database cluster-wide, so it stops showing up in "status" and the
+# name is free for a fresh "setup". Always takes a name - no defaultdb fallback,
+# since the cost of guessing wrong here is a deleted database.
+function rmdb {
+    if [[ -z "$1" ]]; then
+        echo "usage: $(basename $0) rmdb <dbname>"
+        return 1
     fi
+    # Stop first and wait: removing the directory under a live server leaves it
+    # writing into deleted inodes instead of failing.
+    stop-db-first "$1" || return 1
+    for ((i=0;i<=$(get clusternum);++i)); do
+        # The .cfg goes too, or a leftover points cdb2sql at a database that no
+        # longer exists. Two paths: "cfg" writes config.d on the node that runs
+        # setup, and "copy" scps it to the home directory on all the others.
+        docker exec $(container-name $i) rm -rf /opt/bb/var/cdb2/"$1" \
+            /opt/bb/etc/cdb2/config.d/"$1".cfg "${HOME}/$1.cfg"
+    done
+    echo "removed $1"
+    if [[ "$(get defaultdb)" == "$1" ]]; then
+        echo "it was the default db - point that at another with \"$(basename $0) set defaultdb <name>\""
+    fi
+    return 0
+}
+
+function pmux {
+    # Background on every node, in or out of tmux - see the note in startdb.
+    local n=$(get clusternum) mach
+    for ((i=1;i<=$n;++i)); do
+        mach=$(container-name $i)
+        docker exec --user $(id -u) ${mach} /opt/bb/bin/pmux \
+            > ${dir}/persist/logs/${mach}.pmux 2>&1 &
+    done
+    echo "starting pmux on $n nodes"
 }
 
 function create {
@@ -406,7 +619,10 @@ function copy {
 	lrl="$dir/$1.lrl"
 	cfg="/opt/bb/etc/cdb2/config.d/$1.cfg"
 	echo "cluster nodes $CLUSTER" >> $lrl
-	for c in $CLUSTER; do echo -n "$c "; ssh $c rm -rf $dir; scp $cfg $c: > /dev/null; copycomdb2 $lrl $c: & done
+	# scp into config.d, not "$c:" - a bare destination drops the cfg in the
+	# node's home directory, where cdb2api never looks, so "cdb2sql <db> default"
+	# only worked from the node that ran setup.
+	for c in $CLUSTER; do echo -n "$c "; ssh $c rm -rf $dir; scp $cfg $c:$cfg > /dev/null; copycomdb2 $lrl $c: & done
 	wait
 	echo ""
 }
@@ -422,10 +638,15 @@ function cfg {
 
 function setup {
     local isdocker
-    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
+    isdocker=$(cat /proc/self/cgroup 2>/dev/null | cut -d/ -f2 | head -1)
     if [[ "$isdocker" != "docker" && ! -f /.dockerenv ]]; then
         check-containers-ready || exit 1
-        docker exec --user $(id -u) $(container-name 0) ${HOME}/bin/cluster setup $*
+        # Run the copy of this script on the mounted source tree, so an edit here
+        # takes effect straight away. ${HOME}/bin/cluster reaches the same file
+        # through a symlink, but only in containers built since that symlink
+        # replaced a baked-in copy - this path works in older ones too.
+        docker exec --user $(id -u) $(container-name 0) \
+            ${HOME}/src/contrib/dev-util/cluster setup $*
         return $?
     fi
 
@@ -436,15 +657,30 @@ function setup {
 }
 
 function gdb {
-	tmux_int
-	sync_panes
-	tmux send-keys "gdb -q -ex run -args comdb2 $1" Enter
+	check-db "$1" || exit 1
+	stop-db-first "$1" || exit 1
+	# ptrace can't read registers of an emulated process, so gdb is useless when
+	# the containers run a different architecture than the host (an amd64 image
+	# on Apple Silicon, say). Refuse rather than drop you into a debugger that
+	# reports "Couldn't get registers: Input/output error" on every command.
+	# Keyed on the arch mismatch, not on macOS: an Intel Mac running amd64
+	# containers debugs fine, and an arm64 image would too.
+	local host=$(uname -m) guest=$(docker exec $(container-name 1) uname -m 2>/dev/null)
+	host=${host/aarch64/arm64}; guest=${guest/aarch64/arm64}
+	if [[ -n "$guest" && "$host" != "$guest" ]]; then
+		echo "gdb can't work here: the containers are ${guest} but the host is ${host},"
+		echo "so every process is emulated and ptrace fails."
+		echo "Use \"$(basename $0) vg\" instead (valgrind needs no ptrace), or debug"
+		echo "on a native ${guest} host."
+		exit 1
+	fi
+	tmux-broadcast "gdb -q -ex run -args comdb2 $1"
 }
 
 function vg {
-	tmux_int
-	sync_panes
-	tmux send-keys "valgrind comdb2 $1" Enter
+	check-db "$1" || exit 1
+	stop-db-first "$1" || exit 1
+	tmux-broadcast "valgrind comdb2 $1"
 }
 
 function check-containers-ready {
@@ -467,7 +703,9 @@ function check-containers-ready {
 }
 
 function docker-status {
-    docker-sanity-check
+    # Bail here rather than let every docker command below fail: with the daemon
+    # down "docker images" comes back empty and we'd advise a rebuild instead.
+    docker-sanity-check || return 1
 
     img=$(docker images --format "{{.ID}}" comdb2:dev)
     if [[ -z "$img" ]]; then
@@ -487,86 +725,116 @@ function docker-status {
     local err=0
     for i in $(seq 1 $(get clusternum)); do
         local mach=$(get mach-prefix)${i}
-        docker exec $mach ps -ef | grep -q pmux
-        if [[ $? -ne 0 ]]; then
+        if ! docker exec $mach pgrep -x pmux >/dev/null 2>&1; then
             echo "${mach}: pmux not running on $mach, \"$(basename $0) pmux\" to start"
             err=1
         fi
     done
-    [[ $err -ne 0 ]] && return $err 
+    [[ $err -ne 0 ]] && return $err
     echo "pmux up"
 
+    local setup_dbs="" running_dbs=""
     for i in $(seq 1 $(get clusternum)); do
         local mach=$(get mach-prefix)${i}
-        local cnt=$(docker exec $mach ls -1 /opt/bb/var/cdb2 | wc -l)
-        if [[ $cnt -eq 0 ]]; then
+        local dbs=$(docker exec $mach ls -1 /opt/bb/var/cdb2)
+        if [[ -z "$dbs" ]]; then
             echo "${mach}: no databases are set up, \"$(basename $0) setup [dbname]\" to start"
             err=1
         fi
+        setup_dbs+="$dbs "
     done
-    [[ $err -ne 0 ]] && return $err 
-    echo "Databases set up"
+    [[ $err -ne 0 ]] && return $err
+    echo "Databases set up: $(uniq-words "$setup_dbs")"
 
     for i in $(seq 1 $(get clusternum)); do
         local mach=$(get mach-prefix)${i}
-        local cnt=$(docker exec $mach ps -ef | grep comdb2 | wc -l)
-        if [[ $cnt -eq 0 ]] ; then
+        # "pgrep -a" prints the command line too, so the db name is its last word.
+        local dbs=$(docker exec $mach pgrep -a -f "$(db-pattern)" 2>/dev/null | awk '{print $NF}')
+        if [[ -z "$dbs" ]]; then
             echo "${mach}: no databases running"
             err=1
         fi
+        running_dbs+="$dbs "
     done
-    [[ $err -ne 0 ]] && return $err 
+    [[ $err -ne 0 ]] && return $err
 
-    echo "Databases running."
+    echo "Databases running: $(uniq-words "$running_dbs")"
     return 0
 }
 
+# Collapse a whitespace-separated list into a sorted, deduplicated one line.
+function uniq-words {
+    echo $1 | tr ' ' '\n' | sort -u | xargs
+}
+
 function clean-persist {
-    sudo rm -fr ${dir}/persist
+    # Docker Desktop (macOS) writes persist files as the current user, so plain
+    # rm works and sudo would needlessly prompt. On Linux the container writes
+    # them as root, so fall back to sudo only when the plain rm can't.
+    rm -fr ${dir}/persist 2>/dev/null || sudo rm -fr ${dir}/persist
 }
 
 function usage {
 	cat >&2 <<- EOF
 		Usage: cluster <cmd> [arg]
 
-		cmd list:
-		  db [dbname] ----------- Start database cluster-wide
-		  build ----------------- Build docker image
-		  clean ----------------- Kill and remove containers
-		  c|clnt [n] ------------ Get a shell on nth container
-		  copy [dbname] --------- Copy db cluster-wide
-		  setup [dbname] -------- Create db and copy it cluster-wide
-		  gdb [dbname] ---------- Start db under gdb cluster-wide
-		  info  ----------------- Dump settings
+		settings:
 		  init  ----------------- Wipe settings and start from scratch
-		  kill  ----------------- Kill containers
-		  pmux  ----------------- Start pmux cluster-wide
-		  ps    ----------------- List containers
-		  rm    ----------------- Remove containers
+		  info  ----------------- Dump settings
+		  set <key> <value> ----- Change one setting ("info" lists the keys)
+
+		containers:
+		  build ----------------- Build docker image
 		  run <cluster-size> ---- Initial run of containers
-		  status ---------------- Check container status
 		  start ----------------- Start containers
 		  stop  ----------------- Stop containers
-		  test [n] -------------- Run tests n at a time (default 1)
+		  kill  ----------------- Kill containers
+		  rm    ----------------- Remove containers
+		  clean ----------------- Kill and remove containers
+		  ps    ----------------- List containers
+		  status ---------------- Check container status
+
+		databases:
+		  setup [dbname] -------- Create db and copy it cluster-wide
+		  copy [dbname] --------- Copy db cluster-wide
+		  cfg [dbname] ---------- Write the client config for a db
+		  pmux  ----------------- Start pmux cluster-wide
+		  startdb [dbname] ------ Start databases cluster-wide
+		  stopdb [dbname] ------- Stop databases cluster-wide, leave containers up
+		  rmdb <dbname> --------- Delete a database cluster-wide
+
+		shells and debuggers:
+		  c|clnt [n] ------------ Get a shell on nth container
 		  tmux  ----------------- Container tmux panes
-		  vg    ----------------- Start database under valgrind
+		  gdb [dbname] ---------- Start db under gdb cluster-wide
+		  vg [dbname] ----------- Start db under valgrind cluster-wide
+
+		source:
+		  update ---------------- Rebuild comdb2 from source (all nodes)
+		  test [name...] -------- Run the whole suite, or only the named test(s)
 	EOF
 	exit 1
 }
 
-if [[ ! -d "${dir}" ]]; then 
+# "setup" re-runs this script inside m0, which has a config dir only because
+# "build" bakes a copy of one into the image. Don't insist on it there: the
+# in-container half of setup reads $CLUSTER from .bash_profile and never opens
+# config.sqlite, so a container without the copy can still do the work.
+if [[ ! -d "${dir}" ]] && ! [[ "$1" == "setup" && -f /.dockerenv ]]; then
     if [[ "$1" != "init" ]]; then
         echo "Can't find my config files, did you run \"$(basename $0) init\"?"
         exit 1
     else
         interactive-init
         rc=$?
-        [[ $? -eq 0 ]] && echo I AM READY
-        exit $?
+        # $? after "rc=$?" is the assignment's status, i.e. always 0 - so this
+        # used to claim success even when init had failed.
+        [[ $rc -eq 0 ]] && echo I AM READY
+        exit $rc
     fi
 fi
 
-init-globals
+[[ -d "${dir}" ]] && init-globals
 
 if [[ "$1" == "build" ]]; then
 	build
@@ -585,9 +853,15 @@ elif [[ "$1" == "rm" ]] || [[ "$1" == "stop" ]] || [[ "$1" == "kill" ]] || [[ "$
 elif [[ "$1" == "tmux" ]]; then
     check-containers-ready || exit 1
 	do_tmux
-elif [[ "$1" == "db" ]]; then
+elif [[ "$1" == "startdb" ]]; then
     check-containers-ready || exit 1
-	db ${2:-${defaultdb}}
+	startdb ${2:-${defaultdb}}
+elif [[ "$1" == "stopdb" ]]; then
+    check-containers-ready || exit 1
+	stopdb $2
+elif [[ "$1" == "rmdb" ]]; then
+    check-containers-ready || exit 1
+	rmdb $2
 elif [[ "$1" == "pmux" ]]; then
     shift
     check-containers-ready || exit 1
@@ -596,15 +870,26 @@ elif [[ "$1" == "copy" ]]; then
     check-containers-ready || exit 1
 	copy ${2:-${defaultdb}}
 elif [[ "$1" == "setup" ]]; then
+    # Naming a db here makes it the default, so the commands that take an
+    # optional name (db/gdb/vg) target what you just created. Without this the
+    # default stays whatever init guessed ($(whoami)db) and never exists.
+    [[ -n "$2" ]] && { put defaultdb "$2"; echo "default db is now $2"; }
 	setup ${2:-${defaultdb}}
 elif [[ "$1" == "cfg" ]]; then
 	cfg ${2:-${defaultdb}}
 elif [[ "$1" == "gdb" ]]; then
+    check-containers-ready || exit 1
 	gdb ${2:-${defaultdb}}
 elif [[ "$1" == "vg" ]]; then
+    check-containers-ready || exit 1
 	vg ${2:-${defaultdb}}
 elif [[ "$1" == "info" ]]; then
     sqlite3 -separator '	' ${config} "select * from getput"
+elif [[ "$1" == "set" ]]; then
+    # Change one setting; "init" is the only other way and it wipes everything.
+    [[ $# -ne 3 ]] && usage
+    put "$2" "$3"
+    echo "$2 = $3"
 elif [[ "$1" == "init" ]]; then
     rm -fr ${dir}
     interactive-init
@@ -618,15 +903,25 @@ elif [[ "$1" == "c" || "$1" == "clnt" ]]; then
     docker exec --user $(id -u) -ti $n /bin/bash -l
 elif [[ "$1" == "test" ]]; then
     shift
-    $0 clean 2>/dev/null
-    $0 run
+    "$self" clean 2>/dev/null
+    "$self" run
     n=$(container-name 0)
-    docker exec --user $(id -u) $n bash -c -l ". ~/.bashrc && cd ${HOME}/src/contrib/dev-util && make && TERM=xterm ./testrunner -j ${testjobs} ${HOME}/src/tests $*"
+    tty=""; [[ -t 1 ]] && tty="-ti"   # only allocate a TTY when we have one
+    docker exec $tty --user $(id -u) $n bash -c -l ". ~/.bashrc && cd ${HOME}/src/contrib/dev-util && make clean && make && TERM=xterm ./testrunner -j ${testjobs} -q ${HOME}/src/tests $*"
+    echo
+    echo "Test logs on ${n} (kept until the next '$(basename $0) test' run):"
+    echo "  summary  : /opt/bb/tmp/testdir/test.log"
+    echo "  logs dir : /opt/bb/tmp/testdir/logs/  (<test><id>.testcase = test output,"
+    echo "             <test><id>.<node>.db = per-node server logs)"
+    docker exec $n sh -c 'ls -1 /opt/bb/tmp/testdir/logs/*.testcase 2>/dev/null | sed "s#^#  -> #"'
 elif [[ "$1" == "ps" ]]; then
 	figlet $(get clusternum)
 	docker ps -a
 elif [[ "$1" == "status" ]]; then
     docker-status
+elif [[ "$1" == "update" ]]; then
+    check-containers-ready || exit 1
+    update
 else
 	usage
 fi
