@@ -1513,6 +1513,10 @@ struct ireq {
     char *identity;
     char *api_driver_name;
     char *api_driver_version;
+    /* Set when trans_commit_int() hands the wait-for-seqnum off to the async
+     * seqnum-wait thread instead of blocking on it (gbl_async_dist_commit). */
+    db_seqnum_type *commit_seqnum;
+    int should_enqueue;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 

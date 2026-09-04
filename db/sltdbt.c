@@ -38,6 +38,13 @@
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
 #include "sc_util.h"
+#include "seqnum_wait.h"
+#include "comdb2_atomic.h"
+
+int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv, struct ireq *iq, char *source_node, int timeoutms,
+                              int adaptive, db_seqnum_type *ss);
+extern int64_t gbl_async_dist_commit_enqueued;
+extern int64_t gbl_async_dist_commit_inline;
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -482,6 +489,25 @@ int handle_ireq(struct ireq *iq)
         pack_tail(iq);
 
         if (iq->sorese) {
+            /* trans_commit_int() deferred the wait for replicant acks.  Hand
+             * it to the seqnum-wait thread, which will signal the sql thread
+             * for us; if it can't take it, wait inline after all. */
+            if (iq->should_enqueue) {
+                int enqueued = add_to_seqnum_wait_queue(thedb->bdb_env, (seqnum_type *)iq->commit_seqnum, iq);
+                if (enqueued)
+                    ATOMIC_ADD64(gbl_async_dist_commit_enqueued, 1);
+                else
+                    ATOMIC_ADD64(gbl_async_dist_commit_inline, 1);
+                if (!enqueued)
+                    rc = trans_wait_for_seqnum_int(thedb->bdb_env, thedb, iq, gbl_myhostname, -1, 1 /*adaptive*/,
+                                                   iq->commit_seqnum);
+                free(iq->commit_seqnum);
+                iq->commit_seqnum = NULL;
+                iq->should_enqueue = 0;
+                if (enqueued)
+                    goto cleanup;
+            }
+
             /* we don't have a socket or a buffer for that matter,
              * instead, we need to send back the result of transaction from rc
              */
@@ -573,6 +599,7 @@ int handle_ireq(struct ireq *iq)
         }
     }
 
+cleanup:
     /* Unblock anybody waiting for stuff that was added in this transaction. */
     clear_trans_from_repl_list(iq->repl_list);
 
