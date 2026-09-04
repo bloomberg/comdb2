@@ -2802,6 +2802,13 @@ static int cursor_check_table_valid(BtCursor *pCur)
     db = get_sqlite_db(pCur->thd, pCur->rootpage, NULL);
 
     if (db && (pCur->ixnum == -1 || pCur->ixnum < db->nix) && db->tableversion == pCur->tableversion) {
+        /* A version match proves this is the same table the cursor opened:
+           tableversion is monotonic per table NAME -- drop bumps it and llmeta
+           keeps the entry keyed by name, so a recreate reads the bumped value
+           back rather than restarting at 0.  Refresh pCur->db as well as
+           pCur->sc, so the cursor cannot be left holding a dbtable that was
+           freed and replaced during the window. */
+        pCur->db = db;
         pCur->sc = (pCur->ixnum == -1) ? db->schema : db->ixschema[pCur->ixnum];
         return 0;
     }
@@ -2821,6 +2828,13 @@ static int cursor_check_table_valid(BtCursor *pCur)
         sqlite3MakeSureDbHasErr(pCur->vdbe->db, SQLITE_OK);
         sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
     }
+
+    /* The dbtable may already be freed (a replicant DROP does freedb() without
+       waiting for local readers).  Drop the reference now that we are failing
+       the query: teardown -- sqlite3BtreeCloseCursor's use counts and
+       addCursorCost -- guards on pCur->db, so clearing it keeps that off the
+       freed object.  Done last: the trace above still reports the old pointer. */
+    pCur->db = NULL;
 
     return SQLITE_COMDB2SCHEMA;
 }
@@ -3570,20 +3584,13 @@ freeblobs:
  * cursor's current genid if they differ.  Must be called while locks are
  * still held so the target row is guaranteed to exist at find time.
  *
- * Buffer-lifetime dependency (see debug_switch_recover_deadlock_newmode):
- * we stash pointers into the data cursor's per-cursor row buffer
- * (dta->ondisk_buf/dtabuf via get_found_data) and rely on that buffer
- * surviving the lock release that follows.  This holds under the default
- * recover_deadlock "newmode" path, which merely invalidates the cursor
- * (unlock closes the berkdb dbc but does NOT free the USERMEM row buffer)
- * and re-positions lazily on next reuse -- and the deferred-seek fast path
- * in sqlite3BtreeMovetoUnpacked skips that re-position, so the buffer is
- * never overwritten before it is read.  Under the legacy newmode==0 path
- * recover_deadlock eagerly repositions cursors (lock/BDB_SET), which would
- * re-read into (or fail to find, on a deleted row) that same buffer and
- * invalidate what we captured here.  newmode defaults to 1 and nothing in
- * the tree turns it off; revisit this coupling if newmode==0 is ever used
- * (a private copy of the row here would remove the dependency entirely).
+ * Buffer-lifetime dependency: we stash pointers into the data cursor's
+ * per-cursor row buffer (dta->ondisk_buf/dtabuf via get_found_data) and rely
+ * on that buffer surviving the lock release that follows.  recover_deadlock
+ * merely invalidates the cursor -- unlock closes the berkdb dbc but does NOT
+ * free the USERMEM row buffer -- and re-positions lazily on next reuse, and
+ * the deferred-seek fast path in sqlite3BtreeMovetoUnpacked skips that
+ * re-position, so the buffer is never overwritten before it is read.
  */
 void sync_index_data_cursors(struct sql_thread *thd)
 {
@@ -6484,6 +6491,18 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             rc = cursor_check_table_valid(pCur);
             if (rc)
                 goto done;
+            /* Serving from the buffers still has to record the genid for
+               SELECTV, or the row is read inside the transaction without
+               joining the set verified at commit.  (No sqlrrn refresh: it is
+               only read for index cursors, and a deferred seek is always on a
+               table cursor.) */
+            if (!gbl_selectv_rangechk && pCur->is_recording &&
+                clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+                int grc = osql_record_genid(pCur, thd, pCur->genid);
+                if (grc)
+                    logmsg(LOGMSG_ERROR, "%s: failed to record genid %llx (%llu)\n", __func__, pCur->genid,
+                           pCur->genid);
+            }
             *pRes = 0;
             goto done;
         }
@@ -6871,8 +6890,10 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
 done:
-    /* early verification error */
-    if (verify && !pCur->bt->is_temporary &&
+    /* early verification error.  pCur->db can be NULL here: a failed
+       cursor_check_table_valid() clears it, and is_genid_recorded() needs the
+       table name and version. */
+    if (verify && pCur->db && !pCur->bt->is_temporary &&
         pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
         pCur->vdbe->readOnly == 0 && pCur->ixnum == -1) {
         int irc = is_genid_recorded(thd, pCur, genid);
@@ -7171,6 +7192,10 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
                  */
                 rc = SQLITE_DEADLOCK;
             }
+            /* Gone: drop the pointer so nothing can follow it, and a second
+               close cannot free it twice.  Cleared even on error -- the code
+               below treats the cursor as closed either way. */
+            pCur->bdbcur = NULL;
         }
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_cursor_close: rc %d\n", bdberr);
@@ -7187,6 +7212,15 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         Pthread_mutex_lock(&thd->lk);
         if (pCur->on_list)
             listc_rfl(&pCur->bt->cursors, pCur);
+        if (pCur->bt) {
+            /* Drop any index cursor's pairing with this one: it is a raw
+               pointer, and the vdbe reuses this memory for the next cursor
+               opened in the same slot. */
+            BtCursor *other;
+            LISTC_FOR_EACH(&pCur->bt->cursors, other, lnk)
+                if (other->pCursorHintTableCursor == pCur)
+                    other->pCursorHintTableCursor = NULL;
+        }
         Pthread_mutex_unlock(&thd->lk);
     }
 
@@ -10100,7 +10134,10 @@ char *sqlite3BtreeGetTblName(BtCursor *pCur)
     const char *name = get_sqlite_tblname(pCur->thd, pCur->rootpage);
     if (name)
         return (char *)name;
-    return pCur->db ? pCur->db->tablename : "";
+    /* Never fall back to pCur->db->tablename: this is called from paths that
+       run precisely when a concurrent DROP has freed the dbtable, which is the
+       whole reason we resolve from the rootpage map. */
+    return "<unknown>";
 }
 
 /* clnt_last_release_str() for the sqlite side, which only has an opaque
@@ -10728,7 +10765,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     }
 
     assert(bdb_lockref() > 0);
-    int new_mode = debug_switch_recover_deadlock_newmode();
 
     if (ignore_desired || bdb_lock_desired(thedb->bdb_env)) {
         if (!sleepms)
@@ -10763,7 +10799,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
      *
      * Skipping put_curtran/get_curtran also means no cursor repositioning and
      * no re-acquisition of table locks; the cursors are left invalidated and
-     * will lazily re-position on next use, exactly as in the newmode path. */
+     * will lazily re-position on next use. */
     if (flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY) {
         assert(bdb_lockref() > 0);
         return 0;
@@ -10866,18 +10902,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     /* no need to mess with our shadow tran, right? */
 
     /* now that we have a new curtran, try to reposition them */
+    int schema_rc = 0;
     Pthread_mutex_lock(&thd->lk);
     if (thd->bt) {
         LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
         {
             if (cur->bdbcur) {
-                if (new_mode)
-                    rc = cur->bdbcur->set_curtran(cur->bdbcur,
-                                                  clnt->dbtran.cursor_tran);
-                else
-                    rc =
-                        cur->bdbcur->lock(cur->bdbcur, clnt->dbtran.cursor_tran,
-                                          BDB_SET, &bdberr);
+                rc = cur->bdbcur->lock(cur->bdbcur, clnt->dbtran.cursor_tran);
                 if (rc != 0) {
                     /* it is possible that the row is already gone
                      * when we try to reposition, since the lock is lost
@@ -10901,8 +10932,14 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                  * already freed the dbtable. */
                 rc = cursor_check_table_valid(cur);
                 if (rc) {
-                    Pthread_mutex_unlock(&thd->lk);
-                    return rc;
+                    /* Do not stop the walk: every remaining cursor still needs
+                       its curtran rebound above, and a second cursor on the
+                       same dropped table needs its freed cur->db cleared too --
+                       otherwise teardown writes through it.  Report the first
+                       failure once the walk is done. */
+                    if (!schema_rc)
+                        schema_rc = rc;
+                    continue;
                 }
 
                 if (cur->ixnum == -1)
@@ -10913,13 +10950,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         }
     }
 
+    if (schema_rc) {
+        Pthread_mutex_unlock(&thd->lk);
+        return schema_rc;
+    }
+
     if (bdbcur) {
-        if (new_mode) {
-            assert(bdbcur != NULL);
-            rc = bdbcur->set_curtran(bdbcur, clnt->dbtran.cursor_tran);
-        } else
-            rc = bdbcur->lock(bdbcur, clnt->dbtran.cursor_tran, BDB_SET,
-                              &bdberr);
+        rc = bdbcur->lock(bdbcur, clnt->dbtran.cursor_tran);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returned %d %d\n", __func__, rc, bdberr);
             Pthread_mutex_unlock(&thd->lk);

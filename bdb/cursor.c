@@ -194,21 +194,21 @@ static int bdb_cursor_insert(bdb_cursor_ifn_t *cur, unsigned long long genid,
 static int bdb_cursor_delete(bdb_cursor_ifn_t *cur, int *bdberr);
 
 static int bdb_cursor_unlock(bdb_cursor_ifn_t *cur, int *bdberr);
-static int bdb_cursor_lock(bdb_cursor_ifn_t *cur, cursor_tran_t *curtran,
-                           int how, int *bdberr);
-static int bdb_cursor_set_curtran(bdb_cursor_ifn_t *cur,
-                                  cursor_tran_t *curtran);
+static int bdb_cursor_lock(bdb_cursor_ifn_t *cur, cursor_tran_t *curtran);
 static inline int calculate_discard_pages(bdb_cursor_impl_t *cur);
 
 static void *unpack_datacopy_odh(bdb_cursor_ifn_t *cur, uint8_t *to,
                                  int to_size, uint8_t *from, int from_size,
                                  uint8_t *ver);
 
-static int bdb_cursor_reposition(bdb_cursor_ifn_t *pcur_ifn, int how,
-                                 int *bdberr);
 static int bdb_cursor_reposition_noupdate(bdb_cursor_ifn_t *pcur_ifn,
                                           bdb_berkdb_t *berkdb, char *key,
                                           int keylen, int how, int *bdberr);
+static int bdb_cursor_reposition(bdb_cursor_ifn_t *pcur_ifn, int how,
+                                 int *bdberr);
+static int bdb_cursor_relock_reposition(bdb_cursor_ifn_t *pcur_ifn,
+                                        cursor_tran_t *curtran, int how,
+                                        int *bdberr);
 static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                                         bdb_berkdb_t *berkdb, int how,
                                         int retrieved, int update_shadows,
@@ -640,7 +640,6 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     pcur_ifn->unlock = bdb_cursor_unlock;
     pcur_ifn->lock = bdb_cursor_lock;
-    pcur_ifn->set_curtran = bdb_cursor_set_curtran;
     pcur_ifn->getpageorder = bdb_cursor_getpageorder;
 
     pcur_ifn->updateshadows = bdb_cursor_update_shadows;
@@ -1567,8 +1566,8 @@ static int bdb_cursor_revalidate(bdb_cursor_impl_t *cur, bdb_berkdb_t *berkdb,
     case DB_NEXT:
     case DB_PREV:
         /* this call resets invalidated field */
-        rc = cur->ifn->lock(cur->ifn, cur->curtran,
-                            (how == DB_NEXT) ? BDB_NEXT : BDB_PREV, bdberr);
+        rc = bdb_cursor_relock_reposition(cur->ifn, cur->curtran,
+                                          (how == DB_NEXT) ? BDB_NEXT : BDB_PREV, bdberr);
         if (rc == IX_NOTFND) {
             /* we missed the actual row, but got the one we're
                looking for */
@@ -4237,57 +4236,6 @@ static int bdb_cursor_unlock(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     return 0;
 }
 
-/**
- * Recreate a cursor for this bdbcursor after an unlock
- * If the cursor was not positioned anywhere, return after cursor recreation.
- * Otherwise, reposition the new cursor to the previous location; if row does
- *not exist
- * anymore, "how" tells you how to react:
- * - BDB_SET: return IX_NOTFND (DB_SET like)
- * - BDB_NEXT: try to position on a next row (DB_SET_RANGE like)
- * - BDB_PREV: try to position on a previous row (LAST_DUP like) *
- *
- * RETURNS:
- * - IX_FND       : found the previous record
- * - IX_NOTFND    : could not found record, sitting on the next/prev record
- *depeding on the direction
- * - IX_PASTEOF   : no record found, neither a following one in the next/prev
- *direction (for next/prev)
- * - IX_EMPTY     : no rows
- * - <0           : error, bdberr set
- *
- */
-static int bdb_cursor_lock(bdb_cursor_ifn_t *pcur_ifn, cursor_tran_t *curtran,
-                           int how, int *bdberr)
-{
-    bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    int rc = 0;
-
-    *bdberr = 0;
-    cur->curtran = curtran;
-
-    cur->invalidated = 0;
-
-    if (cur->rl) {
-        /* get cursor */
-        rc = cur->rl->lock(cur->rl, curtran, bdberr);
-        if (rc)
-            return rc;
-
-        /* if the cursor was not set anywhere,
-           no need to reposition anywhere */
-        if (cur->rl->outoforder_get(cur->rl))
-            return rc;
-
-        rc = bdb_cursor_reposition(pcur_ifn, how, bdberr);
-
-        if (cur->trak) {
-            logmsg(LOGMSG_USER, "Cur %p reposition returns %d\n", cur, rc);
-        }
-    }
-    return rc;
-}
-
 /** compare a key with a berkdb key */
 static int compare_keys(bdb_cursor_impl_t *cur, int *bdberr)
 {
@@ -4575,11 +4523,11 @@ static int bdb_cursor_pause(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 }
 
 /**
- * Mark a cursor invalid, forcing a re-locking when the cursor moves
+ * Bind an invalidated cursor to a new curtran.  Actual re-locking happens
+ * lazily, the next time the cursor moves.
  *
  */
-static int bdb_cursor_set_curtran(bdb_cursor_ifn_t *pcur_ifn,
-                                  cursor_tran_t *curtran)
+static int bdb_cursor_lock(bdb_cursor_ifn_t *pcur_ifn, cursor_tran_t *curtran)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
 
@@ -4719,6 +4667,17 @@ static const char *curtypetostr(int type)
  * <0          - error, and bdberr is set accordingly
  *
  */
+
+/* Same physical row, rewritten in place: only the update counter differs (see
+   set_updateid()).  Synthetic (shadow) genids carry no update counter, so any
+   difference there is a real one, never a rewrite. */
+static inline int bdb_same_row_inplace(bdb_state_type *state, unsigned long long a, unsigned long long b)
+{
+    if (is_genid_synthetic(a) || is_genid_synthetic(b))
+        return 0;
+    return 0 == bdb_inplace_cmp_genids(state, a, b);
+}
+
 static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                                               bdb_berkdb_t *berkdb, char *key,
                                               int keylen, int how, int *bdberr)
@@ -4768,6 +4727,19 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                 if (rc < 0)
                     return rc;
 
+                /* Berkdb's key DBT is USERMEM with ulen MAXKEYSZ, so it cannot
+                   hand back more than that: a longer length is corrupt, not a
+                   large key.  Fail loudly -- an assert would vanish under
+                   NDEBUG and the retry below memcpys this into the stack. */
+                if (found_keylen < 0 || found_keylen > (int)sizeof(keybuf)) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: corrupt key length %d (max %zu) tbl %s %s %d genid %llx -- failing cursor\n",
+                           __func__, found_keylen, sizeof(keybuf), cur->state->name,
+                           cur->type == BDBC_IX ? "ix" : "dta", cur->idx, cur->genid);
+                    *bdberr = BDBERR_BUG_KILLME;
+                    return -1;
+                }
+
                 assert(searchkeylen <= found_keylen);
 
                 rc = memcmp(searchkey, found_key, searchkeylen);
@@ -4789,9 +4761,8 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                     if (grc < 0)
                         return grc;
 
-                    if (!is_genid_synthetic(found_genid) && !is_genid_synthetic(original_genid) &&
-                        0 == bdb_inplace_cmp_genids(cur->state, original_genid, found_genid)) {
-                        assert(found_keylen <= sizeof(keybuf));
+                    if (bdb_same_row_inplace(cur->state, original_genid, found_genid)) {
+                        /* bounded above, right after keysize() */
                         memcpy(keybuf, found_key, found_keylen);
                         searchkey = keybuf;
                         searchkeylen = found_keylen;
@@ -4937,7 +4908,11 @@ static int bdb_cursor_reposition_noupdate(bdb_cursor_ifn_t *pcur_ifn,
 }
 
 /**
- * Reposition a cursor
+ * Reposition an invalidated cursor via DB_NEXT/DB_PREV, having last sat on
+ * the key or genid recorded in cur->data/cur->genid.  Internal to
+ * bdb_cursor_revalidate() -- not part of the public interface, since the only
+ * external caller (recover_deadlock, via the interface's bind-only lock())
+ * never repositions this way.
  *
  */
 static int bdb_cursor_reposition(bdb_cursor_ifn_t *pcur_ifn, int how,
@@ -4998,16 +4973,69 @@ static int bdb_cursor_reposition(bdb_cursor_ifn_t *pcur_ifn, int how,
        therefore I don't do nothing (until ipu are supported)
      */
     if (cur->type == BDBC_IX && rc == IX_FND) {
-        if (cur->genid != original_genid) {
-            /* we did not really re-find this
-               it is not sure at this point if returning an
-               replacement instead of the next row is what we need,
-               but intuitively it seems the correct thing to do
-             */
+        /* An exact key match does not guarantee the same genid when the index
+           key does not carry it (bdb_keycontainsgenid() false): a dup index
+           can land on any row with matching content.  An in-place rewrite of
+           our own row is not really a different one -- see
+           bdb_same_row_inplace() -- so only downgrade when it is genuinely a
+           different row. */
+        if (!bdb_same_row_inplace(cur->state, cur->genid, original_genid)) {
             rc = IX_NOTFND;
         }
     }
 
+    return rc;
+}
+
+/**
+ * Recreate a cursor for this bdbcursor after an unlock
+ * If the cursor was not positioned anywhere, return after cursor recreation.
+ * Otherwise, reposition the new cursor to the previous location; if row does
+ *not exist
+ * anymore, "how" tells you how to react:
+ * - BDB_SET: return IX_NOTFND (DB_SET like)
+ * - BDB_NEXT: try to position on a next row (DB_SET_RANGE like)
+ * - BDB_PREV: try to position on a previous row (LAST_DUP like) *
+ *
+ * RETURNS:
+ * - IX_FND       : found the previous record
+ * - IX_NOTFND    : could not found record, sitting on the next/prev record
+ *depeding on the direction
+ * - IX_PASTEOF   : no record found, neither a following one in the next/prev
+ *direction (for next/prev)
+ * - IX_EMPTY     : no rows
+ * - <0           : error, bdberr set
+ *
+ */
+static int bdb_cursor_relock_reposition(bdb_cursor_ifn_t *pcur_ifn,
+                                        cursor_tran_t *curtran, int how,
+                                        int *bdberr)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+    int rc = 0;
+
+    *bdberr = 0;
+    cur->curtran = curtran;
+
+    cur->invalidated = 0;
+
+    if (cur->rl) {
+        /* get cursor */
+        rc = cur->rl->lock(cur->rl, curtran, bdberr);
+        if (rc)
+            return rc;
+
+        /* if the cursor was not set anywhere,
+           no need to reposition anywhere */
+        if (cur->rl->outoforder_get(cur->rl))
+            return rc;
+
+        rc = bdb_cursor_reposition(pcur_ifn, how, bdberr);
+
+        if (cur->trak) {
+            logmsg(LOGMSG_USER, "Cur %p reposition returns %d\n", cur, rc);
+        }
+    }
     return rc;
 }
 
