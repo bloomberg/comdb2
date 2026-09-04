@@ -118,11 +118,17 @@ static inline int trigger_register_int(trigger_reg_t *t)
     trigger_info_t *info;
     time_t now = time(NULL);
     if ((info = hash_find(trigger_hash, t->spname)) == NULL) {
-add:    info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
+add:    info = malloc(sizeof(trigger_info_t) + (size_t)t->spname_len + 1);
+        if (info == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: malloc failed for sp:%.*s\n", __func__,
+                   t->spname_len, t->spname);
+            return CDB2_TRIG_ASSIGNED_OTHER;
+        }
         info->host = intern(trigger_hostname(t));
         info->trigger_cookie = t->trigger_cookie;
         info->hbeat = now;
-        strcpy(info->spname, t->spname);
+        memcpy(info->spname, t->spname, (size_t)t->spname_len);
+        info->spname[t->spname_len] = '\0';
         hash_add(trigger_hash, info);
         ctrace("TRIGGER:%s %016" PRIx64 " ASSIGNED\n", info->spname, info->trigger_cookie);
         return CDB2_TRIG_REQ_SUCCESS;
