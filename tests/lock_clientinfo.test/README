@@ -1,0 +1,22 @@
+Verify that comdb2_locks.client_id joins a lock back to the client that took it.
+
+The role says which table to join: 'R' locks join comdb2_connections, 'W' locks
+join comdb2_active_osqls.  client_id is derived locally on each side -- from the
+connection id for a read, from the session uuid for a write -- so the join works
+whether or not anything was sent over the wire.
+
+osql_send_clientinfo carries the client taskname and pid to the master, which is
+the only way comdb2_active_osqls can report argv0 and pid for a BPLOG row; the
+master already knows the origin host from the session.  With the tunable off
+those two columns are NULL and the join still works.
+
+'A' locks report no client_id: a replicant takes a transaction's locks up front,
+off the commit record, before any record naming a client is applied.
+
+comdb2_replication covers the replicant instead -- a row per thread applying,
+naming the client from the txn's log record (log_clientinfo) and the statement
+that thread is on.  Clustered runs only; a single node applies nothing.
+
+The last check flushes and restarts a node, so recovery has to read the
+clientinfo record back through handle_clientinfo -- a path none of the
+live-state checks touch.
