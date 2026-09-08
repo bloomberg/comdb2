@@ -166,6 +166,14 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
   if (pCur->notDurable || pCur->hitLast)
       return SQLITE_OK;
 
+  /* We've already returned maxLsn: don't block for a successor that Eof would
+   * discard anyway. */
+  if (pCur->openCursor && pCur->maxLsn.file > 0 &&
+          log_compare(&pCur->curLsn, &pCur->maxLsn) >= 0) {
+      pCur->hitLast = 1;
+      return SQLITE_OK;
+  }
+
   if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
       pCur->hitLast = 1;
       return SQLITE_OK;
