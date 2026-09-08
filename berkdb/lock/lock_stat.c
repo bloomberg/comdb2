@@ -635,6 +635,33 @@ static char *status_to_str(int lpstatus)
 
 #include "tohex.h"
 
+static char fp_role_to_char(u_int8_t role)
+{
+	switch (role) {
+	case BB_BERKDB_FP_ROLE_SQL:
+		return 'R';
+	case BB_BERKDB_FP_ROLE_WRITE:
+		return 'W';
+	case BB_BERKDB_FP_ROLE_APPLY:
+		return 'A';
+	default:
+		return 0;
+	}
+}
+
+/* An all-zero fingerprint is the "not known" sentinel -- see stamp_fingerprint()
+ * in lock.c -- so report it to the caller as no fingerprint at all. */
+static const unsigned char *fingerprint_or_null(const struct __db_lock *lp)
+{
+	unsigned i;
+
+	for (i = 0; i < sizeof(lp->fingerprint); i++) {
+		if (lp->fingerprint[i] != 0)
+			return lp->fingerprint;
+	}
+	return NULL;
+}
+
 static int
 __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 		collect_locks_f func, void *arg)
@@ -745,7 +772,8 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 	if (namep && memcmp(namep, "XXX.", 4) == 0)
 		namep += 4;
 
-	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype, lp->stackid);
+	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype, lp->stackid,
+		fingerprint_or_null(lp), fp_role_to_char(lp->fp_role));
 	if (hexdump)
 		free(hexdump);
 	return 0;
