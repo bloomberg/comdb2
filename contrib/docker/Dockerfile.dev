@@ -78,3 +78,5 @@ EXPOSE 5105
 COPY contrib/docker/standalone-entrypoint.sh /standalone-entrypoint.sh
 RUN chmod +x /standalone-entrypoint.sh
 ENTRYPOINT ["/standalone-entrypoint.sh"]
+
+# No CMD: it would leak into the compose services, which override entrypoint only.
