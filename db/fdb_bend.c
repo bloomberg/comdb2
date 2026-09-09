@@ -186,9 +186,8 @@ void fdb_svc_destroy(void)
     Pthread_rwlock_destroy(&center->cursors_rwlock);
 }
 
-svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
-                                  int version, int flags, int seq,
-                                  struct sqlclntstate **pclnt)
+svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int version, int flags, int seq,
+                                  const char *srcname, int srcpid, struct sqlclntstate **pclnt)
 {
     struct sqlclntstate *tran_clnt;
     svc_cursor_t *cur;
@@ -252,6 +251,15 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
 
         /* link the guy in the transaction */
         listc_abl(&trans->cursors, cur);
+
+        if (srcname && srcname[0] && !tran_clnt->conninfo.pename[0]) {
+            strncpy(tran_clnt->conninfo.pename, srcname, sizeof(tran_clnt->conninfo.pename));
+            tran_clnt->conninfo.pename[sizeof(tran_clnt->conninfo.pename) - 1] = '\0';
+            tran_clnt->conninfo.pid = srcpid;
+            /* pename is 8 bytes; keep the untruncated uri for access checks */
+            free(tran_clnt->argv0);
+            tran_clnt->argv0 = strdup(srcname);
+        }
 
         /* ok, we got the transaction begin, we should wait for the proper
            sequence number
