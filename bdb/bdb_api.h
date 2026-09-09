@@ -2290,12 +2290,6 @@ int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
                              unsigned long long val, int *bdberr);
 
 /**
- *  Delete the TABLE VERSION ENTRY for table "bdb_state->name"
- *
- */
-int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
-                             int *bdberr);
-/**
  *  Select the TABLE VERSION ENTRY for table "bdb_state->name".
  *  If an entry doesn't exist, version 0 is returned
  *

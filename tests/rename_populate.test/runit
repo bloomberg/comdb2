@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Verify table rename correctness:
-# 1) bdb_rename_table_metadata must delete orphaned table_version entries so
-#    a fresh table created with the old name starts at version 0.
+# 1) bdb_rename_table_metadata must preserve (not delete) the old name's
+#    table_version entry as a tombstone, so that a table later created (or
+#    renamed into) that vacated name never reuses a version number that was
+#    already handed out to a previous incarnation of that name -- in
+#    particular it must never reset back to 0.
 # 2) reload_rename_table (replicant scdone callback) must refresh file versions
 #    so dtavers[]/ixvers[] reflect the renamed files.
 
@@ -60,18 +63,20 @@ echo "Step 5: Rename t2 back to t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2 rename to t1" || failexit "rename t2→t1"
 assertcnt t1 5 "t1 should have 5 rows after rename-back"
 
-# Step 6: Create a FRESH t2 — this is where the bug manifests.
-# The old table_version entry for "t2" (orphaned by step 5's rename)
-# is still in LLMETA. The new table picks it up instead of starting at 0.
+# Step 6: Create a FRESH t2. The name "t2" was previously used and renamed
+# away from twice (steps 3 and 5), so a tombstone table_version entry for
+# "t2" should still be sitting in LLMETA. The new table must pick that up
+# instead of resetting to 0 -- resetting to 0 would mean re-issuing a version
+# number ("0") that a prior incarnation of "t2" already reported to clients.
 echo "Step 6: Create fresh t2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2(id int)" || failexit "create fresh t2"
 
 v2=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t2')")
-echo "  Fresh t2 table_version = $v2 (should be 0 for a brand-new table)"
+echo "  Fresh t2 table_version = $v2 (must not be 0 -- name 't2' was already used)"
 
-if [ "$v2" != "0" ]; then
-    echo "  BUG: fresh t2 inherited stale table_version $v2 from orphaned LLMETA entry"
-    failexit "Fresh table t2 has stale table_version $v2 instead of 0"
+if [ "$v2" == "0" ]; then
+    echo "  BUG: fresh t2 reset to version 0 even though 't2' is a reused name"
+    failexit "Fresh table t2 has version 0 despite reusing a previously-versioned name"
 fi
 
 # Step 7: Verify data integrity
@@ -89,5 +94,36 @@ if [ -n "$CLUSTER" ]; then
         echo "  Node $node: t2 version=$v"
     done
 fi
+
+# Step 9: The exact reuse scenario -- create, alter (bumps version), rename
+# away, then create a brand-new table with the original name. The new table
+# must continue from (at least) the version the original table last had, and
+# must never come back down to 0.
+echo "Step 9: create/alter/rename/recreate must not reset table_version to 0"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3(id int)" || failexit "create t3"
+v3_created=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t3')")
+echo "  t3 version after create = $v3_created"
+[ "$v3_created" != "0" ] && failexit "freshly created t3 should start at version 0, got $v3_created"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t3 add column val int null" || failexit "alter t3"
+v3_altered=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t3')")
+echo "  t3 version after alter = $v3_altered"
+if [ "$v3_altered" -le "$v3_created" ]; then
+    failexit "alter should have bumped t3's version above $v3_created, got $v3_altered"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t3 rename to t3_renamed" || failexit "rename t3->t3_renamed"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3(id int)" || failexit "recreate t3 under the original name"
+v3_recreated=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t3')")
+echo "  t3 version after rename+recreate = $v3_recreated"
+
+if [ "$v3_recreated" == "0" ] || [ "$v3_recreated" -le "$v3_altered" ]; then
+    echo "  BUG: recreated t3 reused a stale/lower version number"
+    failexit "recreated t3 has version $v3_recreated, expected something greater than $v3_altered (must not reuse an old version number)"
+fi
+
+assertcnt t3 0 "recreated t3 should be empty"
 
 echo "Success"
