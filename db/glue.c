@@ -42,6 +42,7 @@
 #include <str0.h>
 #include <pthread.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <build/db.h>
 #include <portmuxapi.h>
 #include <bb_oscompat.h>
@@ -3452,11 +3453,111 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
        doesn't need an ack */
 }
 
+/*
+ * Validate a raw NET_TRIGGER_REGISTER / NET_TRIGGER_UNREGISTER payload against
+ * the number of bytes actually received (dtalen) before any parsing happens.
+ *
+ * The packet is left untouched: trigger_register()/trigger_unregister() will
+ * perform trigger_reg_to_cpu() later, so we only read the network-order
+ * spname_len into a temporary and must not byteswap the packet here.
+ */
+static int valid_trigger_reg_payload(const void *dtap, int dtalen)
+{
+    const size_t name_off = offsetof(trigger_reg_t, spname);
+    const size_t len_off = offsetof(trigger_reg_t, spname_len);
+
+    if (dtap == NULL || dtalen < 0 || (size_t)dtalen < name_off)
+        return 0;
+
+    const uint8_t *buf = dtap;
+
+    /*
+     * Do not mutate the packet here.
+     * trigger_register() will perform trigger_reg_to_cpu() later.
+     */
+    uint32_t net_spname_len;
+    memcpy(&net_spname_len, buf + len_off, sizeof(net_spname_len));
+
+    const size_t spname_len = ntohl(net_spname_len);
+
+    /*
+     * MAX_SPNAME is the existing protocol/application bound.
+     * It also causes values such as 0xffffffff to be rejected.
+     */
+    if (spname_len > MAX_SPNAME)
+        return 0;
+
+    /*
+     * Bytes available beginning with spname.
+     */
+    size_t remaining = (size_t)dtalen - name_off;
+
+    /*
+     * Need spname_len bytes plus its terminating NUL.
+     *
+     * Writing this as >= avoids performing spname_len + 1
+     * before proving that addition is safe.
+     */
+    if (spname_len >= remaining)
+        return 0;
+
+    const char *spname = (const char *)(buf + name_off);
+
+    /*
+     * The encoded length excludes the terminating NUL.
+     *
+     * Require:
+     *
+     *   - no earlier NUL
+     *   - a NUL exactly at spname_len
+     *
+     * Therefore the declared length equals the bounded string length.
+     */
+    if (memchr(spname, '\0', spname_len) != NULL)
+        return 0;
+
+    if (spname[spname_len] != '\0')
+        return 0;
+
+    /*
+     * Remove the complete procedure name, including NUL.
+     */
+    remaining -= spname_len + 1;
+
+    /*
+     * Hostname has to contain at least its terminating NUL.
+     */
+    if (remaining == 0)
+        return 0;
+
+    const char *hostname = spname + spname_len + 1;
+
+    /*
+     * Bound the hostname as well. trigger_register_int() intern()s it, and
+     * interned strings are never released, so an unbounded hostname would let
+     * a single malformed message retain memory permanently. NI_MAXHOST is the
+     * bound TRIGGER_REG_MAX already assumes.
+     */
+    const char *hostname_nul = memchr(hostname, '\0', remaining);
+
+    if (hostname_nul == NULL || (size_t)(hostname_nul - hostname) >= NI_MAXHOST)
+        return 0;
+
+    return 1;
+}
+
 static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
                                  struct interned_string *frominterned,
                                  int usertype, void *dtap, int dtalen,
                                  uint8_t _)
 {
+    if (!valid_trigger_reg_payload(dtap, dtalen)) {
+        logmsg(LOGMSG_ERROR,
+               "%s: invalid trigger registration payload length %d\n",
+               __func__, dtalen);
+        return;
+    }
+
     int rc = trigger_register(dtap);
     if (hndl)
         net_ack_message(hndl, rc);
@@ -3467,6 +3568,13 @@ static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
                                    int usertype, void *dtap, int dtalen,
                                    uint8_t _)
 {
+    if (!valid_trigger_reg_payload(dtap, dtalen)) {
+        logmsg(LOGMSG_ERROR,
+               "%s: invalid trigger unregister payload length %d\n",
+               __func__, dtalen);
+        return;
+    }
+
     int rc = trigger_unregister(dtap);
     if (hndl)
         rc = net_ack_message(hndl, rc);
