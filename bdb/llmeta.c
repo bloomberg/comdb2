@@ -8898,86 +8898,6 @@ int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 /**
- *  Delete the TABLE VERSION ENTRY for table "bdb_state->name"
- *
- */
-int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
-                             int *bdberr)
-{
-    struct llmeta_sane_table_version schema_version;
-    char *tblname = bdb_state->name;
-    unsigned long long version;
-    char key[LLMETA_IXLEN] = {0};
-    uint8_t *p_buf, *p_buf_end;
-    int len;
-    int rc;
-
-    if (unlikely(!tran || !tblname || !bdberr)) {
-        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
-        if (bdberr)
-            *bdberr = BDBERR_BADARGS;
-        return -1;
-    }
-
-    /*fail if the db isn't open*/
-    if (unlikely(!llmeta_bdb_state)) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
-                        "you must run bdb_llmeta_open\n",
-                __func__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-    if (unlikely(bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE)) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
-        *bdberr = BDBERR_BADARGS;
-        return -1;
-    }
-
-    /* input validation */
-    len = strlen(bdb_state->name) + 1;
-    if (unlikely(len > sizeof(schema_version.tblname))) {
-        logmsg(LOGMSG_ERROR, "%s: tablename too long %zu\n", __func__,
-               strlen(bdb_state->name));
-        *bdberr = BDBERR_BADARGS;
-        return -1;
-    }
-
-    /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
-    if (rc) {
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    /* add the key type */
-    bzero(&schema_version, sizeof(schema_version));
-    schema_version.file_type = LLMETA_TABLE_VERSION;
-    strncpy0(schema_version.tblname, bdb_state->name,
-             sizeof(schema_version.tblname));
-
-    p_buf = (uint8_t *)key;
-    p_buf_end = p_buf + LLMETA_IXLEN;
-
-    /* put onto buffer */
-    if (!(p_buf = llmeta_sane_table_version_put(&schema_version, p_buf,
-                                                p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_sane_table_version_put returns NULL\n",
-                __func__);
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    /* delete old entry */
-    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
-    if ((rc || *bdberr != BDBERR_NOERROR) && *bdberr != BDBERR_DEL_DTA) {
-        return rc;
-    }
-
-    *bdberr = BDBERR_NOERROR;
-    return 0;
-}
-
-/**
  *  Select the TABLE VERSION ENTRY for table "bdb_state->name".
  *  If an entry doesn't exist, version 0 is returned
  *
@@ -11186,10 +11106,10 @@ int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
     if (rc)
         return rc;
 
-    /* delete old name's table_version entry */
-    rc = bdb_table_version_delete(bdb_state, tran, bdberr);
-    if (rc)
-        return rc;
+    /* Note: the old name's table_version entry is intentionally left in
+     * place as a tombstone (mirroring drop table), so that if a table is
+     * later created with the vacated old name, its version does not reset
+     * to 0. */
 
     /* rename files finally, with new versions */
     rc = bdb_rename_files(bdb_state, tran, newname, bdberr);
