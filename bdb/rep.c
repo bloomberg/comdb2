@@ -1363,7 +1363,13 @@ elect_again:
                         (!done) ? " (nop)" : "");
                 if (rc != 0) {
                     logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
-                    exit(1);
+                    /*
+                     * A regular exit() races with atexit handlers installed by libraries.  A
+                     * normal exit waits for requests to drain first, and this invokes those atexit
+                     * handlers immediately while requests are in flight.  So just exit unconditionally
+                     * without atexit handlers.
+                     */
+                    _exit(1);
                 }
                 Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
                 bdb_state->repinfo->in_election = 0;

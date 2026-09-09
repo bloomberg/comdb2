@@ -5270,8 +5270,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
 
     /* If this node is rtcpu'd off don't upgrade. */
     if ((bdb_state->callback->nodeup_rtn) &&
-        !(bdb_state->callback->nodeup_rtn(bdb_state,
-                                          bdb_state->repinfo->myhost))) {
+        !(bdb_state->callback->nodeup_rtn(bdb_state, bdb_state->repinfo->myhost))) {
         /* Make sure that we will allow ourselves to upgrade, and that we won't
            transfer our mastership immediately. */
         if (bdb_state->attr->allow_offline_upgrades) {
@@ -5279,8 +5278,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
                             "'allow_offline_upgrades' is true.\n",
                     __func__);
         } else {
-            logmsg(LOGMSG_WARN, "%s: not upgrading because I am rtcpu'd.\n",
-                    __func__);
+            logmsg(LOGMSG_WARN, "%s: not upgrading because I am rtcpu'd.\n", __func__);
             return -1;
         }
     }
