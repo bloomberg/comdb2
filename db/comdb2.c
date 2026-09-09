@@ -267,6 +267,7 @@ int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
 int gbl_reject_osql_mismatch = 1;
 int gbl_abort_on_clear_inuse_rqid = 1;
+int gbl_abort_on_dirty_ireq_release = 0;
 int gbl_archive_on_init = 1;
 
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */

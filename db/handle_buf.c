@@ -60,6 +60,22 @@ enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
 
 static pool_t *p_reqs; /* request pool */
 
+/* ireq state that survives recycling lives in region 2, which no init path
+ * bzeroes, so fresh pool memory has to start out zeroed for
+ * init_ireq_sc_state_once() to be able to tell a new block from a reused one */
+static void *ireq_pool_malloc(size_t sz)
+{
+    return calloc(1, sz);
+}
+
+/* return an ireq to the pool, making sure it is not carrying schema change
+ * state over to whoever picks it up next */
+static void release_ireq_to_pool(struct ireq *iq)
+{
+    check_ireq_sc_state_clean(iq);
+    pool_relablk(p_reqs, iq);
+}
+
 struct dbq_entry_t {
     LINKC_T(struct dbq_entry_t) qlnk;
     LINKC_T(struct dbq_entry_t) rqlnk;
@@ -178,7 +194,7 @@ int thd_init(void)
         logmsg(LOGMSG_ERROR, "thd_init:failed thd pool init");
         return -1;
     }
-    p_reqs = pool_setalloc_init(sizeof(struct ireq), 0, malloc, free);
+    p_reqs = pool_setalloc_init(sizeof(struct ireq), 0, ireq_pool_malloc, free);
     if (p_reqs == 0) {
         logmsg(LOGMSG_ERROR, "thd_init:failed req pool init");
         return -1;
@@ -642,7 +658,7 @@ void *thd_req(void *vthd)
 #if 0
             fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
 #endif
-            pool_relablk(p_reqs, thd->iq); /* this request is done, so release
+            release_ireq_to_pool(thd->iq); /* this request is done, so release
                                             * resource. */
             /* get next item off hqueue */
             nxtrq = (struct dbq_entry_t *)listc_rtl(&q_reqs);
@@ -803,7 +819,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                     }
                 }
                 if (!iq->ipc_sndbak) {
-                    pool_relablk(p_reqs, iq);
+                    release_ireq_to_pool(iq);
                     iq = NULL;
                 }
             }
@@ -814,7 +830,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
         iq->ipc_sndbak(iq, rc, iq->p_buf_out_end - iq->p_buf_out_start);
         LOCK(&lock)
         {
-            pool_relablk(p_reqs, iq);
+            release_ireq_to_pool(iq);
         }
         UNLOCK(&lock);
 
@@ -858,7 +874,7 @@ static int reterr_withfree(struct ireq *iq, int rc)
 #if 0
            fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-            pool_relablk(p_reqs, iq);
+            release_ireq_to_pool(iq);
         }
         UNLOCK(&lock);
 
@@ -946,6 +962,9 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, COMDB2BUF *sb,
     /* set up request */
     const size_t len = sizeof(*iq) - offsetof(struct ireq, region3);
     bzero(&iq->region3, len);
+
+    /* pool blocks are recycled; only the first user of this block does the work */
+    init_ireq_sc_state_once(iq);
 
     iq->corigin[0] = '\0';
     iq->debug_buf[0] = '\0';
@@ -1137,7 +1156,7 @@ int handle_buf_main2(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
             thd_req_inline(iq);
             LOCK(&lock)
             {
-                pool_relablk(p_reqs, iq);
+                release_ireq_to_pool(iq);
             }
             UNLOCK(&lock);
 
@@ -1373,7 +1392,10 @@ int handle_buf_main(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
 
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq)
 {
-    LOCK(&lock) { pool_relablk(p_reqs, iq); }
+    LOCK(&lock)
+    {
+        release_ireq_to_pool(iq);
+    }
     UNLOCK(&lock);
 }
 

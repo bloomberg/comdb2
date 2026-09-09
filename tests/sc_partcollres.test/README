@@ -1,0 +1,39 @@
+Tests that ALTER TABLE ... PARTITIONED BY NONE (partition collapse) resumes
+correctly after the master is killed mid-way through the schema change.
+
+Scenario 1 — basic collapse resume:
+  Partition a fresh table with 3 shards, populate, collapse with scdelay,
+  kill master, restart, verify all rows present and no partition metadata.
+
+Scenario 2 — collapse resume after a prior ALTER TABLE:
+  Before collapsing, run an ALTER TABLE that completes (which sets db->plan
+  to NULL via sc_alter_table.c:1116 after promotion). Then collapse with a
+  kill mid-way. Tests the USE_NEWDB_FOR_SC_GENIDS fix: without it,
+  is_dta_being_rebuilt(db->plan=NULL) always returns false, causing resume
+  to read sc_genids from llmeta even when they are stored in the new btree,
+  resulting in genid=0 for all stripes and duplicate-key errors on restart.
+
+Scenario 3 — two concurrent partition collapses of different kinds, resume:
+  Launches two simultaneous collapses in the background:
+    t3: created by "CREATE TABLE ... PARTITIONED BY TIME" (non-aliased,
+        first shard is a separate $0_XXXX table; collapse creates a new
+        target table and moves all shard rows into it).
+    t4: created by "CREATE TABLE + ALTER TABLE ... PARTITIONED BY TIME"
+        (aliased, the original table is shard 0; collapse reuses it as the
+        target and moves remaining shards into it).
+  Both are killed mid-way through the first shard.  On restart each gets its
+  own scl entry and its own _partitioned_table_merge_resume_thd thread, which
+  run concurrently on the same iq — the scenario the sc_pending_mtx race fix
+  (commit 572faf76e) protects.  This exercises the logic that iterates over
+  multiple partition schema changes across concurrent resume threads.
+
+Scenario 4 — transactional multi-DDL partition collapse, resume:
+  Sends BEGIN; ALTER TABLE t5 PARTITIONED BY NONE; ALTER TABLE t6 PARTITIONED
+  BY NONE; COMMIT as four separate cdb2sql calls.  The first three return
+  immediately (cdb2api line-6391 optimization for non-read in-transaction
+  statements).  The final "commit" blocks (is_commit=1) waiting for the server
+  to finish bplog_schemachange.  Master is killed during the blocking commit.
+  On restart the new master finds scl entries for both tables in llmeta and
+  resumes both collapses.  This tests the transactional DDL resume path
+  (bplog_schemachange → resume_sc_multiddl_txn) as opposed to the standalone
+  concurrent collapse path tested in scenario 3.

@@ -196,17 +196,94 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
  * If success it returns 0, if failure it returns <0 */
 int gbl_debug_stall_in_oplog_seed = 0;
 
-int init_sc_genids(struct dbtable *db, unsigned long long **p_sc_genids, struct schema_change_type *s)
+/* Called when a resuming schema change had to create its temp btree from
+ * scratch because none was found on disk.  Every row converted by an alter
+ * lives in that temp btree, so "no temp btree" means nothing was converted and
+ * any high genid still recorded in llmeta is stale by construction.  Resuming
+ * from a stale mark would make convert_all_records skip every row at or below
+ * it and silently lose data, so report loudly and reset to 0 (start over).
+ *
+ * Marks that are absent (or already 0) are the normal case for a schema change
+ * that was killed before it ever started; those are reported as nothing.
+ *
+ * Returns 0 on success (whether or not anything had to be reset), -1 on error.
+ */
+int reset_stale_sc_genids(struct schema_change_type *s, const char *tablename, int stripes)
+{
+    int bdberr, stripe;
+    int stale = 0;
+
+    for (stripe = 0; stripe < stripes; ++stripe) {
+        unsigned long long genid = 0ULL;
+
+        if (bdb_get_high_genid(tablename, stripe, &genid, &bdberr) < 0 || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: failed to read high genid for %s stripe %d bdberr %d\n", __func__, tablename,
+                   stripe, bdberr);
+            sc_errf(s, "failed to read high genid for stripe %d\n", stripe);
+            return -1;
+        }
+
+        if (genid != 0ULL) {
+            logmsg(LOGMSG_WARN,
+                   "%s: %s stripe %d recorded sc_genid 0x%016llx but no temp btree exists; "
+                   "resetting to 0 and restarting the conversion\n",
+                   __func__, tablename, stripe, genid);
+            sc_errf(s, "  > [%s] stale stripe %2d sc_genid 0x%016llx reset to 0\n", tablename, stripe, genid);
+            stale = 1;
+        }
+    }
+
+    if (!stale)
+        return 0; /* nothing recorded - a clean start from the beginning */
+
+    logmsg(LOGMSG_WARN, "%s: clearing stale sc_genids for %s over %d stripes\n", __func__, tablename, stripes);
+
+    if (bdb_clear_high_genid(NULL /*input_trans*/, tablename, stripes, &bdberr) || bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to clear stale high genids for %s bdberr %d\n", __func__, tablename, bdberr);
+        sc_errf(s, "failed to clear stale high genids\n");
+        return -1;
+    }
+
+    /* Read the marks back: the whole point of the reset is that the conversion
+     * starts at 0, and a mark that survived the clear would silently skip every
+     * row at or below it.  Fail the schema change rather than convert a subset.
+     */
+    for (stripe = 0; stripe < stripes; ++stripe) {
+        unsigned long long genid = 0ULL;
+
+        if (bdb_get_high_genid(tablename, stripe, &genid, &bdberr) < 0 || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: failed to re-read high genid for %s stripe %d bdberr %d\n", __func__, tablename,
+                   stripe, bdberr);
+            sc_errf(s, "failed to verify high genid reset for stripe %d\n", stripe);
+            return -1;
+        }
+
+        if (genid != 0ULL) {
+            logmsg(LOGMSG_ERROR, "%s: %s stripe %d still has sc_genid 0x%016llx after reset\n", __func__, tablename,
+                   stripe, genid);
+            sc_errf(s, "stripe %d sc_genid 0x%016llx survived the reset\n", stripe, genid);
+            return -1;
+        }
+    }
+
+    logmsg(LOGMSG_WARN, "%s: %s sc_genids verified 0 on all %d stripes\n", __func__, tablename, stripes);
+
+    return 0;
+}
+
+int init_sc_genids(struct schema_change_type *s, const char *tablename, int stripes, bdb_state_type *handle,
+                   unsigned long long **p_sc_genids)
 {
     void *rec;
     int orglen, bdberr, stripe;
     unsigned long long *sc_genids = *p_sc_genids;
 
+    /* TODO: NOTE: maybe skip this if this is a resume for a merge, in which case we already collected them? */
+
     if (sc_genids == NULL) {
         sc_genids = malloc(sizeof(unsigned long long) * MAXDTASTRIPE);
         if (sc_genids == NULL) {
-            logmsg(LOGMSG_ERROR,
-                   "init_sc_genids: failed to allocate sc_genids\n");
+            logmsg(LOGMSG_ERROR, "%s: failed to allocate sc_genids\n", __func__);
             return -1;
         }
     }
@@ -217,18 +294,15 @@ int init_sc_genids(struct dbtable *db, unsigned long long **p_sc_genids, struct 
     if (!s->resume) {
         /* if we may have to resume this schema change, clear the progress in
          * llmeta */
-        if (bdb_clear_high_genid(NULL /*input_trans*/, db->tablename,
-                                 db->dtastripe, &bdberr) ||
-            bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "init_sc_genids: failed to clear high "
-                                 "genids\n");
+        if (bdb_clear_high_genid(NULL /*input_trans*/, tablename, stripes, &bdberr) || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: failed to clear high genids\n", __func__);
             return -1;
         }
 
         unsigned long long opgenid = 0ULL;
         if (s->preserve_oplog_count >= 0) {
             logmsg(LOGMSG_INFO, "Preserve %d oplog seqnos\n", s->preserve_oplog_count);
-            assert(strcmp(db->tablename, "comdb2_oplog") == 0);
+            assert(strcmp(tablename, "comdb2_oplog") == 0);
             long long seqno = 0LL;
             int rc = get_next_seqno(NULL, NULL, &seqno);
             if (rc == IX_FND) {
@@ -264,39 +338,34 @@ int init_sc_genids(struct dbtable *db, unsigned long long **p_sc_genids, struct 
     rec = malloc(orglen);
 
     /* get max genid for each stripe */
-    for (stripe = 0; stripe < db->dtastripe; ++stripe) {
+    for (stripe = 0; stripe < stripes; ++stripe) {
         int rc;
         uint8_t ver;
         int dtalen = orglen;
 
         /* get this stripe's newest genid and store it in sc_genids,
          * if we have been rebuilding the data files we can grab the genids
-         * straight from there, otherwise we look in the llmeta table */
-        if (is_dta_being_rebuilt(db->plan)) {
-            rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
-                                       dtalen, &sc_genids[stripe], &ver,
-                                       &bdberr);
+         * straight from there, otherwise we look in the llmeta table
+         * NOTE: if this is a partition merge, the newdb does not have the required per shard sc_genids info
+         */
+        if (handle) {
+            rc = bdb_find_newest_genid(handle, NULL, stripe, rec, &dtalen, dtalen, &sc_genids[stripe], &ver, &bdberr);
             if (rc == IX_FND)
-                logmsg(LOGMSG_DEBUG, "%s: LOOKING FOR %s STRIPE %d found genid %llx (%lld)\n", __func__, db->tablename,
+                logmsg(LOGMSG_DEBUG, "%s: LOOKING FOR %s STRIPE %d found genid %llx (%lld)\n", __func__, tablename,
                        stripe, sc_genids[stripe], sc_genids[stripe]);
             if (rc == 1) {
-                logmsg(LOGMSG_DEBUG, "%s: LOOKING FOR %s STRIPE %d reset to genid 0\n", __func__, db->tablename,
-                       stripe);
+                logmsg(LOGMSG_DEBUG, "%s: LOOKING FOR %s STRIPE %d reset to genid 0\n", __func__, tablename, stripe);
                 sc_genids[stripe] = 0ULL;
             }
         } else {
-            rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
-                                    &bdberr);
+            rc = bdb_get_high_genid(tablename, stripe, &sc_genids[stripe], &bdberr);
         }
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
-            sc_errf(s, "init_sc_genids: failed to find newest genid for "
-                       "stripe: %d\n",
-                    stripe);
+            sc_errf(s, "%s: failed to find newest genid for stripe: %d\n", __func__, stripe);
             free(rec);
             return -1;
         }
-        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n", db->tablename,
-                  stripe, sc_genids[stripe]);
+        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n", tablename, stripe, sc_genids[stripe]);
     }
 
     free(rec);
@@ -818,9 +887,9 @@ static int convert_record(struct convert_record_data *data)
                 usellmeta = 1; /* dta is not being built */
             }
             rc = 0;
-            if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
+            if (usellmeta && (!is_dta_being_rebuilt(data->to->plan) || data->s->partition.type == PARTITION_MERGE)) {
                 int bdberr;
-                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename, data->stripe, -1ULL, &bdberr, __func__,
+                rc = bdb_set_high_genid_stripe(NULL, data->from->tablename, data->stripe, -1ULL, &bdberr, __func__,
                                                __LINE__);
                 if (rc != 0) rc = -1; // convert_record expects -1
                 sc_printf(data->s, "[%s] finished stripe %d, setting genid %llx, rc %d\n", data->from->tablename,
@@ -1080,11 +1149,10 @@ static int convert_record(struct convert_record_data *data)
 
     /* if we have been rebuilding the data files we're gonna
        call bdb_get_high_genid to resume, not look at llmeta */
-    if (usellmeta && !is_dta_being_rebuilt(data->to->plan) &&
-        (data->nrecs %
-         BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
+    if (usellmeta && (!is_dta_being_rebuilt(data->to->plan) || data->s->partition.type == PARTITION_MERGE) &&
+        (data->nrecs % BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid, &bdberr, __func__, __LINE__);
+        rc = bdb_set_high_genid(data->trans, data->from->tablename, genid, &bdberr, __func__, __LINE__);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
@@ -2715,9 +2783,9 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         }
     }
 
-    if (!is_dta_being_rebuilt(data->to->plan)) {
+    if (!is_dta_being_rebuilt(data->to->plan) || data->s->partition.type == PARTITION_MERGE) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid, &bdberr, __func__, __LINE__);
+        rc = bdb_set_high_genid(data->trans, data->from->tablename, genid, &bdberr, __func__, __LINE__);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
