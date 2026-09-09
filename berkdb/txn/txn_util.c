@@ -1308,10 +1308,10 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
  * handled in bdb_recover_blkseq.
  *
  * PUBLIC: int __txn_recover_prepared __P((DB_ENV *, DB_TXN *txnid,
- * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *, u_int32_t));
+ * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
  */
 int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq_key,
-		coordinator_gen, coordinator_name, coordinator_tier, lflags)
+		coordinator_gen, coordinator_name, coordinator_tier)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	const char *dist_txnid;
@@ -1321,7 +1321,6 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 	u_int32_t coordinator_gen;
 	DBT *coordinator_name;
 	DBT *coordinator_tier;
-	u_int32_t lflags;
 {
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
@@ -1395,8 +1394,6 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 
 	memcpy(p->coordinator_tier.data, coordinator_tier->data, coordinator_tier->size);
 	p->coordinator_tier.size = coordinator_tier->size;
-
-	p->lflags = lflags;
 
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((fnd = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
@@ -1576,7 +1573,7 @@ static int __collect_ddl_prepared_cb(void *obj, void *arg)
 	struct __collect_ddl_disttxns *collect = (struct __collect_ddl_disttxns *)arg;
 	int ret;
 
-	if (!(p->lflags & DB_TXN_SCHEMA_LOCK))
+	if (!F_ISSET(p, DB_DIST_SCHEMA_LK))
 		return 0;
 	if (F_ISSET(p, DB_DIST_HAVELOCKS | DB_DIST_COMMITTED | DB_DIST_ABORTED))
 		return 0;

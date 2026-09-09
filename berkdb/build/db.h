@@ -1144,7 +1144,6 @@ struct __db_txn_prepared {
 	char *dist_txnid;
 	u_int64_t utxnid;
 	u_int32_t flags;
-	u_int32_t lflags;
 	DB_LSN prepare_lsn;
 	DB_LSN prev_lsn;
 	DB_LSN begin_lsn;

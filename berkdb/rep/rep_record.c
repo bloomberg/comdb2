@@ -3865,7 +3865,7 @@ gap_check:		use_range = 0;
 		if ((ret = __txn_recover_prepared(dbenv, dist_prepare_args->txnid, dist_txnid,
 			&rp->lsn, &dist_prepare_args->begin_lsn, &dist_prepare_args->blkseq_key,
 			dist_prepare_args->coordinator_gen, &dist_prepare_args->coordinator_name,
-			&dist_prepare_args->coordinator_tier, dist_prepare_args->lflags)) != 0) {
+			&dist_prepare_args->coordinator_tier)) != 0) {
 			goto err;
 		}
 		__os_free(dbenv, dist_prepare_args);
