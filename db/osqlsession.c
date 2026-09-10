@@ -48,8 +48,10 @@ struct sess_impl {
     unsigned terminate : 1;  /* Set when this session is about to be terminated */
     unsigned socket : 1;     /* Set if request comes over socket instead of net */
     unsigned embedded_sql : 1; /* Set if sql is part of session malloc object */
+    unsigned io_complete : 1;  /* socket: writer thread done with target->sb */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
+    pthread_cond_t io_cond; /* socket: signalled when io_complete is set */
 };
 
 static void _destroy_session(osql_sess_t **psess);
@@ -147,9 +149,29 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
         }
     }
 
-    while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
-        poll(NULL, 0, 10);
+    Pthread_mutex_lock(&sess->impl->mtx);
+
+    /* For a sockbplog session the reply goes back over the appsock buffer
+       (target->sb), which the appsock owns and frees.  By the time we get here
+       the writer thread is done with that buffer, so wake the appsock (waiting
+       in osql_sess_socket_wait_io) to release its client ref and let it free
+       the buffer -- only after this point, so it is never freed mid-reply. */
+    if (is_sess_from_sockbplog(sess)) {
+        sess->impl->io_complete = 1;
+        Pthread_cond_signal(&sess->impl->io_cond);
     }
+
+    /* Wait for the clients to go away before destroying the session.  A client
+    drops its ref by decrementing the counter under this mutex and unlocking
+    right after, so the counter reads zero a moment before that thread is
+    actually done touching the session; leaving this loop with the mutex held
+    is what makes it safe to destroy the mutex below. */
+    while (sess->impl->clients > 0) {
+        Pthread_mutex_unlock(&sess->impl->mtx);
+        poll(NULL, 0, 10);
+        Pthread_mutex_lock(&sess->impl->mtx);
+    }
+    Pthread_mutex_unlock(&sess->impl->mtx);
 
     if (sess->tran)
         osql_bplog_close(&sess->tran);
@@ -181,6 +203,7 @@ static void _destroy_session(osql_sess_t **psess)
     free(sess->snap_info);
 
     Pthread_mutex_destroy(&sess->impl->mtx);
+    Pthread_cond_destroy(&sess->impl->io_cond);
     Pthread_mutex_destroy(&sess->participant_lk);
     if (sess->coordinator_dbname) {
         free(sess->coordinator_dbname);
@@ -263,6 +286,30 @@ int osql_sess_remclient(osql_sess_t *psess)
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
+}
+
+void osql_sess_socket_wait_io(osql_sess_t *psess)
+{
+    sess_impl_t *sess = psess->impl;
+    /* Bound the wait: the writer replies in milliseconds; a long timeout only
+       trips on a genuine anomaly, where degrading to the old (rare) race beats
+       hanging the appsock thread forever. */
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 60;
+
+    Pthread_mutex_lock(&sess->mtx);
+    while (!sess->io_complete) {
+        if (pthread_cond_timedwait(&sess->io_cond, &sess->mtx, &ts) == ETIMEDOUT) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: timed out waiting for writer to release socket\n",
+                   __func__);
+            break;
+        }
+    }
+    Pthread_mutex_unlock(&sess->mtx);
+
+    osql_sess_remclient(psess);
 }
 
 /**
@@ -646,7 +693,14 @@ static int handle_buf_sorese(osql_sess_t *psess)
     counter to go to zero will skip it;  we need to decrement client counter
     here so that block processor can close the session */
 
-    osql_repository_put(psess);
+    /* socket: keep the appsock's client ref instead of dropping it here.  The
+    reply is written back over the appsock buffer (target->sb) by the block
+    processor; the appsock releases this ref in osql_sess_socket_wait_io() only
+    after that write is done, so the buffer is never freed mid-reply.  On the
+    failure paths below the ref is handed back to the appsock's error path. */
+    int is_socket = is_sess_from_sockbplog(psess);
+    if (!is_socket)
+        osql_repository_put(psess);
 
     /* create the buffer now */
     /* construct a block transaction */
@@ -654,7 +708,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
                                     strlen(psess->sql) + 1, psess->tzname,
                                     psess->type, psess->rqid, psess->uuid)) {
         logmsg(LOGMSG_ERROR, "bug in code %s:%d", __func__, __LINE__);
-        return rc;
+        return is_socket ? -1 : rc;
     }
 
     rc = handle_buf_main(thedb, NULL, p_buf, p_buf_end, debug,
@@ -664,7 +718,10 @@ static int handle_buf_sorese(osql_sess_t *psess)
     if (rc) {
         signal_replicant_error(&psess->target, psess->rqid, psess->uuid,
                                ERR_NOMASTER, "failed tp dispatch, queue full");
-        osql_sess_close(&psess, 1);
+        /* socket: leave the session for the appsock error path to close (it
+        still holds the client ref); net: close it here as before. */
+        if (!is_socket)
+            osql_sess_close(&psess, 1);
     }
     return rc;
 }
@@ -687,6 +744,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     /* init sync fields */
     Pthread_mutex_init(&sess->impl->mtx, NULL);
+    Pthread_cond_init(&sess->impl->io_cond, NULL);
 
     /* init participant mutex */
     Pthread_mutex_init(&sess->participant_lk, NULL);

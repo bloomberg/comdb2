@@ -64,6 +64,15 @@ int osql_sess_addclient(osql_sess_t *sess);
 int osql_sess_remclient(osql_sess_t *sess);
 
 /**
+ * sockbplog only: block until the writer thread has finished with the session's
+ * socket buffer (target->sb), then release the appsock's client ref.  The
+ * appsock must call this after a session is dispatched, before it lets the
+ * framework free the buffer -- otherwise the writer thread's reply writes into
+ * a freed buffer.  Bounded so a missed signal degrades instead of hanging.
+ */
+void osql_sess_socket_wait_io(osql_sess_t *sess);
+
+/**
  * Log query to the reqlog
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
