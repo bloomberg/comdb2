@@ -458,6 +458,11 @@ static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl, struct errstat
     if (!dts)
         return -1;
 
+    /* hndl is reused across the statements of a client transaction, and
+     * binding appends rather than replaces; drop the previous statement's
+     * parameters first */
+    cdb2_clearbindings(hndl);
+
     rc = set_bound_parameters(push, hndl, clnt->tzname, err, dts);
     if (rc) {
         free(dts);
