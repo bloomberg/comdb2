@@ -78,6 +78,9 @@ static pthread_key_t fingerprint_rtstats_key;
 #define FP_RTSTATS_MODE_WRITE	BB_BERKDB_FP_ROLE_WRITE
 #define FP_RTSTATS_MODE_APPLY	BB_BERKDB_FP_ROLE_APPLY
 static pthread_key_t fingerprint_rtstats_mode_key;
+/* Stamped onto locks as comdb2_locks.client_id; 0 is unknown. Opaque here --
+ * the db layer picks what it hashes, and the role says which table it joins. */
+static pthread_key_t fingerprint_rtstats_client_id_key;
 static int fingerprint_rtstats_inited = 0;
 
 void
@@ -85,6 +88,7 @@ bb_berkdb_fingerprint_rtstats_init(void)
 {
 	Pthread_key_create(&fingerprint_rtstats_key, NULL);
 	Pthread_key_create(&fingerprint_rtstats_mode_key, NULL);
+	Pthread_key_create(&fingerprint_rtstats_client_id_key, NULL);
 
 	Pthread_mutex_lock(&gbl_fingerprint_rtstats_hash_mu);
 	if (gbl_fingerprint_rtstats_hash == NULL)
@@ -183,6 +187,16 @@ bb_berkdb_fingerprint_rtstats_set_role(int role)
 	Pthread_setspecific(fingerprint_rtstats_mode_key, (void *)(intptr_t)role);
 }
 
+/* Name the client this thread works for; 0 is unknown. Independent of the role
+ * and the fingerprint. Pairs with _clear(). */
+void
+bb_berkdb_fingerprint_rtstats_set_client_id(uint32_t client_id)
+{
+	if (!fingerprint_rtstats_inited)
+		return;
+	Pthread_setspecific(fingerprint_rtstats_client_id_key, (void *)(uintptr_t)client_id);
+}
+
 /* Called when the statement is done (or on error paths). */
 void
 bb_berkdb_fingerprint_rtstats_clear(void)
@@ -191,22 +205,25 @@ bb_berkdb_fingerprint_rtstats_clear(void)
 		return;
 	Pthread_setspecific(fingerprint_rtstats_key, NULL);
 	Pthread_setspecific(fingerprint_rtstats_mode_key, (void *)(intptr_t)FP_RTSTATS_MODE_NONE);
+	Pthread_setspecific(fingerprint_rtstats_client_id_key, (void *)(uintptr_t)0);
 }
 
 /*
- * Current attribution, for stamping onto something that outlives the call. *role
- * is always set; returns 1 with fingerprint[] (FP_RTSTATS_KEYSZ) filled, else 0.
+ * Current attribution, for stamping onto something that outlives the call. All
+ * three are independent; *role and *client_id are always set, fingerprint[] on 1.
  */
 int
-bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role)
+bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role, uint32_t *client_id)
 {
 	struct fingerprint_rtstats *t = NULL;
 
 	*role = BB_BERKDB_FP_ROLE_NONE;
+	*client_id = 0;
 
 	if (fingerprint_rtstats_inited) {
 		t = pthread_getspecific(fingerprint_rtstats_key);
 		*role = (int)(intptr_t)pthread_getspecific(fingerprint_rtstats_mode_key);
+		*client_id = (uint32_t)(uintptr_t)pthread_getspecific(fingerprint_rtstats_client_id_key);
 	}
 
 	if (t == NULL) {
