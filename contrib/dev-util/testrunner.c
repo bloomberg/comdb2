@@ -18,6 +18,7 @@ int lines, cols;
 int passed, failed;
 time_t start_time;
 FILE *testlog = NULL;
+int quiet = 0;
 
 enum status {
     ST_UNKNOWN,
@@ -330,12 +331,13 @@ void update_test_line(char *testname, char *status) {
 
         status_type st;
         st = status_from_string(status);
+        status_type prev = t->status;
         if (st == ST_SUCCESS) {
             passed++;
             t->end_time = time(NULL);
         }
         else if (st == ST_TIMEOUT ||
-                st == ST_DBFAIL || 
+                st == ST_DBFAIL ||
                 st == ST_FAIL) {
             failed++;
             t->end_time = time(NULL);
@@ -346,6 +348,18 @@ void update_test_line(char *testname, char *status) {
 
         if (t->start_time == 0)
             t->start_time = time(NULL);
+
+        /* Quiet mode has no live display: emit one line when a test starts
+         * running and one when it finishes, nothing in between. */
+        if (quiet) {
+            if (st == ST_RUNNING && prev != ST_RUNNING)
+                printf("  %-*s running\n", longest_testname, testname);
+            else if (st == ST_SUCCESS || st == ST_FAIL ||
+                     st == ST_TIMEOUT || st == ST_DBFAIL)
+                printf("  %-*s %s (%ds)\n", longest_testname, testname,
+                       status_string(st), (int)(t->end_time - t->start_time));
+            fflush(stdout);
+        }
     }
 }
 
@@ -360,7 +374,7 @@ int is_endstate(int state) {
 }
 
 void usage(void) {
-    printf("Usage: testrunner [-j numjobs] testdir [tests...]\n");
+    printf("Usage: testrunner [-j numjobs] [-q] testdir [tests...]\n");
     exit(1);
 }
 
@@ -380,7 +394,7 @@ int main(int argc, char *argv[]) {
     int parallel_jobs = 1;
 
     int opt;
-    while ((opt = getopt(argc, argv, "hj:")) != -1) {
+    while ((opt = getopt(argc, argv, "hj:q")) != -1) {
         switch (opt) {
             case 'h':
                 usage();
@@ -391,6 +405,9 @@ int main(int argc, char *argv[]) {
                     printf("Strange value for -j, using 1\n");
                     parallel_jobs = 1;
                 }
+                break;
+            case 'q':
+                quiet = 1;
                 break;
             default:
                 fprintf(stderr, "Unknown option %c\n", (char) opt);
@@ -434,23 +451,25 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (read_screen_size())
-        exit(1);
-    signal(SIGWINCH, update_screen_size);
-
-    clear();    
-    lgoto(0,0);
+    if (!quiet) {
+        if (read_screen_size())
+            exit(1);
+        signal(SIGWINCH, update_screen_size);
+        clear();
+        lgoto(0,0);
+    }
 
     start_time = time(NULL);
 
     for (;;) {
-        if (screen_updated > last_screen_updated) {
+        if (!quiet && screen_updated > last_screen_updated) {
             last_screen_updated = screen_updated;
             if (read_screen_size())
                 return 1;
         }
         if (wait_for_input(testrun, 500) == 0) {
-            draw();
+            if (!quiet)
+                draw();
             continue;
         }
         if (fgets(line, sizeof(line), testrun) == NULL)
@@ -477,9 +496,11 @@ int main(int argc, char *argv[]) {
             update_test_line(&line[1], c);
         }
 done:
-        draw();
+        if (!quiet)
+            draw();
     }
-    clear();
+    if (!quiet)
+        clear();
     for (int i =  0; i < numtests; i++) {
         if (tests[i].end_time == 0)
             tests[i].end_time = time(NULL);
@@ -487,4 +508,6 @@ done:
     qsort(tests, numtests, sizeof(struct test), cmpruntime);
     dumptests(stdout);
     dumptests(testlog);
+    if (quiet)
+        printf("\n%d passed, %d failed\n", passed, failed);
 }
