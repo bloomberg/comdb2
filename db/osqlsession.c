@@ -48,8 +48,10 @@ struct sess_impl {
     unsigned terminate : 1;  /* Set when this session is about to be terminated */
     unsigned socket : 1;     /* Set if request comes over socket instead of net */
     unsigned embedded_sql : 1; /* Set if sql is part of session malloc object */
+    unsigned owns_sb : 1;    /* socket: appsock handed us target->sb to close */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
+    pthread_cond_t cond; /* signalled when the last client ref goes away */
 };
 
 static void _destroy_session(osql_sess_t **psess);
@@ -147,8 +149,22 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
         }
     }
 
-    while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
-        poll(NULL, 0, 10);
+    Pthread_mutex_lock(&sess->impl->mtx);
+
+    /* Wait out the remaining users.  Re-acquiring the mutex after the last
+       osql_sess_remclient() released it is what makes the destroy below safe:
+       the counter alone reads zero a moment before that thread is done. */
+    while (sess->impl->clients > 0)
+        Pthread_cond_wait(&sess->impl->cond, &sess->impl->mtx);
+    Pthread_mutex_unlock(&sess->impl->mtx);
+
+    /* The appsock tore its connection down while this session was still in
+       flight and handed us its buffer (osql_sess_socket_handoff), so the
+       framework skipped closing it.  The reply has been written and there are
+       no clients left, so this is the last chance to release it. */
+    if (sess->impl->owns_sb && sess->target.sb) {
+        close_appsock(sess->target.sb);
+        sess->target.sb = NULL;
     }
 
     if (sess->tran)
@@ -181,6 +197,7 @@ static void _destroy_session(osql_sess_t **psess)
     free(sess->snap_info);
 
     Pthread_mutex_destroy(&sess->impl->mtx);
+    Pthread_cond_destroy(&sess->impl->cond);
     Pthread_mutex_destroy(&sess->participant_lk);
     if (sess->coordinator_dbname) {
         free(sess->coordinator_dbname);
@@ -256,13 +273,28 @@ int osql_sess_remclient(osql_sess_t *psess)
 
     Pthread_mutex_lock(&sess->mtx);
     assert(sess->clients > 0);
-    sess->clients -= 1;
+    if (--sess->clients == 0) {
+        /* wake osql_sess_close(), which is waiting to destroy the session */
+        Pthread_cond_broadcast(&sess->cond);
+    }
     if (sess->terminate) {
         rc = 1;
     }
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
+}
+
+void osql_sess_socket_handoff(osql_sess_t *psess)
+{
+    Pthread_mutex_lock(&psess->impl->mtx);
+    psess->impl->owns_sb = 1;
+    Pthread_mutex_unlock(&psess->impl->mtx);
+
+    /* Setting owns_sb before dropping the ref is what makes this safe: a closer
+       cannot get past the client wait until we are gone, so it always sees the
+       flag. */
+    osql_sess_remclient(psess);
 }
 
 /**
@@ -646,7 +678,13 @@ static int handle_buf_sorese(osql_sess_t *psess)
     counter to go to zero will skip it;  we need to decrement client counter
     here so that block processor can close the session */
 
-    osql_repository_put(psess);
+    /* socket: keep the appsock's client ref; it is released in
+    osql_sess_socket_wait_io() once the reply has been written over the
+    appsock buffer.  On the failure paths below the ref stays with the appsock,
+    whose error path closes the session. */
+    int is_socket = is_sess_from_sockbplog(psess);
+    if (!is_socket)
+        osql_repository_put(psess);
 
     /* create the buffer now */
     /* construct a block transaction */
@@ -654,7 +692,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
                                     strlen(psess->sql) + 1, psess->tzname,
                                     psess->type, psess->rqid, psess->uuid)) {
         logmsg(LOGMSG_ERROR, "bug in code %s:%d", __func__, __LINE__);
-        return rc;
+        return is_socket ? -1 : rc;
     }
 
     rc = handle_buf_main(thedb, NULL, p_buf, p_buf_end, debug,
@@ -664,7 +702,9 @@ static int handle_buf_sorese(osql_sess_t *psess)
     if (rc) {
         signal_replicant_error(&psess->target, psess->rqid, psess->uuid,
                                ERR_NOMASTER, "failed tp dispatch, queue full");
-        osql_sess_close(&psess, 1);
+        /* socket: the appsock still holds the ref, let its error path close */
+        if (!is_socket)
+            osql_sess_close(&psess, 1);
     }
     return rc;
 }
@@ -687,6 +727,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     /* init sync fields */
     Pthread_mutex_init(&sess->impl->mtx, NULL);
+    Pthread_cond_init(&sess->impl->cond, NULL);
 
     /* init participant mutex */
     Pthread_mutex_init(&sess->participant_lk, NULL);

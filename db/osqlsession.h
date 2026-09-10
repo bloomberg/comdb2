@@ -64,6 +64,16 @@ int osql_sess_addclient(osql_sess_t *sess);
 int osql_sess_remclient(osql_sess_t *sess);
 
 /**
+ * sockbplog only: hand the session ownership of the appsock buffer
+ * (target->sb) and release the appsock's client ref.  The appsock calls this
+ * when it tears its connection down with a dispatched session still in flight:
+ * the writer still has to write the reply over that buffer, so the session
+ * closes it in osql_sess_close() instead.  The caller must also set
+ * *arg->keepsocket, or the framework closes the buffer first.
+ */
+void osql_sess_socket_handoff(osql_sess_t *sess);
+
+/**
  * Log query to the reqlog
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);

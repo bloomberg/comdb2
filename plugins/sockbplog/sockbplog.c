@@ -35,7 +35,11 @@ comdb2_appsock_t sockbplog_plugin = {
     handle_sockbplog_request /* Handler function */
 };
 
-static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
+/* Collect one bplog off sb and dispatch it.  On success *psess is the
+   dispatched session and we still hold its client ref, so the caller can hand
+   the buffer over if this connection dies before the writer has replied. */
+static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host,
+                                            osql_sess_t **psess)
 {
     osql_sess_t *sess = NULL;
     char *sql = NULL;
@@ -45,6 +49,8 @@ static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
     uuid_t uuid;
     unsigned long long rqid = OSQL_RQID_USE_UUID;
     int rc;
+
+    *psess = NULL;
 
     /* received the request; */
     rc = osqlcomm_req_socket(sb, &sql, tzname, &type, uuid, &flags);
@@ -86,6 +92,7 @@ static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
     if (gbl_sockbplog_debug)
         logmsg(LOGMSG_ERROR, "%p %s called\n", (void *)pthread_self(), __func__);
 
+    *psess = sess;
     return 0;
 
 err:
@@ -104,6 +111,7 @@ err_nomsg:
 int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
 {
     struct comdb2buf *sb;
+    osql_sess_t *sess = NULL;
     char *host = NULL;
     char line[128];
     int rc = 0;
@@ -145,7 +153,7 @@ int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
         logmsg(LOGMSG_ERROR, "%s: sockbplog connection from %s\n", __func__, host);
 
     while (!rc) {
-        rc = handle_sockbplog_request_session(sb, host);
+        rc = handle_sockbplog_request_session(sb, host, &sess);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to process session rc %d\n",
                    __func__, rc);
@@ -166,11 +174,29 @@ int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
             logmsg(LOGMSG_ERROR, "%s: received wrong request! rc=%d: %s\n",
                    __func__, rc, line);
             rc = -1;
+            break;
         }
         if (gbl_sockbplog_debug)
             logmsg(LOGMSG_ERROR, "%s received another sockbplog string\n",
                    __func__);
+
+        /* The replicant only sends the next request after it got the previous
+           reply, so the writer is done with sb; release the session. */
+        if (sess) {
+            osql_sess_remclient(sess);
+            sess = NULL;
+        }
         rc = 0;
+    }
+
+    if (sess) {
+        /* We are tearing down with a session still in flight -- the replicant
+           gave up and dropped the connection while the master was still
+           working.  The writer has yet to reply over sb, so hand it the buffer
+           and tell the framework not to close it; osql_sess_close() will. */
+        osql_sess_socket_handoff(sess);
+        if (arg->keepsocket)
+            *arg->keepsocket = 1;
     }
 
     return rc;
