@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+set -o pipefail
+
+python3 ./pmuv_appsock.py \
+    --comdb2-exe "${COMDB2_EXE}" \
+    --testdir "${TESTDIR}" \
+    --dbname "${DBNAME}pmuv"
+
+rc=$?
+
+if [[ $rc -ne 0 ]]; then
+    failexit "PMUV appsock regression failed rc=$rc"
+fi
+
+echo "success"
