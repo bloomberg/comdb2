@@ -969,6 +969,64 @@ EOF
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table seqexprparent"
 }
 
+# The sequence value is only assigned on the master, so the "where" clause of a
+# partial index that references the autoinc column is evaluated against the
+# unresolved sequence on the replicant that forms the keys.  The bitmap of
+# dirty keys it sends says nothing about which indexes the record really
+# belongs in, so the master has to redo the predicates.
+function insert_with_partial_idx_on_seq
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table $1 {$(cat $1.csc2)}\$\$
+EOF
+
+    for x in 1 2 3 ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $1(a) values($x)"
+        [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
+    done
+
+    # every row satisfies "b < 50", so all of them belong in that index; the
+    # query is answered out of the index alone
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b from $1 where b < 50 order by b")
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to select"
+    exp=$'(b=1)\n(b=2)\n(b=3)'
+    [[ $out != $exp ]] && failexit "Got $out, Expected $exp"
+
+    # and none of them satisfies "b > 50"
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select b from $1 where b > 50 order by b")
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to select"
+    [[ -n $out ]] && failexit "Got $out, Expected no rows"
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('$1')"
+    [[ $? != 0 ]] && failexit "$1 should have passed verify"
+}
+
+# verify() reports keys that are missing, but not keys that should never have
+# been added.  A unique partial index catches those: neither row satisfies
+# "b > 50", so neither belongs in the index and the second insert must not
+# collide with the first.
+function insert_with_uniq_partial_idx_on_seq
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table $1 {$(cat $1.csc2)}\$\$
+EOF
+
+    for x in 1 2 ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $1(a) values(1)"
+        [[ $? != 0 ]] && failexit "$1 table should have been allowed to insert"
+    done
+
+    out=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select a, b from $1 order by b")
+    [[ $? != 0 ]] && failexit "$1 table should have been allowed to select"
+    exp=$'(a=1, b=1)\n(a=1, b=2)'
+    [[ $out != $exp ]] && failexit "Got $out, Expected $exp"
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('$1')"
+    [[ $? != 0 ]] && failexit "$1 should have passed verify"
+}
+
 function run_test
 {
     if [[ "$DBNAME" == *"nextsequencenullsorthighgenerated"* ]]; then
@@ -1085,6 +1143,10 @@ function run_test
     insert_with_expr_idx_on_seq seqwithexpridx
     insert_with_expr_idx_on_seq seqwithdescexpridx
     insert_with_blob_expr_idx_on_seq seqwithblobexpridx
+
+    insert_with_partial_idx_on_seq seqwithpartialidx
+    insert_with_partial_idx_on_seq seqwithdescpartialidx
+    insert_with_uniq_partial_idx_on_seq sequniqpartialidx
 }
 
 run_test
