@@ -17,7 +17,6 @@ RUN apt-get update && \
     lcov \
     libevent-dev \
     liblz4-dev \
-    liblz4-tool \
     libprotobuf-c1 \
     libprotobuf-c-dev \
     libreadline-dev \
@@ -37,7 +36,6 @@ RUN apt-get update && \
     openssh-server \
     protobuf-c-compiler \
     psmisc \
-    pstack \
     rsync \
     socat \
     strace \
@@ -48,6 +46,7 @@ RUN apt-get update && \
     valgrind \
     vim \
     uuid-dev && \
+  (apt-get install -y lz4 liblz4-tool pstack || true ) && \
   ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
   dpkg-reconfigure --frontend noninteractive tzdata
 

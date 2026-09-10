@@ -1230,8 +1230,8 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
     /*RESOLVE AN ADDRESS*/
     in_addr_t inaddr;
     int len;
-    char tok[128], *cc;
-    cc = strchr(host, (int)':');
+    char tok[128];
+    const char *cc = strchr(host, (int)':');
     if (cc == 0) {
         len = strlen(host);
         if (len >= sizeof(tok))
@@ -9471,7 +9471,7 @@ char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src)
     const char *escapestr = "'";
     size_t count = 2; // set initial value for wrapping characters
 
-    char *curr = strchr(src, *escapestr);
+    const char *curr = strchr(src, *escapestr);
     while (curr != NULL) {
         ++count;
         curr = strchr(curr + 1, *escapestr);
