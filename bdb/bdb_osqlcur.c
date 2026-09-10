@@ -463,11 +463,11 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
                 logmsg(LOGMSG_WARN,
                        "%s: releasing locks while updating shadows\n",
                        __func__);
-                rc = release_locks("update shadows");
+                rc = release_locks(RLOCKS_REASON_SI_LOCKWAIT);
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
                        !(rand() % gbl_sql_random_release_interval)) {
-                rc = release_locks("random release update shadows");
+                rc = release_locks(RLOCKS_REASON_RANDOM);
                 released_locks = 1;
             }
             if (rc != 0) {

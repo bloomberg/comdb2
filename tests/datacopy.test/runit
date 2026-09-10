@@ -72,8 +72,10 @@ keys
 }'
 cdb2sql -s ${CDB2_OPTIONS} $DB default "insert into t2 values(1, NULL)"
 
-plan=$(cdb2sql ${CDB2_OPTIONS} $DB default "explain query plan select * from t2 where a = 1 and b is NULL")
-expected_plan="(id=3, parent=0, notused=0, detail='SEARCH TABLE t2 USING COVERING INDEX \$A_DDF9B51C (a=?) (~9 rows)')"
+# the plan id is the OP_Explain address and gets renumbered by any codegen
+# change, so compare everything but that
+plan=$(cdb2sql ${CDB2_OPTIONS} $DB default "explain query plan select * from t2 where a = 1 and b is NULL" | sed 's/(id=[0-9]\+, parent=/(id=xx, parent=/')
+expected_plan="(id=xx, parent=0, notused=0, detail='SEARCH TABLE t2 USING COVERING INDEX \$A_DDF9B51C (a=?) (~9 rows)')"
 if [[ $plan != $expected_plan ]] ; then
     echo "Failed. Expected plan to be '$expected_plan', got '$plan'"
     exit 1
