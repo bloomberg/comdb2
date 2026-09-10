@@ -40,4 +40,4 @@ if (COMDB2_BBCMAKE)
   comdb2_lib_target(builtin_ruleset)
 endif()
 
-add_dependencies(builtin_ruleset util)
+add_dependencies(builtin_ruleset util proto)
