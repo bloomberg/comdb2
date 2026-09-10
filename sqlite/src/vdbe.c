@@ -2431,8 +2431,15 @@ case OP_Gt:               /* same as TK_GT, jump, in1, in3 */
 case OP_Ge: {             /* same as TK_GE, jump, in1, in3 */
   int res, res2;      /* Result of the comparison of pIn1 against pIn3 */
   char affinity;      /* Affinity to use for comparison */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Mem.flags is 32 bits wide here; a u16 would drop MEM_Master and friends
+  ** when the original flags are restored further down. */
+  u32 flags1;         /* Copy of initial value of pIn1->flags */
+  u32 flags3;         /* Copy of initial value of pIn3->flags */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   u16 flags1;         /* Copy of initial value of pIn1->flags */
   u16 flags3;         /* Copy of initial value of pIn3->flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   pIn1 = &aMem[pOp->p1];
   pIn3 = &aMem[pOp->p3];
@@ -5355,7 +5362,11 @@ case OP_SeekRowid: {        /* jump, in3 */
     ** the key value, but do not change the datatype of the register, as
     ** other parts of the perpared statement might be depending on the
     ** current datatype. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    u32 origFlags = pIn3->flags;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     u16 origFlags = pIn3->flags;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     int isNotInt;
     applyAffinity(pIn3, SQLITE_AFF_NUMERIC, encoding);
     isNotInt = (pIn3->flags & MEM_Int)==0;
