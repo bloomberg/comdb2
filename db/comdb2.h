@@ -482,7 +482,17 @@ enum RECORD_WRITE_TYPES {
 enum RECOVER_DEADLOCK_FLAGS {
     RECOVER_DEADLOCK_PTRACE = 0x00000001,
     RECOVER_DEADLOCK_FORCE_FAIL = 0x00000002,
-    RECOVER_DEADLOCK_IGNORE_DESIRED= 0x00000004
+    RECOVER_DEADLOCK_IGNORE_DESIRED = 0x00000004,
+    /* Release page locks only: close the bdb cursors (which drops their page
+     * locks, since these cursors are opened on a bare lockerid with no txn, so
+     * __db_lput releases at close) but keep the curtran.  The curtran's
+     * lockerid owns the table locks, so those are RETAINED -- a schema change
+     * cannot slip in, because its transaction is replayed on the replicant by
+     * __lock_get_list() acquiring the master-recorded lock set, which includes
+     * the table write lock and therefore blocks against our table read lock.
+     * Skips put_curtran/get_curtran (and hence the cursor repositioning and
+     * lock re-acquisition those imply). */
+    RECOVER_DEADLOCK_PAGELOCKS_ONLY = 0x00000008
 };
 
 enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
@@ -2730,6 +2740,8 @@ void dbgtrace(int, char *, ...);
 int get_sqlite_entry_size(struct sql_thread *thd, int n);
 void *get_sqlite_entry(struct sql_thread *thd, int n);
 struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
+/* table name for a rootpage; safe to use after the table has been dropped */
+const char *get_sqlite_tblname(struct sql_thread *thd, int iTable);
 
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);

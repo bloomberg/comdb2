@@ -297,7 +297,23 @@ static void *reader(void *data)
             c4l != sizeof(g00df00f) ||
             c4l != c44l
         ){
-            Printf("%s %2d: cdb2_next_record UNEXPECTED lengths  =>  ", __func__, i);
+            Printf("%s %2d: cdb2_next_record UNEXPECTED lengths  =>  "
+                    "a1:%d b1:%d c1:%d  "
+                    "a3l:%d ahl:%d a33l:%d  "
+                    "b3l:%d bhl:%d b33l:%d  "
+                    "c3l:%d chl:%d c33l:%d  "
+                    "a4l:%d(want %zu) a44l:%d  "
+                    "b4l:%d(want %zu) b44l:%d  "
+                    "c4l:%d(want %zu) c44l:%d  "
+                    "counter:%d\n", __func__, i,
+                    a1, b1, c1,
+                    a3l, ahl, a33l,
+                    b3l, bhl, b33l,
+                    c3l, chl, c33l,
+                    a4l, sizeof(g00d), a44l,
+                    b4l, sizeof(f0000f), b44l,
+                    c4l, sizeof(g00df00f), c44l,
+                    counter);
             do_exit = 1;
         } else if (memcmp(a3, ah, a3l)) {
             Printf("%s %2d: cdb2_next_record UNEXPECTED a3 payload =>  ", __func__, i);
