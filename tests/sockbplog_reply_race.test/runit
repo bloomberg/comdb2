@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# See README.  In short: stall the master's block processor so it replies long
+# after the replicant has given up and closed the sockbplog socket, then check
+# the master survived writing into that connection.
+
+[ -z "$CLUSTER" ] && { echo "skipping, needs a cluster"; exit 0; }
+
+dbnm=$1
+[ -z "$dbnm" ] && failexit "need a DB name"
+
+# Seconds the master stalls before running a transaction.  Must be comfortably
+# larger than SOSQL_MAX_COMMIT_WAIT_SEC (2, see lrl.options) so the replicant is
+# certainly gone by the time the reply is written.
+STALL=6
+
+# Concurrent abandoned transactions per round.  Each one parks a master write
+# thread for STALL seconds and a master appsock thread for about as long, so
+# keep this modest.
+NCLIENTS=12
+ROUNDS=2
+
+master=$(getmaster)
+[ -z "$master" ] && failexit "could not find master"
+
+replicant=""
+for n in $(getclusternodes); do
+    if [ "$n" != "$master" ]; then
+        replicant=$n
+        break
+    fi
+done
+[ -z "$replicant" ] && failexit "no replicant to drive writes from"
+
+echo "master=$master replicant=$replicant"
+
+# t_storm collects the transactions we abandon; t_verify is only ever written by
+# the clean workload at the end, so its contents can be checked exactly.
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t_storm (i int)" || failexit "create t_storm"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t_verify (i int)" || failexit "create t_verify"
+
+set_stall()
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "put tunable sleep_before_dispatch $1" \
+        || failexit "could not set sleep_before_dispatch to $1"
+}
+
+# Fire NCLIENTS writes at the replicant and wait for all of them to give up.
+# They are expected to fail with a master timeout -- that is the point -- so
+# their exit status is deliberately ignored.
+storm()
+{
+    local round=$1
+    local pids=""
+    local i
+
+    for i in $(seq 1 $NCLIENTS); do
+        cdb2sql ${CDB2_OPTIONS} $dbnm --host $replicant - >/dev/null 2>&1 <<EOF &
+BEGIN
+INSERT INTO t_storm VALUES ($round$i)
+COMMIT
+EOF
+        pids="$pids $!"
+    done
+
+    wait $pids 2>/dev/null
+}
+
+for round in $(seq 1 $ROUNDS); do
+    echo "round $round: stalling master for ${STALL}s"
+    set_stall $STALL
+    storm $round
+    set_stall 0
+    # Let the block processors that are still parked in sleep_before_dispatch
+    # finish and write their (now unwanted) replies.
+    sleep $((STALL + 4))
+done
+
+# Everything below runs with the stall off and is expected to behave normally.
+# A master that scribbled over a freed appsock buffer typically fails here, if
+# it has not already cored.
+
+echo "checking every node is still serving"
+for n in $(getclusternodes); do
+    got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $n "select comdb2_host()" 2>&1)
+    assertres "$got" "$n" "node $n did not answer"
+done
+
+echo "replaying a clean workload on $replicant"
+NVERIFY=50
+for i in $(seq 1 $NVERIFY); do
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $replicant - >/dev/null <<EOF || failexit "clean write $i failed"
+BEGIN
+INSERT INTO t_verify VALUES ($i)
+COMMIT
+EOF
+done
+
+got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $replicant "select count(*), sum(i) from t_verify")
+want="$NVERIFY $(( NVERIFY * (NVERIFY + 1) / 2 ))"
+assertres "$got" "$want" "t_verify contents after the storm"
+
+# The abandoned transactions do commit on the master eventually -- we cannot
+# predict how many made it, but every node must agree on the answer.
+expected=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "select count(*) from t_storm")
+for n in $(getclusternodes); do
+    got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $n "select count(*) from t_storm")
+    assertres "$got" "$expected" "t_storm count on $n disagrees with master"
+done
+
+# osql_sess_socket_wait_io() bounds its wait at 60s and degrades to the old race
+# if it expires.  That should never happen here.
+masterlog=${TESTDIR}/logs/${DBNAME}.${master}.db
+if [ -f "$masterlog" ] && grep -q "timed out waiting for writer to release socket" "$masterlog"; then
+    failexit "master gave up waiting for the writer; the session degraded to the old race"
+fi
+
+echo "Success"

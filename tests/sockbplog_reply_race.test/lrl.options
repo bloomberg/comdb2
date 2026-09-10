@@ -1,0 +1,12 @@
+sockbplog
+
+# The replicant gives up on the commit rc after this long.  The test stalls the
+# master's block processor for considerably longer, so the replicant is
+# guaranteed to have torn its sockbplog connection down before the master
+# writes the reply back over it.
+setattr SOSQL_MAX_COMMIT_WAIT_SEC 2
+
+# Take sockpool out of the picture: we want disconnect_remote_db() to really
+# close the socket rather than donate it, so the failure under test is the
+# appsock buffer being freed and not a recycled fd.
+setattr DISABLE_SERVER_SOCKPOOL 1

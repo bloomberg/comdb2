@@ -1,0 +1,42 @@
+Regression test for the sockbplog reply-buffer use-after-free.
+
+A replicant ships its bplog to the master over a "sockbplog" appsock and then
+waits for the commit rc on that same socket.  On the master, the block
+processor writes that rc back over the appsock's own buffer (sess->target->sb),
+from a different thread than the appsock handler.
+
+handle_sockbplog_request_session() used to return as soon as the session was
+dispatched, handing the session to the writer thread.  The appsock framework
+then tore the connection buffer down, so any reply landing after that return
+wrote into freed memory.
+
+The test forces the writer to reply long after the appsock is done, using
+tunables that already exist:
+
+  sleep_before_dispatch (master)       stalls the block processor before it
+                                       runs the transaction, so the reply is
+                                       written STALL seconds late.
+
+  SOSQL_MAX_COMMIT_WAIT_SEC (lrl)      how long the replicant waits for that
+                                       rc.  Set well below STALL so the
+                                       replicant has certainly given up, and
+                                       closed its end of the sockbplog socket,
+                                       before the reply is written.
+
+  DISABLE_SERVER_SOCKPOOL (lrl)        so the replicant's disconnect really
+                                       closes the socket instead of donating it
+                                       back to the pool.  We want the master's
+                                       appsock to see EOF and free its buffer,
+                                       which is the condition under test.
+
+Without the fix the master writes the reply into a buffer the appsock has
+already freed.  That is heap corruption, so it can surface as a core (which the
+harness picks up), as a hang, or as damage that only shows up on later traffic
+-- which is why the test also replays a clean, verifiable workload afterwards
+and checks the cluster is still healthy.
+
+With the fix the appsock blocks in osql_sess_socket_wait_io() until
+osql_sess_close() signals that the writer is done with the buffer.  That wait is
+bounded at 60s and logs "timed out waiting for writer to release socket" if it
+expires; the test fails if that message appears, since it means the session
+degraded back to the racy behaviour.
