@@ -1,0 +1,21 @@
+sockbplog
+
+# The replicant gives up on the commit rc after this long.  The test stalls the
+# master's block processor for considerably longer, so the replicant is
+# guaranteed to have torn its sockbplog connection down before the master
+# writes the reply back over it.
+setattr SOSQL_MAX_COMMIT_WAIT_SEC 2
+
+# A commit-wait timeout surfaces as ERR_NOMASTER, which the replicant normally
+# treats as a master swing and retries up to survive_n_master_swings times
+# (600 by default, ~100ms apart).  That turns "one abandoned transaction per
+# client" into an unbounded retry storm: the client can never succeed while the
+# master is stalled, and every attempt leaves behind another master-side
+# session holding a write thread for the whole stall.  Make the timeout
+# terminal so each client abandons exactly one transaction.
+survive_n_master_swings 0
+
+# Take sockpool out of the picture: we want disconnect_remote_db() to really
+# close the socket rather than donate it, so the failure under test is the
+# appsock buffer being freed and not a recycled fd.
+setattr DISABLE_SERVER_SOCKPOOL 1

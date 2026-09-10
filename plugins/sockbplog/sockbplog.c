@@ -35,8 +35,12 @@ comdb2_appsock_t sockbplog_plugin = {
     handle_sockbplog_request /* Handler function */
 };
 
-static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
+/* Collect one bplog off bsock and dispatch it.  The dispatched session carries
+   its own reference to bsock, so the buffer outlives this connection if the
+   writer has yet to reply over it. */
+static int handle_sockbplog_request_session(struct bplog_sock *bsock, char *host)
 {
+    COMDB2BUF *sb = bplog_sock_buf(bsock);
     osql_sess_t *sess = NULL;
     char *sql = NULL;
     int flags = 0;
@@ -44,6 +48,7 @@ static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
     int type = OSQL_SOCK_REQ;
     uuid_t uuid;
     unsigned long long rqid = OSQL_RQID_USE_UUID;
+    int sess_gone = 0;
     int rc;
 
     /* received the request; */
@@ -68,10 +73,23 @@ static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
         goto err;
     }
     /* override the connection */
-    init_bplog_socket_master(&sess->target, sb);
+    init_bplog_socket_master(&sess->target, bsock);
 
     /* collect the bplog; dispatch if bplog successful */
-    rc = osqlcomm_bplog_socket(sb, sess);
+    rc = osqlcomm_bplog_socket(sb, sess, &sess_gone);
+    if (sess_gone) {
+        /* NOTE:
+            here, the responsibility for handling the sess is delegated
+            to the writer thread -- it may already have run and freed it, so
+            sess (and the sql it owns) must not be touched, even on error */
+        if (rc)
+            logmsg(LOGMSG_ERROR, "Failure to dispatch osql bplog rc=%d\n", rc);
+        else if (gbl_sockbplog_debug)
+            logmsg(LOGMSG_ERROR, "%p %s called\n", (void *)pthread_self(),
+                   __func__);
+        return rc;
+    }
+
     if (sess->is_cancelled) {
         /* Not an error. Just clean it up. */
         goto err_nomsg;
@@ -80,13 +98,8 @@ static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
         goto err;
     }
 
-    /* NOTE:
-        here, the responsibility for handling the sess is delegated
-        to the writer thread */
-    if (gbl_sockbplog_debug)
-        logmsg(LOGMSG_ERROR, "%p %s called\n", (void *)pthread_self(), __func__);
-
-    return 0;
+    /* the bplog ended without a done message and without an error */
+    rc = -1;
 
 err:
     logmsg(LOGMSG_ERROR, "%p %s called and failed rc %d\n", (void *)pthread_self(),
@@ -104,6 +117,7 @@ err_nomsg:
 int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
 {
     struct comdb2buf *sb;
+    struct bplog_sock *bsock;
     char *host = NULL;
     char line[128];
     int rc = 0;
@@ -144,8 +158,21 @@ int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
     if (gbl_sockbplog_debug)
         logmsg(LOGMSG_ERROR, "%s: sockbplog connection from %s\n", __func__, host);
 
+    /* From here on the buffer is refcounted: the sessions we dispatch may still
+       be writing their reply over it after we are gone, so take it off the
+       framework and let the last reference close it. */
+    bsock = bplog_sock_new(sb);
+    if (!bsock) {
+        logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
+        cdb2buf_printf(sb, "Error: Out of memory\n");
+        cdb2buf_flush(sb);
+        return APPSOCK_RETURN_ERR;
+    }
+    if (arg->keepsocket)
+        *arg->keepsocket = 1;
+
     while (!rc) {
-        rc = handle_sockbplog_request_session(sb, host);
+        rc = handle_sockbplog_request_session(bsock, host);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to process session rc %d\n",
                    __func__, rc);
@@ -166,12 +193,15 @@ int handle_sockbplog_request(comdb2_appsock_arg_t *arg)
             logmsg(LOGMSG_ERROR, "%s: received wrong request! rc=%d: %s\n",
                    __func__, rc, line);
             rc = -1;
+            break;
         }
         if (gbl_sockbplog_debug)
             logmsg(LOGMSG_ERROR, "%s received another sockbplog string\n",
                    __func__);
         rc = 0;
     }
+
+    bplog_sock_deref(bsock);
 
     return rc;
 }

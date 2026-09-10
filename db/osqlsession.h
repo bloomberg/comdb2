@@ -89,9 +89,14 @@ int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found);
 /**
  * Same as osql_sess_rcvop, for socket protocol
  *
+ * Sets *sess_gone when the op completed the bplog and the session was handed
+ * to handle_buf: from that point the session belongs to the block processor --
+ * and if the dispatch itself failed, it has already been closed.  Either way
+ * the caller must not touch sess (nor the sql it owns) again, whatever the
+ * return code.
  */
 int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           int *is_msg_done);
+                           int *is_msg_done, int *sess_gone);
 
 int osql_sess_queryid(osql_sess_t *sess);
 

@@ -60,10 +60,61 @@ void init_bplog_socket(struct sqlclntstate *clnt)
     clnt->wait = osql_wait_socket;
 }
 
-void init_bplog_socket_master(osql_target_t *target, COMDB2BUF *sb)
+/* See osqlsqlsocket.h: the appsock buffer is shared between the appsock thread
+   and the sessions it dispatched, so it is closed by refcount. */
+struct bplog_sock {
+    COMDB2BUF *sb;
+    int refs;
+    pthread_mutex_t lk;
+};
+
+struct bplog_sock *bplog_sock_new(COMDB2BUF *sb)
 {
+    struct bplog_sock *bsock = malloc(sizeof(*bsock));
+    if (!bsock)
+        return NULL;
+    bsock->sb = sb;
+    bsock->refs = 1;
+    Pthread_mutex_init(&bsock->lk, NULL);
+    return bsock;
+}
+
+/* Valid for as long as the caller holds a reference; sb itself is immutable for
+   the life of the holder. */
+COMDB2BUF *bplog_sock_buf(struct bplog_sock *bsock)
+{
+    return bsock->sb;
+}
+
+static void bplog_sock_ref(struct bplog_sock *bsock)
+{
+    Pthread_mutex_lock(&bsock->lk);
+    bsock->refs++;
+    Pthread_mutex_unlock(&bsock->lk);
+}
+
+void bplog_sock_deref(struct bplog_sock *bsock)
+{
+    Pthread_mutex_lock(&bsock->lk);
+    int refs = --bsock->refs;
+    Pthread_mutex_unlock(&bsock->lk);
+
+    if (refs > 0)
+        return;
+
+    /* close_appsock() adjusts active_appsock_conns, so it has to run exactly
+       once per buffer; this is that once. */
+    close_appsock(bsock->sb);
+    Pthread_mutex_destroy(&bsock->lk);
+    free(bsock);
+}
+
+void init_bplog_socket_master(osql_target_t *target, struct bplog_sock *bsock)
+{
+    bplog_sock_ref(bsock);
     target->type = OSQL_OVER_SOCKET;
-    target->sb = sb;
+    target->sb = bsock->sb;
+    target->sbref = bsock;
     target->send = _socket_send;
 }
 
@@ -334,13 +385,15 @@ done:
  * Read the bplog body, coming from a socket
  *
  */
-int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess)
+int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess, int *sess_gone)
 {
     void *buf = NULL, *reallocated;
     int buflen = 0, oldbuflen = -1;
     int type;
     int rc;
     int is_msg_done = 0;
+
+    *sess_gone = 0;
 
     while (!is_msg_done) {
         GDATA(buflen);
@@ -380,7 +433,8 @@ int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess)
             goto done;
         }
 
-        rc = osql_sess_rcvop_socket(sess, type, buf, buflen, &is_msg_done);
+        rc = osql_sess_rcvop_socket(sess, type, buf, buflen, &is_msg_done,
+                                    sess_gone);
         if (rc) {
             /* failed to save into bplog; discard and be done */
             goto done;

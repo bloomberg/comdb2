@@ -36,6 +36,7 @@
 #include "str0.h"
 #include "reqlog.h"
 #include "osqlsqlnet.h"
+#include "osqlsqlsocket.h"
 
 #include <disttxn.h>
 
@@ -50,6 +51,7 @@ struct sess_impl {
     unsigned embedded_sql : 1; /* Set if sql is part of session malloc object */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
+    pthread_cond_t cond; /* signalled when the last client ref goes away */
 };
 
 static void _destroy_session(osql_sess_t **psess);
@@ -147,8 +149,22 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
         }
     }
 
-    while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
-        poll(NULL, 0, 10);
+    Pthread_mutex_lock(&sess->impl->mtx);
+
+    /* Wait out the remaining users.  Re-acquiring the mutex after the last
+       osql_sess_remclient() released it is what makes the destroy below safe:
+       the counter alone reads zero a moment before that thread is done. */
+    while (sess->impl->clients > 0)
+        Pthread_cond_wait(&sess->impl->cond, &sess->impl->mtx);
+    Pthread_mutex_unlock(&sess->impl->mtx);
+
+    /* sockbplog: drop this session's reference to the appsock buffer it wrote
+       the reply over.  The appsock thread holds one too, so whichever of the
+       two finishes last is the one that closes it. */
+    if (sess->target.sbref) {
+        sess->target.sb = NULL;
+        bplog_sock_deref(sess->target.sbref);
+        sess->target.sbref = NULL;
     }
 
     if (sess->tran)
@@ -181,6 +197,7 @@ static void _destroy_session(osql_sess_t **psess)
     free(sess->snap_info);
 
     Pthread_mutex_destroy(&sess->impl->mtx);
+    Pthread_cond_destroy(&sess->impl->cond);
     Pthread_mutex_destroy(&sess->participant_lk);
     if (sess->coordinator_dbname) {
         free(sess->coordinator_dbname);
@@ -256,7 +273,10 @@ int osql_sess_remclient(osql_sess_t *psess)
 
     Pthread_mutex_lock(&sess->mtx);
     assert(sess->clients > 0);
-    sess->clients -= 1;
+    if (--sess->clients == 0) {
+        /* wake osql_sess_close(), which is waiting to destroy the session */
+        Pthread_cond_broadcast(&sess->cond);
+    }
     if (sess->terminate) {
         rc = 1;
     }
@@ -512,7 +532,7 @@ extern int gbl_sockbplog_debug;
  *
  */
 int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           int *is_msg_done)
+                           int *is_msg_done, int *sess_gone)
 {
     int rc = 0;
     struct errstat *perr = NULL;
@@ -552,6 +572,12 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
         logmsg(LOGMSG_ERROR, "%p Dispatching transaction\n", (void *)pthread_self());
     /* IT WAS A DONE MESSAGE
        HERE IS THE DISPATCH */
+
+    /* Past this point the session is not ours: handle_buf_sorese() drops our
+       client ref, so a block processor may pick it up and destroy it before we
+       even return -- and on a dispatch failure it closes the session itself.
+       Tell the caller so it stops looking at sess. */
+    *sess_gone = 1;
     return handle_buf_sorese(sess);
 }
 
@@ -687,6 +713,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     /* init sync fields */
     Pthread_mutex_init(&sess->impl->mtx, NULL);
+    Pthread_cond_init(&sess->impl->cond, NULL);
 
     /* init participant mutex */
     Pthread_mutex_init(&sess->participant_lk, NULL);

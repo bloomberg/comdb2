@@ -438,7 +438,7 @@ int osqlcomm_req_socket(COMDB2BUF *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
  * Read the bplog body, coming from a socket
  *
  */
-int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess);
+int osqlcomm_bplog_socket(COMDB2BUF *sb, osql_sess_t *sess, int *sess_gone);
 
 /* check if we need to get tpt lock */
 int need_views_lock(char *msg, int msglen, int use_uuid);

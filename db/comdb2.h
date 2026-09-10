@@ -1254,6 +1254,9 @@ struct osql_target {
     unsigned is_ondisk;
     const char *host;
     COMDB2BUF *sb;
+    /* OSQL_OVER_SOCKET on the master: our reference to the appsock buffer that
+       backs sb.  See bplog_sock in osqlsqlsocket.h. */
+    struct bplog_sock *sbref;
     int (*send)(struct osql_target *target, int usertype, void *data,
                 int datalen, int nodelay, void *tail, int tailen);
 };
