@@ -2297,11 +2297,13 @@ struct __ufid_to_db_t {
 };
 
 /* fingerprint is the acquirer's 16-byte fingerprint or NULL; fingerprint_role is
- * 'R', 'W', 'A' or 0. Independent: apply reports 'A' with a NULL fingerprint. */
+ * 'R', 'W', 'A' or 0; client_id names the client, 0 if unknown. All independent:
+ * apply reports 'A' with a NULL fingerprint, and client_id can stand alone. */
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype, int stackid,
-		const unsigned char *fingerprint, char fingerprint_role);
+		const unsigned char *fingerprint, char fingerprint_role,
+		uint32_t client_id);
 
 typedef int (*collect_prepared_f)(void *args, char *dist_txnid, uint32_t flags,
 		DB_LSN *lsn, DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name,
@@ -3147,7 +3149,8 @@ void bb_berkdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t 
 void bb_berkdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bb_berkdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bb_berkdb_fingerprint_rtstats_set_role(int role);
-int bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role);
+void bb_berkdb_fingerprint_rtstats_set_client_id(uint32_t client_id);
+int bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role, uint32_t *client_id);
 void bb_berkdb_fingerprint_rtstats_clear(void);
 void bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io);
 int bb_berkdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
@@ -3261,6 +3264,9 @@ struct __recovery_processor {
 	unsigned long long context;
 	u_int32_t lockid;
 	struct __recovery_queue **recovery_queues;
+	/* Opaque bdb_clientinfo, from the DB_llog_clientinfo record; NULL if the
+	 * txn carried none. Shared by every worker applying this txn. */
+	void *clientinfo;
 	void *txninfo;
 	LSN_COLLECTION lc;
 	pool_t *recpool;

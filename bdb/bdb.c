@@ -730,6 +730,11 @@ void bdb_fingerprint_rtstats_set_role(int role)
     bb_berkdb_fingerprint_rtstats_set_role(role);
 }
 
+void bdb_fingerprint_rtstats_set_client_id(uint32_t client_id)
+{
+    bb_berkdb_fingerprint_rtstats_set_client_id(client_id);
+}
+
 void bdb_fingerprint_rtstats_clear(void)
 {
     bb_berkdb_fingerprint_rtstats_clear();

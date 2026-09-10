@@ -270,3 +270,11 @@ BEGIN fingerprint 10022
 DBT fingerprint   DBT s
 END
 
+/* Informational: the client whose transaction the following records belong to,
+ * for comdb2_replication. Once per txn, and redoes and undoes to nothing. */
+BEGIN clientinfo 10023
+ARG pid       int d
+DBT taskname  DBT s
+DBT host      DBT s
+END
+

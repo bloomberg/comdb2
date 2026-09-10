@@ -1291,6 +1291,14 @@ struct osql_sess {
     int nops;         /* if no error, how many updated rows were performed */
     int rcout;        /* store here the block proc main error */
 
+    /* Diagnostic, for comdb2_active_osqls; absent unless the client sent them.
+     * Read unlocked by the collector, so clnt_taskname is set-once. */
+    char *clnt_taskname;
+    int clnt_pid;
+    unsigned char fingerprint[16];
+    int have_fingerprint;
+    uint32_t client_id; /* hash of uuid/rqid; joins comdb2_locks.client_id */
+
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
     LISTC_T(struct schema_change_type) scs; /* schema changes in session */

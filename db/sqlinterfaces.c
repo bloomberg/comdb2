@@ -99,6 +99,7 @@
 #include <net_appsock.h>
 #include <typessql.h>
 #include <sqlwriter.h>
+#include <crc32c.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -3383,6 +3384,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         /* Unconditional: show role 'R' even when fingerprinting is off and there
          * is no fingerprint to pair with it. Cleared in sqlite_done(). */
         bdb_fingerprint_rtstats_set_role(BDB_FP_ROLE_SQL);
+        /* An 'R' lock's client is the connection -- joins comdb2_connections. */
+        bdb_fingerprint_rtstats_set_client_id(sql_connection_client_id(clnt));
 
         /* t is this fingerprint's gbl_fingerprint_hash entry (NULL until its
          * first execution completes); pass its presence as has_main_entry. */
@@ -6655,9 +6658,18 @@ void run_internal_sql(char *sql)
     end_internal_sql_clnt(&clnt);
 }
 
+/* The id comdb2_locks.client_id carries for this connection's reads. Defined
+ * once here so the lock stamp and comdb2_connections cannot drift apart. */
+uint32_t sql_connection_client_id(const struct sqlclntstate *clnt)
+{
+    uint32_t id = crc32c((const uint8_t *)&clnt->connid, sizeof(clnt->connid));
+    return id ? id : 1; /* 0 means unknown on the lock */
+}
+
 static void gather_connection_int(struct connection_info *c, struct sqlclntstate *clnt)
 {
     c->connection_id = clnt->connid;
+    c->client_id = sql_connection_client_id(clnt);
     c->pid = clnt->last_pid;
     c->total_sql = clnt->total_sql;
     c->sql_since_reset = clnt->sql_since_reset;

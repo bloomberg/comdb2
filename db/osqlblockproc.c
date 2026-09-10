@@ -1213,6 +1213,9 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* Unconditional: show role 'W' even when osql_send_fingerprint is off and
      * no OSQL_FINGERPRINT arrives to name the statement. */
     bdb_fingerprint_rtstats_set_role(BDB_FP_ROLE_WRITE);
+    /* A 'W' lock's client is the session -- joins comdb2_active_osqls. */
+    if (iq->sorese)
+        bdb_fingerprint_rtstats_set_client_id(iq->sorese->client_id);
 
     /* go through the complete list and apply all the changes */
     out_rc = process_this_session(iq, iq_tran, iq->sorese, &bdberr, nops, err,
