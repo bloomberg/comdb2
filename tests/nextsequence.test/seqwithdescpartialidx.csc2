@@ -1,0 +1,11 @@
+schema
+{
+   int a null=yes
+   longlong b dbstore=nextsequence null=yes
+}
+keys
+{
+   "b" = <DESCEND>b
+   dup "blo" = <DESCEND>b { where b < 50 }
+   dup "bhi" = <DESCEND>b { where b > 50 }
+}

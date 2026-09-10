@@ -444,6 +444,33 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ERR("set master columns error %d", rc);
     }
 
+    /* Same reason as for the index expressions below: the "where" clause of a
+     * partial index that references an autoinc column was evaluated by the
+     * replicant against the unresolved sequence, so the bitmap it sent us says
+     * nothing about which keys this record really belongs in. Redo the
+     * predicates here, before anything - including the expression fixup, which
+     * skips indexes that are not set in ins_keys - gets to look at it. */
+    if (iq->usedb->ix_partial && get_schema(iq->usedb, -1)->has_nextseq) {
+        ins_keys = verify_indexes(iq->usedb, od_dta, blobs, maxblobs, 0);
+        if (ins_keys == -1ULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            ERR("failed to verify indices rc %d", rc);
+        }
+    }
+
+    /* The sequence value for an autoinc column was only just assigned by
+     * set_master_columns(), so any index expression the replicant evaluated
+     * over that column produced a key with a NULL in it. Redo those now that
+     * the record - and the blobs it may reference - are complete. */
+    rc = fixup_ireq_index_expressions(iq, od_dta, blobs, maxblobs, ins_keys);
+    if (rc) {
+        *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+        retrc = ERR_INTERNAL;
+        ERR("failed to reform index expressions rc %d", rc);
+    }
+
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
     if (rc < 0) {
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
