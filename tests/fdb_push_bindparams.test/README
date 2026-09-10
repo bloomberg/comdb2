@@ -1,0 +1,12 @@
+Bound parameters with fdb push writes.
+
+All pushed writes of a client transaction share one cdb2api handle. Since
+cdb2_bind_param/cdb2_bind_index append rather than replace, statement N used to
+ship its own parameters plus every parameter bound by statements 1..N-1, and the
+remote rejected it with "parameters in stmt:N parameters provided:M".
+
+Tests 1, 2, 2b and 3 are controls (standalone pushed writes, a transaction with
+no parameters, in-transaction pushed reads, and the remote's reaction to an
+extra bindvar). Tests 4, 5 and 6 cover the transaction cases that used to fail:
+named parameters, positional parameters with a shrinking count, and named
+parameters with verifyretry off.
