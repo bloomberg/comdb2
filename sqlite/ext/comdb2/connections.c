@@ -83,6 +83,7 @@ int systblConnectionsInit(sqlite3 *db) {
             &systblConnectionsModule, get_connections, free_connections, sizeof(struct connection_info),
             CDB2_CSTRING, "host", -1, offsetof(struct connection_info, host),
             CDB2_INTEGER, "connection_id", -1, offsetof(struct connection_info, connection_id),
+            CDB2_INTEGER, "client_id", -1, offsetof(struct connection_info, client_id),
             CDB2_DATETIME, "connect_time", -1, offsetof(struct connection_info, connect_time),
             CDB2_DATETIME, "last_reset_time", -1, offsetof(struct connection_info, last_reset_time),
             CDB2_INTEGER, "pid", -1, offsetof(struct connection_info, pid),

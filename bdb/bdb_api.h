@@ -1392,6 +1392,9 @@ void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t 
 /* Declare a role with no fingerprint, so work that has none is still
  * attributable. Pairs with bdb_fingerprint_rtstats_clear(). */
 void bdb_fingerprint_rtstats_set_role(int role);
+/* Name the client this thread works for; 0 is unknown. Stamped onto locks as
+ * comdb2_locks.client_id. Also pairs with bdb_fingerprint_rtstats_clear(). */
+void bdb_fingerprint_rtstats_set_client_id(uint32_t client_id);
 void bdb_fingerprint_rtstats_clear(void);
 int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
                                 uint64_t counts[BDB_FINGERPRINT_RTSTATS_NCOUNTS]);
@@ -1404,6 +1407,21 @@ void bdb_fingerprint_rtstats_foreach(bdb_fingerprint_rtstats_enum_fn fn, void *a
 extern int gbl_log_fingerprint;
 int bdb_llog_fingerprint_tran(bdb_state_type *bdb_state, tran_type *tran, const unsigned char *fingerprint,
                               int *bdberr);
+
+/* Log the client behind this txn so replicants can report it in
+ * comdb2_replication. Caller gates on gbl_log_clientinfo. */
+extern int gbl_log_clientinfo;
+int bdb_llog_clientinfo_tran(bdb_state_type *bdb_state, tran_type *tran, const char *taskname, const char *host,
+                             int pid, int *bdberr);
+
+/* Longest taskname/host comdb2_replication keeps; longer is truncated. */
+#define BDB_CLIENTINFO_STRSZ 64
+
+/* One callback per replication thread currently applying. taskname/host are
+ * NULL when the txn was logged without them, as is fingerprint. */
+typedef void (*bdb_replication_enum_fn)(void *arg, uint64_t tid, const char *taskname, const char *host, int pid,
+                                        const uint8_t *fingerprint, uint32_t lsn_file, uint32_t lsn_offset);
+void bdb_replication_foreach(bdb_replication_enum_fn fn, void *arg);
 
 /* Format and print the thread stats.  printfn() is a function which accepts
  * a line to print (\n\0 terminated) and a context pointer. Its return value

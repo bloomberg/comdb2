@@ -2016,15 +2016,17 @@ stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock, int ishandle, int isw
 					 stackutil_get_stack_id("getlock") : -1;
 }
 
-/* Stamp the acquirer for comdb2_locks: two TLS reads and a 16-byte copy. Stamped
- * once, so re-acquire (the refcount++/UPGRADE paths below) keeps the original. */
+/* Stamp the acquirer for comdb2_locks: three TLS reads and a 16-byte copy. Once
+ * only, so re-acquire (the refcount++/UPGRADE paths below) keeps the original. */
 static inline void
 stamp_fingerprint(struct __db_lock *lockp)
 {
 	int role;
+	uint32_t client_id;
 
-	bb_berkdb_fingerprint_rtstats_current(lockp->fingerprint, &role);
+	bb_berkdb_fingerprint_rtstats_current(lockp->fingerprint, &role, &client_id);
 	lockp->fp_role = (u_int8_t)role;
+	lockp->client_id = client_id;
 }
 
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */

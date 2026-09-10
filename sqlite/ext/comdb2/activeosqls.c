@@ -29,9 +29,27 @@
 #include "osqlcheckboard.h"
 #include "osqlsession.h"
 #include "osqlrepository.h"
+#include "tohex.h"
 
 static char *osqltype = "OSQL";
 static char *bplogtype = "BPLOG";
+
+/* NULL for the all-zero sentinel, so an unknown fingerprint reads as SQL NULL. */
+static char *fingerprint_hex(const unsigned char *fp)
+{
+    char hex[FINGERPRINTSZ * 2 + 1];
+    int i;
+
+    for (i = 0; i < FINGERPRINTSZ; i++) {
+        if (fp[i] != 0)
+            break;
+    }
+    if (i == FINGERPRINTSZ)
+        return NULL;
+
+    util_tohex(hex, (const char *)fp, FINGERPRINTSZ);
+    return strdup(hex);
+}
 
 typedef struct systable_osqlsession {
     char *type;
@@ -44,6 +62,12 @@ typedef struct systable_osqlsession {
     int64_t start_time;
     int64_t commit_time;
     int64_t nretries;
+    /* pid and fingerprint are NULL unless the client sent them; client_id is
+     * always known and joins comdb2_locks.client_id. */
+    int64_t pid;
+    int pid_isnull;
+    char *fingerprint;
+    int64_t client_id;
 } systable_osqlsession_t;
 
 typedef struct getosqlsessions {
@@ -93,6 +117,13 @@ static int collect_osql_session(void *obj, void *arg)
     o->start_time = rq->register_time;
     o->commit_time = clnt->osql.timings.commit_start;
     o->nretries = clnt->verify_retries;
+    /* This side has the clnt, so these need nothing off the wire. */
+    if (clnt->last_pid)
+        o->pid = clnt->last_pid;
+    else
+        o->pid_isnull = 1;
+    o->fingerprint = fingerprint_hex(clnt->work.aFingerprint);
+    o->client_id = osql_sess_client_id(rq->rqid, rq->uuid);
     return 0;
 }
 
@@ -136,6 +167,14 @@ static int collect_bplog_session(void *obj, void *arg)
     o->start_time = U2M(sess->sess_startus);
     o->commit_time = U2M(sess->sess_endus);
     o->nretries = iq?iq->retries:0;
+    /* Only here if the client sent them; the host we already had, above. */
+    o->argv0 = sess->clnt_taskname ? strdup(sess->clnt_taskname) : NULL;
+    if (sess->clnt_pid)
+        o->pid = sess->clnt_pid;
+    else
+        o->pid_isnull = 1;
+    o->fingerprint = sess->have_fingerprint ? fingerprint_hex(sess->fingerprint) : NULL;
+    o->client_id = sess->client_id;
     return 0;
 }
 
@@ -163,6 +202,8 @@ static void free_osqls(void *p, int n)
             free(t[i].cnonce);
         if (t[i].id)
             free(t[i].id);
+        if (t[i].fingerprint)
+            free(t[i].fingerprint);
     }
     free(p);
 }
@@ -186,5 +227,8 @@ int systblActiveOsqlsInit(sqlite3 *db)
         CDB2_INTEGER, "start_time", -1, offsetof(systable_osqlsession_t, start_time),
         CDB2_INTEGER, "commit_time", -1, offsetof(systable_osqlsession_t, commit_time),
         CDB2_INTEGER, "nretries", -1, offsetof(systable_osqlsession_t, nretries),
+        CDB2_INTEGER, "pid", offsetof(systable_osqlsession_t, pid_isnull), offsetof(systable_osqlsession_t, pid),
+        CDB2_CSTRING, "fingerprint", -1, offsetof(systable_osqlsession_t, fingerprint),
+        CDB2_INTEGER, "client_id", -1, offsetof(systable_osqlsession_t, client_id),
         SYSTABLE_END_OF_FIELDS);
 }

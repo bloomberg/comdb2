@@ -1153,6 +1153,14 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
  * declare this extern rather than including this header. */
 int bdb_fingerprint_from_logrec(DB_ENV *dbenv, void *logrec, unsigned char *fingerprint, size_t fplen);
 
+/* berkdb holds the decoded clientinfo as an opaque handle -- see bdb_clientinfo.c */
+void *bdb_clientinfo_from_logrec(DB_ENV *dbenv, void *logrec);
+void bdb_clientinfo_free(void *ci);
+void bdb_replication_thread_begin(uint32_t lsn_file, uint32_t lsn_offset);
+void bdb_replication_thread_client(void *ci);
+void bdb_replication_thread_fingerprint(const uint8_t *fingerprint);
+void bdb_replication_thread_end(void);
+
 int bdb_rowlock_int(DB_ENV *dbenv, DB_TXN *txn, unsigned long long genid,
                     int exclusive);
 
