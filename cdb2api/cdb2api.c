@@ -8107,6 +8107,26 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         }
     }
 
+    /* Try BMS discovery before falling back to comdb2db DNS lookup. */
+    if (cdb2_use_bmsd && (*cdb2_bmssuffix != '\0') && !hndl->num_shards && strcasecmp(hndl->type, "local") != 0) {
+        int bmsd_rc = -1;
+        if (cdb2_has_room_distance)
+            bmsd_rc =
+                bms_srv_lookup(hndl->hosts, hndl->dbname, hndl->type, &hndl->num_hosts, &hndl->num_hosts_sameroom);
+        else
+            bmsd_rc = bms_ip_lookup(hndl->hosts, hndl->dbname, cdb2_machine_room, hndl->type, &hndl->num_hosts,
+                                    &hndl->num_hosts_sameroom, 0);
+        if (bmsd_rc == 0 && hndl->num_hosts > 0) {
+            rc = 0;
+            goto after_callback;
+        }
+        if (!cdb2_comdb2db_fallback) {
+            sprintf(hndl->errstr, "cdb2_get_dbhosts: BMS lookup failed for %s/%s.", hndl->dbname, hndl->type);
+            rc = -1;
+            goto after_callback;
+        }
+    }
+
     if ((cdb2_default_cluster[0] != '\0') && (cdb2_comdb2dbname[0] != '\0')) {
         strcpy(comdb2db_name, cdb2_comdb2dbname);
     }
