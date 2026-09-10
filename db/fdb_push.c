@@ -665,8 +665,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
                 set_intrans = 1;
             }
 
-            /* if this is 2pc, we need to send additional info to the participant */
-            if (clnt->use_2pc) {
+            /* if this is standard 2pc (not DDL), send additional info to the participant */
+            if (clnt->use_2pc && !clnt->use_2pc_ddl) {
                 fdb_init_disttxn(clnt);
 
                 rc = fdb_2pc_set(clnt, fdb, tran->fcon.hndl);
@@ -703,7 +703,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
     }
 
     cdb2_effects_tp effects = {0};
-    if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
+    if (!clnt->in_client_trans || clnt->verifyretry_off || (clnt->use_2pc && !clnt->use_2pc_ddl)) {
         rc = cdb2_get_effects(hndl, &effects);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to get effects rc %d err \"%s\" sql \"%s\"\n", __func__, __LINE__, rc,
