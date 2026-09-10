@@ -82,6 +82,7 @@ int debug_switch_is_rep_rec_delayed(void);         /* 0 */
 int debug_switch_get_tmp_dir_sleep(void);          /* 0 */
 int debug_switch_ignore_null_auth_func(void);      /* 0 */
 int debug_switch_load_cache_delay(void);           /* 0 */
+int debug_switch_test_dbreg_deleted_intvl(void);   /* 0 */
 #ifdef COMDB2_TEST
 int debug_switch_stall_ssl_write(void);            /* 0 */
 int debug_switch_newsql_response_is_row(void);     /* 0 */
