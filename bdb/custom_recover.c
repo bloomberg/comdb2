@@ -89,6 +89,7 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
     llog_commit_log_bench_args *c_log_bench;
 
     llog_fingerprint_args *fingerprint;
+    llog_clientinfo_args *clientinfo;
 
     int rc;
     bdb_state_type *bdb_state;
@@ -285,6 +286,14 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
             return rc;
         logp = fingerprint;
         rc = handle_fingerprint(dbenv, rectype, fingerprint, lsn, op);
+        break;
+
+    case DB_llog_clientinfo:
+        rc = llog_clientinfo_read(dbenv, log_rec->data, &clientinfo);
+        if (rc)
+            return rc;
+        logp = clientinfo;
+        rc = handle_clientinfo(dbenv, rectype, clientinfo, lsn, op);
         break;
 
     default:

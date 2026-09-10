@@ -773,7 +773,7 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 		namep += 4;
 
 	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype, lp->stackid,
-		fingerprint_or_null(lp), fp_role_to_char(lp->fp_role));
+		fingerprint_or_null(lp), fp_role_to_char(lp->fp_role), lp->client_id);
 	if (hexdump)
 		free(hexdump);
 	return 0;

@@ -38,10 +38,12 @@ typedef struct systable_activelocks {
     int                     page_isnull;
     int                     frames;
     char                    *stack;
-    /* Both NULL when unknown (ezsystables renders that as SQL NULL), and they
-     * move independently: apply reports 'A' with no fingerprint. */
+    /* All NULL when unknown, and all independent. client_id joins
+     * comdb2_active_osqls ('W') or comdb2_connections ('R'). */
     char                    *fingerprint;
     const char              *fingerprint_role;
+    int64_t                 client_id;
+    int                     client_id_isnull;
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -63,7 +65,8 @@ static const char *fingerprint_role_str(char role)
 static int collect(void *args, int64_t threadid, int32_t lockerid,
         const char *mode, const char *status, const char *object,
         int64_t page, const char *rectype, int stackid,
-        const unsigned char *fingerprint, char fingerprint_role)
+        const unsigned char *fingerprint, char fingerprint_role,
+        uint32_t client_id)
 {
     int64_t hits;
     int nframes;
@@ -100,6 +103,13 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         l->fingerprint = NULL;
     }
     l->fingerprint_role = fingerprint_role_str(fingerprint_role);
+
+    if (client_id) {
+        l->client_id = client_id;
+        l->client_id_isnull = 0;
+    } else {
+        l->client_id_isnull = 1;
+    }
 
     if ((l->stack = stackutil_get_stack_str(stackid, &type, &nframes, &hits)) == NULL) {
         l->stack = strdup("(no-stack)");
@@ -149,5 +159,6 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_CSTRING, "stack", -1, offsetof(systable_activelocks_t, stack),
             CDB2_CSTRING, "fingerprint", -1, offsetof(systable_activelocks_t, fingerprint),
             CDB2_CSTRING, "fingerprint_role", -1, offsetof(systable_activelocks_t, fingerprint_role),
+            CDB2_INTEGER, "client_id", offsetof(systable_activelocks_t, client_id_isnull), offsetof(systable_activelocks_t, client_id),
             SYSTABLE_END_OF_FIELDS);
 }

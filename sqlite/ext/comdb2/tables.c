@@ -190,6 +190,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblActiveOsqlsInit(db);
   if (rc == SQLITE_OK)
+    rc = systblReplicationInit(db);
+  if (rc == SQLITE_OK)
     rc = systblBlkseqInit(db);
   if (rc == SQLITE_OK)
     rc = systblFingerprintsInit(db);
