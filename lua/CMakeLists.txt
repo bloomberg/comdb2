@@ -24,6 +24,11 @@ foreach(SYSSP IN LISTS SYSSP_LIST)
 
     file(READ ${SYSSP_PATH} FILE_CONTENT)
 
+    # The scripts are inlined at configure time, so a plain rebuild will not
+    # notice an edited .lua and syssp.c goes stale.  Re-run cmake when one of
+    # them changes.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SYSSP_PATH})
+
     string(REGEX REPLACE "(\")" "\\\\\\1" FILE_CONTENT ${FILE_CONTENT})
     string(REPLACE "\n" "\\n" FILE_CONTENT ${FILE_CONTENT})
 
