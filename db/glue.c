@@ -274,7 +274,23 @@ static int trans_start_int(struct ireq *iq, tran_type *parent_trans,
     bdb_state_type *bdb_handle = thedb->bdb_env;
     int rc = 0;
     tran_type *physical_tran = NULL;
+    struct txn_properties writer_props;
     iq->gluewhere = "bdb_tran_begin";
+
+    /* Tag the txn's locker as a writer so lock waits can be attributed by role
+       (see gbl_lock_instrumentation).  A zeroed txn_properties behaves exactly
+       like the NULL callers used to pass: every field is either read as
+       "prop ? x : 0" or tested for non-zero.  Logical/rowlocks transactions go
+       down the other branch, which takes no properties, so they stay
+       unattributed. */
+    if (!logical) {
+        if (props)
+            writer_props = *props;
+        else
+            memset(&writer_props, 0, sizeof(writer_props));
+        writer_props.flags |= DB_LOCK_ID_SQL_WRITER;
+        props = &writer_props;
+    }
 
     if (!logical) {
         /*
