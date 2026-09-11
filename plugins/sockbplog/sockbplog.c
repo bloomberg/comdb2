@@ -86,6 +86,12 @@ static int handle_sockbplog_request_session(COMDB2BUF *sb, char *host)
     if (gbl_sockbplog_debug)
         logmsg(LOGMSG_ERROR, "%p %s called\n", (void *)pthread_self(), __func__);
 
+    /* The writer thread writes the reply back over sb.  Wait for it to finish
+       (this also releases our client ref, letting the writer close the
+       session) before returning, otherwise the appsock frees sb while the
+       writer is still using it -- a use-after-free. */
+    osql_sess_socket_wait_io(sess);
+
     return 0;
 
 err:

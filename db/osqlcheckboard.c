@@ -155,9 +155,20 @@ done:
     return entry;
 }
 
-/* cleanup and free sql thread registration entry */
+/* cleanup and free sql thread registration entry
+ *
+ * The entry is already out of the checkboard hash, so no thread can find it
+ * any more, but one that found it before the removal can still be inside its
+ * critical section: osql_chkboard_sqlsession_rc() and friends take entry->mtx
+ * before dropping checkboard->mtx, and the sql thread unregisters as soon as
+ * it stops waiting -- which it does on rollback, on client disconnect and on
+ * timeout, while a reply from master may still be landing.  Take the mutex to
+ * wait that thread out; destroying it underneath returns EBUSY and aborts.
+ */
 static inline void cleanup_entry(osql_sqlthr_t *entry)
 {
+    Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&entry->mtx);
     Pthread_cond_destroy(&entry->cond);
     Pthread_mutex_destroy(&entry->mtx);
     free(entry);
