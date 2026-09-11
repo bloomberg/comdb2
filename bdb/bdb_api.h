@@ -1857,9 +1857,12 @@ int sampler_next(sampler_t *);
 void *sampler_key(sampler_t *);
 int sampler_close(sampler_t *);
 
-int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
-                        sampler_t **samplerp, unsigned long long *outrecs,
-                        unsigned long long *cmprecs, int *bdberr);
+/* sc_analyze: this sampling run belongs to an in-flight schema change, which
+ * is scanning the table it just built.  Do not abort on
+ * schema_change_in_progress -- that guard exists to stop an unrelated analyze
+ * from competing with a schema change. */
+int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct, sampler_t **samplerp,
+                        unsigned long long *outrecs, unsigned long long *cmprecs, int sc_analyze, int *bdberr);
 
 void bdb_bdblock_debug(void);
 int bdb_env_init_after_llmeta(bdb_state_type *bdb_state);

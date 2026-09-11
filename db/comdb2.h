@@ -2709,6 +2709,10 @@ int dbq_check_goose(struct ireq *iq, void *trans);
 int dbq_consume_goose(struct ireq *iq, void *trans);
 
 /* sql stuff */
+int create_sqlmaster_record(struct dbtable *tbl, void *tran);
+/* strip_new_prefix: name indexes as they will be named once an in-flight
+ * schema change commits, i.e. without the ".NEW." tag prefix. */
+int create_sqlmaster_record_flags(struct dbtable *tbl, void *tran, int strip_new_prefix);
 int create_sqlmaster_records(void *tran);
 int create_sqlmaster_records_flags(void *tran, uint32_t flags);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
@@ -2719,6 +2723,8 @@ int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
                               int nents);
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
+int get_copy_rootpages_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt);
+int rootpages_need_reload_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt);
 int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
                                   const char **names,
                                   struct master_entry **oldentries,

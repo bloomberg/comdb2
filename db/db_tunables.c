@@ -199,6 +199,8 @@ extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
 extern int gbl_always_reload_analyze;
+extern int gbl_analyze_new_indexes;
+extern int gbl_sc_analyze_threads;
 extern int gbl_block_set_commit_genid_trace;
 extern int gbl_random_prepare_commit;
 extern int gbl_all_prepare_commit;
