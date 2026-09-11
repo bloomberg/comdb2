@@ -71,6 +71,7 @@ set(src
   resource.c
   reverse_conn.c
   rmtpolicy.c
+  seqnum_wait.c
   sigutil.c
   sltdbt.c
   socket_interfaces.c
