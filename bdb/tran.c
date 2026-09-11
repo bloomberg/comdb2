@@ -2444,7 +2444,10 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
-        unsigned int loc_flags = DB_LOCK_ID_READONLY;
+        /* SQL_READER, not just READONLY: bdb_verify and other utilities also
+           take READONLY lockers, and lumping those in with the SQL readers
+           would skew the per-role lock-wait attribution. */
+        unsigned int loc_flags = DB_LOCK_ID_READONLY | DB_LOCK_ID_SQL_READER;
         extern int gbl_track_curtran_locks;
 
         if (lowpri)
@@ -2481,6 +2484,28 @@ int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
 {
     if (!curtran || curtran->lockerid == 0) return 0;
     return bdb_state->dbenv->lock_id_has_waiters(bdb_state->dbenv, curtran->lockerid);
+}
+
+/* Same question as bdb_curtran_has_waiters, but split by what the waiter is
+   blocked on, and answered in one locker-partition lock.  Returns 0 on success;
+   on failure *out is zeroed, which reads as "no waiters" -- the same
+   conservative answer bdb_curtran_has_waiters gives for a missing curtran. */
+int bdb_curtran_waiter_info(bdb_state_type *bdb_state, cursor_tran_t *curtran, struct lock_waiter_info *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (!curtran || curtran->lockerid == 0)
+        return 0;
+    return bdb_state->dbenv->lock_id_waiter_info(bdb_state->dbenv, curtran->lockerid, out);
+}
+
+/* Called once the cursors' page locks are gone, so the page-lock waiter signal
+   cannot still be true.  Leaves the table-lock signal set -- see
+   __lock_id_clear_pagelock_waiters. */
+int bdb_curtran_clear_pagelock_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
+{
+    if (!curtran || curtran->lockerid == 0)
+        return 0;
+    return bdb_state->dbenv->lock_id_clear_pagelock_waiters(bdb_state->dbenv, curtran->lockerid);
 }
 
 unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran)

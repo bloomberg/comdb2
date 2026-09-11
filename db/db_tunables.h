@@ -1802,12 +1802,33 @@ REGISTER_TUNABLE("pagelock_release_max_wait_ms",
                  "schema change proceed).  0 disables the fallback.  (Default: 60000ms)",
                  TUNABLE_INTEGER, &gbl_pagelock_release_max_wait_ms, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("pagelock_split_waiters",
+                 "Track page-lock and table-lock waiters separately and clear the page-lock one at each release, "
+                 "instead of treating the has-waiters flag as a latch that is never cleared.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_pagelock_split_waiters, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("pagelock_probe_interval_us",
+                 "Minimum gap between has-waiters probes for one session; the previous answer is reused inside the "
+                 "interval instead of taking a locker-partition lock on every cursor move.  0 disables the cache "
+                 "and probes every move.  (Default: 1000us)",
+                 TUNABLE_INTEGER, &gbl_pagelock_probe_interval_us, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_pagelock_release_trace", "Trace page-lock release pacing decisions.  (Default: 0)",
                  TUNABLE_BOOLEAN, &gbl_debug_pagelock_release_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("recover_deadlock_sync_dta",
                  "Sync index/data cursors before lock release in recover_deadlock.  (Default: 1)", TUNABLE_BOOLEAN,
                  &gbl_recover_deadlock_sync_dta, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("lock_instrumentation",
+                 "Attribute lock-wait time to readers vs writers and time the parts of a lock release.  Needs the "
+                 "default-on bb_berkdb_enable_thread_stats/lock_timing to collect lock waits.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_lock_instrumentation, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("lock_instrumentation_sample",
+                 "Time one in every N has-waiters probes rather than all of them; timing every per-row probe would "
+                 "cost more than the probe.  0 disables probe timing.  (Default: 64)",
+                 TUNABLE_INTEGER, &gbl_lock_instrumentation_sample, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_recover_deadlock_skip_sync_dta",
                  "Test only: with recover_deadlock_sync_dta on, still release non-SI locks but skip the "

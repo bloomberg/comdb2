@@ -2104,6 +2104,9 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
                           int64_t *deadlock_locks, int64_t *waits,
                           int64_t *requests);
 
+struct lock_role_stats;
+void bdb_get_lock_role_counters(struct lock_role_stats *out);
+
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits, int64_t *bpool_misses, int64_t *bpool_lhits,
                            int64_t *bpool_lmisses, int64_t *page_reads, int64_t *page_writes, int64_t *rw_evicts);
 
