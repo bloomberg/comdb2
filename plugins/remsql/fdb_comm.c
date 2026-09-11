@@ -2895,7 +2895,8 @@ int fdb_bend_cursor_open(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     assert((msg->hd.type & FD_MSG_TYPE) == FDB_MSG_CURSOR_OPEN);
 
     /* create a cursor */
-    if (!fdb_svc_cursor_open(tid, cid, msg->co.rootpage, msg->co.version, msg->co.flags, seq, &clnt)) {
+    if (!fdb_svc_cursor_open(tid, cid, msg->co.rootpage, msg->co.version, msg->co.flags, seq, msg->co.srcname,
+                             msg->co.srcpid, &clnt)) {
         logmsg(LOGMSG_ERROR, "%s: failed to open cursor\n", __func__);
         arg->clnt = NULL;
         return -1;
@@ -3485,9 +3486,20 @@ int fdb_send_2pc_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *tr
             logmsg(LOGMSG_ERROR, "%s: failed to serialize db identity\n", __func__);
             return rc;
         }
+        if (!msg->tv.authdtalen) {
+            /* fails open: the remote will run this as an anonymous caller */
+            static int warned = 0;
+            if (!warned) {
+                warned = 1;
+                logmsg(LOGMSG_WARN, "%s: no db identity to send, remote transaction is unauthenticated\n", __func__);
+            }
+        }
     }
+    /* the flag must track what was actually framed, in both directions */
     if (msg->tv.authdtalen)
         msg->tv.flags |= FDB_MSG_TRANS_AUTH;
+    else
+        msg->tv.flags &= ~FDB_MSG_TRANS_AUTH;
 
     assert(trans->seq == 0);
 
@@ -3545,9 +3557,20 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans,
             logmsg(LOGMSG_ERROR, "%s: failed to serialize db identity\n", __func__);
             return rc;
         }
+        if (!msg->tr.authdtalen) {
+            /* fails open: the remote will run this as an anonymous caller */
+            static int warned = 0;
+            if (!warned) {
+                warned = 1;
+                logmsg(LOGMSG_WARN, "%s: no db identity to send, remote transaction is unauthenticated\n", __func__);
+            }
+        }
     }
+    /* the flag must track what was actually framed, in both directions */
     if (msg->tr.authdtalen)
         msg->tr.flags |= FDB_MSG_TRANS_AUTH;
+    else
+        msg->tr.flags &= ~FDB_MSG_TRANS_AUTH;
     assert(trans->seq == 0);
 
     cdb2buf_printf(sb, "%s\n", "remtran");
@@ -3700,6 +3723,7 @@ int fdb_bend_trans_begin(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
     if (!rc) {
         clnt->origin = get_origin_mach_by_buf(sb);
+        clnt->conninfo.pid = 0;
         arg->flags = flags;
         if (gbl_expressions_indexes) {
             if (clnt->idxInsert || clnt->idxDelete) {
