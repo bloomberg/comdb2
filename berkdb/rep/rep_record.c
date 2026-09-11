@@ -5083,13 +5083,76 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 int gbl_debug_lock_get_list_copy_compare = 0;
 
 /*
+ * __rep_prefault_stash_mark --
+ *	Claim slot j of an nslots-entry collection as a record this context
+ *	stashed and must free.  Allocates the bitmap on first use.  Returns
+ *	non-zero if the claim did not stick, in which case the caller must not
+ *	stash: an unclaimed stash would live until lc_free, which is the
+ *	unbounded growth this bookkeeping exists to avoid.
+ */
+static int
+__rep_prefault_stash_mark(dbenv, ctx, j, nslots)
+	DB_ENV *dbenv;
+	REP_PREFAULT_CTX *ctx;
+	int j;
+	int nslots;
+{
+	if (j < 0 || j >= nslots)
+		return (EINVAL);
+
+	if (ctx->stash == NULL) {
+		if (__os_calloc(dbenv, (nslots + 31) / 32,
+		    sizeof(u_int32_t), &ctx->stash) != 0)
+			return (ENOMEM);
+		ctx->stash_nbits = nslots;
+	} else if (j >= ctx->stash_nbits)
+		return (EINVAL);	/* nlsns changed under us; don't guess */
+
+	ctx->stash[j >> 5] |= (u_int32_t)1 << (j & 31);
+	return (0);
+}
+
+/*
+ * __rep_prefault_stash_release --
+ *	Free collection entry j if this context stashed it, and drop the claim.
+ *	A no-op for entries the collector or the lc_cache owns, so the apply
+ *	loop can call it unconditionally.
+ */
+static void
+__rep_prefault_stash_release(dbenv, ctx, lc, j)
+	DB_ENV *dbenv;
+	REP_PREFAULT_CTX *ctx;
+	LSN_COLLECTION *lc;
+	int j;
+{
+	if (ctx->stash == NULL || j < 0 || j >= ctx->stash_nbits)
+		return;
+	if (!(ctx->stash[j >> 5] & ((u_int32_t)1 << (j & 31))))
+		return;
+
+	ctx->stash[j >> 5] &= ~((u_int32_t)1 << (j & 31));
+
+	if (lc->array[j].rec.data != NULL) {
+		__os_free(dbenv, lc->array[j].rec.data);
+		lc->array[j].rec.data = NULL;
+		lc->array[j].rec.size = 0;
+	}
+}
+
+/*
  * __rep_prefault_ahead --
  *	Warm the pages of collection entry j, which the apply loop has not
  *	reached yet.  A record we had to read from the log is stashed back into
  *	the collection, so the apply loop's rec.data branch picks it up instead
  *	of reading it again -- the read moves earlier, it is not duplicated.
- *	lc_free releases stashed entries by flags, so this is safe whether the
- *	collection is ours or the recovery processor's.
+ *
+ *	A stash is claimed in ctx->stash so the apply loop can free it once the
+ *	record has been applied.  Without that it would live to lc_free and the
+ *	whole transaction's log would accumulate, which is exactly what the
+ *	collector's recovery_memsize check declines to do.  Anything still
+ *	claimed at the end -- the tail of an aborted apply -- lc_free releases
+ *	by flags, so this stays safe whether the collection is ours or the
+ *	recovery processor's.
  */
 static void
 __rep_prefault_ahead(dbenv, lc, j, logcp, scratch, ctx)
@@ -5126,14 +5189,20 @@ __rep_prefault_ahead(dbenv, lc, j, logcp, scratch, ctx)
 
 	if (scratch->size < sizeof(u_int32_t))
 		return;
+	/* Claim the slot first: a stash we cannot account for is worse than no
+	 * stash, since only lc_free would ever release it. */
+	if (__rep_prefault_stash_mark(dbenv, ctx, j, lc->nlsns) != 0)
+		return;
 	if (__os_malloc(dbenv, scratch->size, &lc->array[j].rec.data) != 0) {
 		lc->array[j].rec.data = NULL;
+		__rep_prefault_stash_release(dbenv, ctx, lc, j);
 		return;
 	}
 	memcpy(lc->array[j].rec.data, scratch->data, scratch->size);
 	lc->array[j].rec.size = scratch->size;
 	lc->array[j].rec.flags = 0;	/* lc_free will __os_free this */
-	lc->memused += scratch->size;
+	/* No lc->memused bump: the collector already counted this record's
+	 * bytes for the whole transaction, retained or not. */
 	gbl_rep_prefault_stashed++;
 }
 
@@ -5756,6 +5825,14 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			}
 		} else
 			ret = 0;
+
+		/* Done with this record: hand back anything the prefaulter read
+		 * on our behalf, so the stash stays the size of the window
+		 * rather than the size of the transaction.  A no-op for entries
+		 * the collector or the lc_cache owns, and for the tail we skip
+		 * on a goto err above -- lc_free takes those. */
+		if (pf_lookahead > 0)
+			__rep_prefault_stash_release(dbenv, &pf_ctx, &lc, i);
 	}
 
 

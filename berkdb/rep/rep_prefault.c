@@ -650,6 +650,13 @@ __rep_prefault_ctx_destroy(dbenv, ctx)
 		ctx->recs.nalloc = 0;
 		ctx->recs.npages = 0;
 	}
+	/* Only the bitmap: any records still claimed in it belong to a
+	 * collection lc_free has yet to walk, and it frees them by flags. */
+	if (ctx->stash != NULL) {
+		__os_free(dbenv, ctx->stash);
+		ctx->stash = NULL;
+		ctx->stash_nbits = 0;
+	}
 }
 
 /*

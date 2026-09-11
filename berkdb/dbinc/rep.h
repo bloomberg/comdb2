@@ -227,6 +227,15 @@ typedef struct __txn_recs {
 typedef struct __rep_prefault_ctx {
 	TXN_RECS	recs;
 	u_int32_t	dedup[REP_PREFAULT_DEDUP_SLOTS];
+	/*
+	 * One bit per LSN_COLLECTION slot holding a log record this context
+	 * stashed, so the serial apply loop frees only those and leaves
+	 * collector- and lc_cache-owned entries alone.  Allocated on the first
+	 * stash; NULL means the serial path never ran or never stashed.  The
+	 * parallel path tracks its own stashes on __recovery_record instead.
+	 */
+	u_int32_t	*stash;
+	int		stash_nbits;
 } REP_PREFAULT_CTX;
 
 /*
