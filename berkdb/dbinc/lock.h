@@ -293,8 +293,28 @@ typedef struct __db_locker {
 #define DB_LOCKER_TRACK         	0x0100
 #define DB_LOCKER_READONLY      	0x0200
 #define DB_LOCKER_IN_LOGICAL_ABORT 	0x0800
+/* Role of the comdb2 thread that owns this locker, used to attribute lock-wait
+ * time to readers vs writers.  DB_LOCKER_READONLY is not enough on its own: it
+ * is also set for bdb_verify and other utility lockers. */
+#define DB_LOCKER_SQL_READER            0x0400
+#define DB_LOCKER_SQL_WRITER            0x1000
 #define DB_LOCKER_TRACK_WRITELOCKS      0x8000
 	u_int8_t has_waiters;
+	/* Same signal as has_waiters, but split by what the waiter is blocked on,
+	 * so a holder can tell "waiting for a page lock" from "waiting for the
+	 * table lock".  has_waiters stays the union of everything, for the callers
+	 * that only care whether anybody is behind them.
+	 *
+	 * A page-lock waiter goes away when the holder drops its page locks, so
+	 * that flag is cleared at every release; a table-lock waiter (a schema
+	 * change parked on our retained table read lock) does not, so that one is
+	 * only cleared when the locker itself is recycled.  The _ms stamps record
+	 * when each flag first went up, which is what bounds how long a waiter may
+	 * starve before we escalate to a full release. */
+	u_int8_t has_pagelock_waiters;
+	u_int8_t has_tablelock_waiters;
+	int pagelock_waiters_ms;
+	int tablelock_waiters_ms;
 	u_int32_t flags;
 	u_int8_t has_pglk_lsn;
 	u_int8_t wstatus;  /* master locker waiting, for deadlock detection */

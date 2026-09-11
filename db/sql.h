@@ -757,6 +757,21 @@ struct sqlclntstate {
     int pagelock_release_first_ms; /* when this waiter was first seen */
     int dbg_pagelock_releases;     /* count, for trace/diagnostics */
 
+    /* Cached answer to "who is waiting on me", so a scan does not take a
+       locker-partition lock on every single cursor move just to be told "nobody"
+       again.  Refreshed no more than once per pagelock_probe_interval_us; see
+       probe_curtran_waiter_info().  Invalidated on release, since a release
+       changes the answer.  Plain scalars, not a stored struct lock_waiter_info:
+       that type is only forward-declared here (its definition is in berkdb's
+       build/db.h), which files outside berkdb deliberately avoid including --
+       archive/ar_glue.h ships its own compatibility stand-ins for several of
+       berkdb's names and collides with the real header. */
+    int64_t probe_last_us;
+    int probe_cached_has_page;
+    int probe_cached_has_table;
+    int probe_cached_page_ms;
+    int probe_cached_table_ms;
+
     /* Bumped by every sync_index_data_cursors() pass and stamped into the
        cursors it captured, so the deferred-seek skip can tell "captured by the
        release that just happened" from "feature is enabled".  Always >= 1 once
@@ -777,6 +792,16 @@ struct sqlclntstate {
     uint32_t last_release_flags; /* RECOVER_DEADLOCK_* the release ran with */
     int last_release_ms;         /* comdb2_time_epochms() at release */
     int last_release_count;      /* how many releases so far this request */
+
+    /* Per-query cost of releasing locks, for the event log.  Reset at the top
+       of each query; only filled in when the lock_instrumentation tunable is
+       on.  reacquire is the only one of these that is time waiting for locks --
+       see the note on the gbl_rdlk_* counters in sqlglue.c. */
+    uint64_t rdlk_total_us;
+    uint64_t rdlk_reacquire_us;
+    uint64_t rdlk_revalidate_us;
+    uint64_t rdlk_sleep_us;
+    uint64_t sync_dta_us;
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
@@ -1558,6 +1583,10 @@ int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
 int release_locks_on_emit_row(struct sqlclntstate *clnt);
+
+/* bdb_curtran_has_waiters plus sampled timing of the probe itself */
+int probe_curtran_has_waiters(struct sqlclntstate *clnt);
+int probe_curtran_waiter_info(struct sqlclntstate *clnt, struct lock_waiter_info *out);
 void sync_index_data_cursors(struct sql_thread *thd);
 const char *clnt_last_release_str(struct sqlclntstate *clnt, char *buf, size_t sz);
 /* clear the release pacing / last-release state; call once per run */

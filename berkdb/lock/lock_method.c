@@ -111,6 +111,9 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_id_flags = __lock_id_flags_pp;
 		dbenv->lock_id_free = __lock_id_free_pp;
 		dbenv->lock_id_has_waiters = __lock_id_has_waiters_pp;
+		dbenv->lock_id_waiter_info = __lock_id_waiter_info_pp;
+		dbenv->lock_id_clear_pagelock_waiters =
+		    __lock_id_clear_pagelock_waiters_pp;
 		dbenv->lock_id_set_logical_abort =
 		    __lock_id_set_logical_abort_pp;
 		dbenv->lock_put = __lock_put_pp;
