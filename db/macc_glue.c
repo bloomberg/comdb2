@@ -1078,6 +1078,8 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
                 rc = -1;
                 goto err;
             }
+            if (fld->in_default_type == SERVER_SEQUENCE)
+                sch->has_nextseq = 1;
 
             if (_check_column_ull(fld, tbl->tablename, allow_ull)) {
                 errstat_set_rcstrf(err, rc = -1, "u_longlong is not supported");

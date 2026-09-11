@@ -1,0 +1,17 @@
+schema
+{
+   int a
+   longlong b dbstore=nextsequence null=yes
+   vutf8 data null=yes
+}
+keys
+{
+   "b" = b
+   dup "fk" = a
+   dup "expr" = (cstring[64])"json_extract(data, '$.n')"
+   dup "exprseq" = (longlong)"b * 1000 + json_extract(data, '$.k')"
+}
+constraints
+{
+   "fk" -> <"seqexprparent":"ID">
+}
