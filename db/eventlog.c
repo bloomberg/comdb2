@@ -410,6 +410,23 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
                             cson_new_int(thread_stats->pwrite_time_us));
         }
     }
+
+    /* What releasing locks cost this query.  Only populated with the
+       lock_instrumentation tunable on; of these only release_reacquire_us is
+       time spent waiting for locks (see the gbl_rdlk_* note in sqlglue.c). */
+    const struct sqlclntstate *clnt = logger->clnt;
+    if (clnt && (clnt->rdlk_total_us || clnt->sync_dta_us)) {
+        cson_object_set(perfobj, "release_total_us", cson_new_int(clnt->rdlk_total_us));
+        if (clnt->rdlk_reacquire_us)
+            cson_object_set(perfobj, "release_reacquire_us", cson_new_int(clnt->rdlk_reacquire_us));
+        if (clnt->rdlk_revalidate_us)
+            cson_object_set(perfobj, "release_revalidate_us", cson_new_int(clnt->rdlk_revalidate_us));
+        if (clnt->rdlk_sleep_us)
+            cson_object_set(perfobj, "release_sleep_us", cson_new_int(clnt->rdlk_sleep_us));
+        if (clnt->sync_dta_us)
+            cson_object_set(perfobj, "sync_dta_us", cson_new_int(clnt->sync_dta_us));
+    }
+
     cson_object_set(obj, "perf", perfval);
 }
 
