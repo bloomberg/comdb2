@@ -1,0 +1,2 @@
+cache 1 gb
+do debug recover_deadlock_evbuffer

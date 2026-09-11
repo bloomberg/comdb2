@@ -432,6 +432,8 @@ struct txn_properties;
 #define DB_LOCK_ID_LOWPRI   0x001	/* Choose this as a deadlock victim */
 #define DB_LOCK_ID_TRACK    0x002	/* Track this lockid */
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
+#define DB_LOCK_ID_SQL_READER 0x008	/* Locker belongs to a SQL read cursor */
+#define DB_LOCK_ID_SQL_WRITER 0x010	/* Locker belongs to a SQL write txn */
 
 /* Flag values for lock_abort_waiters */
 #define DB_LOCK_ABORT_LOGICAL   0x0001 /* Only abort logical waiters */
@@ -499,6 +501,34 @@ typedef enum  {
 	DB_LSTAT_WAITING=8,/* Lock is on the wait queue. */
 	DB_LSTAT_WAITDIE=9
 }db_status_t;
+
+/*
+ * Lock-wait time attributed to the role of the waiting locker.  Collected only
+ * when gbl_lock_instrumentation is on.  "other" is everything that is neither a
+ * SQL read cursor nor a SQL write transaction (replication, utilities, ...).
+ */
+struct lock_role_stats {
+	u_int64_t reader_wait_us;
+	u_int64_t reader_waits;
+	u_int64_t writer_wait_us;
+	u_int64_t writer_waits;
+	u_int64_t other_wait_us;
+	u_int64_t other_waits;
+};
+
+/*
+ * Who is blocked behind a locker, split by what they are blocked on.  Returned
+ * whole so a caller that needs both kinds pays for one locker-partition lock
+ * instead of two.  page_ms/table_ms are when each flag first went up
+ * (comdb2_time_epochms), and are only meaningful when the matching has_ is set.
+ */
+struct lock_waiter_info {
+	int has_any;
+	int has_page;
+	int has_table;
+	int page_ms;
+	int table_ms;
+};
 
 /* Lock statistics structure. */
 struct __db_lock_stat {
@@ -2572,6 +2602,8 @@ struct __db_env {
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
 	int  (*lock_id_free) __P((DB_ENV *, u_int32_t));
 	int  (*lock_id_has_waiters) __P((DB_ENV *, u_int32_t));
+	int  (*lock_id_waiter_info) __P((DB_ENV *, u_int32_t, struct lock_waiter_info *));
+	int  (*lock_id_clear_pagelock_waiters) __P((DB_ENV *, u_int32_t));
 	int  (*lock_id_set_logical_abort) __P((DB_ENV *, u_int32_t));
 	int  (*locker_set_track) __P((DB_ENV *, u_int32_t));
 	int  (*locker_set_timestamp) __P((DB_ENV *, u_int32_t, int64_t));

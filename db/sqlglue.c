@@ -162,6 +162,161 @@ extern int gbl_enable_internal_sql_stmt_caching;
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
 
+/* What a lock release actually costs, broken into its parts.  Collected only
+   when gbl_lock_instrumentation is on.
+
+   Only reacquire_us is time spent waiting to get locks back.  revalidate_us is
+   NOT: under the default new_mode, set_curtran just stores the curtran pointer
+   and the cursors stay invalidated (bdb_cursor_set_curtran, bdb/cursor.c), so
+   that block is a pointer store plus a schema-version check.  It acquires locks
+   only on the legacy new_mode==0 path, which calls bdbcur->lock().  It is timed
+   so the parts account for the total, not because it is contention.
+
+   The two paths drop locks in different places, so they are timed separately:
+   the page-locks-only path (the one recover_deadlock_sync_dta uses) does its
+   work in unlock_bdb_cursors and returns before put_curtran, so it never
+   contributes to release_us/reacquire_us/revalidate_us.  Its page locks are
+   retaken lazily on the next cursor move, landing in ordinary reader lock-wait
+   instead -- which is why reacquire_us is expected to be ~0 for the feature.
+
+   gbl_sync_dta_us is charged in release_locks_int, outside recover_deadlock and
+   before it, so it does not overlap gbl_rdlk_total_us; the two are disjoint and
+   sum to total release-related cost.  They cover different populations though:
+   the sync runs only for release_locks_int callers, while recover_deadlock is
+   also entered directly by sql_tick, ddguard_bdb_cursor_move, analyze, lua and
+   others that never sync. */
+extern int gbl_lock_instrumentation;
+uint64_t gbl_rdlk_total_us = 0;
+uint64_t gbl_rdlk_unlock_us = 0;
+uint64_t gbl_rdlk_release_us = 0;
+uint64_t gbl_rdlk_sleep_us = 0;
+uint64_t gbl_rdlk_reacquire_us = 0;
+uint64_t gbl_rdlk_revalidate_us = 0;
+uint64_t gbl_rdlk_count = 0;
+uint64_t gbl_rdlk_pagelocks_only_count = 0;
+uint64_t gbl_sync_dta_us = 0;
+uint64_t gbl_sync_dta_count = 0;
+
+/* Cost of asking "is anyone waiting on my page locks?" (bdb_curtran_has_waiters
+   -> __lock_id_has_waiters), charged in release_locks_on_emit_row.
+
+   None of the counters above see this: they start once a release has already
+   been decided on, and the overwhelming majority of probes answer "no" and
+   return without releasing anything.  It is not a lock wait either, so it does
+   not reach the lockwait_ buckets.  Yet it runs per emitted row and takes the
+   global lock region mutex plus a locker partition lock to read one byte, so on
+   a scan-heavy workload it is both a real cost and a serialisation point.
+
+   Timed on every Nth probe rather than all of them: two clock reads per row
+   would cost more than the thing being measured.  gbl_probe_us therefore covers
+   only the gbl_probes_timed sampled calls, while gbl_probes counts them all --
+   scale by probes/probes_timed for an estimated total. */
+uint64_t gbl_probe_us = 0;
+uint64_t gbl_probes = 0;
+uint64_t gbl_probes_timed = 0;
+int gbl_lock_instrumentation_sample = 64;
+
+/* Decide whether this call is one of the sampled ones, and if so return the
+   start time.  Split out so both probe entry points below are counted the same
+   way -- otherwise switching between them would look like the probe vanished. */
+static inline int probe_sample_start(int64_t *start)
+{
+    static __thread uint32_t probe_tick;
+    int n = gbl_lock_instrumentation_sample;
+    int timed = gbl_lock_instrumentation && n > 0 && (++probe_tick % (uint32_t)n) == 0;
+    *start = timed ? comdb2_time_epochus() : 0;
+    return timed;
+}
+
+static inline void probe_sample_end(int timed, int64_t start)
+{
+    if (timed) {
+        __sync_fetch_and_add(&gbl_probe_us, (uint64_t)(comdb2_time_epochus() - start));
+        __sync_fetch_and_add(&gbl_probes_timed, 1);
+        /* charge the whole sampling interval, so gbl_probes counts every probe
+           while only one in N pays for the atomics */
+        __sync_fetch_and_add(&gbl_probes, (uint64_t)gbl_lock_instrumentation_sample);
+    }
+}
+
+/* The probe itself, wrapped so every caller is accounted for.  cursor_move_postop
+   runs this per cursor move, and on the non-SI path it is reached only when
+   recover_deadlock_sync_dta is on -- so unlike the rest of the lockwait_ family
+   it is a cost the feature adds rather than a shared baseline. */
+int probe_curtran_has_waiters(struct sqlclntstate *clnt)
+{
+    int64_t start;
+    int timed = probe_sample_start(&start);
+    int waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran);
+    probe_sample_end(timed, start);
+    return waiters;
+}
+
+extern int gbl_pagelock_probe_interval_us;
+
+/* Same probe, split by what the waiter wants.  Costs the same as the plain one
+   (a single locker-partition lock), so it is charged to the same counters.
+
+   Rate-limited per session by pagelock_probe_interval_us: inside the interval
+   the previous answer is reused and no lock is taken.  The clock read that
+   decides is ~14ns against a ~2us probe, so a skipped probe is essentially
+   free.  Only this entry point caches -- probe_curtran_has_waiters() is on the
+   SERIAL and emit-row paths, which are not per-cursor-move. */
+int probe_curtran_waiter_info(struct sqlclntstate *clnt, struct lock_waiter_info *out)
+{
+    int interval = gbl_pagelock_probe_interval_us;
+    int64_t now = interval > 0 ? comdb2_time_epochus() : 0;
+
+    if (interval > 0 && clnt->probe_last_us && (now - clnt->probe_last_us) < interval) {
+        memset(out, 0, sizeof(*out));
+        out->has_page = clnt->probe_cached_has_page;
+        out->has_table = clnt->probe_cached_has_table;
+        out->page_ms = clnt->probe_cached_page_ms;
+        out->table_ms = clnt->probe_cached_table_ms;
+        return 0;
+    }
+
+    int64_t start;
+    int timed = probe_sample_start(&start);
+    int rc = bdb_curtran_waiter_info(thedb->bdb_env, clnt->dbtran.cursor_tran, out);
+    probe_sample_end(timed, start);
+
+    if (interval > 0 && rc == 0) {
+        clnt->probe_cached_has_page = out->has_page;
+        clnt->probe_cached_has_table = out->has_table;
+        clnt->probe_cached_page_ms = out->page_ms;
+        clnt->probe_cached_table_ms = out->table_ms;
+        clnt->probe_last_us = now;
+    }
+    return rc;
+}
+
+extern int64_t comdb2_time_epochus(void);
+
+/* Read the clock only when we are measuring. */
+static inline int64_t rdlk_now(void)
+{
+    return gbl_lock_instrumentation ? comdb2_time_epochus() : 0;
+}
+
+/* Charge an elapsed segment to the global counter and, when given, to the
+   query's own tally.  Both are updated at the source: differencing the globals
+   would pick up whatever other threads did in the same window. */
+static inline void rdlk_add2(uint64_t *acc, uint64_t *clnt_acc, int64_t start)
+{
+    if (gbl_lock_instrumentation) {
+        uint64_t d = (uint64_t)(comdb2_time_epochus() - start);
+        __sync_fetch_and_add(acc, d);
+        if (clnt_acc)
+            *clnt_acc += d;
+    }
+}
+
+static inline void rdlk_add(uint64_t *acc, int64_t start)
+{
+    rdlk_add2(acc, NULL, start);
+}
+
 extern int sqldbgflag;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 
@@ -2725,6 +2880,7 @@ void clnt_reset_release_state(struct sqlclntstate *clnt)
     clnt->pagelock_release_last_ms = 0;
     clnt->dbg_pagelock_releases = 0;
     clnt->sync_dta_generation = 0;
+    clnt->probe_last_us = 0;
 
     clnt->last_release_func = NULL;
     clnt->last_release_line = 0;
@@ -3427,6 +3583,22 @@ int gbl_pagelock_release_interval_ms = 100;
    gbl_rep_wait_release_ms.  0 disables the fallback entirely (page locks only,
    forever -- a long scan can then starve a schema change indefinitely). */
 int gbl_pagelock_release_max_wait_ms = 60000;
+/* Track page-lock and table-lock waiters separately, and clear the page-lock
+   one at each release.  Without this the underlying has_waiters flag is a latch
+   that is never cleared for the life of the locker: after the first waiter we
+   keep re-releasing every interval whether or not anyone is still there, the
+   no-waiter reset below becomes unreachable, and max_wait eventually escalates
+   to a full release on behalf of a waiter that left long ago.  Off restores
+   exactly that older behaviour. */
+int gbl_pagelock_split_waiters = 1;
+/* Minimum gap between has-waiters probes for one session.  cursor_move_postop
+   asks once per cursor move, and each ask takes a locker-partition lock to read
+   a couple of bytes; on a scan that is millions of times to be told "nobody" in
+   all but a handful.  Between probes the previous answer is reused, so the cost
+   of noticing a new waiter late is bounded by this interval -- microseconds
+   against write latencies measured in seconds.  0 disables the cache and probes
+   every move, as before. */
+int gbl_pagelock_probe_interval_us = 1000;
 int gbl_debug_sleep_in_cursor_move = 0;           /* ms to sleep on each cursor move (testing only) */
 int gbl_recover_deadlock_sync_dta = 1;            /* sync index/data cursors before lock release */
 int gbl_debug_recover_deadlock_skip_sync_dta = 0; /* test only: release but skip the
@@ -3717,7 +3889,7 @@ static int cursor_move_postop(BtCursor *pCur)
         /* SERIAL keeps the historical SI release path (a full release). */
         if (!gbl_sql_release_locks_on_si_lockwait)
             return 0;
-        if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
+        if (probe_curtran_has_waiters(clnt)) {
             rc = release_locks(RLOCKS_REASON_SI_LOCKWAIT);
             release_locks_on_si_lockwait_cnt++;
         } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
@@ -3739,13 +3911,31 @@ static int cursor_move_postop(BtCursor *pCur)
     if (bdb_lock_desired(thedb->bdb_env))
         return 0;
 
-    /* Release PAGE LOCKS ONLY, keeping the curtran and therefore our table
-       read locks.  That is enough to unblock the page-lock waiter that brought
-       us here, while ensuring no schema change can run inside the window: a
-       DROP/ALTER transaction is replayed on a replicant by __lock_get_list()
-       acquiring the lock set the master recorded, which includes the table
-       write lock, so it blocks on our retained table read lock. */
-    if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
+    /* The release below drops PAGE LOCKS ONLY, keeping the curtran and
+       therefore our table read locks.  That is enough to unblock the page-lock
+       waiter that brought us here, while ensuring no schema change can run
+       inside the window: a DROP/ALTER transaction is replayed on a replicant by
+       __lock_get_list() acquiring the lock set the master recorded, which
+       includes the table write lock, so it blocks on our retained table read
+       lock.
+
+       Which is also why we need to know who is behind us and on what.  A
+       page-lock waiter is helped by that release; a table-lock waiter is not,
+       and can only be freed by the full-release fallback.  Without the split we
+       cannot tell them apart -- we only know that somebody, at some point,
+       waited, and that answer never goes back to "nobody". */
+    struct lock_waiter_info wi;
+    int any_waiter, page_waiter;
+    if (gbl_pagelock_split_waiters) {
+        probe_curtran_waiter_info(clnt, &wi);
+        any_waiter = wi.has_page || wi.has_table;
+        page_waiter = wi.has_page;
+    } else {
+        memset(&wi, 0, sizeof(wi));
+        any_waiter = page_waiter = probe_curtran_has_waiters(clnt);
+    }
+
+    if (any_waiter) {
         extern int gbl_rep_lock_time_ms;
         int now = comdb2_time_epochms();
 
@@ -3755,12 +3945,27 @@ static int cursor_move_postop(BtCursor *pCur)
         /* Same policy (and default) as the emit-row release path: bound how
            long the replication thread may stay blocked.  Prefer
            gbl_rep_lock_time_ms -- when the rep thread is parked in
-           __lock_get_list that is exactly how long it has been waiting -- and
-           fall back to when we first saw a waiter, which also covers
-           non-replication waiters. */
+           __lock_get_list that is exactly how long it has been waiting -- then
+           the locker's own stamp for whichever waiter arrived first, which also
+           covers non-replication waiters.  The stamps are kept by the lock
+           manager and survive our pacing resets, so unlike
+           pagelock_release_first_ms they cannot drift or go stale. */
         int max_wait = gbl_pagelock_release_max_wait_ms; /* 0 disables the fallback */
         int rep_lock_time_ms = gbl_rep_lock_time_ms;
-        int blocked_since = rep_lock_time_ms ? rep_lock_time_ms : clnt->pagelock_release_first_ms;
+        int blocked_since;
+        if (rep_lock_time_ms) {
+            blocked_since = rep_lock_time_ms;
+        } else if (gbl_pagelock_split_waiters) {
+            /* earliest of whichever flags are up */
+            if (wi.has_page && wi.has_table)
+                blocked_since = wi.page_ms < wi.table_ms ? wi.page_ms : wi.table_ms;
+            else if (wi.has_page)
+                blocked_since = wi.page_ms;
+            else
+                blocked_since = wi.table_ms;
+        } else {
+            blocked_since = clnt->pagelock_release_first_ms;
+        }
 
         if (max_wait && (now - blocked_since) > max_wait) {
             /* The waiter has been parked for too long, which means page locks
@@ -3774,12 +3979,14 @@ static int cursor_move_postop(BtCursor *pCur)
             clnt->pagelock_release_first_ms = clnt->pagelock_release_last_ms = 0;
             if (gbl_debug_pagelock_release_trace)
                 logmsg(LOGMSG_USER, "%s: waiter parked >%dms, falling back to a full release\n", __func__, max_wait);
-        } else if (!clnt->pagelock_release_last_ms ||
-                   (now - clnt->pagelock_release_last_ms) >= gbl_pagelock_release_interval_ms) {
+        } else if (page_waiter && (!clnt->pagelock_release_last_ms ||
+                                   (now - clnt->pagelock_release_last_ms) >= gbl_pagelock_release_interval_ms)) {
             /* Rate-limited: re-releasing on every cursor move against a waiter
                that is still present accomplishes nothing but closing and
                reopening every cursor (measured: ~1 release per move for the
-               whole scan). */
+               whole scan).  Requires an actual page-lock waiter: dropping page
+               locks does nothing for someone parked on our table lock, and only
+               the max_wait fallback above can help them. */
             rc = release_pagelocks(RLOCKS_REASON_LOCKWAIT);
             release_locks_on_si_lockwait_cnt++;
             clnt->pagelock_release_last_ms = now;
@@ -10793,7 +11000,24 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     clnt->last_release_ms = comdb2_time_epochms();
     clnt->last_release_count++;
 
+    /* This is where the page locks actually go for the page-locks-only path,
+       which returns below without ever reaching put_curtran. */
+    int64_t rdlk_t = rdlk_now();
     unlock_bdb_cursors(thd, bdbcur, &bdberr);
+    /* The page locks are gone, so nobody can still be blocked on one of ours.
+       Drop that half of the waiter signal; nothing else ever clears it, and
+       leaving it set is what makes us keep re-releasing for the rest of the
+       scan.  The table-lock half is deliberately left alone -- see
+       __lock_id_clear_pagelock_waiters.  Safe on the full-release path too,
+       where put_curtran frees the locker moments later anyway. */
+    if (gbl_pagelock_split_waiters) {
+        bdb_curtran_clear_pagelock_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran);
+        /* The cached probe answer is now stale -- it may still say "page
+           waiter" for the one we just satisfied.  Force a real probe on the
+           next cursor move instead of waiting out the interval. */
+        clnt->probe_last_us = 0;
+    }
+    rdlk_add(&gbl_rdlk_unlock_us, rdlk_t);
 
     /* Page-locks-only release: closing the bdb cursors above already dropped
      * their page locks (they are opened on the curtran's bare lockerid with no
@@ -10809,12 +11033,16 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
      * will lazily re-position on next use. */
     if (flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY) {
         assert(bdb_lockref() > 0);
+        if (gbl_lock_instrumentation)
+            __sync_fetch_and_add(&gbl_rdlk_pagelocks_only_count, 1);
         return 0;
     }
 
     curtran_flags = CURTRAN_RECOVERY;
     /* free curtran */
+    rdlk_t = rdlk_now();
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+    rdlk_add(&gbl_rdlk_release_us, rdlk_t);
     assert(bdb_lockref() == 0);
     if (rc) {
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
@@ -10846,6 +11074,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
        gobbler
        */
 
+    /* Deliberate backoff, not contention -- tracked separately so it cannot be
+       mistaken for time spent waiting to get the locks back. */
+    rdlk_t = rdlk_now();
     if (debug_switch_poll_on_lock_desired()) {
         if (bdb_lock_desired(thedb->bdb_env)) {
             while (bdb_lock_desired(thedb->bdb_env)) {
@@ -10865,6 +11096,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (sleepms > 0)
             poll(NULL, 0, sleepms);
     }
+    rdlk_add2(&gbl_rdlk_sleep_us, &clnt->rdlk_sleep_us, rdlk_t);
 
     /* Fake generation-changed failure */
     if (force_fail) {
@@ -10875,7 +11107,10 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             rc = SQLITE_SCHEMA;
         }
     } else {
+        /* This is the "waiting to get the locks back" number. */
+        rdlk_t = rdlk_now();
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+        rdlk_add2(&gbl_rdlk_reacquire_us, &clnt->rdlk_reacquire_us, rdlk_t);
     }
 
     if (rc) {
@@ -10910,6 +11145,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 
     /* now that we have a new curtran, try to reposition them */
     int schema_rc = 0;
+
+    /* Now that we have a new curtran, try to reposition them.  Under the
+       default new_mode this is a pointer store plus a schema check, not lock
+       acquisition -- timed only so the parts account for the total. */
+    rdlk_t = rdlk_now();
     Pthread_mutex_lock(&thd->lk);
     if (thd->bt) {
         LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
@@ -10925,6 +11165,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                     Pthread_mutex_unlock(&thd->lk);
                     logmsg(LOGMSG_ERROR, "bdb_cursor_lock returned %d %d\n", rc,
                             bdberr);
+                    rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
                     return -700;
                 }
             }
@@ -10959,6 +11200,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 
     if (schema_rc) {
         Pthread_mutex_unlock(&thd->lk);
+        rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
         return schema_rc;
     }
 
@@ -10967,11 +11209,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returned %d %d\n", __func__, rc, bdberr);
             Pthread_mutex_unlock(&thd->lk);
+            rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
             return -800;
         }
     }
 
     Pthread_mutex_unlock(&thd->lk);
+    rdlk_add2(&gbl_rdlk_revalidate_us, &clnt->rdlk_revalidate_us, rdlk_t);
 
     return 0;
 }
@@ -10989,7 +11233,14 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
 {
+    /* Total for every recover_deadlock caller, whatever return path it takes.
+       Disjoint from gbl_sync_dta_us, which is charged before this in
+       release_locks_int. */
+    int64_t rdlk_start = rdlk_now();
     int rc = clnt->recover_deadlock_rcode = recover_deadlock_flags_int(bdb_state, clnt, bdbcur, sleepms, func, line, flags);
+    if (gbl_lock_instrumentation)
+        __sync_fetch_and_add(&gbl_rdlk_count, 1);
+    rdlk_add2(&gbl_rdlk_total_us, &clnt->rdlk_total_us, rdlk_start);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, clnt, CURTRAN_RECOVERY);
 #if INSTRUMENT_RECOVER_DEADLOCK_FAILURE

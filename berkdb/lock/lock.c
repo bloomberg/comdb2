@@ -74,6 +74,16 @@ extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
+/* Attribute lock-wait time to the role of the waiting locker, so a reader's
+ * wait can be told apart from a writer's.  Off by default: this is measurement
+ * for the recover_deadlock_sync_dta A/B, not something to pay for normally. */
+int gbl_lock_instrumentation = 0;
+static struct lock_role_stats lock_role_stats;
+
+/* For stamping has_pagelock_waiters/has_tablelock_waiters.  locker_timestamp()
+ * is not usable for this: it returns -1 unless gbl_all_waitdie is on. */
+extern int comdb2_time_epochms(void);
+
 static int __lock_freelock __P((DB_LOCKTAB *,
 	struct __db_lock *, DB_LOCKER *, u_int32_t));
 static void __lock_expires __P((DB_ENV *, db_timeval_t *, db_timeout_t));
@@ -325,7 +335,8 @@ __lock_id_flags(dbenv, idp, flags)
 	ret = __lock_getlocker(lt, *idp, locker_ndx, glflags, &lk);
 
 	if (!ret) {
-		F_CLR(lk, DB_LOCK_ID_TRACK | DB_LOCKER_READONLY | DB_LOCKER_KILLME);
+		F_CLR(lk, DB_LOCK_ID_TRACK | DB_LOCKER_READONLY | DB_LOCKER_KILLME |
+		    DB_LOCKER_SQL_READER | DB_LOCKER_SQL_WRITER);
 
 		if (LF_ISSET(DB_LOCK_ID_LOWPRI) || pthread_getspecific(lockmgr_key))
 			F_SET(lk, DB_LOCKER_KILLME);
@@ -335,6 +346,12 @@ __lock_id_flags(dbenv, idp, flags)
 
 		if (LF_ISSET(DB_LOCK_ID_TRACK))
 			F_SET(lk, DB_LOCKER_TRACK);
+
+		if (LF_ISSET(DB_LOCK_ID_SQL_READER))
+			F_SET(lk, DB_LOCKER_SQL_READER);
+
+		if (LF_ISSET(DB_LOCK_ID_SQL_WRITER))
+			F_SET(lk, DB_LOCKER_SQL_WRITER);
 	}
 
 	UNLOCKREGION(dbenv, lt);
@@ -450,6 +467,136 @@ __lock_id_has_waiters_pp(dbenv, id)
 		__env_rep_enter(dbenv);
 
 	ret = __lock_id_has_waiters(dbenv, id);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+/*
+ * __lock_id_waiter_info --
+ *	Both waiter flags and their timestamps, under one partition lock.  A
+ *	caller that needs the page/table split would otherwise pay for two
+ *	lookups of the same locker.
+ */
+int
+__lock_id_waiter_info(dbenv, id, out)
+	DB_ENV *dbenv;
+	u_int32_t id;
+	struct lock_waiter_info *out;
+{
+	DB_LOCKER *sh_locker;
+	DB_LOCKTAB *lt;
+	DB_LOCKREGION *region;
+	u_int32_t locker_ndx;
+	int ret;
+
+	memset(out, 0, sizeof(*out));
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	LOCKER_INDX(lt, region, id, locker_ndx);
+	if ((ret =
+		__lock_getlocker(lt, id, locker_ndx, GETLOCKER_KEEP_PART,
+		    &sh_locker)) != 0) {
+		return ret;
+	}
+	if (sh_locker == NULL) {
+		return EINVAL;
+	}
+
+	out->has_any = sh_locker->has_waiters ? 1 : 0;
+	out->has_page = sh_locker->has_pagelock_waiters ? 1 : 0;
+	out->has_table = sh_locker->has_tablelock_waiters ? 1 : 0;
+	out->page_ms = sh_locker->pagelock_waiters_ms;
+	out->table_ms = sh_locker->tablelock_waiters_ms;
+
+	unlock_locker_partition(region, sh_locker->partition);
+	return (0);
+}
+
+// PUBLIC: int __lock_id_waiter_info_pp __P((DB_ENV *, u_int32_t, struct lock_waiter_info *));
+int
+__lock_id_waiter_info_pp(dbenv, id, out)
+	DB_ENV *dbenv;
+	u_int32_t id;
+	struct lock_waiter_info *out;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+	    dbenv->lk_handle, "DB_ENV->lock_id_waiter_info", DB_INIT_LOCK);
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+
+	ret = __lock_id_waiter_info(dbenv, id, out);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+/*
+ * __lock_id_clear_pagelock_waiters --
+ *	Drop the page-lock waiter signal for a locker that has just released its
+ *	page locks.  Nobody can still be blocked on a page lock we no longer
+ *	hold, and the flag is otherwise never cleared for the life of the
+ *	locker.  Deliberately leaves has_tablelock_waiters and the union
+ *	has_waiters alone: a schema change parked on our retained table read
+ *	lock IS still waiting, and forgetting it would starve it indefinitely
+ *	(nothing re-sets these flags once a waiter is blocked).
+ */
+int
+__lock_id_clear_pagelock_waiters(dbenv, id)
+	DB_ENV *dbenv;
+	u_int32_t id;
+{
+	DB_LOCKER *sh_locker;
+	DB_LOCKTAB *lt;
+	DB_LOCKREGION *region;
+	u_int32_t locker_ndx;
+	int ret;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	LOCKER_INDX(lt, region, id, locker_ndx);
+	if ((ret =
+		__lock_getlocker(lt, id, locker_ndx, GETLOCKER_KEEP_PART,
+		    &sh_locker)) != 0) {
+		return ret;
+	}
+	if (sh_locker == NULL) {
+		return EINVAL;
+	}
+
+	sh_locker->has_pagelock_waiters = 0;
+	sh_locker->pagelock_waiters_ms = 0;
+
+	unlock_locker_partition(region, sh_locker->partition);
+	return (0);
+}
+
+// PUBLIC: int __lock_id_clear_pagelock_waiters_pp __P((DB_ENV *, u_int32_t));
+int
+__lock_id_clear_pagelock_waiters_pp(dbenv, id)
+	DB_ENV *dbenv;
+	u_int32_t id;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+	    dbenv->lk_handle, "DB_ENV->lock_id_clear_pagelock_waiters",
+	    DB_INIT_LOCK);
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+
+	ret = __lock_id_clear_pagelock_waiters(dbenv, id);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -2919,10 +3066,46 @@ upgrade:
 					    &holder_locker)) == 0 &&
 				    holder_locker != NULL) {
 					if (verbose_waiter)
-						logmsg(LOGMSG_USER, 
+						logmsg(LOGMSG_USER,
                                "Set waitflag for lockid %u\n",
 						    holdarr[ii]);
 					holder_locker->has_waiters = 1;
+					/* Also record WHAT we are blocked on, so
+					 * the holder can drop the page-lock
+					 * signal when it drops its page locks
+					 * without losing a table-lock waiter.
+					 * sh_obj is the object being waited on.
+					 * Strict: only a real DB_PAGE_LOCK counts
+					 * as a page waiter -- rowlocks, handle
+					 * and record locks fall through to
+					 * has_waiters alone and are never
+					 * cleared, exactly as before.
+					 * Stamp only on the 0->1 edge so the time
+					 * is when the FIRST such waiter arrived. */
+					if (is_tablelock(sh_obj)) {
+						if (!holder_locker->
+						    has_tablelock_waiters) {
+							holder_locker->
+							    has_tablelock_waiters
+							    = 1;
+							holder_locker->
+							    tablelock_waiters_ms
+							    = comdb2_time_epochms();
+						}
+					} else if (sh_obj->lockobj.size ==
+					    sizeof(DB_LOCK_ILOCK) &&
+					    ((DB_LOCK_ILOCK *)sh_obj->lockobj.
+						data)->type == DB_PAGE_LOCK) {
+						if (!holder_locker->
+						    has_pagelock_waiters) {
+							holder_locker->
+							    has_pagelock_waiters
+							    = 1;
+							holder_locker->
+							    pagelock_waiters_ms
+							    = comdb2_time_epochms();
+						}
+					}
 					unlock_locker_partition(region,
 					    holder_locker->partition);
 				}
@@ -2964,6 +3147,22 @@ upgrade:
 			t->n_lock_waits++;
 			t->n_locks++;
 			p->n_locks++;
+
+			/* Same wait, bucketed by who was waiting.  Reuses d, so
+			 * it rides on the (default-on) thread-stats and
+			 * lock-timing flags above. */
+			if (gbl_lock_instrumentation) {
+				if (F_ISSET(sh_locker, DB_LOCKER_SQL_READER)) {
+					lock_role_stats.reader_wait_us += d;
+					lock_role_stats.reader_waits++;
+				} else if (F_ISSET(sh_locker, DB_LOCKER_SQL_WRITER)) {
+					lock_role_stats.writer_wait_us += d;
+					lock_role_stats.writer_waits++;
+				} else {
+					lock_role_stats.other_wait_us += d;
+					lock_role_stats.other_waits++;
+				}
+			}
 
 			if (gbl_bb_log_lock_waits_fn) {
 				/* We had to wait on this lock - call our
@@ -3925,6 +4124,14 @@ __lock_addfamilylocker_with_prop(dbenv, pid, id, prop)
 }
 
 
+// PUBLIC: void __lock_get_role_stats __P((struct lock_role_stats *));
+void
+__lock_get_role_stats(out)
+	struct lock_role_stats *out;
+{
+	*out = lock_role_stats;
+}
+
 // PUBLIC: int __lock_locker_set_lowpri __P((DB_ENV *, u_int32_t));
 int
 __lock_locker_set_lowpri(dbenv, locker)
@@ -4345,10 +4552,18 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 		sh_locker->nhandlelocks = 0;
 		sh_locker->nwrites = 0;
 		sh_locker->has_waiters = 0;
+		sh_locker->has_pagelock_waiters = 0;
+		sh_locker->has_tablelock_waiters = 0;
+		sh_locker->pagelock_waiters_ms = 0;
+		sh_locker->tablelock_waiters_ms = 0;
 		sh_locker->priority = prop ? prop->priority : 0;
 		sh_locker->num_retries = prop ? prop->retries : 0;
 		if (prop && prop->flags & DB_LOCK_ID_LOWPRI)
 			F_SET(sh_locker, DB_LOCKER_KILLME);
+		if (prop && prop->flags & DB_LOCK_ID_SQL_READER)
+			F_SET(sh_locker, DB_LOCKER_SQL_READER);
+		if (prop && prop->flags & DB_LOCK_ID_SQL_WRITER)
+			F_SET(sh_locker, DB_LOCKER_SQL_WRITER);
 #if TEST_DEADLOCKS
 		printf("%p %s:%d lockerid %x setting priority to %d\n",
 		    (void*)pthread_self(), __FILE__, __LINE__, sh_locker->id, sh_locker->priority);

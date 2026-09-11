@@ -76,6 +76,7 @@ void __dbenv_heap_dump __P((DB_ENV * dbenv));
 int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
                            int just_active_locks);
 int __lock_dump_active_locks(DB_ENV *, FILE *);
+void __lock_get_role_stats(struct lock_role_stats *);
 int __db_cprint(DB *dbp);
 char *bdb_coherent_state_string(struct interned_string *host);
 
@@ -193,6 +194,13 @@ static void log_stats(FILE *out, bdb_state_type *bdb_state)
     }
 
     free(stats);
+}
+
+/* Lock-wait time split by the role of the waiting locker.  Only non-zero when
+   gbl_lock_instrumentation is on. */
+void bdb_get_lock_role_counters(struct lock_role_stats *out)
+{
+    __lock_get_role_stats(out);
 }
 
 int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,

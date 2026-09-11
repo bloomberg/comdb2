@@ -1,0 +1,241 @@
+A/B measurement of the non-SI page-lock release (recover_deadlock_sync_dta).
+
+This is a reporting test, not a pass/fail one.  It always exits 0 unless the
+harness itself breaks; read the numbers it prints.
+
+Purpose
+-------
+
+recover_deadlock_sync_dta controls whether a non-SI read releases the page
+locks it holds when another transaction is found waiting on them, instead of
+holding them until the read finishes.  The expectation is that a blocked
+writer gets through sooner with the feature on, at some cost to the reader
+that gave up its locks and has to reposition.
+
+The test runs the reco-ddlk-sql workload twice against the same database --
+once with the tunable off, once with it on -- and prints a per-phase
+comparison so the two arms can be read side by side.  The tunable is set on
+every node of the cluster, since the readers connect via 'default' and spread
+across the replicants.
+
+The workload is 16 reader threads continuously scanning a 3-way join while a
+single writer thread rewrites the same rows underneath them.  Table a holds 10
+rows (one per a1), b holds 1000 (100 per b1, b1 in 1..10) and c holds 100000
+(1000 per c1, c1 in 1..100).  Each key column is indexed INCLUDE ALL, and the
+readers join on exactly those columns, so reader and writer contend on the
+same index pages.
+
+One write statement therefore updates or deletes 1, 100 or 1000 rows in a
+single transaction, holding write locks on all of them plus their index
+entries until it commits.  The c statements are the ones that lose to
+contention; the 100-row and 1-row ones do not.  Note the writer only walks key
+values 1..10, so it touches all of a and b but only a tenth of c.
+
+Parameters
+----------
+
+Set these on the make command line, the same way as CLUSTER:
+
+  DDLK_PERF_AB_RUNS=<N>          Number of off/on cycles.  Default 1.  With
+                                 N > 1 the report gains a table averaging
+                                 every run, ahead of the per-run tables.
+
+  DDLK_PERF_AB_FIRST_ARM=off|on  Which arm runs first in each cycle.
+                                 Default off.  Useful for checking that a
+                                 result is not an artifact of arm ordering
+                                 (the first arm runs against a colder cache).
+
+  DDLK_PERF_AB_SPLIT_ARM=0|1     Add a third arm, "no-split": the feature on
+                                 with pagelock_split_waiters off.  Default 0.
+                                 Costs a whole arm, so raise TEST_TIMEOUT.
+
+  DDLK_PERF_AB_RELEASE_INTERVAL_MS=<N>
+                                 Set pagelock_release_interval_ms (the
+                                 blackout between page-lock releases) on
+                                 every arm.  Default: the server's 100ms.
+
+  DDLK_PERF_AB_PROBE_INTERVAL_US=<N>
+                                 Set pagelock_probe_interval_us (the blackout
+                                 between waiter probes) on every arm.  In
+                                 microseconds, so sub-millisecond values are
+                                 expressible.  0 probes on every cursor move.
+                                 Default: the server's 1000us.
+
+  DDLK_PERF_AB_LOCKSTATS=0|1     Collect the server-side lock-wait and
+                                 lock-release counters.  Default 0.  With 1
+                                 the report gains the lk_ columns described
+                                 below; with 0 neither the tunable nor the
+                                 columns appear.  Raise TEST_TIMEOUT when
+                                 turning it on -- a single-node run measured
+                                 13m off and 17.5m on, over the 15m default:
+
+                                     TEST_TIMEOUT=30m DDLK_PERF_AB_LOCKSTATS=1 make ddlk-perf-ab
+
+Default runs measured 7.5 to 12 minutes single-node, so the timeout is 15m and
+the test is part of the normal sweep.  Run it on its own with:
+
+  make ddlk-perf-ab
+
+Raise the timeout when asking for more cycles, since DDLK_PERF_AB_RUNS=N
+multiplies the runtime by N:
+
+  TEST_TIMEOUT=120m DDLK_PERF_AB_RUNS=4 make ddlk-perf-ab
+
+Keeping the value in this Makefile below 120m is also what keeps the test in
+$(ALL_TESTS): tools/get_tests_inorder.sh greps the Makefile for TEST_TIMEOUT
+and drops anything at or above 120.  It reads the file, not the environment,
+so overriding TEST_TIMEOUT on the command line changes only how long the run
+is allowed to take -- it does not remove the test from the sweep.
+
+Output
+------
+
+Everything goes to stdout, so it lands in the test's .testcase log.  Per arm
+the raw tool output is kept in the test directory as arm_off_run<N>.out and
+arm_on_run<N>.out.
+
+The report is a metric legend followed by an off / on / % diff table for the
+update phase and for the delete phase:
+
+  phase_ms     wall-clock duration of the phase
+  wr_count     writer statements completed
+  wr_avg_ms    average writer statement latency
+  wr_max_ms    slowest single writer statement
+  rd_scans     reader scans completed, summed over the 16 reader threads
+  rd_avg_ms    average reader scan latency over those threads
+  rd_min_ms    fastest single reader scan
+  rd_max_ms    slowest single reader scan
+  data_errors  soft errors so far (see below)
+  % diff       (on - off) / off * 100
+
+Lock counters
+-------------
+
+DDLK_PERF_AB_LOCKSTATS=1 turns on the server's lock_instrumentation tunable
+and adds a second block of columns, summed over every node because readers and
+writers block on different ones:
+
+  lk_rd_wait_us    lock wait by SQL read cursors
+  lk_wr_wait_us    lock wait by SQL write transactions
+  lk_other_wait_us lock wait by neither -- replication apply, utilities.  On a
+                   cluster this is where the write-side contention lands, since
+                   SQL does not run on the master
+  lk_rel_us        total time inside recover_deadlock, all callers, split into
+                   lk_rel_unlock_us (dropping the cursor page locks),
+                   lk_rel_sleep_us (deliberate poll() backoff),
+                   lk_rel_reacq_us (waiting to get the locks back) and
+                   lk_rel_reval_us (cursor revalidation)
+  lk_sync_us       pre-release data cursor and blob sync, which runs only with
+                   the feature on and is therefore its added reader cost
+  lk_probe_est_us  cost of the has-waiters probe that decides whether to release
+                   at all (bdb_curtran_has_waiters), estimated over lk_probes
+                   from the lk_probes_timed that were sampled
+
+Each has a matching _waits or _count column.  Only lk_rel_reacq_us is a lock
+wait; lk_rel_sleep_us in particular is backoff, and in practice dominates
+lk_rel_us, so subtract it before reading lk_rel_us as overhead.
+
+lk_probe_est_us is the odd one out.  Everything else here is charged once a
+release has already been decided on, so none of it sees the per-cursor-move
+check that makes that decision -- and the overwhelming majority of those checks
+answer "no waiters" and return.  The check is not a lock wait, but it takes the
+global lock region mutex plus a locker partition lock to read a single byte, so
+with 16 readers it serialises them against each other.
+
+On the non-SI path the check sits behind the recover_deadlock_sync_dta test in
+cursor_move_postop, so it runs only when the feature is on: expect lk_probes=0
+on the off arm, and read the on-arm value as part of the feature's added cost
+rather than as a shared baseline.  Measured single-node, it can exceed
+lk_sync_us -- i.e. asking the question costs more than the work it screens for,
+since a scan does it per cursor move to act on a tiny fraction of them.
+
+Only one probe in lock_instrumentation_sample (default 64) is timed, since two
+clock reads per emitted row would cost more than the probe.  lk_probe_us is the
+raw measured time over that sample and lk_probes_timed its size; lk_probe_est_us
+scales them up over lk_probes and is the number to read.  Set the tunable to 0
+to switch probe timing off while keeping the rest.
+
+It is off by default because the counters are not free and the point of the
+test is to compare two arms under otherwise stock conditions.  Turn it on when
+you want to know where the time went rather than how much of it there was.
+
+Comparing split vs no-split
+---------------------------
+
+SPLIT_ARM=1 adds a "no-split" column and an "ns vs on" column, the latter being
+(no-split - on) / on * 100.
+
+Compare no-split against **on**, never against off: the split only affects the
+feature path, so the off arm is identical in both modes.  That makes off the
+control -- if the two off arms disagree (check phase_ms AND lk_rd_wait_us, which
+can disagree with each other), the run is not comparable.
+
+The primary numbers are lk_sync_count and lk_rel_count, read as RATES: divide by
+phase_ms, since the arms need not run equally long.  Measured example: 9208
+syncs over 224s vs 5056 over 350s is 41.0/s vs 14.4/s -- a 2.8x cut that the raw
+counts (-45%) understate.  Then confirm the writer side did not regress
+(lk_wr_wait_us, wr_avg_ms; lk_other_wait_us on a cluster).
+
+How the blackout interacts
+--------------------------
+
+pagelock_release_interval_ms means different things in the two arms:
+
+  no-split  The flag latches on, so the reset branch is unreachable and the
+            interval is a hard floor -- one release per interval for the rest
+            of the scan, waiter or not.
+
+  on        A release clears the page flag, a later quiet move zeroes
+            pagelock_release_last_ms, and the release test begins with
+            "!pagelock_release_last_ms" -- so the next waiter releases
+            immediately and the blackout is bypassed.
+
+The split can therefore exceed one release per interval where no-split cannot,
+but it also skips releasing when nobody waits.  Which wins depends on waiter
+density, and the interval moves that crossover.  Single-node at 100ms the second
+effect dominated (~2.7x fewer syncs); do not assume that holds elsewhere.
+
+Reading the two phases
+----------------------
+
+They stop for different reasons, so the same column does not mean the same
+thing in both:
+
+  update is time-bounded.  It repeats a 30-statement iteration until 60s have
+  elapsed, checking the clock only at iteration boundaries.  wr_count is thus
+  always a multiple of 30 and is the throughput signal -- faster writes fit
+  more iterations into the window.  phase_ms is a poor metric here: the phase
+  cannot finish early, and its value is set by how far the last iteration
+  overshoots 60s, which one stalled statement can dominate.
+
+  delete is work-bounded.  One pass deletes each key value once and stops, so
+  wr_count is always 30 and carries no signal, and phase_ms measures fixed
+  work.  This is the cleaner of the two speed comparisons.
+
+data_errors is misleadingly named.  It counts a statement that failed outright
+as well as a genuine data mismatch, and in practice what shows up is the
+former: a 1000-row UPDATE on c abandoned after exhausting its 500 block
+transaction retries against the readers, returned to the client as
+CDB2ERR_DEADLOCK (203).  A non-zero value is not by itself a correctness
+problem -- check the arm's raw output to see which kind it was.  The counter
+is cumulative over the run and is not reset per phase, so a later phase's
+value includes earlier phases'.
+
+The workload is run with -p (perf mode) precisely so that such a failure is
+counted and the arm keeps going; without it one lost statement would kill the
+arm before any numbers came out.
+
+Requirements
+------------
+
+Needs the reco-ddlk-sql tool.  A plain `make comdb2` does not build it:
+
+  cmake --build <builddir> --target reco-ddlk-sql -j$(nproc)
+
+The test checks for it up front and fails with that hint rather than
+producing an empty table.
+
+Runs on a single node or on a cluster.  Note the two are not comparable:
+single-node puts all 16 readers and the writer in one process sharing one lock
+table, which produces far more contention than a cluster, where SQL runs on
+the replicants and writes commit on the master.
