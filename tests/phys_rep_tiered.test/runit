@@ -3307,6 +3307,127 @@ function physrep_revconn_populate_retry_with_debug
     $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$bogusname'"
 }
 
+# An unreachable alt-metadb used to cost us the hosts it did not know about:
+# the refresh merged a partial list, so hosts known only to the unreachable
+# metadb were marked 'EXITING' and torn down.  A partial refresh is now
+# additive -- it still picks up new hosts, but retires nothing.
+function physrep_revconn_altmetadb_conn_error
+{
+    local metaname="metaonlydb"
+    local altname="altonlydb"
+    local latename="latemetadb"
+    local count=0
+    local name=""
+    local x=""
+
+    # One revconn host known only to the primary metadb, one only to the alt
+    add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${DBNAME} ${firstNode} $metaname ${firstNode}
+    add_to_physrep_sources ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${DBNAME} ${firstNode} $altname ${firstNode}
+
+    # Both must be in the revconn list before we start breaking things
+    while [[ $count -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')"
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')")
+        [[ $x == *"$metaname"* && $x == *"$altname"* ]] && break
+        sleep 2
+        let count=count+1
+    done
+
+    [[ $x == *"$metaname"* ]] || cleanFailExit "Revconn for $metaname never showed up: $x"
+    [[ $x == *"$altname"* ]] || cleanFailExit "Revconn for $altname never showed up: $x"
+
+    # A host registered while the alt-metadb is down still has to be picked up
+    add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${DBNAME} ${firstNode} $latename ${firstNode}
+
+    # Fail every alt-metadb connect for the duration of one refresh
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_altmetadb_conn_error 1"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')")
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_altmetadb_conn_error 0"
+
+    # The failure trace has to identify which metadb we could not reach
+    echo "$x" | egrep "'alt-metadb' index 0 ${REPL_ALTMETA_DBNAME}@" > /dev/null
+    if [[ $? -ne 0 ]]; then
+        cleanFailExit "alt-metadb failure trace did not name the metadb: $x"
+    fi
+
+    sleep 2
+
+    # Nothing may have been retired, and the primary metadb's new host is there
+    for name in $metaname $altname $latename; do
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $name)
+        [[ -z "$x" ]] && cleanFailExit "Revconn for $name is missing after a partial alt-metadb refresh"
+        # Assert liveness positively: a worker marked 'exiting' can already have
+        # reached 'exited' by the time we look.
+        if [[ $x != *"worker state: running"* && $x != *"worker state: new"* ]]; then
+            cleanFailExit "Revconn for $name is not live after a partial refresh: $x"
+        fi
+    done
+
+    echo "Partial refresh kept every revconn host and still picked up $latename"
+
+    # Clean up
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$metaname'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$latename'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "delete from comdb2_physrep_sources where dbname = '$altname'"
+}
+
+# Revconn entries are attributed to the metadbs that vouched for them, so a
+# down alt-metadb only protects its own hosts: a host the reachable primary
+# metadb has dropped is still retired.
+function physrep_revconn_metadb_provenance
+{
+    local metaname="provmetadb"
+    local altname="provaltdb"
+    local count=0
+    local x=""
+
+    add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${DBNAME} ${firstNode} $metaname ${firstNode}
+    add_to_physrep_sources ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST} ${DBNAME} ${firstNode} $altname ${firstNode}
+
+    while [[ $count -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')"
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')")
+        [[ $x == *"$metaname"* && $x == *"$altname"* ]] && break
+        sleep 2
+        let count=count+1
+    done
+
+    [[ $x == *"$metaname"* ]] || cleanFailExit "Revconn for $metaname never showed up: $x"
+    [[ $x == *"$altname"* ]] || cleanFailExit "Revconn for $altname never showed up: $x"
+
+    # Drop the primary metadb's host while the alt-metadb is unreachable
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_META_DBNAME --host $REPL_META_HOST "delete from comdb2_physrep_sources where dbname = '$metaname'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_altmetadb_conn_error 1"
+
+    count=0
+    while [[ $count -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('refreshrevconn')"
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $metaname)
+        [[ -z "$x" || $x == *"exiting"* || $x == *"exited"* ]] && break
+        sleep 2
+        let count=count+1
+    done
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $firstNode "put tunable physrep_fake_altmetadb_conn_error 0"
+
+    # The primary metadb answered and dropped it, so it has to be retired
+    if [[ -n "$x" && $x != *"exiting"* && $x != *"exited"* ]]; then
+        cleanFailExit "Revconn for $metaname was not retired though its metadb dropped it: $x"
+    fi
+
+    # The alt-metadb never answered, so its host has to survive untouched
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "exec procedure sys.cmd.send('stat dumprevsql')" | egrep $altname)
+    [[ -z "$x" ]] && cleanFailExit "Revconn for $altname was dropped while its metadb was unreachable"
+    if [[ $x != *"worker state: running"* && $x != *"worker state: new"* ]]; then
+        cleanFailExit "Revconn for $altname was retired while its metadb was unreachable: $x"
+    fi
+
+    echo "Retired $metaname on its own metadb's say-so and left $altname alone"
+
+    # Clean up
+    $CDB2SQL_EXE $CDB2_OPTIONS $REPL_ALTMETA_DBNAME --host $REPL_ALTMETA_HOST "delete from comdb2_physrep_sources where dbname = '$altname'"
+}
+
 # Collects and sums the physrep_metadb_sql_count metric from all databases/physreps
 function physrep_metadb_sql_count_test
 {
@@ -3737,6 +3858,16 @@ function run_tests
     physrep_revconn_populate_retry_with_debug
     testcase_finish $testcase
 
+    testcase="physrep_revconn_altmetadb_conn_error"
+    testcase_preamble $testcase
+    physrep_revconn_altmetadb_conn_error
+    testcase_finish $testcase
+
+    testcase="physrep_revconn_metadb_provenance"
+    testcase_preamble $testcase
+    physrep_revconn_metadb_provenance
+    testcase_finish $testcase
+
     testcase="physrep_metadb_sql_count"
     testcase_preamble $testcase
     physrep_metadb_sql_count_test
@@ -3759,9 +3890,19 @@ function run_tests
     testcase_finish $testcase
 }
 
+# Scratch hook: swap the body for whichever testcase you want in isolation.
+# Setup above has already run, so any testcase can be called directly.
 function run_one_test
 {
-    revconn_metadb_failure_test
+    testcase="physrep_revconn_altmetadb_conn_error"
+    testcase_preamble $testcase
+    physrep_revconn_altmetadb_conn_error
+    testcase_finish $testcase
+
+    testcase="physrep_revconn_metadb_provenance"
+    testcase_preamble $testcase
+    physrep_revconn_metadb_provenance
+    testcase_finish $testcase
 }
 
 run_tests
