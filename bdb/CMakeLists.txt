@@ -4,6 +4,7 @@ add_library(bdb
   bdb.c
   bdb_access.c
   bdb_blkseq.c
+  bdb_clientinfo.c
   bdb_fingerprint.c
   bdb_llops.c
   bdb_net.c

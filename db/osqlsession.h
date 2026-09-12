@@ -136,4 +136,16 @@ int osql_prepare(const char *dist_txnid, const char *coordinator_dbname, const c
  */
 int osql_discard(const char *dist_txnid);
 
+/**
+ * The 32-bit id comdb2_locks.client_id carries for this session
+ */
+uint32_t osql_sess_client_id(unsigned long long rqid, uuid_t uuid);
+
+/**
+ * Latch the client behind this write, and the statement it is applying,
+ * for comdb2_active_osqls. Diagnostic only.
+ */
+void osql_sess_set_clientinfo(osql_sess_t *sess, const char *taskname, int pid);
+void osql_sess_set_fingerprint(osql_sess_t *sess, const unsigned char *fingerprint);
+
 #endif

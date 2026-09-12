@@ -1379,9 +1379,22 @@ const struct berkdb_thread_stats *bdb_get_process_stats(void);
  * [0][1] SQL execution, [2][3] master write-apply, [4][5] replicant apply. */
 #define BDB_FINGERPRINT_RTSTATS_NCOUNTS 6
 
+/* Mirrors BB_BERKDB_FP_ROLE_* (berkdb/build/db.h), asserted equal in bdb.c. Picks
+ * the page-in counter pair to bill and the role comdb2_locks reports. */
+#define BDB_FP_ROLE_NONE 0
+#define BDB_FP_ROLE_SQL 1   /* 'R' -- SQL statement execution */
+#define BDB_FP_ROLE_WRITE 2 /* 'W' -- master applying a write schedule */
+#define BDB_FP_ROLE_APPLY 3 /* 'A' -- replicant applying from the log */
+
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+/* Declare a role with no fingerprint, so work that has none is still
+ * attributable. Pairs with bdb_fingerprint_rtstats_clear(). */
+void bdb_fingerprint_rtstats_set_role(int role);
+/* Name the client this thread works for; 0 is unknown. Stamped onto locks as
+ * comdb2_locks.client_id. Also pairs with bdb_fingerprint_rtstats_clear(). */
+void bdb_fingerprint_rtstats_set_client_id(uint32_t client_id);
 void bdb_fingerprint_rtstats_clear(void);
 int bdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
                                 uint64_t counts[BDB_FINGERPRINT_RTSTATS_NCOUNTS]);
@@ -1394,6 +1407,21 @@ void bdb_fingerprint_rtstats_foreach(bdb_fingerprint_rtstats_enum_fn fn, void *a
 extern int gbl_log_fingerprint;
 int bdb_llog_fingerprint_tran(bdb_state_type *bdb_state, tran_type *tran, const unsigned char *fingerprint,
                               int *bdberr);
+
+/* Log the client behind this txn so replicants can report it in
+ * comdb2_replication. Caller gates on gbl_log_clientinfo. */
+extern int gbl_log_clientinfo;
+int bdb_llog_clientinfo_tran(bdb_state_type *bdb_state, tran_type *tran, const char *taskname, const char *host,
+                             int pid, int *bdberr);
+
+/* Longest taskname/host comdb2_replication keeps; longer is truncated. */
+#define BDB_CLIENTINFO_STRSZ 64
+
+/* One callback per replication thread currently applying. taskname/host are
+ * NULL when the txn was logged without them, as is fingerprint. */
+typedef void (*bdb_replication_enum_fn)(void *arg, uint64_t tid, const char *taskname, const char *host, int pid,
+                                        const uint8_t *fingerprint, uint32_t lsn_file, uint32_t lsn_offset);
+void bdb_replication_foreach(bdb_replication_enum_fn fn, void *arg);
 
 /* Format and print the thread stats.  printfn() is a function which accepts
  * a line to print (\n\0 terminated) and a context pointer. Its return value

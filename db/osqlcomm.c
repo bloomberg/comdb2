@@ -1826,6 +1826,88 @@ static uint8_t *osqlcomm_fingerprint_uuid_rpl_type_put(const osql_fingerprint_rp
     return p_buf;
 }
 
+/* Who is driving this transaction, for comdb2_active_osqls on the master. The
+ * taskname is not null-terminated here; the rest follows the message (OSQL_USEDB). */
+typedef struct osql_clientinfo {
+    int pid;
+    int tasknamelen;  /* including trailing 0 */
+    char taskname[8]; /* alignment: keeps the rpl types a multiple of 8 */
+} osql_clientinfo_t;
+
+enum { OSQLCOMM_CLIENTINFO_TYPE_LEN = 4 + 4 + 8 };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_clientinfo_type_len, sizeof(osql_clientinfo_t) == OSQLCOMM_CLIENTINFO_TYPE_LEN);
+
+static uint8_t *osqlcomm_clientinfo_type_put(const osql_clientinfo_t *p_osql_clientinfo, uint8_t *p_buf,
+                                             const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_CLIENTINFO_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_put(&(p_osql_clientinfo->pid), sizeof(p_osql_clientinfo->pid), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_osql_clientinfo->tasknamelen), sizeof(p_osql_clientinfo->tasknamelen), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_osql_clientinfo->taskname), sizeof(p_osql_clientinfo->taskname), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *osqlcomm_clientinfo_type_get(osql_clientinfo_t *p_osql_clientinfo, const uint8_t *p_buf,
+                                                   const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_CLIENTINFO_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_get(&(p_osql_clientinfo->pid), sizeof(p_osql_clientinfo->pid), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_osql_clientinfo->tasknamelen), sizeof(p_osql_clientinfo->tasknamelen), p_buf, p_buf_end);
+    /* stop before the taskname and return it in place, as usedb does */
+
+    return p_buf;
+}
+
+typedef struct osql_clientinfo_rpl {
+    osql_rpl_t hd;
+    osql_clientinfo_t dt;
+} osql_clientinfo_rpl_t;
+
+enum { OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN = OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_CLIENTINFO_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_clientinfo_rpl_type_len,
+                       sizeof(osql_clientinfo_rpl_t) == OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN);
+
+static uint8_t *osqlcomm_clientinfo_rpl_type_put(const osql_clientinfo_rpl_t *p_clientinfo_rpl, uint8_t *p_buf,
+                                                 uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_rpl_type_put(&(p_clientinfo_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_clientinfo_type_put(&(p_clientinfo_rpl->dt), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_clientinfo_rpl_uuid {
+    osql_uuid_rpl_t hd;
+    osql_clientinfo_t dt;
+} osql_clientinfo_rpl_uuid_t;
+
+enum { OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN = OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_CLIENTINFO_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_clientinfo_rpl_uuid_type_len,
+                       sizeof(osql_clientinfo_rpl_uuid_t) == OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN);
+
+static uint8_t *osqlcomm_clientinfo_uuid_rpl_type_put(const osql_clientinfo_rpl_uuid_t *p_clientinfo_uuid_rpl,
+                                                      uint8_t *p_buf, uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_uuid_rpl_type_put(&(p_clientinfo_uuid_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_clientinfo_type_put(&(p_clientinfo_uuid_rpl->dt), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
 typedef struct osql_index {
     unsigned long long seq;
     int ixnum;
@@ -3809,6 +3891,10 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
     case OSQL_DELIDX:
     case OSQL_QBLOB:
     case OSQL_STARTGEN:
+    /* Diagnostic only: must not mark the session delayed, or every insert
+     * loses the no-constraints fast path in osql_process_packet. */
+    case OSQL_FINGERPRINT:
+    case OSQL_CLIENTINFO:
         break;
     case OSQL_DONE_SNAP:
         osql_extract_snap_info(sess, rpl, rpllen);
@@ -4283,6 +4369,76 @@ int osql_send_fingerprint(osql_target_t *target, unsigned long long rqid, uuid_t
     }
 
     rc = target->send(target, type, &buf, msglen, 0, NULL, 0);
+
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s target->send returns rc=%d\n", __func__, rc);
+
+    return rc;
+}
+
+/**
+ * Send OSQL_CLIENTINFO op: names the client driving this transaction, so
+ * comdb2_active_osqls can report it on the master. Sent once per transaction.
+ */
+int osql_send_clientinfo(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *taskname, int pid,
+                         int type)
+{
+    int tasknamelen = strlen(taskname) + 1; /* including trailing 0 */
+    int msglen;
+    int sent;
+    int rc = 0;
+
+    uint8_t buf[(int)OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN > (int)OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN
+                    ? OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN
+                    : OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN];
+
+    if (check_master(target))
+        return OSQL_SEND_ERROR_WRONGMASTER;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_clientinfo_rpl_uuid_t ci_uuid_rpl = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN);
+
+        sent = sizeof(ci_uuid_rpl.dt.taskname);
+        msglen = OSQLCOMM_CLIENTINFO_RPL_UUID_TYPE_LEN;
+
+        ci_uuid_rpl.hd.type = OSQL_CLIENTINFO;
+        comdb2uuidcpy(ci_uuid_rpl.hd.uuid, uuid);
+        ci_uuid_rpl.dt.pid = pid;
+        ci_uuid_rpl.dt.tasknamelen = tasknamelen;
+        /* taskname field needs to be NOT null-terminated if > than 8 chars */
+        strncpy(ci_uuid_rpl.dt.taskname, taskname, sizeof(ci_uuid_rpl.dt.taskname));
+
+        if (!(p_buf = osqlcomm_clientinfo_uuid_rpl_type_put(&ci_uuid_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_clientinfo_uuid_rpl_type_put");
+            return -1;
+        }
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+    } else {
+        osql_clientinfo_rpl_t ci_rpl = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN);
+
+        sent = sizeof(ci_rpl.dt.taskname);
+        msglen = OSQLCOMM_CLIENTINFO_RPL_TYPE_LEN;
+
+        ci_rpl.hd.type = OSQL_CLIENTINFO;
+        ci_rpl.hd.sid = rqid;
+        ci_rpl.dt.pid = pid;
+        ci_rpl.dt.tasknamelen = tasknamelen;
+        /* taskname field needs to be NOT null-terminated if > than 8 chars */
+        strncpy(ci_rpl.dt.taskname, taskname, sizeof(ci_rpl.dt.taskname));
+
+        if (!(p_buf = osqlcomm_clientinfo_rpl_type_put(&ci_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_clientinfo_rpl_type_put");
+            return -1;
+        }
+    }
+
+    /* taskname field is not null-terminated -- send rest of taskname */
+    rc = target->send(target, type, &buf, msglen, 0, (tasknamelen > sent) ? (char *)taskname + sent : NULL,
+                      (tasknamelen > sent) ? tasknamelen - sent : 0);
 
     if (rc)
         logmsg(LOGMSG_ERROR, "%s target->send returns rc=%d\n", __func__, rc);
@@ -7799,12 +7955,46 @@ done_delete:
         /* Arm this thread; cleared once the session finishes applying. */
         bdb_fingerprint_rtstats_set_write(dt.fingerprint, FINGERPRINTSZ, fingerprint_has_main_entry(dt.fingerprint));
 
+        /* Latch the most recent one for comdb2_active_osqls. */
+        if (iq->sorese)
+            osql_sess_set_fingerprint(iq->sorese, dt.fingerprint);
+
         /* Relay to the replicants, which redo this work from the log. Purely
          * diagnostic, so a failure here must not fail the transaction. */
         if (gbl_log_fingerprint && trans) {
             int fingerprint_bdberr = 0;
             if (bdb_llog_fingerprint_tran(thedb->bdb_env, trans, dt.fingerprint, &fingerprint_bdberr) != 0) {
                 logmsg(LOGMSG_ERROR, "%s: failed to log fingerprint, bdberr %d\n", __func__, fingerprint_bdberr);
+            }
+        }
+    } break;
+
+    case OSQL_CLIENTINFO: {
+        osql_clientinfo_t dt = {0};
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_clientinfo_t);
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
+        /* taskname is returned in place and runs past the fixed part, so bound
+         * it against the whole message -- as OSQL_USEDB does for tablename. */
+        const char *taskname = (const char *)osqlcomm_clientinfo_type_get(&dt, p_buf, p_buf_end);
+        if (taskname == NULL)
+            goto badmsg;
+        if (dt.tasknamelen <= 0 || dt.tasknamelen > p_msg_end - (const uint8_t *)taskname ||
+            taskname[dt.tasknamelen - 1] != '\0')
+            goto badmsg;
+
+        /* Purely diagnostic; never fails the transaction. */
+        if (iq->sorese)
+            osql_sess_set_clientinfo(iq->sorese, taskname, dt.pid);
+
+        /* Relay to the replicants for comdb2_replication. The origin host comes
+         * from the session -- the replicant has no other way to learn it. */
+        if (gbl_log_clientinfo && trans) {
+            int clientinfo_bdberr = 0;
+            const char *host = (iq->sorese && iq->sorese->target.host) ? iq->sorese->target.host : "";
+            if (bdb_llog_clientinfo_tran(thedb->bdb_env, trans, taskname, host, dt.pid, &clientinfo_bdberr) != 0) {
+                logmsg(LOGMSG_ERROR, "%s: failed to log clientinfo, bdberr %d\n", __func__, clientinfo_bdberr);
             }
         }
     } break;

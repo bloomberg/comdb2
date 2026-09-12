@@ -99,6 +99,7 @@
 #include <net_appsock.h>
 #include <typessql.h>
 #include <sqlwriter.h>
+#include <crc32c.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -3380,6 +3381,12 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
 
+        /* Unconditional: show role 'R' even when fingerprinting is off and there
+         * is no fingerprint to pair with it. Cleared in sqlite_done(). */
+        bdb_fingerprint_rtstats_set_role(BDB_FP_ROLE_SQL);
+        /* An 'R' lock's client is the connection -- joins comdb2_connections. */
+        bdb_fingerprint_rtstats_set_client_id(sql_connection_client_id(clnt));
+
         /* t is this fingerprint's gbl_fingerprint_hash entry (NULL until its
          * first execution completes); pass its presence as has_main_entry. */
         if (gbl_fingerprint_queries)
@@ -4131,9 +4138,9 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
-    /* Mirror the guard on the paired ..._set() in get_prepared_stmt_int(). */
-    if (gbl_fingerprint_queries)
-        bdb_fingerprint_rtstats_clear();
+    /* Unguarded, mirroring the unconditional ..._set_role() in
+     * get_prepared_stmt_int(): a role is armed even with fingerprinting off. */
+    bdb_fingerprint_rtstats_clear();
 
     sqlite3_stmt *stmt = rec->stmt;
     int distributed = 0;
@@ -6651,9 +6658,18 @@ void run_internal_sql(char *sql)
     end_internal_sql_clnt(&clnt);
 }
 
+/* The id comdb2_locks.client_id carries for this connection's reads. Defined
+ * once here so the lock stamp and comdb2_connections cannot drift apart. */
+uint32_t sql_connection_client_id(const struct sqlclntstate *clnt)
+{
+    uint32_t id = crc32c((const uint8_t *)&clnt->connid, sizeof(clnt->connid));
+    return id ? id : 1; /* 0 means unknown on the lock */
+}
+
 static void gather_connection_int(struct connection_info *c, struct sqlclntstate *clnt)
 {
     c->connection_id = clnt->connid;
+    c->client_id = sql_connection_client_id(clnt);
     c->pid = clnt->last_pid;
     c->total_sql = clnt->total_sql;
     c->sql_since_reset = clnt->sql_since_reset;

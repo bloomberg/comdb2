@@ -1774,6 +1774,12 @@ REGISTER_TUNABLE("osql_send_fingerprint",
                  "whole cluster is upgraded. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_osql_send_fingerprint, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("osql_send_clientinfo",
+                 "Send the client taskname and pid in the osql stream so the "
+                 "master can report them in comdb2_active_osqls. Keep off until "
+                 "the whole cluster is upgraded. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_osql_send_clientinfo, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("log_fingerprint",
                  "Master logs the SQL fingerprint it received in the osql "
                  "stream, so replicants can attribute the page-in I/O they do "
@@ -1783,6 +1789,15 @@ REGISTER_TUNABLE("log_fingerprint",
                  "aborts -- and turn it off before downgrading any node. "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_log_fingerprint, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("log_clientinfo",
+                 "Master logs the client taskname, host and pid it received in "
+                 "the osql stream, so replicants can report them in "
+                 "comdb2_replication. Requires osql_send_clientinfo. Keep off "
+                 "until the whole cluster is upgraded -- a replicant that does "
+                 "not know the record type aborts -- and turn it off before "
+                 "downgrading any node. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_log_clientinfo, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("client_heartbeat_ms",
                  "Number of milliseconds between client api heartbeats.  "

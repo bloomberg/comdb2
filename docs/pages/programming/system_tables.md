@@ -10,7 +10,8 @@ permalink: system_tables.html
 Information about OSQL requests in the database.
 
     comdb2_active_osqls(type, origin, argv0, where, cnonce, request_id, nops,
-                        start_time, commit_time, nretries)
+                        start_time, commit_time, nretries, pid, fingerprint,
+                        client_id)
 
 * `type` - "OSQL" for active osql streams and "BPLOG" for active block processors.
 * `origin` - Where the request is from
@@ -22,6 +23,14 @@ Information about OSQL requests in the database.
 * `start_time` - Time when this request is created
 * `commit_time` - Commit time of this request
 * `nretries` - Number of retries
+* `pid` - Process id of the client, NULL if not known
+* `fingerprint` - Fingerprint of the SQL statement being applied, NULL if not
+                  known
+* `client_id` - Identifies the client; joins `comdb2_locks.client_id` for locks
+                with `fingerprint_role` `W`
+
+For `BPLOG` rows, `argv0` and `pid` are only known when the `osql_send_clientinfo`
+tunable is on where the request originated.
 
 ## comdb2_api_history
 
@@ -257,7 +266,8 @@ Describes all the hard limits in the database.
 
 Lists all active comdb2 locks.
 
-   comdb2_locks(thread, lockerid, mode, status, object, locktype, page)
+   comdb2_locks(thread, lockerid, mode, status, object, locktype, page,
+                fingerprint, fingerprint_role, client_id)
 
 * `thread` - Thread Id of the owner thread
 * `lockerid` - Locker Id
@@ -269,6 +279,16 @@ Lists all active comdb2 locks.
 * `locktype` - Lock type (`PAGE`, `HANDLE`, `KEYHASH`, `ROWLOCK`, `MINMAX`,
               `TABLELOCK`, `STRIPELOCK`, `LSN`, `ENV`)
 * `page` - Page number
+* `fingerprint` - Fingerprint of the SQL statement that took the lock, NULL if
+                  not known
+* `fingerprint_role` - What the owner was doing when it took the lock: `R`
+                       (executing a SQL statement), `W` (master applying a
+                       write), `A` (replicant applying the replication stream);
+                       NULL if not known
+* `client_id` - Identifies the client the lock was taken for: joins
+                `comdb2_connections.client_id` when `fingerprint_role` is `R`
+                and `comdb2_active_osqls.client_id` when it is `W`; NULL if
+                not known
 
 ## comdb2_logical_operations
 
@@ -397,6 +417,26 @@ Replication statistics.
 * `max_wait_over_10secs` - Maximum of waits over 10 seconds
 * `avg_wait_over_1min` - Average of waits over a minute
 * `max_wait_over_1min` - Maximum of waits over a minute
+
+## comdb2_replication
+
+One row per replication thread currently applying a transaction on this node.
+
+    comdb2_replication(threadid, taskname, host, pid, fingerprint,
+                       commit_lsn_file, commit_lsn_offset)
+
+* `threadid` - Thread Id of the applying thread
+* `taskname` - Program that ran the transaction, NULL if not known
+* `host` - Host the transaction came from, NULL if not known
+* `pid` - Process id of that program, NULL if not known
+* `fingerprint` - Fingerprint of the SQL statement this thread is applying,
+                  NULL if not known
+* `commit_lsn_file` - Log file of the transaction's commit record
+* `commit_lsn_offset` - Offset of the commit record in that file
+
+`taskname`, `host` and `pid` need the `log_clientinfo` tunable on the master
+(and `osql_send_clientinfo` where the writes originate); `fingerprint` needs
+`log_fingerprint`.
 
 ## comdb2_replication_netqueue
 

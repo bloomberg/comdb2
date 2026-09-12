@@ -147,6 +147,7 @@ typedef struct osqlstate {
     unsigned char last_fingerprint[FINGERPRINTSZ]; /* last fingerprint sent to
                                                       the master this session */
     int fingerprint_sent;                          /* set once we've sent an OSQL_FINGERPRINT */
+    int clientinfo_sent;                           /* set once we've sent an OSQL_CLIENTINFO */
     int sentops;             /* number of operations per statement */
     int tran_ops;            /* actual number of operations for a transaction */
     int replicant_numops; /* total num of ops sent by replicant to master which
@@ -1347,6 +1348,9 @@ struct sql_thread {
 struct connection_info {
     char *host;
     int64_t connection_id;
+    /* Same value comdb2_locks.client_id carries for this connection's reads,
+     * so an 'R' lock can be joined back to here. */
+    int64_t client_id;
     int64_t pid;
     int64_t total_sql;
     int64_t sql_since_reset;
@@ -1377,6 +1381,9 @@ struct connection_info {
     char *uuid;
     int64_t is_canceled;
 };
+
+/* The 32-bit id comdb2_locks.client_id carries for this connection's reads */
+uint32_t sql_connection_client_id(const struct sqlclntstate *clnt);
 
 /* makes master swing verbose */
 extern int gbl_master_swing_osql_verbose;

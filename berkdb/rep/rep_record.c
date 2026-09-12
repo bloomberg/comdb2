@@ -160,8 +160,16 @@ extern int __txn_commit_map_enabled(void);
 /* DB_llog_fingerprint (bdb/llog.src), spelled numerically because berkdb cannot
  * include llog_auto.h -- as with the other llog rectypes named in this file. */
 #define REP_LLOG_FINGERPRINT 10022
+#define REP_LLOG_CLIENTINFO 10023
 extern int gbl_log_fingerprint;
 extern int bdb_fingerprint_from_logrec(DB_ENV *, void *, unsigned char *, size_t);
+extern int gbl_log_clientinfo;
+extern void *bdb_clientinfo_from_logrec(DB_ENV *, void *);
+extern void bdb_clientinfo_free(void *);
+extern void bdb_replication_thread_begin(u_int32_t, u_int32_t);
+extern void bdb_replication_thread_client(void *);
+extern void bdb_replication_thread_fingerprint(const u_int8_t *);
+extern void bdb_replication_thread_end(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -4249,12 +4257,23 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	rr = listc_rtl(&rq->records);
 
+	/* Page-in accounting only -- redo takes no locks. Bills a no-fingerprint
+	 * record's page-ins to the apply counters instead of the read ones. */
+	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
+
+	/* This thread's comdb2_replication row, for as long as it is applying.
+	 * The client may be NULL -- the row is the thread, not the client. */
+	bdb_replication_thread_begin(commit_lsn.file, commit_lsn.offset);
+	bdb_replication_thread_client(rp->clientinfo);
+
 	while (rr) {
 		/* Per record, not per queue: fileid fan-out splits a txn across
 		 * workers, and a txn can span statements. */
-		if (rr->have_fingerprint)
+		if (rr->have_fingerprint) {
 			bb_berkdb_fingerprint_rtstats_set_apply(rr->fingerprint,
 				sizeof(rr->fingerprint), 0);
+			bdb_replication_thread_fingerprint(rr->fingerprint);
+		}
 
 		if (rr->logdbt.data == NULL) {
 			if (logc == NULL) {
@@ -4315,6 +4334,7 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	/* Disarm: the next txn on this pooled thread must not inherit it. */
 	bb_berkdb_fingerprint_rtstats_clear();
+	bdb_replication_thread_end();
 
 	if (logc) {
 		if (tmpdbt.data)
@@ -4565,6 +4585,13 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			have_cur_fingerprint =
 				bdb_fingerprint_from_logrec(dbenv, recdata,
 				cur_fingerprint, sizeof(cur_fingerprint));
+
+		/* Once per txn, so it lands on the processor rather than the
+		 * record: every worker applying this txn shares one client. */
+		if (gbl_log_clientinfo && rectype == REP_LLOG_CLIENTINFO &&
+			rp->clientinfo == NULL)
+			rp->clientinfo =
+				bdb_clientinfo_from_logrec(dbenv, recdata);
 
 		if (found_ufid) {
 			if (!fuid_hash)
@@ -4979,6 +5006,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 {
 	DBT data_dbt, *lock_dbt = NULL, lock_dbt_mem = {0};
 	LTDESC *lt = NULL;
+	/* Up here, not beside the phase-2 loop: err: reads it, and the earlier
+	 * goto err1/err would jump past an initializer down there. */
+	void *cur_clientinfo = NULL;
 	LSN_COLLECTION lc;
 	DB_LOCKREQ req, *lvp;
 	DB_LOGC *logc;
@@ -5253,6 +5283,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 	gbl_rep_lockid = lockid;
 
+	/* Before __lock_get_list() below, not just before phase 2: the txn's locks
+	 * are read from the commit record and all taken there. Cleared at err:. */
+	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
+
 	if (get_locks_and_ack) {
 
 		/* XXX Used to reproduce reads-follows-writes error - 
@@ -5454,6 +5488,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	u_int8_t cur_fingerprint[16];
 	int have_cur_fingerprint = 0;
 
+	/* This thread's comdb2_replication row, as in worker_thd. */
+	bdb_replication_thread_begin(rctl->lsn.file, rctl->lsn.offset);
+
 	/* Phase 2: Apply updates. */
 	for (i = 0; i < lc.nlsns; i++) {
 		DBT lcin_dbt = { 0 };
@@ -5499,10 +5536,22 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 				sizeof(cur_fingerprint));
 		}
 
+		/* No rp to latch it on: this path applies inline, so the client
+		 * attaches straight to this thread's row. */
+		if (gbl_log_clientinfo && rectype == REP_LLOG_CLIENTINFO &&
+			cur_clientinfo == NULL) {
+			cur_clientinfo = bdb_clientinfo_from_logrec(dbenv,
+				needed_to_get_record_from_log ? data_dbt.data :
+				lcin_dbt.data);
+			bdb_replication_thread_client(cur_clientinfo);
+		}
+
 		if (dispatch_rectype(rectype)) {
-			if (have_cur_fingerprint)
+			if (have_cur_fingerprint) {
 				bb_berkdb_fingerprint_rtstats_set_apply(
 					cur_fingerprint, sizeof(cur_fingerprint), 0);
+				bdb_replication_thread_fingerprint(cur_fingerprint);
+			}
 
 			ret = __db_dispatch(dbenv, dbenv->recover_dtab,
 				dbenv->recover_dtab_size,
@@ -5564,6 +5613,13 @@ err:
 
 	/* Disarm. Normal completion falls through here too, not just errors. */
 	bb_berkdb_fingerprint_rtstats_clear();
+	/* Safe on a goto err from before phase 2: it only touches a row this
+	 * thread actually published. */
+	bdb_replication_thread_end();
+	if (cur_clientinfo != NULL) {
+		bdb_clientinfo_free(cur_clientinfo);
+		cur_clientinfo = NULL;
+	}
 
 	memset(&req, 0, sizeof(req));
 
@@ -5837,6 +5893,11 @@ reset_recovery_processor(rp)
 	if (rp->txninfo != NULL) {
 		__db_txnlist_end(dbenv, rp->txninfo);
 		rp->txninfo = NULL;
+	}
+
+	if (rp->clientinfo != NULL) {
+		bdb_clientinfo_free(rp->clientinfo);
+		rp->clientinfo = NULL;
 	}
 
 	lc_free(dbenv, rp, &rp->lc);
@@ -6243,11 +6304,15 @@ bad_resize:	;
 
 	assert(gbl_rep_lock_time_ms == 0);
 	gbl_rep_lock_time_ms = comdb2_time_epochms();
+	/* The txn's locks are all taken here, off the commit record, so this is the
+	 * only arm that reaches them -- redo itself takes no locks. */
+	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
 	ret = !rp->context ?
 		__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
 		copy_compare ? &lock_dbt_copy : lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt)
 		: __lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 		copy_compare ? &lock_dbt_copy : lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+	bb_berkdb_fingerprint_rtstats_clear();
 	if (copy_compare) {
 		if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
 			logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);

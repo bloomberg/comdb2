@@ -944,6 +944,7 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
 
         osql->replicant_numops = 0;
         osql->fingerprint_sent = 0; /* re-send fingerprint for the new session */
+        osql->clientinfo_sent = 0;  /* and re-send clientinfo */
         if (osql->tablename) {
             free(osql->tablename);
             osql->tablename = NULL;
@@ -1026,6 +1027,9 @@ int gbl_osql_send_startgen = 1;
 /* Send OSQL_FINGERPRINT ahead of write ops. Default OFF: an older master fails
  * the transaction on an unknown op, so keep it off until the cluster is up. */
 int gbl_osql_send_fingerprint = 0;
+
+/* Send OSQL_CLIENTINFO once per transaction. Default OFF for the same reason. */
+int gbl_osql_send_clientinfo = 0;
 
 static inline int sock_restart_retryable_rcode(int restart_rc)
 {
@@ -1483,6 +1487,20 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, tablename))
         hash_add(clnt->dml_tables, strdup(tablename));
 
+    /* Once per transaction, ahead of the usedb dedup. The taskname is the only
+     * part the master cannot already see -- it has the host from the session. */
+    if (gbl_osql_send_clientinfo && !osql->clientinfo_sent && clnt->argv0) {
+        do {
+            rc = osql_send_clientinfo(&osql->target, osql->rqid, osql->uuid, clnt->argv0, clnt->last_pid, nettype);
+            RESTART_SOCKSQL;
+        } while (restarted);
+        if (rc)
+            return rc;
+        osql->clientinfo_sent = 1;
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
+    }
+
     /* Sent only when the fingerprint changes within the session, and ahead of
      * the usedb dedup so a new statement on the same table still gets one. */
     if (gbl_osql_send_fingerprint && !fingerprint_is_zero(clnt->work.aFingerprint) &&
@@ -1663,6 +1681,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int ne
         osql->tablenamelen = 0;
     }
     osql->fingerprint_sent = 0; /* re-send fingerprint for the next transaction */
+    osql->clientinfo_sent = 0;  /* and re-send clientinfo */
     osql->tran_ops = 0; /* reset transaction size counter*/
 
     if (!clnt->dbtran.trans_has_sp) {

@@ -55,7 +55,8 @@ XMACRO_OSQL_RPL_TYPES( OSQL_PREPARE,           29, "OSQL_PREPARE" ) /* participa
 XMACRO_OSQL_RPL_TYPES( OSQL_DIST_TXNID,        30, "OSQL_DIST_TXNID" ) /* send dist-txnid to coordinator */                  \
 XMACRO_OSQL_RPL_TYPES( OSQL_PARTICIPANT,       31, "OSQL_PARTICIPANT" ) /* a participant (to coordinator) */                 \
 XMACRO_OSQL_RPL_TYPES( OSQL_FINGERPRINT,       32, "OSQL_FINGERPRINT" ) /* SQL fingerprint for master write-I/O accounting */ \
-XMACRO_OSQL_RPL_TYPES( MAX_OSQL_TYPES,         33, "OSQL_MAX")
+XMACRO_OSQL_RPL_TYPES( OSQL_CLIENTINFO,        33, "OSQL_CLIENTINFO" ) /* client task/pid, for comdb2_active_osqls */         \
+XMACRO_OSQL_RPL_TYPES( MAX_OSQL_TYPES,         34, "OSQL_MAX")
 
 // clang-format on
 

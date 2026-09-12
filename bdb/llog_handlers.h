@@ -86,5 +86,6 @@ int handle_commit_log_bench(DB_ENV *dbenv, u_int32_t rectype,
                             DB_LSN *lsn, db_recops op);
 
 int handle_fingerprint(DB_ENV *dbenv, u_int32_t rectype, llog_fingerprint_args *fpop, DB_LSN *lsn, db_recops op);
+int handle_clientinfo(DB_ENV *dbenv, u_int32_t rectype, llog_clientinfo_args *ciop, DB_LSN *lsn, db_recops op);
 
 #endif /* __llog_handlers_h__ */
