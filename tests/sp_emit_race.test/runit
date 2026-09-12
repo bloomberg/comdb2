@@ -1,0 +1,69 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - <<'EOF'
+CREATE PROCEDURE sp_emit_race version 'v1' {
+local function grower()
+    for i = 4, 50 do
+        db:num_columns(i)
+        for j = 1, i do
+            db:column_type('text', j)
+            db:column_name('c'..j, j)
+        end
+    end
+end
+
+local function shrinker()
+    for i = 1, 20 do
+        db:num_columns(1)
+        db:column_type('text', 1)
+        db:column_name('c1', 1)
+    end
+end
+
+local function emitter()
+    for i = 1, 10 do
+        db:emit({c1='x', c2='y'})
+    end
+end
+
+local function main()
+    db:num_columns(3)
+    db:column_type('text', 1)
+    db:column_name('c1', 1)
+    db:column_type('text', 2)
+    db:column_name('c2', 2)
+    db:column_type('text', 3)
+    db:column_name('c3', 3)
+
+    local threads = {}
+    threads[1] = db:create_thread(grower)
+    threads[2] = db:create_thread(emitter)
+    threads[3] = db:create_thread(shrinker)
+    threads[4] = db:create_thread(emitter)
+    for i = 1, 4 do
+        threads[i]:join()
+    end
+end}$$
+EXEC PROCEDURE sp_emit_race()
+EXEC PROCEDURE sp_emit_race()
+EOF
+
+if [[ $? -ne 0 ]]; then
+    failexit "failed to create stored procedure"
+fi
+
+
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "SELECT 1" > /dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+    failexit "server crashed - couldn't select 1"
+fi
+
+
+echo "SUCCESS — server survived all iterations"

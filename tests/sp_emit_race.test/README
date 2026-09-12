@@ -1,0 +1,3 @@
+Tests the race between lua reading column metadata (push_clnt_cols)
+and pushing rows (l_send_back_row)
+

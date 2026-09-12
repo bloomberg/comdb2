@@ -89,6 +89,7 @@ extern int gbl_allow_lua_print;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
 extern int gbl_sql_tranlevel_default;
+int gbl_test_emit_race_delay = 0;
 
 extern char *tranlevel_tostr(int lvl);
 
@@ -2261,45 +2262,65 @@ static int lua_prepare_sql_with_temp_ddl(SP sp, const char *sql, sqlite3_stmt **
     return lua_prepare_sql_int(sp, sql, stmt, NULL, prepFlags);
 }
 
-static void push_clnt_cols(Lua L, SP sp)
+static int push_clnt_cols(Lua L, SP sp)
 {
     SP parent = sp->parent;
     int cols = parent->ntypes;
     if (parent->clntname == NULL) {
-        luaL_error(L, "attempt to emit row without defining columns");
-        return;
+        return 1;
     }
     lua_checkstack(L, cols + 10);
     for (int i = 0; i < cols; ++i) {
         if (parent->clntname[i] == NULL) {
-            luaL_error(L, "attempt to emit row without defining columns");
-            return;
+            return 1;
+        }
+        if (gbl_test_emit_race_delay) {
+            sleep(gbl_test_emit_race_delay);
         }
         lua_getfield(L, -1, parent->clntname[i]);
         lua_insert(L, -2);
     }
+    return 0;
 }
 
-static int l_send_back_row(Lua, sqlite3_stmt *, int);
+static int l_send_back_row(Lua, sqlite3_stmt *, int, int);
 static int luatable_emit(Lua L)
 {
     int cols;
     SP sp = getsp(L);
+    SP parent = sp->parent;
+    struct sqlclntstate *clnt = parent->clnt;
     dbstmt_t *dbstmt;
     sqlite3_stmt *stmt = NULL;
+    int rc;
+    int locked = 0;
     if ((dbstmt = get_sqlrow_stmt(L)) != NULL && dbstmt->stmt) {
         stmt = dbstmt->stmt;
         cols = column_count(NULL, stmt);
-    } else if (sp->parent->ntypes) {
-        push_clnt_cols(L, sp);
+    } else if (parent->ntypes) {
+        if (clnt->osql.sent_column_data == 0) {
+            Pthread_mutex_lock(parent->emit_mutex);
+            locked = 1;
+        }
+        // if we already sent column data, none of db:column*() functions
+        // will update the column metadata, so can skip locking as 
+        // l_send_back_row() will handle locking
+        rc = push_clnt_cols(L, sp);
+        if (rc) {
+            if (locked) Pthread_mutex_unlock(parent->emit_mutex);
+            goto error;
+        }
         lua_pop(L, 1);
         cols = lua_gettop(L);
     } else {
-        return luaL_error(L, "attempt to emit row without defining columns");
+        goto error;
     }
-    int rc = l_send_back_row(L, stmt, cols);
+    rc = l_send_back_row(L, stmt, cols, locked);
+    if (locked) Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, rc);
     return 1;
+error:
+    return luaL_error(L, "attempt to emit row without defining columns");
 }
 
 static int dbtable_insert(Lua lua)
@@ -3419,7 +3440,7 @@ static int dbstmt_emit(Lua L)
     lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
         lua_another_step(sp->clnt, stmt, rc);
-        if (l_send_back_row(L, stmt, cols) != 0) {
+        if (l_send_back_row(L, stmt, cols, 0) != 0) {
             rc = -1;
             break;
         }
@@ -4183,7 +4204,7 @@ static int db_emit_int(Lua L)
     } else if (lua_istable(L, 1)) {
         return luatable_emit(L);
     } else {
-        int rc = l_send_back_row(L, NULL, lua_gettop(L));
+        int rc = l_send_back_row(L, NULL, lua_gettop(L), 0);
         return push_and_return(L, rc);
     }
 }
@@ -4324,7 +4345,7 @@ static int db_num_columns(Lua L)
         return luaL_error(L, "attempt to change number of columns");
     }
     if (num_cols < parent->ntypes) {
-        for (int i = num_cols - 1; i < parent->ntypes; ++i) {
+        for (int i = num_cols; i < parent->ntypes; ++i) {
             free(parent->clntname[i]);
             parent->clntname[i] = NULL;
         }
@@ -5666,7 +5687,7 @@ annotate:
     return v;
 }
 
-static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
+static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs, int locked)
 {
     int rc = 0;
     SP sp = getsp(lua);
@@ -5687,47 +5708,56 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     arg.pingpong = sp->pingpong;
     SP parent = sp->parent;
     struct sqlclntstate *clnt = parent->clnt;
+    /* When called via luatable_emit with locked!=0 the caller already holds
+     * emit_mutex for the whole emit, so don't re-acquire it here. */
     if (clnt->osql.sent_column_data == 0) {
-        Pthread_mutex_lock(parent->emit_mutex);
+        if (!locked) Pthread_mutex_lock(parent->emit_mutex);
         if (clnt->osql.sent_column_data == 0) {
             new_col_info(parent, nargs);
             rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
             clnt->osql.sent_column_data = 1;
         }
-        Pthread_mutex_unlock(parent->emit_mutex);
+        if (!locked) Pthread_mutex_unlock(parent->emit_mutex);
         if (rc) return rc;
     }
     if (nargs != parent->ntypes) {
+        // unlock before luaL_error longjmps 
+        if (locked) Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(lua, "bad number of emit columns:%d (need:%d)", nargs, parent->ntypes);
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
     int sp_rc = sp->rc;
     sp->rc = 0;
 
-    /* If SP has threads, one of them may hold emit_mutex waiting for a slow
-     * client to read (in sql_flush_int). We trylock instead and come up for
-     * air to check if bdb_lock_desired */
-    while ((rc = pthread_mutex_trylock(parent->emit_mutex)) == EBUSY) {
-        if (bdb_lock_desired(thedb->bdb_env)) {
-            rc = release_locks("release locks on emit-row for lock-desired");
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s release_locks_on_emit_row %d\n", __func__, rc);
-                return rc;
+    if (locked) {
+        rc = write_response(clnt, type, &arg, 0);
+    } else {
+        /* If SP has threads, one of them may hold emit_mutex waiting for a slow
+         * client to read (in sql_flush_int). We trylock instead and come up for
+         * air to check if bdb_lock_desired */
+        while ((rc = pthread_mutex_trylock(parent->emit_mutex)) == EBUSY) {
+            if (bdb_lock_desired(thedb->bdb_env)) {
+                rc = release_locks("release locks on emit-row for lock-desired");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s release_locks_on_emit_row %d\n", __func__, rc);
+                    return rc;
+                }
             }
+            Pthread_mutex_lock(parent->wait_lock);
+            struct timespec delay;
+            clock_gettime(CLOCK_REALTIME, &delay);
+            delay.tv_sec += 1;
+            pthread_cond_timedwait(parent->wait_cond, parent->wait_lock, &delay);
+            Pthread_mutex_unlock(parent->wait_lock);
         }
-        Pthread_mutex_lock(parent->wait_lock);
-        struct timespec delay;
-        clock_gettime(CLOCK_REALTIME, &delay);
-        delay.tv_sec += 1;
-        pthread_cond_timedwait(parent->wait_cond, parent->wait_lock, &delay);
-        Pthread_mutex_unlock(parent->wait_lock);
+        if (rc != 0) {
+            abort(); /* as if Pthread_mutex_lock failed */
+        }
+        rc = write_response(clnt, type, &arg, 0);
+        Pthread_mutex_unlock(parent->emit_mutex);
     }
-    if (rc != 0) {
-        abort(); /* as if Pthread_mutex_lock failed */
-    }
-    rc = write_response(clnt, type, &arg, 0);
-    Pthread_mutex_unlock(parent->emit_mutex);
     if (sp->rc) { /* type conversion failure */
+        if (locked) Pthread_mutex_unlock(parent->emit_mutex);
         luaL_error(lua, sp->error);
     }
     sp->rc = sp_rc;

@@ -1,0 +1,3 @@
+test_emit_race_delay 1
+allow_lua_print 1
+logmsg level debug
