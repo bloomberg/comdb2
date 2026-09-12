@@ -328,7 +328,13 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     if (!is_valid_mach_class(gbl_physrep_source_host)) {
         int count = 0;
         char *saveptr = NULL;
-        char *hosts = gbl_physrep_source_host;
+        /* Tokenize a copy: the global is read again on every registration */
+        char *hosts = strdup(gbl_physrep_source_host);
+
+        if (hosts == NULL) {
+            *rc = -1;
+            return -1;
+        }
 
         char *host = strtok_r(hosts, ",", &saveptr);
         while (host != NULL)  {
@@ -338,6 +344,7 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
 
             host = strtok_r(NULL, ",", &saveptr);
         }
+        free(hosts);
         return bytes_written;
     }
 
@@ -441,7 +448,15 @@ static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, 
 
         if (*hosts == NULL) {
             char *saveptr = NULL;
-            char *hst = strtok_r(host, ",", &saveptr);
+            /* Tokenize a copy: 'host' is retained by the caller for trace */
+            char *hostcopy = strdup(host);
+
+            if (hostcopy == NULL) {
+                Pthread_mutex_unlock(lk);
+                return 1;
+            }
+
+            char *hst = strtok_r(hostcopy, ",", &saveptr);
 
             *host_count = 0;
 
@@ -452,6 +467,7 @@ static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, 
                 host_list[(*host_count) - 1] = strdup(hst);
                 hst = strtok_r(NULL, ",", &saveptr);
             }
+            free(hostcopy);
             (*hosts) = host_list;
         }
 
@@ -493,8 +509,8 @@ static int get_metadb_handle_int(cdb2_hndl_tp **hndl, char *dbname, char *host, 
             pthread_mutex_unlock(lk);
             return 0;
         }
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to any host in the list\n",
-                       __func__, __LINE__);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to any of the %d host(s) for %s@%s\n", __func__, __LINE__,
+                       *host_count, dbname, host);
         Pthread_mutex_unlock(lk);
         return 1;
     }
@@ -542,6 +558,18 @@ int get_alt_metadb_hndl(cdb2_hndl_tp **hndl, int index)
 int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp **hndl) {
     return (gbl_physrep_metadb_name || gbl_physrep_source_dbname)
       ?  get_metadb_hndl(hndl) : get_local_hndl(hndl);
+}
+
+/* Name and tier that physrep_get_metadb_or_local_hndl() would target */
+void physrep_metadb_info(const char **dbname, const char **host)
+{
+    if (gbl_physrep_metadb_name || gbl_physrep_source_dbname) {
+        *dbname = gbl_physrep_metadb_name ? gbl_physrep_metadb_name : gbl_physrep_source_dbname;
+        *host = gbl_physrep_metadb_host ? gbl_physrep_metadb_host : gbl_physrep_source_host;
+    } else {
+        *dbname = gbl_dbname;
+        *host = "local";
+    }
 }
 
 static int update_registry(cdb2_hndl_tp *repl_metadb, const char *remote_dbname, const char *remote_host)
