@@ -1138,6 +1138,7 @@ function getallpgnos_function() {
 	printf("\tvoid *summary;\n{\n") >> CFILE;
 
 	has_fileid = 0;
+	has_ufid = 0;
 	npages = 0;
 	for (i = 0; i < nvars; i++) {
 		if (types[i] == "db_pgno_t") {
@@ -1145,6 +1146,10 @@ function getallpgnos_function() {
 		}
 		if (vars[i] == "fileid") {
 			has_fileid = 1;
+			# A DB-mode fileid also gets a ufid_fileid[]; under ufid
+			# logging that is the only usable id (fileid is -1).
+			if (modes[i] == "DB")
+				has_ufid = 1;
 		}
 	}
 
@@ -1158,7 +1163,11 @@ function getallpgnos_function() {
 		printf("\targp = NULL;\n") >> CFILE;
 		printf("\tt = (TXN_RECS *)summary;\n\n") >> CFILE;
 
-		printf("\tif ((ret = %s_read(dbenv, rec->data, &argp)) != 0)\n", \
+		# do_pgswp must be 0: the 3-arg _read byte-swaps PGDBT page images
+		# in place in the caller's buffer (LOG_SWAPPED is 1 on little-endian)
+		# and resolves the dbp.  We need neither, and a caller that later
+		# applies the same buffer would swap it twice.
+		printf("\tif ((ret = %s_read_int(dbenv, rec->data, 0, &argp)) != 0)\n", \
 				funcname) >> CFILE;
 		printf("\t\treturn (ret);\n") >> CFILE;
 
@@ -1170,6 +1179,16 @@ function getallpgnos_function() {
 			if (types[i] == "db_pgno_t") {
 				printf("\tt->array[t->npages].flags = 0;\n") >> CFILE;
 				printf("\tt->array[t->npages].fid = argp->fileid;\n") >> CFILE;
+				# Under ufid logging argp->fileid is -1, so carry the
+				# ufid too; zero it otherwise so callers can rely on
+				# "all zeroes means no ufid".
+				if (has_ufid) {
+					printf("\tmemcpy(t->array[t->npages].pgdesc.fileid,\n") >> CFILE;
+					printf("\t\targp->ufid_fileid, DB_FILE_ID_LEN);\n") >> CFILE;
+				} else {
+					printf("\tmemset(t->array[t->npages].pgdesc.fileid,\n") >> CFILE;
+					printf("\t\t0, DB_FILE_ID_LEN);\n") >> CFILE;
+				}
 				printf("\tt->array[t->npages].lsn = *lsnp;\n") >> CFILE;
 				printf("\tt->array[t->npages].pgdesc.pgno = argp->%s;\n", vars[i]) >> CFILE;
 				printf("\tt->array[t->npages].comment = \"%s\";\n", vars[i]) >> CFILE;

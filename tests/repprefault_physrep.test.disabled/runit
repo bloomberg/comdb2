@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+# Physical-replicant benchmark for rep prefault.  A physrep has no coherency
+# coupling: the source never waits for it, so when the source outruns it the
+# physrep lags and applies flat out -- the regime prefault targets.  Per phase:
+# write a sweep on the source, then time until the physrep's LSN reaches the
+# source's post-write LSN.  total_s is the claim.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+ROWS=${ROWS:-50000}
+BATCH=2500
+PASSES=${PASSES:-12}
+SCATTER=$PASSES
+MODES=${MODES:-"off adapt off adapt off adapt"}
+
+destdb=${TESTCASE}dest${TESTID}
+COPY_DBDIR=${DBDIR}/$destdb
+DEST_DBDIR=${COPY_DBDIR}/$dbnm
+COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+    'select host from comdb2_cluster where is_master="Y"')
+echo "source master=$master physrep=$destdb (localhost)"
+
+m() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$master" "$1"; }
+p() { ${CDB2SQL_EXE} --tabs $destdb --host localhost "$1"; }
+
+# First file:offset on the MASTER line of 'bdb cluster', as one number.
+# Identical parsing on both nodes so the comparison is like with like.
+lsn_of_master() {
+    m 'exec procedure sys.cmd.send("bdb cluster")' 2>/dev/null |
+        grep "MASTER" | grep -oE '[0-9]+:[0-9]+' | head -1 |
+        awk -F: '{printf "%d\n", $1 * 10000000000 + $2}'
+}
+lsn_of_physrep() {
+    p 'exec procedure sys.cmd.send("bdb cluster")' 2>/dev/null |
+        grep "MASTER" | grep -oE '[0-9]+:[0-9]+' | head -1 |
+        awk -F: '{printf "%d\n", $1 * 10000000000 + $2}'
+}
+
+apply_miss() {
+    p 'exec procedure sys.cmd.send("bdb cachestat")' 2>/dev/null | awk '
+        /^st_apply_miss:/ {print $2}'
+}
+
+sweep() {
+    local k=0
+    while [ $k -lt $PASSES ]; do
+        m "update t set c = c + 1 where a % $SCATTER = $k" >/dev/null
+        k=$((k + 1))
+    done
+}
+
+wait_physrep_at() {
+    local target=$1 deadline=$((SECONDS + 300)) cur
+    while :; do
+        cur=$(lsn_of_physrep)
+        case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+        [ "$cur" -ge "$target" ] && return 0
+        [ $SECONDS -gt $deadline ] && return 1
+        sleep 0.2
+    done
+}
+
+# The physrep's LSN tracks log receipt, which runs ahead of page apply.
+# "Applied" means the last sweep statement's commit is visible: one indexed
+# point read of a row only the final statement touches.
+wait_physrep_applied() {
+    local want=$1 deadline=$((SECONDS + 300)) cur
+    while :; do
+        cur=$(p "select c from t where a = $((SCATTER - 1))" 2>/dev/null)
+        [ "$cur" = "$want" ] && return 0
+        [ $SECONDS -gt $deadline ] && return 1
+        sleep 0.2
+    done
+}
+
+echo "loading ${ROWS} rows..."
+m "create table t(a int, pad char(2000), c int)" >/dev/null
+m "create index ta on t(a)" >/dev/null
+loaded=0
+while [ $loaded -lt $ROWS ]; do
+    m "insert into t select value + $loaded, hex(randomblob(1000)), 0
+         from generate_series(1, $BATCH)" >/dev/null
+    loaded=$((loaded + BATCH))
+done
+echo "loaded $(m 'select count(*) from t') rows"
+
+# Let the physrep register without a metadb: the source answers the
+# registration query with its own cluster at tier 0.
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm --host $master \
+    "create procedure 'sys.physrep.register_replicant' version '1' { $(cat ./register_replicant.lua) }" >/dev/null
+
+# Copy the source and start the physrep on this host, with the same small
+# cache as the source so its working set misses.
+mkdir -p $DEST_DBDIR
+if [[ "$CLUSTER" =~ .*$myhost.* ]]; then rmt=""; else
+    clarray=($CLUSTER); rmt="${clarray[0]}:"; fi
+${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb \
+    -y @$(echo $CLUSTER | tr ' ' ',') $rmt${DBDIR}/${DBNAME}.lrl \
+    $DEST_DBDIR $DEST_DBDIR || failexit "copycomdb2 failed"
+df $DBDIR | awk '{print $1}' | grep -q "tmpfs\|nfs" &&
+    echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
+cat <<EOF >> $DEST_DBDIR/${destdb}.lrl
+cachekbmin 2048
+cachekb 16384
+EOF
+[ -n "$PMUXPORT" ] && {
+    echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
+    echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
+}
+
+(cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $destdb \
+    --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid \
+    > $TESTDIR/logs/$destdb.db 2>&1) &
+trap 'kill $(cat $DEST_DBDIR/${destdb}.pid 2>/dev/null) 2>/dev/null' EXIT
+
+retries=0
+until [ "$(p 'select 1' 2>/dev/null)" = "1" ]; do
+    sleep 1
+    retries=$((retries + 1))
+    [ $retries -gt 60 ] && failexit "physrep did not come up"
+done
+echo "physrep is up; waiting for initial sync"
+wait_physrep_at "$(lsn_of_master)" || failexit "initial sync timeout"
+echo "physrep cache $(p "select value from comdb2_tunables where name='cachekb'")kb"
+
+# Warm with prefault off so every phase starts from the same regime.
+p "put tunable 'rep_prefault' '0'" >/dev/null 2>&1
+echo "warming up..."
+sweep
+sweeps_done=1
+wait_physrep_applied $sweeps_done || failexit "warmup sync timeout"
+sleep 5
+
+printf '\n%-8s %8s %8s %8s %12s\n' mode write_s drain_s total_s apply_miss
+
+for mode in ${MODES}; do
+    if [ "$mode" = "off" ]; then
+        p "put tunable 'rep_prefault' '0'" >/dev/null 2>&1
+    elif [ "$mode" = "adapt" ]; then
+        p "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+        p "put tunable 'rep_prefault_adaptive' '1'" >/dev/null 2>&1
+        b=$(p "select value from comdb2_tunables where name='rep_prefault_budget'")
+        [ "$b" = "0" ] && p "put tunable 'rep_prefault_budget' '64'" >/dev/null 2>&1
+    else
+        p "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+        p "put tunable 'rep_prefault_adaptive' '0'" >/dev/null 2>&1
+        p "put tunable 'rep_prefault_lookahead' '${mode#static}'" >/dev/null 2>&1
+    fi
+
+    miss0=$(apply_miss)
+    t0=$SECONDS
+    sweep
+    sweeps_done=$((sweeps_done + 1))
+    t1=$SECONDS
+    wait_physrep_applied $sweeps_done || failexit "drain timeout in mode $mode"
+    t2=$SECONDS
+    miss1=$(apply_miss)
+
+    suffix=""
+    if [ "$mode" = "adapt" ]; then
+        b=$(p "select value from comdb2_tunables where name='rep_prefault_budget'")
+        suffix="  (budget=$b)"
+    fi
+    printf '%-8s %8s %8s %8s %12s%s\n' "$mode" $((t1-t0)) $((t2-t1)) \
+        $((t2-t0)) $((miss1-miss0)) "$suffix"
+    sleep 3
+done
+
+echo
+echo "TESTCASE PASSED"
+exit 0

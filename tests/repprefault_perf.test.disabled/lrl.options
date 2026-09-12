@@ -1,0 +1,8 @@
+# Small enough that the table cannot fit, so the apply thread has to fault
+# pages in and prefault has something to do.
+#
+# cachekbmin must come down too: comdb2 clamps cachekb up to cacheszkbmin
+# (default 65536) as the very last sizing step, so setting cachekb alone is
+# silently ignored.
+cachekbmin 2048
+cachekb 16384

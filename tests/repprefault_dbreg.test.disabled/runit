@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+# Does the prefault pool ever make __dbreg_rem_dbentry wait, and how often?
+#
+# It spins holding dblp->mutexp until every in-flight prefault on that entry
+# drops its pin, and while it spins no dbreg entry anywhere can be added or
+# removed -- so the apply thread stalls behind it too.
+#
+# This should be rare.  dbreg entries are only removed on close: drops, schema
+# changes, renames, recovery -- not by ordinary DML.  And prefault runs *ahead*
+# of apply, so by the time a close is applied its file's prefaults have usually
+# already completed.  The overlap needs the pool to be running behind the apply
+# (the st_page_pf_in_late regime), which is exactly what a cache-starved
+# replicant under load produces.  Hence this test: drop a table while the
+# replicant is still applying its writes cold.
+#
+#   waits      - removals that had to wait at all (0 with prefault off)
+#   total_us   - time summed over those waits
+#   max_us     - worst single wait
+#   churn_s    - wall clock for the whole write+drop cycle to replicate
+#
+# 'waits' is the number that matters.  A pin covers exactly one __memp_fget and
+# concurrent pins on one entry drain in parallel, so the underlying stall is a
+# single page read -- but __dbreg_rem_dbentry polls on a 10ms tick, so any wait
+# at all reports as >=10000us.  Read the durations as "10ms per wait", and if
+# 'waits' is high enough for that to matter, the poll granularity is the first
+# thing to fix, not the pin.
+
+dbnm=$1
+
+ROWS=${ROWS:-40000}
+BATCH=2500
+ROUNDS=${ROUNDS:-12}
+MODES=${MODES:-"off adapt off adapt"}
+FAIL=0
+
+failed() { echo "FAIL: $1" >&2; FAIL=1; }
+
+if [ -z "${CLUSTER}" ]; then
+    echo "this benchmark needs a cluster" >&2
+    exit 1
+fi
+
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+    'select host from comdb2_cluster where is_master="Y"')
+rep=""
+for node in ${CLUSTER}; do
+    [ "$node" != "$master" ] && rep=$node && break
+done
+[ -z "$rep" ] && echo "no replicant in CLUSTER='${CLUSTER}'" >&2 && exit 1
+echo "master=$master replicant=$rep rows=$ROWS rounds=$ROUNDS"
+
+m() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$master" "$1"; }
+r() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$rep" "$1"; }
+
+lsn_of() {
+    m "select logfile*10000000000+logoffset from comdb2_cluster where host='$1'"
+}
+
+# "  dbreg rem waits  : 7 (total 91234 us, max 30115 us)"
+dbreg_stats() {
+    r 'exec procedure sys.cmd.send("repprefault")' 2>/dev/null | sed -n \
+        's/^  dbreg rem waits  *: *\([0-9]*\) (total \([0-9]*\) us, max \([0-9]*\) us)$/\1 \2 \3/p' \
+        | head -1
+}
+
+wait_replicated() {
+    local target deadline cur
+    target=$(lsn_of "$master")
+    deadline=$((SECONDS + 300))
+    while :; do
+        cur=$(lsn_of "$rep")
+        case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+        [ "$cur" -ge "$target" ] && return 0
+        if [ $SECONDS -gt $deadline ]; then
+            echo "TIMEOUT waiting for replicant" >&2
+            return 1
+        fi
+        sleep 0.2
+    done
+}
+
+# One round: build a table big enough that the replicant cannot cache it, then
+# drop it while those writes are still being applied.
+churn_round() {
+    local tbl=$1 loaded=0
+
+    m "create table ${tbl}(a int, pad char(2000), c int)" >/dev/null
+    m "create index ${tbl}a on ${tbl}(a)" >/dev/null
+    while [ $loaded -lt $ROWS ]; do
+        m "insert into ${tbl} select value + $loaded, hex(randomblob(1000)), 0
+             from generate_series(1, $BATCH)" >/dev/null
+        loaded=$((loaded + BATCH))
+    done
+    # Scatter updates so the apply path is faulting index and leaf pages in,
+    # not just appending.  No sleep before the drop: we want it to arrive while
+    # the replicant is still behind.
+    m "update ${tbl} set c = c + 1 where a % 3 = 0" >/dev/null
+    m "drop table ${tbl}" >/dev/null
+}
+
+echo "priming..."
+churn_round warmup >/dev/null 2>&1
+wait_replicated || exit 1
+sleep 5
+
+printf '\n%-8s %8s %10s %12s %10s\n' mode waits total_us max_us churn_s
+
+for mode in ${MODES}; do
+    if [ "$mode" = "off" ]; then
+        r "put tunable 'rep_prefault' '0'" >/dev/null 2>&1
+    elif [ "$mode" = "adapt" ]; then
+        r "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+        r "put tunable 'rep_prefault_adaptive' '1'" >/dev/null 2>&1
+        b=$(r "select value from comdb2_tunables where name='rep_prefault_budget'")
+        [ "$b" = "0" ] && r "put tunable 'rep_prefault_budget' '64'" >/dev/null 2>&1
+    else
+        r "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+        r "put tunable 'rep_prefault_adaptive' '0'" >/dev/null 2>&1
+        r "put tunable 'rep_prefault_lookahead' '${mode#static}'" >/dev/null 2>&1
+    fi
+
+    read -r w0 t0us m0 <<<"$(dbreg_stats)"
+    : "${w0:=0}" "${t0us:=0}" "${m0:=0}"
+
+    t0=$SECONDS
+    k=0
+    while [ $k -lt $ROUNDS ]; do
+        churn_round "churn_${k}"
+        k=$((k + 1))
+    done
+    wait_replicated || exit 1
+    t1=$SECONDS
+
+    read -r w1 t1us m1 <<<"$(dbreg_stats)"
+    : "${w1:=0}" "${t1us:=0}" "${m1:=0}"
+
+    # max is a running high-water mark, so report the round's own peak only
+    # when it moved.
+    peak=$m1
+    [ "$m1" = "$m0" ] && peak="<=$m0"
+
+    printf '%-8s %8s %10s %12s %10s\n' "$mode" $((w1-w0)) $((t1us-t0us)) \
+        "$peak" $((t1-t0))
+
+    if [ "$mode" = "off" ] && [ $((w1-w0)) -ne 0 ]; then
+        failed "prefault off but dbreg removal still waited $((w1-w0)) times"
+    fi
+
+    sleep 5
+done
+
+r "put tunable 'rep_prefault' '1'" >/dev/null 2>&1
+r "put tunable 'rep_prefault_budget' '64'" >/dev/null 2>&1
+r "put tunable 'rep_prefault_adaptive' '1'" >/dev/null 2>&1
+
+echo
+echo "--- replicant prefault state ---"
+r 'exec procedure sys.cmd.send("repprefault")'
+echo "--- replicant page read latency, for scale against max_us ---"
+r 'exec procedure sys.cmd.send("bdb cachestat")' 2>/dev/null \
+    | grep -E 'st_page_in|st_apply_|st_pf_'
+
+if [ "$FAIL" -ne 0 ]; then
+    echo "TESTCASE FAILED" >&2
+    exit 1
+fi
+
+echo
+echo "TESTCASE PASSED"
+exit 0
