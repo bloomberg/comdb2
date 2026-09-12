@@ -48,6 +48,7 @@ int start_physrep_threads();
 int stop_physrep_threads();
 int physrep_exited();
 int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp**);
+void physrep_metadb_info(const char **dbname, const char **host);
 void physrep_cleanup(void);
 void physrep_fanout_override(const char *dbname, int fanout);
 int physrep_fanout_get(const char *dbname);

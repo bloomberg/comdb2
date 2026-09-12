@@ -1936,6 +1936,9 @@ REGISTER_TUNABLE("physrep_fake_revconn_populate_error_once",
                  "Fake physrep error on first attempt only, allowing retry to succeed.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_fake_revconn_populate_error_once, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("physrep_fake_altmetadb_conn_error",
+                 "Fake a connect failure against every alt-metadb.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_physrep_fake_altmetadb_conn_error, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_fake_rte_failure", "Fake rte failures in connect-remote-db.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_fake_rte_failure, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
