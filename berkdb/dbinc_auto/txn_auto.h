@@ -8,6 +8,7 @@ typedef struct ___txn_regop_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	opcode;
 	int32_t	timestamp;
 	DBT	locks;
@@ -18,6 +19,7 @@ typedef struct ___txn_ckp_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	DB_LSN	ckp_lsn;
 	DB_LSN	last_ckp;
 	int32_t	timestamp;
@@ -30,6 +32,7 @@ typedef struct ___txn_child_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	child;
 	u_int64_t   child_utxnid;
 	DB_LSN	c_lsn;
@@ -40,6 +43,7 @@ typedef struct ___txn_xa_regop_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	opcode;
 	DBT	xid;
 	int32_t	formatID;
@@ -54,6 +58,7 @@ typedef struct ___txn_recycle_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	min;
 	u_int32_t	max;
 } __txn_recycle_args;
@@ -63,6 +68,7 @@ typedef struct ___txn_regop_rowlocks_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t   opcode;
     u_int64_t   ltranid;
     DB_LSN begin_lsn;
@@ -80,6 +86,7 @@ typedef struct ___txn_regop_gen_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	opcode;
 	u_int32_t	generation;
 	u_int64_t	context;
@@ -92,6 +99,7 @@ typedef struct __txn_dist_prepare_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t generation;
 	DB_LSN begin_lsn;
 	DBT dist_txnid;
@@ -109,6 +117,7 @@ typedef struct __txn_dist_abort_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	generation;
 	u_int64_t	timestamp;
 	DBT dist_txnid;
@@ -119,6 +128,7 @@ typedef struct __txn_dist_commit_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	u_int32_t	generation;
 	u_int64_t	context;
 	u_int64_t	timestamp;
@@ -130,6 +140,7 @@ typedef struct __txn_ckp_recovery_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
+	u_int32_t prev_cksum;
 	DB_LSN	ckp_lsn;
 	DB_LSN	last_ckp;
 	int32_t	timestamp;

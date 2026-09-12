@@ -511,7 +511,7 @@ __log_c_get_int(logc, alsn, dbt, flags)
 	LOG *lp;
 	RLOCK rlock;
 	logfile_validity status;
-	u_int32_t cnt;
+	u_int32_t cnt, rec_chksum = 0;
 	u_int8_t *rp;
 	int eof, is_hmac, ret, st, tot, log_rdlock=0;
 
@@ -748,6 +748,8 @@ cksum:	/*
 	 * if we're reading random log records.
 	 */
 	db_cipher = dbenv->crypto_handle;
+	/* Stash it first: __db_check_chksum() zeroes the buffer it is given. */
+	memcpy(&rec_chksum, hdr.chksum, sizeof(rec_chksum));
 	if ((ret = __db_check_chksum(dbenv, db_cipher,
 		    hdr.chksum, rp + hdr.size, hdr.len - hdr.size,
 		    is_hmac)) != 0) {
@@ -834,6 +836,7 @@ cksum:	/*
 	logc->c_lsn = nlsn;
 	logc->c_len = hdr.len;
 	logc->c_prev = hdr.prev;
+	logc->c_chksum = rec_chksum;
 
 err:	if (rlock == L_ACQUIRED)
 		R_UNLOCK(dbenv, &dblp->reginfo);
