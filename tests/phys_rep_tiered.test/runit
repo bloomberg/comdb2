@@ -2372,6 +2372,135 @@ function physrep_gen_guard_test
     echo "$name rewound across the generation change ($rw_before -> $rw_after)"
 }
 
+# Any record carrying a previous-record checksum is a match anchor, so a
+# physrep re-registering mid-transaction anchors on the non-commit record at
+# its end-of-log rather than walking back to the last commit; the anchor has
+# no generation of its own, so the physrep takes it from the source.  Checked
+# on every standalone physrep and the physrep cluster's master, with the
+# source kept mid-transaction by a writer.
+function physrep_cksum_anchor_check
+{
+    local name=$1 node=$2 logfile=$3
+    local matchmsg="Found match at"
+    local before match matchline lsn rec rectype gen prevcksum srcgen tries cnt c
+    # rectypes the commit-only rule could anchor on (txn_auto.h, rep_record.c)
+    local commit_types="10 11 15 16 18 19 150 151"
+
+    tries=0
+    while : ; do
+        before=$(egrep -c "$matchmsg" $logfile)
+        $CDB2SQL_EXE --admin ${CDB2_OPTIONS} --host $node $name "exec procedure sys.cmd.send('physrep_force_registration')"
+
+        cnt=0
+        match=""
+        while [[ -z "$match" ]]; do
+            sleep 1
+            let cnt=cnt+1
+            if [[ $cnt -gt 60 ]]; then
+                cleanFailExit "$name on $node found no match after re-registration"
+            fi
+            match=$(egrep -n "$matchmsg" $logfile | tail -n +$((before + 1)) | head -1)
+        done
+        matchline=${match%%:*}
+        lsn=$(echo "$match" | grep -o "{[0-9]*:[0-9]*}")
+
+        # LSNs are shared down every tier: inspect the anchor on the source.
+        rec=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select rectype % 1000, generation, prevcksum from comdb2_transaction_logs('$lsn', '$lsn', 0)" 2>&1)
+        rectype=$(echo "$rec" | cut -f1)
+        gen=$(echo "$rec" | cut -f2)
+        prevcksum=$(echo "$rec" | cut -f3)
+        echo "$name on $node anchored at $lsn rectype=$rectype generation=$gen prevcksum=$prevcksum"
+        [[ -z "$rectype" || "$rec" == *"rror"* ]] && cleanFailExit "source has no record at $lsn: $rec"
+
+        for c in $commit_types; do
+            if [[ "$rectype" == "$c" ]]; then
+                let tries=tries+1
+                if [[ $tries -gt 5 ]]; then
+                    cleanFailExit "$name on $node hit a commit-type tail $tries times"
+                fi
+                echo "$name on $node re-registered on a commit-type record, retrying"
+                sleep 1
+                continue 2
+            fi
+        done
+        break
+    done
+
+    [[ "$prevcksum" == "NULL" ]] && cleanFailExit "$name on $node anchor $lsn carries no previous-record checksum"
+    [[ "$gen" != "NULL" ]] && cleanFailExit "$name on $node non-commit anchor $lsn carries generation $gen"
+
+    # The generation logged once truncation settles on this anchor.
+    cnt=0
+    srcgen=""
+    while [[ -z "$srcgen" ]]; do
+        srcgen=$(tail -n +$matchline $logfile | egrep "physrep: [a-z_]*: gen: " | head -1 | awk '{print $NF}')
+        [[ -n "$srcgen" ]] && break
+        sleep 1
+        let cnt=cnt+1
+        [[ $cnt -gt 30 ]] && break
+    done
+    if [[ -z "$srcgen" || "$srcgen" -le 0 ]]; then
+        cleanFailExit "$name on $node resolved no generation for chained anchor $lsn (got '$srcgen')"
+    fi
+    echo "$name on $node took generation $srcgen from its source"
+}
+
+function physrep_cksum_anchor_test
+{
+    echo "== physrep_cksum_anchor_test =="
+    local name node cnt x firstNode clus_master
+    local stopfile=$TESTDIR/ckcksumanchor.stop.$$
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists ckcksumanchor(a int, b blob)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into ckcksumanchor select value, randomblob(64) from generate_series(1, 100)"
+
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        cnt=0
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckcksumanchor" 2>/dev/null)
+        while [[ "$x" != "100" ]]; do
+            sleep 1
+            let cnt=cnt+1
+            if [[ $cnt -gt 60 ]]; then
+                cleanFailExit "$name on $node never caught up (count='$x')"
+            fi
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $name "select count(*) from ckcksumanchor" 2>/dev/null)
+        done
+    done
+
+    # Large multi-record transactions back to back: nearly every end-of-log
+    # is a page-level record inside one of them.
+    rm -f $stopfile
+    (
+        while [[ ! -f $stopfile ]]; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default \
+                "insert into ckcksumanchor select value, randomblob(2048) from generate_series(1, 4000)" >/dev/null 2>&1
+        done
+    ) &
+    local writerpid=$!
+    sleep 5
+
+    for node in $CLUSTER ; do
+        name="${REPL_DBNAME_PREFIX}_${node}"
+        physrep_cksum_anchor_check $name $node "$TESTDIR/logs/${name}.log"
+    done
+
+    firstNode=$(echo $CLUSTER | awk '{print $1}')
+    clus_master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $firstNode "select host from comdb2_cluster where is_master='Y'")
+    [[ -z "$clus_master" ]] && cleanFailExit "no master for $REPL_CLUS_DBNAME"
+    physrep_cksum_anchor_check $REPL_CLUS_DBNAME $clus_master "$TESTDIR/logs/${REPL_CLUS_DBNAME}.${clus_master}.log"
+
+    touch $stopfile
+    wait $writerpid 2>/dev/null
+    rm -f $stopfile
+
+    # Everyone still applies past the chained anchor.
+    for node in $CLUSTER ; do
+        wait_for_catchup ${REPL_DBNAME_PREFIX}_${node} ${node}
+        wait_for_catchup $REPL_CLUS_DBNAME ${node}
+    done
+}
+
 # DRQS 185276960: exercise the production rollout end to end, in the order it will
 # be performed (only meaningful when we start WITHOUT a firstfile column, i.e. the
 # FIRSTFILE=0 variants):
@@ -3562,6 +3691,11 @@ function run_tests
     testcase="physrep_gen_guard_test"
     testcase_preamble $testcase
     physrep_gen_guard_test
+    testcase_finish $testcase
+
+    testcase="physrep_cksum_anchor_test"
+    testcase_preamble $testcase
+    physrep_cksum_anchor_test
     testcase_finish $testcase
 
     testcase="tranlog_timeout"

@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A physrep re-registering mid-transaction must anchor on the non-commit
+# record at its log tail, not walk back to the last commit: any record
+# carrying a previous-record checksum is matchable, and the anchor's
+# generation comes from the source since the record carries none.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export DESTDB=${TESTCASE}dest${TESTID}
+export DEST_DBDIR=${DBDIR}/$DESTDB
+export replog=$DEST_DBDIR/$DESTDB.log
+
+# rectypes the old commit-only rule could anchor on (txn_auto.h, rep_record.c)
+commit_types="10 11 15 16 18 19 150 151"
+
+function failexit
+{
+    echo "Failed: $1"
+    [[ -f $DEST_DBDIR/${DESTDB}.pid ]] && kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid) 2>/dev/null
+    exit 1
+}
+
+function src_sql
+{
+    $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DBNAME default "$1" 2>&1
+}
+
+function dest_sql
+{
+    $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DESTDB @localhost "$1" 2>&1
+}
+
+function start_physrep
+{
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $DESTDB -lrl $DEST_DBDIR/${DESTDB}.lrl -pidfile $DEST_DBDIR/${DESTDB}.pid >$replog 2>&1) &
+    local j=0
+    while [[ $j -lt 60 ]]; do
+        dest_sql "select 1" >/dev/null 2>&1 && return 0
+        sleep 1
+        let j=j+1
+    done
+    failexit "physrep did not come up"
+}
+
+function create_physrep
+{
+    mkdir -p $DEST_DBDIR
+    if [[ -z "$CLUSTER" ]]; then
+        cl="-y @localhost"
+        rmt=""
+    else
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+        if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+            rmt=""
+        else
+            clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $DESTDB $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+    [[ $? -ne 0 ]] && failexit "copycomdb2 failed"
+
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${DESTDB}.lrl
+    if [ -n "$PMUXPORT" ] ; then
+        echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${DESTDB}.lrl
+        echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${DESTDB}.lrl
+    fi
+    echo "physrep_debug 1" >> $DEST_DBDIR/${DESTDB}.lrl
+
+    start_physrep
+}
+
+function override_physrep_sp
+{
+    local mnode=`getmaster`
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+}
+
+function wait_for_sync
+{
+    local j=0 s d
+    while [[ $j -lt 120 ]]; do
+        s=$(src_sql "select count(*) from t")
+        d=$(dest_sql "select count(*) from t")
+        [[ "$s" == "$d" ]] && return 0
+        sleep 1
+        let j=j+1
+    done
+    failexit "physrep never caught up: source=$s physrep=$d"
+}
+
+# Keep the source mid-transaction: large multi-record inserts back to back.
+function writer
+{
+    local i=0
+    while [[ $i -lt $1 ]]; do
+        src_sql "insert into t select value, randomblob(2048) from generate_series(1, 4000)" >/dev/null
+        let i=i+1
+    done
+}
+
+# Force re-registration while the writer runs.  Returns 0 if the physrep
+# anchored on a non-commit record, 1 if the tail happened to be a commit
+# (retry).
+function reregister_and_check
+{
+    local before=$(grep -c "Found match at" $replog)
+    $CDB2SQL_EXE --admin $CDB2_OPTIONS --host localhost $DESTDB "exec procedure sys.cmd.send('physrep_force_registration')"
+
+    local j=0 match=""
+    while [[ $j -lt 60 ]]; do
+        match=$(grep -n "Found match at {[0-9]*:[0-9]*}" $replog | tail -n +$((before + 1)) | head -1)
+        [[ -n "$match" ]] && break
+        sleep 1
+        let j=j+1
+    done
+    [[ -z "$match" ]] && failexit "physrep found no match after re-registration"
+
+    local matchline=${match%%:*}
+    local lsn=$(echo "$match" | grep -o "{[0-9]*:[0-9]*}")
+    local rec=$(src_sql "select rectype % 1000, generation, prevcksum from comdb2_transaction_logs('$lsn', '$lsn', 0)")
+    [[ -z "$rec" || "$rec" == *"rror"* ]] && failexit "source has no record at $lsn: $rec"
+    local rectype=$(echo "$rec" | cut -f1)
+    local gen=$(echo "$rec" | cut -f2)
+    local prevcksum=$(echo "$rec" | cut -f3)
+    echo "anchor $lsn rectype=$rectype generation=$gen prevcksum=$prevcksum"
+
+    for c in $commit_types; do
+        [[ "$rectype" == "$c" ]] && echo "tail was a commit-type record, retrying" && return 1
+    done
+    [[ "$prevcksum" == "NULL" ]] && failexit "anchor $lsn carries no previous-record checksum"
+    [[ "$gen" != "NULL" ]] && failexit "non-commit anchor $lsn unexpectedly carries generation $gen"
+
+    # the anchor's generation must have been taken from the source
+    local srcgen=""
+    j=0
+    while [[ -z "$srcgen" && $j -lt 30 ]]; do
+        srcgen=$(tail -n +$matchline $replog | grep -o "physrep: [a-z_]*: gen: [0-9-]*" | head -1 | awk '{print $NF}')
+        [[ -z "$srcgen" ]] && sleep 1
+        let j=j+1
+    done
+    echo "physrep resolved generation $srcgen"
+    [[ -z "$srcgen" || "$srcgen" -le 0 ]] && failexit "physrep did not resolve a generation for chained anchor $lsn"
+    return 0
+}
+
+function run_test
+{
+    src_sql "create table t(a int, b blob)" >/dev/null || failexit "create table"
+    src_sql "create index ta on t(a)" >/dev/null || failexit "create index"
+    override_physrep_sp
+    src_sql "insert into t select value, randomblob(256) from generate_series(1, 1000)" >/dev/null
+
+    create_physrep
+    wait_for_sync
+
+    local attempt=0 ok=0
+    while [[ $attempt -lt 5 && $ok -eq 0 ]]; do
+        writer 30 &
+        local wpid=$!
+        sleep 5
+        reregister_and_check && ok=1
+        wait $wpid
+        wait_for_sync
+        let attempt=attempt+1
+    done
+    [[ $ok -eq 0 ]] && failexit "never re-registered the physrep on a non-commit tail"
+
+    # the physrep keeps applying past the chained anchor
+    src_sql "insert into t select value, randomblob(256) from generate_series(1, 500)" >/dev/null
+    wait_for_sync
+
+    kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid)
+}
+
+run_test
+echo "Success"
+exit 0
