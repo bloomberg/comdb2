@@ -1,0 +1,2 @@
+log_cksum_prev
+setattr MIN_KEEP_LOGS 20
