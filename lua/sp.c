@@ -5709,7 +5709,7 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
      * air to check if bdb_lock_desired */
     while ((rc = pthread_mutex_trylock(parent->emit_mutex)) == EBUSY) {
         if (bdb_lock_desired(thedb->bdb_env)) {
-            rc = release_locks("release locks on emit-row for lock-desired");
+            rc = release_locks(RLOCKS_REASON_LOCK_DESIRED);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s release_locks_on_emit_row %d\n", __func__, rc);
                 return rc;

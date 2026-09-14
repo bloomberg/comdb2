@@ -50,7 +50,6 @@ static struct debug_switches {
     int simulate_verify_error;
     int reset_deadlock_race;
     int cursor_deadlock;
-    int recover_deadlock_newmode;
     int poll_on_lock_desired;
     int simulate_find_deadlock;
     int simulate_find_deadlock_retry;
@@ -122,7 +121,6 @@ int init_debug_switches(void)
     debug_switches.simulate_verify_error = 0;
     debug_switches.reset_deadlock_race = 0;
     debug_switches.cursor_deadlock = 0;
-    debug_switches.recover_deadlock_newmode = 1;
     debug_switches.poll_on_lock_desired = 1;
     debug_switches.simulate_find_deadlock = 0;
     debug_switches.simulate_find_deadlock_retry = 0;
@@ -206,8 +204,6 @@ int init_debug_switches(void)
                         &debug_switches.reset_deadlock_race);
     register_int_switch("cursor_deadlock", "cursor_deadlock",
                         &debug_switches.cursor_deadlock);
-    register_int_switch("recover_deadlock_newmode", "recover_deadlock_newmode",
-                        &debug_switches.recover_deadlock_newmode);
     register_int_switch("poll_on_lock_desired", "poll_on_lock_desired",
                         &debug_switches.poll_on_lock_desired);
     register_int_switch("simulate_find_deadlock", "simulate_find_deadlock",
@@ -381,10 +377,6 @@ int debug_switch_reset_deadlock_race(void)
 int debug_switch_cursor_deadlock(void)
 {
     return debug_switches.cursor_deadlock;
-}
-int debug_switch_recover_deadlock_newmode(void)
-{
-    return debug_switches.recover_deadlock_newmode;
 }
 int debug_switch_poll_on_lock_desired(void)
 {
