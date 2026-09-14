@@ -185,6 +185,7 @@ int sqlite3BtreeNewDb(Btree *p);
 */
 #define BTREE_HINT_FLAGS 1       /* Set flags indicating cursor usage */
 #define BTREE_HINT_RANGE 2       /* Range constraints on queries */
+#define BTREE_HINT_TABLECURSOR 3 /* Table csr associated with this index csr */
 
 /*
 ** Values that may be OR'd together to form the second argument to the
@@ -230,6 +231,7 @@ int sqlite3BtreeNewDb(Btree *p);
 
 #ifdef SQLITE_ENABLE_CURSOR_HINTS
 void sqlite3BtreeCursorHint(BtCursor*, int, ...);
+BtCursor *sqlite3BtreeCursorHintTblCsr(BtCursor*);
 #endif
 
 #define BTREE_CUR_RD 0x00000001
