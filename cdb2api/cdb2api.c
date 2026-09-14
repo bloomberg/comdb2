@@ -6247,6 +6247,7 @@ retry_queries:
         }
 
         if (retries_done > hndl->num_hosts) {
+#if defined(CDB2API_SERVER) || defined(CDB2API_TEST)
             if (!hndl->is_hasql && (retries_done > hndl->min_retries)) {
                 debugprint("returning cannot-connect, "
                            "retries_done=%d, num_hosts=%d\n",
@@ -6254,6 +6255,7 @@ retry_queries:
                 sprintf(hndl->errstr, "%s: Cannot connect to db", __func__);
                 PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
             }
+#endif
 
             int tmsec = (retries_done - hndl->num_hosts) * 100;
             if (tmsec >= 1000) {
