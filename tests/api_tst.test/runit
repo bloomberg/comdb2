@@ -161,4 +161,57 @@ if echo "${log}" | grep -qF "cdb2_open(dbname: \"${upper_db}\""; then
 fi
 echo "lowercase dbname - pass"
 
+# test that api tries all nodes in the cluster when the sql engine pool is exhausted
+if [[ -n "$CLUSTER" ]]; then
+    sweep_get() {
+        ${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} ${DBNAME} ${tier} \
+            "select value from comdb2_tunables where name=\"sqlenginepool.$1\"" 2>/dev/null
+    }
+    sweep_pool_set() {
+        for h in $CLUSTER; do
+            for c in "$@"; do
+                ${CDB2SQL_EXE} ${DBNAME} --host $h \
+                    "EXEC PROCEDURE sys.cmd.send('sqlenginepool $c')" >/dev/null 2>&1
+            done
+        done
+    }
+
+    sweep_orig=("maxt $(sweep_get maxt)" "mint $(sweep_get mint)" \
+                "linger $(sweep_get linger)" "maxq $(sweep_get maxq)")
+
+    # mint 0 and a short linger drain the pool to a single thread, which one
+    # blocking query per node is then enough to occupy. maxq 0 stops the
+    # request being parked on the queue instead of being turned away.
+    sweep_pool_set "mint 0" "maxt 1" "linger 1" "maxq 0"
+    sleep 3
+
+    sweep_pids=""
+    for h in $CLUSTER; do
+        ${CDB2SQL_EXE} ${DBNAME} --host $h "select sleep(20)" >/dev/null 2>&1 &
+        sweep_pids="$sweep_pids $!"
+    done
+    sleep 2
+
+    # Sockpool off so every attempt takes the connect path that logs its host.
+    out=$(CDB2_DISABLE_SOCKPOOL=1 CDB2_LOG_CALLS=1 ${CDB2SQL_EXE} ${CDB2_OPTIONS} \
+        -tabs ${DBNAME} ${tier} "select comdb2_host()" 2>&1)
+    tried=$(echo "${out}" | grep -oE "newsql_connect\(${DBNAME}@[^)]+\)" \
+        | sed "s/.*@//; s/)//" | sort -u | tr '\n' ' ')
+
+    kill ${sweep_pids} >/dev/null 2>&1
+    wait ${sweep_pids} 2>/dev/null
+    sweep_pool_set "${sweep_orig[@]}"
+
+    expected=$(echo $CLUSTER | tr ' ' '\n' | sort -u | tr '\n' ' ')
+    if [[ "${tried}" != "${expected}" ]]; then
+        echo >&2 "node sweep: expected to try [${expected}] but tried [${tried}] - fail"
+        exit 1
+    fi
+    if ! ${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs ${DBNAME} ${tier} "select 1" | grep -qx "1"; then
+        echo >&2 "node sweep: db not usable after restoring pool settings - fail"
+        exit 1
+    fi
+    echo "node sweep - pass (tried ${tried})"
+fi
+
 exit 0
