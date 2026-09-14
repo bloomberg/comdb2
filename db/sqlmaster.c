@@ -306,6 +306,34 @@ static void *create_master_row_for_view(struct dbview *view, int *sz)
 
 /*********** PER SQL THREAD ROOTPAGE->TABLE MAPPING **************************/
 
+/* Resolve a rootpage to its table NAME from the per-thread rootpage map.
+ *
+ * Unlike get_sqlite_db() this does not consult thedb->dbs, so it still yields a
+ * usable name for a table that has just been dropped.  That is what error
+ * messages need: reading dbtable->tablename after a concurrent DROP is a
+ * use-after-free, because the replicant's scdone handler frees the dbtable
+ * without waiting for local readers.  The returned string is owned by the
+ * thread's rootpage map, not by the dbtable, so it outlives the drop.
+ *
+ * Returns NULL if the rootpage is not in the map. */
+const char *get_sqlite_tblname(struct sql_thread *thd, int iTable)
+{
+    if (!thd || !thd->rootpages)
+        return NULL;
+
+    if (!thd->selective_rootpages) {
+        if (iTable < RTPAGE_START || iTable >= (thd->rootpage_nentries + RTPAGE_START))
+            return NULL;
+        return thd->rootpages[iTable - RTPAGE_START].tblname;
+    }
+
+    for (int idx = 0; idx < thd->rootpage_nentries; idx++) {
+        if (thd->rootpages[idx].rootpage == iTable)
+            return thd->rootpages[idx].tblname;
+    }
+    return NULL;
+}
+
 struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
 {
     struct dbtable *tbl;

@@ -1,2 +1,11 @@
 # dump sql statements blocking replication for more than a second
 rep_process_pstack_time 1
+
+# This test needs a reader to keep blocking the replication thread long enough
+# to be reported, which is exactly what the non-SI page-lock release in
+# cursor_move_postop prevents: it hands the page locks back as soon as it sees
+# a waiter, so the rep thread is never blocked for the second that
+# rep_process_pstack_time requires and the dump comes back empty.  Turn it off
+# here -- what this test covers is the repblockers diagnostic, not the release
+# policy.
+recover_deadlock_sync_dta 0
