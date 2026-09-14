@@ -10513,7 +10513,7 @@ static int bdb_process_each_entry_resumable(bdb_state_type *bdb_state, tran_type
     uint8_t *out;
     uint8_t nxt[LLMETA_IXLEN];
     int rc;
-    int irc = 0;
+    int irc;
     void *searchkey;
     int searchkeylen;
 
@@ -10540,13 +10540,19 @@ static int bdb_process_each_entry_resumable(bdb_state_type *bdb_state, tran_type
             break;
         }
 
+        /* Stopped early: resume from this entry next time. */
         if ((irc = (*func)(bdb_state, tran, arg, out)) != 0)
-            break;
+            return irc;
 
         rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1, &fnd, bdberr);
-        memcpy(out, nxt, LLMETA_IXLEN);
+        if (rc == 0 && fnd == 1)
+            memcpy(out, nxt, LLMETA_IXLEN);
     }
-    return irc ? irc : rc;
+
+    /* Done or failed: the next scan starts over. */
+    free(*resume);
+    *resume = NULL;
+    return rc;
 }
 
 static int table_version_callback(bdb_state_type *bdb_state, tran_type *tran, void *arg,
