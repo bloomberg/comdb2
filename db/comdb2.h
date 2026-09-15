@@ -1248,17 +1248,6 @@ enum OSQL_REQ_TYPE {
 typedef struct blocksql_tran blocksql_tran_t;
 typedef struct sess_impl sess_impl_t;
 
-enum osql_target_type { OSQL_OVER_NET = 1, OSQL_OVER_SOCKET = 2 };
-struct osql_target {
-    enum osql_target_type type;
-    unsigned is_ondisk;
-    const char *host;
-    COMDB2BUF *sb;
-    int (*send)(struct osql_target *target, int usertype, void *data,
-                int datalen, int nodelay, void *tail, int tailen);
-};
-typedef struct osql_target osql_target_t;
-
 struct osql_sess {
 
     /* request part */
@@ -1287,7 +1276,7 @@ struct osql_sess {
     unsigned is_final : 1;
 
     /* from sorese */
-    osql_target_t target; /* replicant machine; host is NULL if local */
+    const char *target_host; /* replicant machine; NULL if local */
     int nops;         /* if no error, how many updated rows were performed */
     int rcout;        /* store here the block proc main error */
 
@@ -1295,7 +1284,6 @@ struct osql_sess {
     blocksql_tran_t *tran;
     LISTC_T(struct schema_change_type) scs; /* schema changes in session */
     int is_tptlock;   /* needs tpt locking */
-    int is_cancelled; /* 1 if session is cancelled */
 
     /* 2pc maintained in session */
     unsigned is_participant : 1;
@@ -1957,8 +1945,6 @@ extern int gbl_dohsql_full_queue_poll_msec;
 extern int gbl_dohsql_max_threads;
 extern int gbl_dohsql_pool_thr_slack;
 extern int gbl_dohsql_sc_max_threads;
-extern int gbl_sockbplog;
-extern int gbl_sockbplog_sockpool;
 extern int gbl_gen_shard_verbose;
 extern int gbl_logical_live_sc;
 

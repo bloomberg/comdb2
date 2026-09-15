@@ -194,10 +194,10 @@ void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 
     if (iq->debug)
         reqprintf(iq, "%s received from node %s", __func__,
-                  iq->sorese->target.host);
+                  iq->sorese->target_host);
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
-                  breq2a(block2_type), iq->sorese->target.host,
+                  breq2a(block2_type), iq->sorese->target_host,
                   iq->sorese->rqid);
 }
 

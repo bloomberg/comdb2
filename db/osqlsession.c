@@ -35,7 +35,6 @@
 #include <uuid/uuid.h>
 #include "str0.h"
 #include "reqlog.h"
-#include "osqlsqlnet.h"
 
 #include <disttxn.h>
 
@@ -46,8 +45,6 @@ struct sess_impl {
 
     unsigned dispatched : 1; /* Set when session is dispatched to handle_buf */
     unsigned terminate : 1;  /* Set when this session is about to be terminated */
-    unsigned socket : 1;     /* Set if request comes over socket instead of net */
-    unsigned embedded_sql : 1; /* Set if sql is part of session malloc object */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
 };
@@ -79,39 +76,8 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname, int type
     sess->impl = (sess_impl_t *)(sess + 1);
     sess->sql = (char *)(sess->impl + 1);
     strncpy0((char *)sess->sql, sql, sqlen + 1);
-    sess->impl->embedded_sql = 1;
 
     return _osql_sess_create(sess, tzname, type, rqid, uuid, host, is_reorder_on, is_final);
-}
-
-/**
- * Same as osql_sess_create, but sql is already allocated
- *
- */
-osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type, unsigned long long rqid, uuid_t uuid,
-                                     const char *host, int is_reorder_on, int is_final)
-{
-    osql_sess_t *sess = NULL;
-
-    /* alloc object */
-    sess = (osql_sess_t *)calloc(sizeof(osql_sess_t) + sizeof(sess_impl_t), 1);
-    if (!sess) {
-        logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
-               sizeof(*sess));
-        return NULL;
-    }
-    sess->impl = (sess_impl_t *)(sess + 1);
-    sess->sql = sql;
-    sess->impl->embedded_sql = 0;
-    sess->impl->socket = 1;
-
-    return _osql_sess_create(sess, tzname, type, rqid, uuid, host, is_reorder_on, is_final);
-}
-
-
-static inline int is_sess_from_sockbplog(osql_sess_t *sess)
-{
-    return !!sess->impl->socket;
 }
 
 /**
@@ -119,9 +85,9 @@ static inline int is_sess_from_sockbplog(osql_sess_t *sess)
  * receive message from sql thread).
  * Returns 0 if success
  *
- * This function will remove from osql_repository_rem() if is_linked is set
- * and if did not come over sockbplog, then wait till there are no more clients
- * using this sess and only then destroy obj
+ * This function will remove from osql_repository_rem() if is_linked is set,
+ * then wait till there are no more clients using this sess and only then
+ * destroy obj
  *
  * NOTE:
  * - it is possible to inline clean a request on master bounce,
@@ -136,7 +102,7 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
 {
     osql_sess_t *sess = *psess;
 
-    if (is_linked && !is_sess_from_sockbplog(sess)) {
+    if (is_linked) {
         /* unlink the request so no more messages are received */
         int rc = osql_repository_rem(sess);
         if (rc) {
@@ -199,8 +165,6 @@ static void _destroy_session(osql_sess_t **psess)
         free(sess->dist_txnid);
         sess->dist_txnid = NULL;
     }
-    if (!sess->impl->embedded_sql)
-        free((char *)sess->sql);
 #ifndef NDEBUG
       memset(sess, 0xdb, sizeof(osql_sess_t) + sizeof(sess_impl_t));
 #endif
@@ -279,8 +243,8 @@ char *osql_sess_info(osql_sess_t *sess)
         snprintf(ret, OSQL_SESS_INFO_LEN, "%s, %llx %s %s%s",
                  osql_sorese_type_to_str(sess->type), sess->rqid,
                  comdb2uuidstr(sess->uuid, us),
-                 sess->target.host == gbl_myhostname ? "REMOTE " : "LOCAL ",
-                 sess->target.host);
+                 sess->target_host == gbl_myhostname ? "REMOTE " : "LOCAL ",
+                 sess->target_host);
     }
     return ret;
 }
@@ -493,7 +457,7 @@ int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found)
 
 failed_stream:
     if (is_msg_done && perr)
-        osql_comm_signal_sqlthr_rc(&sess->target, OSQL_RQID_USE_UUID, uuid, 0, &sess->xerr, NULL, 0);
+        osql_comm_signal_sqlthr_rc(sess->target_host, OSQL_RQID_USE_UUID, uuid, 0, &sess->xerr, NULL, 0);
 
     /* release the session */
     osql_repository_put(sess);
@@ -502,57 +466,6 @@ failed_stream:
     osql_sess_close(&sess, 1);
 
     return rc;
-}
-
-extern int gbl_sockbplog_debug;
-
-/**
- * Same as osql_sess_rcvop, for socket protocol
- * TODO: but I think this is dead-code
- *
- */
-int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           int *is_msg_done)
-{
-    int rc = 0;
-    struct errstat *perr = NULL;
-
-    if (datalen < OSQLCOMM_UUID_RPL_TYPE_LEN) {
-        logmsg(LOGMSG_ERROR, "%s: truncated osql message, datalen %d\n",
-               __func__, datalen);
-        return ERR_BADREQ;
-    }
-
-    *is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, &perr, NULL) != 0;
-
-    /* we have received an OSQL_XERR; replicant wants to abort the transaction;
-       discard the session and be done */
-    if (*is_msg_done && perr) {
-        if (debug_switch_test_sync_osql_cancel())
-            poll(NULL, 0, 1000);
-        osql_comm_signal_sqlthr_rc(&sess->target, sess->rqid, sess->uuid, 0, &sess->xerr, NULL, 0);
-        sess->is_cancelled = 1;
-        return 0;
-    }
-
-    /* save op */
-    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type);
-    if (rc) {
-        /* failed to save into bplog; discard and be done */
-        return rc;
-    }
-
-    /* release the session */
-    if (!*is_msg_done) {
-        return 0;
-    }
-
-    if (gbl_sockbplog_debug)
-        logmsg(LOGMSG_ERROR, "%p Dispatching transaction\n", (void *)pthread_self());
-    /* IT WAS A DONE MESSAGE
-       HERE IS THE DISPATCH */
-    return handle_buf_sorese(sess);
 }
 
 int osql_sess_queryid(osql_sess_t *sess)
@@ -574,7 +487,7 @@ int osql_sess_try_terminate(osql_sess_t *psess, const char *host)
     int keep_sess = 0;
     uuidstr_t us;
 
-    if (host && host != psess->target.host)
+    if (host && host != psess->target_host)
         return 1;
 
     Pthread_mutex_lock(&sess->mtx);
@@ -658,11 +571,11 @@ static int handle_buf_sorese(osql_sess_t *psess)
     }
 
     rc = handle_buf_main(thedb, NULL, p_buf, p_buf_end, debug,
-                         (char *)psess->target.host, 0, NULL, psess,
+                         (char *)psess->target_host, 0, NULL, psess,
                          REQ_OFFLOAD, NULL, 0, 0, NULL);
 
     if (rc) {
-        signal_replicant_error(&psess->target, psess->rqid, psess->uuid,
+        signal_replicant_error(psess->target_host, psess->rqid, psess->uuid,
                                ERR_NOMASTER, "failed tp dispatch, queue full");
         osql_sess_close(&psess, 1);
     }
@@ -694,7 +607,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
     sess->type = type;
-    sess->target.host = intern(host);
+    sess->target_host = intern(host);
     sess->sess_startus = comdb2_time_epochus();
     // hi! when using bit-fields make sure assigned value is not out of range
     sess->is_reorder_on = !!is_reorder_on; // Convert non-zero -> 1
@@ -704,8 +617,6 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     listc_init(&sess->participants, offsetof(struct participant, linkv));
     sess->impl->clients = 1;
-    /* defaults to net */
-    init_bplog_net(&sess->target);
 
     /* create bplog so we can collect ops from sql thread */
     sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID, sess->is_reorder_on);

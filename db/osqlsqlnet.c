@@ -27,20 +27,6 @@
 #include "osqlcheckboard.h"
 #include "osqlcomm.h"
 
-static int _send(osql_target_t *target, int usertype, void *data, int datalen,
-                 int nodelay, void *tail, int tailen);
-
-/**
- * Init bplog over net master side
- *
- */
-void init_bplog_net(osql_target_t *target)
-{
-    target->type = OSQL_OVER_NET;
-    target->sb = NULL;
-    target->send = _send;
-}
-
 /**
  * Handle to registration of thread for net multiplex purposes
  *
@@ -51,13 +37,10 @@ int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid)
     int rc;
 
     /* register the session */
-    osql->target.type = OSQL_OVER_NET;
-    osql->target.host = thedb->master;
-    osql->target.send = _send;
-    assert(osql->target.sb == NULL);
+    osql->target_host = thedb->master;
 
     /* protect against no master */
-    if (osql->target.host == NULL || osql->target.host == db_eid_invalid)
+    if (osql->target_host == NULL || osql->target_host == db_eid_invalid)
         return 0; /* loop in caller */
 
     if (!keep_rqid) {
@@ -66,7 +49,7 @@ int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid)
     } else {
         /* this is a replay with same rqid, already registered */
         /* sets to the same node */
-        rc = osql_reuse_sqlthr(clnt, osql->target.host);
+        rc = osql_reuse_sqlthr(clnt, osql->target_host);
     }
     if (rc) {
         sql_debug_logf(clnt, __func__, __LINE__, "fail to %s rc %d\n",
@@ -85,11 +68,4 @@ int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid)
 int osql_end_net(struct sqlclntstate *clnt)
 {
     return osql_unregister_sqlthr(clnt);
-}
-
-static int _send(osql_target_t *target, int usertype, void *data, int datalen,
-                 int nodelay, void *tail, int tailen)
-{
-    return offload_net_send(target->host, usertype, data, datalen, nodelay,
-                            tail, tailen);
 }

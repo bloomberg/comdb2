@@ -172,7 +172,7 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
 
     entry->rqid = clnt->osql.rqid;
     comdb2uuidcpy(entry->uuid, clnt->osql.uuid);
-    entry->master = clnt->osql.target.host;
+    entry->master = clnt->osql.target_host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* initialize these to insert time */
@@ -192,7 +192,7 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
     if (entry->master != thedb->master) {
         int retry = 0;
         while ((entry->master =
-                    (char *)(clnt->osql.target.host = thedb->master)) == 0 &&
+                    (char *)(clnt->osql.target_host = thedb->master)) == 0 &&
                retry < 60) {
             poll(NULL, 0, 500);
             retry++;
