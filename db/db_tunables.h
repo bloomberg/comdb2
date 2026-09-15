@@ -1382,6 +1382,12 @@ REGISTER_TUNABLE("debug.ix_addk_nomaster_skip", "Let this many key adds through 
                  TUNABLE_INTEGER, &gbl_debug_ix_addk_nomaster_skip, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.omit_blob_write", "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("tolerate_missing_keys_on_delete",
+                 "Let a delete or update proceed when an index entry it wanted to remove is already gone, instead of "
+                 "failing the write.  Escape hatch for rows frozen by a damaged index; it leaves any key it could not "
+                 "address in place, so the index still needs rebuilding.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_tolerate_missing_keys_on_delete, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("debug.pack_fail_size",
                  "Make bdb_pack() fail for records of at least this many bytes, as if the allocation had failed. "
                  "0 disables. (Default: 0)",

@@ -62,7 +62,7 @@ insert_records()
 
 #make sure verify behaves as we expect
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify1.out
-echo "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])
+echo "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\"[\":<index>\"],[\"verbose\"],[\"fix\"]])
 [exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
 if ! diff verify1.out verify.exp ; then
     failexit "Verify did not fail correctly, see verify1.out"

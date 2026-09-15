@@ -1,0 +1,14 @@
+schema
+{
+    int        a
+    int        b
+    cstring    c[16]
+    blob       d null=yes
+}
+
+keys
+{
+             "UNIQ_A"   = a
+    dup      "DUP_B"    = b
+    datacopy "DTACPY_C" = c
+}
