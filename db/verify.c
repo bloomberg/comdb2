@@ -17,7 +17,11 @@
 #include <unistd.h>
 #include "comdb2.h"
 #include "bdb_verify.h"
+#include <flibc.h>
 #include <sql.h>
+#include "sys_wrap.h"
+
+extern int gbl_partial_indexes;
 
 struct thdpool *gbl_verify_thdpool;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
@@ -299,6 +303,222 @@ static unsigned long long verify_indexes_callback(void *parm, void *dta,
     return verify_indexes(parm, dta, blob_parm, MAXBLOBS, 0);
 }
 
+/* Add back the entry for genid in index ixnum.  The data scan finds these
+ * without a transaction, so a record that is merely mid-insert elsewhere looks
+ * exactly like one whose key was lost.  Everything is therefore read again here
+ * under a transaction, and the key is formed the same way the write path forms
+ * it (create_key_from_schema + ix_addk), so datacopy, partial datacopy and
+ * decimal payloads come out right without this layer knowing their formats.
+ *
+ * Returns 0 if a key was added, 1 if nothing needed doing, -1 on error.  msg
+ * always describes what happened.
+ */
+static int verify_add_missing_key(const struct dbtable *db, int ixnum, unsigned long long genid, char *msg,
+                                  size_t msglen)
+{
+    blob_status_t oldblobs = {0};
+    blob_buffer_t blobs_buf[MAXBLOBS] = {{0}};
+    blob_buffer_t *idx_blobs = NULL;
+    char key[MAXKEYLEN + 1];
+    char mangled_key[MAXKEYLEN + 1];
+    char partial_datacopy_tail[MAXRECSZ];
+    char *od_dta_tail = NULL;
+    int od_tail_len = 0;
+    char *od_dta = NULL;
+    struct ireq iq = {0};
+    void *tran = NULL;
+    int retries = 0;
+    int bdberr = 0;
+    int fndlen = 0;
+    int ret = -1;
+    int rc;
+
+    int od_len = getdatsize(db);
+    if (od_len <= 0) {
+        snprintf(msg, msglen, "bad data size %d", od_len);
+        return -1;
+    }
+    od_dta = malloc(od_len);
+    if (od_dta == NULL) {
+        snprintf(msg, msglen, "malloc %d failed", od_len);
+        return -1;
+    }
+
+retry:
+    init_fake_ireq(db->dbenv, &iq);
+    iq.usedb = (struct dbtable *)db;
+
+    tran = bdb_tran_begin(db->handle, NULL, &bdberr);
+    if (tran == NULL) {
+        snprintf(msg, msglen, "tran begin failed bdberr %d", bdberr);
+        goto done;
+    }
+
+    /* Is the record still there?  If it was deleted out from under the scan
+     * there is no key to add. */
+    rc = ix_find_by_rrn_and_genid_tran(&iq, 2, genid, od_dta, &fndlen, od_len, tran);
+    if (rc == RC_INTERNAL_RETRY)
+        goto deadlock;
+    if (rc != IX_FND || fndlen != od_len) {
+        snprintf(msg, msglen, "record is gone (find rc %d), not fixing", rc);
+        ret = 1;
+        goto done;
+    }
+
+    if (db->ix_blob) {
+        rc = save_old_blobs(&iq, tran, ".ONDISK", od_dta, 2, genid, &oldblobs);
+        if (rc == RC_INTERNAL_RETRY)
+            goto deadlock;
+        if (rc != 0) {
+            snprintf(msg, msglen, "save_old_blobs rc %d", rc);
+            goto done;
+        }
+        blob_status_to_blob_buffer(&oldblobs, blobs_buf);
+        idx_blobs = blobs_buf;
+    }
+
+    /* Should this record have a key in this index at all?  For a partial index
+     * the absence is the correct state. */
+    if (gbl_partial_indexes && db->ix_partial) {
+        unsigned long long ins_keys = verify_indexes((struct dbtable *)db, (uint8_t *)od_dta, idx_blobs, MAXBLOBS, 0);
+        if (ins_keys == -1ULL) {
+            snprintf(msg, msglen, "verify_indexes failed");
+            goto done;
+        }
+        if (!(ins_keys & (1ULL << ixnum))) {
+            snprintf(msg, msglen, "record has no key in partial ix %d, not fixing", ixnum);
+            ret = 1;
+            goto done;
+        }
+    }
+
+    rc = create_key_from_schema(db, NULL, ixnum, &od_dta_tail, &od_tail_len, mangled_key, partial_datacopy_tail, od_dta,
+                                od_len, key, idx_blobs, MAXBLOBS, NULL);
+    if (rc) {
+        snprintf(msg, msglen, "cannot form ix %d key, rc %d", ixnum, rc);
+        goto done;
+    }
+
+    int ixkeylen = getkeysize(db, ixnum);
+    if (ixkeylen < 0) {
+        snprintf(msg, msglen, "bad ix %d keylength %d", ixnum, ixkeylen);
+        goto done;
+    }
+    int isnullk = ix_isnullk(db, key, ixnum);
+
+    /* A unique key we can look up directly: it may have shown up since the scan
+     * read it, or it may be held by a different record - which is real
+     * corruption that adding a key cannot fix. */
+    if (!db->ix_dupes[ixnum] && !isnullk) {
+        int fndrrn = 0;
+        unsigned long long fndgenid = 0;
+        rc = ix_find_by_key_tran(&iq, key, ixkeylen, ixnum, NULL, &fndrrn, &fndgenid, NULL, NULL, 0, tran);
+        if (rc == RC_INTERNAL_RETRY)
+            goto deadlock;
+        if (rc == IX_FND && fndgenid == genid) {
+            snprintf(msg, msglen, "ix %d key is present, not fixing", ixnum);
+            ret = 1;
+            goto done;
+        }
+        if (rc == IX_FND) {
+            snprintf(msg, msglen, "ix %d key already held by %016llx, not fixing", ixnum, fndgenid);
+            goto done;
+        }
+    }
+
+    rc = ix_addk(&iq, tran, key, ixnum, genid, 2, od_dta_tail, od_tail_len, isnullk);
+    if (rc == RC_INTERNAL_RETRY)
+        goto deadlock;
+    if (rc == IX_DUP) {
+        /* On a dup index the genid is part of the btree key, so this is the
+         * same entry arriving twice - the scan raced a writer. */
+        if (db->ix_dupes[ixnum] || isnullk) {
+            snprintf(msg, msglen, "ix %d key is present, not fixing", ixnum);
+            ret = 1;
+        } else {
+            snprintf(msg, msglen, "ix %d key is a duplicate, not fixing", ixnum);
+        }
+        goto done;
+    }
+    if (rc != 0) {
+        snprintf(msg, msglen, "ix_addk ix %d rc %d", ixnum, rc);
+        goto done;
+    }
+
+    rc = bdb_tran_commit(db->handle, tran, &bdberr);
+    tran = NULL;
+    if (rc != 0) {
+        if (bdberr == BDBERR_DEADLOCK)
+            goto deadlock;
+        snprintf(msg, msglen, "commit failed bdberr %d", bdberr);
+        goto done;
+    }
+    snprintf(msg, msglen, "added missing ix %d key", ixnum);
+    ret = 0;
+    goto done;
+
+deadlock:
+    if (tran) {
+        bdb_tran_abort(db->handle, tran, &bdberr);
+        tran = NULL;
+    }
+    free_blob_status_data(&oldblobs);
+    bzero(&oldblobs, sizeof(oldblobs));
+    free_blob_buffers(blobs_buf, MAXBLOBS);
+    bzero(blobs_buf, sizeof(blobs_buf));
+    idx_blobs = NULL;
+    if (++retries < gbl_maxretries) {
+        n_retries++;
+        goto retry;
+    }
+    snprintf(msg, msglen, "gave up after %d deadlock retries", retries);
+
+done:
+    if (tran)
+        bdb_tran_abort(db->handle, tran, &bdberr);
+    free_blob_status_data(&oldblobs);
+    free_blob_buffers(blobs_buf, MAXBLOBS);
+    free(od_dta);
+    return ret;
+}
+
+/* Repair every missing key the data scan collected.  Runs after all the scan
+ * threads are done, so nothing is holding page locks on the indexes we write.
+ * One transaction per key: these should be rare, and a partial repair that
+ * stops on the first problem is still a strictly better table than we started
+ * with. */
+static void verify_fix_missing_keys(verify_common_t *par, struct dbtable *db)
+{
+    char buf[LINE_MAX];
+    char msg[VERIFY_FIX_MSG_LEN];
+
+    if (par->client_dropped_connection)
+        return;
+
+    for (unsigned int i = 0; i < par->nmissing_keys; i++) {
+        unsigned long long genid = par->missing_keys[i].genid;
+        int ix = par->missing_keys[i].ix;
+        int frc = par->add_missing_key_callback(db, ix, genid, msg, sizeof(msg));
+        if (frc == 0)
+            par->keys_fixed++;
+        snprintf(buf, sizeof(buf), "%c%016llx ix %d %s", frc < 0 ? '!' : ' ', (unsigned long long)flibc_ntohll(genid),
+                 ix, msg);
+        par->verify_response(buf, par->arg);
+    }
+
+    snprintf(buf, sizeof(buf), "Added %u of %u missing index keys", par->keys_fixed, par->nmissing_keys);
+    par->verify_response(buf, par->arg);
+
+    if (par->missing_keys_dropped) {
+        par->verify_status = 1;
+        snprintf(buf, sizeof(buf),
+                 "!%u more missing keys were not collected (limit %d) - rebuild "
+                 "the index instead",
+                 par->missing_keys_dropped, VERIFY_MAX_MISSING_KEYS);
+        par->verify_response(buf, par->arg);
+    }
+}
+
 // call this with schema lock
 static int get_tbl_and_lock_in_tran(verify_common_t *par, const char *table,
                                     struct dbtable **db, tran_type **tran)
@@ -334,14 +554,27 @@ static int get_tbl_and_lock_in_tran(verify_common_t *par, const char *table,
     return 0;
 }
 
-/* verify table main entry point called both by lua/syssp.c
- * and by verify_table() which is called by bb plugins
- */
 int verify_table(const char *table, int progress_report_seconds,
                  int attempt_fix, verify_mode_t mode,
                  verify_peer_check_func *peer_check,
                  verify_response_func *response, void *arg)
 {
+    verify_opts_t opts = {
+        .mode = mode,
+        .progress_report_seconds = progress_report_seconds,
+        .attempt_fix = attempt_fix,
+        .target_ix = VERIFY_ALL_IXNUM,
+    };
+    return verify_table_opts(table, &opts, peer_check, response, arg);
+}
+
+/* verify table main entry point called both by lua/syssp.c
+ * and by verify_table() which is called by bb plugins
+ */
+int verify_table_opts(const char *table, const verify_opts_t *opts, verify_peer_check_func *peer_check,
+                      verify_response_func *response, void *arg)
+{
+    verify_mode_t mode = opts->mode;
     pthread_once(&once, init_verify_thdpool);
     verify_common_t par = {
         .tablename = table,
@@ -352,19 +585,39 @@ int verify_table(const char *table, int progress_report_seconds,
         .add_blob_buffer_callback = verify_add_blob_buffer_callback,
         .free_blob_buffer_callback = verify_free_blob_buffer_callback,
         .verify_indexes_callback = verify_indexes_callback,
-        .progress_report_seconds = progress_report_seconds,
-        .attempt_fix = attempt_fix,
+        .add_missing_key_callback = verify_add_missing_key,
+        .progress_report_seconds = opts->progress_report_seconds,
+        .attempt_fix = opts->attempt_fix,
+        .fix_missing_keys = opts->fix_missing_keys,
+        .target_ix = opts->target_ix,
         .verify_mode = mode,
         .peer_check = peer_check,
         .verify_response = response,
         .arg = arg,
     };
+    Pthread_mutex_init(&par.missing_keys_lk, NULL);
     tran_type *tran = NULL;
     struct dbtable *db = NULL;
     rdlock_schema_lk();
     int rc = get_tbl_and_lock_in_tran(&par, table, &db, &tran);
     unlock_schema_lk();
     if (rc) {
+        goto done;
+    }
+    if (par.target_ix != VERIFY_ALL_IXNUM && (par.target_ix < 0 || par.target_ix >= db->nix)) {
+        char err[LINE_MAX];
+        snprintf(err, sizeof(err), "?Table %s has no index %d", table, par.target_ix);
+        logmsg(LOGMSG_ERROR, "%s\n", err + 1);
+        par.verify_response(err, arg);
+        rc = -1;
+        goto done;
+    }
+    if (par.fix_missing_keys && thedb->master != gbl_myhostname) {
+        char err[LINE_MAX];
+        snprintf(err, sizeof(err), "?Must be run on master to fix keys");
+        logmsg(LOGMSG_ERROR, "%s\n", err + 1);
+        par.verify_response(err, arg);
+        rc = -1;
         goto done;
     }
     par.bdb_state = db->handle;
@@ -379,16 +632,21 @@ int verify_table(const char *table, int progress_report_seconds,
         }
         sleep(1);
     }
-    if (mode == VERIFY_SERIAL || mode == VERIFY_PARALLEL || mode == VERIFY_DATA) {
+    if (par.target_ix == VERIFY_ALL_IXNUM &&
+        (mode == VERIFY_SERIAL || mode == VERIFY_PARALLEL || mode == VERIFY_DATA)) {
         verify_sequences(&par, db, tran);
     } else {
         logmsg(LOGMSG_INFO, "%s not running verify-sequences on mode=%d\n", __func__, mode);
     }
+    if (par.fix_missing_keys)
+        verify_fix_missing_keys(&par, db);
     rc = par.verify_status;
 done:
     if (tran) {
         int bdberr;
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     }
+    Pthread_mutex_destroy(&par.missing_keys_lk);
+    free(par.missing_keys);
     return rc;
 }

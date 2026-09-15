@@ -26,8 +26,18 @@
 
 
 extern int gbl_partial_indexes;
+extern int gbl_tolerate_missing_keys_on_delete;
 static __thread void *defered_index_tbl = NULL;
 static __thread void *defered_index_tbl_cursor = NULL;
+
+static int tolerate_missing_key(struct ireq *iq, const char *who, int ixnum, int rc)
+{
+    if (rc != IX_NOTFND || !gbl_tolerate_missing_keys_on_delete)
+        return rc;
+    logmsg(LOGMSG_WARN, "%s: table '%s' ix %d key already missing, tolerating; index needs a rebuild\n", who,
+           iq->usedb ? iq->usedb->tablename : "???", ixnum);
+    return 0;
+}
 
 //
 // del needs to sort before adds because dels used to happen online
@@ -803,6 +813,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     reqmoref(iq, " RC %d", rc);
                 }
 
+                rc = tolerate_missing_key(iq, "upd_record_indices", ixnum, rc);
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
                     *ixfailnum = ixnum;
@@ -850,6 +861,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                         reqmoref(iq, " RC %d", rc);
                     }
 
+                    rc = tolerate_missing_key(iq, "upd_record_indices", ixnum, rc);
                     if (rc != 0) {
                         *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
                         *ixfailnum = ixnum;
@@ -1019,6 +1031,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode, int *ixfai
                 reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
                 reqmoref(iq, " RC %d", rc);
             }
+            rc = tolerate_missing_key(iq, "del_record_indices", ixnum, rc);
             if (rc != 0) {
                 if (rc == IX_NOTFND) {
                     reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
@@ -1486,6 +1499,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                            getkeysize(ditk->usedb, ditk->ixnum));
                 reqmoref(iq, " RC %d", rc);
             }
+            rc = tolerate_missing_key(iq, "process_defered_table", ditk->ixnum, rc);
             if (rc != 0) {
                 if (rc == IX_NOTFND) {
                     reqerrstrhdr(iq, "Table '%s' ", ditk->usedb->tablename);
@@ -1509,6 +1523,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 reqmoref(iq, " RC %d", rc);
             }
 
+            rc = tolerate_missing_key(iq, "process_defered_table", ditk->ixnum, rc);
             if (rc != 0) {
                 *errout = OP_FAILED_INTERNAL + ERR_DEL_KEY;
                 *ixout = ditk->ixnum;

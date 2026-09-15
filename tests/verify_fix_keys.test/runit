@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+master=$(getmaster)
+
+NGOOD=50
+NBAD=25
+NIX=3
+
+# Insert records $1..$2.  Every index is fed: UNIQ_A needs a distinct a,
+# DUP_B deliberately collides every 5 rows, DTACPY_C carries a datacopy tail
+# and d exercises the blob path.
+insert_records()
+{
+    local j=$1
+    local nstop=$2
+    local out=$3
+
+    while [[ $j -le $nstop ]]; do
+        echo "insert into t1(a,b,c,d) values ($j, $((j%5)), 'str$j', x'aabb$((j%2))$((j%3))')"
+        let j=j+1
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> $out || failexit "insert_records error"
+}
+
+# Number of "missing key" complaints in a verify output file.
+count_missing()
+{
+    grep -c "missing key" $1
+}
+
+assert_verify_ok()
+{
+    local out=$1
+    if ! grep "^Verify succeeded.$" $out > /dev/null ; then
+        failexit "verify should have succeeded, see ${PWD}/$out"
+    fi
+}
+
+################################################################################
+# A clean table verifies, on every mode we touched.
+################################################################################
+
+insert_records 1 $NGOOD insert_good.out
+assertcnt t1 $NGOOD
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_clean.out
+assert_verify_ok verify_clean.out
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','parallel')" &> verify_clean_par.out
+assert_verify_ok verify_clean_par.out
+
+################################################################################
+# A single index can be named, by number and by name.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','indices:1')" &> verify_ix1.out
+assert_verify_ok verify_ix1.out
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','indices:DUP_B')" &> verify_ixname.out
+assert_verify_ok verify_ixname.out
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','data:DTACPY_C')" &> verify_dataix.out
+assert_verify_ok verify_dataix.out
+
+# ...and a name that isn't an index is rejected rather than silently ignored.
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','indices:NOSUCHKEY')" &> verify_badix.out
+if ! grep 'has no index "NOSUCHKEY"' verify_badix.out > /dev/null ; then
+    failexit "bad index name was not rejected, see ${PWD}/verify_badix.out"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','indices:99')" &> verify_badixnum.out
+if ! grep 'has no index "99"' verify_badixnum.out > /dev/null ; then
+    failexit "out of range index was not rejected, see ${PWD}/verify_badixnum.out"
+fi
+
+################################################################################
+# Break it: write $NBAD records with no index entries at all.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 1"
+insert_records $((NGOOD+1)) $((NGOOD+NBAD)) insert_bad.out
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 0"
+
+# No row count is checked while the table is inconsistent: which answer
+# count(*) gives depends on whether the planner picks a short index or reads
+# the data, and both are legitimate.  The verify output below is the signal.
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_broken.out
+if grep "^Verify succeeded.$" verify_broken.out > /dev/null ; then
+    failexit "verify should have failed on a broken table, see ${PWD}/verify_broken.out"
+fi
+
+nmissing=$(count_missing verify_broken.out)
+if [[ $nmissing -ne $((NBAD*NIX)) ]] ; then
+    failexit "expected $((NBAD*NIX)) missing keys, got $nmissing: ${PWD}/verify_broken.out"
+fi
+
+################################################################################
+# Without "fix" nothing is repaired - verify stays read-only.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_again.out
+nmissing=$(count_missing verify_again.out)
+if [[ $nmissing -ne $((NBAD*NIX)) ]] ; then
+    failexit "a plain verify changed the table: ${PWD}/verify_again.out"
+fi
+
+################################################################################
+# Fix one index only, and check the other two are untouched.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+    "exec procedure sys.cmd.verify('t1','data:UNIQ_A','verbose','fix')" &> verify_fix_one.out
+
+if ! grep "Added $NBAD of $NBAD missing index keys" verify_fix_one.out > /dev/null ; then
+    failexit "did not add $NBAD keys for UNIQ_A, see ${PWD}/verify_fix_one.out"
+fi
+
+# UNIQ_A is whole again.  Row counts are not checked here: with the other two
+# indexes still broken the answer depends on which one the planner picks.
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','indices:UNIQ_A')" &> verify_ixa.out
+assert_verify_ok verify_ixa.out
+
+# The other two are still short exactly $NBAD keys each.
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_partial.out
+nmissing=$(count_missing verify_partial.out)
+if [[ $nmissing -ne $((NBAD*2)) ]] ; then
+    failexit "expected $((NBAD*2)) missing keys left, got $nmissing: ${PWD}/verify_partial.out"
+fi
+
+################################################################################
+# Fix the rest, then the table verifies clean.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+    "exec procedure sys.cmd.verify('t1','data','verbose','fix')" &> verify_fix_all.out
+
+if ! grep "Added $((NBAD*2)) of $((NBAD*2)) missing index keys" verify_fix_all.out > /dev/null ; then
+    failexit "did not add the remaining keys, see ${PWD}/verify_fix_all.out"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','parallel')" &> verify_fixed.out
+assert_verify_ok verify_fixed.out
+
+################################################################################
+# Fixing again is a no-op: there is nothing left to add.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+    "exec procedure sys.cmd.verify('t1','data','verbose','fix')" &> verify_fix_noop.out
+if ! grep "Added 0 of 0 missing index keys" verify_fix_noop.out > /dev/null ; then
+    failexit "a second fix pass was not a no-op, see ${PWD}/verify_fix_noop.out"
+fi
+assert_verify_ok verify_fix_noop.out
+
+################################################################################
+# The repaired keys are real: every row is reachable through each index.
+################################################################################
+
+check_count()
+{
+    local what=$1
+    local where=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+        "select count(*) from t1 where $where")
+    if [[ $cnt -ne $((NGOOD+NBAD)) ]] ; then
+        failexit "count through $what is $cnt, expected $((NGOOD+NBAD))"
+    fi
+}
+
+check_count UNIQ_A   "a > 0"
+check_count DUP_B    "b >= 0"
+check_count DTACPY_C "c > ''"
+
+# The datacopy payload has to match the record, which verify already proved;
+# check the rows themselves came back with the right contents too.
+badrows=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+    "select count(*) from t1 where c != 'str' || a")
+if [[ $badrows -ne 0 ]] ; then
+    failexit "$badrows rows have a datacopy/record mismatch"
+fi
+
+echo "Success"

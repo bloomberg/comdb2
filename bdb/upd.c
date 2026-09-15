@@ -305,6 +305,9 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
+        case DB_NOTFOUND:
+            *bdberr = BDBERR_DELNOTFOUND;
+            break;
         default:
             logmsg(LOGMSG_ERROR, "%s:%d ll_key_upd rc %d\n", __FILE__, __LINE__, rc);
             *bdberr = BDBERR_MISC;
