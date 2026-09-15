@@ -94,6 +94,8 @@ extern int gbl_disttxn_handle_cache;
 extern int gbl_disttxn_handle_linger_time;
 extern int gbl_disttxn_async_messages;
 extern int gbl_debug_sleep_before_dispatch;
+extern int gbl_debug_sleep_in_sqlsession_rc;
+extern int gbl_debug_sleep_after_commitrc_timeout;
 extern int gbl_debug_exit_participant_after_prepare;
 extern int gbl_debug_exit_coordinator_before_commit;
 extern int gbl_debug_exit_coordinator_after_commit;

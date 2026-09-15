@@ -1,0 +1,76 @@
+Regression test for the checkboard unregister-vs-reply race.
+
+A replicant registers an entry in the checkboard for each sorese transaction
+and waits on it for the commit rc.  When the rc arrives, the master's reply is
+handled by the net reader thread, not the sql thread:
+
+  osql_chkboard_sqlsession_rc()          osql_unregister_sqlthr()
+    lock   checkboard->mtx
+    fetch  entry
+    lock   entry->mtx
+    unlock checkboard->mtx
+                                           delete_from_checkerboard()
+                                             lock/unlock checkboard->mtx
+                                           cleanup_entry()
+                                             destroy entry->mtx   <-- held!
+    ...
+    unlock entry->mtx
+
+The handoff from checkboard->mtx to entry->mtx keeps the lookup safe, but it
+does not stop the sql thread from unregistering right afterwards.  If it does,
+cleanup_entry() destroys and frees an entry the reader thread is still inside.
+pthread_mutex_destroy() on a held mutex returns EBUSY, so Pthread_mutex_destroy()
+aborts -- a core on the replicant, in cleanup_entry().
+
+The window is the few hundred nanoseconds between the reader's unlock of
+checkboard->mtx and its unlock of entry->mtx, and the sql thread has to arrive
+inside it.  Nothing the test can do from the outside aligns two threads that
+finely: the coarsest knob available, sleep_before_dispatch, has one-second
+granularity, and the replicant's commit-rc timer starts before the bplog is
+even shipped, so a reply timed against it is always tens of milliseconds late
+and the reader simply fails the lookup.  That is the benign outcome, and it is
+the only one a purely timing-driven test ever gets.
+
+So the test widens each half instead, with two internal tunables that exist for
+this purpose, and lets the wide versions overlap deterministically:
+
+  sleep_before_dispatch (master)          stalls the block processor, so the
+                                          reply is sent STALL seconds late.
+
+  sleep_after_commitrc_timeout            parks the sql thread after it gives
+    (replicant)                           up, before it unregisters, so the
+                                          entry is still in the hash when the
+                                          reply lands.
+
+  sleep_in_sqlsession_rc (replicant)      holds entry->mtx in the reader across
+                                          the point where the sql thread
+                                          unregisters.
+
+  SOSQL_MAX_COMMIT_WAIT_SEC (lrl)         when the sql thread gives up.
+
+  survive_n_master_swings (lrl)           0, so the commit-wait timeout is
+                                          terminal and we abandon exactly one
+                                          transaction instead of retrying.
+
+Timeline, with the values in runit (t=0 is the COMMIT):
+
+  t=0.0   replicant ships the bplog and starts waiting (TIMEOUT=2)
+  t=2.0   sql thread times out, logs, then parks for HOLD_UNREG=5
+  t=2.0+  master finishes its STALL=2 and sends the rc
+  t=2.0+  reader finds the entry, takes entry->mtx, parks for HOLD_RC=8
+  t=7.0   sql thread wakes, unregisters, and reaches cleanup_entry
+            without the fix: destroys a mutex the reader holds -> EBUSY -> core
+            with the fix:    blocks on entry->mtx until the reader is done
+  t=10.0+ reader releases, cleanup_entry proceeds, COMMIT returns
+
+Both overlaps have seconds of slack, so the ordering does not depend on luck.
+
+The COMMIT is expected to fail -- the transaction was abandoned -- but it must
+not return before the reader has let go of the entry.  Its wall time is the
+assertion that the race was actually set up: ~10s means the reply did find the
+entry and cleanup_entry waited for it, which is exactly the path under test.
+A run that returns in ~7s would mean the reply never landed in the window and
+the test proved nothing, so that is a failure too.
+
+Note that osql_checkboard_update_status() (the poke path) hands off between the
+same two mutexes, and races unregister the same way.  It is not covered here.

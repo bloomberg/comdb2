@@ -339,6 +339,13 @@ REGISTER_TUNABLE("debug_all_prepare_leak", "Prepare and leak all transactions. (
                  &gbl_all_prepare_leak, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sleep_before_dispatch", "Sleep before dispatching on master. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_debug_sleep_before_dispatch, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sleep_in_sqlsession_rc",
+                 "Sleep this long holding the checkboard entry lock in osql_chkboard_sqlsession_rc. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_in_sqlsession_rc, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sleep_after_commitrc_timeout",
+                 "Sleep this long after a commit-rc timeout, before unregistering from the checkboard. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_after_commitrc_timeout, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("debug_sleep_before_prepare", "Sleep for 5 seconds before preparing. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_before_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #ifdef COMDB2_TEST
