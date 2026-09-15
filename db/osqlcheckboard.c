@@ -50,6 +50,13 @@ typedef struct osql_checkboard {
 
 static osql_checkboard_t *checkboard = NULL;
 
+/* Test hooks.  The two halves of the unregister-vs-reply race below are only a
+   few hundred nanoseconds wide on their own, which no amount of load will
+   reliably align; these widen each half so a test can drive the collision.
+   See tests/osql_reply_race.test. */
+int gbl_debug_sleep_in_sqlsession_rc = 0;
+int gbl_debug_sleep_after_commitrc_timeout = 0;
+
 /* will get rdlock on checkboard->mtx if parameter lock is set
  * if caller already has mtx, call this func with lock = false
  */
@@ -110,20 +117,18 @@ void osql_checkboard_destroy(void) { /* TODO*/ }
 
 /* insert entry into checkerboard */
 static inline int insert_into_checkerboard(osql_checkboard_t *cb,
-                                           osql_sqlthr_t *entry, int locked)
+                                           osql_sqlthr_t *entry)
 {
     int rc = 0;
 
-    if (!locked)
-        Pthread_mutex_lock(&cb->mtx);
+    Pthread_mutex_lock(&cb->mtx);
 
     if (entry->rqid == OSQL_RQID_USE_UUID)
         rc = hash_add(cb->rqsuuid, entry);
     else
         rc = hash_add(cb->rqs, entry);
 
-    if (!locked)
-        Pthread_mutex_unlock(&cb->mtx);
+    Pthread_mutex_unlock(&cb->mtx);
     return rc;
 }
 
@@ -155,9 +160,19 @@ done:
     return entry;
 }
 
-/* cleanup and free sql thread registration entry */
+/* cleanup and free sql thread registration entry
+ *
+ * The entry is already out of the hash so nobody new can find it, but
+ * osql_chkboard_sqlsession_rc() hands off from checkboard->mtx to entry->mtx
+ * and can still be inside that critical section -- the sql thread unregisters
+ * as soon as it stops waiting (rollback, disconnect, commit-rc timeout) while a
+ * reply from master may still be landing.  Lock/unlock to wait it out;
+ * destroying the mutex underneath it returns EBUSY and aborts.
+ */
 static inline void cleanup_entry(osql_sqlthr_t *entry)
 {
+    Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&entry->mtx);
     Pthread_cond_destroy(&entry->cond);
     Pthread_mutex_destroy(&entry->mtx);
     free(entry);
@@ -209,8 +224,13 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
     return entry;
 }
 
-static int _osql_register_sqlthr(struct sqlclntstate *clnt, int type,
-                                 int locked)
+/**
+ * Register an osql thread with the checkboard
+ * This allows block processor to query the status
+ * of its sql peer
+ *
+ */
+int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 {
     uuidstr_t us;
     osql_sqlthr_t *entry = get_new_entry(clnt, type);
@@ -220,7 +240,7 @@ static int _osql_register_sqlthr(struct sqlclntstate *clnt, int type,
         return -1;
     }
 
-    int rc = insert_into_checkerboard(checkboard, entry, locked);
+    int rc = insert_into_checkerboard(checkboard, entry);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
@@ -228,17 +248,6 @@ static int _osql_register_sqlthr(struct sqlclntstate *clnt, int type,
     }
 
     return rc;
-}
-
-/**
- * Register an osql thread with the checkboard
- * This allows block processor to query the status
- * of its sql peer
- *
- */
-int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
-{
-    return _osql_register_sqlthr(clnt, type, 0);
 }
 
 /**
@@ -332,6 +341,9 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, 
 
     Pthread_mutex_lock(&entry->mtx);
     Pthread_mutex_unlock(&checkboard->mtx);
+
+    if (gbl_debug_sleep_in_sqlsession_rc > 0)
+        sleep(gbl_debug_sleep_in_sqlsession_rc);
 
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
@@ -602,6 +614,8 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                        "to commit id=%llu %s\n",
                        __func__, entry->master, entry->rqid,
                        comdb2uuidstr(entry->uuid, us));
+                if (gbl_debug_sleep_after_commitrc_timeout > 0)
+                    sleep(gbl_debug_sleep_after_commitrc_timeout);
                 return -6;
             }
         }
@@ -679,7 +693,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master)
                "%s: error unable to find record %llx %s, enter new\n", __func__,
                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
 
-        return _osql_register_sqlthr(clnt, tran2req(clnt->dbtran.mode), 1);
+        return osql_register_sqlthr(clnt, tran2req(clnt->dbtran.mode));
     }
 
     Pthread_mutex_lock(&entry->mtx);

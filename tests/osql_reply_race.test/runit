@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# See README.  In short: make the master's commit rc land on the replicant just
+# as the replicant's sql thread is unregistering from the checkboard, and hold
+# both halves open long enough that they certainly overlap.
+
+[ -z "$CLUSTER" ] && { echo "skipping, needs a cluster"; exit 0; }
+
+dbnm=$1
+[ -z "$dbnm" ] && failexit "need a DB name"
+
+# The commit-rc wait, from lrl.options.  Everything else is relative to it.
+TIMEOUT=2
+
+# Master stalls the block processor this long, so the rc is sent a moment after
+# the replicant has stopped waiting for it.
+STALL=$TIMEOUT
+
+# How long the replicant's sql thread parks after giving up, before it
+# unregisters.  The reply has to land inside this.
+HOLD_UNREG=5
+
+# How long the reader thread holds the checkboard entry lock.  Must outlast the
+# point where the sql thread unregisters, i.e. comfortably exceed HOLD_UNREG.
+HOLD_RC=8
+
+master=$(getmaster)
+[ -z "$master" ] && failexit "could not find master"
+
+replicant=""
+for n in $(getclusternodes); do
+    if [ "$n" != "$master" ]; then
+        replicant=$n
+        break
+    fi
+done
+[ -z "$replicant" ] && failexit "no replicant to drive writes from"
+
+echo "master=$master replicant=$replicant"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t (i int)" || failexit "create t"
+
+set_tunable()
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $1 "put tunable $2 $3" \
+        || failexit "could not set $2 to $3 on $1"
+}
+
+set_tunable $master sleep_before_dispatch $STALL
+set_tunable $replicant sleep_after_commitrc_timeout $HOLD_UNREG
+set_tunable $replicant sleep_in_sqlsession_rc $HOLD_RC
+
+# Expected to fail: the transaction is abandoned at the commit-rc timeout.  We
+# are timing it, not checking it.
+echo "driving the abandoned transaction on $replicant"
+start=$SECONDS
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $replicant - >/dev/null 2>&1 <<EOF
+BEGIN
+INSERT INTO t VALUES (1)
+COMMIT
+EOF
+elapsed=$((SECONDS - start))
+echo "commit returned after ${elapsed}s"
+
+set_tunable $master sleep_before_dispatch 0
+set_tunable $replicant sleep_after_commitrc_timeout 0
+set_tunable $replicant sleep_in_sqlsession_rc 0
+
+# Without the fix the replicant has already cored in cleanup_entry() and this
+# never runs.  With it, the unregister blocked until the reader let go of the
+# entry, so the commit cannot have returned before HOLD_RC elapsed.  Anything
+# quicker means the reply missed the window entirely and nothing was tested.
+if [ $elapsed -lt $HOLD_RC ]; then
+    failexit "commit returned in ${elapsed}s, expected at least ${HOLD_RC}s -- the reply did not land in the unregister window, so the race was never exercised"
+fi
+
+echo "checking every node is still serving"
+for n in $(getclusternodes); do
+    got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $n "select comdb2_host()" 2>&1)
+    assertres "$got" "$n" "node $n did not answer"
+done
+
+echo "replaying a clean workload on $replicant"
+NVERIFY=10
+for i in $(seq 1 $NVERIFY); do
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $replicant - >/dev/null <<EOF || failexit "clean write $i failed"
+BEGIN
+INSERT INTO t VALUES (100$i)
+COMMIT
+EOF
+done
+
+# The abandoned transaction does commit on the master eventually, so we cannot
+# predict the count -- but every node must agree on it.
+expected=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "select count(*) from t")
+for n in $(getclusternodes); do
+    got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $n "select count(*) from t")
+    assertres "$got" "$expected" "row count on $n disagrees with master"
+done
+
+echo "Success"

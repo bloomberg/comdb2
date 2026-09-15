@@ -1,0 +1,11 @@
+# The replicant gives up on the commit rc after this long.  The master is
+# stalled for just as long, so its reply lands on the replicant a moment after
+# the sql thread has stopped waiting and is on its way to unregistering -- the
+# collision the test is after.  Keep in sync with TIMEOUT in runit.
+setattr SOSQL_MAX_COMMIT_WAIT_SEC 2
+
+# A commit-wait timeout surfaces as ERR_NOMASTER, which the replicant normally
+# treats as a master swing and retries up to survive_n_master_swings times
+# (600 by default, ~100ms apart).  We want exactly one abandoned transaction,
+# so make the timeout terminal.
+survive_n_master_swings 0
