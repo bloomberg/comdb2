@@ -139,7 +139,7 @@ struct srs_tran;
 typedef struct osqlstate {
 
     /* == sql_thread == */
-    osql_target_t target;    /* where to send the bplog */
+    const char *target_host; /* where to send the bplog */
     unsigned long long rqid; /* per node offload request session */
     uuid_t uuid;             /* session id, take 2 */
     char *tablename;         /* malloc-ed cache of send tablename for usedb */
@@ -728,11 +728,6 @@ struct sqlclntstate {
     struct plugin_callbacks adapter_backup;
     struct typessql *typessql_state;
     unsigned typessql : 1; // should query use typessql (determined from set stmt)
-
-    /* bplog write plugin */
-    int (*begin)(struct sqlclntstate *clnt, int retries, int keep_id);
-    int (*end)(struct sqlclntstate *clnt);
-    int (*wait)(struct sqlclntstate *clnt, int timeout, struct errstat *err);
 
     dbtran_type dbtran;
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,

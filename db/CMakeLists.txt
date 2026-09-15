@@ -52,7 +52,6 @@ set(src
   osqlshadtbl.c
   osqlsqlthr.c
   osqlsqlnet.c
-  osqlsqlsocket.c
   phys_rep.c
   plugin_handler.c
   prefault.c

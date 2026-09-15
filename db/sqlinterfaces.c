@@ -95,7 +95,6 @@
 #include "comdb2_query_preparer.h"
 #include "string_ref.h"
 
-#include "osqlsqlsocket.h"
 #include <net_appsock.h>
 #include <typessql.h>
 #include <sqlwriter.h>
@@ -5660,10 +5659,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->set_continue_on_chunk_verify_error = 0;
     clnt->continued_on_chunk_verify_error = 0;
     clnt->multiline = 0;
-
-    if (gbl_sockbplog) {
-        init_bplog_socket(clnt);
-    }
 
     if (clnt->modsnap_in_progress) {
         clear_modsnap_state(clnt);

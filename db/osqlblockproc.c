@@ -605,7 +605,7 @@ static int _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
         if (gbl_debug_disttxn_trace) {
             uuidstr_t us;
             logmsg(LOGMSG_USER, "DISTTXN %s %s new coordinator from %s uuid=%s\n", __func__, sess->dist_txnid,
-                   sess->target.host ? sess->target.host : "(nohost)", comdb2uuidstr(sess->uuid, us));
+                   sess->target_host ? sess->target_host : "(nohost)", comdb2uuidstr(sess->uuid, us));
         }
         break;
     case OSQL_PARTICIPANT:
