@@ -2444,15 +2444,6 @@ REGISTER_TUNABLE("debug_create_master_entry", "Reproduce startup race in create_
                  TUNABLE_BOOLEAN, &gbl_debug_create_master_entry, EXPERIMENTAL | INTERNAL, 
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("sockbplog",
-                 "Enable sending transactions over socket instead of net",
-                 TUNABLE_BOOLEAN, &gbl_sockbplog, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("sockbplog_sockpool",
-                 "Enable sockpool when for sockbplog feature", TUNABLE_BOOLEAN,
-                 &gbl_sockbplog_sockpool, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
-
 REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 

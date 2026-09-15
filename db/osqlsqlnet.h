@@ -27,12 +27,6 @@
  */
 
 /**
- * Init bplog over net master side
- *
- */
-void init_bplog_net(osql_target_t *target);
-
-/**
  * Handle to registration of thread for net multiplex purposes
  *
  */
