@@ -4,6 +4,14 @@
 -- this stored procedure on the source/replication metadb node in order to
 -- register themselves. The node, in return, sends back a list of "potential"
 -- nodes that the replicant can connect to to pull and apply physical logs.
+
+-- Note: the 'Pending'/'Inactive' state filter below compares lower(p.state).
+-- comdb2_physreps.state is a case-sensitive CSTRING and older builds wrote
+-- 'InActive' from start_physrep_threads() while register_self() wrote
+-- 'Inactive'.  A case-sensitive NOT IN let the 'InActive' rows through, so a
+-- physrep that had restarted but not yet begun replicating was handed out as a
+-- viable source.  The replicant then rejected it locally in
+-- physrep_allowed_source(), found no candidate leaders, and retried forever.
 local function main(dbname, hostname, lsn, source_dbname, source_hosts)
 
     local pfile, poffset = string.match(lsn, "(%d+):(%d+)")
@@ -60,7 +68,7 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
                  "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
                  "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. physrep_fanout .. " ) " ..
                  "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
-                 "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
+                 "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
                  "    ORDER BY tier, cnt, random() " ..
                  "    LIMIT " .. physrep_max_candidates)
     else
@@ -82,7 +90,7 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
                  "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
                  "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. physrep_fanout .. " ) " ..
                  "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
-                 "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
+                 "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
                  "    ORDER BY tier, random() " ..
                  "    LIMIT " .. physrep_max_candidates)
     end
@@ -126,7 +134,7 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
                          "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
                          "             GROUP BY t.dbname, t.host) " ..
                          "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
-                         "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
+                         "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
                          "    ORDER BY tier, cnt, random() " ..
                          "    LIMIT " .. physrep_max_candidates)
             else
@@ -146,7 +154,7 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
                          "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
                          "             GROUP BY t.dbname, t.host ) " ..
                          "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
-                         "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
+                         "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
                          "    ORDER BY tier, random() " ..
                          "    LIMIT " .. physrep_max_candidates)
             end
