@@ -33,13 +33,6 @@ typedef struct osql_uuid_req osql_uuid_req_t;
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname, int type, unsigned long long rqid, uuid_t uuid,
                               const char *host, int is_reorder_on, int is_final);
 /**
- * Same as osql_sess_create, but sql is already a malloced cstr
- *
- */
-osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type, unsigned long long rqid, uuid_t uuid,
-                                     const char *host, int is_reorder_on, int is_final);
-
-/**
  * Terminates an in-use osql session (for which we could potentially
  * receive message from sql thread).
  * Returns 0 if success
@@ -85,13 +78,6 @@ char *osql_sess_info(osql_sess_t *sess);
  *
  */
 int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found);
-
-/**
- * Same as osql_sess_rcvop, for socket protocol
- *
- */
-int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           int *is_msg_done);
 
 int osql_sess_queryid(osql_sess_t *sess);
 

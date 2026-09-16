@@ -21,7 +21,6 @@
 #include <str0.h>
 #include <timer_util.h>
 
-#include "osqlsqlsocket.h"
 #include "reqlog.h"
 #include "sp.h"
 #include "sql.h"
@@ -2113,9 +2112,6 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 28;
                 sqlstr = skipws(sqlstr);
                 clnt->use_current_lsn_for_snapshot = (strncasecmp(sqlstr, "on", 2) == 0);
-            } else if (strncasecmp(sqlstr, "sockbplog", 10) == 0) {
-                init_bplog_socket(clnt);
-                rc = 0;
             } else if (strncasecmp(sqlstr, "force_fdb_push", 14) == 0) {
                 sqlstr += 14;
                 sqlstr = skipws(sqlstr);

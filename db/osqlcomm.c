@@ -52,7 +52,6 @@
 #include <compat.h>
 #include <unistd.h>
 #include "osqlsqlnet.h"
-#include "osqlsqlsocket.h"
 #include "sc_global.h"
 #include "logical_cron.h"
 #include "sc_logic.h"
@@ -9193,104 +9192,6 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
     }
 
     return rc;
-}
-
-/**
- * Read a commit (DONE/XERR) from a socket, used in bplog over socket
- * Timeoutms limits total amount of waiting for a commit
- *
- */
-int osql_recv_commit_rc(COMDB2BUF *sb, int timeoutms, int timeoutdeltams, int *nops,
-                        struct errstat *err)
-{
-    char hdr_buf[OSQLCOMM_UUID_RPL_TYPE_LEN];
-    osql_uuid_rpl_t hdr;
-    int left_timeoutms = timeoutms;
-    const uint8_t *p_buf;
-    const uint8_t *p_buf_end;
-    const char *part = "";
-    int rc = 0;
-    int length;
-
-    rc = osql_read_buffer((char *)&length, sizeof(length), sb, &left_timeoutms,
-                          timeoutdeltams);
-    if (rc || !left_timeoutms) {
-        part = "packet length";
-        goto error;
-    }
-
-    /* get the header */
-    rc = osql_read_buffer(hdr_buf, sizeof(hdr_buf), sb, &left_timeoutms,
-                          timeoutdeltams);
-    if (rc || !left_timeoutms) {
-        part = "header";
-        goto error;
-    }
-    if (strncmp(hdr_buf, "Error:", 6) == 0) {
-        part = "protocol";
-        goto error;
-    }
-
-    p_buf = (uint8_t *)hdr_buf;
-    p_buf_end = p_buf + sizeof(hdr_buf);
-    p_buf = osqlcomm_uuid_rpl_type_get(&hdr, p_buf, p_buf_end);
-
-    switch (hdr.type) {
-    case OSQL_DONE: {
-        char done_buf[OSQLCOMM_DONE_TYPE_LEN];
-        osql_done_t done;
-
-        rc = osql_read_buffer(done_buf, sizeof(done_buf), sb, &left_timeoutms,
-                              timeoutdeltams);
-        if (rc || !left_timeoutms) {
-            part = "done";
-            goto error;
-        }
-
-        p_buf = (uint8_t *)done_buf;
-        p_buf_end = p_buf + sizeof(done_buf);
-
-        p_buf = osqlcomm_done_type_get(&done, p_buf, p_buf_end);
-        rc = done.rc;
-        *nops = done.nops;
-        bzero(err, sizeof(*err));
-
-        break;
-    }
-    case OSQL_DONE_WITH_EFFECTS: {
-        break;
-    }
-    case OSQL_XERR: {
-        char xerr_buf[ERRSTAT_LEN];
-
-        rc = osql_read_buffer(xerr_buf, sizeof(xerr_buf), sb, &left_timeoutms,
-                              timeoutdeltams);
-        if (rc || !left_timeoutms) {
-            part = "xerr";
-            goto error;
-        }
-
-        p_buf = (uint8_t *)xerr_buf;
-        p_buf_end = p_buf + sizeof(xerr_buf);
-
-        p_buf = osqlcomm_errstat_type_get(err, p_buf, p_buf_end);
-        *nops = 0;
-        rc = errstat_get_rc(err);
-
-        break;
-    }
-    default:
-        logmsg(LOGMSG_ERROR, "%s Unhandled return code %d\n", __func__,
-               hdr.type);
-        abort();
-    }
-
-    return rc;
-
-error:
-    logmsg(LOGMSG_ERROR, "%s %s reading rc from master, %s\n", __func__,
-           (left_timeoutms) ? "failed" : "timeout", part);
-    return ERR_NOMASTER;
 }
 
 /* check if we need to get tpt lock */

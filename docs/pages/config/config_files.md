@@ -920,8 +920,6 @@ These options are toggle-able at runtime.
 |setattr | | Change bdb tunables - see [bdb tunables](#bdbattr-tunables)
 |setclass | | See [permissioning commands](#allowdisallow-commands)
 |setsqlattr | | See (SQL tunables)[#sql-tunables]
-|sockbplog_sockpool | off | Osql bplog sent over sockets is using local sockpool
-|sockbplog| off | Osql bplog is sent from replicants to master on their own socket
 |sql_time_threshold | 5000 (ms) | Sets the threshold time in ms after which queries are reported as running a long time.
 |sql_tranlevel_default | | Sets the default SQL transaction level for the database, see (SQL transaction levels)[#sql-transaction-levels]
 |sqlenginepool | | See [thread pools](#thread-pools)

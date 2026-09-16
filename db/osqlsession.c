@@ -46,7 +46,6 @@ struct sess_impl {
 
     unsigned dispatched : 1; /* Set when session is dispatched to handle_buf */
     unsigned terminate : 1;  /* Set when this session is about to be terminated */
-    unsigned socket : 1;     /* Set if request comes over socket instead of net */
     unsigned embedded_sql : 1; /* Set if sql is part of session malloc object */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
@@ -85,43 +84,13 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname, int type
 }
 
 /**
- * Same as osql_sess_create, but sql is already allocated
- *
- */
-osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type, unsigned long long rqid, uuid_t uuid,
-                                     const char *host, int is_reorder_on, int is_final)
-{
-    osql_sess_t *sess = NULL;
-
-    /* alloc object */
-    sess = (osql_sess_t *)calloc(sizeof(osql_sess_t) + sizeof(sess_impl_t), 1);
-    if (!sess) {
-        logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
-               sizeof(*sess));
-        return NULL;
-    }
-    sess->impl = (sess_impl_t *)(sess + 1);
-    sess->sql = sql;
-    sess->impl->embedded_sql = 0;
-    sess->impl->socket = 1;
-
-    return _osql_sess_create(sess, tzname, type, rqid, uuid, host, is_reorder_on, is_final);
-}
-
-
-static inline int is_sess_from_sockbplog(osql_sess_t *sess)
-{
-    return !!sess->impl->socket;
-}
-
-/**
  * Terminates an in-use osql session (for which we could potentially
  * receive message from sql thread).
  * Returns 0 if success
  *
- * This function will remove from osql_repository_rem() if is_linked is set
- * and if did not come over sockbplog, then wait till there are no more clients
- * using this sess and only then destroy obj
+ * This function will remove from osql_repository_rem() if is_linked is set,
+ * then wait till there are no more clients using this sess and only then
+ * destroy obj
  *
  * NOTE:
  * - it is possible to inline clean a request on master bounce,
@@ -136,7 +105,7 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
 {
     osql_sess_t *sess = *psess;
 
-    if (is_linked && !is_sess_from_sockbplog(sess)) {
+    if (is_linked) {
         /* unlink the request so no more messages are received */
         int rc = osql_repository_rem(sess);
         if (rc) {
@@ -502,57 +471,6 @@ failed_stream:
     osql_sess_close(&sess, 1);
 
     return rc;
-}
-
-extern int gbl_sockbplog_debug;
-
-/**
- * Same as osql_sess_rcvop, for socket protocol
- * TODO: but I think this is dead-code
- *
- */
-int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           int *is_msg_done)
-{
-    int rc = 0;
-    struct errstat *perr = NULL;
-
-    if (datalen < OSQLCOMM_UUID_RPL_TYPE_LEN) {
-        logmsg(LOGMSG_ERROR, "%s: truncated osql message, datalen %d\n",
-               __func__, datalen);
-        return ERR_BADREQ;
-    }
-
-    *is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, &perr, NULL) != 0;
-
-    /* we have received an OSQL_XERR; replicant wants to abort the transaction;
-       discard the session and be done */
-    if (*is_msg_done && perr) {
-        if (debug_switch_test_sync_osql_cancel())
-            poll(NULL, 0, 1000);
-        osql_comm_signal_sqlthr_rc(&sess->target, sess->rqid, sess->uuid, 0, &sess->xerr, NULL, 0);
-        sess->is_cancelled = 1;
-        return 0;
-    }
-
-    /* save op */
-    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type);
-    if (rc) {
-        /* failed to save into bplog; discard and be done */
-        return rc;
-    }
-
-    /* release the session */
-    if (!*is_msg_done) {
-        return 0;
-    }
-
-    if (gbl_sockbplog_debug)
-        logmsg(LOGMSG_ERROR, "%p Dispatching transaction\n", (void *)pthread_self());
-    /* IT WAS A DONE MESSAGE
-       HERE IS THE DISPATCH */
-    return handle_buf_sorese(sess);
 }
 
 int osql_sess_queryid(osql_sess_t *sess)

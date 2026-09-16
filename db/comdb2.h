@@ -1295,7 +1295,6 @@ struct osql_sess {
     blocksql_tran_t *tran;
     LISTC_T(struct schema_change_type) scs; /* schema changes in session */
     int is_tptlock;   /* needs tpt locking */
-    int is_cancelled; /* 1 if session is cancelled */
 
     /* 2pc maintained in session */
     unsigned is_participant : 1;
@@ -1957,8 +1956,6 @@ extern int gbl_dohsql_full_queue_poll_msec;
 extern int gbl_dohsql_max_threads;
 extern int gbl_dohsql_pool_thr_slack;
 extern int gbl_dohsql_sc_max_threads;
-extern int gbl_sockbplog;
-extern int gbl_sockbplog_sockpool;
 extern int gbl_gen_shard_verbose;
 extern int gbl_logical_live_sc;
 
