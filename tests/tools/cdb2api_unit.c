@@ -60,20 +60,6 @@ void test_do_init_once()
 }
 
 
-void test_cdb2_set_min_retries()
-{
-    cdb2_set_min_retries(20);
-    assert(MIN_RETRIES == 20);
-
-    cdb2_set_min_retries(-30);
-    assert(MIN_RETRIES == 20);
-
-    cdb2_set_min_retries(0);
-    assert(MIN_RETRIES == 20);
-
-    cdb2_set_min_retries(1);
-    assert(MIN_RETRIES == 1);
-}
 
 void test_cdb2_set_max_retries()
 {
@@ -90,21 +76,6 @@ void test_cdb2_set_max_retries()
     assert(MAX_RETRIES == 1);
 }
 
-void test_cdb2_hndl_set_min_retries()
-{
-    cdb2_hndl_tp hndl;
-    cdb2_hndl_set_min_retries(&hndl, 20);
-    assert(hndl.min_retries == 20);
-
-    cdb2_hndl_set_min_retries(&hndl, -30);
-    assert(hndl.min_retries == 20);
-
-    cdb2_hndl_set_min_retries(&hndl, 0);
-    assert(hndl.min_retries == 20);
-
-    cdb2_hndl_set_min_retries(&hndl, 1);
-    assert(hndl.min_retries == 1);
-}
 
 void test_cdb2_hndl_set_max_retries()
 {
@@ -299,10 +270,8 @@ int main(int argc, char *argv[])
     test_is_sql_read();
     test_do_init_once();
 
-    test_cdb2_set_min_retries();
     test_cdb2_set_max_retries();
 
-    test_cdb2_hndl_set_min_retries();
     test_cdb2_hndl_set_max_retries();
 
     test_cdb2_set_comdb2db_config();

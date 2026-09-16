@@ -154,7 +154,6 @@ struct cdb2_hndl {
     int clear_snap_line;
     int debug_trace;
     int max_retries;
-    int min_retries;
 
     /* SSL variables */
 
