@@ -109,7 +109,6 @@ static int docost = 0;
 static int return_long_column_names = 0;
 #ifdef CDB2API_TEST
 static int maxretries = 0;
-static int minretries = 0;
 #endif
 static FILE *redirect = NULL;
 static int hold_stdout = -1;
@@ -1576,9 +1575,6 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
         if (maxretries) {
             cdb2_set_max_retries(maxretries);
         }
-        if (minretries) {
-            cdb2_set_min_retries(minretries);
-        }
 
         verbose_print("calling cdb2_open\n");
 #endif
@@ -2363,7 +2359,6 @@ int main(int argc, char *argv[])
                                            {"script", no_argument, NULL, 's'},
 #ifdef CDB2API_TEST
                                            {"maxretries", required_argument, NULL, 'r'},
-                                           {"minretries", required_argument, NULL, 'R'},
 #endif
                                            {"precision", required_argument, NULL, 'p'},
                                            {"cdb2cfg", required_argument, NULL, 'c'},
@@ -2380,7 +2375,7 @@ int main(int argc, char *argv[])
                                            {"chunk", required_argument, NULL, 130},
                                            {0, 0, 0, 0}};
 #ifdef CDB2API_TEST
-    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mMl", long_options, &opt_indx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:mMl", long_options, &opt_indx)) != -1) {
 #else
     while ((c = bb_getopt_long(argc, argv, (char *)"hsp:d:c:f:g:t:n:mMl", long_options, &opt_indx)) != -1) {
 #endif
@@ -2401,9 +2396,6 @@ int main(int argc, char *argv[])
             break;
         case 'r':
             maxretries = atoi(optarg);
-            break;
-        case 'R':
-            minretries = atoi(optarg);
             break;
 #endif
         case 'p':

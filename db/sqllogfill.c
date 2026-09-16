@@ -128,8 +128,8 @@ static void increment_logfill_auth_failure_cnt(void)
 /* When all of the master's sql engines are busy and its dispatch queue is full,
  * the master rejects the logfill request with CDB2ERR_REJECTED.  That error is
  * retryable, so the cdb2 client retries it internally and -- for our
- * CDB2_DIRECT_CPU handle with min_retries==1 -- surfaces it to us as
- * CDB2ERR_CONNECT_ERROR (or CDB2ERR_TRAN_IO_ERROR once retries are exhausted),
+ * CDB2_DIRECT_CPU handle with max_retries==1 -- surfaces it to us as
+ * CDB2ERR_TRAN_IO_ERROR (or CDB2ERR_CONNECT_ERROR if it never connected),
  * NOT as CDB2ERR_REJECTED (which we still match, defensively).
  *
  * These same codes are also what a genuinely unreachable master produces: for a
@@ -194,7 +194,7 @@ static int connect_to_master(bdb_state_type *bdb_state, const char *master)
         return 1;
     }
 
-    cdb2_hndl_set_min_retries(hndl, 1);
+    cdb2_hndl_set_max_retries(hndl, 1);
 
     rc = cdb2_run_statement(hndl, "set transaction blocksql");
     if (rc != CDB2_OK) {

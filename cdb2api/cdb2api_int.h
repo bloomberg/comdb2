@@ -49,7 +49,6 @@ int cdb2_setDbIdentityBlob(cdb2_hndl_tp *hndl);
 int cdb2_serialize_db_identity(int *length, void **dta);
 
 void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
-void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
 
 int cdb2_get_comdb2db(char **comdb2db_name, char **comdb2db_class);
 

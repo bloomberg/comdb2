@@ -111,8 +111,6 @@ static int cdb2_portmuxport_set_from_env = 0;
 
 static int MAX_RETRIES = 20; /* We are looping each node twice. */
 
-static int MIN_RETRIES = 16;
-
 static int CDB2_CONNECT_TIMEOUT = 100;
 static int cdb2_connect_timeout_set_from_env = 0;
 
@@ -831,10 +829,6 @@ static void process_env_vars(void)
     if (cdb2db_dbnum_override) {
         COMDB2DB_NUM_OVERRIDE = atoi(cdb2db_dbnum_override);
     }
-    char *min_retries = getenv("COMDB2_CONFIG_MIN_RETRIES");
-    if (min_retries) {
-        MIN_RETRIES = atoi(min_retries);
-    }
 #endif
 }
 
@@ -1464,13 +1458,6 @@ struct newsqlheader {
 };
 
 #ifdef CDB2API_TEST
-void cdb2_set_min_retries(int min_retries)
-{
-    if (min_retries > 0) {
-        MIN_RETRIES = min_retries;
-    }
-}
-
 void cdb2_set_max_retries(int max_retries)
 {
     if (max_retries > 0) {
@@ -1480,13 +1467,6 @@ void cdb2_set_max_retries(int max_retries)
 #endif
 
 #ifdef CDB2API_SERVER
-void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries)
-{
-    if (min_retries > 0) {
-        hndl->min_retries = min_retries;
-    }
-}
-
 void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
 {
     if (max_retries > 0) {
@@ -6012,7 +5992,6 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
         newsql_disconnect(child, child->sb, __LINE__);
     }
 
-    child->min_retries = parent->min_retries;
     child->max_retries = parent->max_retries;
 
     child->debug_trace = parent->debug_trace;
@@ -6247,16 +6226,6 @@ retry_queries:
         }
 
         if (retries_done > hndl->num_hosts) {
-#if defined(CDB2API_SERVER) || defined(CDB2API_TEST)
-            if (!hndl->is_hasql && (retries_done > hndl->min_retries)) {
-                debugprint("returning cannot-connect, "
-                           "retries_done=%d, num_hosts=%d\n",
-                           retries_done, hndl->num_hosts);
-                sprintf(hndl->errstr, "%s: Cannot connect to db", __func__);
-                PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
-            }
-#endif
-
             int tmsec = (retries_done - hndl->num_hosts) * 100;
             if (tmsec >= 1000) {
                 tmsec = 1000;
@@ -6281,8 +6250,14 @@ after_delay:
     if (!hndl->sb) {
         cdb2_connect_sqlhost(hndl);
         if (hndl->sb == NULL) {
-            debugprint("rc=%d goto retry_queries on connect failure\n", rc);
-            goto retry_queries;
+            debugprint("returning cannot-connect, retries_done=%d, "
+                       "num_hosts=%d\n",
+                       retries_done, hndl->num_hosts);
+            if (!hndl->sslerr) /* do not override SSL error message */
+                sprintf(hndl->errstr, "%s: Can't connect to db", __func__);
+            if (is_hasql_commit)
+                cleanup_query_list(hndl, &commit_query_list, __LINE__);
+            PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
         }
         if (!is_begin) {
             hndl->retry_all = 1;
@@ -8978,7 +8953,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->s_sslmode = PEER_SSL_ALLOW;
 
     hndl->max_retries = MAX_RETRIES;
-    hndl->min_retries = MIN_RETRIES;
 
     if (cdb2_use_env_vars) {
         hndl->db_default_type_override_env = 0;
