@@ -1577,7 +1577,7 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
             cdb2_set_max_retries(maxretries);
         }
         if (minretries) {
-            cdb2_set_min_retries(minretries);
+            cdb2_set_max_connect_failures(minretries);
         }
 
         verbose_print("calling cdb2_open\n");

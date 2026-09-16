@@ -111,7 +111,7 @@ static int cdb2_portmuxport_set_from_env = 0;
 
 static int MAX_RETRIES = 20; /* We are looping each node twice. */
 
-static int MIN_RETRIES = 16;
+static int MAX_CONNECT_FAILURES = 16;
 
 static int CDB2_CONNECT_TIMEOUT = 100;
 static int cdb2_connect_timeout_set_from_env = 0;
@@ -831,9 +831,9 @@ static void process_env_vars(void)
     if (cdb2db_dbnum_override) {
         COMDB2DB_NUM_OVERRIDE = atoi(cdb2db_dbnum_override);
     }
-    char *min_retries = getenv("COMDB2_CONFIG_MIN_RETRIES");
-    if (min_retries) {
-        MIN_RETRIES = atoi(min_retries);
+    char *max_connect_failures = getenv("COMDB2_CONFIG_MAX_CONNECT_FAILURES");
+    if (max_connect_failures) {
+        MAX_CONNECT_FAILURES = atoi(max_connect_failures);
     }
 #endif
 }
@@ -1464,10 +1464,10 @@ struct newsqlheader {
 };
 
 #ifdef CDB2API_TEST
-void cdb2_set_min_retries(int min_retries)
+void cdb2_set_max_connect_failures(int max_connect_failures)
 {
-    if (min_retries > 0) {
-        MIN_RETRIES = min_retries;
+    if (max_connect_failures > 0) {
+        MAX_CONNECT_FAILURES = max_connect_failures;
     }
 }
 
@@ -1480,10 +1480,10 @@ void cdb2_set_max_retries(int max_retries)
 #endif
 
 #ifdef CDB2API_SERVER
-void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries)
+void cdb2_hndl_set_max_connect_failures(cdb2_hndl_tp *hndl, int max_connect_failures)
 {
-    if (min_retries > 0) {
-        hndl->min_retries = min_retries;
+    if (max_connect_failures > 0) {
+        hndl->max_connect_failures = max_connect_failures;
     }
 }
 
@@ -4170,6 +4170,9 @@ retry_connect:
         goto retry_connect;
     }
 
+    /* A full pass over the cluster found nothing. Cleared in
+       hndl_set_comdb2buf() as soon as any connection is established. */
+    hndl->connect_failures++;
     hndl->connected_host = -1;
     return -1;
 }
@@ -6012,7 +6015,7 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
         newsql_disconnect(child, child->sb, __LINE__);
     }
 
-    child->min_retries = parent->min_retries;
+    child->max_connect_failures = parent->max_connect_failures;
     child->max_retries = parent->max_retries;
 
     child->debug_trace = parent->debug_trace;
@@ -6246,17 +6249,24 @@ retry_queries:
             PRINT_AND_RETURN(0);
         }
 
-        if (retries_done > hndl->num_hosts) {
-#if defined(CDB2API_SERVER) || defined(CDB2API_TEST)
-            if (!hndl->is_hasql && (retries_done > hndl->min_retries)) {
-                debugprint("returning cannot-connect, "
-                           "retries_done=%d, num_hosts=%d\n",
-                           retries_done, hndl->num_hosts);
-                sprintf(hndl->errstr, "%s: Cannot connect to db", __func__);
-                PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
-            }
-#endif
+        /* A NULL sb means either that we could not reach any node, or that we
+           connected fine and then tore the connection down after a failed
+           query. Only the former is worth failing fast on: a query that was
+           rejected or dropped has to keep retrying, so that ALLOW_QUEUING is
+           eventually sent and the server is allowed to queue it.
 
+           Non-hasql statements cannot be safely replayed, so they stop once
+           the cluster looks unreachable rather than grinding; hasql
+           statements keep going until max_retries. */
+        if (!hndl->is_hasql && hndl->connect_failures > hndl->max_connect_failures) {
+            debugprint("returning cannot-connect, connect_failures=%d, "
+                       "retries_done=%d, num_hosts=%d\n",
+                       hndl->connect_failures, retries_done, hndl->num_hosts);
+            sprintf(hndl->errstr, "%s: Cannot connect to db", __func__);
+            PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
+        }
+
+        if (retries_done > hndl->num_hosts) {
             int tmsec = (retries_done - hndl->num_hosts) * 100;
             if (tmsec >= 1000) {
                 tmsec = 1000;
@@ -8285,6 +8295,9 @@ static void hndl_set_comdb2buf(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int idx)
 {
     cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
     hndl->sb = sb;
+    /* The only place sb becomes non-NULL: we reached a node, so any earlier
+       run of connect failures is no longer consecutive. */
+    hndl->connect_failures = 0;
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
     hndl->connected_host = idx;
@@ -8978,7 +8991,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->s_sslmode = PEER_SSL_ALLOW;
 
     hndl->max_retries = MAX_RETRIES;
-    hndl->min_retries = MIN_RETRIES;
+    hndl->max_connect_failures = MAX_CONNECT_FAILURES;
 
     if (cdb2_use_env_vars) {
         hndl->db_default_type_override_env = 0;
