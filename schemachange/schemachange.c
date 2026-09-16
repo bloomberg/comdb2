@@ -230,6 +230,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
         if (seed == 0 && host == 0) {
             logmsg(LOGMSG_ERROR, "Failed to determine host and seed!\n");
+            free_schema_change_type(s);
             return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
         }
         logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
@@ -294,8 +295,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
      * transaction in replicant code; we do need here one seed per for every
      * table schema changed in this transaction, even though they share the same
      * sc_seed value
+     * NOTE: only schema changes going through do_ddl() ever call
+     * mark_schemachange_over_tran(), which is what removes this llmeta object;
+     * persisting a seed for any other kind (sp, trigger, lua func) leaks it
      */
-    if (thedb->master == gbl_myhostname && !s->resume) {
+    if (thedb->master == gbl_myhostname && !s->resume && sc_kind_runs_do_ddl(s->kind)) {
         logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n", seed);
         int bdberr;
         int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,

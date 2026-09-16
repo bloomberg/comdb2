@@ -1445,9 +1445,16 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
             }
             sc = next;
         }
-        if (rc == ERR_NOMASTER)
+        if (rc == ERR_NOMASTER) {
             iq->sc_pending = NULL;
+            /* this is resumable: don't let the abort callback delete the
+             * sc_list, the next master needs it
+             */
+            iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+        }
     }
+    /* osql_scdone_abort_callback keys its sc_list cleanup off this */
+    assert(rc != ERR_NOMASTER || iq->sc_pending == NULL);
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
 
     assert(!iq->sc_locked);
@@ -1517,10 +1524,14 @@ void *resume_sc_multiddl_txn_finalize(void *p)
     struct ireq *iq = (struct ireq*)p;
     struct schema_change_type *sc;
     tran_type *parent_trans = NULL;
-    int error = 0;
-    uuid_t uuid;
-
-    comdb2uuidcpy(uuid, iq->sc_pending->uuid);
+    /* set by the caller if some of the schema changes of this transaction
+     * failed to even start; whatever did start has to be backed out
+     */
+    int error = iq->sc_should_abort;
+    /* if we are the ones going away, the schema changes that failed to start
+     * did so because of the downgrade, not because of anything wrong with them
+     */
+    int downgrade = error && get_stopsc(__func__, __LINE__);
 
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
@@ -1536,6 +1547,8 @@ void *resume_sc_multiddl_txn_finalize(void *p)
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
+            if (sc->sc_rc == SC_MASTER_DOWNGRADE)
+                downgrade = 1;
             if (sc->set_running)
                 sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__,
                                __LINE__);
@@ -1545,7 +1558,11 @@ void *resume_sc_multiddl_txn_finalize(void *p)
         sc = iq->sc;
     }
     iq->sc_locked = 0;
-    iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    /* marking scdone makes the abort path remove the sc_list from llmeta; on a
+     * downgrade we want the opposite -- leave it for the next master to resume
+     */
+    if (!downgrade)
+        iq->osql_flags |= OSQL_FLAGS_SCDONE;
     iq->sc_tran = NULL;
     iq->sc_logical_tran = NULL;
 
@@ -1639,10 +1656,11 @@ abort_sc:
 int resume_sc_multiddl_txn(sc_list_t *scl)
 {
     LISTC_T(struct schema_change_type) scs;
-    struct schema_change_type *sc;
+    struct schema_change_type *sc, *tmp;
+    struct ireq *iq = NULL;
     int i, size;
     uuidstr_t us;
-    int rc;
+    int rc = -1;
     int resume = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ?
         SC_RESUME : SC_NEW_MASTER_RESUME;
 
@@ -1658,20 +1676,25 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
         sc = new_schemachange_type();
         if (!sc) {
             logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
-            return -1;
+            goto done;
         }
         if (!buf_get_schemachange(sc, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s uuid %s failed to retrieve sc\n",
                    __func__, us);
-            return -1;
+            free_schema_change_type(sc);
+            goto done;
         }
-        sc->resume = resume;
+        /* only schema changes going through do_ddl() persist state to pick up
+         * (sc seed, in-schema-change record); the rest (sp, trigger, lua func)
+         * have nothing to resume from and must start as new
+         */
+        if (sc_kind_runs_do_ddl(sc->kind))
+            sc->resume = resume;
 
         listc_abl(&scs, sc);
     }
 
-    /* this is freed in the wait thread */
-    struct ireq *iq = calloc(1, sizeof(struct ireq));
+    iq = calloc(1, sizeof(struct ireq));
     init_fake_ireq(thedb, iq);
 
     /* this starts schema changeas;
@@ -1679,23 +1702,39 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
      * but the rest of the execution is done in parallel
      * waiting is done by a separate thread that will finalize
      * the schema change
-     * NOTE: schema changes will be queued in iq->sc_pending
-     *
+     * NOTE: schema changes will be queued in iq->sc_pending; for every entry
+     * it reaches, bplog_schemachange_run() unlinks it from scs before
+     * checking rc, whether it started or not, so by the time it returns scs
+     * only holds entries it never reached (skipped after an earlier break)
      */
     rc = bplog_schemachange_run(iq, scl->uuid, &scs);
-    if (rc && !iq->sc_pending) {
-        /* nothing got started, there is nothing to unwind */
+    if (!rc || iq->sc_pending) {
+        /* either everything started (rc == 0) or at least one did
+         * (iq->sc_pending set); either way the finalize thread has to run:
+         * it checks sc_rc for each schema change, backs out whatever needs
+         * it, and owns freeing iq from here on
+         */
+        if (rc)
+            iq->sc_should_abort = 1;
+        pthread_t tid;
+        Pthread_create(&tid, &gbl_pthread_attr_detached, resume_sc_multiddl_txn_finalize, iq);
+        iq = NULL;
+    } else {
         logmsg(LOGMSG_ERROR, "%s uuid %s failed to start, rc %d\n", __func__, us, rc);
-        free(iq);
-        return -1;
     }
-    /* if some of them did start, the finalize thread has to run: it checks
-     * sc_rc for each schema change and backs the whole set out.  Return 0 so
-     * that the remaining sc lists still get resumed.
-     */
 
-    pthread_t tid;
-    Pthread_create(&tid, &gbl_pthread_attr_detached,
-                        resume_sc_multiddl_txn_finalize, iq);
-    return 0;
+done:
+    /* safe to free unconditionally, even after handing iq to the finalize
+     * thread above: scs only ever holds entries bplog_schemachange_run()
+     * never reached, which were never linked into iq->sc_pending and never
+     * had a conversion thread launched for them, so the finalize thread
+     * (which only ever walks iq->sc_pending) cannot be touching them
+     */
+    LISTC_FOR_EACH_SAFE(&scs, sc, tmp, scs_lnk)
+    {
+        listc_rfl(&scs, sc);
+        free_schema_change_type(sc);
+    }
+    free(iq);
+    return rc ? -1 : 0;
 }
