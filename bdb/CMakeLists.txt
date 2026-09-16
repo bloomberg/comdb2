@@ -92,6 +92,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/sqlite/src
+  ${PROJECT_BINARY_DIR}/sqlite
   ${PROJECT_SOURCE_DIR}/sqlite/ext/comdb2
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/berkdb/build
@@ -116,10 +117,9 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
-add_dependencies(bdb db mem proto)
-target_link_libraries(bdb PUBLIC db)
 # db/sqlinterfaces.h includes <sqlite3.h>, which is generated at build time.
-target_link_libraries(bdb PRIVATE sqlite3_header)
+add_dependencies(bdb db mem proto sqlite3_header)
+target_link_libraries(bdb PUBLIC db)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(bdb)
 endif()
