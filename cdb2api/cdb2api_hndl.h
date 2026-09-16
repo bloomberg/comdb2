@@ -154,7 +154,11 @@ struct cdb2_hndl {
     int clear_snap_line;
     int debug_trace;
     int max_retries;
-    int min_retries;
+    int max_connect_failures;
+    /* Consecutive cdb2_connect_sqlhost() failures. Reset as soon as any
+       connection is established, so this counts only a sustained inability to
+       reach the cluster, not a query that failed after connecting. */
+    int connect_failures;
 
     /* SSL variables */
 

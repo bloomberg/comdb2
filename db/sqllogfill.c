@@ -127,10 +127,14 @@ static void increment_logfill_auth_failure_cnt(void)
 
 /* When all of the master's sql engines are busy and its dispatch queue is full,
  * the master rejects the logfill request with CDB2ERR_REJECTED.  That error is
- * retryable, so the cdb2 client retries it internally and -- for our
- * CDB2_DIRECT_CPU handle with min_retries==1 -- surfaces it to us as
+ * retryable, so the cdb2 client retries it internally and surfaces it to us as
  * CDB2ERR_CONNECT_ERROR (or CDB2ERR_TRAN_IO_ERROR once retries are exhausted),
  * NOT as CDB2ERR_REJECTED (which we still match, defensively).
+ *
+ * NOTE: max_connect_failures (formerly min_retries) now counts only failures to
+ * CONNECT, so a master that is reachable but saturated no longer short-circuits
+ * here -- it retries until max_retries. If the old fail-fast-on-saturation
+ * behaviour is wanted, bound total retries with cdb2_hndl_set_max_retries().
  *
  * These same codes are also what a genuinely unreachable master produces: for a
  * CDB2_DIRECT_CPU handle cdb2_open() does not connect (and "set transaction
@@ -194,7 +198,7 @@ static int connect_to_master(bdb_state_type *bdb_state, const char *master)
         return 1;
     }
 
-    cdb2_hndl_set_min_retries(hndl, 1);
+    cdb2_hndl_set_max_connect_failures(hndl, 1);
 
     rc = cdb2_run_statement(hndl, "set transaction blocksql");
     if (rc != CDB2_OK) {
