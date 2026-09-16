@@ -36,6 +36,7 @@
 #include <sys/poll.h>
 #include "debug_switches.h"
 #include "alias.h"
+#include "comdb2.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -10818,7 +10819,7 @@ static void warn_empty_passwords(void)
     }
 
     for (int i = 0; i < nusers; ++i) {
-        if (bdb_user_password_check(NULL, users[i], "", NULL) == 0)
+        if (strcasecmp(users[i], DEFAULT_USER) != 0 && bdb_user_password_check(NULL, users[i], "", NULL) == 0)
             logmsg(LOGMSG_WARN, "Password authentication enabled for user '%s' with an empty password\n", users[i]);
         free(users[i]);
     }
