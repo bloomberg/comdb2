@@ -136,4 +136,116 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    exit 1
 fi
 
+# TEST 2 dropped the limit to one, put it back so the rest can run ddl
+echo "restoring the sc list limit"
+$CM "put tunable max_sc_lists 10000"
+if (( $? != 0 )) ; then
+   echo "FAILURE to restore max_sc_lists"
+   exit 1
+fi
+
+failed=0
+scl_count=0
+seed_count=0
+
+llmeta_sc()
+{
+    $C "exec procedure sys.cmd.send('llmeta list')" 2>/dev/null
+}
+
+# both counts must match what they were after the previous check; the sc_list
+# and the sc seed are removed when a schema change finishes, so anything left
+# behind is a leaked llmeta object
+check_no_leak()
+{
+    local what=$1
+    local dump=$(llmeta_sc)
+    local n=$(echo "$dump" | grep -c "LLMETA_SCHEMACHANGE_LIST")
+    local s=$(echo "$dump" | grep -c "LLMETA_SC_SEEDS")
+
+    if (( n != scl_count )) ; then
+        echo "LEAK: ${what}: scl count ${scl_count} -> ${n}"
+        failed=1
+    else
+        echo "OK: ${what}: scl count stable at ${n}"
+    fi
+    if (( s != seed_count )) ; then
+        echo "LEAK: ${what}: seed count ${seed_count} -> ${s}"
+        failed=1
+    else
+        echo "OK: ${what}: seed count stable at ${s}"
+    fi
+    scl_count=$n
+    seed_count=$s
+}
+
+echo "TEST 3: ddl must not leak scl or sc seed at any transaction level"
+
+dump=$(llmeta_sc)
+scl_count=$(echo "$dump" | grep -c "LLMETA_SCHEMACHANGE_LIST")
+seed_count=$(echo "$dump" | grep -c "LLMETA_SC_SEEDS")
+echo "baseline scl count ${scl_count} seed count ${seed_count}"
+
+# the sc_list is keyed by the osql session uuid; the non-sosql levels below
+# leak it if the delete is keyed by the schema change uuid instead
+$C "create table s1(a int)" >/dev/null
+sleep 2
+check_no_leak "autocommit sosql create table"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+create table s2(a int)
+EOF
+sleep 2
+check_no_leak "read committed create table"
+
+$C - <<'EOF' >/dev/null
+set transaction snapshot isolation
+create table s3(a int)
+EOF
+sleep 2
+check_no_leak "snapshot isolation create table"
+
+$C "alter table s1 add column c int" >/dev/null
+sleep 2
+check_no_leak "autocommit sosql alter table"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+begin
+create table s8(a int)$$
+commit
+EOF
+sleep 2
+check_no_leak "begin/commit read committed create table"
+
+# sp, trigger and lua func kinds never reach mark_schemachange_over_tran(),
+# so they must not persist an sc seed: nothing would ever remove it
+$C "create procedure p1 version 'v1' {local function main() end}" >/dev/null
+sleep 2
+check_no_leak "autocommit sosql create procedure"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+create procedure p2 version 'v1' {local function main() end}
+EOF
+sleep 2
+check_no_leak "read committed create procedure"
+
+$C - <<'EOF' >/dev/null
+set transaction read committed
+put default procedure p2 'v1'
+EOF
+sleep 2
+check_no_leak "read committed put default procedure"
+
+$C "drop procedure p1 'v1'" >/dev/null
+sleep 2
+check_no_leak "drop procedure"
+
+if (( failed != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
 echo "SUCCESS"

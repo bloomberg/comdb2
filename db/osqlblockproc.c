@@ -1665,7 +1665,12 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
                    __func__, us);
             return -1;
         }
-        sc->resume = resume;
+        /* only schema changes going through do_ddl() persist state to pick up
+         * (sc seed, in-schema-change record); the rest (sp, trigger, lua func)
+         * have nothing to resume from and must start as new
+         */
+        if (sc_kind_runs_do_ddl(sc->kind))
+            sc->resume = resume;
 
         listc_abl(&scs, sc);
     }

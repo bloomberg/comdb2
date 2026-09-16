@@ -662,6 +662,13 @@ struct {
     {0, 0, NULL, NULL, do_default_cons, finalize_default_cons},
 };
 
+int sc_kind_runs_do_ddl(int kind)
+{
+    if (kind <= SC_INVALID || kind >= SC_LAST)
+        return 0;
+    return do_schema_change_if[kind].run_do_ddl;
+}
+
 static int do_schema_change_tran_int(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
