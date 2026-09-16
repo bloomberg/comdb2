@@ -36,5 +36,5 @@ macro(add_plugin LIBNAME TYPE SOURCES)
   endif()
 
   # Every plugin includes <bbinc/comdb2_plugin.h>, which in turn includes <sqlite3.h>.
-  target_link_libraries(${LIBNAME} PRIVATE sqlite3_header)
+  add_dependencies(${LIBNAME} sqlite3_header)
 endmacro()

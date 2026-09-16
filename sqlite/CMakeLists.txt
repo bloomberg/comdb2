@@ -325,8 +325,7 @@ include_directories(
   ${PROTOBUF-C_INCLUDE_DIR}
 )
 
-add_dependencies(sqlite mem proto bdb)
-target_link_libraries(sqlite PUBLIC sqlite3_header)
+add_dependencies(sqlite mem proto bdb sqlite3_header)
 target_link_libraries(sqlite PRIVATE cdb2archive)
 if (COMDB2_BBCMAKE)
   comdb2_lib_target(sqlite)
