@@ -297,12 +297,12 @@ typedef enum cdb2_event_type {
 
 typedef enum cdb2_event_arg {
     CDB2_HOSTNAME = 1,
-    CDB2_PORT,
-    CDB2_SQL,
-    CDB2_RETURN_VALUE,
-    CDB2_QUERY_STATE,
-    CDB2_FINGERPRINT,
-    CDB2_DBTYPE
+    CDB2_PORT = 2,
+    CDB2_SQL = 3,
+    CDB2_RETURN_VALUE = 4,
+    CDB2_QUERY_STATE = 5,
+    CDB2_DBTYPE = 6,
+    CDB2_FINGERPRINT = 7
 } cdb2_event_arg;
 
 typedef struct cdb2_event cdb2_event;
