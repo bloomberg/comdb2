@@ -25,6 +25,7 @@
 #include "comdb2_atomic.h"
 #include "constraints.h"
 #include "string_ref.h"
+#include "sys_wrap.h"
 #include <unistd.h>
 
 /* NOTE: This is from "comdb2.h". */
@@ -50,6 +51,35 @@ int locprint(verify_common_t *par, char *fmt, ...)
         return -1;
     }
     return par->verify_response(buf, par->arg);
+}
+
+/* Remember a record that has no entry in index ix so it can be repaired after
+ * every scan thread has finished.  Called from the data stripe threads. */
+void verify_record_missing_key(verify_common_t *par, unsigned long long genid, int ix)
+{
+    Pthread_mutex_lock(&par->missing_keys_lk);
+    if (par->nmissing_keys >= VERIFY_MAX_MISSING_KEYS) {
+        par->missing_keys_dropped++;
+        Pthread_mutex_unlock(&par->missing_keys_lk);
+        return;
+    }
+    if (par->nmissing_keys == par->missing_keys_alloc) {
+        unsigned int nalloc = par->missing_keys_alloc ? par->missing_keys_alloc * 2 : 64;
+        if (nalloc > VERIFY_MAX_MISSING_KEYS)
+            nalloc = VERIFY_MAX_MISSING_KEYS;
+        verify_missing_key_t *m = realloc(par->missing_keys, nalloc * sizeof(*m));
+        if (m == NULL) {
+            par->missing_keys_dropped++;
+            Pthread_mutex_unlock(&par->missing_keys_lk);
+            return;
+        }
+        par->missing_keys = m;
+        par->missing_keys_alloc = nalloc;
+    }
+    par->missing_keys[par->nmissing_keys].genid = genid;
+    par->missing_keys[par->nmissing_keys].ix = ix;
+    par->nmissing_keys++;
+    Pthread_mutex_unlock(&par->missing_keys_lk);
 }
 
 static int restore_cursor_at_genid(DB *db, DBC **cdata,
@@ -459,6 +489,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             par->db_table, dbt_data.data, blob_buf);
 
         for (int ix = 0; ix < bdb_state->numix; ix++) {
+            if (par->target_ix != VERIFY_ALL_IXNUM && ix != par->target_ix)
+                continue;
+
             rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
                 bdb_state->dbp_ix[ix], lid, &ckey, 0);
             if (rc) {
@@ -522,6 +555,11 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             } else if (rc == DB_NOTFOUND) {
                 par->verify_status = 1;
                 locprint(par, "!%016llx ix %d missing key", genid_flipped, ix);
+                /* Repairing here would write the very index page this scan's
+                 * cursors hold locks on, so just remember it; verify_table_opts
+                 * does the fixing once every scan has finished. */
+                if (par->fix_missing_keys)
+                    verify_record_missing_key(par, genid, ix);
             } else if (rc) {
                 par->verify_status = 1;
                 locprint(par, "!%016llx ix %d fetch rc %d", genid_flipped, ix,
@@ -1172,6 +1210,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     /* scan 2: scan each key, verify data exists */
     for (int ix = 0;
          ix < par->bdb_state->numix && !par->client_dropped_connection; ix++) {
+        if (par->target_ix != VERIFY_ALL_IXNUM && ix != par->target_ix)
+            continue;
         par->records_processed = 0;
         par->nrecs_progress = 0;
         char header[256];
@@ -1182,8 +1222,9 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
             goto done;
     }
 
-    /* scan 3: scan each blob, verify data exists */
-    int nblobs = get_numblobs(par->db_table);
+    /* scan 3: scan each blob, verify data exists - not index work, so skipped
+     * when we were asked about one index */
+    int nblobs = par->target_ix == VERIFY_ALL_IXNUM ? get_numblobs(par->db_table) : 0;
     for (int blobno = 0; blobno < nblobs && !par->client_dropped_connection;
          blobno++) {
         par->records_processed = 0;
@@ -1332,6 +1373,8 @@ void bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
     if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_INDICES) {
         /* scan 2: scan each key, verify data exists */
         for (int ix = 0; ix < par->bdb_state->numix; ix++) {
+            if (par->target_ix != VERIFY_ALL_IXNUM && ix != par->target_ix)
+                continue;
             td_processing_info_t *work = malloc(sizeof(*work));
             memcpy(work, info, sizeof(*work));
             work->type = PROCESS_KEY;
@@ -1340,7 +1383,7 @@ void bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         }
     }
 
-    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_BLOBS) {
+    if ((v_mode == VERIFY_PARALLEL || v_mode == VERIFY_BLOBS) && par->target_ix == VERIFY_ALL_IXNUM) {
         /* scan 3: scan each blob, verify data exists */
         int nblobs = get_numblobs(par->db_table);
         for (int blobno = 0; blobno < nblobs; blobno++) {

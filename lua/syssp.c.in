@@ -243,23 +243,51 @@ static int db_verify_table_callback(char *msg, void *arg)
     return 0;
 }
 
-/* verify() can take up to 3 parameters (table, mode, verbose):
- * when we check we look for lua_isstring(L, 1), 2 and 3
- * when we fetch the string we look for lua_tostring(L, -3), -2, -1
+/* Resolve the "<mode>:<index>" suffix a mode string may carry.  The index is
+ * either its number or its name; returns -1 if it names nothing. */
+static int db_comdb_verify_ixnum(const struct dbtable *db, const char *s)
+{
+    char *end = NULL;
+    long n = strtol(s, &end, 10);
+    if (*s != '\0' && *end == '\0') {
+        if (n < 0 || n >= db->nix)
+            return -1;
+        return (int)n;
+    }
+    int ixnum = -1;
+    if (getidxnumbyname(db, s, &ixnum) != 0)
+        return -1;
+    return ixnum;
+}
+
+/* verify() can take up to 4 parameters (table, mode, verbose, fix).  The Lua
+ * wrapper always calls us with all four, so unset ones are nil.
+ *
+ * The mode may carry a ":<index>" suffix naming a single index to look at, by
+ * number or by name - "indices:3", "data:mykey".
  */
 static int db_comdb_verify(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *tblname = NULL;
+    char *ixspec = NULL;
+    char modebuf[MAXTAGLEN * 2];
 
     if (lua_isstring(L, 1)) {
-        tblname = (char *) lua_tostring(L, -3);
+        tblname = (char *) lua_tostring(L, 1);
     }
     verify_mode_t mode = VERIFY_SERIAL;
     int verbose = 0;
+    int fix_missing_keys = 0;
 
     if (lua_isstring(L, 2)) {
-        char *m = (char *) lua_tostring(L, -2);
+        snprintf(modebuf, sizeof(modebuf), "%s", lua_tostring(L, 2));
+        char *m = modebuf;
+        /* split off an ":<index>" suffix before matching the mode */
+        ixspec = strchr(m, ':');
+        if (ixspec)
+            *ixspec++ = '\0';
+
         if (strcmp(m, "parallel") == 0) {
             mode = VERIFY_PARALLEL;
             logmsg(LOGMSG_INFO, "Verify in parallel mode table %s\n", tblname);
@@ -283,10 +311,17 @@ static int db_comdb_verify(Lua L) {
         }
 
         if (lua_isstring(L, 3)) {
-            char *v = (char *) lua_tostring(L, -1);
+            const char *v = lua_tostring(L, 3);
             if (strcmp(v, "verbose") == 0) {
                 verbose = 1;
                 logmsg(LOGMSG_DEBUG, "Verify verbose \n");
+            }
+        }
+        if (lua_isstring(L, 4)) {
+            const char *f = lua_tostring(L, 4);
+            if (strcmp(f, "fix") == 0) {
+                fix_missing_keys = 1;
+                logmsg(LOGMSG_INFO, "Verify will add missing keys for table %s\n", tblname);
             }
         }
     }
@@ -298,7 +333,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback("Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])", clnt);
+        db_verify_table_callback("Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\"[\":<index>\"],[\"verbose\"],[\"fix\"]])", clnt);
         return luaL_error(L, "Verify failed.");
     }
 
@@ -306,7 +341,22 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table(tblname, verbose, 0, mode, db_verify_peer_check, db_verify_table_callback, clnt);
+        verify_opts_t opts = {
+            .mode = mode,
+            .progress_report_seconds = verbose,
+            .fix_missing_keys = fix_missing_keys,
+            .target_ix = VERIFY_ALL_IXNUM,
+        };
+        if (ixspec) {
+            opts.target_ix = db_comdb_verify_ixnum(db, ixspec);
+            if (opts.target_ix < 0) {
+                char buf[128] = {0};
+                snprintf(buf, sizeof(buf), "Table \"%s\" has no index \"%s\".", tblname, ixspec);
+                db_verify_table_callback(buf, clnt);
+                return luaL_error(L, "Verify failed.");
+            }
+        }
+        rc = verify_table_opts(tblname, &opts, db_verify_peer_check, db_verify_table_callback, clnt);
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
@@ -738,8 +788,8 @@ static struct sp_source syssps[] = {
     ,{
         // to call verify for a table: cdb2sql adidb local 'exec procedure sys.cmd.verify("t1")'
         "sys.cmd.verify",
-        "local function main(tbl, mode, verbose)\n"
-        "    sys.comdb_verify(tbl, mode, verbose)\n"
+        "local function main(tbl, mode, verbose, fix)\n"
+        "    sys.comdb_verify(tbl, mode, verbose, fix)\n"
         "end\n",
         NULL
     }

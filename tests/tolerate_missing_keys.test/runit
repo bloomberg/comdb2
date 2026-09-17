@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+master=$(getmaster)
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values (1,1,'str1',x'aa')"
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values (2,2,'str2',x'bb')"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 0"
+
+# Put back only UNIQ_A, so the row can be found by SQL but is still absent from
+# DUP_B and DTACPY_C.  That is the state a partly damaged index leaves a row in.
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+    "exec procedure sys.cmd.verify('t1','data:UNIQ_A','verbose','fix')" &> fix_uniq.out
+if ! grep -q "Added 1 of 1 missing index keys" fix_uniq.out ; then
+    failexit "could not restore UNIQ_A, see ${PWD}/fix_uniq.out"
+fi
+
+
+################################################################################
+# Default: the row is reachable, but the write is refused because a key it
+# wants to remove is already gone.
+################################################################################
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a=2" &> del_strict.out
+cat del_strict.out
+if ! grep -qi "key not found on index" del_strict.out ; then
+    failexit "delete should have failed with key-not-found, see ${PWD}/del_strict.out"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c='zzz' where a=2" &> upd_strict.out
+cat upd_strict.out
+if grep -q "rows updated=1" upd_strict.out ; then
+    failexit "update should have failed, see ${PWD}/upd_strict.out"
+fi
+
+
+################################################################################
+# With the escape hatch on, the same delete goes through.  The tunable has to
+# land on the master: that is where the write actually executes.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'tolerate_missing_keys_on_delete' 1"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c='zzz' where a=2" &> upd_tolerant.out
+cat upd_tolerant.out
+if ! grep -q "rows updated=1" upd_tolerant.out ; then
+    failexit "update should have succeeded, see ${PWD}/upd_tolerant.out"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a=2" &> del_tolerant.out
+cat del_tolerant.out
+if ! grep -q "rows deleted=1" del_tolerant.out ; then
+    failexit "delete should have succeeded, see ${PWD}/del_tolerant.out"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'tolerate_missing_keys_on_delete' 0"
+
+assertcnt t1 1
+
+################################################################################
+# The surviving row is intact and the table verifies clean: the tolerated
+# delete removed the key that was there and left nothing behind.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','parallel')" &> verify_after.out
+cat verify_after.out
+if ! grep -q "^Verify succeeded.$" verify_after.out ; then
+    failexit "table not clean after tolerated delete, see ${PWD}/verify_after.out"
+fi
+
+################################################################################
+# The flag is off by default again, so the strict behaviour is back.
+################################################################################
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values (3,3,'str3',x'cc')"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 0"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master \
+    "exec procedure sys.cmd.verify('t1','data:UNIQ_A','verbose','fix')" &> fix_uniq2.out
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a=3" &> del_strict2.out
+if ! grep -qi "key not found on index" del_strict2.out ; then
+    failexit "strict behaviour did not return, see ${PWD}/del_strict2.out"
+fi
+
+echo "Success"

@@ -374,10 +374,10 @@ Testing db:commit with with_effects
 (1=1)
 (out='Verify succeeded.')
 (2=2)
-(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices",["verbose"]])')
+(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices"[":<index>"],["verbose"],["fix"]])')
 [exec procedure sys.cmd.verify()] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (3=3)
-(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices",["verbose"]])')
+(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices"[":<index>"],["verbose"],["fix"]])')
 [exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (4=4)
 [exec procedure sys.cmd.verify(\"nonexistent\")] failed with rc -3 bad argument -> \"nonexistent\")
