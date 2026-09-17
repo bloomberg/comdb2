@@ -36,7 +36,8 @@ int appsock_test(cdb2_hndl_tp **dbs, int freq, char *dbname, char *host) {
         }
 
         rc = cdb2_run_statement(*db, "begin");
-        if (rc == CDB2ERR_CONNECT_ERROR && i == 5) // this is expected on the last try
+        if ((rc == CDB2ERR_CONNECT_ERROR || rc == CDB2ERR_TRAN_IO_ERROR) &&
+            i == 5) // this is expected on the last try
             return 0;
         if (rc) {
             fprintf(stderr, "%s: Error running begin on %s %d %s\n", __func__, dbname, rc, cdb2_errstr(*db));

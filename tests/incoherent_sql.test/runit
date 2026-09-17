@@ -24,7 +24,7 @@ if [[ "$checkhost" != "$host" ]]; then
 fi
 
 checkerr=$(cdb2sql --host ${host} ${CDB2_OPTIONS} $db 'select comdb2_host()' 2>&1)
-if [[ ! "$checkerr" =~ .*Cannot\ connect\ to\ db.* ]]; then
+if [[ ! "$checkerr" =~ (Maximum\ number\ of\ retries\ done|Cannot\ connect\ to\ db) ]]; then
     echo "Able to run query on incoherent node?"
     exit 1
 fi
