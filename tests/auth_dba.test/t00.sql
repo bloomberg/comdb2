@@ -29,6 +29,7 @@ put tunable max_password_cache_size 101
 select 'enabled' as authentication_status;
 
 select * from comdb2_users order by username;
+select username, authentication_count from comdb2_users where username = 'dba';
 select * from t1;
 -- another op user must not still not be able to change 'dba' user permissions
 grant op to 'dba';
@@ -42,6 +43,7 @@ revoke read on 't1' from 'dba';
 set user 'dba'
 set password ''
 select 'dba' as current_user;
+select username, authentication_count from comdb2_users where username = 'dba';
 put authentication off
 put authentication on
 put password off for 'root'

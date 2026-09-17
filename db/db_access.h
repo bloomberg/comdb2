@@ -37,6 +37,7 @@ typedef struct table_permission {
 void check_access_controls(struct dbenv *);
 int check_sql_access(struct sqlthdstate *, struct sqlclntstate *);
 int check_user_password(struct sqlclntstate *);
+uint64_t get_user_authentication_count(const char *user);
 
 /* Validate write access to database pointed by cursor pCur */
 int access_control_check_sql_write(struct BtCursor *, struct sql_thread *);
