@@ -1408,6 +1408,50 @@ static int do_wait_for_reverse_conn(cdb2_hndl_tp *repl_metadb) {
 }
 
 /*
+  Re-read the revconn mode from the metadb.  Returns 1 when it has flipped and
+  the source connection has to be torn down.
+
+  *last_check advances even when the metadb is unreachable: this is called from
+  the record loop, which has no pacing of its own, so retrying on failure would
+  spin a metadb connect per applied record.
+*/
+static int revconn_mode_changed(int is_revconn, int *last_check)
+{
+    cdb2_hndl_tp *repl_metadb = NULL;
+    int do_revconn;
+
+    *last_check = comdb2_time_epoch();
+
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Re-checking for reverse connection\n", __func__, __LINE__);
+    }
+
+    if (physrep_get_metadb_or_local_hndl(&repl_metadb) != 0)
+        return 0;
+
+    do_revconn = do_wait_for_reverse_conn(repl_metadb);
+    cdb2_close(repl_metadb);
+
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Reverse connection check: do-revcon=%d, is-revcon=%d\n", __func__, __LINE__,
+                       do_revconn, is_revconn);
+    }
+
+    if (do_revconn == -1) {
+        logmsg(LOGMSG_DEBUG, "%s:%d Failed to contact physrep metadb- keeping do_revconn the same: %d\n", __func__,
+               __LINE__, is_revconn);
+        return 0;
+    }
+
+    if ((do_revconn && !is_revconn) || (!do_revconn && is_revconn)) {
+        logmsg(LOGMSG_USER, "Revconn changed, do_revconn=%d, is_revconn=%d\n", do_revconn, is_revconn);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
   Physical replication worker thread:
 
                               ,-------,
@@ -1549,33 +1593,9 @@ repl_loop:
         }
 
         int revconn_ck = gbl_physrep_revconn_check_interval;
-        if (repl_db_connected && revconn_ck > 0 && comdb2_time_epoch() - last_revconn_check > revconn_ck) {
-            cdb2_hndl_tp *repl_metadb = NULL;
-            if (gbl_physrep_debug) {
-                physrep_logmsg(LOGMSG_USER, "%s:%d Re-checking for reverse connection\n", __func__, __LINE__);
-            }
-            if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) == 0) {
-                int do_revconn = do_wait_for_reverse_conn(repl_metadb);
-                cdb2_close(repl_metadb);
-                if (gbl_physrep_debug) {
-                    physrep_logmsg(LOGMSG_USER, "%s:%d Reverse connection check: do-revcon=%d, is-revcon=%d\n",
-                                   __func__, __LINE__, do_revconn, is_revconn);
-                }
-
-                /* The call might have failed.  That's okay, don't hammer metadb */
-                last_revconn_check = comdb2_time_epoch();
-
-                if (do_revconn == -1) {
-                    logmsg(LOGMSG_DEBUG, "%s:%d Failed to contact physrep metadb- keeping do_revconn the same: %d\n",
-                           __func__, __LINE__, is_revconn);
-                } else {
-
-                    if ((do_revconn && !is_revconn) || (!do_revconn && is_revconn)) {
-                        logmsg(LOGMSG_USER, "Revconn changed, do_revconn=%d, is_revconn=%d\n", do_revconn, is_revconn);
-                        close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
-                    }
-                }
-            }
+        if (repl_db_connected && revconn_ck > 0 && comdb2_time_epoch() - last_revconn_check > revconn_ck &&
+            revconn_mode_changed(is_revconn, &last_revconn_check)) {
+            close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
         }
 
         if (repl_db_connected == 0) {
@@ -1799,7 +1819,12 @@ repl_loop:
                 if (gbl_physrep_debug) {
                     logmsg(LOGMSG_USER, "Checking reverse connection status\n");
                 }
-                goto repl_loop;
+                /* Only tear the stream down if the mode actually flipped: a
+                   plain re-check must not cost a re-registration. */
+                if (revconn_mode_changed(is_revconn, &last_revconn_check)) {
+                    close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                    goto repl_loop;
+                }
             }
 
             /* Check reconnect */
