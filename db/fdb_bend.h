@@ -35,9 +35,8 @@ void fdb_svc_destroy(void);
  * Open a local cursor that will serve remote requests
  *
  */
-svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int rootpage,
-                                  int version, int flags, int seq,
-                                  struct sqlclntstate **clnt);
+svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int version, int flags, int seq,
+                                  const char *srcname, int srcpid, struct sqlclntstate **clnt);
 
 /**
  * Close a local cursor serving remote requests
