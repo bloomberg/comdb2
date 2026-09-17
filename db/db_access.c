@@ -27,6 +27,54 @@ int gbl_check_access_controls;
 int gbl_allow_anon_id_for_spmux = 0;
 extern ssl_mode gbl_client_ssl_mode;
 
+struct user_authentication_count {
+    char user[MAX_USERNAME_LEN];
+    uint64_t count;
+};
+
+static hash_t *user_authentication_counts;
+static pthread_mutex_t user_authentication_counts_lk = PTHREAD_MUTEX_INITIALIZER;
+
+static void record_user_authentication(const char *user)
+{
+    struct user_authentication_count *entry;
+
+    Pthread_mutex_lock(&user_authentication_counts_lk);
+    if (!user_authentication_counts) {
+        user_authentication_counts = hash_init_str(offsetof(struct user_authentication_count, user));
+        if (!user_authentication_counts)
+            goto done;
+    }
+
+    entry = hash_find(user_authentication_counts, user);
+    if (!entry) {
+        entry = calloc(1, sizeof(*entry));
+        if (!entry)
+            goto done;
+        strcpy(entry->user, user);
+        if (hash_add(user_authentication_counts, entry) != 0) {
+            free(entry);
+            goto done;
+        }
+    }
+    ++entry->count;
+
+done:
+    Pthread_mutex_unlock(&user_authentication_counts_lk);
+}
+
+uint64_t get_user_authentication_count(const char *user)
+{
+    uint64_t count = 0;
+    struct user_authentication_count *entry;
+
+    Pthread_mutex_lock(&user_authentication_counts_lk);
+    if (user_authentication_counts && (entry = hash_find(user_authentication_counts, user)) != NULL)
+        count = entry->count;
+    Pthread_mutex_unlock(&user_authentication_counts_lk);
+    return count;
+}
+
 static void check_auth_enabled(struct dbenv *dbenv)
 {
     int rc;
@@ -185,6 +233,7 @@ int check_user_password(struct sqlclntstate *clnt)
         return 1;
     }
     ATOMIC_ADD64(gbl_num_auth_allowed, 1);
+    record_user_authentication(clnt->current_user.name);
     return 0;
 }
 

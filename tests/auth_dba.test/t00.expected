@@ -16,6 +16,7 @@
 (authentication_status='enabled')
 (username='dba', isOP='Y')
 (username='root', isOP='Y')
+(username='dba', authentication_count=0)
 (i=1)
 [grant op to 'dba'] failed with rc 203 dba user is locked!
 [revoke op from 'dba'] failed with rc 203 dba user is locked!
@@ -24,4 +25,5 @@
 [revoke op from 'dba'] failed with rc 203 dba user is locked!
 [revoke read on 't1' from 'dba'] failed with rc 203 dba user is locked!
 (current_user='dba')
+(username='dba', authentication_count=1)
 (username='dba', isOP='Y')
