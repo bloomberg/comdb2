@@ -704,6 +704,12 @@ const struct berkdb_thread_stats *bdb_get_thread_stats(void)
 BB_COMPILE_TIME_ASSERT(bdb_fingerprint_rtstats_ncounts,
                        BDB_FINGERPRINT_RTSTATS_NCOUNTS == BB_BERKDB_FP_RTSTATS_NCOUNTS);
 
+/* The bdb-level role values are passed straight through to berkdb. */
+BB_COMPILE_TIME_ASSERT(bdb_fingerprint_rtstats_roles, BDB_FP_ROLE_NONE == BB_BERKDB_FP_ROLE_NONE &&
+                                                          BDB_FP_ROLE_SQL == BB_BERKDB_FP_ROLE_SQL &&
+                                                          BDB_FP_ROLE_WRITE == BB_BERKDB_FP_ROLE_WRITE &&
+                                                          BDB_FP_ROLE_APPLY == BB_BERKDB_FP_ROLE_APPLY);
+
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
 {
     bb_berkdb_fingerprint_rtstats_set(fingerprint, fplen, has_main_entry);
@@ -717,6 +723,11 @@ void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t 
 void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
 {
     bb_berkdb_fingerprint_rtstats_set_apply(fingerprint, fplen, has_main_entry);
+}
+
+void bdb_fingerprint_rtstats_set_role(int role)
+{
+    bb_berkdb_fingerprint_rtstats_set_role(role);
 }
 
 void bdb_fingerprint_rtstats_clear(void)

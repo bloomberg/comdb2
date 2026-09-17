@@ -4249,6 +4249,10 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	rr = listc_rtl(&rq->records);
 
+	/* Page-in accounting only -- redo takes no locks. Bills a no-fingerprint
+	 * record's page-ins to the apply counters instead of the read ones. */
+	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
+
 	while (rr) {
 		/* Per record, not per queue: fileid fan-out splits a txn across
 		 * workers, and a txn can span statements. */
@@ -5253,6 +5257,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 	gbl_rep_lockid = lockid;
 
+	/* Before __lock_get_list() below, not just before phase 2: the txn's locks
+	 * are read from the commit record and all taken there. Cleared at err:. */
+	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
+
 	if (get_locks_and_ack) {
 
 		/* XXX Used to reproduce reads-follows-writes error - 
@@ -6243,11 +6251,15 @@ bad_resize:	;
 
 	assert(gbl_rep_lock_time_ms == 0);
 	gbl_rep_lock_time_ms = comdb2_time_epochms();
+	/* The txn's locks are all taken here, off the commit record, so this is the
+	 * only arm that reaches them -- redo itself takes no locks. */
+	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
 	ret = !rp->context ?
 		__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
 		copy_compare ? &lock_dbt_copy : lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt)
 		: __lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 		copy_compare ? &lock_dbt_copy : lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+	bb_berkdb_fingerprint_rtstats_clear();
 	if (copy_compare) {
 		if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
 			logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
