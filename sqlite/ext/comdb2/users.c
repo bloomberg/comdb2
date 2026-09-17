@@ -42,6 +42,7 @@
 #include <bdb_int.h>
 #include <sql.h>
 #include <comdb2.h>
+#include <db_access.h>
 #include <comdb2systbl.h>
 #include <comdb2systblInt.h>
 
@@ -72,8 +73,11 @@ static int systblUsersConnect(
 /* Column numbers */
 #define STUSER_USER     0
 #define STUSER_ISOP     1
+#define STUSER_AUTHENTICATION_COUNT 2
 
-  rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_users(username, isOP)");
+  rc = sqlite3_declare_vtab(
+      db, "CREATE TABLE comdb2_users(username, isOP, "
+          "authentication_count INTEGER HIDDEN)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -156,6 +160,10 @@ static int systblUsersColumn(
       sqlite3_result_text(ctx,
         YESNO(!bdb_tbl_op_access_get(NULL, NULL, 0, "", user, &bdberr)),
         -1, NULL);
+      break;
+    }
+    case STUSER_AUTHENTICATION_COUNT: {
+      sqlite3_result_int64(ctx, get_user_authentication_count(user));
       break;
     }
   }
