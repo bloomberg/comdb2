@@ -75,7 +75,8 @@ configure_file(${BERK_DIST}/gen_inc.awk dist/gen_inc.awk COPYONLY)
 configure_file(${BERK_DIST}/template/rec_ctemp dist/template/rec_ctemp COPYONLY)
 add_custom_command(
   OUTPUT llog_auto.c llog_auto.h llog_ext.h
-  DEPENDS llog.src
+  DEPENDS llog.src ${BERK_DIST}/genrec.sh ${BERK_DIST}/gen_rec.awk
+          ${BERK_DIST}/geninc.sh ${BERK_DIST}/gen_inc.awk
   COMMAND dist/genrec.sh ${CMAKE_CURRENT_SOURCE_DIR}/llog.src llog_auto.c llog_auto.h rec_llog
   COMMAND dist/geninc.sh llog llog_ext.h llog_auto.c
 )

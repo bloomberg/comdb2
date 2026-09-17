@@ -3135,12 +3135,13 @@ __txn_activekids(dbenv, rectype, txnp)
  *	Force an abort record into the log if the commit record
  *	failed to get to disk.
  *
- * PUBLIC: int __txn_force_abort __P((DB_ENV *, u_int8_t *));
+ * PUBLIC: int __txn_force_abort __P((DB_ENV *, u_int8_t *, u_int32_t *));
  */
 int
-__txn_force_abort(dbenv, buffer)
+__txn_force_abort(dbenv, buffer, new_chksump)
 	DB_ENV *dbenv;
 	u_int8_t *buffer;
+	u_int32_t *new_chksump;	/* Rewritten record's checksum, or NULL. */
 {
 	DB_CIPHER *db_cipher;
 	HDR *hdr;
@@ -3165,9 +3166,9 @@ __txn_force_abort(dbenv, buffer)
 
 	u_int32_t rectype = 0;
 	LOGCOPY_32(&rectype, buffer + hdrsize);
-	int utxnid_logged = normalize_rectype(&rectype);
 
-	offset = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + (utxnid_logged ? sizeof(u_int64_t) : 0);
+	/* opcode is the first field after the common prefix. */
+	offset = __rectype_prefix_len(rectype);
 	if (CRYPTO_ON(dbenv)) {
 		key = db_cipher->mac_key;
 		sum_len = DB_MAC_KEY;
@@ -3189,6 +3190,10 @@ __txn_force_abort(dbenv, buffer)
 
 	__db_chksum(buffer + hdrsize, rec_len, key, chksum);
 	memcpy(buffer + SSZ(HDR, chksum), &chksum, sum_len);
+
+	/* The rewrite changed the checksum; the chain needs the new one. */
+	if (new_chksump != NULL)
+		memcpy(new_chksump, chksum, sizeof(*new_chksump));
 
 	return (0);
 }
