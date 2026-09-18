@@ -37,6 +37,7 @@
 #include "reqlog.h"
 
 #include <disttxn.h>
+#include <crc32c.h>
 
 int gbl_max_sc_lists = 10000;
 
@@ -136,6 +137,38 @@ static void _free_participants(osql_sess_t *sess)
     }
 }
 
+/*
+ * The 32-bit id comdb2_locks.client_id carries, so a lock joins back to the
+ * session that took it. A hash, so the join is diagnostic, not exact.
+ */
+uint32_t osql_sess_client_id(unsigned long long rqid, uuid_t uuid)
+{
+    uint32_t id;
+
+    if (rqid == OSQL_RQID_USE_UUID)
+        id = crc32c((const uint8_t *)uuid, sizeof(uuid_t));
+    else
+        id = crc32c((const uint8_t *)&rqid, sizeof(rqid));
+    return id ? id : 1; /* 0 means unknown on the lock */
+}
+
+/* Latch who is driving this write. Set-once: the collector reads it without the
+ * session lock, so the pointer must not be replaced while the session lives. */
+void osql_sess_set_clientinfo(osql_sess_t *sess, const char *taskname, int pid)
+{
+    if (taskname != NULL && sess->clnt_taskname == NULL)
+        sess->clnt_taskname = strdup(taskname);
+    sess->clnt_pid = pid;
+}
+
+/* Latch the statement being applied. Tracks the most recent, so a concurrent
+ * collector can read a mix of two -- benign, the column is diagnostic. */
+void osql_sess_set_fingerprint(osql_sess_t *sess, const unsigned char *fingerprint)
+{
+    memcpy(sess->fingerprint, fingerprint, sizeof(sess->fingerprint));
+    sess->have_fingerprint = 1;
+}
+
 static void _destroy_schema_changes(osql_sess_t *sess);
 
 static void _destroy_session(osql_sess_t **psess)
@@ -164,6 +197,10 @@ static void _destroy_session(osql_sess_t **psess)
     if (sess->dist_txnid) {
         free(sess->dist_txnid);
         sess->dist_txnid = NULL;
+    }
+    if (sess->clnt_taskname) {
+        free(sess->clnt_taskname);
+        sess->clnt_taskname = NULL;
     }
 #ifndef NDEBUG
       memset(sess, 0xdb, sizeof(osql_sess_t) + sizeof(sess_impl_t));
@@ -606,6 +643,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
+    sess->client_id = osql_sess_client_id(rqid, uuid);
     sess->type = type;
     sess->target_host = intern(host);
     sess->sess_startus = comdb2_time_epochus();

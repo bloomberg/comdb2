@@ -75,6 +75,13 @@ int osql_send_fingerprint(const char *host, unsigned long long rqid, uuid_t uuid
                           int type);
 
 /**
+ * Send CLIENTINFO op
+ * Names the client (taskname, pid) for comdb2_active_osqls on the master.
+ */
+int osql_send_clientinfo(const char *host, unsigned long long rqid, uuid_t uuid, const char *taskname, int pid,
+                         int type);
+
+/**
  * Send INDEX op
  * It handles remote/local connectivity
  *
