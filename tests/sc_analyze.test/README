@@ -1,0 +1,15 @@
+Statistics are collected for indexes built by a schema change, before that
+schema change commits (see docs/design/atomic-index-stats.md).
+
+Covers:
+  - CREATE INDEX populates sqlite_stat1 with no explicit ANALYZE
+  - those statistics are visible on every node, not just the master
+  - ALTER TABLE adding an index does the same, without disturbing the
+    statistics of indexes it did not rebuild
+  - altering an index definition refreshes its statistics
+  - a datacopy-driven rebuild does not lose existing statistics
+  - DROP INDEX does not resurrect statistics
+  - the analyze_new_indexes tunable disables the behavior
+
+Runs standalone or against a cluster; the per-node checks degrade to a
+single-host check when there is only one node.

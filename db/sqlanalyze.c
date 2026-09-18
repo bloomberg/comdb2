@@ -113,6 +113,7 @@ typedef struct index_descriptor {
     struct dbtable *tbl;
     int ix;
     int sampling_pct;
+    int sc_analyze; /* schema change analyzing the table it just built */
 } index_descriptor_t;
 
 /* table-descriptor */
@@ -123,6 +124,7 @@ struct table_descriptor {
     COMDB2BUF *sb;
     int scale;
     int override_llmeta;
+    int sc_analyze; /* schema change analyzing the table it just built */
     index_descriptor_t index[MAXINDEX];
     struct user current_user;
     void *appdata;
@@ -276,8 +278,8 @@ static int sample_index_int(index_descriptor_t *ix_des)
     strncpy0(s_ix->name, tbl->tablename, sizeof(s_ix->name));
 
     /* ask bdb to put a summary of this into a temp-table */
-    rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &sampler,
-                             &n_sampled_recs, &n_recs, &bdberr);
+    rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &sampler, &n_sampled_recs, &n_recs, ix_des->sc_analyze,
+                             &bdberr);
 
     /* failed */
     if (rc) {
@@ -373,8 +375,12 @@ static int wait_for_index(index_descriptor_t *ix_des)
 }
 
 /* sample all indexes in this table */
-static int sample_indexes(index_descriptor_t *indexes, struct sqlclntstate *client, 
-                          struct dbtable *tbl, int sampling_pct, COMDB2BUF *sb)
+/* ixmask, when non-NULL, selects which indexes to sample; it must have
+ * tbl->nix entries.  Unsampled indexes are left with an empty name so
+ * find_sampled_index() will not match them and their cursors fall through to
+ * the real btree. */
+static int sample_indexes(index_descriptor_t *indexes, struct sqlclntstate *client, struct dbtable *tbl,
+                          int sampling_pct, COMDB2BUF *sb, int sc_analyze, const char *ixmask)
 {
     int i;
     int err = 0;
@@ -394,11 +400,16 @@ static int sample_indexes(index_descriptor_t *indexes, struct sqlclntstate *clie
     for (i = 0; i < client->n_cmp_idx; i++) {
         /* prepare index descriptor */
         ix_des = &indexes[i];
+        if (ixmask && !ixmask[i]) {
+            ix_des->comp_state = SAMPLING_COMPLETE;
+            continue;
+        }
         ix_des->comp_state = SAMPLING_STARTUP;
         ix_des->s_ix = &client->sampled_idx_tbl[i];
         ix_des->tbl = tbl;
         ix_des->ix = i;
         ix_des->sampling_pct = sampling_pct;
+        ix_des->sc_analyze = sc_analyze;
 
         /* start an index sampling thread */
         dispatch_sample_index_thread(ix_des);
@@ -406,6 +417,8 @@ static int sample_indexes(index_descriptor_t *indexes, struct sqlclntstate *clie
 
     /* wait for them to complete */
     for (i = 0; i < client->n_cmp_idx; i++) {
+        if (ixmask && !ixmask[i])
+            continue;
         wait_for_index(&indexes[i]);
         if (SAMPLING_COMPLETE != indexes[i].comp_state)
             err = 1;
@@ -715,18 +728,17 @@ extern __thread int have_views_lk;
 extern int gbl_debug_sleep_in_rollout;
 #endif
 
-/* NOTE: this is part of a transaction that caller should set by calling begin */
-int analyze_regular_table(const char *tablename, table_descriptor_t *td,
+/* NOTE: this is part of a transaction that caller should set by calling begin
+ *
+ * 'table' is passed explicitly rather than looked up so that the schema-change
+ * inline analyze can run against a pre-commit newdb, which is not yet in
+ * thedb->db_hash. */
+int analyze_table_dbtable(struct dbtable *table, const char *tablename, table_descriptor_t *td,
                           struct sqlclntstate *clnt, struct errstat *err)
 {
     int rc = 0;
     int sampled_table = 0;
     char sqltablename[MAXTABLELEN];
-    struct dbtable *table = get_dbtable_by_name(tablename);
-    if (!table) {
-        cdb2buf_printf(td->sb, "?Cannot find table '%s'\n", tablename);
-        return -1;
-    }
 
     /* an sqlite engine will always use sqlalias name */
     if (table->sqlaliasname)
@@ -770,7 +782,7 @@ int analyze_regular_table(const char *tablename, table_descriptor_t *td,
         }
         logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", sqltablename, td->scale);
         sampled_table = 1;
-        rc = sample_indexes(td->index, clnt, table, td->scale, td->sb);
+        rc = sample_indexes(td->index, clnt, table, td->scale, td->sb, td->sc_analyze, NULL /* all indexes */);
         if (rc) {
             errstat_set_rcstrf(err, rc, "Sampling table '%s'", sqltablename);
             goto err;
@@ -800,6 +812,16 @@ err:
         cleanup_sampled_indices(clnt);
     }
     return rc;
+}
+
+int analyze_regular_table(const char *tablename, table_descriptor_t *td, struct sqlclntstate *clnt, struct errstat *err)
+{
+    struct dbtable *table = get_dbtable_by_name(tablename);
+    if (!table) {
+        cdb2buf_printf(td->sb, "?Cannot find table '%s'\n", tablename);
+        return -1;
+    }
+    return analyze_table_dbtable(table, tablename, td, clnt, err);
 }
 
 int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt,
@@ -1424,6 +1446,230 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
         sqlite3_free(sql);
         sql = NULL;
     }
+}
+
+/* Collect statistics for indexes built by a schema change, before it commits.
+ *
+ * See docs/design/atomic-index-stats.md.  The short version: a newly built
+ * index starts with default statistics, so the planner can pick bad plans
+ * until some later ANALYZE runs.  Analyzing here -- and committing before
+ * finalize -- means the stats transaction replicates ahead of the schema
+ * change, so no node ever sees the new index without them.
+ */
+int gbl_analyze_new_indexes = 1;
+int gbl_sc_analyze_threads = 2;
+
+#define SC_ANALYZE_POOL "scanalyze"
+
+/* new_ix has newdb->nix entries; a non-zero entry marks an index this schema
+ * change built.  The caller determines that from the schema-change plan, which
+ * is not visible here.
+ *
+ * Only those indexes are analyzed.  Analyzing the whole table would be wrong:
+ * in a planned schema change the reused indexes have no data in newdb (their
+ * files are adopted by pointer swap at finalize), so they would sample empty,
+ * and the whole-table path would first move every existing stat row aside to
+ * cdb2.<tbl>.sav -- destroying good statistics for every index we did not
+ * rebuild. */
+int analyze_new_indexes(struct dbtable *newdb, const char *new_ix)
+{
+    struct sqlclntstate clnt;
+    table_descriptor_t td = {0};
+    master_entry_t *ents = NULL;
+    struct dbtable *dbs[3];
+    struct dbtable *stat1, *stat4;
+    COMDB2BUF *sb = NULL;
+    int nents = 0, ndbs = 0, scale, rc = 0;
+    int clnt_started = 0, in_tran = 0, sampled = 0, nanalyzed = 0;
+
+    if (!gbl_analyze_new_indexes || gbl_is_physical_replicant) {
+        ctrace("%s: skip (tunable=%d physrep=%d)\n", __func__, gbl_analyze_new_indexes, gbl_is_physical_replicant);
+        return 0;
+    }
+
+    if (!newdb)
+        return 0;
+
+    /* stat1 is required; stat4 is optional */
+    stat1 = get_dbtable_by_name("sqlite_stat1");
+    if (!stat1) {
+        logmsg(LOGMSG_INFO, "%s: no sqlite_stat1, skipping analyze of new indexes on %s\n", __func__, newdb->tablename);
+        ctrace("%s: skip %s (no sqlite_stat1)\n", __func__, newdb->tablename);
+        return 0;
+    }
+    stat4 = get_dbtable_by_name("sqlite_stat4");
+
+    /* Analyze is globally serialized (shared sampling_threshold, abort flag,
+     * thread budgets).  If another analyze holds it, skip rather than fail the
+     * schema change -- stats are an optimization, the SC is not. */
+    if (XCHANGE32(analyze_running_flag, 1) == 1) {
+        logmsg(LOGMSG_WARN,
+               "%s: analyze already running, skipping stats for new indexes "
+               "on %s\n",
+               __func__, newdb->tablename);
+        ctrace("%s: skip %s (analyze already running)\n", __func__, newdb->tablename);
+        return 0;
+    }
+
+    /* Coverage: whatever this table is configured for, else the default. */
+    scale = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
+    get_saved_scale(newdb->tablename, &scale);
+    if (scale <= 0) {
+        logmsg(LOGMSG_INFO, "%s: coverage 0 for %s, skipping\n", __func__, newdb->tablename);
+        ctrace("%s: skip %s (coverage 0)\n", __func__, newdb->tablename);
+        goto done;
+    }
+
+    /* newdb has no sqlite_master record yet unless sql_syntax_check happened
+     * to run for it, so build one.  Name its indexes the way they will be
+     * named once the schema change commits (no ".NEW." prefix), so the stats
+     * we write are keyed the way the planner will look them up.  Renaming
+     * afterwards is not an option: the rows would be updated inside the same
+     * osql transaction that inserted them, which osql cannot do. */
+    if (create_sqlmaster_record_flags(newdb, NULL, 1 /* strip_new_prefix */)) {
+        logmsg(LOGMSG_ERROR, "%s: create_sqlmaster_record failed for %s\n", __func__, newdb->tablename);
+        rc = -1;
+        goto done;
+    }
+
+    /* Exactly the tables this transaction touches: newdb (scanned) and the
+     * stat tables (written).  No views -- they may reference tables outside
+     * this set. */
+    dbs[ndbs++] = newdb;
+    dbs[ndbs++] = stat1;
+    if (stat4)
+        dbs[ndbs++] = stat4;
+
+    ents = create_master_entry_array(dbs, ndbs, NULL, &nents);
+    if (!ents) {
+        logmsg(LOGMSG_ERROR, "%s: create_master_entry_array failed for %s\n", __func__, newdb->tablename);
+        rc = -1;
+        goto done;
+    }
+
+    /* Sampling reads the index files directly off disk, so pages the schema
+     * change just wrote have to be flushed first -- otherwise we sample an
+     * empty index and produce empty stats.  Same reason analyze_table() does
+     * this before dispatching. */
+    if (sampled_tables_enabled)
+        flush_db();
+
+    sb = cdb2buf_open(fileno(stdout), 0);
+
+    start_internal_sql_clnt(&clnt, 1 /* bypass_auth */);
+    clnt_started = 1;
+    clnt.dbtran.mode = TRANLEVEL_RECOM;
+    clnt.osql_max_trans = 0; /* allow large transactions */
+    clnt.admin = 1;
+    clnt.current_user.bypass_auth = 1;
+    clnt.sc_analyze = 1; /* exempt from the abort-analyze-during-SC guards */
+
+    /* Run on a dedicated pool so no client-facing thread is ever loaded with
+     * our rootpages. */
+    clnt.pPool = get_named_sql_pool(SC_ANALYZE_POOL, 1, gbl_sc_analyze_threads);
+
+    /* Rootpages give sqlite newdb's schema; custom_dbtable makes cursors
+     * resolve to newdb's storage instead of the live table. */
+    clnt.custom_rootpages = ents;
+    clnt.custom_rootpage_nentries = nents;
+    clnt.custom_dbtable = newdb;
+
+    td.sb = sb;
+    td.scale = scale;
+    td.override_llmeta = 1; /* scale already resolved above */
+    td.sc_analyze = 1;
+    strncpy0(td.table, newdb->tablename, sizeof(td.table));
+
+    logmsg(LOGMSG_INFO, "%s: analyzing new indexes on %s at %d%% coverage\n", __func__, newdb->tablename, scale);
+
+    rc = run_internal_sql_clnt(&clnt, "BEGIN");
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: BEGIN failed for %s rc %d\n", __func__, newdb->tablename, rc);
+        goto done;
+    }
+    in_tran = 1;
+
+    if (sampled_tables_enabled) {
+        rc = sample_indexes(td.index, &clnt, newdb, scale, sb, 1 /* sc_analyze */, new_ix);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: sampling failed for %s\n", __func__, newdb->tablename);
+            goto done;
+        }
+        sampled = 1;
+    }
+
+    /* Analyze each new index by name.  sqlite scopes both the delete and the
+     * insert to that index (openStatTable with a "idx" where-clause), so other
+     * indexes' statistics are left untouched. */
+    clnt.is_analyze = 1;
+    for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
+        struct schema *ixs = newdb->schema->ix[ixnum];
+        char *sql;
+
+        if (!new_ix[ixnum])
+            continue;
+        if (!ixs || !ixs->sqlitetag)
+            continue;
+
+        sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", ixs->sqlitetag);
+        rc = run_internal_sql_clnt(&clnt, sql);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: '%s' failed rc %d\n", __func__, sql, rc);
+        sqlite3_free(sql);
+        if (rc) {
+            clnt.is_analyze = 0;
+            goto done;
+        }
+        nanalyzed++;
+    }
+    clnt.is_analyze = 0;
+
+    if (nanalyzed == 0) {
+        logmsg(LOGMSG_INFO, "%s: nothing to analyze on %s\n", __func__, newdb->tablename);
+        goto done;
+    }
+
+    rc = run_internal_sql_clnt(&clnt, "COMMIT");
+    in_tran = 0;
+    if (rc) {
+        osql_unregister_sqlthr(&clnt);
+        logmsg(LOGMSG_ERROR, "%s: COMMIT failed for %s rc %d\n", __func__, newdb->tablename, rc);
+        goto done;
+    }
+
+    logmsg(LOGMSG_INFO, "%s: stats committed for %d new index(es) on %s\n", __func__, nanalyzed, newdb->tablename);
+    ctrace("%s: committed stats for %d new index(es) on %s\n", __func__, nanalyzed, newdb->tablename);
+
+done:
+    if (sampled)
+        cleanup_sampled_indices(&clnt);
+    if (in_tran) {
+        if (run_internal_sql_clnt(&clnt, "ROLLBACK"))
+            osql_unregister_sqlthr(&clnt);
+    }
+    if (clnt_started) {
+        /* Drop the custom view before teardown so nothing can reload it, and
+         * before the entries themselves are freed. */
+        clnt.custom_rootpages = NULL;
+        clnt.custom_rootpage_nentries = 0;
+        clnt.custom_dbtable = NULL;
+        end_internal_sql_clnt(&clnt);
+    }
+    if (ents)
+        destroy_sqlite_master(ents, nents);
+    if (sb) {
+        cdb2buf_flush(sb);
+        cdb2buf_free(sb);
+    }
+    analyze_running_flag = 0;
+
+    /* Never fail the schema change over statistics. */
+    if (rc)
+        ctrace("%s: %s finished with rc %d (no fresh stats)\n", __func__, newdb->tablename, rc);
+    if (rc)
+        logmsg(LOGMSG_WARN, "%s: proceeding with schema change on %s without fresh stats\n", __func__,
+               newdb->tablename);
+    return 0;
 }
 
 int do_analyze(char *tbl, int percent)

@@ -28,6 +28,7 @@
 #include "sc_logic.h"
 #include "sc_records.h"
 #include "analyze.h"
+#include <ctrace.h>
 #include "comdb2_atomic.h"
 #include "views.h"
 #include "macc_glue.h"
@@ -363,6 +364,44 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
             add_idx_stats(newdb->tablename, namebuf2, namebuf1);
         }
     }
+}
+
+/* Mark the indexes this schema change built, and gather statistics for them
+ * before we finalize.
+ *
+ * ix_plan[ixnum] == -1 means the index was built rather than reused, which
+ * covers CREATE INDEX, ALTER ADD INDEX, REBUILD INDEX, and any altered
+ * definition (cmp_index_int rejects an inexact match, forcing a rebuild).
+ * Reused indexes are deliberately excluded: they hold no data in newdb yet --
+ * their files are adopted by pointer swap at finalize -- and their existing
+ * statistics are still valid.
+ *
+ * Without a plan we cannot tell which indexes are new, so we do not guess.
+ */
+static void analyze_sc_new_indexes(struct dbtable *newdb)
+{
+    char new_ix[MAXINDEX] = {0};
+    int nnew = 0;
+
+    if (!newdb || newdb->nix <= 0 || newdb->nix > MAXINDEX)
+        return;
+
+    if (!newdb->plan) {
+        ctrace("%s: skip %s (no schema-change plan)\n", __func__, newdb->tablename);
+        return;
+    }
+
+    for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
+        if (newdb->plan->ix_plan[ixnum] == -1) {
+            new_ix[ixnum] = 1;
+            nnew++;
+        }
+    }
+
+    if (nnew)
+        analyze_new_indexes(newdb, new_ix);
+    else
+        ctrace("%s: skip %s (no indexes were built)\n", __func__, newdb->tablename);
 }
 
 static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
@@ -758,6 +797,14 @@ errout:
     /* check for rename outside of taking schema lock */
     /* handle renaming sqlite_stat1 entries for idx */
     check_for_idx_rename(s->newdb, s->db);
+
+    /* Gather stats for any index we just built, while we still hold the
+     * pre-commit newdb.  This commits its own transaction, which -- because we
+     * have not finalized yet -- replicates ahead of the schema change, so no
+     * replicant can see the new index before its stats.  Skipped on resume;
+     * never fails the schema change. */
+    if (!s->resume)
+        analyze_sc_new_indexes(s->newdb);
 
     return SC_OK;
 }

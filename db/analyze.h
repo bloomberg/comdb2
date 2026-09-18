@@ -125,6 +125,21 @@ void cleanup_stats(COMDB2BUF *sb);
 
 int do_analyze(char *tbl, int percent);
 
+/**
+ * Collect statistics for indexes built by an in-flight schema change, using
+ * the pre-commit newdb.  Must be called after the records are converted and
+ * before the schema change is finalized, so the stats transaction commits --
+ * and therefore replicates -- ahead of the schema change itself.
+ *
+ * new_ix has newdb->nix entries; a non-zero entry marks an index that this
+ * schema change built.  Only those are analyzed -- reused indexes hold no data
+ * in newdb and their existing statistics remain valid.
+ *
+ * Never fails the schema change: returns 0 even when stats could not be
+ * collected.
+ */
+int analyze_new_indexes(struct dbtable *newdb, const char *new_ix);
+
 /* Get analyze_abort_requested variable state */
 int get_analyze_abort_requested();
 
