@@ -739,6 +739,15 @@ struct sqlclntstate {
        the deferred-seek skip all see one consistent value for the whole run
        (immune to the tunable being toggled mid-query). */
     int recover_deadlock_sync_dta;
+
+    /* Set once a sort's in-loop check has dropped this session's page locks.
+       The sort acquires none itself, so a second release inside the same sort
+       would cost a recover_deadlock and free nothing.  Cleared when each sort's
+       window opens, since a sort nested in a loop (a correlated subquery
+       re-running it per outer row) reacquires locks in between. */
+    int sort_pagelocks_released;
+    /* Rate-limits the waiter probe made from inside the sort. */
+    int64_t sort_probe_last_us;
     /* Per-request snapshot of gbl_debug_recover_deadlock_skip_sync_dta (test
        only): when set (and the feature above is on) the non-SI lock release
        still happens but the pre-release sync and the deferred-seek skip are

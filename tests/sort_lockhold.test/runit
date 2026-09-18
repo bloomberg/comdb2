@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# See README.  In short: a sort is a single VDBE instruction with no cursor
+# moves inside it, so nothing can release the page locks a reader is holding
+# until the sort finishes.  A MULTI-INDEX OR plan leaves an index cursor open
+# across the sort, so those locks are real; sort_release_check_interval makes
+# the sorter's merge loop notice a waiter and release.
+#
+# The writer starts exactly when the sort's window opens, by polling the
+# sorter_rewinds_started/finished counters, and the sort is made slow with
+# tying ORDER BY columns.  README explains why both are necessary.
+
+dbnm=$1
+CDB2SQL="${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbnm default"
+set_tunable() { $CDB2SQL "put tunable '$1' $2" >/dev/null 2>&1; }
+
+ROWS=${SORT_ROWS:-300000}
+TIECOLS=${SORT_TIECOLS:-192}
+CHUNK=${SORT_CHUNK:-25000}
+MIN_SORT_MS=${SORT_MIN_MS:-2000}   # below this the window is too short to test
+LATCH_TIMEOUT=${SORT_LATCH_TIMEOUT:-120}  # seconds to wait for a sort to start
+
+LOG="$TESTDIR/logs/$dbnm.db"
+[[ -f "$LOG" ]] || LOG=$(ls $TESTDIR/logs/*.db 2>/dev/null | head -1)
+
+# Keep the sort in memory.  bUsePMA==0 is the case that holds locks: the whole
+# quicksort runs as one uninterrupted call.  Spilling instead moves the sorting
+# into vdbeSorterFlushPMA during OP_SorterInsert, interleaved with the scan's
+# cursor moves, where locks already get released.
+set_tunable sqlsortermem 2000000000
+set_tunable debug_trace_sorter_rewind 1
+
+col_defs=""; col_names=""; col_vals=""; order_by=""
+for i in $(seq 1 $TIECOLS); do
+    col_defs="${col_defs}c$i int, "
+    col_names="${col_names}c$i,"
+    col_vals="${col_vals}7,"
+    order_by="${order_by}c$i,"
+done
+order_by="${order_by}v"
+
+$CDB2SQL "drop table if exists t" >/dev/null 2>&1
+$CDB2SQL "create table t (k int, a int, b int, v int, ${col_defs}unique(k), index ixa(a), index ixb(b))" >/dev/null
+
+lo=1
+while [[ $lo -le $ROWS ]]; do
+    hi=$(( lo + CHUNK - 1 )); [[ $hi -gt $ROWS ]] && hi=$ROWS
+    # a=1 and b=1 pick disjoint quarters, so the OR matches half the table
+    $CDB2SQL "insert into t(k,a,b,v,${col_names%,}) select value, value % 4, (value+2) % 4, (value*7919)%100000007, ${col_vals%,} from generate_series($lo, $hi)" >/dev/null 2>&1 \
+        || { echo "load chunk starting at $lo failed"; exit 1; }
+    lo=$(( hi + 1 ))
+done
+cnt=$($CDB2SQL --tabs "select count(*) from t")
+[[ "$cnt" == "$ROWS" ]] || { echo "setup failed: $cnt rows, expected $ROWS"; exit 1; }
+echo "loaded $cnt rows, $(( ROWS / 2 )) matching the OR, $TIECOLS tying columns"
+
+Q="select k from t where a = 1 or b = 1 order by $order_by"
+
+# Guard the plan: if anything ever makes an index satisfy the ORDER BY, the sort
+# disappears and this test would keep passing while testing nothing.
+$CDB2SQL "explain query plan $Q" 2>/dev/null | grep -q "MULTI-INDEX OR" \
+    || { echo "FAILED: plan is no longer a MULTI-INDEX OR"; exit 1; }
+$CDB2SQL "explain query plan $Q" 2>/dev/null | grep -q "USE TEMP B-TREE FOR ORDER BY" \
+    || { echo "FAILED: the ORDER BY no longer needs a sort"; exit 1; }
+
+inflight() {
+    $CDB2SQL --tabs "select (select value from comdb2_metrics where name='sorter_rewinds_started') - (select value from comdb2_metrics where name='sorter_rewinds_finished')" 2>/dev/null
+}
+
+# Deletes a row from the tail of the ixb branch -- the last pages the scan
+# touched, so the ones the reader is still holding when the sort starts.
+targets=($($CDB2SQL --tabs "select k from t where b = 1 order by k desc limit 4"))
+[[ ${#targets[@]} -eq 4 ]] \
+    || { echo "setup failed: wanted 4 delete targets, got ${#targets[@]}"; exit 1; }
+
+failed=0
+arm() {
+    local interval=$1 target=$2 expect=$3 label=$4
+    set_tunable sort_release_check_interval $interval
+
+    ( $CDB2SQL "$Q" >/dev/null 2>&1 ) &
+    local qpid=$! latched=0
+    local deadline=$(( SECONDS + LATCH_TIMEOUT ))
+    while [[ $SECONDS -lt $deadline ]]; do
+        if [[ "$(inflight)" == "1" ]]; then latched=1; break; fi
+    done
+    if [[ $latched != 1 ]]; then
+        echo "$label: FAILED -- no sort entered its blocking window within ${LATCH_TIMEOUT}s"
+        wait $qpid; failed=1; return
+    fi
+
+    local w0 w1 elapsed drc
+    w0=$(date +%s.%N)
+    $CDB2SQL "delete from t where k = $target" >/dev/null 2>&1
+    drc=$?
+    w1=$(date +%s.%N)
+    wait $qpid
+    elapsed=$(awk -v a=$w0 -v b=$w1 'BEGIN{printf "%.2f", b-a}')
+
+    local line ms pma
+    line=$(grep "sorter rewind:" "$LOG" 2>/dev/null | tail -1)
+    ms=$(echo "$line" | sed -n 's/.*rewind: \([0-9.]*\)ms.*/\1/p')
+    pma=$(echo "$line" | sed -n 's/.*bUsePMA=\([0-9]*\).*/\1/p')
+
+    echo "$label: writer waited ${elapsed}s, sort took ${ms}ms (bUsePMA=$pma)"
+
+    [[ $drc == 0 ]] \
+        || { echo "  FAILED: the delete itself errored (rc=$drc), so it never contended"; failed=1; return; }
+    [[ -n "$ms" ]] || { echo "  FAILED: no sorter timing logged"; failed=1; return; }
+    [[ "$pma" == "0" ]] || { echo "  FAILED: sorter spilled, wrong path under test"; failed=1; return; }
+    awk -v m="$ms" -v n="$MIN_SORT_MS" 'BEGIN{exit !(m>=n)}' \
+        || { echo "  FAILED: sort of ${ms}ms is too short to be a meaningful window"; failed=1; return; }
+
+    if [[ "$expect" == "blocked" ]]; then
+        # held for most of the sort; half of it is slack for when the writer landed
+        awk -v e="$elapsed" -v m="$ms" 'BEGIN{exit !(e*1000 >= m*0.5)}' \
+            && echo "  as expected: held for most of the sort" \
+            || { echo "  FAILED: expected to be blocked for the sort, was not"; failed=1; }
+    else
+        awk -v e="$elapsed" 'BEGIN{exit !(e < 1.0)}' \
+            && echo "  as expected: released promptly, no waiting out the sort" \
+            || { echo "  FAILED: expected a prompt release, waited ${elapsed}s"; failed=1; }
+    fi
+}
+
+echo
+echo "=== without the fix: nothing can release during the sort ==="
+arm 0 "${targets[0]}" blocked "check disabled (interval=0)"
+echo
+echo "=== with the fix: the merge loop notices the waiter and releases ==="
+arm 1024 "${targets[1]}" prompt "check enabled  (interval=1024)"
+echo
+echo "=== repeat both, to show it is not a one-off ==="
+arm 0 "${targets[2]}" blocked "check disabled (interval=0)"
+arm 1024 "${targets[3]}" prompt "check enabled  (interval=1024)"
+
+set_tunable sort_release_check_interval 1024
+set_tunable debug_trace_sorter_rewind 0
+echo
+[[ $failed == 0 ]] || { echo "FAILED"; exit 1; }
+echo "Success"
+exit 0

@@ -3427,6 +3427,25 @@ int gbl_pagelock_release_interval_ms = 100;
    forever -- a long scan can then starve a schema change indefinitely). */
 int gbl_pagelock_release_max_wait_ms = 60000;
 int gbl_debug_sleep_in_cursor_move = 0;           /* ms to sleep on each cursor move (testing only) */
+
+/* log the wall time spent in sqlite3VdbeSorterRewind (testing only).  Query wall
+   time cannot stand in for it: with ORDER BY no row is returned until the sort
+   completes, so end-to-end timings confound the sort with lost pipelining. */
+int gbl_debug_trace_sorter_rewind = 0;
+
+/* Published so a session can tell, from SQL, when a sort is inside its blocking
+   window: comdb2_metrics' sorter_rewinds_started minus sorter_rewinds_finished
+   is how many sorts are in that window right now. */
+uint64_t gbl_sorter_rewinds_started = 0;
+uint64_t gbl_sorter_rewinds_finished = 0;
+
+/* Comparisons between waiter checks inside the sorter's merge loop, counted
+   across the whole sort rather than per merge; 0 disables. */
+int gbl_sort_release_check_interval = 1024;
+/* Minimum gap between waiter probes made from inside a sort.  The probe takes a
+   locker-partition lock, so it is not free; the clock read that skips it is. */
+int gbl_sort_release_probe_interval_us = 1000;
+
 int gbl_recover_deadlock_sync_dta = 1;            /* sync index/data cursors before lock release */
 int gbl_debug_recover_deadlock_skip_sync_dta = 0; /* test only: release but skip the
                                                      dta sync, to reproduce the
@@ -3691,6 +3710,80 @@ done:
 }
 
 /* Release pagelocks if the replicant is waiting on this sql thread */
+/* Called when a sort's blocking window opens. */
+void comdb2_sort_release_begin(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd || !thd->clnt)
+        return;
+    thd->clnt->sort_pagelocks_released = 0;
+    thd->clnt->sort_probe_last_us = 0;
+}
+
+/* Called from inside the sorter's merge loop, every
+   gbl_sort_release_check_interval comparisons.
+
+   A sort is a single VDBE instruction, so while it runs nothing else can
+   release this session's page locks: cursor_move_postop needs a cursor move,
+   and sql_tick's only call sites are cursor moves.  A writer that wants a page
+   we are still holding therefore waits out the entire sort -- measured at 29.5s
+   on a 1M-row sort, with the writer blocked for all of it.
+
+   Checking from inside the loop rather than once before it matters twice over.
+   The waiter we care about usually arrives *during* the sort, so a probe taken
+   beforehand would not see it; and a sort nested in a loop (a correlated
+   subquery re-runs it per outer row) must not pay a release per iteration when
+   nobody is waiting.
+
+   Releasing here is safe: the merge walks in-memory records and touches no
+   btree, and the read phase is already over -- every matched row is in the
+   sorter before the sort starts. */
+void comdb2_sort_release_check(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd) /* e.g. a sorter worker thread, which has no sql_thread */
+        return;
+    struct sqlclntstate *clnt = thd->clnt;
+    if (!clnt || !clnt->dbtran.cursor_tran)
+        return;
+    if (clnt->sort_pagelocks_released)
+        return;
+
+    /* Mirrors cursor_move_postop: waiter checking has to be enabled at all,
+       SNAPISOL repositioning after a release is not handled, SERIAL uses the
+       historical full-release path, and a wanted global write lock needs
+       everything dropped rather than a narrow release. */
+    extern int gbl_locks_check_waiters;
+    if (!gbl_locks_check_waiters)
+        return;
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL)
+        return;
+    if (!clnt->recover_deadlock_sync_dta)
+        return;
+    if (bdb_lock_desired(thedb->bdb_env))
+        return;
+
+    /* Rate-limit the probe itself: it takes a locker-partition lock, while the
+       clock read that skips it is ~14ns. */
+    if (gbl_sort_release_probe_interval_us > 0) {
+        int64_t now = comdb2_time_epochus();
+        if (clnt->sort_probe_last_us && (now - clnt->sort_probe_last_us) < gbl_sort_release_probe_interval_us)
+            return;
+        clnt->sort_probe_last_us = now;
+    }
+
+    if (!bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran))
+        return;
+
+    /* Page locks only, so the curtran and our table read locks survive and a
+       schema change still cannot run inside the window.  Any failure is recorded
+       on the clnt by recover_deadlock and surfaced by the existing
+       check_recover_deadlock() callers; this call site returns into a list merge
+       that has no error path of its own. */
+    release_pagelocks(RLOCKS_REASON_SORT);
+    clnt->sort_pagelocks_released = 1;
+}
+
 static int cursor_move_postop(BtCursor *pCur)
 {
     struct sql_thread *thd = pCur->thd;
