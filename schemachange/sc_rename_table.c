@@ -167,11 +167,28 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto recover_memory;
     }
 
-    /* set table version for the renamed name */
-    rc = table_version_set(tran, newname, db->tableversion + 1);
+    /* Set table version for the renamed name.  The destination name may
+     * carry a tombstone left behind by a previous incarnation that was
+     * dropped or renamed away; that value is already one past anything the
+     * previous incarnation reported, so never go below it -- otherwise we
+     * re-issue version numbers this name has already handed out.  A name
+     * that was never used selects as 0.  finalize_add_table() adopts the
+     * same tombstone when a table is created under a vacated name. */
+    unsigned long long tombstone = 0;
+    rc = bdb_table_version_select(newname, tran, &tombstone, &bdberr);
+    if (rc) {
+        sc_errf(s, "Failed fetching table version for %s bdberr %d\n", newname, bdberr);
+        goto recover_memory;
+    }
+
+    unsigned long long newversion = db->tableversion + 1;
+    if (newversion < tombstone)
+        newversion = tombstone;
+
+    rc = table_version_set(tran, newname, newversion);
     if (rc) {
         sc_errf(s, "Failed to set table version for %s\n", db->tablename);
-        goto tran_error;
+        goto recover_memory;
     }
 
     gbl_sc_commit_count++;
@@ -184,8 +201,12 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     return rc;
 
 recover_memory:
-    /* backout memory changes */
-    rename_db(db, oldname);
+    /* backout memory changes; rename_db took ownership of newname, so put
+     * oldname back before freeing it.  If the backout fails, db->tablename
+     * still references newname -- leak it rather than leave a dangling
+     * pointer behind. */
+    if (rename_db(db, oldname) == 0)
+        free(newname);
     return rc;
 
 tran_error:
