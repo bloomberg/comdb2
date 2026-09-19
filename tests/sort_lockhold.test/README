@@ -1,0 +1,76 @@
+A sort holds page locks that nothing can release, and this covers the fix.
+
+A non-SI reader's page locks are released from cursor_move_postop()
+(db/sqlglue.c), which runs once per BtCursor move.  A sort has no cursor moves
+in it: OP_SorterSort is a single VDBE instruction that calls
+sqlite3VdbeSorterRewind(), and for an in-memory sort the entire quicksort
+happens inside that one call.  sql_tick() cannot help either, because both of
+its call sites are themselves cursor-move paths.  So for as long as the sort
+runs, nothing in the process is able to drop this session's page locks, and a
+writer that wants one of those pages waits out the whole sort.  On a 1M-row
+sort that was measured at 29.5s, with the writer blocked for 29.47s of it in a
+single lock wait.
+
+Whether a page lock survives into the sort at all depends on the plan.  comdb2
+builds with -DSQLITE_ENABLE_EARLY_CURSOR_CLOSE, so sqlite3WhereEnd() normally
+closes each participating cursor as soon as the input scan ends, and comdb2's
+sqlite3BtreeCloseCursor() genuinely drops its page lock there.  That close is
+skipped for a few plan shapes, MULTI-INDEX OR among them.  In the bytecode for
+this test's query the data cursor is closed before the sort but the index
+cursor is not, and it is still parked at the tail of the branch it scanned
+last -- which is why the writer below deletes a row from the tail of the ixb
+branch rather than an arbitrary one.
+
+The fix, sort_release_check_interval, checks for a page-lock waiter from inside
+the sorter's merge loop and does a page-locks-only release there.  The curtran
+is kept, so table read locks survive and a schema change still cannot slip into
+the window.  The check has to be inside the loop rather than once before it,
+for two reasons: the waiter that matters usually arrives *during* the sort, so
+a check made beforehand would see nothing, and a sort nested in a loop (a
+correlated subquery re-runs its sort once per outer row) must not pay a release
+per iteration when nobody is waiting.  Releasing mid-merge is safe because the
+merge walks in-memory records and touches no btree, and because the read phase
+is already over -- every matched row is in the sorter before the sort starts.
+
+Getting a measurable window needed some care.
+
+The writer has to arrive inside the sort, not before or after it.  A sleep
+timed against the query start does not work: the scan ahead of the sort varies
+with load, so the writer lands in the scan (where releases already happen) or
+after the sort has finished.  Instead the server publishes two counters,
+sorter_rewinds_started and sorter_rewinds_finished; the difference is how many
+sorts are inside the blocking window right now.  The writer polls that and
+fires the moment the window opens.
+
+The sort itself has to be slow enough to see.  The lever is not row count: a
+plain int sort runs about 0.36us/row, so even 8M matched rows only reach ~3.6s,
+and going further does not work because sqlsortermem is an int, capping the
+in-memory sort near 2.1GB, past which the sorter spills to a different path.
+Nor is it wide keys -- for a fixed sorter budget what matters is comparison
+cost per byte of record, and string or blob bytes compare at memory bandwidth.
+Measured at 500k matched rows: a plain int key sorts in 0.18s, a 200-char
+string key in 0.26s, a 1MB blob key in 0.47s, but 24 tying int columns take
+2.90s and 96 take 13.81s.  Columns that tie force sqlite3VdbeRecordCompare() to
+decode and compare every field on every comparison, they scale linearly past
+24, and they cost almost nothing to load.  They must come first in the ORDER BY
+and must actually tie: any discriminating column ahead of them short-circuits
+the comparison before it reaches them.
+
+Finally, the reported sort duration comes from the server, via
+debug_trace_sorter_rewind.  Query wall time cannot stand in for it: with ORDER
+BY no row is returned until the sort completes, so an end-to-end timing
+confounds the sort with the pipelining the query gives up.  Attempts to infer
+it by differencing against a baseline query produced negative sort times.
+
+The test runs four arms, alternating the fix off and on twice.  With the check
+disabled the writer is expected to wait out most of the sort; with it enabled,
+to get through in well under a second.  Observed: 7.7s and 7.2s blocked against
+sorts of 7746ms and 7185ms, versus 0.04s twice.
+
+It also guards its own premise, and fails rather than passing vacuously if the
+plan stops being a MULTI-INDEX OR, if the ORDER BY no longer needs a sort (an
+index whose leading columns match it would remove the sorter entirely), if the
+sorter spills to disk, or if the sort comes out too short to be a meaningful
+window.
+
+Knobs: SORT_ROWS, SORT_TIECOLS, SORT_CHUNK, SORT_MIN_MS, SORT_LATCH_TIMEOUT.
