@@ -23,6 +23,7 @@
 #include <memcompare.c>
 #include <zlib.h>
 #include "comdb2.h"
+#include "comdb2uuid.h"
 #include "sql.h"
 #include "bdb_int.h"
 #include "md5.h"
@@ -734,7 +735,7 @@ static void guidFunc(
   UNUSED_PARAMETER(argc);
 
   uuid_t guid;
-  uuid_generate(guid);
+  comdb2uuid(guid);
 
   sqlite3_result_blob(context, (char*)guid, sizeof(uuid_t), SQLITE_TRANSIENT);
 }
@@ -748,7 +749,7 @@ static void guidStrFunc(
   UNUSED_PARAMETER(argc);
 
   uuid_t guid;
-  uuid_generate(guid);
+  comdb2uuid(guid);
 
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid, guid_str);

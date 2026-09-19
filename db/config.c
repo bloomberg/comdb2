@@ -460,7 +460,8 @@ static char *legacy_options[] = {
     "disable_sql_table_replacement 1",
     "track_db_open 0",
     "clear_ufid_on_db_close 1",
-    "get_peer_fqdn 0"
+    "get_peer_fqdn 0",
+    "uuid_v7 0"
 };
 // clang-format on
 
