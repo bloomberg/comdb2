@@ -1908,7 +1908,6 @@ extern int gbl_max_columns_soft_limit;
 extern int gbl_use_plan;
 
 extern int gbl_num_record_converts;
-extern int gbl_num_record_upgrades;
 
 extern int gbl_enable_sql_stmt_caching;
 

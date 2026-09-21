@@ -108,7 +108,6 @@ set(src
   dohsql.c
   dohast.c
   machclass.c
-  osqluprec.c
   macc_glue.c
   legacy.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c

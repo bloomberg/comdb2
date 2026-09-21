@@ -391,9 +391,6 @@ REGISTER_TUNABLE("temptable_recreate_size", "Sets temptable re-create size thres
 REGISTER_TUNABLE("disable_temptable_pool", "Sets 'temptable_limit' to 0.",
                  TUNABLE_BOOLEAN, &gbl_temptable_pool_capacity,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("disable_upgrade_ahead", "Sets 'enable_upgrade_ahead' to 0.",
-                 TUNABLE_BOOLEAN, &gbl_num_record_upgrades,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disallow_portmux_route", "Disables 'allow_portmux_route'",
                  TUNABLE_BOOLEAN, &gbl_pmux_route_enabled,
                  INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
@@ -549,12 +546,6 @@ REGISTER_TUNABLE("enable_tagged_api",
                  "Enables tagged api requests. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_disable_tagged_api, INVERSE_VALUE | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("enable_upgrade_ahead",
-                 "Occasionally update read records to the newest schema "
-                 "version (saves some processing when reading them later). "
-                 "(Default: off)",
-                 TUNABLE_INTEGER, &gbl_num_record_upgrades, READONLY | NOARG,
-                 NULL, NULL, enable_upgrade_ahead_update, NULL);
 REGISTER_TUNABLE("epochms_repts", NULL, TUNABLE_BOOLEAN,
                  &gbl_berkdb_epochms_repts, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
