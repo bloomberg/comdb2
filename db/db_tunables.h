@@ -2583,6 +2583,12 @@ REGISTER_TUNABLE("authz_cache", "Enable per query caching of authorized tables. 
 REGISTER_TUNABLE("authorization_cache_ageout", "Max age of authorization cache (Default: 600 seconds)",
                  TUNABLE_INTEGER, &gbl_authorization_cache_ageout, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("principal_authz_cache_enabled",
+                 "Cache IAM authorization decisions by authenticated principal instead of raw identity, "
+                 "avoiding repeat IAM authorize calls across sessions for the same principal. Uses "
+                 "authorization_cache_ageout for expiry (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_principal_authz_cache_enabled, NOARG, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("iam_usermetric_verbosity", "IAM user metric verbosity [Default: 0 (off)]", TUNABLE_INTEGER,
                  &gbl_iam_verbosity, 0, NULL, NULL, NULL, NULL);
 

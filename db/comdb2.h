@@ -1668,6 +1668,7 @@ extern int gbl_authorization_cache_max;
 extern int gbl_authentication_cache_ageout;
 extern int gbl_authorization_cache_ageout;
 extern int gbl_cache_authz_perms;
+extern int gbl_principal_authz_cache_enabled;
 extern int gbl_iam_verbosity;
 extern int gbl_iam_decision_history;
 extern int gbl_iam_drop_raw_metrics;
