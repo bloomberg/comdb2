@@ -11,7 +11,7 @@ on:
 env:
   REGISTRY: ghcr.io
 
-# Cancelling between the per-arch pushes and the merge would leave untagged digests.
+# Cancelling between the per-arch uploads and the merge would leave untagged digests.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -19,7 +19,13 @@ concurrency:
 jobs:
   # Native runners rather than QEMU, which would take hours to compile Comdb2.
   build:
-    name: Build [${{ matrix.platform }}]
+    name: Build and test [${{ matrix.platform }}]
+
+    services:
+      registry:
+        image: registry:3@sha256:325b4b29b041e82803abeb703e201655e4e23ab83264ec1a7c9ddb0a5b14a6e0
+        ports:
+          - 5000:5000
 
     strategy:
       fail-fast: false
@@ -47,7 +53,9 @@ jobs:
 
       # ghcr.io rejects uppercase names and nothing downstream normalizes case.
       - name: Compute image name
-        run: echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+        run: |
+          echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "LOCAL_IMAGE=localhost:5000/comdb2" >> "$GITHUB_ENV"
 
       # For its labels; org.opencontainers.image.source links the package to the repo.
       - name: Extract image metadata
@@ -59,6 +67,72 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Attestations make the result an image index, which the Docker exporter
+      # cannot represent. Export the complete index and test it via loopback.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: contrib/docker/Dockerfile.dev
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          outputs: type=oci,name=${{ env.IMAGE }},dest=/tmp/image,tar=false,oci-mediatypes=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Install crane from the official release
+        env:
+          CRANE_VERSION: v0.22.1
+          CRANE_X86_64_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+          CRANE_ARM64_SHA256: 898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110
+        run: |
+          case "$(uname -m)" in
+            x86_64)
+              arch=x86_64
+              checksum="$CRANE_X86_64_SHA256"
+              ;;
+            aarch64|arm64)
+              arch=arm64
+              checksum="$CRANE_ARM64_SHA256"
+              ;;
+            *)
+              echo "unsupported runner architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          archive="$RUNNER_TEMP/go-containerregistry.tar.gz"
+          crane_dir="$RUNNER_TEMP/crane"
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+            "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_${arch}.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
+          mkdir -p "$crane_dir"
+          tar --extract --gzip --file "$archive" --directory "$crane_dir" crane
+          "$crane_dir/crane" version
+          echo "$crane_dir" >> "$GITHUB_PATH"
+
+      - name: Stage image in the local registry
+        env:
+          OCI_LAYOUT: /tmp/image
+        run: |
+          DIGEST="$(jq -er '
+            .manifests
+            | if length == 1 then .[0].digest
+              else error("expected one exported image")
+              end
+          ' "$OCI_LAYOUT/index.json")"
+          test -f "$OCI_LAYOUT/blobs/sha256/${DIGEST#sha256:}"
+          crane push --insecure "$OCI_LAYOUT" "${LOCAL_IMAGE}@${DIGEST}"
+          echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
+
+      - name: Pull image from the local registry
+        run: docker pull "${LOCAL_IMAGE}@${DIGEST}"
+
+      - name: Run the standalone smoke test
+        run: COMDB2_DOCKER_IMAGE="${LOCAL_IMAGE}@${DIGEST}" ./tests/contrib_docker/runit standalone
+
       - name: Log in to ${{ env.REGISTRY }}
         uses: docker/login-action@v3
         with:
@@ -66,23 +140,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: contrib/docker/Dockerfile.dev
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
-
-      # upload-artifact rejects colons in paths; merge puts the prefix back.
-      - name: Export digest
+      # A digest reference uploads the tested content without exposing a
+      # temporary single-platform tag.
+      - name: Push tested image by digest
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          OCI_LAYOUT: /tmp/image
         run: |
+          crane push "$OCI_LAYOUT" "${IMAGE}@${DIGEST}"
+
+          # upload-artifact rejects colons in paths; merge puts the prefix back.
           mkdir -p /tmp/digests
           touch "/tmp/digests/${DIGEST#sha256:}"
 
