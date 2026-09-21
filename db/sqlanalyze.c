@@ -127,6 +127,7 @@ struct table_descriptor {
     struct user current_user;
     void *appdata;
     void *get_authdata;
+    const char *trigger;
 };
 
 /* loadStat4 (analyze.c) will ignore all stat entries
@@ -857,11 +858,12 @@ static int analyze_thread_int(table_descriptor_t *td, struct thr_handle *thr_sel
         goto cleanup;
     }
 
+    const char *trigger = td->trigger ? td->trigger : "unknown";
     if (isPartition) { /* partitioned table */
-        logmsg(LOGMSG_INFO, "Analyze thread starting, partition %s (%d%%)\n", td->table, td->scale);
+        logmsg(LOGMSG_INFO, "Analyze thread starting, partition %s (%d%%) trigger=%s\n", td->table, td->scale, trigger);
         rc = analyze_partition(td, &clnt, &err);
     } else { /* regular table */
-        logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
+        logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%) trigger=%s\n", td->table, td->scale, trigger);
         rc = analyze_regular_table(td->table, td, &clnt, &err);
     }
     if (rc) {
@@ -884,7 +886,7 @@ cleanup:
                     td->table, err.errval, err.errstr);
     } else {
         cdb2buf_printf(td->sb, "?Analyze completed table %s\n", td->table);
-        logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
+        logmsg(LOGMSG_INFO, "Analyze completed, table %s trigger=%s\n", td->table, trigger);
     }
 
 
@@ -1081,7 +1083,7 @@ int get_analyze_abort_requested()
     return analyze_abort_requested;
 }
 
-int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, int bypass_auth)
+int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, int bypass_auth, const char *trigger)
 {
 
     if (set_analyze_running(sb))
@@ -1092,6 +1094,7 @@ int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, in
     td.sb = sb;
     td.scale = scale;
     td.override_llmeta = override_llmeta;
+    td.trigger = trigger;
     strncpy0(td.table, table, sizeof(td.table));
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1126,7 +1129,7 @@ int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, in
 }
 
 /* Analyze all tables in this database */
-int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta)
+int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta, const char *trigger)
 {
     int rc = 0;
     int i;
@@ -1159,6 +1162,7 @@ int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
+        td[idx].trigger = trigger;
         if (thedb->dbs[i]->sqlaliasname)
             strncpy0(td[idx].table, thedb->dbs[i]->sqlaliasname,
                      sizeof(td[idx].table));
@@ -1322,9 +1326,9 @@ void *message_trap_td(void *args)
     sb = cdb2buf_open(1, 0);
 
     /* analyze the database */
-    analyze_database(sb, 
-         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT),
-         0); //override llmeta scale 0 (false)
+    analyze_database(sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT),
+                     0, // override llmeta scale 0 (false)
+                     "msgtrap");
 
     /* flush sbuf */
     cdb2buf_flush(sb);
@@ -1426,7 +1430,7 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
     }
 }
 
-int do_analyze(char *tbl, int percent)
+int do_analyze(char *tbl, int percent, const char *trigger)
 {
     COMDB2BUF *sb2 = cdb2buf_open(fileno(stdout), 0);
 
@@ -1452,9 +1456,9 @@ int do_analyze(char *tbl, int percent)
 
     int rc;
     if (tbl == NULL)
-        rc = analyze_database(sb2, percent, overwrite_llmeta);
+        rc = analyze_database(sb2, percent, overwrite_llmeta, trigger);
     else
-        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta, 0);
+        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta, 0, trigger);
     cdb2buf_flush(sb2);
     cdb2buf_free(sb2);
     return rc;

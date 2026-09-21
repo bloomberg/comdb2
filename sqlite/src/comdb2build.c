@@ -1874,7 +1874,7 @@ err:
 
 int comdb2vdbeAnalyze(OpFunc *f)
 {
-    f->rc = do_analyze(f->arg, f->int_arg);
+    f->rc = do_analyze(f->arg, f->int_arg, "sql");
     if (f->rc == SQLITE_ANALYZE_ALREADY_RUNNING)
         f->errorMsg = "Analyze could not run because it is already running on some table";
     else if (f->rc != SQLITE_OK)

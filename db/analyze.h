@@ -64,14 +64,13 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum);
 /**
  * Scale and analyze this table.  Write the results to sqlite_stat1.
  */
-int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta,
-                  int bypass_auth);
+int analyze_table(char *table, COMDB2BUF *sb, int scale, int override_llmeta, int bypass_auth, const char *trigger);
 
 /**
  * Scale and analyze all tables in the database.  Write the results to
  * sqlite_stat1.
  */
-int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta);
+int analyze_database(COMDB2BUF *sb, int scale, int override_llmeta, const char *trigger);
 
 /**
  * Backout to the previous analysis for table(s), or to no-analysis if there
@@ -123,7 +122,7 @@ int analyze_is_running(void);
  */
 void cleanup_stats(COMDB2BUF *sb);
 
-int do_analyze(char *tbl, int percent);
+int do_analyze(char *tbl, int percent, const char *trigger);
 
 /* Get analyze_abort_requested variable state */
 int get_analyze_abort_requested();
