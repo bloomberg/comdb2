@@ -70,10 +70,10 @@ Set these on the make command line, the same way as CLUSTER:
 
   DDLK_READER_ITERATIONS=<N>   Iterations of 16 scans each arm's readers run.
                                Default 2.  Every arm reads exactly this much,
-                               which is what makes rd_scans and phase_ms
-                               comparable between arms.  The writer keeps its
-                               own independent 60s window.  Raising it
-                               lengthens the run proportionally.
+                               which is what makes rd_scans -- and therefore
+                               rd_total_ms -- comparable between arms.  The
+                               writer keeps its own independent 60s window.
+                               Raising it lengthens the run proportionally.
 
   DDLK_LOCKSTATS=0|1           Collect the server-side lock-wait and
                                lock-release counters.  Default 0.  With 1 the
@@ -111,16 +111,42 @@ arm_on_run<N>.out.
 The report is a metric legend followed by an off / on / % diff table for the
 update phase and for the delete phase:
 
-  phase_ms     wall-clock duration of the phase
   wr_count     writer statements completed
-  wr_avg_ms    average writer statement latency
+  wr_total_ms  sum of the individual writer statement latencies
+  wr_avg_ms    wr_total_ms / wr_count -- average cost of one write
+  wr_min_ms    fastest single writer statement
   wr_max_ms    slowest single writer statement
   rd_scans     reader scans completed, summed over the 16 reader threads
-  rd_avg_ms    average reader scan latency over those threads
+  rd_total_ms  sum of the individual scan latencies over those threads
+  rd_avg_ms    rd_total_ms / rd_scans -- average cost of one scan
   rd_min_ms    fastest single reader scan
   rd_max_ms    slowest single reader scan
   data_errors  soft errors so far (see below)
   % diff       (on - off) / off * 100
+
+Every timing is a sum of individually clocked statements: one timer pair around
+each SELECT in reader(), one around each UPDATE/DELETE in test_stmt().  Both
+start after cdb2_open and stop before cdb2_close, so a comdb2db lookup or a cold
+socket pool is not charged to the statement.
+
+There is deliberately no phase_ms column.  The phase wall clock measures the
+harness as much as the database: it contains the 1s settle sleep, 16 thread
+creates and joins per reader iteration, a num_incoherent() round trip after
+every write statement, wait_for_coherent() polling in 100ms steps, and the gap
+between the writer's fixed 60s window and the readers' fixed iteration budget
+ending at different moments.  None of that is the lock behaviour under test and
+all of it moves between runs, which made phase_ms the noisiest row in the table.
+It is still emitted on the raw METRIC lines -- which the harness echoes per arm
+above the tables -- if it is wanted as a sanity check.
+
+Note rd_total_ms sums across 16 concurrent threads, so it is aggregate reader
+busy time, not elapsed time, and can be up to 16x the phase duration.  Since
+rd_scans is pinned by DDLK_READER_ITERATIONS and identical in every arm,
+rd_total_ms and rd_avg_ms carry the same signal; read whichever is easier.  The
+write side is not redundant that way: in the update phase the writer is bounded
+by its 60s window, so wr_total_ms is roughly fixed and the signal lives in
+wr_count (throughput) and wr_avg_ms (latency), while in the work-bounded delete
+phase wr_count is always 30 and wr_total_ms is the total-cost comparison.
 
 Lock counters
 -------------
@@ -238,14 +264,16 @@ SPLIT_ARM=1 adds a "no-split" column and an "ns vs on" column, the latter being
 
 Compare no-split against **on**, never against off: the split only affects the
 feature path, so the off arm is identical in both modes.  That makes off the
-control -- if the two off arms disagree (check phase_ms AND lk_rd_wait_us, which
-can disagree with each other), the run is not comparable.
+control -- if the two off arms disagree (check rd_total_ms AND lk_rd_wait_us,
+which can disagree with each other), the run is not comparable.
 
-The primary numbers are lk_sync_count and lk_rel_count, read as RATES: divide by
-phase_ms, since the arms need not run equally long.  Measured example: 9208
-syncs over 224s vs 5056 over 350s is 41.0/s vs 14.4/s -- a 2.8x cut that the raw
-counts (-45%) understate.  Then confirm the writer side did not regress
-(lk_wr_wait_us, wr_avg_ms; lk_other_wait_us on a cluster).
+The primary numbers are lk_sync_count and lk_rel_count.  Both are driven by
+reader work, and rd_scans is pinned to the same value in every arm, so the raw
+counts are already per-unit-of-work and can be compared directly -- no rate
+conversion, and in particular do not divide by the phase wall clock, which the
+tables no longer carry for the reasons given under "Output".  Then confirm the
+writer side did not regress (lk_wr_wait_us, wr_avg_ms; lk_other_wait_us on a
+cluster).
 
 How the blackout interacts
 --------------------------
@@ -285,10 +313,13 @@ thing in both:
   It used to race a 60s wall clock instead, which made the arms incomparable:
   one reader iteration was about as long as the window, so a few percent of
   scan speed decided whether a second iteration started, and that doubled both
-  rd_scans and phase_ms.  A 5% faster arm could report 84% worse phase_ms.
+  rd_scans and the phase duration.  A 5% faster arm could report 84% worse.
+
+  Because the writer is time-bounded here, wr_total_ms is roughly the window in
+  either arm and says little; wr_count and wr_avg_ms are the write-side signal.
 
   delete is work-bounded.  One pass deletes each key value once and stops, so
-  wr_count is always 30 and carries no signal, and phase_ms measures fixed
+  wr_count is always 30 and carries no signal, and wr_total_ms measures fixed
   work.  This is the cleaner of the two speed comparisons.
 
 data_errors is misleadingly named.  It counts a statement that failed outright
