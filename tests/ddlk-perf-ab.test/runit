@@ -171,15 +171,24 @@ else
     phase_labels=("update:Update phase (writer vs. 16 concurrent readers)" "delete:Delete phase")
 fi
 
-# Columns of the comparison tables.  The lk_ family exists in the tool's output
-# only when the counters were sampled, so listing it otherwise would print a
-# block of empty rows that reads like a measurement of zero.  The wr_ rows are
-# dropped in read-only mode: with no writer they are all zero and just pad the
-# table.
+# Columns of the comparison tables.  Timings are per statement -- each SELECT
+# and each UPDATE/DELETE is clocked on its own, summed into rd_total_ms /
+# wr_total_ms and averaged into rd_avg_ms / wr_avg_ms.  phase_ms is deliberately
+# absent: the phase wall clock also contains the settle sleep, 16 thread
+# creates and joins per reader iteration, the per-statement num_incoherent()
+# round trip, wait_for_coherent()'s 100ms polling, and the gap between the
+# writer's 60s window and the readers' iteration budget ending.  It is still in
+# the raw METRIC lines echoed per arm if it is wanted as a sanity check.
+#
+# The lk_ family exists in the tool's output only when the counters were
+# sampled, so listing it otherwise would print a block of empty rows that reads
+# like a measurement of zero.  The wr_ rows are dropped in read-only mode: with
+# no writer they are all zero and just pad the table.
 if [[ $readonly_mode == 1 ]] ; then
-    report_fields="phase_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors"
+    report_fields="rd_scans rd_total_ms rd_avg_ms rd_min_ms rd_max_ms data_errors"
 else
-    report_fields="phase_ms wr_count wr_avg_ms wr_max_ms rd_scans rd_avg_ms rd_min_ms rd_max_ms data_errors"
+    report_fields="wr_count wr_total_ms wr_avg_ms wr_min_ms wr_max_ms \
+     rd_scans rd_total_ms rd_avg_ms rd_min_ms rd_max_ms data_errors"
 fi
 # The waiter and release counters.  In read-only mode these are not reported at
 # all: with no writer nothing can be waiting, so every one of them must be zero
@@ -443,16 +452,19 @@ print_result()
     echo
     echo "| Metric        | Meaning |"
     echo "|---------------|---------|"
-    echo "| \`phase_ms\`    | Wall-clock duration of the phase, in milliseconds. |"
+    echo "| (timings)     | Every figure below is built from individually clocked statements -- one timer around each SELECT, one around each UPDATE/DELETE -- rather than from the phase wall clock, which also contains the settle sleep, the reader thread creates and joins, the per-statement coherency check and the gap between the writer's and readers' budgets ending.  The phase wall clock is still in the raw \`METRIC\` lines above as \`phase_ms\` if it is wanted as a sanity check. |"
     if [[ $readonly_mode != 1 ]] ; then
     echo "| \`wr_count\`    | Number of writer statements completed during the phase. |"
-    echo "| \`wr_avg_ms\`   | Average writer statement latency, in milliseconds. |"
+    echo "| \`wr_total_ms\` | Sum of the individual writer statement latencies -- total time the writer spent inside statements.  In the update phase this is bounded by the writer's fixed 60s window and so barely moves; read \`wr_count\` for throughput there.  In the work-bounded delete phase it is the clean total-cost comparison. |"
+    echo "| \`wr_avg_ms\`   | \`wr_total_ms / wr_count\`: average cost of one writer statement, in milliseconds.  This is the headline write number in the update phase. |"
+    echo "| \`wr_min_ms\`   | Fastest single writer statement observed in the phase. |"
     echo "| \`wr_max_ms\`   | Slowest single writer statement observed in the phase. |"
     fi
-    echo "| \`rd_scans\`    | Number of reader scans completed during the phase, summed across all 16 reader threads. |"
-    echo "| \`rd_avg_ms\`   | Average reader scan latency, in milliseconds, across all 16 threads. |"
+    echo "| \`rd_scans\`    | Number of reader scans completed during the phase, summed across all 16 reader threads.  Fixed by DDLK_READER_ITERATIONS, so it should read identically in every arm; if it does not, the arms are not comparable. |"
+    echo "| \`rd_total_ms\` | Sum of the individual scan latencies over all 16 reader threads -- aggregate reader busy time, not wall clock, so it can be up to 16x the phase duration.  With \`rd_scans\` held fixed across arms this is the read-side cost comparison. |"
+    echo "| \`rd_avg_ms\`   | \`rd_total_ms / rd_scans\`: average cost of one reader scan, in milliseconds. |"
     echo "| \`rd_min_ms\`   | Fastest single reader scan observed in the phase. |"
-    echo "| \`rd_max_ms\`   | Slowest single reader scan observed in the phase (in the update phase, usually close to \`phase_ms\`, since one scan can span nearly the whole phase). |"
+    echo "| \`rd_max_ms\`   | Slowest single reader scan observed in the phase.  A large gap to \`rd_min_ms\` means the feature is hurting readers unevenly rather than uniformly. |"
     echo "| \`data_errors\` | Cumulative (not reset per phase) count of soft errors so far in the run.  Two very different things land here: a statement that failed outright -- in practice usually CDB2ERR_DEADLOCK (203), a write starved out by reader contention rather than anything wrong with the data -- and a genuine data mismatch (unexpected row payload, or num_updated/num_deleted not matching what was written).  A non-zero value is not by itself evidence of a correctness problem; check the arm's raw output to see which kind it was. |"
     if [[ $lockstats == 1 && $readonly_mode != 1 ]] ; then
         echo "| \`lk_rd_wait_us\` | Time SQL read cursors spent blocked waiting for locks, summed over every node.  Needs the lock_instrumentation tunable, which DDLK_LOCKSTATS=1 turned on for this run. |"
@@ -481,14 +493,14 @@ print_result()
     echo "| \`% diff\`      | \`(on - off) / off * 100\`. Negative = lower with the feature on; positive = higher. |"
     if [[ $splitarm == 1 ]] ; then
     echo "| \`no-split\`    | The \`on\` arm with pagelock_split_waiters off (has-waiters latched for the life of the locker).  Compare against \`on\`, not \`off\` -- the split code never runs with the feature off, so \`off\` is the control. |"
-    echo "| \`ns vs on\`    | \`(no-split - on) / on * 100\`.  Negative = the older behaviour did less of whatever the row measures.  Watch \`lk_sync_count\` and \`lk_rel_count\`, as rates (divide by \`phase_ms\`). |"
+    echo "| \`ns vs on\`    | \`(no-split - on) / on * 100\`.  Negative = the older behaviour did less of whatever the row measures.  Watch \`lk_sync_count\` and \`lk_rel_count\`: \`rd_scans\` is fixed across arms, so these are already per-unit-of-read-work and can be compared as raw counts. |"
     fi
     echo
     if [[ $readonly_mode == 1 ]] ; then
         echo "no writer here, so nothing should ever be waiting: lk_rel_count and lk_sync_count"
         echo "at zero against a large lk_probes is the cost of asking, with nothing to act on"
     else
-        echo "lower wr_avg_ms/wr_max_ms on = writes benefit; higher rd_avg_ms on = readers pay for it"
+        echo "lower wr_avg_ms/wr_total_ms on = writes benefit; higher rd_avg_ms/rd_total_ms on = readers pay for it"
     fi
     echo
 
