@@ -64,11 +64,22 @@ static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
     } while (0)
 
 /*
- * Phase metrics.
+ * Per-statement metrics.
  *
  * The tool's pre-existing timings are all whole seconds, which rounds every
  * sub-second write to 0 -- useless for comparing write latency, which is the
  * main thing an A/B of the lock-release feature wants to see.
+ *
+ * Everything reported is built up from individually timed statements: one clock
+ * pair around each SELECT and one around each UPDATE/DELETE, summed into
+ * rd_total_ms / wr_total_ms and divided by the count for the averages.  The
+ * phase wall clock is deliberately NOT the headline number -- it also contains
+ * the settle sleep, the 16 reader thread creates and joins per iteration, the
+ * per-statement num_incoherent() round trip, wait_for_coherent()'s 100ms
+ * polling, and the ragged edge where the writer's fixed 60s window and the
+ * readers' fixed iteration budget stop at different moments.  None of that is
+ * the lock behaviour under test, and all of it moves between runs.  phase_ms is
+ * still emitted for sanity, but the tables compare the statement times.
  *
  * No locking on either path:
  *   writes -- test_stmt() is only reached from update()/delete(), both strictly
@@ -98,7 +109,7 @@ struct rd_slot {
 };
 static struct rd_slot rd_slots[NREADERS + 1]; /* +1: the standalone reader */
 
-static long long wr_count, wr_total_ms, wr_max_ms;
+static long long wr_count, wr_total_ms, wr_min_ms, wr_max_ms;
 
 static long long ms_since(const struct timeval *start)
 {
@@ -111,14 +122,15 @@ static long long ms_since(const struct timeval *start)
 static void metrics_reset(void)
 {
     memset(rd_slots, 0, sizeof(rd_slots));
-    wr_count = wr_total_ms = wr_max_ms = 0;
+    wr_count = wr_total_ms = wr_min_ms = wr_max_ms = 0;
 }
 
 static void metrics_add_write(long long ms)
 {
+    if (!wr_count || ms < wr_min_ms) wr_min_ms = ms;
+    if (ms > wr_max_ms) wr_max_ms = ms;
     wr_count++;
     wr_total_ms += ms;
-    if (ms > wr_max_ms) wr_max_ms = ms;
 }
 
 static void metrics_add_read(int idx, long long ms, int rows)
@@ -168,12 +180,16 @@ static void metrics_report(const char *phase, long long phase_ms, const struct l
                     the sampling ratio to get the phase's real probe cost */
                  lk->probes_timed ? lk->probe_us * lk->probes / lk->probes_timed : 0);
 
+    /* rd_total_ms is the sum over concurrent reader threads, so it is aggregate
+       reader busy time and can exceed the phase wall clock by up to 16x.  That
+       is the point: it prices the reading, not how long the harness was up. */
     Printf("METRIC phase=%s phase_ms=%lld "
-           "wr_count=%lld wr_avg_ms=%.1f wr_max_ms=%lld "
-           "rd_scans=%lld rd_rows=%lld rd_avg_ms=%.1f rd_min_ms=%lld rd_max_ms=%lld "
+           "wr_count=%lld wr_total_ms=%lld wr_avg_ms=%.1f wr_min_ms=%lld wr_max_ms=%lld "
+           "rd_scans=%lld rd_rows=%lld rd_total_ms=%lld rd_avg_ms=%.1f rd_min_ms=%lld rd_max_ms=%lld "
            "incoherent=%d data_errors=%d%s\n",
-           phase, phase_ms, wr_count, wr_count ? (double)wr_total_ms / wr_count : 0.0, wr_max_ms, scans, rows,
-           scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors, lkbuf);
+           phase, phase_ms, wr_count, wr_total_ms, wr_count ? (double)wr_total_ms / wr_count : 0.0, wr_min_ms,
+           wr_max_ms, scans, rows, total, scans ? (double)total / scans : 0.0, mn, mx, total_incoherent, data_errors,
+           lkbuf);
 }
 
 static char *tohex(char *in, int len, char *out)
@@ -640,8 +656,10 @@ static void *reader(void *data)
         Printf("%s: cdb2_next_record rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         data_error_exit();
     }
-    cdb2_close(db);
+    /* Before cdb2_close: returning the handle to the socket pool is connection
+       bookkeeping, not part of the SELECT being priced. */
     metrics_add_read(i, ms_since(&scan_start), counter);
+    cdb2_close(db);
     if (counter) Printf("%s %2d: rows:%d\n", __func__, i, counter);
     return NULL;
 }
@@ -677,8 +695,11 @@ static void test_stmt(const char *sql, int upd, int del)
     cdb2_hndl_tp *db;
     cdb2_effects_tp effects = {0};
     struct timeval start, finish, elapsed;
-    gettimeofday(&start, NULL);
     db = hndl(NULL);
+    /* Clock from after cdb2_open, matching reader(): opening a handle can block
+       on a comdb2db lookup or a cold socket pool, which is unrelated to the lock
+       behaviour under test and lands unevenly across arms. */
+    gettimeofday(&start, NULL);
     int rc = run_stmt_soft(db, sql);
     /* record the statement latency before the checks below, which can bail */
     metrics_add_write(ms_since(&start));
