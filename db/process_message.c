@@ -61,7 +61,6 @@ extern int __berkdb_read_alarm_ms;
 #include "reqlog.h"
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
-#include "osqluprec.h"
 #include "schemachange.h"
 #include "reverse_conn.h"
 #include "phys_rep.h"
@@ -1968,8 +1967,6 @@ clipper_usage:
             stat_auto_analyze();
         } else if (tokcmp(tok, ltok, "alias") == 0) {
             fdb_stat_alias();
-        } else if (tokcmp(tok, ltok, "uprecs") == 0) {
-            upgrade_records_stats();
         } else if (tokcmp(tok, ltok, "dohsql") == 0) {
             dohsql_stats();
         } else if (tokcmp(tok, ltok, "oldfile") == 0) {
@@ -3063,34 +3060,6 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "echo failed\n");
         }
 
-    } else if (tokcmp(tok, ltok, "upgraderecord") == 0) {
-        unsigned long long genid;
-        char *tbl;
-        char *snum;
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected table name.\n");
-            return -1;
-        }
-        tbl = tokdup(tok, ltok);
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected genid\n");
-            return -1;
-        }
-        snum = tokdup(tok, ltok);
-        if (!snum)
-            return -1;
-        genid = strtoull(snum, NULL, 0);
-        free(snum);
-
-        rc = offload_comm_send_upgrade_record(tbl, genid);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR,
-                    "Error in offload_comm_send_upgrade_record. rc = %d\n", rc);
-        free(tbl);
     } else if (tokcmp(tok, ltok, "upgradetable") == 0) {
         // TODO this should be a schemachange cmd. Used for testing only.
         char *tbl;
@@ -3102,17 +3071,6 @@ clipper_usage:
         tbl = tokdup(tok, ltok);
         rc = start_table_upgrade(dbenv, tbl, 0, 1, 0, 1);
         free(tbl);
-    } else if (tokcmp(tok, ltok, "enable_upgrade_ahead") == 0) {
-        tok = segtok(line, sizeof(line), &st, &ltok);
-        if (ltok <= 0)
-            gbl_num_record_upgrades = 32;
-        else
-            gbl_num_record_upgrades = toknum(tok, ltok);
-       logmsg(LOGMSG_USER, "Upgrade ahead enabled with size %d.\n",
-               gbl_num_record_upgrades);
-    } else if (tokcmp(tok, ltok, "disable_upgrade_ahead") == 0) {
-        gbl_num_record_upgrades = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "Upgrade ahead disabled.\n");
     } else if (tokcmp(tok, ltok, "checkctags") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {

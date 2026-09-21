@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# The record-upgrade-ahead feature has been removed. The block-request
+# transport it used (NET_BLOCK_REQ/NET_BLOCK_REPLY) stays - the fstsnd
+# socket-request path still needs it. This checks the removal is complete and
+# backward compatible:
+#
+#   1. a stale "enable_upgrade_ahead" in the lrl must not stop the db starting
+#      (see lrl.options in this directory)
+#   2. the tunables must be gone
+#   3. the operator commands must be gone, and must not take the db down
+#   4. reading rows written before an ALTER must still work - that conversion
+#      is what replaced record upgrade
+
+set -e
+
+dbname=$1
+[[ -z "$dbname" ]] && { echo "dbname not provided" >&2; exit 1; }
+
+function fail
+{
+    echo "FAILED: $1" >&2
+    exit 1
+}
+
+# 1. The database parsed an lrl containing a tunable that no longer exists.
+#    If we can run a query at all, the unknown option was tolerated.
+[[ $(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default 'SELECT 1') == "1" ]] ||
+    fail "db not serving queries with a stale enable_upgrade_ahead in the lrl"
+
+# 2. Both tunables must be gone from comdb2_tunables.
+found=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    "SELECT count(*) FROM comdb2_tunables
+      WHERE name IN ('enable_upgrade_ahead', 'disable_upgrade_ahead')")
+[[ "$found" == "0" ]] || fail "upgrade_ahead tunables still registered ($found)"
+
+# 3. The removed operator commands must be inert. An unknown command is
+#    ignored, so the only thing to assert is that nothing falls over.
+for cmd in "stat uprecs" "upgraderecord t 1" "enable_upgrade_ahead 32"; do
+    cdb2sql ${CDB2_OPTIONS} $dbname default \
+        "EXEC PROCEDURE sys.cmd.send('$cmd')" >/dev/null 2>&1 || true
+done
+[[ $(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default 'SELECT 1') == "1" ]] ||
+    fail "db stopped serving after issuing removed commands"
+
+# 4. Instant schema change: rows written under the old schema version must
+#    still read back correctly after an ALTER adds a column. This is the
+#    on-read conversion that record upgrade used to pre-empt, so it is the
+#    behaviour that has to survive the deletion.
+cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE IF EXISTS t" >/dev/null
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "CREATE TABLE t { `cat t_v1.csc2` }" >/dev/null
+
+for i in $(seq 1 100); do
+    echo "INSERT INTO t(a) VALUES($i)"
+done | cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null
+
+# Add a column with a default. Existing rows keep their old on-disk version;
+# the new column materialises on read.
+cdb2sql ${CDB2_OPTIONS} $dbname default \
+    "ALTER TABLE t { `cat t_v2.csc2` }" >/dev/null
+
+# Every pre-existing row must report the new column's default when read.
+oldrows=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default \
+    'SELECT count(*) FROM t WHERE b = 7')
+[[ "$oldrows" == "100" ]] ||
+    fail "expected 100 old-version rows to read back b=7, got '$oldrows'"
+
+# And the rows themselves must be intact, not just the new column.
+sum=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default 'SELECT sum(a) FROM t')
+[[ "$sum" == "5050" ]] || fail "old-version row data corrupted, sum(a)='$sum'"
+
+echo "Success"

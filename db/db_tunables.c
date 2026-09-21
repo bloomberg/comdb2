@@ -1036,17 +1036,6 @@ static int blobmem_sz_thresh_kb_update(void *context, void *value)
     return 0;
 }
 
-static int enable_upgrade_ahead_update(void *context, void *value)
-{
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
-    if ((tunable->flags & EMPTY) != 0) {
-        *(int *)tunable->var = 32;
-    } else {
-        *(int *)tunable->var = *(int *)value;
-    }
-    return 0;
-}
-
 static int broken_max_rec_sz_update(void *context, void *value)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;

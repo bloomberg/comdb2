@@ -29,7 +29,6 @@
 #include <flibc.h>
 #include <inttypes.h>
 #include <unistd.h>
-#include "osqluprec.h"
 
 #include <str0.h>
 #include <epochlib.h>
@@ -43,9 +42,9 @@
 #include "util.h"
 #include "tohex.h"
 #include <plhash_glue.h>
+#include "comdb2.h"
 #include "tag.h"
 #include "types.h"
-#include "comdb2.h"
 #include "block_internal.h"
 #include "prefault.h"
 
@@ -2580,9 +2579,6 @@ int vtag_to_ondisk(const dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     if (ver == db->schema_version) {
         goto done;
     }
-
-    if (gbl_num_record_upgrades > 0 && genid != 0)
-        offload_comm_send_upgrade_records(db, genid);
 
     if (BDB_ATTR_GET(thedb->bdb_attr, USE_VTAG_ONDISK_VERMAP))
         return vtag_to_ondisk_vermap(db, rec, len, ver);

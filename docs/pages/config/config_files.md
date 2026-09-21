@@ -815,7 +815,6 @@ These options are toggle-able at runtime.
 |disable_sparse_lockerid_map | | Disables enable_sparse_lockerid_map
 |disable_sql_dlmalloc | not set | If set, will use default system malloc for SQL state machines.  By default, each thread running SQL gets a dedicated memory pool.
 |disable_temptable_pool | | Disables the pool of temp tables set by `temptable_limit`, temp tables are created as needed.
-|disable_upgrade_ahead | | Disables `enable_upgrade_ahead`
 |disallow | | See [permissioning commands](#allowdisallow-commands)
 |do | | At the end of processing config files, execute the rest of this line as an operational command, see [operational Commands](commands.html)
 |dump_cache_max_pages | 0 | Maximum number of pages that will be written into the default pagelist
@@ -838,7 +837,6 @@ These options are toggle-able at runtime.
 |enable_sparse_lockerid_map | set | If set, allocates a sparse map of lockers for deadlock resolution
 |enable_sql_stmt_caching | not set | Enable caching of query plans.  If followed by "all" will cache all queries, including those without parameters.
 |enable_tagged_api | 0 |
-|enable_upgrade_ahead | not set | Occasionally update read records to the newest schema version (saves some processing when reading them later)
 |externalauth| off | Enable use of external auth plugin
 |forbid_remote_admin | set | Disallow admin SQL sessions unless it is on the same machine as the database
 |gbl_exit_on_pthread_create_fail  |1           | If set, database will exit if thread pools aren't able to create threads.
