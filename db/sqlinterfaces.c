@@ -4909,6 +4909,18 @@ static int can_execute_sql_query_now(
   return 1;
 }
 
+void sqlengine_appsock_done(struct sqlclntstate *clnt)
+{
+    if (clnt->sql_ref) {
+        put_ref(&clnt->sql_ref);
+    }
+
+    osql_log_time_done(clnt);
+    clnt_change_state(clnt, CONNECTION_IDLE);
+    debug_close_clnt(clnt);
+    signal_clnt_as_done(clnt);
+}
+
 void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     struct sql_thread *sqlthd = thd->sqlthd;
@@ -5004,14 +5016,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     clnt->osql.timings.query_finished = osql_log_time();
 
 done:
-    if (clnt->sql_ref) {
-        put_ref(&clnt->sql_ref);
-    }
-
-    osql_log_time_done(clnt);
-    clnt_change_state(clnt, CONNECTION_IDLE);
-    debug_close_clnt(clnt);
-    signal_clnt_as_done(clnt);
+    sqlengine_appsock_done(clnt);
 
     thrman_setid(thrman_self(), "[done]");
 }

@@ -16,11 +16,13 @@
 
 #include <poll.h>
 #include <list.h>
+#include <event2/event.h>
 #include "comdb2.h"
 #include "sql.h"
 #include "osql_srs.h"
 #include "sqloffload.h"
 #include "comdb2uuid.h"
+#include "net_appsock.h"
 
 #include "debug_switches.h"
 
@@ -254,6 +256,9 @@ int srs_tran_empty(struct sqlclntstate *clnt)
 
 long long gbl_verify_tran_replays = 0;
 int gbl_disttxn_random_retry_poll = 500;
+/* Set to 0 to retry right away with no pause. */
+int gbl_verify_retry_backoff_ms = 50;
+int gbl_verify_retry_count_before_backoff = 3;
 
 int srs_tran_replay_prepare(struct sqlclntstate *clnt)
 {
@@ -352,6 +357,37 @@ static int run_sql_query(struct sqlclntstate *clnt)
     return 0;
 }
 
+static void srs_tran_replay_end(struct sqlclntstate *clnt, int rc);
+
+/* The parked txn's wait is over: put it back in the queue. */
+static void srs_tran_redispatch_cb(int fd, short what, void *arg)
+{
+    struct sqlclntstate *clnt = arg;
+    if (dispatch_sql_query_no_wait(clnt) == 0)
+        return;
+    /* No worker owns the clnt any more, so finish it here as one would. The
+       worker it last ran on has moved on; don't let signal_clnt_as_done touch it. */
+    clnt->thd = NULL;
+    srs_tran_replay_end(clnt, 0);
+    sqlengine_appsock_done(clnt);
+}
+
+/* Without a pause, every loser of a verify race retries at the same moment and
+   collides again; a random pause spreads them out.  A one-off race is won on the
+   next try or two, so the first gbl_verify_retry_count_before_backoff replays go
+   straight back in the queue.  After that the txn is parked on a timer rather
+   than sleeping on its worker, so the pool keeps serving other clients while
+   it waits. */
+static int srs_tran_redispatch(struct sqlclntstate *clnt)
+{
+    int max_ms = gbl_verify_retry_backoff_ms;
+    if (max_ms <= 0 || clnt->verify_retries < gbl_verify_retry_count_before_backoff)
+        return dispatch_sql_query_no_wait(clnt);
+    int ms = rand() % (max_ms + 1);
+    struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
+    return event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
+}
+
 int srs_tran_replay(struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
@@ -364,12 +400,19 @@ int srs_tran_replay(struct sqlclntstate *clnt)
 
     int redispatched = 0;
     if (more) {
-        redispatched = (dispatch_sql_query_no_wait(clnt) == 0);
+        redispatched = (srs_tran_redispatch(clnt) == 0);
     }
     if (redispatched) {
         return RC_INTERNAL_RETRY;
     }
 
+    srs_tran_replay_end(clnt, rc);
+    return rc;
+}
+
+static void srs_tran_replay_end(struct sqlclntstate *clnt, int rc)
+{
+    osqlstate_t *osql = &clnt->osql;
     int replay_succeeded = (osql->replay == OSQL_RETRY_NONE && rc == 0);
 
     // Replay succeeded or there's an error and we need to stop replay
@@ -402,6 +445,4 @@ int srs_tran_replay(struct sqlclntstate *clnt)
     clnt->done_cb = clnt->save_cb;
     clnt->save_cb = NULL;
     clnt->verify_retries = 0;
-
-    return rc;
 }
