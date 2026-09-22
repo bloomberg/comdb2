@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Does jittering verify-replay retries help under contention?
+#
+# Reproduces DRQS 186276344: N writers upsert the SAME key in a loop, so every
+# round all but one lose the commit-time verify check and replay. With no pause
+# the losers retry in lockstep and collide again; verify_retry_poll spreads them
+# out. We run the identical workload at several poll values and print the wall
+# time and the total verify replays the server counted.
+#
+# This is a BENCHMARK, not a pass/fail regression test -- it always exits 0 and
+# prints a table. Contention benchmarks are too timing-sensitive to assert on.
+
+set -e
+dbnm=$1
+
+WRITERS=${WRITERS:-32}     # concurrent clients
+ITERS=${ITERS:-200}        # upserts each
+POLLS=${POLLS:-"0 5 25 100"}  # ms; 0 = today's behaviour
+# Key-space sizes to sweep. 1 = worst-case contention (all writers on one row).
+# A large number spreads writers out, i.e. effectively uncontended -- that arm
+# is what says whether enabling the poll by default costs anything when there
+# is nothing to contend with.
+KEYSETS=${KEYSETS:-"1 2000"}
+
+r="cdb2sql -s ${CDB2_OPTIONS} $dbnm default"
+
+# Nodes to read per-node counters from, and to broadcast the tunable to
+# (PUT TUNABLE only affects the node that serves it).
+hosts=${CLUSTER:-$($r --tabs "SELECT comdb2_host()")}
+
+$r "CREATE TABLE IF NOT EXISTS t (k CSTRING(64), v INT)" >/dev/null
+$r "CREATE UNIQUE INDEX IF NOT EXISTS ix_k ON t(k)" >/dev/null
+
+# One writer: ITERS upserts of the single hot key, all down ONE long-lived
+# connection. Spawning a cdb2sql per statement makes process startup dominate
+# and the writers never actually overlap inside the server.
+writer() {
+    local i=0 k
+    while [ $i -lt $ITERS ]; do
+        k="hot$((i % KEYS))"
+        echo "INSERT INTO t(k,v) VALUES('$k',$i) ON CONFLICT(k) DO UPDATE SET v=$i;"
+        i=$((i+1))
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>&1
+}
+
+# Unrelated read traffic, run alongside the writers. The poll sleeps on a
+# pooled SQL thread, so if waiting replays hog the pool these selects get
+# slower. Sequential on one connection: each must be handed a worker, so the
+# total time is a direct read on pool availability.
+READS=${READS:-200}
+reader() {
+    local i=0
+    while [ $i -lt $READS ]; do
+        echo "SELECT 1;"
+        i=$((i+1))
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>&1
+}
+
+# Cumulative server-side replay count (db/db_metrics.c:311), summed over the
+# cluster -- the counter is per-node and 'default' round-robins, so reading it
+# without pinning gives before/after from different nodes (negative deltas).
+replays() {
+    local total=0 n
+    for n in ${hosts}; do
+        v=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $dbnm --host $n \
+              "SELECT value FROM comdb2_metrics WHERE name='verify_replays'" 2>/dev/null)
+        total=$((total + ${v:-0}))
+    done
+    echo $total
+}
+
+# The replay happens on whichever node the client connected to, so the tunable
+# has to be set on every node, not just the one that serves the statement.
+set_poll() {
+    local n
+    for n in ${hosts}; do
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $n "PUT TUNABLE verify_retry_poll $1" >/dev/null 2>&1
+    done
+}
+
+echo "writers=$WRITERS iters=$ITERS"
+printf '%-6s %-8s %-10s %-10s %-10s\n' "keys" "poll_ms" "seconds" "replays" "reads_s"
+
+for KEYS in $KEYSETS; do
+for poll in $POLLS; do
+    set_poll $poll
+
+    before=$(replays)
+    start=$(date +%s.%N)
+
+    pids=""
+    n=0
+    while [ $n -lt $WRITERS ]; do
+        writer &
+        pids="$pids $!"
+        n=$((n+1))
+    done
+
+    # Read traffic runs concurrently with the writers; time it separately.
+    ( rs=$(date +%s.%N); reader; re=$(date +%s.%N)
+      awk -v a="$rs" -v b="$re" 'BEGIN{printf "%.2f", b-a}' > /tmp/reads.$$ ) &
+    rpid=$!
+
+    wait $pids
+    wait $rpid
+    reads_s=$(cat /tmp/reads.$$ 2>/dev/null); rm -f /tmp/reads.$$
+
+    end=$(date +%s.%N)
+    after=$(replays)
+
+    # bc is not guaranteed; awk is in every test image already.
+    elapsed=$(awk -v a="$start" -v b="$end" 'BEGIN{printf "%.2f", b-a}')
+    printf '%-6s %-8s %-10s %-10s %-10s\n' "$KEYS" "$poll" "$elapsed" "$((after - before))" "$reads_s"
+done
+done
+
+set_poll 0
+echo "done"
+exit 0

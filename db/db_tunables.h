@@ -286,6 +286,8 @@ REGISTER_TUNABLE("coordinator_block_until_durable", "Coordinator blocks until it
                  TUNABLE_BOOLEAN, &gbl_coordinator_block_until_durable, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_random_retry_poll", "Poll up to this many ms on dist-retry.  (Default: 500)", TUNABLE_INTEGER,
                  &gbl_disttxn_random_retry_poll, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verify_retry_poll", "Poll up to this many ms before replaying a verify-failed txn.  (Default: 25)",
+                 TUNABLE_INTEGER, &gbl_verify_retry_poll, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_handle_cache", "Enable the disttxn handle-cache.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_disttxn_handle_cache, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_handle_linger_time", "Time that unused handles persist.  (Default: 60s)", TUNABLE_INTEGER,
