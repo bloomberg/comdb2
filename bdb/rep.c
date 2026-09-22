@@ -4149,7 +4149,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
                 /* why did upgrade fail?  lets exit */
                 logmsg(LOGMSG_FATAL, "upgrade failed rcode %d %d\n", rc,
                         bdb_state->repinfo->upgrade_allowed);
-                exit(1);
+                _exit(1);
             }
 
         } else {
