@@ -154,7 +154,9 @@ EOF
 }
 
 function run_healthy_contention() {
-    echo "Test: healthy contention produces correct effects across replays"
+    local backoff=$1
+    echo "Test: healthy contention produces correct effects across replays (backoff ${backoff}ms)"
+    set_all_nodes_tunable verify_retry_backoff_ms $backoff
     # Real (not forged) verify replays: many writers race to bump the same row
     # to current+1. invalid_genid must be OFF here so replays actually succeed.
     # Assert (1) replays happened and (2) get_effects stayed correct: the sum of
@@ -200,7 +202,8 @@ function run_healthy_contention() {
     [[ $reported -eq $final ]] || failexit "get_effects mismatch: reported $reported but row is $final"
 
     cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "DROP TABLE ctr"
-    echo "healthy contention: passed"
+    rm -f ${TMPDIR}/w.*.out
+    echo "healthy contention (backoff ${backoff}ms): passed"
 }
 
 init
@@ -210,4 +213,7 @@ run_client_timeout_during_retry
 run_queue_full_during_retry
 verify
 cleanup
-run_healthy_contention
+# 50 = default backoff; 0 = the old back-to-back retries
+run_healthy_contention 50
+run_healthy_contention 0
+set_all_nodes_tunable verify_retry_backoff_ms 50

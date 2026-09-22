@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Does waiting before a verify retry help when many writers fight over one row?
+#
+# N writers keep updating the SAME key. Each round only one wins; the rest fail
+# the verify check and retry. With no wait, they all retry at once and collide
+# again. verify_retry_backoff_ms makes each retry wait a random 0..N ms so they
+# spread out. We run the same workload with different wait limits and print how
+# long it took and how many retries the server counted.
+#
+# This is a benchmark, not a pass/fail test: it always exits 0 and just prints a
+# table, because timing results are too noisy to check. IS_STRESS_TEST keeps it
+# out of the normal run; the pass/fail test for the wait is replay_trans.
+
+set -e
+dbnm=$1
+
+WRITERS=${WRITERS:-32}     # concurrent clients
+ITERS=${ITERS:-200}        # upserts each
+BACKOFFS=${BACKOFFS:-"0 10 25 50 100"}  # max random wait in ms; 0 = no wait
+# How many retries happen right away before the wait starts.
+COUNT_BEFORES=${COUNT_BEFORES:-"1 3 5"}
+# How many different keys the writers share. At any moment about WRITERS/KEYS
+# writers are on the same row: 1 = all of them (worst case). With KEYS >=
+# WRITERS no two writers are on the same row at once -- that run shows whether
+# turning the wait on by default slows things down when nobody fights.
+KEYSETS=${KEYSETS:-"1 2000"}
+
+# SQL thread pool sizes to try. A retry goes back into the pool, but the pool
+# only makes it wait in line when every thread is busy (util/thdpool.c:1005).
+# So a pool bigger than WRITERS never makes anyone wait. The small pool is the
+# busy case: a retry that sleeps while holding a thread would block other
+# work, and a retry that sleeps without a thread should not.
+POOLS=${POOLS:-"48 8"}
+
+r="cdb2sql -s ${CDB2_OPTIONS} $dbnm default"
+
+# Every node in the cluster. We read counters from each one and set tunables
+# on each one (PUT TUNABLE only changes the node that runs it).
+hosts=${CLUSTER:-$($r --tabs "SELECT comdb2_host()")}
+
+$r "CREATE TABLE IF NOT EXISTS t (k CSTRING(64), v INT)" >/dev/null
+$r "CREATE UNIQUE INDEX IF NOT EXISTS ix_k ON t(k)" >/dev/null
+# A separate table for the "other app" probe. It never touches the writers'
+# rows, so it never fails verify because of them.
+$r "CREATE TABLE IF NOT EXISTS u (k CSTRING(64), v INT)" >/dev/null
+$r "CREATE UNIQUE INDEX IF NOT EXISTS ix_uk ON u(k)" >/dev/null
+
+# One writer ($1 = its number): ITERS upserts, all sent over ONE connection.
+# Starting a new cdb2sql for each statement would be so slow that the writers
+# would never actually run at the same time inside the server.
+# At step i the writers use keys i*WRITERS+0 .. i*WRITERS+WRITERS-1 (mod KEYS),
+# so writers only meet on a row when KEYS < WRITERS.
+# cdb2sql keeps going after a failed statement and prints one line to stderr;
+# those lines are counted in the "errors" column.
+writer() {
+    local i=0 k
+    while [ $i -lt $ITERS ]; do
+        k="hot$(( (i * WRITERS + $1) % KEYS ))"
+        echo "INSERT INTO t(k,v) VALUES('$k',$i) ON CONFLICT(k) DO UPDATE SET v=$i;"
+        i=$((i+1))
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>>"$ERRF"
+}
+
+# The probe: plays "some other app" doing one unrelated write at a time, on
+# another table, while the writers run. This is what we really care about --
+# if sleeping retries hold on to pool threads, this innocent write gets stuck
+# behind them. It is a write, so it also pays for the writers' commit and
+# replication load; compare pool 8 rows with pool 48 rows (same load, no
+# thread shortage) to see the thread part alone.
+#
+# One new process per statement on purpose: that's how a real other app shows
+# up, and it lets us time each statement instead of just an average. Opening
+# a connection adds ~10-20ms to every number, so compare rows with each other
+# and with the idle baseline, not with zero.
+PROBES=${PROBES:-400}
+probe() {
+    local i=0 s e
+    : > "$PROBEF"
+    # Stop when the writers finish, so every sample is taken under load.
+    while [ $i -lt $PROBES ] && [ ! -f "$PROBEF.stop" ]; do
+        s=$(date +%s%N)
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default \
+            "INSERT INTO u(k,v) VALUES('p$i',$i) ON CONFLICT(k) DO UPDATE SET v=$i" >/dev/null 2>&1 || true
+        e=$(date +%s%N)
+        echo $(( (e - s) / 1000000 )) >> "$PROBEF"
+        i=$((i+1))
+    done
+}
+
+# Probe latency in ms: average, 95th percentile (nearest rank), and worst.
+# Short runs give few samples, and then p95 is close to the worst.
+probe_stats() {
+    sort -n "$PROBEF" | awk '{v[n++]=$1; s+=$1}
+         END {if (n) printf "%d %d %d", s/n, v[int((n*95+99)/100)-1], v[n-1]; else printf "- - -"}'
+}
+
+# Total retry count (db/db_metrics.c:316), added up across all nodes. Each
+# node keeps its own count and 'default' may connect to any node, so reading
+# just one could give before/after from different nodes (even negative).
+# Prints "?" if any node can't be read, rather than counting it as 0.
+replays() {
+    local total=0 n v
+    for n in ${hosts}; do
+        v=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $dbnm --host $n \
+              "SELECT value FROM comdb2_metrics WHERE name='verify_replays'" 2>/dev/null) || v=
+        case "$v" in
+            ''|*[!0-9]*) echo "?"; return ;;
+        esac
+        total=$((total + v))
+    done
+    echo $total
+}
+
+# Run one statement on every node. The retry runs on whatever node the client
+# is connected to, and pool size is per node too. A node that fails gets a
+# warning, so a row is never silently labeled with a setting it didn't use.
+on_all_nodes() {
+    local n
+    for n in ${hosts}; do
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $n "$1" >/dev/null 2>&1 ||
+            echo "WARNING: '$1' failed on $n" >&2
+    done
+}
+
+set_tunable() {
+    on_all_nodes "PUT TUNABLE $1 $2"
+}
+
+# Pool size is set with a message, not a tunable.
+set_pool() {
+    on_all_nodes "exec procedure sys.cmd.send('sqlenginepool maxt $1')"
+}
+
+restore() {
+    set_pool 48
+    set_tunable verify_retry_backoff_ms 50
+    set_tunable verify_retry_count_before_backoff 3
+}
+
+PROBEF=${TMPDIR:-/tmp}/vrp_probe.$$
+ERRF=$PROBEF.err
+# On any exit: stop leftover background jobs, put settings back, clean up.
+# set +e: nothing in cleanup may change the exit code (a bare 'kill' with no
+# jobs left returns 2).
+trap 'set +e; kill $(jobs -p) 2>/dev/null; wait 2>/dev/null; restore; rm -f "$PROBEF" "$PROBEF.stop" "$ERRF"' EXIT
+
+echo "writers=$WRITERS iters=$ITERS probes=$PROBES"
+FMT='%-6s %-6s %-10s %-8s %-10s %-10s %-8s %-10s %-10s %-10s\n'
+printf "$FMT" "pool" "keys" "backoff_ms" "n_before" "seconds" "replays" "errors" "othr_avg" "othr_p95" "othr_max"
+
+# Warm-up: the first probe pass INSERTs rows p0..p399; every later pass
+# UPDATEs them. Do it once here so every row below measures the same thing.
+rm -f "$PROBEF.stop"
+probe
+
+for POOL in $POOLS; do
+set_pool $POOL
+# Baseline: probe latency with no writers running. Lowering maxt doesn't stop
+# extra threads right away -- each one exits only after finishing its next
+# job (util/thdpool.c:826) -- and these sequential probes are what clear them
+# out before the first pool=$POOL run.
+rm -f "$PROBEF.stop"
+probe
+printf "$FMT" "$POOL" "-" "idle" "-" "-" "-" "-" $(probe_stats)
+
+for KEYS in $KEYSETS; do
+for backoff in $BACKOFFS; do
+for COUNT_BEFORE in $COUNT_BEFORES; do
+    # With no wait, the retry count setting does nothing -- run it only once.
+    if [ "$backoff" = 0 ] && [ "$COUNT_BEFORE" != "${COUNT_BEFORES%% *}" ]; then continue; fi
+    set_tunable verify_retry_backoff_ms $backoff
+    set_tunable verify_retry_count_before_backoff $COUNT_BEFORE
+
+    : > "$ERRF"
+    before=$(replays)
+    start=$(date +%s.%N)
+
+    pids=""
+    n=0
+    while [ $n -lt $WRITERS ]; do
+        writer $n &
+        pids="$pids $!"
+        n=$((n+1))
+    done
+
+    # Run the probe alongside the writers; it stops when they finish.
+    rm -f "$PROBEF.stop"
+    probe &
+    rpid=$!
+
+    # Wait on each writer: a bare 'wait $pids' returns only the last one's
+    # status, and under set -e one failed statement there would end the script.
+    for p in $pids; do wait $p || true; done
+    end=$(date +%s.%N)
+    touch "$PROBEF.stop"
+    wait $rpid || true
+
+    after=$(replays)
+    if [ "$before" = "?" ] || [ "$after" = "?" ]; then delta="?"; else delta=$((after - before)); fi
+    errors=$(grep -c . "$ERRF" || true)
+
+    # Use awk for the math; bc may not be installed.
+    elapsed=$(awk -v a="$start" -v b="$end" 'BEGIN{printf "%.2f", b-a}')
+    printf "$FMT" "$POOL" "$KEYS" "$backoff" "$COUNT_BEFORE" "$elapsed" "$delta" "$errors" $(probe_stats)
+done
+done
+done
+done
+
+echo "done"
+exit 0

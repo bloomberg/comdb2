@@ -1417,6 +1417,7 @@ void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
 
 int dispatch_sql_query(struct sqlclntstate *);
 int dispatch_sql_query_no_wait(struct sqlclntstate *);
+void sqlengine_appsock_done(struct sqlclntstate *);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
