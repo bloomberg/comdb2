@@ -2,7 +2,7 @@ create table t12 {
 schema
 {
     int i
-    datetime     dt dbstore="2019-13-30T25:59:59.987 US/Eastern"
+    datetime     dt dbstore="2019-13-30T25:59:59.987 America/New_York"
 }
 }$$
 

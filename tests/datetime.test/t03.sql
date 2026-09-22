@@ -1,4 +1,4 @@
-set timezone US/Eastern
+set timezone America/New_York
 insert into t1 (id, ymint) values (1, 500)
 insert into t1 (id, ymint) values (2, 1000)
 insert into t1 (id, ymint) values (3, 100000)

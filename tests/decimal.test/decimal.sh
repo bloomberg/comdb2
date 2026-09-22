@@ -52,7 +52,7 @@ function fastinit
     return 0
 }
 
-TZ="US/Eastern"
+TZ="America/New_York"
 
 # Iterate through input files
 for testcase in $files ; do

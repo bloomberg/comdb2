@@ -1,4 +1,4 @@
-set timezone US/Eastern
+set timezone America/New_York
 create table t(b blob, date datetime)$$
 insert into t (b, date) values (x'600dcafe', cast("2007-10-01" as datetime))
 insert into t (b, date) values (x'', cast("2007-10-01" as datetime))

@@ -1,4 +1,4 @@
-set timezone US/Eastern
+set timezone America/New_York
 select cast("2001-01-02" as datetime) + cast("10" as year)
 select cast("2001-01-02" as datetime) + cast("10" as month)
 select cast("2001-01-02" as datetime) + cast("10" as day)
