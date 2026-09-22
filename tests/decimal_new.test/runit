@@ -52,7 +52,7 @@ function fastinit
     return 0
 }
 
-TZ="US/Eastern"
+TZ="America/New_York"
 
 for schema in t datacopy_t ; do
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table if exists t1"

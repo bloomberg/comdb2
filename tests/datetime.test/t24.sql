@@ -1,4 +1,4 @@
-set timezone US/Eastern
+set timezone America/New_York
 create table t(d datetime)$$
 insert into t (d) values (cast("2007-10-01T" as datetime))
 insert into t (d) values (cast("2025-10-01T" as datetime))

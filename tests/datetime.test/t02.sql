@@ -1,4 +1,4 @@
-set timezone US/Eastern
+set timezone America/New_York
 insert into t1 (id, date) values (1, cast("2007-10-01" as datetime))
 insert into t1 (id, date) values (2, cast("2010-09-01" as datetime))
 insert into t1 (id, date) values (3, cast("2001-12-31T23:59:59.999" as datetime))

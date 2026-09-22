@@ -8,7 +8,7 @@ insert into dtus(id, dt) values(5, "2015-02-23T080000.000246")
 insert into dtus(id, dt) values(6, "2015-02-23T080000.246246")
 select cast(dt as TEXT), id from dtus order by dt, id
 select cast(dt as TEXT), id from dtus where dt > 10000 order by id
-set timezone US/Eastern
+set timezone America/New_York
 select cast(dt as TEXT), id from dtus order by dt, id
 insert into dtus(id, ds) values(7, 3600.246)
 insert into dtus(id, ds) values(8, 3600.246246)
