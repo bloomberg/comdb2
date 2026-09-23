@@ -279,6 +279,51 @@ I started tracking this when I got to more important files (`where.c`,
   `OP_Count` always asks for an exact count (P3 = 0) because
   `sqlite3BtreeRowCountEst()` is unimplemented for our btree.
 
+- **DECISION**: Fold `analyze_empty_tables` into upstream's partial-index
+  condition rather than keeping it as a separate patch.
+
+  Stock SQLite writes nothing to `sqlite_stat1` for an empty index. To the
+  planner an absent row means "unknown", not "empty", so it falls back to its
+  built-in guess of a large table. The tunable makes an empty index still get a
+  row, which our `statGet()` writes as `MAX(nRow, 1)` — the planner then costs
+  the table as tiny instead of huge.
+
+  3.51 added the same trick for partial indexes. One behavior change does come
+  with 3.51: an empty *partial* index now gets a `sqlite_stat1` row even with
+  the tunable off.
+
+- **DECISION**: Keep our own second `OP_Rewind` for the stat4 skip; upstream's
+  replacement cannot work here.
+
+  Once the empty-index jump is rerouted to the `sqlite_stat1` write, something
+  else has to skip the stat4 sample loop. Upstream re-derives that skip from the
+  stat1 row itself: `OP_Cast regStat1` then `OP_IfNot regStat1`, which fires when
+  the row count is 0. Our `statGet()` writes `MAX(nRow, 1)`, so that jump can
+  never fire for us. `addrRewind` is a second `OP_Rewind`, opened and patched
+  inside the same `if( analyze_empty_tables )` pair, and it is a distinct
+  address from upstream's `addrGotoEnd`.
+
+  Upstream's `OP_IfNot` is still emitted and still patched — a dead opcode, kept
+  so its `p2` points somewhere sane rather than at address 0.
+
+- **DECISION**: Split the stat4 sample loop into a single `#if/#else` instead of
+  four interleaved guards.
+
+  Upstream re-reads each sampled row out of the table: fetch the rowid, seek to
+  it, load every index column, pack a record. We have no rowid — our sample is
+  the packed index row the accumulator already holds — so we fetch it with
+  `STAT_GET_ROW` and never touch the table cursor. The loop-exit test differs to
+  match: upstream tests the rowid for NULL, we test `regEq`, since `statGet()`
+  returns NULL for `STAT_GET_NEQ` once the samples run out.
+
+  The two paths share only three `callStatGet()` calls. Duplicating those on our
+  side buys an unbroken twelve-line copy of upstream's, which merges clean.
+
+- **OBSERVATION**: `PRAGMA analysis_limit` is now fully wired for comdb2. The
+  limit already reached `stat_init()`, and `statPush()` already returned the
+  skip-ahead signal, but nothing read that signal; 3.51's call site does. The
+  default is 0, which selects the plain `OP_Next` and leaves codegen unchanged.
+
 ### `CMakeLists.txt`
 
 - Certain files are generated at build time (see `tool` directory and comments
