@@ -195,6 +195,90 @@ I started tracking this when I got to more important files (`where.c`,
 
 - Disable SQLite's logic because we handle much of DDL ourselves.
 
+### `analyze.c`
+
+- **DECISION**: Don't let the stat4 sample tunables re-enable collection that
+  the connection has disabled.
+
+  `stat_init()` sets `mxSample` to 0 when the `SQLITE_Stat4` optimization bit is
+  clear on the connection, and 0 means "collect stat1 only".
+  `stat4_samples_multiplier` assigns over `mxSample` and `stat4_extra_samples`
+  adds to it, so either one on its own would quietly bring sampling back. Both
+  now run only when `mxSample` is already non-zero: the tunables control how
+  many samples we take, not whether we take any.
+
+- **DECISION**: Adopt upstream's 1.0-1.1 rounding rule in our fork of the
+  `sqlite_stat1` loop.
+
+  Each figure in a stat1 row is rows-per-distinct-prefix. Previously, if a
+  figure was between 1.0 and 2.0, it would be rounded up to 2.0. This
+  rounding-up turned a near-unique column into 2, and the planner would read 2
+  as "twice as many rows as a unique index would give" — enough to make it
+  prefer a different index. A column with 999 distinct values in 1000 rows is
+  unique for planning purposes; 2 misprices it by 2×. Upstream's rule rounds
+  back down to 1 when the true ratio is under 1.1. Our fork of the loop exists
+  to use our own row count and to iterate `nCol-1` in place of `nKeyCol`, not to
+  change the estimator, so the rule belongs on both sides.
+
+- **OBSERVATION**: `StatAccum.nActualRow` and upstream's `nEst` are different
+  quantities, not duplicates. For large tables comdb2's `ANALYZE` walks a
+  sampler rather than the index itself (`bdb_summarize_table()`), so `OP_Count`
+  returns the number of rows sampled while `analyze_get_nrecs()` returns the
+  number the table really holds. `sqlite_stat1` reports the latter, and stat4's
+  per-column counts are scaled by the ratio between the two. This is why
+  `stat_init()` needs a fifth argument that upstream has no equivalent for.
+
+- **OBSERVATION**: Upstream needs to pass both N and K because `N-K` varies by
+  index shape. comdb2 doesn't, because only one of the three shapes can exist
+  here.
+
+  K is always `pIdx->nKeyCol`. N is not:
+
+  | index shape | N | relation |
+  |---|---|---|
+  | index on a rowid table | `nColumn` — the key plus the rowid | N = K+1 |
+  | secondary index on a WITHOUT ROWID table | `nColumn` — the key plus the P primary key columns | N = K+P |
+  | the primary key index of a WITHOUT ROWID table | `nKeyCol` | N = K |
+
+  The third is the index that *is* the table, so its `nColumn` is the full table
+  width; `analyzeOneTable()` takes `nKeyCol` as N instead, to keep
+  `sqlite_stat1` describing the primary key rather than every column. K is what
+  tells `statGet()` how many figures a `sqlite_stat1` row carries, and `N-1`
+  gives the wrong answer for the lower two shapes.
+
+  comdb2 can only produce the first. `parse.y` puts the whole
+  `table_option_set` production behind `%ifndef SQLITE_BUILDING_FOR_COMDB2`, so
+  `WITHOUT ROWID` does not parse and `convertToWithoutRowidTable()` is
+  unreachable. Every index we analyze carries the genid, so N = K+1 always.
+
+- **DECISION**: Pass K rather than deriving it from N.
+
+  `statInit()` takes K in `argv[1]` and stores it in `StatAccum.nKeyCol` as
+  upstream does, and `statGet()`'s `sqlite_stat1` loop is bounded by
+  `p->nKeyCol` rather than `p->nCol-1`.
+
+  We pass our own key-column count as K, not `pIdx->nKeyCol`. `pIdx->nKeyCol`
+  counts DATACOPY columns, which sit in the key's tail as payload and are not
+  searchable. The local `nCol` in `analyzeOneTable()` is that count already
+  truncated at the first DATACOPY column, so K is `nCol` and N is `nCol+1`.
+
+  Deriving K as `N-1` also works here — per the observation above, only the
+  rowid shape exists in comdb2, so `N = K+1` always. Passing it instead keeps
+  upstream's `assert(nKeyCol<=nCol)` and `assert(nKeyCol>0)` live, which are
+  the only check we have on the DATACOPY truncation, and leaves the stat1 loop
+  textually identical to upstream's, so a future change to the estimator
+  applies as a copy rather than a translation.
+
+- **DECISION**: `stat_init()` takes comdb2's extra row count as a fifth
+  argument, leaving upstream's four in their own positions.
+
+  Upstream passes (N, K, C, L): index columns, key columns, `OP_Count` of the
+  index, and `PRAGMA analysis_limit`. comdb2 adds A, `analyze_get_nrecs()`, in
+  register `regStat+5`.
+
+  `OP_Count` always asks for an exact count (P3 = 0) because
+  `sqlite3BtreeRowCountEst()` is unimplemented for our btree.
+
 ### `CMakeLists.txt`
 
 - Certain files are generated at build time (see `tool` directory and comments
@@ -509,8 +593,6 @@ previous release's; then `cc -fsyntax-only -Wall` it both with and without
   additional affinity types. Latest SQLite doesn't have `SQLITE_KEEPNULL` at
   all, removed the patch. **This means we have one less
   `#ifdef SQLITE_BUILDING_FOR_COMDB2` block now** (127 vs. 128).
-- `struct Index` - `nAlloc` vs. `mxSample`. Seems like we have rewritten some
-  parts of `analyze.c`, feels like it makes sense to keep both.
 - `SF_ASTIncluded`. We have added a `selFlag` related to parallel SQL execution
   that now conflicts with SQLite's own `SF_PushDown`. My only concern would be
   if changing the flag would break like fdb queries or something, but I don't
