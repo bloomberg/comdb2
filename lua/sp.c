@@ -87,6 +87,7 @@ extern int gbl_lua_version;
 extern int gbl_notimeouts;
 extern int gbl_allow_lua_print;
 extern int gbl_lua_prepare_max_retries;
+extern void comdb2uuid(uuid_t);
 extern int gbl_lua_prepare_retry_sleep;
 extern int gbl_sql_tranlevel_default;
 
@@ -4657,7 +4658,7 @@ static int db_guid(Lua lua)
         if(uuid_parse(z, guid) != 0)
             return luaL_error(lua, "Can not convert string %s to guid", z);
     } else {
-        uuid_generate(guid);
+        comdb2uuid(guid);
     }
 
     uint8_t *b = malloc(sizeof(guid));
@@ -4676,7 +4677,7 @@ static int db_guid_str(Lua lua)
 
     uuid_t guid;
     if (nargs == 1)
-        uuid_generate(guid);
+        comdb2uuid(guid);
     else {
         blob_t x = {0};
         luabb_toblob(lua, 2, &x);

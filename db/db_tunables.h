@@ -2297,6 +2297,8 @@ REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: on)", TUNABLE_BOOLE
 
 REGISTER_TUNABLE("utxnid_log", "Generate utxnid logs. (Default: on)", TUNABLE_BOOLEAN, &gbl_utxnid_log,
                  NOARG|READEARLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("uuid_v7", "Generate v7 uuids from a thread-local prng instead of libuuid. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_uuid_v7, NOARG, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("log_cksum_prev",
                  "Chain each log record to the previous record's checksum, letting a replicant match on any "

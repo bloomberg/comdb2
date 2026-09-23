@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Benchmark guid() dbstore inserts with libuuid vs internal v7.
+bash -n "$0" || exit 1
+
+dbname=$1
+
+WRITERS=1
+ROWS_PER_WRITER=5000
+
+run() { cdb2sql ${CDB2_OPTIONS} -tabs $dbname default "$1"; }
+
+set_tunable() {
+    local name=$1 val=$2
+    if [[ -z "$CLUSTER" ]]; then
+        run "put tunable $name $val" >/dev/null
+    else
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} -tabs $dbname --host $node "put tunable $name $val" >/dev/null
+        done
+    fi
+}
+
+writer() {
+    for ((j = 0; j < ROWS_PER_WRITER; j++)); do
+        echo "insert into t(i) values($j)"
+    done | cdb2sql ${CDB2_OPTIONS} -tabs $dbname default - >/dev/null
+}
+
+run_case() {
+    local label=$1 v7=$2
+
+    run "drop table if exists t" >/dev/null
+    run 'create table t { tag ondisk { int i null=yes byte b[16] dbstore={guid()} null=yes } keys { dup "KEY_B" = b } }' >/dev/null
+    set_tunable uuid_v7 $v7
+
+    local start end elapsed total rate
+    start=$(date +%s.%N)
+    for ((w = 0; w < WRITERS; w++)); do writer & done
+    wait
+    end=$(date +%s.%N)
+
+    total=$((WRITERS * ROWS_PER_WRITER))
+    elapsed=$(echo "$end - $start" | bc)
+    rate=$(echo "scale=0; $total / $elapsed" | bc)
+    printf "%-40s uuid_v7=%d  %d rows in %ss  (%s rows/s)\n" \
+        "$label" "$v7" "$total" "$elapsed" "$rate"
+}
+
+echo "guid() dbstore insert benchmark: $WRITERS writers x $ROWS_PER_WRITER rows"
+run_case "case 1: libuuid v4"    0
+run_case "case 2: internal v7"   1
+
+echo "done"
+exit 0
