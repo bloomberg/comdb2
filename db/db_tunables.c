@@ -90,6 +90,7 @@ extern int gbl_coordinator_sync_on_commit;
 extern int gbl_coordinator_wait_propagate;
 extern int gbl_coordinator_block_until_durable;
 extern int gbl_disttxn_random_retry_poll;
+extern int gbl_verify_retry_poll;
 extern int gbl_disttxn_handle_cache;
 extern int gbl_disttxn_handle_linger_time;
 extern int gbl_disttxn_async_messages;
