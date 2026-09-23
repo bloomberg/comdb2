@@ -363,6 +363,11 @@ const uint8_t *pgcomp_snd_type_get(pgcomp_snd_t *p_snd, const uint8_t *p_buf,
     p_buf = buf_get(&(p_snd->id), sizeof(p_snd->id), p_buf, p_buf_end);
     p_buf = buf_get(&(p_snd->size), sizeof(p_snd->size), p_buf, p_buf_end);
 
+    /* The declared payload size comes from the network and must not exceed
+       what was actually received, or the caller reads past the buffer. */
+    if (p_snd->size > (uint32_t)(p_buf_end - p_buf))
+        return NULL;
+
     return p_buf;
 }
 
