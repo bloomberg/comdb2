@@ -223,6 +223,55 @@ I started tracking this when I got to more important files (`where.c`,
     where each of decimal type can store a different number of digits for
     the significand and exponent.
 
+### `expr.c`
+
+- **DECISION**: Drop our `EP_Generic` patch in `sqlite3ExprAffinity()`; take
+  upstream.
+
+  Nothing sets `EP_Generic` in 3.51. SQLite removed the flag from `sqliteInt.h`
+  along with the rewrite rule it served in the optimizer -- `x IN (y)` ->
+  `x==y` (removed in `790b37a240`). The `sqlite3ExprSkipCollate()` call in the
+  hunk is not lost: upstream inlined it into `sqlite3ExprAffinity()`
+  (`a7d6db6ac0`) and has since widened it to also check `EP_Skip|EP_IfNullRow`.
+
+- **DECISION**: In `sqlite3ExprCodeGetColumnOfTable()`, take upstream's
+  placement of the `sqlite3ColumnDefault()` call (inside the `else`, no
+  `if( iCol>=0 )`) but keep our `-1` register argument.
+
+  `-1` is what suppresses `OP_RealAffinity`; `sqlite3ColumnDefault()`'s
+  `iReg>=0` guard (`update.c`) is a comdb2 fork. The narrower placement costs
+  nothing: for an `INTEGER PRIMARY KEY` the branch emits `OP_Rowid`, which
+  ignores the P4 default that is all the call could still append.
+
+- **DECISION**: In the `EP_FixedCol` branch of `sqlite3ExprCodeTarget()`, take
+  upstream and widen `zAff[]` to cover every comdb2 affinity.
+
+  That branch makes constant propagation safe across types:
+
+  ```sql
+  CREATE TABLE t1(a INT, b TEXT);
+  INSERT INTO t1 VALUES(123,'0123');
+  SELECT * FROM t1 WHERE a=123 AND b=a;     -- 1 row
+  SELECT * FROM t1 WHERE a=123 AND b=123;   -- 0 rows
+  ```
+
+  `b=a` compares numerically but `b=123` compares as text, so the optimizer
+  cannot simply substitute the value of `a`. It keeps the node `a` column, tags
+  it `EP_FixedCol`, and codes the constant with `a`'s affinity -- and `zAff[]`
+  is the affinity-to-`P4`-string lookup that applies it.
+
+  Our only change here has ever been to give it a row per comdb2 data type, so
+  the resolution is take-theirs with all of ours covered, `SQLITE_AFF_FLEXNUM`
+  included (it arrived with `sqliteInt.h` after the table was last widened).
+
+- **TODO**: Confirm `typessql` still stays off for statements that call a scalar
+  function (`tests/typessql.test`, the fix in `4c00fcf29`).
+
+  `db/sqlinterfaces.c` skips `typessql_initialize()` when `Vdbe.hasScalarFunc`
+  is set, and upstream deleted the block that used to set it. It now sits just
+  before `sqlite3VdbeAddFunctionCall()` in the `TK_FUNCTION` case -- the same
+  emit point, but only once `func.c` is merged.
+
 ### `fwd_types.h`
 
 - I guess we need to be able to refer to some SQLite structures in `db/` code.
