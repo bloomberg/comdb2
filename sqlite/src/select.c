@@ -6487,9 +6487,11 @@ static int selectExpander(Walker *pWalker, Select *p){
               Expr *pLeft;
               pLeft = sqlite3Expr(db, TK_ID, zTabName);
               pExpr = sqlite3PExpr(pParse, TK_DOT, pLeft, pRight);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
               if( IN_RENAME_OBJECT && pE->pLeft ){
                 sqlite3RenameTokenRemap(pParse, pLeft, pE->pLeft);
               }
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
               if( zSchemaName ){
                 pLeft = sqlite3Expr(db, TK_ID, zSchemaName);
                 pExpr = sqlite3PExpr(pParse, TK_DOT, pLeft, pExpr);
