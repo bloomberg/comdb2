@@ -471,6 +471,33 @@ const char *breq2a(int req)
     }
 }
 
+/* A tagged write landing on a replicant is forwarded to the master instead of
+   being refused, so the replicant holds request state until the master answers.
+   We would rather just reject, but nobody knows what still relies on it.  Report
+   the forwards so production can say whether anything still does.
+
+   The rate limit is only a guard against a flood: if these turn out to be as rare
+   as we expect, every one of them gets a line. */
+static uint64_t gbl_fwd_block_count = 0;
+static uint64_t gbl_fwd_block_lastpr = 0;
+
+static void log_forwarded_block(struct ireq *iq, const char *mstr, const char *kind)
+{
+    uint64_t now;
+    uint64_t count = ATOMIC_ADD64(gbl_fwd_block_count, 1);
+
+    now = gettimeofday_ms();
+    if (now - gbl_fwd_block_lastpr < 1000)
+        return;
+    gbl_fwd_block_lastpr = now;
+
+    /* sock=1 is the offload-net path (NET_BLOCK_REQ); sock=0 is the legacy IPC
+       hand-off, which only exists when the internal plugins are linked in.
+       getorigin() contains spaces, so quote it to keep the line parseable. */
+    logmsg(LOGMSG_INFO, "FWD_BLOCK_TO_MASTER: kind=%s sock=%d from=\"%s\" master=%s opcode=%d count=%" PRIu64 "\n",
+           kind, iq->is_socketrequest ? 1 : 0, getorigin(iq), mstr ? mstr : "???", iq->opcode, count);
+}
+
 /* this forwards the block operation to master machine.  then it adds
    response to table of outstanding requests to await reply and log catch-up */
 static int forward_longblock_to_master(struct ireq *iq,
@@ -1746,6 +1773,7 @@ int tolongblock(struct ireq *iq)
                 return ERR_NOMASTER;
 
             /* need to be master for this, so send it to the master */
+            log_forwarded_block(iq, mstr, "longblock");
             return forward_longblock_to_master(iq, &blkstate, mstr);
         }
     }
@@ -2159,6 +2187,7 @@ int toblock(struct ireq *iq)
                 return ERR_NOMASTER;
 
             /* need to be master for this, so send it to the master */
+            log_forwarded_block(iq, mstr, "block");
             return forward_block_to_master(iq, &blkstate, mstr);
         }
     }
