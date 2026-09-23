@@ -382,7 +382,7 @@ static void sampleClear(sqlite3 *db, StatSample *p){
 */
 #ifdef SQLITE_ENABLE_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-static void sampleSetPackedRow(sqlite3 *db, Stat4Sample *p, int n, const u8 *pData){
+static void sampleSetPackedRow(sqlite3 *db, StatSample *p, int n, const u8 *pData){
   assert( db!=0 );
   assert( n<PACKEDROWSIZE );
   p->nPackedRow = n;
@@ -493,6 +493,13 @@ static inline int numRowsToNumSamplesEst(u64 n)
 ** return value is BLOB, but it is really just a pointer to the StatAccum
 ** object.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** comdb2 passes a fifth parameter, A: the number of rows the table really
+** holds.  ANALYZE walks a sampler for large tables, so C counts sampled rows
+** and A does not.  comdb2 ignores K.
+*/
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static void statInit(
   sqlite3_context *context,
   int argc,
@@ -500,9 +507,7 @@ static void statInit(
 ){
   StatAccum *p;
   int nCol;                       /* Number of columns in index being sampled */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   int nKeyCol;                    /* Number of key columns */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   int nColUp;                     /* nCol rounded up for alignment */
   i64 n;                          /* Bytes of space to allocate */
   sqlite3 *db = sqlite3_context_db_handle(context);   /* Database connection */
@@ -510,12 +515,17 @@ static void statInit(
   /* Maximum number of samples.  0 if STAT4 data is not collected */
   int mxSample = OptimizationEnabled(db,SQLITE_Stat4) ?SQLITE_STAT4_SAMPLES :0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  u64 nRows = sqlite3_value_int64(argv[1]);
-  if( sqlite3_gbl_tunables.stat4_samples_multiplier > 0 ){
-      mxSample = numRowsToNumSamplesEst(nRows) * sqlite3_gbl_tunables.stat4_samples_multiplier;
-  }
-  if( sqlite3_gbl_tunables.stat4_extra_samples > 0 ){
-      mxSample += sqlite3_gbl_tunables.stat4_extra_samples;
+  u64 nRows = sqlite3_value_int64(argv[2]);
+  /* mxSample==0 means stat4 collection is switched off at the connection
+  ** level. The tunables are intended to scale how many samples we take, they
+  ** shouldn't turn collection back on if it was explicitly disabled. */
+  if( mxSample ){
+    if( sqlite3_gbl_tunables.stat4_samples_multiplier > 0 ){
+        mxSample = numRowsToNumSamplesEst(nRows) * sqlite3_gbl_tunables.stat4_samples_multiplier;
+    }
+    if( sqlite3_gbl_tunables.stat4_extra_samples > 0 ){
+        mxSample += sqlite3_gbl_tunables.stat4_extra_samples;
+    }
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
@@ -529,11 +539,9 @@ static void statInit(
   assert( nCol>0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   nColUp = sizeof(tRowcnt)<8 ? (nCol+1)&~1 : nCol;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   nKeyCol = sqlite3_value_int(argv[1]);
   assert( nKeyCol<=nCol );
   assert( nKeyCol>0 );
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Allocate the space required for the StatAccum object */
   n = sizeof(*p) 
@@ -555,14 +563,12 @@ static void statInit(
   p->db = db;
   p->nEst = sqlite3_value_int64(argv[2]);
   p->nRow = 0;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  p->nActualRow = sqlite3_value_int64(argv[2]);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->nLimit = sqlite3_value_int(argv[3]);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  p->nActualRow = sqlite3_value_int64(argv[4]);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->nCol = nCol;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   p->nKeyCol = nKeyCol;
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->nSkipAhead = 0;
   p->current.anDLt = (tRowcnt*)&p[1];
 
@@ -574,17 +580,9 @@ static void statInit(
     int i;                          /* Used to iterate through p->aSample[] */
 
     p->iGet = -1;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    p->nPSample = (tRowcnt)(nRows/(mxSample/3+1) + 1);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->nPSample = (tRowcnt)(p->nEst/(mxSample/3+1) + 1);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->current.anLt = &p->current.anEq[nColUp];
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    p->iPrn = 0x689e962d*(u32)nCol ^ 0xd0944565*(u32)sqlite3_value_int(argv[1]);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->iPrn = 0x689e962d*(u32)nCol ^ 0xd0944565*(u32)sqlite3_value_int(argv[2]);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   
     /* Set up the StatAccum.a[] and aBest[] arrays */
     p->a = (struct StatSample*)&p->current.anLt[nColUp];
@@ -610,7 +608,11 @@ static void statInit(
   sqlite3_result_blob(context, p, sizeof(*p), statAccumDestructor);
 }
 static const FuncDef statInitFuncdef = {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  5,               /* nArg */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   4,               /* nArg */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   SQLITE_UTF8,     /* funcFlags */
   0,               /* pUserData */
   0,               /* pNext */
@@ -1031,23 +1033,20 @@ static void statGet(
     int i;               /* Loop counter */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    sqlite3StrAccumInit(&sStat, 0, 0, 0, p->nCol*100);
-    {
-      /* If sampling was done, use the estimated table size instead of the
-      ** number of rows sampled. This is conceptually the same as SQLite's
-      ** logic with `nSkipAhead` and `nEst`. */
-      u64 nRow = p->nActualRow > 0 ? p->nActualRow : p->nRow;
-      /* Never let the estimated number of rows be less than 1 */
-      sqlite3_str_appendf(&sStat, "%llu", MAX(nRow, 1)); 
-      for(i=0; i<(p->nCol-1); i++){
-        u64 nDistinct = p->current.anDLt[i] + 1;
-        u64 iVal = (nRow + nDistinct - 1) / nDistinct;
-        if( iVal==2 && nRow*10 <= nDistinct*11 ) iVal = 1;
-        sqlite3_str_appendf(&sStat, " %llu", iVal);
+    /* If sampling was done, use the estimated table size instead of the
+    ** number of rows sampled. */
+    u64 nRow = p->nActualRow > 0 ? p->nActualRow : p->nRow;
+    sqlite3StrAccumInit(&sStat, 0, 0, 0, (p->nKeyCol+1)*100);
+    /* Never let the estimated number of rows be less than 1 */
+    sqlite3_str_appendf(&sStat, "%llu", MAX(nRow, 1));
+    for(i=0; i<p->nKeyCol; i++){
+      u64 nDistinct = p->current.anDLt[i] + 1;
+      u64 iVal = (nRow + nDistinct - 1) / nDistinct;
+      if( iVal==2 && nRow*10 <= nDistinct*11 ) iVal = 1;
+      sqlite3_str_appendf(&sStat, " %llu", iVal);
 #ifdef SQLITE_ENABLE_STAT4
-        assert( p->current.anEq[i] || p->nRow==0 );
+      assert( p->current.anEq[i] || p->nRow==0 );
 #endif
-      }
     }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3StrAccumInit(&sStat, 0, 0, 0, (p->nKeyCol+1)*100);
@@ -1071,7 +1070,7 @@ static void statGet(
 #ifdef SQLITE_ENABLE_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
-    Stat4Sample *pS = NULL;
+    StatSample *pS = NULL;
     tRowcnt *aCnt = NULL;
     int scale = 1;
     int iGet;
@@ -1245,6 +1244,9 @@ static void analyzeOneTable(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int regTemp = iMem++;        /* Temporary use register */
   int regTemp2 = iMem++;       /* Second temporary use register */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int regActualRow = iMem++;   /* Full table row count, for a sampled analyze */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int regTabname = iMem++;     /* Register containing table name */
   int regIdxname = iMem++;     /* Register containing index name */
   int regStat1 = iMem++;       /* Value for the stat column of sqlite_stat1 */
@@ -1394,64 +1396,6 @@ static void analyzeOneTable(
     sqlite3VdbeSetP4KeyInfo(pParse, pIdx);
     VdbeComment((v, "%s", pIdx->zName));
 
-<<<<<<< src/analyze.c
-    /* Invoke the stat_init() function. The arguments are:
-    ** 
-    **    (1) the number of columns in the index including the rowid
-    **        (or for a WITHOUT ROWID table, the number of PK columns),
-    **    (2) the number of columns in the key without the rowid/pk
-    **    (3) the number of rows in the index,
-    **
-    **
-    ** The third argument is only used for STAT3 and STAT4
-    */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    /* we only care about our shared tables */
-    if( iDb==0 ){
-      i64 actualCount = analyze_get_nrecs(pIdx->tnum);
-      sqlite3VdbeAddOp4Dup8(v, OP_Int64, 0, regStat4+3, 0,
-                            (const u8*)&actualCount, P4_INT64);
-    }else{
-      /* TODO: Is there a better default value here? */
-      sqlite3VdbeAddOp2(v, OP_Integer, 0, regStat4+3);
-    }
-#endif
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol+1, regStat4+1);
-    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+2);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+3);
-#endif
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat4+1);
-    sqlite3VdbeAddOp2(v, OP_Integer, pIdx->nKeyCol, regStat4+2);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    sqlite3VdbeAddOp4(v, OP_Function0, 0, regStat4+1, regStat4,
-                     (char*)&statInitFuncdef, P4_FUNCDEF);
-    sqlite3VdbeChangeP5(v, 2+IsStat34);
-
-||||||| sqlite-3.28.0/src/analyze.c
-    /* Invoke the stat_init() function. The arguments are:
-    ** 
-    **    (1) the number of columns in the index including the rowid
-    **        (or for a WITHOUT ROWID table, the number of PK columns),
-    **    (2) the number of columns in the key without the rowid/pk
-    **    (3) the number of rows in the index,
-    **
-    **
-    ** The third argument is only used for STAT3 and STAT4
-    */
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+3);
-#endif
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat4+1);
-    sqlite3VdbeAddOp2(v, OP_Integer, pIdx->nKeyCol, regStat4+2);
-    sqlite3VdbeAddOp4(v, OP_Function0, 0, regStat4+1, regStat4,
-                     (char*)&statInitFuncdef, P4_FUNCDEF);
-    sqlite3VdbeChangeP5(v, 2+IsStat34);
-
-=======
->>>>>>> sqlite-3.51.2/src/analyze.c
     /* Implementation of the following:
     **
     **   regChng = 0
@@ -1472,6 +1416,30 @@ static void analyzeOneTable(
     **        (or for a WITHOUT ROWID table, the number of PK columns),
     **    (2) the number of columns in the key without the rowid/pk
     **    (3) estimated number of rows in the index. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* Our nCol counts key columns only, stopping at the first DATACOPY
+    ** column. Add +1 for the rowid to match upstream's meaning. */
+    sqlite3VdbeAddOp2(v, OP_Integer, nCol+1, regStat+1);
+    assert( regSampleRow==regStat+2 );
+    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regSampleRow);
+    /* Request an exact row count because we haven't implemented
+    ** sqlite3BtreeRowCountEst(). */
+    sqlite3VdbeAddOp3(v, OP_Count, iIdxCur, regTemp, 0);
+    /* (5) the number of rows the table really holds.  For a large table
+    ** ANALYZE walks a sampler, so (3) counts sampled rows and this does not. */
+    assert( regActualRow==regStat+5 );
+    /* we only care about our shared tables */
+    if( iDb==0 ){
+      i64 actualCount = analyze_get_nrecs(pIdx->tnum);
+      sqlite3VdbeAddOp4Dup8(v, OP_Int64, 0, regActualRow, 0,
+                            (const u8*)&actualCount, P4_INT64);
+    }else{
+      /* TODO: Is there a better default value here? */
+      sqlite3VdbeAddOp2(v, OP_Integer, 0, regActualRow);
+    }
+    sqlite3VdbeAddFunctionCall(pParse, 0, regStat+1, regStat, 5,
+                               &statInitFuncdef, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat+1);
     assert( regRowid==regStat+2 );
     sqlite3VdbeAddOp2(v, OP_Integer, pIdx->nKeyCol, regRowid);
@@ -1479,6 +1447,7 @@ static void analyzeOneTable(
                       OptimizationDisabled(db, SQLITE_Stat4));
     sqlite3VdbeAddFunctionCall(pParse, 0, regStat+1, regStat, 4,
                                &statInitFuncdef, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     addrGotoEnd = sqlite3VdbeAddOp1(v, OP_Rewind, iIdxCur);
     VdbeCoverage(v);
 
@@ -1548,36 +1517,7 @@ static void analyzeOneTable(
     **   Next csr
     **   if !eof(csr) goto next_row;
     */
-<<<<<<< src/analyze.c
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    assert( regRowid==(regStat4+2) );
-    if( HasRowid(pTab) ){
-      sqlite3VdbeAddOp2(v, OP_IdxRowid, iIdxCur, regRowid);
-    }else{
-      Index *pPk = sqlite3PrimaryKeyIndex(pIdx->pTable);
-      int j, k, regKey;
-      regKey = sqlite3GetTempRange(pParse, pPk->nKeyCol);
-      for(j=0; j<pPk->nKeyCol; j++){
-        k = sqlite3ColumnOfIndex(pIdx, pPk->aiColumn[j]);
-        assert( k>=0 && k<pIdx->nColumn );
-        sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, k, regKey+j);
-        VdbeComment((v, "%s", pTab->aCol[pPk->aiColumn[j]].zName));
-||||||| sqlite-3.28.0/src/analyze.c
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    assert( regRowid==(regStat4+2) );
-    if( HasRowid(pTab) ){
-      sqlite3VdbeAddOp2(v, OP_IdxRowid, iIdxCur, regRowid);
-    }else{
-      Index *pPk = sqlite3PrimaryKeyIndex(pIdx->pTable);
-      int j, k, regKey;
-      regKey = sqlite3GetTempRange(pParse, pPk->nKeyCol);
-      for(j=0; j<pPk->nKeyCol; j++){
-        k = sqlite3ColumnOfIndex(pIdx, pPk->aiColumn[j]);
-        assert( k>=0 && k<pIdx->nColumn );
-        sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, k, regKey+j);
-        VdbeComment((v, "%s", pTab->aCol[pPk->aiColumn[j]].zName));
-=======
 #ifdef SQLITE_ENABLE_STAT4
     if( OptimizationEnabled(db, SQLITE_Stat4) ){
       assert( regRowid==(regStat+2) );
@@ -1595,30 +1535,16 @@ static void analyzeOneTable(
         }
         sqlite3VdbeAddOp3(v, OP_MakeRecord, regKey, pPk->nKeyCol, regRowid);
         sqlite3ReleaseTempRange(pParse, regKey, pPk->nKeyCol);
->>>>>>> sqlite-3.51.2/src/analyze.c
       }
     }
 #endif
-<<<<<<< src/analyze.c
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-    assert( regChng==(regStat4+1) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    assert( regSampleRow==(regStat4+2) );
+#ifdef SQLITE_ENABLE_STAT4
+    assert( regSampleRow==(regStat+2) );
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regPrev, nCol, regSampleRow);
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    sqlite3VdbeAddOp4(v, OP_Function0, 1, regStat4, regTemp,
-                     (char*)&statPushFuncdef, P4_FUNCDEF);
-    sqlite3VdbeChangeP5(v, 2+IsStat34);
-    sqlite3VdbeAddOp2(v, OP_Next, iIdxCur, addrNextRow); VdbeCoverage(v);
-||||||| sqlite-3.28.0/src/analyze.c
-    assert( regChng==(regStat4+1) );
-    sqlite3VdbeAddOp4(v, OP_Function0, 1, regStat4, regTemp,
-                     (char*)&statPushFuncdef, P4_FUNCDEF);
-    sqlite3VdbeChangeP5(v, 2+IsStat34);
-    sqlite3VdbeAddOp2(v, OP_Next, iIdxCur, addrNextRow); VdbeCoverage(v);
-=======
     assert( regChng==(regStat+1) );
     {
       sqlite3VdbeAddFunctionCall(pParse, 1, regStat, regTemp, 2+IsStat4,
@@ -1637,7 +1563,6 @@ static void analyzeOneTable(
         sqlite3VdbeAddOp2(v, OP_Next, iIdxCur, addrNextRow); VdbeCoverage(v);
       }
     }
->>>>>>> sqlite-3.51.2/src/analyze.c
 
     /* Add the entry to the stat1 table. */
 <<<<<<< src/analyze.c
