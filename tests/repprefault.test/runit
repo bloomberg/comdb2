@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+# Replication apply-path page prefault.
+#
+# Covers the tunables, the extraction that turns a log record into (file, page)
+# without applying it, and the pool that faults those pages.  'repprefault
+# verify' re-runs the extraction over the log tail so this works on one node;
+# the apply-path assertions need CLUSTER.
+
+dbnm=$1
+FAIL=0
+
+failed() { echo "FAIL: $1" >&2; FAIL=1; }
+
+# Prefault state is per-node, so pin every query to one host.
+host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()')
+
+runtabs() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$host" "$1"; }
+
+# 1) tunables are registered with the expected defaults
+vals=$(runtabs "select name || '=' || value || '/' || read_only from comdb2_tunables where name in ('rep_prefault','rep_prefault_adaptive','rep_prefault_budget','rep_prefault_lookahead','rep_prefault_threads') order by name")
+echo "$vals"
+[ "$(echo "$vals" | sed -n 1p)" = "rep_prefault=ON/N" ] ||
+    failed "rep_prefault default/read_only wrong: $(echo "$vals" | sed -n 1p)"
+[ "$(echo "$vals" | sed -n 2p)" = "rep_prefault_adaptive=ON/N" ] ||
+    failed "rep_prefault_adaptive default wrong: $(echo "$vals" | sed -n 2p)"
+[ "$(echo "$vals" | sed -n 3p)" = "rep_prefault_budget=64/N" ] ||
+    failed "rep_prefault_budget default wrong: $(echo "$vals" | sed -n 3p)"
+[ "$(echo "$vals" | sed -n 4p)" = "rep_prefault_lookahead=16/N" ] ||
+    failed "rep_prefault_lookahead default wrong: $(echo "$vals" | sed -n 4p)"
+[ "$(echo "$vals" | sed -n 5p)" = "rep_prefault_threads=32/N" ] ||
+    failed "rep_prefault_threads default/read_only wrong: $(echo "$vals" | sed -n 5p)"
+
+# 2) the lookahead is runtime settable
+runtabs "put tunable 'rep_prefault_lookahead' '32'" >/dev/null 2>&1
+la=$(runtabs "select value from comdb2_tunables where name='rep_prefault_lookahead'")
+[ "$la" = "32" ] || failed "rep_prefault_lookahead did not take a runtime change (got '$la')"
+runtabs "put tunable 'rep_prefault_lookahead' '16'" >/dev/null 2>&1
+
+# rep_prefault_threads and repprefaultpool.maxt are two names for the pool's
+# thread cap, and the adaptive controller is a third writer.  Setting either
+# must converge, or the controller resizes the pool from a stale number and
+# silently undoes whatever an operator did.  Reconciliation runs on the
+# controller's one-second epoch, so give it a couple.
+runtabs "put tunable 'rep_prefault_threads' '16'" >/dev/null 2>&1
+sleep 3
+th=$(runtabs "select value from comdb2_tunables where name='rep_prefault_threads'")
+mx=$(runtabs "select value from comdb2_tunables where name='repprefaultpool.maxt'")
+[ "$th" = "16" ] || failed "rep_prefault_threads did not take a runtime change (got '$th')"
+[ "$mx" = "16" ] || failed "pool maxt did not follow rep_prefault_threads (got '$mx')"
+
+runtabs 'exec procedure sys.cmd.send("repprefault maxt 24")' >/dev/null 2>&1
+sleep 3
+th=$(runtabs "select value from comdb2_tunables where name='rep_prefault_threads'")
+mx=$(runtabs "select value from comdb2_tunables where name='repprefaultpool.maxt'")
+[ "$mx" = "24" ] || failed "'repprefault maxt 24' did not resize the pool (got '$mx')"
+[ "$th" = "24" ] || failed "rep_prefault_threads did not follow the pool (got '$th')"
+
+runtabs "put tunable 'rep_prefault_threads' '32'" >/dev/null 2>&1
+sleep 3
+
+# The controller must steer its own copy of the budget, not the tunable: an
+# operator who sets it should still see their value a second later.
+runtabs "put tunable 'rep_prefault_budget' '128'" >/dev/null 2>&1
+sleep 3
+bg=$(runtabs "select value from comdb2_tunables where name='rep_prefault_budget'")
+[ "$bg" = "128" ] || failed "adaptive controller overwrote rep_prefault_budget (now '$bg')"
+runtabs "put tunable 'rep_prefault_budget' '64'" >/dev/null 2>&1
+
+# 3) drive enough write traffic that the log tail is full of btree records
+cdb2sql ${CDB2_OPTIONS} $dbnm --host "$host" "create table t(a int, b blob)" >/dev/null
+for i in $(seq 1 8); do
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host "$host" \
+        "insert into t select value, randomblob(2000) from generate_series(1, 2500)" >/dev/null
+done
+
+# Now re-run the extraction over those records.  Output arrives as (out='...')
+# rows from sys.cmd.send.
+vout=$(runtabs "exec procedure sys.cmd.send(\"repprefault verify 4000\")")
+echo "$vout"
+
+field() { echo "$vout" | sed -n "s/^  $1 *: *\([0-9-]*\)$/\1/p" | head -1; }
+pages=$(field "pages reported")
+noid=$(field "pages no file id")
+resolved=$(field "pages resolved")
+unresolved=$(field "pages unresolved")
+unparsed=$(field "records unparsed")
+
+if ! [[ "$pages" =~ ^[0-9]+$ ]]; then
+    failed "could not parse 'repprefault verify' output"
+else
+    [ "$pages" -gt 0 ] || failed "extraction reported no pages at all"
+    # The regression: before the generator carried the ufid, every page landed
+    # here and nothing resolved.
+    [ "$noid" = "0" ] || failed "$noid pages had no file identity (ufid not reaching pgdesc.fileid?)"
+    [ "$resolved" -gt 0 ] || failed "extraction resolved no pages to a file"
+    [ "$unresolved" = "0" ] || failed "$unresolved pages could not be resolved to an open file"
+    [ "$unparsed" = "0" ] || failed "$unparsed log records failed to parse"
+fi
+
+# 4) drive the real pool: 'touch' runs the same __rep_prefault_record the apply
+#    loop calls, covering the worker, the ufid resolution and touch_page.
+runtabs "exec procedure sys.cmd.send(\"repprefault verify 3000 touch\")" >/dev/null
+sleep 3
+
+cout=$(runtabs "exec procedure sys.cmd.send(\"repprefault\")")
+echo "$cout"
+echo "$cout" | grep -q "rep prefault: enabled" ||
+    failed "counters trap did not report the feature as enabled"
+
+cfield() { echo "$cout" | sed -n "s/^  $1 *: *\([0-9-]*\)$/\1/p" | head -1; }
+recs=$(cfield "records parsed")
+enq=$(cfield "pages enqueued")
+pfail=$(cfield "parse failures")
+
+if ! [[ "$recs" =~ ^[0-9]+$ ]]; then
+    failed "could not parse prefault counters"
+else
+    [ "$recs" -gt 0 ] || failed "no records parsed while driving the pool"
+    [ "$enq" -gt 0 ] || failed "no pages enqueued while driving the pool"
+    [ "$pfail" = "0" ] || failed "$pfail records failed to parse"
+fi
+
+rep=""
+# 5) On a cluster, check a replicant: the master never applies replication, so
+#    its counters stay at zero.
+if [ -n "${CLUSTER}" ]; then
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"')
+    for node in ${CLUSTER}; do
+        [ "$node" != "$master" ] && rep=$node && break
+    done
+
+    if [ -z "$rep" ]; then
+        echo "no replicant found in CLUSTER='${CLUSTER}', skipping apply-path check"
+    else
+        # More writes, so the replicant has something to apply while we watch.
+        for i in $(seq 1 8); do
+            cdb2sql ${CDB2_OPTIONS} $dbnm --host "$master" \
+                "insert into t select value, randomblob(2000) from generate_series(1, 2500)" >/dev/null
+        done
+        sleep 5
+
+        rout=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$rep" \
+            "exec procedure sys.cmd.send(\"repprefault\")")
+        echo "replicant $rep:"
+        echo "$rout"
+
+        rfield() { echo "$rout" | sed -n "s/^  $1 *: *\([0-9-]*\)$/\1/p" | head -1; }
+        recs=$(rfield "records parsed")
+        enq=$(rfield "pages enqueued")
+
+        if ! [[ "$recs" =~ ^[0-9]+$ ]]; then
+            failed "could not parse replicant prefault counters"
+        else
+            [ "$recs" -gt 0 ] || failed "replicant parsed no records in the apply path"
+            [ "$enq" -gt 0 ] || failed "replicant enqueued no prefaults ($recs records parsed)"
+        fi
+    fi
+else
+    echo "not a cluster, skipping the apply-path check"
+fi
+
+# 6) prefault effectiveness counters must add up: every prefault-caused read
+#    is used at most once, so the two first-use counters can never exceed it.
+cs=$(runtabs 'exec procedure sys.cmd.send("bdb cachestat")')
+csf() { echo "$cs" | sed -n "s/^$1: *\([0-9]*\)$/\1/p" | head -1; }
+pfin=$(csf st_page_pf_in)
+ready=$(csf st_pf_hit_ready)
+inflight=$(csf st_pf_hit_inflight)
+echo "st_page_pf_in=$pfin st_pf_hit_ready=$ready st_pf_hit_inflight=$inflight"
+if ! [[ "$pfin" =~ ^[0-9]+$ ]] || ! [[ "$ready" =~ ^[0-9]+$ ]] ||
+   ! [[ "$inflight" =~ ^[0-9]+$ ]]; then
+    failed "could not read prefault counters from cachestat"
+elif [ $((ready + inflight)) -gt "$pfin" ]; then
+    failed "pf hits ($ready+$inflight) exceed pf reads ($pfin): not counting first use only"
+fi
+
+# The pool pins each file's dbreg entry across the fault; a leaked pin would
+# make __dbreg_rem_dbentry spin and hang this drop.  It spins holding
+# dblp->mutexp, so any wait here also blocks every other dbreg operation --
+# repprefault_dbreg.test.disabled measures how long that gets under load; here
+# we just check the accounting exists and the drop got through.
+before=$(runtabs 'exec procedure sys.cmd.send("repprefault")' \
+    | sed -n 's/^  dbreg rem waits  *: *\([0-9]*\) .*$/\1/p' | head -1)
+runtabs "drop table t" >/dev/null 2>&1
+alive=$(runtabs "select 1")
+[ "$alive" = "1" ] || failed "db unresponsive after driving the prefault pool"
+
+after=$(runtabs 'exec procedure sys.cmd.send("repprefault")' \
+    | sed -n 's/^  dbreg rem waits  *: *\([0-9]*\) (total \([0-9]*\) us, max \([0-9]*\) us)$/\1 waits \2 us total \3 us max/p' | head -1)
+if [ -z "$before" ] || [ -z "$after" ]; then
+    failed "dbreg prefault-wait accounting is missing from the counters trap"
+else
+    echo "dbreg removal waits after drop: $after"
+fi
+
+# Dump the tuning signals.  All cumulative since startup.
+#   st_apply_hit/miss    - what the apply path saw; misses are stalls we failed
+#                          to prevent, and are the number to drive down.
+#   st_pf_hit_ready      - prefault landed in time.
+#   st_pf_hit_inflight   - apply blocked on a prefault read still running:
+#                          lookahead too short.
+#   st_pf_evict_unused   - prefaulted, never used, evicted: lookahead too long.
+#   st_page_pf_in_late   - prefault found the page already there: wasted call.
+dump_prefault() {
+    echo "--- prefault state: $1 ($2) ---"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$2" \
+        'exec procedure sys.cmd.send("bdb cachestat")' 2>&1 \
+        | grep -E 'st_page_pf_in|st_pf_|st_apply_'
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host "$2" \
+        'exec procedure sys.cmd.send("repprefault")' 2>&1
+}
+
+echo
+echo "=== prefault diagnostics ==="
+dump_prefault "this node" "$host"
+if [ -n "$rep" ] && [ "$rep" != "$host" ]; then
+    dump_prefault "replicant" "$rep"
+fi
+echo
+
+if [ "$FAIL" -ne 0 ]; then
+    echo "TESTCASE FAILED" >&2
+    exit 1
+fi
+
+echo "TESTCASE PASSED"
+exit 0

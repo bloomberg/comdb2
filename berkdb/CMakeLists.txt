@@ -163,6 +163,7 @@ set(BERK_C
 
   rep/rep_lc_cache.c
   rep/rep_method.c
+  rep/rep_prefault.c
   rep/rep_record.c
   rep/rep_region.c
   rep/rep_util.c

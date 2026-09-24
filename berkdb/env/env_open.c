@@ -687,6 +687,9 @@ foundlsn:
 		listc_init(&dbenv->inactive_transactions,
 		    offsetof(struct __recovery_processor, lnk));
 		dbenv->recovery_memsize = 512 * 1024;	/* 512k by default */
+
+		/* Out-of-band page prefault for the apply path. */
+		__rep_prefault_init(dbenv);
 	}
 
 	if (dbenv->attr.iomapfile) {

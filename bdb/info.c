@@ -251,6 +251,11 @@ int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits, int64
     return 0;
 }
 
+void bdb_rep_prefault_verify(bdb_state_type *bdb_state, int nrecs, int touch)
+{
+    __rep_prefault_verify(bdb_state->dbenv, nrecs, touch);
+}
+
 const char *deadlock_policy_str(u_int32_t policy)
 {
     switch (policy) {
@@ -568,6 +573,11 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
     prn_lstat(st_ro_levict);
     prn_lstat(st_rw_levict);
     prn_lstat(st_pf_evict);
+    prn_lstat(st_pf_evict_unused);
+    prn_lstat(st_pf_hit_ready);
+    prn_lstat(st_pf_hit_inflight);
+    prn_lstat(st_apply_hit);
+    prn_lstat(st_apply_miss);
     prn_lstat(st_rw_evict_skip);
     prn_lstat(st_page_trickle);
     prn_lstat(st_pages);

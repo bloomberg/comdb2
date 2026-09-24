@@ -125,6 +125,11 @@ __memp_stat(dbenv, gspp, fspp, flags)
 			sp->st_page_create += c_mp->stat.st_page_create;
 			sp->st_page_pf_in += c_mp->stat.st_page_pf_in;
             sp->st_page_pf_in_late += c_mp->stat.st_page_pf_in_late;
+			sp->st_pf_hit_ready += c_mp->stat.st_pf_hit_ready;
+			sp->st_pf_hit_inflight += c_mp->stat.st_pf_hit_inflight;
+			sp->st_pf_evict_unused += c_mp->stat.st_pf_evict_unused;
+			sp->st_apply_hit += c_mp->stat.st_apply_hit;
+			sp->st_apply_miss += c_mp->stat.st_apply_miss;
             sp->st_page_in += c_mp->stat.st_page_in;
 			sp->st_page_out += c_mp->stat.st_page_out;
 			sp->st_ro_merges += c_mp->stat.st_ro_merges;
@@ -480,6 +485,7 @@ __memp_pbh(dbmp, bhp, fmap, fp)
 		{ BH_TRASH,		"trash" },
 		{ BH_NOINCR,		"low prio" },
 		{ BH_PREFAULT,		"prefault" },
+		{ BH_PREFAULT_USED,	"prefault-used" },
 		{ 0,			NULL }
 	};
 	int i;
