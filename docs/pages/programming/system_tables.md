@@ -817,6 +817,20 @@ Information about current/most recent schema change per table.
 * `converted` - Number of records converted.
 * `error` - Error message of the schema change.
 
+## comdb2_schemas
+
+Current schema of every table in the database.
+
+    comdb2_schemas(tablename, csc2)
+
+* `tablename` - Name of the table.
+* `csc2` - Schema in csc2 format.
+
+Provides a more robust alternative to querying `sqlite_master` for schemas.
+Notably, time partitioned tables are reported here as a single row with the
+table's name, whereas `sqlite_master` reports each _shard_ with its
+internally-generated name.
+
 ## comdb2_schemaversions
 
 List of all versions of table schemas stored in llmeta.
