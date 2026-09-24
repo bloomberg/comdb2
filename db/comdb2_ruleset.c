@@ -1314,7 +1314,7 @@ failure:
   if( rc==0 ) rc = EINVAL;
 
 done:
-    free(line);
+    os_free(line); /* allocated by libc getline() */
     return rc;
 }
 
