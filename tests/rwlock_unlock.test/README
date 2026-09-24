@@ -1,0 +1,1 @@
+Verify that we abort if we try to unlock a rwlock which is not locked
