@@ -2574,8 +2574,14 @@ int findpeer(int fd, char *addr, int len)
 
 /* When set, reject an incoming cluster connection unless the source address
    really belongs to the hostname the peer claims in its connect message.
-   (Default: on). */
+   (Default: off). */
 int gbl_rep_verify_peer_hostname = 0;
+
+/* When set, run the check above but admit the peer anyway, logging the ones
+   enabling gbl_rep_verify_peer_hostname would turn away.  This is how an
+   operator finds out whether every peer's hostname really does resolve to the
+   address it connects from before enforcing it.  (Default: on). */
+int gbl_rep_verify_peer_hostname_warn = 1;
 
 /* Forward-resolve 'hostname' and return 0 if 'src' is one of the resolved
    IPv4 addresses, -1 otherwise. */
@@ -2611,13 +2617,12 @@ static int net_host_has_addr(const char *hostname, const struct in_addr *src)
    cluster already uses to reach its peers, and does not depend on reverse DNS
    being configured.
 
-   Returns 0 if the peer is validated (or the check is disabled), -1 to
-   reject the connection. */
+   Returns 0 if the peer is validated, -1 if it is not.  Whether a peer that
+   fails is actually turned away is the caller's decision - see
+   hostcheck_resume() in net_evbuffer.c, which only rejects when
+   gbl_rep_verify_peer_hostname is set and otherwise just warns. */
 int net_validate_connect_host(const char *from_host, struct sockaddr_in *src)
 {
-    if (!gbl_rep_verify_peer_hostname)
-        return 0;
-
     if (from_host == NULL)
         return -1;
 
@@ -2648,8 +2653,6 @@ int net_validate_connect_host(const char *from_host, struct sockaddr_in *src)
             return 0;
     }
 
-    logmsg(LOGMSG_ERROR, "%s: rejecting connection claiming host:%s from %s: source address does not match\n", __func__,
-           from_host, inet_ntoa(src->sin_addr));
     return -1;
 }
 
