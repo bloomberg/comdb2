@@ -31,6 +31,13 @@ public class BmsDiscoveryTest {
         }
     }
 
+    /*
+     * Environment-specific: needs a resolvable comdb2db (external DNS/infra) so
+     * discovery reaches the BMS stage. In a plain container it fails earlier at
+     * comdb2db host resolution (DatabaseDiscovery ~line 774) with a different
+     * message, so it can't run in the open-source CI (.github/workflows/cdb2jdbc.yml).
+     */
+    @Ignore("Requires comdb2db/DNS infra to reach the BMS discovery stage")
     @Test
     public void testBmsNoFallbackFails() throws IOException, SQLException {
         LogManager.getLogManager().reset();
