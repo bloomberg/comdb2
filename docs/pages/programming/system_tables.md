@@ -290,6 +290,12 @@ Lists all active comdb2 locks.
                 and `comdb2_active_osqls.client_id` when it is `W`; NULL if
                 not known
 
+`A` rows never carry a `fingerprint` or a `client_id`: a replicant takes a
+transaction's locks in one shot off the commit record, before it has applied any
+record naming a statement or a client. Use `comdb2_replication` to see what the
+apply side is working on. `W` rows carry a `fingerprint` only when the
+`osql_send_fingerprint` tunable is on where the write originated.
+
 ## comdb2_logical_operations
 
 Lists all logical operations

@@ -3,10 +3,17 @@ via the 'fingerprint' and 'fingerprint_role' columns.
 
 Roles are always available: 'R' for SQL execution, 'W' for the master applying
 a write schedule, 'A' for a replicant applying from the log.  The fingerprint
-beside a role is only populated when the corresponding tunable carried one
-there -- gbl_fingerprint_queries for 'R', osql_send_fingerprint for 'W',
-log_fingerprint for 'A' -- so 'A' rows with a NULL fingerprint are expected and
-valid.  Unattributed locks (recovery, schema change, and everything else that
-is not SQL) report NULL for both columns.
+beside a role is not: 'R' gets one from gbl_fingerprint_queries locally, 'W'
+only when osql_send_fingerprint carried one to the master, and 'A' never -- a
+replicant takes a transaction's locks in one shot off the commit record, before
+it has read any record naming a statement, and redo itself takes no locks.
+log_fingerprint still matters on a replicant, just not here: it is what fills in
+comdb2_replication.fingerprint and the apply page-in counters.  Unattributed
+locks (recovery, schema change, and everything else that is not SQL) report NULL
+for both columns.
+
+The test runs twice over: first with osql_send_fingerprint and log_fingerprint
+off, which is the state this rolls out in and where only 'R' should still carry
+a fingerprint, then with both on.
 
 'A' is only exercised in a clustered run.
