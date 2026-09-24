@@ -2626,6 +2626,12 @@ static int validate_host_finish(struct accept_info *a)
    thread, which resolves the hostname and then resumes acceptance back on the
    main event base - mirroring newsql's gethostname thread. */
 extern int gbl_rep_verify_peer_hostname;
+extern int gbl_rep_verify_peer_hostname_warn;
+
+/* How often we repeat the "would have rejected this peer" warning.  A peer we
+   turn away retries about once a second, so warning every time would flood the
+   log. */
+#define HOSTCHECK_WARN_INTERVAL 60
 
 static pthread_t hostcheck_thd;
 static pthread_mutex_t hostcheck_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -2638,6 +2644,22 @@ static void hostcheck_resume(int dummyfd, short what, void *data)
 {
     struct accept_info *a = data;
     if (!a->hostcheck_ok) {
+        if (!gbl_rep_verify_peer_hostname) {
+            /* Warn-only: let the peer in, but tell the operator that enabling
+               the check would have turned it away. */
+            static time_t last_warn;
+            time_t now = time(NULL);
+            if (now - last_warn >= HOSTCHECK_WARN_INTERVAL) {
+                last_warn = now;
+                logmsg(LOGMSG_WARN,
+                       "%s fd:%d host:%s clusters with us now, but its source address does not match the "
+                       "hostname it claims; enabling rep_verify_peer_hostname would reject it\n",
+                       __func__, a->fd, a->from_host_interned);
+            }
+            if (validate_host_finish(a) != 0)
+                accept_info_free(a);
+            return;
+        }
         logmsg(LOGMSG_ERROR, "%s fd:%d rejecting connection from node:%d host:%s: source address does not match\n",
                __func__, a->fd, a->c.from_nodenum, a->from_host_interned);
         accept_info_free(a);
@@ -2742,8 +2764,10 @@ static int validate_host(struct accept_info *a)
        hostname, so a rogue node can't impersonate a trusted peer just by
        putting its hostname in the connect message.  The check may block on DNS
        resolution, so hand it to the hostcheck thread and resume acceptance in
-       validate_host_finish() once it completes. */
-    if (gbl_rep_verify_peer_hostname) {
+       validate_host_finish() once it completes.  Warn-only mode runs the same
+       check and only differs in what hostcheck_resume() does with a peer that
+       fails it. */
+    if (gbl_rep_verify_peer_hostname || gbl_rep_verify_peer_hostname_warn) {
         Pthread_mutex_lock(&hostcheck_lk);
         TAILQ_INSERT_TAIL(&hostcheck_list, a, hostcheck_link);
         ++hostcheck_ctr;

@@ -2798,10 +2798,16 @@ REGISTER_TUNABLE("get_peer_fqdn", "When set, use peer's FQDN", TUNABLE_BOOLEAN, 
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE("rep_verify_peer_hostname",
-                 "Reject an incoming cluster connection unless its source "
-                 "address resolves (forward-confirmed reverse DNS) to the "
-                 "hostname the peer claims in its connect message. Disable "
-                 "only in environments without reliable reverse DNS. "
-                 "(Default: off)",
+                 "Reject an incoming cluster connection unless the hostname "
+                 "the peer claims in its connect message forward-resolves to "
+                 "the connection's source address. Disable only where peer "
+                 "hostnames do not resolve to the addresses they connect "
+                 "from. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_verify_peer_hostname_warn",
+                 "Run the rep_verify_peer_hostname check but admit the peer "
+                 "anyway, logging the ones enabling that tunable would turn "
+                 "away. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname_warn, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
