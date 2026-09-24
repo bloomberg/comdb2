@@ -348,6 +348,7 @@ extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_snapcur_early_lock_release;
 extern int gbl_use_current_lsn_for_non_snapshot;
 extern int gbl_cache_flush_interval;
 extern int gbl_load_cache_threads;
