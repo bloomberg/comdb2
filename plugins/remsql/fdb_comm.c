@@ -1895,6 +1895,8 @@ int fdb_msg_read_message_int(COMDB2BUF *sb, fdb_msg_t *msg, enum recv_flags flag
         if (rc != sizeof(msg->ix.ixnum))
             return -1;
         msg->ix.ixnum = ntohl(msg->ix.ixnum);
+        if (msg->ix.ixnum < 0 || msg->ix.ixnum >= MAXINDEX)
+            return -1;
 
         rc = cdb2buf_fread((char *)&msg->ix.ixlen, 1, sizeof(msg->ix.ixlen), sb);
         if (rc != sizeof(msg->ix.ixlen))
@@ -3428,6 +3430,12 @@ int fdb_bend_index(COMDB2BUF *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
      * reject an out-of-range value off the wire before dereferencing. */
     if (ixnum < 0 || ixnum >= MAXINDEX) {
         logmsg(LOGMSG_ERROR, "%s: index number %d out of range\n", __func__, ixnum);
+        return -1;
+    }
+
+    /* assert() is compiled out under NDEBUG; guard the arrays for real. */
+    if (!clnt->idxInsert || !clnt->idxDelete) {
+        logmsg(LOGMSG_ERROR, "%s: index arrays not allocated\n", __func__);
         return -1;
     }
 
