@@ -9412,7 +9412,11 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = pCur->fdbc->close(pCur);
             if (rc) {
                 comdb2_sqlite3VdbeError(pCur->vdbe, errstat_get_str(&clnt->osql.xerr));
-                logmsg(LOGMSG_ERROR, "Failed to close remote cursor\n");
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to close remote cursor for chunk %d rc %d "
+                       "xerr %d \"%s\"\n",
+                       __func__, clnt->dbtran.nchunks, rc, errstat_get_rc(&clnt->osql.xerr),
+                       errstat_get_str(&clnt->osql.xerr));
                 commit_rc = SQLITE_ABORT;
             }
         }
@@ -9423,7 +9427,11 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         if (rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe,
                                     errstat_get_str(&clnt->osql.xerr));
-            logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to commit chunk %d (%d rows) rc %d xerr %d "
+                   "\"%s\" for sql %.*s\n",
+                   __func__, clnt->dbtran.nchunks, clnt->dbtran.crtchunksize, rc, errstat_get_rc(&clnt->osql.xerr),
+                   errstat_get_str(&clnt->osql.xerr), 100, clnt->sql);
             commit_rc = SQLITE_ABORT;
             /* we need to recreate the transaction in any case
                goto done;
@@ -9454,6 +9462,8 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         if (rc && !commit_rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe, "Failed to start a new chunk");
+            logmsg(LOGMSG_ERROR, "%s: failed to start chunk %d rc %d xerr %d \"%s\"\n", __func__,
+                   clnt->dbtran.nchunks + 1, rc, errstat_get_rc(&clnt->osql.xerr), errstat_get_str(&clnt->osql.xerr));
             rc = SQLITE_ERROR;
             goto done;
         }
@@ -9471,7 +9481,8 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         if (rc && !commit_rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe,
                                     "Failed to initialize new transaction");
-
+            logmsg(LOGMSG_ERROR, "%s: failed to initialize transaction for chunk %d rc %d\n", __func__,
+                   clnt->dbtran.nchunks + 1, rc);
             rc = SQLITE_ERROR;
             goto done;
         }
