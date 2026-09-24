@@ -6269,7 +6269,12 @@ after_delay:
                 goto retry_queries;
             }
             else if (rc < 0) {
-                if (hndl->in_trans)
+                /* The new connection has no transaction; sending commit/rollback on it
+                 * gets an unsolicited BAD_STATE reply that desyncs the handle. */
+                newsql_disconnect(hndl, hndl->sb, __LINE__);
+                if (is_commit)
+                    cleanup_query_list(hndl, &commit_query_list, __LINE__);
+                else if (hndl->in_trans)
                     hndl->error_in_trans = rc;
                 PRINT_AND_RETURN(rc);
             }
