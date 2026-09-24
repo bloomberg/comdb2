@@ -2577,7 +2577,8 @@ __bam_bulk_overflow(dbc, len, pgno, dp)
 	F_SET(&dbt, DB_DBT_USERMEM);
 	dbt.ulen = len;
 	dbt.data = (void *)dp;
-	return (__db_goff(dbc, dbc->dbp, &dbt, len, pgno, NULL, NULL));
+	return (__db_goff_leaf(dbc, dbc->dbp, ((BTREE_CURSOR *)dbc->internal)->pgno,
+	    &dbt, len, pgno, NULL, NULL));
 }
 
 /*
@@ -3155,7 +3156,7 @@ split:	ret = stack = 0;
 		if (flags == DB_AFTER ||
 		    flags == DB_BEFORE || flags == DB_CURRENT) {
 			memset(&dbt, 0, sizeof(DBT));
-			if ((ret = __db_ret(dbp, cp->page, 0, &dbt,
+			if ((ret = __db_ret(dbc, dbp, cp->page, 0, &dbt,
 			    &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 				goto err;
 			arg = &dbt;
@@ -3269,7 +3270,7 @@ __bam_c_rget(dbc, data)
 	if ((ret = PAGEGET(dbc, mpf, &cp->pgno, 0, &cp->page)) != 0)
 		return (ret);
 	memset(&dbt, 0, sizeof(DBT));
-	if ((ret = __db_ret(dbp, cp->page,
+	if ((ret = __db_ret(dbc, dbp, cp->page,
 	    cp->indx, &dbt, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 		goto err;
 	ret = PAGEPUT(dbc, mpf, cp->page, 0);
@@ -4058,7 +4059,7 @@ __bam_c_physdel(dbc)
 	 * memory of interest--if we do, we're in trouble anyway.
 	 */
 	if (delete_page)
-		if ((ret = __db_ret(dbp, cp->page,
+		if ((ret = __db_ret(dbc, dbp, cp->page,
 		    0, &key, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 			return (ret);
 
@@ -4221,7 +4222,7 @@ __bam_c_getstack(dbc)
 
 	/* Get a copy of a key from the page. */
 	memset(&dbt, 0, sizeof(DBT));
-	if ((ret = __db_ret(dbp,
+	if ((ret = __db_ret(dbc, dbp,
 	    h, 0, &dbt, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 		goto err;
 

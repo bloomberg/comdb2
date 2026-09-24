@@ -545,10 +545,11 @@ extern pthread_key_t txn_key;
 
 extern int __mempv_fget(DB_MPOOLFILE *, DBC *, db_pgno_t, void *, u_int32_t);
 
-/* Snapshot cursor holding no page lock: __mempv_fget locks only while copying, __db_lget only for LCK_ALWAYS. */
+/* Snapshot cursor holding no page lock: __mempv_fget locks only while copying, __db_lget only for LCK_ALWAYS, unless DBC_SNAPCUR_LOCKED. */
 extern int gbl_snapcur_early_lock_release;
 #define SNAPCUR_EARLY_LOCK_RELEASE(dbc) \
-	(F_ISSET(dbc, DBC_SNAPSHOT) && gbl_snapcur_early_lock_release)
+	(F_ISSET(dbc, DBC_SNAPSHOT) && !F_ISSET(dbc, DBC_SNAPCUR_LOCKED) && \
+	gbl_snapcur_early_lock_release)
 
 #define PAGEGET(dbc, mpf, pgno, flags, page) (dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT)) ? __mempv_fget(mpf, dbc, *pgno, page, flags) : __memp_fget(mpf, pgno, flags, page)
 

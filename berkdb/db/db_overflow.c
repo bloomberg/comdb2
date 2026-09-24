@@ -57,6 +57,7 @@ static const char revid[] = "$Id: db_overflow.c,v 11.51 2003/06/30 17:19:46 bost
 #include "dbinc/db_shash.h"
 #include "dbinc/db_am.h"
 #include "dbinc/mp.h"
+#include "dbinc/lock.h"
 
 /*
  * Big key/data code.
@@ -141,7 +142,16 @@ __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz)
 	dbt->size = needed;
 	for (curoff = 0, p = dbt->data; pgno != PGNO_INVALID && needed > 0;) {
 		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
-			return (ret);
+			goto err;
+
+		/* A snapshot copy's lock need not cover this chain, so it can be torn or reused: retry; elsewhere it's corruption. */
+		if (TYPE(h) != P_OVERFLOW ||
+		    OV_LEN(h) > dbp->pgsize - P_OVERHEAD(dbp)) {
+			PAGEPUT(dbc, mpf, h, 0);
+			ret = (dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT)) ?
+			    DB_LOCK_DEADLOCK : __db_pgfmt(dbp->dbenv, pgno);
+			goto err;
+		}
 
 		/* Check if we need any bytes from this page. */
 		if (curoff + OV_LEN(h) >= start) {
@@ -162,6 +172,48 @@ __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz)
 		PAGEPUT(dbc, mpf, h, 0);
 	}
 	return (0);
+
+err:	/* Don't hand back a buffer the caller never sees. */
+	if (F_ISSET(dbt, DB_DBT_MALLOC)) {
+		__os_ufree(dbenv, dbt->data);
+		dbt->data = NULL;
+	}
+	return (ret);
+}
+
+/*
+ * __db_goff_leaf --
+ *	Get an offpage item whose entry lives on page leaf_pgno.
+ *
+ * PUBLIC: int __db_goff_leaf __P((DBC *, DB *, db_pgno_t, DBT *,
+ * PUBLIC:     u_int32_t, db_pgno_t, void **, u_int32_t *));
+ */
+int
+__db_goff_leaf(dbc, dbp, leaf_pgno, dbt, tlen, pgno, bpp, bpsz)
+	DBC *dbc;
+	DB *dbp;
+	db_pgno_t leaf_pgno;
+	DBT *dbt;
+	u_int32_t tlen;
+	db_pgno_t pgno;
+	void **bpp;
+	u_int32_t *bpsz;
+{
+	DB_LOCK lock;
+	int ret, t_ret;
+
+	if (dbc == NULL || !LOCKING_ON(dbp->dbenv) || !SNAPCUR_EARLY_LOCK_RELEASE(dbc))
+		return (__db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz));
+
+	/* Re-take the leaf lock for the walk so a writer of this item waits; chain pages need no lock of their own. */
+	if ((ret = __db_lget(dbc, LCK_ALWAYS, leaf_pgno, DB_LOCK_READ, 0, &lock)) != 0)
+		return (ret);
+	F_SET(dbc, DBC_SNAPCUR_LOCKED);
+	ret = __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz);
+	F_CLR(dbc, DBC_SNAPCUR_LOCKED);
+	if ((t_ret = __LPUT(dbc, lock)) != 0 && ret == 0)
+		ret = t_ret;
+	return (ret);
 }
 
 /*

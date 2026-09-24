@@ -194,7 +194,7 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 	u_int32_t flags;
 {
 	recovery_func_t apply;
-	int add_to_cache, found, ret, t_ret, mempv_debug, elr;
+	int add_to_cache, found, ret, t_ret, mempv_debug, elr, copy;
 	u_int64_t utxnid;
 	int64_t smallest_logfile;
 	DB_LOGC *logc;
@@ -229,9 +229,11 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 	Pthread_mutex_unlock(&caller_id_mutex);
 
 	elr = LOCKING_ON(dbenv) && SNAPCUR_EARLY_LOCK_RELEASE(dbc);
+	/* An overflow walk's leaf lock doesn't cover a moved item's chain: copy before checking it. */
+	copy = elr || F_ISSET(dbc, DBC_SNAPCUR_LOCKED);
 
 	/* The lock is dropped right after the copy, so copy up front; a cached version needs neither. */
-	if (elr) {
+	if (copy) {
 		if ((ret = __mempv_alloc_image(dbenv, dbp->pgsize, &bhp, &page_image, caller_id)) != 0)
 			goto err;
 
@@ -244,7 +246,7 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 			goto found_page;
 		}
 
-		if ((ret = __db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_READ, 0, &lock)) != 0)
+		if (elr && (ret = __db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_READ, 0, &lock)) != 0)
 			goto err;
 	}
 
@@ -253,7 +255,7 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 		goto err;
 	}
 
-	if (elr) {
+	if (copy) {
 		__mempv_copy_page(bhp, page, dbp->pgsize);
 
 		ret = __memp_fput(mpf, page, 0);
@@ -271,7 +273,7 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 	}
 
 	/* LSN() doesn't parenthesize its argument, so the ternary needs a local. */
-	PAGE *const initial_page = elr ? page_image : page;
+	PAGE *const initial_page = copy ? page_image : page;
 	const DB_LSN initial_lsn = LSN(initial_page);
 	if (mempv_debug) {
 		__mempv_logmsg(LOGMSG_USER, caller_id,
@@ -292,7 +294,7 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 	}
 
 	/* The cursor's lock covers this access: copy only if the page has to be unrolled. */
-	if (!elr) {
+	if (!copy) {
 		if ((ret = __mempv_alloc_image(dbenv, dbp->pgsize, &bhp, &page_image, caller_id)) != 0)
 			goto err;
 
