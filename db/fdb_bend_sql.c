@@ -325,6 +325,10 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
 
     init_sqlclntstate(clnt, tid);
 
+    free(clnt->argv0);
+    clnt->argv0 = NULL;
+    clnt->conninfo.pid = 0;
+
     clnt->sql = "begin";
 
     if (dist_txnid) {
