@@ -701,6 +701,12 @@ int SQLITE_NOINLINE sqlite3VdbeFinishMoveto(VdbeCursor*);
 int sqlite3VdbeCursorRestore(VdbeCursor*);
 u32 sqlite3VdbeSerialTypeLen(u32);
 u8 sqlite3VdbeOneByteSerialTypeLen(u8);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* Defined by comdb2 in db/sqlglue.c; upstream in-lined both into
+** OP_MakeRecord and dropped these declarations. */
+u32 sqlite3VdbeSerialType(Mem*, int, u32*);
+u32 sqlite3VdbeSerialPut(unsigned char*, Mem*, u32);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_MIXED_ENDIAN_64BIT_FLOAT
   u64 sqlite3FloatSwap(u64 in);
 # define swapMixedEndianFloat(X)  X = sqlite3FloatSwap(X)

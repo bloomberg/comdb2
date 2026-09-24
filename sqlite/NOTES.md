@@ -47,6 +47,23 @@
   rationale; clearly separate evidence, inference, and uncertainty.
   ```
 
+## Hazards
+
+Things that will not announce themselves. A merge may well complete cleanly
+without raising any of these.
+
+- **`sqlite3VdbeSerialType()` / `sqlite3VdbeSerialPut()` must stay in sync with
+  `OP_MakeRecord`.**
+
+  Upstream in-lined both routines into `OP_MakeRecord` and deleted them, so the
+  logic now lives in two places: our vendored copies in `db/sqlglue.c`, and the
+  dispatch written directly into the opcode in `sqlite/src/vdbe.c`. They encode
+  the same records and must agree.
+
+  Change one and you must change the other. Neither the compiler nor a future
+  merge will tell you: the opcode and the copies are in different files, and
+  upstream edits to `OP_MakeRecord` will conflict only against the opcode.
+
 ## Cherry-picked patches
 
 These are patches we cherry-picked that seem to have shifted around or been
@@ -183,6 +200,32 @@ I started tracking this when I got to more important files (`where.c`,
       OP_IfNotOpen operator, not before, to avoid a (harmless) uninitialized
       register reference.  Ticket [82b588d342d515d1]
   ```
+
+## TODO
+
+- **TODO**: Revisit the vendored `sqlite3VdbeSerialType()` /
+  `sqlite3VdbeSerialPut()` in `db/sqlglue.c` and see whether they can be cut
+  down to comdb2's own subset of serial types.
+
+  `OP_MakeRecord` is the only serial-type producer in the SQLite library, and
+  in a comdb2 build it routes through our copies, so types 1-5, 8 and 9 look
+  unreachable for us -- the whole variable-width integer search. If that holds,
+  both routines shrink a long way and stop tracking upstream's shape. Worth
+  proving properly, with a `default:` that asserts, once there is a build to
+  test against.
+
+  Rename them to `comdb2SerialType()` / `comdb2SerialPut()` at the same time.
+  They kept their SQLite names only to avoid touching the call sites in
+  `db/sqlglue.c`, `db/fdb_bend.c`, `db/fdb_fend.c` and `db/sqlmaster.c` before
+  there was a way to test the result.
+
+- **TODO**: Confirm `typessql` still stays off for statements that call a scalar
+  function (`tests/typessql.test`, the fix in `4c00fcf29`).
+
+  `db/sqlinterfaces.c` skips `typessql_initialize()` when `Vdbe.hasScalarFunc`
+  is set, and upstream deleted the block that used to set it. It now sits just
+  before `sqlite3VdbeAddFunctionCall()` in the `TK_FUNCTION` case -- the same
+  emit point, but only once `func.c` is merged.
 
 ## Observations and Decisions
 
@@ -393,14 +436,6 @@ I started tracking this when I got to more important files (`where.c`,
   the resolution is take-theirs with all of ours covered, `SQLITE_AFF_FLEXNUM`
   included (it arrived with `sqliteInt.h` after the table was last widened).
 
-- **TODO**: Confirm `typessql` still stays off for statements that call a scalar
-  function (`tests/typessql.test`, the fix in `4c00fcf29`).
-
-  `db/sqlinterfaces.c` skips `typessql_initialize()` when `Vdbe.hasScalarFunc`
-  is set, and upstream deleted the block that used to set it. It now sits just
-  before `sqlite3VdbeAddFunctionCall()` in the `TK_FUNCTION` case -- the same
-  emit point, but only once `func.c` is merged.
-
 ### `fwd_types.h`
 
 - I guess we need to be able to refer to some SQLite structures in `db/` code.
@@ -561,6 +596,23 @@ I started tracking this when I got to more important files (`where.c`,
 - We have completely replaced the B-Tree routines with our own to interact with
   BerkeleyDB instead. The functions are defined in `db/sqlglue.c`.
 
+- **DECISION**: Add an extra `bias` argument to `sqlite3BtreeIndexMoveto()` in
+  comdb2 builds, holding the VDBE opcode that issued the seek.
+
+  Upstream split `sqlite3BtreeMovetoUnpacked()` into table and index variants;
+  the table variant kept an int slot (`biasRight`) that comdb2 already
+  overloads with the opcode, but the index variant didn't keep one. In comdb2's
+  implementation of `sqlite3BtreeMovetoUnpacked()` for index cursors, the
+  opcode selects the search direction, the duplicate-key resolution, the
+  SELECTV key-range recording, and the `OP_IdxDelete` path that ships an index
+  key to the master instead of seeking. We need to continue plumbing down the
+  VDBE opcode to maintain these behaviors, hence the additional argument to
+  `sqlite3BtreeIndexMoveto()`.
+
+  Note - this doesn't add new information that wasn't being passed down before,
+  it's reviving the slot that was used for this purpose and subsequently
+  removed upstream.
+
 ### `sqlite_tunables.{h,c}`
 
 - We have defined some of our own tunables for SQLite.
@@ -654,6 +706,52 @@ previous release's; then `cc -fsyntax-only -Wall` it both with and without
 - Our `sqlite_master` has an additional `csc2` column, needs to be set to NULL
   for triggers. Also, `MASTER_NAME` (`"sqlite_master"`) has been renamed to
   `LEGACY_SCHEMA_TABLE`.
+
+### `vdbe.c`
+
+- **TODO**: Make `OP_MakeRecord` call `sqlite3VdbeSerialType()` and
+  `sqlite3VdbeSerialPut()` instead of carrying its own copy of the dispatch.
+
+  Upstream in-lined both routines into the opcode, so taking its version
+  verbatim means comdb2's serial types live in two places. Restoring the calls
+  puts them back in one, and retires the sync hazard recorded under "Hazards".
+
+### `vdbeaux.c`
+
+- **DECISION**: Move `sqlite3VdbeSerialType()` and `sqlite3VdbeSerialPut()` out
+  of `vdbeaux.c` into `db/sqlglue.c`, and leave `vdbeaux.c` reading as stock.
+
+  Upstream in-lined both into `OP_MakeRecord`: `SerialType` survives only as an
+  `#if 0` block kept for reference, and `SerialPut` was deleted outright.
+  Neither has a caller left in the SQLite library. Comdb2 still packs records
+  outside the VDBE -- `db/sqlglue.c`, `db/fdb_bend.c`, `db/fdb_fend.c` and
+  `db/sqlmaster.c` -- so we own copies rather than keep patching a file upstream
+  has finished with. `vdbeaux.c` takes upstream's text for both: the `#if 0`
+  block is stock 3.51, and the `SerialPut` conflict resolves take-theirs. The
+  prototypes stay in `vdbeInt.h`, guarded, so every existing caller keeps seeing
+  them.
+
+  `sqlite3VdbeSerialTypeLen()`, `sqlite3VdbeSerialGet()` and
+  `sqlite3SmallTypeSizes[]` stay put and stay patched -- upstream still uses all
+  three. The comdb2 `#include <arpa/inet.h>` / `<flibc.h>` and the
+  `END_INLINE_SERIALGET` marker also stay, despite sitting on the take-theirs
+  side of the conflict: `SerialGet()` needs the byte-order helpers, and dropping
+  the marker would unbalance `tool/mkvdbeauxinlines.tcl`.
+
+  The copies went over as-is, guards and all, rather than being rewritten for a
+  comdb2-only file. There is no build to test against yet; see the TODO about
+  simplifying them.
+
+- **DECISION**: Serialize `MEM_IntReal` as a real rather than an integer.
+
+  Resolved while the function was still in `vdbeaux.c`; the resolution travelled
+  with it to `db/sqlglue.c`. Our fork of the integer arm exists to fix the width
+  at 8 bytes, so that `sqlite3VdbeSerialPut()` can write the whole `i64` at once
+  instead of SQLite's variable-width encoding. That settles width, not type.
+  Upstream decides int-versus-real by width -- it keeps the real once the value
+  costs 8 bytes either way -- and for comdb2 that is every value, so
+  `MEM_IntReal` gets serial type 7. The value has to move from `pMem->u.i` to
+  `pMem->u.r` first, since `sqlite3VdbeSerialPut()` reads `u.r` for type 7.
 
 ### `vdbeInt.h`
 

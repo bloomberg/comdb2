@@ -274,11 +274,20 @@ int sqlite3BtreeTableMoveto(
   int bias,
   int *pRes
 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3BtreeIndexMoveto(
+  BtCursor*,
+  UnpackedRecord *pUnKey,
+  int bias,
+  int *pRes
+);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3BtreeIndexMoveto(
   BtCursor*,
   UnpackedRecord *pUnKey,
   int *pRes
 );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3BtreeCursorHasMoved(BtCursor*);
 int sqlite3BtreeCursorRestore(BtCursor*, int*);
 int sqlite3BtreeDelete(BtCursor*, int);
