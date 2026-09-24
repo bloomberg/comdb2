@@ -1,0 +1,7 @@
+schema {
+    int id
+    int v
+}
+keys {
+    "ID" = id
+}
