@@ -766,13 +766,19 @@ int physrep_bdb_wait_for_seqnum(bdb_state_type *bdb_state, DB_LSN *lsn, void *da
         return 0;
     }
 
+    /* Standalone physrep has no peers, and durable-lsn accounting would abort */
+    const char *hosts[REPMAX];
+    if (net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, hosts) == 0) {
+        return 0;
+    }
+
     seqnum_type seqnum = {0};
     seqnum.lsn.file = lsn->file;
     seqnum.lsn.offset = lsn->offset;
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);
     // seqnum.issue_time = ?
     // seqnum.lease_ms = ?
     // seqnum.commit_generation = ?
-    // seqnum.generation = ?
 
     return bdb_wait_for_seqnum_from_all(bdb_state, (seqnum_type *)&seqnum);
 }

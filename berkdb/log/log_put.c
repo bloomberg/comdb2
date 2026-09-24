@@ -2416,10 +2416,9 @@ __log_rep_put(dbenv, lsnp, rec)
                     flags = DB_REP_FLUSH|DB_LOG_PERM;
                 }
 
-		if ((__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_LOG, &lsn, rec, flags,
-			    NULL) != 0) && LF_ISSET(DB_LOG_PERM))
-			 LF_SET(DB_FLUSH);
+		/* LOGPUT lets the net layer batch; REP_LOG forces a flush per record */
+		(void)__rep_send_message(dbenv, db_eid_broadcast,
+		    REP_LOG_LOGPUT, &lsn, rec, flags, NULL);
 	}
 
 err:
