@@ -73,7 +73,6 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, ch
     int rc = 0;
     int servermode;
     struct stat buf;
-    STACK_OF(X509_NAME) *cert_names;
     long options = 0;
     int ii;
 
@@ -87,7 +86,6 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, ch
     key = *pkey;
     ca = *pca;
     crl = *pcrl;
-    cert_names = NULL;
 
     /* If we are told to verify peer, and cacert file is NULL,
        we explicitly make one with the default name so that
@@ -377,23 +375,22 @@ int CDB2BUF_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir, ch
     if (ca != NULL) {
         rc = SSL_CTX_load_verify_locations(myctx, ca, NULL);
         if (rc != 1) {
-            ssl_sfliberrprint(err, n, my_ssl_eprintln,
-                              "Failed to load cacert");
+            ssl_sfliberrprint(err, n, my_ssl_eprintln, "Failed to load cacert");
             goto error;
         }
 
-        cert_names = SSL_load_client_CA_file(ca);
+        STACK_OF(X509_NAME) *cert_names = SSL_load_client_CA_file(ca);
         if (cert_names == NULL) {
-            ssl_sfliberrprint(err, n, my_ssl_eprintln,
-                              "Failed to load names from cacert");
+            ssl_sfliberrprint(err, n, my_ssl_eprintln, "Failed to load names from cacert");
             goto error;
         }
 
-        SSL_CTX_set_verify(myctx,
-                           SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, NULL);
+        SSL_CTX_set_verify(myctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, NULL);
 
         if (servermode)
             SSL_CTX_set_client_CA_list(myctx, cert_names);
+        else
+            sk_X509_NAME_pop_free(cert_names, X509_NAME_free);
     }
 
 #if HAVE_CRL
