@@ -227,6 +227,14 @@ I started tracking this when I got to more important files (`where.c`,
   before `sqlite3VdbeAddFunctionCall()` in the `TK_FUNCTION` case -- the same
   emit point, but only once `func.c` is merged.
 
+- **TODO**: Check whether the `sqlite3MemCompare()` `MEM_Small` fix changes any
+  test's answer.
+
+  Comparing a `float` column against a string or blob that does not parse as a
+  number used to give an arbitrary result and now gives upstream's ordering.
+  Any test that baked in the old answer will flip. Nothing can be run until the
+  tree builds.
+
 ## Observations and Decisions
 
 ### General
@@ -752,6 +760,31 @@ previous release's; then `cc -fsyntax-only -Wall` it both with and without
   costs 8 bytes either way -- and for comdb2 that is every value, so
   `MEM_IntReal` gets serial type 7. The value has to move from `pMem->u.i` to
   `pMem->u.r` first, since `sqlite3VdbeSerialPut()` reads `u.r` for type 7.
+
+- **DECISION**: Restore upstream's `__HP_cc` sign-extension workaround in
+  `sqlite3VdbeSerialGet()`.
+
+  `45366deb2` dropped it in a mechanical AIX/HP-UX sweep, not as a comdb2 fix.
+  We track upstream as closely as we can, and we only run on Linux and Solaris,
+  so the block is unreachable either way.
+
+- **DECISION**: Run the `MEM_Small` arm of `sqlite3MemCompare()` only when both
+  values are numbers, and read `u.i` for `MEM_IntReal` as well as `MEM_Int`.
+
+  `MEM_Small` means "compare at 4-byte float precision". It is what lets
+  `floatcol = 0.1` match, since the stored float widens to a different double
+  than the literal. But `vdbe.c` stamps the flag onto *both* operands of a
+  SMALL-affinity comparison before affinity has settled their types, so the arm
+  can be handed a value that is not a number at all. It read `u.r` regardless,
+  and for a text or blob value that is a stale union member -- so
+  `floatcol < 'abc'` returned an arbitrary answer. Requiring both sides numeric
+  lets those pairs fall through to the code below, which already orders numbers
+  ahead of text and blobs. Strings that do parse as numbers are unaffected;
+  `applyNumericAffinity()` has already turned them into `MEM_Real` or `MEM_Int`.
+
+  `MEM_IntReal` holds a real in `u.i`, so the arm has to test for it alongside
+  `MEM_Int` or it reads the wrong union member. No such value can reach here
+  until `vdbe.c` merges -- every producer of the flag lives in that file.
 
 ### `vdbeInt.h`
 
