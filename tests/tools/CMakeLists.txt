@@ -126,6 +126,18 @@ target_link_libraries(test_consistent_hash_bench util mem util dlmalloc crc32c)
 target_link_libraries(test_compare_semver util)
 target_link_libraries(test_str_util util)
 
+include(CheckCCompilerFlag)
+set(CMAKE_REQUIRED_LINK_OPTIONS -fsanitize=address)
+check_c_compiler_flag(-fsanitize=address HAVE_ASAN)
+unset(CMAKE_REQUIRED_LINK_OPTIONS)
+# Separate asan build: asan reserves terabytes of shadow memory, which fails
+# under ulimit -v, so runit only uses it when the limit can be lifted.
+if(HAVE_ASAN)
+  add_exe(cdb2api_unit_asan cdb2api_unit.c)
+  target_compile_options(cdb2api_unit_asan PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+  target_link_options(cdb2api_unit_asan PRIVATE -fsanitize=address)
+endif()
+
 # Build the crc32c library with UBSAN. Compiling the test driver alone with
 # UBSAN and linking in a non-instrumented copy of the library is insufficient.
 # The instrumentation needs to exist in the library object code.
