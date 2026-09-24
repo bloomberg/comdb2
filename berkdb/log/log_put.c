@@ -2383,33 +2383,8 @@ __log_rep_put(dbenv, lsnp, rec)
                  * REP_NEWFILE on log file change.
                  */
 
-		/*
-		 * Then send the log record itself on to our clients.
-		 *
-		 * If the send fails and we're a commit or checkpoint,
-		 * there's nothing we can do;  the record's in the log.
-		 * Flush it, even if we're running with TXN_NOSYNC, on the
-		 * grounds that it should be in durable form somewhere.
-		 */
-		/*
-		 * !!!
-		 * In the crypto case, we MUST send the udbt, not the
-		 * now-encrypted dbt.  Clients have no way to decrypt
-		 * without the header.
-		 */
-		/* COMDB2 MODIFICATION
-		 *
-		 * We want to be able to throttle log propagation to
-		 * avoid filling the net queue; this will allow signal
-		 * messages and catching up log replies to be
-		 * transferred even though the database is under heavy
-		 * load.  Problem is, in berkdb_send_rtn both regular
-		 * log messages and catching up log replies are coming
-		 * as REP_LOG In __log_push we replace REP_LOG with
-		 * REP_LOG_LOGPUT so we know that this must be
-		 * throttled; we revert to REP_LOG in the same routine
-		 * before sending the message
-		 */
+		/* Re-broadcast to our physrep cluster as __log_put does; the record
+		 * is already in our log, so peers gap-fill a failed or dropped send */
                 DB_LSN lsn;
                 lsn = *lsnp;
 
@@ -2422,10 +2397,9 @@ __log_rep_put(dbenv, lsnp, rec)
                     flags = DB_REP_FLUSH|DB_LOG_PERM;
                 }
 
-		if ((__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_LOG, &lsn, rec, flags,
-			    NULL) != 0) && LF_ISSET(DB_LOG_PERM))
-			 LF_SET(DB_FLUSH);
+		/* LOGPUT is batched (and droppable) by the net layer; REP_LOG flushed every record */
+		(void)__rep_send_message(dbenv, db_eid_broadcast,
+		    REP_LOG_LOGPUT, &lsn, rec, flags, NULL);
 	}
 
 err:
