@@ -163,26 +163,52 @@ function stop_load
 }
 
 # The two columns must never disagree with the contract: role is one of R/W/A
-# or NULL, and a fingerprint is either NULL or 32 lowercase hex characters.
-# Checked under load, so it sees the widest variety of lock holders.
+# or NULL, a fingerprint is either NULL or 32 lowercase hex characters, and an
+# 'A' lock never carries a fingerprint at all.
+#
+# One statement, so every count describes the same snapshot -- and polled until
+# that snapshot actually holds a $role lock, because "no row breaks the rule" is
+# true of an empty table too and would pass for the uninteresting reason.
 function verify_column_contract
 {
     typeset func="verify_column_contract"
     typeset node=$1
+    typeset role=$2
+    typeset j=0
+    typeset total= badrole= badfp= fpnorole= applyfp= rolecnt=
+
     write_prompt $func "Verify fingerprint/fingerprint_role are well-formed on ${node:-default}"
 
-    x=$(query_node "$node" "select count(*) from comdb2_locks where fingerprint_role is not null and fingerprint_role not in ('R','W','A')")
-    [[ "$x" != "0" ]] && failexit $func "$x locks have an unexpected fingerprint_role"
+    while [[ ! -f $stopfile && $j -lt $poll_iters ]]; do
+        read total badrole badfp fpnorole applyfp rolecnt <<< "$(query_node "$node" \
+"select count(*), \
+ coalesce(sum(fingerprint_role is not null and fingerprint_role not in ('R','W','A')),0), \
+ coalesce(sum(fingerprint is not null and (length(fingerprint) != 32 or fingerprint != lower(fingerprint))),0), \
+ coalesce(sum(fingerprint is not null and fingerprint_role is null),0), \
+ coalesce(sum(fingerprint_role = 'A' and fingerprint is not null),0), \
+ coalesce(sum(fingerprint_role = '$role'),0) from comdb2_locks")"
+        [[ "$total" != "" && "$total" != "0" && "$rolecnt" != "0" ]] && break
+        let j=j+1
+        sleep 1
+    done
 
-    x=$(query_node "$node" "select count(*) from comdb2_locks where fingerprint is not null and (length(fingerprint) != 32 or fingerprint != lower(fingerprint))")
-    [[ "$x" != "0" ]] && failexit $func "$x locks have a malformed fingerprint"
+    if [[ -z "$total" || "$total" == "0" || "$rolecnt" == "0" ]]; then
+        dump_diagnostics "$node" ; stop_load
+        failexit $func "no '$role' lock in any comdb2_locks snapshot on ${node:-default} -- nothing to check"
+    fi
+
+    [[ "$badrole" != "0" ]] && failexit $func "$badrole locks have an unexpected fingerprint_role"
+    [[ "$badfp" != "0" ]] && failexit $func "$badfp locks have a malformed fingerprint"
 
     # A fingerprint without a role would mean we stamped one half and not the
     # other -- the role is always set at least as early as the fingerprint.
-    x=$(query_node "$node" "select count(*) from comdb2_locks where fingerprint is not null and fingerprint_role is null")
-    [[ "$x" != "0" ]] && failexit $func "$x locks have a fingerprint but no role"
+    [[ "$fpnorole" != "0" ]] && failexit $func "$fpnorole locks have a fingerprint but no role"
 
-    write_prompt $func "Columns are well-formed on ${node:-default}"
+    # See verify_apply_locks: apply locks are taken before any fingerprint is
+    # known, so this one holds on every node whatever the tunables say.
+    [[ "$applyfp" != "0" ]] && failexit $func "$applyfp 'A' locks carry a fingerprint"
+
+    write_prompt $func "Columns are well-formed across $total locks on ${node:-default}"
 }
 
 # Locks taken by SQL execution report role 'R', and (fingerprinting being on by
@@ -214,7 +240,7 @@ function verify_read_locks
     x=$(query_node "$node" "select count(*) from comdb2_locks l where l.fingerprint_role='R' and l.fingerprint is not null and not exists (select 1 from comdb2_fingerprints f where f.fingerprint=l.fingerprint)")
     [[ "$x" != "0" ]] && write_prompt $func "Note: $x 'R' fingerprints not yet in comdb2_fingerprints (in-flight first execution)"
 
-    verify_column_contract "$node"
+    verify_column_contract "$node" "R"
 
     stop_load
 }
@@ -243,7 +269,7 @@ function verify_write_locks
     fi
     write_prompt $func "Found 'W' locks carrying a fingerprint"
 
-    verify_column_contract "$master"
+    verify_column_contract "$master" "W"
 
     stop_load
 }
@@ -273,12 +299,81 @@ function verify_apply_locks
     fi
     write_prompt $func "Found locks with role 'A'"
 
-    # log_fingerprint is on, so the apply side should also see fingerprints --
-    # but a NULL fingerprint next to an 'A' is legal, so this is informational.
+    # Never, log_fingerprint or not: a replicant takes a transaction's locks in
+    # one shot off the commit record, before it has read a record naming a
+    # statement, and redo itself takes no locks.  'A' is a role and nothing more.
     x=$(query_node "$replicant" "select count(*) from comdb2_locks where fingerprint_role='A' and fingerprint is not null")
-    write_prompt $func "$x 'A' locks carry a fingerprint"
+    [[ "$x" != "0" ]] && { stop_load; failexit $func "$x 'A' locks carry a fingerprint"; }
+    write_prompt $func "No 'A' lock carries a fingerprint"
 
-    verify_column_contract "$replicant"
+    verify_column_contract "$replicant" "A"
+
+    stop_load
+}
+
+# Per node, not just the master: a fingerprint is only put on the wire by the
+# node running the statement, and only logged by the node that is master at the
+# time.  Neither tunable is READONLY, so both can move while the db is up.
+function set_fingerprint_tunables
+{
+    typeset func="set_fingerprint_tunables"
+    typeset val=$1
+    typeset node=
+    write_prompt $func "Setting osql_send_fingerprint and log_fingerprint to $val"
+
+    if [[ -z "$CLUSTER" ]]; then
+        sql_on "" "put tunable osql_send_fingerprint $val"
+        sql_on "" "put tunable log_fingerprint $val"
+        return 0
+    fi
+    for node in $CLUSTER; do
+        sql_on "$node" "put tunable osql_send_fingerprint $val"
+        sql_on "$node" "put tunable log_fingerprint $val"
+    done
+}
+
+# The state this rolls out in.  Roles are unconditional, so all three must still
+# be reported; the fingerprint beside them is not, and with nothing on the wire
+# only 'R' -- which the SQL layer fills in locally -- should still have one.
+function verify_tunables_off
+{
+    typeset func="verify_tunables_off"
+    typeset master=$1
+    typeset replicant=$2
+    typeset x=
+
+    write_prompt $func "Verify the columns with osql_send_fingerprint and log_fingerprint off"
+
+    background_readload t1 "$master" &
+    background_writeload t1 "$master" &
+
+    if ! poll_for_locks "$master" "fingerprint_role='W'"; then
+        dump_diagnostics "$master" ; stop_load
+        failexit $func "Never saw a lock with role 'W' with the tunables off"
+    fi
+    write_prompt $func "Role 'W' is still reported with the tunables off"
+
+    if ! poll_for_locks "$master" "fingerprint_role='R' and fingerprint is not null"; then
+        dump_diagnostics "$master" ; stop_load
+        failexit $func "'R' locks lost their fingerprint with the tunables off"
+    fi
+    write_prompt $func "'R' locks still carry a fingerprint with the tunables off"
+
+    # Nothing carried one to the master, so there is nothing to stamp.
+    x=$(query_node "$master" "select count(*) from comdb2_locks where fingerprint_role='W' and fingerprint is not null")
+    [[ "$x" != "0" ]] && { stop_load; failexit $func "$x 'W' locks carry a fingerprint with osql_send_fingerprint off"; }
+    write_prompt $func "No 'W' lock carries a fingerprint with osql_send_fingerprint off"
+
+    verify_column_contract "$master" "W"
+
+    if [[ -n "$replicant" ]]; then
+        if ! poll_for_locks "$replicant" "fingerprint_role='A'"; then
+            dump_diagnostics "$replicant" ; stop_load
+            failexit $func "Never saw a lock with role 'A' with the tunables off"
+        fi
+        write_prompt $func "Role 'A' is still reported with the tunables off"
+        verify_column_contract "$replicant" "A"
+    fi
 
     stop_load
 }
@@ -301,6 +396,10 @@ function run_test
         preflight_node "$replicant" "replicant"
     fi
 
+    # Off before anything writes, so the off-state checks below cannot trip over
+    # a fingerprint that arrived while the tunables were still on.
+    set_fingerprint_tunables 0
+
     sql_on "" "create table t1(a int)"
     x=$(query_node "" "select count(*) from comdb2_tables where tablename='t1'")
     [[ "$x" != "1" ]] && failexit $func "Failed to create t1"
@@ -317,6 +416,9 @@ function run_test
     x=$(query_node "$master" "select count(*) from t1")
     [[ "$x" != "100000" ]] && failexit $func "t1 seed incomplete: $x rows on ${master:-default}, wanted 100000"
     write_prompt $func "Seeded t1 with $x rows"
+
+    verify_tunables_off "$master" "$replicant"
+    set_fingerprint_tunables 1
 
     # Reads can run anywhere; pin them to the master so a single-node run and a
     # clustered run exercise the same node, and so the poll cannot miss them.

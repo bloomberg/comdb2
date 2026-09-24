@@ -53,11 +53,10 @@ int bdb_llog_clientinfo_tran(bdb_state_type *bdb_state, tran_type *tran, const c
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    /* Sized with the NUL so the replicant can use them as cstrings directly. */
     dtask.data = (void *)(taskname ? taskname : "");
-    dtask.size = strlen((char *)dtask.data) + 1;
+    dtask.size = strlen((char *)dtask.data);
     dhost.data = (void *)(host ? host : "");
-    dhost.size = strlen((char *)dhost.data) + 1;
+    dhost.size = strlen((char *)dhost.data);
 
     rc = llog_clientinfo_log(bdb_state->dbenv, tran->tid, &lsn, 0, pid, &dtask, &dhost);
     if (rc) {
@@ -80,15 +79,11 @@ static void clientinfo_copy_str(char *dst, const DBT *src)
 {
     size_t n = src->size;
 
-    if (n == 0) {
-        dst[0] = '\0';
-        return;
-    }
-    if (n > BDB_CLIENTINFO_STRSZ)
-        n = BDB_CLIENTINFO_STRSZ;
-    memcpy(dst, src->data, n);
-    dst[BDB_CLIENTINFO_STRSZ - 1] = '\0';
-    dst[n - 1] = '\0';
+    if (n >= BDB_CLIENTINFO_STRSZ)
+        n = BDB_CLIENTINFO_STRSZ - 1;
+    if (n)
+        memcpy(dst, src->data, n);
+    dst[n] = '\0';
 }
 
 /* Returns a malloc'd opaque handle, or NULL. berkdb holds it as a void * so it
@@ -267,10 +262,8 @@ int handle_clientinfo(DB_ENV *dbenv, u_int32_t rectype, llog_clientinfo_args *ci
     case DB_TXN_PRINT:
         printf("[%lu][%lu]clientinfo: rec: %lu txnid %lx prevlsn[%lu][%lu]\n", (u_long)lsn->file, (u_long)lsn->offset,
                (u_long)rectype, (u_long)ciop->txnid->txnid, (u_long)ciop->prev_lsn.file, (u_long)ciop->prev_lsn.offset);
-        /* Sizes count the trailing NUL; keep it out of the output. */
-        printf("\ttask: %.*s host: %.*s pid: %d\n", ciop->taskname.size ? (int)ciop->taskname.size - 1 : 0,
-               (char *)ciop->taskname.data, ciop->host.size ? (int)ciop->host.size - 1 : 0, (char *)ciop->host.data,
-               ciop->pid);
+        printf("\ttask: %.*s host: %.*s pid: %d\n", (int)ciop->taskname.size, (char *)ciop->taskname.data,
+               (int)ciop->host.size, (char *)ciop->host.data, ciop->pid);
         break;
 
     default:

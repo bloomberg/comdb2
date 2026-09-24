@@ -10,6 +10,11 @@ the only way comdb2_active_osqls can report argv0 and pid for a BPLOG row; the
 master already knows the origin host from the session.  With the tunable off
 those two columns are NULL and the join still works.
 
+The test runs twice over: first with osql_send_clientinfo and log_clientinfo
+off, which is the state this rolls out in -- both joins still work, BPLOG rows
+report no argv0 or pid, and comdb2_replication lists its threads without naming
+anyone -- then with both on.
+
 'A' locks report no client_id: a replicant takes a transaction's locks up front,
 off the commit record, before any record naming a client is applied.
 
