@@ -30,7 +30,7 @@
 #define TRANLOG_FLAGS_SENTINEL 0x08 /* Return sentinel for missing record */
 
 /* Tunables */
-int gbl_sql_logfill = 0;
+int gbl_sql_logfill = 1;
 int gbl_debug_sql_logfill = 0;
 int gbl_sql_logfill_stats = 1;
 int gbl_sql_logfill_dedicated_apply_thread = 0;
