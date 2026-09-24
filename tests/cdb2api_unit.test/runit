@@ -5,6 +5,26 @@ set -e
 echo run executable that tests a series of standalone functions
 ${TESTSBUILDDIR}/cdb2api_unit
 
+if [[ -x ${TESTSBUILDDIR}/cdb2api_unit_asan ]]; then
+    # the shadow reservation counts against both RLIMIT_AS and RLIMIT_DATA
+    if ulimit -v unlimited 2>/dev/null && ulimit -d unlimited 2>/dev/null; then
+        echo run asan build
+        rc=0
+        out=$(${TESTSBUILDDIR}/cdb2api_unit_asan 2>&1) || rc=$?
+        echo "$out"
+        if [[ $rc -ne 0 ]]; then
+            # shadow reservation can still fail with ENOMEM (e.g. vm.overcommit_memory=2)
+            if grep -q "ReserveShadowMemoryRange failed" <<< "$out"; then
+                echo "skipping asan build: cannot reserve shadow memory"
+            else
+                exit $rc
+            fi
+        fi
+    else
+        echo "skipping asan build: cannot lift ulimit -v ($(ulimit -v)) / -d ($(ulimit -d))"
+    fi
+fi
+
 #I've got this to build, but test doesn't work yet
 #
 #echo run tests for more complex functions
