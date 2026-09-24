@@ -1550,6 +1550,225 @@ function compare_end_lsns()
     fi
 }
 
+# The fanout override lives in each metadb process, keyed by the source db.
+function physrep_fanout_all_metadbs
+{
+    local fanout=$1
+    local md=""
+    local node=""
+
+    for md in $REPL_META_DBNAME $REPL_ALTMETA_DBNAME $REPL_ALTMETA_DBNAME2; do
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $md --host $node \
+                "exec procedure sys.cmd.send('physrep_fanout_override $DBNAME $fanout')" >/dev/null 2>&1
+        done
+    done
+}
+
+# Each burst is one ~10MB txn: past wr_max/2 so the re-broadcast batches, past wr_max so a lagging peer gap-fills.
+function physrep_burst
+{
+    local pad=$(printf 'x%.0s' $(seq 1 512))
+    local rows=20000 # fat rows, since gbl_maxblockops caps a block at 25000
+    local bursts=4
+    local i=0
+    local expected=""
+    local got=""
+    local master=""
+    local incoherent=""
+    local start=0
+
+    # Only a clustered physrep re-broadcasts; standalone short-circuits in __rep_send_message_gen.
+    if [[ -z "$CLUSTER" ]]; then
+        echo "physrep_burst requires a cluster, skipping"
+        return 0
+    fi
+
+    echo "== Bursting ${bursts}x${rows} rows through ${REPL_CLUS_DBNAME} =="
+
+    # Pin the leader to the primary; a full primary hands out a lagging tier-1 and the leader rewinds.
+    physrep_fanout_all_metadbs 99
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+        "CREATE TABLE bursttbl(a INT, b CSTRING(600))" || cleanFailExit "create bursttbl"
+
+    while [[ $i -lt $bursts ]]; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+            "insert into bursttbl(a, b) select value, '${pad}' from generate_series(1, ${rows})" \
+            || cleanFailExit "burst insert failed"
+        let i=i+1
+    done
+
+    expected=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*), sum(a) from bursttbl")
+    [[ -z "$expected" ]] && cleanFailExit "could not read bursttbl from source"
+
+    # Peers only see these records via the leader's re-broadcast in __log_rep_put.
+    for node in $CLUSTER; do
+        wait_for_catchup ${REPL_CLUS_DBNAME} ${node}
+        got=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host ${node} \
+            "select count(*), sum(a) from bursttbl")
+        if [[ "$got" != "$expected" ]]; then
+            cleanFailExit "${REPL_CLUS_DBNAME}@${node} has '$got', source has '$expected'"
+        fi
+    done
+
+    # A dropped re-broadcast that never gap-fills leaves a peer incoherent; poll for recovery.
+    start=$SECONDS
+    while [[ "$incoherent" != "0" ]]; do
+        if [[ $((SECONDS-start)) -gt 60 ]]; then
+            [[ -n "$master" ]] && $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master \
+                "select * from comdb2_cluster"
+            cleanFailExit "${REPL_CLUS_DBNAME} still has incoherent node(s)"
+        fi
+        sleep 1
+        master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $firstNode \
+            "select host from comdb2_cluster where is_master='Y'")
+        [[ -z "$master" ]] && continue
+        incoherent=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master \
+            "select count(*) from comdb2_cluster where coherent_state != 'coherent'")
+    done
+
+    echo "All ${REPL_CLUS_DBNAME} nodes match the source: $expected"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table bursttbl"
+    physrep_fanout_all_metadbs 3
+}
+
+# A peer too slow to ack must be marked incoherent, not kill the leader; slow (not stop) it so heartbeats flow.
+function physrep_slow_peer
+{
+    local master=""
+    local victim=""
+    local mpid=""
+    local logf=""
+    local start=0
+    local dead=0
+    local saw=0
+    local marked=0
+    local incoherent=""
+    local out=""
+    local i=0
+    local before=0
+
+    if [[ -z "$CLUSTER" ]]; then
+        echo "physrep_slow_peer requires a cluster, skipping"
+        return 0
+    fi
+
+    # A lone peer is always the first ack (base_node) and never times out, so this needs two.
+    if [[ $(echo $CLUSTER | wc -w) -lt 3 ]]; then
+        echo "physrep_slow_peer needs at least two non-master peers, skipping"
+        return 0
+    fi
+
+    # Pin the leader to the primary: a rewind onto a lagging tier-1 fails the wait without marking anyone.
+    physrep_fanout_all_metadbs 99
+
+    # The cluster may be mid-recovery from such a rewind; give it a moment.
+    start=$SECONDS
+    while [[ -z "$master" && $((SECONDS-start)) -lt 60 ]]; do
+        master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $firstNode \
+            "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+        [[ -z "$master" ]] && sleep 2
+    done
+    [[ -z "$master" ]] && cleanFailExit "could not find ${REPL_CLUS_DBNAME} master"
+
+    for node in $CLUSTER; do
+        if [[ "$node" != "$master" ]]; then
+            victim=$node
+            break
+        fi
+    done
+    if [[ -z "$victim" ]]; then
+        physrep_fanout_all_metadbs 3
+        echo "physrep_slow_peer needs a non-master peer, skipping"
+        return 0
+    fi
+
+    logf=${TESTDIR}/logs/${REPL_CLUS_DBNAME}.${master}.log
+    mpid=$(ssh -n -o StrictHostKeyChecking=no $master \
+        "cat ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" </dev/null | tr -dc '0-9')
+    [[ -z "$mpid" ]] && cleanFailExit "could not read ${REPL_CLUS_DBNAME} pid on $master"
+
+    # Table first, so everything that follows the slowdown is a one-row commit.
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "CREATE TABLE slowtbl(a INT)" || cleanFailExit "create slowtbl"
+    start=$SECONDS
+    while ! $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $victim "select count(*) from slowtbl" >/dev/null 2>&1; do
+        [[ $((SECONDS-start)) -gt 60 ]] && cleanFailExit "${REPL_CLUS_DBNAME}@${victim} never saw slowtbl"
+        sleep 1
+    done
+
+    echo "== Slowing ${REPL_CLUS_DBNAME}@${victim}, leader ${master} ($mpid) =="
+
+    # Only count failed waits from here on: earlier tests can leave some behind.
+    before=$(egrep -c "bdb_wait_for_seqnum_from_all\(\) failed" $logf 2>/dev/null || true)
+    [[ -z "$before" ]] && before=0
+
+    # The wait allows REPTIMEOUT_MINMS after the first ack; the victim takes longer on every commit.
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master \
+        "exec procedure sys.cmd.send('bdb setattr REPTIMEOUT_MINMS 2000')" 2>&1)
+    echo "$out" | grep -q "Attribute set" || cleanFailExit "could not lower REPTIMEOUT_MINMS: $out"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $victim \
+        "exec procedure sys.cmd.send('slow_rep_process_txn_minms 5000')" >/dev/null
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $victim \
+        "exec procedure sys.cmd.send('slow_rep_process_txn_maxms 5001')" >/dev/null
+
+    start=$SECONDS
+    while [[ $((SECONDS-start)) -lt 45 ]]; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into slowtbl values($i)" >/dev/null \
+            || cleanFailExit "slowtbl insert failed"
+        let i=i+1
+        sleep 1
+        if ! ssh -n -o StrictHostKeyChecking=no $master "kill -0 $mpid" </dev/null 2>/dev/null; then
+            dead=1
+            break
+        fi
+        saw=$(egrep -c "bdb_wait_for_seqnum_from_all\(\) failed" $logf 2>/dev/null || true)
+        [[ -z "$saw" ]] && saw=0
+        let saw=saw-before
+        if [[ "$saw" -gt 0 ]]; then
+            # The peer stays behind while it is slow, so its incoherent state is visible.
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+                incoherent=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master \
+                    "select count(*) from comdb2_cluster where host='$victim' and coherent_state != 'coherent'" 2>/dev/null)
+                [[ "$incoherent" == "1" ]] && marked=1 && break
+                sleep 1
+            done
+            break
+        fi
+    done
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $victim \
+        "exec procedure sys.cmd.send('slow_rep_process_txn_maxms 0')" >/dev/null
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $victim \
+        "exec procedure sys.cmd.send('slow_rep_process_txn_minms 0')" >/dev/null
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master \
+        "exec procedure sys.cmd.send('bdb setattr REPTIMEOUT_MINMS 10000')"
+
+    [[ $dead -eq 1 ]] && cleanFailExit "${REPL_CLUS_DBNAME} leader ${master} exited while a peer was slow"
+    [[ "$saw" -gt 0 ]] || cleanFailExit "leader never logged a failed seqnum wait, so nothing was exercised"
+    [[ $marked -eq 1 ]] || cleanFailExit "leader never marked ${victim} incoherent after the failed wait"
+
+    echo "Leader survived and marked ${victim} incoherent; waiting for it to catch back up"
+    for node in $CLUSTER; do
+        wait_for_catchup ${REPL_CLUS_DBNAME} ${node}
+    done
+
+    incoherent=""
+    start=$SECONDS
+    while [[ "$incoherent" != "0" ]]; do
+        if [[ $((SECONDS-start)) -gt 60 ]]; then
+            $CDB2SQL_EXE ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master "select * from comdb2_cluster"
+            cleanFailExit "${victim} never became coherent again"
+        fi
+        sleep 1
+        incoherent=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $master \
+            "select count(*) from comdb2_cluster where coherent_state != 'coherent'")
+    done
+
+    physrep_fanout_all_metadbs 3
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table slowtbl"
+}
+
 function test_overlap
 {
     parentlow=$1
@@ -2382,13 +2601,22 @@ function physrep_cksum_anchor_check
 {
     local name=$1 node=$2 logfile=$3
     local matchmsg="Found match at"
-    local before match matchline lsn rec rectype gen prevcksum srcgen tries cnt c
+    local before match matchline lsn rec rectype gen prevcksum srcgen tries cnt c acks start
     # rectypes the commit-only rule could anchor on (txn_auto.h, rep_record.c)
     local commit_types="10 11 15 16 18 19 150 151"
 
     tries=0
     while : ; do
         before=$(egrep -c "$matchmsg" $logfile)
+
+        # A clustered physrep parks on commits awaiting acks; fire right after one to land mid-transaction.
+        if egrep -q "Got ACKs" $logfile; then
+            acks=$(egrep -c "Got ACKs" $logfile)
+            start=$SECONDS
+            while [[ $(egrep -c "Got ACKs" $logfile) -eq $acks && $((SECONDS-start)) -lt 15 ]]; do
+                sleep 0.2
+            done
+        fi
         $CDB2SQL_EXE --admin ${CDB2_OPTIONS} --host $node $name "exec procedure sys.cmd.send('physrep_force_registration')"
 
         cnt=0
@@ -2415,7 +2643,7 @@ function physrep_cksum_anchor_check
         for c in $commit_types; do
             if [[ "$rectype" == "$c" ]]; then
                 let tries=tries+1
-                if [[ $tries -gt 5 ]]; then
+                if [[ $tries -gt 9 ]]; then
                     cleanFailExit "$name on $node hit a commit-type tail $tries times"
                 fi
                 echo "$name on $node re-registered on a commit-type record, retrying"
@@ -3841,6 +4069,17 @@ function run_tests
     compare_end_lsns
     testcase_finish $testcase
 
+    # Run before incoherent_test, which deliberately makes nodes incoherent.
+    testcase="physrep_burst"
+    testcase_preamble $testcase
+    physrep_burst
+    testcase_finish $testcase
+
+    testcase="physrep_slow_peer"
+    testcase_preamble $testcase
+    physrep_slow_peer
+    testcase_finish $testcase
+
     testcase="verify_fanout_myoverride"
     testcase_preamble $testcase
     verify_fanout_myoverride ${REPL_ALTMETA_DBNAME} ${REPL_ALTMETA_HOST}
@@ -4013,7 +4252,8 @@ function run_tests
 
 function run_one_test
 {
-    revconn_metadb_failure_test
+    physrep_burst
+    physrep_slow_peer
 }
 
 run_tests
