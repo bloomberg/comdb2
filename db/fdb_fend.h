@@ -142,6 +142,7 @@ struct fdb_tran {
 
     int nwrites;                        /* how many writes were done; rows for dml; ddl instructions for ddl */
     enum fdb_tran_status writes_status; /* what status is this connection */
+    int is_ddl;                         /* runs a distributed schema change */
 
     /**
      * libevent heartbeats
