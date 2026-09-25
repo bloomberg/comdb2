@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Exercise the cluster allow list: the narrow list of hosts and machine groups
+# that are permitted to cluster with us.  See db/cluster_allow_list.c.
+
+set -e
+
+# The list is per node, so every command must reach the same node.  ${target}
+# holds how we get there.
+send() {
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} ${target} \
+        "exec procedure sys.cmd.send('$1')"
+}
+
+sql() {
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} ${target} "$1"
+}
+
+# Fail with a message unless the text is in the output.
+expect() {
+    local text=$1
+    shift
+    if ! grep -qF -- "$text" "$OUT"; then
+        echo "expected to find '$text' in:" >&2
+        cat "$OUT" >&2
+        exit 1
+    fi
+}
+
+reject() {
+    local text=$1
+    shift
+    if grep -qF -- "$text" "$OUT"; then
+        echo "did not expect to find '$text' in:" >&2
+        cat "$OUT" >&2
+        exit 1
+    fi
+}
+
+OUT=$(mktemp)
+trap 'rm -f "$OUT"' EXIT
+
+myhost=$(cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'select comdb2_host()')
+
+# On a cluster we must name the node, because "default" would spread the
+# commands over the whole cluster.  On a single node "default" is the only
+# thing that works, because the host name may not resolve.
+target="default"
+[[ -n "${CLUSTER}" ]] && target="--host ${myhost}"
+
+echo "driving ${myhost}, peers: ${CLUSTER:-none, single node}"
+
+# 1. We start out allowing ourselves and our cluster, and no group.
+send "stat rmtpol" > "$OUT"
+expect "Cluster allow list (not enforced, warn only)"
+expect "host ${myhost}"
+expect "no groups"
+
+# The "cluster nodes" lrl directive seeds the list, so every peer is in it.
+for node in ${CLUSTER}; do
+    expect "host ${node}"
+done
+
+# 2. "allow cluster with <host>" adds a host.
+send "allow cluster with mach1" > "$OUT"
+expect "allowing cluster with machine mach1"
+send "stat rmtpol" > "$OUT"
+expect "host mach1"
+send "stat rmtpol mach1" > "$OUT"
+expect "Cluster allow list permits mach1 ? YES"
+
+# 3. A machine class is not a host.  The old policy still takes it, the allow
+#    list warns and ignores it.
+send "allow cluster with prod" > "$OUT"
+expect "allowing cluster with prod machines"
+expect "the cluster allow list ignores machine class prod"
+send "stat rmtpol" > "$OUT"
+reject "host prod"
+
+# 4. A host that nobody allowed is not permitted.  The old policy still lets
+#    mach2 in, so we warn that the allow list would turn it away.
+send "stat rmtpol mach2" > "$OUT"
+expect "Cluster allow list permits mach2 ? NO"
+expect "Allow cluster with mach2       ? YES"
+expect "but the cluster allow list would reject it"
+
+# 5. "allow cluster with group <name>" registers a machine group.  A group is a
+#    machine cluster, so machine_cluster_machs() lists its members.
+send "machine_cluster add mach9 grp1" > "$OUT"
+send "machine_cluster dump grp1" > "$OUT"
+expect "mach9"
+
+send "allow cluster with group grp1" > "$OUT"
+expect "allowing cluster with group grp1"
+send "stat rmtpol" > "$OUT"
+expect "group grp1"
+
+# mach9 belongs to the group, so the list permits it although no one named it.
+send "stat rmtpol mach9" > "$OUT"
+expect "Cluster allow list permits mach9 ? YES"
+# mach2 belongs to no group.
+send "stat rmtpol mach2" > "$OUT"
+expect "Cluster allow list permits mach2 ? NO"
+
+# An unknown group has no members.
+send "allow cluster with group nosuchgroup" > "$OUT"
+send "stat rmtpol mach2" > "$OUT"
+expect "Cluster allow list permits mach2 ? NO"
+send "disallow cluster with group nosuchgroup" > "$OUT"
+
+# 6. "disallow" removes the entry.  The list is a pure allow list, so there is
+#    no deny state to leave behind.
+send "disallow cluster with mach1" > "$OUT"
+send "stat rmtpol" > "$OUT"
+reject "host mach1"
+send "stat rmtpol mach1" > "$OUT"
+expect "Cluster allow list permits mach1 ? NO"
+
+send "disallow cluster with group grp1" > "$OUT"
+expect "no longer allowing cluster with group grp1"
+send "stat rmtpol" > "$OUT"
+expect "no groups"
+# Dropping the group drops the membership it granted.
+send "stat rmtpol mach9" > "$OUT"
+expect "Cluster allow list permits mach9 ? NO"
+
+# 7. "clrpol" also drops the host.
+send "allow cluster with mach3" > "$OUT"
+send "stat rmtpol" > "$OUT"
+expect "host mach3"
+send "clrpol cluster with mach3" > "$OUT"
+send "stat rmtpol" > "$OUT"
+reject "host mach3"
+
+# 8. Turning enforcement on switches which list decides.  We always permit
+#    ourselves; a host that no one allowed is refused.
+sql "PUT TUNABLE enforce_cluster_allow_list 1"
+send "stat rmtpol" > "$OUT"
+expect "Cluster allow list (enforced)"
+send "stat rmtpol ${myhost}" > "$OUT"
+expect "Allow cluster with ${myhost}       ? YES"
+send "stat rmtpol mach2" > "$OUT"
+expect "Allow cluster with mach2       ? NO"
+
+# Enforcement must not turn away a node we already cluster with.  This is the
+# risk of the phase 2 switch, so check every peer.
+for node in ${CLUSTER}; do
+    send "stat rmtpol ${node}" > "$OUT"
+    expect "Allow cluster with ${node}       ? YES"
+done
+
+# A host we allow is accepted again, even though it is not a like-class
+# machine.
+send "allow cluster with mach2" > "$OUT"
+send "stat rmtpol mach2" > "$OUT"
+expect "Allow cluster with mach2       ? YES"
+
+sql "PUT TUNABLE enforce_cluster_allow_list 0"
+
+# 9. The list keys on the resolved name, so every entry goes through
+#    comdb2_gethostbyname().  A numeric address must survive that.
+send "allow cluster with 127.0.0.1" > "$OUT"
+expect "allowing cluster with machine 127.0.0.1"
+send "stat rmtpol" > "$OUT"
+expect "host 127.0.0.1"
+
+echo "Success"
+exit 0

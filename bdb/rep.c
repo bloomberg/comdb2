@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <poll.h>
 
+#include "cluster_allow_list.h"
 #include "debug_switches.h"
 
 #include "bdb_int.h"
@@ -4782,6 +4783,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
             buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
             print(bdb_state, "adding node %d to sanctioned list\n", node);
+            cluster_allow_list_add_host(hostname(node));
             net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node),
                                   0);
         }
@@ -4795,6 +4797,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         } else {
             print(bdb_state, "adding host %s to sanctioned list\n",
                   (char *)dta);
+            cluster_allow_list_add_host((char *)dta);
             net_add_to_sanctioned(bdb_state->repinfo->netinfo,
                                   intern((char *)dta), 0);
         }

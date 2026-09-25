@@ -49,8 +49,10 @@ static int os_get_host_and_cname_by_name(char **name_ptr, struct in_addr *addr,
         *addr = ((struct sockaddr_in*)res->ai_addr)->sin_addr;
     }
 
+    /* getaddrinfo leaves ai_canonname NULL for some inputs, a numeric address
+     * among them. */
     if (cname != NULL)
-        *cname = strdup(res->ai_canonname);
+        *cname = res->ai_canonname ? strdup(res->ai_canonname) : NULL;
 
     freeaddrinfo(res);
     return 0;

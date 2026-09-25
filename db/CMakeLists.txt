@@ -6,6 +6,7 @@ set(src
   block_internal.c
   bpfunc.c
   clienthost.c
+  cluster_allow_list.c
   comdb2.c
   comdb2uuid.c
   comdb2_ruleset.c

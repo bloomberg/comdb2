@@ -23,6 +23,7 @@
 
 #include <segstr.h>
 
+#include "cluster_allow_list.h"
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
@@ -972,6 +973,10 @@ static void process_add(bdb_state_type *bdb_state, char *host)
 {
     const char *hostlist[REPMAX];
     netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    /* Adding a node to the sanctioned list means we want to cluster with it.
+     * Do this before net_add_to_sanctioned(), which asks the cluster policy
+     * whether the host is allowed. */
+    cluster_allow_list_add_host(host);
     net_add_to_sanctioned(netinfo, host, 0);
     int count = net_get_all_nodes_connected(netinfo, hostlist);
     for (int i = 0; i < count; i++) {
