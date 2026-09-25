@@ -18,6 +18,7 @@
  * client behind a transaction in the log, and a replicant applying it publishes
  * what it is working on for comdb2_replication (driven from rep_record.c). */
 
+#include <inttypes.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -260,10 +261,14 @@ int handle_clientinfo(DB_ENV *dbenv, u_int32_t rectype, llog_clientinfo_args *ci
         break;
 
     case DB_TXN_PRINT:
-        printf("[%lu][%lu]clientinfo: rec: %lu txnid %lx prevlsn[%lu][%lu]\n", (u_long)lsn->file, (u_long)lsn->offset,
-               (u_long)rectype, (u_long)ciop->txnid->txnid, (u_long)ciop->prev_lsn.file, (u_long)ciop->prev_lsn.offset);
-        printf("\ttask: %.*s host: %.*s pid: %d\n", (int)ciop->taskname.size, (char *)ciop->taskname.data,
-               (int)ciop->host.size, (char *)ciop->host.data, ciop->pid);
+        printf("[%lu][%lu]clientinfo: rec: %lu txnid %lx prevlsn[%lu][%lu] utxnid %" PRIx64 " prevcksum %08lx\n",
+               (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype, (u_long)ciop->txnid->txnid,
+               (u_long)ciop->prev_lsn.file, (u_long)ciop->prev_lsn.offset, ciop->txnid->utxnid,
+               (u_long)ciop->prev_cksum);
+        printf("\ttask: %.*s\n", (int)ciop->taskname.size, (char *)ciop->taskname.data);
+        printf("\thost: %.*s\n", (int)ciop->host.size, (char *)ciop->host.data);
+        printf("\tpid: %d\n", ciop->pid);
+        printf("\n");
         break;
 
     default:

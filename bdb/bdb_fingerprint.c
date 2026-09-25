@@ -18,6 +18,7 @@
  * the statement's fingerprint in the log so replicants can attribute the
  * page-ins they do applying it (read back in berkdb/rep/rep_record.c). */
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -98,11 +99,14 @@ int handle_fingerprint(DB_ENV *dbenv, u_int32_t rectype, llog_fingerprint_args *
         break;
 
     case DB_TXN_PRINT:
-        printf("[%lu][%lu]fingerprint: rec: %lu txnid %lx prevlsn[%lu][%lu]\n", (u_long)lsn->file, (u_long)lsn->offset,
-               (u_long)rectype, (u_long)fpop->txnid->txnid, (u_long)fpop->prev_lsn.file, (u_long)fpop->prev_lsn.offset);
+        printf("[%lu][%lu]fingerprint: rec: %lu txnid %lx prevlsn[%lu][%lu] utxnid %" PRIx64 " prevcksum %08lx\n",
+               (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype, (u_long)fpop->txnid->txnid,
+               (u_long)fpop->prev_lsn.file, (u_long)fpop->prev_lsn.offset, fpop->txnid->utxnid,
+               (u_long)fpop->prev_cksum);
         printf("\tfingerprint: ");
         for (unsigned int i = 0; i < fpop->fingerprint.size; i++)
             printf("%02x", ((unsigned char *)fpop->fingerprint.data)[i]);
+        printf("\n");
         printf("\n");
         break;
 
