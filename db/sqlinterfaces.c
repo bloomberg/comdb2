@@ -2849,6 +2849,8 @@ static const char *rlocks_reason_str(rlocks_reason_t reason)
         return "long repwait at emit-row";
     case RLOCKS_REASON_SLOW_READER:
         return "slow reader";
+    case RLOCKS_REASON_SORT:
+        return "page-lock waiter seen from inside a sort";
     default:
         return "unknown";
     }

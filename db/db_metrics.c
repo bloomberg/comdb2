@@ -52,6 +52,8 @@ struct comdb2_metrics_store {
     int64_t lockrequests;
     int64_t lockwaits;
     int64_t lock_wait_time_us;
+    int64_t sorter_rewinds_started;
+    int64_t sorter_rewinds_finished;
     int64_t memory_ulimit;
     int64_t memory_usage;
     int64_t preads;
@@ -216,6 +218,10 @@ comdb2_metric gbl_metrics[] = {
      NULL},
     {"lockwait_time", "Time spent in lock waits (us)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.lock_wait_time_us, NULL},
+    {"sorter_rewinds_started", "Sorts that have entered the sorter's blocking rewind step", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sorter_rewinds_started, NULL},
+    {"sorter_rewinds_finished", "Sorts that have left it; started minus finished is how many are sorting now",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sorter_rewinds_finished, NULL},
     {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.memory_ulimit, NULL},
     {"memory_usage", "Address space size", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_usage,
@@ -609,6 +615,17 @@ int refresh_metrics(void)
     stats.preads = pstats->n_preads;
     stats.pwrites = pstats->n_pwrites;
     stats.lock_wait_time_us = pstats->lock_wait_time_us;
+
+    /* Lets a concurrent session act exactly when a sort's blocking window opens,
+       instead of guessing at it with a sleep. */
+    {
+        extern uint64_t gbl_sorter_rewinds_started, gbl_sorter_rewinds_finished;
+        /* Read finished first: it only ever trails started, so sampling it
+           earlier keeps started-minus-finished from going briefly negative when
+           a sort completes between the two reads. */
+        stats.sorter_rewinds_finished = gbl_sorter_rewinds_finished;
+        stats.sorter_rewinds_started = gbl_sorter_rewinds_started;
+    }
 
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);

@@ -105,6 +105,11 @@ struct SortSubtask {
   SorterCompare xCompare;         /* Compare function to use */
   SorterFile file;                /* Temp file for level-0 PMAs */
   SorterFile file2;               /* Space for other PMAs */
+  int nSinceRelCheck;             /* Comparisons since the last page-lock waiter check.
+                                  ** Lives here rather than in vdbeSorterMerge() so it
+                                  ** carries across merges: a sort's early merges are
+                                  ** far shorter than the check interval, and a
+                                  ** per-call counter would never reach it. */
 };
 
 

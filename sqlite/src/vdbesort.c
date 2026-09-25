@@ -142,8 +142,27 @@
 #include <inttypes.h>
 #include <cheapstack.h>
 #include <sys/time.h>
+#include <logmsg.h>
 
 int comdb2_tmpdir_space_low();
+
+/* Nothing outside the sorter can release page locks while it sorts or merges:
+   each such step runs inside a single VDBE instruction, so no cursor move --
+   and hence no cursor_move_postop and no sql_tick -- happens inside it.  The
+   comparison loops check from in here instead; see comdb2_sort_release_check()
+   and comdb2_sort_release_begin(). */
+extern int gbl_sort_release_check_interval;
+extern void comdb2_sort_release_check(void);
+extern void comdb2_sort_release_begin(void);
+
+/* Called once per record comparison. */
+static inline void vdbeSorterReleaseCheck(SortSubtask *pTask){
+  if( gbl_sort_release_check_interval
+   && ++pTask->nSinceRelCheck >= gbl_sort_release_check_interval ){
+    pTask->nSinceRelCheck = 0;
+    comdb2_sort_release_check();
+  }
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* 
@@ -1397,6 +1416,9 @@ static SorterRecord *vdbeSorterMerge(
   assert( p1!=0 && p2!=0 );
   for(;;){
     int res;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    vdbeSorterReleaseCheck(pTask);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     res = pTask->xCompare(
         pTask, &bCached, SRVAL(p1), p1->nVal, SRVAL(p2), p2->nVal
     );
@@ -1449,6 +1471,14 @@ static int vdbeSorterSort(SortSubtask *pTask, SorterList *pList){
 
   rc = vdbeSortAllocUnpacked(pTask);
   if( rc!=SQLITE_OK ) return rc;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Each list sort is its own blocking window.  Besides the in-memory sort at
+     rewind, this runs for every spill to a PMA, most of them during
+     OP_SorterInsert with the scan still going -- and the scan reacquires page
+     locks between one spill and the next. */
+  comdb2_sort_release_begin();
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   p = pList->pList;
   pTask->xCompare = vdbeSorterGetCompare(pTask->pSorter);
@@ -1694,6 +1724,11 @@ static int vdbeMergeEngineStep(
       }else if( pReadr2->pFd==0 ){
         iRes = -1;
       }else{
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        /* Merging PMAs: an incremental merge fills a whole buffer from
+           here in one go, with no cursor move in between. */
+        vdbeSorterReleaseCheck(pTask);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         iRes = pTask->xCompare(pTask, &bCached,
             pReadr1->aKey, pReadr1->nKey, pReadr2->aKey, pReadr2->nKey
         );
@@ -1877,7 +1912,29 @@ int sqlite3VdbeSorterWrite(
       );
     }
     if( bFlush ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      /* Testing only: bracket each spill made during the insert phase, and
+         say which write triggered it, so a test can tell which row the scan
+         is parked on while the spill sorts. */
+      extern int gbl_debug_trace_sorter_rewind;
+      struct timeval flush_tv0;
+      int flush_traced = gbl_debug_trace_sorter_rewind;
+      if (flush_traced) {
+          logmsg(LOGMSG_USER, "sorter flush start: nwrite=%d\n", pSorter->nwrite);
+          gettimeofday(&flush_tv0, NULL);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       rc = vdbeSorterFlushPMA(pSorter);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if (flush_traced) {
+          struct timeval tv1;
+          gettimeofday(&tv1, NULL);
+          logmsg(LOGMSG_USER, "sorter flush: %.1fms nwrite=%d\n",
+                 (tv1.tv_sec - flush_tv0.tv_sec) * 1000.0 +
+                     (tv1.tv_usec - flush_tv0.tv_usec) / 1000.0,
+                 pSorter->nwrite);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pSorter->list.szPMA = 0;
       pSorter->iMemory = 0;
       assert( rc!=SQLITE_OK || pSorter->list.pList==0 );
@@ -2648,6 +2705,19 @@ int sqlite3VdbeSorterRewind(const VdbeCursor *pCsr, int *pbEof){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   addVdbeToThdCost(VDBESORTER_FIND, &pSorter->nfind);
+  /* Announce that the sort's blocking window has opened, before any work in it,
+     so a concurrent session polling comdb2_metrics can act on it. */
+  extern uint64_t gbl_sorter_rewinds_started, gbl_sorter_rewinds_finished;
+  __sync_fetch_and_add(&gbl_sorter_rewinds_started, 1);
+
+  /* Testing only: time this call.  Nothing else measures it, and query wall
+     time cannot stand in for it -- with ORDER BY no row is returned until the
+     sort completes. */
+  extern int gbl_debug_trace_sorter_rewind;
+  struct timeval sorter_tv0;
+  int sorter_traced = gbl_debug_trace_sorter_rewind;
+  if (sorter_traced)
+      gettimeofday(&sorter_tv0, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* If no data has been written to disk, then do not do so now. Instead,
   ** sort the VdbeSorter.pRecord list. The vdbe layer will read data directly
@@ -2659,7 +2729,11 @@ int sqlite3VdbeSorterRewind(const VdbeCursor *pCsr, int *pbEof){
     }else{
       *pbEof = 1;
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    goto sorter_rewind_done;
+#else
     return rc;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 
   /* Write the current in-memory list to a PMA. When the VdbeSorterWrite() 
@@ -2683,6 +2757,18 @@ int sqlite3VdbeSorterRewind(const VdbeCursor *pCsr, int *pbEof){
   }
 
   vdbeSorterRewindDebug("rewinddone");
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+sorter_rewind_done:
+  __sync_fetch_and_add(&gbl_sorter_rewinds_finished, 1);
+  if (sorter_traced) {
+      struct timeval tv1;
+      gettimeofday(&tv1, NULL);
+      logmsg(LOGMSG_USER, "sorter rewind: %.1fms bUsePMA=%d\n",
+             (tv1.tv_sec - sorter_tv0.tv_sec) * 1000.0 +
+                 (tv1.tv_usec - sorter_tv0.tv_usec) / 1000.0,
+             pSorter->bUsePMA);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }
 
@@ -2707,6 +2793,12 @@ int sqlite3VdbeSorterNext(sqlite3 *db, const VdbeCursor *pCsr){
     assert( pSorter->pReader==0 || pSorter->pMerger==0 );
     assert( pSorter->bUseThreads==0 || pSorter->pReader );
     assert( pSorter->bUseThreads==1 || pSorter->pMerger );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* A step can refill an incremental merge's buffer, which is a blocking
+       window of its own, and whatever the VDBE did with the previous row may
+       have taken page locks again. */
+    comdb2_sort_release_begin();
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if SQLITE_MAX_WORKER_THREADS>0
     if( pSorter->bUseThreads ){
       rc = vdbePmaReaderNext(pSorter->pReader);
