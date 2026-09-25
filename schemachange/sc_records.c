@@ -39,6 +39,9 @@
 #include "views.h"
 
 int gbl_logical_live_sc = 0;
+int gbl_sc_test_converter_public_write = 0;
+
+int __txn_commit_map_enabled(void);
 
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_partial_indexes;
@@ -704,6 +707,9 @@ static int convert_record(struct convert_record_data *data)
             sc_errf(data->s, "Error %d starting transaction\n", rc);
             return -2;
         }
+
+        if (!sc_build_id_is_zero(&data->sc_private_build_id))
+            bdb_tran_set_sc_build(data->trans, &data->sc_private_build_id);
     }
 
     data->iq.debug = debug_this_request(gbl_debug_until);
@@ -1192,6 +1198,9 @@ err:
         data->sc_genids[data->stripe] = genid;
     }
 
+    if (gbl_sc_test_converter_public_write)
+        bdb_tran_test_note_sc_public_write(data->trans, data->from->handle, data->stripe);
+
     // now do the commit
     db_seqnum_type ss;
     if (data->live) {
@@ -1403,6 +1412,42 @@ static void stop_sc_redo_wait(bdb_state_type *bdb_state,
 int gbl_sc_pause_at_end = 0;
 int gbl_sc_is_at_end = 0;
 
+int sc_private_build_id(struct schema_change_type *s, sc_build_id_t *build_id)
+{
+    memset(build_id, 0, sizeof(*build_id));
+
+    if (s == NULL || comdb2uuid_is_zero(s->uuid))
+        return 0;
+    if (!__txn_commit_map_enabled())
+        return 0;
+
+    memcpy(build_id->bytes, s->uuid, sizeof(build_id->bytes));
+    return 1;
+}
+
+static int sc_private_register_build(struct dbtable *to, const sc_build_id_t *build_id, int *nregistered)
+{
+    struct scplan *plan;
+    int dta_rebuilt, i;
+    int blob_rebuilt[MAXBLOBS], ix_rebuilt[MAXINDEX];
+
+    if (to == NULL || to->handle == NULL || sc_build_id_is_zero(build_id))
+        return -1;
+
+    plan = to->plan;
+    if (plan == NULL || !gbl_use_plan)
+        return bdb_sc_private_register_files(to->handle, build_id, 1, NULL, 0, NULL, 0, nregistered);
+
+    dta_rebuilt = is_dta_being_rebuilt(plan);
+    for (i = 0; i < MAXBLOBS; i++)
+        blob_rebuilt[i] = plan->blob_plan[i] < 0;
+    for (i = 0; i < MAXINDEX; i++)
+        ix_rebuilt[i] = plan->ix_plan[i] < 0;
+
+    return bdb_sc_private_register_files(to->handle, build_id, dta_rebuilt, blob_rebuilt, MAXBLOBS, ix_rebuilt,
+                                         MAXINDEX, nregistered);
+}
+
 int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
@@ -1584,6 +1629,15 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         s->logical_livesc = 0;
     }
 
+    memset(&data.sc_private_build_id, 0, sizeof(data.sc_private_build_id));
+    {
+        sc_build_id_t build_id;
+        int nregistered;
+
+        if (sc_private_build_id(s, &build_id) && sc_private_register_build(data.to, &build_id, &nregistered) == 0)
+            data.sc_private_build_id = build_id;
+    }
+
     /* if were not in parallel, dont start any threads */
     if (data.scanmode != SCAN_PARALLEL && data.scanmode != SCAN_PAGEORDER) {
         convert_records_thd(&data);
@@ -1696,6 +1750,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     while (s->logical_livesc && !s->hitLastCnt) {
         poll(NULL, 0, 200);
     }
+
+    if (!sc_build_id_is_zero(&data.sc_private_build_id) && data.to != NULL && data.to->handle != NULL)
+        bdb_sc_private_unregister_build(data.to->handle, &data.sc_private_build_id);
 
     return outrc;
 }

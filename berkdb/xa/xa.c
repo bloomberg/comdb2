@@ -169,6 +169,8 @@ __xa_put_txn(env, txnp)
 #else
 	COMPQUIET(env, NULL);
 	txnp->txnid = TXN_INVALID;
+	/* Object is reused as-is; clear schema-change classification state. */
+	__txn_sc_skip_reset(txnp);
 #endif
 }
 

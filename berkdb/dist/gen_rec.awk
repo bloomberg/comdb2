@@ -464,6 +464,12 @@ function log_function() {
 	# Initialization
 	if (has_dbp == 1)
 		printf("\tdbenv = dbp->dbenv;\n") >> CFILE;
+
+	# Classify physical writes made by direct schema-change converters.
+	if (dbprivate && has_dbp == 1 &&
+	    funcname != "__db_debug" && funcname != "__db_cksum")
+		printf("\t__txn_note_sc_file_write(txnid, dbp);\n") >> CFILE;
+
 	printf("\trectype = DB_%s;\n", funcname) >> CFILE;
 	printf("\tif (utxnid_log)\n") >> CFILE;
 	printf("\t\trectype += 2000;\n") >> CFILE;

@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# PR1 classifies direct converter transactions but deliberately retains their
+# ordinary commit-map entries. Exercise both the safe private-file case and a
+# mixed private/public case through the real physical-file classifier.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-1000}
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+
+run() {
+	cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$1"
+}
+
+clminfo() {
+	cdb2sql ${CDB2_OPTIONS} --host "$master" "$dbnm" \
+		"exec procedure sys.cmd.send('bdb clminfo')"
+}
+
+counter() {
+	local label=$1
+	awk -v needle="$label: " '
+		index($0, needle) {
+			value = substr($0, index($0, needle) + length(needle))
+			sub(/[^0-9].*/, "", value)
+			print value
+			exit
+		}' <<<"$2"
+}
+
+run "create table t(i int)"
+run "insert into t select value from generate_series(1, $N)"
+
+# Ordinary application work must not acquire converter provenance.
+before=$(clminfo)
+run "update t set i = i + 1 where i <= 10"
+after=$(clminfo)
+(( $(counter "SC direct-copy txns marked" "$after") ==
+   $(counter "SC direct-copy txns marked" "$before") )) || {
+	echo "FAIL: ordinary DML was marked as a direct converter"
+	exit 1
+}
+
+# A normal rebuild writes private files plus internal progress metadata. The
+# metadata is safe and therefore must not set the public-write veto.
+before=$(clminfo)
+run "rebuild t"
+after=$(clminfo)
+
+marked_delta=$(( $(counter "SC direct-copy txns marked" "$after") -
+                 $(counter "SC direct-copy txns marked" "$before") ))
+matched_delta=$(( $(counter "SC direct-copy txns matched" "$after") -
+                  $(counter "SC direct-copy txns matched" "$before") ))
+unsafe_delta=$(( $(counter "SC direct-copy txns unsafe" "$after") -
+                 $(counter "SC direct-copy txns unsafe" "$before") ))
+
+(( marked_delta >= N && matched_delta >= N )) || {
+	echo "FAIL: safe rebuild marked=$marked_delta matched=$matched_delta rows=$N"
+	exit 1
+}
+(( unsafe_delta == 0 )) || {
+	echo "FAIL: safe metadata disqualified $unsafe_delta converter transactions"
+	exit 1
+}
+# Inject classification of the public source-table handle after each real
+# private write. The transaction must record both facts independently.
+run "put tunable 'sc_test_converter_public_write' 1"
+before=$(clminfo)
+run "rebuild t"
+after=$(clminfo)
+run "put tunable 'sc_test_converter_public_write' 0"
+
+mixed_marked=$(( $(counter "SC direct-copy txns marked" "$after") -
+                 $(counter "SC direct-copy txns marked" "$before") ))
+mixed_matched=$(( $(counter "SC direct-copy txns matched" "$after") -
+                  $(counter "SC direct-copy txns matched" "$before") ))
+mixed_unsafe=$(( $(counter "SC direct-copy txns unsafe" "$after") -
+                 $(counter "SC direct-copy txns unsafe" "$before") ))
+
+echo "SC_COMMIT_MAP_CLASSIFIER_PR1: rows=$N" \
+	"safe=$marked_delta/$matched_delta/$unsafe_delta" \
+	"mixed=$mixed_marked/$mixed_matched/$mixed_unsafe"
+
+(( mixed_marked >= N && mixed_matched >= N && mixed_unsafe >= N )) || {
+	echo "FAIL: mixed rebuild marked=$mixed_marked matched=$mixed_matched unsafe=$mixed_unsafe rows=$N"
+	exit 1
+}
+[[ "$(run 'select count(*) from t')" == "$N" ]] || {
+	echo "FAIL: rebuild changed table contents"
+	exit 1
+}
+
+do_verify t
+echo "Passed test"

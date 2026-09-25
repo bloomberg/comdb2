@@ -151,4 +151,39 @@ struct __txn_logrec {
 #include "dbinc_auto/txn_auto.h"
 #include "dbinc_auto/txn_ext.h"
 #include "dbinc_auto/xa_ext.h"
+
+int __sc_private_file_registry_init __P((DB_ENV *));
+int __sc_private_file_registry_destroy __P((DB_ENV *));
+int __sc_private_file_register __P((DB_ENV *, const u_int8_t *,
+    const sc_build_id_t *));
+int __sc_private_file_lookup __P((DB_ENV *, const u_int8_t *, sc_build_id_t *));
+int __sc_private_file_unregister_build __P((DB_ENV *, const sc_build_id_t *));
+void __sc_private_registry_note_failure __P((DB_ENV *));
+void __sc_private_registry_stats __P((DB_ENV *, int *, u_int64_t *,
+    u_int64_t *));
+void __txn_set_sc_build __P((DB_TXN *, const sc_build_id_t *));
+void __txn_note_sc_file_write_int __P((DB_TXN *, DB *));
+void __sc_direct_copy_stats __P((u_int64_t *, u_int64_t *, u_int64_t *));
+
+static inline void
+__txn_note_sc_file_write(DB_TXN *txnp, DB *dbp)
+{
+	if (txnp == NULL || dbp == NULL ||
+	    sc_build_id_is_zero(&txnp->sc_build_id) ||
+	    txnp->sc_unsafe_public_write)
+		return;
+
+	__txn_note_sc_file_write_int(txnp, dbp);
+}
+
+static inline void
+__txn_sc_skip_reset(DB_TXN *txnp)
+{
+	if (txnp == NULL)
+		return;
+
+	memset(&txnp->sc_build_id, 0, sizeof(txnp->sc_build_id));
+	txnp->sc_skip_commit_map = 0;
+	txnp->sc_unsafe_public_write = 0;
+}
 #endif /* !_TXN_H_ */

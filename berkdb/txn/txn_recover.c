@@ -70,6 +70,9 @@ __txn_continue(env, txnp, td, off)
 	txnp->flags = 0;
 	if (F_ISSET(td, TXN_DTL_RESTORED))
 		F_SET(txnp, TXN_RESTORED);
+
+	/* Refills an existing DB_TXN rather than allocating a zeroed one. */
+	__txn_sc_skip_reset(txnp);
 }
 
 /*

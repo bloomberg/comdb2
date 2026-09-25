@@ -610,6 +610,8 @@ int __txn_commit_map_remove(dbenv, utxnid)
  */
 void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
 	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+	u_int64_t marked, matched, unsafe, registered, failures;
+	int available;
 
 	if (should_lock) { Pthread_mutex_lock(&txmap->txmap_mutexp); }
 
@@ -621,6 +623,15 @@ void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
 					gbl_commit_map_remove_miss);
 
 	if (should_lock) { Pthread_mutex_unlock(&txmap->txmap_mutexp); }
+
+	__sc_direct_copy_stats(&marked, &matched, &unsafe);
+	__sc_private_registry_stats(dbenv, &available, &registered, &failures);
+	logmsg(lvl, "SC direct-copy txns marked: %"PRIu64"\n", marked);
+	logmsg(lvl, "SC direct-copy txns matched: %"PRIu64"\n", matched);
+	logmsg(lvl, "SC direct-copy txns unsafe: %"PRIu64"\n", unsafe);
+	logmsg(lvl, "SC private registry available: %d\n", available);
+	logmsg(lvl, "SC private registered files: %"PRIu64"\n", registered);
+	logmsg(lvl, "SC private registry failures: %"PRIu64"\n", failures);
 }
 
 /*

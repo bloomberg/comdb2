@@ -33,6 +33,7 @@
 #include <sys/time.h>
 #include <comdb2buf.h>
 #include <sys_wrap.h>
+#include <sc_build_id.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -169,6 +170,9 @@ struct __utxnid; typedef struct __utxnid UTXNID;
 struct __utxnid_track; typedef struct __utxnid_track UTXNID_TRACK;
 struct __logfile_txn_list; typedef struct __logfile_txn_list LOGFILE_TXN_LIST;
 struct __txn_commit_map; typedef struct __txn_commit_map DB_TXN_COMMIT_MAP;
+struct __sc_private_file; typedef struct __sc_private_file SC_PRIVATE_FILE;
+struct __sc_private_file_registry;
+	typedef struct __sc_private_file_registry SC_PRIVATE_FILE_REGISTRY;
 struct __modsnap_txn; typedef struct __modsnap_txn MODSNAP_TXN;
 
 struct __mempv; typedef struct __mempv DB_MEMPV;
@@ -1187,6 +1191,11 @@ struct __db_txn {
 	u_int32_t coordinator_gen;
 	DBT blkseq_key;
 	int wrote_regop_gen;
+
+	/* Direct schema-change converter classification. */
+	sc_build_id_t sc_build_id;
+	u_int8_t sc_skip_commit_map;
+	u_int8_t sc_unsafe_public_write;
 };
 
 typedef enum {
@@ -1670,6 +1679,7 @@ struct __db {
 	u_int8_t fileid[DB_FILE_ID_LEN];/* File's unique ID for locking. */
 	u_int8_t close_fileid[DB_FILE_ID_LEN]; /* File's unique ID for closing, if db_refresh is called. */
 	int use_close_fileid; /* 1 if db_close should use close_fileid */
+	u_int8_t sc_is_user_file;
 
 	u_int32_t adj_fileid;		/* File's unique ID for curs. adj. */
 
@@ -2951,6 +2961,7 @@ struct __db_env {
 	u_int64_t next_utxnid;
 
 	DB_TXN_COMMIT_MAP* txmap;
+	SC_PRIVATE_FILE_REGISTRY *sc_private_files;
 
 	DB_MEMPV *mempv;
 
@@ -2987,6 +2998,17 @@ struct __txn_commit_map {
 	int64_t smallest_logfile;
 	hash_t *transactions;
 	hash_t *logfile_lists;
+};
+
+struct __sc_private_file {
+	u_int8_t fileid[DB_FILE_ID_LEN];
+	sc_build_id_t build_id;
+};
+
+struct __sc_private_file_registry {
+	pthread_mutex_t lk;
+	hash_t *files;
+	u_int64_t failed_registrations;
 };
 
 struct __mempv_cache_page_key

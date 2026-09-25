@@ -172,6 +172,7 @@ set(BERK_C
   txn/txn_method.c
   txn/txn_rec.c
   txn/txn_recover.c
+  txn/txn_sc_skip.c
   txn/txn_region.c
   txn/txn_stat.c
   txn/txn_util.c

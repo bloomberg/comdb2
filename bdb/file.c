@@ -347,6 +347,7 @@ void bdb_checkpoint_list_get_ckp_before_timestamp(int timestamp, DB_LSN *lsnout)
 
 static void set_some_flags(bdb_state_type *bdb_state, DB *dbp, char *name)
 {
+    dbp->sc_is_user_file = bdb_state->bdbtype == BDBTYPE_TABLE;
     if (bdb_state->attr->checksums) {
         if (dbp->set_flags(dbp, DB_CHKSUM) != 0) {
             logmsg(LOGMSG_ERROR, "error enabling checksums\n");

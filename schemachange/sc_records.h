@@ -69,6 +69,7 @@ struct convert_record_data {
     unsigned n_genids_changed;
     long long nrecs, prev_nrecs, nrecskip;
     int num_records_per_trans;
+    sc_build_id_t sc_private_build_id;
     int num_retry_errors;
     int *tagmap; // mapping of fields from -> to
     /* all the data objects point to the same single cmembers object */
@@ -101,4 +102,6 @@ int init_sc_genids(struct dbtable *db, unsigned long long **p_sc_genids, struct 
 void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
 
 void *live_sc_logical_redo_thd(struct convert_record_data *data);
+
+int sc_private_build_id(struct schema_change_type *s, sc_build_id_t *build_id);
 #endif

@@ -2373,6 +2373,10 @@ REGISTER_TUNABLE("sc_is_at_end",
                  TUNABLE_BOOLEAN, &gbl_sc_is_at_end, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("sc_test_converter_public_write",
+                 "TEST ONLY. Classify converter transactions as touching a public user file.", TUNABLE_BOOLEAN,
+                 &gbl_sc_test_converter_public_write, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "Maximum size in bytes of the output buffer of an appsock "
                  "thread.  (Default: 8 MiB)",

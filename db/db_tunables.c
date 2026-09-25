@@ -404,6 +404,7 @@ extern int gbl_ref_sync_wait_txnlist;
 extern int gbl_ref_sync_iterations;
 extern int gbl_sc_pause_at_end;
 extern int gbl_sc_is_at_end;
+extern int gbl_sc_test_converter_public_write;
 extern int gbl_max_password_cache_size;
 extern int gbl_check_constraint_feature;
 extern int gbl_verify_default_function;
