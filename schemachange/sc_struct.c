@@ -112,7 +112,10 @@ void free_schema_change_type(struct schema_change_type *s)
     if (!s)
         return;
 
-    if (s->partition.type == PARTITION_ADD_GENSHARD ) {
+    /* the participant side of every genshard DDL allocates these arrays in
+     * osql_schemachange_logic(); the coordinator side leaves them NULL */
+    if (s->partition.type == PARTITION_ADD_GENSHARD || s->partition.type == PARTITION_REM_GENSHARD ||
+        s->partition.type == PARTITION_ALTER_GENSHARD) {
         if (s->partition.u.genshard.dbnames) {
             for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
                 free(s->partition.u.genshard.dbnames[i]);
@@ -207,6 +210,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
         return sz;
     }
     case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD:
         return sizeof(p->type);
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
@@ -897,7 +901,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
         }
         break;
     }
-    case PARTITION_REM_GENSHARD: {
+    case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD: {
     }
     }
 
@@ -1403,7 +1408,8 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         }
         break;
     }
-    case PARTITION_REM_GENSHARD: {
+    case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD: {
     }
     }
 

@@ -7269,6 +7269,17 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
     logmsg(LOGMSG_DEBUG, "OSQL_SCHEMACHANGE '%s' uuid %s tableversion %d\n",
            sc->tablename, us, sc->usedbtablevers);
 
+    /* A schema change runs under a logical transaction whose physical child
+     * cannot be dist-prepared (bdb_tran_prepare only accepts a top-level
+     * TRANCLASS_BERK txn).  Committing it without a prepare would let this
+     * participant diverge from a coordinator that later aborts, so refuse the
+     * transaction instead. */
+    if (iq && iq->sorese && iq->sorese->is_participant) {
+        logmsg(LOGMSG_ERROR, "%s: schema change '%s' cannot run as a 2pc participant (dist-txnid %s)\n", __func__,
+               sc->tablename, iq->sorese->dist_txnid ? iq->sorese->dist_txnid : "(none)");
+        return ERR_SC;
+    }
+
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
         sc->nothrevent = 0;
     else
@@ -7286,9 +7297,8 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
     int is_partition = timepart_is_partition(sc->tablename);
 
     if (!is_partition) {
-        if ((sc->partition.type == PARTITION_NONE) ||
-            (sc->partition.type == PARTITION_ADD_GENSHARD) ||
-            (sc->partition.type == PARTITION_REM_GENSHARD)) {
+        if ((sc->partition.type == PARTITION_NONE) || (sc->partition.type == PARTITION_ADD_GENSHARD) ||
+            (sc->partition.type == PARTITION_REM_GENSHARD) || (sc->partition.type == PARTITION_ALTER_GENSHARD)) {
             rc = _process_single_table_sc(iq);
         } else if (sc->partition.type == PARTITION_MERGE) {
             rc = _process_single_table_sc_merge(iq);

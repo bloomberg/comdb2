@@ -5925,6 +5925,14 @@ add_blkseq:
                             comdb2_die(0);
                         }
                         iq->sc_tran = NULL;
+
+                        /* NOTE: a schema change cannot be dist-prepared here.
+                         * parent_trans is the physical child of
+                         * iq->sc_logical_tran (see osql_create_transaction),
+                         * and bdb_tran_prepare() only accepts a top-level
+                         * TRANCLASS_BERK transaction.  Schema changes are
+                         * therefore rejected up-front for 2pc participants in
+                         * osql_process_schemachange(). */
                     }
                     if (iq->sc_locked) {
                         unlock_schema_lk();
