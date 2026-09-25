@@ -1059,6 +1059,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	TXN_DETAIL *td = NULL, *ptd = NULL;
 	UTXNID *utxnid_track;
 	u_int32_t lflags, ltranflags = 0;
+	u_int32_t commit_opcode;
 	int32_t timestamp;
 	uint32_t gen = 0;
 	u_int64_t context = 0;
@@ -1109,6 +1110,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
 	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
+	commit_opcode = TXN_COMMIT;
+	if (LF_ISSET(DB_TXN_SC_PRIVATE_SKIP_MAP))
+		commit_opcode |= TXN_COMMIT_F_SC_SKIP_MAP;
 
 	if (is_prepare) {
 		if (commit_prepared) {
@@ -1285,7 +1289,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						ret =
 							__txn_regop_rowlocks_log(dbenv, rectype,
 									txnp, lsn_out, &context, lflags,
-									TXN_COMMIT, ltranid, begin_lsn,
+									commit_opcode, ltranid, begin_lsn,
 									last_commit_lsn, timestamp,
 									ltranflags, gen, request.obj,
 									&list_dbt_rl, usr_ptr);
@@ -1392,7 +1396,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								__txn_regop_gen_log(dbenv, rectype,
 										txnp, &txnp->last_lsn,
 										&context, lflags,
-										TXN_COMMIT, gen, timestamp,
+										commit_opcode, gen, timestamp,
 										request.obj, usr_ptr);
 							txnp->wrote_regop_gen = 1;
 						}
@@ -1431,7 +1435,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								__txn_regop_log_commit
 								(dbenv, txnp,
 								 &txnp->last_lsn, &context,
-								 lflags, TXN_COMMIT,
+								 lflags, commit_opcode,
 								 timestamp, request.obj,
 								 usr_ptr);
 						}
