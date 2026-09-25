@@ -22,7 +22,15 @@
 #define DISTRIBUTED_TRANSACTIONS_TABLE "comdb2_distributed_transactions"
 
 /* coordinator_wait / participant_wait rcodes */
-enum { KEEP_RCODE = 0, HAS_COMMITTED = 1, HAS_ABORTED = 2, IS_NOT_DURABLE = 3, NO_DIST_TABLE = 4, LOCK_DESIRED = 5 };
+enum {
+    KEEP_RCODE = 0,
+    HAS_COMMITTED = 1,
+    HAS_ABORTED = 2,
+    IS_NOT_DURABLE = 3,
+    NO_DIST_TABLE = 4,
+    LOCK_DESIRED = 5,
+    ALL_PREPARED = 6
+};
 
 /* This coordinator records participant information */
 int collect_participants(const char *dist_txnid, participant_list_t *participants);
@@ -43,6 +51,18 @@ int participant_failed(const char *dist_txnid, const char *dbname, const char *t
 /* This coordinator will block until participants have responded */
 int coordinator_wait(const char *dist_txnid, int can_retry, int *rcode, int *outrc, char *errmsg, int errmsglen,
                      int force_failure);
+
+/* This schema change coordinator blocks until participants have responded.
+ * Returns ALL_PREPARED when it can commit: it writes the decision itself. */
+int coordinator_wait_ddl(const char *dist_txnid, int *rcode, int *outrc, char *errmsg, int errmsglen);
+
+/* This schema change coordinator adds its commit decision to trans */
+int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid);
+
+/* This schema change coordinator committed its decision durably (rc 0), did
+ * not write it (rc -1), or does not know whether it committed (rc
+ * LOCK_DESIRED); tell participants */
+int coordinator_ddl_committed(const char *dist_txnid, int rc);
 
 /* This coordinator will block until participants have propogated this txn */
 int coordinator_wait_propagate(const char *dist_txnid);
@@ -77,6 +97,10 @@ int participant_heartbeat(const char *dist_txnid, const char *participant_name, 
 /* This participant tells coordinator it has prepared and waits for response */
 int participant_wait(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                      const char *coordinator_master);
+
+/* This schema change participant waits for the coordinator, ignoring lock-desired */
+int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
+                         const char *coordinator_master);
 
 /* This participant processes a coordinator's abort */
 int coordinator_aborted(const char *dist_txnid);
@@ -116,7 +140,4 @@ void disttxn_init();
 
 /* Initialize recover-prepared callback */
 void disttxn_init_recover_prepared();
-
-/* Resolve DDL prepared transactions before schema lock acquisition */
-void disttxn_resolve_ddl_prepared(void);
 #endif
