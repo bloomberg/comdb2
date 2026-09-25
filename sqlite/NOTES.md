@@ -49,20 +49,21 @@
 
 ## Hazards
 
-Things that will not announce themselves. A merge may well complete cleanly
-without raising any of these.
+Problems that won't show up as a merge conflict or a compiler error. A merge
+can finish cleanly and still break one of these.
 
-- **`sqlite3VdbeSerialType()` / `sqlite3VdbeSerialPut()` must stay in sync with
+- **Keep `sqlite3VdbeSerialType()` / `sqlite3VdbeSerialPut()` in sync with
   `OP_MakeRecord`.**
 
-  Upstream in-lined both routines into `OP_MakeRecord` and deleted them, so the
-  logic now lives in two places: our vendored copies in `db/sqlglue.c`, and the
-  dispatch written directly into the opcode in `sqlite/src/vdbe.c`. They encode
-  the same records and must agree.
+  Upstream deleted these two functions and copied their logic straight into
+  `OP_MakeRecord`. We still need the functions, so we keep our own copies in
+  `db/sqlglue.c`. The same record-encoding logic now exists in two places:
+  `db/sqlglue.c` and `OP_MakeRecord` in `sqlite/src/vdbe.c`. Both must produce
+  identical records.
 
-  Change one and you must change the other. Neither the compiler nor a future
-  merge will tell you: the opcode and the copies are in different files, and
-  upstream edits to `OP_MakeRecord` will conflict only against the opcode.
+  If you change one, change the other. Nothing will warn you. They're in
+  different files, so the compiler can't catch a mismatch, and an upstream
+  change to `OP_MakeRecord` will only conflict in `vdbe.c`.
 
 ## Cherry-picked patches
 
@@ -203,37 +204,37 @@ I started tracking this when I got to more important files (`where.c`,
 
 ## TODO
 
-- **TODO**: Revisit the vendored `sqlite3VdbeSerialType()` /
-  `sqlite3VdbeSerialPut()` in `db/sqlglue.c` and see whether they can be cut
-  down to comdb2's own subset of serial types.
+- **TODO**: Simplify our copies of `sqlite3VdbeSerialType()` /
+  `sqlite3VdbeSerialPut()` in `db/sqlglue.c`.
 
-  `OP_MakeRecord` is the only serial-type producer in the SQLite library, and
-  in a comdb2 build it routes through our copies, so types 1-5, 8 and 9 look
-  unreachable for us -- the whole variable-width integer search. If that holds,
-  both routines shrink a long way and stop tracking upstream's shape. Worth
-  proving properly, with a `default:` that asserts, once there is a build to
-  test against.
+  In a comdb2 build, `OP_MakeRecord` is the only code in SQLite that picks
+  serial types, and it goes through our copies. Our copies always store
+  integers as 8 bytes, so serial types 1-5, 8 and 9 (the shorter integer
+  encodings) should never come up. If that's true, most of the code in both
+  functions can go, and they no longer need to match upstream's layout.
+  Confirm it once the tree builds, e.g. with a `default:` case that asserts.
 
   Rename them to `comdb2SerialType()` / `comdb2SerialPut()` at the same time.
-  They kept their SQLite names only to avoid touching the call sites in
+  They only kept the SQLite names so we didn't have to change the callers in
   `db/sqlglue.c`, `db/fdb_bend.c`, `db/fdb_fend.c` and `db/sqlmaster.c` before
-  there was a way to test the result.
+  we could test anything.
 
-- **TODO**: Confirm `typessql` still stays off for statements that call a scalar
-  function (`tests/typessql.test`, the fix in `4c00fcf29`).
+- **TODO**: Check that `typessql` is still skipped for statements that call a
+  scalar function (see `tests/typessql.test` and the fix in `4c00fcf29`).
 
   `db/sqlinterfaces.c` skips `typessql_initialize()` when `Vdbe.hasScalarFunc`
-  is set, and upstream deleted the block that used to set it. It now sits just
-  before `sqlite3VdbeAddFunctionCall()` in the `TK_FUNCTION` case -- the same
-  emit point, but only once `func.c` is merged.
+  is set. Upstream deleted the code block that used to set it, so we moved our
+  call to just before `sqlite3VdbeAddFunctionCall()` in the `TK_FUNCTION` case
+  of `expr.c`. That's where the flag was set before, but it can't be tested
+  until `func.c` is merged and the tree builds.
 
-- **TODO**: Check whether the `sqlite3MemCompare()` `MEM_Small` fix changes any
-  test's answer.
+- **TODO**: Check whether the `sqlite3MemCompare()` `MEM_Small` fix changes the
+  expected output of any test.
 
-  Comparing a `float` column against a string or blob that does not parse as a
-  number used to give an arbitrary result and now gives upstream's ordering.
-  Any test that baked in the old answer will flip. Nothing can be run until the
-  tree builds.
+  Comparing a `float` column with a string or blob that isn't a number used to
+  return an arbitrary result. It now sorts the way upstream does (numbers
+  before text and blobs). Any test whose expected output recorded the old
+  result will now fail. We can't run tests until the tree builds.
 
 ## Observations and Decisions
 
@@ -248,42 +249,42 @@ I started tracking this when I got to more important files (`where.c`,
 
 ### `analyze.c`
 
-- **DECISION**: Don't let the stat4 sample tunables re-enable collection that
-  the connection has disabled.
+- **DECISION**: The stat4 sample tunables must not turn sampling back on when
+  the connection has turned it off.
 
-  `stat_init()` sets `mxSample` to 0 when the `SQLITE_Stat4` optimization bit is
-  clear on the connection, and 0 means "collect stat1 only".
-  `stat4_samples_multiplier` assigns over `mxSample` and `stat4_extra_samples`
-  adds to it, so either one on its own would quietly bring sampling back. Both
-  now run only when `mxSample` is already non-zero: the tunables control how
-  many samples we take, not whether we take any.
+  If the `SQLITE_Stat4` optimization is disabled on the connection,
+  `stat_init()` sets `mxSample` to 0, which means "collect stat1 only".
+  `stat4_samples_multiplier` overwrites `mxSample` and `stat4_extra_samples`
+  adds to it, so either tunable could make `mxSample` non-zero again and
+  re-enable sampling. We now apply both only when `mxSample` is already
+  non-zero. The tunables change the number of samples, but they don't decide
+  whether sampling happens.
 
-- **DECISION**: Adopt upstream's 1.0-1.1 rounding rule in our fork of the
-  `sqlite_stat1` loop.
+- **DECISION**: Use upstream's rounding rule for stat1 figures in our copy of
+  the `sqlite_stat1` loop.
 
-  Each figure in a stat1 row is rows-per-distinct-prefix. Previously, if a
-  figure was between 1.0 and 2.0, it would be rounded up to 2.0. This
-  rounding-up turned a near-unique column into 2, and the planner would read 2
-  as "twice as many rows as a unique index would give" — enough to make it
-  prefer a different index. A column with 999 distinct values in 1000 rows is
-  unique for planning purposes; 2 misprices it by 2×. Upstream's rule rounds
-  back down to 1 when the true ratio is under 1.1. Our fork of the loop exists
-  to use our own row count and to iterate `nCol-1` in place of `nKeyCol`, not to
-  change the estimator, so the rule belongs on both sides.
+  Each number in a stat1 row is the average number of rows per distinct key
+  prefix. We used to round any value between 1.0 and 2.0 up to 2.0. That made
+  a nearly unique column look like it had 2 rows per value, and the planner
+  would treat it as twice as expensive as a unique index, which could make it
+  choose a different index. For example, a column with 999 distinct values in
+  1000 rows is effectively unique, but we reported it as 2. Upstream rounds
+  down to 1 when the real value is under 1.1, and we now do the same.
 
-- **OBSERVATION**: `StatAccum.nActualRow` and upstream's `nEst` are different
-  quantities, not duplicates. For large tables comdb2's `ANALYZE` walks a
-  sampler rather than the index itself (`bdb_summarize_table()`), so `OP_Count`
-  returns the number of rows sampled while `analyze_get_nrecs()` returns the
-  number the table really holds. `sqlite_stat1` reports the latter, and stat4's
-  per-column counts are scaled by the ratio between the two. This is why
-  `stat_init()` needs a fifth argument that upstream has no equivalent for.
+  Our copy of the loop only exists so we can use our own row count and loop
+  over `nCol-1` instead of `nKeyCol`. It was never meant to change the
+  estimate, so it should round the same way upstream does.
 
-- **OBSERVATION**: Upstream needs to pass both N and K because `N-K` varies by
-  index shape. comdb2 doesn't, because only one of the three shapes can exist
-  here.
+- **OBSERVATION**: `StatAccum.nActualRow` and upstream's `nEst` hold different
+  values; one is not a duplicate of the other. For a sampled index, `nEst` is
+  the number of rows sampled and `nActualRow` is the number of rows in the
+  whole index. See the entry below on `stat_init()`'s fifth argument.
 
-  K is always `pIdx->nKeyCol`. N is not:
+- **OBSERVATION**: Upstream passes both N (the number of index columns) and K
+  (the number of key columns) because the gap between them depends on the kind
+  of index. comdb2 only has one kind of index, so the gap is always 1.
+
+  K is always `pIdx->nKeyCol`. N depends on the index:
 
   | index shape | N | relation |
   |---|---|---|
@@ -291,89 +292,105 @@ I started tracking this when I got to more important files (`where.c`,
   | secondary index on a WITHOUT ROWID table | `nColumn` — the key plus the P primary key columns | N = K+P |
   | the primary key index of a WITHOUT ROWID table | `nKeyCol` | N = K |
 
-  The third is the index that *is* the table, so its `nColumn` is the full table
-  width; `analyzeOneTable()` takes `nKeyCol` as N instead, to keep
-  `sqlite_stat1` describing the primary key rather than every column. K is what
-  tells `statGet()` how many figures a `sqlite_stat1` row carries, and `N-1`
-  gives the wrong answer for the lower two shapes.
+  In the third case the index is the table itself, so its `nColumn` counts
+  every column in the table. `analyzeOneTable()` uses `nKeyCol` as N instead,
+  so that `sqlite_stat1` describes only the primary key columns. `statGet()`
+  uses K to decide how many numbers go in a `sqlite_stat1` row, and `N-1`
+  would give the wrong count in the second and third cases.
 
-  comdb2 can only produce the first. `parse.y` puts the whole
-  `table_option_set` production behind `%ifndef SQLITE_BUILDING_FOR_COMDB2`, so
-  `WITHOUT ROWID` does not parse and `convertToWithoutRowidTable()` is
-  unreachable. Every index we analyze carries the genid, so N = K+1 always.
+  comdb2 can only create the first kind. `parse.y` wraps the whole
+  `table_option_set` rule in `%ifndef SQLITE_BUILDING_FOR_COMDB2`, so
+  `WITHOUT ROWID` doesn't parse and `convertToWithoutRowidTable()` is never
+  called. Every index we analyze ends with the genid, so N = K+1 always.
 
-- **DECISION**: Pass K rather than deriving it from N.
+- **DECISION**: Pass K to `stat_init()` explicitly instead of computing it as
+  N-1.
 
-  `statInit()` takes K in `argv[1]` and stores it in `StatAccum.nKeyCol` as
-  upstream does, and `statGet()`'s `sqlite_stat1` loop is bounded by
-  `p->nKeyCol` rather than `p->nCol-1`.
+  As in upstream, `statInit()` reads K from `argv[1]` and stores it in
+  `StatAccum.nKeyCol`, and the `sqlite_stat1` loop in `statGet()` runs up to
+  `p->nKeyCol` instead of `p->nCol-1`.
 
-  We pass our own key-column count as K, not `pIdx->nKeyCol`. `pIdx->nKeyCol`
-  counts DATACOPY columns, which sit in the key's tail as payload and are not
-  searchable. The local `nCol` in `analyzeOneTable()` is that count already
-  truncated at the first DATACOPY column, so K is `nCol` and N is `nCol+1`.
+  The K we pass is our own count of key columns, not `pIdx->nKeyCol`.
+  `pIdx->nKeyCol` includes DATACOPY columns, which are stored at the end of
+  the key as extra data and can't be searched on. The local variable `nCol` in
+  `analyzeOneTable()` already stops counting at the first DATACOPY column, so
+  we pass `nCol` as K and `nCol+1` as N.
 
-  Deriving K as `N-1` also works here — per the observation above, only the
-  rowid shape exists in comdb2, so `N = K+1` always. Passing it instead keeps
-  upstream's `assert(nKeyCol<=nCol)` and `assert(nKeyCol>0)` live, which are
-  the only check we have on the DATACOPY truncation, and leaves the stat1 loop
-  textually identical to upstream's, so a future change to the estimator
-  applies as a copy rather than a translation.
+  Computing K as N-1 would also give the right answer, since N = K+1 always
+  holds in comdb2 (see above). We pass it anyway for two reasons. It keeps
+  upstream's `assert(nKeyCol<=nCol)` and `assert(nKeyCol>0)` working, and
+  those asserts are the only check that we cut off the DATACOPY columns
+  correctly. It also keeps our stat1 loop identical to upstream's, so future
+  upstream changes to it can be copied over directly.
 
-- **DECISION**: `stat_init()` takes comdb2's extra row count as a fifth
-  argument, leaving upstream's four in their own positions.
+- **DECISION**: Pass comdb2's real row count to `stat_init()` as a fifth
+  argument, after upstream's four, so upstream's arguments keep their
+  positions.
 
-  Upstream passes (N, K, C, L): index columns, key columns, `OP_Count` of the
-  index, and `PRAGMA analysis_limit`. comdb2 adds A, `analyze_get_nrecs()`, in
-  register `regStat+5`.
+  Upstream passes four arguments: N (index columns), K (key columns), C (the
+  `OP_Count` of the index), and L (`PRAGMA analysis_limit`). For a large
+  table, comdb2's `ANALYZE` doesn't read the whole index.
+  `bdb_summarize_table()` picks a random subset of its pages, and `OP_Count`
+  only counts the rows on those pages. So we also pass A, the number of rows
+  in the whole index from `analyze_get_nrecs()`, in register `regStat+5`. A is
+  used as the total row count in the `sqlite_stat1` row, and stat4's counts
+  are multiplied by A/C to scale them up to the whole table. If the index
+  wasn't sampled, `analyze_get_nrecs()` returns -1 and C is used as-is.
 
-  `OP_Count` always asks for an exact count (P3 = 0) because
-  `sqlite3BtreeRowCountEst()` is unimplemented for our btree.
+  `OP_Count` always asks for an exact count (P3 = 0), because
+  `sqlite3BtreeRowCountEst()` isn't implemented for our btree.
 
-- **DECISION**: Fold `analyze_empty_tables` into upstream's partial-index
-  condition rather than keeping it as a separate patch.
+- **DECISION**: Merge the `analyze_empty_tables` tunable into upstream's
+  partial-index check instead of keeping it as a separate patch.
 
-  Stock SQLite writes nothing to `sqlite_stat1` for an empty index. To the
-  planner an absent row means "unknown", not "empty", so it falls back to its
-  built-in guess of a large table. The tunable makes an empty index still get a
-  row, which our `statGet()` writes as `MAX(nRow, 1)` — the planner then costs
-  the table as tiny instead of huge.
+  Stock SQLite writes no `sqlite_stat1` row for an empty index. The planner
+  treats a missing row as "unknown" rather than "empty", and assumes the table
+  is large. With `analyze_empty_tables` on, an empty index still gets a row.
+  Our `statGet()` writes its row count as `MAX(nRow, 1)`, so the planner
+  treats the table as tiny instead of huge.
 
-  3.51 added the same trick for partial indexes. One behavior change does come
-  with 3.51: an empty *partial* index now gets a `sqlite_stat1` row even with
-  the tunable off.
+  3.51 does the same thing for partial indexes, so we added our tunable to
+  that check. This changes one behavior: an empty *partial* index now gets a
+  `sqlite_stat1` row even when the tunable is off.
 
-- **DECISION**: Keep our own second `OP_Rewind` for the stat4 skip; upstream's
-  replacement cannot work here.
+- **DECISION**: Keep our own second `OP_Rewind` to skip the stat4 sample loop
+  for an empty index. Upstream's replacement doesn't work for us.
 
-  Once the empty-index jump is rerouted to the `sqlite_stat1` write, something
-  else has to skip the stat4 sample loop. Upstream re-derives that skip from the
-  stat1 row itself: `OP_Cast regStat1` then `OP_IfNot regStat1`, which fires when
-  the row count is 0. Our `statGet()` writes `MAX(nRow, 1)`, so that jump can
-  never fire for us. `addrRewind` is a second `OP_Rewind`, opened and patched
-  inside the same `if( analyze_empty_tables )` pair, and it is a distinct
-  address from upstream's `addrGotoEnd`.
+  An empty index now jumps to the code that writes the `sqlite_stat1` row (see
+  the previous entry), so something else has to skip the stat4 sample loop.
+  Upstream does this by checking the row count in the stat1 row: `OP_Cast
+  regStat1` followed by `OP_IfNot regStat1`, which jumps when the count is 0.
+  Our `statGet()` writes `MAX(nRow, 1)`, so the count is never 0 and the jump
+  never happens. Instead we emit a second `OP_Rewind` (`addrRewind`), created
+  and patched inside the same `if( analyze_empty_tables )` blocks. It is a
+  separate address from upstream's `addrGotoEnd`.
 
-  Upstream's `OP_IfNot` is still emitted and still patched — a dead opcode, kept
-  so its `p2` points somewhere sane rather than at address 0.
+  Upstream's `OP_IfNot` is still emitted and patched even though it never
+  jumps for us. Patching it keeps its `p2` pointing at a sensible address
+  instead of address 0.
 
-- **DECISION**: Split the stat4 sample loop into a single `#if/#else` instead of
-  four interleaved guards.
+- **DECISION**: Write the stat4 sample loop as one `#if/#else`, with a
+  separate upstream version and comdb2 version, instead of four `#if` blocks
+  mixed into upstream's code.
 
-  Upstream re-reads each sampled row out of the table: fetch the rowid, seek to
-  it, load every index column, pack a record. We have no rowid — our sample is
-  the packed index row the accumulator already holds — so we fetch it with
-  `STAT_GET_ROW` and never touch the table cursor. The loop-exit test differs to
-  match: upstream tests the rowid for NULL, we test `regEq`, since `statGet()`
-  returns NULL for `STAT_GET_NEQ` once the samples run out.
+  Upstream reads each sampled row back from the table: it gets the rowid,
+  seeks to it, loads every index column, and builds a record. We don't have a
+  rowid. Our sample is the packed index row that the accumulator already
+  holds, so we fetch it with `STAT_GET_ROW` and never use the table cursor.
+  The loop also ends differently. Upstream stops when the rowid is NULL. We
+  stop when `regEq` is NULL, because `statGet()` returns NULL for
+  `STAT_GET_NEQ` once there are no more samples.
 
-  The two paths share only three `callStatGet()` calls. Duplicating those on our
-  side buys an unbroken twelve-line copy of upstream's, which merges clean.
+  The two versions only share three `callStatGet()` calls. Repeating those
+  three calls in our version keeps the upstream version as one unbroken
+  twelve-line copy, so future upstream changes to it should merge without
+  conflicts.
 
-- **OBSERVATION**: `PRAGMA analysis_limit` is now fully wired for comdb2. The
-  limit already reached `stat_init()`, and `statPush()` already returned the
-  skip-ahead signal, but nothing read that signal; 3.51's call site does. The
-  default is 0, which selects the plain `OP_Next` and leaves codegen unchanged.
+- **OBSERVATION**: `PRAGMA analysis_limit` now works fully in comdb2. The limit
+  was already passed to `stat_init()`, and `statPush()` already returned a
+  signal to skip ahead, but nothing used that signal. The 3.51 code that calls
+  `statPush()` does. The default limit is 0, which emits a plain `OP_Next`, so
+  the generated code only changes if the pragma is set.
 
 ### `CMakeLists.txt`
 
@@ -405,28 +422,54 @@ I started tracking this when I got to more important files (`where.c`,
 
 ### `expr.c`
 
-- **DECISION**: Drop our `EP_Generic` patch in `sqlite3ExprAffinity()`; take
-  upstream.
+- **DECISION**: Drop our `EP_Generic` patch in `sqlite3ExprAffinity()` and use
+  upstream's version.
 
-  Nothing sets `EP_Generic` in 3.51. SQLite removed the flag from `sqliteInt.h`
-  along with the rewrite rule it served in the optimizer -- `x IN (y)` ->
-  `x==y` (removed in `790b37a240`). The `sqlite3ExprSkipCollate()` call in the
-  hunk is not lost: upstream inlined it into `sqlite3ExprAffinity()`
-  (`a7d6db6ac0`) and has since widened it to also check `EP_Skip|EP_IfNullRow`.
+  SQLite added `EP_Generic` in 2014 (`fbb24d1092`) for an optimization that
+  rewrote `x IN (y)` as `x==y`. The flag told `sqlite3ExprAffinity()` to
+  ignore the affinity of `y`. comdb2 found this broke affinity and commented
+  out the check (it was already commented out, marked "breaks affinity", in
+  the 2017 initial import). In 2019 SQLite reached the same conclusion: it
+  removed the optimization because it "causes difficult affinity problems"
+  (`790b37a240`), and later removed the flag entirely. Upstream's code now
+  does what our patch was for, so taking it loses nothing.
 
-- **DECISION**: In `sqlite3ExprCodeGetColumnOfTable()`, take upstream's
-  placement of the `sqlite3ColumnDefault()` call (inside the `else`, no
-  `if( iCol>=0 )`) but keep our `-1` register argument.
+  The 3.26 upgrade (`c335397f1`) accidentally undid our patch. It turned the
+  commented-out line into an `#if defined(SQLITE_BUILDING_FOR_COMDB2)` block,
+  which turned the check back on for comdb2 builds only. From 2018 until this
+  upgrade, comdb2 behaved like stock SQLite here.
 
-  `-1` is what suppresses `OP_RealAffinity`; `sqlite3ColumnDefault()`'s
-  `iReg>=0` guard (`update.c`) is a comdb2 fork. The narrower placement costs
-  nothing: for an `INTEGER PRIMARY KEY` the branch emits `OP_Rowid`, which
-  ignores the P4 default that is all the call could still append.
+  The `sqlite3ExprSkipCollate()` call in our version isn't lost either.
+  Upstream moved the same logic into `sqlite3ExprAffinity()` itself
+  (`a7d6db6ac0`), and it now also checks `EP_Skip|EP_IfNullRow`.
 
-- **DECISION**: In the `EP_FixedCol` branch of `sqlite3ExprCodeTarget()`, take
-  upstream and widen `zAff[]` to cover every comdb2 affinity.
+- **DECISION**: In `sqlite3ExprCodeGetColumnOfTable()`, keep passing `-1` to
+  `sqlite3ColumnDefault()` instead of `regOut`, so that no `OP_RealAffinity`
+  is emitted after reading a REAL or float column.
 
-  That branch makes constant propagation safe across types:
+  To save space, stock SQLite may store a REAL value that is a whole number
+  (e.g. `3.0`) as an integer. After reading a REAL column, it emits
+  `OP_RealAffinity` to turn such a value back into a real. comdb2 never stores
+  reals as integers: `db/sqlglue.c` converts each on-disk `SERVER_BREAL` field
+  straight into a `MEM_Real`. So the opcode never does anything for us, and we
+  stopped emitting it in 2013 (DRQS 40468319).
+
+  The patch has two halves, and both must stay. `expr.c` passes `-1`, and
+  `sqlite3ColumnDefault()` in `update.c` only emits `OP_RealAffinity` when
+  `iReg>=0`. Without the `update.c` check, SQLite would emit the opcode on
+  register -1. A 2013 merge dropped that check and debug asserts caught it in
+  2014 (DRQS 48268498). The other caller, `pragma.c`, passes a real register
+  and still gets the opcode, which is harmless.
+
+  We take upstream's placement of the call (inside the `else`, without the
+  `if( iCol>=0 )`). This loses nothing. The case it no longer covers is an
+  `INTEGER PRIMARY KEY` column, which is read with `OP_Rowid`, and `OP_Rowid`
+  ignores the default value the call would attach.
+
+- **DECISION**: In the `EP_FixedCol` branch of `sqlite3ExprCodeTarget()`, use
+  upstream's version and extend `zAff[]` to include every comdb2 affinity.
+
+  This branch keeps constant propagation correct when column types differ:
 
   ```sql
   CREATE TABLE t1(a INT, b TEXT);
@@ -435,14 +478,16 @@ I started tracking this when I got to more important files (`where.c`,
   SELECT * FROM t1 WHERE a=123 AND b=123;   -- 0 rows
   ```
 
-  `b=a` compares numerically but `b=123` compares as text, so the optimizer
-  cannot simply substitute the value of `a`. It keeps the node `a` column, tags
-  it `EP_FixedCol`, and codes the constant with `a`'s affinity -- and `zAff[]`
-  is the affinity-to-`P4`-string lookup that applies it.
+  `b=a` compares the values as numbers, but `b=123` compares them as text, so
+  the optimizer can't just replace `a` with 123. Instead it keeps the
+  reference to column `a`, marks it `EP_FixedCol`, and codes the constant
+  using `a`'s affinity. `zAff[]` is the table that maps each affinity to the
+  `P4` string that applies it.
 
-  Our only change here has ever been to give it a row per comdb2 data type, so
-  the resolution is take-theirs with all of ours covered, `SQLITE_AFF_FLEXNUM`
-  included (it arrived with `sqliteInt.h` after the table was last widened).
+  Our only change to this code has always been adding a row to `zAff[]` for
+  each comdb2 data type. So we took upstream's version and checked that all of
+  our rows are there, including `SQLITE_AFF_FLEXNUM`, which arrived with the
+  new `sqliteInt.h` after the table was last extended.
 
 ### `fwd_types.h`
 
@@ -604,22 +649,22 @@ I started tracking this when I got to more important files (`where.c`,
 - We have completely replaced the B-Tree routines with our own to interact with
   BerkeleyDB instead. The functions are defined in `db/sqlglue.c`.
 
-- **DECISION**: Add an extra `bias` argument to `sqlite3BtreeIndexMoveto()` in
-  comdb2 builds, holding the VDBE opcode that issued the seek.
+- **DECISION**: In comdb2 builds, add an extra `bias` argument to
+  `sqlite3BtreeIndexMoveto()` that holds the VDBE opcode doing the seek.
 
-  Upstream split `sqlite3BtreeMovetoUnpacked()` into table and index variants;
-  the table variant kept an int slot (`biasRight`) that comdb2 already
-  overloads with the opcode, but the index variant didn't keep one. In comdb2's
-  implementation of `sqlite3BtreeMovetoUnpacked()` for index cursors, the
-  opcode selects the search direction, the duplicate-key resolution, the
-  SELECTV key-range recording, and the `OP_IdxDelete` path that ships an index
-  key to the master instead of seeking. We need to continue plumbing down the
-  VDBE opcode to maintain these behaviors, hence the additional argument to
-  `sqlite3BtreeIndexMoveto()`.
+  In 3.28, one function, `sqlite3BtreeMovetoUnpacked()`, handled seeks on both
+  tables and indexes. comdb2 reused its int argument `biasRight` to pass down
+  the opcode that issued the seek. Upstream later split the function into a
+  table version and an index version. The table version kept `biasRight`, but
+  the index version has no such argument.
 
-  Note - this doesn't add new information that wasn't being passed down before,
-  it's reviving the slot that was used for this purpose and subsequently
-  removed upstream.
+  comdb2's index seek code needs the opcode. It uses it to choose the search
+  direction, decide how duplicate keys are handled, record key ranges for
+  SELECTV, and, for `OP_IdxDelete`, send the index key to the master instead
+  of seeking. So we added the argument back to `sqlite3BtreeIndexMoveto()`.
+
+  This doesn't pass down anything new. It restores an argument we already
+  used for this purpose, which upstream removed.
 
 ### `sqlite_tunables.{h,c}`
 
@@ -627,43 +672,50 @@ I started tracking this when I got to more important files (`where.c`,
 
 ### `sqlite3.h` / `sqlite.h.in`
 
-- Upstream *generates* `sqlite3.h` from `src/sqlite.h.in` via
-  `tool/mksqlite3h.tcl`, and so do we. `src/sqlite.h.in` is the file we patch;
-  `sqlite3.h` is built into `${PROJECT_BINARY_DIR}/sqlite` and is **not** in
-  the source tree. We used to check in the generated header and patch it
-  directly, which meant maintaining the same patch set twice -- and the two had
-  drifted by thirteen changes.
+- Upstream doesn't keep `sqlite3.h` in its source tree. It generates it from
+  `src/sqlite.h.in` using `tool/mksqlite3h.tcl`, and we now do the same. We
+  patch `src/sqlite.h.in`. The generated `sqlite3.h` is written to
+  `${PROJECT_BINARY_DIR}/sqlite` and is **not** checked in. We used to check
+  in the generated header and patch it directly, which meant keeping the same
+  patches in two files, and the two had drifted apart by thirteen changes.
 
-- `tool/mksqlite3h.tcl` is verbatim upstream -- we carry no patch to it. Files
-  are checked in solely so it runs unmodified: `manifest`, `manifest.uuid`,
-  `manifest.tags` and `tool/mksourceid.c` for the source-id, datetime and
-  branch/tags; and `ext/rtree/sqlite3rtree.h`, `ext/session/sqlite3session.h`
-  and `ext/fts5/fts5.h`, which it inlines into the header even though we build
-  none of those extensions. Since our sources are patched, `mksourceid` reports
-  the source-id with an `alt1` suffix, which is fine. Nothing reads it
-  functionally.
+- We don't patch `tool/mksqlite3h.tcl`; it's a copy of upstream's. Some other
+  files are checked in only so that the script can run unmodified:
 
-- Consumers outside `sqlite/` need the build directory on their include path
-  *and* an ordering edge to the generator, since CMake does not track generated
-  files across directories. Both come from linking the `sqlite3_header`
-  INTERFACE library. It deliberately does not pull in `sqlite`, which depends
-  on `bdb`, which includes `<sqlite3.h>` -- that would be a cycle. Anything
-  depending on `sqlite` inherits the ordering already; some that do not are
-  `bdb`, `schemachange` and the five plugins (every plugin includes
-  `bbinc/comdb2_plugin.h`, hence the link in `cmake/plugin.cmake`).
+  - `manifest`, `manifest.uuid`, `manifest.tags` and `tool/mksourceid.c`,
+    which it uses for the source ID, date and branch/tags.
+  - `ext/rtree/sqlite3rtree.h`, `ext/session/sqlite3session.h` and
+    `ext/fts5/fts5.h`, which it copies into the header even though we don't
+    build those extensions.
+
+  Because our sources are patched, `mksourceid` adds an `alt1` suffix to the
+  source ID. That's fine, because nothing depends on the value.
+
+- Code outside `sqlite/` that includes `sqlite3.h` needs two things: the build
+  directory on its include path, and a build dependency on the generator so
+  the header exists before it compiles. CMake doesn't track generated files
+  across directories, so neither happens automatically. Linking the
+  `sqlite3_header` INTERFACE library provides both.
+
+  `sqlite3_header` doesn't link `sqlite`, because that would create a cycle:
+  `sqlite` depends on `bdb`, and `bdb` includes `<sqlite3.h>`. Anything that
+  already depends on `sqlite` gets the build ordering automatically. Targets
+  that don't, such as `bdb`, `schemachange` and the five plugins, link
+  `sqlite3_header` directly. (Every plugin includes `bbinc/comdb2_plugin.h`,
+  so for plugins the link is in `cmake/plugin.cmake`.)
 
 - `tests/tools` and `tools/pmux` use the *system* SQLite, not ours.
 
 #### Upgrade procedure for `sqlite3.h`
 
-1. Cut our delta against the new upstream template:
+1. Save our changes as a diff against the old upstream file:
 
    ```sh
-   diff -u sqlite/sqlite-<new>/src/sqlite.h.in sqlite/src/sqlite.h.in
+   diff -u sqlite/sqlite-<old>/src/sqlite.h.in sqlite/src/sqlite.h.in
    ```
 
-2. Overwrite `sqlite/src/sqlite.h.in` with the new upstream copy and re-apply
-   that delta. Copy the rest across unedited:
+2. Replace `sqlite/src/sqlite.h.in` with the new upstream copy and re-apply
+   our changes. Copy the other files over unchanged:
 
    ```sh
    cd sqlite
@@ -683,12 +735,12 @@ I started tracking this when I got to more important files (`where.c`,
    done
    ```
 
-3. Check every re-applied hunk is inside a `SQLITE_BUILDING_FOR_COMDB2` guard,
-   and drop any comdb2 backport upstream has since mainlined.
+3. Check that every re-applied change is inside a `SQLITE_BUILDING_FOR_COMDB2`
+   guard. Drop any comdb2 backport of a feature that upstream now includes.
 
-Verify by building `generate_sqlite3_h` and diffing the header against the
-previous release's; then `cc -fsyntax-only -Wall` it both with and without
-`-DSQLITE_BUILDING_FOR_COMDB2`.
+To verify, build the `generate_sqlite3_h` target and diff the generated header
+against the previous release's. Then run `cc -fsyntax-only -Wall` on it, once
+with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
 
 ### `sqliteInt.h`
 
@@ -717,74 +769,89 @@ previous release's; then `cc -fsyntax-only -Wall` it both with and without
 
 ### `vdbe.c`
 
-- **TODO**: Make `OP_MakeRecord` call `sqlite3VdbeSerialType()` and
-  `sqlite3VdbeSerialPut()` instead of carrying its own copy of the dispatch.
+- **TODO**: Change `OP_MakeRecord` to call `sqlite3VdbeSerialType()` and
+  `sqlite3VdbeSerialPut()` instead of containing its own copy of their logic.
 
-  Upstream in-lined both routines into the opcode, so taking its version
-  verbatim means comdb2's serial types live in two places. Restoring the calls
-  puts them back in one, and retires the sync hazard recorded under "Hazards".
+  Upstream inlined both functions into the opcode. If we take its version
+  as-is, comdb2's serial-type logic would need to exist in two places. Calling
+  the functions again would leave it in one place and remove the hazard
+  described under "Hazards".
 
 ### `vdbeaux.c`
 
-- **DECISION**: Move `sqlite3VdbeSerialType()` and `sqlite3VdbeSerialPut()` out
-  of `vdbeaux.c` into `db/sqlglue.c`, and leave `vdbeaux.c` reading as stock.
+- **DECISION**: Move `sqlite3VdbeSerialType()` and `sqlite3VdbeSerialPut()`
+  out of `vdbeaux.c` into `db/sqlglue.c`, and leave `vdbeaux.c` the same as
+  upstream.
 
-  Upstream in-lined both into `OP_MakeRecord`: `SerialType` survives only as an
-  `#if 0` block kept for reference, and `SerialPut` was deleted outright.
-  Neither has a caller left in the SQLite library. Comdb2 still packs records
-  outside the VDBE -- `db/sqlglue.c`, `db/fdb_bend.c`, `db/fdb_fend.c` and
-  `db/sqlmaster.c` -- so we own copies rather than keep patching a file upstream
-  has finished with. `vdbeaux.c` takes upstream's text for both: the `#if 0`
-  block is stock 3.51, and the `SerialPut` conflict resolves take-theirs. The
-  prototypes stay in `vdbeInt.h`, guarded, so every existing caller keeps seeing
-  them.
+  Upstream inlined both functions into `OP_MakeRecord`. `SerialType` remains
+  only inside an `#if 0` block kept for reference, and `SerialPut` was
+  deleted. Nothing in the SQLite library calls either one anymore. comdb2
+  still builds records outside the VDBE, in `db/sqlglue.c`, `db/fdb_bend.c`,
+  `db/fdb_fend.c` and `db/sqlmaster.c`. Rather than keep patching code
+  upstream no longer uses, we keep our own copies. `vdbeaux.c` uses upstream's
+  text for both: the `#if 0` block is unchanged from 3.51, and we took
+  upstream's side of the `SerialPut` conflict. The prototypes stay in
+  `vdbeInt.h`, inside a comdb2 guard, so existing callers still see them.
 
   `sqlite3VdbeSerialTypeLen()`, `sqlite3VdbeSerialGet()` and
-  `sqlite3SmallTypeSizes[]` stay put and stay patched -- upstream still uses all
-  three. The comdb2 `#include <arpa/inet.h>` / `<flibc.h>` and the
-  `END_INLINE_SERIALGET` marker also stay, despite sitting on the take-theirs
-  side of the conflict: `SerialGet()` needs the byte-order helpers, and dropping
-  the marker would unbalance `tool/mkvdbeauxinlines.tcl`.
+  `sqlite3SmallTypeSizes[]` stay in `vdbeaux.c` with our patches, because
+  upstream still uses all three. A few comdb2 lines also stay, even though we
+  otherwise took upstream's side of that conflict. The
+  `#include <arpa/inet.h>` / `<flibc.h>` lines stay because `SerialGet()`
+  needs their byte-order functions. The `END_INLINE_SERIALGET` marker stays
+  because `tool/mkvdbeauxinlines.tcl` expects every start marker to have a
+  matching end marker.
 
-  The copies went over as-is, guards and all, rather than being rewritten for a
-  comdb2-only file. There is no build to test against yet; see the TODO about
-  simplifying them.
+  The copies were moved as-is, including their `#if` guards, rather than
+  rewritten as comdb2-only code, because there's no build to test against
+  yet. See the TODO about simplifying them.
 
-- **DECISION**: Serialize `MEM_IntReal` as a real rather than an integer.
+- **DECISION**: Store `MEM_IntReal` values as reals, not integers.
 
-  Resolved while the function was still in `vdbeaux.c`; the resolution travelled
-  with it to `db/sqlglue.c`. Our fork of the integer arm exists to fix the width
-  at 8 bytes, so that `sqlite3VdbeSerialPut()` can write the whole `i64` at once
-  instead of SQLite's variable-width encoding. That settles width, not type.
-  Upstream decides int-versus-real by width -- it keeps the real once the value
-  costs 8 bytes either way -- and for comdb2 that is every value, so
-  `MEM_IntReal` gets serial type 7. The value has to move from `pMem->u.i` to
-  `pMem->u.r` first, since `sqlite3VdbeSerialPut()` reads `u.r` for type 7.
+  This was decided while the function was still in `vdbeaux.c`, and the
+  change moved with it to `db/sqlglue.c`.
+
+  A `MEM_IntReal` value is a real held as an integer in `u.i`. Our version of
+  the integer case in `sqlite3VdbeSerialType()` exists so that integers are
+  always 8 bytes wide. That lets `sqlite3VdbeSerialPut()` write the whole
+  `i64` at once instead of using SQLite's variable-width encoding. But that
+  only decides how wide the value is, not whether it is stored as an integer
+  or a real. Upstream decides between integer and real based on width: if the
+  value takes 8 bytes either way, it keeps it as a real. For comdb2, every
+  integer takes 8 bytes, so `MEM_IntReal` always gets serial type 7 (a real).
+  The value has to be copied from `pMem->u.i` to `pMem->u.r` first, because
+  `sqlite3VdbeSerialPut()` reads `u.r` for type 7.
 
 - **DECISION**: Restore upstream's `__HP_cc` sign-extension workaround in
   `sqlite3VdbeSerialGet()`.
 
-  `45366deb2` dropped it in a mechanical AIX/HP-UX sweep, not as a comdb2 fix.
-  We track upstream as closely as we can, and we only run on Linux and Solaris,
-  so the block is unreachable either way.
+  `45366deb2` removed it as part of a general cleanup of AIX/HP-UX code, not
+  to fix anything in comdb2. We only run on Linux and Solaris, so the code
+  never runs either way. We put it back to stay as close to upstream as
+  possible.
 
-- **DECISION**: Run the `MEM_Small` arm of `sqlite3MemCompare()` only when both
-  values are numbers, and read `u.i` for `MEM_IntReal` as well as `MEM_Int`.
+- **DECISION**: In `sqlite3MemCompare()`, use the `MEM_Small` comparison only
+  when both values are numbers, and read `u.i` for `MEM_IntReal` as well as
+  `MEM_Int`.
 
-  `MEM_Small` means "compare at 4-byte float precision". It is what lets
-  `floatcol = 0.1` match, since the stored float widens to a different double
-  than the literal. But `vdbe.c` stamps the flag onto *both* operands of a
-  SMALL-affinity comparison before affinity has settled their types, so the arm
-  can be handed a value that is not a number at all. It read `u.r` regardless,
-  and for a text or blob value that is a stale union member -- so
-  `floatcol < 'abc'` returned an arbitrary answer. Requiring both sides numeric
-  lets those pairs fall through to the code below, which already orders numbers
-  ahead of text and blobs. Strings that do parse as numbers are unaffected;
-  `applyNumericAffinity()` has already turned them into `MEM_Real` or `MEM_Int`.
+  `MEM_Small` means "compare at 4-byte float precision". It is what makes
+  `floatcol = 0.1` match: the stored float converts to a slightly different
+  double than the literal `0.1`, so a full-precision comparison would fail.
 
-  `MEM_IntReal` holds a real in `u.i`, so the arm has to test for it alongside
-  `MEM_Int` or it reads the wrong union member. No such value can reach here
-  until `vdbe.c` merges -- every producer of the flag lives in that file.
+  `vdbe.c` sets the flag on *both* sides of a comparison with a SMALL-affinity
+  column, before affinity has converted the values to their final types. So
+  this code can be given a value that isn't a number at all. It used to read
+  `u.r` anyway, and for a text or blob value that field holds leftover data,
+  so `floatcol < 'abc'` returned an arbitrary answer. Now, if either side
+  isn't a number, we skip this code and fall through to the code below, which
+  already sorts numbers before text and blobs. Strings that look like numbers
+  aren't affected, because `applyNumericAffinity()` has already converted them
+  to `MEM_Real` or `MEM_Int`.
+
+  A `MEM_IntReal` value is stored in `u.i`, so the code has to check for it
+  alongside `MEM_Int`, or it reads the wrong field. No such value can reach
+  this code until `vdbe.c` is merged, because all the code that sets that flag
+  is in `vdbe.c`.
 
 ### `vdbeInt.h`
 
