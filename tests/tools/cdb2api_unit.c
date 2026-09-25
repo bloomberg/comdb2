@@ -242,6 +242,206 @@ void test_get_config_file()
 }
 
 
+/* exact-sized copy so asan traps a read past the terminating nul */
+static char *heap_copy(const char *s)
+{
+    size_t n = strlen(s) + 1;
+    char *p = malloc(n);
+    assert(p != NULL);
+    memcpy(p, s, n);
+    return p;
+}
+
+void test_cdb2_read_line_buf()
+{
+    char *buf = heap_copy("alpha\nbeta gamma\n\n   delta\n");
+    char line[64];
+    int chrno = 0;
+
+    assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == 5);
+    assert(strcmp(line, "alpha") == 0);
+
+    assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == 10);
+    assert(strcmp(line, "beta gamma") == 0);
+
+    /* blank lines and leading blanks are skipped */
+    assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == 5);
+    assert(strcmp(line, "delta") == 0);
+
+    /* once exhausted chrno stays parked on the nul instead of running off the end */
+    int end = chrno;
+    assert(buf[end] == '\0');
+    for (int i = 0; i < 4; i++) {
+        assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == -1);
+        assert(chrno == end);
+    }
+
+    free(buf);
+}
+
+void test_cdb2_read_line_no_trailing_newline()
+{
+    char *buf = heap_copy("first\nlast");
+    char line[64];
+    int chrno = 0;
+
+    assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == 5);
+    assert(strcmp(line, "first") == 0);
+
+    assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == 4);
+    assert(strcmp(line, "last") == 0);
+
+    assert(chrno == (int)strlen("first\nlast"));
+    assert(cdb2_read_line(line, sizeof(line), NULL, buf, &chrno) == -1);
+    assert(chrno == (int)strlen("first\nlast"));
+
+    free(buf);
+}
+
+void test_cdb2_read_line_fits_exactly()
+{
+    const int maxlen = 8;
+    char *buf = heap_copy("0123456\nnext\n");
+    char *line = malloc(maxlen); /* exact size: asan traps a write past line[maxlen-1] */
+    int chrno = 0;
+
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == maxlen - 1);
+    assert(strcmp(line, "0123456") == 0);
+
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == 4);
+    assert(strcmp(line, "next") == 0);
+
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == -1);
+
+    free(line);
+    free(buf);
+}
+
+void test_cdb2_read_line_truncates()
+{
+    const int maxlen = 8;
+    char *buf = heap_copy("0123456789abcdef\ntail\n");
+    char *line = malloc(maxlen);
+    int chrno = 0;
+
+    int rc = cdb2_read_line(line, maxlen, NULL, buf, &chrno);
+    assert(rc == maxlen - 1);
+    assert((int)strlen(line) == rc); /* truncated lines are still nul terminated */
+    assert(strcmp(line, "0123456") == 0);
+
+    /* the remainder comes back on subsequent calls */
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == 7);
+    assert(strcmp(line, "789abcd") == 0);
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == 2);
+    assert(strcmp(line, "ef") == 0);
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == 4);
+    assert(strcmp(line, "tail") == 0);
+    assert(cdb2_read_line(line, maxlen, NULL, buf, &chrno) == -1);
+
+    free(line);
+    free(buf);
+}
+
+void test_cdb2_read_line_guard()
+{
+    struct {
+        char line[8];
+        char guard[8];
+    } b;
+    char *buf = heap_copy("0123456\n0123456789\n");
+    int chrno = 0;
+
+    memset(&b, 0x7f, sizeof(b));
+    assert(cdb2_read_line(b.line, sizeof(b.line), NULL, buf, &chrno) == 7);
+    assert(strcmp(b.line, "0123456") == 0);
+
+    assert(cdb2_read_line(b.line, sizeof(b.line), NULL, buf, &chrno) == 7);
+    assert(strcmp(b.line, "0123456") == 0);
+
+    for (size_t i = 0; i < sizeof(b.guard); i++)
+        assert(b.guard[i] == (char)0x7f);
+
+    free(buf);
+}
+
+void test_cdb2_read_line_stream()
+{
+    const char *tmpdir = getenv("TMPDIR");
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/cdb2api_read_line_XXXXXX", tmpdir ? tmpdir : "/tmp");
+
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    const char *contents = "alpha\n\n  beta\n0123456\nlast";
+    assert(write(fd, contents, strlen(contents)) == (ssize_t)strlen(contents));
+    close(fd);
+
+    COMDB2BUF *s = cdb2_cdb2buf_openread(path);
+    assert(s != NULL);
+
+    int unused = 0;
+    char line[64];
+
+    assert(cdb2_read_line(line, sizeof(line), s, NULL, &unused) == 5);
+    assert(strcmp(line, "alpha") == 0);
+
+    assert(cdb2_read_line(line, sizeof(line), s, NULL, &unused) == 4);
+    assert(strcmp(line, "beta") == 0);
+
+    char *small = malloc(8);
+    assert(cdb2_read_line(small, 8, s, NULL, &unused) == 7);
+    assert(strcmp(small, "0123456") == 0);
+    free(small);
+
+    /* final line has no newline, EOF ends it */
+    assert(cdb2_read_line(line, sizeof(line), s, NULL, &unused) == 4);
+    assert(strcmp(line, "last") == 0);
+
+    assert(cdb2_read_line(line, sizeof(line), s, NULL, &unused) == -1);
+    assert(cdb2_read_line(line, sizeof(line), s, NULL, &unused) == -1);
+
+    cdb2buf_close(s);
+    unlink(path);
+}
+
+/* a config line that exactly fills read_comdb2db_cfg's line[] must not overflow
+   it, and parsing must resume sanely on the following line */
+static void read_comdb2db_cfg_with_line_of_len(int len)
+{
+    cdb2_hndl_tp hndl;
+    char comdb2db_hosts[10][CDB2HOSTNAME_LEN];
+    char db_hosts[10][CDB2HOSTNAME_LEN];
+    char shards[10][DBNAME_LEN];
+    int num_hosts = 0, comdb2db_num = 0, num_db_hosts = 0, dbnum = 0;
+    int num_shards = 0, dbname_found = 0, comdb2db_found = 0;
+
+    const char *tail = "\nmydb:n1,n2\n";
+    char *buf = malloc(len + strlen(tail) + 1);
+    assert(buf != NULL);
+    memset(buf, 'z', len);
+    strcpy(buf + len, tail);
+
+    read_comdb2db_cfg(&hndl, NULL, "comdb2dbnm", buf, comdb2db_hosts, &num_hosts, &comdb2db_num, "mydb", db_hosts,
+                      &num_db_hosts, &dbnum, &dbname_found, &comdb2db_found, shards, &num_shards);
+
+    assert(num_hosts == 0);
+    assert(num_db_hosts == 2);
+    assert(strcmp(db_hosts[0], "n1") == 0);
+    assert(strcmp(db_hosts[1], "n2") == 0);
+
+    free(buf);
+}
+
+void test_read_comdb2db_cfg_long_line()
+{
+    const int linesz = PATH_MAX > 2048 ? PATH_MAX : 2048;
+    read_comdb2db_cfg_with_line_of_len(linesz - 2);
+    read_comdb2db_cfg_with_line_of_len(linesz - 1);
+    read_comdb2db_cfg_with_line_of_len(linesz);
+    read_comdb2db_cfg_with_line_of_len(linesz + 1);
+    read_comdb2db_cfg_with_line_of_len(linesz * 2);
+}
+
 void test_cdb2_string_escape()
 {
     const char *emptyStr = "";
@@ -277,6 +477,15 @@ int main(int argc, char *argv[])
     test_cdb2_set_comdb2db_config();
 
     test_read_comdb2db_cfg();
+
+    test_cdb2_read_line_buf();
+    test_cdb2_read_line_no_trailing_newline();
+    test_cdb2_read_line_fits_exactly();
+    test_cdb2_read_line_truncates();
+    test_cdb2_read_line_guard();
+    test_cdb2_read_line_stream();
+    test_read_comdb2db_cfg_long_line();
+
     test_get_config_file();
 
     test_cdb2_string_escape();

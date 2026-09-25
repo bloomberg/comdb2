@@ -769,7 +769,8 @@ static inline int get_char(COMDB2BUF *s, const char *buf, int *chrno)
         ch = cdb2buf_getc(s);
     } else {
         ch = buf[*chrno];
-        *chrno += 1;
+        if (ch != '\0')
+            *chrno += 1;
     }
     return ch;
 }
@@ -784,14 +785,14 @@ int cdb2_read_line(char *line, int maxlen, COMDB2BUF *s, const char *buf, int *c
     while ((ch != '\n') && (ch != EOF) && (ch != '\0')) {
         line[count] = ch;
         count++;
-        if (count >= maxlen)
-            return count;
+        if (count >= maxlen - 1)
+            break;
         ch = get_char(s, buf, chrno);
     }
     if (count == 0)
         return -1;
-    line[count + 1] = '\0';
-    return count + 1;
+    line[count] = '\0';
+    return count;
 }
 
 static void process_env_vars(void)
