@@ -1812,6 +1812,24 @@ REGISTER_TUNABLE("client_heartbeat_ms",
 REGISTER_TUNABLE("debug_sleep_in_cursor_move", "Sleep N ms on each cursor move (testing only).  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_debug_sleep_in_cursor_move, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_trace_sorter_rewind",
+                 "Log the wall time spent in the sqlite sorter's rewind step, and in each spill to disk made "
+                 "while rows are still being inserted (testing only).  Those are the sort's blocking windows; "
+                 "query wall time cannot stand in for them.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_trace_sorter_rewind, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sort_release_check_interval",
+                 "Check for a page-lock waiter once every N record comparisons in the sorter merge loop, and "
+                 "release page locks if one is found.  A sort runs as a single VDBE instruction, so nothing "
+                 "outside it can release them.  0 disables the check.  (Default: 1024)",
+                 TUNABLE_INTEGER, &gbl_sort_release_check_interval, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sort_release_probe_interval_us",
+                 "Minimum microseconds between waiter probes made from inside a sort.  Each probe takes a "
+                 "locker-partition lock, so probes are rate-limited rather than run on every check.  "
+                 "(Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_sort_release_probe_interval_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("pagelock_release_interval_ms",
                  "Minimum interval between page-lock-only releases while a lock waiter persists.  (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_pagelock_release_interval_ms, 0, NULL, NULL, NULL, NULL);

@@ -2552,6 +2552,7 @@ typedef enum {
     RLOCKS_REASON_EMIT_ROW,     /* waiters at row emit */
     RLOCKS_REASON_LONG_REPWAIT, /* long rep wait at row emit */
     RLOCKS_REASON_SLOW_READER,  /* slow reader */
+    RLOCKS_REASON_SORT,         /* page-lock waiter seen from inside a sort */
 } rlocks_reason_t;
 int release_locks_int(rlocks_reason_t reason, const char *func, int line, struct sqlclntstate *, uint32_t rd_flags);
 /* full release: drops page locks AND the curtran (hence table locks) */
