@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+shopt -s nullglob
+dblogs=("${TESTDIR}/logs/${DBNAME}"*.db)
+[[ ${#dblogs[@]} -gt 0 ]] || { echo "no db logs found"; exit 1; }
+
+count_wrongstate() {
+    cat "${dblogs[@]}" | grep -c "handle_sql_wrongstate: api should have blocked this"
+}
+
+failed=0
+for endtxn in rollback commit; do
+    before=$(count_wrongstate)
+    if ! ${TESTSBUILDDIR}/cdb2api_wrongstate ${DBNAME} ${endtxn}; then
+        echo "${endtxn}: client replies out of sync after ${endtxn}"
+        failed=1
+    fi
+
+    # The server may log after the client has returned
+    after=$before
+    for i in $(seq 1 10); do
+        after=$(count_wrongstate)
+        [[ $after -gt $before ]] && break
+        sleep 1
+    done
+
+    if [[ $after -gt $before ]]; then
+        echo "${endtxn}: server saw ${endtxn} outside a transaction:"
+        cat "${dblogs[@]}" | grep "sqlengine entering wrong state" | tail -1
+        failed=1
+    else
+        echo "${endtxn}: no wrong-state on server"
+    fi
+done
+
+[[ $failed -eq 0 ]] || { echo "cdb2api_wrongstate - fail"; exit 1; }
+echo "cdb2api_wrongstate - pass"
