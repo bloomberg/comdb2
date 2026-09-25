@@ -325,7 +325,7 @@ static pthread_mutex_t cdb2_event_mutex = PTHREAD_MUTEX_INITIALIZER;
 static cdb2_event cdb2_gbl_events;
 static int cdb2_gbl_event_version;
 static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *, cdb2_event_type, cdb2_event *);
-static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, int, ...);
+static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, cdb2_event_type, int, ...);
 static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 static int cdb2_get_dbhosts(cdb2_hndl_tp *);
 static void hndl_set_comdb2buf(cdb2_hndl_tp *, COMDB2BUF *, int idx);
@@ -1426,8 +1426,7 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
     cdb2_event *e = NULL;
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_TCP_CONNECT, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
-                                          CDB2_PORT, port);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_TCP_CONNECT, 2, CDB2_HOSTNAME, host, CDB2_PORT, port);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -1441,9 +1440,8 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_TCP_CONNECT, e)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
-                                 port, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_TCP_CONNECT, 3, CDB2_HOSTNAME, host, CDB2_PORT, port,
+                                          CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -3645,7 +3643,7 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
 
     /* Handle BEFRE_NEWSQL_CONNECT callbacks */
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_NEWSQL_CONNECT, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, NULL, CDB2_PORT, -1);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_NEWSQL_CONNECT, 2, CDB2_HOSTNAME, NULL, CDB2_PORT, -1);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
     if (overwrite_rc)
@@ -3672,7 +3670,8 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_NEWSQL_CONNECT, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, NULL, CDB2_PORT, -1, CDB2_RETURN_VALUE, rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_NEWSQL_CONNECT, 3, CDB2_HOSTNAME, NULL, CDB2_PORT, -1,
+                                          CDB2_RETURN_VALUE, rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -3705,7 +3704,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int idx)
 
     /* Handle BEFRE_NEWSQL_CONNECT callbacks */
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_NEWSQL_CONNECT, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host, CDB2_PORT, port);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_NEWSQL_CONNECT, 2, CDB2_HOSTNAME, host, CDB2_PORT, port);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
     if (overwrite_rc)
@@ -3802,7 +3801,8 @@ retry_newsql_connect:
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_NEWSQL_CONNECT, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT, port, CDB2_RETURN_VALUE, rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_NEWSQL_CONNECT, 3, CDB2_HOSTNAME, host, CDB2_PORT, port,
+                                          CDB2_RETURN_VALUE, rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -3924,8 +3924,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_PMUX, e)) != NULL) {
         callbackrc =
-            cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, remote_host,
-                                 CDB2_PORT, CDB2_PORTMUXPORT);
+            cdb2_invoke_callback(hndl, e, CDB2_BEFORE_PMUX, 2, CDB2_HOSTNAME, remote_host, CDB2_PORT, CDB2_PORTMUXPORT);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, port, callbackrc, overwrite_rc);
     }
 
@@ -4016,9 +4015,8 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_PMUX, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(
-            hndl, e, 3, CDB2_HOSTNAME, remote_host, CDB2_PORT, CDB2_PORTMUXPORT,
-            CDB2_RETURN_VALUE, (intptr_t)port);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_PMUX, 3, CDB2_HOSTNAME, remote_host, CDB2_PORT,
+                                          CDB2_PORTMUXPORT, CDB2_RETURN_VALUE, (intptr_t)port);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, port, callbackrc);
     }
 
@@ -4176,7 +4174,7 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
     cdb2_event *e = NULL;
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_READ_RECORD, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_READ_RECORD, 0);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -4272,8 +4270,7 @@ retry:
                NULL) {
             int unused;
             (void)unused;
-            callbackrc =
-                cdb2_invoke_callback(hndl, e, 1, CDB2_QUERY_STATE, hdr.state);
+            callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AT_RECEIVE_HEARTBEAT, 1, CDB2_QUERY_STATE, hdr.state);
             PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
         }
         if (hndl->retry_clbk) {
@@ -4335,8 +4332,7 @@ after_callback:
         cdb2buf_settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
     }
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_READ_RECORD, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -4597,7 +4593,8 @@ static int wait_for_write(COMDB2BUF *sb, cdb2_hndl_tp *hndl, cdb2_hndl_tp *event
         while ((e = cdb2_next_callback(event_hndl, CDB2_AT_RECEIVE_HEARTBEAT, e)) != NULL) {
             int unused;
             (void)unused;
-            callbackrc = cdb2_invoke_callback(event_hndl, e, 1, CDB2_QUERY_STATE, ntohl(hdr.state));
+            callbackrc =
+                cdb2_invoke_callback(event_hndl, e, CDB2_AT_RECEIVE_HEARTBEAT, 1, CDB2_QUERY_STATE, ntohl(hdr.state));
             PROCESS_EVENT_CTRL_AFTER(event_hndl, e, unused, callbackrc);
         }
     }
@@ -4626,7 +4623,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 
     while ((e = cdb2_next_callback(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(event_hndl, e, 1, CDB2_SQL, sql);
+        callbackrc = cdb2_invoke_callback(event_hndl, e, CDB2_BEFORE_SEND_QUERY, 1, CDB2_SQL, sql);
         PROCESS_EVENT_CTRL_BEFORE(event_hndl, e, rc, callbackrc, overwrite_rc);
     }
     if (overwrite_rc)
@@ -4868,8 +4865,8 @@ after_callback:
     }
     while ((e = cdb2_next_callback(event_hndl, CDB2_AFTER_SEND_QUERY, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(event_hndl, e, 2, CDB2_SQL, sql,
-                                          CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(event_hndl, e, CDB2_AFTER_SEND_QUERY, 2, CDB2_SQL, sql, CDB2_RETURN_VALUE,
+                                          (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(event_hndl, e, rc, callbackrc);
     }
     return rc;
@@ -5076,7 +5073,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 
     while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_NEXT_RECORD, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AT_ENTER_NEXT_RECORD, 0);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -5106,8 +5103,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_NEXT_RECORD, e)) !=
            NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AT_EXIT_NEXT_RECORD, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -5292,8 +5288,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     curre = NULL;
     while ((curre = cdb2_next_callback(hndl, CDB2_AT_CLOSE, curre)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE,
-                                          (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(hndl, curre, CDB2_AT_CLOSE, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
@@ -6816,7 +6811,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes, co
 
     while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_RUN_STATEMENT, e)) !=
            NULL) {
-        void *callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_SQL, sql);
+        void *callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AT_ENTER_RUN_STATEMENT, 1, CDB2_SQL, sql);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -6889,7 +6884,8 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes, co
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_RUN_STATEMENT, e)) !=
            NULL) {
-        void *callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_SQL, sql, CDB2_RETURN_VALUE, (intptr_t)rc);
+        void *callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AT_EXIT_RUN_STATEMENT, 2, CDB2_SQL, sql,
+                                                CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -7803,8 +7799,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
     cdb2_event *e = NULL;
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DBINFO, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
-                                          CDB2_PORT, port);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_DBINFO, 2, CDB2_HOSTNAME, host, CDB2_PORT, port);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -7992,9 +7987,8 @@ again:
 
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DBINFO, e)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
-                                 port, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_DBINFO, 3, CDB2_HOSTNAME, host, CDB2_PORT, port,
+                                          CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -8053,7 +8047,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         int unused;
         (void)unused;
         /* return unresolved tier name (eg "default") on CDB2_BEFORE_DISCOVERY */
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_DBTYPE, (hndl->resolv_def ? "default" : hndl->type));
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_DISCOVERY, 1, CDB2_DBTYPE,
+                                          (hndl->resolv_def ? "default" : hndl->type));
         PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
 
@@ -8243,7 +8238,7 @@ after_callback: /* We are going to exit the function in this label. */
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) != NULL) {
         int unused;
         (void)unused;
-        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_DISCOVERY, 0);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
     return rc;
@@ -8302,7 +8297,8 @@ static void before_discovery(cdb2_hndl_tp *hndl)
         int unused;
         (void)unused;
         /* return unresolved tier name (eg "default") on CDB2_BEFORE_DISCOVERY */
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_DBTYPE, (hndl->resolv_def ? "default" : hndl->type));
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_BEFORE_DISCOVERY, 1, CDB2_DBTYPE,
+                                          (hndl->resolv_def ? "default" : hndl->type));
         PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
 }
@@ -8314,7 +8310,7 @@ static void after_discovery(cdb2_hndl_tp *hndl)
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) != NULL) {
         int unused;
         (void)unused;
-        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_DISCOVERY, 0);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
 }
@@ -9006,7 +9002,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     int rc = 0;
 
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_HNDL_ALLOC, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AFTER_HNDL_ALLOC, 0);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     if (rc != 0)
@@ -9129,8 +9125,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             goto out;
 
         while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
-            callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE,
-                                              (intptr_t)rc);
+            callbackrc = cdb2_invoke_callback(hndl, e, CDB2_AT_OPEN, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
@@ -9279,8 +9274,7 @@ static char *stringify_fingerprint(char *dst, uint8_t *val, int len)
     return ret;
 }
 
-static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
-                                  ...)
+static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, cdb2_event_type type, int argc, ...)
 {
     int i;
     va_list ap;
@@ -9385,6 +9379,9 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             break;
         case CDB2_DBTYPE:
             argv[i] = (void *)dbtype;
+            break;
+        case CDB2_EVENT:
+            argv[i] = (void *)(intptr_t)type;
             break;
         default:
             break;
