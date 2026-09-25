@@ -1059,6 +1059,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	TXN_DETAIL *td = NULL, *ptd = NULL;
 	UTXNID *utxnid_track;
 	u_int32_t lflags, ltranflags = 0;
+	u_int32_t commit_opcode;
 	int32_t timestamp;
 	uint32_t gen = 0;
 	u_int64_t context = 0;
@@ -1086,7 +1087,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
 		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE |
-		DB_TXN_DIST_UPD_SHADOWS) != 0)
+		DB_TXN_DIST_UPD_SHADOWS | DB_TXN_SC_PRIVATE_SKIP_MAP) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1109,6 +1110,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
 	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
+	commit_opcode = TXN_COMMIT;
+	if (LF_ISSET(DB_TXN_SC_PRIVATE_SKIP_MAP))
+		commit_opcode |= TXN_COMMIT_F_SC_SKIP_MAP;
 
 	if (is_prepare) {
 		if (commit_prepared) {
@@ -1285,7 +1289,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						ret =
 							__txn_regop_rowlocks_log(dbenv, rectype,
 									txnp, lsn_out, &context, lflags,
-									TXN_COMMIT, ltranid, begin_lsn,
+									commit_opcode, ltranid, begin_lsn,
 									last_commit_lsn, timestamp,
 									ltranflags, gen, request.obj,
 									&list_dbt_rl, usr_ptr);
@@ -1392,7 +1396,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								__txn_regop_gen_log(dbenv, rectype,
 										txnp, &txnp->last_lsn,
 										&context, lflags,
-										TXN_COMMIT, gen, timestamp,
+										commit_opcode, gen, timestamp,
 										request.obj, usr_ptr);
 							txnp->wrote_regop_gen = 1;
 						}
@@ -1431,7 +1435,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								__txn_regop_log_commit
 								(dbenv, txnp,
 								 &txnp->last_lsn, &context,
-								 lflags, TXN_COMMIT,
+								 lflags, commit_opcode,
 								 timestamp, request.obj,
 								 usr_ptr);
 						}
@@ -1556,10 +1560,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 
 	if (commit_lsn_map && !txnp->parent) {
-		ret = __txn_commit_map_add_nolock(dbenv, txnp->utxnid, txnp->last_lsn);
-		if (ret != 0) {
-			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
-			goto err;
+		if (!LF_ISSET(DB_TXN_SC_PRIVATE_SKIP_MAP)) {
+			ret = __txn_commit_map_add_nolock(dbenv, txnp->utxnid,
+			    txnp->last_lsn);
+			if (ret != 0) {
+				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+				goto err;
+			}
 		}
 
 		/* No grandchildren in comdb2, so this is sufficient. */

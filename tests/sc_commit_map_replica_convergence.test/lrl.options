@@ -1,0 +1,5 @@
+# The commit-LSN map only exists when utxnids are logged and snapshot
+# isolation is enabled; state the requirement explicitly on every node.
+utxnid_log on
+enable_snapshot_isolation
+sc_commit_map_skip 1
