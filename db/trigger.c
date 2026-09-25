@@ -72,6 +72,11 @@ void set_trigger_sender(trigger_sender *s)
     trigger_send_impl = s;
 }
 
+int trigger_recv_accepts_r6(void)
+{
+    return trigger_recv_impl != trigger_recv_hostname;
+}
+
 static trigger_reg_t *trigger_recv_hostname(trigger_reg_t *t, uint8_t *buf)
 {
     trigger_reg_to_cpu(t);
@@ -113,7 +118,7 @@ static inline int trigger_register_int(trigger_reg_t *t)
     if (trigger_hash == NULL) {
         trigger_hash = hash_init_str(offsetof(trigger_info_t, spname));
     }
-    uint8_t buf[TRIGGER_REG_MAX];
+    uint8_t buf[TRIGGER_REG_MAX] = {0};
     t = trigger_recv(t, buf);
     trigger_info_t *info;
     time_t now = time(NULL);
@@ -166,7 +171,7 @@ static int trigger_unregister_int(trigger_reg_t *t)
         return CDB2_TRIG_REQ_SUCCESS;
     }
     GET_BDB_STATE(bdb_state);
-    uint8_t buf[TRIGGER_REG_MAX];
+    uint8_t buf[TRIGGER_REG_MAX] = {0};
     t = trigger_recv(t, buf);
     trigger_info_t *info;
     if ((info = hash_find(trigger_hash, t->spname)) != NULL &&
