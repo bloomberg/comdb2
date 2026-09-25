@@ -291,6 +291,7 @@ struct txn_properties;
 #define DB_TXN_FOP_NOBLOCK         0x0400000 /* Don't block on fop operations */
 #define DB_TXN_DIST_PREPARE        0x0800000 /* Write a prepare record for this txn */
 #define DB_TXN_DIST_UPD_SHADOWS    0x1000000 /* Set update-shadows in dist-commit */
+#define DB_TXN_SC_PRIVATE_SKIP_MAP  0x2000000 /* Omit SC rebuild commit-map entry. */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */

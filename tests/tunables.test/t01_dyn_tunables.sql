@@ -77,3 +77,9 @@ select value from comdb2_tunables where name = 'max_query_fingerprints'
 put tunable 'max_query_fingerprints' 2000;
 select value from comdb2_tunables where name = 'max_query_fingerprints'
 
+# Test schema-change commit-map skip switch.
+select value from comdb2_tunables where name = 'sc_commit_map_skip';
+put tunable 'sc_commit_map_skip' 1;
+select value from comdb2_tunables where name = 'sc_commit_map_skip';
+put tunable 'sc_commit_map_skip' 0;
+
