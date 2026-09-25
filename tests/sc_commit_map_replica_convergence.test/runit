@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-2000}
+MAX_DELTA=${SC_COMMIT_MAP_MAX_DELTA:-200}
+
+fail() { echo "FAIL: $*"; exit 1; }
+
+master=$(getmaster)
+[[ -n "$master" ]] || fail "could not find master"
+mapfile -t nodes < <(getclusternodes)
+(( ${#nodes[@]} > 1 )) || { echo "Cluster required; skipping"; exit 0; }
+
+sql_node() {
+	cdb2sql --tabs ${CDB2_OPTIONS} --host "$1" "$dbnm" "$2"
+}
+
+map_count() {
+	sql_node "$1" "select count(*) from comdb2_transaction_commit"
+}
+
+send_node() {
+	cdb2sql ${CDB2_OPTIONS} --host "$1" "$dbnm" \
+		"exec procedure sys.cmd.send('$2')" >/dev/null 2>&1
+}
+
+settle_count() {
+	local node=$1 previous="" current same=0
+	for _ in $(seq 1 180); do
+		current=$(map_count "$node")
+		if [[ -n "$current" && "$current" == "$previous" ]]; then
+			(( same++ ))
+			(( same >= 3 )) && { echo "$current"; return; }
+		else
+			same=0
+		fi
+		previous=$current
+		sleep 1
+	done
+	fail "commit map on $node did not settle"
+}
+
+cleanup() {
+	for node in "${nodes[@]}"; do send_node "$node" "sync log-delete on"; done
+}
+trap cleanup EXIT
+for node in "${nodes[@]}"; do send_node "$node" "sync log-delete off"; done
+
+sql_node "$master" "create table t(i int)" >/dev/null
+sql_node "$master" "insert into t select value from generate_series(1, $N)" >/dev/null
+sleep 2
+
+declare -A before after
+for node in "${nodes[@]}"; do before[$node]=$(settle_count "$node"); done
+
+sql_node "$master" "rebuild t" >/dev/null || fail "rebuild failed"
+wait_for_cluster
+
+for node in "${nodes[@]}"; do
+	after[$node]=$(settle_count "$node")
+	delta=$(( after[$node] - before[$node] ))
+	echo "SC_REPLICA_SKIP: node=$node before=${before[$node]} after=${after[$node]} delta=$delta"
+	(( delta < MAX_DELTA )) ||
+		fail "$node added $delta map entries for a $N-row rebuild"
+done
+
+master=$(getmaster)
+master_count=${after[$master]}
+for node in "${nodes[@]}"; do
+	difference=$(( after[$node] - master_count ))
+	(( difference < 0 )) && difference=$(( -difference ))
+	(( difference <= MAX_DELTA )) ||
+		fail "$node map differs from master by $difference"
+done
+
+victim=""
+for node in "${nodes[@]}"; do
+	[[ "$node" != "$master" ]] && { victim=$node; break; }
+done
+[[ -n "$victim" ]] || fail "could not choose replica to restart"
+kill_restart_node "$victim" 0 1
+wait_for_cluster
+recovered=$(settle_count "$victim")
+master_count=$(settle_count "$(getmaster)")
+difference=$(( recovered - master_count ))
+(( difference < 0 )) && difference=$(( -difference ))
+echo "SC_REPLICA_RECOVERY_SKIP: node=$victim recovered=$recovered master=$master_count difference=$difference"
+(( difference <= MAX_DELTA )) ||
+	fail "$victim recovery map differs from master by $difference"
+
+echo "Passed test"

@@ -529,7 +529,9 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		assert(op == DB_TXN_BACKWARD_ROLL);
 
 		if (commit_lsn_map
-			&& (argp->opcode == TXN_COMMIT)
+			&& (TXN_OPCODE(argp->opcode) == TXN_COMMIT)
+			&& !TXN_COMMIT_HAS_FLAG(argp->opcode,
+			    TXN_COMMIT_F_SC_SKIP_MAP)
 			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
 			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
 				argp->txnid->utxnid);
@@ -537,15 +539,15 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
+		    info, argp->txnid->txnid, TXN_OPCODE(argp->opcode), lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
 			    info, argp->txnid->txnid,
-			    argp->opcode == TXN_ABORT ?
-			    TXN_IGNORE : argp->opcode, lsnp);
+			    TXN_OPCODE(argp->opcode) == TXN_ABORT ?
+			    TXN_IGNORE : TXN_OPCODE(argp->opcode), lsnp);
 		else if (ret != TXN_OK) {
 			goto err;
 		}
@@ -661,7 +663,9 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		assert(op == DB_TXN_BACKWARD_ROLL);
 
 		if (commit_lsn_map
-			&& (argp->opcode == TXN_COMMIT)
+			&& (TXN_OPCODE(argp->opcode) == TXN_COMMIT)
+			&& !TXN_COMMIT_HAS_FLAG(argp->opcode,
+			    TXN_COMMIT_F_SC_SKIP_MAP)
 			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
 			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
 				argp->txnid->utxnid);
@@ -669,15 +673,15 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
+		    info, argp->txnid->txnid, TXN_OPCODE(argp->opcode), lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
 			    info, argp->txnid->txnid,
-			    argp->opcode == TXN_ABORT ?
-			    TXN_IGNORE : argp->opcode, lsnp);
+			    TXN_OPCODE(argp->opcode) == TXN_ABORT ?
+			    TXN_IGNORE : TXN_OPCODE(argp->opcode), lsnp);
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
@@ -908,7 +912,7 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	{
 		assert(op == DB_TXN_BACKWARD_ROLL);
 
-		if (argp->opcode == TXN_COMMIT)
+		if (TXN_OPCODE(argp->opcode) == TXN_COMMIT)
 		{
 			if (NULL == lt) 
 			{
@@ -935,7 +939,9 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		if (commit_lsn_map
-			&& (argp->opcode == TXN_COMMIT)
+			&& (TXN_OPCODE(argp->opcode) == TXN_COMMIT)
+			&& !TXN_COMMIT_HAS_FLAG(argp->opcode,
+			    TXN_COMMIT_F_SC_SKIP_MAP)
 			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
 			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
 				argp->txnid->utxnid);
@@ -944,15 +950,16 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 
 		/* This is a normal commit; mark it appropriately. */
 		ret = __db_txnlist_update(dbenv,
-					  info, argp->txnid->txnid, argp->opcode, lsnp);
+					  info, argp->txnid->txnid,
+					  TXN_OPCODE(argp->opcode), lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
 					       info, argp->txnid->txnid,
-					       argp->opcode == TXN_ABORT ?
-					       TXN_IGNORE : argp->opcode, lsnp);
+					       TXN_OPCODE(argp->opcode) == TXN_ABORT ?
+					       TXN_IGNORE : TXN_OPCODE(argp->opcode), lsnp);
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
