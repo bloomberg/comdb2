@@ -407,7 +407,7 @@ int osql_process_message_decom(char *host);
  *   - upgrade records
  *  And wait for reply inline.
  */
-int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen);
+int offload_comm_send_blockreq(char *host, void *slock, void *buf, int buflen);
 
 /* Reply to offload block request. */
 int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
