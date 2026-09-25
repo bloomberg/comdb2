@@ -163,6 +163,7 @@ extern int skip_clear_queue_extents;
 extern int gbl_rep_skip_recovery;
 extern int gbl_retrieve_gen_from_ckp;
 extern int gbl_emit_gen_commits;
+extern int gbl_sc_commit_map_skip;
 extern int gbl_recovery_ckp;
 extern int gbl_reproduce_ckp_bug;
 extern int gbl_sample_queries;
