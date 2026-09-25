@@ -1825,7 +1825,6 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 (clnt->sql) ? clnt->sql : "(???.)");
 
     clnt->use_2pc = gbl_2pc;
-    clnt->use_2pc_ddl = 0;
 
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
@@ -3467,6 +3466,27 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     return rc;
 }
 
+/* A remote fdb read waits at most this long for the schema lock.  A 2pc schema
+ * change holds the schema write lock until its coordinator decides, and the
+ * coordinator may itself be waiting on the db that sent this read. */
+int gbl_remsql_schema_lock_wait_ms = 5000;
+
+static int rdlock_schema_for_clnt(struct sqlclntstate *clnt, struct errstat *err)
+{
+    if (clnt->remsql_set.is_remsql != IS_REMSQL) {
+        rdlock_schema_lk();
+        return 0;
+    }
+    for (int waited = 0; tryrdlock_schema_lk() != 0; waited += 10) {
+        if (waited >= gbl_remsql_schema_lock_wait_ms) {
+            errstat_set_rcstrf(err, ERR_PREPARE, "schema change in progress, retry");
+            return -1;
+        }
+        poll(NULL, 0, 10);
+    }
+    return 0;
+}
+
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                       struct sql_state *rec, struct errstat *err, int flags)
 {
@@ -3478,7 +3498,8 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (gbl_sleep_5s_after_caching_table_versions) {
         sleep(5);
     }
-    rdlock_schema_lk();
+    if (rdlock_schema_for_clnt(clnt, err))
+        return SQLITE_SCHEMA;
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags | PREPARE_RECREATE);
     unlock_schema_lk();
@@ -4447,10 +4468,8 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (rc)
         return rc;
 
-    if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt)) {
+    if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt))
         clnt->use_2pc = gbl_2pc;
-        clnt->use_2pc_ddl = 0; /* Not a DDL transaction */
-    }
 
     count_isolation_level(clnt);
 
@@ -5690,7 +5709,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->early_retry = 0;
 
     clnt->use_2pc = gbl_2pc;
-    clnt->use_2pc_ddl = 0;
     clnt->is_coordinator = 0;
     clnt->is_participant = 0;
     clear_participants(clnt);

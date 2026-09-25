@@ -871,6 +871,11 @@ static void process_disttxn(struct newsql_appdata_evbuffer *appdata, CDB2DISTTXN
         }
         rcode = participant_propagated(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier);
         break;
+
+    /* Participant master asks me (coordinator master) for the outcome of a txn it prepared */
+    case (CDB2_DIST__QUERY_OUTCOME):
+        rcode = coordinator_query_outcome(disttxn->disttxn->txnid);
+        break;
     }
 
 sendresponse:

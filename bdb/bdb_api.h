@@ -1998,11 +1998,12 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
                      int seqno, void *blob, int sz, int *bdberr);
 
 void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
-int bdb_collect_ddl_prepared(bdb_state_type *bdb_state, char ***dist_txnids, char ***coordinator_names,
-                             char ***coordinator_tiers, int *count);
-void bdb_free_ddl_prepared(bdb_state_type *bdb_state, char **dist_txnids, char **coordinator_names,
-                           char **coordinator_tiers, int count);
-int bdb_mark_prepared_resolved(bdb_state_type *bdb_state, const char *dist_txnid, int committed);
+
+/* Locker of a recovered prepared schema change being committed on this thread, or 0 */
+uint32_t bdb_get_scdone_lockid(void);
+void bdb_set_scdone_lockid(uint32_t lockid);
+/* Let an scdone handler's tran read what that prepared txn has locked */
+int bdb_scdone_tran_adopt_locks(bdb_state_type *bdb_state, tran_type *tran);
 
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 

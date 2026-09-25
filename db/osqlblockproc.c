@@ -1982,6 +1982,23 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
             sc->resume = resume;
     }
 
+    /* A distributed schema change whose finalize never committed is cancelled */
+    int cancel = 0;
+    LISTC_FOR_EACH(&scs, sc, scs_lnk)
+    {
+        if (cancel_dist_sc(sc->tablename))
+            cancel = 1;
+    }
+    if (cancel) {
+        int bdberr;
+        while ((sc = listc_rtl(&scs)) != NULL) {
+            bdb_set_in_schema_change(NULL, sc->tablename, NULL, 0, &bdberr);
+            free_schema_change_type(sc);
+        }
+        osql_delete_sc_list(scl->uuid, NULL);
+        return 0;
+    }
+
     /* this is freed in the finalizing thread resume_sc_multiddl_txn_finalize_thd */
     struct ireq *iq = calloc(1, sizeof(struct ireq));
     if (!iq) {

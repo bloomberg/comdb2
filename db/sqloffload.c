@@ -738,6 +738,7 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             while (iq->sc != NULL) {
                 struct schema_change_type *sc_next;
                 scdone_abort_cleanup(iq);
+                clear_dist_sc(NULL, iq->sc->tablename);
                 sc_next = iq->sc->sc_next;
                 free_schema_change_type(iq->sc);
                 iq->sc = sc_next;

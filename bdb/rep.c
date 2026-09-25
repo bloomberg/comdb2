@@ -3330,7 +3330,9 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
 
-    if (gbl_assert_no_schemalk_in_distributed_commit)
+    /* A 2pc schema change prepares and waits while holding the schema lock it
+     * took to finalize */
+    if (gbl_assert_no_schemalk_in_distributed_commit && !have_sc_finalize_schema_lk())
         assert_no_schema_lk();
 
     /*

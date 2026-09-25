@@ -2,23 +2,37 @@
 bash -n "$0" | exit 1
 set -x
 
-# Test 2PC distributed schema changes (CREATE/DROP TABLE) with crash recovery
+# Distributed schema changes (CREATE/DROP/ALTER TABLE) on a generic-shard
+# partition as 2pc distributed transactions (enable_2pc + enable_2pc_ddl).
+#
+# Every shard is a 2pc participant and the db running the ddl is the
+# coordinator.  A participant prepares its schema change's finalize transaction
+# and commits or aborts it with the coordinator's decision; the coordinator
+# does not prepare its own schema change, it writes the decision row in the
+# same transaction.  A participant that restarts with a prepared schema change
+# asks the coordinator for the outcome before it opens llmeta; a new master
+# resolves inherited prepares before it resumes schema changes.
 #
 # Test cases:
-#  1. Basic 2PC create: create partitioned table across 4 shards, verify all shards
-#  2. Basic 2PC drop: drop partitioned table, verify cleanup on all shards
-#  3. Create-then-drop: full lifecycle with 2PC
-#  4. Participant crash after prepare on CREATE: kill participant after prepare,
-#     restart, verify no deadlock and table state is consistent
-#  5. Participant crash after prepare on DROP: same as above but for drop
-#  6. Verify non-key sharding still fails properly with 2PC enabled
-#  7. Multiple create/drop cycles: stress test for resource leaks
-#  9. Crash after PREPARED sent — coordinator commits: participant crashes after
-#     sending PREPARED, coordinator commits, verify resume re-runs finalize
-# 10. Crash after PREPARED sent — coordinator aborts: participant crashes after
-#     sending PREPARED, coordinator killed (unavailable), verify abort + clean state
-# 11. Distributed ALTER TABLE — add column: propagates to all shards via 2PC
-# 12. Distributed ALTER TABLE — add index: propagates to all shards via 2PC
+#  1. Basic create: create partitioned table across 4 shards, verify all shards
+#  2. Basic drop: drop partitioned table, verify cleanup on all shards
+#  3. Create-then-drop: full lifecycle
+#  4. Verify non-key sharding still fails properly with 2pc enabled
+#  5. Multiple create/drop cycles: stress test for resource leaks
+#  6. Distributed ALTER TABLE — add column: propagates to all shards
+#  7. Distributed ALTER TABLE — add index, then a second ALTER and a DROP
+#  8. Participant master exits after preparing DROP/CREATE/ALTER; its cluster
+#     restarts, resolves the prepare and does not deadlock
+#  9. Coordinator decides abort (another participant fails to prepare); the
+#     crashed participant rolls its change back on restart
+# 10. Coordinator unreachable: the participant does not finish starting until
+#     the coordinator is back
+# 11. Operator override: 'disttxn_resolve <id> abort' in the lrl lets the
+#     participant start without the coordinator
+# 12. Master swing: the participant master exits after preparing; the new
+#     master resolves the prepare
+# 13. Coordinator exits before / after committing its decision
+# 14. Replicants do not show a prepared schema change before it commits
 ################################################################################
 
 # Validate required environment variables
@@ -71,8 +85,12 @@ S3_SQL="cdb2sql ${QUATERNARY_CDB2_OPTIONS} ${QUATERNARY_DBNAME} default"
 CDB2SQL_EXE=${CDB2SQL_EXE:-cdb2sql}
 COMDB2_EXE=${COMDB2_EXE:-comdb2}
 
-# Coordinator tier must match machine_class in lrl.options
-COORDINATOR_TIER="local"
+# Coordinator tier must match machine_class in tier_local.lrl / tier_cluster.lrl
+if [[ -n "$CLUSTER" ]]; then
+    COORDINATOR_TIER="prod"
+else
+    COORDINATOR_TIER="local"
+fi
 
 OUT=log.txt
 export stopfile=./stopfile.txt
@@ -119,21 +137,7 @@ function find_quaternary_master
 ########################################
 function allow_coordinator_all
 {
-    for node in $CLUSTER; do
-        for dbname_opt in \
-            "$DBNAME $CDB2_OPTIONS" \
-            "$SECONDARY_DBNAME $SECONDARY_CDB2_OPTIONS" \
-            "$TERTIARY_DBNAME $TERTIARY_CDB2_OPTIONS" \
-            "$QUATERNARY_DBNAME $QUATERNARY_CDB2_OPTIONS"; do
-            set -- $dbname_opt
-            local db=$1 opts=$2
-            # Allow all databases as coordinators
-            $CDB2SQL_EXE -admin $opts $db --host $node "exec procedure sys.cmd.send('allow-coordinator ${DBNAME}/${COORDINATOR_TIER}')" 2>/dev/null
-            $CDB2SQL_EXE -admin $opts $db --host $node "exec procedure sys.cmd.send('allow-coordinator ${SECONDARY_DBNAME}/${COORDINATOR_TIER}')" 2>/dev/null
-            $CDB2SQL_EXE -admin $opts $db --host $node "exec procedure sys.cmd.send('allow-coordinator ${TERTIARY_DBNAME}/${COORDINATOR_TIER}')" 2>/dev/null
-            $CDB2SQL_EXE -admin $opts $db --host $node "exec procedure sys.cmd.send('allow-coordinator ${QUATERNARY_DBNAME}/${COORDINATOR_TIER}')" 2>/dev/null
-        done
-    done
+    setup_coordinators
 }
 
 ########################################
@@ -145,8 +149,110 @@ function set_tunable
     local opts=$2
     local tunable=$3
     local value=$4
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE -admin $opts $dbname default "put tunable $tunable '$value'" 2>/dev/null
+        return
+    fi
     for node in $CLUSTER; do
         $CDB2SQL_EXE -admin $opts $dbname --host $node "put tunable $tunable '$value'" 2>/dev/null
+    done
+}
+
+########################################
+# Helper: the comdb2db config a database's own cdb2api uses
+########################################
+function cdb2_config_of
+{
+    case $1 in
+        $DBNAME) echo $CDB2_CONFIG ;;
+        $SECONDARY_DBNAME) echo $SECONDARY_CDB2_CONFIG ;;
+        $TERTIARY_DBNAME) echo $TERTIARY_CDB2_CONFIG ;;
+        $QUATERNARY_DBNAME) echo $QUATERNARY_CDB2_CONFIG ;;
+    esac
+}
+
+########################################
+# Helper: kill every node of a database (flush first)
+########################################
+function kill_cluster
+{
+    typeset dbname=$1
+    typeset options=$2
+
+    # Flush every node before killing any of them.  Killing the replicants
+    # first leaves the master running with no replicas; it then stalls instead
+    # of failing, and so does every other db whose fdb lookups reach it.
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $options $dbname default "exec procedure sys.cmd.send('flush')" 2>/dev/null
+        kill -9 $(cat ${TMPDIR}/${dbname}.pid) 2>/dev/null
+        return
+    fi
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE $options $dbname --host $node "exec procedure sys.cmd.send('flush')" 2>/dev/null
+    done
+    for node in $CLUSTER; do
+        kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid) 2>/dev/null
+    done
+}
+
+########################################
+# Helper: run a shell command on the lrl of every node of a database; in a
+# cluster each node starts from its own copy of the lrl
+########################################
+function edit_lrl
+{
+    typeset lrl=$1
+    typeset cmd=$2
+
+    (eval "$cmd")
+    for node in $CLUSTER; do
+        [[ $node == $(hostname) ]] && continue
+        ssh -o StrictHostKeyChecking=no $node "lrl=$lrl; $cmd" </dev/null
+    done
+}
+
+########################################
+# Helper: start one node of a database
+########################################
+function restart_node
+{
+    typeset dbname=$1
+    typeset dbdir=$2
+    typeset node=$3
+
+    if [[ -z "$CLUSTER" ]]; then
+        mv $LOGDIR/${dbname}.db $LOGDIR/${dbname}.db.$(date +%s) 2>/dev/null
+        # exec, with every stream redirected, so no shell lingers holding the test's output open
+        (cd $dbdir && CDB2_CONFIG=$(cdb2_config_of $dbname) exec ${COMDB2_EXE} $dbname --no-global-lrl \
+            --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid) </dev/null &> $LOGDIR/${dbname}.db &
+        return
+    fi
+
+    REP_ENV_VARS="${dbdir}/replicant_env_vars"
+    PARAMS="$dbname --no-global-lrl"
+    mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.old 2>/dev/null
+    if [ $node == $(hostname) ]; then
+        ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$LOGDIR/${dbname}.${node}.db 2>&1 &
+    else
+        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
+        ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $LOGDIR/${dbname}.${node}.db) 2>&1 &
+        echo $! > ${TMPDIR}/${dbname}.${node}.pid
+    fi
+}
+
+########################################
+# Helper: start every node of a database
+########################################
+function restart_cluster
+{
+    typeset dbname=$1
+    typeset dbdir=$2
+    if [[ -z "$CLUSTER" ]]; then
+        restart_node $dbname $dbdir
+        return
+    fi
+    for node in $CLUSTER; do
+        restart_node $dbname $dbdir $node
     done
 }
 
@@ -160,32 +266,9 @@ function kill_restart_cluster
     typeset dbdir=$3
     typeset sleeptime=$4
 
-    # Wait a bit for prepare to be sent
-    sleep 3
-
-    REP_ENV_VARS="${dbdir}/replicant_env_vars"
-
-    # Kill all nodes
-    for node in $CLUSTER; do
-        $CDB2SQL_EXE $options $dbname --host $node "exec procedure sys.cmd.send('flush')" 2>/dev/null
-        kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid) 2>/dev/null
-    done
-
+    kill_cluster $dbname "$options"
     sleep $sleeptime
-
-    # Restart all nodes
-    for node in $CLUSTER; do
-        PARAMS="$dbname --no-global-lrl"
-        if [ $node == $(hostname) ]; then
-            mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.old 2>/dev/null
-            ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$LOGDIR/${dbname}.${node}.db 2>&1 &
-        else
-            mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.old 2>/dev/null
-            CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
-            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $LOGDIR/${dbname}.${node}.db) 2>&1 &
-            echo $! > ${TMPDIR}/${dbname}.${node}.pid
-        fi
-    done
+    restart_cluster $dbname $dbdir
 }
 
 ########################################
@@ -200,6 +283,9 @@ function block_until_cluster_is_up
 
     while [[ "$elapsed" -lt "$max_wait" ]]; do
         typeset isup=1
+        if [[ -z "$CLUSTER" ]]; then
+            $CDB2SQL_EXE $options $dbname default "select 1" >/dev/null 2>&1 || isup=0
+        fi
         for node in ${CLUSTER}; do
             $CDB2SQL_EXE $options $dbname --host $node "select 1" 2>/dev/null
             if [[ $? != 0 ]]; then
@@ -332,6 +418,19 @@ function verify_llmeta
 ########################################
 function setup_testcase
 {
+    # A node lost in an earlier test would otherwise surface as an unrelated
+    # fan-out error in this one
+    if [[ -n "$CLUSTER" ]]; then
+        for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" \
+                    "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
+            IFS='|' read -r db opts <<< "$pair"
+            if ! block_until_cluster_is_up $db "$opts" 60; then
+                fail_exit "setup_testcase: $db is not fully up"
+                return
+            fi
+        done
+    fi
+
     $P_SQL "DROP TABLE IF EXISTS t" 2>/dev/null
     # Give a moment for drop to propagate
     sleep 1
@@ -344,6 +443,7 @@ function test_basic_create
 {
     echo "=== TEST: test_basic_create ==="
     setup_testcase
+    [[ -f $stopfile ]] && return
 
     $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
     if (( $? != 0 )); then
@@ -364,6 +464,7 @@ function test_basic_drop
 {
     echo "=== TEST: test_basic_drop ==="
     setup_testcase
+    [[ -f $stopfile ]] && return
 
     # Create first
     $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
@@ -396,6 +497,7 @@ function test_create_drop_lifecycle
 {
     echo "=== TEST: test_create_drop_lifecycle ==="
     setup_testcase
+    [[ -f $stopfile ]] && return
 
     # Create
     $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
@@ -437,6 +539,7 @@ function test_nonkey_sharding_fails
 {
     echo "=== TEST: test_nonkey_sharding_fails ==="
     setup_testcase
+    [[ -f $stopfile ]] && return
 
     $P_SQL "create table t(a int, b int) partitioned by columns(a) on (${shards})"
     if (( $? == 0 )); then
@@ -448,152 +551,7 @@ function test_nonkey_sharding_fails
 }
 
 ########################################
-# TEST 5: Participant crash after prepare on CREATE
-# This is the key test for the deadlock fix.
-# Scenario:
-#   1. Set debug_exit_participant_after_prepare on tertiary db
-#   2. Create a partitioned table (triggers 2PC DDL)
-#   3. Tertiary db crashes after sending prepare-ok
-#   4. Kill and restart tertiary cluster in background
-#   5. Verify tertiary restarts without deadlock
-#   6. Verify table state is consistent
-########################################
-function test_participant_crash_on_create
-{
-    echo "=== TEST: test_participant_crash_on_create ==="
-
-    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
-
-    setup_testcase
-
-    typeset master=$(find_tertiary_master)
-    [[ -z "$master" ]] && { fail_exit "test_participant_crash_on_create: cannot find tertiary master"; return; }
-
-    echo "Tertiary master is $master"
-
-    # Enable crash-after-prepare on the tertiary db
-    $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $master \
-        "put tunable debug_exit_participant_after_prepare '1'"
-
-    echo "Kill-restart tertiary in background (will trigger after prepare)"
-    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 5 &
-    local kill_pid=$!
-
-    echo "Creating partitioned table (2PC DDL) ..."
-    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
-    local create_rc=$?
-
-    echo "Create returned rc=$create_rc"
-
-    # Wait for kill_restart to complete
-    wait $kill_pid
-
-    echo "Waiting for tertiary cluster to come back up ..."
-    block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120
-    if (( $? != 0 )); then
-        fail_exit "test_participant_crash_on_create: tertiary cluster did not come up (possible deadlock)"
-        return
-    fi
-
-    # Re-enable allow_coordinator after restart
-    allow_coordinator_all
-
-    echo "Tertiary is back up. Sleeping 10s for recovery to settle ..."
-    sleep 10
-
-    # Verify: either the create succeeded on ALL shards, or it was rolled back on ALL.
-    # With 2PC, the outcome should be atomic.
-    if (( $create_rc == 0 )); then
-        echo "Create succeeded, verifying table on all shards"
-        verify_table "t"
-        [[ -f $stopfile ]] && return
-
-        # Cleanup
-        $P_SQL "drop table t" 2>/dev/null
-    else
-        echo "Create failed (expected if participant crashed), verifying clean state"
-        # After abort, table should not exist on any shard
-        # (it's possible some shards have it if 2PC abort didn't fully propagate,
-        # but the key test is that tertiary restarted without deadlock)
-    fi
-
-    echo "test_participant_crash_on_create PASSED (no deadlock on restart)"
-}
-
-########################################
-# TEST 6: Participant crash after prepare on DROP
-# Similar to TEST 5 but for DROP TABLE.
-########################################
-function test_participant_crash_on_drop
-{
-    echo "=== TEST: test_participant_crash_on_drop ==="
-
-    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
-
-    setup_testcase
-
-    # First create the table normally
-    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
-    if (( $? != 0 )); then
-        fail_exit "test_participant_crash_on_drop: could not create initial table"
-        return
-    fi
-    verify_table "t"
-    [[ -f $stopfile ]] && return
-
-    typeset master=$(find_tertiary_master)
-    [[ -z "$master" ]] && { fail_exit "test_participant_crash_on_drop: cannot find tertiary master"; return; }
-
-    echo "Tertiary master is $master"
-
-    # Enable crash-after-prepare on the tertiary db
-    $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $master \
-        "put tunable debug_exit_participant_after_prepare '1'"
-
-    echo "Kill-restart tertiary in background"
-    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 5 &
-    local kill_pid=$!
-
-    echo "Dropping partitioned table (2PC DDL) ..."
-    $P_SQL "drop table t" 2>&1
-    local drop_rc=$?
-
-    echo "Drop returned rc=$drop_rc"
-
-    # Wait for kill_restart to complete
-    wait $kill_pid
-
-    echo "Waiting for tertiary cluster to come back up ..."
-    block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120
-    if (( $? != 0 )); then
-        fail_exit "test_participant_crash_on_drop: tertiary cluster did not come up (possible deadlock)"
-        return
-    fi
-
-    # Re-enable allow_coordinator after restart
-    allow_coordinator_all
-
-    echo "Tertiary is back up. Sleeping 10s for recovery to settle ..."
-    sleep 10
-
-    if (( $drop_rc == 0 )); then
-        echo "Drop succeeded, verifying table is gone"
-        verify_llmeta t
-        [[ -f $stopfile ]] && return
-    else
-        echo "Drop failed (expected if participant crashed), verifying table still exists"
-        verify_table "t"
-        [[ -f $stopfile ]] && return
-
-        # Cleanup
-        $P_SQL "drop table t" 2>/dev/null
-    fi
-
-    echo "test_participant_crash_on_drop PASSED (no deadlock on restart)"
-}
-
-########################################
-# TEST 7: Multiple create/drop cycles with 2PC
+# TEST 5: Multiple create/drop cycles with 2PC
 # Stress test: create and drop multiple times to verify
 # no resource leaks or state corruption.
 ########################################
@@ -601,6 +559,7 @@ function test_multiple_create_drop
 {
     echo "=== TEST: test_multiple_create_drop ==="
     setup_testcase
+    [[ -f $stopfile ]] && return
 
     for i in 1 2 3; do
         echo "Cycle $i: create"
@@ -626,181 +585,7 @@ function test_multiple_create_drop
 }
 
 ########################################
-# TEST 9: Crash after PREPARED sent — coordinator commits
-#
-# Participant (tertiary) sends CDB2_DIST__PREPARED then crashes.
-# Coordinator receives PREPARED from all 4 participants and decides COMMIT.
-# On restart, disttxn_resolve_ddl_prepared() contacts the coordinator,
-# learns COMMIT, prunes the prepared txn (gap: not re-committed).
-# The schema change resume mechanism picks up the sc_list in llmeta
-# and re-runs finalize_schema_change() on the tertiary.
-# Expected: table eventually exists on ALL shards.
-########################################
-function test_crash_after_prepared_commit
-{
-    echo "=== TEST: test_crash_after_prepared_commit ==="
-
-    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
-
-    setup_testcase
-
-    typeset master=$(find_tertiary_master)
-    [[ -z "$master" ]] && { fail_exit "test_crash_after_prepared_commit: cannot find tertiary master"; return; }
-
-    echo "Tertiary master: $master"
-
-    # Crash tertiary after it sends PREPARED to coordinator.
-    # Coordinator is NOT killed — it will receive PREPARED from all 4 and commit.
-    $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $master \
-        "put tunable debug_exit_participant_after_prepare '1'"
-
-    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 5 &
-    local kill_pid=$!
-
-    echo "Running CREATE TABLE with 2PC (tertiary will crash after PREPARED)..."
-    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
-    local create_rc=$?
-    echo "Create returned rc=$create_rc"
-
-    wait $kill_pid
-
-    echo "Waiting for tertiary to restart..."
-    block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120
-    if (( $? != 0 )); then
-        fail_exit "test_crash_after_prepared_commit: tertiary did not come up (possible deadlock)"
-        return
-    fi
-
-    allow_coordinator_all
-
-    # disttxn_resolve_ddl_prepared() on tertiary learned COMMIT from coordinator.
-    # The prepared BDB txn was pruned (not re-committed).
-    # sc_list in llmeta triggers schema change resume → finalize_schema_change() runs.
-    # Wait up to 60s for the resume to complete and the table to appear.
-    echo "Waiting for schema change resume to finalize on tertiary (up to 60s)..."
-    local waited=0
-    local resume_ok=0
-    while (( waited < 60 )); do
-        $S2_SQL "select 1 from t limit 1" 2>/dev/null && { resume_ok=1; break; }
-        sleep 2
-        waited=$((waited + 2))
-    done
-
-    if (( resume_ok == 0 )); then
-        fail_exit "test_crash_after_prepared_commit: table 't' did not appear on tertiary after resume (schema change resume failed)"
-        return
-    fi
-
-    echo "Table appeared on tertiary after resume. Verifying all shards..."
-    verify_table "t"
-    [[ -f $stopfile ]] && return
-
-    $P_SQL "drop table t" 2>/dev/null
-    echo "test_crash_after_prepared_commit PASSED"
-}
-
-########################################
-# TEST 10: Crash after PREPARED sent — coordinator aborts (timeout)
-#
-# Participant (tertiary) sends CDB2_DIST__PREPARED then crashes.
-# Primary (coordinator) is also killed immediately after the tertiary crashes,
-# before it can send its decision back to the tertiary.
-# On restart, tertiary's disttxn_resolve_ddl_prepared() cannot reach the
-# coordinator → DDL_RESOLVE_TIMEOUT_SEC (30s) timeout, after which the DDL txn
-# is aborted and startup continues cleanly.
-# Expected: tertiary comes up without deadlock, table NOT on tertiary.
-########################################
-function test_crash_after_prepared_abort
-{
-    echo "=== TEST: test_crash_after_prepared_abort ==="
-
-    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
-
-    setup_testcase
-
-    typeset tertiary_master=$(find_tertiary_master)
-    [[ -z "$tertiary_master" ]] && { fail_exit "test_crash_after_prepared_abort: cannot find tertiary master"; return; }
-
-    # Enable crash-after-prepare on tertiary
-    $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $tertiary_master \
-        "put tunable debug_exit_participant_after_prepare '1'"
-
-    # Kill tertiary after prepare (3s delay, 5s sleep before restart)
-    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 5 &
-    local kill_pid=$!
-
-    # Kill coordinator (primary) ~4s after start so tertiary crashes first,
-    # then coordinator goes down so tertiary can't contact it on restart.
-    (
-        sleep 4
-        for node in $CLUSTER; do
-            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) 2>/dev/null
-        done
-    ) &
-    local coord_kill_pid=$!
-
-    echo "Running CREATE TABLE (tertiary will crash after PREPARED, coordinator killed after)..."
-    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
-    local create_rc=$?
-    echo "Create returned rc=$create_rc (expected non-zero)"
-
-    wait $kill_pid
-    wait $coord_kill_pid
-
-    # Restart coordinator (primary) — do this AFTER tertiary has started its
-    # resolve window so tertiary still times out (coordinator was down during
-    # the DDL_RESOLVE_TIMEOUT_SEC window).
-    sleep 35
-    for node in $CLUSTER; do
-        PARAMS="$DBNAME --no-global-lrl"
-        REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-        if [ $node == $(hostname) ]; then
-            mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.old 2>/dev/null
-            ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl \
-                --pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 \
-                | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' \
-                >>$LOGDIR/${DBNAME}.${node}.db 2>&1 &
-        else
-            mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.old 2>/dev/null
-            CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
-            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} </dev/null \
-                > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$LOGDIR/${DBNAME}.${node}.db) 2>&1 &
-            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
-        fi
-    done
-
-    echo "Waiting for tertiary to come back up..."
-    block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120
-    if (( $? != 0 )); then
-        fail_exit "test_crash_after_prepared_abort: tertiary did not come up"
-        return
-    fi
-
-    echo "Waiting for coordinator (primary) to come back up..."
-    block_until_cluster_is_up $DBNAME "$CDB2_OPTIONS" 120
-    if (( $? != 0 )); then
-        fail_exit "test_crash_after_prepared_abort: coordinator did not come back up"
-        return
-    fi
-
-    allow_coordinator_all
-    sleep 5
-
-    # Tertiary timed out waiting for coordinator → aborted DDL txn.
-    # Table must NOT exist on tertiary.
-    $S2_SQL "select 1 from t limit 1" 2>/dev/null
-    if (( $? == 0 )); then
-        fail_exit "test_crash_after_prepared_abort: table 't' exists on tertiary after abort — not clean"
-        return
-    fi
-
-    echo "Table correctly absent on tertiary after abort."
-
-    echo "test_crash_after_prepared_abort PASSED"
-}
-
-########################################
-# TEST 11: Distributed ALTER TABLE — add column
+# TEST 6: Distributed ALTER TABLE — add column
 # ALTER TABLE on a genshard partition propagates to all shards via 2PC.
 ########################################
 function test_alter_add_column
@@ -808,6 +593,7 @@ function test_alter_add_column
     echo "=== TEST: test_alter_add_column ==="
 
     setup_testcase
+    [[ -f $stopfile ]] && return
 
     $P_SQL "create table ta(a int unique, b int) partitioned by columns(a) on (${shards})"
     if (( $? != 0 )); then
@@ -838,9 +624,10 @@ function test_alter_add_column
 }
 
 ########################################
-# TEST 12: Distributed ALTER TABLE — add index
-# ADD INDEX on a genshard partition propagates to all shards via 2PC.
-# Uses table 't2' to avoid interference from test 11's ALTER/DROP cycle.
+# TEST 7: Distributed ALTER TABLE — add index
+# ADD INDEX on a genshard partition propagates to all shards; a second ALTER
+# and a DROP afterwards must still reach every shard.
+# Uses table 't2' to avoid interference from test 6's ALTER/DROP cycle.
 ########################################
 function test_alter_add_index
 {
@@ -864,31 +651,412 @@ function test_alter_add_index
         return
     fi
 
-    # Verify the new index exists by inserting data and checking the schema
-    # version changed (indicates ALTER applied). Use column count in comdb2_columns
-    # which is more reliable than comdb2_indices for shard tables.
-    sleep 5
-    local ncols
-    ncols=$($S0_SQLT "select count(*) from comdb2_keys where tablename like '%t2%'" 2>/dev/null)
-    if [[ -z "$ncols" ]]; then
-        # comdb2_keys might not exist, fall back to checking schema version increased
-        ncols=$($S0_SQLT "select 1" 2>/dev/null)
-        if [[ -z "$ncols" ]]; then
-            fail_exit "test_alter_add_index: shard 0 unreachable after ALTER"
+    # Every shard must have the new index
+    sleep 2
+    local sqlt nkeys
+    for sqlt in "$S0_SQLT" "$S1_SQLT" "$S2_SQLT" "$S3_SQLT"; do
+        nkeys=$($sqlt "select count(*) from comdb2_keys where upper(keyname) like '%IDX_B%'" 2>/dev/null)
+        if [[ "$nkeys" != "1" ]]; then
+            fail_exit "test_alter_add_index: idx_b missing on a shard ($sqlt returned '$nkeys')"
+            return
+        fi
+    done
+
+    # A second ALTER and a DROP must still fan out: the first ALTER replaced the
+    # shard's dbtable and must not have lost its partition membership
+    $P_SQL "alter table t2 add column c int"
+    if (( $? != 0 )); then
+        fail_exit "test_alter_add_index: second alter failed"
+        return
+    fi
+    sleep 2
+    for sqlt in "$S0_SQLT" "$S1_SQLT" "$S2_SQLT" "$S3_SQLT"; do
+        if ! $sqlt "select c from t2 limit 1" >/dev/null 2>&1; then
+            fail_exit "test_alter_add_index: column c missing on a shard after second alter ($sqlt)"
+            return
+        fi
+    done
+
+    $P_SQL "drop table t2"
+    if (( $? != 0 )); then
+        fail_exit "test_alter_add_index: drop after alter failed"
+        return
+    fi
+    sleep 2
+    for sqlt in "$S0_SQLT" "$S1_SQLT" "$S2_SQLT" "$S3_SQLT"; do
+        if $sqlt "select 1 from t2 limit 1" >/dev/null 2>&1; then
+            fail_exit "test_alter_add_index: t2 still present on a shard after drop ($sqlt)"
+            return
+        fi
+    done
+
+    echo "test_alter_add_index PASSED"
+}
+
+########################################
+# Crash-recovery helpers
+########################################
+
+# Run ddl on the coordinator db directly, so the coordinator is known
+C_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
+
+# Turn off every crash-injection tunable on every node of every shard
+function clear_debug_tunables
+{
+    local pair db opts t
+    for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" \
+                "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
+        IFS='|' read -r db opts <<< "$pair"
+        for t in debug_exit_participant_after_prepare debug_fail_ddl_prepare debug_exit_coordinator_before_commit \
+                 debug_exit_coordinator_after_commit debug_sleep_coordinator_before_commit; do
+            set_tunable $db "$opts" $t 0
+        done
+    done
+}
+
+# Verify a column exists (or not) on every shard
+function verify_column
+{
+    local tbl=$1 col=$2 want=$3 sqlt
+    for sqlt in "$S0_SQLT" "$S1_SQLT" "$S2_SQLT" "$S3_SQLT"; do
+        if $sqlt "select ${col} from ${tbl} limit 1" >/dev/null 2>&1; then
+            [[ "$want" == "absent" ]] && { fail_exit "verify_column: ${tbl}.${col} should be absent ($sqlt)"; return 1; }
+        else
+            [[ "$want" == "present" ]] && { fail_exit "verify_column: ${tbl}.${col} should be present ($sqlt)"; return 1; }
+        fi
+    done
+    return 0
+}
+
+# The ddl run by a crash test, and the state it leaves if it committed
+function crash_ddl_sql
+{
+    case $1 in
+        create) echo "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" ;;
+        drop) echo "drop table t" ;;
+        alter) echo "alter table t add column c int" ;;
+    esac
+}
+
+function verify_ddl_outcome
+{
+    local kind=$1 applied=$2
+    case $kind in
+        create) if (( applied )); then verify_table t; else verify_table_gone t; fi ;;
+        drop) if (( applied )); then verify_table_gone t; else verify_table t; fi ;;
+        alter) verify_table t && if (( applied )); then verify_column t c present; else verify_column t c absent; fi ;;
+    esac
+}
+
+function setup_crash_ddl
+{
+    setup_testcase
+    [[ -f $stopfile ]] && return
+    if [[ "$1" != "create" ]]; then
+        $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+        if (( $? != 0 )); then
+            fail_exit "setup_crash_ddl: could not create t"
+            return
+        fi
+        verify_table t
+    fi
+}
+
+function wait_for_master
+{
+    local dbname=$1 opts=$2 max_wait=${3:-60} elapsed=0 m
+    while (( elapsed < max_wait )); do
+        m=$($CDB2SQL_EXE --tabs $opts $dbname default 'select host from comdb2_cluster where is_master="Y"' 2>/dev/null)
+        [[ -n "$m" ]] && { echo $m; return 0; }
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+# The id of the prepared schema change a participant's startup is blocked on
+function blocked_dist_txnid
+{
+    local dbname=$1
+    cat $LOGDIR/${dbname}.db $LOGDIR/${dbname}.*.db 2>/dev/null | grep -o "no outcome for prepared schema change [^ ]*" |
+        tail -1 | awk '{print $NF}'
+}
+
+########################################
+# TEST 8: Participant master exits after preparing a schema change
+# The tertiary master sends "prepared" and exits; the rest of its cluster is
+# killed and restarted.  The restarting master asks the coordinator for the
+# outcome before opening llmeta, so it must not deadlock, and every shard must
+# end up with the coordinator's decision.
+########################################
+function test_participant_crash_after_prepare
+{
+    local kind=$1
+    echo "=== TEST: test_participant_crash_after_prepare $kind ==="
+
+    setup_crash_ddl $kind
+    [[ -f $stopfile ]] && return
+
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 1
+
+    $C_SQL "$(crash_ddl_sql $kind)" 2>&1
+    local rc=$?
+    echo "$kind returned rc=$rc"
+
+    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 2
+    if ! block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120; then
+        fail_exit "test_participant_crash_after_prepare $kind: tertiary did not come up (deadlock?)"
+        return
+    fi
+    allow_coordinator_all
+
+    # Every participant prepared, so the coordinator committed
+    if (( rc != 0 )); then
+        fail_exit "test_participant_crash_after_prepare $kind: ddl failed rc=$rc"
+        return
+    fi
+    verify_ddl_outcome $kind 1
+    [[ -f $stopfile ]] && return
+
+    echo "test_participant_crash_after_prepare $kind PASSED"
+}
+
+########################################
+# TEST 9: Coordinator decides abort
+# The quaternary fails to prepare, so the coordinator aborts.  The tertiary
+# master prepared and exited: after restart it must roll its drop back.
+########################################
+function test_coordinator_decides_abort
+{
+    echo "=== TEST: test_coordinator_decides_abort ==="
+
+    setup_crash_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 1
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_fail_ddl_prepare 1
+
+    $C_SQL "drop table t" 2>&1
+    local rc=$?
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_fail_ddl_prepare 0
+    if (( rc == 0 )); then
+        fail_exit "test_coordinator_decides_abort: drop should have failed"
+        return
+    fi
+
+    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 2
+    if ! block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120; then
+        fail_exit "test_coordinator_decides_abort: tertiary did not come up"
+        return
+    fi
+    allow_coordinator_all
+
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+
+    echo "test_coordinator_decides_abort PASSED"
+}
+
+########################################
+# TEST 10/11: Coordinator unreachable on restart, and the operator override
+# The coordinator master exits before committing and the tertiary master exits
+# after preparing.  With the coordinator cluster down, the restarted tertiary
+# must not finish starting.  With override=1 the tertiary is restarted with
+# 'disttxn_resolve <id> abort' in its lrl and starts without the coordinator.
+# Either way the coordinator never wrote its decision, so the drop aborts.
+########################################
+function test_coordinator_unreachable
+{
+    local override=$1
+    echo "=== TEST: test_coordinator_unreachable override=$override ==="
+
+    setup_crash_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 1
+
+    $C_SQL "drop table t" 2>&1
+    echo "drop returned rc=$?"
+
+    kill_cluster $DBNAME "$CDB2_OPTIONS"
+    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 2
+
+    sleep 20
+    if block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 1; then
+        fail_exit "test_coordinator_unreachable: tertiary started without an outcome for its prepare"
+        return
+    fi
+
+    local lrl=$TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl
+    if (( override )); then
+        local id=$(blocked_dist_txnid $TERTIARY_DBNAME)
+        if [[ -z "$id" ]]; then
+            fail_exit "test_coordinator_unreachable: could not find the blocked dist-txnid"
+            return
+        fi
+        edit_lrl $lrl "echo 'disttxn_resolve $id abort' >> \$lrl"
+        kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 2
+        if ! block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120; then
+            fail_exit "test_coordinator_unreachable: tertiary did not start with the override"
+            return
+        fi
+        edit_lrl $lrl 'grep -v "^disttxn_resolve " $lrl > $lrl.tmp && mv $lrl.tmp $lrl'
+        if ! $S2_SQLT "select 1 from t limit 1" >/dev/null 2>&1; then
+            fail_exit "test_coordinator_unreachable: override did not roll back the drop on the tertiary"
             return
         fi
     fi
-    # Verify the ALTER actually ran by checking we can still query the table
-    $S0_SQL "select * from t2 limit 1" 2>/dev/null
-    (( $? != 0 )) && { fail_exit "test_alter_add_index: cannot query t2 on shard 0 after ALTER"; return; }
-    $S1_SQL "select * from t2 limit 1" 2>/dev/null
-    (( $? != 0 )) && { fail_exit "test_alter_add_index: cannot query t2 on shard 1 after ALTER"; return; }
-    $S2_SQL "select * from t2 limit 1" 2>/dev/null
-    (( $? != 0 )) && { fail_exit "test_alter_add_index: cannot query t2 on shard 2 after ALTER"; return; }
-    $S3_SQL "select * from t2 limit 1" 2>/dev/null
-    (( $? != 0 )) && { fail_exit "test_alter_add_index: cannot query t2 on shard 3 after ALTER"; return; }
 
-    echo "test_alter_add_index PASSED"
+    restart_cluster $DBNAME $DBDIR
+    for pair in "$DBNAME|$CDB2_OPTIONS" "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS"; do
+        IFS='|' read -r db opts <<< "$pair"
+        if ! block_until_cluster_is_up $db "$opts" 120; then
+            fail_exit "test_coordinator_unreachable: $db did not come up"
+            return
+        fi
+    done
+    allow_coordinator_all
+
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+
+    echo "test_coordinator_unreachable override=$override PASSED"
+}
+
+########################################
+# TEST 12: Master swing
+# Only the tertiary master exits after preparing.  A replicant becomes master
+# and must resolve the prepare (before it resumes schema changes).
+########################################
+function test_master_swing
+{
+    echo "=== TEST: test_master_swing ==="
+    # needs replicants to elect a new master
+    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
+
+    setup_crash_ddl alter
+    [[ -f $stopfile ]] && return
+
+    local master=$(find_tertiary_master)
+    [[ -z "$master" ]] && { fail_exit "test_master_swing: no tertiary master"; return; }
+    $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $master \
+        "put tunable debug_exit_participant_after_prepare 1"
+
+    $C_SQL "alter table t add column c int" 2>&1
+    local rc=$?
+    echo "alter returned rc=$rc"
+
+    local newmaster
+    newmaster=$(wait_for_master $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 60)
+    if [[ -z "$newmaster" || "$newmaster" == "$master" ]]; then
+        fail_exit "test_master_swing: tertiary did not elect a new master (got '$newmaster')"
+        return
+    fi
+    echo "tertiary master $master -> $newmaster"
+
+    if (( rc != 0 )); then
+        fail_exit "test_master_swing: alter failed rc=$rc"
+        return
+    fi
+    verify_ddl_outcome alter 1
+    [[ -f $stopfile ]] && return
+
+    restart_node $TERTIARY_DBNAME $TERTIARY_DBDIR $master
+    if ! block_until_cluster_is_up $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" 120; then
+        fail_exit "test_master_swing: old tertiary master did not rejoin"
+        return
+    fi
+    allow_coordinator_all
+
+    echo "test_master_swing PASSED"
+}
+
+########################################
+# TEST 13: Coordinator exits before / after committing its decision
+# The coordinator does not prepare its own schema change: its local commit is
+# the decision.  Exiting before it aborts every shard; exiting after it
+# commits every shard.  The coordinator restarts without deadlocking.
+########################################
+function test_coordinator_crash
+{
+    local when=$1
+    echo "=== TEST: test_coordinator_crash $when ==="
+
+    setup_crash_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_${when}_commit 1
+
+    $C_SQL "drop table t" 2>&1
+    echo "drop returned rc=$?"
+
+    kill_restart_cluster $DBNAME "$CDB2_OPTIONS" $DBDIR 2
+    if ! block_until_cluster_is_up $DBNAME "$CDB2_OPTIONS" 120; then
+        fail_exit "test_coordinator_crash $when: coordinator did not come up (deadlock?)"
+        return
+    fi
+    allow_coordinator_all
+
+    if [[ "$when" == "before" ]]; then
+        verify_ddl_outcome drop 0
+    else
+        verify_ddl_outcome drop 1
+    fi
+    [[ -f $stopfile ]] && return
+
+    echo "test_coordinator_crash $when PASSED"
+}
+
+########################################
+# TEST 14: Replicants do not show a prepared schema change
+# The coordinator sleeps after every participant has prepared and before it
+# commits.  In that window a participant replicant must not show the new
+# column; once the alter commits it must.
+########################################
+function test_replicant_hides_prepare
+{
+    echo "=== TEST: test_replicant_hides_prepare ==="
+    # needs a replicant
+    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
+
+    setup_crash_ddl alter
+    [[ -f $stopfile ]] && return
+
+    local master=$(find_tertiary_master) replicant node
+    for node in $CLUSTER; do
+        [[ "$node" != "$master" ]] && { replicant=$node; break; }
+    done
+    [[ -z "$replicant" ]] && { echo "SKIP: no tertiary replicant"; return; }
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+
+    $C_SQL "alter table t add column c int" &
+    local alter_pid=$!
+    sleep 3
+
+    local R_SQL="$CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $replicant"
+    local before=0
+    $R_SQL "select c from t limit 1" >/dev/null 2>&1 && before=1
+    wait $alter_pid
+    local rc=$?
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+
+    if (( before )); then
+        fail_exit "test_replicant_hides_prepare: replicant $replicant showed column c before commit"
+        return
+    fi
+    if (( rc != 0 )); then
+        fail_exit "test_replicant_hides_prepare: alter failed rc=$rc"
+        return
+    fi
+    sleep 2
+    if ! $R_SQL "select c from t limit 1" >/dev/null 2>&1; then
+        fail_exit "test_replicant_hides_prepare: replicant $replicant missing column c after commit"
+        return
+    fi
+
+    echo "test_replicant_hides_prepare PASSED"
 }
 
 ########################################
@@ -1016,18 +1184,19 @@ echo "========================================="
 echo "Running crash recovery tests"
 echo "========================================="
 
-test_participant_crash_on_create
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+for kind in drop create alter; do
+    test_participant_crash_after_prepare $kind
+    clear_debug_tunables
+    [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+done
 
-test_participant_crash_on_drop
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-test_crash_after_prepared_commit
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-## test_crash_after_prepared_abort is skipped: DDL uses TRANCLASS_PHYSICAL
-## which cannot be BDB-prepared, so true 2PC abort is not possible for DDL.
-## DDL coordination relies on push-write commit responses instead.
+for testcase in test_coordinator_decides_abort "test_coordinator_unreachable 0" "test_coordinator_unreachable 1" \
+                test_master_swing "test_coordinator_crash before" "test_coordinator_crash after" \
+                test_replicant_hides_prepare; do
+    $testcase
+    clear_debug_tunables
+    [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+done
 
 echo "========================================="
 echo "All tests passed"

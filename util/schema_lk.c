@@ -25,6 +25,8 @@ static pthread_t last_schema_wrlock_owner;
 
 __thread int have_readlock = 0;
 __thread int have_writelock = 0;
+/* This thread holds the write lock to finalize a schema change */
+__thread int have_sc_finalize_lock = 0;
 
 int have_schema_lock(void)
 {
@@ -71,8 +73,10 @@ void unlock_schema_int(const char *file, const char *func, int line)
 #endif
     if (have_readlock)
         have_readlock--;
-    else if (have_writelock)
+    else if (have_writelock) {
         have_writelock = 0;
+        have_sc_finalize_lock = 0;
+    }
     Pthread_rwlock_unlock(&schema_lk);
 }
 
@@ -88,6 +92,31 @@ void wrlock_schema_int(const char *file, const char *func, int line)
     logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func, line);
 #endif
     last_schema_wrlock_owner = pthread_self();
+}
+
+int trywrlock_schema_int(const char *file, const char *func, int line)
+{
+    assert(have_readlock == 0 && have_writelock == 0);
+    int rc = pthread_rwlock_trywrlock(&schema_lk);
+    if (!rc) {
+        have_writelock = 1;
+        last_schema_wrlock_owner = pthread_self();
+    }
+#ifdef VERBOSE_SCHEMA_LK
+    logmsg(LOGMSG_USER, "%p:TRYWRLOCK RC:%d %s:%d\n", (void *)pthread_self(), rc, func, line);
+#endif
+    return rc;
+}
+
+void set_sc_finalize_schema_lk(void)
+{
+    if (have_writelock)
+        have_sc_finalize_lock = 1;
+}
+
+int have_sc_finalize_schema_lk(void)
+{
+    return have_sc_finalize_lock;
 }
 
 void assert_wrlock_schema_int(const char *file, const char *func, int line)

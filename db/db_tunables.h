@@ -269,6 +269,13 @@ REGISTER_TUNABLE("logmsg.epochms", "Show epochms in log-messages.  (Default: off
 /* User-level 2pc tunables */
 REGISTER_TUNABLE("enable_2pc", "Enable 2pc fdb transactions.  (Default: off)", TUNABLE_BOOLEAN, &gbl_2pc,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("remsql_schema_lock_wait_ms",
+                 "How long a remote fdb read waits for the schema lock before failing.  (Default: 5000)",
+                 TUNABLE_INTEGER, &gbl_remsql_schema_lock_wait_ms, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("enable_2pc_ddl",
+                 "Make schema changes on generic-shard partitions 2pc distributed transactions; requires "
+                 "enable_2pc.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_2pc_ddl, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_coordinator",
                  "Set of dbname/tiers which can act as coordinator for this participant.  (Default: none)",
                  TUNABLE_STRING, &gbl_allowed_coordinators, READONLY, NULL, NULL, disttxn_allow_coordinator_set, NULL);
@@ -311,6 +318,8 @@ REGISTER_TUNABLE("all_waitdie", "Enable waitdie for all transactions.  (Default:
 REGISTER_TUNABLE("debug_disable_waitdie_deadlock_detection", "Disable waitdie deadlock detection.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_disable_waitdie_deadlock_detection, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("debug_fail_ddl_prepare", "Participant fails to prepare a 2pc schema change.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_fail_ddl_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_exit_participant_after_prepare", "Participant exits after successful prepare.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_exit_participant_after_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

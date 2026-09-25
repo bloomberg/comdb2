@@ -6249,6 +6249,14 @@ void freedb_int(dbtable *db, dbtable *replace)
          * old locks. */
         dbtable_free_locks(db);
 
+        /* generic-shard membership is loaded from llmeta, not from the csc2 the
+         * replacement was built from, so it has to survive the replace */
+        uint32_t numdbs = db->numdbs;
+        char **dbnames_arr = db->dbnames;
+        uint32_t numcols = db->numcols;
+        char **columns_arr = db->columns;
+        char **shardnames = db->shardnames;
+
         memcpy(db, replace, sizeof(dbtable));
 
         /* The locks belong to db now: make sure nothing frees them through
@@ -6260,10 +6268,11 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-        for (i = 0; i < db->numdbs; i++)
-            db->dbnames[i] = dbnames[i];
-        for (i = 0; i < db->numcols; i++)
-            db->columns[i] = columns[i];
+        db->numdbs = numdbs;
+        db->dbnames = dbnames_arr;
+        db->numcols = numcols;
+        db->columns = columns_arr;
+        db->shardnames = shardnames;
     }
 }
 

@@ -2660,6 +2660,11 @@ void unlink_reverse_constraints(struct dbtable *db);
 int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
                       FILE *out, int accept_type_change);
 int resume_schema_change(void);
+/* Clear the dist-txn mark of a table's schema change in tran */
+int clear_dist_sc(void *tran, const char *tablename);
+/* Returns 1 (and clears the mark) if a table's pending schema change belongs to
+ * a distributed transaction that never committed it */
+int cancel_dist_sc(const char *tablename);
 
 void debug_trap(char *line, int lline);
 int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,

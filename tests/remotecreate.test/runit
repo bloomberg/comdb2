@@ -166,7 +166,12 @@ shards=`echo $shards | sed 's/.$//'`
 echo $shards
 
 if [[ $is_2pc -eq 1 ]]; then
-    COORDINATOR_TIER="local"
+    # Coordinator tier must match machine_class in twopc_tier_local.lrl / twopc_tier_cluster.lrl
+    if [[ -n "$CLUSTER" ]]; then
+        COORDINATOR_TIER="prod"
+    else
+        COORDINATOR_TIER="local"
+    fi
 
     # Set up coordinator permissions - all databases must allow all others as coordinators
     all_dbs="$DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME"

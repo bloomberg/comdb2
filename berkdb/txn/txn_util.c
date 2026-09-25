@@ -38,6 +38,11 @@ int osql_blkseq_unregister_cnonce(void *cnonce, int len);
 int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 
 extern int set_commit_context_prepared(unsigned long long context);
+extern void bdb_set_scdone_lockid(u_int32_t lockid);
+
+/* Set while this thread resolves a prepared schema change: the generic
+ * commit/abort-recovered entry points leave those to the schema resolver */
+static __thread int resolving_schema_prepare = 0;
 extern int gbl_utxnid_log;
 extern int gbl_snapshot_isolation;
 
@@ -1478,9 +1483,10 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	/* Halt replays in the block-processor */
 	osql_blkseq_register_cnonce(p->blkseq_key.data, p->blkseq_key.size);
 
+	/* The schema resolver takes the schema lock when it resolves this txn: taking
+	 * it here would deadlock against llmeta readers and startup's own lock */
 	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
-		wrlock_schema_lk(); 
-		F_SET(p, DB_DIST_SCHEMA_LK);
+		F_SET(p, DB_DIST_SCHEMA_PREP);
 	}
 
 	if (prepare->lflags & DB_TXN_DIST_UPD_SHADOWS) {
@@ -1544,7 +1550,8 @@ static int __collect_prepared(void *obj, void *arg)
 	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
 	struct __collect_disttxns *collect = (struct __collect_disttxns *)arg;
 	int ret;
-	if (F_ISSET(p, DB_DIST_HAVELOCKS)) {
+	/* Prepared schema changes are resolved by the schema resolver */
+	if (F_ISSET(p, DB_DIST_HAVELOCKS) && !F_ISSET(p, DB_DIST_SCHEMA_PREP)) {
 
 		/* Collect coordinator name */
 		if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_name.size + 1,
@@ -1904,10 +1911,10 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
  * handled in bdb_recover_blkseq.
  *
  * PUBLIC: int __txn_recover_prepared __P((DB_ENV *, DB_TXN *txnid,
- * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
+ * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *, u_int32_t));
  */
 int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq_key,
-		coordinator_gen, coordinator_name, coordinator_tier)
+		coordinator_gen, coordinator_name, coordinator_tier, lflags)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	const char *dist_txnid;
@@ -1917,6 +1924,7 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 	u_int32_t coordinator_gen;
 	DBT *coordinator_name;
 	DBT *coordinator_tier;
+	u_int32_t lflags;
 {
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
@@ -1990,6 +1998,11 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 
 	memcpy(p->coordinator_tier.data, coordinator_tier->data, coordinator_tier->size);
 	p->coordinator_tier.size = coordinator_tier->size;
+
+	p->lflags = lflags;
+	if (lflags & DB_TXN_SCHEMA_LOCK) {
+		F_SET(p, DB_DIST_SCHEMA_PREP);
+	}
 
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((fnd = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
@@ -2140,182 +2153,11 @@ int __txn_recover_all_prepared(dbenv)
 	return 0;
 }
 
-/*
- * __txn_collect_ddl_prepared --
- *
- * Collect DDL prepared transactions (those needing schema lock) that are
- * unresolved. These must be resolved before upgrade to avoid deadlock with
- * the schema lock held during initialization.
- *
- * PUBLIC: int __txn_collect_ddl_prepared __P((DB_ENV *, char ***, char ***, char ***, int *));
- */
-
-struct __collect_ddl_disttxn_node {
-	char *coordinator_name;
-	char *coordinator_tier;
-	char *dist_txnid;
-};
-
-struct __collect_ddl_disttxns {
-	DB_ENV *dbenv;
-	struct __collect_ddl_disttxn_node *disttxns;
-	int count;
-	int alloc;
-};
-
-static int __collect_ddl_prepared_cb(void *obj, void *arg)
-{
-	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
-	struct __collect_ddl_disttxns *collect = (struct __collect_ddl_disttxns *)arg;
-	int ret;
-
-	if (!F_ISSET(p, DB_DIST_SCHEMA_LK))
-		return 0;
-	if (F_ISSET(p, DB_DIST_HAVELOCKS | DB_DIST_COMMITTED | DB_DIST_ABORTED))
-		return 0;
-	if (collect->count >= collect->alloc) {
-		logmsg(LOGMSG_ERROR, "%s: exceeded allocated count %d\n", __func__, collect->alloc);
-		return -1;
-	}
-
-	if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_name.size + 1,
-		&collect->disttxns[collect->count].coordinator_name)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
-		abort();
-	}
-	memcpy(collect->disttxns[collect->count].coordinator_name,
-		p->coordinator_name.data, p->coordinator_name.size);
-
-	if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_tier.size + 1,
-		&collect->disttxns[collect->count].coordinator_tier)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
-		abort();
-	}
-	memcpy(collect->disttxns[collect->count].coordinator_tier,
-		p->coordinator_tier.data, p->coordinator_tier.size);
-
-	if ((ret = __os_strdup(collect->dbenv, p->dist_txnid,
-		&collect->disttxns[collect->count].dist_txnid)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
-		abort();
-	}
-	collect->count++;
-	return 0;
-}
-
-int __txn_collect_ddl_prepared(dbenv, dist_txnids, coordinator_names,
-	coordinator_tiers, count)
-	DB_ENV *dbenv;
-	char ***dist_txnids;
-	char ***coordinator_names;
-	char ***coordinator_tiers;
-	int *count;
-{
-	int alloc;
-	struct __collect_ddl_disttxns collect = {0};
-	collect.dbenv = dbenv;
-
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	hash_info(dbenv->prepared_txn_hash, NULL, NULL, NULL, NULL, &alloc, NULL, NULL);
-	if (alloc == 0) {
-		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-		*count = 0;
-		return 0;
-	}
-
-	int ret;
-	if ((ret = __os_malloc(dbenv, sizeof(struct __collect_ddl_disttxn_node) * alloc,
-		&collect.disttxns)) != 0) {
-		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-		return ret;
-	}
-	collect.alloc = alloc;
-	hash_for(dbenv->prepared_txn_hash, __collect_ddl_prepared_cb, &collect);
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-
-	*count = collect.count;
-	if (collect.count == 0) {
-		__os_free(dbenv, collect.disttxns);
-		*dist_txnids = NULL;
-		*coordinator_names = NULL;
-		*coordinator_tiers = NULL;
-		return 0;
-	}
-
-	*dist_txnids = NULL;
-	*coordinator_names = NULL;
-	*coordinator_tiers = NULL;
-
-	if ((ret = __os_malloc(dbenv, sizeof(char *) * collect.count, dist_txnids)) != 0)
-		goto err;
-	if ((ret = __os_malloc(dbenv, sizeof(char *) * collect.count, coordinator_names)) != 0)
-		goto err;
-	if ((ret = __os_malloc(dbenv, sizeof(char *) * collect.count, coordinator_tiers)) != 0)
-		goto err;
-
-	for (int i = 0; i < collect.count; i++) {
-		(*dist_txnids)[i] = collect.disttxns[i].dist_txnid;
-		(*coordinator_names)[i] = collect.disttxns[i].coordinator_name;
-		(*coordinator_tiers)[i] = collect.disttxns[i].coordinator_tier;
-	}
-	__os_free(dbenv, collect.disttxns);
-	return 0;
-
-err:
-	for (int i = 0; i < collect.count; i++) {
-		__os_free(dbenv, collect.disttxns[i].dist_txnid);
-		__os_free(dbenv, collect.disttxns[i].coordinator_name);
-		__os_free(dbenv, collect.disttxns[i].coordinator_tier);
-	}
-	__os_free(dbenv, collect.disttxns);
-	if (*dist_txnids) __os_free(dbenv, *dist_txnids);
-	if (*coordinator_names) __os_free(dbenv, *coordinator_names);
-	if (*coordinator_tiers) __os_free(dbenv, *coordinator_tiers);
-	*dist_txnids = NULL;
-	*coordinator_names = NULL;
-	*coordinator_tiers = NULL;
-	*count = 0;
-	return ret;
-}
-
-/*
- * __txn_mark_prepared_resolved --
- *
- * Mark a prepared transaction as committed or aborted without requiring
- * DB_DIST_HAVELOCKS. Used during startup to resolve DDL transactions before
- * upgrade. __txn_prune_resolved_prepared will remove them before upgrade.
- *
- * PUBLIC: int __txn_mark_prepared_resolved __P((DB_ENV *, const char *, int));
- */
-int __txn_mark_prepared_resolved(dbenv, dist_txnid, committed)
-	DB_ENV *dbenv;
-	const char *dist_txnid;
-	int committed;
-{
-	DB_TXN_PREPARED *p;
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	p = hash_find(dbenv->prepared_txn_hash, &dist_txnid);
-	if (p != NULL) {
-		if (committed)
-			F_SET(p, DB_DIST_COMMITTED);
-		else
-			F_SET(p, DB_DIST_ABORTED);
-	}
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-	if (p == NULL) {
-		logmsg(LOGMSG_ERROR, "%s unable to locate txnid %s\n", __func__, dist_txnid);
-		return -1;
-	}
-	logmsg(LOGMSG_INFO, "%s marked DDL prepared txn %s as %s\n", __func__,
-		dist_txnid, committed ? "committed" : "aborted");
-	return 0;
-}
-
-/*
+/* 
  * __txn_upgrade_all_prepared --
  *
  * Create berkley txns for unresolved but prepared transactions we found
- * during recovery.  Acquire locks for these transactions.	Update the
+ * during recovery.  Acquire locks for these transactions.	Update the 
  * transaction id-space and write a txn-recycle record
  *
  * PUBLIC: int __txn_upgrade_all_prepared __P((DB_ENV *));
@@ -2394,6 +2236,10 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		if (!F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp == NULL) {
 			logmsg(LOGMSG_DEBUG, "%s unable to abort unprepared dist-txn %s\n", __func__, dist_txnid);
+			p = NULL;
+		} else if (F_ISSET(p, DB_DIST_SCHEMA_PREP) && !resolving_schema_prepare) {
+			logmsg(LOGMSG_INFO, "%s leaving prepared schema change %s to the schema resolver\n", __func__,
+				dist_txnid);
 			p = NULL;
 		} else {
 			hash_del(dbenv->prepared_txn_hash, p);
@@ -2793,6 +2639,10 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 		if (!F_ISSET(p, DB_DIST_HAVELOCKS)) {
 			logmsg(LOGMSG_INFO, "%s unable to commit unprepared dist-txn %s\n", __func__, dist_txnid);
 			p = NULL;
+		} else if (F_ISSET(p, DB_DIST_SCHEMA_PREP) && !resolving_schema_prepare) {
+			logmsg(LOGMSG_INFO, "%s leaving prepared schema change %s to the schema resolver\n", __func__,
+				dist_txnid);
+			p = NULL;
 		} else {
 			hash_del(dbenv->prepared_txn_hash, p);
 			hash_del(dbenv->prepared_utxnid_hash, p);
@@ -2882,6 +2732,12 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	F_SET(&data_dbt, DB_DBT_REALLOC);
 
+	/* Applying scdone reloads the table from llmeta pages this txn still has
+	 * locked: read them under this txn's locker */
+	if (F_ISSET(p, DB_DIST_SCHEMA_PREP)) {
+		bdb_set_scdone_lockid(p->txnp->txnid);
+	}
+
 	for (int i = 0; i < lc.nlsns; i++) {
 		uint32_t rectype = 0;
 		DB_LSN lsn = lc.array[i].lsn, *lsnp = &lsn;
@@ -2901,6 +2757,10 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 				lsnp->file, lsnp->offset, ret);
 			abort();
 		}
+	}
+
+	if (F_ISSET(p, DB_DIST_SCHEMA_PREP)) {
+		bdb_set_scdone_lockid(0);
 	}
 
 	/* Update commit-lsn map */
@@ -2944,6 +2804,171 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	__free_prepared_txn(dbenv, p);
 	lc_free(dbenv, NULL, &lc);
 	return 0;
+}
+
+/*
+ * __txn_count_schema_prepared --
+ *
+ * Count the unresolved prepared schema changes on this node.
+ *
+ * PUBLIC: int __txn_count_schema_prepared __P((DB_ENV *));
+ */
+int __txn_count_schema_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+	unsigned int bkt;
+	void *ent;
+	DB_TXN_PREPARED *p;
+	int count = 0;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	for (p = hash_first(dbenv->prepared_txn_hash, &ent, &bkt); p;
+		p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt)) {
+		if (F_ISSET(p, DB_DIST_SCHEMA_PREP) && !F_ISSET(p, DB_DIST_COMMITTED | DB_DIST_ABORTED))
+			count++;
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return count;
+}
+
+/*
+ * __txn_collect_schema_prepared --
+ *
+ * Return the dist-txnid, coordinator name and coordinator tier of each
+ * unresolved prepared schema change.  If have_locks is set, only those this
+ * master has upgraded.  The caller frees each string and array with free().
+ *
+ * PUBLIC: int __txn_collect_schema_prepared __P((DB_ENV *, int, char ***,
+ * PUBLIC:	  char ***, char ***, int *));
+ */
+int __txn_collect_schema_prepared(dbenv, have_locks, dist_txnids, coordinator_names, coordinator_tiers, count)
+	DB_ENV *dbenv;
+	int have_locks;
+	char ***dist_txnids;
+	char ***coordinator_names;
+	char ***coordinator_tiers;
+	int *count;
+{
+	unsigned int bkt;
+	void *ent;
+	DB_TXN_PREPARED *p;
+	int alloc, n = 0;
+
+	*dist_txnids = *coordinator_names = *coordinator_tiers = NULL;
+	*count = 0;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_info(dbenv->prepared_txn_hash, NULL, NULL, NULL, NULL, &alloc, NULL, NULL);
+	if (alloc == 0) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		return 0;
+	}
+	char **ids = calloc(alloc, sizeof(char *));
+	char **names = calloc(alloc, sizeof(char *));
+	char **tiers = calloc(alloc, sizeof(char *));
+	if (!ids || !names || !tiers) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		free(ids);
+		free(names);
+		free(tiers);
+		return ENOMEM;
+	}
+	for (p = hash_first(dbenv->prepared_txn_hash, &ent, &bkt); p;
+		p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt)) {
+		if (!F_ISSET(p, DB_DIST_SCHEMA_PREP) || F_ISSET(p, DB_DIST_COMMITTED | DB_DIST_ABORTED))
+			continue;
+		if (have_locks && !F_ISSET(p, DB_DIST_HAVELOCKS))
+			continue;
+		ids[n] = strdup(p->dist_txnid);
+		names[n] = calloc(1, p->coordinator_name.size + 1);
+		tiers[n] = calloc(1, p->coordinator_tier.size + 1);
+		memcpy(names[n], p->coordinator_name.data, p->coordinator_name.size);
+		memcpy(tiers[n], p->coordinator_tier.data, p->coordinator_tier.size);
+		n++;
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+
+	*dist_txnids = ids;
+	*coordinator_names = names;
+	*coordinator_tiers = tiers;
+	*count = n;
+	return 0;
+}
+
+/*
+ * __txn_resolve_schema_prepared --
+ *
+ * Commit or abort a prepared schema change with the coordinator's outcome,
+ * acquiring its locks first if this master has not upgraded it yet.  The
+ * caller holds the schema write lock if the tables are open.
+ *
+ * PUBLIC: int __txn_resolve_schema_prepared __P((DB_ENV *, const char *, int));
+ */
+int __txn_resolve_schema_prepared(dbenv, dist_txnid, commit)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+	int commit;
+{
+	DB_TXN_PREPARED *p;
+	DB_LOGC *logc = NULL;
+	int ret, upgraded = 0;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	p = hash_find(dbenv->prepared_txn_hash, &dist_txnid);
+	if (p == NULL || !F_ISSET(p, DB_DIST_SCHEMA_PREP) || F_ISSET(p, DB_DIST_COMMITTED | DB_DIST_ABORTED)) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		logmsg(LOGMSG_INFO, "%s no unresolved prepared schema change %s\n", __func__, dist_txnid);
+		return -1;
+	}
+	if (!F_ISSET(p, DB_DIST_HAVELOCKS)) {
+		if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+			Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+			logmsg(LOGMSG_ERROR, "%s error getting log-cursor, %d\n", __func__, ret);
+			return ret;
+		}
+		__upgrade_prepared_txn(dbenv, logc, p);
+		upgraded = 1;
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	if (logc)
+		logc->close(logc, 0);
+
+	/* The upgraded txn holds a txnid from the log: keep new txns clear of it */
+	if (upgraded && (ret = __txn_recycle_after_upgrade_prepared(dbenv)) != 0) {
+		logmsg(LOGMSG_ERROR, "%s error recycling txnids, %d\n", __func__, ret);
+	}
+
+	logmsg(LOGMSG_INFO, "%s %s prepared schema change %s\n", __func__, commit ? "committing" : "aborting",
+		dist_txnid);
+
+	resolving_schema_prepare = 1;
+	ret = commit ? __txn_commit_recovered(dbenv, dist_txnid) : __txn_abort_recovered(dbenv, dist_txnid);
+	resolving_schema_prepare = 0;
+	return ret;
+}
+
+/*
+ * __txn_resolve_schema_prepared_pp --
+ *	DB_ENV->txn_resolve_schema_prepared pre/post processing.
+ *
+ * PUBLIC: int __txn_resolve_schema_prepared_pp __P((DB_ENV *, const char *, int));
+ */
+int __txn_resolve_schema_prepared_pp(dbenv, dist_txnid, commit)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+	int commit;
+{
+	int rep_check, ret;
+
+	/* Only a master writes the resolution */
+	if (IS_REP_CLIENT(dbenv))
+		return -1;
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __txn_resolve_schema_prepared(dbenv, dist_txnid, commit);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
 }
 
 void invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(DB_ENV *dbenv, DB_LSN cutoff_lsn) {

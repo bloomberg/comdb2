@@ -118,9 +118,7 @@ int __txn_recover_abort_prepared __P((DB_ENV *, const char *dist_txnid, DB_LSN *
 		DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name, DBT *coordinator_tier));
 int __txn_recover_prepared __P((DB_ENV *, DB_TXN *, const char *dist_txnid, DB_LSN *prep_lsn,
 		DB_LSN *begin_lsn, DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name,
-		DBT *coordinator_tier));
-int __txn_collect_ddl_prepared __P((DB_ENV *, char ***, char ***, char ***, int *));
-int __txn_mark_prepared_resolved __P((DB_ENV *, const char *, int));
+		DBT *coordinator_tier, u_int32_t lflags));
 int __txn_master_prepared __P((DB_ENV *, const char *dist_txnid, DB_LSN *prep_lsn,
 		DB_LSN *begin_lsn, DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name,
 		DBT *coordinator_tier));
@@ -133,6 +131,10 @@ void __txn_prune_resolved_prepared __P((DB_ENV *));
 int __txn_upgrade_all_prepared __P((DB_ENV *));
 int __txn_recover_all_prepared __P((DB_ENV *));
 int __txn_abort_prepared_waiters __P((DB_ENV *));
+int __txn_collect_schema_prepared __P((DB_ENV *, int, char ***, char ***, char ***, int *));
+int __txn_resolve_schema_prepared_pp __P((DB_ENV *, const char *, int));
+int __txn_resolve_schema_prepared __P((DB_ENV *, const char *, int));
+int __txn_count_schema_prepared __P((DB_ENV *));
 int __txn_downgrade_all_prepared __P((DB_ENV *));
 int __txn_abort_recovered_pp __P((DB_ENV *, const char *dist_txnid));
 int __txn_is_prepared __P((DB_ENV *, u_int64_t utxnid));

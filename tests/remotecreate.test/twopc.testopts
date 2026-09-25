@@ -1,4 +1,5 @@
 enable_2pc
+enable_2pc_ddl
 utxnid_log on
 ufid_log on
 flush_on_prepare 1
@@ -6,7 +7,6 @@ flush_replicant_on_prepare 1
 wait_for_prepare_seqnum 1
 coordinator_sync_on_commit 1
 disttxn_async_messages 1
-machine_class local
 decoupled_logputs off
 dtastripe 1
 setattr REP_WORKERS 0

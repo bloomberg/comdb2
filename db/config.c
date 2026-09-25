@@ -1557,6 +1557,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_USER, "Failed remapping machine class '%s' to fdb tier '%s'\n", cls, tier);
     } else if (tokcmp(tok, ltok, "allow-coordinator") == 0) {
         process_allow_coordinator(&line[st], len - st);
+    } else if (tokcmp(tok, ltok, "disttxn_resolve") == 0) {
+        if (process_disttxn_resolve(&line[st], len - st))
+            return -1;
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;

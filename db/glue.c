@@ -98,6 +98,7 @@
 #include <comdb2_atomic.h>
 #include <bbhrtime.h>
 #include <sqllogfill.h>
+#include <disttxn.h>
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -3057,7 +3058,9 @@ static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
         trigger_clear_hash();
         if (oldmaster != host) {
             logmsg(LOGMSG_USER, "I AM NEW MASTER NODE %s\n", host);
-            if (gbl_ready && resume_schema_change()) {
+            /* Prepared schema changes hold llmeta locks: the schema resolver
+             * resumes schema changes once it has resolved them */
+            if (gbl_ready && disttxn_schema_prepares_pending() == 0 && resume_schema_change()) {
                 logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();

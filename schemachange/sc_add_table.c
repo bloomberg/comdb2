@@ -29,11 +29,14 @@
 #include "gen_shard.h"
 extern int gbl_is_physical_replicant;
 
-static inline int get_db_handle(struct dbtable *newdb, void *trans)
+/* create: make new files (the schema change adding the table); otherwise open
+ * the files a committed add already made (a replicant, or a new master applying
+ * an inherited prepared add) */
+static inline int get_db_handle(struct dbtable *newdb, void *trans, int create)
 {
     int bdberr;
-    if (newdb->dbenv->master == gbl_myhostname && !gbl_is_physical_replicant) {
-        /* I am master: create new db */
+    if (create) {
+        /* create new db */
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
@@ -41,7 +44,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
         open_auxdbs(newdb, 1);
     } else {
-        /* I am NOT master: open replicated db */
+        /* open the existing db */
         newdb->handle = bdb_open_more_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
@@ -133,7 +136,8 @@ int add_table_to_environment(char *table, const char *csc2,
                 sc_errf(s, "Failed to open shard %s\n", newdb->tablename);
                 reqerrstr(iq, ERR_SC, "Failed to open shard %s\n", newdb->tablename);
             }
-        } else if ((rc = get_db_handle(newdb, trans))) {
+        } else if ((rc = get_db_handle(newdb, trans,
+                                       s && newdb->dbenv->master == gbl_myhostname && !gbl_is_physical_replicant))) {
             if (rc == BDBERR_EXCEEDED_BLOBS) {
                 sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
                 reqerrstr(iq, ERR_SC, "Maximum number of vutf8/blob fields exceeded\n");
@@ -148,7 +152,7 @@ int add_table_to_environment(char *table, const char *csc2,
         }
     }
 
-    if (newdb->dbenv->master == gbl_myhostname) {
+    if (s && newdb->dbenv->master == gbl_myhostname) {
         if ((rc = sql_syntax_check(iq, newdb)))
             return SC_CSC2_ERROR;
     }

@@ -1,3 +1,4 @@
-Test 2PC distributed schema changes (CREATE/DROP TABLE) with crash recovery.
-Verifies that DDL operations on partitioned tables are atomic across shards,
-and that participant crash after prepare does not deadlock on restart.
+Test schema changes on generic-shard partitions as 2pc distributed transactions
+(CREATE/DROP/ALTER TABLE).  Verifies that they commit on every shard or on none,
+and that a participant or coordinator that crashes after preparing recovers with
+the coordinator's outcome, on restart or master swing, without deadlocking.

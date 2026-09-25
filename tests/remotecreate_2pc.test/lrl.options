@@ -1,13 +1,14 @@
-foreign_db_resolve_local 1
 foreign_db_push_remote_writes 1
 enable_2pc
+enable_2pc_ddl
 
 # 2pc requires utxnid & ufid log
 utxnid_log on
 ufid_log on
 
-# DDL holds schema lock during fdb_trans_commit — disable this assert for DDL tests
-assert_no_schemalk_in_distributed_commit 0
+# A 2pc schema change prepares while holding the schema lock it took to finalize;
+# the assertion exempts that lock, so keep it on
+assert_no_schemalk_in_distributed_commit 1
 
 # Required for 2PC consistency
 flush_on_prepare 1
@@ -17,9 +18,6 @@ coordinator_sync_on_commit 1
 
 # Async messages for 2PC
 disttxn_async_messages 1
-
-# Must match COORDINATOR_TIER in runit (local uses pmux, works in both dev and CI)
-machine_class local
 
 # Disable decoupled-logputs
 decoupled_logputs off
