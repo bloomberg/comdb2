@@ -1666,6 +1666,10 @@ REGISTER_TUNABLE(
 
 REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("nowait_seqnum_trace",
+                 "Also trace the non-blocking seqnum check.  Very chatty: the async_dist_commit waiter polls it "
+                 "constantly.  Requires set_coherent_state_trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_nowait_seqnum_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than this.  (Default: 60000000)", TUNABLE_INTEGER,
                  &gbl_finish_fill_threshold, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("req_delay_count_threshold",
@@ -2819,4 +2823,17 @@ REGISTER_TUNABLE("rep_verify_peer_hostname",
                  "only in environments without reliable reverse DNS. "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit",
+                 "Hand the wait for replicant acks off to a background thread so that block "
+                 "processor threads are not tied up. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
+                 "Maximum number of transactions that may be waiting on asynchronous distributed "
+                 "commit at once; beyond this, commits wait inline. (Default: 8)",
+                 TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_enqueued", "Read-only: commits handed to the seqnum-wait thread.", TUNABLE_INT64,
+                 &gbl_async_dist_commit_enqueued, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_inline", "Read-only: commits that fell back to waiting inline.", TUNABLE_INT64,
+                 &gbl_async_dist_commit_inline, READONLY, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

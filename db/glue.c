@@ -92,6 +92,11 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "time_accounting.h"
+#include "seqnum_wait.h"
+
+extern int gbl_async_dist_commit;
+extern int gbl_2pc;
+extern int gbl_replicant_retry_on_not_durable;
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
@@ -638,10 +643,8 @@ static const char *sync_to_str(int sync)
     }
 }
 
-static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
-                                     struct ireq *iq, char *source_node,
-                                     int timeoutms, int adaptive,
-                                     db_seqnum_type *ss)
+int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv, struct ireq *iq, char *source_node, int timeoutms,
+                              int adaptive, db_seqnum_type *ss)
 {
     int rc = 0;
     int sync;
@@ -847,6 +850,24 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
 
     if (rc != 0) {
         return rc;
+    }
+
+    /* Hand the ack wait off to the seqnum-wait thread so this block processor
+     * returns to the pool instead of blocking; handle_ireq() enqueues it there.
+     * The waiter always waits for every node, so this only applies to plain
+     * commits under REP_SYNC_FULL.  We fall back to the inline wait for 2pc,
+     * durable-lsn mode, other sync modes, schema change, and the empty 0:0
+     * commit. */
+    if (nowait == 0 && gbl_async_dist_commit && iq->sorese && !iq->sorese->is_participant &&
+        !iq->sorese->is_coordinator && !gbl_2pc && !gbl_replicant_retry_on_not_durable &&
+        thedb->rep_sync == REP_SYNC_FULL && !iq->sc_pending && !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
+        !(s->file == 0 && s->offset == 0)) {
+        iq->commit_seqnum = malloc(sizeof(db_seqnum_type));
+        if (iq->commit_seqnum != NULL) {
+            memcpy(iq->commit_seqnum, &ss, sizeof(ss));
+            iq->should_enqueue = 1;
+            return rc;
+        }
     }
 
     if (nowait == 0) {
