@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+set -x
+
+# A block request that lands on a replicant is forwarded to the master
+# (offload_comm_send_blockreq) and the master's reply is matched back to the
+# waiting request by handle (net_block_reply).  Only a REQ_SOCKREQUEST takes
+# that path, so we submit through the test-only sockreqtest appsock rather
+# than cdb2api's tagged interface, which a replicant answers with
+# "retry against the master" instead of forwarding.
+#
+# The assertion is that every blockop comes back byte-for-byte the same
+# whether it ran on the master or was forwarded from a replicant.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+
+SQL="${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs ${DBNAME} default"
+
+# The appsock we submit through is compiled in only under COMDB2_TEST, but
+# nothing stops this test from running against a build without it.
+if [[ -z "$(${SQL} "select name from comdb2_appsock_handlers where name='sockreqtest'")" ]]; then
+    echo "Skipping: server was not built with COMDB2_TEST (no sockreqtest appsock)"
+    exit 0
+fi
+
+# The db's appsock port, as registered with that node's pmux.
+function dbport
+{
+    ${TESTSROOTDIR}/tools/send_msg_port.sh -h $1 \
+        "get comdb2/replication/${DBNAME}" ${pmux_port}
+}
+
+# A few of the blockops do land a record, so every pass starts from an empty
+# table -- otherwise the second pass sees the first one's rows and answers
+# differently.
+function run_blockops
+{
+    local logfile=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists t"
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default "create table t { $(cat t.csc2) }"
+    ${TESTSBUILDDIR}/gen_all_blockops ${DBNAME} "$@" > ${logfile} 2>&1
+}
+
+master=$(${SQL} "select host from comdb2_cluster where is_master='Y'")
+
+# Baseline: straight to the master over cdb2api, no forwarding involved.
+if ! run_blockops master.log ${master}; then
+    echo "FAIL: gen_all_blockops against the master failed"
+    cat master.log
+    exit 1
+fi
+
+# Same requests, same node, but through the appsock. Proves the plugin itself
+# does not change the answers before we rely on it to test the forward.
+run_blockops master_appsock.log ${master} $(dbport ${master})
+if ! diff master.log master_appsock.log; then
+    echo "FAIL: sockreqtest appsock changed the block responses on the master"
+    exit 1
+fi
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "Passed (single node: forwarding not exercised)"
+    exit 0
+fi
+
+replicant=$(${SQL} "select host from comdb2_cluster where is_master='N' and coherent_state='coherent' limit 1")
+if [[ -z "$replicant" ]]; then
+    echo "FAIL: no coherent replicant to forward from"
+    exit 1
+fi
+
+run_blockops replicant.log ${replicant} $(dbport ${replicant})
+
+# A replicant that failed to forward would answer every request with
+# RC_TRAN_CLIENT_RETRY (305); rc=220 can only come from the master's block
+# processor, so its presence rules out a vacuous pass.
+if ! grep -q "rc=220" replicant.log; then
+    echo "FAIL: no master block-processor reply came back through the replicant"
+    cat replicant.log
+    exit 1
+fi
+
+if ! diff master.log replicant.log; then
+    echo "FAIL: forwarded block responses differ from the master's"
+    exit 1
+fi
+
+echo "Passed"
+exit 0

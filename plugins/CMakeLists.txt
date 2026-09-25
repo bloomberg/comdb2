@@ -27,6 +27,7 @@ add_subdirectory(repopnewlrl)
 add_subdirectory(reversesql)
 if(COMDB2_TEST)
   add_subdirectory(simpleauth)
+  add_subdirectory(sockreqtest)
   add_subdirectory(fail)
 endif()
 

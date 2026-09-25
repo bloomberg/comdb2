@@ -1,0 +1,5 @@
+enable_tagged_api
+disable_tagged_api_writes 0
+# The sockreqtest appsock speaks plain TCP, and tagged requests over a non-SSL
+# connection are refused when SSL is required.
+ssl_client_mode OPTIONAL
