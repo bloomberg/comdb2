@@ -31,7 +31,7 @@
 
   (invoke! [this test op]
     (c/with-conn [c conn]
-      (c/with-timeout
+      (c/with-timeout c
         (let [[k [a-id b-id]] (:value op)]
           (case (:f op)
             :insert

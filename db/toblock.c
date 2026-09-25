@@ -5241,18 +5241,21 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         /* This is looking for a commit record - one dive is fine */
         while ((iq->arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                                      &(iq->arr->offset), 1)) ||
+                                      &(iq->arr->offset), 1,
+                                      iq->arr->log_cursor_gen)) ||
                (iq->selectv_arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                       &(iq->selectv_arr->file),
-                                      &(iq->selectv_arr->offset), 1))) {
+                                      &(iq->selectv_arr->offset), 1,
+                                      iq->selectv_arr->log_cursor_gen))) {
             Pthread_rwlock_unlock(&commit_lock);
             hascommitlock = 0;
 
             if (iq->selectv_arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                       &(iq->selectv_arr->file),
-                                      &(iq->selectv_arr->offset), 0)) {
+                                      &(iq->selectv_arr->offset), 0,
+                                      iq->selectv_arr->log_cursor_gen)) {
                 currangearr_free(iq->selectv_arr);
                 iq->selectv_arr = NULL;
                 numerrs = 1;
@@ -5266,7 +5269,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                 GOTOBACKOUT;
             } else if (iq->arr && bdb_osql_serial_check(
                                       thedb->bdb_env, iq->arr, &(iq->arr->file),
-                                      &(iq->arr->offset), 0)) {
+                                      &(iq->arr->offset), 0,
+                                      iq->arr->log_cursor_gen)) {
                 currangearr_free(iq->arr);
                 iq->arr = NULL;
                 numerrs = 1;
@@ -5462,7 +5466,8 @@ backout:
         if (iq->arr && (force_serial_error ||
                                bdb_osql_serial_check(thedb->bdb_env, iq->arr,
                                                      &(iq->arr->file),
-                                                     &(iq->arr->offset), 0))) {
+                                                     &(iq->arr->offset), 0,
+                                                     iq->arr->log_cursor_gen))) {
             numerrs = 1;
             rc = ERR_NOTSERIAL;
             reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
@@ -5471,7 +5476,8 @@ backout:
         if (iq->selectv_arr &&
             bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                   &(iq->selectv_arr->file),
-                                  &(iq->selectv_arr->offset), 0)) {
+                                  &(iq->selectv_arr->offset), 0,
+                                  iq->selectv_arr->log_cursor_gen)) {
             numerrs = 1;
             /* verify error */
             err.ixnum = -1; /* data */
