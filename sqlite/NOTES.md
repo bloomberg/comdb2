@@ -860,3 +860,33 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
   our row format, skipping SQLite format. Latter says whether string is
   null-terminated, but only relevant when data is in SQLite format (so would
   never be used/inspected if data is in our row format).
+
+### `vdbemem.c`
+
+- **DECISION**: In `sqlite3VdbeMemCast()`, use upstream's code for casts to
+  TEXT, and remove comdb2's version.
+
+  After converting a value to text, upstream clears the flags for the value's
+  old types, so that only `MEM_Str` is left. comdb2 replaced that line with an
+  `if` statement that uses `&` where `&&` was meant.
+  `(pMem->flags & MEM_Str)` is either 0 or 2, and `!pMem->db->mallocFailed` is
+  either 0 or 1, so the condition is always 0 and the body never runs. The
+  compiler removes it entirely. The body would have been wrong anyway, because
+  `~(MEM_AffMask|MEM_Zero)` sets nearly every flag bit.
+
+  So comdb2 has never cleared these flags. `applyAffinity()` already clears
+  the integer and real flags, so the difference only shows in
+  `CAST(<blob> AS TEXT)`: the result kept `MEM_Blob` and `MEM_Zero` alongside
+  `MEM_Str`. With upstream's code the result is a plain text value, the same
+  as in stock SQLite.
+
+- **DECISION**: Remove the `sqlite_record()` SQL function, as upstream did.
+
+  Upstream added `sqlite_record()` only to read the old `sqlite_stat3` table,
+  and deleted it when `sqlite_stat3` support was removed. comdb2 still
+  registered it, so it appears in `comdb2_completion()`, but nothing in comdb2
+  calls it. A search of BBGitHub found no application code that uses it
+  either.
+
+  `tests/auth.test/t09.expected` lists `sqlite_record()` among the completion
+  candidates, and that line needs to be removed once the tree builds.
