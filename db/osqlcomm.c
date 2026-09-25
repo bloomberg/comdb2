@@ -58,6 +58,7 @@
 #include "eventlog.h"
 #include <disttxn.h>
 #include "fingerprint.h"
+#include <openssl/rand.h>
 
 #define MAX_CLUSTER REPMAX
 
@@ -3546,6 +3547,7 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
                             struct interned_string *frominterned,
                             int usertype, void *dtap, int dtalen,
                             uint8_t is_tcp);
+static void net_block_table_init(void);
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                              struct interned_string *frominterned,
@@ -3691,6 +3693,7 @@ int osql_comm_init(struct dbenv *dbenv)
     net_set_callback_data(tmp->handle_sibling, dbenv->bdb_env);
 
     /* remote blocksql request handler. */
+    net_block_table_init();
     net_register_handler(tmp->handle_sibling, NET_BLOCK_REQ, "block_req",
                          net_block_req);
     net_register_handler(tmp->handle_sibling, NET_BLOCK_REPLY, "block_reply",
@@ -3739,16 +3742,100 @@ typedef struct net_block_msg {
     char data[1];
 } net_block_msg_t;
 
-int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen)
+typedef struct net_block_ent {
+    unsigned long long handle; /* key */
+    struct buf_lock_t *slock;  /* value */
+    const char *host;          /* node we sent to; interned, never freed */
+} net_block_ent_t;
+
+/* Outstanding forwarded block requests, keyed by the random handle we put on
+   the wire in place of the buf_lock_t address we used to send.  A reply is
+   accepted only if it matches a request we sent, and comes from the node we
+   sent it to.
+
+   Entries are removed on reply, or when the send fails.  If no reply ever
+   comes the entry leaks, as the buf_lock_t already did before this. */
+static hash_t *net_block_rqs;
+static pthread_mutex_t net_block_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static void net_block_table_init(void)
+{
+    net_block_rqs = hash_init_o(offsetof(net_block_ent_t, handle), sizeof(unsigned long long));
+    if (!net_block_rqs) {
+        logmsg(LOGMSG_FATAL, "%s: error init hash\n", __func__);
+        abort();
+    }
+}
+
+/* Returns the handle to send on the wire, or 0 on failure. */
+static unsigned long long net_block_table_insert(void *slock, const char *host)
+{
+    net_block_ent_t *ent = calloc(1, sizeof(*ent));
+    if (!ent) {
+        logmsg(LOGMSG_ERROR, "%s: calloc error\n", __func__);
+        return 0;
+    }
+    ent->slock = slock;
+    ent->host = host;
+
+    if (RAND_bytes((unsigned char *)&ent->handle, sizeof(ent->handle)) != 1) {
+        logmsg(LOGMSG_ERROR, "%s: RAND_bytes failed\n", __func__);
+        free(ent);
+        return 0;
+    }
+
+    Pthread_mutex_lock(&net_block_mtx);
+    /* handle 0 is reserved so a zero-filled message can never match */
+    if (ent->handle == 0 || hash_find_readonly(net_block_rqs, &ent->handle) != NULL) {
+        Pthread_mutex_unlock(&net_block_mtx);
+        logmsg(LOGMSG_ERROR, "%s: unusable handle %llu\n", __func__, ent->handle);
+        free(ent);
+        return 0;
+    }
+    hash_add(net_block_rqs, ent);
+    Pthread_mutex_unlock(&net_block_mtx);
+
+    return ent->handle;
+}
+
+/* find and retire in a single critical section; second caller gets NULL.
+   A non-NULL host must match the node the request was sent to; on mismatch
+   the entry stays, so a stray message cannot cancel a real request. */
+static struct buf_lock_t *net_block_table_find_and_remove(unsigned long long handle, const char *host)
+{
+    struct buf_lock_t *slock = NULL;
+    Pthread_mutex_lock(&net_block_mtx);
+    net_block_ent_t *ent = hash_find(net_block_rqs, &handle);
+    if (ent && (!host || strcmp(host, ent->host) == 0)) {
+        hash_del(net_block_rqs, ent);
+        slock = ent->slock;
+        free(ent);
+    }
+    Pthread_mutex_unlock(&net_block_mtx);
+    return slock;
+}
+
+int offload_comm_send_blockreq(char *host, void *slock, void *buf, int buflen)
 {
     int rc = 0;
     int len = buflen + sizeof(net_block_msg_t);
     net_block_msg_t *net_msg = malloc(len);
-    net_msg->rqid = (unsigned long long)rqid;
+    if (!net_msg)
+        return -1;
+    unsigned long long handle = net_block_table_insert(slock, host);
+    if (handle == 0) {
+        free(net_msg);
+        return -1;
+    }
+    net_msg->rqid = handle;
     net_msg->datalen = buflen;
     memcpy(net_msg->data, buf, buflen);
     rc = offload_net_send(host, NET_BLOCK_REQ, net_msg, len, 1, NULL, 0);
     free(net_msg);
+    /* No reply will arrive for a request we failed to send; retire the entry
+       so it does not sit in the table forever. */
+    if (rc != 0)
+        (void)net_block_table_find_and_remove(handle, NULL);
     return rc;
 }
 
@@ -3796,11 +3883,35 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
                             int usertype, void *dtap, int dtalen,
                             uint8_t is_tcp)
 {
+    const size_t header_len = offsetof(net_block_msg_t, data);
+
+    if (dtap == NULL || dtalen < 0 || (size_t)dtalen < header_len) {
+        logmsg(LOGMSG_ERROR, "%s: invalid block reply message length %d\n", __func__, dtalen);
+        return;
+    }
 
     net_block_msg_t *net_msg = dtap;
-    /* using p_slock pointer as the request id now, this contains info about
-     * socket request.*/
-    struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
+    int datalen = net_msg->datalen;
+    size_t available = (size_t)dtalen - header_len;
+
+    /* MAX_BUFFER_SIZE bounds the memcpy into p_slock->bigbuf below, which is a
+       pool block of exactly that size. */
+    if (datalen < 0 || (size_t)datalen > available || (size_t)datalen > MAX_BUFFER_SIZE) {
+        logmsg(LOGMSG_ERROR, "%s: invalid block reply payload length %d\n", __func__, datalen);
+        return;
+    }
+
+    /* The rqid is an opaque handle issued by net_block_table_insert(); it is
+       valid only if we have an outstanding request under it to this sender.
+       Anything else is unsolicited or a replay of a reply we already consumed. */
+    struct buf_lock_t *p_slock = NULL;
+    if (fromhost)
+        p_slock = net_block_table_find_and_remove(net_msg->rqid, fromhost);
+    if (!p_slock) {
+        logmsg(LOGMSG_ERROR, "%s: no outstanding request for rqid %llu from %s\n", __func__, net_msg->rqid,
+               fromhost ? fromhost : "localhost");
+        return;
+    }
     {
         Pthread_mutex_lock(&p_slock->req_lock);
         if (p_slock->reply_state == REPLY_STATE_DISCARD) {

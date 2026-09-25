@@ -3,6 +3,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 #include <cdb2api.h>
@@ -138,6 +141,135 @@ static uint32_t get_u32(const uint8_t *src)
 
 static cdb2_hndl_tp *db_hndl;
 
+/* ---------------------------------------------------------------------------
+ * Transports.
+ *
+ * By default requests go through cdb2api's tagged interface, which only the
+ * master will run: a replicant answers a tagged request it cannot handle with
+ * "retry against the master".  With a port argument we instead speak to the
+ * sockreqtest appsock, which submits the request the way Bloomberg's
+ * socket_request plugin does, and that a replicant *does* forward to the
+ * master.  Pointing this tool at a replicant's port is therefore what
+ * exercises the forward-and-wait-for-reply path.
+ * ------------------------------------------------------------------------ */
+
+#define SOCKRSP_LEN 20
+#define MAX_BUFFER_SIZE 65536
+
+static int appsock_fd = -1;
+static uint8_t appsock_rsp[MAX_BUFFER_SIZE];
+
+static int appsock_connect(const char *host, int port)
+{
+    struct addrinfo hints = {0}, *res, *ai;
+    char service[16];
+    int fd = -1;
+
+    snprintf(service, sizeof(service), "%d", port);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, service, &hints, &res) != 0)
+        return -1;
+    for (ai = res; ai; ai = ai->ai_next) {
+        fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (fd < 0)
+            continue;
+        if (connect(fd, ai->ai_addr, ai->ai_addrlen) == 0)
+            break;
+        close(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    return fd;
+}
+
+static int writeall(int fd, const void *buf, size_t len)
+{
+    const uint8_t *p = buf;
+    while (len) {
+        ssize_t n = write(fd, p, len);
+        if (n <= 0)
+            return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+}
+
+static int readall(int fd, void *buf, size_t len)
+{
+    uint8_t *p = buf;
+    while (len) {
+        ssize_t n = read(fd, p, len);
+        if (n <= 0)
+            return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+}
+
+/* One request per appsock invocation, so the command line is resent each
+ * time. Returns the db rcode and points *rsp at the block response. */
+static int appsock_submit(const uint8_t *buf, int len, const uint8_t **rsp,
+                          int *rsp_len)
+{
+    uint8_t hdr[SOCKRSP_LEN];
+    uint32_t wire_len = htonl((uint32_t)len);
+    int followlen;
+
+    if (writeall(appsock_fd, "sockreqtest\n", 12) != 0 ||
+        writeall(appsock_fd, &wire_len, sizeof(wire_len)) != 0 ||
+        writeall(appsock_fd, buf, len) != 0)
+        return -1;
+
+    if (readall(appsock_fd, hdr, sizeof(hdr)) != 0)
+        return -1;
+
+    followlen = (int)get_u32(hdr + 16);
+    if (followlen < 0 || followlen > (int)sizeof(appsock_rsp))
+        return -1;
+    if (followlen && readall(appsock_fd, appsock_rsp, followlen) != 0)
+        return -1;
+
+    *rsp = appsock_rsp;
+    *rsp_len = followlen;
+    return (int)get_u32(hdr + 8); /* sockrsp_t::rcode */
+}
+
+static int cdb2_submit(const uint8_t *buf, int len, const uint8_t **rsp,
+                       int *rsp_len)
+{
+    int32_t lux = 0, flags = 0;
+    int rc;
+
+    cdb2_clearbindings(db_hndl);
+    if (cdb2_bind_param(db_hndl, "buffer", CDB2_BLOB, (void *)buf, len) ||
+        cdb2_bind_param(db_hndl, "lux", CDB2_INTEGER, &lux, sizeof(lux)) ||
+        cdb2_bind_param(db_hndl, "flags", CDB2_INTEGER, &flags, sizeof(flags))) {
+        fprintf(stderr, "cdb2_bind_param: %s\n", cdb2_errstr(db_hndl));
+        return -1;
+    }
+
+    rc = cdb2_run_statement(db_hndl,
+             "exec procedure comdb2_legacy(@buffer, @lux, @flags)");
+    if (rc) {
+        fprintf(stderr, "cdb2_run_statement rc=%d: %s\n", rc,
+                cdb2_errstr(db_hndl));
+        return -1;
+    }
+
+    *rsp = cdb2_column_value(db_hndl, 1);
+    *rsp_len = cdb2_column_size(db_hndl, 1);
+    return (int)*(int32_t *)cdb2_column_value(db_hndl, 0);
+}
+
+static int submit(const uint8_t *buf, int len, const uint8_t **rsp, int *rsp_len)
+{
+    return appsock_fd >= 0 ? appsock_submit(buf, len, rsp, rsp_len)
+                           : cdb2_submit(buf, len, rsp, rsp_len);
+}
+
 static int is_position_mode(int opcode)
 {
     return opcode == BLOCK2_ADDKL_POS || opcode == BLOCK2_UPDKL_POS;
@@ -256,51 +388,17 @@ static void send_request(const char *name, int opcode,
     put_u32(op_hdr_pos + 0, (uint32_t)opcode);
     put_u32(op_hdr_pos + 4, (uint32_t)end_offset);
 
-    /* Send via cdb2api */
-    int rc;
-    int32_t lux = 0;
-    int32_t flags = 0;
+    const uint8_t *rsp = NULL;
+    int rsp_len = 0;
+    int db_rc = submit(buf, (int)total_len, &rsp, &rsp_len);
 
-    cdb2_clearbindings(db_hndl);
-
-    rc = cdb2_bind_param(db_hndl, "buffer", CDB2_BLOB, buf, (int)total_len);
-    if (rc) {
-        fprintf(stderr, "%s: cdb2_bind_param(buffer) rc=%d: %s\n",
-                name, rc, cdb2_errstr(db_hndl));
+    if (db_rc < 0) {
+        fprintf(stderr, "%s: submit failed\n", name);
         free(buf);
         return;
     }
-
-    rc = cdb2_bind_param(db_hndl, "lux", CDB2_INTEGER, &lux, sizeof(lux));
-    if (rc) {
-        fprintf(stderr, "%s: cdb2_bind_param(lux) rc=%d: %s\n",
-                name, rc, cdb2_errstr(db_hndl));
-        free(buf);
-        return;
-    }
-
-    rc = cdb2_bind_param(db_hndl, "flags", CDB2_INTEGER, &flags, sizeof(flags));
-    if (rc) {
-        fprintf(stderr, "%s: cdb2_bind_param(flags) rc=%d: %s\n",
-                name, rc, cdb2_errstr(db_hndl));
-        free(buf);
-        return;
-    }
-
-    rc = cdb2_run_statement(db_hndl,
-             "exec procedure comdb2_legacy(@buffer, @lux, @flags)");
-    if (rc) {
-        fprintf(stderr, "%s: cdb2_run_statement rc=%d: %s\n",
-                name, rc, cdb2_errstr(db_hndl));
-        free(buf);
-        return;
-    }
-
-    int db_rc = (int)*(int32_t *)cdb2_column_value(db_hndl, 0);
 
     if (db_rc == ERR_BLOCK_FAILED) {
-        const uint8_t *rsp = cdb2_column_value(db_hndl, 1);
-        int rsp_len = cdb2_column_size(db_hndl, 1);
         const uint8_t *body = rsp + REQ_HDR_LEN;
         int body_len = rsp_len - REQ_HDR_LEN;
 
@@ -865,21 +963,29 @@ static void gen_BLOCK2_UPTBL(void)
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <dbname> <master>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <dbname> <host> [port]\n", argv[0]);
         return 1;
     }
 
     const char *dbname = argv[1];
-    const char *master = argv[2];
+    const char *host = argv[2];
     int rc;
 
     srand((unsigned)(time(NULL) ^ (getpid() << 16)));
 
-    rc = cdb2_open(&db_hndl, dbname, master, CDB2_SET_TAGGED | CDB2_DIRECT_CPU);
-    if (rc) {
-        fprintf(stderr, "cdb2_open(%s, %s) rc=%d: %s\n",
-                dbname, master, rc, cdb2_errstr(db_hndl));
-        return 1;
+    if (argc > 3) {
+        appsock_fd = appsock_connect(host, atoi(argv[3]));
+        if (appsock_fd < 0) {
+            fprintf(stderr, "cannot connect to %s:%s\n", host, argv[3]);
+            return 1;
+        }
+    } else {
+        rc = cdb2_open(&db_hndl, dbname, host, CDB2_SET_TAGGED | CDB2_DIRECT_CPU);
+        if (rc) {
+            fprintf(stderr, "cdb2_open(%s, %s) rc=%d: %s\n",
+                    dbname, host, rc, cdb2_errstr(db_hndl));
+            return 1;
+        }
     }
 
     gen_BLOCK_ADDSL();
@@ -924,6 +1030,9 @@ int main(int argc, char **argv)
     gen_BLOCK2_PRAGMA();
     gen_BLOCK2_UPTBL();
 
-    cdb2_close(db_hndl);
+    if (appsock_fd >= 0)
+        close(appsock_fd);
+    else
+        cdb2_close(db_hndl);
     return 0;
 }
