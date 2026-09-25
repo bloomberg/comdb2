@@ -73,6 +73,7 @@ int trigger_registered(const char *);
 void trigger_clear_hash(void);
 int trigger_stat(void);
 void trigger_reg_to_cpu(trigger_reg_t *);
+int trigger_recv_accepts_r6(void);
 
 #define trigger_reg_to_net trigger_reg_to_cpu
 

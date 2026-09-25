@@ -3461,7 +3461,7 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
  * perform trigger_reg_to_cpu() later, so we only read the network-order
  * spname_len into a temporary and must not byteswap the packet here.
  */
-static int valid_trigger_reg_payload(const void *dtap, int dtalen)
+static int valid_trigger_reg_current(const void *dtap, int dtalen)
 {
     const size_t name_off = offsetof(trigger_reg_t, spname);
     const size_t len_off = offsetof(trigger_reg_t, spname_len);
@@ -3538,12 +3538,53 @@ static int valid_trigger_reg_payload(const void *dtap, int dtalen)
      * a single malformed message retain memory permanently. NI_MAXHOST is the
      * bound TRIGGER_REG_MAX already assumes.
      */
-    const char *hostname_nul = memchr(hostname, '\0', remaining);
+    size_t hostname_search = remaining < NI_MAXHOST ? remaining : NI_MAXHOST;
+    const char *hostname_nul = memchr(hostname, '\0', hostname_search);
 
-    if (hostname_nul == NULL || (size_t)(hostname_nul - hostname) >= NI_MAXHOST)
+    if (hostname_nul == NULL)
         return 0;
 
     return 1;
+}
+
+struct trigger_reg_r6 {
+    int node;
+    int elect_cookie;
+    genid_t trigger_cookie;
+    char spname[];
+};
+
+static int valid_trigger_reg_r6(const void *dtap, int dtalen)
+{
+    const size_t name_off = offsetof(struct trigger_reg_r6, spname);
+
+    if (dtap == NULL || dtalen < 0 || (size_t)dtalen <= name_off)
+        return 0;
+
+    const char *spname = (const char *)dtap + name_off;
+    size_t remaining = (size_t)dtalen - name_off;
+    size_t search_len = remaining < MAX_SPNAME ? remaining : MAX_SPNAME;
+
+    const char *nul = memchr(spname, '\0', search_len);
+
+    if (nul == NULL || nul == spname)
+        return 0;
+
+    return 1;
+}
+
+static int valid_trigger_reg_payload(const void *dtap, int dtalen)
+{
+    if (dtap == NULL || dtalen < 0 || (size_t)dtalen < sizeof(int))
+        return 0;
+
+    int node;
+    memcpy(&node, dtap, sizeof(node));
+
+    if (node != 0 && trigger_recv_accepts_r6())
+        return valid_trigger_reg_r6(dtap, dtalen);
+
+    return valid_trigger_reg_current(dtap, dtalen);
 }
 
 static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
