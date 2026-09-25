@@ -512,16 +512,9 @@ static int forward_longblock_to_master(struct ireq *iq,
     if (iq->debug)
         reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
                 "%zu\n", getorigin(iq), mstr, iq->origdb->dbnum, req_len);
-    if (iq->is_socketrequest || iq->ipc_sndbak) {
-        if (iq->sb == NULL && iq->is_socketrequest) {
-            // what case is this?
-            return ERR_INCOHERENT;
-        } else {
-            rc = offload_comm_send_blockreq(mstr, iq->request_data,
-                                            iq->p_buf_out_start, req_len);
-            free_bigbuf_nosignal(iq->p_buf_out_start);
-        }
-    } else if (comdb2_ipc_swapnpasdb_sinfo) {
+    /* tolongblock() rejects socket and ipc_sndbak requests before forwarding,
+       so only the fstsnd path is reachable here. */
+    if (comdb2_ipc_swapnpasdb_sinfo) {
         /* Don't change anything in request for socket-fstsnd. */
         if (comdb2_ipc_setrmtdbmc) {
             if (iq->origdb->dbnum)
