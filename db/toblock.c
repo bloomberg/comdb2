@@ -5926,40 +5926,13 @@ add_blkseq:
                         }
                         iq->sc_tran = NULL;
 
-                        /* Finalize DDL using 2PC */
-                        if (iq->sorese && iq->sorese->is_participant && iq->sorese->dist_txnid) {
-                            int bdberr, prepare_rc, ddl_waitrc;
-                            Pthread_mutex_lock(&blklk);
-                            prepared_count++;
-                            Pthread_mutex_unlock(&blklk);
-                            prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, iq->sorese->dist_txnid,
-                                                          iq->sorese->coordinator_dbname, iq->sorese->coordinator_tier,
-                                                          DB_TXN_SCHEMA_LOCK, NULL, 0, &bdberr);
-                            Pthread_mutex_lock(&blklk);
-                            prepared_count--;
-                            Pthread_mutex_unlock(&blklk);
-                            if (prepare_rc != 0) {
-                                logmsg(LOGMSG_ERROR, "DISTTXN DDL prepare failed txnid %s rc %d bdberr %d\n",
-                                       iq->sorese->dist_txnid, prepare_rc, bdberr);
-                                participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
-                                                       iq->sorese->coordinator_master, ERR_NOT_DURABLE,
-                                                       ERR_BLOCK_FAILED, "DDL prepare was not durable");
-                                trans_abort(iq, parent_trans);
-                                outrc = ERR_BLOCK_FAILED;
-                            } else {
-                                ddl_waitrc =
-                                    participant_wait(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
-                                                     iq->sorese->coordinator_tier, iq->sorese->coordinator_master);
-                                if (ddl_waitrc == HAS_COMMITTED) {
-                                    participant_has_propagated(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
-                                                               iq->sorese->coordinator_master);
-                                    /* trans_commit_logical below commits parent_trans */
-                                } else {
-                                    trans_abort(iq, parent_trans);
-                                    outrc = ERR_BLOCK_FAILED;
-                                }
-                            }
-                        }
+                        /* NOTE: a schema change cannot be dist-prepared here.
+                         * parent_trans is the physical child of
+                         * iq->sc_logical_tran (see osql_create_transaction),
+                         * and bdb_tran_prepare() only accepts a top-level
+                         * TRANCLASS_BERK transaction.  Schema changes are
+                         * therefore rejected up-front for 2pc participants in
+                         * osql_process_schemachange(). */
                     }
                     if (iq->sc_locked) {
                         unlock_schema_lk();

@@ -49,7 +49,6 @@ extern int gbl_sc_protobuf;
 extern int gbl_retro_tpt_start;
 extern int gbl_legacy_tpt;
 extern int gbl_allow_shard_truncate;
-extern int gbl_2pc;
 int gbl_view_feature = 1;
 int gbl_disable_sql_table_replacement = 0;
 extern int gbl_enable_bulk_import;
@@ -5207,12 +5206,18 @@ void comdb2AlterTableEnd(Parse *pParse)
         goto cleanup;
     }
 
-    /* Detect ALTER TABLE on a generic-shard partitioned table and distribute
-     * the schema change to all shards via 2PC. Only applies when 2PC is enabled
-     * and the table is a genshard partition (numdbs > 0 with dbnames set). */
-    if (sc->partition.type == PARTITION_NONE && gbl_2pc) {
+    /* Detect ALTER TABLE on a generic-shard partitioned table and fan the
+     * schema change out to every shard.  Two different statements land here:
+     * the client's original ALTER (coordinator) and the per-shard ALTER the
+     * coordinator pushes out (participant).  Only the coordinator fans out; a
+     * participant is recognised by the SET PARTITION options it received, the
+     * same way the DROP path does it.  A dryrun only reports on the local
+     * shard, so leave it alone. */
+    if (sc->partition.type == PARTITION_NONE && !sc->dryrun) {
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
         struct dbtable *gtbl = get_dbtable_by_name(sc->tablename);
-        if (gtbl && gtbl->numdbs > 0 && gtbl->dbnames)
+        if (gtbl && gtbl->sqlaliasname && gtbl->numdbs > 0 && gtbl->dbnames && thd && thd->clnt &&
+            thd->clnt->remsql_set.is_remsql != IS_REMCREATE)
             sc->partition.type = PARTITION_ALTER_GENSHARD_COORD;
     }
 

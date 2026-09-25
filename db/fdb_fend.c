@@ -6251,10 +6251,10 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
     return push;
 }
 
-
-static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint32_t nshards,
-                             char **dbnames, uint32_t numcols, char **columns, char **shardnames,
-                             char **sqls, enum ast_type type) 
+/* Fan a schema change out to every shard of a generic-shard partition.
+ * Takes ownership of the nshards strings in sqls[] and frees them. */
+static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint32_t nshards, char **dbnames,
+                             uint32_t numcols, char **columns, char **shardnames, char **sqls, enum ast_type type)
 {
     struct errstat err = {0};
     int i;
@@ -6269,14 +6269,22 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Mark this as DDL 2PC: uses push-write coordination (not standard prepare/commit),
-     * but participates in 2PC-aware recovery via disttxn_resolve_ddl_prepared() */
-    if (clnt->use_2pc) {
-        clnt->use_2pc_ddl = 1;
-    }
+    /* A distributed DDL is fanned out as one independent write per shard; it is
+     * not a 2pc distributed transaction.  The shards cannot be 2pc participants
+     * because a schema change runs under a logical transaction that
+     * bdb_tran_prepare() cannot prepare, so do not enrol them. */
+    clnt->use_2pc = 0;
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
+
+    /* dbnames[] can be owned by the local shard's dbtable, which a committed
+     * drop or alter frees; the post-commit cleanup must not read it */
+    char **fdbnames = alloca(nshards * sizeof(char *));
+    for (i = 0; i < nshards; i++) {
+        fdbnames[i] = alloca(strlen(dbnames[i]) + 1);
+        strcpy(fdbnames[i], dbnames[i]);
+    }
 
     /* create create sql statements */
     for(i = 0; i < nshards; i++) {
@@ -6381,6 +6389,10 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
             }
         } while (0);
         clnt->sql = sql;
+        /* handle_fdb_push_write() frees clnt->fdb_push on its retry-as-legacy
+         * path; pick the pointer back up so the cleanup below does not free a
+         * connector that is already gone. */
+        pushes[i] = clnt->fdb_push;
         clnt->fdb_push = NULL;
         if (rc) {
             if (!pushes[i])
@@ -6389,6 +6401,19 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
                 logmsg(LOGMSG_ERROR, "Failed run create ddl %s rc %d err %s\n",
                        dbnames[i], rc, err.errstr);
             goto abort;
+        }
+        if (pushes[i]) {
+            /* a ddl writes no rows, so mark the sub-transaction as a remote
+             * write explicitly or fdb_trans_commit() will skip it */
+            fdb_t *fdb = get_fdb(dbnames[i], FDB_GET_LOCK);
+            if (fdb) {
+                fdb_tran_t *tran = fdb_get_subtran(clnt->dbtran.dtran, fdb);
+                if (tran) {
+                    tran->nwrites += 1;
+                    tran->writes_status = FDB_TRAN_WRITES;
+                }
+                put_fdb(fdb, FDB_PUT_NOFREE);
+            }
         }
     }
 
@@ -6401,32 +6426,34 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     }
 
     for (i = 0; i < nshards; i++) {
+        free(sqls[i]);
+        sqls[i] = NULL;
         if (pushes[i]) {
-            _clear_schema(dbnames[i], NULL, 0);
+            _clear_schema(fdbnames[i], NULL, 0);
             fdb_push_free(&pushes[i]);
         }
     }
 
-    clnt->use_2pc_ddl = 0;
     return 0;
 
 abort:
-    if (!*errmsg) /* not empty string */
+    if (!(*errmsg)[0]) /* not empty string */
         *errmsg = "transaction aborted";
     rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed to rollback rc %d\n", __func__, rc);
     }
 setup_error:
-    if (!*errmsg) /* not empty string */
+    if (!(*errmsg)[0]) /* not empty string */
         *errmsg = "malloc error shard push";
     for (i = 0; i < nshards; i++) {
+        free(sqls[i]);
+        sqls[i] = NULL;
         if (pushes[i]) {
-            _clear_schema(dbnames[i], NULL, 0);
+            _clear_schema(fdbnames[i], NULL, 0);
             fdb_push_free(&pushes[i]);
         }
     }
-    clnt->use_2pc_ddl = 0;
     return -1;
 }
 

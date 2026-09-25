@@ -397,8 +397,7 @@ static int osql_wait(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     errstat_t dummy = {0};
 
-    /* 2pc participants don't wait here; the coordinator handles synchronization
-     * via participant_wait/coordinator_wait in toblock.c. */
+    /* if this is a 2pc participant, we don't need to wait here */
     if (clnt->is_participant)
         return 0;
 
@@ -1075,7 +1074,8 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
 
     /* is it distributed? */
 
-    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran) {
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
+    {
         if (gbl_is_physical_replicant) {
             logmsg(LOGMSG_ERROR, "%s attempted fdb write on physical replicant\n", __func__);
             osql_sock_abort(clnt, type);
