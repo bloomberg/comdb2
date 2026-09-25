@@ -67,6 +67,7 @@ static unsigned int curtran_counter = 0;
 int gbl_flush_on_prepare = 1;
 int gbl_wait_for_prepare_seqnum = 1;
 int gbl_debug_sleep_before_prepare = 0;
+int gbl_sc_commit_map_skip = 0;
 extern int gbl_debug_txn_sleep;
 extern int gbl_debug_disttxn_trace;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
@@ -1641,6 +1642,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
+        if (gbl_sc_commit_map_skip && tran->is_sc_rebuild)
+            flags |= DB_TXN_SC_PRIVATE_SKIP_MAP;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
         rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, &commit_gen, tran);
         bdb_osql_trn_repo_unlock();

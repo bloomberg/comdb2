@@ -1086,7 +1086,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
 		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE |
-		DB_TXN_DIST_UPD_SHADOWS) != 0)
+		DB_TXN_DIST_UPD_SHADOWS | DB_TXN_SC_PRIVATE_SKIP_MAP) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1556,10 +1556,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 
 	if (commit_lsn_map && !txnp->parent) {
-		ret = __txn_commit_map_add_nolock(dbenv, txnp->utxnid, txnp->last_lsn);
-		if (ret != 0) {
-			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
-			goto err;
+		if (!LF_ISSET(DB_TXN_SC_PRIVATE_SKIP_MAP)) {
+			ret = __txn_commit_map_add_nolock(dbenv, txnp->utxnid,
+			    txnp->last_lsn);
+			if (ret != 0) {
+				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+				goto err;
+			}
 		}
 
 		/* No grandchildren in comdb2, so this is sufficient. */
