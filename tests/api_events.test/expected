@@ -45,3 +45,6 @@ DBTYPE is resolved
 DBTYPE is resolved
 DBTYPE is resolved
 DBTYPE is example.com
+====== VERIFYING EVENT ARG ======
+EVENT is CDB2_AT_ENTER_RUN_STATEMENT
+EVENT is CDB2_AT_EXIT_RUN_STATEMENT
