@@ -1983,6 +1983,7 @@ int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num);
 
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);
+void bdb_set_odh2(bdb_state_type *bdb_state, int odh2);
 void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version);
 
 int bdb_get_active_stripe(bdb_state_type *bdb_state);
@@ -2364,6 +2365,8 @@ int bdb_genid_format(bdb_state_type *bdb_state);
 int bdb_genid_set_format(bdb_state_type *bdb_state, int format);
 int bdb_genid_allow_original_format(bdb_state_type *bdb_state);
 int genid_contains_time(bdb_state_type *bdb_state);
+/* Make this thread's new odh2 records carry these times instead of "now"; 0,0 resets. */
+void bdb_odh2_keep_times(uint32_t insert_secs, uint32_t update_secs);
 
 int bdb_llmeta_get_lua_sfuncs(void *sfuncs, int *bdberr);
 int bdb_llmeta_add_lua_sfunc(char *, int *, int *bdberr);
