@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Verify that an odh2 table accepts blobs larger than the odh1 256MB ceiling.
+# Mirrors blob_size_limit.test but on an init_with_odh2 table, where sizes at and
+# above 268435456 (256MB) succeed instead of failing.  comdb2_blobtest inserts,
+# reads back, deletes, re-inserts and updates the blob for each id; on success it
+# prints nothing, so out.txt should contain only the final select rows.
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+[[ -z "$dbname" ]] && failexit "dbname missing"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table if exists t"
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t { `cat t.csc2` }"
+
+(
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 1 1
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 2 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 3 100000000
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 4 268435455
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 5 268435456
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 6 300000000
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 7 536870912
+) > out.txt 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbname default \
+    "select a, length(b) from t order by a" >> out.txt
+
+if ! diff out.txt expected.txt >/dev/null ; then
+    echo "failed - unexpected output:"
+    diff expected.txt out.txt
+    exit 1
+fi
+
+# read_odh must decode every (large, odh2) record cleanly
+do_verify t
+
+echo "passed"
+exit 0

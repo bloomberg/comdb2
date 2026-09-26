@@ -72,6 +72,8 @@ typedef struct {
     uint8_t for_write;
     void *(*fn_malloc)(size_t); /* user-specified malloc function */
     void (*fn_free)(void *); /* user-specified free function */
+    uint32_t insert_secs;    /* out: odh2 data-record insert time (0 if not odh2) */
+    uint32_t update_secs;    /* out: odh2 data-record last-update time (0 if not) */
 } bdb_fetch_args_t;
 
 int bdb_fetch(bdb_state_type *bdb_handle, void *ix, int ixnum, int ixlen,
@@ -473,6 +475,8 @@ int bdb_fetch_blobs_by_rrn_and_genid_cursor(
     bdb_state_type *bdb_state, int rrn, unsigned long long genid, int numblobs,
     int *dtafilenums, size_t *blobsizes, size_t *bloboffs, void **blobptrs,
     bdb_cursor_ifn_t *cursor_parent, bdb_fetch_args_t *arg, int *bdberr);
+int bdb_fetch_odh2_times_cursor(bdb_state_type *bdb_state, unsigned long long genid, bdb_cursor_ifn_t *pparent,
+                                uint32_t *insert_secs, uint32_t *update_secs, int *bdberr);
 int bdb_fetch_blobs_by_rrn_and_genid_tran(
     bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long genid, int numblobs, int *dtafilenums, size_t *blobsizes,
