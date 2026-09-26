@@ -2278,6 +2278,9 @@ REGISTER_TUNABLE("memp_dump_cache_threshold",
 REGISTER_TUNABLE("snapcur_early_lock_release",
                  "Snapshot cursors hold a page lock only while copying the page. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_snapcur_early_lock_release, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sleep_in_overflow_walk",
+                 "Sleep this many ms mid-walk of a snapshot cursor's overflow chain. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_sleep_in_overflow_walk, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
                  "read results.  (Default: on)",

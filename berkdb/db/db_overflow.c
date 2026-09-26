@@ -59,6 +59,10 @@ static const char revid[] = "$Id: db_overflow.c,v 11.51 2003/06/30 17:19:46 bost
 #include "dbinc/mp.h"
 #include "dbinc/lock.h"
 
+#include <poll.h>
+
+int gbl_debug_sleep_in_overflow_walk = 0;
+
 /*
  * Big key/data code.
  *
@@ -209,6 +213,9 @@ __db_goff_leaf(dbc, dbp, leaf_pgno, dbt, tlen, pgno, bpp, bpsz)
 	if ((ret = __db_lget(dbc, LCK_ALWAYS, leaf_pgno, DB_LOCK_READ, 0, &lock)) != 0)
 		return (ret);
 	F_SET(dbc, DBC_SNAPCUR_LOCKED);
+	/* Test hook: stall the walk while it holds the leaf lock. */
+	if (gbl_debug_sleep_in_overflow_walk)
+		poll(NULL, 0, gbl_debug_sleep_in_overflow_walk);
 	ret = __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz);
 	F_CLR(dbc, DBC_SNAPCUR_LOCKED);
 	if ((t_ret = __LPUT(dbc, lock)) != 0 && ret == 0)

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A snapshot overflow walk holds the leaf lock (stalled 3s by lrl.options): a writer waits and the old blob is read.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/hrtime.sh
+
+db=$1
+old=$(head -c 20000 /dev/urandom | od -An -tx1 | tr -d ' \n')
+new=$(head -c 20000 /dev/urandom | od -An -tx1 | tr -d ' \n')
+
+# comdb2_locks is per-node: pin reader and lock poll to the master, where the update takes its leaf lock.
+master=$(getmaster)
+if [[ -n "$master" ]]; then tgt=(--host $master $db); else tgt=($db default); fi
+
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(id, b) values (1, x'$old')" > /dev/null
+
+stdbuf -oL cdb2sql ${CDB2_OPTIONS} "${tgt[@]}" - > reader.out 2>&1 <<SQL &
+set transaction snapshot
+begin
+select length(b) as len, b = x'$old' as isold from t1 where id = 1
+commit
+SQL
+rpid=$!
+trap 'kill $rpid 2>/dev/null || true; rm -f reader.out' EXIT
+
+# A page read lock seen on two polls in a row is the walk's leaf lock, not a transient one.
+held=0
+for i in $(seq 100); do
+    n=$(cdb2sql --tabs ${CDB2_OPTIONS} "${tgt[@]}" "select count(*) from comdb2_locks where locktype='PAGE' and mode='READ' and status='HELD'")
+    if [[ ${n:-0} -ge 1 ]]; then held=$((held + 1)); else held=0; fi
+    [[ $held -ge 2 ]] && break
+    sleep 0.1
+done
+if [[ $held -lt 2 ]]; then
+    echo "FAILED: snapshot reader never held the leaf lock during its overflow walk"
+    cat reader.out
+    exit 1
+fi
+
+st=$(timems)
+cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b = x'$new' where id = 1" > /dev/null
+el=$(( $(timems) - st ))
+echo "update took ${el}ms"
+
+rrc=0
+wait $rpid || rrc=$?
+cat reader.out
+if [[ $rrc != 0 ]]; then
+    echo "FAILED: snapshot reader exited $rrc"
+    exit 1
+fi
+if [[ $el -lt 1500 ]]; then
+    echo "FAILED: update took ${el}ms, did not wait for the walk's leaf lock"
+    exit 1
+fi
+if [[ $(grep -c "(len=20000, isold=1)" reader.out) != 1 ]]; then
+    echo "FAILED: snapshot did not read the old blob intact"
+    exit 1
+fi
+if [[ $(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select b = x'$new' from t1 where id = 1") != 1 ]]; then
+    echo "FAILED: update lost"
+    exit 1
+fi
+echo "Testcase passed."
+exit 0
