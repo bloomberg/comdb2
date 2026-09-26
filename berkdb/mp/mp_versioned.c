@@ -31,6 +31,8 @@ extern int __mempv_cache_put(DB *dbp, MEMPV_CACHE *cache, u_int8_t file_id[DB_FI
 
 typedef int (*recovery_func_t)(DB_ENV*, DBT*, DB_LSN*, db_recops, PAGE *);
 
+int gbl_snapcur_early_lock_release = 1;
+
 static long long unsigned int gbl_caller_id = 0;
 pthread_mutex_t caller_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -75,6 +77,25 @@ void __mempv_destroy(dbenv)
 	__mempv_cache_destroy(&(dbenv->mempv->cache));
 	__os_free(dbenv, dbenv->mempv);
 	dbenv->mempv = NULL;
+}
+
+/* Allocate a buffer header plus page-sized image to unroll a page copy into. */
+static int __mempv_alloc_image(DB_ENV *dbenv, size_t pgsize, BH **bhpp, PAGE **imagep,
+		long long unsigned int caller_id) {
+	int ret;
+
+	if ((ret = __os_malloc(dbenv, SSZA(BH, buf) + pgsize, (void *) bhpp)) != 0) {
+		__mempv_logmsg(LOGMSG_ERROR, caller_id, "Failed to allocate page image\n");
+		return ret;
+	}
+	*imagep = (PAGE *) (((u_int8_t *) *bhpp) + SSZA(BH, buf));
+	return 0;
+}
+
+/* Copy a buffer-pool page, header included, into an image from the above. */
+static void __mempv_copy_page(BH *bhp, PAGE *page, size_t pgsize) {
+	memcpy(bhp, ((char*)page) - offsetof(BH, buf), offsetof(BH, buf) + pgsize);
+	bhp->is_copy = 1;
 }
 
 static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t *utxnid,
@@ -154,52 +175,49 @@ done:
 
 /*
  * __mempv_fget --
- * Gets a page from the file after unrolling all modifications 
- * to the page made by transactions that committed after the target lsn.
- * Callers should never write to these pages.
- *
- * This function never modifies the actual page. "Unrolling" is done 
- * on a copy of the page.
+ * Gets a page unrolled to the cursor's snapshot lsn; under early lock release the live page is locked only while copied.
  *
  * mpf: Memory pool file.
- * dbp: Open db.
+ * dbc: Snapshot cursor (supplies dbp, locker, snapshot and checkpoint lsns).
  * pgno: Page number.
- * target_lsn: Modifications to the page made by any transaction that committed after this LSN will be unwound. 
- * last_checkpoint_lsn: Checkpoint preceding the target LSN.
  * ret_page: This gets set to point to the page at the target version.
  * flags: See `memp_fget` flags.
  *
  * PUBLIC: int __mempv_fget
- * PUBLIC:	   __P((DB_MPOOLFILE *, DB *, db_pgno_t, DB_LSN, DB_LSN, void *, u_int32_t));
+ * PUBLIC:	   __P((DB_MPOOLFILE *, DBC *, db_pgno_t, void *, u_int32_t));
  */
-int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, flags)
+int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 	DB_MPOOLFILE *mpf;
-	DB *dbp;
+	DBC *dbc;
 	db_pgno_t pgno;
-	DB_LSN target_lsn;
-	DB_LSN highest_checkpoint_lsn;
 	void *ret_page;
 	u_int32_t flags;
 {
 	recovery_func_t apply;
-	int add_to_cache, found, ret, mempv_debug;
+	int add_to_cache, found, ret, t_ret, mempv_debug, elr, copy;
 	u_int64_t utxnid;
 	int64_t smallest_logfile;
 	DB_LOGC *logc;
 	PAGE *page, *page_image;
-	DB_LSN commit_lsn;
+	DB_LSN commit_lsn, target_lsn, highest_checkpoint_lsn;
+	DB_LOCK lock;
 	DB_ENV *dbenv;
+	DB *dbp;
 	BH *bhp;
 	void *data_t;
 
-	ret = found = add_to_cache = 0;
+	ret = t_ret = found = add_to_cache = 0;
 	logc = NULL;
 	page = page_image = NULL;
 	bhp = NULL;
 	data_t = NULL;
+	LOCK_INIT(lock);
 	*(void **)ret_page = NULL;
 	DBT dbt = {0};
 	dbt.flags = DB_DBT_REALLOC;
+	dbp = dbc->dbp;
+	target_lsn = dbc->modsnap_start_lsn;
+	highest_checkpoint_lsn = dbc->last_checkpoint_lsn;
 	dbenv = mpf->dbenv;
 	mempv_debug = dbenv->attr.mempv_debug;
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
@@ -210,12 +228,53 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 	const long long unsigned int caller_id = ++gbl_caller_id;
 	Pthread_mutex_unlock(&caller_id_mutex);
 
+	elr = LOCKING_ON(dbenv) && SNAPCUR_EARLY_LOCK_RELEASE(dbc);
+	/* An overflow walk's leaf lock doesn't cover a moved item's chain: copy before checking it. */
+	copy = elr || F_ISSET(dbc, DBC_SNAPCUR_LOCKED);
+
+	/* The lock is dropped right after the copy, so copy up front; a cached version needs neither. */
+	if (copy) {
+		if ((ret = __mempv_alloc_image(dbenv, dbp->pgsize, &bhp, &page_image, caller_id)) != 0)
+			goto err;
+
+		if (!__mempv_cache_get(dbp, &dbenv->mempv->cache, mpf->fileid, pgno, target_lsn, bhp)) {
+			if (mempv_debug) {
+				__mempv_logmsg(LOGMSG_USER, caller_id, "Found target version in cache with LSN %"PRIu32":%"PRIu32"\n",
+					LSN(page_image).file, LSN(page_image).offset);
+			}
+			found = 1;
+			goto found_page;
+		}
+
+		if (elr && (ret = __db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_READ, 0, &lock)) != 0)
+			goto err;
+	}
+
 	if ((ret = __memp_fget(mpf, &pgno, flags, &page)) != 0) {
 		logmsg(LOGMSG_ERROR, "%s: Failed to get initial page version\n", __func__);
 		goto err;
 	}
 
-	const DB_LSN initial_lsn = LSN(page);
+	if (copy) {
+		__mempv_copy_page(bhp, page, dbp->pgsize);
+
+		ret = __memp_fput(mpf, page, 0);
+		page = NULL;
+		if (ret != 0) {
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Failed to return initial page version to base memory pool\n");
+			goto err;
+		}
+		if ((ret = __LPUT(dbc, lock)) != 0) {
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Failed to release the page lock after copying the page\n");
+			goto err;
+		}
+	}
+
+	/* LSN() doesn't parenthesize its argument, so the ternary needs a local. */
+	PAGE *const initial_page = copy ? page_image : page;
+	const DB_LSN initial_lsn = LSN(initial_page);
 	if (mempv_debug) {
 		__mempv_logmsg(LOGMSG_USER, caller_id,
 		"Page #%"PRIu32": initial LSN {%"PRIu32":%"PRIu32"} target LSN {%"PRIu32":%"PRIu32"} checkpoint LSN {%"PRIu32":%"PRIu32"}\n",
@@ -230,17 +289,14 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 				initial_lsn.file, initial_lsn.offset);
 		}
 		found = 1;
-		page_image = page;
+		page_image = initial_page;
 		goto found_page;
-	} else {
-		__os_malloc(dbenv, SSZA(BH, buf) + dbp->pgsize, (void *) &bhp);
-		page_image = (PAGE *) (((u_int8_t *) bhp) + SSZA(BH, buf) );
+	}
 
-		if (!page_image) {
-			__mempv_logmsg(LOGMSG_ERROR, caller_id, "Failed to allocate page image\n");
-			ret = ENOMEM;
+	/* The cursor's lock covers this access: copy only if the page has to be unrolled. */
+	if (!copy) {
+		if ((ret = __mempv_alloc_image(dbenv, dbp->pgsize, &bhp, &page_image, caller_id)) != 0)
 			goto err;
-		}
 
 		if (!__mempv_cache_get(dbp, &dbenv->mempv->cache, mpf->fileid, pgno, target_lsn, bhp)) {
 			if (mempv_debug) {
@@ -248,27 +304,22 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 					LSN(page_image).file, LSN(page_image).offset);
 			}
 			found = 1;
-
-			if ((ret = __memp_fput(mpf, page, 0)) != 0) {
-				__mempv_logmsg(LOGMSG_ERROR, caller_id,
-					"Failed to return initial page version to base memory pool\n");
-				goto err;
-			}
 		} else {
-			memcpy(bhp, ((char*)page) - offsetof(BH, buf), offsetof(BH, buf) + dbp->pgsize);
-			bhp->is_copy = 1; 
-
-			if ((ret = __memp_fput(mpf, page, 0)) != 0) {
-				__mempv_logmsg(LOGMSG_ERROR, caller_id,
-					"Failed to return initial page version to base memory pool\n");
-				goto err;
-			}
-
-			if ((ret = __log_cursor(dbenv, &logc)) != 0) {
-				__mempv_logmsg(LOGMSG_ERROR, caller_id, "Failed to create log cursor\n");
-				goto err;
-			}
+			__mempv_copy_page(bhp, page, dbp->pgsize);
 		}
+
+		ret = __memp_fput(mpf, page, 0);
+		page = NULL;
+		if (ret != 0) {
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Failed to return initial page version to base memory pool\n");
+			goto err;
+		}
+	}
+
+	if (!found && (ret = __log_cursor(dbenv, &logc)) != 0) {
+		__mempv_logmsg(LOGMSG_ERROR, caller_id, "Failed to create log cursor\n");
+		goto err;
 	}
 
 	DB_LSN current_lsn = initial_lsn;
@@ -343,6 +394,12 @@ found_page:
 	   __mempv_cache_put(dbp, &dbenv->mempv->cache, mpf->fileid, pgno, bhp, target_lsn);
 	}
 err:
+	if ((t_ret = __LPUT(dbc, lock)) != 0 && ret == 0) {
+		ret = t_ret;
+	}
+	if (ret != 0 && page != NULL) {
+		(void)__memp_fput(mpf, page, 0);
+	}
 	if (logc) {
 		__log_c_close(logc);
 	}

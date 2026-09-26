@@ -1446,7 +1446,7 @@ __ham_dup_return(dbc, val, flags)
 	 * Finally, if we had a duplicate, pp, ndx, and myval should be
 	 * set appropriately.
 	 */
-	if ((ret = __db_ret(dbp, pp, ndx, myval, &dbc->rdata->data,
+	if ((ret = __db_ret(dbc, dbp, pp, ndx, myval, &dbc->rdata->data,
 	    &dbc->rdata->ulen)) != 0)
 		return (ret);
 

@@ -2157,6 +2157,7 @@ struct __dbc {
 #define	DBC_DISCARD_PAGES 0x2000	/* Fast discard pages after reading. */
 #define	DBC_PAUSIBLE	 0x4000		/* Never considered for curadj */
 #define DBC_SNAPSHOT     0x8000         /* Cursor in snapshot mode. */
+#define DBC_SNAPCUR_LOCKED 0x10000      /* Snapshot cursor holds a covering page lock. */
 	u_int32_t flags;
 
 	int pp_allocated;   /* the owner of the cursor tracking structure */

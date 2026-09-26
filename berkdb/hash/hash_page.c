@@ -894,7 +894,7 @@ __ham_replpair(dbc, dbt, make_dup)
 		 */
 		memset(&tmp, 0, sizeof(tmp));
 		if ((ret =
-		    __db_ret(dbp, hcp->page, H_KEYINDEX(hcp->indx),
+		    __db_ret(dbc, dbp, hcp->page, H_KEYINDEX(hcp->indx),
 		    &tmp, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 			return (ret);
 
@@ -911,7 +911,7 @@ __ham_replpair(dbc, dbt, make_dup)
 			memset(&tdata, 0, sizeof(tdata));
 			memp = NULL;
 			memsize = 0;
-			if ((ret = __db_ret(dbp, hcp->page,
+			if ((ret = __db_ret(dbc, dbp, hcp->page,
 			    H_DATAINDEX(hcp->indx), &tdata, &memp, &memsize))
 			    != 0)
 				goto err;
@@ -1120,7 +1120,7 @@ __ham_split_page(dbc, obucket, nbucket)
 			goto err;
 
 		for (n = 0; n < (db_indx_t)NUM_ENT(temp_pagep); n += 2) {
-			if ((ret = __db_ret(dbp, temp_pagep,
+			if ((ret = __db_ret(dbc, dbp, temp_pagep,
 			    H_KEYINDEX(n), &key, &big_buf, &big_len)) != 0)
 				goto err;
 

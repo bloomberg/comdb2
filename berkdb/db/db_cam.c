@@ -1166,7 +1166,7 @@ done:	/*
 		    PAGEGET(dbc_arg, mpf, &cp_n->pgno, 0, &cp_n->page)) != 0)
 			goto err;
 
-		if ((ret = __db_ret(dbp, cp_n->page, cp_n->indx,
+		if ((ret = __db_ret(dbc_arg, dbp, cp_n->page, cp_n->indx,
 		    key, &dbc_arg->rkey->data, &dbc_arg->rkey->ulen)) != 0)
 			goto err;
 	}
@@ -1219,7 +1219,7 @@ done:	/*
 	} else if (!F_ISSET(data, DB_DBT_ISSET)) {
 		dbc = opd != NULL ? opd : cp_n->opd != NULL ? cp_n->opd : dbc_n;
 		type = TYPE(dbc->internal->page);
-		ret = __db_ret(dbp, dbc->internal->page, dbc->internal->indx +
+		ret = __db_ret(dbc, dbp, dbc->internal->page, dbc->internal->indx +
 		    (type == P_LBTREE || type == P_HASH ? O_INDX : 0),
 		    data, &dbc_arg->rdata->data, &dbc_arg->rdata->ulen);
 	}

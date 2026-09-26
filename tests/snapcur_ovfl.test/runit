@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+# A snapshot txn must still see the old blob after another session updates or deletes the row and reuses its pages.
+db=$1
+old=$(head -c 20000 /dev/urandom | od -An -tx1 | tr -d ' \n')
+new=$(head -c 20000 /dev/urandom | od -An -tx1 | tr -d ' \n')
+good="(len=20000, isold=1, isnew=0)"
+q() { cdb2sql ${CDB2_OPTIONS} $db default "$1" > /dev/null; }
+sel() { echo "select length(b) as len, b = x'$old' as isold, b = x'$new' as isnew from t1 where id = $1"; }
+# Snapshot session over fifos: send on fd $2, read replies on fd $3.
+open() { rm -f $1.in $1.out; mkfifo $1.in $1.out
+         stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $db default - < $1.in > $1.out 2>&1 &
+         eval "exec $2>$1.in $3<$1.out"
+         echo "set transaction snapshot" >&$2; echo "begin" >&$2; }
+# Every reply must be the old blob: the stream is positional, so a stray line would shift a stale reply into place.
+rd() { local l; read -t 30 -r -u $1 l || { echo "FAILED: $2: no reply from snapshot session"; exit 1; }
+       echo "$2: $l"; [[ "$l" == "$good" ]] || { echo "FAILED: $3"; exit 1; }; }
+cleanup() { kill $(jobs -p) 2>/dev/null; rm -f U.in U.out D.in D.out; }
+trap cleanup EXIT
+
+scenario() {   # $1 base id
+    local u=$(($1+1)) d=$(($1+9)) i
+    q "insert into t1(id, b) values ($u, x'$old')"; q "insert into t1(id, b) values ($d, x'$old')"
+    open U 3 6; open D 4 7
+    sel $u >&3; rd 6 "updated-row before" "snapshot did not read its own row"
+    sel $d >&4; rd 7 "deleted-row before" "snapshot did not read its own row"
+    q "update t1 set b = x'$new' where id = $u"
+    q "delete from t1 where id = $d"
+    for i in 2 3 4 5; do q "insert into t1(id, b) values ($(($1+i)), x'$new')"; done
+    sel $u >&3; rd 6 "updated-row after " "snapshot lost old blob after update"
+    sel $d >&4; rd 7 "deleted-row after " "snapshot lost old blob after delete+reuse"
+    echo "commit" >&3; echo "quit" >&3; echo "commit" >&4; echo "quit" >&4
+    exec 3>&- 4>&- 6<&- 7<&-; wait
+}
+
+scenario 0
+echo "Testcase passed."
+exit 0

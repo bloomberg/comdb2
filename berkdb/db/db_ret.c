@@ -28,11 +28,14 @@ static const char revid[] = "$Id: db_ret.c,v 11.24 2003/04/02 14:12:34 sue Exp $
  * __db_ret --
  *	Build return DBT.
  *
- * PUBLIC: int __db_ret __P((DB *,
+ * dbc may be NULL; a snapshot cursor makes overflow pages versioned too.
+ *
+ * PUBLIC: int __db_ret __P((DBC *, DB *,
  * PUBLIC:    PAGE *, u_int32_t, DBT *, void **, u_int32_t *));
  */
 int
-__db_ret(dbp, h, indx, dbt, memp, memsize)
+__db_ret(dbc, dbp, h, indx, dbt, memp, memsize)
+	DBC *dbc;
 	DB *dbp;
 	PAGE *h;
 	u_int32_t indx;
@@ -52,7 +55,7 @@ __db_ret(dbp, h, indx, dbt, memp, memsize)
 		hk = P_ENTRY(dbp, h, indx);
 		if (HPAGE_PTYPE(hk) == H_OFFPAGE) {
 			memcpy(&ho, hk, sizeof(HOFFPAGE));
-			return (__db_goff(NULL, dbp, dbt,
+			return (__db_goff_leaf(dbc, dbp, PGNO(h), dbt,
 			    ho.tlen, ho.pgno, memp, memsize));
 		}
 		len = LEN_HKEYDATA(dbp, h, dbp->pgsize, indx);
@@ -69,7 +72,7 @@ __db_ret(dbp, h, indx, dbt, memp, memsize)
 			ASSIGN_ALIGN(u_int32_t, tlen, bo->tlen);
 
 			ASSIGN_ALIGN(db_pgno_t, pgno, bo->pgno);
-			return (__db_goff(NULL, dbp, dbt, tlen, pgno, memp, memsize));
+			return (__db_goff_leaf(dbc, dbp, PGNO(h), dbt, tlen, pgno, memp, memsize));
 		}
 		if (bk_decompress(dbp, h, &bk, alloca(KEYBUF), KEYBUF) != 0)
 			abort();

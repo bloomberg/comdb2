@@ -932,7 +932,8 @@ __db_lget(dbc, action, pgno, mode, lkflags, lockp)
 	    !LOCKING_ON(dbenv) || F_ISSET(dbc, DBC_COMPENSATE) ||
 	    (F_ISSET(dbc, DBC_RECOVER) &&
 	    (action != LCK_ROLLBACK || IS_REP_CLIENT(dbenv))) ||
-	    (action != LCK_ALWAYS && F_ISSET(dbc, DBC_OPD))) {
+	    (action != LCK_ALWAYS &&
+	    (F_ISSET(dbc, DBC_OPD) || SNAPCUR_EARLY_LOCK_RELEASE(dbc)))) {
 		LOCK_INIT(*lockp);
 		return (0);
 	}
