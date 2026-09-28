@@ -3553,12 +3553,16 @@ static void sync_capture_blobs(BtCursor *dta, int rrn, unsigned long long genid)
            original waste for realloc churn. */
         if (blob->capacity < length || blob->capacity > 4 * length) {
             char *newz = realloc(blob->z, length);
-            if (!newz)
+            /* realloc(z, 0) frees z and returns NULL: that is the shrink we
+               asked for, not a failure -- store the NULL/0 below, or the
+               slot keeps a freed pointer that close will free again */
+            if (length > 0 && !newz)
                 continue;
             blob->z = newz;
             blob->capacity = length;
         }
-        memcpy(blob->z, blobs.blobptrs[i], length);
+        if (length)
+            memcpy(blob->z, blobs.blobptrs[i], length);
         blob->length = length;
         /* mirror fetch_blob_into_sqlite_mem's conversion exactly */
         if (f->type == SERVER_VUTF8) {
@@ -7451,7 +7455,8 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
        policy. */
     if (blob->capacity < length || blob->capacity > 4 * length) {
         char *newz = realloc(blob->z, length);
-        if (!newz)
+        /* realloc(z, 0) frees z and returns NULL -- see sync_capture_blobs() */
+        if (length > 0 && !newz)
             return 0; /* m->z is already set from the live fetch above; the
                          cache update is best-effort, leave it as it was */
         blob->z = newz;
@@ -7461,7 +7466,8 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     blob->length = length;
     blob->flags = m->flags;
     blob->genid = pCur->genid;
-    memcpy(blob->z, m->z, length);
+    if (length)
+        memcpy(blob->z, m->z, length);
     return 0;
 }
 
