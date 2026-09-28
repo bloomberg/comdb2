@@ -4374,7 +4374,7 @@ static int whereLoopAddVirtualOne(
   pIdxInfo->idxFlags = 0;
   pHidden->mHandleIn = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pIdxInfo->zTable = pSrc->pTab->zName;
+  pIdxInfo->zTable = pSrc->pSTab->zName;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Invoke the virtual table xBestIndex() method */
