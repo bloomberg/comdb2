@@ -655,6 +655,15 @@ static void increment_sc_logbytes(int64_t bytes)
     Pthread_mutex_unlock(&sc_bps_lk);
 }
 
+/* Rewritten rows keep the source's odh2 times; an odh1 source (or unknown) uses its genid time. */
+static void keep_source_times(struct dbtable *from, uint32_t insert_secs, uint32_t update_secs,
+                              unsigned long long genid, int times_known)
+{
+    if (insert_secs == 0 && (times_known || genid_contains_time(from->handle)))
+        insert_secs = update_secs = bdb_genid_timestamp(genid);
+    bdb_odh2_keep_times(insert_secs, update_secs);
+}
+
 /* converts a single record and prepares for the next one
  * should be called from a while loop
  * param data: pointer to all the state information
@@ -670,6 +679,8 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
     int no_wait_rowlock = 0;
     int64_t estimate = 0;
+    uint32_t src_insert_secs = 0, src_update_secs = 0;
+    int src_times_known = 0;
 
     if (debug_switch_convert_record_sleep())
         sleep(5);
@@ -750,14 +761,13 @@ static int convert_record(struct convert_record_data *data)
 
     if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         if (data->scanmode == SCAN_PARALLEL) {
-            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                           data->dta_buf, data->trans, data->from->lrl, &dtalen,
-                           NULL);
+            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1, data->dta_buf, data->trans,
+                           data->from->lrl, &dtalen, NULL, &src_insert_secs, &src_update_secs);
         } else {
-            rc = dtas_next_pageorder(
-                &data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                data->dta_buf, data->trans, data->from->lrl, &dtalen, NULL);
+            rc = dtas_next_pageorder(&data->iq, data->sc_genids, &genid, &data->stripe, 1, data->dta_buf, data->trans,
+                                     data->from->lrl, &dtalen, NULL, &src_insert_secs, &src_update_secs);
         }
+        src_times_known = 1;
 
 #ifdef LOGICAL_LIVESC_DEBUG
         logmsg(LOGMSG_DEBUG, "(%u) %s rc=%d genid %llx (%llu)\n", (unsigned int)pthread_self(), __func__, rc, genid,
@@ -1058,6 +1068,7 @@ static int convert_record(struct convert_record_data *data)
             }
         }
 
+        keep_source_times(data->from, src_insert_secs, src_update_secs, genid, src_times_known);
         rc = add_record(
             &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
             p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,
@@ -1066,6 +1077,7 @@ static int convert_record(struct convert_record_data *data)
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
             addflags, 0);
+        bdb_odh2_keep_times(0, 0);
 
         if (rc && rc != RC_INTERNAL_RETRY) {
             logmsg(LOGMSG_ERROR, "Failed to add record %llx (%lld) in migration %s->%s rc %d\n", ngenid, ngenid,
@@ -1721,6 +1733,8 @@ static int upgrade_records(struct convert_record_data *data)
     int dtalen = 0;
     unsigned long long genid = 0;
     int recver;
+    uint32_t src_insert_secs = 0, src_update_secs = 0;
+    int src_times_known = 0;
     uint8_t *p_buf_data, *p_buf_data_end;
     u_int64_t logbytes = 0;
     db_seqnum_type ss;
@@ -1760,10 +1774,12 @@ static int upgrade_records(struct convert_record_data *data)
          rc == RC_INTERNAL_RETRY && nretries++ != gbl_maxretries;) {
 
         if (data->nrecs > 0 || data->sc_genids[data->stripe] == 0) {
-            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe,
-                           data->scanmode == SCAN_PARALLEL, data->dta_buf,
-                           data->trans, data->from->lrl, &dtalen, &recver);
+            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, data->scanmode == SCAN_PARALLEL,
+                           data->dta_buf, data->trans, data->from->lrl, &dtalen, &recver, &src_insert_secs,
+                           &src_update_secs);
+            src_times_known = 1;
         } else {
+            src_times_known = 0;
             genid = data->sc_genids[data->stripe];
             rc = ix_find_ver_by_rrn_and_genid_tran(
                 &data->iq, 2, genid, data->dta_buf, &dtalen, data->from->lrl,
@@ -1811,9 +1827,11 @@ static int upgrade_records(struct convert_record_data *data)
         // rewrite the record if not ondisk version
         p_buf_data = (uint8_t *)data->dta_buf;
         p_buf_data_end = p_buf_data + data->from->lrl;
+        keep_source_times(data->from, src_insert_secs, src_update_secs, genid, src_times_known);
         rc = upgrade_record(&data->iq, data->trans, genid, p_buf_data,
                             p_buf_data_end, &opfailcode, &ixfailnum,
                             BLOCK2_UPTBL, 0);
+        bdb_odh2_keep_times(0, 0);
     }
 
     // handle rc
@@ -2222,7 +2240,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
     int blbix = 0;
 
     if (!data->blb_buf) {
-        data->blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+        data->blb_buf = malloc(max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE);
         if (!data->blb_buf) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                    __func__, __LINE__);
@@ -2276,9 +2294,9 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             }
 
             /* Reconstruct the add. */
-            if ((rc = bdb_reconstruct_add(
-                     bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
-                     MAXBLOBLENGTH + ODH_SIZE, &dtalen, &ixlen)) != 0) {
+            if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
+                                          max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE, &dtalen, &ixlen)) !=
+                0) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
                        __func__, __LINE__, rc);
                 goto error;
@@ -2334,7 +2352,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
         case DB_llog_undo_upd_dta:
         case DB_llog_undo_upd_dta_lk:
             if (!data->old_blb_buf) {
-                data->old_blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+                data->old_blb_buf = malloc(max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE);
                 if (!data->old_blb_buf) {
                     logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                            __func__, __LINE__);
@@ -2371,7 +2389,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     bdb_state, &rec->lsn, data->old_blb_buf, &prevlen,
                     data->blb_buf, &updlen, NULL, NULL, NULL);
             } else {
-                prevlen = updlen = MAXBLOBLENGTH + ODH_SIZE;
+                prevlen = updlen = max_blob_length_for_table(data->from) + ODH_SIZE_RESERVE;
                 rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
                                             NULL, NULL, data->old_blb_buf,
                                             &prevlen, NULL, NULL, data->blb_buf,
@@ -2442,8 +2460,8 @@ static int unpack_and_upgrade_ondisk_record(struct convert_record_data *data,
                                             void *unpack, struct odh *odh)
 {
     int rc = 0;
-    if ((rc = bdb_unpack(data->from->handle, dta, *dtalen, unpack,
-                         data->from->lrl + ODH_SIZE, odh, NULL)) != 0) {
+    if ((rc = bdb_unpack(data->from->handle, dta, *dtalen, unpack, data->from->lrl + ODH_SIZE_RESERVE, odh, NULL)) !=
+        0) {
         logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n", __func__,
                __LINE__, rc);
         return rc;
@@ -2559,7 +2577,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_dta_lk_args *add_dta_lk = NULL;
 
-    dtalen = data->from->lrl + ODH_SIZE;
+    dtalen = data->from->lrl + ODH_SIZE_RESERVE;
     brecs.genid = rec->genid;
     pbrecs = hash_find(data->blob_hash, &brecs);
     if (pbrecs) {
@@ -2612,6 +2630,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
                __func__, __LINE__, rc);
         goto done;
     }
+    keep_source_times(data->from, data->odh.insert_secs, data->odh.update_secs, genid, 1);
 
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG, "dtalen %d\n", dtalen);
@@ -2730,6 +2749,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     }
 
 done:
+    bdb_odh2_keep_times(0, 0);
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
@@ -2956,7 +2976,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     } else {
         unsigned long long prevgenid, newgenid;
         int prevgenidlen, newgenidlen;
-        prevlen = updlen = data->from->lrl + ODH_SIZE;
+        prevlen = updlen = data->from->lrl + ODH_SIZE_RESERVE;
         prevgenidlen = newgenidlen = sizeof(unsigned long long);
         rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
                                     &prevgenid, &prevgenidlen,
@@ -2988,6 +3008,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
                __func__, __LINE__, rc);
         goto done;
     }
+    keep_source_times(data->from, data->odh.insert_secs, data->odh.update_secs, genid, 1);
 
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG, "%s:%d old dtalen %d\n", __func__, __LINE__, prevlen);
@@ -3137,6 +3158,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     }
 
 done:
+    bdb_odh2_keep_times(0, 0);
 #ifdef LOGICAL_LIVESC_DEBUG
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "
@@ -3568,10 +3590,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     }
 
     listc_init(&data->redo_lsns, offsetof(struct redo_genid_lsns, linkv));
-    data->dta_buf = malloc(data->from->lrl + ODH_SIZE);
-    data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
-    data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE);
-    data->unpack_old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
+    data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
+    data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
+    data->unpack_old_dta_buf = malloc(data->from->lrl + ODH_SIZE_RESERVE);
     data->blb_buf = NULL;
     data->old_blb_buf = NULL;
     if (!data->dta_buf || !data->old_dta_buf || !data->unpack_dta_buf ||
