@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Exercise the cursor blob cache shrink tunables (blob_cache_shrink,
+# blob_cache_shrink_ratio, blob_cache_shrink_floor_kb).
+#
+# One 8MB blob row followed by ten 1KB rows.  A scan caches the 8MB row first,
+# so the 1KB row after it decides whether that buffer is shrunk, and to what.
+# The cache only lives as long as the scan's cursor, so rather than sample
+# process memory mid-query we read the comdb2_metrics counters that move only
+# when a slot shrinks: blob_cache_shrinks and blob_cache_shrunk_bytes.  Their
+# delta across one scan is exactly how much memory the policy gave back.
+#
+# Tunables and metrics are both per node, so everything runs against one host.
+
+dbnm=$1
+set -e
+
+BIG=8388608 # 8MB
+SMALL=1024
+NSMALL=10
+KB=1024
+MB=1048576
+
+if [[ -n "$CLUSTER" ]] ; then
+    node=$(echo $CLUSTER | awk '{print $1}')
+    sql() { cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "$@" ; }
+else
+    sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "$@" ; }
+fi
+
+metric() { sql "select cast(value as integer) from comdb2_metrics where name='$1'" ; }
+tunable() { sql "put tunable '$1' $2" > /dev/null ; }
+
+sql "create table t(a int, b blob)" > /dev/null
+sql "insert into t values(1, zeroblob($BIG))" > /dev/null
+for i in $(seq 2 $((NSMALL + 1))) ; do
+    echo "insert into t values($i, zeroblob($SMALL))"
+done | sql - > /dev/null
+
+# Precondition: the scan must see the big row first, or nothing after it can
+# trigger a shrink and every expectation below is wrong for a reason unrelated
+# to the code under test.
+assertres "$(sql 'select group_concat(a) from (select a from t)')" "$(seq -s, 1 $((NSMALL + 1)))" \
+    "scan order -- the 8MB row must be read first"
+
+# Scan once, check the data survived, and assert the shrink counters moved by
+# exactly the expected amounts.
+check() {
+    local what=$1 want_shrinks=$2 want_bytes=$3
+    local s0 b0 s1 b1 total
+    s0=$(metric blob_cache_shrinks)
+    b0=$(metric blob_cache_shrunk_bytes)
+    total=$(sql "select sum(length(b)) from t")
+    s1=$(metric blob_cache_shrinks)
+    b1=$(metric blob_cache_shrunk_bytes)
+    assertres "$total" "$((BIG + NSMALL * SMALL))" "$what: blob data read back"
+    assertres "$((s1 - s0))" "$want_shrinks" "$what: blob_cache_shrinks"
+    assertres "$((b1 - b0))" "$want_bytes" "$what: blob_cache_shrunk_bytes"
+    echo "ok  $what: shrinks=$((s1 - s0)) freed=$((b1 - b0))"
+}
+
+# Defaults: 8MB > 4 * 1MB, so shrink -- to the 1MB floor, not to the 1KB row.
+# The 1KB rows after it leave the 1MB buffer alone (1MB is not > 4MB).
+check "defaults (ratio 4, floor 1MB)" 1 $((BIG - MB))
+
+# Switched off: buffers only grow, the 8MB stays for the whole scan.
+tunable blob_cache_shrink 0
+check "blob_cache_shrink off" 0 0
+tunable blob_cache_shrink 1
+
+# Large settings keep the memory.  Floor 4MB: shrinking needs > 4 * 4MB.
+tunable blob_cache_shrink_floor_kb 4096
+check "floor 4MB (needs > 16MB)" 0 0
+tunable blob_cache_shrink_floor_kb 1024
+
+# Ratio 16: shrinking needs > 16 * 1MB.
+tunable blob_cache_shrink_ratio 16
+check "ratio 16 (needs > 16MB)" 0 0
+
+# Ratio 0 never shrinks.
+tunable blob_cache_shrink_ratio 0
+check "ratio 0" 0 0
+tunable blob_cache_shrink_ratio 4
+
+# Low settings free more.  Floor 64KB, ratio 2: shrink to the 64KB floor.
+tunable blob_cache_shrink_floor_kb 64
+tunable blob_cache_shrink_ratio 2
+check "floor 64KB, ratio 2" 1 $((BIG - 64 * KB))
+tunable blob_cache_shrink_ratio 4
+
+# Floor 0 is the old behaviour: shrink all the way down to the 1KB row.
+tunable blob_cache_shrink_floor_kb 0
+check "floor 0 (old behaviour)" 1 $((BIG - SMALL))
+
+tunable blob_cache_shrink_floor_kb 1024
+echo "Success"
