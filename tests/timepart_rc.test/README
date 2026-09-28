@@ -1,0 +1,5 @@
+Test transactions that write the same row of a time partition more than once
+(update/update, insert/update, insert/delete, update/delete, ...) under read
+committed and snapshot isolation; results must match the same transactions
+on a plain table.  Also covers a transaction that updates rows in two shards
+of a manual partition, which must not modify a row in the other shard.

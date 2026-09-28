@@ -160,6 +160,9 @@ typedef struct osqlstate {
 
     /* storage for shadow tables created by offloading */
     LISTC_T(struct shad_tbl) shadtbls;
+    /* next synthetic genid seq; shared by all shadtbls so a synthetic genid
+       is unique across tables (time partition triggers probe every shard) */
+    unsigned long long shadtbl_seq;
 
     /* storage for dbq's shadtbl */
     shadbq_t shadbq;

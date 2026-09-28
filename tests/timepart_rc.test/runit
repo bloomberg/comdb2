@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbname=$1
+cmd="cdb2sql ${CDB2_OPTIONS} $dbname default"
+starttime=$(get_timestamp 120)
+
+$cmd "create table plain(a int primary key, b int)" || exit 1
+$cmd "CREATE TABLE tp(a int primary key, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" || exit 1
+sleep 3
+
+fail=0
+declare -A expected
+function run
+{
+    local iso=$1 tbl=$2 name=$3; shift 3
+    $cmd "delete from $tbl where 1" >/dev/null
+    $cmd "insert into $tbl values(1,1)" >/dev/null
+    local sql="set transaction $iso
+begin
+$*
+commit
+select * from $tbl order by a"
+    out=$(echo "$sql" | $cmd - 2>&1)
+    rc=$?
+    echo "=== $iso $tbl $name rc=$rc"
+    echo "$out"
+    if (( rc != 0 )); then fail=1; fi
+    rows=$(echo "$out" | grep "^(a=")
+    if [[ $tbl == plain ]]; then
+        expected["$iso $name"]="$rows"
+    elif [[ "$rows" != "${expected["$iso $name"]}" ]]; then
+        echo "FAIL $iso $tbl $name: got '$rows' expected '${expected["$iso $name"]}'"
+        fail=1
+    fi
+}
+
+for iso in "read committed" "snapshot isolation"; do
+for t in plain tp; do
+run "$iso" $t upd_upd "update $t set b=2 where a=1
+update $t set b=3 where a=1"
+run "$iso" $t ins_upd "insert into $t values(2,2)
+update $t set b=20 where a=2"
+run "$iso" $t ins_del "insert into $t values(2,2)
+delete from $t where a=2"
+run "$iso" $t upd_del "update $t set b=2 where a=1
+delete from $t where a=1"
+run "$iso" $t ins_upd_upd "insert into $t values(2,2)
+update $t set b=20 where a=2
+update $t set b=30 where a=2"
+run "$iso" $t del_ins "delete from $t where a=1
+insert into $t values(1,5)"
+run "$iso" $t upd_sel "update $t set b=7 where a=1
+select * from $t where a=1"
+done
+done
+
+# synthetic genids must not collide across shards
+$cmd "create table mp(a int, b int) partitioned by manual retention 3 start 1" || exit 1
+$cmd "insert into mp values(1,1)" || exit 1
+$cmd "put counter mp set 1" || exit 1
+sleep 10
+$cmd "insert into mp values(2,2)" || exit 1
+$cmd "select a, b from mp order by a"
+for iso in "read committed" "snapshot isolation"; do
+    $cmd "update mp set b=1 where a=1"
+    $cmd "update mp set b=2 where a=2"
+    $cmd "delete from mp where a>2"
+    out=$(echo "set transaction $iso
+begin
+update mp set b=10 where a=1
+update mp set b=20 where a=2
+update mp set b=11 where a=1
+commit
+select a, b from mp order by a" | $cmd - 2>&1)
+    echo "=== $iso mp cross_shard rc=$?"
+    echo "$out"
+    exp=$(printf "(a=1, b=11)\n(a=2, b=20)")
+    got=$(echo "$out" | grep "^(a=")
+    if [[ "$got" != "$exp" ]]; then echo "FAIL cross shard: $got"; fail=1; fi
+done
+exit $fail

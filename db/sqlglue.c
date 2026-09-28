@@ -5980,7 +5980,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
 
         if (is_genid_synthetic(genid)) {
             rc = osql_get_shadowdata(pCur, genid, &buf, &fndlen, &bdberr);
-            if (rc) {
+            if (rc && rc != IX_NOTFND) {
                 logmsg(LOGMSG_ERROR, 
                         "%s: error fetching shadow data for genid %llu\n",
                         __func__, genid);

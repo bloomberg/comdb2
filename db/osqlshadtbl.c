@@ -442,6 +442,13 @@ static int idx_tbl_cmp(void *usermem, int key1len, const void *key1,
     return 0;
 }
 
+static unsigned long long alloc_seq(struct sqlclntstate *clnt)
+{
+    unsigned long long seq = clnt->osql.shadtbl_seq;
+    clnt->osql.shadtbl_seq = increment_seq(seq);
+    return seq;
+}
+
 static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
                                   struct sqlclntstate *clnt)
 {
@@ -456,7 +463,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     if (!tbl)
         return NULL;
 
-    tbl->seq = 0;
+    tbl->seq = alloc_seq(clnt);
     tbl->env = env;
     strncpy0(tbl->tablename, db->tablename, sizeof(tbl->tablename));
     tbl->tableversion = db->tableversion;
@@ -692,6 +699,10 @@ int osql_get_shadowdata(BtCursor *pCur, unsigned long long genid, void **buf,
 
     rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->add_cur, &genid,
                                    sizeof(genid), bdberr);
+    if (rc == IX_NOTFND || rc == IX_EMPTY) {
+        /* not in this table; time partition triggers probe every shard */
+        return IX_NOTFND;
+    }
     if (rc != IX_FND) {
         return -1;
     }
@@ -1154,7 +1165,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             (void *) pthread_self(), rc, pCur->genid);
 #endif
 
-    tbl->seq = increment_seq(tbl->seq);
+    tbl->seq = alloc_seq(thd->clnt);
 
     return 0;
 }
@@ -1232,8 +1243,7 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
-    tbl->seq = increment_seq(tbl->seq);
-    /*++tbl->seq;*/
+    tbl->seq = alloc_seq(thd->clnt);
 
     thd->clnt->osql.dirty = 1;
 
