@@ -1499,8 +1499,8 @@ struct ireq {
     int comdbg_flags;
     int64_t timestamp;
     void (*ipc_sndbak)(struct ireq *, int rc, int len);
-    // note: these are transient: they are valid when the ireq is being used
-    // in an inline call to handle_buf
+    // note: these are transient: they are valid only while the ireq is
+    // being handled
     void *authdata;
     char *argv0;
     char *origin_argv0;
@@ -2020,13 +2020,10 @@ int handle_buf_main(
                      // type
     int luxref, unsigned long long rqid, void (*iq_setup_func)(struct ireq*, void *setup_data));
 
-int handle_buf_main2(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf,
-                     const uint8_t *p_buf_end, int debug, char *frommach,
-                     int frompid, char *fromtask, osql_sess_t *sorese,
-                     int qtype, void *data_hndl, int luxref,
-                     unsigned long long rqid, void *p_sinfo, intptr_t curswap,
-                     int comdbg_flags, void (*iq_setup_func)(struct ireq*, void *setup_data), 
-                     void *setup_data, int doinline, void* authdata);
+int handle_buf_main2(struct dbenv *dbenv, COMDB2BUF *sb, const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                     char *frommach, int frompid, char *fromtask, osql_sess_t *sorese, int qtype, void *data_hndl,
+                     int luxref, unsigned long long rqid, void *p_sinfo, intptr_t curswap, int comdbg_flags,
+                     void (*iq_setup_func)(struct ireq *, void *setup_data), void *setup_data, void *authdata);
 
 int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach); /* 040307dh: 64bits */
