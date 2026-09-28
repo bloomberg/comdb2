@@ -236,6 +236,51 @@ I started tracking this when I got to more important files (`where.c`,
   before text and blobs). Any test whose expected output recorded the old
   result will now fail. We can't run tests until the tree builds.
 
+- **TODO**: Build SQLite as the amalgamation, and benchmark the workloads that
+  lose inlining.
+
+  Upstream builds a single `sqlite3.c` from `src/*.c` with
+  `tool/mksqlite3c.tcl`. We compile each file separately instead, and we
+  make up for the lost inlining with `tool/mkvdbeauxinlines.tcl`, which
+  copies the comparison code from `vdbeaux.c` into `serialget.c`,
+  `memcompare.c` and `vdbecompare.c` for other files to `#include`. With the
+  amalgamation, we can delete the script, the `START_INLINE_*`/`END_INLINE_*`
+  markers in `vdbeaux.c`, the `#include`s of the generated files (in
+  `expr.c`, `analyze.c`, `vdbesort.c`, `vdbemem.c`, `vdbe.c`, `where.c`,
+  `func.c`, `db/sqlglue.c` and `db/dohsql.c`), and their rules in
+  `CMakeLists.txt`.
+
+  One thing to watch: the amalgamation defines `SQLITE_PRIVATE` as `static`
+  unless it is already defined, but `db/` and `ext/comdb2` call many
+  `SQLITE_PRIVATE` functions. We will have to define it as empty.
+
+  See the `sqlite3IntFloatCompare()` DECISION under `vdbeaux.c` for why the
+  callers in `db/` probably won't miss the inlining. Compare three builds
+  (before the `sqlite3IntFloatCompare()` change, after it, and with the
+  amalgamation) on workloads like these:
+
+  - Mixed integer and real comparisons (what the `sqlite3IntFloatCompare()`
+    change affects): `WHERE intcol < 1.5` over a large table without an
+    index, a seek on an integer index with a real key, and `ORDER BY` on a
+    column that holds both integers and reals.
+  - Temp-table sorts and lookups, the one real hot loop in `db/`: `ORDER BY`
+    or `GROUP BY` on a column without an index, `SELECT DISTINCT`, `UNION`,
+    large `IN (...)` lists, and subqueries or joins that build a temporary
+    index. Use a large table with multi-column keys, so every comparison has
+    to unpack a record.
+  - Seeks with a truncated key: find-by-truncate turned on, and an equality
+    or range lookup on an indexed string column with a search string longer
+    than the column, over many rows that share the same prefix.
+  - Parallel `UNION ALL` with `ORDER BY` (`db/dohsql.c`), with several
+    shards and many rows each.
+  - Remote-table seeks (`cursor_find_remote()`), only to confirm there is no
+    difference, since the network should dominate.
+
+  If the `db/` callers do turn out to matter, link-time optimisation can
+  inline across files: `-flto` with gcc on Linux, and `-xipo=2` together
+  with `-xipo_archive=readonly` with Studio `cc` on Solaris. gcc's `-flto`
+  doesn't work on Solaris, because the Solaris linker has no LTO plugin.
+
 ## Observations and Decisions
 
 ### General
@@ -884,6 +929,56 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
   alongside `MEM_Int`, or it reads the wrong field. No such value can reach
   this code until `vdbe.c` is merged, because all the code that sets that flag
   is in `vdbe.c`.
+
+- **DECISION**: Leave `sqlite3IntFloatCompare()` out of the `MEMCOMPARE`
+  inline region, so it isn't copied into the generated `memcompare.c`.
+
+  Upstream made the function public in 3.51: `vdbeInt.h` declares it, because
+  `vdbe.c` now calls it directly. `tool/mkvdbeauxinlines.tcl` makes every
+  function in an inline region `static inline`, and a `static` definition
+  after a public declaration doesn't compile. We end the region just before
+  the function and start it again just after. That keeps `vdbeInt.h` and the
+  function itself the same as stock SQLite; only our own marker lines change.
+  The debug-only helpers `doubleLt()` and `doubleEq()` move out with it,
+  because nothing else uses them.
+
+  The cost is that our copies of `sqlite3MemCompare()` and the record
+  comparison functions now call it as an ordinary function instead of
+  inlining it. That only happens when an integer is compared with a real.
+
+  The inline copies exist only because we compile SQLite one file at a time,
+  and a compiler can't inline across files. Upstream normally builds the
+  amalgamation, a single `sqlite3.c`, where it can. Once we build the
+  amalgamation too (see the TODO), the compiler inlines these functions
+  everywhere inside SQLite without our copies, which gets back most of what
+  we lose here.
+
+  The amalgamation won't inline anything into the callers in `db/`, because
+  they are outside SQLite. Inlining is unlikely to matter much to them. It
+  only saves one function call per comparison, because the comparison
+  function's own helpers are inlined inside it either way, and every caller
+  does much more expensive work around each comparison:
+
+  - `sqlite3VdbeCompareRecordPacked()` / `temp_table_cmp()` in
+    `db/sqlglue.c`: the comparison function for temp tables. It runs for
+    every comparison while a temp table is built or searched, so it is the
+    only real hot loop. But `bdb` calls it through a function pointer, which
+    can't be inlined anyway, and in the packed-key case each call also
+    allocates, unpacks and frees a record.
+  - `sqlite3BtreeMovetoUnpacked()` in `db/sqlglue.c`, temp-table branch: one
+    comparison per seek, after a `bdb_temp_table_find()` that costs far
+    more.
+  - `sqlite3BtreeMovetoUnpacked()` in `db/sqlglue.c`, truncated-key branch,
+    and `bias_cmp()`, which `bdb/cursor.c` calls during the same kind of
+    seek: these only run when a string in the search key is longer than the
+    index column and find-by-truncate is on. The normal path uses `memcmp()`.
+    `bias_cmp()` also converts the row from comdb2's on-disk format before
+    every comparison.
+  - `cursor_find_remote()` in `db/sqlglue.c`: seeks on remote tables. The
+    network round trip dominates.
+  - `_cmp()` in `db/dohsql.c`: merges the ordered results of a parallel
+    `UNION ALL`, one comparison per row per `ORDER BY` column. It holds a
+    queue lock while it compares.
 
 ### `vdbeInt.h`
 
