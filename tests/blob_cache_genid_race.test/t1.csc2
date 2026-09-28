@@ -1,0 +1,15 @@
+schema
+{
+    int id
+    blob data
+}
+
+keys
+{
+    "id" = id
+}
+
+constraints
+{
+    "id_uc" unique on id
+}

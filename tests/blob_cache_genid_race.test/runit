@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+echo "=== Creating table ==="
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (id INT PRIMARY KEY, data BLOB)" 2>&1
+
+echo "=== Inserting test data ==="
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(1, x'aaaa')" 2>&1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(2, x'bbbb')" 2>&1
+
+echo "=== Phase 1: Initial fetch (cache population) ==="
+cdb2sql ${CDB2_OPTIONS} $dbnm default "SELECT id, LENGTH(data) FROM t1 ORDER BY id" 2>&1
+
+echo ""
+echo "=== Phase 2: Update rows (trigger new genids) ==="
+cdb2sql ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET data = x'cccccccc' WHERE id = 1" 2>&1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET data = x'dd' WHERE id = 2" 2>&1
+
+echo ""
+echo "=== Phase 3: Multiple fetches (stale cache realloc) ==="
+for i in {1..5}; do
+    echo "Fetch cycle $i:"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "SELECT id, LENGTH(data) FROM t1 ORDER BY id" 2>&1 | tail -2
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET data = x'$(printf '%010x' $i)' WHERE id = 1" 2>&1
+done
+
+echo ""
+echo "=== Final verification ==="
+cdb2sql ${CDB2_OPTIONS} $dbnm default "SELECT COUNT(*) FROM t1" 2>&1
+
+do_verify t1
+
+echo ""
+echo "=== SUCCESS: Test completed without crashes ==="

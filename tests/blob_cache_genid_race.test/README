@@ -1,0 +1,24 @@
+# Blob Cache Genid Race Test
+
+Tests the fix for DRQS 186370451: use-after-free crash when blob cache entry
+becomes stale due to genid change.
+
+## Crash scenario
+
+1. Row with genid A is fetched, blob is cached
+2. Row is updated (new genid B)
+3. Same row is fetched again (different genid)
+4. Without fix: realloc() crashes trying to reallocate stale pointer from genid A
+5. With fix: blob cache entry is reset, realloc allocates fresh memory
+
+## Test flow
+
+- Insert rows with blob data
+- Fetch blobs (populates cache)
+- Update rows (new genids)
+- Fetch again (should not crash)
+- Repeat multiple times to increase race probability
+
+## Expected result
+
+Test completes successfully without dlmalloc abort or segfault.

@@ -7347,6 +7347,7 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
             m->flags = blob->flags;
             return 0;
         }
+        blob->z = NULL; /* stale cache entry for a different genid; realloc will allocate fresh */
     }
 
     struct ireq iq;
