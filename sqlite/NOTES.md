@@ -489,6 +489,38 @@ I started tracking this when I got to more important files (`where.c`,
   our rows are there, including `SQLITE_AFF_FLEXNUM`, which arrived with the
   new `sqliteInt.h` after the table was last extended.
 
+### `func.c`
+
+- **DECISION**: In `substrFunc()`, use upstream's code and define
+  `SQLITE_SUBSTR_COMPATIBILITY=1` in `definitions.cmake`, instead of keeping
+  comdb2's `if (p1 == 0) p1 = 1;` line.
+
+  comdb2 makes `substr(X,0,N)` return the first N characters of X, the same as
+  `substr(X,1,N)`. Upstream's `SQLITE_SUBSTR_COMPATIBILITY` option does exactly
+  this.
+
+  Keeping comdb2's line would have changed the result for a NULL start
+  position. Upstream now checks for a NULL start only when the start position
+  is 0, so comdb2's line would change the 0 to 1 before that check ran, and
+  `substr('abc', NULL)` would return `'abc'` instead of NULL. Upstream's option
+  does the change after the check, so a NULL start still returns NULL.
+
+  Because of the define, `SUBSTR_COMPATIBILITY` now appears in
+  `PRAGMA compile_options`.
+
+- **OBSERVATION**: In `sumStep()`, comdb2's branch for `decimal` values has to
+  come before upstream's code, not after it.
+
+  Upstream now wraps its integer and real handling in `if( p->approx==0 )`.
+  Git merged comdb2's `else if( type==SQLITE_DECIMAL )` branch without a
+  conflict, but attached it to that new `if`, so it only ran after `approx`
+  was set. The first decimal value then went into the double sum instead of
+  `decSum`. `sumFinalize()` checks `approx` before `decs`, so `sum()` of the
+  decimals 1.1, 2.2 and 3.3 returned 1.1 as a double.
+
+  The decimal branch now runs first, so a decimal value only ever changes
+  `decSum`, as it did in 3.28.
+
 ### `fwd_types.h`
 
 - I guess we need to be able to refer to some SQLite structures in `db/` code.
