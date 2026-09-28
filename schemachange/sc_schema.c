@@ -358,6 +358,11 @@ int set_header_and_properties(void *tran, struct dbtable *newdb,
         return SC_TRANSACTION_FAILED;
     }
 
+    if (put_db_odh2(newdb, tran, newdb->odh2)) {
+        sc_errf(s, "Failed to set odh2 in meta\n");
+        return SC_TRANSACTION_FAILED;
+    }
+
     if (IS_FASTINIT(s) || s->force_rebuild || newdb->instant_schema_change) {
         if (put_db_datacopy_odh(newdb, tran, 1)) {
             sc_errf(s, "Failed to set datacopy odh in meta\n");
@@ -1061,11 +1066,11 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
     get_db_inplace_updates_tran(db, &db->inplace_updates, tran);
     get_db_compress_tran(db, &compr, tran);
     get_db_compress_blobs_tran(db, &blob_compr, tran);
+    get_db_odh2_tran(db, &db->odh2, tran);
     db->schema_version = get_csc2_version_tran(db->tablename, tran);
 
-    set_bdb_option_flags(db, db->odh, db->inplace_updates,
-                         db->instant_schema_change, db->schema_version, compr,
-                         blob_compr, datacopy_odh);
+    set_bdb_option_flags(db, db->odh, db->inplace_updates, db->instant_schema_change, db->schema_version, compr,
+                         blob_compr, datacopy_odh, db->odh2);
 
     /*
     if (db->schema_version < 0)

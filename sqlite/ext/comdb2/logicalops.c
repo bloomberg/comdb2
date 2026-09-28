@@ -35,8 +35,6 @@
 #include "comdb2systbl.h"
 #include "sqliteInt.h"
 
-/* Allocate maximum for unpacking */
-#define PACKED_MEMORY_SIZE (MAXBLOBLENGTH + 7)
 
 /* Column numbers */
 #define LOGICALOPS_COLUMN_START        0
@@ -72,6 +70,8 @@ struct logicalops_cursor {
   void *unpackedprev;
   void *packed;
   void *unpacked;
+  int packedcap;      /* allocated size of packed (grows on demand) */
+  int packedprevcap;  /* allocated size of packedprev */
   strbuf *jsonrec;
   strbuf *oldjsonrec;
   struct dbtable *db;
@@ -133,11 +133,11 @@ static int logicalopsClose(sqlite3_vtab_cursor *cur){
   if (pCur->curLsnStr)
       sqlite3_free(pCur->curLsnStr);
   if (pCur->packed)
-      sqlite3_free(pCur->packed);
+      free(pCur->packed);
   if (pCur->unpacked)
       sqlite3_free(pCur->unpacked);
   if (pCur->packedprev)
-      sqlite3_free(pCur->packedprev);
+      free(pCur->packedprev);
   if (pCur->unpackedprev)
       sqlite3_free(pCur->unpackedprev);
   if (pCur->jsonrec)
@@ -150,18 +150,35 @@ static int logicalopsClose(sqlite3_vtab_cursor *cur){
   return SQLITE_OK;
 }
 
-static void *retrieve_packed_memory_prev(logicalops_cursor *pCur)
+/* Grow packedprev/packed to 'need' bytes; plain realloc as sqlite's allocator caps below ~2GB. */
+static void *retrieve_packed_memory_prev(logicalops_cursor *pCur, int need)
 {
-    if (pCur->packedprev == NULL) {
-        pCur->packedprev = sqlite3_malloc(PACKED_MEMORY_SIZE);
+    if (need < 1)
+        need = 1;
+    if (need > MAXBLOBLENGTH2 + ODH_SIZE_RESERVE)
+        return NULL;
+    if (pCur->packedprev == NULL || pCur->packedprevcap < need) {
+        void *p = realloc(pCur->packedprev, need);
+        if (p == NULL)
+            return NULL;
+        pCur->packedprev = p;
+        pCur->packedprevcap = need;
     }
     return pCur->packedprev;
 }
 
-static void *retrieve_packed_memory(logicalops_cursor *pCur)
+static void *retrieve_packed_memory(logicalops_cursor *pCur, int need)
 {
-    if (pCur->packed == NULL) {
-        pCur->packed = sqlite3_malloc(PACKED_MEMORY_SIZE);
+    if (need < 1)
+        need = 1;
+    if (need > MAXBLOBLENGTH2 + ODH_SIZE_RESERVE)
+        return NULL;
+    if (pCur->packed == NULL || pCur->packedcap < need) {
+        void *p = realloc(pCur->packed, need);
+        if (p == NULL)
+            return NULL;
+        pCur->packed = p;
+        pCur->packedcap = need;
     }
     return pCur->packed;
 }
@@ -534,7 +551,6 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         pCur->table = strdup((char *)(upd_dta->table.data));
     }
 
-    assert(dtalen <= PACKED_MEMORY_SIZE);
     ASSERT_PARAMETER(dtalen);
     genid_format(pCur, genid, pCur->genid, sizeof(pCur->genid));
     genid_format(pCur, oldgenid, pCur->oldgenid, sizeof(pCur->oldgenid));
@@ -543,32 +559,35 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     else
         snprintf(pCur->opstring, sizeof(pCur->opstring), "update-blob");
 
-    if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
-        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
-                __LINE__);
-        rc = SQLITE_NOMEM;
-        goto done;
-    }
-
-    if ((packedprevbuf = retrieve_packed_memory_prev(pCur)) == NULL) {
-        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
-                __LINE__);
-        rc = SQLITE_NOMEM;
-        goto done;
-    }
-
     if ((pCur->db = get_dbtable_by_name(pCur->table)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s line %d error finding dbtable %s\n", __func__,
                 __LINE__, pCur->table);
         return SQLITE_INTERNAL;
     }
 
+    /* Size to the table's max payload plus header, so an odh2 record isn't truncated. */
+    int cap = max_blob_length_for_table(pCur->db) + ODH_SIZE_RESERVE;
+    if ((packedbuf = retrieve_packed_memory(pCur, cap)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
+                __LINE__);
+        rc = SQLITE_NOMEM;
+        goto done;
+    }
+
+    if ((packedprevbuf = retrieve_packed_memory_prev(pCur, cap)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
+                __LINE__);
+        rc = SQLITE_NOMEM;
+        goto done;
+    }
+
     /* Reconstruct record from berkley */
     if (0 == bdb_inplace_cmp_genids(pCur->db->handle, oldgenid, genid)) {
+        prevlen = updlen = cap;
         rc = bdb_reconstruct_inplace_update(bdb_state, &rec->lsn, packedprevbuf,
                 &prevlen, packedbuf, &updlen, NULL, NULL, NULL);
     } else {
-        prevlen = updlen = PACKED_MEMORY_SIZE;
+        prevlen = updlen = cap;
         rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index, NULL,
                                     NULL, packedprevbuf, &prevlen, NULL, NULL,
                                     packedbuf, &updlen);
@@ -684,7 +703,6 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 
     reset_record_state(pCur);
 
-    dtalen = PACKED_MEMORY_SIZE;
     if (rec->type == DB_llog_undo_add_dta_lk) {
         if ((rc = llog_undo_add_dta_lk_read(bdb_state->dbenv,
                         logdta->data,&add_dta_lk)) != 0) {
@@ -715,21 +733,23 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         snprintf(pCur->opstring, sizeof(pCur->opstring), "insert-blob");
     }
 
-    if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
-        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
-                __LINE__);
-        rc = SQLITE_NOMEM;
-        goto done;
-    }
-
     if ((pCur->db = get_dbtable_by_name(pCur->table)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s line %d error finding dbtable %s\n", __func__,
                 __LINE__, pCur->table);
         return SQLITE_INTERNAL;
     }
 
+    /* Size to the table's max payload plus header, so an odh2 record isn't truncated. */
+    dtalen = max_blob_length_for_table(pCur->db) + ODH_SIZE_RESERVE;
+    if ((packedbuf = retrieve_packed_memory(pCur, dtalen)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
+                __LINE__);
+        rc = SQLITE_NOMEM;
+        goto done;
+    }
+
     /* Reconstruct record from berkley */
-    if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, 
+    if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn,
                     NULL, sizeof(genid_t), packedbuf, dtalen, &dtalen, &ixlen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
@@ -813,7 +833,6 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         pCur->table = strdup((char *)(del_dta->table.data));
     }
 
-    assert(dtalen <= PACKED_MEMORY_SIZE);
     genid_format(pCur, genid, pCur->oldgenid, sizeof(pCur->oldgenid));
 
     if (dtafile == 0) {
@@ -822,7 +841,8 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         snprintf(pCur->opstring, sizeof(pCur->opstring), "delete-blob");
     }
 
-    if ((packedprevbuf = retrieve_packed_memory_prev(pCur)) == NULL) {
+    /* Size to the deleted record's logged length, so an odh2 record isn't truncated. */
+    if ((packedprevbuf = retrieve_packed_memory_prev(pCur, dtalen)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
                 __LINE__);
         rc = SQLITE_NOMEM;

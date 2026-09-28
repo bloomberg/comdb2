@@ -103,7 +103,7 @@ if [[ $DBNAME == *"parallelgenerated"* ]] ; then
 fi
 
 eval $VERIFY_CMD > verify_nodta.tmp
-grep 0000000 verify_nodta.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_nodta.out
+grep -E '[0-9a-f]{16}' verify_nodta.tmp | sed -E 's/[0-9a-f]{16}//g' | sort &> verify_nodta.out
 
 echo "checking for nodta verify"
 if ! diff verify_nodta.out verify_nodta.expected ; then
@@ -123,7 +123,7 @@ echo did not write to idx so count will appear as $NEWNUMREC instead of 2*$NEWNU
 assertcnt t1 $NEWNUMREC
 
 eval $VERIFY_CMD > verify_noidx.tmp
-grep 0000000 verify_noidx.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_noidx.out
+grep -E '[0-9a-f]{16}' verify_noidx.tmp | sed -E 's/[0-9a-f]{16}//g' | sort &> verify_noidx.out
 
 echo "checking for idx verify"
 if ! diff verify_noidx.out verify_noidx.expected ; then
@@ -144,7 +144,7 @@ insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2))
 assertcnt t1 $((NEWNUMREC*2))
 
 eval $VERIFY_CMD > verify_noblob.tmp
-grep 0000000 verify_noblob.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_noblob.out
+grep -E '[0-9a-f]{16}' verify_noblob.tmp | sed -E 's/[0-9a-f]{16}//g' | sort &> verify_noblob.out
 
 echo "checking for blob verify"
 if ! diff verify_noblob.out verify_noblob.expected ; then
