@@ -5172,6 +5172,9 @@ SQLITE_NOINLINE int sqlite3BlobCompare(const Mem *pB1, const Mem *pB2){
   if( c ) return c;
   return n1 - n2;
 }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define END_INLINE_MEMCOMPARE
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* The following two functions are used only within testcase() to prove
 ** test coverage.  These functions do no exist for production builds.
@@ -5206,6 +5209,9 @@ int sqlite3IntFloatCompare(i64 i, double r){
     return (((double)i)<r) ? -1 : (((double)i)>r);
   }
 }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define START_INLINE_MEMCOMPARE
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Compare the values contained by the two memory cells, returning
