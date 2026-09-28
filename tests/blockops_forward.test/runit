@@ -71,7 +71,32 @@ if [[ -z "$replicant" ]]; then
     exit 1
 fi
 
+function forwarded_count
+{
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs ${DBNAME} --host $1 \
+        "select value from comdb2_metrics where name='forwarded_block_reqs'"
+}
+
+before=$(forwarded_count ${replicant})
 run_blockops replicant.log ${replicant} $(dbport ${replicant})
+after=$(forwarded_count ${replicant})
+
+# Every forward is counted, even the ones the log's rate limit drops.
+if [[ -z "$before" || -z "$after" ]] || (( after <= before )); then
+    echo "FAIL: forwarded_block_reqs did not go up on ${replicant} ($before -> $after)"
+    exit 1
+fi
+
+# The master ran everything itself, so it never forwarded anything.
+if [[ "$(forwarded_count ${master})" != "0" ]]; then
+    echo "FAIL: forwarded_block_reqs is nonzero on the master"
+    exit 1
+fi
+
+if ! grep -q "FWD_BLOCK_TO_MASTER: kind=block" ${TESTDIR}/logs/${DBNAME}.${replicant}.db; then
+    echo "FAIL: no FWD_BLOCK_TO_MASTER line in ${replicant}'s log"
+    exit 1
+fi
 
 # A replicant that failed to forward would answer every request with
 # RC_TRAN_CLIENT_RETRY (305); rc=220 can only come from the master's block
