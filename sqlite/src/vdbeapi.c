@@ -357,7 +357,13 @@ int sqlite3_stmt_has_remotes(
     if( v->btreeMask[0]>=4 ){
       rc = 1;
     }else{
-      rc = !sqlite3DbMaskAllZero(v->btreeMask, 1);
+      int i;
+      for(i=1; i<sizeof(yDbMask); i++){
+        if( v->btreeMask[i] ){
+          rc = 1;
+          break;
+        }
+      }
     }
 #else
     rc = (v->btreeMask>=4);

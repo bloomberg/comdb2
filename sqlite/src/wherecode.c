@@ -1358,11 +1358,7 @@ static void codeDeferredSeek(
   pWInfo->bDeferredSeek = 1;
   sqlite3VdbeAddOp3(v, OP_DeferredSeek, iIdxCur, 0, iCur);
   if( (pWInfo->wctrlFlags & (WHERE_OR_SUBCLAUSE|WHERE_RIGHT_JOIN))
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-   && DbMaskAllZero(sqlite3ParseToplevel(pParse)->writeMask, 0)
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
    && DbMaskAllZero(sqlite3ParseToplevel(pParse)->writeMask)
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ){
     int i;
     Table *pTab = pIdx->pTable;

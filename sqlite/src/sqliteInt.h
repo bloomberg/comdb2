@@ -3988,25 +3988,15 @@ struct TriggerPrg {
 # define DbMaskTest(M,I)    (((M)[(I)/8]&(1<<((I)&7)))!=0)
 # define DbMaskZero(M)      memset((M),0,sizeof(M))
 # define DbMaskSet(M,I)     (M)[(I)/8]|=(1<<((I)&7))
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-# define DbMaskAllZero(M,S) sqlite3DbMaskAllZero(M, S)
-# define DbMaskNonZero(M,S) (sqlite3DbMaskAllZero(M, S)==0)
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 # define DbMaskAllZero(M)   sqlite3DbMaskAllZero(M)
 # define DbMaskNonZero(M)   (sqlite3DbMaskAllZero(M)==0)
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #else
   typedef unsigned int yDbMask;
 # define DbMaskTest(M,I)    (((M)&(((yDbMask)1)<<(I)))!=0)
 # define DbMaskZero(M)      ((M)=0)
 # define DbMaskSet(M,I)     ((M)|=(((yDbMask)1)<<(I)))
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-# define DbMaskAllZero(M,S) (M)==0
-# define DbMaskNonZero(M,S) (M)!=0
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 # define DbMaskAllZero(M)   ((M)==0)
 # define DbMaskNonZero(M)   ((M)!=0)
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 
 /*
@@ -5288,11 +5278,7 @@ void sqlite3CreateView(Parse*,Token*,Token*,Token*,ExprList*,Select*,int,int);
 #endif
 
 #if SQLITE_MAX_ATTACHED>30
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int sqlite3DbMaskAllZero(yDbMask, int);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int sqlite3DbMaskAllZero(yDbMask);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 void sqlite3DropTable(Parse*, SrcList*, int, int);
 void sqlite3CodeDropTable(Parse*, Table*, int, int);
