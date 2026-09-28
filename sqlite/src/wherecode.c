@@ -1196,7 +1196,9 @@ static void codeCursorHint(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* Really need to run this only for remote cursors */
   /* hack, at this point only remcurs have it */
-  if( pWInfo->pTabList->a[iLevel].zDatabase==NULL )
+  if( pWInfo->pTabList->a[iLevel].fg.fixedSchema
+   || pWInfo->pTabList->a[iLevel].fg.isSubquery
+   || pWInfo->pTabList->a[iLevel].u4.zDatabase==NULL )
     return;
 
   /* Need this Mask since the code lower ignores TERM_CODED !!!!*/
