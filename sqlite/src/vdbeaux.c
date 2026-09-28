@@ -4313,7 +4313,9 @@ const u8 sqlite3SmallTypeSizes[128] = {
 */
 u32 sqlite3VdbeSerialTypeLen(u32 serial_type){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( serial_type==(SQLITE_MAX_U32-1) ){
+  if( serial_type==(SQLITE_MAX_U32-2) ){
+    return sizeof(long long);  /* nextsequence */
+  }else if( serial_type==(SQLITE_MAX_U32-1) ){
     return sizeof(intv_t);
   }else if( serial_type==SQLITE_MAX_U32 ){
     return sizeof(dttz_t);
@@ -4550,7 +4552,7 @@ void sqlite3VdbeSerialGet(
 #endif
       pMem->u.i = flibc_ntohll(pMem->u.i);
       pMem->flags = MEM_Int;
-      return 8;
+      return;
     }
     case 7: { /* IEEE floating point */
       /* These use local variables, so do them in a separate routine
@@ -4588,7 +4590,7 @@ void sqlite3VdbeSerialGet(
         /* pMem->flags = sqlite3IsNaN(pMem->u.r) ? MEM_Null : MEM_Real; */
         pMem->flags = MEM_Real;
       }
-      return 8;
+      return;
     }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case 6:   /* 8-byte signed integer */
@@ -4644,7 +4646,7 @@ void sqlite3VdbeSerialGet(
         pMem->du.tv.u.dec = p->u.dec;
       }
       pMem->flags = MEM_Interval;
-      return SIZE_OF_INT_DSMS;
+      return;
     }
     case (SQLITE_MAX_U32-1): {
       /* R5 variable precision interval */
@@ -4675,7 +4677,7 @@ void sqlite3VdbeSerialGet(
         pMem->du.tv.u.dec = p->u.dec;
       }
       pMem->flags = MEM_Interval;
-      return sizeof(intv_t);
+      return;
     }
     case 11: {  /* datetime blob */
       /* R5 millisecond datetime */
@@ -4696,7 +4698,7 @@ void sqlite3VdbeSerialGet(
         pMem->du.dt.dttz_conv = 1;
 
       pMem->flags = MEM_Datetime;
-      return sizeof(dttz_t);
+      return;
     }
     case SQLITE_MAX_U32: {  /* datetime blob */
       /* R5 variable precision datetime */
@@ -4714,12 +4716,12 @@ void sqlite3VdbeSerialGet(
       pMem->du.dt.dttz_prec = ntohs( p->dttz_prec );
       pMem->du.dt.dttz_conv = ntohs( p->dttz_conv );
       pMem->flags = MEM_Datetime;
-      return sizeof(dttz_t);
+      return;
     }
     case (SQLITE_MAX_U32-2): {
       pMem->u.i = 0;
       pMem->flags = MEM_Master;
-      return sizeof(long long);
+      return;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     default: {
