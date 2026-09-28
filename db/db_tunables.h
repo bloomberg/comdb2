@@ -1837,6 +1837,22 @@ REGISTER_TUNABLE("debug_recover_deadlock_skip_sync_dta",
                  TUNABLE_BOOLEAN, &gbl_debug_recover_deadlock_skip_sync_dta, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("blob_cache_shrink",
+                 "Shrink a cursor's cached blob buffer when it is much larger than the new blob (see "
+                 "blob_cache_shrink_ratio and blob_cache_shrink_floor_kb).  Off: buffers only grow.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_blob_cache_shrink, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("blob_cache_shrink_ratio",
+                 "Shrink a cursor's cached blob buffer only when it is more than this many times the size of the new "
+                 "blob (and of blob_cache_shrink_floor_kb).  0 never shrinks.  (Default: 4)",
+                 TUNABLE_INTEGER, &gbl_blob_cache_shrink_ratio, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("blob_cache_shrink_floor_kb",
+                 "Never shrink a cursor's cached blob buffer below this size, and shrink only if it is more than "
+                 "blob_cache_shrink_ratio times this size.  0 shrinks to the new blob on the ratio alone.  "
+                 "(Default: 1024)",
+                 TUNABLE_INTEGER, &gbl_blob_cache_shrink_floor_kb, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_release_wait_ms",
                  "Release sql-locks if rep-thd is blocked for this many ms."
                  "  (Default: 60000)",

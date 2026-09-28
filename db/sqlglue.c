@@ -3432,6 +3432,52 @@ int gbl_debug_recover_deadlock_skip_sync_dta = 0; /* test only: release but skip
                                                      dta sync, to reproduce the
                                                      "Dta lookup lost the race" bug */
 
+/* Shrink policy for the per-cursor blob cache (rd_blob_buffers).  A slot is
+   shrunk only when it is more than ratio times the new row AND more than ratio
+   times the floor, and then only down to the floor (or the row, if larger).
+   The floor gate is what keeps us from reallocating to save a few hundred KB;
+   shrinking to the floor rather than to the row keeps every row up to the
+   floor from forcing a regrow straight after.  ratio <= 0 never shrinks;
+   floor 0 restores the old behaviour (shrink to the row on ratio alone).
+   gbl_blob_cache_shrink turns shrinking off outright: slots then only grow. */
+int gbl_blob_cache_shrink = 1;
+int gbl_blob_cache_shrink_ratio = 4;
+int gbl_blob_cache_shrink_floor_kb = 1024;
+
+/* Capacity to give a blob cache slot that currently holds `capacity` bytes and
+   must now hold `length`, or -1 to keep the buffer as it is. */
+static int rd_blob_new_capacity(int capacity, int length)
+{
+    if (capacity < length)
+        return length; /* grow to fit */
+    if (!gbl_blob_cache_shrink)
+        return -1;
+
+    int64_t ratio = gbl_blob_cache_shrink_ratio;
+    int64_t floor_bytes = gbl_blob_cache_shrink_floor_kb > 0 ? (int64_t)gbl_blob_cache_shrink_floor_kb * 1024 : 0;
+
+    if (ratio <= 0)
+        return -1;
+    /* int64: ratio * length overflows int for blobs past 512MB at ratio 4 */
+    if (capacity <= ratio * length || capacity <= ratio * floor_bytes)
+        return -1;
+    /* capacity > ratio * floor_bytes, so floor_bytes fits in an int */
+    return length > floor_bytes ? length : (int)floor_bytes;
+}
+
+/* comdb2_metrics blob_cache_shrinks / blob_cache_shrunk_bytes.  Touched only
+   when a slot actually shrinks, never on the per-row path. */
+int64_t gbl_blob_cache_shrinks;
+int64_t gbl_blob_cache_shrunk_bytes;
+
+static inline void rd_blob_count_shrink(int oldcap, int newcap)
+{
+    if (newcap < oldcap) {
+        __sync_fetch_and_add(&gbl_blob_cache_shrinks, 1);
+        __sync_fetch_and_add(&gbl_blob_cache_shrunk_bytes, (int64_t)(oldcap - newcap));
+    }
+}
+
 /*
  * Capture this data cursor's out-of-line blobs for the row it is now sitting
  * on, into the per-cursor genid-keyed blob cache (pCur->rd_blob_buffers), the
@@ -3550,15 +3596,21 @@ static void sync_capture_blobs(BtCursor *dta, int rrn, unsigned long long genid)
         /* Grow to fit, and shrink back only when badly oversized (a single
            outlier row shouldn't pin a large buffer for the rest of a long
            scan) -- not on every smaller row, which would just trade the
-           original waste for realloc churn. */
-        if (blob->capacity < length || blob->capacity > 4 * length) {
-            char *newz = realloc(blob->z, length);
-            if (!newz)
+           original waste for realloc churn.  See rd_blob_new_capacity(). */
+        int newcap = rd_blob_new_capacity(blob->capacity, length);
+        if (newcap >= 0) {
+            char *newz = realloc(blob->z, newcap);
+            /* realloc(z, 0) frees z and returns NULL: that is the shrink we
+               asked for, not a failure -- store the NULL/0 below, or the
+               slot keeps a freed pointer that close will free again */
+            if (newcap > 0 && !newz)
                 continue;
+            rd_blob_count_shrink(blob->capacity, newcap);
             blob->z = newz;
-            blob->capacity = length;
+            blob->capacity = newcap;
         }
-        memcpy(blob->z, blobs.blobptrs[i], length);
+        if (length)
+            memcpy(blob->z, blobs.blobptrs[i], length);
         blob->length = length;
         /* mirror fetch_blob_into_sqlite_mem's conversion exactly */
         if (f->type == SERVER_VUTF8) {
@@ -7448,20 +7500,24 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     int length = blobs.bloblens[0];
     /* Grow to fit, and shrink back only when badly oversized -- see
        sync_capture_blobs(), which manages this same cache and shares the
-       policy. */
-    if (blob->capacity < length || blob->capacity > 4 * length) {
-        char *newz = realloc(blob->z, length);
-        if (!newz)
+       policy through rd_blob_new_capacity(). */
+    int newcap = rd_blob_new_capacity(blob->capacity, length);
+    if (newcap >= 0) {
+        char *newz = realloc(blob->z, newcap);
+        /* realloc(z, 0) frees z and returns NULL -- see sync_capture_blobs() */
+        if (newcap > 0 && !newz)
             return 0; /* m->z is already set from the live fetch above; the
                          cache update is best-effort, leave it as it was */
+        rd_blob_count_shrink(blob->capacity, newcap);
         blob->z = newz;
-        blob->capacity = length;
+        blob->capacity = newcap;
     }
     blob->n = m->n;
     blob->length = length;
     blob->flags = m->flags;
     blob->genid = pCur->genid;
-    memcpy(blob->z, m->z, length);
+    if (length)
+        memcpy(blob->z, m->z, length);
     return 0;
 }
 
