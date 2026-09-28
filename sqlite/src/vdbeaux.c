@@ -1032,11 +1032,7 @@ resolve_p2_values_loop_exit:
   }
   pParse->nLabel = 0;
   *pMaxVtabArgs = nMaxVtabArgs;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  assert( p->bIsReader!=0 || DbMaskAllZero(p->btreeMask, 0) );
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( p->bIsReader!=0 || DbMaskAllZero(p->btreeMask) );
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 #ifdef SQLITE_DEBUG
@@ -1192,11 +1188,7 @@ VdbeOp *sqlite3VdbeTakeOpArray(Vdbe *p, int *pnOp, int *pnMaxArg){
   assert( aOp && !p->db->mallocFailed );
 
   /* Check that sqlite3VdbeUsesBtree() was not called on this VM */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  assert( DbMaskAllZero(p->btreeMask, 0) );
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( DbMaskAllZero(p->btreeMask) );
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   resolveP2Values(p, pnMaxArg);
   *pnOp = p->nOp;
@@ -2188,11 +2180,7 @@ void sqlite3VdbeEnter(Vdbe *p){
   sqlite3 *db;
   Db *aDb;
   int nDb;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( DbMaskAllZero(p->lockMask, 0) ) return;  /* The common case */
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( DbMaskAllZero(p->lockMask) ) return;  /* The common case */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   db = p->db;
   aDb = db->aDb;
   nDb = db->nDb;

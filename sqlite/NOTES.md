@@ -437,6 +437,31 @@ I started tracking this when I got to more important files (`where.c`,
   `statPush()` does. The default limit is 0, which emits a plain `OP_Next`, so
   the generated code only changes if the pragma is set.
 
+### `build.c`
+
+- **DECISION**: Use upstream's one-argument `sqlite3DbMaskAllZero()` and
+  `DbMaskAllZero()`/`DbMaskNonZero()` macros, and remove comdb2's extra
+  `start` argument.
+
+  comdb2 raises `SQLITE_MAX_ATTACHED` to 100 so a query can reach more than
+  10 remote databases. That makes the database mask a byte array, and SQLite
+  checks it with `sqlite3DbMaskAllZero()`. We had added a `start` argument,
+  the byte to begin scanning from, for one caller: `sqlite3_stmt_has_remotes()`
+  in `vdbeapi.c`. It checks databases 2-7 in byte 0 separately (`main` and
+  `temp` are databases 0 and 1), then asks whether anything from byte 1
+  onward is set. Every other caller passed `0`, which does the same as
+  upstream's version. But the macros had to carry the argument too, so every
+  macro call site needed a comdb2 `#if` pair, including new upstream ones such
+  as `sqlite3VtabUsesAllSchemas()` in `where.c`.
+
+  `sqlite3_stmt_has_remotes()` now checks the bytes from 1 onward with its
+  own loop. The function and macros are back to stock, and the `#if` pairs
+  are gone from `vdbeaux.c` and `wherecode.c`. For the call in
+  `sqlite3FinishCoding()` here, we only dropped the `0`: its comdb2 `#if` pair
+  stays because of the `|| pParse->write` check. Nothing changes in
+  behaviour. Upstream's version scans `sizeof(yDbMask)` bytes, the same range
+  ours scanned with `start = 0`.
+
 ### `CMakeLists.txt`
 
 - Certain files are generated at build time (see `tool` directory and comments
