@@ -32,6 +32,10 @@ These types are basic fixed size integer.  When queried via the [C api](c_api.ht
 |```u_int```|```CDB2_INTEGER```|4 byte unsigned integer|0 to 4294967295 | |
 |longlong|```CDB2_INTEGER```|8 byte signed integer|-9223372036854775808 to 9223372036854775807 | |
 
+```bool``` is accepted in csc2 schemas as an alias for ```int```.  It is NOT a boolean type: it is stored as a
+4 byte signed integer, accepts any value in the ```int``` range (not just 0 and 1), and appears as ```int``` in
+```sqlite_master```.
+
 ## Floating point types
 
 These are floating point types.  They return ```CDB2_REAL``` values (```double```).

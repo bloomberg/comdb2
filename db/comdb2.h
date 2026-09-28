@@ -3761,11 +3761,6 @@ int fdb_default_ver_set(int val);
 int fdb_push_write_set(int val);
 int fdb_push_set(int val);
 
-/* hack to temporary allow bools on production stage */
-void csc2_allow_bools(void);
-void csc2_disallow_bools(void);
-int csc2_used_bools(void);
-
 /* Skip spaces and tabs, requires at least one space */
 static inline char *skipws(char *str)
 {
