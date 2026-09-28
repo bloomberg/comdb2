@@ -67,9 +67,6 @@ static int nested_rectype[MAX_NESTED_RECTYPE];
 struct fieldopt fieldopts[FLDOPT_MAX];
 int nfieldopt = 0;
 
-static int allow_bools = 0;
-static int used_bools = 0;
-
 #define MIN(a, b) ((a < b) ? a : b)
 
 static strbuf *errors = NULL;
@@ -104,21 +101,6 @@ int gbl_sequence_feature = 1;
 
 void csc2_error(const char *fmt, ...);
 void csc2_syntax_error(const char *fmt, ...);
-
-void csc2_allow_bools(void)
-{
-    allow_bools = 1;
-}
-
-void csc2_disallow_bools(void)
-{
-    allow_bools = 0;
-}
-
-int csc2_used_bools(void)
-{
-    return used_bools;
-}
 
 #define CHECK_LEGACY_SCHEMA(A)                                                 \
     do {                                                                       \
@@ -1462,16 +1444,6 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     /* don't overrun memory */
     if (any_errors)
         return;
-
-    if (typ == T_LOGICAL) {
-        used_bools = 1;
-        csc2_error("Error at line %3d: 'bool' DATATYPE IS DEPRECATED - USE INT INSTEAD\n",
-                   current_line);
-        csc2_syntax_error("Error at line %3d: 'bool' DATATYPE IS DEPRECATED - USE INT INSTEAD",
-                          current_line);
-        if (!allow_bools)
-            any_errors++;
-    }
 
     if (typ == T_BLOB && dims[0] != -1) {
         typ = T_BLOB2;
