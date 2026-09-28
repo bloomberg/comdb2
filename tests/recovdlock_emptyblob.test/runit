@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# A reader releasing its page locks to a waiting writer first captures the
+# blobs of the rows its cursors sit on into the per-cursor blob cache
+# (sync_capture_blobs).  A blob updated to x'' is captured with length 0,
+# which used to shrink the cached buffer with realloc(z, 0): that frees z and
+# returns NULL, which was taken for an allocation failure, leaving the freed
+# pointer in the slot to be reallocated or freed again -- a crash.
+#
+# Writers keep swinging blobs between large, small, empty and NULL while
+# readers scan the table (plain, by index with deferred seek, and joined).
+# The lock releases come from real waiters (locks_check_waiters).
+
+dbnm=$1
+sql() { cdb2sql ${CDB2_OPTIONS} $dbnm default "$@"; }
+N=200
+DUR=${DUR:-120}
+
+sql "CREATE TABLE t1 (id INT PRIMARY KEY, k INT, b BLOB)" || failexit "create table"
+sql "CREATE INDEX t1_k ON t1(k)" || failexit "create index"
+sql "INSERT INTO t1 SELECT value, value, randomblob(value % 300) FROM generate_series(1, $N)" || failexit "insert"
+# widen the window a writer has to queue behind a reader's page lock
+sql "PUT TUNABLE 'debug_sleep_in_cursor_move' 1" || failexit "set debug_sleep_in_cursor_move"
+
+end=$((SECONDS + DUR))
+
+writer() {
+    while [[ $SECONDS -lt $end ]]; do
+        sql "UPDATE t1 SET b = CASE abs(random()) % 4
+                                  WHEN 0 THEN randomblob(abs(random()) % 2000)
+                                  WHEN 1 THEN randomblob(abs(random()) % 8)
+                                  WHEN 2 THEN x''
+                                  ELSE NULL END
+             WHERE id % 7 = abs(random()) % 7" >/dev/null 2>&1
+    done
+}
+
+reader() {
+    while [[ $SECONDS -lt $end ]]; do
+        sql "$1" >/dev/null 2>&1
+        sql "SELECT 1" >/dev/null 2>&1 || { echo "db unreachable after: $1"; return 1; }
+    done
+}
+
+pids=()
+for i in 1 2 3 4 5; do
+    writer &
+done
+reader "SELECT id, length(b), hex(b) FROM t1" & pids+=($!)
+reader "SELECT id, length(b), hex(b) FROM t1 WHERE k > 0 ORDER BY k" & pids+=($!)
+reader "SELECT a.id, length(a.b), length(b.b) FROM t1 a CROSS JOIN t1 b ON b.k = a.k WHERE a.k > 0" & pids+=($!)
+
+failed=0
+for p in "${pids[@]}"; do
+    wait $p || failed=1
+done
+wait
+
+[[ $failed -eq 0 ]] || failexit "database went away during the run"
+sql "SELECT COUNT(*) FROM t1" || failexit "database is not responding"
+echo "Success"
