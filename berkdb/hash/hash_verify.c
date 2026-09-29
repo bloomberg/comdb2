@@ -756,7 +756,7 @@ __ham_vrfy_hashing(dbp, nentries, m, thisbucket, pgno, flags, hfunc)
 		 * can tweak this a bit if this proves to be a bottleneck,
 		 * but for now, take the easy route.
 		 */
-		if ((ret = __db_ret(dbp, h, i, &dbt, NULL, NULL)) != 0)
+		if ((ret = __db_ret(NULL, dbp, h, i, &dbt, NULL, NULL)) != 0)
 			goto err;
 		hval = hfunc(dbp, dbt.data, dbt.size);
 
