@@ -215,7 +215,9 @@ int sqlite3FkLocateIndex(
     */
     if( pParent->iPKey>=0 ){
       if( !zKey ) return 0;
-      if( !sqlite3StrICmp(pParent->aCol[pParent->iPKey].zName, zKey) ) return 0;
+      if( !sqlite3StrICmp(pParent->aCol[pParent->iPKey].zCnName, zKey) ){
+        return 0;
+      }
     }
   }else if( paiCol ){
     assert( nCol>1 );
@@ -257,11 +259,11 @@ int sqlite3FkLocateIndex(
           /* If the index uses a collation sequence that is different from
           ** the default collation sequence for the column, this index is
           ** unusable. Bail out early in this case.  */
-          zDfltColl = pParent->aCol[iCol].zColl;
+          zDfltColl = sqlite3ColumnColl(&pParent->aCol[iCol]);
           if( !zDfltColl ) zDfltColl = sqlite3StrBINARY;
           if( sqlite3StrICmp(pIdx->azColl[i], zDfltColl) ) break;
 
-          zIdxCol = pParent->aCol[iCol].zName;
+          zIdxCol = pParent->aCol[iCol].zCnName;
           for(j=0; j<nCol; j++){
             if( sqlite3StrICmp(pFKey->aCol[j].zCol, zIdxCol)==0 ){
               if( aiCol ) aiCol[i] = pFKey->aCol[j].iFrom;
@@ -349,7 +351,7 @@ static void fkLookupParent(
     VdbeCoverage(v);
   }
   for(i=0; i<pFKey->nCol; i++){
-    int iReg = aiCol[i] + regData + 1;
+    int iReg = sqlite3TableColumnToStorage(pFKey->pFrom,aiCol[i]) + regData + 1;
     sqlite3VdbeAddOp2(v, OP_IsNull, iReg, iOk); VdbeCoverage(v);
   }
 
@@ -365,7 +367,8 @@ static void fkLookupParent(
       ** is no matching parent key. Before using MustBeInt, make a copy of
       ** the value. Otherwise, the value inserted into the child key column
       ** will have INTEGER affinity applied to it, which may not be correct.  */
-      sqlite3VdbeAddOp2(v, OP_SCopy, aiCol[0]+1+regData, regTemp);
+      sqlite3VdbeAddOp2(v, OP_SCopy, 
+        sqlite3TableColumnToStorage(pFKey->pFrom,aiCol[0])+1+regData, regTemp);
       iMustBeInt = sqlite3VdbeAddOp2(v, OP_MustBeInt, regTemp, 0);
       VdbeCoverage(v);
   
@@ -387,12 +390,13 @@ static void fkLookupParent(
     }else{
       int nCol = pFKey->nCol;
       int regTemp = sqlite3GetTempRange(pParse, nCol);
-      int regRec = sqlite3GetTempReg(pParse);
   
       sqlite3VdbeAddOp3(v, OP_OpenRead, iCur, pIdx->tnum, iDb);
       sqlite3VdbeSetP4KeyInfo(pParse, pIdx);
       for(i=0; i<nCol; i++){
-        sqlite3VdbeAddOp2(v, OP_Copy, aiCol[i]+1+regData, regTemp+i);
+        sqlite3VdbeAddOp2(v, OP_Copy, 
+               sqlite3TableColumnToStorage(pFKey->pFrom, aiCol[i])+1+regData,
+               regTemp+i);
       }
   
       /* If the parent table is the same as the child table, and we are about
@@ -408,8 +412,11 @@ static void fkLookupParent(
       if( pTab==pFKey->pFrom && nIncr==1 ){
         int iJump = sqlite3VdbeCurrentAddr(v) + nCol + 1;
         for(i=0; i<nCol; i++){
-          int iChild = aiCol[i]+1+regData;
-          int iParent = pIdx->aiColumn[i]+1+regData;
+          int iChild = sqlite3TableColumnToStorage(pFKey->pFrom,aiCol[i])
+                              +1+regData;
+          int iParent = 1+regData;
+          iParent += sqlite3TableColumnToStorage(pIdx->pTable,
+                                                 pIdx->aiColumn[i]);
           assert( pIdx->aiColumn[i]>=0 );
           assert( aiCol[i]!=pTab->iPKey );
           if( pIdx->aiColumn[i]==pTab->iPKey ){
@@ -421,12 +428,11 @@ static void fkLookupParent(
         }
         sqlite3VdbeGoto(v, iOk);
       }
-  
-      sqlite3VdbeAddOp4(v, OP_MakeRecord, regTemp, nCol, regRec,
+
+      sqlite3VdbeAddOp4(v, OP_Affinity, regTemp, nCol, 0,
                         sqlite3IndexAffinityStr(pParse->db,pIdx), nCol);
-      sqlite3VdbeAddOp4Int(v, OP_Found, iCur, iOk, regRec, 0); VdbeCoverage(v);
-  
-      sqlite3ReleaseTempReg(pParse, regRec);
+      sqlite3VdbeAddOp4Int(v, OP_Found, iCur, iOk, regTemp, nCol);
+      VdbeCoverage(v);
       sqlite3ReleaseTempRange(pParse, regTemp, nCol);
     }
   }
@@ -477,14 +483,14 @@ static Expr *exprTableRegister(
   if( pExpr ){
     if( iCol>=0 && iCol!=pTab->iPKey ){
       pCol = &pTab->aCol[iCol];
-      pExpr->iTable = regBase + iCol + 1;
-      pExpr->affinity = pCol->affinity;
-      zColl = pCol->zColl;
+      pExpr->iTable = regBase + sqlite3TableColumnToStorage(pTab,iCol) + 1;
+      pExpr->affExpr = pCol->affinity;
+      zColl = sqlite3ColumnColl(pCol);
       if( zColl==0 ) zColl = db->pDfltColl->zName;
       pExpr = sqlite3ExprAddCollateString(pParse, pExpr, zColl);
     }else{
       pExpr->iTable = regBase;
-      pExpr->affinity = SQLITE_AFF_INTEGER;
+      pExpr->affExpr = SQLITE_AFF_INTEGER;
     }
   }
   return pExpr;
@@ -502,6 +508,7 @@ static Expr *exprTableColumn(
 ){
   Expr *pExpr = sqlite3Expr(db, TK_COLUMN, 0);
   if( pExpr ){
+    assert( ExprUseYTab(pExpr) );
     pExpr->y.pTab = pTab;
     pExpr->iTable = iCursor;
     pExpr->iColumn = iCol;
@@ -527,14 +534,10 @@ static Expr *exprTableColumn(
 **   Operation | FK type   | Action taken
 **   --------------------------------------------------------------------------
 **   DELETE      immediate   Increment the "immediate constraint counter".
-**                           Or, if the ON (UPDATE|DELETE) action is RESTRICT,
-**                           throw a "FOREIGN KEY constraint failed" exception.
 **
 **   INSERT      immediate   Decrement the "immediate constraint counter".
 **
 **   DELETE      deferred    Increment the "deferred constraint counter".
-**                           Or, if the ON (UPDATE|DELETE) action is RESTRICT,
-**                           throw a "FOREIGN KEY constraint failed" exception.
 **
 **   INSERT      deferred    Decrement the "deferred constraint counter".
 **
@@ -588,10 +591,10 @@ static void fkScanChildren(
     pLeft = exprTableRegister(pParse, pTab, regData, iCol);
     iCol = aiCol ? aiCol[i] : pFKey->aCol[0].iFrom;
     assert( iCol>=0 );
-    zCol = pFKey->pFrom->aCol[iCol].zName;
+    zCol = pFKey->pFrom->aCol[iCol].zCnName;
     pRight = sqlite3Expr(db, TK_ID, zCol);
     pEq = sqlite3PExpr(pParse, TK_EQ, pLeft, pRight);
-    pWhere = sqlite3ExprAnd(db, pWhere, pEq);
+    pWhere = sqlite3ExprAnd(pParse, pWhere, pEq);
   }
 
   /* If the child table is the same as the parent table, then add terms
@@ -623,13 +626,13 @@ static void fkScanChildren(
         i16 iCol = pIdx->aiColumn[i];
         assert( iCol>=0 );
         pLeft = exprTableRegister(pParse, pTab, regData, iCol);
-        pRight = sqlite3Expr(db, TK_ID, pTab->aCol[iCol].zName);
+        pRight = sqlite3Expr(db, TK_ID, pTab->aCol[iCol].zCnName);
         pEq = sqlite3PExpr(pParse, TK_IS, pLeft, pRight);
-        pAll = sqlite3ExprAnd(db, pAll, pEq);
+        pAll = sqlite3ExprAnd(pParse, pAll, pEq);
       }
       pNe = sqlite3PExpr(pParse, TK_NOT, pAll, 0);
     }
-    pWhere = sqlite3ExprAnd(db, pWhere, pNe);
+    pWhere = sqlite3ExprAnd(pParse, pWhere, pNe);
   }
 
   /* Resolve the references in the WHERE clause. */
@@ -642,7 +645,7 @@ static void fkScanChildren(
   ** clause. For each row found, increment either the deferred or immediate
   ** foreign key constraint counter. */
   if( pParse->nErr==0 ){
-    pWInfo = sqlite3WhereBegin(pParse, pSrc, pWhere, 0, 0, 0, 0);
+    pWInfo = sqlite3WhereBegin(pParse, pSrc, pWhere, 0, 0, 0, 0, 0);
     sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, nIncr);
     if( pWInfo ){
       sqlite3WhereEnd(pWInfo);
@@ -652,7 +655,7 @@ static void fkScanChildren(
   /* Clean up the WHERE clause constructed above. */
   sqlite3ExprDelete(db, pWhere);
   if( iFkIfZero ){
-    sqlite3VdbeJumpHere(v, iFkIfZero);
+    sqlite3VdbeJumpHereOrPopInst(v, iFkIfZero);
   }
 }
 
@@ -694,6 +697,25 @@ static void fkTriggerDelete(sqlite3 *dbMem, Trigger *p){
 }
 
 /*
+** Clear the apTrigger[] cache of CASCADE triggers for all foreign keys
+** in a particular database.  This needs to happen when the schema
+** changes.
+*/
+void sqlite3FkClearTriggerCache(sqlite3 *db, int iDb){
+  HashElem *k;
+  Hash *pHash = &db->aDb[iDb].pSchema->tblHash;
+  for(k=sqliteHashFirst(pHash); k; k=sqliteHashNext(k)){
+    Table *pTab = sqliteHashData(k);
+    FKey *pFKey;
+    if( !IsOrdinaryTable(pTab) ) continue;
+    for(pFKey=pTab->u.tab.pFKey; pFKey; pFKey=pFKey->pNextFrom){
+      fkTriggerDelete(db, pFKey->apTrigger[0]); pFKey->apTrigger[0] = 0;
+      fkTriggerDelete(db, pFKey->apTrigger[1]); pFKey->apTrigger[1] = 0;
+    }
+  }
+}
+
+/*
 ** This function is called to generate code that runs when table pTab is
 ** being dropped from the database. The SrcList passed as the second argument
 ** to this function contains a single entry guaranteed to resolve to
@@ -712,12 +734,12 @@ static void fkTriggerDelete(sqlite3 *dbMem, Trigger *p){
 */
 void sqlite3FkDropTable(Parse *pParse, SrcList *pName, Table *pTab){
   sqlite3 *db = pParse->db;
-  if( (db->flags&SQLITE_ForeignKeys) && !IsVirtual(pTab) ){
+  if( (db->flags&SQLITE_ForeignKeys) && IsOrdinaryTable(pTab) ){
     int iSkip = 0;
     Vdbe *v = sqlite3GetVdbe(pParse);
 
     assert( v );                  /* VDBE has already been allocated */
-    assert( pTab->pSelect==0 );   /* Not a view */
+    assert( IsOrdinaryTable(pTab) );
     if( sqlite3FkReferences(pTab)==0 ){
       /* Search for a deferred foreign key constraint for which this table
       ** is the child table. If one cannot be found, return without 
@@ -725,7 +747,7 @@ void sqlite3FkDropTable(Parse *pParse, SrcList *pName, Table *pTab){
       ** the entire DELETE if there are no outstanding deferred constraints
       ** when this statement is run.  */
       FKey *p;
-      for(p=pTab->pFKey; p; p=p->pNextFrom){
+      for(p=pTab->u.tab.pFKey; p; p=p->pNextFrom){
         if( p->isDeferred || (db->flags & SQLITE_DeferFKs) ) break;
       }
       if( !p ) return;
@@ -814,7 +836,7 @@ static int fkParentIsModified(
       if( aChange[iKey]>=0 || (iKey==pTab->iPKey && bChngRowid) ){
         Column *pCol = &pTab->aCol[iKey];
         if( zKey ){
-          if( 0==sqlite3StrICmp(pCol->zName, zKey) ) return 1;
+          if( 0==sqlite3StrICmp(pCol->zCnName, zKey) ) return 1;
         }else if( pCol->colFlags & COLFLAG_PRIMKEY ){
           return 1;
         }
@@ -836,6 +858,7 @@ static int isSetNullAction(Parse *pParse, FKey *pFKey){
     if( (p==pFKey->apTrigger[0] && pFKey->aAction[0]==OE_SetNull)
      || (p==pFKey->apTrigger[1] && pFKey->aAction[1]==OE_SetNull)
     ){
+      assert( (pTop->db->flags & SQLITE_FkNoAction)==0 );
       return 1;
     }
   }
@@ -881,13 +904,14 @@ void sqlite3FkCheck(
 
   /* If foreign-keys are disabled, this function is a no-op. */
   if( (db->flags&SQLITE_ForeignKeys)==0 ) return;
+  if( !IsOrdinaryTable(pTab) ) return;
 
   iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
   zDb = db->aDb[iDb].zDbSName;
 
   /* Loop through all the foreign key constraints for which pTab is the
   ** child table (the table that the foreign key definition is part of).  */
-  for(pFKey=pTab->pFKey; pFKey; pFKey=pFKey->pNextFrom){
+  for(pFKey=pTab->u.tab.pFKey; pFKey; pFKey=pFKey->pNextFrom){
     Table *pTo;                   /* Parent table of foreign key pFKey */
     Index *pIdx = 0;              /* Index on key columns in pTo */
     int *aiFree = 0;
@@ -926,7 +950,9 @@ void sqlite3FkCheck(
         Vdbe *v = sqlite3GetVdbe(pParse);
         int iJump = sqlite3VdbeCurrentAddr(v) + pFKey->nCol + 1;
         for(i=0; i<pFKey->nCol; i++){
-          int iReg = pFKey->aCol[i].iFrom + regOld + 1;
+          int iFromCol, iReg;
+          iFromCol = pFKey->aCol[i].iFrom;
+          iReg = sqlite3TableColumnToStorage(pFKey->pFrom,iFromCol) + regOld+1;
           sqlite3VdbeAddOp2(v, OP_IsNull, iReg, iJump); VdbeCoverage(v);
         }
         sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, -1);
@@ -952,7 +978,7 @@ void sqlite3FkCheck(
       ** values read from the parent table are NULL. */
       if( db->xAuth ){
         int rcauth;
-        char *zCol = pTo->aCol[pIdx ? pIdx->aiColumn[i] : pTo->iPKey].zName;
+        char *zCol = pTo->aCol[pIdx ? pIdx->aiColumn[i] : pTo->iPKey].zCnName;
         rcauth = sqlite3AuthReadCol(pParse, pTo->zName, zCol, iDb);
         bIgnore = (rcauth==SQLITE_IGNORE);
       }
@@ -1016,10 +1042,10 @@ void sqlite3FkCheck(
     ** child table as a SrcList for sqlite3WhereBegin() */
     pSrc = sqlite3SrcListAppend(pParse, 0, 0, 0);
     if( pSrc ){
-      struct SrcList_item *pItem = pSrc->a;
-      pItem->pTab = pFKey->pFrom;
+      SrcItem *pItem = pSrc->a;
+      pItem->pSTab = pFKey->pFrom;
       pItem->zName = pFKey->pFrom->zName;
-      pItem->pTab->nTabRef++;
+      pItem->pSTab->nTabRef++;
       pItem->iCursor = pParse->nTab++;
   
       if( regNew!=0 ){
@@ -1027,6 +1053,8 @@ void sqlite3FkCheck(
       }
       if( regOld!=0 ){
         int eAction = pFKey->aAction[aChange!=0];
+        if( (db->flags & SQLITE_FkNoAction) ) eAction = OE_None;
+
         fkScanChildren(pParse, pSrc, pTab, pIdx, pFKey, aiCol, regOld, 1);
         /* If this is a deferred FK constraint, or a CASCADE or SET NULL
         ** action applies, then any foreign key violations caused by
@@ -1067,10 +1095,10 @@ u32 sqlite3FkOldmask(
   Table *pTab                     /* Table being modified */
 ){
   u32 mask = 0;
-  if( pParse->db->flags&SQLITE_ForeignKeys ){
+  if( pParse->db->flags&SQLITE_ForeignKeys && IsOrdinaryTable(pTab) ){
     FKey *p;
     int i;
-    for(p=pTab->pFKey; p; p=p->pNextFrom){
+    for(p=pTab->u.tab.pFKey; p; p=p->pNextFrom){
       for(i=0; i<p->nCol; i++) mask |= COLUMN_MASK(p->aCol[i].iFrom);
     }
     for(p=sqlite3FkReferences(pTab); p; p=p->pNextTo){
@@ -1104,7 +1132,9 @@ u32 sqlite3FkOldmask(
 **
 ** For an UPDATE, this function returns 2 if:
 **
-**   * There are any FKs for which pTab is the child and the parent table, or
+**   * There are any FKs for which pTab is the child and the parent table
+**     and any FK processing at all is required (even of a different FK), or
+**
 **   * the UPDATE modifies one or more parent keys for which the action is
 **     not "NO ACTION" (i.e. is CASCADE, SET DEFAULT or SET NULL).
 **
@@ -1116,36 +1146,41 @@ int sqlite3FkRequired(
   int *aChange,                   /* Non-NULL for UPDATE operations */
   int chngRowid                   /* True for UPDATE that affects rowid */
 ){
-  int eRet = 0;
-  if( pParse->db->flags&SQLITE_ForeignKeys ){
+  int eRet = 1;                   /* Value to return if bHaveFK is true */
+  int bHaveFK = 0;                /* If FK processing is required */
+  if( pParse->db->flags&SQLITE_ForeignKeys && IsOrdinaryTable(pTab) ){
     if( !aChange ){
       /* A DELETE operation. Foreign key processing is required if the 
       ** table in question is either the child or parent table for any 
       ** foreign key constraint.  */
-      eRet = (sqlite3FkReferences(pTab) || pTab->pFKey);
+      bHaveFK = (sqlite3FkReferences(pTab) || pTab->u.tab.pFKey);
     }else{
       /* This is an UPDATE. Foreign key processing is only required if the
       ** operation modifies one or more child or parent key columns. */
       FKey *p;
 
       /* Check if any child key columns are being modified. */
-      for(p=pTab->pFKey; p; p=p->pNextFrom){
-        if( 0==sqlite3_stricmp(pTab->zName, p->zTo) ) return 2;
+      for(p=pTab->u.tab.pFKey; p; p=p->pNextFrom){
         if( fkChildIsModified(pTab, p, aChange, chngRowid) ){
-          eRet = 1;
+          if( 0==sqlite3_stricmp(pTab->zName, p->zTo) ) eRet = 2;
+          bHaveFK = 1;
         }
       }
 
       /* Check if any parent key columns are being modified. */
       for(p=sqlite3FkReferences(pTab); p; p=p->pNextTo){
         if( fkParentIsModified(pTab, p, aChange, chngRowid) ){
-          if( p->aAction[1]!=OE_None ) return 2;
-          eRet = 1;
+          if( (pParse->db->flags & SQLITE_FkNoAction)==0 
+           && p->aAction[1]!=OE_None 
+          ){
+            return 2;
+          }
+          bHaveFK = 1;
         }
       }
     }
   }
-  return eRet;
+  return bHaveFK ? eRet : 0;
 }
 
 /*
@@ -1157,9 +1192,9 @@ int sqlite3FkRequired(
 **
 ** It returns a pointer to a Trigger structure containing a trigger
 ** equivalent to the ON UPDATE or ON DELETE action specified by pFKey.
-** If the action is "NO ACTION" or "RESTRICT", then a NULL pointer is
-** returned (these actions require no special handling by the triggers
-** sub-system, code for them is created by fkScanChildren()).
+** If the action is "NO ACTION" then a NULL pointer is returned (these actions
+** require no special handling by the triggers sub-system, code for them is
+** created by fkScanChildren()).
 **
 ** For example, if pFKey is the foreign key and pTab is table "p" in 
 ** the following schema:
@@ -1189,6 +1224,7 @@ static Trigger *fkActionTrigger(
   int iAction = (pChanges!=0);    /* 1 for UPDATE, 0 for DELETE */
 
   action = pFKey->aAction[iAction];
+  if( (db->flags & SQLITE_FkNoAction) ) action = OE_None;
   if( action==OE_Restrict && (db->flags & SQLITE_DeferFKs) ){
     return 0;
   }
@@ -1222,8 +1258,8 @@ static Trigger *fkActionTrigger(
       assert( pIdx!=0 || (pTab->iPKey>=0 && pTab->iPKey<pTab->nCol) );
       assert( pIdx==0 || pIdx->aiColumn[i]>=0 );
       sqlite3TokenInit(&tToCol,
-                   pTab->aCol[pIdx ? pIdx->aiColumn[i] : pTab->iPKey].zName);
-      sqlite3TokenInit(&tFromCol, pFKey->pFrom->aCol[iFromCol].zName);
+                   pTab->aCol[pIdx ? pIdx->aiColumn[i] : pTab->iPKey].zCnName);
+      sqlite3TokenInit(&tFromCol, pFKey->pFrom->aCol[iFromCol].zCnName);
 
       /* Create the expression "OLD.zToCol = zFromCol". It is important
       ** that the "OLD.zToCol" term is on the LHS of the = operator, so
@@ -1235,7 +1271,7 @@ static Trigger *fkActionTrigger(
             sqlite3ExprAlloc(db, TK_ID, &tToCol, 0)),
           sqlite3ExprAlloc(db, TK_ID, &tFromCol, 0)
       );
-      pWhere = sqlite3ExprAnd(db, pWhere, pEq);
+      pWhere = sqlite3ExprAnd(pParse, pWhere, pEq);
 
       /* For ON UPDATE, construct the next term of the WHEN clause.
       ** The final WHEN clause will be like this:
@@ -1251,7 +1287,7 @@ static Trigger *fkActionTrigger(
               sqlite3ExprAlloc(db, TK_ID, &tNew, 0),
               sqlite3ExprAlloc(db, TK_ID, &tToCol, 0))
             );
-        pWhen = sqlite3ExprAnd(db, pWhen, pEq);
+        pWhen = sqlite3ExprAnd(pParse, pWhen, pEq);
       }
   
       if( action!=OE_Restrict && (action!=OE_Cascade || pChanges) ){
@@ -1261,7 +1297,15 @@ static Trigger *fkActionTrigger(
             sqlite3ExprAlloc(db, TK_ID, &tNew, 0),
             sqlite3ExprAlloc(db, TK_ID, &tToCol, 0));
         }else if( action==OE_SetDflt ){
-          Expr *pDflt = pFKey->pFrom->aCol[iFromCol].pDflt;
+          Column *pCol = pFKey->pFrom->aCol + iFromCol;
+          Expr *pDflt;
+          if( pCol->colFlags & COLFLAG_GENERATED ){
+            testcase( pCol->colFlags & COLFLAG_VIRTUAL );
+            testcase( pCol->colFlags & COLFLAG_STORED );
+            pDflt = 0;
+          }else{
+            pDflt = sqlite3ColumnExpr(pFKey->pFrom, pCol);
+          }
           if( pDflt ){
             pNew = sqlite3ExprDup(db, pDflt, 0);
           }else{
@@ -1280,18 +1324,25 @@ static Trigger *fkActionTrigger(
     nFrom = sqlite3Strlen30(zFrom);
 
     if( action==OE_Restrict ){
-      Token tFrom;
+      int iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
+      SrcList *pSrc;
       Expr *pRaise; 
 
-      tFrom.z = zFrom;
-      tFrom.n = nFrom;
-      pRaise = sqlite3Expr(db, TK_RAISE, "FOREIGN KEY constraint failed");
+      pRaise = sqlite3Expr(db, TK_STRING, "FOREIGN KEY constraint failed"),
+      pRaise = sqlite3PExpr(pParse, TK_RAISE, pRaise, 0);
       if( pRaise ){
-        pRaise->affinity = OE_Abort;
+        pRaise->affExpr = OE_Abort;
+      }
+      pSrc = sqlite3SrcListAppend(pParse, 0, 0, 0);
+      if( pSrc ){
+        assert( pSrc->nSrc==1 );
+        pSrc->a[0].zName = sqlite3DbStrDup(db, zFrom);
+        assert( pSrc->a[0].fg.fixedSchema==0 && pSrc->a[0].fg.isSubquery==0 );
+        pSrc->a[0].u4.zDatabase = sqlite3DbStrDup(db, db->aDb[iDb].zDbSName);
       }
       pSelect = sqlite3SelectNew(pParse, 
           sqlite3ExprListAppend(pParse, 0, pRaise),
-          sqlite3SrcListAppend(pParse, 0, &tFrom, 0),
+          pSrc,
           pWhere,
           0, 0, 0, 0, 0
       );
@@ -1299,7 +1350,7 @@ static Trigger *fkActionTrigger(
     }
 
     /* Disable lookaside memory allocation */
-    db->lookaside.bDisable++;
+    DisableLookaside;
 
     pTrigger = (Trigger *)sqlite3DbMallocZero(db, 
         sizeof(Trigger) +         /* struct Trigger */
@@ -1321,7 +1372,7 @@ static Trigger *fkActionTrigger(
     }
 
     /* Re-enable the lookaside buffer, if it was disabled earlier. */
-    db->lookaside.bDisable--;
+    EnableLookaside;
 
     sqlite3ExprDelete(db, pWhere);
     sqlite3ExprDelete(db, pWhen);
@@ -1332,16 +1383,18 @@ static Trigger *fkActionTrigger(
       return 0;
     }
     assert( pStep!=0 );
+    assert( pTrigger!=0 );
 
     switch( action ){
       case OE_Restrict:
-        pStep->op = TK_SELECT; 
+        pStep->op = TK_SELECT;
         break;
       case OE_Cascade: 
         if( !pChanges ){ 
           pStep->op = TK_DELETE; 
           break; 
         }
+        /* no break */ deliberate_fall_through
       default:
         pStep->op = TK_UPDATE;
     }
@@ -1395,18 +1448,18 @@ void sqlite3FkDelete(sqlite3 *db, Table *pTab){
   FKey *pFKey;                    /* Iterator variable */
   FKey *pNext;                    /* Copy of pFKey->pNextFrom */
 
-  assert( db==0 || IsVirtual(pTab)
-         || sqlite3SchemaMutexHeld(db, 0, pTab->pSchema) );
-  for(pFKey=pTab->pFKey; pFKey; pFKey=pNext){
+  assert( IsOrdinaryTable(pTab) );
+  assert( db!=0 );
+  for(pFKey=pTab->u.tab.pFKey; pFKey; pFKey=pNext){
+    assert( db==0 || sqlite3SchemaMutexHeld(db, 0, pTab->pSchema) );
 
     /* Remove the FK from the fkeyHash hash table. */
-    if( !db || db->pnBytesFreed==0 ){
+    if( db->pnBytesFreed==0 ){
       if( pFKey->pPrevTo ){
         pFKey->pPrevTo->pNextTo = pFKey->pNextTo;
       }else{
-        void *p = (void *)pFKey->pNextTo;
-        const char *z = (p ? pFKey->pNextTo->zTo : pFKey->zTo);
-        sqlite3HashInsert(&pTab->pSchema->fkeyHash, z, p);
+        const char *z = (pFKey->pNextTo ? pFKey->pNextTo->zTo : pFKey->zTo);
+        sqlite3HashInsert(&pTab->pSchema->fkeyHash, z, pFKey->pNextTo);
       }
       if( pFKey->pNextTo ){
         pFKey->pNextTo->pPrevTo = pFKey->pPrevTo;
