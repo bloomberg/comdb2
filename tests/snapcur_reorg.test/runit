@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+# A positioned snapshot cursor holds no page lock, so writers may split, merge, free and reuse the pages
+# it is on.  A slow snapshot scan over a multi-page table (512-byte pages) must still return exactly the
+# rows the snapshot started with, in order, with no skips or duplicates.
+db=$1
+host=$(cdb2sql ${CDB2_OPTIONS} -tabs $db default "select comdb2_host()")
+sql="cdb2sql -s ${CDB2_OPTIONS} -tabs $db --host $host"
+fail() { echo "FAIL: $*"; exit 1; }
+
+$sql "create table t(id int primary key, v cstring(64))" || fail "create"
+for i in $(seq 2 2 2000); do echo "insert into t values($i, 'v$i')"; done | $sql - > /dev/null || fail "insert"
+
+# Snapshot session: statements in on S.in, replies appended to S.out
+rm -f S.in S.out; mkfifo S.in
+stdbuf -oL $sql - < S.in > S.out 2>&1 &
+exec 3>S.in
+trap 'kill $(jobs -p) 2>/dev/null; rm -f S.in' EXIT
+waitfor() { local i; for i in $(seq 1 600); do [[ $(grep -c "^$1\$" S.out) -ge $2 ]] && return 0; sleep 0.1; done
+            fail "no '$1' from snapshot session"; }
+
+echo "set transaction snapshot isolation" >&3; echo "begin" >&3
+echo "select id, v from t order by id" >&3; echo "select 'END'" >&3
+waitfor END 1
+# The same scan, 20ms per row: about 20s positioned on pages the writers are reorganizing
+echo "select id, v from t where usleep(20000) >= 0 order by id" >&3; echo "select 'END'" >&3
+
+# Splits (odd ids between the existing rows), page frees and reverse splits (deleted ranges),
+# reuse of the freed pages (new rows), and in-place growth (updates)
+for i in $(seq 1 2 1999); do echo "insert into t values($i, 'w$i')"; done | $sql - > /dev/null || fail "insert odd"
+$sql "delete from t where id between 400 and 1200" > /dev/null || fail "delete"
+for i in $(seq 2001 2800); do echo "insert into t values($i, 'x$i')"; done | $sql - > /dev/null || fail "insert new"
+$sql "update t set v = 'updated-' || v where id % 3 = 0" > /dev/null || fail "update"
+[[ $(grep -c "^END\$" S.out) -eq 1 ]] || fail "the slow scan finished before the writers did; nothing was tested"
+
+waitfor END 2
+echo "commit" >&3; echo "quit" >&3; exec 3>&-; wait
+
+awk '/^END$/{n++; next} n==0' S.out > first.out
+awk '/^END$/{n++; next} n==1' S.out > second.out
+echo "first scan $(wc -l < first.out) rows, slow scan $(wc -l < second.out) rows"
+[[ $(wc -l < first.out) -eq 1000 ]] || fail "snapshot scan did not return the 1000 original rows"
+diff first.out second.out > /dev/null || { diff first.out second.out | head; fail "slow snapshot scan diverged"; }
+echo "Success"

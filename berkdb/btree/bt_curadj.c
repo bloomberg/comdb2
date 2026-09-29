@@ -97,7 +97,7 @@ __bam_ca_delete_int(dbp, pgno, indx, delete, fromclose)
 			dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
 			cp = (BTREE_CURSOR *)dbc->internal;
 			if (cp->pgno == pgno && cp->indx == indx) {
-				if (F_ISSET(dbc, DBC_PAUSIBLE))
+				if (F_ISSET(dbc, DBC_PAUSIBLE | DBC_SNAPSHOT))
 					continue;
 				/*
 				 * [#8032] This assert is checking
@@ -256,7 +256,8 @@ __bam_ca_di(my_dbc, pgno, indx, adjust)
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
-			if (dbc->dbtype == DB_RECNO)
+			if (dbc->dbtype == DB_RECNO ||
+			    F_ISSET(dbc, DBC_SNAPSHOT))
 				continue;
 			cp = dbc->internal;
 			if (cp->pgno == pgno && cp->indx >= indx) {
@@ -380,6 +381,8 @@ __bam_ca_dup(my_dbc, first, fpgno, fi, tpgno, ti)
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 loop:		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
+			if (F_ISSET(dbc, DBC_SNAPSHOT))
+				continue;
 			/* Find cursors pointing to this record. */
 			orig_cp = (BTREE_CURSOR *)dbc->internal;
 			if (orig_cp->pgno != fpgno || orig_cp->indx != fi)
@@ -450,6 +453,8 @@ __bam_ca_undodup(dbp, first, fpgno, fi, ti)
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 loop:		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
+			if (F_ISSET(dbc, DBC_SNAPSHOT))
+				continue;
 			orig_cp = (BTREE_CURSOR *)dbc->internal;
 
 			/*
@@ -516,7 +521,8 @@ __bam_ca_rsplit(my_dbc, fpgno, tpgno)
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
-			if (dbc->dbtype == DB_RECNO)
+			if (dbc->dbtype == DB_RECNO ||
+			    F_ISSET(dbc, DBC_SNAPSHOT))
 				continue;
 			if (dbc->internal->pgno == fpgno) {
 				dbc->internal->pgno = tpgno;
@@ -584,7 +590,8 @@ __bam_ca_split(my_dbc, ppgno, lpgno, rpgno, split_indx, cleft)
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
-			if (dbc->dbtype == DB_RECNO)
+			if (dbc->dbtype == DB_RECNO ||
+			    F_ISSET(dbc, DBC_SNAPSHOT))
 				continue;
 			cp = dbc->internal;
 			if (cp->pgno == ppgno) {
@@ -653,7 +660,8 @@ __bam_ca_undosplit(dbp, frompgno, topgno, lpgno, split_indx)
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
-			if (dbc->dbtype == DB_RECNO)
+			if (dbc->dbtype == DB_RECNO ||
+			    F_ISSET(dbc, DBC_SNAPSHOT))
 				continue;
 			cp = dbc->internal;
 			if (cp->pgno == topgno) {

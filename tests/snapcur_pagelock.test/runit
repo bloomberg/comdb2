@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A positioned snapshot cursor must not hold its page lock: a writer on the page must not wait, and the snapshot sees old values.
+
+db=$1
+set -e
+
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(id, v) values (1,0),(2,0),(3,0),(4,0),(5,0),(6,0)"
+
+# Cluster-wide lock-wait time (us); the test owns the db, so a delta around the writer is its wait on the reader.
+function lockwait_us
+{
+    local n v tot=0
+    for n in $(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster"); do
+        v=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $n $db "select value from comdb2_metrics where name='lockwait_time'")
+        tot=$(( tot + ${v:-0} ))
+    done
+    echo $tot
+}
+
+# Reader: a snapshot cursor that sits on each row for 2s.
+stdbuf -oL cdb2sql ${CDB2_OPTIONS} $db default - > reader.out 2>&1 <<SQL &
+set transaction snapshot
+begin
+select v, sleep(2) from t1 where id <= 4 order by id
+commit
+SQL
+rpid=$!
+trap 'kill $rpid 2>/dev/null || true; rm -f reader.out' EXIT
+
+# Wait for a row so the reader's cursor is known to be positioned before the writer starts.
+for i in $(seq 100); do
+    [[ $(grep -c "^(v=" reader.out 2>/dev/null) -ge 1 ]] && break
+    sleep 0.2
+done
+if [[ $(grep -c "^(v=" reader.out 2>/dev/null) -lt 1 ]]; then
+    echo "FAILED: snapshot reader produced no rows"
+    cat reader.out
+    exit 1
+fi
+
+# Writer: same page, must not wait for the reader.
+lw0=$(lockwait_us)
+st=$(date +%s%N)
+cdb2sql ${CDB2_OPTIONS} $db default "update t1 set v = v + 1 where id = 3"
+el=$(( ($(date +%s%N) - st) / 1000000 ))
+lw=$(( $(lockwait_us) - lw0 ))
+echo "update took ${el}ms, cluster lock-wait time ${lw}us"
+
+rrc=0
+wait $rpid || rrc=$?
+cat reader.out
+if [[ $rrc != 0 ]]; then
+    echo "FAILED: snapshot reader exited $rrc"
+    exit 1
+fi
+
+# Assert on lock-wait, not elapsed time: the writer's wait is bounded by one sleep(2), so a time threshold can't separate cleanly.
+if [[ $lw -gt 500000 ]]; then
+    echo "FAILED: writer waited ${lw}us (${el}ms) on the snapshot reader's page lock"
+    exit 1
+fi
+if [[ $(grep -c "(v=0," reader.out) != 4 ]]; then
+    echo "FAILED: snapshot saw the concurrent update"
+    exit 1
+fi
+if [[ $(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select v from t1 where id = 3") != 1 ]]; then
+    echo "FAILED: update lost"
+    exit 1
+fi
+echo "Testcase passed."
+exit 0
