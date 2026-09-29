@@ -2867,6 +2867,11 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     struct waiting_for_lsn *waitforlsn;
     struct hostinfo *h = retrieve_hostinfo(host);
 
+    /* Nothing to time if it has acked this already: the entry would only go
+     * at its next ack, up to a lease renewal later, and make it look slow. */
+    if (log_compare(&h->seqnum.lsn, &seqnum->lsn) >= 0)
+        return 0;
+
     if (h->waitlist.count < bdb_state->attr->track_replication_times_max_lsns) {
         waitforlsn = pool_getablk(bdb_state->seqnum_info->trackpool);
         waitforlsn->lsn = seqnum->lsn;

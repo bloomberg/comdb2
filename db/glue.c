@@ -849,6 +849,11 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
         return rc;
     }
 
+    if (release_schema_lk && gbl_debug_add_replication_latency) {
+        logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
+        sleep(5);
+    }
+
     if (nowait == 0) {
         startms = comdb2_time_epochms();
         rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, timeoutms, adaptive, &ss);
@@ -856,11 +861,6 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "%s wait-for-seqnum took %d ms rc %d\n", __func__, endms - startms, rc);
         }
-    }
-
-    if (release_schema_lk && gbl_debug_add_replication_latency) {
-        logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
-        sleep(5);
     }
 
     if (cnonce) {
