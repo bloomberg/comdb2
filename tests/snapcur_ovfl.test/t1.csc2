@@ -1,0 +1,7 @@
+schema {
+    int id
+    blob b
+}
+keys {
+    "ID" = id
+}

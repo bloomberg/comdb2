@@ -154,7 +154,7 @@ __bam_iitem(dbc, key, data, op, flags)
 	 * we build the real record so that we're comparing the real items.
 	 */
 	if (op == DB_CURRENT && dbp->dup_compare != NULL) {
-		if ((ret = __bam_cmp(dbp, data, h,
+		if ((ret = __bam_cmp(dbc, dbp, data, h,
 		    indx + (TYPE(h) == P_LBTREE ? O_INDX : 0),
 		    dbp->dup_compare, &cmp)) != 0)
 			return (ret);

@@ -2806,7 +2806,7 @@ __bam_getbothc(dbc, data)
 		 * Check to make sure the desired item comes strictly after
 		 * the current position;  if it doesn't, return DB_NOTFOUND.
 		 */
-		if ((ret = __bam_cmp(dbp, data, cp->page, cp->indx,
+		if ((ret = __bam_cmp(dbc, dbp, data, cp->page, cp->indx,
 		    dbp->dup_compare == NULL ? __bam_defcmp : dbp->dup_compare,
 		    &cmp)) != 0)
 			return (ret);
@@ -2874,7 +2874,7 @@ __bam_getboth_finddatum(dbc, data, flags)
 	if (dbp->dup_compare == NULL) {
 		for (;; cp->indx += P_INDX) {
 			if (!IS_CUR_DELETED(dbc) &&
-			    (ret = __bam_cmp(dbp, data, cp->page,
+			    (ret = __bam_cmp(dbc, dbp, data, cp->page,
 			    cp->indx + O_INDX, __bam_defcmp, &cmp)) != 0)
 				return (ret);
 			if (cmp == 0)
@@ -2899,7 +2899,7 @@ __bam_getboth_finddatum(dbc, data, flags)
 		if (!IS_DUPLICATE(dbc, cp->indx, top))
 			break;
 	if (base == (top - P_INDX)) {
-		if  ((ret = __bam_cmp(dbp, data,
+		if  ((ret = __bam_cmp(dbc, dbp, data,
 		    cp->page, cp->indx + O_INDX, dbp->dup_compare, &cmp)) != 0)
 			return (ret);
 		return (cmp == 0 ||
@@ -2908,7 +2908,7 @@ __bam_getboth_finddatum(dbc, data, flags)
 
 	for (lim = (top - base) / (db_indx_t)P_INDX; lim != 0; lim >>= 1) {
 		cp->indx = base + ((lim >> 1) * P_INDX);
-		if ((ret = __bam_cmp(dbp, data, cp->page,
+		if ((ret = __bam_cmp(dbc, dbp, data, cp->page,
 		    cp->indx + O_INDX, dbp->dup_compare, &cmp)) != 0)
 			return (ret);
 		if (cmp == 0) {
@@ -3113,7 +3113,7 @@ split:	ret = stack = 0;
 		 * on-page duplicates.  Walk the list to find the right slot.
 		 */
 		for (;; cp->indx += P_INDX) {
-			if ((ret = __bam_cmp(dbp, data, cp->page,
+			if ((ret = __bam_cmp(dbc, dbp, data, cp->page,
 			    cp->indx + O_INDX, dbp->dup_compare, &cmp)) != 0)
 				goto err;
 			if (cmp < 0) {
@@ -3155,7 +3155,7 @@ split:	ret = stack = 0;
 		if (flags == DB_AFTER ||
 		    flags == DB_BEFORE || flags == DB_CURRENT) {
 			memset(&dbt, 0, sizeof(DBT));
-			if ((ret = __db_ret(dbp, cp->page, 0, &dbt,
+			if ((ret = __db_ret(dbc, dbp, cp->page, 0, &dbt,
 			    &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 				goto err;
 			arg = &dbt;
@@ -3269,7 +3269,7 @@ __bam_c_rget(dbc, data)
 	if ((ret = PAGEGET(dbc, mpf, &cp->pgno, 0, &cp->page)) != 0)
 		return (ret);
 	memset(&dbt, 0, sizeof(DBT));
-	if ((ret = __db_ret(dbp, cp->page,
+	if ((ret = __db_ret(dbc, dbp, cp->page,
 	    cp->indx, &dbt, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 		goto err;
 	ret = PAGEPUT(dbc, mpf, cp->page, 0);
@@ -3885,7 +3885,7 @@ fast_search:	/*
 		 */
 		if (h->next_pgno == PGNO_INVALID) {
 			indx = NUM_ENT(h) - P_INDX;
-			if ((ret = __bam_cmp(dbp,
+			if ((ret = __bam_cmp(dbc, dbp,
 			    key, h, indx, t->bt_compare, &cmp)) != 0)
 				return (ret);
 
@@ -3912,7 +3912,7 @@ fast_search:	/*
 		}
 try_begin:	if (h->prev_pgno == PGNO_INVALID) {
 			indx = 0;
-			if ((ret = __bam_cmp(dbp,
+			if ((ret = __bam_cmp(dbc, dbp,
 			    key, h, indx, t->bt_compare, &cmp)) != 0)
 				return (ret);
 
@@ -4058,7 +4058,7 @@ __bam_c_physdel(dbc)
 	 * memory of interest--if we do, we're in trouble anyway.
 	 */
 	if (delete_page)
-		if ((ret = __db_ret(dbp, cp->page,
+		if ((ret = __db_ret(dbc, dbp, cp->page,
 		    0, &key, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 			return (ret);
 
@@ -4221,7 +4221,7 @@ __bam_c_getstack(dbc)
 
 	/* Get a copy of a key from the page. */
 	memset(&dbt, 0, sizeof(DBT));
-	if ((ret = __db_ret(dbp,
+	if ((ret = __db_ret(dbc, dbp,
 	    h, 0, &dbt, &dbc->my_rkey.data, &dbc->my_rkey.ulen)) != 0)
 		goto err;
 

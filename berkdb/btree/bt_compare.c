@@ -61,11 +61,12 @@ static const char revid[] = "$Id: bt_compare.c,v 11.18 2003/01/08 04:00:56 bosti
  * __bam_cmp --
  *	Compare a key to a given record.
  *
- * PUBLIC: int __bam_cmp __P((DB *, const DBT *, PAGE *,
+ * PUBLIC: int __bam_cmp __P((DBC *, DB *, const DBT *, PAGE *,
  * PUBLIC:    u_int32_t, int (*)(DB *, const DBT *, const DBT *), int *));
  */
 int
-__bam_cmp(dbp, dbt, h, indx, func, cmpp)
+__bam_cmp(dbc, dbp, dbt, h, indx, func, cmpp)
+	DBC *dbc;
 	DB *dbp;
 	const DBT *dbt;
 	PAGE *h;
@@ -150,7 +151,7 @@ __bam_cmp(dbp, dbt, h, indx, func, cmpp)
 	/*
 	 * Overflow.
 	 */
-	return (__db_moff(NULL, dbp, dbt,
+	return (__db_moff(dbc, dbp, dbt,
 	    bo->pgno, bo->tlen, func == __bam_defcmp ? NULL : func, cmpp));
 }
 
