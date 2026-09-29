@@ -11,7 +11,7 @@
  * the commit LSN.  With gbl_async_dist_commit on, the block processor instead
  * hands the whole request to a single background thread and returns to the
  * pool immediately; that thread polls the acks for all outstanding commits,
- * then replies to each request and finishes it once its wait is over.
+ * then hands each request to a reply thread once its wait is over.
  *
  * The client still waits -- only the block processor thread is freed.
  */
