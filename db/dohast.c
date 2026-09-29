@@ -82,6 +82,13 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
     char *newterm;
     int i;
 
+    /* TODO: support NULLS FIRST/LAST; the generated SQL and the dohsql merge
+     * only handle the default NULL order */
+    for (i = 0; i < lst->nExpr; i++) {
+        if (lst->a[i].fg.sortFlags & KEYINFO_ORDER_BIGNULL)
+            return NULL;
+    }
+
     /* NOTE: do not use tablename for order by TK_COLUMN expressions */
     ret = sqlite3ExprDescribeParams(v, lst->a[0].pExpr, pParamsOut, 0);
     if (!ret)
@@ -97,7 +104,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         }
     }
 
-    if (((*order_dir)[0] = lst->a[0].sortOrder) != 0) {
+    if (((*order_dir)[0] = lst->a[0].fg.sortFlags & KEYINFO_ORDER_DESC) != 0) {
         tmp = sqlite3_mprintf("%s DeSC", ret);
         sqlite3_free(ret);
         ret = tmp;
@@ -113,7 +120,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         }
         tmp = sqlite3_mprintf(
             "%s, %s%s", ret, newterm,
-            (((*order_dir)[i] = lst->a[i].sortOrder) != 0) ? " DeSC" : "");
+            (((*order_dir)[i] = lst->a[i].fg.sortFlags & KEYINFO_ORDER_DESC) != 0) ? " DeSC" : "");
         sqlite3_free(newterm);
         sqlite3_free(ret);
         ret = tmp;
@@ -147,24 +154,24 @@ Expr *_find_join_constrains(Expr *where, int iRightJoinTable)
         return NULL;
 
     if (iRightJoinTable == 0) {
-        while (!ExprHasProperty(crt, EP_FromJoin)) {
-            if (crt->op == TK_AND && ExprHasProperty(crt->pRight, EP_FromJoin))
+        while (!ExprHasProperty(crt, EP_OuterON)) {
+            if (crt->op == TK_AND && ExprHasProperty(crt->pRight, EP_OuterON))
                 crt = crt->pLeft;
             else
                 return crt;
         }
         return NULL; /* no where predicates */
     } else {
-        while (!ExprHasProperty(crt, EP_FromJoin)) {
+        while (!ExprHasProperty(crt, EP_OuterON)) {
             if (crt->op == TK_AND &&
-                ExprHasProperty(crt->pRight, EP_FromJoin)) {
-                if (crt->pRight->iRightJoinTable == iRightJoinTable)
+                ExprHasProperty(crt->pRight, EP_OuterON)) {
+                if (crt->pRight->w.iJoin == iRightJoinTable)
                     return crt->pRight;
                 crt = crt->pLeft;
             } else
                 return NULL;
         }
-        if (crt->iRightJoinTable == iRightJoinTable)
+        if (crt->w.iJoin == iRightJoinTable)
             return crt;
         return NULL;
     }
@@ -262,28 +269,47 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         } else {
             tmp = sqlite3_mprintf("");
         }
-        /* is it a subquery? */
+        /* named table, view or CTE; else an inline subquery */
         if (p->pSrc->a[i].zName) {
-            if (p->pSrc->a[i].zDatabase) {
+            const char *zDb;
+            const char *zName = p->pSrc->a[i].zName;
+            if (p->pSrc->a[i].fg.isCte) {
+                /* a query that references a CTE is never pushed down or run in parallel */
+                sqlite3_free(tmp);
+                sqlite3_free(orderby);
+                sqlite3_free(where);
+                sqlite3_free(cols);
+                return NULL;
+            } else if (p->pSrc->a[i].fg.isSubquery) {
+                /* a view */
+                Table *pView = p->pSrc->a[i].pSTab;
+                zDb = v->db->aDb[sqlite3SchemaToIndex(v->db, pView->pSchema)].zDbSName;
+                zName = pView->zName;
+            } else if (p->pSrc->a[i].fg.fixedSchema) {
+                /* from a view body */
+                zDb = v->db->aDb[sqlite3SchemaToIndex(v->db, p->pSrc->a[i].u4.pSchema)].zDbSName;
+            } else {
+                zDb = p->pSrc->a[i].u4.zDatabase;
+            }
+            if (zDb) {
                 if (p->pSrc->a[i].zAlias) {
                     tbl = sqlite3_mprintf("%s\"%w\".\"%w\" as \"%w\"", tmp,
-                            p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName,
-                            p->pSrc->a[i].zAlias);
+                            zDb, zName, p->pSrc->a[i].zAlias);
                 } else {
-                    tbl = sqlite3_mprintf("%s\"%w\".\"%w\"", tmp,
-                            p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName);
+                    tbl = sqlite3_mprintf("%s\"%w\".\"%w\"", tmp, zDb, zName);
                 }
             } else {
                 if (p->pSrc->a[i].zAlias) {
                     tbl = sqlite3_mprintf("%s\"%w\" as \"%w\"", tmp,
-                            p->pSrc->a[i].zName, p->pSrc->a[i].zAlias);
+                            zName, p->pSrc->a[i].zAlias);
                 } else {
-                    tbl = sqlite3_mprintf("%s\"%w\"", tmp, p->pSrc->a[i].zName);
+                    tbl = sqlite3_mprintf("%s\"%w\"", tmp, zName);
                 }
             }
         } else {
             /* subquery */
-            dohsql_node_t *subnode = gen_select(v, p->pSrc->a[i].pSelect);
+            assert(p->pSrc->a[i].fg.isSubquery);
+            dohsql_node_t *subnode = gen_select(v, p->pSrc->a[i].u4.pSubq->pSelect);
             /* failed to parse, or not standalone select */
             if (!subnode || subnode->type != AST_TYPE_SELECT || !subnode->sql) {
                 sqlite3_free(tmp);
@@ -302,14 +328,14 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         /**
          * "ON ..."/pOn
          * There are cases whene "ON ..." join constraint is pushed into
-         * pWhere with EP_FromJoin property set!
+         * pWhere with EP_OuterON property set!
          * There are other cases when the above optimization is disabled
          * in which case pOn appears here
          * NOTE: skip natural constraints since we already add them
          */
         if (i > 0 && !(p->pSrc->a[i].fg.jointype & JT_NATURAL)) {
-            if (p->pSrc->a[i].pOn) {
-                char *on = sqlite3ExprDescribeParams(v, p->pSrc->a[i].pOn,
+            if (!p->pSrc->a[i].fg.isUsing && p->pSrc->a[i].u3.pOn) {
+                char *on = sqlite3ExprDescribeParams(v, p->pSrc->a[i].u3.pOn,
                                                      pParamsOut, p->pSrc);
                 if (!on) {
                     sqlite3_free(tbl);
@@ -726,7 +752,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
 
     /* no with, joins or subqueries */
     if (not_recognized || p->pSrc->nSrc == 0 /*with*/ ||
-        /*p->pSrc->nSrc > 1 joins || */ p->pSrc->a->pSelect /*subquery*/ ||
+        /*p->pSrc->nSrc > 1 joins || */ p->pSrc->a->fg.isSubquery /*subquery*/ ||
         (span == 1 &&
          p->op == TK_ALL) /* insert rowset which links values on pNext */
     )
@@ -740,17 +766,17 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
             const char *remoteDb = "";
             int remoteIdb = 0;
             for (i = 0; i < p->pSrc->nSrc; i++) {
-                struct SrcList_item *item = &p->pSrc->a[i];
-                if (!item->pTab) {
+                SrcItem *item = &p->pSrc->a[i];
+                if (!item->pSTab) {
                     /* no table data source */
                     continue;
                 }
-                if (item->pTab->iDb <= 1) {
+                if (item->pSTab->iDb <= 1) {
                     /* local table */
                     remoteIdb = 0;
                     break;
                 }
-                if (remoteIdb && remoteIdb != item->pTab->iDb) {
+                if (remoteIdb && remoteIdb != item->pSTab->iDb) {
                     /* join of two remote tables, we could
                      * push to one of them, but for now lets
                      * run join locally
@@ -758,7 +784,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
                     remoteIdb = 0;
                     break;
                 }
-                remoteIdb = item->pTab->iDb;
+                remoteIdb = item->pSTab->iDb;
                 remoteDb = v->db->aDb[remoteIdb].zDbSName;
             }
             if (remoteIdb) {
