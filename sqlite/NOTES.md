@@ -202,6 +202,18 @@ I started tracking this when I got to more important files (`where.c`,
       register reference.  Ticket [82b588d342d515d1]
   ```
 
+* `b99ed20ce`:
+
+  ```md
+  sqlite: If a query uses an index where one or more of the columns of the
+  index is an expression and if the corresponding expression is used elsewhere
+  in the query, then strive to read the value of the expression out of the
+  index, rather than recomputing it.  This is the "Indexed Expression
+  Optimizations".
+
+  https://www.sqlite.org/src/info/3da1032878bdc93f
+  ```
+
 ## TODO
 
 - **TODO**: Simplify our copies of `sqlite3VdbeSerialType()` /
@@ -456,11 +468,57 @@ I started tracking this when I got to more important files (`where.c`,
 
   `sqlite3_stmt_has_remotes()` now checks the bytes from 1 onward with its
   own loop. The function and macros are back to stock, and the `#if` pairs
-  are gone from `vdbeaux.c` and `wherecode.c`. For the call in
-  `sqlite3FinishCoding()` here, we only dropped the `0`: its comdb2 `#if` pair
-  stays because of the `|| pParse->write` check. Nothing changes in
+  are gone from `vdbeaux.c` and `wherecode.c`. The call in
+  `sqlite3FinishCoding()` here is gone: 3.51 removed the `if`
+  it sat in. Nothing changes in
   behaviour. Upstream's version scans `sizeof(yDbMask)` bytes, the same range
   ours scanned with `start = 0`.
+
+- **DECISION**: Take upstream's two-argument `sqlite3RunParser()` in
+  `sqlite3NestedParse_int()`, and drop the `pzErrMsg` parameter from it and
+  its two wrappers.
+
+  3.51 no longer passes the parser's error message out through a third
+  argument. It leaves it in `pParse->zErrMsg`, which a nested parse doesn't
+  reset. `sqlite3NestedParsePreserveFlags()` used the plumbing only to put the
+  message back there, so it now gets that for free.
+
+- **DECISION**: Rebuild comdb2's `sqlite3FindTable_int()` on 3.51's search
+  instead of keeping our 3.28-style loop.
+
+  3.51 split the search into a qualified branch and an unqualified branch,
+  and moved the `sqlite_schema` aliases into both. Our old loop no longer
+  compiles (`MASTER_NAME` is gone). Keeping it would also mean copying the
+  alias code into our half. So we take upstream's search verbatim and add
+  three guards:
+
+  - A qualified name is matched on `dbName` rather than `zDatabase`.
+  - A qualified name that matches no schema falls through to the remote-table
+    code instead of returning 0.
+  - An unqualified name skips the attached databases, which are remote
+    tables, so it only resolves to temp or main.
+
+  The comdb2 tail changes to fit. It only checks the remote class when the
+  table was found in an attached database (`i>1`). The old rejection of
+  unqualified names found in an attached database is gone, because nothing
+  reaches it now.
+
+  This also fixes a bug. Suppose `t` is an fdb alias, and remote tables
+  `db1.t` and `db2.u` have been used, so `db1` and `db2` are attached in
+  that order. `SELECT * FROM t` resolves through the alias. But if `db2.t`
+  has also been used, the same query fails with "no such table". The old
+  loop overwrote its answer for each attached schema, so only `db2`'s
+  counted. It found `t` there, and the check that refuses a remote table
+  named without a database (`i>1 && p && !zDatabase`) discarded it and
+  skipped the alias lookup. It now always tries the alias.
+
+- **DECISION**: In `createTableStmt()`, replace the dead `" DATETIMEUS "`
+  entry at the end of comdb2's `azType[]` with one for `SQLITE_AFF_FLEXNUM`.
+
+  `azType[]` is indexed by affinity. The `" DATETIMEUS "` entry sat at
+  affinity 0x4F, which no affinity used before 3.51. 3.51's new
+  `SQLITE_AFF_FLEXNUM` is 0x4F in our numbering (`'O'`), so without this
+  change FLEXNUM columns would be written as `DATETIMEUS`.
 
 ### `CMakeLists.txt`
 
