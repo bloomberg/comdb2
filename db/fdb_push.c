@@ -508,7 +508,11 @@ int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
             rc = -2;
             goto closing;
         }
-        errstat_set_rcstrf(err, rc = -1, "Failed to run query", clnt->sql);
+        if (errstr && errstr[0]) {
+            errstat_set_rcstrf(err, rc, "%s", errstr);
+        } else {
+            errstat_set_rcstrf(err, -1, "Failed to run query");
+        }
         goto send_error;
     }
 
