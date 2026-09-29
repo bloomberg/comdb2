@@ -2320,9 +2320,9 @@ REGISTER_TUNABLE("javasp_early_release", "Release javasp-lock before distributed
                  TUNABLE_BOOLEAN, &gbl_javasp_early_release, EXPERIMENTAL | INTERNAL, 
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("debug_add_replication_latency", "Sleep after distributed commit.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_debug_add_replication_latency, EXPERIMENTAL | INTERNAL, 
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_add_replication_latency",
+                 "Sleep 5 seconds after a commit, before waiting for replicants.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_add_replication_latency, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("ref_sync_pollms",
                  "Set pollms for ref_sync thread.  "

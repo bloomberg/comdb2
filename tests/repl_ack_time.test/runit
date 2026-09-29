@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# A replicant's ack time, as the slow-replicant check measures it, must not
+# count time from before the master started timing it.  With
+# debug_add_replication_latency the master sleeps 5s after each commit,
+# before waiting for replicants, so every replicant has acked by the time
+# the timing is set up; such a node would only be timed at its next ack, up
+# to a lease renewal (200ms) later.  Nothing lags: acks take ~1ms.
+bash -n "$0" || exit 1
+
+[ -z "${CLUSTER}" ] && { echo "skipping, it's a cluster test"; exit 0; }
+
+dbnm=$1
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'")
+sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "$1"; }
+latency() { cdb2sql ${CDB2_OPTIONS} -admin $dbnm --host $master "put tunable debug_add_replication_latency $1" >/dev/null; }
+
+sql "create table t(a int)" >/dev/null || exit 1
+# max_wait_over_10secs is the slowest ack time a node recorded in the last
+# 10s; let the create's own sample age out of that window
+sleep 11
+latency 1
+for i in 1 2; do sql "insert into t values($i)" >/dev/null || exit 1; done
+latency 0
+# A normal commit: its ack is timed correctly (~1ms).  Old samples are only
+# dropped when a new one is added, and with the fix inserts 1 and 2 add none,
+# so without this the create's stale sample would still be counted.
+sql "insert into t values(3)" >/dev/null || exit 1
+
+sql "select host, max_wait_over_10secs from comdb2_repl_stats"
+slowest=$(sql "select max(max_wait_over_10secs) from comdb2_repl_stats where host != '$master'")
+[ "${slowest%.*}" -lt 50 ] || { echo "FAILED: slowest ack time is ${slowest}ms, expected ~1ms"; exit 1; }
+echo "SUCCESS"
