@@ -2324,6 +2324,11 @@ REGISTER_TUNABLE("debug_add_replication_latency",
                  "Sleep 5 seconds after a commit, before waiting for replicants.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_add_replication_latency, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_osql_send_queue_full",
+                 "Treat every osql send to another node as if its queue were full, so the sender backs off and "
+                 "retries.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_osql_send_queue_full, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("ref_sync_pollms",
                  "Set pollms for ref_sync thread.  "
                  "(Default: 250)",

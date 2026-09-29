@@ -1,0 +1,500 @@
+#!/usr/bin/env bash
+# Tests async_dist_commit: the master hands the wait for replicant acks to a
+# background thread instead of blocking a block processor.  Turning it on must
+# not change what the client sees -- only who waits.
+bash -n "$0" || exit 1
+
+set -e
+
+dbname=$1
+[ -z "$dbname" ] && { echo "usage: runit <dbname>" >&2; exit 1; }
+
+sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1"; }
+
+# Only the master runs block processors, so the tunable and its counters live
+# there.  "default" load-balances across the cluster, so anything that touches
+# them has to be pinned to the master or it reads a replicant's zeroes.
+master=$(sql "select host from comdb2_cluster where is_master='Y'")
+[ -z "$master" ] && { echo "could not find the master" >&2; exit 1; }
+
+master_sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $master "$1"; }
+
+counter() {
+    master_sql "select cast(value as int) from comdb2_metrics where name='async_dist_commit_$1'"
+}
+
+set_tunable() {
+    cdb2sql ${CDB2_OPTIONS} $dbname --host $master \
+        "exec procedure sys.cmd.send('$1 $2')" >/dev/null
+}
+
+fail() { echo "FAILED: $1" >&2; exit 1; }
+
+sql "create table t(a int unique, b int not null)" >/dev/null
+
+################################################################
+# 1. Off by default, and commits go down the inline path.
+################################################################
+[ "$(master_sql "select value from comdb2_tunables where name='async_dist_commit'")" = "OFF" ] \
+    || fail "async_dist_commit should default to OFF"
+
+before=$(counter enqueued)
+sql "insert into t values(1, 1)" >/dev/null
+[ "$(counter enqueued)" = "$before" ] || fail "nothing should be enqueued while the feature is off"
+
+################################################################
+# 2. Turn it on at runtime; commits are handed to the waiter thread
+#    and the data is still there.
+################################################################
+set_tunable async_dist_commit 1
+
+before=$(counter enqueued)
+for i in $(seq 2 21); do
+    sql "insert into t values($i, $i)" >/dev/null
+done
+after=$(counter enqueued)
+
+[ "$after" -gt "$before" ] || fail "commits were not handed to the seqnum-wait thread"
+[ "$(sql 'select count(*) from t')" = "21" ] || fail "rows went missing under async_dist_commit"
+[ "$(sql 'select sum(a) from t')" = "231" ] || fail "row contents are wrong under async_dist_commit"
+
+################################################################
+# 3. Failures are still reported.  Has to run on a REPLICANT: only
+#    the remote reply uses the rc the waiter passes it.
+################################################################
+replicant=""
+for node in $CLUSTER; do
+    [ "$node" = "$master" ] || { replicant=$node; break; }
+done
+if [ -n "$replicant" ]; then
+    rsql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $replicant "$1"; }
+else
+    echo "note: not clustered -- the remote reply path is not covered"
+    rsql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1"; }
+fi
+
+# Check the rc the client got: the row is dropped long before the waiter runs.
+expect_rejected() {
+    local out rc=0
+    out=$(rsql "$1" 2>&1) || rc=$?
+    [ "$rc" != "0" ] || fail "$2 was reported to the client as success (output: '$out')"
+}
+
+# A rejected write still commits a blkseq record, so it reaches the waiter.
+# Without this the check above could pass without exercising the async path.
+before=$(counter enqueued)
+expect_rejected "insert into t values(1, 99)" "duplicate-key insert"
+[ "$(sql 'select count(*) from t where b=99')" = "0" ] || fail "duplicate-key insert was not rejected"
+[ "$(counter enqueued)" -gt "$before" ] || fail "the rejected write never reached the waiter thread"
+
+expect_rejected "insert into t values(999, NULL)" "null-constraint insert"
+[ "$(sql 'select count(*) from t where a=999')" = "0" ] || fail "null-constraint insert was not rejected"
+
+################################################################
+# 4. Transactions: commit and rollback both still behave.
+################################################################
+cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null <<'EOF'
+begin
+insert into t values(100, 100)
+insert into t values(101, 101)
+commit
+EOF
+[ "$(sql 'select count(*) from t where a>=100')" = "2" ] || fail "committed transaction did not persist"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null 2>&1 <<'EOF' || true
+begin
+insert into t values(200, 200)
+rollback
+EOF
+[ "$(sql 'select count(*) from t where a=200')" = "0" ] || fail "rolled-back transaction persisted"
+
+################################################################
+# 5. Queue full -> fall back to waiting inline.  With a cap of 0
+#    every commit must take the fallback, and must still work.
+################################################################
+set_tunable async_dist_commit_max_outstanding_trans 0
+
+before_inline=$(counter inline)
+before_enq=$(counter enqueued)
+sql "insert into t values(300, 300)" >/dev/null
+[ "$(counter inline)" -gt "$before_inline" ] || fail "full queue did not fall back to the inline wait"
+[ "$(counter enqueued)" = "$before_enq" ] || fail "commit was enqueued even though the queue was full"
+[ "$(sql 'select count(*) from t where a=300')" = "1" ] || fail "inline fallback lost the row"
+
+# The fallback's ack wait must not overwrite the rejected write's rc.
+before_inline=$(counter inline)
+expect_rejected "insert into t values(300, 99)" "duplicate-key insert on the inline fallback"
+[ "$(counter inline)" -gt "$before_inline" ] || fail "the rejected write never took the inline fallback"
+
+set_tunable async_dist_commit_max_outstanding_trans 8
+
+################################################################
+# 6. The waiter behaves like the inline wait around slow or removed
+#    replicants.  Needs 3 replicants: 'replicant' (step 3), 'victim',
+#    and one more that stays fast.
+################################################################
+victim=""
+nreplicants=0
+for node in $CLUSTER; do
+    [ "$node" = "$master" ] && continue
+    nreplicants=$((nreplicants + 1))
+    [ "$node" = "$replicant" ] || victim=$node
+done
+
+send() { master_sql "exec procedure sys.cmd.send('$1')"; }
+state_of() { master_sql "select coherent_state from comdb2_cluster where host='$1'"; }
+wait_coherent() {
+    for i in $(seq 1 60); do
+        [ "$(state_of $1)" = "coherent" ] && return 0
+        sleep 1
+    done
+    fail "$1 never became coherent again"
+}
+admin_set() { cdb2sql ${CDB2_OPTIONS} -admin $dbname --host $1 "put tunable $2 $3" >/dev/null; }
+# make a replicant apply every txn $2 ms late (0 = normal again)
+lag() {
+    admin_set $1 slow_rep_process_txn_minms $2
+    admin_set $1 slow_rep_process_txn_maxms $2
+    admin_set $1 slow_rep_process_txn_freq $([ "$2" = 0 ] && echo 0 || echo 1)
+}
+set_rep_timeout() { send "bdb setattr REPTIMEOUT_MINMS $1" >/dev/null; }
+log=$TESTDIR/logs/$dbname.$master.db
+count() { grep -c "$1" $log || true; } # grep -c exits 1 on no match
+demoted() { echo "bdb_wait_for_seqnum_mark_incoherent line [0-9]* setting $1 coherent state to INCOHERENT"; }
+
+if [ "$nreplicants" -lt 3 ]; then
+    echo "note: fewer than 3 replicants -- step 6 skipped"
+else
+    # Each check below decides who gets demoted; keep the once-a-second
+    # slow-replicant check from demoting a lagging node on its own.
+    send "bdb setattr MAKE_SLOW_REPLICANTS_INCOHERENT 0" >/dev/null
+
+    # 6a. rtcpu: the next commit demotes the node to INCOHERENT.
+    send "debug tcmtest routecpu $victim" >/dev/null
+    before=$(counter enqueued)
+    for i in $(seq 500 504); do master_sql "insert into t values($i, $i)" >/dev/null; done
+    [ "$(counter enqueued)" -gt "$before" ] || fail "6a: commits were not handed to the waiter"
+    [ "$(state_of $victim)" != "coherent" ] || fail "6a: rtcpu'd $victim stayed coherent"
+    send "debug tcmtest routecpu" >/dev/null
+    wait_coherent $victim
+
+    # 6b. DR test: the next commit demotes the node to INCOHERENT_WAIT.
+    send "fakedr add $victim" >/dev/null
+    before=$(counter enqueued)
+    for i in $(seq 510 514); do master_sql "insert into t values($i, $i)" >/dev/null; done
+    [ "$(counter enqueued)" -gt "$before" ] || fail "6b: commits were not handed to the waiter"
+    [ "$(state_of $victim)" != "coherent" ] || fail "6b: drtest $victim stayed coherent"
+    send "fakedr del $victim" >/dev/null
+    wait_coherent $victim
+
+    # 6c. One lagging node, six commits in flight: it is demoted once, not
+    #     once per commit; the failed wait is logged; rep time is counted.
+    before_demoted=$(count "$(demoted $victim)")
+    before_redemoted=$(count "bdb_wait_for_seqnum_mark_incoherent line [0-9]* $victim state is already INCOHERENT")
+    before_warn=$(count "error syncing all nodes")
+    lag $victim 2000
+    set_rep_timeout 500
+    pids=""
+    for i in $(seq 520 525); do
+        master_sql "insert into t values($i, $i)" >/dev/null &
+        pids="$pids $!"
+    done
+    for pid in $pids; do wait $pid || fail "6c: an insert failed"; done
+    lag $victim 0
+    set_rep_timeout 10000
+    [ "$(count "$(demoted $victim)")" -gt "$before_demoted" ] || fail "6c: lagging $victim was never demoted"
+    [ "$(count "bdb_wait_for_seqnum_mark_incoherent line [0-9]* $victim state is already INCOHERENT")" = "$before_redemoted" ] \
+        || fail "6c: $victim was demoted again after it was already incoherent"
+    [ "$(count "error syncing all nodes")" -gt "$before_warn" ] || fail "6c: failed ack wait was not logged"
+    maxrep=$(send "stat rep" | awk '$1 == "Max" && $3 == "time" {print $NF}')
+    [ "${maxrep:-0}" -ge 500 ] || fail "6c: 'stat rep' max rep time is '$maxrep', expected >= 500"
+    [ "$(sql 'select count(*) from t where a between 520 and 525')" = "6" ] || fail "6c: rows lost"
+    wait_coherent $victim
+
+    # 6d. Two lagging nodes, 1.5s behind, 1s timeout.  The inline wait gives
+    #     each node up to 1s in turn, in the master's node order, to be the
+    #     first to ack, so whether either is demoted depends on that order.
+    #     The waiter must demote the same ones: run it both ways and compare.
+    run_6d() { # $1 = cap, $2 = row; sets 'got' to the lagging nodes demoted
+        local bv br
+        # a node that just caught up can still be slow to apply: let it settle
+        wait_coherent $victim
+        wait_coherent $replicant
+        sleep 2
+        bv=$(count "$(demoted $victim)")
+        br=$(count "$(demoted $replicant)")
+        set_tunable async_dist_commit_max_outstanding_trans $1
+        lag $victim 1500
+        lag $replicant 1500
+        set_rep_timeout 1000
+        master_sql "insert into t values($2, $2)" >/dev/null
+        lag $victim 0
+        lag $replicant 0
+        set_rep_timeout 10000
+        set_tunable async_dist_commit_max_outstanding_trans 8
+        got=""
+        [ "$(count "$(demoted $victim)")" -gt "$bv" ] && got="$got $victim"
+        [ "$(count "$(demoted $replicant)")" -gt "$br" ] && got="$got $replicant"
+        wait_coherent $victim
+        wait_coherent $replicant
+    }
+    before=$(counter inline)
+    run_6d 0 530
+    inline_got=$got
+    [ "$(counter inline)" -gt "$before" ] || fail "6d: the inline run did not wait inline"
+    before=$(counter enqueued)
+    run_6d 8 531
+    [ "$(counter enqueued)" -gt "$before" ] || fail "6d: commit was not handed to the waiter"
+    [ "$got" = "$inline_got" ] || fail "6d: the waiter demoted '$got', the inline wait '$inline_got'"
+
+    # 6e. The request log still covers the ack wait: a commit that waits ~1s
+    #     for a lagging node is a long request (threshold 800ms) whose entry
+    #     shows its rep time.
+    longreqs=$DBDIR/async_dist_commit.longreqs
+    send "reql longreqfile $longreqs" >/dev/null
+    send "reql longrequest 800" >/dev/null
+    lag $victim 1500
+    set_rep_timeout 1000
+    master_sql "insert into t values(540, 540)" >/dev/null
+    lag $victim 0
+    set_rep_timeout 10000
+    send "reql longrequest 2000" >/dev/null
+    ssh -o StrictHostKeyChecking=no $master "grep -E 'Wrote [0-9]+ log bytes in [0-9]{3,} ms rep time' $longreqs" >/dev/null \
+        || fail "6e: the long-request log has no entry with the commit's rep time"
+    wait_coherent $victim
+
+    # 6f. With no time for the first ack (rep_timeout_maxms 0) the inline wait
+    #     still looks at every node once, then waits for the rest: the reply
+    #     comes after the lagging node has the row.  With udp on, the waiter
+    #     has its nodes from the start anyway; turn it off.
+    lag $victim 2000
+    admin_set $master udp 0
+    send "bdb setattr REPTIMEOUT_MAXMS 0" >/dev/null
+    before=$(counter enqueued)
+    master_sql "insert into t values(550, 550)" >/dev/null
+    [ "$(counter enqueued)" -gt "$before" ] || fail "6f: commit was not handed to the waiter"
+    [ "$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $victim 'select count(*) from t where a=550')" = "1" ] \
+        || fail "6f: replied before lagging $victim had the row"
+    send "bdb setattr REPTIMEOUT_MAXMS 300000" >/dev/null
+    admin_set $master udp 1
+    lag $victim 0
+    wait_coherent $victim
+    # left off: steps 8-11 need it off too
+fi
+
+################################################################
+# 7. Turning it back off returns to the inline path cleanly.
+################################################################
+set_tunable async_dist_commit 0
+before=$(counter enqueued)
+sql "insert into t values(400, 400)" >/dev/null
+[ "$(counter enqueued)" = "$before" ] || fail "commit was enqueued after the feature was turned off"
+[ "$(sql 'select count(*) from t where a=400')" = "1" ] || fail "row lost after turning the feature off"
+
+if [ "$nreplicants" -lt 3 ]; then
+    echo "note: fewer than 3 replicants -- steps 8-11 skipped"
+    echo "SUCCESS"
+    exit 0
+fi
+
+# Steps 8-11 make nodes lag, kill a replicant, move the master and bounce it.
+set +e
+set -x
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+failexit() { fail "$1"; } # for cluster_utils.sh
+
+# The async wait is set up on the master only: redo it whenever it moves.
+find_master() {
+    for i in $(seq 1 120); do
+        master=$(sql "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+        [ -n "$master" ] && master_sql "select 1" >/dev/null 2>&1 && break
+        master=""
+        sleep 1
+    done
+    [ -n "$master" ] || fail "no master"
+    log=$TESTDIR/logs/$dbname.$master.db
+    set_tunable async_dist_commit 1
+    send "bdb setattr MAKE_SLOW_REPLICANTS_INCOHERENT 0" >/dev/null
+    set_rep_timeout 10000
+    # the victim must stay a replicant
+    [ "$victim" = "$master" ] && victim=$(other_replicant)
+    for node in $CLUSTER; do [ "$node" = "$master" ] || wait_coherent $node; done
+}
+# a replicant that is neither $1 nor the lagging victim
+other_replicant() {
+    for node in $CLUSTER; do
+        [ "$node" = "$master" ] || [ "$node" = "$victim" ] || [ "$node" = "$1" ] || { echo $node; return; }
+    done
+}
+# rows with a=$2 on node $1
+rows_on() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $1 "select count(*) from t where a=$2"; }
+
+find_master
+
+################################################################
+# 8. Bookkeeping: rep-time stats are counted once, the wait's debug
+#    traces are printed, and a node's ack time for the slow-replicant
+#    check is timed from the commit, not from when the waiter got to it.
+################################################################
+num_commits() { send "stat rep" | awk '$1 == "Num" && $2 == "commits" {print $NF}'; }
+avg_reptime() { send "stat rep" | awk '$1 == "Avg" && $3 == "rep" && $4 == "time" {print $NF}'; }
+
+admin_set $master debug_disttxn_trace 1
+traces=$(count "seqnum_wait_done wait-for-seqnum took")
+n1=$(num_commits); a1=$(avg_reptime)
+lag $victim 1000
+for i in 800 801 802; do master_sql "insert into t values($i, $i)" >/dev/null || fail "8: insert failed"; done
+lag $victim 0
+n2=$(num_commits); a2=$(avg_reptime)
+admin_set $master debug_disttxn_trace 0
+[ "$n2" -gt "$n1" ] || fail "8: 'stat rep' commit count did not move ($n1 -> $n2)"
+[ "$(count "seqnum_wait_done wait-for-seqnum took")" -ge $((traces + 3)) ] || fail "8: wait-for-seqnum trace missing"
+# The waits as the waiter timed them (a background txn the victim also
+# applies late can stretch one) against what 'stat rep' added: equal if
+# counted once, double if twice.  Its averages are truncated to integers.
+waited=$(grep "seqnum_wait_done wait-for-seqnum took" $log | tail -n +$((traces + 1)) | awk '{s += $(NF - 3)} END {print s}')
+added=$(( a2 * n2 - a1 * n1 ))
+[ "$added" -ge $((waited * 3 / 4)) ] && [ "$added" -le $((waited * 5 / 4)) ] \
+    || fail "8: 'stat rep' added ${added}ms of rep time for waits of ${waited}ms"
+wait_coherent $victim
+
+# A node that acked before its timing started is only timed at its next
+# ack, up to a lease renewal (200ms) later.  These commits hold 5s before
+# their wait (debug_add_replication_latency), so every node has acked each
+# of them by the time its timing is set up.  Nothing lags: acks take ~1ms.
+sleep 11 # out of the 10-second window
+admin_set $master debug_add_replication_latency 1
+for i in 808 809; do master_sql "insert into t values($i, $i)" >/dev/null; done
+admin_set $master debug_add_replication_latency 0
+master_sql "insert into t values(810, 810)" >/dev/null
+slowest=$(master_sql "select max(max_wait_over_10secs) from comdb2_repl_stats where host != '$master'")
+[ "${slowest%.*}" -lt 50 ] || fail "8: slowest ack time for the slow-replicant check is ${slowest}ms, expected ~1ms"
+
+################################################################
+# 9. A retry of a handed-off commit waits for the original's acks, as
+#    it did inline.  The client's replicant dies mid-wait; with hasql,
+#    cdb2api replays the transaction (same cnonce) through another node
+#    and the master answers it from the blkseq.  Once the client has its
+#    answer, the lagging victim must have the row.
+################################################################
+wait_coherent $victim
+admin_set $master debug_disttxn_trace 1
+lag $victim 6000
+fifo=$TESTDIR/$dbname.adc.fifo; out=$TESTDIR/$dbname.adc.out; err=$TESTDIR/$dbname.adc.err
+rm -f $fifo; mkfifo $fifo
+client=""
+for try in $(seq 1 30); do
+    : > $out
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbname default - < $fifo > $out 2> $err &
+    cpid=$!
+    exec 7> $fifo
+    echo "set hasql on" >&7
+    # hasql replays need a snapshot; not serializable, whose retries never
+    # wait for the original at all (toblock() only registers osql/snapisol)
+    echo "set transaction snapshot isolation" >&7
+    echo "select comdb2_host()" >&7
+    # cdb2sql echoes each statement as "[stmt] rc N"; the host is the other line
+    for i in $(seq 1 50); do grep -qv '^\[' $out && break; sleep 0.1; done
+    client=$(grep -v '^\[' $out | head -1)
+    [ -n "$client" ] && [ "$client" != "$master" ] && [ "$client" != "$victim" ] && break
+    exec 7>&-
+    wait $cpid
+    client=""
+done
+[ -n "$client" ] || fail "9: could not connect through a fast replicant"
+replays=$(send "stat replay" | awk '$1 == "Blkseq-replay-count:" {print $2}')
+echo "begin" >&7
+echo "insert into t values(900, 900)" >&7
+echo "commit" >&7
+sleep 2 # committed and handed off; the victim is ~4s from acking
+kill_restart_node $client 0 0
+exec 7>&-
+wait $cpid; crc=$?
+seen=$(rows_on $victim 900)
+lag $victim 0
+admin_set $master debug_disttxn_trace 0
+[ "$crc" = 0 ] && ! grep -qi "error\|fail" $out $err || fail "9: retried insert failed: $(cat $out $err)"
+[ "$(master_sql 'select count(*) from t where a=900')" = "1" ] || fail "9: row 900 lost"
+[ "$(send "stat replay" | awk '$1 == "Blkseq-replay-count:" {print $2}')" -gt "${replays:-0}" ] \
+    || fail "9: the commit was not retried through the blkseq"
+[ "$seen" = "1" ] || fail "9: the retry was answered before the victim had the row"
+waitmach $client
+wait_coherent $client
+wait_coherent $victim
+
+################################################################
+# 10. The master downgrades while a commit is waiting: the waiter
+#     stops early, as the inline wait does, and still answers.
+################################################################
+early=$(count "stop_early line [0-9]* early exit because")
+oldlog=$log
+lag $victim 4000
+sql "insert into t values(1000, 1000)" > $out 2>&1 &
+ipid=$!
+sleep 1
+send "downgrade" >/dev/null 2>&1
+wait $ipid; irc=$?
+lag $victim 0
+[ "$(grep -c "stop_early line [0-9]* early exit because" $oldlog)" -gt "$early" ] || fail "10: the waiter did not stop early"
+find_master
+# (ask the master: the victim may still be sleeping off its lag)
+[ "$(master_sql 'select count(*) from t where a=1000')" = "1" ] || [ "$irc" != 0 ] || fail "10: insert reported success but row 1000 is missing"
+wait_coherent $victim
+
+################################################################
+# 11. A reply that cannot be sent does not hold up other commits.  With
+#     debug_osql_send_queue_full every reply to another node backs off and
+#     retries, as when that node's queue is full; inline that held only the
+#     block processor sending it.  A commit through the master itself
+#     (whose reply is routed locally) must still finish meanwhile.
+################################################################
+rnode=$(other_replicant)
+enq=$(counter enqueued)
+admin_set $master debug_osql_send_queue_full 1
+cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $rnode "insert into t values(1150, 1150)" > $out 2>&1 &
+apid=$!
+sleep 2
+start=$(date +%s)
+timeout 30 cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $master "insert into t values(1151, 1151)" >/dev/null 2>&1; brc=$?
+took=$(( $(date +%s) - start ))
+kill -0 $apid 2>/dev/null; astuck=$?
+nenq=$(counter enqueued)
+admin_set $master debug_osql_send_queue_full 0
+for i in $(seq 1 30); do kill -0 $apid 2>/dev/null || break; sleep 1; done
+kill -0 $apid 2>/dev/null && { kill $apid; fail "11: the stuck reply was never sent"; }
+wait $apid; arc=$?
+[ "$astuck" = 0 ] || fail "11: the reply to $rnode was not held up: $(cat $out)"
+[ "$nenq" -ge $((enq + 2)) ] || fail "11: both commits should have been handed off ($enq -> $nenq)"
+[ "$brc" = 0 ] && [ "$took" -lt 10 ] || fail "11: a commit waited ${took}s (rc $brc) behind a stuck reply"
+[ "$arc" = 0 ] || fail "11: the held-up insert failed: $(cat $out)"
+[ "$(master_sql 'select count(*) from t where a in (1150, 1151)')" = "2" ] || fail "11: rows 1150/1151 missing"
+
+################################################################
+# 12. The master exits while a commit is waiting: the waiter stops
+#     waiting for replicants, so exit does not give up on it.  The
+#     victim lags past the exit's 10s limit.
+################################################################
+lag $victim 20000
+set_rep_timeout 30000
+gaveup=$(count "giving up with")
+oldmaster=$master; oldlog=$log
+before=$(counter enqueued)
+sql "insert into t values(1100, 1100)" > $out 2>&1 &
+ipid=$!
+sleep 2
+[ "$(counter enqueued)" -gt "$before" ] || fail "12: commit was not handed to the waiter"
+send "exit" >/dev/null 2>&1
+pid=$(cat ${TMPDIR}/${DBNAME}.${oldmaster}.pid)
+for i in $(seq 1 60); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+kill -0 $pid 2>/dev/null && fail "12: $oldmaster did not exit"
+lag $victim 0
+[ "$(grep -c "giving up with" $oldlog)" = "$gaveup" ] || fail "12: exit gave up on a handed-off commit"
+wait $ipid; irc=$?
+kill_restart_node $oldmaster 0 1
+find_master
+wait_coherent $oldmaster
+wait_coherent $victim
+[ "$(master_sql 'select count(*) from t where a=1100')" = "1" ] || [ "$irc" != 0 ] || fail "12: insert reported success but row 1100 is missing"
+
+echo "SUCCESS"
