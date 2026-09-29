@@ -300,11 +300,18 @@ I started tracking this when I got to more important files (`where.c`,
 - We have cherry-picked specific extensions from SQLite rather than support all
   of them, presumably to reduce maintenance surface area.
 
-### `alter.c`
+### `sqlite/CMakeLists.txt`
+
+- Certain files are generated at build time (see `tool` directory and comments
+  in `CMakeLists.txt`).
+- Reorganized `CMakeLists.txt` to clarify which files are stock SQLite vs.
+  Comdb2-related.
+
+### `sqlite/src/alter.c`
 
 - Disable SQLite's logic because we handle much of DDL ourselves.
 
-### `analyze.c`
+### `sqlite/src/analyze.c`
 
 - **DECISION**: The stat4 sample tunables must not turn sampling back on when
   the connection has turned it off.
@@ -449,7 +456,7 @@ I started tracking this when I got to more important files (`where.c`,
   `statPush()` does. The default limit is 0, which emits a plain `OP_Next`, so
   the generated code only changes if the pragma is set.
 
-### `build.c`
+### `sqlite/src/build.c`
 
 - **DECISION**: Use upstream's one-argument `sqlite3DbMaskAllZero()` and
   `DbMaskAllZero()`/`DbMaskNonZero()` macros, and remove comdb2's extra
@@ -520,14 +527,7 @@ I started tracking this when I got to more important files (`where.c`,
   `SQLITE_AFF_FLEXNUM` is 0x4F in our numbering (`'O'`), so without this
   change FLEXNUM columns would be written as `DATETIMEUS`.
 
-### `CMakeLists.txt`
-
-- Certain files are generated at build time (see `tool` directory and comments
-  in `CMakeLists.txt`).
-- Reorganized `CMakeLists.txt` to clarify which files are stock SQLite vs.
-  Comdb2-related.
-
-### `decimal.h` (decimal math)
+### `sqlite/src/decimal.h` (decimal math)
 
 - Looks like we use the `decNumber` library for decimal math
   - Written by someone at IBM
@@ -548,7 +548,7 @@ I started tracking this when I got to more important files (`where.c`,
     where each of decimal type can store a different number of digits for
     the significand and exponent.
 
-### `expr.c`
+### `sqlite/src/expr.c`
 
 - **DECISION**: Drop our `EP_Generic` patch in `sqlite3ExprAffinity()` and use
   upstream's version.
@@ -617,7 +617,7 @@ I started tracking this when I got to more important files (`where.c`,
   our rows are there, including `SQLITE_AFF_FLEXNUM`, which arrived with the
   new `sqliteInt.h` after the table was last extended.
 
-### `func.c`
+### `sqlite/src/func.c`
 
 - **DECISION**: In `substrFunc()`, use upstream's code and define
   `SQLITE_SUBSTR_COMPATIBILITY=1` in `definitions.cmake`, instead of keeping
@@ -649,38 +649,38 @@ I started tracking this when I got to more important files (`where.c`,
   The decimal branch now runs first, so a decimal value only ever changes
   `decSum`, as it did in 3.28.
 
-### `fwd_types.h`
+### `sqlite/src/fwd_types.h`
 
 - I guess we need to be able to refer to some SQLite structures in `db/` code.
 
-### `global.c`
+### `sqlite/src/global.c`
 
 - Disable SQLite page cache because we use BerkeleyDB.
 
-### `loadext.c`
+### `sqlite/src/loadext.c`
 
 - Some extension APIs are disabled because they're not consistent between
   SQLite and comdb2 semantics.
 
-### `malloc.c`
+### `sqlite/src/malloc.c`
 
 - Implement thread-safe versions of `sqlite3DbMalloc` and `sqlite3DbRealloc`.
   These thread-safe variants only seem to be used for fdb, maybe because SQLite
   resources are shared for concurrent queries that reference the same foreign
   db?
 
-### `md5.{h,c}`
+### `sqlite/src/md5.{h,c}`
 
 - Adapted from SQLite's implementation in `src/test_md5.c`. Seems that SQLite
   does not expose this by default, maybe only when built with test flags.
 
-### `mem1.c`
+### `sqlite/src/mem1.c`
 
 - Use `blobmem` (specialized blob memory allocator?) when allocating large
   amounts of memory. Maybe more optimized or has fewer problems with
   fragmentation, etc.
 
-### `parse.y`
+### `sqlite/src/parse.y`
 
 - The tokenizer (`tokenize.c`) converts a flat string of characters into a
   sequence of tokens, including: keywords (`SELECT`, `INSERT`), identifiers,
@@ -773,17 +773,17 @@ I started tracking this when I got to more important files (`where.c`,
   just an optimizer hint and this optimization may be performed
   as of today regardless.
 
-### `random.c`
+### `sqlite/src/random.c`
 
 - We've made the random number generator thread-local instead of global to
   reduce contention amongst SQL threads.
 
-### `rowset.c`
+### `sqlite/src/rowset.c`
 
 - We have modified SQLite's `RowSet` to use BerkeleyDB temp tables to better
   handle large update/delete/etc. queries. See Rivers's commit `c026b966e`.
 
-### `shell.c.in`
+### `sqlite/src/shell.c.in`
 
 - We have a patch to initialize comdb2's SQLite tunables in our build of the
   SQLite shell.
@@ -804,7 +804,7 @@ I started tracking this when I got to more important files (`where.c`,
       Signed-off-by: Shoumyo Chakravorti <schakravorti@bloomberg.net>
   ```
 
-### `sqlite_btree.{h,c}`
+### `sqlite/src/sqlite_btree.{h,c}`
 
 - We have completely replaced the B-Tree routines with our own to interact with
   BerkeleyDB instead. The functions are defined in `db/sqlglue.c`.
@@ -826,11 +826,11 @@ I started tracking this when I got to more important files (`where.c`,
   This doesn't pass down anything new. It restores an argument we already
   used for this purpose, which upstream removed.
 
-### `sqlite_tunables.{h,c}`
+### `sqlite/src/sqlite_tunables.{h,c}`
 
 - We have defined some of our own tunables for SQLite.
 
-### `sqlite3.h` / `sqlite.h.in`
+### `sqlite3.h` / `sqlite/src/sqlite.h.in`
 
 - Upstream doesn't keep `sqlite3.h` in its source tree. It generates it from
   `src/sqlite.h.in` using `tool/mksqlite3h.tcl`, and we now do the same. We
@@ -902,7 +902,7 @@ To verify, build the `generate_sqlite3_h` target and diff the generated header
 against the previous release's. Then run `cc -fsyntax-only -Wall` on it, once
 with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
 
-### `sqliteInt.h`
+### `sqlite/src/sqliteInt.h`
 
 - We define additional affinity types for new datatypes like datetime,
   interval, etc.
@@ -916,18 +916,18 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
   think the AST itself is serialized, so maybe the actual flag value doesn't
   matter? In that case it should be safe to just pick a different flag value...
 
-### `status.c`
+### `sqlite/src/status.c`
 
 - We do not use SQLite's page caching, so disable assertions that check whether
   page cache mutex is held, and never try to acquire page cache mutex.
 
-### `trigger.c`
+### `sqlite/src/trigger.c`
 
 - Our `sqlite_master` has an additional `csc2` column, needs to be set to NULL
   for triggers. Also, `MASTER_NAME` (`"sqlite_master"`) has been renamed to
   `LEGACY_SCHEMA_TABLE`.
 
-### `vdbe.c`
+### `sqlite/src/vdbe.c`
 
 - **TODO**: Change `OP_MakeRecord` to call `sqlite3VdbeSerialType()` and
   `sqlite3VdbeSerialPut()` instead of containing its own copy of their logic.
@@ -937,7 +937,7 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
   the functions again would leave it in one place and remove the hazard
   described under "Hazards".
 
-### `vdbeaux.c`
+### `sqlite/src/vdbeaux.c`
 
 - **DECISION**: Move `sqlite3VdbeSerialType()` and `sqlite3VdbeSerialPut()`
   out of `vdbeaux.c` into `db/sqlglue.c`, and leave `vdbeaux.c` the same as
@@ -1063,7 +1063,7 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
     `UNION ALL`, one comparison per row per `ORDER BY` column. It holds a
     queue lock while it compares.
 
-### `vdbeInt.h`
+### `sqlite/src/vdbeInt.h`
 
 - Same bit used for `MEM_Comdb2` and `MEM_Term`. Safe because they are mutually
   exclusive. Former used to pass through data converted from client format into
@@ -1071,7 +1071,7 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
   null-terminated, but only relevant when data is in SQLite format (so would
   never be used/inspected if data is in our row format).
 
-### `vdbemem.c`
+### `sqlite/src/vdbemem.c`
 
 - **DECISION**: In `sqlite3VdbeMemCast()`, use upstream's code for casts to
   TEXT, and remove comdb2's version.
