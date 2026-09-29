@@ -38,6 +38,7 @@
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
 #include "sc_util.h"
+#include "seqnum_wait.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -253,7 +254,7 @@ done:
        this ensures no requests replays will be left stuck
        papers around other short returns in toblock jic
        */
-    if (rc)
+    if (rc && !iq->should_enqueue) /* else once the ack wait is over */
         osql_blkseq_unregister(iq);
 
     if (totpen) {
@@ -403,7 +404,8 @@ static int tablename_implicit(int opcode)
     return opcode < OP_FNDKLESS;
 }
 
-/* Send the replicant (the sql thread that sent this request) its result. */
+/* Send the replicant (the sql thread that sent this request) its result.
+ * Also called by the seqnum-wait thread for requests handed to it. */
 void sorese_send_rc(struct ireq *iq, int rc)
 {
     /* we don't have a socket or a buffer for that matter,
@@ -443,7 +445,8 @@ void sorese_send_rc(struct ireq *iq, int rc)
     iq->timings.req_sentrc = osql_log_time();
 }
 
-/* What is left of a request once its reply is sent. */
+/* What is left of a request once its reply is sent.  Also called by the
+ * seqnum-wait thread for requests handed to it. */
 int handle_ireq_finish(struct ireq *iq, int rc)
 {
     /* Unblock anybody waiting for stuff that was added in this transaction. */
@@ -563,6 +566,36 @@ int handle_ireq(struct ireq *iq)
         pack_tail(iq);
 
         if (iq->sorese) {
+            /* trans_commit_int() deferred the wait for replicant acks.  Hand
+             * the request to the seqnum-wait thread, which replies and
+             * finishes it once the acks are in; if it can't take it, wait
+             * inline after all. */
+            if (iq->should_enqueue) {
+                iq->should_enqueue = 0;
+                iq->handoff = seqnum_wait_prepare(thedb->bdb_env, &iq->commit_seqnum, iq, rc);
+                if (iq->handoff) {
+                    /* the block processor gives the request to the waiter
+                     * when it is done with it (thd_req()) */
+                    reqlog_keep_thread_stats(iq->reqlogger);
+                    if (gbl_print_deadlock_cycles)
+                        osql_snap_info = NULL;
+                    return rc;
+                }
+
+                /* Queue full: wait here after all, then do what toblock()
+                 * left to the end of the wait, and decide the rc as the
+                 * waiter does. */
+                int startms = comdb2_time_epochms();
+                /* the source toblock() commits with for a sql session */
+                char *source_host = iq->frommach ? iq->frommach : gbl_myhostname;
+                int wait_rc = trans_wait_for_seqnum_int(thedb->bdb_env, thedb, iq, source_host, -1, 1 /*adaptive*/,
+                                                        &iq->commit_seqnum);
+                seqnum_wait_done(iq, comdb2_time_epochms() - startms, wait_rc);
+                if (wait_rc == BDBERR_NOT_DURABLE && durable_change_rcode(iq))
+                    rc = ERR_NOT_DURABLE;
+                osql_blkseq_unregister(iq);
+            }
+
             sorese_send_rc(iq, rc);
 
         } else if (iq->is_dumpresponse) {
