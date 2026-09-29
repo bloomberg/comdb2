@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #include <bb_oscompat.h>
 #include <list.h>
@@ -205,6 +206,15 @@ int dump_qresources(const char *dir)
         if (snprintf(path, sizeof(path), "%s/%s", dir, base) >= (int)sizeof(path)) {
             logmsg(LOGMSG_ERROR, "%s: dest path too long for resource %s\n", __func__, res->name);
             return -1;
+        }
+
+        /* Opening the destination for write would truncate the source. */
+        struct stat src_st, dst_st;
+        if (stat(res->filepath, &src_st) == 0 && stat(path, &dst_st) == 0 && src_st.st_dev == dst_st.st_dev &&
+            src_st.st_ino == dst_st.st_ino) {
+            logmsg(LOGMSG_INFO, "%s resource %s already at %s\n", __func__, res->name, path);
+            ++n;
+            continue;
         }
 
         FILE *in = fopen(res->filepath, "r");
