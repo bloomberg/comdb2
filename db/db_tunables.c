@@ -328,6 +328,7 @@ extern int gbl_thdpool_queue_only;
 extern int gbl_random_sql_work_delayed;
 extern int gbl_random_sql_work_rejected;
 extern int gbl_instrument_dblist;
+extern int gbl_snapcur_ovfl_copy_sleep_ms;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
 extern int gbl_verbose_set_sc_in_progress;

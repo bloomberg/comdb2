@@ -50,13 +50,17 @@ static const char revid[] = "$Id: db_overflow.c,v 11.51 2003/06/30 17:19:46 bost
 #include <sys/types.h>
 
 #include <string.h>
+#include <poll.h>
 #endif
 
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
 #include "dbinc/db_am.h"
+#include "dbinc/lock.h"
 #include "dbinc/mp.h"
+
+int gbl_snapcur_ovfl_copy_sleep_ms = 0;
 
 /*
  * Big key/data code.
@@ -66,6 +70,16 @@ static const char revid[] = "$Id: db_overflow.c,v 11.51 2003/06/30 17:19:46 bost
  * number where it begins.  Each entry in the linked list contains a pointer
  * to the next page of data, and so on.
  */
+
+/* Read-lock an overflow page for a snapshot cursor: the current leaf's lock doesn't cover it. */
+static int
+__db_ovfl_snap_lock(DBC *dbc, db_pgno_t pgno, DB_LOCK *lockp)
+{
+	LOCK_INIT(*lockp);
+	if (dbc == NULL || !F_ISSET(dbc, DBC_SNAPSHOT))
+		return (0);
+	return (__db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_READ, 0, lockp));
+}
 
 /*
  * __db_goff --
@@ -85,6 +99,7 @@ __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz)
 	u_int32_t *bpsz;
 {
 	DB_ENV *dbenv;
+	DB_LOCK lock;
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
 	db_indx_t bytes;
@@ -140,8 +155,16 @@ __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz)
 	 */
 	dbt->size = needed;
 	for (curoff = 0, p = dbt->data; pgno != PGNO_INVALID && needed > 0;) {
-		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
+		if ((ret = __db_ovfl_snap_lock(dbc, pgno, &lock)) != 0)
 			return (ret);
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0) {
+			(void)__LPUT(dbc, lock);
+			return (ret);
+		}
+
+		/* Test hook: stall a snapshot read between fetching an overflow page and copying from it. */
+		if (gbl_snapcur_ovfl_copy_sleep_ms > 0 && dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT))
+			poll(NULL, 0, gbl_snapcur_ovfl_copy_sleep_ms);
 
 		/* Check if we need any bytes from this page. */
 		if (curoff + OV_LEN(h) >= start) {
@@ -160,6 +183,7 @@ __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz)
 		curoff += OV_LEN(h);
 		pgno = h->next_pgno;
 		PAGEPUT(dbc, mpf, h, 0);
+		(void)__LPUT(dbc, lock);
 	}
 	return (0);
 }
@@ -283,6 +307,8 @@ __db_ovref(dbc, pgno, adjust)
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
 
+	if ((ret = __db_lock_page_write(dbc, pgno)) != 0)
+		return (ret);
 	if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
 		return (__db_pgerr(dbp, pgno, ret));
 
@@ -322,6 +348,8 @@ __db_doff(dbc, pgno)
 	mpf = dbp->mpf;
 
 	do {
+		if ((ret = __db_lock_page_write(dbc, pgno)) != 0)
+			return (ret);
 		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &pagep)) != 0)
 			return (__db_pgerr(dbp, pgno, ret));
 
@@ -381,6 +409,7 @@ __db_moff(dbc, dbp, dbt, pgno, tlen, cmpfunc, cmpp)
 	int (*cmpfunc) __P((DB *, const DBT *, const DBT *)), *cmpp;
 {
 	DBT local_dbt;
+	DB_LOCK lock;
 	DB_MPOOLFILE *mpf;
 	PAGE *pagep;
 	void *buf;
@@ -411,8 +440,12 @@ __db_moff(dbc, dbp, dbt, pgno, tlen, cmpfunc, cmpp)
 	/* While there are both keys to compare. */
 	for (*cmpp = 0, p1 = dbt->data,
 	    key_left = dbt->size; key_left > 0 && pgno != PGNO_INVALID;) {
-		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &pagep)) != 0)
+		if ((ret = __db_ovfl_snap_lock(dbc, pgno, &lock)) != 0)
 			return (ret);
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &pagep)) != 0) {
+			(void)__LPUT(dbc, lock);
+			return (ret);
+		}
 
 		cmp_bytes = OV_LEN(pagep) < key_left ? OV_LEN(pagep) : key_left;
 		tlen -= cmp_bytes;
@@ -424,7 +457,9 @@ __db_moff(dbc, dbp, dbt, pgno, tlen, cmpfunc, cmpp)
 				break;
 			}
 		pgno = NEXT_PGNO(pagep);
-		if ((ret = PAGEPUT(dbc, mpf, pagep, 0)) != 0)
+		ret = PAGEPUT(dbc, mpf, pagep, 0);
+		(void)__LPUT(dbc, lock);
+		if (ret != 0)
 			return (ret);
 		if (*cmpp != 0)
 			return (0);
