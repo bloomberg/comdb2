@@ -76,7 +76,9 @@ static int
 __db_ovfl_snap_lock(DBC *dbc, db_pgno_t pgno, DB_LOCK *lockp)
 {
 	LOCK_INIT(*lockp);
-	if (dbc == NULL || !F_ISSET(dbc, DBC_SNAPSHOT))
+	/* Under early lock release __mempv_fget read-locks the page around its copy. */
+	if (dbc == NULL || !F_ISSET(dbc, DBC_SNAPSHOT) ||
+	    SNAPCUR_EARLY_LOCK_RELEASE(dbc))
 		return (0);
 	return (__db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_READ, 0, lockp));
 }
@@ -163,7 +165,8 @@ __db_goff(dbc, dbp, dbt, tlen, pgno, bpp, bpsz)
 		}
 
 		/* Test hook: stall a snapshot read between fetching an overflow page and copying from it. */
-		if (gbl_snapcur_ovfl_copy_sleep_ms > 0 && dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT))
+		if (gbl_snapcur_ovfl_copy_sleep_ms > 0 && dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT) &&
+		    !SNAPCUR_EARLY_LOCK_RELEASE(dbc))
 			poll(NULL, 0, gbl_snapcur_ovfl_copy_sleep_ms);
 
 		/* Check if we need any bytes from this page. */

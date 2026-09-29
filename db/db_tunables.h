@@ -2256,6 +2256,10 @@ REGISTER_TUNABLE("memp_dump_cache_threshold",
                  TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("snapcur_early_lock_release",
+                 "Snapshot cursors release each page lock as soon as the page is copied. Off is for debugging only: "
+                 "long-running snapshot readers can then stall page allocation. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapcur_early_lock_release, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
                  "read results.  (Default: on)",
