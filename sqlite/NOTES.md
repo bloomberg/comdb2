@@ -300,6 +300,30 @@ I started tracking this when I got to more important files (`where.c`,
 - We have cherry-picked specific extensions from SQLite rather than support all
   of them, presumably to reduce maintenance surface area.
 
+### `db/dohast.c`
+
+- **DECISION**: When `sqlite_struct_to_string()` writes a FROM item back out
+  as SQL, name views and tables from view bodies by the database they were
+  resolved in, not by the database name that the user typed. Give up on CTE
+  references.
+
+  3.51 moved `zDatabase` into a union (`u4`). When a view is expanded, the
+  slot gets the view's subquery and the database name that the user typed is
+  freed. Items from a view body get a `Schema *` there instead. So reading
+  `zDatabase` the 3.28 way would print a pointer as a string.
+
+  - A view is written as `"<db>"."<view>"`, using the database it was found
+    in and the view's own name (`pSTab->zName`). So `LOCAL_db2.v` becomes
+    `"db2"."v"`, which is the same database since class prefixes are
+    ignored. It is also the name the column references already use.
+  - A table from a flattened view body is written with the view's database.
+    This fixes a bug. In `SELECT ... FROM t1 JOIN db2.v`, where `v` is
+    `SELECT * FROM t2`, 3.28 wrote the body's table as `"t2"`, which names
+    a local table. It is now `"db2"."t2"`.
+  - A CTE reference returns NULL, so the query runs the normal way. Its
+    temporary table has no schema, so there is no database to name. A query
+    that references a CTE is never pushed down or run in parallel anyway.
+
 ### `sqlite/CMakeLists.txt`
 
 - Certain files are generated at build time (see `tool` directory and comments
