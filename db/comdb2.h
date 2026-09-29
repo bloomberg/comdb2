@@ -2724,6 +2724,8 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);
+void sorese_send_rc(struct ireq *iq, int rc);
+int handle_ireq_finish(struct ireq *iq, int rc);
 int toblock(struct ireq *iq);
 int to_sorese_init(struct ireq *iq);
 int to_sorese(struct ireq *iq);
