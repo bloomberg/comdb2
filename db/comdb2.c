@@ -828,6 +828,9 @@ int gbl_clean_exit_on_sigterm = 1;
 /* Asynchronous distributed commit -- see db/seqnum_wait.c */
 int gbl_async_dist_commit = 0;
 int gbl_async_dist_commit_max_outstanding_trans = 8;
+/* instrumentation: commits handed to the waiter vs waited on inline */
+int64_t gbl_async_dist_commit_enqueued = 0;
+int64_t gbl_async_dist_commit_inline = 0;
 
 int gbl_is_physical_replicant;
 int gbl_server_admin_mode = 0;

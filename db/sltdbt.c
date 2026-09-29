@@ -39,6 +39,10 @@
 #include "comdb2_opcode.h"
 #include "sc_util.h"
 #include "seqnum_wait.h"
+#include "comdb2_atomic.h"
+
+extern int64_t gbl_async_dist_commit_enqueued;
+extern int64_t gbl_async_dist_commit_inline;
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -574,6 +578,7 @@ int handle_ireq(struct ireq *iq)
                 iq->should_enqueue = 0;
                 iq->handoff = seqnum_wait_prepare(thedb->bdb_env, &iq->commit_seqnum, iq, rc);
                 if (iq->handoff) {
+                    ATOMIC_ADD64(gbl_async_dist_commit_enqueued, 1);
                     /* the block processor gives the request to the waiter
                      * when it is done with it (thd_req()) */
                     reqlog_keep_thread_stats(iq->reqlogger);
@@ -585,6 +590,7 @@ int handle_ireq(struct ireq *iq)
                 /* Queue full: wait here after all, then do what toblock()
                  * left to the end of the wait, and decide the rc as the
                  * waiter does. */
+                ATOMIC_ADD64(gbl_async_dist_commit_inline, 1);
                 int startms = comdb2_time_epochms();
                 /* the source toblock() commits with for a sql session */
                 char *source_host = iq->frommach ? iq->frommach : gbl_myhostname;
