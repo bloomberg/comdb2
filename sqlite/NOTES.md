@@ -52,18 +52,18 @@
 Problems that won't show up as a merge conflict or a compiler error. A merge
 can finish cleanly and still break one of these.
 
-- **Keep `sqlite3VdbeSerialType()` / `sqlite3VdbeSerialPut()` in sync with
-  `OP_MakeRecord`.**
+- **When upgrading, check `OP_MakeRecord`'s `#else` half for changes that
+  `sqlite3VdbeSerialType()` / `sqlite3VdbeSerialPut()` in `db/sqlglue.c` also
+  need.**
 
-  Upstream deleted these two functions and copied their logic straight into
-  `OP_MakeRecord`. We still need the functions, so we keep our own copies in
-  `db/sqlglue.c`. The same record-encoding logic now exists in two places:
-  `db/sqlglue.c` and `OP_MakeRecord` in `sqlite/src/vdbe.c`. Both must produce
-  identical records.
-
-  If you change one, change the other. Nothing will warn you. They're in
-  different files, so the compiler can't catch a mismatch, and an upstream
-  change to `OP_MakeRecord` will only conflict in `vdbe.c`.
+  Upstream copied these two functions' logic straight into `OP_MakeRecord`.
+  We still need the functions, because code in `db/` builds records outside
+  the VDBE, so we keep our own copies in `db/sqlglue.c` and have
+  `OP_MakeRecord` call them. When upstream changes how it encodes records
+  (3.51, for example, added `MEM_IntReal`), the change lands in the `#else`
+  half of `OP_MakeRecord` without any merge conflict, and nothing makes us
+  copy it into our functions. Compare the `#else` half with the previous
+  version on every upgrade.
 
 ## Cherry-picked patches
 
@@ -997,13 +997,40 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
 
 ### `sqlite/src/vdbe.c`
 
-- **TODO**: Change `OP_MakeRecord` to call `sqlite3VdbeSerialType()` and
-  `sqlite3VdbeSerialPut()` instead of containing its own copy of their logic.
+- **DECISION**: `OP_MakeRecord` calls `sqlite3VdbeSerialType()` and
+  `sqlite3VdbeSerialPut()`, as it did before 3.51, instead of using upstream's
+  inlined copy of their logic.
 
-  Upstream inlined both functions into the opcode. If we take its version
-  as-is, comdb2's serial-type logic would need to exist in two places. Calling
-  the functions again would leave it in one place and remove the hazard
-  described under "Hazards".
+  Upstream's inlined code only knows SQLite's own types. A datetime, interval
+  or decimal value would be written with the wrong serial type. Integers would
+  also get upstream's variable width instead of our fixed 8 bytes. The merge
+  took upstream's version without a conflict, because we hadn't edited those
+  lines. Calling our functions keeps comdb2's encoding in one place, the one
+  that code in `db/` already uses.
+
+- **DECISION**: Compile the register-trace helpers
+  (`sqlite3VdbeMemPrettyPrint()`, `memTracePrint()`, `registerTrace()`) only
+  in debug builds, as upstream does.
+
+  We had changed their `#ifdef SQLITE_DEBUG` to
+  `#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)`, probably
+  to debug an earlier SQLite upgrade. But everything that calls them is
+  debug-only, so in release builds they were compiled and never run. The wider
+  guard also broke the 3.51 merge: `registerTrace()` now reads
+  `Mem.pScopyFrom`, which only exists in debug builds, so release builds
+  stopped compiling. The `logmsg()` calls stay, because `LOGMSG_USER` output
+  goes to the client that ran the SQL.
+
+- **DECISION**: Don't use upstream's cache for large column values in
+  `vdbeColumnFromOverflow()`. comdb2 always reads overflow content directly.
+
+  SQLite keeps only part of a large row on its btree page, and the rest goes
+  on overflow pages. 3.51 caches one large value from the overflow pages (over
+  4000 bytes) so that reading the same column again doesn't go back to disk.
+  comdb2 doesn't need this: a comdb2 cursor already holds the whole row in
+  memory, so reading any column never goes back to disk. The cache also calls
+  `sqlite3BtreeOffset()`, which comdb2 doesn't implement. We keep the rest of
+  the function, which is the same read we used before.
 
 ### `sqlite/src/vdbeaux.c`
 
