@@ -10,6 +10,7 @@
  * with the inline path via helpers exported from bdb/rep.c.
  */
 
+#include <limits.h>
 #include <poll.h>
 #include <string.h>
 
@@ -25,6 +26,7 @@
 #include "reqlog.h"
 #include "debug_switches.h"
 #include "bdb_int.h"
+#include "thdpool.h"
 
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq);
 extern int gbl_async_dist_commit_max_outstanding_trans;
@@ -103,6 +105,28 @@ static pthread_mutex_t seqnum_wait_queue_pool_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static void *queue_processor(void *);
 
+/* Replying can block: a full queue to the client's node is retried for up to
+ * gbl_osql_bkoff_netsend_lmt.  Inline, that held up only the block processor
+ * sending that reply; replies run on their own threads here, so one does not
+ * hold up the waiter and every other commit with it.  At most
+ * seqnumreplypool.maxt threads reply at once; more replies wait in the pool's
+ * queue for a free thread. */
+static struct thdpool *reply_pool = NULL;
+/* items handed to reply_pool and not finished yet; they count against the
+ * cap.  Under work_queue->mutex. */
+static int num_replying = 0;
+
+static void reply_thd_start(struct thdpool *pool, void *thddata)
+{
+    /* handle_ireq_finish() may take the bdb lock */
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+}
+
+static void reply_thd_stop(struct thdpool *pool, void *thddata)
+{
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
+}
+
 static struct seqnum_wait *allocate_seqnum_wait(void)
 {
     struct seqnum_wait *s;
@@ -138,6 +162,21 @@ int seqnum_wait_gbl_mem_init(void)
         free(work_queue);
         work_queue = NULL;
         return -1;
+    }
+
+    /* without it, the waiter replies itself */
+    reply_pool = thdpool_create("seqnumreplypool", 0);
+    if (reply_pool) {
+        if (!gbl_exit_on_pthread_create_fail)
+            thdpool_unset_exit(reply_pool);
+        thdpool_set_init_fn(reply_pool, reply_thd_start);
+        thdpool_set_delt_fn(reply_pool, reply_thd_stop);
+        thdpool_set_linger(reply_pool, 10);
+        thdpool_set_maxthds(reply_pool, 64);
+        /* Never turn a reply away (that would make the waiter send it itself).
+         * The queue still stays small: a queued reply counts as outstanding,
+         * so it is bounded by async_dist_commit_max_outstanding_trans. */
+        thdpool_set_maxqueue(reply_pool, INT_MAX);
     }
 
     Pthread_attr_init(&attr);
@@ -205,7 +244,8 @@ struct seqnum_wait *seqnum_wait_prepare(bdb_state_type *bdb_state, db_seqnum_typ
         return NULL;
 
     Pthread_mutex_lock(&work_queue->mutex);
-    if (listc_size(&work_queue->lsn_list) + num_reserved >= gbl_async_dist_commit_max_outstanding_trans) {
+    if (listc_size(&work_queue->lsn_list) + num_reserved + num_replying >=
+        gbl_async_dist_commit_max_outstanding_trans) {
         Pthread_mutex_unlock(&work_queue->mutex);
         return NULL;
     }
@@ -272,7 +312,7 @@ void seqnum_wait_drain(void)
 
     while (1) {
         Pthread_mutex_lock(&work_queue->mutex);
-        left = listc_size(&work_queue->lsn_list) + num_reserved;
+        left = listc_size(&work_queue->lsn_list) + num_reserved + num_replying;
         Pthread_mutex_unlock(&work_queue->mutex);
         if (left == 0)
             return;
@@ -590,19 +630,32 @@ static void reply(struct seqnum_wait *item)
     handle_ireq_finish(iq, rc);
     reqlog_free(logger);
     destroy_ireq(thedb, iq);
+
+    Pthread_mutex_lock(&work_queue->mutex);
+    num_replying--;
+    Pthread_mutex_unlock(&work_queue->mutex);
     deallocate_seqnum_wait(item);
 }
 
-/* Take a finished item off the waiter's lists and reply. */
+static void reply_work(struct thdpool *pool, void *work, void *thddata, int op)
+{
+    /* THD_FREE too: the request is replied to and finished either way */
+    reply(work);
+}
+
+/* Take a finished item off the waiter's lists and reply on a thread of its
+ * own; on the waiter if we cannot get one. */
 static void start_reply(struct seqnum_wait *item)
 {
     Pthread_mutex_lock(&work_queue->mutex);
     listc_rfl(&work_queue->absolute_ts_list, item);
     listc_rfl(&work_queue->lsn_list, item);
     ATOMIC_ADD32(gbl_seqnum_wait_outstanding, -1);
+    num_replying++;
     Pthread_mutex_unlock(&work_queue->mutex);
 
-    reply(item);
+    if (reply_pool == NULL || thdpool_enqueue(reply_pool, reply_work, item, 0, NULL, 0) != 0)
+        reply(item);
 }
 
 static int waiting_for_acks(struct seqnum_wait *item)
