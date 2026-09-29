@@ -2007,7 +2007,7 @@ __bam_vrfy_treeorder(dbp, pgno, h, lp, rp, func, flags)
 		}
 
 		/* On error, fall through, free if neeeded, and return. */
-		if ((ret = __bam_cmp(dbp, &dbt, h, 0, func, &cmp)) == 0) {
+		if ((ret = __bam_cmp(NULL, dbp, &dbt, h, 0, func, &cmp)) == 0) {
 			if (cmp > 0) {
 				EPRINT((dbenv,
 	    "Page %lu: first item on page sorted greater than parent entry",
@@ -2043,7 +2043,7 @@ __bam_vrfy_treeorder(dbp, pgno, h, lp, rp, func, flags)
 		}
 
 		/* On error, fall through, free if neeeded, and return. */
-		if ((ret = __bam_cmp(dbp, &dbt, h, last, func, &cmp)) == 0) {
+		if ((ret = __bam_cmp(NULL, dbp, &dbt, h, last, func, &cmp)) == 0) {
 			if (cmp < 0) {
 				EPRINT((dbenv,
 	    "Page %lu: last item on page sorted greater than parent entry",

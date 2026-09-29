@@ -1472,7 +1472,7 @@ __bam_ispgcompactible(dbc, pgno, dbt, ff)
 
 	/* We need the 1st key on the page. */
 	memset(dbt, 0, sizeof(DBT));
-	ret = __db_ret(dbp,
+	ret = __db_ret(dbc, dbp,
 			h, 0, dbt, &dbt->data, &dbt->ulen);
 
     if (0) {

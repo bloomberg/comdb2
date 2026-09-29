@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+# Snapshot index searches must compare overflow keys at the snapshot version, even after the keys are
+# deleted and their overflow pages reused.  k is cstring(400): its 401-byte index entries don't fit
+# inline on 1024-byte index pages (pagesizeix 1024), so every key is stored on overflow pages.
+db=$1
+host=$(cdb2sql ${CDB2_OPTIONS} -tabs $db default "select comdb2_host()")
+sql="cdb2sql -s ${CDB2_OPTIONS} -tabs $db --host $host"
+nrows=300
+
+$sql "create table t(id int primary key, k cstring(400))" || exit 1
+$sql "create index tk on t(k)" || exit 1
+for i in $(seq 1 $nrows); do
+    echo "insert into t values($i, hex(randomblob(150)))"
+done | $sql - > /dev/null || exit 1
+
+# Probe keys that are about to be deleted: each is an index seek
+probe=$($sql "select group_concat(quote(k), ',') from (select k from t where id % 2 = 0 order by id limit 20)")
+queries="select 'R', count(*), checksum_md5(group_concat(k, ',')) from (select k from t where k >= '8' order by k)
+select 'S', count(*) from t where k in ($probe)
+select 'END'"
+
+# Snapshot session: statements in on fd 3, replies out on fd 4
+rm -f S.in S.out; mkfifo S.in S.out
+stdbuf -oL $sql - < S.in > S.out 2>&1 &
+exec 3>S.in 4<S.out
+trap 'kill $(jobs -p) 2>/dev/null; rm -f S.in S.out' EXIT
+echo "set transaction snapshot isolation" >&3; echo "begin" >&3
+run() { local l; R=; S=; echo "$queries" >&3
+        while read -t 60 -r -u 4 l; do
+            case "$l" in R$'\t'*) R=$l ;; S$'\t'*) S=$l ;; END) return 0 ;; *) echo "$l" ;; esac
+        done
+        echo "FAIL: no reply from snapshot session"; exit 1; }
+
+run; R1=$R S1=$S
+# Free the probed keys' overflow pages, then reuse them for new keys
+$sql "delete from t where id % 2 = 0" > /dev/null || exit 1
+for i in $(seq 1001 $((1000 + nrows / 2))); do
+    echo "insert into t values($i, hex(randomblob(150)))"
+done | $sql - > /dev/null || exit 1
+run; R2=$R S2=$S
+echo "commit" >&3; echo "quit" >&3
+exec 3>&- 4<&-; wait
+
+echo "range: $R1 / $R2"; echo "seeks: $S1 / $S2"
+if [[ -z "$R1" || "$R1" != "$R2" ]]; then
+    echo "FAIL: snapshot range over overflow keys changed"
+    exit 1
+fi
+if [[ "$S1" != $'S\t20' || "$S2" != $'S\t20' ]]; then
+    echo "FAIL: snapshot seeks on deleted overflow keys did not find all 20"
+    exit 1
+fi
+echo "Success"

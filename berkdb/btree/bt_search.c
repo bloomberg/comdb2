@@ -78,11 +78,12 @@ static const char revid[] = "$Id: bt_search.c,v 11.47 2003/06/30 17:19:35 bostic
  * __bam_cmp --
  *	Compare a key to a given record.
  *
- * PUBLIC: int __bam_cmp __P((DB *, const DBT *, PAGE *,
+ * PUBLIC: int __bam_cmp __P((DBC *, DB *, const DBT *, PAGE *,
  * PUBLIC:    u_int32_t, int (*)(DB *, const DBT *, const DBT *), int *));
  */
 static inline int
-__bam_cmp_inline(dbp, dbt, h, indx, func, cmpp, buf)
+__bam_cmp_inline(dbc, dbp, dbt, h, indx, func, cmpp, buf)
+	DBC *dbc;
 	DB *dbp;
 	const DBT *dbt;
 	PAGE *h;
@@ -190,7 +191,7 @@ __bam_cmp_inline(dbp, dbt, h, indx, func, cmpp, buf)
 	/*
 	 * Overflow.
 	 */
-	return (__db_moff(NULL, dbp, dbt,
+	return (__db_moff(dbc, dbp, dbt,
 		bo->pgno, bo->tlen, func == __bam_defcmp ? NULL : func, cmpp));
 }
 
@@ -587,7 +588,7 @@ got_pg:func = t->bt_compare;
 			indx = base + ((lim >> 1) * adjust);
 
 			if ((ret =
-				__bam_cmp_inline(dbp, key, h, indx, func, &cmp,
+				__bam_cmp_inline(dbc, dbp, key, h, indx, func, &cmp,
 				    buf)) != 0)
 				goto err;
 			if (cmp == 0) {
