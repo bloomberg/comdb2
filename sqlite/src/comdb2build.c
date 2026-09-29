@@ -2873,7 +2873,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
-int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
+int resolveTableName(sqlite3 *db, SrcItem *p, const char *zDB,
                      char *tableName, size_t len)
 {
    struct sqlclntstate *clnt = get_sql_clnt();
