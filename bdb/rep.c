@@ -104,6 +104,27 @@ static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, struct interned_stri
 static int last_slow_node_check_time = 0;
 static pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
 
+/* A counter bumped on every ack, node disconnect and new commit handed to the
+ * async seqnum-wait thread, so that thread knows to look at its commits again.
+ * Only kept up while it has commits outstanding. */
+pthread_mutex_t new_lsns_lk = PTHREAD_MUTEX_INITIALIZER;
+uint64_t new_lsns = 0;
+int gbl_seqnum_wait_outstanding = 0;
+/* Signalled under new_lsns_lk whenever new_lsns changes.  The async
+ * seqnum-wait thread parks on this, guarded by that same lock, so a bump can
+ * never slip between its predicate check and its sleep. */
+pthread_cond_t new_lsns_cond = PTHREAD_COND_INITIALIZER;
+
+static void wake_seqnum_waiter(void)
+{
+    if (ATOMIC_LOAD32(gbl_seqnum_wait_outstanding) > 0) {
+        Pthread_mutex_lock(&new_lsns_lk);
+        new_lsns++;
+        Pthread_cond_broadcast(&new_lsns_cond);
+        Pthread_mutex_unlock(&new_lsns_lk);
+    }
+}
+
 struct rep_type_berkdb_rep_buf_hdr {
     int recbufsz;
     int recbufcrc;
@@ -663,8 +684,7 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
 }
 
-static inline int is_incoherent_complete(bdb_state_type *bdb_state,
-                                         struct interned_string *host, int *incohwait)
+int is_incoherent_complete(bdb_state_type *bdb_state, struct interned_string *host, int *incohwait)
 {
     int is_incoherent, state;
 
@@ -678,7 +698,7 @@ static inline int is_incoherent_complete(bdb_state_type *bdb_state,
     state = h->coherent_state;
     Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
-    /* STATE_COHERENT and STATE_INCOHERENT_LOCAL return COHERENT. */
+    /* STATE_COHERENT and STATE_INCOHERENT_WAIT return 0. */
     if (state == STATE_INCOHERENT || state == STATE_INCOHERENT_SLOW)
         is_incoherent = 1;
 
@@ -2576,6 +2596,11 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     if (seqnum->lsn.file == INT_MAX)
         return;
 
+    /* Wake the async seqnum-wait thread under the lock that owns new_lsns.
+     * Skipped while it has nothing to wait for: it polls every node when it
+     * picks up a new commit, so an ack it missed here is not lost. */
+    wake_seqnum_waiter();
+
     /* wake up anyone who might be waiting to see this seqnum */
     Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
 
@@ -2872,6 +2897,14 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     if (log_compare(&h->seqnum.lsn, &seqnum->lsn) >= 0)
         return 0;
 
+    /* Nor if we are timing this commit already: the async wait starts timing
+     * at commit, and may then fall back to the inline wait. */
+    LISTC_FOR_EACH(&h->waitlist, waitforlsn, lnk)
+    {
+        if (log_compare(&waitforlsn->lsn, &seqnum->lsn) == 0)
+            return 0;
+    }
+
     if (h->waitlist.count < bdb_state->attr->track_replication_times_max_lsns) {
         waitforlsn = pool_getablk(bdb_state->seqnum_info->trackpool);
         waitforlsn->lsn = seqnum->lsn;
@@ -2884,8 +2917,8 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
 
 /* Start timing each node's ack of this commit, and once a second see if any
  * node is slow.  Called once per commit, right after it. */
-static void bdb_track_commit_replication(bdb_state_type *bdb_state, seqnum_type *seqnum,
-                                         struct interned_string **connlist, int n)
+void bdb_track_commit_replication(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string **connlist,
+                                  int n)
 {
     int do_slow_node_check = 0;
     if (!bdb_state->attr->track_replication_times)
@@ -2995,15 +3028,18 @@ static int seqnum_wait_node_precheck(bdb_state_type *bdb_state, seqnum_type *seq
  *     -1 - stop waiting: it has been decommissioned
  *   -999 - not acked yet, keep waiting
  * Call with seqnum_info->lock held.  It is released on every return except
- * -999, so the caller can wait on the lock's condvar. */
+ * -999, so the caller can wait on the lock's condvar.  'nowait' skips the
+ * 1ms pause for a catching-up node, which would stall the seqnum-wait
+ * thread. */
 static int seqnum_wait_node_check_locked(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
-                                         struct hostinfo *h, int lineno, uint32_t *got_gen, DB_LSN *got_lsn)
+                                         struct hostinfo *h, int lineno, int nowait, uint32_t *got_gen, DB_LSN *got_lsn)
 {
     int i;
 
     if (h->seqnum.lsn.file == INT_MAX || bdb_lock_desired(bdb_state)) {
         /* add 1 ms of latency if we have someone catching up */
-        poll(NULL, 0, 1);
+        if (!nowait)
+            poll(NULL, 0, 1);
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
@@ -3135,7 +3171,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state, seqnum_t
 
 again:
 
-    if ((rc = seqnum_wait_node_check_locked(bdb_state, seqnum, host, h, lineno, &got_gen, &got_lsn)) != -999)
+    if ((rc = seqnum_wait_node_check_locked(bdb_state, seqnum, host, h, lineno, 0, &got_gen, &got_lsn)) != -999)
         return rc;
 
     /* Set timespec for first run and timeouts */
@@ -3174,6 +3210,26 @@ again:
     }
 
     goto again;
+}
+
+/* One non-blocking look at a node, for the async seqnum-wait thread: the same
+ * checks and return codes as bdb_wait_for_seqnum_from_node_int(), except that
+ * -999 means "not acked yet" rather than "timed out". */
+int bdb_wait_for_seqnum_from_node_poll(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                       int fakeincoherent)
+{
+    DB_LSN got_lsn;
+    uint32_t got_gen;
+    struct hostinfo *h = retrieve_hostinfo(host);
+    int rc;
+
+    if ((rc = seqnum_wait_node_precheck(bdb_state, seqnum, host, h, fakeincoherent)) != 0)
+        return rc;
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    if ((rc = seqnum_wait_node_check_locked(bdb_state, seqnum, host, h, __LINE__, 1, &got_gen, &got_lsn)) == -999)
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    return rc;
 }
 
 int bdb_wait_for_seqnum_from_node(bdb_state_type *bdb_state,
@@ -3267,10 +3323,11 @@ int gbl_debug_force_non_durable = 0;
 int gbl_assert_no_schemalk_in_distributed_commit = 0;
 
 /* Common epilogue for waiting on a commit seqnum: decide whether the commit
- * reached a durable majority and return the caller's rc. */
-static int bdb_wait_for_seqnum_finish(bdb_state_type *bdb_state, seqnum_type *seqnum, int numfailed, int numskip,
-                                      int numwait, int num_successfully_acked, int total_commissioned, int durable_lsns,
-                                      int force_non_durable)
+ * reached a durable majority and return the caller's rc.  Shared by the inline
+ * wait path and by the async seqnum-wait thread in db/seqnum_wait.c. */
+int bdb_wait_for_seqnum_finish(bdb_state_type *bdb_state, seqnum_type *seqnum, int numfailed, int numskip, int numwait,
+                               int num_successfully_acked, int total_commissioned, int durable_lsns,
+                               int force_non_durable)
 {
     int outrc = 0;
 
@@ -3373,9 +3430,10 @@ static int bdb_wait_for_seqnum_finish(bdb_state_type *bdb_state, seqnum_type *se
 }
 
 /* A node failed to ack `seqnum` within its timeout.  Demote it so that we stop
- * waiting on it. */
-static void bdb_wait_for_seqnum_mark_incoherent(bdb_state_type *bdb_state, seqnum_type *seqnum,
-                                                struct interned_string *host, int catchup_window)
+ * waiting on it.  Shared by the inline wait path below and by the async
+ * seqnum-wait thread in db/seqnum_wait.c. */
+void bdb_wait_for_seqnum_mark_incoherent(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                         int catchup_window)
 {
     struct hostinfo *h = retrieve_hostinfo(host);
     uint32_t nodegen;
@@ -3836,6 +3894,7 @@ void bdb_exiting(bdb_state_type *bdb_state)
     /* wake seqnum waiters.  no lock: clean exit can run on the SIGTERM
      * handler, and waiters recheck ->exiting every seqnum_wait_interval */
     Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
+    Pthread_cond_broadcast(&new_lsns_cond);
 }
 
 void bdb_set_seqnum(void *in_bdb_state)
@@ -6020,6 +6079,7 @@ void *watcher_thread(void *arg)
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+            wake_seqnum_waiter();
 
             bdb_state->pending_seqnum_broadcast = 0;
         }

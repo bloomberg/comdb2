@@ -2797,4 +2797,13 @@ REGISTER_TUNABLE("rep_verify_peer_hostname",
                  "only in environments without reliable reverse DNS. "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit",
+                 "Hand the wait for replicant acks off to a background thread so that block "
+                 "processor threads are not tied up. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
+                 "Maximum number of transactions that may be waiting on asynchronous distributed "
+                 "commit at once; beyond this, commits wait inline. (Default: 8)",
+                 TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

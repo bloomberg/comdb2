@@ -1129,6 +1129,22 @@ void bdb_clear_skip(bdb_state_type *bdb_state, int node);
 /* remove all nodes from skip list */
 void bdb_clear_skip_list(bdb_state_type *bdb_state);
 
+/* shared by the inline wait for acks and the async one in db/seqnum_wait.c */
+extern pthread_mutex_t new_lsns_lk;
+extern uint64_t new_lsns;
+extern pthread_cond_t new_lsns_cond;
+extern int gbl_seqnum_wait_outstanding;
+int bdb_wait_for_seqnum_from_node_poll(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                       int fakeincoherent);
+int is_incoherent_complete(bdb_state_type *bdb_state, struct interned_string *host, int *incohwait);
+void bdb_track_commit_replication(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string **connlist,
+                                  int n);
+void bdb_wait_for_seqnum_mark_incoherent(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                         int catchup_window);
+int bdb_wait_for_seqnum_finish(bdb_state_type *bdb_state, seqnum_type *seqnum, int numfailed, int numskip, int numwait,
+                               int num_successfully_acked, int total_commissioned, int durable_lsns,
+                               int force_non_durable);
+
 /* tran.c */
 int bdb_tran_rep_handle_dead(bdb_state_type *bdb_state);
 

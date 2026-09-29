@@ -503,6 +503,8 @@ extern int gbl_instrument_consumer_lock;
 extern int gbl_reject_mixed_ddl_dml;
 extern int gbl_debug_create_master_entry;
 extern int eventlog_nkeep;
+extern int gbl_async_dist_commit;
+extern int gbl_async_dist_commit_max_outstanding_trans;
 extern int gbl_debug_systable_locks;
 extern int gbl_assert_systable_locks;
 extern int gbl_assert_no_schemalk_in_distributed_commit;
