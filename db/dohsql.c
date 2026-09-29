@@ -1035,6 +1035,8 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);
     conn->clnt->authdata = clnt->authdata = get_authdata(clnt);
+    /* argv0 is borrowed from the parent (see _shard_disconnect); drop the "comdb2.tsk" copy */
+    free(conn->clnt->argv0);
     conn->clnt->argv0 = clnt->argv0;
     memcpy(conn->clnt->tzname, clnt->tzname, sizeof(clnt->tzname));
     make_dohsql_plugin(conn->clnt);
