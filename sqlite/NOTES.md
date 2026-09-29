@@ -293,6 +293,24 @@ I started tracking this when I got to more important files (`where.c`,
   with `-xipo_archive=readonly` with Studio `cc` on Solaris. gcc's `-flto`
   doesn't work on Solaris, because the Solaris linker has no LTO plugin.
 
+- **TODO**: Fix this parallel `UNION ALL` through an fdb alias:
+
+  ```sql
+  PUT ALIAS foo 'db2.realtable'
+  SELECT a FROM foo WHERE a > 0 UNION ALL SELECT a FROM foo WHERE a <= 0
+  ```
+
+  Parallel SQL runs each branch from text that `db/dohast.c` generates, such
+  as `SELECT "realtable"."a" FROM "foo" WHERE ("realtable"."a" > 0)`, which
+  should fail with "no such column". `sqlite_struct_to_string()` writes the
+  FROM term from the table name that the user typed, but column references
+  from the real table name (`pSTab->zName`, in `sqlite3ExprDescribe_inner()`
+  in `expr.c`).
+
+  Not yet reproduced, and 3.28 had the same bug. The likely fix is to write
+  `"db2"."realtable" as "foo"`, as we now do for views. Add a `UNION ALL`
+  case to `tests/alias.test`.
+
 ## Observations and Decisions
 
 ### General
@@ -796,6 +814,17 @@ I started tracking this when I got to more important files (`where.c`,
 - **DECISION**: Allow CTE `AS [NOT] MATERIALIZED` to flow in - it's
   just an optimizer hint and this optimization may be performed
   as of today regardless.
+
+- **DECISION**: Add `RETURNING` to comdb2's `%fallback ID` list, so that
+  `returning` is a keyword but can still be used as a name:
+
+  ```sql
+  CREATE TABLE t(returning INT);
+  SELECT returning FROM t;
+  ```
+
+  Also, although unreachable, sqlite code that we compile still requires the
+  `TK_RETURNING` token to be defined in order to compile.
 
 ### `sqlite/src/random.c`
 
