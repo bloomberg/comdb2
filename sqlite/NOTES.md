@@ -311,6 +311,21 @@ I started tracking this when I got to more important files (`where.c`,
   `"db2"."realtable" as "foo"`, as we now do for views. Add a `UNION ALL`
   case to `tests/alias.test`.
 
+- **TODO**: Check the comdb2 code in `db/` that tests `MEM_Int` but not
+  `MEM_IntReal`, once the tree builds.
+
+  ```sql
+  CREATE TABLE t(r REAL);
+  INSERT INTO t VALUES(1);
+  ```
+
+  Since 3.51, the `1` gets the flag `MEM_IntReal` instead of `MEM_Real`
+  (OP_Affinity sets it). That flag is separate from `MEM_Int`, so
+  `flags & MEM_Int` is false. Comdb2 never stores values as `MEM_IntReal`,
+  so anything that reads values from a record is safe. A site is at risk
+  only if it is handed a `Mem` straight from the VDBE. If one is, read the
+  value as an integer.
+
 ## Observations and Decisions
 
 ### General
