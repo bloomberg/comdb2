@@ -755,21 +755,21 @@ int refresh_metrics(void)
         extern uint64_t gbl_rdlk_total_us, gbl_rdlk_unlock_us, gbl_rdlk_release_us, gbl_rdlk_sleep_us,
             gbl_rdlk_reacquire_us, gbl_rdlk_revalidate_us, gbl_rdlk_count, gbl_rdlk_pagelocks_only_count,
             gbl_sync_dta_us, gbl_sync_dta_count;
-        stats.release_locks_total_us = gbl_rdlk_total_us;
-        stats.release_locks_unlock_us = gbl_rdlk_unlock_us;
-        stats.release_locks_putcurtran_us = gbl_rdlk_release_us;
-        stats.release_locks_sleep_us = gbl_rdlk_sleep_us;
-        stats.release_locks_reacquire_us = gbl_rdlk_reacquire_us;
-        stats.release_locks_revalidate_us = gbl_rdlk_revalidate_us;
-        stats.release_locks_count = gbl_rdlk_count;
-        stats.release_locks_pagelocks_only_count = gbl_rdlk_pagelocks_only_count;
-        stats.sync_dta_us = gbl_sync_dta_us;
-        stats.sync_dta_count = gbl_sync_dta_count;
+        stats.release_locks_total_us = ATOMIC_LOAD64(gbl_rdlk_total_us);
+        stats.release_locks_unlock_us = ATOMIC_LOAD64(gbl_rdlk_unlock_us);
+        stats.release_locks_putcurtran_us = ATOMIC_LOAD64(gbl_rdlk_release_us);
+        stats.release_locks_sleep_us = ATOMIC_LOAD64(gbl_rdlk_sleep_us);
+        stats.release_locks_reacquire_us = ATOMIC_LOAD64(gbl_rdlk_reacquire_us);
+        stats.release_locks_revalidate_us = ATOMIC_LOAD64(gbl_rdlk_revalidate_us);
+        stats.release_locks_count = ATOMIC_LOAD64(gbl_rdlk_count);
+        stats.release_locks_pagelocks_only_count = ATOMIC_LOAD64(gbl_rdlk_pagelocks_only_count);
+        stats.sync_dta_us = ATOMIC_LOAD64(gbl_sync_dta_us);
+        stats.sync_dta_count = ATOMIC_LOAD64(gbl_sync_dta_count);
 
         extern uint64_t gbl_probe_us, gbl_probes, gbl_probes_timed;
-        stats.lockprobe_us = gbl_probe_us;
-        stats.lockprobe_count = gbl_probes;
-        stats.lockprobe_sampled = gbl_probes_timed;
+        stats.lockprobe_us = ATOMIC_LOAD64(gbl_probe_us);
+        stats.lockprobe_count = ATOMIC_LOAD64(gbl_probes);
+        stats.lockprobe_sampled = ATOMIC_LOAD64(gbl_probes_timed);
     }
 
     rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits, &stats.cache_misses, &stats.leaf_cache_hits,
