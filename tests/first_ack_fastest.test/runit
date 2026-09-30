@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# The master times how long the rest of the replicants get to ack from the
+# fastest ack, whatever the node order.  Two replicants lag 1.5s, the rest ack
+# at once, and the timeout is 1s: the first lagging node waited on times out
+# and is demoted, the second gets another 1s, catches up and is not.  Run it
+# with each replicant as the fast one, so a lagging node comes first in the
+# master's list at least once.
+bash -n "$0" || exit 1
+
+set -e
+
+dbname=$1
+[ -z "$dbname" ] && { echo "usage: runit <dbname>" >&2; exit 1; }
+
+fail() { echo "FAILED: $1" >&2; exit 1; }
+sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1"; }
+master=$(sql "select host from comdb2_cluster where is_master='Y'")
+[ -z "$master" ] && fail "could not find the master"
+master_sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $master "$1"; }
+send() { master_sql "exec procedure sys.cmd.send('$1')" >/dev/null; }
+admin_set() { cdb2sql ${CDB2_OPTIONS} -admin $dbname --host $1 "put tunable $2 $3" >/dev/null; }
+
+replicants=""
+for node in $CLUSTER; do
+    [ "$node" = "$master" ] || replicants="$replicants $node"
+done
+if [ "$(echo $replicants | wc -w)" -lt 3 ]; then
+    echo "needs 3 replicants, skipping"
+    exit 0
+fi
+
+# make a replicant apply every txn $2 ms late (0 = normal again)
+lag() {
+    admin_set $1 slow_rep_process_txn_minms $2
+    admin_set $1 slow_rep_process_txn_maxms $2
+    admin_set $1 slow_rep_process_txn_freq $([ "$2" = 0 ] && echo 0 || echo 1)
+}
+wait_coherent() {
+    for i in $(seq 1 60); do
+        [ "$(master_sql "select coherent_state from comdb2_cluster where host='$1'")" = "coherent" ] && return 0
+        sleep 1
+    done
+    fail "$1 never became coherent again"
+}
+log=$TESTDIR/logs/$dbname.$master.db
+# the ack wait timed out on this node (and so demoted it)
+demotions() { grep -c "replication timeout to node $1 " $log || true; }
+
+# only the ack wait decides who is demoted
+send "bdb setattr MAKE_SLOW_REPLICANTS_INCOHERENT 0"
+sql "create table t (a int)" >/dev/null
+
+row=0
+for fast in $replicants; do
+    for node in $replicants; do wait_coherent $node; done
+    sleep 2 # a node that just caught up can still be slow to apply
+    lagging=""
+    for node in $replicants; do
+        [ "$node" = "$fast" ] || lagging="$lagging $node"
+    done
+    lagging=$(echo $lagging | cut -d' ' -f1-2)
+    before=""
+    for node in $lagging; do before="$before $(demotions $node)"; done
+
+    for node in $lagging; do lag $node 1500; done
+    send "bdb setattr REPTIMEOUT_MINMS 1000"
+    row=$((row + 1))
+    master_sql "insert into t values($row)" >/dev/null
+    send "bdb setattr REPTIMEOUT_MINMS 10000"
+    for node in $lagging; do lag $node 0; done
+
+    got=""
+    set -- $before
+    for node in $lagging; do
+        [ "$(demotions $node)" -gt "$1" ] && got="$got $node"
+        shift
+    done
+    [ "$(echo $got | wc -w)" -eq 1 ] || fail "fast $fast, lagging$lagging: demoted '$got', expected exactly one"
+done
+for node in $replicants; do wait_coherent $node; done
+echo "Success"
