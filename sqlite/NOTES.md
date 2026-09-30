@@ -343,6 +343,23 @@ I started tracking this when I got to more important files (`where.c`,
   only if it is handed a `Mem` straight from the VDBE. If one is, read the
   value as an integer.
 
+## Post-merge checklist
+
+Loose ends found while merging `sqlite/src`. None of them can be checked
+until the tree builds.
+
+- [ ] Replace `SQLITE_STOREP2` in `db/sqlexplain.c`. 3.51 removed it, so the
+  EXPLAIN output code that tests for it no longer compiles.
+
+- [ ] Update the prototypes in `db/sqlglue.c` to match the 3.51 btree headers.
+  `sqlite3BtreeCreateTable()` now takes a `Pgno*` instead of an `int*`, and
+  `sqlite3BtreeClearTable()`, `sqlite3BtreeCursor()`,
+  `sqlite3BtreeIntegrityCheck()` and `sqlite3BtreeCount()` changed too.
+
+- [ ] Audit `sqlite3BtreeCursorIsValidNN()` in `db/sqlglue.c`. Ours always
+  returns 1 (its comment says "TODO: This is not right"), but code in 3.51's
+  `vdbe.c` that merged without a conflict now calls it and trusts the answer.
+
 ## Observations and Decisions
 
 ### General
