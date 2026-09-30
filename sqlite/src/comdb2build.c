@@ -674,10 +674,20 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
         if (!db) {
             logmsg(LOGMSG_ERROR, "Couldn't find table %s\n", s->tablename);
             f->errorMsg = "DDL Error: Table not found\n";
-            f->rc = SQLITE_ABORT; 
+            f->rc = SQLITE_ABORT;
             return f->rc;
         }
         f->rc = osql_test_remove_genshard(s, &f->errorMsg);
+        return f->rc;
+    } else if (s->partition.type == PARTITION_ALTER_GENSHARD_COORD) {
+        struct dbtable *db = get_dbtable_by_name(s->tablename);
+        if (!db) {
+            logmsg(LOGMSG_ERROR, "Couldn't find table %s\n", s->tablename);
+            f->errorMsg = "DDL Error: Table not found\n";
+            f->rc = SQLITE_ABORT;
+            return f->rc;
+        }
+        f->rc = osql_test_alter_genshard(s, &f->errorMsg);
         return f->rc;
     }
 
@@ -5199,6 +5209,21 @@ void comdb2AlterTableEnd(Parse *pParse)
         /* An error must have been set. */
         assert(pParse->rc != 0);
         goto cleanup;
+    }
+
+    /* Detect ALTER TABLE on a generic-shard partitioned table and fan the
+     * schema change out to every shard.  Two different statements land here:
+     * the client's original ALTER (coordinator) and the per-shard ALTER the
+     * coordinator pushes out (participant).  Only the coordinator fans out; a
+     * participant is recognised by the SET PARTITION options it received, the
+     * same way the DROP path does it.  A dryrun only reports on the local
+     * shard, so leave it alone. */
+    if (sc->partition.type == PARTITION_NONE && !sc->dryrun) {
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        struct dbtable *gtbl = get_dbtable_by_name(sc->tablename);
+        if (gtbl && gtbl->sqlaliasname && gtbl->numdbs > 0 && gtbl->dbnames && thd && thd->clnt &&
+            thd->clnt->remsql_set.is_remsql != IS_REMCREATE)
+            sc->partition.type = PARTITION_ALTER_GENSHARD_COORD;
     }
 
     if (sc->dryrun)

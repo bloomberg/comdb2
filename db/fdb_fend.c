@@ -70,6 +70,7 @@
 extern int gbl_fdb_resolve_local;
 extern char *gbl_fdb_resolve_tier;
 extern int gbl_fdb_class_override_spew_limit;
+extern int gbl_2pc;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_disttxn_trace;
@@ -4108,8 +4109,7 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
     if (tran->is_cdb2api) {
         rc = cdb2_close(tran->fcon.hndl);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n",
-                   rc);
+            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n", rc);
         }
         free(tran);
     } else {
@@ -4219,7 +4219,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
                 fdb_client_set_identityBlob(clnt, tran->fcon.hndl);
                 rc = cdb2_run_statement(tran->fcon.hndl, "commit");
                 if (!rc) {
-                    cdb2_effects_tp effects;
+                    cdb2_effects_tp effects = {0};
                     int irc;
                     if ((irc = cdb2_get_effects(tran->fcon.hndl, &effects))) {
                         logmsg(LOGMSG_ERROR, "%s failed to get effects rc %d %s\n", __func__, irc,
@@ -4230,14 +4230,14 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
                         clnt->remote_effects.num_updated += effects.num_updated;
                         clnt->remote_effects.num_deleted += effects.num_deleted;
                         clnt->remote_effects.num_inserted += effects.num_inserted;
-                    }
-                    /* 2pc case; if the remote did no generate any writes, there is no
-                     * remote bplog, so do not include this fdb as a participant
-                     */
-                    tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
-                    if (tran->nwrites) {
-                        tran->writes_status = FDB_TRAN_WRITES;
-                        *is_distributed = 1;
+                        /* 2pc case; if the remote did no generate any writes, there is no
+                         * remote bplog, so do not include this fdb as a participant
+                         */
+                        tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
+                        if (tran->nwrites) {
+                            tran->writes_status = FDB_TRAN_WRITES;
+                            *is_distributed = 1;
+                        }
                     }
                 }
                 if (gbl_debug_disttxn_trace)
@@ -6246,10 +6246,10 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
     return push;
 }
 
-
-static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint32_t nshards,
-                             char **dbnames, uint32_t numcols, char **columns, char **shardnames,
-                             char **sqls, enum ast_type type) 
+/* Fan a schema change out to every shard of a generic-shard partition.
+ * Takes ownership of the nshards strings in sqls[] and frees them. */
+static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint32_t nshards, char **dbnames,
+                             uint32_t numcols, char **columns, char **shardnames, char **sqls, enum ast_type type)
 {
     struct errstat err = {0};
     int i;
@@ -6264,17 +6264,31 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Fix this, for now disable 2pc if its a DDL */
+    /* A distributed DDL is fanned out as one independent write per shard; it is
+     * not a 2pc distributed transaction.  The shards cannot be 2pc participants
+     * because a schema change runs under a logical transaction that
+     * bdb_tran_prepare() cannot prepare, so do not enrol them. */
     clnt->use_2pc = 0;
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
 
+    /* dbnames[] can be owned by the local shard's dbtable, which a committed
+     * drop or alter frees; the post-commit cleanup must not read it */
+    char **fdbnames = alloca(nshards * sizeof(char *));
+    for (i = 0; i < nshards; i++) {
+        fdbnames[i] = alloca(strlen(dbnames[i]) + 1);
+        strcpy(fdbnames[i], dbnames[i]);
+    }
+
     /* create create sql statements */
     for(i = 0; i < nshards; i++) {
         if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname))) {
-            pushes[i] = fdb_push_connector_create(
-                dbnames[i], type == AST_TYPE_CREATE ? shardnames[i] : sc->partition.u.genshard.tablename, type);
+            pushes[i] = fdb_push_connector_create(dbnames[i],
+                                                  (type == AST_TYPE_CREATE || type == AST_TYPE_ALTER)
+                                                      ? shardnames[i]
+                                                      : sc->partition.u.genshard.tablename,
+                                                  type);
             if (!pushes[i]) {
                 logmsg(LOGMSG_ERROR, "%s malloc shard push %d\n", __func__, i);
                 goto setup_error;
@@ -6370,6 +6384,10 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
             }
         } while (0);
         clnt->sql = sql;
+        /* handle_fdb_push_write() frees clnt->fdb_push on its retry-as-legacy
+         * path; pick the pointer back up so the cleanup below does not free a
+         * connector that is already gone. */
+        pushes[i] = clnt->fdb_push;
         clnt->fdb_push = NULL;
         if (rc) {
             if (!pushes[i])
@@ -6378,18 +6396,23 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
                 logmsg(LOGMSG_ERROR, "Failed run create ddl %s rc %d err %s\n",
                        dbnames[i], rc, err.errstr);
             goto abort;
-        }  else if (pushes[i]) {
-            /* need to mark the create as a remote write */
+        }
+        if (pushes[i]) {
+            /* a ddl writes no rows, so mark the sub-transaction as a remote
+             * write explicitly or fdb_trans_commit() will skip it */
             fdb_t *fdb = get_fdb(dbnames[i], FDB_GET_LOCK);
-            fdb_tran_t * tran = fdb_get_subtran(clnt->dbtran.dtran, fdb);
-            /* ddl has no rows writes */
-            tran->nwrites += 1;
-            tran->writes_status = FDB_TRAN_WRITES;
-            put_fdb(fdb, FDB_PUT_NOFREE);
+            if (fdb) {
+                fdb_tran_t *tran = fdb_get_subtran(clnt->dbtran.dtran, fdb);
+                if (tran) {
+                    tran->nwrites += 1;
+                    tran->writes_status = FDB_TRAN_WRITES;
+                }
+                put_fdb(fdb, FDB_PUT_NOFREE);
+            }
         }
     }
 
-    /* commit the transaction */
+    /* commit the local shard's schema change */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
@@ -6397,20 +6420,32 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
         goto setup_error;
     }
 
+    for (i = 0; i < nshards; i++) {
+        free(sqls[i]);
+        sqls[i] = NULL;
+        if (pushes[i]) {
+            _clear_schema(fdbnames[i], NULL, 0);
+            fdb_push_free(&pushes[i]);
+        }
+    }
+
     return 0;
 
 abort:
-    if (!*errmsg) /* not empty string */
+    if (!(*errmsg)[0]) /* not empty string */
         *errmsg = "transaction aborted";
     rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed to rollback rc %d\n", __func__, rc);
     }
 setup_error:
-    if (!*errmsg) /* not empty string */
+    if (!(*errmsg)[0]) /* not empty string */
         *errmsg = "malloc error shard push";
     for (i = 0; i < nshards; i++) {
+        free(sqls[i]);
+        sqls[i] = NULL;
         if (pushes[i]) {
+            _clear_schema(fdbnames[i], NULL, 0);
             fdb_push_free(&pushes[i]);
         }
     }
@@ -6488,6 +6523,44 @@ int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg)
     return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, 0, NULL, tbl->shardnames, sqls, AST_TYPE_DROP);
 
 setup_error:
+    for (i = 0; i < nshards && sqls[i]; i++) {
+        free(sqls[i]);
+    }
+    return -1;
+}
+
+int osql_test_alter_genshard(struct schema_change_type *sc, char **errmsg)
+{
+    dbtable *tbl = get_dbtable_by_name(sc->tablename);
+    if (!tbl || tbl->numdbs == 0) {
+        *errmsg = "ALTER: table is not a genshard partition";
+        return -1;
+    }
+
+    assert(sc->partition.type == PARTITION_ALTER_GENSHARD_COORD);
+    sc->partition.type = PARTITION_ALTER_GENSHARD;
+
+    snprintf(sc->partition.u.genshard.tablename, sizeof(sc->partition.u.genshard.tablename), "%s", sc->tablename);
+
+    uint32_t nshards = tbl->numdbs;
+    char **sqls = (char **)alloca(nshards * sizeof(char *));
+    int i;
+
+    bzero(sqls, nshards * sizeof(char *));
+    for (i = 0; i < nshards; i++) {
+        int len = strlen(tbl->shardnames[i]) + strlen(sc->newcsc2) + 32;
+        sqls[i] = malloc(len);
+        if (!sqls[i]) {
+            logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
+            goto alter_error;
+        }
+        snprintf(sqls[i], len, "alter table '%s' {%s}", tbl->shardnames[i], sc->newcsc2);
+    }
+
+    return _running_dist_ddl(sc, errmsg, tbl->numdbs, tbl->dbnames, tbl->numcols, tbl->columns, tbl->shardnames, sqls,
+                             AST_TYPE_ALTER);
+
+alter_error:
     for (i = 0; i < nshards && sqls[i]; i++) {
         free(sqls[i]);
     }

@@ -6242,14 +6242,32 @@ void freedb_int(dbtable *db, dbtable *replace)
     }
 
     if (replace) {
+        /* a pthread lock must not be copied: keep db's own lock objects, which
+         * other threads may already know by address */
+        pthread_mutex_t rev_constraints_lk = db->rev_constraints_lk;
+        pthread_rwlock_t sc_live_lk = db->sc_live_lk;
+        pthread_rwlock_t consumer_lk = db->consumer_lk;
+        /* generic-shard membership is loaded from llmeta, not from the csc2 the
+         * replacement was built from, so it has to survive the replace */
+        uint32_t numdbs = db->numdbs;
+        char **dbnames_arr = db->dbnames;
+        uint32_t numcols = db->numcols;
+        char **columns_arr = db->columns;
+        char **shardnames = db->shardnames;
+
         memcpy(db, replace, sizeof(dbtable));
+
+        db->rev_constraints_lk = rev_constraints_lk;
+        db->sc_live_lk = sc_live_lk;
+        db->consumer_lk = consumer_lk;
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-        for (i = 0; i < db->numdbs; i++)
-            db->dbnames[i] = dbnames[i];
-        for (i = 0; i < db->numcols; i++)
-            db->columns[i] = columns[i];
+        db->numdbs = numdbs;
+        db->dbnames = dbnames_arr;
+        db->numcols = numcols;
+        db->columns = columns_arr;
+        db->shardnames = shardnames;
     }
 }
 
