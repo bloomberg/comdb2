@@ -1457,7 +1457,7 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
  *
  * bdb_state: Caller's bdb state.
  *
- * Returns the minimum logfile in use by a modsnap transaction or -1 if there 
+ * Returns the minimum logfile in use by a modsnap transaction or -1 if there
  *  are no ongoing modsnap transactions.
  */
 int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state);
@@ -1479,7 +1479,7 @@ void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration);
  * modsnap_start_lsn_offset: Offset of the modsnap start lsn
  * last_checkpoint_lsn_file: File of the checkpoint lsn preceding the modsnap start point.
  * last_checkpoint_lsn_offset: Offset of the checkpoint lsn preceding the modsnap start point.
- * registration: This gets set to point to a berkdb structure that holds registration state. 
+ * registration: This gets set to point to a berkdb structure that holds registration state.
  *      This is used to unregister a modsnap transaction once it finishes (see `bdb_unregister_modsnap`).
  *      Callers should never access it.
  *
@@ -1492,23 +1492,23 @@ int bdb_register_modsnap(bdb_state_type *bdb_state,
                         unsigned int last_checkpoint_lsn_offset,
                         void ** registration);
 
-/* 
+/*
  * Returns 1 if this registered modsnap txn is allowed to open cursors; 0 otherwise
  */
 int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration);
 
 /* bdb_get_modsnap_start_state --
- * Get the start state for a new modsnap transaction. A modsnap transaction's start state includes 
+ * Get the start state for a new modsnap transaction. A modsnap transaction's start state includes
  * its start lsn and the checkpoint lsn preceding its start lsn.
  *
  * bdb_state: Caller's bdb state.
  * bdb_attr: Caller's bdb attr.
  * is_ha_retry: 1 if transaction is a hasql retry. 0 otherwise.
  * snapshot_epoch: Snapshot epoch if a PIT snapshot or 0 if not a PIT snapshot.
- * modsnap_start_lsn_file: If transaction is a hasql retry, 
+ * modsnap_start_lsn_file: If transaction is a hasql retry,
  *                       then this should be set by the caller to the retry start lsn file.
  *                       Otherwise, this gets set to the modsnap start lsn file.
- * modsnap_start_lsn_offset: If transaction is a hasql retry, 
+ * modsnap_start_lsn_offset: If transaction is a hasql retry,
  *                         then this should be set by the caller to the retry start lsn offset;
  *                         Otherwise, this gets set to the modsnap start lsn offset.
  * last_checkpoint_lsn_file: This gets set to the checkpoint lsn file preceding the start lsn.
@@ -1759,17 +1759,17 @@ typedef struct schema_version_row {
  * bdb_llmeta_free_schema_versions --
  *
  * Frees list of schema versions allocated by `bdb_llmeta_get_schema_versions`
- * `data` is the list of schema versions to be freed 
+ * `data` is the list of schema versions to be freed
  * and `n` is the number of elements in this list.
- */ 
+ */
 void bdb_llmeta_free_schema_versions(schema_version_row *data, int n);
 
 /*
  * bdb_llmeta_get_schema_versions --
  *
  * Gets all schema versions stored in llmeta.
- * 
- * On success: 
+ *
+ * On success:
  * - returns zero
  * - `data` points to a list of versions.
  * Elements in this list are of type `schema_version_row`.
@@ -2556,4 +2556,8 @@ typedef int (*collect_unused_files_f)(void *args, int lognum, char *filename);
 
 void oldfile_hash_collect(collect_unused_files_f func, void *arg);
 void bdb_tran_set_is_sc_rebuild(tran_type *tran, int is_sc_rebuild);
+int bdb_schema_change_checkpoint(bdb_state_type *bdb_state, unsigned int minimum_file, unsigned int minimum_offset,
+                                 unsigned int *checkpoint_file, unsigned int *checkpoint_offset,
+                                 unsigned int *floor_file, unsigned int *floor_offset, int timeoutms, int *bdberr);
+void bdb_get_log_end_lsn(bdb_state_type *bdb_state, unsigned int *file, unsigned int *offset);
 #endif

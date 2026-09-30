@@ -45,14 +45,24 @@ settle_count() {
 	fail "commit map on $node did not settle"
 }
 
+wait_value() {
+	local node=$1 sql=$2 expected=$3 current=""
+	for _ in $(seq 1 180); do
+		current=$(sql_node "$node" "$sql")
+		[[ "$current" == "$expected" ]] && return
+		sleep 1
+	done
+	fail "$node did not return $expected for '$sql' (last ${current:-none})"
+}
+
 cleanup() {
 	for node in "${nodes[@]}"; do send_node "$node" "sync log-delete on"; done
 }
 trap cleanup EXIT
 for node in "${nodes[@]}"; do send_node "$node" "sync log-delete off"; done
 
-sql_node "$master" "create table t(i int)" >/dev/null
-sql_node "$master" "insert into t select value from generate_series(1, $N)" >/dev/null
+sql_node "$master" "create table t(i int, j int)" >/dev/null
+sql_node "$master" "insert into t select value, value from generate_series(1, $N)" >/dev/null
 sleep 2
 
 declare -A before after
@@ -60,6 +70,8 @@ for node in "${nodes[@]}"; do before[$node]=$(settle_count "$node"); done
 
 sql_node "$master" "rebuild t" >/dev/null || fail "rebuild failed"
 wait_for_cluster
+asof_target=$(date +%s)
+sleep 2
 
 for node in "${nodes[@]}"; do
 	after[$node]=$(settle_count "$node")
@@ -78,6 +90,38 @@ for node in "${nodes[@]}"; do
 		fail "$node map differs from master by $difference"
 done
 
+replica=""
+for node in "${nodes[@]}"; do
+	[[ "$node" != "$master" ]] && { replica=$node; break; }
+done
+[[ -n "$replica" ]] || fail "could not choose replica for snapshot"
+
+expected_sum=$(sql_node "$replica" "select sum(j) from t")
+fifo=/tmp/sc_commit_map_checkpoint_replica_fifo.$$
+out=/tmp/sc_commit_map_checkpoint_replica_out.$$
+mkfifo "$fifo"
+cdb2sql --allow-incoherent --tabs ${CDB2_OPTIONS} --host "$replica" "$dbnm" - \
+	<"$fifo" >"$out" 2>&1 &
+snapshot_pid=$!
+exec 9>"$fifo"
+printf '%s\n' "set transaction snapshot isolation" "begin" \
+	"select count(*) from t" "select sum(j) from t" >&9
+sleep 2
+sql_node "$master" "update t set j = j + 1000 where i <= $((N / 2))" >/dev/null
+updated_sum=$((expected_sum + 1000 * (N / 2)))
+wait_value "$replica" "select sum(j) from t" "$updated_sum"
+printf '%s\n' "select count(*) from t" "select sum(j) from t" "commit" >&9
+exec 9>&-
+wait "$snapshot_pid" || fail "replica snapshot client failed"
+mapfile -t snapshot_values < <(grep -vE '^\[' "$out")
+rm -f "$fifo" "$out"
+(( snapshot_values[0] == N && snapshot_values[2] == N )) ||
+	fail "replica snapshot row count changed: ${snapshot_values[*]}"
+[[ "${snapshot_values[1]}" == "$expected_sum" &&
+	"${snapshot_values[3]}" == "$expected_sum" ]] ||
+	fail "replica snapshot sum changed: ${snapshot_values[*]}"
+echo "SC_REPLICA_CHECKPOINT_SNAPSHOT: node=$replica rows=$N"
+
 victim=""
 for node in "${nodes[@]}"; do
 	[[ "$node" != "$master" ]] && { victim=$node; break; }
@@ -92,5 +136,31 @@ difference=$(( recovered - master_count ))
 echo "SC_REPLICA_RECOVERY_SKIP: node=$victim recovered=$recovered master=$master_count difference=$difference"
 (( difference <= MAX_DELTA )) ||
 	fail "$victim recovery map differs from master by $difference"
+
+asof_read() {
+	local node=$1 output
+	output=$(cdb2sql --allow-incoherent --tabs ${CDB2_OPTIONS} --host "$node" \
+		"$dbnm" - 2>&1 <<EOF
+set transaction snapshot isolation
+begin transaction as of datetime $asof_target
+select count(*), sum(j) from t
+commit
+EOF
+)
+	grep -E "^${N}[[:space:]]+${expected_sum}$" <<<"$output" >/dev/null ||
+		fail "$node could not reconstruct post-rebuild AS-OF state: $output"
+}
+
+asof_read "$victim"
+echo "SC_REPLICA_CHECKPOINT_RECOVERY: node=$victim target=$asof_target"
+
+old_master=$(getmaster)
+downgrade_master || fail "could not force promotion"
+new_master=$(getmaster)
+[[ -n "$new_master" && "$new_master" != "$old_master" ]] ||
+	fail "master did not change ($old_master -> ${new_master:-none})"
+wait_value "$new_master" "select sum(j) from t" "$updated_sum"
+asof_read "$new_master"
+echo "SC_REPLICA_CHECKPOINT_PROMOTION: old=$old_master new=$new_master"
 
 echo "Passed test"

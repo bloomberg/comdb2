@@ -3,3 +3,4 @@
 utxnid_log on
 enable_snapshot_isolation
 sc_commit_map_skip 1
+setattr CHECKPOINTTIME 9999999

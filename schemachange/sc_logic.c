@@ -50,6 +50,8 @@ extern int gbl_is_physical_replicant;
 
 int gbl_multitable_ddl = 0;
 
+enum { SC_CHECKPOINT_BLOCKER_TIMEOUT_MS = 10 * 60 * 1000 };
+
 /**** Utility functions */
 
 static enum thrtype prepare_sc_thread(struct schema_change_type *s)
@@ -339,6 +341,32 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     return rc;
 }
 
+int establish_sc_commit_map_checkpoint(struct schema_change_type *s)
+{
+    unsigned int checkpoint_file, checkpoint_offset;
+    unsigned int floor_file, floor_offset;
+    int bdberr = 0;
+
+    if (!s->sc_commit_map_checkpoint)
+        return 0;
+
+    assert_no_schema_lk();
+
+    if (bdb_schema_change_checkpoint(thedb->bdb_env, s->sc_commit_map_checkpoint_file,
+                                     s->sc_commit_map_checkpoint_offset, &checkpoint_file, &checkpoint_offset,
+                                     &floor_file, &floor_offset, SC_CHECKPOINT_BLOCKER_TIMEOUT_MS, &bdberr) != 0) {
+        sc_errf(s, "Failed to establish schema-change checkpoint\n");
+        return -1;
+    }
+
+    logmsg(LOGMSG_INFO,
+           "%s: checkpoint floor %u:%u covers conversion %u:%u "
+           "at attempt %u:%u\n",
+           __func__, floor_file, floor_offset, s->sc_commit_map_checkpoint_file, s->sc_commit_map_checkpoint_offset,
+           checkpoint_file, checkpoint_offset);
+    return 0;
+}
+
 /*
 ** Start transaction if not passed in (comdb2sc.tsk)
 ** If started transaction, then
@@ -535,6 +563,8 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         s->finalize = 0;
         rc = SC_COMMIT_PENDING;
     } else if (s->finalize) {
+        if ((rc = establish_sc_commit_map_checkpoint(s)) != 0)
+            goto end;
         int local_lock = 0;
         if (!iq->sc_locked) {
             wrlock_schema_lk();
@@ -696,6 +726,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg)
     }
 
     s->iq = iq;
+    s->sc_commit_map_checkpoint = 0;
 
     if (s->kind == SC_ALTERTABLE_PENDING || s->preempted == SC_ACTION_RESUME)
         detached = 1;
@@ -811,7 +842,7 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     rc = do_schema_change_tran_int(arg);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     if (rc == SC_COMMIT_PENDING) {
-       rc = SC_OK; 
+        rc = SC_OK;
     }
     return rc;
 }
@@ -1064,7 +1095,7 @@ extern int resume_sc_multiddl_txn(sc_list_t *scl);
 
 /**
  * The resume searches for existing sc_list llmeta objects, instead
- * of checking each existing table.  This allows us to naturally 
+ * of checking each existing table.  This allows us to naturally
  * cluster together sc-s that are part of the same txn
  *
  */
