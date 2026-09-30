@@ -2892,39 +2892,16 @@ static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
     }
 }
 
-/*
- * Return values:
- *    GOOD RETURN CODE
- *    0 - node has caught up
- *
- *    NORMAL TIMEOUT
- *    -999 - the caller will mark incoherent
- *
- *    SPECIAL CASES: DON'T WAIT ANYMORE
- *    1 - node is not coherent / newly online and catching up
- *   -2 - node is rtcpu'd- marked incoherent inline
- *  -10 - node generation is higher than what we are waiting on
- *   -1 - node has been decommissioned
- *
- *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
- *   we wait for.  This counts against durability.
- */
-static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
-                                             seqnum_type *seqnum,
-                                             struct interned_string *host, int timeoutms, int lineno,
-                                             int fakeincoherent)
+/* Run once per node, before waiting for its ack: is this node worth waiting
+ * for?  Returns
+ *    1 - no: it is already incoherent
+ *   -2 - no: it has been rtcpu'd, so we just made it incoherent
+ *    0 - yes (a drtest node is made INCOHERENT_WAIT but is still waited for) */
+static int seqnum_wait_node_precheck(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                     struct hostinfo *h, int fakeincoherent)
 {
-    int rc, reset_ts = 1, remaining = timeoutms;
-    int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
-    struct timespec waittime;
-    int i, coherent_state;
+    int coherent_state;
     int node_is_rtcpu = 0;
-    DB_LSN got_lsn;
-    uint32_t got_gen;
-    struct hostinfo *h = retrieve_hostinfo(host);
-    /* if we were passed a child, find his parent */
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
 
     if (fakeincoherent) {
         node_is_rtcpu = 1;
@@ -2973,13 +2950,23 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
             return -2;
         }
     }
+    return 0;
+}
 
-    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-
-    if (gbl_udp)
-        h->expected_udp_count++;
-
-again:
+/* Run each time we look at what a node has acked: has it acked this commit,
+ * and if not, is it still worth waiting for?  Returns
+ *      0 - acked
+ *      1 - stop waiting: it is catching up, the bdb lock is wanted, or we
+ *          are exiting
+ *    -10 - stop waiting: it is on a newer generation
+ *     -1 - stop waiting: it has been decommissioned
+ *   -999 - not acked yet, keep waiting
+ * Call with seqnum_info->lock held.  It is released on every return except
+ * -999, so the caller can wait on the lock's condvar. */
+static int seqnum_wait_node_check_locked(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                         struct hostinfo *h, int lineno, uint32_t *got_gen, DB_LSN *got_lsn)
+{
+    int i;
 
     if (h->seqnum.lsn.file == INT_MAX || bdb_lock_desired(bdb_state)) {
         /* add 1 ms of latency if we have someone catching up */
@@ -3025,15 +3012,16 @@ again:
         }
     }
 
-    got_gen = gen;
-    got_lsn = h->seqnum.lsn;
+    *got_gen = gen;
+    *got_lsn = h->seqnum.lsn;
 
     if (bdb_seqnum_compare(bdb_state, &h->seqnum, seqnum) >= 0) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, "%s line %d called from %d %s good rcode mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n", 
-                    __func__, __LINE__, lineno, host->str, got_gen, got_lsn.file, got_lsn.offset,
-                    seqnum->generation, seqnum->lsn.file, seqnum->lsn.offset);
+            logmsg(LOGMSG_USER,
+                   "%s line %d called from %d %s good rcode mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n",
+                   __func__, __LINE__, lineno, host->str, *got_gen, got_lsn->file, got_lsn->offset, seqnum->generation,
+                   seqnum->lsn.file, seqnum->lsn.offset);
         }
         return 0;
     }
@@ -3070,6 +3058,52 @@ again:
             return -1;
         }
     }
+    return -999;
+}
+
+/*
+ * Return values:
+ *    GOOD RETURN CODE
+ *    0 - node has caught up
+ *
+ *    NORMAL TIMEOUT
+ *    -999 - the caller will mark incoherent
+ *
+ *    SPECIAL CASES: DON'T WAIT ANYMORE
+ *    1 - node is not coherent / newly online and catching up
+ *   -2 - node is rtcpu'd- marked incoherent inline
+ *  -10 - node generation is higher than what we are waiting on
+ *   -1 - node has been decommissioned
+ *
+ *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
+ *   we wait for.  This counts against durability.
+ */
+static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state, seqnum_type *seqnum,
+                                             struct interned_string *host, int timeoutms, int lineno,
+                                             int fakeincoherent)
+{
+    int rc, reset_ts = 1, remaining = timeoutms;
+    int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
+    struct timespec waittime;
+    DB_LSN got_lsn = {0};
+    uint32_t got_gen = 0;
+    struct hostinfo *h = retrieve_hostinfo(host);
+    /* if we were passed a child, find his parent */
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    if ((rc = seqnum_wait_node_precheck(bdb_state, seqnum, host, h, fakeincoherent)) != 0)
+        return rc;
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+
+    if (gbl_udp)
+        h->expected_udp_count++;
+
+again:
+
+    if ((rc = seqnum_wait_node_check_locked(bdb_state, seqnum, host, h, lineno, &got_gen, &got_lsn)) != -999)
+        return rc;
 
     /* Set timespec for first run and timeouts */
     if (reset_ts) {
