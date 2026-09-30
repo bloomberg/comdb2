@@ -872,6 +872,7 @@ struct sql_thread *start_sql_thread(void)
     listc_init(&thd->query_stats, offsetof(struct query_path_component, lnk));
     thd->query_hash = create_query_hash();
     Pthread_mutex_init(&thd->lk, NULL);
+    thd->prev_thd = pthread_getspecific(query_info_key);
     Pthread_setspecific(query_info_key, thd);
     Pthread_mutex_lock(&gbl_sql_lock);
     listc_abl(&thedb->sql_threads, thd);
@@ -892,7 +893,8 @@ void done_sql_thread(void)
         listc_rfl(&thedb->sql_threads, thd);
         Pthread_mutex_unlock(&gbl_sql_lock);
         Pthread_mutex_destroy(&thd->lk);
-        Pthread_setspecific(query_info_key, NULL);
+        /* restore the sql thread we were nested inside, if any */
+        Pthread_setspecific(query_info_key, thd->prev_thd);
         if (thd->buf) {
             free(thd->buf);
             thd->buf = NULL;
@@ -11928,9 +11930,7 @@ void stat4dump(int more, char *table, int istrace)
     sql_mem_init_with_save(NULL, &sql_oldm);
 #   endif
 
-    struct sql_thread *old_thd = pthread_getspecific(query_info_key);
     struct sql_thread *thd = start_sql_thread();
-    Pthread_setspecific(query_info_key, thd);
 
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt, 0);
@@ -12051,7 +12051,6 @@ out:
     end_internal_sql_clnt(&clnt);
     thd->clnt = NULL;
     done_sql_thread();
-    Pthread_setspecific(query_info_key, old_thd);
     sql_mem_shutdown_and_restore(NULL, &sql_oldm);
 }
 

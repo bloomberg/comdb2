@@ -1341,6 +1341,8 @@ struct sql_thread {
     int crtshard;
     /* flag to signal that the sql engine should stop executing */
     int stop_this_statement;
+    /* sql thread this one was nested inside, restored by done_sql_thread */
+    struct sql_thread *prev_thd;
 };
 
 struct connection_info {
