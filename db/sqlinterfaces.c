@@ -2908,8 +2908,8 @@ int release_locks_int(rlocks_reason_t reason, const char *func, int line, struct
         sync_index_data_cursors(thd);
         if (gbl_lock_instrumentation) {
             uint64_t d = (uint64_t)(comdb2_time_epochus() - sync_start);
-            __sync_fetch_and_add(&gbl_sync_dta_us, d);
-            __sync_fetch_and_add(&gbl_sync_dta_count, 1);
+            ATOMIC_ADD64(gbl_sync_dta_us, d);
+            ATOMIC_ADD64(gbl_sync_dta_count, 1);
             clnt->sync_dta_us += d;
         }
     }

@@ -233,11 +233,11 @@ static inline int probe_sample_start(int64_t *start)
 static inline void probe_sample_end(int timed, int64_t start)
 {
     if (timed) {
-        __sync_fetch_and_add(&gbl_probe_us, (uint64_t)(comdb2_time_epochus() - start));
-        __sync_fetch_and_add(&gbl_probes_timed, 1);
+        ATOMIC_ADD64(gbl_probe_us, (uint64_t)(comdb2_time_epochus() - start));
+        ATOMIC_ADD64(gbl_probes_timed, 1);
         /* charge the whole sampling interval, so gbl_probes counts every probe
            while only one in N pays for the atomics */
-        __sync_fetch_and_add(&gbl_probes, (uint64_t)gbl_lock_instrumentation_sample);
+        ATOMIC_ADD64(gbl_probes, (uint64_t)gbl_lock_instrumentation_sample);
     }
 }
 
@@ -308,7 +308,7 @@ static inline void rdlk_add2(uint64_t *acc, uint64_t *clnt_acc, int64_t start)
 {
     if (gbl_lock_instrumentation) {
         uint64_t d = (uint64_t)(comdb2_time_epochus() - start);
-        __sync_fetch_and_add(acc, d);
+        ATOMIC_ADD64(*acc, d);
         if (clnt_acc)
             *clnt_acc += d;
     }
@@ -11214,7 +11214,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     if (flags & RECOVER_DEADLOCK_PAGELOCKS_ONLY) {
         assert(bdb_lockref() > 0);
         if (gbl_lock_instrumentation)
-            __sync_fetch_and_add(&gbl_rdlk_pagelocks_only_count, 1);
+            ATOMIC_ADD64(gbl_rdlk_pagelocks_only_count, 1);
         return 0;
     }
 
@@ -11444,7 +11444,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     int64_t rdlk_start = rdlk_now();
     int rc = clnt->recover_deadlock_rcode = recover_deadlock_flags_int(bdb_state, clnt, bdbcur, sleepms, func, line, flags);
     if (gbl_lock_instrumentation)
-        __sync_fetch_and_add(&gbl_rdlk_count, 1);
+        ATOMIC_ADD64(gbl_rdlk_count, 1);
     rdlk_add2(&gbl_rdlk_total_us, &clnt->rdlk_total_us, rdlk_start);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, clnt, CURTRAN_RECOVERY);
