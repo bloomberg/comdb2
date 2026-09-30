@@ -673,6 +673,7 @@ ctrace_dbdir 1
 allow_lua_print 1
 physrep_update_registry_interval 1
 physrep_keepalive_v2 1
+make_slow_replicants_incoherent off
 END
 
         $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
@@ -719,6 +720,7 @@ ctrace_dbdir 1
 allow_lua_print 1
 physrep_update_registry_interval 1
 physrep_keepalive_v2 1
+make_slow_replicants_incoherent off
 END
                 scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
                 ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
@@ -3419,6 +3421,8 @@ function physrep_no_stale_state_casing
     local metadb
     local metahost
     local cnt
+    local i
+    local node
 
     echo "== physrep_no_stale_state_casing =="
 
@@ -3428,8 +3432,18 @@ function physrep_no_stale_state_casing
         metadb=${metadb%%:*}
         [[ -z "$metadb" || -z "$metahost" ]] && continue
 
-        cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $metahost \
-            "select count(*) from comdb2_physreps where state='InActive'" 2>/dev/null)
+        # $metahost may be incoherent (e.g. INCOHERENT_SLOW after an ALTER) and drop
+        # queries, so fall back to the other metadb nodes rather than treat it as a hit.
+        for (( i = 0; i < 10; i++ )); do
+            for node in $metahost $CLUSTER; do
+                cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $node \
+                    "select count(*) from comdb2_physreps where state='InActive'" 2>&1)
+                [[ "$cnt" =~ ^[0-9]+$ ]] && break 2
+            done
+            sleep 1
+        done
+        [[ "$cnt" =~ ^[0-9]+$ ]] || \
+            cleanFailExit "Couldn't query comdb2_physreps in $metadb on any node: $cnt"
         [[ "$cnt" == "0" ]] || \
             cleanFailExit "Found $cnt physrep(s) with the stale 'InActive' state casing in $metadb"
     done
