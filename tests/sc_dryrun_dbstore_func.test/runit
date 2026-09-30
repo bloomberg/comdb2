@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A DRYRUN on a schema with a dbstore={func()} default verifies the function on
+# the sql thread by running nested sql.  That nested sql used to clear the sql
+# thread's registration, so the next SELECT on that thread crashed the db.
+
+dbnm=$1
+
+# The dbstore function is only verified on the master, so connect to it (-m).
+# Everything below runs on one connection, so every SELECT follows a DRYRUN.
+cat << EOF | timeout -s 9 60s cdb2sql -m ${CDB2_OPTIONS} -tabs -s $dbnm default - >output.actual 2>&1
+CREATE TABLE t1 { schema { int i } }\$\$
+SELECT "-- DRYRUN verifies the function, then fails the null check --"
+DRYRUN ALTER TABLE t1 { schema { int i byte g[16] dbstore={guid()} } }
+SELECT 1
+SELECT "-- DRYRUN verifies the function and succeeds --"
+DRYRUN ALTER TABLE t1 { schema { int i byte g[16] null=yes dbstore={guid()} } }
+SELECT 1
+SELECT "-- DRYRUN fails verifying the function --"
+DRYRUN ALTER TABLE t1 { schema { int i byte g[16] null=yes dbstore={i} } }
+SELECT 1
+SELECT COUNT(*) FROM t1
+EOF
+
+diff output.actual output.expected
+if [[ $? -ne 0 ]]; then
+    echo "Unexpected output"
+    exit 1
+fi
+
+x=$(timeout -s 9 10s cdb2sql -m ${CDB2_OPTIONS} -tabs $dbnm default "select 1")
+if [[ $? -ne 0 || "$x" != "1" ]]; then
+    echo "Master did not survive the DRYRUNs"
+    exit 1
+fi
+
+echo "Success"

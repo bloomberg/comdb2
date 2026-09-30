@@ -1,0 +1,20 @@
+-- DRYRUN verifies the function, then fails the null check --
+[DRYRUN ALTER TABLE t1 { schema { int i byte g[16] dbstore={guid()} } }] failed with rc 240 Column must be nullable to use a function as its default value
+1
+-- DRYRUN verifies the function and succeeds --
+Schema change plan:-
+    Will perform instant schema change
+    No changes to main data file
+    Schema change does not require a table scan 
+Table is already odh enabled.
+Table records are compressed.
+Table blobs are compressed.
+Table already supports in-place updates.
+Table already supports instant schema change.
+Live schema change running in parallel scan mode
+1
+-- DRYRUN fails verifying the function --
+[DRYRUN ALTER TABLE t1 { schema { int i byte g[16] null=yes dbstore={i} } }] failed with rc 240 Error at line   0: INVALID DBSTORE FUNCTION FOR g
+
+1
+0
