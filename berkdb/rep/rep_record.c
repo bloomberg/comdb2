@@ -5252,6 +5252,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			lc.want_clientinfo = gbl_log_clientinfo;
 			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
 							&had_serializable_records, NULL, txnid)) != 0) {
+				/* lcin is unset, so the lc_free at the end skips it. */
+				lc_free(dbenv, NULL, &lc);
 				line = __LINE__;
 				goto err;
 			}
@@ -5447,6 +5449,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			lc.want_clientinfo = gbl_log_clientinfo;
 			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
 							&had_serializable_records, NULL, txnid)) != 0) {
+				/* lcin is unset, so the lc_free at the end skips it. */
+				lc_free(dbenv, NULL, &lc);
 				line = __LINE__;
 				goto err;
 			}
