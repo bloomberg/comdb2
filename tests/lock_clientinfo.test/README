@@ -15,13 +15,15 @@ off, which is the state this rolls out in -- both joins still work, BPLOG rows
 report no argv0 or pid, and comdb2_replication lists its threads without naming
 anyone -- then with both on.
 
-'A' locks report no client_id: a replicant takes a transaction's locks up front,
-off the commit record, before any record naming a client is applied.
-
-comdb2_replication covers the replicant instead -- a row per thread applying,
-naming the client from the txn's log record (log_clientinfo) and the statement
-that thread is on.  Clustered runs only; a single node applies nothing.
+comdb2_replication covers the replicant -- a row per thread applying, naming
+the client from the txn's log record (log_clientinfo) and the statement that
+thread is on.  'A' locks join it on client_id: the replicant picks the record up
+while collecting the txn, before taking its locks off the commit record
+(collect_before_locking).  Clustered runs only; a single node applies nothing.
 
 The last check flushes and restarts a node, so recovery has to read the
 clientinfo record back through handle_clientinfo -- a path none of the
 live-state checks touch.
+
+serialrep.testopts reruns it with parallel rep off, so the replicant applies
+through the serial path rather than the recovery processors.

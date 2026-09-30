@@ -1156,6 +1156,7 @@ int bdb_fingerprint_from_logrec(DB_ENV *dbenv, void *logrec, unsigned char *fing
 /* berkdb holds the decoded clientinfo as an opaque handle -- see bdb_clientinfo.c */
 void *bdb_clientinfo_from_logrec(DB_ENV *dbenv, void *logrec);
 void bdb_clientinfo_free(void *ci);
+uint32_t bdb_clientinfo_id(void *ci);
 void bdb_replication_thread_begin(uint32_t lsn_file, uint32_t lsn_offset);
 void bdb_replication_thread_client(void *ci);
 void bdb_replication_thread_fingerprint(const uint8_t *fingerprint);

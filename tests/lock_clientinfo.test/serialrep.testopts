@@ -1,0 +1,2 @@
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0

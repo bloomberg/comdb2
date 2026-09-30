@@ -1418,9 +1418,11 @@ int bdb_llog_clientinfo_tran(bdb_state_type *bdb_state, tran_type *tran, const c
 #define BDB_CLIENTINFO_STRSZ 64
 
 /* One callback per replication thread currently applying. taskname/host are
- * NULL when the txn was logged without them, as is fingerprint. */
+ * NULL when the txn was logged without them, as is fingerprint; client_id is
+ * then 0. */
 typedef void (*bdb_replication_enum_fn)(void *arg, uint64_t tid, const char *taskname, const char *host, int pid,
-                                        const uint8_t *fingerprint, uint32_t lsn_file, uint32_t lsn_offset);
+                                        uint32_t client_id, const uint8_t *fingerprint, uint32_t lsn_file,
+                                        uint32_t lsn_offset);
 void bdb_replication_foreach(bdb_replication_enum_fn fn, void *arg);
 
 /* Format and print the thread stats.  printfn() is a function which accepts

@@ -2335,6 +2335,10 @@ struct __lsn_collection {
 	int had_serializable_records;
 	int filled_from_cache;
 	LISTC_T(UTXNID) *child_utxnids;
+	/* Set by the caller to have collect pick up the DB_llog_clientinfo
+	 * record into clientinfo (opaque bdb handle, freed by lc_free). */
+	int want_clientinfo;
+	void *clientinfo;
 };
 
 struct __lc_cache_entry {

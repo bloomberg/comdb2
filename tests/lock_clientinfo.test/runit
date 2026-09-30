@@ -138,8 +138,8 @@ function dump_diagnostics
     echo "  active_osqls by type (rows, with argv0, with client_id):"
     query_node "$node" "select type, count(*), count(argv0), count(client_id) from comdb2_active_osqls group by type" | sed 's/^/    /'
     echo "  connections: $(query_node "$node" "select count(*) from comdb2_connections")"
-    echo "  replication (threads, with taskname, with fingerprint):"
-    query_node "$node" "select count(*), count(taskname), count(fingerprint) from comdb2_replication" | sed 's/^/    /'
+    echo "  replication (threads, with taskname, with client_id, with fingerprint):"
+    query_node "$node" "select count(*), count(taskname), count(client_id), count(fingerprint) from comdb2_replication" | sed 's/^/    /'
 }
 
 function stop_load
@@ -149,8 +149,8 @@ function stop_load
     rm $stopfile >/dev/null 2>&1
 }
 
-# client_id is either NULL or non-zero, never appears without a role -- the role
-# is what tells you which table to join -- and never appears on an 'A' lock.
+# client_id is either NULL or non-zero, and never appears without a role -- the
+# role is what tells you which table to join.
 #
 # One statement, so every count describes the same snapshot -- and polled until
 # that snapshot actually holds a $role lock, because "no row breaks the rule" is
@@ -161,16 +161,15 @@ function verify_column_contract
     typeset node=$1
     typeset role=$2
     typeset j=0
-    typeset total= zeroid= noroleid= applyid= rolecnt=
+    typeset total= zeroid= noroleid= rolecnt=
 
     write_prompt $func "Verify client_id is well-formed on ${node:-default}"
 
     while [[ ! -f $stopfile && $j -lt $poll_iters ]]; do
-        read total zeroid noroleid applyid rolecnt <<< "$(query_node "$node" \
+        read total zeroid noroleid rolecnt <<< "$(query_node "$node" \
 "select count(*), \
  coalesce(sum(client_id is not null and client_id = 0),0), \
  coalesce(sum(client_id is not null and fingerprint_role is null),0), \
- coalesce(sum(fingerprint_role = 'A' and client_id is not null),0), \
  coalesce(sum(fingerprint_role = '$role'),0) from comdb2_locks")"
         [[ "$total" != "" && "$total" != "0" && "$rolecnt" != "0" ]] && break
         let j=j+1
@@ -184,10 +183,6 @@ function verify_column_contract
 
     [[ "$zeroid" != "0" ]] && failexit $func "$zeroid locks have a zero client_id instead of NULL"
     [[ "$noroleid" != "0" ]] && failexit $func "$noroleid locks have a client_id but no role to say which table it joins"
-
-    # A replicant takes a transaction's locks off the commit record, before the
-    # record naming the client is applied -- so there is never one to stamp.
-    [[ "$applyid" != "0" ]] && failexit $func "$applyid 'A' locks carry a client_id"
 
     write_prompt $func "client_id is well-formed across $total locks on ${node:-default}"
 }
@@ -328,6 +323,16 @@ function verify_replication
     fi
     write_prompt $func "comdb2_replication names the client"
 
+    # The client is picked up while collecting, before the txn's locks are
+    # taken, so an 'A' lock carries the client_id of its comdb2_replication row.
+    if ! poll_for_count "$replicant" "from comdb2_locks l join comdb2_replication r on l.client_id = r.client_id where l.fingerprint_role='A' and r.taskname is not null"; then
+        dump_diagnostics "$replicant" ; stop_load
+        failexit $func "An 'A' lock's client_id never matched a comdb2_replication row"
+    fi
+    write_prompt $func "'A' locks join comdb2_replication"
+
+    verify_column_contract "$replicant" "A"
+
     # log_fingerprint is on, so a thread should also report the statement it is
     # applying -- informational, since a txn can be logged without one.
     x=$(query_node "$replicant" "select count(*) from comdb2_replication where fingerprint is not null")
@@ -398,9 +403,11 @@ function verify_tunables_off
             dump_diagnostics "$replicant" ; stop_load
             failexit $func "comdb2_replication showed no applying thread with the tunables off"
         fi
-        x=$(query_node "$replicant" "select count(*) from comdb2_replication where taskname is not null or host is not null or pid is not null")
+        x=$(query_node "$replicant" "select count(*) from comdb2_replication where taskname is not null or host is not null or pid is not null or client_id is not null")
         [[ "$x" != "0" ]] && { stop_load; failexit $func "$x comdb2_replication rows name a client with log_clientinfo off"; }
         write_prompt $func "comdb2_replication still lists applying threads, unattributed"
+        x=$(query_node "$replicant" "select count(*) from comdb2_locks where fingerprint_role='A' and client_id is not null")
+        [[ "$x" != "0" ]] && { stop_load; failexit $func "$x 'A' locks carry a client_id with log_clientinfo off"; }
     fi
 
     stop_load

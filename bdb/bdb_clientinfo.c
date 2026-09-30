@@ -73,7 +73,10 @@ struct bdb_clientinfo {
     char taskname[BDB_CLIENTINFO_STRSZ];
     char host[BDB_CLIENTINFO_STRSZ];
     int pid;
+    uint32_t id; /* replicant-local; what 'A' locks carry as client_id */
 };
+
+static uint32_t clientinfo_next_id;
 
 /* Truncation is fine here -- this is a diagnostic label, not an identifier. */
 static void clientinfo_copy_str(char *dst, const DBT *src)
@@ -101,6 +104,8 @@ void *bdb_clientinfo_from_logrec(DB_ENV *dbenv, void *logrec)
         clientinfo_copy_str(ci->taskname, &argp->taskname);
         clientinfo_copy_str(ci->host, &argp->host);
         ci->pid = argp->pid;
+        while ((ci->id = ATOMIC_ADD32(clientinfo_next_id, 1)) == 0)
+            ;
     }
 
     free(argp);
@@ -110,6 +115,11 @@ void *bdb_clientinfo_from_logrec(DB_ENV *dbenv, void *logrec)
 void bdb_clientinfo_free(void *ci)
 {
     free(ci);
+}
+
+uint32_t bdb_clientinfo_id(void *ci)
+{
+    return ci ? ((struct bdb_clientinfo *)ci)->id : 0;
 }
 
 /*
@@ -239,7 +249,8 @@ void bdb_replication_foreach(bdb_replication_enum_fn fn, void *arg)
         if (!ATOMIC_LOAD32(r->active))
             continue;
         fn(arg, r->tid, r->have_clientinfo ? r->ci.taskname : NULL, r->have_clientinfo ? r->ci.host : NULL,
-           r->have_clientinfo ? r->ci.pid : 0, r->have_fingerprint ? r->fingerprint : NULL, r->lsn_file, r->lsn_offset);
+           r->have_clientinfo ? r->ci.pid : 0, r->have_clientinfo ? r->ci.id : 0,
+           r->have_fingerprint ? r->fingerprint : NULL, r->lsn_file, r->lsn_offset);
     }
     Pthread_mutex_unlock(&rep_thread_recs_lk);
 }

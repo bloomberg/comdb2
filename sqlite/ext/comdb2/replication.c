@@ -33,6 +33,8 @@ typedef struct systable_replication {
     char *host;
     int64_t pid;
     int pid_isnull;
+    int64_t client_id;
+    int client_id_isnull;
     char *fingerprint;
     int64_t commit_lsn_file;
     int64_t commit_lsn_offset;
@@ -44,7 +46,7 @@ typedef struct getreplication {
     systable_replication_t *records;
 } getreplication_t;
 
-static void collect(void *args, uint64_t tid, const char *taskname, const char *host, int pid,
+static void collect(void *args, uint64_t tid, const char *taskname, const char *host, int pid, uint32_t client_id,
                     const uint8_t *fingerprint, uint32_t lsn_file, uint32_t lsn_offset)
 {
     getreplication_t *r = (getreplication_t *)args;
@@ -66,6 +68,10 @@ static void collect(void *args, uint64_t tid, const char *taskname, const char *
         t->pid = pid;
     else
         t->pid_isnull = 1;
+    if (client_id)
+        t->client_id = client_id;
+    else
+        t->client_id_isnull = 1;
 
     if (fingerprint) {
         char hex[BDB_FINGERPRINTSZ * 2 + 1];
@@ -111,6 +117,7 @@ int systblReplicationInit(sqlite3 *db)
         CDB2_CSTRING, "taskname", -1, offsetof(systable_replication_t, taskname),
         CDB2_CSTRING, "host", -1, offsetof(systable_replication_t, host),
         CDB2_INTEGER, "pid", offsetof(systable_replication_t, pid_isnull), offsetof(systable_replication_t, pid),
+        CDB2_INTEGER, "client_id", offsetof(systable_replication_t, client_id_isnull), offsetof(systable_replication_t, client_id),
         CDB2_CSTRING, "fingerprint", -1, offsetof(systable_replication_t, fingerprint),
         CDB2_INTEGER, "commit_lsn_file", -1, offsetof(systable_replication_t, commit_lsn_file),
         CDB2_INTEGER, "commit_lsn_offset", -1, offsetof(systable_replication_t, commit_lsn_offset),
