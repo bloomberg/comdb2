@@ -27,3 +27,6 @@ setattr WAIT_FOR_SEQNUM_TRACE 1
 do semver 8.1.0
 enable_bulk_import 1
 foreign_db_resolve_local 1
+
+# alt-metadb physrep connects intermittently: don't roll logs past it during write bursts
+min_keep_logs 50
