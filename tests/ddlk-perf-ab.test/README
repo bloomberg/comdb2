@@ -79,14 +79,17 @@ Set these on the make command line, the same way as CLUSTER:
                                lock-release counters.  Default 0.  With 1 the
                                report gains the lk_ columns described below;
                                with 0 neither the tunable nor the columns
-                               appear.  Raise TEST_TIMEOUT when turning it on
-                               -- a single-node run measured 13m off and
-                               17.5m on, over the 15m default:
+                               appear.  It costs real time -- a single-node
+                               run measured 13m off and 17.5m on -- so raise
+                               TEST_TIMEOUT above the 45m default if the host
+                               is loaded:
 
-                                   TEST_TIMEOUT=30m DDLK_LOCKSTATS=1 make ddlk-perf-ab
+                                   TEST_TIMEOUT=60m DDLK_LOCKSTATS=1 make ddlk-perf-ab
 
-Default runs measured 7.5 to 12 minutes single-node, so the timeout is 15m and
-the test is part of the normal sweep.  Run it on its own with:
+Default runs measured 7.5 to 12 minutes single-node and about 6 on an idle
+3-node cluster.  In the parallel regression sweep the reader scans run 5-6x
+slower -- the off arm alone took 12 minutes there -- so the timeout is 45m.
+The test is part of the normal sweep.  Run it on its own with:
 
   make ddlk-perf-ab
 

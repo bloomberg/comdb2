@@ -86,8 +86,8 @@ fi
 
 # Third arm: feature on, split off (the older latched has-waiters behaviour).
 # Only meaningful against 'on' -- with the feature off the split code never runs,
-# so there is no fourth combination.  Opt-in: two instrumented arms already take
-# ~17.5 minutes here, so three overrun the 15m default.
+# so there is no fourth combination.  Opt-in: it adds a whole arm, and under
+# load two arms already use much of the 45m default.
 splitarm=${DDLK_SPLIT_ARM:-0}
 if [[ "$splitarm" != 0 && "$splitarm" != 1 ]] ; then
     echo "DDLK_SPLIT_ARM must be 0 or 1, got: $splitarm"
