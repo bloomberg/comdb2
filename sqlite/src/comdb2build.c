@@ -2311,13 +2311,6 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     return;
 
 clean_arg:
-    if (alias_f->name) {
-        free(alias_f->name);
-    }
-
-    if (alias_f->remote) {
-        free(alias_f->remote);
-    }
     free_bpfunc_arg(arg);
 }
 

@@ -49,6 +49,13 @@ cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default - >> $output 2>&1 << EOF
 select * from t1_alias1
 EOF
 
+echo "Alias with the same name as a local table should fail" >> $output
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default - >> $output 2>&1 << EOF
+create table t(i int)\$\$
+put alias t 'u'
+select 1
+EOF
+
 #get rid of remdb name
 sed "s/${SECONDARY_DBNAME}/remdb/g" $output > run.log.actual
 
