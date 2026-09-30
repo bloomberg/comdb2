@@ -2407,7 +2407,13 @@ function physrep_cksum_anchor_check
         lsn=$(echo "$match" | grep -o "{[0-9]*:[0-9]*}")
 
         # LSNs are shared down every tier: inspect the anchor on the source.
-        rec=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select rectype % 1000, generation, prevcksum from comdb2_transaction_logs('$lsn', '$lsn', 0)" 2>&1)
+        # 'default' may hit a source replicant that hasn't applied $lsn yet: retry
+        cnt=0
+        rec=""
+        while [[ -z "$rec" && $cnt -lt 30 ]]; do
+            rec=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select rectype % 1000, generation, prevcksum from comdb2_transaction_logs('$lsn', '$lsn', 0)" 2>&1)
+            [[ -z "$rec" ]] && { sleep 1; let cnt=cnt+1; }
+        done
         rectype=$(echo "$rec" | cut -f1)
         gen=$(echo "$rec" | cut -f2)
         prevcksum=$(echo "$rec" | cut -f3)
