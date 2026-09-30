@@ -894,6 +894,20 @@ I started tracking this when I got to more important files (`where.c`,
   This doesn't pass down anything new. It restores an argument we already
   used for this purpose, which upstream removed.
 
+- **DECISION**: Close a temp table when the last cursor on it is closed.
+
+  Previously, `sqlite3VdbeFreeCursor()` was responsible for closing the
+  `Btree`. Now, SQLite ties the lifetime of an ephemeral/temp `Btree` to its
+  cursors, so `sqlite3BtreeCloseCursor()` automatically closes the table when
+  the last cursor on it closes. We need to implement two things for this to
+  work:
+
+  1. Respect the `BTREE_SINGLE` flag when closing a cursor. This is what tells
+     us that the table is a temp table.
+  2. Implement `sqlite3BtreeClosesWithCursor()`. This is only called by SQLite
+     in `OP_OpenEphemeral` to `assert` that the table will be closed
+     automatically by closing the cursor.
+
 ### `sqlite/src/sqlite_tunables.{h,c}`
 
 - We have defined some of our own tunables for SQLite.

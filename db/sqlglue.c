@@ -4498,6 +4498,9 @@ int sqlite3BtreeClose(Btree *pBt)
     }
 
     BtCursor *tmp;
+    /* Avoid double-closing ephemeral btrees, they are closed automatically
+     * when the last cursor on them closes. */
+    pBt->is_single = 0;
     LISTC_FOR_EACH_SAFE(&pBt->cursors, pCur, tmp, lnk)
     {
         rc = sqlite3BtreeCloseCursor(pCur);
@@ -4693,6 +4696,9 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
+        }
+        if (flags & BTREE_SINGLE) {
+            bt->is_single = 1;
         }
         thd->bttmp = bt;
         *ppBtree = bt;
@@ -7670,6 +7676,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
     }
 
+    int close_bt = 0;
     if (thd) {
         Pthread_mutex_lock(&thd->lk);
         if (pCur->on_list)
@@ -7683,7 +7690,12 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             if (other->pCursorHintTableCursor == pCur)
                 other->pCursorHintTableCursor = NULL;
         }
+        close_bt = pCur->bt && pCur->bt->is_single &&
+                   listc_size(&pCur->bt->cursors) == 0;
         Pthread_mutex_unlock(&thd->lk);
+    }
+    if (close_bt) {
+        sqlite3BtreeClose(pCur->bt);
     }
 
 done:
@@ -12308,6 +12320,19 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
  ** this routine.
  */
 int sqlite3BtreeCursorSize(void) { return sizeof(BtCursor); }
+
+#ifdef SQLITE_DEBUG
+/*
+ ** Return true if and only if the Btree object will be automatically
+ ** closed with the BtCursor closes.  This is used within assert() statements
+ ** only.
+ */
+int sqlite3BtreeClosesWithCursor(Btree *pBt, BtCursor *pCur)
+{
+    return pBt->is_single && listc_size(&pBt->cursors) == 1 &&
+           pBt->cursors.top == pCur && pCur->bt == pBt;
+}
+#endif
 
 /*
  ** Initialize memory that will be converted into a BtCursor object.
