@@ -44,6 +44,7 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
+#include <comdb2_atomic.h>
 #include <sys_wrap.h>
 #include <poll.h>
 
@@ -2294,6 +2295,9 @@ err:	__os_free(dbenv, oname);
 	return (ret);
 }
 
+/* Log bytes written by a (physical) replicant; sampled by comdb2_metrics */
+int64_t gbl_rep_logbytes = 0;
+
 /*
  * __log_rep_put --
  *	Short-circuit way for replication clients to put records into the
@@ -2349,6 +2353,8 @@ __log_rep_put(dbenv, lsnp, rec)
 	DB_ASSERT(log_compare(lsnp, &lp->lsn) == 0);
 	ret = __log_putr(dblp, lsnp, dbt, lp->lsn.offset - lp->len, &hdr,
 	    1 /* chain */);
+	if (ret == 0)
+		ATOMIC_ADD64(gbl_rep_logbytes, rec->size);
 
         /* Physical replication:
 
