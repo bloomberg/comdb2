@@ -2288,7 +2288,10 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
                               ERROR_ON_TBL_FOUND, 1, 0, NULL, /* check_for_illegal_chars */ 0))
         goto clean_arg;
 
-    assert (*url->z == '\'' || *url->z == '\"');
+    if (url->n < 2 || (*url->z != '\'' && *url->z != '\"')) {
+        setError(pParse, SQLITE_ERROR, "Alias target must be a quoted string");
+        goto clean_arg;
+    }
     url->z++;
     url->n -= 2;
     if (url->n) {
