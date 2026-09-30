@@ -62,3 +62,8 @@ Alias with the same name as a local table should fail
 [create table t(i int)] rc 0
 1
 [select 1] rc 0
+Alias with an unquoted target should fail
+[put alias t2_alias u] failed with rc -3 Alias target must be a quoted string
+[put alias t2_alias LOCAL_remdb] failed with rc -3 Alias target must be a quoted string
+1
+[select 1] rc 0
