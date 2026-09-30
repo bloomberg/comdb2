@@ -8333,6 +8333,7 @@ static int get_connection_int(cdb2_hndl_tp *hndl, struct cluster_info *c, int *e
     if (strcmp(hndl->type, "configured") == 0 && hndl->num_hosts > 0) {
         // Special setting of "configured" means the proxy generated a list of hosts in its config and we should
         // use that.  Don't try discovery or sockpool - use what's in the proxy config.
+        after_discovery(hndl);
         return 0;
     }
     COMDB2BUF *sb = sockpool_get(hndl);
