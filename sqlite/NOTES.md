@@ -1063,6 +1063,31 @@ with and once without `-DSQLITE_BUILDING_FOR_COMDB2`.
   `sqlite3BtreeOffset()`, which comdb2 doesn't implement. We keep the rest of
   the function, which is the same read we used before.
 
+- **DECISION**: Remove our block in `OP_Delete` that finished a deferred seek
+  on the table cursor. Take upstream's `OP_Delete` as is.
+
+  A DELETE that finds rows through an index can defer the seek on the table:
+  the cursor holds the rowid but hasn't moved to the row yet. comdb2-old
+  `3caa6b5a7` (DRQS 71326992, 2015, SQLite 3.8.9) hit this with a one-pass
+  DELETE that searched two indexes on the same table. In upstream, the reads
+  that build the index keys for `OP_IdxDelete` happened to finish the seek.
+  comdb2 skips those index deletes in `sqlite3GenerateRowIndexDelete()`, so
+  `OP_Delete` ran on a cursor that wasn't on the row. Our block finished the
+  seek inside `OP_Delete`.
+
+  Upstream later fixed the same bug for everyone (`bcf6884afd`, 2016, ticket
+  16c9801ceba49). Since `68c0c71065` (2020), DELETE and UPDATE add
+  `OP_FinishSeek` right after the WHERE loop whenever a seek was deferred. This
+  doesn't depend on the index deletes we skip, so in 3.51 the table cursor is
+  always on the row by the time `OP_Delete` runs, and our block never ran.
+  Upstream's `assert( pC->deferredMoveto==0 )` would catch a case we missed in
+  debug builds. Our block also called `sqlite3VdbeCursorMoveto()`, which 3.51
+  removed.
+
+  The rest of `3caa6b5a7` stays: `sqlite3BtreeDelete()` still skips a row
+  that an earlier lookup already deleted, because two index lookups can return
+  the same row.
+
 ### `sqlite/src/vdbeaux.c`
 
 - **DECISION**: Move `sqlite3VdbeSerialType()` and `sqlite3VdbeSerialPut()`
