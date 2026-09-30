@@ -120,6 +120,7 @@ struct comdb2_metrics_store {
     int64_t physrep_metadb_sql_count;
     int64_t physrep_no_viable_source;
     int64_t forwarded_block_reqs;
+    int64_t rep_logbytes_last_minute;
 
     int64_t page_reads;
     int64_t page_writes;
@@ -339,6 +340,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.physrep_no_viable_source, NULL},
     {"forwarded_block_reqs", "Number of tagged write requests forwarded from a replicant to the master",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.forwarded_block_reqs, NULL},
+    {"rep_logbytes_last_minute", "Log bytes applied by this replicant over the last minute", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.rep_logbytes_last_minute, NULL},
     {"page_reads", "Total page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_reads,
      NULL},
     {"page_writes", "Total page writes", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_writes,
@@ -467,6 +470,7 @@ extern int64_t gbl_inmem_repdb_memory;
 extern int64_t gbl_physrep_metadb_sql_count;
 extern int gbl_physrep_no_viable_source;
 extern int64_t gbl_forwarded_block_reqs;
+extern int64_t gbl_rep_logbytes;
 
 static void update_sqllogfill_metrics()
 {
@@ -563,6 +567,37 @@ static void update_weighted_standing_queue_metrics(void)
         weighted_queue_start_time = 0;
     else if (weighted_queue_start_time == 0)
         weighted_queue_start_time = time(NULL);
+}
+
+/* Ring of (time, gbl_rep_logbytes) samples taken by update_metrics() */
+#define LOGBYTES_SAMPLES 64
+static struct {
+    time_t time;
+    int64_t bytes;
+} logbytes_samples[LOGBYTES_SAMPLES];
+static int logbytes_next = 0;
+static int64_t rep_logbytes_last_minute = 0;
+
+static void update_rep_logbytes_metrics(void)
+{
+    time_t now = time(NULL);
+    int64_t bytes = ATOMIC_LOAD64(gbl_rep_logbytes);
+    int64_t base = bytes;
+
+    /* Baseline is the newest sample at least 60s old, else the oldest we have */
+    for (int i = 1; i <= LOGBYTES_SAMPLES; i++) {
+        int idx = (logbytes_next - i + LOGBYTES_SAMPLES) % LOGBYTES_SAMPLES;
+        if (logbytes_samples[idx].time == 0)
+            break;
+        base = logbytes_samples[idx].bytes;
+        if (now - logbytes_samples[idx].time >= 60)
+            break;
+    }
+    rep_logbytes_last_minute = bytes - base;
+
+    logbytes_samples[logbytes_next].time = now;
+    logbytes_samples[logbytes_next].bytes = bytes;
+    logbytes_next = (logbytes_next + 1) % LOGBYTES_SAMPLES;
 }
 
 static time_t metrics_standing_queue_time(void);
@@ -684,6 +719,7 @@ int refresh_metrics(void)
     stats.physrep_metadb_sql_count = gbl_physrep_metadb_sql_count;
     stats.physrep_no_viable_source = gbl_physrep_no_viable_source;
     stats.forwarded_block_reqs = gbl_forwarded_block_reqs;
+    stats.rep_logbytes_last_minute = rep_logbytes_last_minute;
     struct global_stats gstats = {0};
 
     global_request_stats(&gstats);
@@ -866,4 +902,5 @@ void update_metrics(void) {
     update_cpu_percent();
     update_standing_queue_time();
     update_weighted_standing_queue_metrics();
+    update_rep_logbytes_metrics();
 }
