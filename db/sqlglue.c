@@ -12511,6 +12511,15 @@ int sqlite3BtreeCursorIsValidNN(BtCursor *pCur){
 }
 
 /*
+ ** Only OP_RowCell calls this, and only the transfer optimization emits
+ ** OP_RowCell, which comdb2 compiles out with SQLITE_OMIT_XFER_OPT.
+ */
+int sqlite3BtreeTransferRow(BtCursor *pDest, BtCursor *pSrc, i64 iKey)
+{
+    return SQLITE_INTERNAL;
+}
+
+/*
  ** Return TRUE if the pager is in a state where it is OK to change the
  ** journalmode.  Journalmode changes can only happen when the database
  ** is unmodified.
