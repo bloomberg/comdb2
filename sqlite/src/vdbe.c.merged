@@ -5259,21 +5259,15 @@ case OP_OpenDup: {           /* ncycle */
   pCx->isTable = pOrig->isTable;
   pCx->pgnoRoot = pOrig->pgnoRoot;
   pCx->isOrdered = pOrig->isOrdered;
-<<<<<<< src/vdbe.c
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  rc = sqlite3BtreeCursor(p, pOrig->pBtx, pCx->pgnoRoot,
-                          BTREE_CUR_WR|BTREE_WRCSR, 1,
-                          pCx->pKeyInfo, pCx->uc.pCursor);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  rc = sqlite3BtreeCursor(pOrig->pBtx, pCx->pgnoRoot, BTREE_WRCSR,
-||||||| sqlite-3.28.0/src/vdbe.c
-  rc = sqlite3BtreeCursor(pOrig->pBtx, pCx->pgnoRoot, BTREE_WRCSR,
-=======
   pCx->ub.pBtx = pOrig->ub.pBtx;
   pCx->noReuse = 1;
   pOrig->noReuse = 1;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  rc = sqlite3BtreeCursor(p, pCx->ub.pBtx, pCx->pgnoRoot,
+                          BTREE_CUR_WR|BTREE_WRCSR, 1,
+                          pCx->pKeyInfo, pCx->uc.pCursor);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeCursor(pCx->ub.pBtx, pCx->pgnoRoot, BTREE_WRCSR,
->>>>>>> sqlite-3.51.2/src/vdbe.c
                           pCx->pKeyInfo, pCx->uc.pCursor);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* The sqlite3BtreeCursor() routine can only fail for the first cursor
@@ -5340,22 +5334,6 @@ case OP_OpenEphemeral: {     /* ncycle */
     aMem[pOp->p3].z = "";
   }
   pCx = p->apCsr[pOp->p1];
-<<<<<<< src/vdbe.c
-  if( pCx ){
-    /* If the ephermeral table is already open, erase all existing content
-    ** so that the table is empty again, rather than creating a new table. */
-    assert( pCx->isEphemeral );
-    pCx->seqCount = 0;
-    pCx->cacheStatus = CACHE_STALE;
-    if( pCx->pBtx ){
-      rc = sqlite3BtreeClearTable(pCx->pBtx, pCx->pgnoRoot, 0);
-    }
-||||||| sqlite-3.28.0/src/vdbe.c
-  if( pCx ){
-    /* If the ephermeral table is already open, erase all existing content
-    ** so that the table is empty again, rather than creating a new table. */
-    rc = sqlite3BtreeClearTable(pCx->pBtx, pCx->pgnoRoot, 0);
-=======
   if( pCx && !pCx->noReuse &&  ALWAYS(pOp->p2<=pCx->nField) ){
     /* If the ephemeral table is already open and has no duplicates from
     ** OP_OpenDup, then erase all existing content so that the table is
@@ -5364,7 +5342,6 @@ case OP_OpenEphemeral: {     /* ncycle */
     pCx->seqCount = 0;
     pCx->cacheStatus = CACHE_STALE;
     rc = sqlite3BtreeClearTable(pCx->ub.pBtx, pCx->pgnoRoot, 0);
->>>>>>> sqlite-3.51.2/src/vdbe.c
   }else{
     pCx = allocateCursor(p, pOp->p1, pOp->p2, CURTYPE_BTREE);
     if( pCx==0 ) goto no_mem;
@@ -5373,56 +5350,11 @@ case OP_OpenEphemeral: {     /* ncycle */
                           BTREE_OMIT_JOURNAL | BTREE_SINGLE | pOp->p5,
                           vfsFlags);
     if( rc==SQLITE_OK ){
-<<<<<<< src/vdbe.c
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      rc = sqlite3BtreeBeginTrans(p, pCx->pBtx, 1, 0);
+      rc = sqlite3BtreeBeginTrans(p, pCx->ub.pBtx, 1, 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      rc = sqlite3BtreeBeginTrans(pCx->pBtx, 1, 0);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    }
-    if( rc==SQLITE_OK ){
-      /* If a transient index is required, create it by calling
-      ** sqlite3BtreeCreateTable() with the BTREE_BLOBKEY flag before
-      ** opening it. If a transient table is required, just use the
-      ** automatically created table with root-page 1 (an BLOB_INTKEY table).
-      */
-      if( (pCx->pKeyInfo = pKeyInfo = pOp->p4.pKeyInfo)!=0 ){
-        assert( pOp->p4type==P4_KEYINFO );
-        rc = sqlite3BtreeCreateTable(pCx->pBtx, (int*)&pCx->pgnoRoot,
-                                     BTREE_BLOBKEY | pOp->p5); 
-        if( rc==SQLITE_OK ){
-          assert( pCx->pgnoRoot==MASTER_ROOT+1 );
-          assert( pKeyInfo->db==db );
-          assert( pKeyInfo->enc==ENC(db) );
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-          rc = sqlite3BtreeCursor(p, pCx->pBtx, pCx->pgnoRoot,
-                                  BTREE_CUR_WR|BTREE_WRCSR, 0,
-                                  pKeyInfo, pCx->uc.pCursor);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          rc = sqlite3BtreeCursor(pCx->pBtx, pCx->pgnoRoot, BTREE_WRCSR,
-                                  pKeyInfo, pCx->uc.pCursor);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-||||||| sqlite-3.28.0/src/vdbe.c
-      rc = sqlite3BtreeBeginTrans(pCx->pBtx, 1, 0);
-    }
-    if( rc==SQLITE_OK ){
-      /* If a transient index is required, create it by calling
-      ** sqlite3BtreeCreateTable() with the BTREE_BLOBKEY flag before
-      ** opening it. If a transient table is required, just use the
-      ** automatically created table with root-page 1 (an BLOB_INTKEY table).
-      */
-      if( (pCx->pKeyInfo = pKeyInfo = pOp->p4.pKeyInfo)!=0 ){
-        assert( pOp->p4type==P4_KEYINFO );
-        rc = sqlite3BtreeCreateTable(pCx->pBtx, (int*)&pCx->pgnoRoot,
-                                     BTREE_BLOBKEY | pOp->p5); 
-        if( rc==SQLITE_OK ){
-          assert( pCx->pgnoRoot==MASTER_ROOT+1 );
-          assert( pKeyInfo->db==db );
-          assert( pKeyInfo->enc==ENC(db) );
-          rc = sqlite3BtreeCursor(pCx->pBtx, pCx->pgnoRoot, BTREE_WRCSR,
-                                  pKeyInfo, pCx->uc.pCursor);
-=======
       rc = sqlite3BtreeBeginTrans(pCx->ub.pBtx, 1, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( rc==SQLITE_OK ){
         /* If a transient index is required, create it by calling
         ** sqlite3BtreeCreateTable() with the BTREE_BLOBKEY flag before
@@ -5437,16 +5369,31 @@ case OP_OpenEphemeral: {     /* ncycle */
             assert( pCx->pgnoRoot==SCHEMA_ROOT+1 );
             assert( pKeyInfo->db==db );
             assert( pKeyInfo->enc==ENC(db) );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+            rc = sqlite3BtreeCursor(p, pCx->ub.pBtx, pCx->pgnoRoot,
+                                    BTREE_CUR_WR|BTREE_WRCSR, 0,
+                                    pKeyInfo, pCx->uc.pCursor);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             rc = sqlite3BtreeCursor(pCx->ub.pBtx, pCx->pgnoRoot, BTREE_WRCSR,
                 pKeyInfo, pCx->uc.pCursor);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           }
           pCx->isTable = 0;
         }else{
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          rc = sqlite3BtreeCreateTable(pCx->ub.pBtx, &pCx->pgnoRoot,
+                                       BTREE_INTKEY);
+          if( rc==SQLITE_OK ){
+            rc = sqlite3BtreeCursor(p, pCx->ub.pBtx, pCx->pgnoRoot,
+                                    BTREE_CUR_WR|BTREE_WRCSR, 0,
+                                    pKeyInfo, pCx->uc.pCursor);
+          }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           pCx->pgnoRoot = SCHEMA_ROOT;
           rc = sqlite3BtreeCursor(pCx->ub.pBtx, SCHEMA_ROOT, BTREE_WRCSR,
               0, pCx->uc.pCursor);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           pCx->isTable = 1;
->>>>>>> sqlite-3.51.2/src/vdbe.c
         }
       }
       pCx->isOrdered = (pOp->p5!=BTREE_UNORDERED);
@@ -5456,30 +5403,7 @@ case OP_OpenEphemeral: {     /* ncycle */
         sqlite3BtreeClose(pCx->ub.pBtx);
         p->apCsr[pOp->p1] = 0;  /* Not required; helps with static analysis */
       }else{
-<<<<<<< src/vdbe.c
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        int pgno;
-        rc = sqlite3BtreeCreateTable(pCx->pBtx, &pgno, BTREE_INTKEY);
-        if( rc==SQLITE_OK ){
-          pCx->pgnoRoot = pgno;
-          rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno,
-                                  BTREE_CUR_WR|BTREE_WRCSR, 0,
-                                  pKeyInfo, pCx->uc.pCursor);
-        }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        pCx->pgnoRoot = MASTER_ROOT;
-        rc = sqlite3BtreeCursor(pCx->pBtx, MASTER_ROOT, BTREE_WRCSR,
-                                0, pCx->uc.pCursor);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        pCx->isTable = 1;
-||||||| sqlite-3.28.0/src/vdbe.c
-        pCx->pgnoRoot = MASTER_ROOT;
-        rc = sqlite3BtreeCursor(pCx->pBtx, MASTER_ROOT, BTREE_WRCSR,
-                                0, pCx->uc.pCursor);
-        pCx->isTable = 1;
-=======
         assert( sqlite3BtreeClosesWithCursor(pCx->ub.pBtx, pCx->uc.pCursor) );
->>>>>>> sqlite-3.51.2/src/vdbe.c
       }
     }
   }

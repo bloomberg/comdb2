@@ -214,6 +214,23 @@ I started tracking this when I got to more important files (`where.c`,
   https://www.sqlite.org/src/info/3da1032878bdc93f
   ```
 
+* `fac6d216b`:
+
+  ```md
+  {173287389} sqlite: Fix subquery
+
+  Ensure that when an ephemeral cursor is reopened with a second
+  invocation of to OP_OpenEphemeral, the sequence counter is reset and the
+  cache marked as stale. Fix for [9cdc5c46]. (Leaf check-in: d4bfa8d2
+  user: drh tags: branch-3.28)
+
+  https://www.sqlite.org/src/info/d4bfa8d21a3eb8eb
+  ```
+
+  3.51 has this fix in `OP_OpenEphemeral`, so the merge took upstream's code.
+  DRQS 173287389 has the query shape that hit the bug. The commit also added
+  `tests/yast.test/subquery.test` and `subquery2.test`.
+
 ## TODO
 
 - **TODO**: Simplify our copies of `sqlite3VdbeSerialType()` /
