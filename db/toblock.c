@@ -3065,6 +3065,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
     if (iq->opcode == OP_FWD_BLOCK || iq->opcode == OP_FWD_LBLOCK || iq->opcode == OP_FWD_BLOCK_LE) {
         /* this was forwarded from a replicant */
         source_host = p_blkstate->source_host;
+    } else if (iq->sorese && iq->frommach) {
+        /* a write from a replicant's sql session: rep-sync source waits for it */
+        source_host = iq->frommach;
     } else {
         /* this is considered local block op */
         source_host = gbl_myhostname;
