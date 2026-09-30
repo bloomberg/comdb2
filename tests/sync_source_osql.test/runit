@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# rep-sync source: the master waits for the node the write came from, so that
+# node can read its own write as soon as it gets the reply.  Write through a
+# lagging replicant and check that it does.
+bash -n "$0" || exit 1
+
+set -e
+
+dbname=$1
+[ -z "$dbname" ] && { echo "usage: runit <dbname>" >&2; exit 1; }
+
+sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1"; }
+master=$(sql "select host from comdb2_cluster where is_master='Y'")
+replicant=$(sql "select host from comdb2_cluster where is_master='N' limit 1")
+[ -n "$master" ] && [ -n "$replicant" ] || { echo "needs a cluster" >&2; exit 1; }
+
+master_sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $master "$1"; }
+rep_sql() { cdb2sql --tabs ${CDB2_OPTIONS} $dbname --host $replicant "$1"; }
+send() { master_sql "exec procedure sys.cmd.send('$1')" >/dev/null; }
+admin_set() { cdb2sql ${CDB2_OPTIONS} -admin $dbname --host $1 "put tunable $2 $3" >/dev/null; }
+# make a replicant apply every txn $2 ms late (0 = normal again)
+lag() {
+    admin_set $1 slow_rep_process_txn_minms $2
+    admin_set $1 slow_rep_process_txn_maxms $2
+    admin_set $1 slow_rep_process_txn_freq $([ "$2" = 0 ] && echo 0 || echo 1)
+}
+now_ms() { date +%s%3N; }
+fail() { echo "FAILED: $1" >&2; exit 1; }
+
+sql "create table t(a int)" >/dev/null
+
+# write through the replicant while it lags; it should see the row when the
+# insert returns, and the insert should have waited for it
+check() { # $1 = rep-sync mode, $2 = row
+    send "sync rep-sync $1"
+    lag $replicant 3000
+    local start=$(now_ms)
+    rep_sql "insert into t values($2)" >/dev/null
+    local took=$(($(now_ms) - start))
+    local seen=$(rep_sql "select count(*) from t where a=$2")
+    lag $replicant 0
+    sleep 4
+    echo "rep-sync $1: insert through $replicant took ${took}ms, it saw its row: $seen"
+    [ "$seen" = 1 ] || fail "rep-sync $1: $replicant could not read its own write"
+    [ "$took" -ge 2500 ] || fail "rep-sync $1: the insert did not wait for $replicant"
+}
+
+check full 1
+check source 2
+
+# and it waits for that node only: another lagging replicant does not hold it up
+other=$(sql "select host from comdb2_cluster where is_master='N' and host!='$replicant' limit 1")
+if [ -n "$other" ]; then
+    lag $other 3000
+    start=$(now_ms)
+    rep_sql "insert into t values(3)" >/dev/null
+    took=$(($(now_ms) - start))
+    lag $other 0
+    echo "rep-sync source: insert through $replicant with $other lagging took ${took}ms"
+    [ "$took" -lt 2500 ] || fail "rep-sync source: the insert waited for $other"
+fi
+send "sync rep-sync full"
+echo "Success"
