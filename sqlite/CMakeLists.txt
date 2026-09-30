@@ -210,8 +210,14 @@ endif()
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(parse.c PROPERTIES COMPILE_FLAGS "-Wno-trivial-auto-var-init")
   set_source_files_properties(src/trigger.c src/status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-but-set-variable -Wno-unused-const-variable")
+  # SQLite stores some token numbers in u8 fields (Expr.op, Window.eFrmType,
+  # etc.). Since our grammar rules add tokens, make sure that we don't bump
+  # SQLite's tokens out of range.
+  target_compile_options(sqlite PRIVATE -Werror=overflow -Werror=switch-outside-range)
 elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set_source_files_properties(src/trigger.c src/status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable")
+  # See the GNU branch above.
+  target_compile_options(sqlite PRIVATE -Werror=constant-conversion)
 endif()
 
 
