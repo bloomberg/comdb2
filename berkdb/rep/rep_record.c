@@ -166,6 +166,7 @@ extern int bdb_fingerprint_from_logrec(DB_ENV *, void *, unsigned char *, size_t
 extern int gbl_log_clientinfo;
 extern void *bdb_clientinfo_from_logrec(DB_ENV *, void *);
 extern void bdb_clientinfo_free(void *);
+extern u_int32_t bdb_clientinfo_id(void *);
 extern void bdb_replication_thread_begin(u_int32_t, u_int32_t);
 extern void bdb_replication_thread_client(void *);
 extern void bdb_replication_thread_fingerprint(const u_int8_t *);
@@ -432,6 +433,10 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 		}
 		__os_free(dbenv, lc->child_utxnids);
 		lc->child_utxnids = NULL;
+	}
+	if (lc->clientinfo != NULL) {
+		bdb_clientinfo_free(lc->clientinfo);
+		lc->clientinfo = NULL;
 	}
 	lc->array = NULL;
 	lc->nlsns = 0;
@@ -4579,13 +4584,6 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 				bdb_fingerprint_from_logrec(dbenv, recdata,
 				cur_fingerprint, sizeof(cur_fingerprint));
 
-		/* Once per txn, so it lands on the processor rather than the
-		 * record: every worker applying this txn shares one client. */
-		if (gbl_log_clientinfo && rectype == REP_LLOG_CLIENTINFO &&
-			rp->clientinfo == NULL)
-			rp->clientinfo =
-				bdb_clientinfo_from_logrec(dbenv, recdata);
-
 		if (found_ufid) {
 			if (!fuid_hash)
 				fuid_hash = hash_init(DB_FILE_ID_LEN);
@@ -5001,7 +4999,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	LTDESC *lt = NULL;
 	/* Up here, not beside the phase-2 loop: err: reads it, and the earlier
 	 * goto err1/err would jump past an initializer down there. */
-	void *cur_clientinfo = NULL;
+	void *cur_clientinfo = NULL, *ci = NULL;
 	LSN_COLLECTION lc;
 	DB_LOCKREQ req, *lvp;
 	DB_LOGC *logc;
@@ -5251,12 +5249,15 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			lc = *lcin;
 		else {
 			/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
+			lc.want_clientinfo = gbl_log_clientinfo;
 			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
 							&had_serializable_records, NULL, txnid)) != 0) {
 				line = __LINE__;
 				goto err;
 			}
 			lcin = &lc;
+			cur_clientinfo = lc.clientinfo;
+			lc.clientinfo = NULL;
 			/* here's the bug!!!! ! */
 			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
 					__rep_lsn_cmp);
@@ -5276,9 +5277,19 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 	gbl_rep_lockid = lockid;
 
+	/* A serial fallback from the concurrent path collected into rp. */
+	if (cur_clientinfo == NULL && rp != NULL)
+		ci = rp->clientinfo;
+	else
+		ci = cur_clientinfo;
+
 	/* Before __lock_get_list() below, not just before phase 2: the txn's locks
-	 * are read from the commit record and all taken there. Cleared at err:. */
+	 * are read from the commit record and all taken there, stamped with the
+	 * client_id this row reports. Both cleared at err:. */
+	bdb_replication_thread_begin(rctl->lsn.file, rctl->lsn.offset);
+	bdb_replication_thread_client(ci);
 	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
+	bb_berkdb_fingerprint_rtstats_set_client_id(bdb_clientinfo_id(ci));
 
 	if (get_locks_and_ack) {
 
@@ -5433,12 +5444,15 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			lc = *lcin;
 		else {
 			/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
+			lc.want_clientinfo = gbl_log_clientinfo;
 			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
 							&had_serializable_records, NULL, txnid)) != 0) {
 				line = __LINE__;
 				goto err;
 			}
 			lcin = &lc;
+			cur_clientinfo = lc.clientinfo;
+			lc.clientinfo = NULL;
 			/* here's the bug!!!! ! */
 			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
 					__rep_lsn_cmp);
@@ -5481,8 +5495,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	u_int8_t cur_fingerprint[16];
 	int have_cur_fingerprint = 0;
 
-	/* This thread's comdb2_replication row, as in worker_thd. */
-	bdb_replication_thread_begin(rctl->lsn.file, rctl->lsn.offset);
+	/* Only news when collected after locking; NULL is a no-op. */
+	bdb_replication_thread_client(cur_clientinfo);
 
 	/* Phase 2: Apply updates. */
 	for (i = 0; i < lc.nlsns; i++) {
@@ -5527,16 +5541,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 				needed_to_get_record_from_log ? data_dbt.data :
 				lcin_dbt.data, cur_fingerprint,
 				sizeof(cur_fingerprint));
-		}
-
-		/* No rp to latch it on: this path applies inline, so the client
-		 * attaches straight to this thread's row. */
-		if (gbl_log_clientinfo && rectype == REP_LLOG_CLIENTINFO &&
-			cur_clientinfo == NULL) {
-			cur_clientinfo = bdb_clientinfo_from_logrec(dbenv,
-				needed_to_get_record_from_log ? data_dbt.data :
-				lcin_dbt.data);
-			bdb_replication_thread_client(cur_clientinfo);
 		}
 
 		if (dispatch_rectype(rectype)) {
@@ -6230,6 +6234,7 @@ bad_resize:	;
 	}
 
 	if (collect_before_locking) {
+		rp->lc.want_clientinfo = gbl_log_clientinfo;
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
 				&had_serializable_records, rp, txnid)) != 0) {
 #if defined ABORT_ON_CONCURRENT_ERROR
@@ -6240,6 +6245,8 @@ bad_resize:	;
 		}
 		qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
 			__rep_lsn_cmp);
+		rp->clientinfo = rp->lc.clientinfo;
+		rp->lc.clientinfo = NULL;
 	}
 
 	if (utxnid) {
@@ -6298,14 +6305,19 @@ bad_resize:	;
 	assert(gbl_rep_lock_time_ms == 0);
 	gbl_rep_lock_time_ms = comdb2_time_epochms();
 	/* The txn's locks are all taken here, off the commit record, so this is the
-	 * only arm that reaches them -- redo itself takes no locks. */
+	 * only arm that reaches them -- redo itself takes no locks. The row is up
+	 * while we wait on them; the workers' rows carry the same client_id. */
+	bdb_replication_thread_begin(rctl->lsn.file, rctl->lsn.offset);
+	bdb_replication_thread_client(rp->clientinfo);
 	bb_berkdb_fingerprint_rtstats_set_role(BB_BERKDB_FP_ROLE_APPLY);
+	bb_berkdb_fingerprint_rtstats_set_client_id(bdb_clientinfo_id(rp->clientinfo));
 	ret = !rp->context ?
 		__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
 		copy_compare ? &lock_dbt_copy : lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt)
 		: __lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 		copy_compare ? &lock_dbt_copy : lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
 	bb_berkdb_fingerprint_rtstats_clear();
+	bdb_replication_thread_end();
 	if (copy_compare) {
 		if (memcmp(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size) != 0) {
 			logmsg(LOGMSG_ERROR, "%s:%d lock_get_list modified the lock_dbt\n", __func__, __LINE__);
@@ -6382,6 +6394,7 @@ bad_resize:	;
 	/* Had serializable records means the transaction has a record type that requires
 	 * this transaction to be processed serially. */
 	if (!collect_before_locking) {
+		rp->lc.want_clientinfo = gbl_log_clientinfo;
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
 				&had_serializable_records, rp, txnid)) != 0) {
 #if defined ABORT_ON_CONCURRENT_ERROR
@@ -6392,6 +6405,8 @@ bad_resize:	;
 		}
 		qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
 			__rep_lsn_cmp);
+		rp->clientinfo = rp->lc.clientinfo;
+		rp->lc.clientinfo = NULL;
 	}
 
 #ifndef NDEBUG
@@ -6730,6 +6745,11 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 				had_serializable_records, rp);
 		} else {
 
+			if (lc->want_clientinfo && lc->clientinfo == NULL &&
+				rectype == REP_LLOG_CLIENTINFO)
+				lc->clientinfo =
+					bdb_clientinfo_from_logrec(dbenv, data.data);
+
 			__rep_classify_type(rectype, had_serializable_records);
 			if (gbl_ufid_add_on_collect && !DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
 				DB *file_dbp;
@@ -6855,10 +6875,26 @@ __rep_collect_txn_txnid_int(dbenv, lsnp, lc, had_serializable_records, rp, txnid
 	lc->filled_from_cache = 0;
 
 	if (dbenv->attr.cache_lc && txnid) {
+		int want_clientinfo = lc->want_clientinfo;
 		ret = __lc_cache_get(dbenv, lsnp, lc, txnid);
 		/* TODO: had_serializable/had_logical/had_commit - store in lc? */
 
 		if (ret == 0) {
+			/* The get overwrote lc; the records are all in memory. */
+			lc->want_clientinfo = want_clientinfo;
+			for (int i = 0; want_clientinfo && i < lc->nlsns; i++) {
+				u_int32_t rectype;
+				if (lc->array[i].rec.data == NULL)
+					continue;
+				LOGCOPY_32(&rectype, lc->array[i].rec.data);
+				normalize_rectype(&rectype);
+				if (rectype == REP_LLOG_CLIENTINFO) {
+					lc->clientinfo = bdb_clientinfo_from_logrec(
+						dbenv, lc->array[i].rec.data);
+					break;
+				}
+			}
+
 			if (had_serializable_records)
 				*had_serializable_records =
 					lc->had_serializable_records;

@@ -287,14 +287,16 @@ Lists all active comdb2 locks.
                        NULL if not known
 * `client_id` - Identifies the client the lock was taken for: joins
                 `comdb2_connections.client_id` when `fingerprint_role` is `R`
-                and `comdb2_active_osqls.client_id` when it is `W`; NULL if
-                not known
+                and `comdb2_active_osqls.client_id` when it is `W`, and
+                `comdb2_replication.client_id` when it is `A`; NULL if not
+                known
 
-`A` rows never carry a `fingerprint` or a `client_id`: a replicant takes a
-transaction's locks in one shot off the commit record, before it has applied any
-record naming a statement or a client. Use `comdb2_replication` to see what the
-apply side is working on. `W` rows carry a `fingerprint` only when the
-`osql_send_fingerprint` tunable is on where the write originated.
+Rows with `fingerprint_role='A'` never carry a `fingerprint`: a replicant
+takes a transaction's locks before it applies any records. They carry a
+`client_id` when the `log_clientinfo` tunable is enabled.
+
+Rows with `fingerprint_role='W'` carry a `fingerprint` only when the
+`osql_send_fingerprint` tunable is enabled.
 
 ## comdb2_logical_operations
 
@@ -428,13 +430,15 @@ Replication statistics.
 
 One row per replication thread currently applying a transaction on this node.
 
-    comdb2_replication(threadid, taskname, host, pid, fingerprint,
+    comdb2_replication(threadid, taskname, host, pid, client_id, fingerprint,
                        commit_lsn_file, commit_lsn_offset)
 
 * `threadid` - Thread Id of the applying thread
 * `taskname` - Program that ran the transaction, NULL if not known
 * `host` - Host the transaction came from, NULL if not known
 * `pid` - Process id of that program, NULL if not known
+* `client_id` - Local to this node; joins `comdb2_locks.client_id` for locks
+                with `fingerprint_role` `A`. NULL if not known
 * `fingerprint` - Fingerprint of the SQL statement this thread is applying,
                   NULL if not known
 * `commit_lsn_file` - Log file of the transaction's commit record

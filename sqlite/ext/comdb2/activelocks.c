@@ -39,7 +39,8 @@ typedef struct systable_activelocks {
     int                     frames;
     char                    *stack;
     /* All NULL when unknown, and all independent. client_id joins
-     * comdb2_active_osqls ('W') or comdb2_connections ('R'). */
+     * comdb2_active_osqls ('W'), comdb2_connections ('R') or
+     * comdb2_replication ('A'). */
     char                    *fingerprint;
     const char              *fingerprint_role;
     int64_t                 client_id;
