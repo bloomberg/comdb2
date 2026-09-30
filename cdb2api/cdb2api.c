@@ -1088,6 +1088,14 @@ static void set_max_call_time(cdb2_hndl_tp *hndl)
         hndl->max_call_time = tv.tv_sec * 1000 + tv.tv_usec / 1000 + hndl->api_call_timeout;
 }
 
+/* Cap a per-operation timeout to the time left in the api call, if enforce_api_call_timeout is on. */
+static int enforced_call_timeout(const cdb2_hndl_tp *hndl, int timeout)
+{
+    if (!CDB2_ENFORCE_API_CALL_TIMEOUT)
+        return timeout;
+    return get_call_timeout(hndl, timeout);
+}
+
 /* This wrapper ensures that on error we close any file descriptor that we
  * may have received before the error occured.  Alse we make sure that we
  * preserve the value of errno which may be needed if the error was
@@ -3610,8 +3618,8 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
 
     debugprint("name %s\n", name);
 
-    fd = cdb2_tcpconnecth_to(hndl, remote_host, CDB2_PORTMUXPORT, 0,
-                             hndl->connect_timeout);
+    fd =
+        cdb2_tcpconnecth_to(hndl, remote_host, CDB2_PORTMUXPORT, 0, enforced_call_timeout(hndl, hndl->connect_timeout));
     if (fd < 0)
         return -1;
     ss = cdb2buf_open(fd, 0);
@@ -3619,7 +3627,8 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
         close(fd);
         return -1;
     }
-    const int timeout = hndl->api_call_timeout < hndl->connect_timeout ? hndl->api_call_timeout : hndl->connect_timeout;
+    const int timeout = enforced_call_timeout(
+        hndl, hndl->api_call_timeout < hndl->connect_timeout ? hndl->api_call_timeout : hndl->connect_timeout);
     cdb2buf_settimeout(ss, timeout, timeout);
     cdb2buf_printf(ss, "rte %s\n", name);
     cdb2buf_flush(ss);
@@ -7577,8 +7586,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
     get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
-            fd =
-                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
+            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, enforced_call_timeout(hndl, hndl->connect_timeout));
         } else {
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
                                    comdb2db_name);
@@ -7621,7 +7629,8 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name, i
             return -1;
         }
     }
-    cdb2buf_settimeout(ss, hndl->socket_timeout, hndl->socket_timeout);
+    int socket_timeout = enforced_call_timeout(hndl, hndl->socket_timeout);
+    cdb2buf_settimeout(ss, socket_timeout, socket_timeout);
     if (is_sockfd == 0) {
         if (hndl->is_admin)
             cdb2buf_printf(ss, "@");
@@ -7660,7 +7669,8 @@ free_vars:
     uint8_t *p = NULL;
     int len;
     CDB2SQLRESPONSE *sqlresponse = NULL;
-    cdb2_hndl_tp tmp = {.sb = ss};
+    /* cdb2_read_record() resets the socket timeout from these when enforce_api_call_timeout is on */
+    cdb2_hndl_tp tmp = {.sb = ss, .socket_timeout = hndl->socket_timeout, .max_call_time = hndl->max_call_time};
     int type;
     rc = cdb2_read_record(&tmp, &p, &len, &type);
 #ifdef CDB2API_TEST
@@ -7829,6 +7839,12 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
     }
     int connection_was_cached;
 again:
+    if (CDB2_ENFORCE_API_CALL_TIMEOUT && is_api_call_timedout(hndl)) {
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Timed out doing dbinfo query on db %s\n", __func__,
+                 __LINE__, dbname);
+        rc = -1;
+        goto after_callback;
+    }
     connection_was_cached = 0;
     sb = cdb2_socket_pool_get(hndl, newsql_typestr, dbnum, NULL, &connection_was_cached);
     fd = cdb2buf_fileno(sb);
@@ -7850,8 +7866,7 @@ again:
                 rc = -1;
                 goto after_callback;
             }
-            fd =
-                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
+            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, enforced_call_timeout(hndl, hndl->connect_timeout));
         } else {
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication", dbname);
             debugprint("cdb2portmux_route fd=%d'\n", fd);
@@ -7882,7 +7897,8 @@ again:
         cdb2buf_flush(sb);
     }
 
-    cdb2buf_settimeout(sb, hndl->comdb2db_timeout, hndl->comdb2db_timeout);
+    int comdb2db_timeout = enforced_call_timeout(hndl, hndl->comdb2db_timeout);
+    cdb2buf_settimeout(sb, comdb2db_timeout, comdb2db_timeout);
 
     CDB2QUERY query = CDB2__QUERY__INIT;
 
@@ -7939,6 +7955,9 @@ again:
         goto after_callback;
     }
 
+    /* Reading the header may have used up some of the time left in the api call */
+    comdb2db_timeout = enforced_call_timeout(hndl, hndl->comdb2db_timeout);
+    cdb2buf_settimeout(sb, comdb2db_timeout, comdb2db_timeout);
     rc = cdb2buf_fread(p, 1, hdr.length, sb);
 #ifdef CDB2API_TEST
     if (fail_dbinfo_invalid_response) {
@@ -8203,6 +8222,8 @@ retry:
         node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* Try dbinfo on same room first */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
+            if (is_api_call_timedout(hndl))
+                break;
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
             // comment out for now. Extra output fails ssl_dbname and ssl_set_cmd test.
             // #ifdef CDB2API_TEST
@@ -8227,6 +8248,8 @@ retry:
 
     /* Try everything now */
     for (i = 0; i < hndl->num_hosts; i++) {
+        if (is_api_call_timedout(hndl))
+            break;
         int try_node = (node_seq + i) % hndl->num_hosts;
         rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
                                hndl->hosts[try_node], hndl->hosts, hndl->ports,
@@ -8239,6 +8262,11 @@ retry:
     }
 
     if (rc != 0) {
+        if (is_api_call_timedout(hndl)) {
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "cdb2_get_dbhosts: timed out doing dbinfo query on %s hosts.",
+                     hndl->dbname);
+            goto after_callback;
+        }
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);

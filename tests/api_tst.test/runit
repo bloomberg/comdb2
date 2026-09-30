@@ -99,6 +99,11 @@ sed -i '/comdb2_config:api_call_timeout=5000/d' "${cfg}"
 sed -i '/comdb2_config:enforce_api_call_timeout=on/d' "${cfg}"
 echo 'cdb2api_enforce_timeout - pass'
 
+# Uses its own comdb2db config pointing at an in-process fake comdb2db
+${TESTSBUILDDIR}/cdb2api_comdb2db_timeout
+[[ $? -ne 0 ]] && echo "cdb2api_comdb2db_timeout - fail" && exit 1
+echo 'cdb2api_comdb2db_timeout - pass'
+
 ${TESTSBUILDDIR}/cdb2api_localcache_systable ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_localcache_systable - fail" && exit 1
 echo 'cdb2api_localcache_systable - pass'
