@@ -2573,19 +2573,14 @@ void sqlite3GenerateConstraintChecks(
      * (2) REPLACE INTO ..
      *
      */
-    if( (pUpsert && pUpsert->pUpsertSet!=0 && pUpIdx==pIdx) ||         /* Case 1 */
+    if( (pUpsertClause && pUpsertClause->isDoUpdate) ||                /* Case 1 */
         (overrideError==OE_Replace &&
          is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName)) ) { /* Case 2 */
       /* Go-ahead and check for UNIQUENESS constraint violation */
       onError = OE_Abort;
     } else {
       /* Skip UNIQUENESS constraint violation check */
-      if( pUpIdx==pIdx ){
-        sqlite3VdbeGoto(v, addrUniqueOk);
-        sqlite3VdbeJumpHere(v, upsertBypass);
-      } else {
-        sqlite3VdbeResolveLabel(v, addrUniqueOk);
-      }
+      sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
