@@ -343,6 +343,8 @@ I started tracking this when I got to more important files (`where.c`,
   only if it is handed a `Mem` straight from the VDBE. If one is, read the
   value as an integer.
 
+- **TODO**: Add a `tests/upsert.test` case for `ON CONFLICT DO UPDATE` without a conflict target, which 3.51 added and 3.28 rejected: `INSERT INTO t1 VALUES(1, 'a') ON CONFLICT DO UPDATE SET b = 'b'`.
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
