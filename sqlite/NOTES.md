@@ -233,7 +233,7 @@ I started tracking this when I got to more important files (`where.c`,
 
 ## Upstream Bugs
 
-- **Compile-time warning**: `os_unix.c` calls `unixDescribeShm()` whenever `SQLITE_DEBUG` is defined, but defines it only without `SQLITE_OMIT_WAL`, so our build warns "used but never defined" (unfixed as of 3.53.4 and trunk on 2026-09-30).
+- **Link error**: `os_unix.c` calls `unixDescribeShm()` whenever `SQLITE_DEBUG` is defined, but defines it only without `SQLITE_OMIT_WAL`, so our build fails to link; we guard the call under `SQLITE_BUILDING_FOR_COMDB2` (unfixed as of 3.53.4 and trunk on 2026-10-01).
 - **Compile-time warning**: `expr.c` declares `pCol` in `sqlite3ExprCodeGetColumnOfTable()` unconditionally but uses it only without `SQLITE_OMIT_GENERATED_COLUMNS`, so our build warns "unused variable" (unfixed in trunk on 2026-09-30).
 
 ## TODO
@@ -355,6 +355,10 @@ I started tracking this when I got to more important files (`where.c`,
 - **TODO**: `PRAGMA integrity_check` reports "wrong # of entries in index" for every index, because the `sqlite3BtreeIntegrityCheck()` stub in `db/sqlglue.c` never writes the `aCnt[]` counts that 3.51 now compares (upstream `d90ecb5d6e`).
 
 - **TODO**: Make `get_one_explain_line()` in `db/sqlexplain.c` describe every 3.51 opcode and P5 flag; it misses `OP_PureFunc`, `OP_ElseEq` and the `SQLITE_NULLEQ`/`SQLITE_NOTNULL` comparison flags, among others.
+
+- **TODO**: Port comdb2's json1.c changes to `src/json.c`: `jsonAppendSqlValue` for comdb2 types (datetime, interval, decimal), inf/nan number parsing, and `access_flag` on the `json_each`/`json_tree` modules; cson keeps its private json1.c until it is rewritten.
+
+- **TODO**: Implement `sqlite3BtreeIsEmpty()` in `db/sqlglue.c` without a recorded seek, so `OP_IfEmpty` can skip empty inner tables of 3+-way joins and empty EXCEPT/INTERSECT left-hand sides; the stub always answers "not empty".
 
 ## Post-merge checklist
 
