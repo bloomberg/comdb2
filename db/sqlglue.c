@@ -4507,6 +4507,29 @@ int sqlite3BtreeFirst(BtCursor *pCur, int *pRes)
     return rc;
 }
 
+/* TODO: always "not empty" for now: the answer only lets OP_IfEmpty skip work,
+ * and finding out would cost a seek that is recorded in the cursor's read
+ * ranges */
+int sqlite3BtreeIsEmpty(BtCursor *pCur, int *pRes)
+{
+    *pRes = 0;
+    return SQLITE_OK;
+}
+
+/*
+ * These solve a problem for SQLite that comdb2 doesn't have.
+ *
+ * It used to be possible for an UPDATE to fire a trigger that then deleted the
+ * row that the UPDATE's cursor was pointing at. "Pinning" the cursor is
+ * SQLite's way of disallowing writes to the page, so the trigger fails instead
+ * of silently invalidating the cursor.
+ *
+ * We don't support pre-commit triggers as of writing this, so this situation
+ * can't happen for us.
+ */
+void sqlite3BtreeCursorPin(BtCursor *pCur) {}
+void sqlite3BtreeCursorUnpin(BtCursor *pCur) {}
+
 /*
  ** Copy the complete content of pBtFrom into pBtTo.  A transaction
  ** must be active for both files.
@@ -4674,13 +4697,18 @@ int sqlite3BtreeIsInStmt(Btree *pBt)
 /*
  ** Return the currently defined page size
  */
-int sqlite3BtreeGetReserve(Btree *pBt)
+int sqlite3BtreeGetRequestedReserve(Btree *pBt)
 {
     /* space wasted in a page: don't care. how about a byte? */
-    reqlog_logf(pBt->reqlogger, REQL_TRACE, "GetReserve(pBt %d)       = %d\n",
-                pBt->btreeid, 1);
+    reqlog_logf(pBt->reqlogger, REQL_TRACE,
+                "GetRequestedReserve(pBt %d)       = %d\n", pBt->btreeid, 1);
     return 1;
 }
+
+/* this is only reachable from a file control -
+ * sqlite3_file_control(SQLITE_FCNTL_RESET_CACHE) - and we don't use SQLite's
+ * page cache anyways */
+void sqlite3BtreeClearCache(Btree *pBt) {}
 
 /*
 From: D. Richard Hipp <DRH@HWACI.COM>
@@ -11511,6 +11539,10 @@ int sqlite3BtreeClosesWithCursor(Btree *pBt, BtCursor *pCur)
     return pBt->is_single && listc_size(&pBt->cursors) == 1 &&
            pBt->cursors.top == pCur && pCur->bt == pBt;
 }
+
+/* this is debug only and only reachable from a test control -
+ * sqlite3_test_control(SQLITE_TESTCTRL_SEEK_COUNT) */
+sqlite3_uint64 sqlite3BtreeSeekCount(Btree *pBt) { return 0; }
 #endif
 
 /*
