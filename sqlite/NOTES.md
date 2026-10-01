@@ -352,6 +352,8 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **TODO**: Give `SQLITE_NEXTSEQ` (`(SQLITE_MAX_U32-2)`, a u64) a value that fits in the `int` that `sqlite3_value_type()` returns, and drop the `(int)` casts in `func.c` and `db/sqlinterfaces.c`.
 
+- **TODO**: `PRAGMA integrity_check` reports "wrong # of entries in index" for every index, because the `sqlite3BtreeIntegrityCheck()` stub in `db/sqlglue.c` never writes the `aCnt[]` counts that 3.51 now compares (upstream `d90ecb5d6e`).
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
