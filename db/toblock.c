@@ -104,7 +104,7 @@ extern int gbl_osql_verify_retries_max;
 extern int verbose_deadlocks;
 extern int gbl_goslow;
 extern int n_commits;
-extern int n_commit_time;
+extern long long n_commit_time;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
