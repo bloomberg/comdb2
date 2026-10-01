@@ -231,6 +231,11 @@ I started tracking this when I got to more important files (`where.c`,
   DRQS 173287389 has the query shape that hit the bug. The commit also added
   `tests/yast.test/subquery.test` and `subquery2.test`.
 
+## Upstream Bugs
+
+- **Compile-time warning**: `os_unix.c` calls `unixDescribeShm()` whenever `SQLITE_DEBUG` is defined, but defines it only without `SQLITE_OMIT_WAL`, so our build warns "used but never defined" (unfixed as of 3.53.4 and trunk on 2026-09-30).
+- **Compile-time warning**: `expr.c` declares `pCol` in `sqlite3ExprCodeGetColumnOfTable()` unconditionally but uses it only without `SQLITE_OMIT_GENERATED_COLUMNS`, so our build warns "unused variable" (unfixed in trunk on 2026-09-30).
+
 ## TODO
 
 - **TODO**: Simplify our copies of `sqlite3VdbeSerialType()` /
