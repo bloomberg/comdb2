@@ -12475,7 +12475,7 @@ sqlite3_file *sqlite3PagerJrnlFile(Pager *pPager) { return NULL; }
 /*
  ** Return the full pathname of the database file.
  */
-const char *sqlite3PagerFilename(Pager *pPager, int dummy) { return NULL; }
+const char *sqlite3PagerFilename(const Pager *pPager, int dummy) { return NULL; }
 
 /*
  ** Return the approximate number of bytes of memory currently
@@ -12488,7 +12488,7 @@ void sqlite3PagerShrink(Pager *pPager) {}
 u8 sqlite3PagerIsreadonly(Pager *pPager) { return 0; }
 
 /* TODO: does this need any modification? */
-void sqlite3PagerCacheStat(Pager *pPager, int eStat, int reset, int *pnVal) {}
+void sqlite3PagerCacheStat(Pager *pPager, int eStat, int reset, u64 *pnVal) {}
 
 int sqlite3PagerExclusiveLock(Pager *pPager) { return SQLITE_OK; }
 
