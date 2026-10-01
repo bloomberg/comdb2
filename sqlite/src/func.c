@@ -157,7 +157,7 @@ static void lengthFunc(
     case SQLITE_DATETIME:
     case SQLITE_DATETIMEUS:
     case SQLITE_DECIMAL:
-    case SQLITE_NEXTSEQ:
+    case (int)SQLITE_NEXTSEQ:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case SQLITE_BLOB:
     case SQLITE_INTEGER:
