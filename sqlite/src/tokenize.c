@@ -692,7 +692,15 @@ int sqlite3RunParser(Parse *pParse, const char *zSql){
       break;
     }
 #ifndef SQLITE_OMIT_WINDOWFUNC
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* Because of the order in which these tokens are declared in our build
+    ** (see parse.y), SQLite's shorthand check includes tokens that trip the
+    ** assertion. */
+    assert( TK_WINDOW+1==TK_OVER && TK_OVER+1==TK_FILTER );
+    if( (tokenType>=TK_WINDOW && tokenType<=TK_FILTER) || tokenType>=TK_SPACE ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( tokenType>=TK_WINDOW ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( tokenType==TK_SPACE || tokenType==TK_OVER || tokenType==TK_FILTER
            || tokenType==TK_ILLEGAL || tokenType==TK_WINDOW 
            || tokenType==TK_QNUMBER || tokenType==TK_COMMENT
