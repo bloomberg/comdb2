@@ -659,7 +659,7 @@ typedef void *(*cdb2_event_callback)(cdb2_hndl_tp *cb_hndl, void *user_arg, int 
 
 where `cb_hndl` is the handle upon which the event is fired.
 
-Besides the user argument, one can request additional arguments by setting `argc` to the number of the arguments, followed by the argument types. The arguments will be passed to `cb` in `argv`. The table below lists the argument types.
+Besides the user argument, one can request additional arguments by setting `argc` to the number of the arguments, followed by the argument types. The arguments will be passed to `cb` in `argv`. The table below lists the argument types. In addition, `CDB2_EVENT` is available for every event type and passes the `cdb2_event_type` that fired the callback, which is useful when one callback is registered for multiple event types.
 
 |Event Type|`CDB2_HOSTNAME`|`CDB2_PORT`|`CDB2_SQL`|`CDB2_RETURN_VALUE`|`CDB2_FINGERPRINT`|`CDB2_DBTYPE`|
 |---|---|---|---|---|---|---|
