@@ -8330,11 +8330,16 @@ static int get_connection_int(cdb2_hndl_tp *hndl, struct cluster_info *c, int *e
     if (get_dbinfo || *err)
         return -1;
     before_discovery(hndl);
-    if (strcmp(hndl->type, "configured") == 0 && hndl->num_hosts > 0) {
+    if (strcmp(hndl->type, "configured") == 0) {
         // Special setting of "configured" means the proxy generated a list of hosts in its config and we should
-        // use that.  Don't try discovery or sockpool - use what's in the proxy config.
+        // use that.  Don't try discovery or sockpool - there is nothing to discover for this tier.
         after_discovery(hndl);
-        return 0;
+        if (hndl->num_hosts > 0)
+            return 0;
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: no hosts configured for db %s of cluster type configured",
+                 __func__, hndl->dbname);
+        *err = -1;
+        return -1;
     }
     COMDB2BUF *sb = sockpool_get(hndl);
     after_discovery(hndl);
