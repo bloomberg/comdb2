@@ -4468,11 +4468,11 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 
                 pList->a[i].pExpr->op = TK_ID;
                 pList->a[i].pExpr->u.zToken = child_idx_part->name;
-                pList->a[i].zName = child_idx_part->name;
+                pList->a[i].zEName = child_idx_part->name;
                 if (child_idx_part->flags & INDEX_ORDER_DESC) {
-                    pList->a[i].sortOrder = SQLITE_SO_DESC;
+                    pList->a[i].fg.sortFlags = SQLITE_SO_DESC;
                 } else {
-                    pList->a[i].sortOrder = SQLITE_SO_ASC;
+                    pList->a[i].fg.sortFlags = SQLITE_SO_ASC;
                 }
 
                 i++;
@@ -5990,7 +5990,7 @@ static void comdb2AddIndexInt(
                 goto cleanup;
             }
 
-            if (pListItem->sortOrder == SQLITE_SO_DESC) {
+            if (pListItem->fg.sortFlags == SQLITE_SO_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
@@ -6594,11 +6594,11 @@ void comdb2CreateForeignKey(
             if (idx_part == 0)
                 goto oom;
 
-            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zName);
+            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zEName);
             if (idx_part->name == 0)
                 goto oom;
 
-            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
+            assert(pFromCol->a[i].fg.sortFlags == SQLITE_SO_ASC);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -6616,11 +6616,11 @@ void comdb2CreateForeignKey(
         if (idx_part == 0)
             goto oom;
 
-        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zName);
+        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zEName);
         if (idx_part->name == 0)
             goto oom;
 
-        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
+        assert(pToCol->a[i].fg.sortFlags == SQLITE_SO_ASC);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -7679,7 +7679,8 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        sqlite3AddCheckConstraint(pParse, pCheckExpr);
+        /* sqlite3AddCheckConstraint() expects zStart to point at the "(". */
+        sqlite3AddCheckConstraint(pParse, pCheckExpr, zStart - 1, zEnd);
         return;
     }
 
