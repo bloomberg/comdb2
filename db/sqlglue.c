@@ -4012,7 +4012,7 @@ int sqlite3BtreeOpen(
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
-        int masterPgno;
+        Pgno masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         if (rc != SQLITE_OK) goto done;
@@ -5737,7 +5737,7 @@ void set_tmptbl(struct sp_tmptbl *tmptbl)
  **     BTREE_INTKEY                    Used for SQL tables with rowid keys
  **     BTREE_BLOBKEY                   Used for SQL indices
  */
-int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
+int sqlite3BtreeCreateTable(Btree *pBt, Pgno *piTable, int flags)
 {
     int bdberr = 0;
     int rc = SQLITE_OK;
@@ -6996,7 +6996,7 @@ done:
  ** read cursors on the table.  Open write cursors are moved to the
  ** root of the table.
  */
-int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
+int sqlite3BtreeClearTable(Btree *pBt, int iTable, i64 *pnChange)
 {
     /* So here's Uncle Mike's lesson learned #6943925: if you have
      * a routine that "should never be called", make darn sure it's
@@ -8809,7 +8809,7 @@ BtCursor *sqlite3BtreeFakeValidCursor(void){
 int sqlite3BtreeCursor(
     Vdbe *vdbe,               /* Vdbe running the show */
     Btree *pBt,               /* BTree containing table to open */
-    int iTable,               /* Index of root page */
+    Pgno iTable,              /* Index of root page */
     int wrFlag,               /* 1 for writing.  0 for read-only. */
     int forOpen,              /* 1 for open mode.  0 for create mode. */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
@@ -8836,12 +8836,14 @@ int sqlite3BtreeCursor(
     cur->open_flags = wrFlag;
     /*printf("Open Cursor rootpage=%d flags=%x\n", iTable, wrFlag);*/
 
+    /* sanity check: avoid u32 -> int overflow */
+    assert(iTable <= INT_MAX);
     cur->rootpage = iTable;
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
         assert(iTable >= 1); /* can never be zero or negative */
-        int pgno = iTable;
+        Pgno pgno = iTable;
         if (forOpen) {
             /*
             ** NOTE: When being called to open a temporary (table) cursor in
@@ -9757,13 +9759,15 @@ int sqlite3BtreeData(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
  ** and a pointer to that error message is returned.  The calling function
  ** is responsible for freeing the error message when it is done.
  */
-char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
-                                 int *pnErr)
+int sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, Pgno *aRoot,
+                               sqlite3_value *aCnt, int nRoot, int mxErr,
+                               int *pnErr, char **pzOut)
 {
     int rc = SQLITE_OK;
     int i;
 
     *pnErr = 0;
+    *pzOut = NULL;
 
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "IntegrityCheck(pBt %d pages",
                 pBt->btreeid);
@@ -9771,7 +9775,7 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
         reqlog_logf(pBt->reqlogger, REQL_TRACE, "%d ", aRoot[i]);
     }
     reqlog_logf(pBt->reqlogger, REQL_TRACE, ")    = %s\n", sqlite3ErrStr(rc));
-    return NULL;
+    return rc;
 }
 
 /* obtain comdb2_rowid and optionally print it as a decimal string */
@@ -11409,7 +11413,7 @@ int gbl_direct_count = 1;
  ** Otherwise, if an error is encountered (i.e. an IO error or database
  ** corruption) an SQLite error code is returned.
  */
-int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
+int sqlite3BtreeCount(sqlite3 *db, BtCursor *pCur, i64 *pnEntry)
 {
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
