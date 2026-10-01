@@ -360,6 +360,12 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **TODO**: Implement `sqlite3BtreeIsEmpty()` in `db/sqlglue.c` without a recorded seek, so `OP_IfEmpty` can skip empty inner tables of 3+-way joins and empty EXCEPT/INTERSECT left-hand sides; the stub always answers "not empty".
 
+- **TODO**: Fix INSERT and UPDATE code generation for tables that `need_index_checks_for_upsert()` rejects (no upsert, no REPLACE, no partial or expression index). 3.51 builds the table record at the end of `sqlite3GenerateConstraintChecks()`, after our early return, and `sqlite3CompleteInsertion()` reads `aRegIdx[i]` after an index loop that our guard skips, so `OP_Insert` gets an unset register (gcc: "`i` may be used uninitialized" in RelWithDebInfo).
+
+- **TODO**: Remove our `need_index_checks_for_upsert()` guard around the unique-index loop in `sqlite3GenerateConstraintChecks()` once `tests/upsert.test` and the partial and expression index tests cover it. It repeats the early-return check at the top of the function, and gcc warns that `ix` may be used uninitialized in RelWithDebInfo.
+
+- **TODO**: Check whether gcc's "`pDest` may be used uninitialized" warning in `OP_Column` (`vdbe.c`, RelWithDebInfo) is real.
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
