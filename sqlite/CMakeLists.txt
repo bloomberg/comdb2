@@ -50,6 +50,7 @@ set(sqlite_core_sources
   src/global.c
   src/hash.c
   src/insert.c
+  src/json.c
   src/legacy.c
   src/loadext.c
   src/main.c
@@ -110,10 +111,6 @@ set(sqlite_extension_sources
 
   # Implements the `regexp()` function.
   ext/misc/regexp.c
-
-  # Implements functions to parse text as JSON.
-  # TODO(sqlite-upgrade): ext/misc/json1.c is now ./src/json.c
-  ext/misc/json1.c
 
   # Implements the `generate_series()` function.
   ext/misc/series.c

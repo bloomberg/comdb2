@@ -4325,10 +4325,19 @@ static int unixFileControl(sqlite3_file *id, int op, void *pArg){
         }
       }
       unixEnterMutex();
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#if !defined(SQLITE_OMIT_WAL)
       if( pFile->pShm ){
         sqlite3_str_appendall(pStr, ",\"shm\":");
         unixDescribeShm(pStr, pFile->pShm);
       }
+#endif /* !defined(SQLITE_OMIT_WAL) */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      if( pFile->pShm ){
+        sqlite3_str_appendall(pStr, ",\"shm\":");
+        unixDescribeShm(pStr, pFile->pShm);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if SQLITE_MAX_MMAP_SIZE>0
       if( pFile->mmapSize ){
         sqlite3_str_appendf(pStr, ",\"mmapSize\":%lld", pFile->mmapSize);
