@@ -368,7 +368,7 @@ until the tree builds.
 - [x] Replace `SQLITE_STOREP2` in `db/sqlexplain.c`. 3.51 removed it, so the
   EXPLAIN output code that tests for it no longer compiles.
 
-- [ ] Update the prototypes in `db/sqlglue.c` to match the 3.51 btree headers.
+- [x] Update the prototypes in `db/sqlglue.c` to match the 3.51 btree headers.
   `sqlite3BtreeCreateTable()` now takes a `Pgno*` instead of an `int*`, and
   `sqlite3BtreeClearTable()`, `sqlite3BtreeCursor()`,
   `sqlite3BtreeIntegrityCheck()` and `sqlite3BtreeCount()` changed too.
