@@ -280,6 +280,13 @@ static char *op_to_sign(int op)
     }
 }
 
+static const char *sort_flags_to_text(u8 flags)
+{
+    if (flags & KEYINFO_ORDER_DESC)
+        return (flags & KEYINFO_ORDER_BIGNULL) ? "desc nulls first" : "desc";
+    return (flags & KEYINFO_ORDER_BIGNULL) ? "asc nulls last" : "asc";
+}
+
 static void affinity_to_text(char *aff, strbuf *out)
 {
     char ch;
@@ -364,8 +371,6 @@ static void affinity_to_text(char *aff, strbuf *out)
 #ifndef ABS
 #define ABS(a) (((a) < 0) ? (-(a)) : (a))
 #endif
-
-extern int sqlite3WhereTrace;
 
 void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
 {
@@ -628,16 +633,14 @@ void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out,
     case OP_CollSeq:
         strbuf_appendf(out, "Using collation sequence %s", op->p4.pColl->zName);
         break;
-    case OP_Function0:
     case OP_Function:
-        if (op->p5 > 1) {
+        if (op->p4.pCtx->argc > 1) {
             strbuf_appendf(out, "R%d = %s(R%d..R%d)", op->p3,
-                           op->p4type == P4_FUNCDEF ? op->p4.pFunc->zName : "",
-                           op->p2, op->p2 + op->p5 - 1);
+                           op->p4.pCtx->pFunc->zName, op->p2,
+                           op->p2 + op->p4.pCtx->argc - 1);
         } else {
             strbuf_appendf(out, "R%d = %s(R%d)", op->p3,
-                           op->p4type == P4_FUNCDEF ? op->p4.pFunc->zName : "",
-                           op->p2);
+                           op->p4.pCtx->pFunc->zName, op->p2);
         }
         break;
     case OP_BitAnd:
@@ -669,10 +672,7 @@ void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out,
     case OP_Le:
     case OP_Gt:
     case OP_Ge:
-        if (op->p5 & SQLITE_STOREP2)
-            strbuf_appendf(out, "R%d = Result of R%d %s R%d", op->p2, op->p3,
-                           op_to_sign(op->opcode), op->p1);
-        else if (op->p5 & SQLITE_JUMPIFNULL)
+        if (op->p5 & SQLITE_JUMPIFNULL)
             strbuf_appendf(out, "If R%d %s R%d or either is NULL goto %d",
                            op->p3, op_to_sign(op->opcode), op->p1, op->p2);
         else
@@ -864,14 +864,11 @@ void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out,
                        "Create a temp %s, and cursor [%d] to operate on it",
                        (op->p3 ? "index" : "table"), op->p1);
         struct KeyInfo *info = op->p4.pKeyInfo;
-        if (info && info->aSortOrder) {
+        if (info && info->aSortFlags) {
             int i;
             strbuf_append(out, " sort order (");
             for (i = 0; i < info->nAllField; i++) {
-                if (info->aSortOrder[i])
-                    strbuf_append(out, "desc");
-                else
-                    strbuf_append(out, "asc");
+                strbuf_append(out, sort_flags_to_text(info->aSortFlags[i]));
                 if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
@@ -1129,14 +1126,11 @@ void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out,
                             "[%d] to operate on it",
                        op->p2, op->p1);
         struct KeyInfo *info = op->p4.pKeyInfo;
-        if (info && info->aSortOrder) {
+        if (info && info->aSortFlags) {
             int i;
             strbuf_append(out, " sort order (");
             for (i = 0; i < info->nAllField; i++) {
-                if (info->aSortOrder[i])
-                    strbuf_append(out, "desc");
-                else
-                    strbuf_append(out, "asc");
+                strbuf_append(out, sort_flags_to_text(info->aSortFlags[i]));
                 if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
