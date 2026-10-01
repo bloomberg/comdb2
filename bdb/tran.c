@@ -93,6 +93,11 @@ void bdb_tran_set_is_sc_rebuild(tran_type *tran, int is_sc_rebuild)
     tran->is_sc_rebuild = is_sc_rebuild;
 }
 
+void bdb_tran_set_sc_skip_commit_map(tran_type *tran, int skip)
+{
+    tran->sc_skip_commit_map = skip;
+}
+
 tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
                                                  unsigned long long tranid,
                                                  int trak, int *bdberr)
@@ -1637,7 +1642,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
-        if (gbl_sc_commit_map_skip && tran->is_sc_rebuild)
+        if (tran->sc_skip_commit_map)
             flags |= DB_TXN_SC_PRIVATE_SKIP_MAP;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
         rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, &commit_gen, tran);

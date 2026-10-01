@@ -1440,7 +1440,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     data.iq.usedb = data.from;
     skip_commit_map = gbl_sc_commit_map_skip;
     s->sc_commit_map_checkpoint = skip_commit_map || s->resume;
-    data.iq.opcode = skip_commit_map ? OP_REBUILD : 0;
+    data.iq.opcode = OP_REBUILD;
+    data.iq.sc_skip_commit_map = skip_commit_map;
     data.iq.debug = 0; /*gbl_who;*/
 
     /* For first cut, read all blobs.  Later we can optimise by only reading
@@ -1512,6 +1513,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             return -1;
         }
         *thdData = data;
+        /* redo keeps committing until finalize, past the checkpoint floor */
+        thdData->iq.sc_skip_commit_map = 0;
         if (s->resume) {
             /* get lsn where we left off */
             rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),

@@ -1024,6 +1024,9 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 extern int gbl_fullrecovery;
 int gbl_endianize_locklist = 1;
 int gbl_emit_gen_commits = 1;
+/* Log TXN_COMMIT_F_SC_SKIP_MAP so replicas and recovery also skip the entry.
+ * Older binaries treat a flagged commit as not committed. */
+int gbl_sc_commit_map_skip_log = 0;
 
 /*
  * __txn_commit --
@@ -1111,7 +1114,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
 	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
 	commit_opcode = TXN_COMMIT;
-	if (LF_ISSET(DB_TXN_SC_PRIVATE_SKIP_MAP))
+	if (LF_ISSET(DB_TXN_SC_PRIVATE_SKIP_MAP) && gbl_sc_commit_map_skip_log)
 		commit_opcode |= TXN_COMMIT_F_SC_SKIP_MAP;
 
 	if (is_prepare) {

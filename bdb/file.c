@@ -1695,7 +1695,8 @@ static void checkpoint_blocker_before(DB_ENV *dbenv, const DB_LSN *minimum, DB_L
 
 int bdb_schema_change_checkpoint(bdb_state_type *bdb_state, unsigned int minimum_file, unsigned int minimum_offset,
                                  unsigned int *checkpoint_file, unsigned int *checkpoint_offset,
-                                 unsigned int *floor_file, unsigned int *floor_offset, int timeoutms, int *bdberr)
+                                 unsigned int *floor_file, unsigned int *floor_offset, int timeoutms,
+                                 int (*should_stop)(void *), void *stop_arg, int *bdberr)
 {
     DB_LSN checkpoint;
     DB_LSN minimum = {minimum_file, minimum_offset};
@@ -1712,8 +1713,8 @@ int bdb_schema_change_checkpoint(bdb_state_type *bdb_state, unsigned int minimum
     /* Transactions started after minimum cannot pin the floor below it. */
     for (;;) {
         checkpoint_blocker_before(bdb_state->dbenv, &minimum, &blocker);
-        if (gbl_exit) {
-            logmsg(LOGMSG_ERROR, "%s: minimum %u:%u blocker %u:%u exiting\n", __func__, minimum.file, minimum.offset,
+        if (gbl_exit || (should_stop && should_stop(stop_arg))) {
+            logmsg(LOGMSG_ERROR, "%s: minimum %u:%u blocker %u:%u stopping\n", __func__, minimum.file, minimum.offset,
                    blocker.file, blocker.offset);
             *bdberr = BDBERR_MISC;
             return -1;
@@ -1721,9 +1722,10 @@ int bdb_schema_change_checkpoint(bdb_state_type *bdb_state, unsigned int minimum
         if (IS_ZERO_LSN(blocker))
             break;
         if (deadline && (int64_t)comdb2_time_epochms() >= deadline) {
-            logmsg(LOGMSG_FATAL, "%s: transaction at %u:%u blocked conversion checkpoint %u:%u for %d ms; aborting\n",
-                   __func__, blocker.file, blocker.offset, minimum.file, minimum.offset, timeoutms);
-            abort();
+            logmsg(LOGMSG_ERROR, "%s: transaction at %u:%u blocked conversion checkpoint %u:%u for %d ms\n", __func__,
+                   blocker.file, blocker.offset, minimum.file, minimum.offset, timeoutms);
+            *bdberr = BDBERR_TIMEOUT;
+            return -1;
         }
         if (attempts++ % 10 == 0) {
             logmsg(LOGMSG_INFO, "%s: waiting for transaction at %u:%u before conversion %u:%u\n", __func__,

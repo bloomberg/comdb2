@@ -50,7 +50,7 @@ extern int gbl_is_physical_replicant;
 
 int gbl_multitable_ddl = 0;
 
-enum { SC_CHECKPOINT_BLOCKER_TIMEOUT_MS = 10 * 60 * 1000 };
+int gbl_sc_commit_map_checkpoint_timeout_ms = 10 * 60 * 1000;
 
 /**** Utility functions */
 
@@ -341,6 +341,13 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     return rc;
 }
 
+/* Stop waiting for the checkpoint if the master downgrades or the schema change aborts. */
+static int sc_checkpoint_should_stop(void *arg)
+{
+    struct schema_change_type *s = arg;
+    return get_stopsc(__func__, __LINE__) || gbl_sc_abort || (s->iq && s->iq->sc_should_abort);
+}
+
 int establish_sc_commit_map_checkpoint(struct schema_change_type *s)
 {
     unsigned int checkpoint_file, checkpoint_offset;
@@ -354,7 +361,8 @@ int establish_sc_commit_map_checkpoint(struct schema_change_type *s)
 
     if (bdb_schema_change_checkpoint(thedb->bdb_env, s->sc_commit_map_checkpoint_file,
                                      s->sc_commit_map_checkpoint_offset, &checkpoint_file, &checkpoint_offset,
-                                     &floor_file, &floor_offset, SC_CHECKPOINT_BLOCKER_TIMEOUT_MS, &bdberr) != 0) {
+                                     &floor_file, &floor_offset, gbl_sc_commit_map_checkpoint_timeout_ms,
+                                     sc_checkpoint_should_stop, s, &bdberr) != 0) {
         sc_errf(s, "Failed to establish schema-change checkpoint\n");
         return -1;
     }
