@@ -1310,8 +1310,9 @@ static void analyzeOneTable(
     int nCol;                     /* Number of columns in pIdx. "N" */
     int addrGotoEnd;               /* Address of "OP_Rewind iIdxCur" */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    int addrRewind;               /* Second "OP_Rewind iIdxCur": skips the
+    int addrRewind = 0;           /* Second "OP_Rewind iIdxCur": skips the
                                   ** STAT4 sample loop for an empty index */
+    int bAnalyzeEmpty = sqlite3_gbl_tunables.analyze_empty_tables;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     int addrNextRow;              /* Address of "next_row:" */
     const char *zIdxName;         /* Name of the index */
@@ -1568,7 +1569,7 @@ static void analyzeOneTable(
 
     /* Add the entry to the stat1 table. */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( pIdx->pPartIdxWhere || sqlite3_gbl_tunables.analyze_empty_tables ){
+    if( pIdx->pPartIdxWhere || bAnalyzeEmpty ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pIdx->pPartIdxWhere ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1646,7 +1647,7 @@ static void analyzeOneTable(
       assert( sqlite3NoTempsInRange(pParse, regEq, regCol+nCol) );
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3_gbl_tunables.analyze_empty_tables ){
+      if( bAnalyzeEmpty ){
         addrRewind = sqlite3VdbeAddOp1(v, OP_Rewind, iIdxCur);
         VdbeCoverage(v);
       }
@@ -1683,7 +1684,7 @@ static void analyzeOneTable(
       sqlite3VdbeAddOp2(v, OP_Goto, 1, addrNext); /* P1==1 for end-of-loop */
       sqlite3VdbeJumpHere(v, addrIsNull);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3_gbl_tunables.analyze_empty_tables ){
+      if( bAnalyzeEmpty ){
         sqlite3VdbeJumpHere(v, addrRewind);
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

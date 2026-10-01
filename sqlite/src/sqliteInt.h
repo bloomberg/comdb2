@@ -3182,9 +3182,9 @@ struct Expr {
                          ** TK_COLUMN: the value of p5 for OP_Column
                          ** TK_AGG_FUNCTION: nesting depth
                          ** TK_FUNCTION: NC_SelfRef flag if needs OP_PureFunc */
-#ifdef SQLITE_DEBUG
+#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
   u8 vvaFlags;           /* Verification flags. */
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
   u32 flags;             /* Various flags.  EP_* See below */
   union {
     char *zToken;          /* Token value. Zero terminated and dequoted */
@@ -3316,7 +3316,7 @@ struct Expr {
 ** and Accreditation only.  It works like ExprSetProperty() during VVA
 ** processes but is a no-op for delivery.
 */
-#ifdef SQLITE_DEBUG
+#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
 # define ExprSetVVAProperty(E,P)   (E)->vvaFlags|=(P)
 # define ExprHasVVAProperty(E,P)   (((E)->vvaFlags&(P))!=0)
 # define ExprClearVVAProperties(E) (E)->vvaFlags = 0
@@ -3324,7 +3324,7 @@ struct Expr {
 # define ExprSetVVAProperty(E,P)
 # define ExprHasVVAProperty(E,P)   0
 # define ExprClearVVAProperties(E)
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 
 /*
 ** Macros to determine the number of bytes required by a normal Expr
