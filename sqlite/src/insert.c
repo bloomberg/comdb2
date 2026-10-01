@@ -19,6 +19,13 @@ int need_index_checks_for_upsert(Table *pTab, Upsert *pUpsert, int onError, int 
 int is_comdb2_index_unique(const char *tbl, char *idx);
 int gbl_sqlite_makerecord_for_comdb2 = 1;
 extern struct dbtable *get_dbtable_by_name(const char *name);
+
+static int countIndexes(Table *pTab){
+  Index *pIdx;
+  int n = 0;
+  for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext) n++;
+  return n;
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2022,17 +2029,17 @@ void sqlite3GenerateConstraintChecks(
   int nReplaceTrig = 0; /* Number of replace triggers coded */
   IndexIterator sIdxIter;  /* Index iterator */
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( !need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
-    *pbMayReplace = 0;
-    return;
-  }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   isUpdate = regOldData!=0;
   db = pParse->db;
   v = pParse->pVdbe;
   assert( v!=0 );
   assert( !IsView(pTab) );  /* This table is not a VIEW */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( !need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
+    ix = countIndexes(pTab);
+    goto generate_table_record;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
   nCol = pTab->nCol;
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2831,6 +2838,9 @@ void sqlite3GenerateConstraintChecks(
     sqlite3VdbeResolveLabel(v, lblRecheckOk);
   }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+generate_table_record:
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Generate the table record */
   if( HasRowid(pTab) ){
     int regRec = aRegIdx[ix];
@@ -2846,7 +2856,7 @@ void sqlite3GenerateConstraintChecks(
     if( gbl_sqlite_makerecord_for_comdb2 ){
       /* Light the OPFLAG_MKREC_COMDB2 flag so that the VDBE knows that it needs to
          convert Mem structures to comdb2 row data of the table of cursor P3 */
-      sqlite3VdbeChangeP5(v, (sqlite3VdbeGetOp(v, -1)->p5 | OPFLAG_MKREC_COMDB2));
+      sqlite3VdbeChangeP5(v, (sqlite3VdbeGetLastOp(v)->p5 | OPFLAG_MKREC_COMDB2));
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !bAffinityDone ){
@@ -2948,7 +2958,10 @@ void sqlite3CompleteInsertion(
   assert( v!=0 );
   assert( !IsView(pTab) );  /* This table is not a VIEW */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
+  if( !need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
+    i = countIndexes(pTab);
+    goto insert_table_record;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
     /* All REPLACE indexes are at the end of the list */
@@ -2974,7 +2987,7 @@ void sqlite3CompleteInsertion(
     sqlite3VdbeChangeP5(v, pik_flags);
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  }
+insert_table_record:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( !HasRowid(pTab) ) return;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
