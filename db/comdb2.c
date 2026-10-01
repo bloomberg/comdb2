@@ -5204,7 +5204,7 @@ static void iomap_off(void *p)
 
 /* Global cron job scheduler for time-insensitive, lightweight jobs. */
 cron_sched_t *gbl_cron;
-static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
+static void *memstat_cron_event(struct cron_event *event, struct errstat *err)
 {
     int tm;
     void *rc;
@@ -5214,8 +5214,9 @@ static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
 
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
-        rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                            NULL, NULL, NULL, NULL, err, NULL);
+        /* reschedule on our own scheduler; gbl_cron may not be set yet */
+        rc = cron_add_event(event->schedif->sched, NULL, tm, (FCRON)memstat_cron_event, NULL, NULL, NULL, NULL, NULL,
+                            err, NULL);
 
         if (rc == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
@@ -5225,7 +5226,7 @@ static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
     return NULL;
 }
 
-static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
+static void *memstat_cron_kickoff(struct cron_event *event, struct errstat *err)
 {
 
     int tm;
@@ -5236,8 +5237,10 @@ static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
             gbl_memstat_freq);
 
     tm = comdb2_time_epoch() + gbl_memstat_freq;
-    rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                        NULL, NULL, NULL, NULL, err, NULL);
+    /* the kickoff can run before cron_add_event() returns and sets gbl_cron,
+       so use the scheduler this event runs on */
+    rc = cron_add_event(event->schedif->sched, NULL, tm, (FCRON)memstat_cron_event, NULL, NULL, NULL, NULL, NULL, err,
+                        NULL);
     if (rc == NULL)
         logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
                         "rc = %d, errstr = %s\n",

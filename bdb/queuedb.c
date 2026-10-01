@@ -150,9 +150,10 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     if (evt != NULL) dbenv = evt->arg4;
     if (gbl_queuedb_file_interval > 0) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
-        void *p = cron_add_event(gbl_queuedb_cron, NULL, tm,
-                                 (FCRON)queuedb_cron_event, NULL,
-                                 NULL, NULL, dbenv, NULL, err, NULL);
+        /* the kickoff can run before cron_add_event() returns and sets
+           gbl_queuedb_cron, so use the scheduler this event runs on */
+        void *p = cron_add_event(evt->schedif->sched, NULL, tm, (FCRON)queuedb_cron_event, NULL, NULL, NULL, dbenv,
+                                 NULL, err, NULL);
         if (p == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
                             "rc = %d, errstr = %s\n",
