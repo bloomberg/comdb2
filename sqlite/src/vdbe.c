@@ -3567,6 +3567,25 @@ op_column_restart:
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   pCrsr = pC->uc.pCursor;
   if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
+    /* Is the table cursor sitting on the same row as the index cursor? */
+    if( pC->deferredMoveto ){
+      /* It's not. Can the column come from the index cursor instead of
+      ** the table cursor? */
+      u32 iMap;
+      assert( !pC->isEphemeral );
+      if( pC->ub.aAltMap && (iMap = pC->ub.aAltMap[1+p2])>0 ){
+        /* Yes. Start OP_Column again to read from the index cursor. */
+        pC = pC->pAltCursor;
+        p2 = iMap - 1;
+        goto op_column_restart;
+      }
+      /* Index does not have the column, seek the table cursor to read
+      ** the column. */
+      rc = sqlite3VdbeFinishMoveto(pC);
+      if( rc ) goto abort_due_to_error;
+    }
+    pDest = &aMem[pOp->p3];
+    memAboutToChange(p, pDest);
     /* We may reuse a Mem structure.
        So delete any previously allocated memory in pDest. */
     sqlite3VdbeMemRelease(pDest); /* takes care of both z and zMalloc */
