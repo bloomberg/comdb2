@@ -65,6 +65,25 @@ can finish cleanly and still break one of these.
   copy it into our functions. Compare the `#else` half with the previous
   version on every upgrade.
 
+- **When upgrading, regenerate the stock token list at the top of
+  `parse.y`'s grammar from the new version's `parse.h`.**
+
+  Lemon numbers each token by where it first appears in `parse.y`, and
+  SQLite's C code depends on those numbers: the comparison operators share
+  numbers with jump opcodes, some tokens are stored in one-byte fields, and
+  the tokenizer treats every token from `TK_WINDOW` up as special. comdb2's
+  rules replace or come before many of SQLite's, which would shift those
+  numbers. So a comdb2-only `%token` line lists all of SQLite's tokens in
+  SQLite's own order, and comdb2's tokens are numbered after them. If an
+  upgrade adds, removes or reorders a SQLite token and the list isn't
+  regenerated, SQLite's tokens get the wrong numbers, and the merge still
+  goes through without a conflict. The result might be a failed assert, or
+  it might be a silent wrong result. Build the new version's `parse.h` with
+  lemon and copy its `TK_` names, in order, from `SEMI` to `QNUMBER` into
+  the list. The build guard in `parse.y` checks only that comdb2's `TO_*`
+  tokens follow the list and fit in a byte. Nothing in the build checks the
+  list against SQLite's own order.
+
 ## Cherry-picked patches
 
 These are patches we cherry-picked that seem to have shifted around or been
