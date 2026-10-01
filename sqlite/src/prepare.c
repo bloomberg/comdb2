@@ -357,6 +357,9 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   */
   if( meta[BTREE_TEXT_ENCODING-1] ){  /* text encoding */
     if( iDb==0 && (db->mDbFlags & DBFLAG_EncodingFixed)==0 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      SCHEMA_ENC(db) = SQLITE_UTF8;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       u8 encoding;
 #ifndef SQLITE_OMIT_UTF16
       /* If opening the main database, set ENC(db). */
@@ -365,9 +368,6 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
 #else
       encoding = SQLITE_UTF8;
 #endif
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      SCHEMA_ENC(db) = SQLITE_UTF8;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3SetTextEncoding(db, encoding);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else{

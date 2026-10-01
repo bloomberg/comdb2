@@ -1337,6 +1337,10 @@ void sqlite3VdbeValueListFree(void *pToDelete){
   sqlite3_free(pToDelete);
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <serialget.c>
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Implementation of sqlite3_vtab_in_first() (if bNext==0) and
 ** sqlite3_vtab_in_next() (if bNext!=0).
