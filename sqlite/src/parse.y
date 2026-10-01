@@ -180,6 +180,54 @@ static void setExpert(Parse *pParse){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 } // end %include
 
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+// SQLite asserts many invariants about token numbers because they are used in
+// jump opcodes, some must fit in u8 fields like Expr.op2, etc. Lemon numbers
+// tokens by first appearance, and our rules would shift the numbering of
+// SQLite's tokens. Rather than maintain an elaborate set of patches to keep
+// SQLite happy, just list all of SQLite's own tokens up front so they get the
+// numbers it expects. This needs to be regenerated on every upgrade. Our TO_*
+// tokens come right after because they must fit in a u8 as well (Expr.op2).
+%token
+  SEMI EXPLAIN QUERY PLAN BEGIN TRANSACTION DEFERRED IMMEDIATE EXCLUSIVE
+  COMMIT END ROLLBACK SAVEPOINT RELEASE TO TABLE CREATE IF NOT EXISTS TEMP LP
+  RP AS COMMA WITHOUT ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BY CASCADE
+  CAST CONFLICT DATABASE DESC DETACH EACH FAIL OR AND IS ISNOT MATCH LIKE_KW
+  BETWEEN IN ISNULL NOTNULL NE EQ GT LE LT GE ESCAPE ID COLUMNKW DO FOR IGNORE
+  INITIALLY INSTEAD NO KEY OF OFFSET PRAGMA RAISE RECURSIVE REPLACE RESTRICT
+  ROW ROWS TRIGGER VACUUM VIEW VIRTUAL WITH NULLS FIRST LAST CURRENT FOLLOWING
+  PARTITION PRECEDING RANGE UNBOUNDED EXCLUDE GROUPS OTHERS TIES GENERATED
+  ALWAYS MATERIALIZED REINDEX RENAME CTIME_KW ANY BITAND BITOR LSHIFT RSHIFT
+  PLUS MINUS STAR SLASH REM CONCAT PTR COLLATE BITNOT ON INDEXED STRING
+  JOIN_KW CONSTRAINT DEFAULT NULL PRIMARY UNIQUE CHECK REFERENCES AUTOINCR
+  INSERT DELETE UPDATE SET DEFERRABLE FOREIGN DROP UNION ALL EXCEPT INTERSECT
+  SELECT VALUES DISTINCT DOT FROM JOIN USING ORDER GROUP HAVING LIMIT WHERE
+  RETURNING INTO NOTHING FLOAT BLOB INTEGER VARIABLE CASE WHEN THEN ELSE INDEX
+  ALTER ADD WINDOW OVER FILTER COLUMN AGG_FUNCTION AGG_COLUMN TRUEFALSE
+  FUNCTION UPLUS UMINUS TRUTH REGISTER VECTOR SELECT_COLUMN IF_NULL_ROW
+  ASTERISK SPAN ERROR QNUMBER.
+%token
+  TO_TEXT
+  TO_DATETIME
+  TO_INTERVAL_YE
+  TO_INTERVAL_MO
+  TO_INTERVAL_DY
+  TO_INTERVAL_HO
+  TO_INTERVAL_MI
+  TO_INTERVAL_SE
+  TO_BLOB
+  TO_NUMERIC
+  TO_INT
+  TO_REAL
+  TO_DECIMAL
+.
+%include {
+#if TK_TO_TEXT!=TK_QNUMBER+1 || TK_TO_DECIMAL>255
+# error comdb2's TO_* tokens must follow SQLite's tokens and fit in a byte
+#endif
+}
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 // Input is a single SQL command
 input ::= cmdlist.
 cmdlist ::= cmdlist ecmd.
@@ -370,57 +418,6 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,A,Y);}
 columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-/*
-** Comdb2: we need to declare the synthesized tokens below before the
-** keyword and fallback declarations so they receive low TK_ values.
-** They are used as operator codes and get stored in single-byte fields
-** (Expr.op2, Select.op, etc.), so their values must stay <= 255; the
-** many keyword tokens that follow have no such limit because they only
-** appear as grammar terminals and are never stored in an op byte. The
-** TK_SPAN>255 guard below enforces this bound at compile time.
-*/
-%endif SQLITE_BUILDING_FOR_COMDB2
-
-/*
-** The code generator needs some extra TK_ token values for tokens that
-** are synthesized and do not actually appear in the grammar:
-*/
-%token
-  COLUMN          /* Reference to a table column */
-  AGG_FUNCTION    /* An aggregate function */
-  AGG_COLUMN      /* An aggregated column */
-  TRUEFALSE       /* True or false keyword */
-  ISNOT           /* Combination of IS and NOT */
-  FUNCTION        /* A function invocation */
-  UPLUS           /* Unary plus */
-  UMINUS          /* Unary minus */
-  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
-  REGISTER        /* Reference to a VDBE register */
-  VECTOR          /* Vector */
-  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
-  IF_NULL_ROW     /* the if-null-row operator */
-  ASTERISK        /* The "*" in count(*) and similar */
-  SPAN            /* The span operator */
-  ERROR           /* An expression containing an error */
-.
-
-term(A) ::= QNUMBER(X). {
-  A=tokenExpr(pParse,@X,X);
-  sqlite3DequoteNumber(pParse, A);
-}
-
-/* There must be no more than 255 tokens defined above.  If this grammar
-** is extended with new rules and tokens, they must either be so few in
-** number that TK_SPAN is no more than 255, or else the new tokens must
-** appear after this line.
-*/
-%include {
-#if TK_SPAN>255
-# error too many tokens in the grammar
-#endif
-}
-
 // Declare some tokens early in order to influence their values, to 
 // improve performance and reduce the executable size.  The goal here is
 // to get the "jump" operations in ISNULL through ESCAPE to have numeric
@@ -466,16 +463,7 @@ term(A) ::= QNUMBER(X). {
 %endif
   MATERIALIZED
   REINDEX RENAME CTIME_KW IF
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-  CHECK DEFERRABLE FUNCTION RETURNING
-%endif SQLITE_BUILDING_FOR_COMDB2
   .
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-// SQLite's grammar rules first use these after some comdb2 grammar rules are
-// defined. Declare them up front so the token numbers stay below 255 (SQLite
-// asserts this).
-%token WINDOW OVER FILTER.
-%endif SQLITE_BUILDING_FOR_COMDB2
 %wildcard ANY.
 
 // Define operator precedence early so that this is the first occurrence
@@ -3235,10 +3223,48 @@ over_clause(A) ::= OVER nm(Z). {
 filter_clause(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
 %endif /* SQLITE_OMIT_WINDOWFUNC */
 
+/*
+** The code generator needs some extra TK_ token values for tokens that
+** are synthesized and do not actually appear in the grammar:
+*/
+%token
+  COLUMN          /* Reference to a table column */
+  AGG_FUNCTION    /* An aggregate function */
+  AGG_COLUMN      /* An aggregated column */
+  TRUEFALSE       /* True or false keyword */
+  ISNOT           /* Combination of IS and NOT */
+  FUNCTION        /* A function invocation */
+  UPLUS           /* Unary plus */
+  UMINUS          /* Unary minus */
+  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
+  REGISTER        /* Reference to a VDBE register */
+  VECTOR          /* Vector */
+  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
+  IF_NULL_ROW     /* the if-null-row operator */
+  ASTERISK        /* The "*" in count(*) and similar */
+  SPAN            /* The span operator */
+  ERROR           /* An expression containing an error */
+.
+
+term(A) ::= QNUMBER(X). {
+  A=tokenExpr(pParse,@X,X);
+  sqlite3DequoteNumber(pParse, A);
+}
+
+/* There must be no more than 255 tokens defined above.  If this grammar
+** is extended with new rules and tokens, they must either be so few in
+** number that TK_SPAN is no more than 255, or else the new tokens must
+** appear after this line.
+*/
+%include {
+#if TK_SPAN>255
+# error too many tokens in the grammar
+#endif
+}
+
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-// Declare comdb2 %fallbacks after all SQLite grammar rules so that SQLite's
-// own tokens are numbered <255 and fit in u8 fields like Expr.op.
 %fallback ID
+  CHECK DEFERRABLE FUNCTION RETURNING
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
   COLUMNS COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
@@ -3253,24 +3279,6 @@ filter_clause(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
   TESTDEFAULT TESTGENSHARD THREADS THRESHOLD TIME TRUNCATE TRUNCOPLOG TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
   .
-%endif SQLITE_BUILDING_FOR_COMDB2
-
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-%token
-  TO_TEXT
-  TO_DATETIME
-  TO_INTERVAL_YE
-  TO_INTERVAL_MO
-  TO_INTERVAL_DY
-  TO_INTERVAL_HO
-  TO_INTERVAL_MI
-  TO_INTERVAL_SE
-  TO_BLOB
-  TO_NUMERIC
-  TO_INT
-  TO_REAL
-  TO_DECIMAL
-.
 %endif SQLITE_BUILDING_FOR_COMDB2
 
 /*
