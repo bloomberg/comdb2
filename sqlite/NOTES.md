@@ -379,6 +379,24 @@ until the tree builds.
   (Audited 2026-10-01: every acting call site already existed in main with the
   same stub, or is compiled out; behaviour is unchanged from 3.28.)
 
+- [ ] Bring the `ext/misc` files that the sqlite library compiles up to
+  3.51.2, keeping their comdb2 changes. `completion.c` and `series.c` are
+  still 3.28 plus comdb2 changes. `carray.c` and `regexp.c` picked up some
+  later upstream changes (e.g. `e166de4ed`) but are not on 3.51. 3.51 moved
+  carray into `src/carray.c`, and `sqlite/CMakeLists.txt` questions whether
+  `completion.c` is used at all.
+
+- [ ] Check that every vendored file is pristine upstream 3.51.2 plus comdb2
+  changes. A byte comparison only catches untouched copies; files with comdb2
+  changes need their comdb2 halves stripped and the rest compared with
+  3.51.2. That check found dead 3.28 leftovers in
+  `sqliteInt.h` (`Table.pNextZombie`, the `sqlite3WindowRemoveExpr*`
+  declarations) and `sqlite_btree.h`.
+
+- [ ] Rename `sqlite/src/sqlite_btree.h` back to `btree.h`. Only
+  `db/sqlglue.c` and `sqliteInt.h` include it, but check the include paths,
+  since `berkdb/dbinc/btree.h` also exists.
+
 ## Observations and Decisions
 
 ### General
