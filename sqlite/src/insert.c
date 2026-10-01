@@ -3104,7 +3104,11 @@ int sqlite3OpenTableAndIndices(
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   }else{
-    i = 0;
+    /* Count the indices we didn't open as well, because sqlite3Insert()
+    ** fills one aRegIdx slot per index followed by a slot for the table
+    ** record. Returning the full count lets sqlite3GenerateConstraintChecks()
+    ** and sqlite3CompleteInsertion() find the table record in the right place. */
+    i = countIndexes(pTab);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( iBase>pParse->nTab ) pParse->nTab = iBase;
