@@ -373,9 +373,11 @@ until the tree builds.
   `sqlite3BtreeClearTable()`, `sqlite3BtreeCursor()`,
   `sqlite3BtreeIntegrityCheck()` and `sqlite3BtreeCount()` changed too.
 
-- [ ] Audit `sqlite3BtreeCursorIsValidNN()` in `db/sqlglue.c`. Ours always
+- [x] Audit `sqlite3BtreeCursorIsValidNN()` in `db/sqlglue.c`. Ours always
   returns 1 (its comment says "TODO: This is not right"), but code in 3.51's
   `vdbe.c` that merged without a conflict now calls it and trusts the answer.
+  (Audited 2026-10-01: every acting call site already existed in main with the
+  same stub, or is compiled out; behaviour is unchanged from 3.28.)
 
 ## Observations and Decisions
 
