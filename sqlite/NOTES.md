@@ -350,6 +350,8 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **TODO**: Add a `tests/upsert.test` case for `ON CONFLICT DO UPDATE` without a conflict target, which 3.51 added and 3.28 rejected: `INSERT INTO t1 VALUES(1, 'a') ON CONFLICT DO UPDATE SET b = 'b'`.
 
+- **TODO**: Give `SQLITE_NEXTSEQ` (`(SQLITE_MAX_U32-2)`, a u64) a value that fits in the `int` that `sqlite3_value_type()` returns, and drop the `(int)` casts in `func.c` and `db/sqlinterfaces.c`.
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
