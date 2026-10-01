@@ -34,6 +34,19 @@ static char *_gen_col_expr(Vdbe *v, Expr *expr, SrcList *srcs,
 
 static dohsql_node_t *gen_select(Vdbe *v, Select *p);
 
+/* Return the AS alias that the user wrote for this result column, or NULL */
+static const char *column_alias(const struct ExprList_item *pItem)
+{
+    switch (pItem->fg.eEName) {
+    case ENAME_NAME:
+        return pItem->zEName;
+    case ENAME_SPAN:
+    case ENAME_TAB:
+    case ENAME_ROWID:
+        return NULL;
+    }
+    return NULL;
+}
 
 static char *generate_columns(Vdbe *v, ExprList *c, SrcList *srcs,
                               struct params_info **pParamsOut)
@@ -46,21 +59,19 @@ static char *generate_columns(Vdbe *v, ExprList *c, SrcList *srcs,
 
     for (i = 0; i < c->nExpr; i++) {
         expr = c->a[i].pExpr;
+        const char *zAs = column_alias(&c->a[i]);
         if ((sExpr = _gen_col_expr(v, expr, srcs, pParamsOut)) == NULL) {
             if (cols)
                 sqlite3_free(cols);
             return NULL;
         }
         if (!cols)
-            cols = sqlite3_mprintf("%s%s%w%s", sExpr,
-                                   (c->a[i].zName) ? " aS \"" : "",
-                                   (c->a[i].zName) ? c->a[i].zName : "",
-                                   (c->a[i].zName) ? "\" " : "");
+            cols = sqlite3_mprintf("%s%s%w%s", sExpr, zAs ? " aS \"" : "",
+                                   zAs ? zAs : "", zAs ? "\" " : "");
         else {
             accum = sqlite3_mprintf("%s, %s%s%w%s", cols, sExpr,
-                                    (c->a[i].zName) ? " aS \"" : "",
-                                    (c->a[i].zName) ? c->a[i].zName : "",
-                                    (c->a[i].zName) ? "\" " : "");
+                                    zAs ? " aS \"" : "", zAs ? zAs : "",
+                                    zAs ? "\" " : "");
             sqlite3_free(cols);
             cols = accum;
         }

@@ -354,12 +354,14 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **TODO**: `PRAGMA integrity_check` reports "wrong # of entries in index" for every index, because the `sqlite3BtreeIntegrityCheck()` stub in `db/sqlglue.c` never writes the `aCnt[]` counts that 3.51 now compares (upstream `d90ecb5d6e`).
 
+- **TODO**: Make `get_one_explain_line()` in `db/sqlexplain.c` describe every 3.51 opcode and P5 flag; it misses `OP_PureFunc`, `OP_ElseEq` and the `SQLITE_NULLEQ`/`SQLITE_NOTNULL` comparison flags, among others.
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
 until the tree builds.
 
-- [ ] Replace `SQLITE_STOREP2` in `db/sqlexplain.c`. 3.51 removed it, so the
+- [x] Replace `SQLITE_STOREP2` in `db/sqlexplain.c`. 3.51 removed it, so the
   EXPLAIN output code that tests for it no longer compiles.
 
 - [ ] Update the prototypes in `db/sqlglue.c` to match the 3.51 btree headers.
