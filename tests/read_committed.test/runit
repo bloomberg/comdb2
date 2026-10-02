@@ -28,7 +28,9 @@ tbl=t1
 function run_test 
 {
     for i in `ls *.sql`; do
-        cmd="cdb2sql -f ${i} ${CDB2_OPTIONS} $dbname default > ${i}.res 2>&1"
+        # scrub the EXPLAIN QUERY PLAN id: it is the OP_Explain address, which
+        # any codegen change renumbers without the plan itself changing
+        cmd="cdb2sql -f ${i} ${CDB2_OPTIONS} $dbname default 2>&1 | sed 's/(id=[0-9]\\+, parent=/(id=xx, parent=/' > ${i}.res"
         echo $cmd
         eval $cmd
         if ! `diff ${i}.exp ${i}.res > /dev/null`; then
