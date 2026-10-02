@@ -90,10 +90,8 @@ typedef struct bdb_cursor_ifn {
     int (*collattrlen)(struct bdb_cursor_ifn *cur);
 
     /* lock/unlock */
+    int (*lock)(struct bdb_cursor_ifn *cur, cursor_tran_t *curtran);
     int (*unlock)(struct bdb_cursor_ifn *cur, int *bdberr);
-    int (*lock)(struct bdb_cursor_ifn *cur, cursor_tran_t *curtran, int how,
-                int *bdberr);
-    int (*set_curtran)(struct bdb_cursor_ifn *cur, cursor_tran_t *curtran);
 
     /* Get pageorder information. */
     int (*getpageorder)(struct bdb_cursor_ifn *cur);

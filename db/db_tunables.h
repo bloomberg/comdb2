@@ -1812,6 +1812,47 @@ REGISTER_TUNABLE("client_heartbeat_ms",
                  TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_cursor_move", "Sleep N ms on each cursor move (testing only).  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_in_cursor_move, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("pagelock_release_interval_ms",
+                 "Minimum interval between page-lock-only releases while a lock waiter persists.  (Default: 100ms)",
+                 TUNABLE_INTEGER, &gbl_pagelock_release_interval_ms, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("pagelock_release_max_wait_ms",
+                 "How long a lock waiter may stay parked before we fall back to a full lock release (letting a "
+                 "schema change proceed).  0 disables the fallback.  (Default: 60000ms)",
+                 TUNABLE_INTEGER, &gbl_pagelock_release_max_wait_ms, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_pagelock_release_trace", "Trace page-lock release pacing decisions.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_pagelock_release_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("recover_deadlock_sync_dta",
+                 "Sync index/data cursors before lock release in recover_deadlock.  (Default: 1)", TUNABLE_BOOLEAN,
+                 &gbl_recover_deadlock_sync_dta, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_recover_deadlock_skip_sync_dta",
+                 "Test only: with recover_deadlock_sync_dta on, still release non-SI locks but skip the "
+                 "index/data cursor sync, to reproduce the 'Dta lookup lost the race' bug.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_recover_deadlock_skip_sync_dta, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("blob_cache_shrink",
+                 "Shrink a cursor's cached blob buffer when it is much larger than the new blob (see "
+                 "blob_cache_shrink_ratio and blob_cache_shrink_floor_kb).  Off: buffers only grow.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_blob_cache_shrink, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("blob_cache_shrink_ratio",
+                 "Shrink a cursor's cached blob buffer only when it is more than this many times the size of the new "
+                 "blob (and of blob_cache_shrink_floor_kb).  0 never shrinks.  (Default: 4)",
+                 TUNABLE_INTEGER, &gbl_blob_cache_shrink_ratio, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("blob_cache_shrink_floor_kb",
+                 "Never shrink a cursor's cached blob buffer below this size, and shrink only if it is more than "
+                 "blob_cache_shrink_ratio times this size.  0 shrinks to the new blob on the ratio alone.  "
+                 "(Default: 1024)",
+                 TUNABLE_INTEGER, &gbl_blob_cache_shrink_floor_kb, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_release_wait_ms",
                  "Release sql-locks if rep-thd is blocked for this many ms."
                  "  (Default: 60000)",
