@@ -589,7 +589,9 @@ public class Comdb2Handle extends AbstractConnection {
             return 0;
         }
 
-        if (snapshotFile <= 0 && queryList.size() > 0) { /* no snapshot info thus can't resume */
+        /* queryList is only populated when we have a snapshot, so its size
+           tells us nothing here. Without a snapshot we can't resume. */
+        if (snapshotFile <= 0) {
             /* this is a logical error. */
             last_non_logical_err = null;
             driverErrStr = "Database disconnected while in transaction.";
