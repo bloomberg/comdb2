@@ -806,7 +806,10 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
         rc = apply_log(thedb->bdb_env, file, offset, REP_LOG, blob, blob_len);
         rep_apply_caller = NULL;
 
-        if (is_commit((u_int32_t)*rectype)) {
+        /* The systable returns the tagged on-disk rectype; is_commit() wants it bare */
+        u_int32_t bare_rectype = (u_int32_t)*rectype;
+        normalize_rectype(&bare_rectype);
+        if (is_commit(bare_rectype)) {
             if (gbl_physrep_debug) {
                 physrep_logmsg(LOGMSG_USER, "%s:%d: Got commit record (lsn %d:%d), going to wait for other nodes to ack\n",
                                __func__, __LINE__, file, offset);
@@ -816,10 +819,10 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
             lsn.file = file;
             lsn.offset = offset;
             int start = comdb2_time_epochms();
-            rc = physrep_bdb_wait_for_seqnum(thedb->bdb_env, &lsn, blob);
-            if (rc != 0) {
-                physrep_logmsg(LOGMSG_ERROR, "%s:%d bdb_wait_for_seqnum_from_all() failed (rc = %d)\n",
-                               __func__, __LINE__, rc);
+            int waitrc = physrep_bdb_wait_for_seqnum(thedb->bdb_env, &lsn, blob);
+            if (waitrc != 0) {
+                physrep_logmsg(LOGMSG_ERROR, "%s:%d bdb_wait_for_seqnum_from_all() failed (rc = %d)\n", __func__,
+                               __LINE__, waitrc);
             } else {
                 if (gbl_physrep_debug) {
                     physrep_logmsg(LOGMSG_USER, "%s:%d: Got ACKs, (waited: %d ms)\n",
