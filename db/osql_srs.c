@@ -254,6 +254,9 @@ int srs_tran_empty(struct sqlclntstate *clnt)
 
 long long gbl_verify_tran_replays = 0;
 int gbl_disttxn_random_retry_poll = 500;
+/* Small by design: 25ms reliably disperses contending writers; smaller windows
+   leave too many landing in the same ms. Set to 0 for lockstep retries. */
+int gbl_verify_retry_poll = 25;
 
 int srs_tran_replay_prepare(struct sqlclntstate *clnt)
 {
@@ -299,11 +302,12 @@ static int srs_tran_replay_once(struct sqlclntstate *clnt, int(dispatch_fn)(stru
 
     clnt->verify_retries++;
     gbl_verify_tran_replays++;
-    if (clnt->dist_timestamp > 0) {
-        int pval = gbl_disttxn_random_retry_poll;
-        if (pval > 1) {
-            poll(0, 0, rand() % pval);
-        }
+    /* Without a pause, every loser of a verify race retries in lockstep and
+       collides again. Jitter disperses the crowd. Distributed txns have always
+       done this; gbl_verify_retry_poll opts ordinary ones in. */
+    int pval = (clnt->dist_timestamp > 0) ? gbl_disttxn_random_retry_poll : gbl_verify_retry_poll;
+    if (pval > 1) {
+        poll(0, 0, rand() % pval);
     }
 
     /* Replays for SERIAL or SNAPISOL will never have select or selectv */
