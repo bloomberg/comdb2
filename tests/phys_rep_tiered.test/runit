@@ -2853,6 +2853,24 @@ function parse_rtn
     echo "$1" | sed -n 's/.*rtn=\(-*[0-9][0-9]*\).*/\1/p' | head -1
 }
 
+# Run an allowed-source query, retrying while no rtn comes back (e.g. a
+# transient hostname-resolution failure on the test driver)
+function allowed_source_rtn
+{
+    local db=$1
+    local host=$2
+    local sql=$3
+    local rc=""
+    local i
+
+    for (( i = 0; i < 60; i++ )); do
+        rc=$(parse_rtn "$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $db --host $host "$sql")")
+        [[ -n "$rc" ]] && break
+        sleep 1
+    done
+    echo "$rc"
+}
+
 # Verify allowed-source behavior
 function physrep_allowed_source
 {
@@ -2868,8 +2886,7 @@ function physrep_allowed_source
     for node in $CLUSTER ; do
         cmd="physrep_allowed_source $DBNAME $node"
         sql="exec procedure sys.cmd.send(\"$cmd\")"
-        out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-        rc=$(parse_rtn "$out")
+        rc=$(allowed_source_rtn $DBNAME $firstNode "$sql")
         [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source allowed source within cluster on node $node"
     done
 
@@ -2902,8 +2919,7 @@ function physrep_allowed_source
     echo "Verify that foobar1 is not an allowed source"
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
-    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=$(parse_rtn "$out")
+    rc=$(allowed_source_rtn $DBNAME $firstNode "$sql")
     [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source allowed test as source for beta"
 
     echo "Set machine 'foobar1' to class 'uat'"
@@ -2914,8 +2930,7 @@ function physrep_allowed_source
     echo "Verify that foobar1 is an allowed source"
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
-    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=$(parse_rtn "$out")
+    rc=$(allowed_source_rtn $DBNAME $firstNode "$sql")
     [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow uat as source for beta"
 
     echo "Set machine 'foobar1' to class 'prod'"
@@ -2926,8 +2941,7 @@ function physrep_allowed_source
     echo "Verify that foobar1 is an allowed source"
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
-    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=$(parse_rtn "$out")
+    rc=$(allowed_source_rtn $DBNAME $firstNode "$sql")
     [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow prod as source for beta"
 
     echo "Set machine 'foobar1' to class 'beta'"
@@ -2938,8 +2952,7 @@ function physrep_allowed_source
     echo "Verify that foobar1 is an allowed source"
     cmd="physrep_allowed_source hello foobar1"
     sql="exec procedure sys.cmd.send(\"$cmd\")"
-    out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $firstNode "$sql")
-    rc=$(parse_rtn "$out")
+    rc=$(allowed_source_rtn $DBNAME $firstNode "$sql")
     [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source did not allow beta as source for beta"
 
     echo "Set machine class back to prod"
@@ -2952,8 +2965,7 @@ function physrep_allowed_source
         name=${REPL_DBNAME_PREFIX}_${node}
         cmd="physrep_allowed_source $name $node"
         sql="exec procedure sys.cmd.send(\"$cmd\")"
-        out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-        rc=$(parse_rtn "$out")
+        rc=$(allowed_source_rtn $name $node "$sql")
         [[ "$rc" == 0 ]] || cleanFailExit "physrep_allowed_source $name allowed self as source"
     done
 }
@@ -2961,7 +2973,6 @@ function physrep_allowed_source
 function physrep_rtcpu_source
 {
     local name
-    local out
     local cmd
     local sql
     local rc
@@ -2977,8 +2988,7 @@ function physrep_rtcpu_source
         for src_node in $CLUSTER ; do
             cmd="physrep_allowed_source $DBNAME $src_node"
             sql="exec procedure sys.cmd.send(\"$cmd\")"
-            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-            rc=$(parse_rtn "$out")
+            rc=$(allowed_source_rtn $name $node "$sql")
             [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source should allow $src_node before rtcpu, got rc=$rc"
         done
 
@@ -2990,8 +3000,7 @@ function physrep_rtcpu_source
 
             cmd="physrep_allowed_source $DBNAME $src_node"
             sql="exec procedure sys.cmd.send(\"$cmd\")"
-            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-            rc=$(parse_rtn "$out")
+            rc=$(allowed_source_rtn $name $node "$sql")
             [[ "$rc" == "0" ]] || cleanFailExit "physrep_allowed_source should reject rtcpu'd node $src_node on $name, got rc=$rc"
         done
 
@@ -3003,8 +3012,7 @@ function physrep_rtcpu_source
 
             cmd="physrep_allowed_source $DBNAME $src_node"
             sql="exec procedure sys.cmd.send(\"$cmd\")"
-            out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $name --host $node "$sql")
-            rc=$(parse_rtn "$out")
+            rc=$(allowed_source_rtn $name $node "$sql")
             [[ "$rc" == "1" ]] || cleanFailExit "physrep_allowed_source should allow $src_node after removing rtcpu, got rc=$rc"
         done
     done
