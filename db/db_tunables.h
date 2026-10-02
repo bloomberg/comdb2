@@ -2582,7 +2582,7 @@ REGISTER_TUNABLE("authorization_cache_ageout", "Max age of authorization cache (
 REGISTER_TUNABLE("principal_authz_cache_enabled",
                  "Cache IAM authorization decisions by authenticated principal instead of raw identity, "
                  "avoiding repeat IAM authorize calls across sessions for the same principal. Uses "
-                 "authorization_cache_ageout for expiry (Default: off)",
+                 "authorization_cache_ageout for expiry (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_principal_authz_cache_enabled, NOARG, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("iam_usermetric_verbosity", "IAM user metric verbosity [Default: 0 (off)]", TUNABLE_INTEGER,
