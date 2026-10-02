@@ -56,6 +56,13 @@ put alias t 'u'
 select 1
 EOF
 
+echo "Alias with an unquoted target should fail" >> $output
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default - >> $output 2>&1 << EOF
+put alias t2_alias u
+put alias t2_alias LOCAL_${SECONDARY_DBNAME}
+select 1
+EOF
+
 #get rid of remdb name
 sed "s/${SECONDARY_DBNAME}/remdb/g" $output > run.log.actual
 
