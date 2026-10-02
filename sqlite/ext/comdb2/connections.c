@@ -58,7 +58,8 @@ int get_connections(void **data, int *num_points) {
                 info[i].state = !info[i].is_canceled ? "new" : "new_canceled";
                 break;
             case CONNECTION_IDLE:
-                info[i].state = !info[i].is_canceled ? "idle" : "idle_canceled";
+                info[i].state = info[i].is_canceled ? "idle_canceled" :
+                                info[i].in_transaction ? "idle_in_trans" : "idle";
                 break;
             case CONNECTION_RESET:
                 info[i].state = !info[i].is_canceled ? "reset" : "reset_canceled";

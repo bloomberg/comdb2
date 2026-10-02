@@ -1006,6 +1006,8 @@ struct sqlclntstate {
     int64_t netwaitus;
     enum connection_state state;
     pthread_mutex_t state_lk;
+    unsigned in_sql_evbuffers : 1; /* protected by state_lk */
+    unsigned in_active_count : 1;  /* included in active_connections; protected by state_lk */
     /* The node doesn't change.  The pid does as connections get donated.  We
      * latch both values here since conninfo is lost when connections are reset. */
     int last_pid;
@@ -1745,6 +1747,7 @@ void add_lru_evbuffer(struct sqlclntstate *);
 void rem_lru_evbuffer(struct sqlclntstate *);
 void add_sql_evbuffer(struct sqlclntstate *);
 void rem_sql_evbuffer(struct sqlclntstate *);
+int get_active_connections(void);
 void update_col_info(struct sql_col_info *info, int);
 void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);
 const char *sqlite3ErrStr(int);
