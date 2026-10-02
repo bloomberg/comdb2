@@ -8,25 +8,51 @@ source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 export MASTER=$(get_master)
 
-# Create a table 
+# Keep inserting for the given number of seconds
+function insert_for
+{
+    local end=$(( $(date +%s) + $1 ))
+    while [[ $(date +%s) -lt $end ]]; do
+        $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "insert into t1 select * from generate_series(1, 1000)" >/dev/null
+    done
+}
+
+# Mark all non-master nodes offline (add) or online (del), pretending we are dr-testing them
+function fakedr
+{
+    for node in $CLUSTER ; do
+        if [[ "$node" != $MASTER ]]; then
+            # Tell every node about this node
+            for n in $CLUSTER ; do
+                $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $n "exec procedure sys.cmd.send(\"fakedr $1 $node\")"
+            done
+        fi
+    done
+}
+
+# Nodes must become coherent again once back online
+function wait_for_coherent
+{
+    local replicants=$(( $(echo $CLUSTER | wc -w) - 1 ))
+    local cnt=0
+    for i in $(seq 1 30); do
+        $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "insert into t1 values(1)" >/dev/null
+        cnt=$($CDB2SQL_EXE --tabs $DBNAME $CDB2_OPTIONS --host $MASTER "select count(*) from comdb2_cluster where is_master='N' and coherent_state='coherent'")
+        [[ "$cnt" == "$replicants" ]] && break
+        sleep 1
+    done
+    $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "select * from comdb2_cluster"
+    [[ "$cnt" == "$replicants" ]] || failexit "Expected all non-master nodes to be coherent again, got $cnt of $replicants"
+}
+
+# Create a table
 $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS default "create table t1(a int)"
 
-# Mark all nodes as offline (pretend we are dr-testing them)
-for node in $CLUSTER ; do
-    if [[ "$node" != $MASTER ]]; then
-        # Tell every other node that this node is offline
-        for n in $CLUSTER ; do
-            $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $n "exec procedure sys.cmd.send(\"fakedr add $node\")"
-        done
-    fi
-done
+# Keep nodes offline for longer than the downgrade penalty (10s by default)
+fakedr add
 
-# Make sure we can insert records 
-j=0
-while [[ $j -lt 10 ]]; do
-    $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "insert into t1 select * from generate_series(1, 1000)"
-    let j=j+1
-done
+# Make sure we can insert records
+insert_for 20
 
 # Verify that the master has the other nodes listed as 'incoherent_wait'
 $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "select * from comdb2_cluster"
@@ -34,14 +60,20 @@ cnt=$($CDB2SQL_EXE --tabs $DBNAME $CDB2_OPTIONS --host $MASTER "select count(*) 
 
 [[ "$cnt" == 0 ]] || failexit "Expected all non-master nodes to be INCOHERENT_WAIT"
 
-# Mark all nodes as online again for test cleanup
-for node in $CLUSTER ; do
-    if [[ "$node" != $MASTER ]]; then
-        # Tell every other node that this node is offline
-        for n in $CLUSTER ; do
-            $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $n "exec procedure sys.cmd.send(\"fakedr del $node\")"
-        done
-    fi
-done
+fakedr del
+wait_for_coherent
+
+# Bring nodes back online within the downgrade penalty, and keep writing through it
+fakedr add
+insert_for 2
+fakedr del
+insert_for 15
+wait_for_coherent
+
+# Acks from nodes that must stay INCOHERENT_WAIT should not be re-evaluated
+mlog=${TESTDIR}/logs/${DBNAME}.${MASTER}.db
+[[ -f $mlog ]] || failexit "Missing master log $mlog"
+spam=$(grep -c "state is already INCOHERENT_WAIT" $mlog)
+[[ "$spam" == 0 ]] || failexit "Master logged $spam redundant INCOHERENT_WAIT transitions in $mlog"
 
 echo "Success!"
