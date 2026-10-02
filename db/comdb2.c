@@ -6626,3 +6626,8 @@ static void create_service_file(const char *lrlname)
 #endif
     return;
 }
+
+int dummy(void)
+{
+    return 0;
+}
