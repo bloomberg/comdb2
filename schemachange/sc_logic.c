@@ -696,6 +696,10 @@ static int do_schema_change_tran_int(sc_arg_t *arg)
     }
 
     s->iq = iq;
+    /* schema changes started outside a block processor transaction
+     * get a private context */
+    if (!s->ctx)
+        s->ctx = sc_tran_ctx_new();
 
     if (s->kind == SC_ALTERTABLE_PENDING || s->preempted == SC_ACTION_RESUME)
         detached = 1;
@@ -740,8 +744,12 @@ downgraded:
     if (rc && rc != SC_COMMIT_PENDING && s->preempted != SC_ACTION_RESUME) {
         logmsg(LOGMSG_ERROR, ">>> SCHEMA CHANGE ERROR: TABLE %s, RC %d\n",
                s->tablename, rc);
-        iq->sc_should_abort = 1;
+        sc_set_should_abort(s); /* stop the siblings too */
     }
+    /* osql schema changes can run on their own threads; the block processor
+     * owning the ireq publishes them, once they are all done */
+    if (!s->is_osql)
+        sc_tran_ctx_publish(s->ctx, iq);
     if (detached || rc == SC_PREEMPTED)
         s->sc_rc = SC_DETACHED;
     else if (rc == SC_COMMIT_PENDING)
@@ -1784,6 +1792,9 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
         iq->sc_locked = 1;
     }
     iq->sc_should_abort = 1;
+    /* stop the logical redo threads waited for below */
+    for (s = iq->sc_pending; s != NULL; s = s->sc_next)
+        sc_set_should_abort(s);
     s = iq->sc = iq->sc_pending;
     while (s != NULL) {
         while (s->logical_livesc) {

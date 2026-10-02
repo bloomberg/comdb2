@@ -154,6 +154,18 @@ enum schema_change_kind {
 #define IS_ALTERTABLE(s)                                                       \
     (((s)->kind >= SC_ALTERTABLE) && ((s)->kind <= SC_REBUILDTABLE_INDEX))
 
+/* state shared by all the schema changes of a transaction, replacing the
+ * ireq fields their threads used to access; only the ireq owner publishes
+ * it to the ireq (sc_tran_ctx_publish); refcounted, every schema change
+ * holds a reference */
+struct sc_tran_ctx {
+    int refcnt;
+    int aborted;                  /* a failing one stops all the others */
+    pthread_mutex_t lk;           /* protects errstat and effects */
+    errstat_t errstat;            /* client error, first one wins */
+    struct query_effects effects; /* summed over all the schema changes */
+};
+
 struct schema_change_type {
     /*  ==========    persistent members ========== */
     enum schema_change_kind kind;
@@ -247,6 +259,8 @@ struct schema_change_type {
     pthread_cond_t condStart; /* condition var for thread sync */
     int started;
     int sc_rc;
+    struct sc_tran_ctx *ctx; /* shared with the other schema changes of the
+                                same transaction */
 
     struct ireq *iq;
     void *tran; /* transactional schemachange */
@@ -530,6 +544,30 @@ void sb_errf(COMDB2BUF *sb, const char *fmt, ...);
 
 void sc_printf(struct schema_change_type *s, const char *fmt, ...);
 void sc_errf(struct schema_change_type *s, const char *fmt, ...);
+struct sc_tran_ctx *sc_tran_ctx_new(void);
+void sc_tran_ctx_put(struct sc_tran_ctx *ctx);
+void sc_tran_ctx_attach(struct schema_change_type *s, struct sc_tran_ctx *ctx);
+void sc_tran_ctx_detach(struct schema_change_type *s);
+void sc_tran_ctx_publish(struct sc_tran_ctx *ctx, struct ireq *iq);
+
+void sc_set_errstat(struct schema_change_type *s, int rc, const char *fmt, ...);
+void sc_add_effects(struct schema_change_type *s, const struct query_effects *e);
+void sc_set_should_abort(struct schema_change_type *s);
+
+static inline int sc_is_aborting(struct schema_change_type *s)
+{
+    return s->ctx && s->ctx->aborted;
+}
+
+/* like sc_client_error, but saves the error in the transaction context
+ * instead of s->iq; used by record conversion threads, which do not access
+ * the sc ireq */
+#define sc_convert_error(s, fmt, ...)                                                                                  \
+    do {                                                                                                               \
+        sc_set_errstat(s, ERR_SC, fmt, ##__VA_ARGS__); /* cdb2sql, via sc_tran_ctx_publish */                          \
+        sc_errf(s, fmt "\n", ##__VA_ARGS__);           /* comdb2sc */                                                  \
+    } while (0)
+
 int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;

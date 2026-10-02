@@ -320,7 +320,7 @@ static inline int convert_server_record_cachedmap(
     if (rc) {
         convert_failure_reason_str(&reason, table, from->tag, to->tag, err,
                                    sizeof(err));
-        sc_client_error(s, "cannot convert data %s", err);
+        sc_convert_error(s, "cannot convert data %s", err);
         return rc;
     }
     return 0;
@@ -342,7 +342,7 @@ static int convert_server_record_blobs(const void *inbufp, const char *from_tag,
     if (rc) {
         convert_failure_reason_str(&reason, db->table, from_tag, db->tag, err,
                                    sizeof(err));
-        sc_client_error(s, "cannot convert data %s", err);
+        sc_convert_error(s, "cannot convert data %s", err);
         return 1;
     }
     return 0;
@@ -655,6 +655,12 @@ static void increment_sc_logbytes(int64_t bytes)
     Pthread_mutex_unlock(&sc_bps_lk);
 }
 
+/* where a stripe thread accounts for its effects */
+static inline struct query_effects *convert_effects(struct convert_record_data *data)
+{
+    return IQ_HAS_SNAPINFO(&data->iq) ? &IQ_SNAPINFO(&data->iq)->effects : &data->effects;
+}
+
 /* converts a single record and prepares for the next one
  * should be called from a while loop
  * param data: pointer to all the state information
@@ -682,9 +688,8 @@ static int convert_record(struct convert_record_data *data)
         return -1;
     }
 
-    if (gbl_sc_abort || data->from->sc_abort ||
-        (data->s->iq && data->s->iq->sc_should_abort)) {
-        sc_client_error(data->s, "Schema change aborted");
+    if (gbl_sc_abort || data->from->sc_abort || sc_is_aborting(data->s)) {
+        sc_convert_error(data->s, "Schema change aborted");
         return -1;
     }
     if (tbl_had_writes(data)) {
@@ -1130,8 +1135,7 @@ err:
         }
     }
 
-    if (gbl_sc_abort || data->from->sc_abort ||
-        (data->s->iq && data->s->iq->sc_should_abort)) {
+    if (gbl_sc_abort || data->from->sc_abort || sc_is_aborting(data->s)) {
         logbytes = bdb_tran_logbytes(data->trans);
         increment_sc_logbytes(logbytes - estimate);
         trans_abort(&data->iq, data->trans);
@@ -1170,19 +1174,19 @@ err:
             return 1;
         }
 
-        sc_client_error(data->s, "Could not add duplicate entry in index %d rrn %d genid 0x%llx", ixfailnum, rrn,
-                        genid);
+        sc_convert_error(data->s, "Could not add duplicate entry in index %d rrn %d genid 0x%llx", ixfailnum, rrn,
+                         genid);
         return -2;
     } else if (rc == ERR_CONSTR) {
-        sc_client_error(data->s, "Record violates foreign constraints rrn %d genid 0x%llx", rrn, genid);
+        sc_convert_error(data->s, "Record violates foreign constraints rrn %d genid 0x%llx", rrn, genid);
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
-        sc_client_error(data->s, "Error verifying partial indexes! rrn %d genid 0x%llx", rrn, genid);
+        sc_convert_error(data->s, "Error verifying partial indexes! rrn %d genid 0x%llx", rrn, genid);
         return -2;
     } else if (rc != 0) {
-        sc_client_error(data->s,
-                        "Error adding record rcode %d opfailcode %d ixfailnum %d rrn %d genid 0x%llx, stripe %d", rc,
-                        opfailcode, ixfailnum, rrn, genid, data->stripe);
+        sc_convert_error(data->s,
+                         "Error adding record rcode %d opfailcode %d ixfailnum %d rrn %d genid 0x%llx, stripe %d", rc,
+                         opfailcode, ixfailnum, rrn, genid, data->stripe);
         return -2;
     }
 
@@ -1214,12 +1218,8 @@ err:
 
     ATOMIC_ADD64(data->from->sc_nrecs, 1);
 
-    if (data->s->iq->sorese != NULL) {
-        /* ddl schema change, update its effects */
-        snap_uid_t *snap_info = data->s->iq->sorese->snap_info;
-        if (snap_info != NULL)
-            snap_info->effects.num_inserted = data->from->sc_nrecs;
-    }
+    /* convert_all_records adds these to the transaction context */
+    convert_effects(data)->num_inserted++;
 
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
@@ -1361,8 +1361,7 @@ cleanup:
                   data->from->tablename, data->nrecs, data->totnretries,
                   data->stripe);
     } else {
-        if (gbl_sc_abort || data->from->sc_abort ||
-            (data->s->iq && data->s->iq->sc_should_abort)) {
+        if (gbl_sc_abort || data->from->sc_abort || sc_is_aborting(data->s)) {
             sc_errf(data->s,
                     "conversion aborted after %lld records, while working on"
                     " stripe %d with %d retries\n",
@@ -1588,6 +1587,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     if (data.scanmode != SCAN_PARALLEL && data.scanmode != SCAN_PAGEORDER) {
         convert_records_thd(&data);
         outrc = data.outrc;
+        sc_add_effects(s, convert_effects(&data));
     } else {
         struct convert_record_data threadData[gbl_dtastripe];
         int threadSkipped[gbl_dtastripe];
@@ -1652,6 +1652,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 outrc = -1;
                 continue;
             }
+
+            sc_add_effects(s, convert_effects(&threadData[ii]));
 
             /* if thread's conversions failed return error code */
             if (threadData[ii].outrc != 0) outrc = threadData[ii].outrc;
@@ -1726,9 +1728,8 @@ static int upgrade_records(struct convert_record_data *data)
     db_seqnum_type ss;
 
     // if sc has beed aborted, return
-    if (gbl_sc_abort || data->from->sc_abort ||
-        (data->s->iq && data->s->iq->sc_should_abort)) {
-        sc_errf(data->s, "Schema change aborted\n");
+    if (gbl_sc_abort || data->from->sc_abort || sc_is_aborting(data->s)) {
+        sc_convert_error(data->s, "Schema change aborted");
         return -1;
     }
 
@@ -1819,9 +1820,7 @@ static int upgrade_records(struct convert_record_data *data)
     // handle rc
     switch (rc) {
     default: /* bang! */
-        sc_errf(data->s, "Error upgrading record "
-                         "rc %d opfailcode %d genid 0x%llx\n",
-                rc, opfailcode, genid);
+        sc_convert_error(data->s, "Error upgrading record rc %d opfailcode %d genid 0x%llx", rc, opfailcode, genid);
         return -2;
 
     case RC_INTERNAL_RETRY: /* deadlock */
@@ -1994,8 +1993,7 @@ cleanup:
                   "successfully upgraded %lld records. skipped %lld records.\n",
                   data->nrecs, data->nrecskip);
     } else {
-        if (gbl_sc_abort || data->from->sc_abort ||
-            (data->s->iq && data->s->iq->sc_should_abort)) {
+        if (gbl_sc_abort || data->from->sc_abort || sc_is_aborting(data->s)) {
             sc_errf(data->s, "conversion aborted after %lld records upgraded "
                              "and %lld records skipped, "
                              "while working on stripe %d\n",
@@ -2689,25 +2687,23 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
             goto done;
         }
         if (rc) {
-            if (data->s->iq) {
-                if (rc == IX_DUP) {
-                    DB_LSN current;
-                    rc = del_new_record(&data->iq, data->trans, ngenid, -1ULL, data->odh.recptr, data->wrblb, 0);
-                    if (rc && rc != ERR_VERIFY) {
-                        logmsg(LOGMSG_FATAL, "Debug assert - unexpected condition\n");
-                        abort();
-                    }
-                    bdb_get_commit_genid(thedb->bdb_env, &current);
+            if (rc == IX_DUP) {
+                DB_LSN current;
+                rc = del_new_record(&data->iq, data->trans, ngenid, -1ULL, data->odh.recptr, data->wrblb, 0);
+                if (rc && rc != ERR_VERIFY) {
+                    logmsg(LOGMSG_FATAL, "Debug assert - unexpected condition\n");
+                    abort();
+                }
+                bdb_get_commit_genid(thedb->bdb_env, &current);
 #ifdef LOGICAL_LIVESC_DEBUG
-                    logmsg(LOGMSG_DEBUG, "%u: setting newsc genid %llx lsn=[%u][%u] on addindex conflict\n",
-                           (unsigned int)pthread_self(), genid, current.file, current.offset);
+                logmsg(LOGMSG_DEBUG, "%u: setting newsc genid %llx lsn=[%u][%u] on addindex conflict\n",
+                       (unsigned int)pthread_self(), genid, current.file, current.offset);
 #endif
-                    set_redo_genid(data, ngenid, &current);
-                    rc = 0;
-                    goto done;
-                } else
-                    sc_client_error(data->s, "unable to add record rc = %d", rc);
-            }
+                set_redo_genid(data, ngenid, &current);
+                rc = 0;
+                goto done;
+            } else
+                sc_convert_error(data->s, "unable to add record rc = %d", rc);
             logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
                    __func__, __LINE__, rc,
                    errstat_get_str(&(data->iq.errstat)));
@@ -3369,8 +3365,7 @@ again:
             rc = -1;
             goto done;
         }
-        if (gbl_sc_abort || data->from->sc_abort ||
-            (data->s->iq && data->s->iq->sc_should_abort)) {
+        if (gbl_sc_abort || data->from->sc_abort || sc_is_aborting(data->s)) {
             sc_errf(data->s, "[%s] Logical redo aborted\n", data->s->tablename);
             rc = -1;
             goto done;
@@ -3556,14 +3551,14 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                                   sizeof(unsigned long long));
     if (!data->blob_hash) {
         logmsg(LOGMSG_ERROR, "%s: failed to init blob hash\n", __func__);
-        s->iq->sc_should_abort = 1;
+        sc_set_should_abort(s);
         goto cleanup;
     }
 
     data->redo_genids = hash_init(sizeof(unsigned long long));
     if (!data->redo_genids) {
         logmsg(LOGMSG_ERROR, "%s: failed to init redo_genids hash\n", __func__);
-        s->iq->sc_should_abort = 1;
+        sc_set_should_abort(s);
         goto cleanup;
     }
 
@@ -3577,7 +3572,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     if (!data->dta_buf || !data->old_dta_buf || !data->unpack_dta_buf ||
         !data->unpack_old_dta_buf) {
         logmsg(LOGMSG_ERROR, "%s: failed to malloc buffer\n", __func__);
-        s->iq->sc_should_abort = 1;
+        sc_set_should_abort(s);
         goto cleanup;
     }
     bzero(data->freeblb, sizeof(data->freeblb));
@@ -3613,8 +3608,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         }
 
         /* abort schema change if we need to */
-        if (gbl_sc_abort || data->from->sc_abort || s->sc_thd_failed ||
-            (s->iq && s->iq->sc_should_abort)) {
+        if (gbl_sc_abort || data->from->sc_abort || s->sc_thd_failed || sc_is_aborting(s)) {
             sc_errf(s,
                     "[%s] Stoping work on logical redo because we are told to "
                     "abort\n",
@@ -3696,7 +3690,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     logmsg(LOGMSG_DEBUG, "%s %u logical redo failed to find [%u:%u]\n", __func__, __LINE__,
                            redo->lsn.file, redo->lsn.offset);
 #endif
-                    s->iq->sc_should_abort = 1;
+                    sc_set_should_abort(s);
                     goto cleanup;
                 }
                 if (redo->txnid != pCur->log->txnid) {
@@ -3711,7 +3705,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                            "expect txnid %x, got %x\n",
                            __func__, __LINE__, redo->lsn.file, redo->lsn.offset, redo->txnid, pCur->log->txnid);
 #endif
-                    s->iq->sc_should_abort = 1;
+                    sc_set_should_abort(s);
                     goto cleanup;
                 }
             }
@@ -3722,7 +3716,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                 logmsg(LOGMSG_DEBUG, "%s %u logical redo failed at [%u:%u]\n", __func__, __LINE__, redo->lsn.file,
                        redo->lsn.offset);
 #endif
-                s->iq->sc_should_abort = 1;
+                sc_set_should_abort(s);
                 goto cleanup;
             }
             if (pCur->log && !pCur->hitLast) {
@@ -3732,7 +3726,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     sc_errf(s, "[%s] logical redo failed at [%u:%u]\n",
                             s->tablename, pCur->curLsn.file,
                             pCur->curLsn.offset);
-                    s->iq->sc_should_abort = 1;
+                    sc_set_should_abort(s);
                     goto cleanup;
                 }
                 assert(pCur->log == NULL /* i.e. consumed */);
@@ -3818,7 +3812,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         struct redo_genid_lsns *redo_lsns;
         int bdberr;
         sc_printf(s, "[%s] Index conflict detected from redo thread\n", s->tablename);
-        s->iq->sc_should_abort = 1;
+        sc_set_should_abort(s);
         if (rc == 0) {
             rc = ERR_INDEX_CONFLICT;
         }
