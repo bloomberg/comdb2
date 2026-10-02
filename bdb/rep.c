@@ -2588,15 +2588,19 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         if (h->coherent_state == STATE_INCOHERENT ||
             h->coherent_state == STATE_INCOHERENT_WAIT) {
             if (bdb_state->callback->nodeup_drtest_rtn) {
-                if ((nodeup = bdb_state->callback->nodeup_drtest_rtn(bdb_state, host, &is_drtest)) || is_drtest != 0) {
+                nodeup = bdb_state->callback->nodeup_drtest_rtn(bdb_state, host, &is_drtest);
+                int in_penalty = downgrade_penalty && (gettimeofday_ms() - h->last_downgrade_time) <= downgrade_penalty;
+                /* A node already INCOHERENT_WAIT stays there while it is dr-tested offline
+                 * or within the downgrade penalty: nothing to re-evaluate on its acks */
+                int stay_waiting = h->coherent_state == STATE_INCOHERENT_WAIT && ((!nodeup && is_drtest) || in_penalty);
+                if ((nodeup || is_drtest != 0) && !stay_waiting) {
                     rc = bdb_wait_for_seqnum_from_node_nowait_int(
                         bdb_state, &m->seqnum, hostinterned);
                     if (rc == 0) {
                         /* prevent a node from becoming coherent for at least
                          * downgrade_penalty seconds after an event that would
                          * delay commits (the last downgrade) */
-                        if ((!nodeup && is_drtest) ||
-                            (downgrade_penalty && (gettimeofday_ms() - h->last_downgrade_time) <= downgrade_penalty)) {
+                        if ((!nodeup && is_drtest) || in_penalty) {
                             set_coherent_state(bdb_state, hostinterned, STATE_INCOHERENT_WAIT, __func__, __LINE__);
                         } else {
                             /* dont send here under lock */
