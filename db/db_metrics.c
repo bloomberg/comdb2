@@ -69,6 +69,7 @@ struct comdb2_metrics_store {
     double queue_depth;
     double concurrent_sql;
     double concurrent_connections;
+    int64_t active_connections;
     int64_t ismaster;
     uint64_t num_sc_done;
     int64_t last_checkpoint_ms;
@@ -173,6 +174,8 @@ static struct comdb2_metrics_store stats;
   Please keep'em sorted.
 */
 comdb2_metric gbl_metrics[] = {
+    {"active_connections", "Number of client connections queued, running, or idle in a transaction", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.active_connections, NULL},
     {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits,
      NULL},
     {"cache_misses", "Buffer pool misses", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_misses,
@@ -626,6 +629,7 @@ int refresh_metrics(void)
     stats.sql_count = gbl_nsql + gbl_nnewsql;
     stats.sql_ssl_count = gbl_nnewsql_ssl;
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+    stats.active_connections = get_active_connections();
 
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
                                &stats.locks_aborted, &stats.lockwaits,

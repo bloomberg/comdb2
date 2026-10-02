@@ -1,0 +1,2 @@
+# One SQL thread, so a second query has to queue
+sqlenginepool maxt 1

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# active_connections in comdb2_metrics counts client connections that are
+# queued, running, or idle inside a client transaction.
+
+dbnm=$1
+export CDB2_DISABLE_SOCKPOOL=1
+
+host=$(echo $CLUSTER | awk '{print $1}')
+if [[ -n "$host" ]]; then
+    hostflags="--host $host"
+else
+    hostflags=""
+fi
+r="${CDB2SQL_EXE} -s -tabs ${CDB2_OPTIONS} $dbnm default $hostflags"
+# Admin queries skip the SQL queue, so reads still work while the only SQL thread is busy
+admin="${CDB2SQL_EXE} -admin -s -tabs ${CDB2_OPTIONS} $dbnm default $hostflags"
+
+failexit() {
+    echo "Failed: $1"
+    exit 1
+}
+
+# Wait until active_connections equals $1. The query reading it is itself running, so it counts.
+wait_active() {
+    local want=$1 got
+    for i in $(seq 1 50); do
+        got=$($admin "select value from comdb2_metrics where name='active_connections'")
+        [[ "$got" == "$want" ]] && return 0
+        sleep 0.2
+    done
+    failexit "active_connections is $got, expected $want"
+}
+
+# Wait until file $2 contains $1
+wait_output() {
+    for i in $(seq 1 50); do
+        grep -q "$1" "$2" && return 0
+        sleep 0.2
+    done
+    failexit "never saw $1 in $2"
+}
+
+wait_active 1
+
+# An idle connection outside a transaction: not counted
+idlefifo=./idle.fifo; idleout=./idle.out
+rm -f $idlefifo; mkfifo $idlefifo
+$r < $idlefifo > $idleout 2>&1 &
+exec 3> $idlefifo
+echo "select 'idle_ready'" >&3
+wait_output idle_ready $idleout
+wait_active 1
+
+# A running query and a queued one behind it: both counted
+$r "select sleep(5)" > /dev/null &
+runpid=$!
+wait_active 2
+$r "select sleep(1)" > /dev/null &
+queuedpid=$!
+wait_active 3
+n=$($admin "select count(*) from comdb2_connections where state='queued'")
+[[ "$n" == "1" ]] || failexit "expected 1 queued connection, got $n"
+wait $runpid $queuedpid
+wait_active 1
+
+# An idle connection inside a transaction: counted
+txnfifo=./txn.fifo; txnout=./txn.out
+rm -f $txnfifo; mkfifo $txnfifo
+$r < $txnfifo > $txnout 2>&1 &
+exec 4> $txnfifo
+echo "begin" >&4
+echo "select 'txn_ready'" >&4
+wait_output txn_ready $txnout
+wait_active 2
+
+n=$($admin "select count(*) from comdb2_connections where state='idle_in_trans'")
+[[ "$n" == "1" ]] || failexit "expected 1 idle_in_trans connection, got $n"
+
+# Once the transaction ends the connection is plain idle again
+echo "commit" >&4
+echo "select 'txn_done'" >&4
+wait_output txn_done $txnout
+wait_active 1
+
+exec 3>&- 4>&-
+wait
+echo "Success"

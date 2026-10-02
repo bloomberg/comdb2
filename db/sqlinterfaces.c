@@ -6204,10 +6204,30 @@ static const char* connstate_str(enum connection_state s) {
     }
 }
 
+/* Client connections that are queued, running, or idle inside a client transaction */
+static int32_t active_connections = 0;
+
+/* Call with state_lk held */
+static void update_active_connection(struct sqlclntstate *clnt)
+{
+    int active = clnt->in_sql_evbuffers && (clnt->state == CONNECTION_QUEUED || clnt->state == CONNECTION_RUNNING ||
+                                            (clnt->state == CONNECTION_IDLE && in_client_trans(clnt)));
+    if (active != clnt->in_active_count) {
+        ATOMIC_ADD32(active_connections, active ? 1 : -1);
+        clnt->in_active_count = active;
+    }
+}
+
+int get_active_connections(void)
+{
+    return ATOMIC_LOAD32(active_connections);
+}
+
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
     clnt->state_start_time = comdb2_time_epochms();
     Pthread_mutex_lock(&clnt->state_lk);
     clnt->state = state;
+    update_active_connection(clnt);
     Pthread_mutex_unlock(&clnt->state_lk);
 }
 
@@ -6797,6 +6817,10 @@ void add_sql_evbuffer(struct sqlclntstate *clnt)
     Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_INSERT_TAIL(&sql_evbuffers, clnt, sql_entry);
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
+    Pthread_mutex_lock(&clnt->state_lk);
+    clnt->in_sql_evbuffers = 1;
+    update_active_connection(clnt);
+    Pthread_mutex_unlock(&clnt->state_lk);
 }
 
 void rem_sql_evbuffer(struct sqlclntstate *clnt)
@@ -6804,6 +6828,10 @@ void rem_sql_evbuffer(struct sqlclntstate *clnt)
     Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_REMOVE(&sql_evbuffers, clnt, sql_entry);
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
+    Pthread_mutex_lock(&clnt->state_lk);
+    clnt->in_sql_evbuffers = 0;
+    update_active_connection(clnt);
+    Pthread_mutex_unlock(&clnt->state_lk);
 }
 
 void init_lru_evbuffer(struct sqlclntstate *clnt)
