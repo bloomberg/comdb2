@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+# A snapshot reader's overflow chains are not covered by any leaf lock once the snapshot leaf diverges
+# from the live one.  Stall a snapshot read in the middle of copying an overflow page (test tunable
+# snapcur_ovfl_copy_sleep_ms), then free and reuse that page.  The writer must wait on the reader's page
+# lock, and the reader must get the old blob rather than a torn page.  The blob btree is collapsed first,
+# so that with early lock release off the row is no longer on the leaf the reader locks.
+# Runs on the master and on a replica.
+db=$1
+stall=5000
+
+fail() { echo "FAIL: $*"; exit 1; }
+
+race() {
+    local h=$1 tbl=$2 i l got want t0 ms
+    local sql="cdb2sql -s ${CDB2_OPTIONS} -tabs $db --host $h"
+
+    $sql "create table $tbl(id int primary key, b blob)" > /dev/null || fail "create $tbl"
+    for i in $(seq 1 400); do
+        echo "insert into $tbl values($i, randomblob(2000))"
+    done | $sql - > /dev/null || fail "insert into $tbl"
+    want=$($sql "select checksum_md5(b) from $tbl where id = 1")
+
+    # Snapshot session: statements in on fd 3, one reply line per select out on fd 4
+    rm -f $tbl.in $tbl.out; mkfifo $tbl.in $tbl.out
+    stdbuf -oL $sql - < $tbl.in > $tbl.out 2>&1 &
+    exec 3>$tbl.in 4<$tbl.out
+    echo "set transaction snapshot isolation" >&3; echo "begin" >&3
+    echo "select count(*) from $tbl" >&3
+    read -t 30 -r -u 4 l || fail "$h: no reply from snapshot session"
+
+    # Empty every leaf but the first: the blob btree collapses into its root
+    $sql "delete from $tbl where id > 50" > /dev/null || fail "delete from $tbl"
+    $sql "put tunable snapcur_ovfl_copy_sleep_ms $stall" > /dev/null || fail "put tunable"
+    echo "select checksum_md5(b) from $tbl where id = 1" >&3
+    sleep 1
+
+    # The reader is stalled copying row 1's overflow page: free the page, then reuse it
+    t0=$(date +%s%N)
+    $sql "update $tbl set b = randomblob(2000) where id = 1" > /dev/null || fail "update $tbl"
+    ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+    for i in $(seq 1001 1020); do
+        echo "insert into $tbl values($i, randomblob(2000))"
+    done | $sql - > /dev/null || fail "insert into $tbl"
+
+    read -t 30 -r -u 4 got || fail "$h: no reply from snapshot session"
+    $sql "put tunable snapcur_ovfl_copy_sleep_ms 0" > /dev/null
+    echo "commit" >&3; echo "quit" >&3
+    exec 3>&- 4<&-; wait
+
+    echo "$h ($tbl): update waited ${ms}ms; snapshot read $got, expected $want"
+    [[ "$got" == "$want" ]] || fail "$h: snapshot read of an overflow page raced with a writer"
+    [[ $ms -ge 2000 ]] || fail "$h: writer did not wait for the reader's page copy"
+}
+
+trap 'kill $(jobs -p) 2>/dev/null; rm -f *.in *.out' EXIT
+sql="cdb2sql -s ${CDB2_OPTIONS} -tabs $db default"
+master=$($sql "select host from comdb2_cluster where is_master='Y'")
+replica=$($sql "select host from comdb2_cluster where is_master='N' limit 1")
+race ${master:-$($sql "select comdb2_host()")} t2
+[[ -n "$replica" ]] && race $replica t3
+echo "Success"

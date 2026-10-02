@@ -117,6 +117,21 @@ int gbl_check_sparse_files = 0;
 #define CHECK_ALLOC_PAGE_LSN(x) 
 #endif
 
+/*
+ * __db_lock_page_write -- Write-lock a page snapshot readers may reach through an older tree.
+ *
+ * PUBLIC: int __db_lock_page_write __P((DBC *, db_pgno_t));
+ */
+int
+__db_lock_page_write(DBC *dbc, db_pgno_t pgno)
+{
+	DB_LOCK lock;
+
+	if (dbc->txn == NULL)
+		return (0);
+	return (__db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &lock));
+}
+
 /* We already have the metapage locked. */
 static int
 __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
@@ -144,6 +159,8 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	}
 
 	pgno = meta->free;
+	if ((ret = __db_lock_page_write(dbc, pgno)) != 0)
+		goto err;
 	if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
 		goto err;
 
@@ -588,6 +605,8 @@ __db_new_original(dbc, type, pagepp)
 		extend = 1;
 	} else {
 		pgno = meta->free;
+		if ((ret = __db_lock_page_write(dbc, pgno)) != 0)
+			goto err;
 		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
 			goto err;
 
@@ -932,7 +951,8 @@ __db_lget(dbc, action, pgno, mode, lkflags, lockp)
 	    !LOCKING_ON(dbenv) || F_ISSET(dbc, DBC_COMPENSATE) ||
 	    (F_ISSET(dbc, DBC_RECOVER) &&
 	    (action != LCK_ROLLBACK || IS_REP_CLIENT(dbenv))) ||
-	    (action != LCK_ALWAYS && F_ISSET(dbc, DBC_OPD))) {
+	    (action != LCK_ALWAYS &&
+	    (F_ISSET(dbc, DBC_OPD) || SNAPCUR_EARLY_LOCK_RELEASE(dbc)))) {
 		LOCK_INIT(*lockp);
 		return (0);
 	}

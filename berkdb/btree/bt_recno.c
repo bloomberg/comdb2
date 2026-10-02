@@ -535,7 +535,7 @@ retry:	switch (flags) {
 
 		if (flags == DB_GET_BOTH ||
 		    flags == DB_GET_BOTHC || flags == DB_GET_BOTH_RANGE) {
-			if ((ret = __bam_cmp(dbp, data,
+			if ((ret = __bam_cmp(dbc, dbp, data,
 			    cp->page, cp->indx, __bam_defcmp, &cmp)) != 0)
 				return (ret);
 			if (cmp == 0)
