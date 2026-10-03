@@ -612,8 +612,13 @@ void *clean_exit_thd(void *unused)
 {
     comdb2_name_thread(__func__);
     thrman_register(THRTYPE_CLEANEXIT);
-    if (!gbl_ready)
+    /* Pairs with check_exit_requested_at_ready: set the flag before reading gbl_ready */
+    gbl_exit_requested = 1;
+    __sync_synchronize();
+    if (!gbl_ready) {
+        logmsg(LOGMSG_USER, "exit requested before db is ready, startup will exit\n");
         return NULL;
+    }
 
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
@@ -628,6 +633,30 @@ void *clean_exit_thd(void *unused)
 
     clean_exit();
     return NULL;
+}
+
+static void start_clean_exit_thd(void)
+{
+    pthread_t thread_id;
+    pthread_attr_t thd_attr;
+
+    Pthread_attr_init(&thd_attr);
+    /* Stack overflows with 128KiB stack size in Debug build.
+       Slightly bump it up. */
+    Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
+    Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+    Pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
+    Pthread_attr_destroy(&thd_attr);
+}
+
+/* Call after setting gbl_ready: start the clean exit an earlier request couldn't */
+void check_exit_requested_at_ready(void)
+{
+    __sync_synchronize();
+    if (gbl_exit_requested) {
+        logmsg(LOGMSG_USER, "exit was requested during startup, exiting\n");
+        start_clean_exit_thd();
+    }
 }
 
 static void *getschemalk(void *arg)
@@ -670,17 +699,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
     if (tokcmp(tok, ltok, "exit") == 0) {
         logmsg(LOGMSG_USER, "requested exit...\n");
-
-        pthread_t thread_id;
-        pthread_attr_t thd_attr;
-
-        Pthread_attr_init(&thd_attr);
-        /* Stack overflows with 128KiB stack size in Debug build.
-           Slightly bump it up. */
-        Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
-        Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-        Pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
-        Pthread_attr_destroy(&thd_attr);
+        start_clean_exit_thd();
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 

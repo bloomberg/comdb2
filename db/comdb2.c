@@ -197,6 +197,7 @@ extern void set_dbdir(char *dir);
 extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
+extern void check_exit_requested_at_ready(void);
 extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
 /* How frequent metrics are refreshed, once per this many seconds */
 int gbl_update_metrics_interval = 5;
@@ -340,6 +341,7 @@ pid_t gbl_mypid;      /* my pid */
 char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
 int gbl_exit = 0;        /* exit requested.*/
+int gbl_exit_requested = 0; /* exit requested before ready; startup exits */
 int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
 int gbl_import_mode = 0; /* turn on import mode */
 char *gbl_import_table; /* Import table */
@@ -5983,6 +5985,7 @@ int main(int argc, char **argv)
     logmsg(LOGMSG_USER, "I AM READY.\n");
     increase_net_buf();
     gbl_ready = 1;
+    check_exit_requested_at_ready();
 
     pthread_t timer_tid;
     pthread_attr_t timer_attr;
