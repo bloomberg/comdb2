@@ -1354,6 +1354,7 @@ struct ireq {
     int luxref;
     uint8_t osql_rowlocks_enable;
     uint8_t osql_genid48_enable;
+    uint8_t sc_skip_commit_map; /* rebuild converter: omit commit-map entries */
 
     int commit_file;
     int commit_offset;

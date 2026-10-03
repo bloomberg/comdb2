@@ -86,7 +86,7 @@ static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t 
 	ret = 0;
 
 	LOGCOPY_32(&rectype, data);
-	
+
 	if ((utxnid_logged = normalize_rectype(&rectype)) != 1) {
 		ret = 1;
 		goto done;
@@ -130,7 +130,7 @@ static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t 
 		case DB___bam_cadjust:
 		   *apply = __bam_cadjust_snap_recover;
 		   break;
-		case DB___bam_cdel: 
+		case DB___bam_cdel:
 		   *apply = __bam_cdel_snap_recover;
 		   break;
 		case DB___bam_prefix:
@@ -148,23 +148,23 @@ static int __mempv_read_log_record(void *ptr, recovery_func_t *apply, u_int64_t 
 			ret = 1;
 			break;
 	}
-done:		
+done:
 	return ret;
 }
 
 /*
  * __mempv_fget --
- * Gets a page from the file after unrolling all modifications 
+ * Gets a page from the file after unrolling all modifications
  * to the page made by transactions that committed after the target lsn.
  * Callers should never write to these pages.
  *
- * This function never modifies the actual page. "Unrolling" is done 
+ * This function never modifies the actual page. "Unrolling" is done
  * on a copy of the page.
  *
  * mpf: Memory pool file.
  * dbp: Open db.
  * pgno: Page number.
- * target_lsn: Modifications to the page made by any transaction that committed after this LSN will be unwound. 
+ * target_lsn: Modifications to the page made by any transaction that committed after this LSN will be unwound.
  * last_checkpoint_lsn: Checkpoint preceding the target LSN.
  * ret_page: This gets set to point to the page at the target version.
  * flags: See `memp_fget` flags.
@@ -256,7 +256,7 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 			}
 		} else {
 			memcpy(bhp, ((char*)page) - offsetof(BH, buf), offsetof(BH, buf) + dbp->pgsize);
-			bhp->is_copy = 1; 
+			bhp->is_copy = 1;
 
 			if ((ret = __memp_fput(mpf, page, 0)) != 0) {
 				__mempv_logmsg(LOGMSG_ERROR, caller_id,
@@ -272,7 +272,7 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 	}
 
 	DB_LSN current_lsn = initial_lsn;
-	while (!found) 
+	while (!found)
 	{
 		if (PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, current_lsn)) {
 			if (mempv_debug) {
@@ -290,7 +290,7 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 			ret = 1;
 			goto err;
 		}
-		
+
 		ret = __log_c_get(logc, &current_lsn, &dbt, DB_SET);
 		if (ret || (dbt.size < sizeof(int))) {
 			__mempv_logmsg(LOGMSG_ERROR, caller_id,

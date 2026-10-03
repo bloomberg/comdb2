@@ -1399,6 +1399,13 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         sc = iq->sc;
     }
 
+    /* Before the schema lock: the checkpoint waits for transactions that may
+     * need the schema lock themselves. */
+    for (sc = iq->sc_pending; rc == 0 && sc != NULL; sc = sc->sc_next) {
+        if (establish_sc_commit_map_checkpoint(sc) != 0)
+            rc = ERR_SC;
+    }
+
     if (rc) {
         /* IFF the schema changes are NOT aborted, clean in-mem structures but
          * leave persistent and replicated changes (llmeta, new btree-s) so
@@ -1560,6 +1567,11 @@ void *resume_sc_multiddl_txn_finalize(void *p)
         logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
                __func__);
         goto abort_sc;
+    }
+
+    for (sc = iq->sc_pending; sc != NULL; sc = sc->sc_next) {
+        if (establish_sc_commit_map_checkpoint(sc) != 0)
+            goto abort_sc;
     }
 
     int rc;

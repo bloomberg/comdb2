@@ -1,0 +1,4 @@
+utxnid_log on
+enable_snapshot_isolation
+sc_commit_map_skip 1
+setattr SC_RESUME_AUTOCOMMIT 0

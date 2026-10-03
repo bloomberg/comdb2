@@ -301,6 +301,7 @@ static int trans_start_int(struct ireq *iq, tran_type *parent_trans,
 
     if (*out_trans != NULL) {
         bdb_tran_set_is_sc_rebuild(*out_trans, (iq->opcode == OP_REBUILD));
+        bdb_tran_set_sc_skip_commit_map(*out_trans, iq->sc_skip_commit_map);
         if (iq->sorese && iq->sorese->dist_txnid) {
             extern int gbl_debug_disttxn_trace;
             assert(iq->sorese->dist_timestamp > 0);
