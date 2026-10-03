@@ -119,6 +119,7 @@ extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
 extern int gbl_exit;
+extern int gbl_exit_requested;
 extern int gbl_fullrecovery;
 extern int gbl_import_mode;
 extern char *gbl_myhostname;
@@ -2094,6 +2095,15 @@ static void catchup_trickle_sleep(bdb_state_type *bdb_state, int secs)
         poll(NULL, 0, left);
 }
 
+/* Honor an exit requested before the db is ready; clean_exit can't run until then */
+static void exit_if_requested_during_startup(const char *where)
+{
+    if (gbl_exit_requested) {
+        logmsg(LOGMSG_USER, "exit requested while %s, exiting\n", where);
+        exit(0);
+    }
+}
+
 /* but don't be verbose unless something changes. */
 static int print_catchup_message(bdb_state_type *bdb_state, int phase,
                                  DB_LSN *our_lsn, DB_LSN *master_lsn,
@@ -3147,6 +3157,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 /* do not proceed until we find a master */
 waitformaster:
     while (bdb_state->repinfo->master_host == db_eid_invalid) {
+        exit_if_requested_during_startup("waiting for a master");
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
         sleep(3);
     }
@@ -3182,6 +3193,7 @@ waitformaster:
        */
 
 again2:
+    exit_if_requested_during_startup("catching up");
     if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
         /* now loop till we are close */
         master_host = bdb_state->repinfo->master_host;
@@ -3258,6 +3270,8 @@ done2:
         while (1) {
             lsn_cmp_type lsn_cmp;
             uint8_t p_lsn_cmp[BDB_LSN_CMP_TYPE_LEN], *p_buf, *p_buf_end;
+
+            exit_if_requested_during_startup("catching up (phase 3)");
 
             master_host = bdb_state->repinfo->master_host;
             if (master_host == myhost)
@@ -3350,6 +3364,7 @@ done2:
       */
 
 again:
+    exit_if_requested_during_startup("catching up (phase 4)");
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
     if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
@@ -3384,6 +3399,7 @@ again:
 
     /* If I'm not the master and I haven't passed rep verify, wait here. */
     while (bdb_state->repinfo->master_host != myhost && !gbl_passed_repverify) {
+        exit_if_requested_during_startup("waiting for rep_verify");
         sleep(1);
         logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
     }
