@@ -1685,7 +1685,7 @@ REGISTER_TUNABLE("rep_getlock_latency",
                  "Sleep on replicant before getting locks.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_getlock_latencyms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("inmem_repdb", "Use in memory structure for repdb (Default: off)", TUNABLE_BOOLEAN, &gbl_inmem_repdb,
+REGISTER_TUNABLE("inmem_repdb", "Use in memory structure for repdb (Default: on)", TUNABLE_BOOLEAN, &gbl_inmem_repdb,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog",
                  "Maximum records for in-memory replist.  "

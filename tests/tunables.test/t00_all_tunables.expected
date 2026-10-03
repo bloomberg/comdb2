@@ -465,7 +465,7 @@
 (name='init_with_rowlocks_master_only', description='Enables row-locks for the database (master-only). (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='init_with_time_based_genids', description='Enables time-based GENIDs', type='BOOLEAN', value='OFF', read_only='Y')
 (name='inline_mtraps', description='inline_mtraps', type='BOOLEAN', value='OFF', read_only='N')
-(name='inmem_repdb', description='Use in memory structure for repdb (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='inmem_repdb', description='Use in memory structure for repdb (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='inmem_repdb_maxlog', description='Maximum records for in-memory replist.  (Default: 1000)', type='INTEGER', value='1000', read_only='Y')
 (name='inmem_repdb_most_recent', description='Toggles storing the most-recent N records (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='instant_schema_change', description='When possible (eg: when just adding fields) schema change will not rebuild the underlying tables. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')

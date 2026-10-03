@@ -88,7 +88,7 @@ int gbl_replicant_poll_on_sc = 0;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 0;
 int gbl_disable_repdb = 0;
-int gbl_inmem_repdb = 0;
+int gbl_inmem_repdb = 1;
 int gbl_debug_inmem_repdb = 0;
 int gbl_inmem_repdb_most_recent = 0;
 int gbl_periodic_rep_report = 1;
@@ -8558,6 +8558,21 @@ __truncate_repdb(dbenv)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+	/* An in-memory repdb has no rep_db handle: clear its queue instead */
+	if (gbl_inmem_repdb) {
+		DB_LOG *dblp = dbenv->lg_handle;
+		LOG *lp = dblp->reginfo.primary;
+
+		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+		__truncate_inmem_repdb(dbenv);
+		/* Nothing is queued now: a stale waiting_lsn would dequeue from an empty list */
+		ZERO_LSN(lp->waiting_lsn);
+		rep->stat.st_log_queued = 0;
+		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+		reset_rep_all_req_dedup_counters();
+		return 0;
+	}
 
 	if ((!F_ISSET(rep, REP_ISCLIENT) && !gbl_is_physical_replicant) || !db_rep->rep_db) {
 				logmsg(LOGMSG_FATAL, "%s:%d returning DB_NOTFOUND\n", __func__, __LINE__);
