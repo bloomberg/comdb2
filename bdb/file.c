@@ -2070,6 +2070,29 @@ const uint8_t *bdb_lsn_cmp_type_get(lsn_cmp_type *p_lsn_cmp_type,
     return p_buf;
 }
 
+static int64_t monotonic_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* Startup catch-up runs before the memp trickle thread exists: trickle here instead of idling */
+static void catchup_trickle_sleep(bdb_state_type *bdb_state, int secs)
+{
+    int64_t end = monotonic_ms() + secs * 1000, left;
+    int nwrote, rc;
+    do {
+        /* Hold the bdb lock like memp_trickle_thread, so rep-verify recovery excludes us */
+        nwrote = 0;
+        BDB_READLOCK("catchup_trickle");
+        rc = bdb_state->dbenv->memp_trickle(bdb_state->dbenv, bdb_state->attr->memptricklepercent, &nwrote, 1);
+        BDB_RELLOCK();
+    } while (rc == 0 && nwrote > 0 && monotonic_ms() < end);
+    if ((left = end - monotonic_ms()) > 0)
+        poll(NULL, 0, left);
+}
+
 /* but don't be verbose unless something changes. */
 static int print_catchup_message(bdb_state_type *bdb_state, int phase,
                                  DB_LSN *our_lsn, DB_LSN *master_lsn,
@@ -3195,7 +3218,7 @@ again2:
         count++;
 
         if (our_lsn.file != master_lsn.file) {
-            sleep(1);
+            catchup_trickle_sleep(bdb_state, 1);
             goto again2;
         }
 
@@ -3204,7 +3227,7 @@ again2:
 
         int thresh = debug_switch_rep_verify_req_delay() ? 32 : 4096;
         if ((master_lsn.offset - our_lsn.offset) >= thresh) {
-            sleep(1);
+            catchup_trickle_sleep(bdb_state, 1);
             goto again2;
         }
     }
@@ -3273,7 +3296,7 @@ done2:
             logmsg(LOGMSG_DEBUG, "catching up (3):: us LSN: %s\n",
                     lsn_to_str(our_lsn_str, &our_lsn));
 
-            sleep(5);
+            catchup_trickle_sleep(bdb_state, 5);
         }
     done3:
         logmsg(LOGMSG_DEBUG, "phase 3 replication catchup passed\n");
