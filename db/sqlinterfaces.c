@@ -6285,6 +6285,12 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         *errstr = sqlite3_errmsg(sqldb);
         break;
 
+    case SQLITE_AUTH:
+        /* vtab access check fails at step time; report it as an access error */
+        rc = SQLITE_ACCESS;
+        *errstr = sqlite3_errmsg(sqldb);
+        break;
+
     case SQLITE_ACCESS:
     case SQLITE_READONLY:
         *errstr = errstat_get_str(&clnt->osql.xerr);
