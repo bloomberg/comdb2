@@ -1737,6 +1737,7 @@ extern int gbl_report_last;
 extern long gbl_report_last_n;
 extern long gbl_report_last_r;
 extern int gbl_exit;           /* exit requested.*/
+extern int gbl_exit_requested; /* exit requested before ready */
 extern int gbl_maxretries;     /* max retries on deadlocks */
 extern int gbl_maxblobretries; /* max retries on deadlocks */
 extern int
