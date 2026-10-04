@@ -348,6 +348,19 @@ static int sc_checkpoint_should_stop(void *arg)
     return get_stopsc(__func__, __LINE__) || gbl_sc_abort || (s->iq && s->iq->sc_should_abort);
 }
 
+/* bdb_downgrade waits for schema changes to stop, so it cannot run on the
+ * schema change thread itself. */
+static void *sc_checkpoint_transfer_master(void *unused)
+{
+    comdb2_name_thread(__func__);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+    bdb_transfermaster(thedb->bdb_env);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
+    return NULL;
+}
+
+/* Returns 0, SC_MASTER_DOWNGRADE if the new master should resume the schema
+ * change, or -1 if the schema change has to be backed out. */
 int establish_sc_commit_map_checkpoint(struct schema_change_type *s)
 {
     unsigned int checkpoint_file, checkpoint_offset;
@@ -363,6 +376,19 @@ int establish_sc_commit_map_checkpoint(struct schema_change_type *s)
                                      s->sc_commit_map_checkpoint_offset, &checkpoint_file, &checkpoint_offset,
                                      &floor_file, &floor_offset, gbl_sc_commit_map_checkpoint_timeout_ms,
                                      sc_checkpoint_should_stop, s, &bdberr) != 0) {
+        if (get_stopsc(__func__, __LINE__)) {
+            sc_errf(s, "Master downgrading during schema-change checkpoint; new master will resume\n");
+            return SC_MASTER_DOWNGRADE;
+        }
+        /* A transaction is holding the floor down: hand off to a master
+         * without it, which resumes the schema change. */
+        if (bdberr == BDBERR_TIMEOUT && !bdb_is_an_unconnected_master(thedb->bdb_env)) {
+            pthread_t tid;
+            sc_errf(s, "Schema-change checkpoint blocked for %d ms; transferring mastership\n",
+                    gbl_sc_commit_map_checkpoint_timeout_ms);
+            Pthread_create(&tid, &gbl_pthread_attr_detached, sc_checkpoint_transfer_master, NULL);
+            return SC_MASTER_DOWNGRADE;
+        }
         sc_errf(s, "Failed to establish schema-change checkpoint\n");
         return -1;
     }
@@ -499,6 +525,19 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     return 0;
 }
 
+/* Record a failed schema change so it is neither resumed nor left running. */
+static void mark_sc_aborted(struct ireq *iq, struct schema_change_type *s)
+{
+    int bdberr = 0;
+
+    mark_schemachange_over_tran(s->tablename, NULL); // non-tran ??
+    if (bdb_set_schema_change_status(NULL, s->tablename, iq->sc_seed, 0, NULL, 0, BDB_SC_ABORTED,
+                                     errstat_get_str(&iq->errstat), &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to set bdb schema change status, bdberr %d\n", __func__, bdberr);
+    }
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran)
 {
@@ -557,22 +596,22 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     } else if (rc) {
         if (rc == SC_ABORTED)
             errstat_set_strf(&iq->errstat, "Schema change was aborted");
-        mark_schemachange_over_tran(s->tablename, NULL); // non-tran ??
-        if (bdb_set_schema_change_status(
-                NULL, s->tablename, iq->sc_seed, 0, NULL, 0, BDB_SC_ABORTED,
-                errstat_get_str(&iq->errstat), &bdberr) ||
-            bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: failed to set bdb schema change status, bdberr %d\n",
-                   __func__, bdberr);
-        }
+        mark_sc_aborted(iq, s);
     } else if (s->preempted == SC_ACTION_RESUME ||
                s->kind == SC_ALTERTABLE_PENDING) {
         s->finalize = 0;
         rc = SC_COMMIT_PENDING;
     } else if (s->finalize) {
-        if ((rc = establish_sc_commit_map_checkpoint(s)) != 0)
+        if ((rc = establish_sc_commit_map_checkpoint(s)) != 0) {
+            if (rc == SC_MASTER_DOWNGRADE) {
+                errstat_set_strf(&iq->errstat, "Master node downgrading - new master will resume schemachange\n");
+            } else {
+                errstat_set_strf(&iq->errstat, "Failed to establish schema-change checkpoint");
+                backout_converted_sc(iq, s);
+                mark_sc_aborted(iq, s);
+            }
             goto end;
+        }
         int local_lock = 0;
         if (!iq->sc_locked) {
             wrlock_schema_lk();
