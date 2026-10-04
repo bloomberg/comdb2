@@ -31,7 +31,12 @@ function assert_vers
 {
     tbl=$1
     target=$2
-    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    # A replicant may not have applied the scdone yet: retry briefly
+    for i in $(seq 1 10) ; do
+        newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+        [[ $newver == $target ]] && break
+        sleep 1
+    done
     if [[ $newver != $target ]] ; then
         failexit "newver is now $newver but should be $target"
     fi
