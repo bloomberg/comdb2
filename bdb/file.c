@@ -87,6 +87,7 @@
 
 #include "endian_core.h"
 #include "bdb_osqltrn.h"
+#include "comdb2_atomic.h"
 
 #include "printformats.h"
 #include "util.h"
@@ -116,6 +117,7 @@
 #include <sqllogfill.h>
 
 extern int gbl_bdblock_debug;
+extern int gbl_test_file_version_deadlock;
 extern int gbl_keycompr;
 extern int gbl_early;
 extern int gbl_exit;
@@ -637,6 +639,11 @@ int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
                              stripenum, version_num, outbuf, buflen);
 }
 
+static int file_version_lookup_failed(int rc, int bdberr)
+{
+    return (rc || bdberr != BDBERR_NOERROR) && bdberr != BDBERR_DBEMPTY && bdberr != BDBERR_FETCH_DTA;
+}
+
 /*figures out what the version number is (if any) and calls form_file_name_ex*/
 static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
                           int is_data_file, int file_num, int isstriped,
@@ -645,6 +652,7 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
     unsigned long long version_num;
     int rc, bdberr;
     tran_type tran = {0};
+    int lookup_failed;
 
     tran.tid = tid;
 
@@ -654,6 +662,7 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
     else
         rc = bdb_get_file_version_index(bdb_state, &tran, file_num,
                                         &version_num, &bdberr);
+    lookup_failed = file_version_lookup_failed(rc, bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DBEMPTY) {
             /*fprintf( stderr, "Not using version numbers (or db is empty) for
@@ -674,9 +683,54 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
                     file_num);
     }
 
-    return form_file_name_ex(bdb_state, is_data_file, file_num,
-                             1 /*add_prefix*/, isstriped, stripenum,
-                             version_num, outbuf, buflen);
+    rc = form_file_name_ex(bdb_state, is_data_file, file_num,
+                           1 /*add_prefix*/, isstriped, stripenum,
+                           version_num, outbuf, buflen);
+
+    /* The fallback name is wrong for a versioned table: creating a file
+     * under it leaves replicants unable to find the file. */
+    return lookup_failed ? -1 : rc;
+}
+
+struct file_versions {
+    unsigned long long dta[MAXDTAFILES];
+    unsigned long long ix[MAXINDEX];
+};
+
+/* Concurrent llmeta writers (e.g. parallel shard creates) can make any
+ * llmeta read deadlock, even a re-read within the same txn.  Read each
+ * version once, before any handle is opened, so a deadlock can be retried. */
+static int fetch_file_versions(bdb_state_type *bdb_state, DB_TXN *tid,
+                               struct file_versions *v, int *bdberr)
+{
+    tran_type tran = {0};
+    int i, rc;
+
+    tran.tid = tid;
+
+    for (i = 0; i < bdb_state->numdtafiles; i++) {
+        rc = bdb_get_file_version_data(bdb_state, &tran, i, &v->dta[i], bdberr);
+        if (file_version_lookup_failed(rc, *bdberr))
+            return -1;
+        if (rc || *bdberr != BDBERR_NOERROR)
+            v->dta[i] = 0;
+    }
+    for (i = 0; i < bdb_state->numix; i++) {
+        rc = bdb_get_file_version_index(bdb_state, &tran, i, &v->ix[i], bdberr);
+        if (file_version_lookup_failed(rc, *bdberr))
+            return -1;
+        if (rc || *bdberr != BDBERR_NOERROR)
+            v->ix[i] = 0;
+    }
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+}
+
+static int datafile_is_striped(bdb_state_type *bdb_state, int dtanum)
+{
+    if (dtanum > 0)
+        return bdb_state->attr->blobstripe > 0;
+    return bdb_state->bdbtype == BDBTYPE_TABLE && bdb_state->attr->dtastripe > 0;
 }
 
 /* calls form_file_name for a datafile */
@@ -684,17 +738,9 @@ static int form_datafile_name(bdb_state_type *bdb_state, DB_TXN *tid,
                               int dtanum, int stripenum, char *outbuf,
                               size_t buflen)
 {
-    /*find out whether this db is striped*/
-    int isstriped = 0;
-    if (dtanum > 0) {
-        if (bdb_state->attr->blobstripe > 0)
-            isstriped = 1;
-    } else if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-               bdb_state->attr->dtastripe > 0)
-        isstriped = 1;
-
-    return form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum, isstriped,
-                          stripenum, outbuf, buflen);
+    return form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum,
+                          datafile_is_striped(bdb_state, dtanum), stripenum,
+                          outbuf, buflen);
 }
 
 /* calls form_file_name for an indexfile */
@@ -4244,6 +4290,7 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     tran_type tran = {0};
     DB_TXN *tmptid = NULL;
     DB_TXN *tid;
+    struct file_versions versions;
 
     if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name)) {
         *pbdberr = BDBERR_NOERROR;
@@ -4329,13 +4376,34 @@ deadlock_again:
             }
         }
 
+        int rc_versions;
+        if (tmp_tid && iammaster && create && gbl_test_file_version_deadlock > 0 &&
+            ATOMIC_ADD32(gbl_test_file_version_deadlock, -1) >= 0) {
+            *pbdberr = BDBERR_DEADLOCK;
+            rc_versions = -1;
+        } else {
+            rc_versions = fetch_file_versions(bdb_state, tid, &versions, pbdberr);
+        }
+        if (rc_versions) {
+            logmsg(LOGMSG_ERROR, "%s: file version lookup failed for %s, bdberr %d\n", __func__, bdb_state->name,
+                   *pbdberr);
+            tid->abort(tid);
+            *ptid = NULL;
+            if (tmp_tid && *pbdberr == BDBERR_DEADLOCK) {
+                tid = NULL;
+                goto deadlock_again;
+            }
+            return -1;
+        }
+
         for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
             for (strnum = bdb_get_datafile_num_files(bdb_state, dtanum) - 1;
                  strnum >= 0; strnum--) {
                 DB *dbp;
 
-                form_datafile_name(bdb_state, tid, dtanum, strnum, tmpname,
-                                   sizeof(tmpname));
+                form_file_name_ex(bdb_state, 1 /*is_data_file*/, dtanum, 1 /*add_prefix*/,
+                                  datafile_is_striped(bdb_state, dtanum), strnum, versions.dta[dtanum], tmpname,
+                                  sizeof(tmpname));
 
                 if (create) {
                     char new[PATH_MAX];
@@ -4670,7 +4738,8 @@ deadlock_again:
     if (bdbtype == BDBTYPE_TABLE) {
         /* set up the .ixN files */
         for (i = 0; i < bdb_state->numix; i++) {
-            form_indexfile_name(bdb_state, tid, i, tmpname, sizeof(tmpname));
+            form_file_name_ex(bdb_state, 0 /*is_data_file*/, i, 1 /*add_prefix*/, 0 /*isstriped*/,
+                              0 /*stripenum*/, versions.ix[i], tmpname, sizeof(tmpname));
 
             if (create) {
                 char new[PATH_MAX];

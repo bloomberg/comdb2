@@ -1228,6 +1228,9 @@ REGISTER_TUNABLE("test_blob_race", NULL, TUNABLE_INTEGER, &gbl_test_blob_race,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("test_trigger_deadlock", "Simulate deadlock in save_old_blobs for trigger testing", TUNABLE_INTEGER,
                  &gbl_test_trigger_deadlock, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_file_version_deadlock",
+                 "Simulate deadlock reading file versions while creating a table, for the next N creates",
+                 TUNABLE_INTEGER, &gbl_test_file_version_deadlock, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("test_scindex_deadlock",
                  "Test index on expressions schema change deadlock",
                  TUNABLE_BOOLEAN, &gbl_test_scindex_deadlock, READONLY, NULL,
