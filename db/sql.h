@@ -988,6 +988,8 @@ struct sqlclntstate {
     int ncontext;
     char **context;
 
+    void *trace; /* comdb2_trace handle */
+
     hash_t *ddl_tables;
     hash_t *dml_tables;
     hash_t *ddl_contexts;
@@ -1464,6 +1466,7 @@ int dispatch_sql_query_no_wait(struct sqlclntstate *);
 void sqlengine_appsock_done(struct sqlclntstate *);
 int send_run_error(struct sqlclntstate *, const char *err, int rc);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
+void clnt_trace_release(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects);

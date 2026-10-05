@@ -110,6 +110,12 @@ struct reqlogger {
     uint64_t startprcsus; /* processing start timestamp */
     uint64_t durationus;
     uint64_t queuetimeus;
+    int64_t timems; /* sql: prepare + execution */
+    int64_t prepms;
+    uint64_t pagein_start;    /* this thread's page-ins at request start */
+    uint64_t pagein_io_start;
+    uint64_t pagein;          /* page-ins during the request */
+    uint64_t pagein_io;
     int rc;
     int vreplays;
     char fingerprint[FINGERPRINTSZ];
