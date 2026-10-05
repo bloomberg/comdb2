@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+# Simulate deadlocks while the master creates time-partition shards. Each shard
+# must be retried and created under its versioned file names, else replicants
+# fail to open it and exit.
+
+bash -n "$0" || exit 1
+dbnm=$1
+
+ndeadlocks=5
+
+function failexit
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+function get_master
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"'
+}
+
+function nodes
+{
+    if [[ -n "$CLUSTER" ]]; then
+        echo $CLUSTER
+    else
+        get_master
+    fi
+}
+
+function master_log
+{
+    if [[ -n "$CLUSTER" ]]; then
+        echo "$TESTDIR/logs/$DBNAME.$(get_master).db"
+    else
+        echo "$TESTDIR/logs/$DBNAME.db"
+    fi
+}
+
+function count_retries
+{
+    grep -c "file version lookup failed" $(master_log)
+}
+
+function wait_for_retries
+{
+    local expected=$1
+    local i
+    for ((i = 0; i < 30; i++)); do
+        (( $(count_retries) >= expected )) && return 0
+        sleep 1
+    done
+    failexit "expected $expected file version retries in $(master_log), found $(count_retries)"
+}
+
+function check_all_nodes
+{
+    local tpt=$1
+    local retention=$2
+    local node shards rows
+
+    for node in $(nodes); do
+        shards=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select count(*) from comdb2_timepartshards where name='$tpt'") ||
+            failexit "$node is unavailable after creating $tpt"
+        [[ "$shards" == "$retention" ]] || failexit "$node has $shards shards for $tpt, expected $retention"
+        rows=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select count(*) from $tpt") ||
+            failexit "$node cannot read $tpt"
+        [[ "$rows" == "1" ]] || failexit "$node has $rows rows in $tpt, expected 1"
+    done
+}
+
+function test_retention
+{
+    local retention=$1
+    local tpt=tpt$retention
+    local master=$(get_master)
+
+    local before=$(count_retries)
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('test_file_version_deadlock $ndeadlocks')" >/dev/null
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "CREATE TABLE $tpt(a int PRIMARY KEY) PARTITIONED BY TIME PERIOD 'yearly' RETENTION $retention START '2000-01-01T UTC'" ||
+        failexit "create $tpt"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('test_file_version_deadlock 0')" >/dev/null
+    wait_for_retries $((before + ndeadlocks))
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "insert into $tpt values(1)" >/dev/null || failexit "insert into $tpt"
+    check_all_nodes $tpt $retention
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "DROP TABLE $tpt" || failexit "drop $tpt"
+}
+
+# Up to dohsql_sc_max_threads (8) shards are created in parallel; more are created serially.
+test_retention 8
+test_retention 12
+
+echo "Success"
