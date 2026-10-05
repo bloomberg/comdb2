@@ -921,7 +921,8 @@ __rep_grow_sites(dbenv, nsites)
 	REGENV *renv;
 	REGINFO *infop;
 	REP *rep;
-	int nalloc, ret, *tally;
+	REP_VTALLY *tally, *v2tally;
+	int n, nalloc, ret;
 
 	rep = ((DB_REP *)dbenv->rep_handle)->region;
 
@@ -941,43 +942,43 @@ __rep_grow_sites(dbenv, nsites)
 	 * We allocate 2 tally regions, one for tallying VOTE1's and
 	 * one for VOTE2's.  Always grow them in tandem, because if we
 	 * get more VOTE1's we'll always expect more VOTE2's then too.
+	 * If we can't allocate both, keep the old ones.
 	 */
 	if ((ret = __db_shalloc(infop->addr,
 			nalloc * sizeof(REP_VTALLY), sizeof(REP_VTALLY),
-			&tally)) == 0) {
-		if (rep->tally_off != INVALID_ROFF)
-			__db_shalloc_free(infop->addr,
-				R_ADDR(infop, rep->tally_off));
-		rep->tally_off = R_OFFSET(infop, tally);
-		if ((ret = __db_shalloc(infop->addr,
-				nalloc * sizeof(REP_VTALLY), sizeof(REP_VTALLY),
-				&tally)) == 0) {
-			/* Success */
-			if (rep->v2tally_off != INVALID_ROFF)
-				__db_shalloc_free(infop->addr,
-					R_ADDR(infop, rep->v2tally_off));
-			rep->v2tally_off = R_OFFSET(infop, tally);
-			rep->asites = nalloc;
-			rep->nsites = nsites;
-		} else {
-			/*
-			 * We were unable to allocate both.  So, we must
-			 * free the first one and reinitialize.  If
-			 * v2tally_off is valid, it is from an old
-			 * allocation and we are clearing it all out due
-			 * to the error.
-			 */
-			if (rep->v2tally_off != INVALID_ROFF)
-				__db_shalloc_free(infop->addr,
-					R_ADDR(infop, rep->v2tally_off));
-			__db_shalloc_free(infop->addr,
-				R_ADDR(infop, rep->tally_off));
-			rep->v2tally_off = rep->tally_off = INVALID_ROFF;
-			rep->asites = 0;
-			rep->nsites = 0;
-		}
+			&tally)) != 0)
+		goto err;
+	if ((ret = __db_shalloc(infop->addr,
+			nalloc * sizeof(REP_VTALLY), sizeof(REP_VTALLY),
+			&v2tally)) != 0) {
+		__db_shalloc_free(infop->addr, tally);
+		goto err;
 	}
-	MUTEX_UNLOCK(dbenv, &renv->mutex);
+
+	/*
+	 * Carry over the votes we have already tallied: rep->sites and
+	 * rep->votes keep counting them.  Losing them made __rep_tally count
+	 * the same voter twice (and miss our own vote), which let our
+	 * election write past the end of the tally.
+	 */
+	if (rep->tally_off != INVALID_ROFF) {
+		n = rep->sites < rep->asites ? rep->sites : rep->asites;
+		memcpy(tally, R_ADDR(infop, rep->tally_off),
+		    n * sizeof(REP_VTALLY));
+		__db_shalloc_free(infop->addr, R_ADDR(infop, rep->tally_off));
+	}
+	if (rep->v2tally_off != INVALID_ROFF) {
+		n = rep->votes < rep->asites ? rep->votes : rep->asites;
+		memcpy(v2tally, R_ADDR(infop, rep->v2tally_off),
+		    n * sizeof(REP_VTALLY));
+		__db_shalloc_free(infop->addr, R_ADDR(infop, rep->v2tally_off));
+	}
+	rep->tally_off = R_OFFSET(infop, tally);
+	rep->v2tally_off = R_OFFSET(infop, v2tally);
+	rep->asites = nalloc;
+	rep->nsites = nsites;
+
+err:	MUTEX_UNLOCK(dbenv, &renv->mutex);
 	return (ret);
 }
 
