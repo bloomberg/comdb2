@@ -149,6 +149,8 @@ static int cdb2_comdb2db_fallback = 1;
 static int cdb2_comdb2db_fallback_set_from_env = 0;
 static int cdb2_use_optional_identity = 1;
 static int cdb2_use_optional_identity_set_from_env = 0;
+static int cdb2_fail_on_identity_failure = 1;
+static int cdb2_fail_on_identity_failure_set_from_env = 0;
 static int cdb2_discard_unread_socket_data = 0;
 static int cdb2_discard_unread_socket_data_set_from_env = 0;
 static int cdb2_alarm_unread_socket_data = 0;
@@ -371,6 +373,7 @@ MAKE_CDB2API_TEST_SWITCH(fail_timeout_sockpool_send)
 MAKE_CDB2API_TEST_SWITCH(fail_ssl_negotiation_once)
 MAKE_CDB2API_TEST_SWITCH(fail_sslio_close_in_local_cache)
 MAKE_CDB2API_TEST_SWITCH(fail_local_cache_peek)
+MAKE_CDB2API_TEST_SWITCH(fail_identity)
 
 #define MAKE_CDB2API_TEST_COUNTER(name)                                                                                \
     static int name;                                                                                                   \
@@ -1698,6 +1701,8 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                                    &cdb2_comdb2db_fallback_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_USE_OPTIONAL_IDENTITY", &cdb2_use_optional_identity,
                                    &cdb2_use_optional_identity_set_from_env);
+        process_env_var_int("COMDB2_FEATURE_FAIL_ON_IDENTITY_FAILURE", &cdb2_fail_on_identity_failure,
+                            &cdb2_fail_on_identity_failure_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_DISCARD_UNREAD_SOCKET_DATA", &cdb2_discard_unread_socket_data,
                                    &cdb2_discard_unread_socket_data_set_from_env);
         process_env_var_str_on_off("COMDB2_FEATURE_ALARM_UNREAD_SOCKET_DATA", &cdb2_alarm_unread_socket_data,
@@ -1880,6 +1885,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
                     cdb2_use_optional_identity = value_on_off(tok, &err);
+            } else if (!cdb2_fail_on_identity_failure_set_from_env &&
+                       (strcasecmp("fail_on_identity_failure", tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    cdb2_fail_on_identity_failure = value_on_off(tok, &err);
             } else if (!cdb2_comdb2db_fallback_set_from_env && (strcasecmp("comdb2db_fallback", tok) == 0)) {
                 tok = strtok_r(NULL, " =:,", &last);
                 if (tok)
@@ -4693,12 +4703,24 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         if (cdb2_non_threaded_identity)
             flags |= CDB2_NON_THREADED_IDENTITY;
         id_blob = identity_cb->getIdentity(hndl, flags);
-        if (!id_blob) {
-            sprintf(hndl->errstr, "%s: IAM identity creation failed", __func__);
-            rc = -1;
-            goto after_callback;
+#ifdef CDB2API_TEST
+        /* Simulate a failed identity creation to exercise the hard-fail
+           path below. free(NULL) is a no-op, so this is safe regardless of
+           whether getIdentity allocated anything. */
+        if (fail_identity) {
+            free(id_blob->principal);
+            free(id_blob->data.data);
+            id_blob->principal = NULL;
+            id_blob->data.data = NULL;
         }
-        if (id_blob->data.data) {
+#endif
+        if (!id_blob || !id_blob->data.data) {
+            if (cdb2_fail_on_identity_failure) {
+                snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: IAM identity creation failed", __func__);
+                rc = CDB2ERR_ACCESS;
+                goto after_callback;
+            }
+        } else {
             sqlquery.identity = id_blob;
         }
     }
@@ -6316,6 +6338,12 @@ after_delay:
 #endif
     if (rc) {
         debugprint("cdb2_send_query rc = %d\n", rc);
+        /* Identity creation failure is not a transient
+          send error - do not retry, surface it to the client. errstr was
+          already set by cdb2_send_query. Only reachable when
+          comdb2_feature:fail_on_identity_failure is on. */
+        if (cdb2_fail_on_identity_failure && rc == CDB2ERR_ACCESS)
+            return rc;
         sprintf(hndl->errstr, "%s: Can't send query to the db", __func__);
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
