@@ -99,6 +99,7 @@
 #include <typessql.h>
 #include <sqlwriter.h>
 #include <crc32c.h>
+#include <comdb2_trace.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -1310,6 +1311,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     reqlog_set_vreplays(logger, clnt->verify_retries);
+    reqlog_set_time(logger, h->cost.time, h->cost.prepTime);
 
     if (clnt->saved_rc)
         reqlog_set_error(logger, clnt->saved_errstr, clnt->saved_rc);
@@ -4551,9 +4553,19 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
 #   endif
 }
 
+void clnt_trace_release(struct sqlclntstate *clnt)
+{
+    if (clnt->trace) {
+        gbl_trace_hooks->release(clnt->trace);
+        clnt->trace = NULL;
+    }
+}
+
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
     struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
+
+    clnt_trace_release(clnt);
 
     /* Clear the client from the sql thread, so that sql-dump won't see it. */
     if (thd) {
@@ -5337,6 +5349,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         handle_sql_intrans_unrecoverable_error(clnt);
     }
     _free_set_commands(clnt);
+    clnt_trace_release(clnt);
     if (clnt->rawnodestats) {
         release_node_stats(clnt->origin_argv0 ? clnt->origin_argv0 : clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
@@ -5504,6 +5517,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
             clnt->authz_write_tables = hash_init_str(0);
         }
     } else {
+       clnt_trace_release(clnt);
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();

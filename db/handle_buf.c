@@ -42,6 +42,7 @@
 #include "intern_strings.h"
 #include "logmsg.h"
 #include "transactionstate_systable.h"
+#include "comdb2_trace.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -573,6 +574,11 @@ static void *thd_req(void *vthd)
 
         // before acquiring next request, yield
         comdb2bma_yield_all();
+
+        if (thd->iq->trace) {
+            gbl_trace_hooks->release(thd->iq->trace);
+            thd->iq->trace = NULL;
+        }
 
         /*NEXT REQUEST*/
         LOCK(&lock)

@@ -98,6 +98,7 @@
 #include <comdb2_atomic.h>
 #include <bbhrtime.h>
 #include <sqllogfill.h>
+#include <comdb2_trace.h>
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -814,9 +815,20 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
     if (nowait)
         bdb_trans_set_nowait(trans);
 
+    /* TODO: support distributed transactions */
+    int trace = iq->trace && release_schema_lk && iq->sorese && !iq->sorese->dist_txnid && !logical && !iq->tranddl;
+    int distcommit_ms = -1;
+    if (trace) {
+        char payload[COMDB2_TRACE_MAXLEN];
+        int len = gbl_trace_hooks->master_log_payload(iq->trace, payload, sizeof(payload));
+        if (len > 0 && len <= sizeof(payload) && bdb_debug_log_trace(bdb_handle, trans, payload, len) != 0)
+            logmsg(LOGMSG_ERROR, "%s: failed to log trace\n", __func__);
+    }
+
     int startms = comdb2_time_epochms();
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical, blkseq, blklen, blkkey, blkkeylen);
     int endms = comdb2_time_epochms();
+    int localcommit_ms = endms - startms;
 
     DB_LSN *s = (DB_LSN *)&ss;
     iq->commit_file = s->file;
@@ -846,7 +858,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
     }
 
     if (rc != 0) {
-        return rc;
+        goto out;
     }
 
     if (release_schema_lk && gbl_debug_add_replication_latency) {
@@ -858,6 +870,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
         startms = comdb2_time_epochms();
         rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, timeoutms, adaptive, &ss);
         endms = comdb2_time_epochms();
+        distcommit_ms = endms - startms;
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "%s wait-for-seqnum took %d ms rc %d\n", __func__, endms - startms, rc);
         }
@@ -870,6 +883,15 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
                __func__, __LINE__, lsn->file, lsn->offset, rc);
     }
 
+out:
+    if (trace) {
+        uint64_t pagein, pagein_io;
+        bdb_thread_pagein_counts(&pagein, &pagein_io);
+        gbl_trace_hooks->master_end(iq->trace, localcommit_ms, distcommit_ms, pagein - iq->pagein_start,
+                                   pagein_io - iq->pagein_io_start, rc);
+        gbl_trace_hooks->release(iq->trace);
+        iq->trace = NULL;
+    }
     return rc;
 }
 

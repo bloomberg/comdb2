@@ -123,6 +123,9 @@ message CDB2_SQLQUERY {
   // This lets cdb2api carry other protocols - if this flag is set,
   // don't dispatch to an SQL thread, this isn't SQL.
   optional bool is_tagged = 19;
+
+  // Opaque payload for server-side plugins.
+  optional bytes trace = 20;
 }
 
 message CDB2_DBINFO {

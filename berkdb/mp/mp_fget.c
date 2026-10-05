@@ -322,7 +322,7 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 		 * fault on later dereference, which is invisible here -- so we
 		 * record the page-in with did_io=0.
 		 */
-		bb_berkdb_fingerprint_rtstats_bump_pagein(0);
+		bb_berkdb_fingerprint_rtstats_bump_pagein(0, dbenv->is_tmp_tbl);
 		return (0);
 	}
 
@@ -855,7 +855,7 @@ alloc:		/*
 
 	if (gbl_bb_berkdb_enable_memp_timing)
 		bb_memp_hit(start_time_us);
-	bb_berkdb_fingerprint_rtstats_bump_pagein(did_io != NULL && *did_io);
+	bb_berkdb_fingerprint_rtstats_bump_pagein(did_io != NULL && *did_io, dbenv->is_tmp_tbl);
 	return (0);
 
 err:	/*

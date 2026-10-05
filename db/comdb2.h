@@ -1373,6 +1373,9 @@ struct ireq {
     uint8_t region3; /* used for offsetof */
 
     uint64_t startus; /* thread handling; start time stamp */
+    void *trace;      /* comdb2_trace handle */
+    uint64_t pagein_start; /* this thread's page-ins when toblock began */
+    uint64_t pagein_io_start;
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
