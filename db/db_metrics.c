@@ -165,6 +165,8 @@ struct comdb2_metrics_store {
     int64_t fastsql_sslconn;
     int64_t fastsql_execute_stop;
     int64_t legacy_requests;
+    int64_t async_dist_commit_enqueued;
+    int64_t async_dist_commit_inline;
 };
 
 static struct comdb2_metrics_store stats;
@@ -425,6 +427,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.legacy_requests, NULL},
     {"max_current_connections", "Max current connections for sampled interval", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.max_current_connections, NULL},
+    {"async_dist_commit_enqueued", "Commits whose wait for replicants went to the seqnum-wait thread",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.async_dist_commit_enqueued, NULL},
+    {"async_dist_commit_inline", "Commits that waited for replicants inline because that thread was full",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.async_dist_commit_inline, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -441,6 +447,8 @@ int gbl_metrics_count = sizeof(gbl_metrics) / sizeof(comdb2_metric);
 
 extern int n_commits;
 extern long n_fstrap;
+extern int64_t gbl_async_dist_commit_enqueued;
+extern int64_t gbl_async_dist_commit_inline;
 
 /* Legacy request metrics */
 int64_t gbl_fastsql_execute_inline_params;
@@ -619,6 +627,8 @@ int refresh_metrics(void)
         return 1;
 
     stats.commits = n_commits;
+    stats.async_dist_commit_enqueued = gbl_async_dist_commit_enqueued;
+    stats.async_dist_commit_inline = gbl_async_dist_commit_inline;
     stats.fstraps = n_fstrap;
     stats.nonsql = n_fstrap                  /* legacy protocol over socketrequest */
                    + n_qtrap                 /* legacy protocol */

@@ -78,6 +78,7 @@ int gbl_toblock_random_deadlock_trans;
 int gbl_toblock_random_verify_error;
 int gbl_selectv_writelock = 0;
 int gbl_debug_invalid_genid;
+int gbl_debug_osql_send_queue_full = 0;
 int gbl_partition_sc_reorder = 1;
 
 extern int db_is_exiting();
@@ -9452,8 +9453,10 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
     while (rc) {
 
         /* remote send */
-        rc = net_send_tail(netinfo_ptr, host, usertype, data, datalen, nodelay,
-                           tail, tailen);
+        if (gbl_debug_osql_send_queue_full)
+            rc = NET_SEND_FAIL_QUEUE_FULL;
+        else
+            rc = net_send_tail(netinfo_ptr, host, usertype, data, datalen, nodelay, tail, tailen);
         if (NET_SEND_FAIL_QUEUE_FULL == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {

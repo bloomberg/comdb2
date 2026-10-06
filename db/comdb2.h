@@ -1312,6 +1312,7 @@ struct osql_sess {
 typedef struct osql_sess osql_sess_t;
 
 struct llog_scdone;
+struct seqnum_wait;
 struct ireq {
     /* bzero-ing this entire struct was turning out to be very expensive.
      * So organizing this into 3 regions:
@@ -1509,6 +1510,14 @@ struct ireq {
     char *identity;
     char *api_driver_name;
     char *api_driver_version;
+    /* Set when trans_commit_int() hands the wait-for-seqnum off to the async
+     * seqnum-wait thread instead of blocking on it (gbl_async_dist_commit). */
+    db_seqnum_type commit_seqnum;
+    int should_enqueue;
+    /* The seqnum-wait thread's item for this request, once handle_ireq() has
+     * decided to hand it over; the block processor gives it the request
+     * (instead of recycling it) when it is done with it. */
+    struct seqnum_wait *handoff;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -2195,6 +2204,8 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
 int trans_discard_prepared(struct ireq *iq, void *trans);
 int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
                           db_seqnum_type *ss);
+int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv, struct ireq *iq, char *source_node, int timeoutms,
+                              int adaptive, db_seqnum_type *ss);
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host);
 
 /* find context for pseudo-stable cursors */
@@ -2724,6 +2735,9 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);
+void sorese_send_rc(struct ireq *iq, int rc);
+int durable_change_rcode(struct ireq *iq);
+int handle_ireq_finish(struct ireq *iq, int rc);
 int toblock(struct ireq *iq);
 int to_sorese_init(struct ireq *iq);
 int to_sorese(struct ireq *iq);
