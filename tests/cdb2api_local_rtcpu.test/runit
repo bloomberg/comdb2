@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a CLUSTER"
+
+MASTER=$(get_master)
+
+# Pick a replicant to rtcpu
+for n in $CLUSTER; do
+    if [[ "$n" != "$MASTER" ]]; then
+        NODE=$n
+        break
+    fi
+done
+[[ -z "$NODE" ]] && failexit "Couldn't find a replicant"
+echo "master $MASTER, rtcpu node $NODE"
+
+# Tell every node that $1 is rtcpu'd down; no argument brings it back up
+function routecpu
+{
+    for n in $CLUSTER; do
+        $CDB2SQL_EXE --admin $CDB2_OPTIONS $DBNAME --host $n "exec procedure sys.cmd.send('debug tcmtest routecpu $1')" >/dev/null
+    done
+}
+
+# Leader marks rtcpu'd nodes incoherent when waiting for seqnums
+function write_loop
+{
+    while :; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $MASTER "insert into t1 values(1)" >/dev/null 2>&1
+        sleep 0.1
+    done
+}
+
+function node_state
+{
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $MASTER "select coherent_state from comdb2_cluster where host='$1'"
+}
+
+# Run "local" from the node itself
+function local_host
+{
+    ssh -o StrictHostKeyChecking=no $NODE "$CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME local 'select comdb2_host()'" 2>&1
+}
+
+function cleanup
+{
+    [[ -n "$writer" ]] && kill $writer 2>/dev/null
+    routecpu
+}
+trap cleanup EXIT
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table failed"
+
+# Sanity: local works while every node is coherent
+out=$(local_host)
+[[ $? -ne 0 ]] && failexit "local query failed on coherent node: $out"
+echo "local from $NODE (coherent) ran on: $out"
+
+routecpu $NODE
+write_loop &
+writer=$!
+
+state=""
+for i in $(seq 1 30); do
+    state=$(node_state $NODE)
+    [[ "$state" == "INCOHERENT" ]] && break
+    sleep 1
+done
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $MASTER "select host, coherent_state from comdb2_cluster"
+[[ "$state" == "INCOHERENT" ]] || failexit "Expected $NODE to be INCOHERENT, got '$state'"
+
+# The rtcpu'd node drops non-admin queries
+out=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $NODE "select comdb2_host()" 2>&1)
+[[ $? -eq 0 ]] && failexit "Query pinned to incoherent node $NODE succeeded: $out"
+echo "pinned query on $NODE failed as expected: $out"
+
+# "local" from the rtcpu'd node must fall back to another node
+out=$(local_host)
+rc=$?
+[[ $rc -ne 0 ]] && failexit "local query from rtcpu'd node $NODE failed rc $rc: $out"
+[[ "$out" == "$NODE" ]] && failexit "local query ran on incoherent node $NODE"
+echo "local from $NODE (rtcpu'd) ran on: $out"
+
+kill $writer
+writer=""
+routecpu
+trap - EXIT
+
+# Unsetup needs every node coherent again
+for i in $(seq 1 60); do
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $MASTER "insert into t1 values(1)" >/dev/null
+    state=$(node_state $NODE)
+    [[ "$state" == "coherent" || "$state" == "COHERENT" ]] && break
+    sleep 1
+done
+[[ "$state" == "coherent" || "$state" == "COHERENT" ]] || failexit "$NODE did not become coherent again: '$state'"
+
+echo "Success!"

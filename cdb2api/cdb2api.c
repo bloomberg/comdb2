@@ -8127,11 +8127,6 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (strcasecmp(hndl->type, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
-        hndl->flags |= CDB2_DIRECT_CPU;
-
-        /* Skip dbinfo to avoid pulling other hosts in the cluster. */
-        rc = 0;
-        goto after_callback;
     } else {
         rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name, &num_comdb2db_hosts,
                                 &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 1,

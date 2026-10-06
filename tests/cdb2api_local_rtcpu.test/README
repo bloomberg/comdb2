@@ -1,0 +1,4 @@
+Verify that the "local" tier falls back to another node when the local node is
+rtcpu'd down.  The leader marks an rtcpu'd node incoherent, and an incoherent
+node silently drops non-admin queries.  "local" must do a dbinfo on localhost
+and use the rest of the cluster rather than pinning itself to the local node.

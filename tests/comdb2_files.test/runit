@@ -20,7 +20,7 @@ function test_comdb2_files_restricted_file() {
 		trap "chmod 777 $dbdir/no_access*; rm $dbdir/no_access*" EXIT
 
 		# When
-		fname=$(cdb2sql -tabs $dbname local \
+		fname=$(cdb2sql -tabs $dbname @localhost \
 			"select filename from $tablename where filename like 'no_access%'")
 
 		# Then
@@ -49,7 +49,7 @@ function test_comdb2_files_restricted_directory() {
 		trap "chmod 777 $dbdir/no_access*; rm -rf $dbdir/no_access*" EXIT
 
 		# When
-		fname=$(cdb2sql -tabs $dbname local \
+		fname=$(cdb2sql -tabs $dbname @localhost \
 			"select filename from $tablename where dir like 'no_access%'")
 
 		# Then
@@ -72,7 +72,7 @@ function test_comdb2_files_large_file() {
 		trap "rm $dbdir/largefile" EXIT
 
 		# When
-		res_size=$(cdb2sql -tabs $dbname local "select sum(size) from $tablename where filename like '%largefile%'")
+		res_size=$(cdb2sql -tabs $dbname @localhost "select sum(size) from $tablename where filename like '%largefile%'")
 
 		# Then
 		query_rc=$?
@@ -92,7 +92,7 @@ function test_comdb2_files_broken_symlink() {
 		trap "rm $dbdir/link" EXIT
 
 		# When
-		cdb2sql $dbname local "select count(*) from $tablename" > /dev/null
+		cdb2sql $dbname @localhost "select count(*) from $tablename" > /dev/null
 
 		# Then
 		query_rc=$?
@@ -112,7 +112,7 @@ function test_comdb2_files_skips_file_on_excluded_list() {
 		trap "rm $dbdir/$excluded_file" EXIT
 
 		# When
-		num_files=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where filename like '%$excluded_file%'")
+		num_files=$(cdb2sql -tabs $dbname @localhost "select count(*) from $tablename where filename like '%$excluded_file%'")
 
 		# Then
 		query_rc=$?
@@ -135,7 +135,7 @@ function test_comdb2_files_skips_dir_on_excluded_list() {
 		done
 
 		# When
-		num_files=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where filename like '%$file%'")
+		num_files=$(cdb2sql -tabs $dbname @localhost "select count(*) from $tablename where filename like '%$file%'")
 
 		# Then
 		query_rc=$?

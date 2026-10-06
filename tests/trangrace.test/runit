@@ -20,9 +20,9 @@ host=$(cdb2sql -tabs -s ${CDB2_OPTIONS} $dbname default "select host from comdb2
 (
 sleep 5
 if [[ $myhost = $host ]]; then
-    cdb2sql -s ${CDB2_OPTIONS} $dbname local "exec procedure sys.cmd.send('exit')" >/dev/null
+    cdb2sql -s ${CDB2_OPTIONS} $dbname @localhost "exec procedure sys.cmd.send('exit')" >/dev/null
 else
-    ssh $host "$(which cdb2sql) -s ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('exit')\"" >/dev/null
+    ssh $host "$(which cdb2sql) -s ${CDB2_OPTIONS} $dbname @localhost \"exec procedure sys.cmd.send('exit')\"" >/dev/null
 fi
 ) &
 
