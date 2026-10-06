@@ -11,11 +11,27 @@ bash -n "$0" || exit 1
 export stopfile=./stopfile.txt
 export tablecount=50
 
+# Each truncate recreates every data and blob stripe of the table, which is
+# several MB of log.  Unpaced, a fast master generates log faster than a
+# bounced node can apply it, so the node never finishes its startup catch-up.
+export truncate_interval=${truncate_interval:-4}
+
+# How long a bounced node gets to rejoin before we fail rather than time out
+export recover_timeout=${recover_timeout:-480}
+
 function failexit
 {
     [[ $debug == "1" ]] && set -x
     touch $stopfile
     echo "Failed: $1"
+    # The background loops just stop; the main shell kills them, as they can
+    # be stuck retrying, and tears down the cluster so the harness can report
+    # the failure
+    if [[ $BASHPID == $$ ]]; then
+        kill $(jobs -p) >/dev/null 2>&1
+        wait
+        stop_cluster
+    fi
     exit -1
 }
 
@@ -33,6 +49,12 @@ function stop_cluster
         $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send(\"exit\")"
     done
     sleep 5
+
+    # A node that never rejoined ignores the exit request, and its ssh session
+    # holds our output open, which would keep the harness from reporting.
+    # Match on the command line: a killed downgrade_loop may not have recorded
+    # the pid of the session it just started.
+    pkill -9 -f "^ssh .*/${DBNAME}\.lrl" >/dev/null 2>&1
 }
 
 function create_tables
@@ -90,15 +112,14 @@ function verify_up
     typeset func="verify_up"
     write_prompt $func "Running $func"
     typeset node=$1
-    typeset count=0
+    typeset deadline=$(( $(date +%s) + recover_timeout ))
     typeset r=1
-    while [[ "$r" -ne "0" && "$count" -lt 2000 ]]; do
+    while [[ "$r" -ne "0" && "$(date +%s)" -lt "$deadline" ]]; do
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null 2>&1
         r=$?
         [[ $r != 0 ]] && sleep 1
-        let count=count+1
     done
-    [[ $r != 0 ]] && failexit "node $node did not recover in time"
+    [[ $r != 0 ]] && failexit "node $node did not recover in ${recover_timeout} seconds"
 }
 
 function downgrade
@@ -135,6 +156,7 @@ function downgrade
         while [[ "$CLUSTER" != *"$x"* && "$count" -lt "$maxcount" ]]; do
             sleep 1
             x=$(get_master)
+            let count=count+1
         done
 
         [[ "$x" != "$node" ]] && foundmaster=1
@@ -153,13 +175,13 @@ function truncate_table
     typeset count=0
     typeset r=1
     write_prompt $func "Running $func $table"
-    while [[ "$r" != 0 && "$count" -lt 600 ]]; do
+    while [[ "$r" != 0 && "$count" -lt 600 && ! -f $stopfile ]]; do
         $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "truncate $table"
         r=$?
         [[ $r != 0 ]] && sleep 1
         let count=count+1
     done
-    [[ "$r" != "0" ]] && failexit "Error truncating table"
+    [[ "$r" != "0" && ! -f $stopfile ]] && failexit "Error truncating table"
 }
 
 function truncate_random_tables
@@ -171,6 +193,7 @@ function truncate_random_tables
     while [[ $i -lt $count ]]; do
         table=$(randomtable)
         truncate_table $table
+        sleep $truncate_interval
         let i=i+1
     done
 }
