@@ -1024,6 +1024,18 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 extern int gbl_fullrecovery;
 int gbl_endianize_locklist = 1;
 int gbl_emit_gen_commits = 1;
+int gbl_debug_sleep_before_committed_lsn = 0;
+
+/* Commits can save their lsn out of order; never move it backwards */
+static inline void
+__txn_set_committed_lsn(REP *rep, u_int32_t gen, DB_LSN *lsn)
+{
+	if (gen > rep->committed_gen ||
+		(gen == rep->committed_gen && log_compare(lsn, &rep->committed_lsn) > 0)) {
+		rep->committed_gen = gen;
+		rep->committed_lsn = *lsn;
+	}
+}
 
 /*
  * __txn_commit --
@@ -1298,8 +1310,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					if (elect_highest_committed_gen) {
 						MUTEX_LOCK(dbenv,
 							db_rep->rep_mutexp);
-						rep->committed_gen = gen;
-						rep->committed_lsn = txnp->last_lsn;
+						__txn_set_committed_lsn(rep, gen, &txnp->last_lsn);
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
 					}
@@ -1354,8 +1365,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						if (elect_highest_committed_gen) {
 							MUTEX_LOCK(dbenv,
 									db_rep->rep_mutexp);
-							rep->committed_gen = gen;
-							rep->committed_lsn = txnp->last_lsn;
+							__txn_set_committed_lsn(rep, gen, &txnp->last_lsn);
 							MUTEX_UNLOCK(dbenv,
 									db_rep->rep_mutexp);
 						}
@@ -1400,10 +1410,16 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						comdb2_cheapstack_sym(stderr, "TXN-COMMIT-GEN TXNID %x LSN [%d:%d]",
 								txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);
 #endif
+						if (gbl_debug_sleep_before_committed_lsn) {
+							int ms = gbl_debug_sleep_before_committed_lsn;
+							gbl_debug_sleep_before_committed_lsn = 0;
+							logmsg(LOGMSG_USER, "%s sleeping %d ms before saving committed lsn [%d:%d]\n",
+								__func__, ms, txnp->last_lsn.file, txnp->last_lsn.offset);
+							usleep(ms * 1000);
+						}
 						MUTEX_LOCK(dbenv,
 							db_rep->rep_mutexp);
-						rep->committed_gen = gen;
-						rep->committed_lsn = txnp->last_lsn;
+						__txn_set_committed_lsn(rep, gen, &txnp->last_lsn);
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
 					} else {

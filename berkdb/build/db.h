@@ -1353,6 +1353,8 @@ struct __db_rep_stat {
 	int lc_cache_size;		/* Current size of lc cache */
 	uint32_t durable_gen;
 	DB_LSN durable_lsn;
+	uint32_t committed_gen;
+	DB_LSN committed_lsn;
 };
 
 

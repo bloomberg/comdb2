@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# The master saves the lsn of its latest commit for elections.  Plain commits
+# no longer run one at a time, so commit A can save its lsn after a later
+# commit B saved a higher one.  Delay A between writing its commit record and
+# saving it, commit B meanwhile, then check the saved lsn never went backwards.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+delayms=4000
+
+failexit()
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+if [[ -n "$CLUSTER" ]]; then
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"')
+else
+    master=$(hostname)
+fi
+
+msql()
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "$@"
+}
+
+# Prints "file offset" of the master's saved committed lsn
+committed_lsn()
+{
+    msql "exec procedure sys.cmd.send('bdb repstat')" | sed -n 's/^committed lsn: \[\([0-9]*\)\]\[\([0-9]*\)\].*/\1 \2/p'
+}
+
+lsn_less()
+{
+    (( $1 < $3 || ($1 == $3 && $2 < $4) ))
+}
+
+msql "create table t1(a int)" >/dev/null || failexit "create t1"
+msql "create table t2(a int)" >/dev/null || failexit "create t2"
+
+for i in 1 2 3; do
+    msql "put tunable debug_sleep_before_committed_lsn $delayms" >/dev/null || failexit "set tunable"
+    start=$(date +%s%N)
+    msql "insert into t1 values($i)" >/dev/null &
+    apid=$!
+    sleep 1
+    msql "insert into t2 values($i)" >/dev/null || failexit "insert t2"
+    after_b=$(committed_lsn)
+    wait $apid || failexit "insert t1"
+    elapsed=$((($(date +%s%N) - start) / 1000000))
+    after_a=$(committed_lsn)
+    echo "round $i: after B [$after_b] after A [$after_a] A took ${elapsed}ms"
+
+    # If something else used up the delay, A wasn't the slow commit.
+    [[ $elapsed -ge $((delayms - 500)) ]] || failexit "round $i: A was not delayed"
+    [[ -n "$after_b" && -n "$after_a" ]] || failexit "round $i: could not read committed lsn"
+    if lsn_less $after_a $after_b; then
+        failexit "round $i: committed lsn went backwards from [$after_b] to [$after_a]"
+    fi
+done
+
+echo "Success"
+exit 0
