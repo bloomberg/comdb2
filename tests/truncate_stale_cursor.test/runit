@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# With online_recovery off, a log truncate that undoes a schema change takes the
+# bdb writelock and reloads every table (comdb2_reload_schemas), freeing the
+# dbtable and closing the bdb handles of the old tables.  A select that is
+# emitting rows when the writelock is requested releases all of its locks and
+# waits.  When it resumes, it must fail rather than use cursors that still
+# point at the freed table.  (The client usually reports a read timeout rather
+# than the schema-change text, so only the failure itself is checked.)
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+nrows=60
+# sql_row_delay_msecs sleeps in whole seconds, so this select takes nrows seconds
+rowdelay=1000
+nodes=${CLUSTER:-$(hostname)}
+
+function failexit
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+function sql_master
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $master "$1"
+}
+
+function set_row_delay
+{
+    for node in $nodes; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $node "put tunable sql_row_delay_msecs $1" >/dev/null || failexit "set row delay on $node"
+    done
+}
+
+function current_lsn
+{
+    sql_master "exec procedure sys.cmd.send('flush')" >/dev/null
+    sql_master "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1"
+}
+
+master=$(getmaster)
+[[ -z "$master" ]] && failexit "no master"
+
+sql_master "create table t1(a int)" || failexit "create t1"
+sql_master "insert into t1 select * from generate_series(1, $nrows)" >/dev/null || failexit "insert"
+lsn=$(current_lsn)
+echo "Truncate target is $lsn"
+
+for iter in 1 2 3; do
+    # Work to undo: rows, and a schema change so that the truncate reloads the schema
+    sql_master "insert into t1 select * from generate_series(1, $nrows)" >/dev/null || failexit "insert"
+    sql_master "create table t2(a int)" || failexit "create t2"
+
+    set_row_delay $rowdelay
+    declare -A pidof
+    for node in $nodes; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node "select * from t1" > select.$iter.$node.out 2>&1 &
+        pidof[$node]=$!
+    done
+
+    # Only truncate once every select is mid-scan: it has returned a row and,
+    # at a row a second, has most of its 2*nrows rows still to go
+    for node in $nodes; do
+        tries=0
+        until grep -q '^[0-9]' select.$iter.$node.out; do
+            kill -0 ${pidof[$node]} 2>/dev/null || failexit "select on $node exited before returning a row: $(cat select.$iter.$node.out)"
+            let tries=tries+1
+            [[ $tries -ge 30 ]] && failexit "select on $node returned no row in 30 seconds"
+            sleep 1
+        done
+        kill -0 ${pidof[$node]} 2>/dev/null || failexit "select on $node finished before the truncate"
+    done
+
+    echo "Iteration $iter: truncating to $lsn"
+    sql_master "exec procedure sys.cmd.truncate_log(\"$lsn\")" || failexit "truncate_log"
+
+    for node in $nodes; do
+        wait ${pidof[$node]}
+        rc=$?
+        echo "$node: select rc $rc, returned $(wc -l < select.$iter.$node.out) lines, last: $(tail -1 select.$iter.$node.out)"
+        [[ $rc == 0 ]] && failexit "select on $node succeeded across the schema reload"
+    done
+    set_row_delay 0
+
+    for node in $nodes; do
+        # The select failed, but it must not have taken the node down
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node "select count(*) from t1")
+        [[ "$out" != "$nrows" ]] && failexit "count on $node is '$out' after truncate, expected $nrows"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node "select count(*) from t2" >/dev/null 2>&1 && failexit "t2 still exists on $node"
+    done
+done
+
+echo "Success"

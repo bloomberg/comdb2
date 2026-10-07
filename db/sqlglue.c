@@ -10170,6 +10170,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;
 
+    /* Read while we still hold our table locks: a reload cannot be running */
+    int32_t reload_gen = comdb2_reload_schemas_gen();
+
     unlock_bdb_cursors(thd, bdbcur, &bdberr);
 
     curtran_flags = CURTRAN_RECOVERY;
@@ -10236,6 +10239,31 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         }
     } else {
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+    }
+
+    /* The schema was reloaded (log truncation across a schema change) while
+     * we held no locks: every dbtable was freed and every bdb handle closed.
+     * Our cursors still point at them, so the statement cannot continue.
+     * Forget the freed dbtables and the schemas taken from them (cur->sc is
+     * db->schema or db->ixschema[], and the reload frees the .ONDISK tag
+     * schemas) so closing the cursors doesn't touch them.
+     * recover_deadlock_sc_cleanup() won't: it skips cursors whose db is
+     * already NULL. */
+    if (comdb2_reload_schemas_gen() != reload_gen) {
+        logmsg(LOGMSG_ERROR, "%s: schema reloaded while locks were released\n", __func__);
+        Pthread_mutex_lock(&thd->lk);
+        if (thd->bt) {
+            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+            {
+                if (!cur->bt->is_remote) {
+                    cur->db = NULL;
+                    cur->sc = NULL;
+                }
+            }
+        }
+        Pthread_mutex_unlock(&thd->lk);
+        if (rc == 0)
+            rc = SQLITE_SCHEMA;
     }
 
     if (rc) {

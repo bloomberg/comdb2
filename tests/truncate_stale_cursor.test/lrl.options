@@ -1,0 +1,3 @@
+# Offline recovery: a log truncate takes the bdb writelock, forcing running
+# statements to release their locks while the schema is reloaded underneath them.
+online_recovery off

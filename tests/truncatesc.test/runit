@@ -35,7 +35,8 @@ function failexit
     [[ $debug == "1" ]] && set -x
     typeset func="failexit"
     typeset f=$1
-    write_prompt $func "$f failed: $2"
+    # stderr, as a $(...) caller would swallow stdout
+    write_prompt $func "$f failed: $2" >&2
     if [[ "$core_rep_on_failexit" == 1 ]]; then
         kill -6 $(cat $repdir/${repname}.pid)
     else
@@ -43,6 +44,11 @@ function failexit
     fi
     [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
     touch ${DBNAME}.failexit # runtestcase script looks for this file
+    # We are often called from a $(...) subshell (e.g. assert_select_all ->
+    # select_all -> assert_select_all_rep), where exit only leaves the subshell
+    # and the caller keeps retrying until the test times out.  $$ is still the
+    # runit shell, so stop that too.
+    kill -TERM $$
     exit -1
 }
 
@@ -101,11 +107,14 @@ function reader_thread
     while :; do
         x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select count(*) from reader_table" 2>&1)
         if [[ $? != 0 ]]; then
+            # A select running across an offline truncate that reloads the
+            # schema fails, so only give up if the errors don't stop
             let err=err+1
             [[ "$err" -gt "$max_reader_error" ]] && failexit "Too many reader errors"
             write_prompt $func "Error, count $err: $x"
-        elif [[ "$verbose_reader" == 1 ]]; then
-            write_prompt $func "$x"
+        else
+            err=0
+            [[ "$verbose_reader" == 1 ]] && write_prompt $func "$x"
         fi
     done
 }
