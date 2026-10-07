@@ -391,7 +391,7 @@ enum RMTDB_TYPE {
 };
 
 enum DB_METADATA {
-    META_SCHEMA_RRN = 0, /* use this rrn in the meta table for schema info */
+    META_SCHEMA_RRN = 0,     /* use this rrn in the meta table for schema info */
     META_SCHEMA_VERSION = 1, /* this key holds the current ONDISK schema version
                                 as a 32 bit int */
 
@@ -405,8 +405,8 @@ enum DB_METADATA {
     META_BLOBSTRIPE_GENID_RRN = -3, /* in this rrn store the genid of table
                                        when it was converted to blobstripe */
 
-    META_STUFF_RRN = -4, /* used by pushlogs.c to do "stuff" to the database
-                           until we get past a given lsn. */
+    META_STUFF_RRN = -4,          /* was used by pushlogs.c to do "stuff" to the
+                                    database until we get past a given lsn. */
     META_ONDISK_HEADER_RRN = -5,  /* do we have the new ondisk header? */
     META_COMPRESS_RRN = -6,       /* which compression algorithm to use for new
                                      records (if any) */
@@ -2570,7 +2570,6 @@ int get_csc2_file(const char *table, int version, char **text, int *len);
 int get_csc2_file_tran(const char *table, int version, char **text, int *len,
                        tran_type *);
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
-int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long genid);
 int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid);
 int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,

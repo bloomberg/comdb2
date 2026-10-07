@@ -9041,3 +9041,15 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
     op.data = &endianized;
     return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
 }
+
+int bdb_debug_log_data(bdb_state_type *bdb_state, tran_type *trans, int inop, void *data, int len)
+{
+    DB_TXN *tid = trans ? trans->tid : NULL;
+    int endianized = htonl(inop);
+    DBT op = {0}, dta = {0};
+    op.size = sizeof(int);
+    op.data = &endianized;
+    dta.size = len;
+    dta.data = data;
+    return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, &dta);
+}
