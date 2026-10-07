@@ -5197,6 +5197,9 @@ static void request_stats(struct dbenv *dbenv)
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         req_stats(dbenv->dbs[ii]);
     }
+    for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+        req_stats(dbenv->qdbs[ii]);
+    }
 }
 
 void fastcount(char *tablename)
