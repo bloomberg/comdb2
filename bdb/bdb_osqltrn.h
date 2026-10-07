@@ -24,19 +24,19 @@ struct bdb_osql_trn;
 typedef struct bdb_osql_trn bdb_osql_trn_t;
 
 /**
- * Create the snapshot/serializable transaction repository
+ * Create the serializable transaction repository
  *
  */
 int bdb_osql_trn_repo_init(int *bdberr);
 
 /**
- * Destroy the snapshot/serializable transaction repository
+ * Destroy the serializable transaction repository
  *
  */
 int bdb_osql_trn_repo_destroy(int *bdberr);
 
 /**
- * lock/unlock the snapshot/serializable transaction repository
+ * lock/unlock the serializable transaction repository
  *
  */
 void bdb_verify_repo_lock();
