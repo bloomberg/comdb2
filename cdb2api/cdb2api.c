@@ -6559,6 +6559,7 @@ read_record:
         }
 
         if (!is_commit || hndl->snapshot_file) {
+            hndl->is_rejected = 1;
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             hndl->retry_all = 1;
             debugprint("goto retry_queries read-record rc=%d err_val=%d\n", rc,
@@ -6710,9 +6711,6 @@ read_record:
         cleanup_query_list(hndl, &commit_query_list, __LINE__);
     }
 
-    hndl->node_seq = 0;
-    bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
-
     if (is_commit) {
         clear_snapshot_info(hndl, __LINE__);
     }
@@ -6753,6 +6751,8 @@ read_record:
         if (is_retryable(hndl->firstresponse->error_code) &&
             (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
              commit_file)) {
+            if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__REJECTED)
+                hndl->is_rejected = 1;
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             hndl->retry_all = 1;
 
@@ -6770,6 +6770,8 @@ read_record:
             goto retry_queries;
         }
 
+        hndl->node_seq = 0;
+        bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
         hndl->is_rejected = 0;
         if (hndl->firstresponse->error_code) {
             if (is_begin) {
@@ -6831,6 +6833,9 @@ read_record:
 
         PRINT_AND_RETURN(return_value);
     }
+
+    hndl->node_seq = 0;
+    bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
 
     sprintf(hndl->errstr, "%s: Unknown response type %d", __func__,
             hndl->firstresponse->response_type);
