@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# longreq_log_freq_sec is runtime-settable and not READONLY, but
+# reqlog_long_running_clnt() uses it as a modulus:
+#
+#     duration_beyond_thresh_sec % gbl_longreq_log_freq_sec
+#
+# and reqlog_log_all_longreqs() only rejected negative values. Setting it to 0
+# was therefore an integer divide-by-zero in the watchdog thread -- any client
+# could take the server down with a tunable and one slow query.
+#
+# Reproduce it exactly: drop the long-request threshold so an ordinary
+# statement qualifies, set the frequency to 0, and run something slow enough
+# for the watchdog's once-a-second scan to notice it.
+#
+#   unfixed server - watchdog thread takes SIGFPE, node dies
+#   fixed server   - 0 disables the scan, query completes, node survives
+
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+if [ -z "$dbnm" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+if [ -n "$CLUSTER" ] ; then
+    nodes="$CLUSTER"
+else
+    nodes=`hostname`
+fi
+
+function set_tunable_all_nodes() {
+    local tunable=$1
+    local value=$2
+    local node
+    for node in $nodes ; do
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node \
+            "PUT TUNABLE '$tunable' $value" || \
+            failexit "could not set $tunable on $node"
+    done
+}
+
+# Every statement counts as long-running, so the watchdog will look at ours.
+set_tunable_all_nodes 'sql_time_threshold' 1
+
+# The divisor. On an unfixed build this is what kills the watchdog thread.
+set_tunable_all_nodes 'longreq_log_freq_sec' 0
+
+# Slow enough that the once-a-second watchdog scan sees it in flight. Run it on
+# each node in turn: the watchdog is per-node and only faults on the node
+# actually holding a long-running statement.
+for node in $nodes ; do
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT SLEEP(5)" \
+        > sleep.$node.out 2>&1
+    echo "sleep on $node: rc=$?"
+done
+
+# Best-effort restore; these fail if a node already died, which is fine because
+# the liveness check below is the real arbiter.
+for node in $nodes ; do
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node \
+        "PUT TUNABLE 'longreq_log_freq_sec' 60" || true
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node \
+        "PUT TUNABLE 'sql_time_threshold' 5000" || true
+done
+
+# Fresh connection per node -- do not reuse a handle that may have been dropped
+# when its server died.
+for node in $nodes ; do
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT 1" > alive.$node.out 2>&1 || \
+        failexit "node $node is not answering: watchdog likely took SIGFPE on longreq_log_freq_sec 0"
+    if ! grep -q "^1$" alive.$node.out ; then
+        failexit "unexpected response from node $node"
+    fi
+done
+
+echo "Success"
+exit 0

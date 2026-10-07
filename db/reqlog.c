@@ -2090,8 +2090,8 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 
 void reqlog_log_all_longreqs(void)
 {
-    /* Periodic long request logging disabled */
-    if (gbl_longreq_log_freq_sec < 0)
+    /* Periodic long request logging disabled; 0 too, it is used as a modulus */
+    if (gbl_longreq_log_freq_sec <= 0)
         return;
 
     /*
