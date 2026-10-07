@@ -43,7 +43,7 @@ static int have_thread = 0;
 
 static int delayms = 0;
 
-static char junk[2048];
+static char junk[4096];
 
 static void *pushlogs_thread(void *voidarg)
 {
@@ -102,24 +102,24 @@ static void *pushlogs_thread(void *voidarg)
         if (done)
             break;
 
-        /* put some junk into meta table */
+        /* Debug records aren't logged on a replicant, so it would loop here
+         * forever without moving the log. */
+        if (!bdb_amimaster(thedb->bdb_env)) {
+            logmsg(LOGMSG_USER, "pushlogs_thread: not the master, stopping\n");
+            Pthread_mutex_lock(&mutex);
+            have_thread = 0;
+            Pthread_mutex_unlock(&mutex);
+            break;
+        }
+
+        /* Log some junk.  Don't write it to a btree: on a database with a
+         * meta table per table, the only candidate was the static table's
+         * meta, which isn't guaranteed to exist on every replicant, and a
+         * replicant that doesn't have it panics applying the write. */
         init_fake_ireq(thedb, &iq);
         db = &thedb->static_table;
-        /* if we do not have a meta, try creating one on the spot. */
-        if (thedb->meta == NULL && db->meta == NULL) {
-            wrlock_schema_lk();
-            int ret = open_auxdbs(&thedb->static_table, 1);
-            unlock_schema_lk();
-            if (ret != 0) {
-                logmsg(LOGMSG_ERROR, "pushlogs_thread: failed opening meta\n");
-                Pthread_mutex_lock(&mutex);
-                have_thread = 0;
-                Pthread_mutex_unlock(&mutex);
-                break;
-            }
-        }
         iq.usedb = db;
-        rc = trans_start(&iq, NULL, &trans);
+        rc = trans_start_nonlogical(&iq, NULL, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot create transaction\n");
             Pthread_mutex_lock(&mutex);
@@ -127,10 +127,9 @@ static void *pushlogs_thread(void *voidarg)
             Pthread_mutex_unlock(&mutex);
             break;
         }
-        rc = put_csc2_stuff(db, trans, junk, sizeof(junk));
+        rc = bdb_debug_log_data(thedb->bdb_env, trans, 0, junk, sizeof(junk));
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "pushlogs_thread: error %d adding to meta table\n",
-                    rc);
+            logmsg(LOGMSG_ERROR, "pushlogs_thread: error %d logging junk\n", rc);
             trans_abort(&iq, trans);
             Pthread_mutex_lock(&mutex);
             have_thread = 0;

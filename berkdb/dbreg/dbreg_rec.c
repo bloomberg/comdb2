@@ -57,6 +57,7 @@ static const char revid[] = "$Id: dbreg_rec.c,v 11.120 2003/10/27 15:54:31 sue E
 #include "dbinc/qam.h"
 
 #include "printformats.h"
+#include <tohex.h>
 
 static int __dbreg_open_file __P((DB_ENV *,
     DB_TXN *, __dbreg_register_args *, void *));
@@ -203,12 +204,18 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		    op == DB_TXN_ABORT || op == DB_TXN_POPENFILES ?
 		    argp->txnid : NULL, argp, info);
 
-		if (ret != 0) {
+		if (ret != 0 && op == DB_TXN_APPLY) {
 			/*
-			 fprintf(stderr,
-			     "__dbreg_open_file got %d for id %d\n",
-			     ret, argp->fileid);
+			 * The master has this file open, but we can't open it;
+			 * log records that reference it can't be applied here.
 			 */
+			char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+			fileid_str(argp->uid.data, fid_str);
+			logmsg(LOGMSG_WARN, "%s: unable to open %.*s ufid %s for dbreg id %d opcode %u "
+			    "at lsn %u:%u: %d %s\n", __func__, (int)argp->name.size,
+			    argp->name.size ? (char *)argp->name.data : "", fid_str,
+			    argp->fileid, argp->opcode, lsnp->file, lsnp->offset, ret,
+			    db_strerror(ret));
 		}
 #if defined (DEBUG_STACK_AT_DBREG_RECOVER)
 		comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d [%d:%d] ret=%d: ", pthread_self(), "open",

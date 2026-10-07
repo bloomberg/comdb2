@@ -21,6 +21,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
 #include "dbinc/db_shash.h"
+#include "dbinc/fop.h"
 #include "dbinc/mp.h"
 #include <poll.h>
 #include "dbinc_auto/mp_ext.h"
@@ -541,11 +542,93 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 
 	if ((ret = __db_open(dbp, txn, name, NULL,
 		DB_UNKNOWN, DB_ODDFILESIZE, __db_omode("rw----"), 0)) != 0) {
-		logmsg(LOGMSG_INFO, "__dbreg_fid_to_fname error opening db:%s\n", name);
+		logmsg(LOGMSG_INFO, "__dbreg_fid_to_fname error opening db:%s: %d %s\n",
+		    name, ret, db_strerror(ret));
 		ret = ENOENT;
 	}
 	if (!ret) (*dbpp) = dbp;
 	return ret;
+}
+
+/*
+ * __ufid_report_unresolved --
+ *	Log why a recovery function couldn't resolve the file a log record
+ *	refers to: the ufid (or dbreg id), whether the ufid-hash knows the
+ *	file, and why reopening it fails.
+ *
+ * PUBLIC: void __ufid_report_unresolved __P((DB_ENV *, u_int32_t,
+ * PUBLIC:     u_int8_t *, int32_t, DB_LSN *, int));
+ */
+void
+__ufid_report_unresolved(dbenv, rectype, inufid, fileid, lsnp, rc)
+	DB_ENV *dbenv;
+	u_int32_t rectype;
+	u_int8_t *inufid;
+	int32_t fileid;
+	DB_LSN *lsnp;
+	int rc;
+{
+	struct __ufid_to_db_t *ufid;
+	DB_FH *fhp;
+	DBMETA *meta;
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	char disk_fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	char *fname, *real_name;
+	u_int8_t mbuf[DBMETASIZE];
+	int haddbp, ret;
+	u_int32_t base;
+	char *recname;
+	extern char *optostr(int op);
+
+	(void)__rectype_tags(rectype, &base);
+	recname = optostr(base);
+
+	if (inufid == NULL) {
+		logmsg(LOGMSG_FATAL, "unable to resolve dbreg id %d for log record %s (%u) at lsn %u:%u, rc %d\n",
+		    fileid, recname, rectype, lsnp->file, lsnp->offset, rc);
+		return;
+	}
+
+	fileid_str(inufid, fid_str);
+	fname = NULL;
+	haddbp = 0;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+		haddbp = (ufid->dbp != NULL);
+		/* __ufid_rem_dbp never frees fname, so it's safe to use unlocked */
+		fname = ufid->fname;
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+
+	if (ufid == NULL) {
+		logmsg(LOGMSG_FATAL, "unable to resolve ufid %s for log record %s (%u) at lsn %u:%u, rc %d: "
+		    "not in the ufid-hash, so this node never registered the file\n",
+		    fid_str, recname, rectype, lsnp->file, lsnp->offset, rc);
+		return;
+	}
+	if (fname == NULL) {
+		logmsg(LOGMSG_FATAL, "unable to resolve ufid %s for log record %s (%u) at lsn %u:%u, rc %d: "
+		    "ufid-hash entry has no file name\n", fid_str, recname, rectype, lsnp->file, lsnp->offset, rc);
+		return;
+	}
+
+	/* Say whether the file is missing or is a different file */
+	real_name = NULL;
+	fhp = NULL;
+	meta = (DBMETA *)mbuf;
+	if ((ret = __db_appname(dbenv, DB_APP_DATA, fname, 0, NULL, &real_name)) == 0 &&
+	    (ret = __os_open(dbenv, real_name, DB_OSO_RDONLY, 0, &fhp)) == 0 &&
+	    (ret = __fop_read_meta(dbenv, real_name, mbuf, DBMETASIZE, fhp, 1, NULL)) == 0)
+		fileid_str(meta->uid, disk_fid_str);
+	if (fhp != NULL)
+		(void)__os_closehandle(dbenv, fhp);
+	if (real_name != NULL)
+		__os_free(dbenv, real_name);
+
+	logmsg(LOGMSG_FATAL, "unable to resolve ufid %s for log record %s (%u) at lsn %u:%u, rc %d: "
+	    "ufid-hash maps it to %s (handle %s), file %s%s\n",
+	    fid_str, recname, rectype, lsnp->file, lsnp->offset, rc, fname, haddbp ? "open" : "closed",
+	    ret ? db_strerror(ret) : "has fileid ", ret ? "" : disk_fid_str);
 }
 
 int gbl_abort_on_missing_ufid = 0;
@@ -1192,7 +1275,7 @@ __dbreg_do_open(dbenv,
 			fileid_str(uid, log_uid_str);
 			fileid_str(dbp->fileid, dbp_uid_str);
 
-			logmsg(LOGMSG_INFO, "Mismatched fileid for %s, log fileid %s, dbp fileid %s\n", name, log_uid_str, dbp_uid_str);
+			logmsg(LOGMSG_WARN, "Mismatched fileid for %s, log fileid %s, dbp fileid %s\n", name, log_uid_str, dbp_uid_str);
 			if (gbl_abort_on_ufid_mismatch) {
 				__log_flush(dbenv, NULL);
 				abort();

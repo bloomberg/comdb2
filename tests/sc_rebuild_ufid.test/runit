@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# After a table rebuild, a database with a meta table per table (no single
+# meta) ran pushnext, and the replicants that didn't have
+# _comdb2_static_table.metalite.dta panicked with DB_RUNRECOVERY.  pushlogs
+# wrote its junk into that file, so those replicants couldn't resolve its
+# ufid.  Restart a replicant without the file, then rebuild and push the log.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+dbnm=$1
+static_meta=_comdb2_static_table.metalite.dta
+
+if [[ -z "${CLUSTER}" || $(echo ${CLUSTER} | wc -w) -lt 2 ]]; then
+    echo "Test requires a cluster"
+    echo "Passed test"
+    exit 0
+fi
+
+master_logfile() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "select logfile from comdb2_cluster where is_master = 'Y'"
+}
+
+# Push the log to the next file and wait until the master gets there
+pushnext() {
+    local start=$(master_logfile)
+    cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('pushnext')" || failexit "pushnext"
+    for ((i = 0; i < 60; i++)); do
+        [[ $(master_logfile) -gt $start ]] && return
+        sleep 1
+    done
+    failexit "pushnext didn't move past logfile $start"
+}
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t (i INT PRIMARY KEY, s VARCHAR(100))" || failexit "create table"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE INDEX t_s ON t(s)" || failexit "create index"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t SELECT value, printf('row%d', value) FROM generate_series(1, 2000)" || failexit "insert"
+
+master=$(getmaster)
+replicant=$(for node in $CLUSTER; do [[ $node != $master ]] && echo $node; done | head -1)
+echo "master $master, replicant without $static_meta: $replicant"
+
+# Older versions create the static table's meta on the master here, and
+# replicate it to every node
+pushnext
+
+kill_restart_node $replicant 8 1 &
+restart_pid=$!
+sleep 3
+ssh -o StrictHostKeyChecking=no $replicant "rm -f $DBDIR/$static_meta"
+wait $restart_pid
+ssh -o StrictHostKeyChecking=no $replicant "ls $DBDIR/$static_meta" 2>/dev/null && failexit "$static_meta is still on $replicant"
+
+version=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT table_version('t')")
+cdb2sql ${CDB2_OPTIONS} $dbnm default "REBUILD t" || failexit "rebuild"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t VALUES (2001, 'after rebuild')" || failexit "insert after rebuild"
+pushnext
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t VALUES (2002, 'after pushnext')" || failexit "insert after pushnext"
+
+[[ $(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT table_version('t')") == $version ]] || failexit "rebuild changed the table version"
+
+# Give the replicants a moment to apply the pushed log
+sleep 2
+if grep -l "DB_RUNRECOVERY\|PANIC" ${TESTDIR}/logs/${dbnm}.*.db*; then
+    failexit "a node panicked"
+fi
+
+# Every node is up and has the same rows
+expected=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "SELECT COUNT(*), SUM(i) FROM t")
+for node in $CLUSTER; do
+    for ((i = 0; i < 30; i++)); do
+        got=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT COUNT(*), SUM(i) FROM t" 2>/dev/null)
+        [[ "$got" == "$expected" ]] && break
+        sleep 1
+    done
+    [[ "$got" == "$expected" ]] || failexit "$node has '$got', master has '$expected'"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT COUNT(*) FROM t WHERE s > 'row'" > /dev/null || failexit "index scan on $node"
+done
+
+if grep -l "DB_RUNRECOVERY\|PANIC" ${TESTDIR}/logs/${dbnm}.*.db*; then
+    failexit "a node panicked"
+fi
+echo "Passed test"

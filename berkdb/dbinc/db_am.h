@@ -126,6 +126,9 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 			ret = 0;					\
 			goto done;					\
 		}							\
+		__ufid_report_unresolved(dbenv, argp->type,		\
+		    DB_RECTYPE_HAS_UFID(argp->type) ? argp->ufid_fileid : NULL, \
+		    argp->fileid, lsnp, ret);				\
 		__bb_dbreg_print_dblist_stdout(dbenv);			\
 		__ufid_dump(dbenv);					\
 		__log_flush(dbenv, NULL);				\
