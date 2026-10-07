@@ -357,6 +357,10 @@ REGISTER_TUNABLE("debug_sleep_before_committed_lsn",
                  "election lsn, then resets to 0. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_debug_sleep_before_committed_lsn, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug_sleep_before_sc_redo_add",
+                 "The next logical commit on a table under logical live schema change sleeps this many ms between "
+                 "writing its logical commit record and adding it to the sc redo list, then resets to 0. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_before_sc_redo_add, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #ifdef COMDB2_TEST
 REGISTER_TUNABLE(
     "debug_sleep_in_rollout",
