@@ -205,13 +205,165 @@ EOF
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where 1" >/dev/null 2>&1
 }
 
+function test_blkseq_commitlsn
+{
+    echo "Testing blkseq_commitlsn durability"
+
+    # This test requires a cluster for bounce verification
+    [[ -z "$CLUSTER" ]] && failexit "test_blkseq_commitlsn requires a cluster setup"
+
+    typeset -l master=$(get_master)
+
+    # Get baseline counts before test
+    echo "Getting baseline counts..."
+    nodes="$CLUSTER"
+
+    # Track initial blkseq count on master
+    initial_blkseq_count=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "select count(*) from comdb2_blkseq")
+    echo "Initial blkseq entries on master: $initial_blkseq_count"
+
+    # Track initial invalid commitlsn count per node (e.g., schema changes produce -1:-1)
+    declare -A initial_invalid_counts
+    for n in $nodes ; do
+        initial_invalid_counts[$n]=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $n \
+            "select count(*) from comdb2_blkseq where commitlsn = '-1:-1'")
+        echo "Node $n: Initial invalid commitlsn count = ${initial_invalid_counts[$n]}"
+    done
+
+    # Track initial metrics
+    initial_durable_latest=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "select value from comdb2_metrics where name = 'durable_latest_cnt'")
+    echo "Initial durable_latest_cnt: $initial_durable_latest"
+
+    # Set random non-durable percentage to 50%
+    # This will randomly return NOT_DURABLE to trigger retries
+    echo "Enabling random non-durable (50%)..."
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable 'debug_random_non_durable_pct' = 50"
+
+    # Run 100 inserts
+    echo "Running 100 inserts..."
+    for i in {1..100}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values($i)" >/dev/null 2>&1
+        rc=$?
+        [[ $rc -ne 0 ]] && failexit "Insert $i failed with rc $rc"
+    done
+
+    # Disable random non-durable
+    echo "Disabling random non-durable..."
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable 'debug_random_non_durable_pct' = 0"
+
+    # Get final blkseq count on master
+    final_blkseq_count=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "select count(*) from comdb2_blkseq")
+    new_blkseq_count=$((final_blkseq_count - initial_blkseq_count))
+    echo "Final blkseq entries on master: $final_blkseq_count"
+    echo "New blkseq entries: $new_blkseq_count"
+
+    # Verify we have at least 100 new entries
+    [[ "$new_blkseq_count" -ne 100 ]] && failexit "Expected 100 new blkseq entries"
+
+    echo "Verifying commitlsn entries for new inserts..."
+    # Query comdb2_blkseq on each node to verify new inserts have valid commitlsn
+    for n in $nodes ; do
+        # Count entries with NULL or invalid commitlsn (format should be "file:offset" not "-1:-1")
+        final_invalid_count=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $n \
+            "select count(*) from comdb2_blkseq where commitlsn = '-1:-1'")
+
+        invalid_delta=$((final_invalid_count - initial_invalid_counts[$n]))
+        echo "Node $n: Final invalid commitlsn count = $final_invalid_count (delta = $invalid_delta)"
+
+        # Delta should be 0 - no NEW invalid entries (our 100 inserts should all have valid commitlsn)
+        [[ "$invalid_delta" -ne 0 ]] && failexit "Node $n has $invalid_delta new entries with invalid commitlsn (expected 0)"
+    done
+
+    echo "Checking metrics on master..."
+    # Check final metrics on master
+    final_durable_latest=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "select value from comdb2_metrics where name = 'durable_latest_cnt'")
+    durable_latest_delta=$((final_durable_latest - initial_durable_latest))
+
+    echo "Final durable_latest_cnt: $final_durable_latest"
+    echo "durable_latest_cnt delta: $durable_latest_delta"
+
+    # Success criteria:
+    # - We added at least 100 new blkseq entries
+    # - All entries have valid commitlsn (not "-1:-1")
+    # - durable_latest_cnt did not increase (delta = 0, meaning no fallback to latest commit method)
+    [[ "$durable_latest_delta" -ne 0 ]] && failexit "Expected durable_latest_cnt delta=0, got $durable_latest_delta (no fallback should occur)"
+
+    echo "blkseq_commitlsn initial test passed!"
+    echo "  - Added $new_blkseq_count new blkseq entries (expected >=100)"
+    echo "  - All new entries have valid commitlsn (invalid delta=0 on all nodes)"
+    echo "  - No fallback to durable_latest (delta=$durable_latest_delta)"
+
+    # Bounce cluster to verify commitlsns survive recovery
+    echo ""
+    echo "Bouncing cluster to verify commitlsn recovery..."
+
+    # Capture commitlsn data before bounce for verification
+    pre_bounce_blkseq_file=./pre_bounce_blkseq.$$.$RANDOM
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "select id, commitlsn from comdb2_blkseq where commitlsn != '-1:-1'" >  $pre_bounce_blkseq_file
+
+    # Bounce all nodes
+    for n in $nodes ; do
+        echo "Bouncing node $n..."
+        kill_restart_node $n 1
+    done
+
+    # Wait for cluster to stabilize
+    sleep 5
+    master=$(get_master)
+    echo "New master after bounce: $master"
+
+    # Gather blkseq, commitlsn data again
+    echo "Verifying commitlsns after bounce..."
+    post_bounce_blkseq_file=./post_bounce_blkseq.$$.$RANDOM
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "select id, commitlsn from comdb2_blkseq where commitlsn != '-1:-1'" > $post_bounce_blkseq_file
+
+    echo "Assert all of the blkseqs are retained after the bounce"
+    echo "Before-file: $(pwd)/$pre_bounce_blkseq_file"
+    echo "After-file: $(pwd)/$post_bounce_blkseq_file"
+
+    # Recovery will add a commit-lsn to the schema-change which wasn't previously there
+    while read ln ; do 
+        egrep "$ln" $post_bounce_blkseq_file >/dev/null 2>&1 || failexit "Missing blkseq entry after bounce: $ln"
+    done < $pre_bounce_blkseq_file
+
+    echo "Cluster bounce verification passed!"
+    echo "  - All nodes recovered successfully"
+    echo "  - commitlsn entries retained after recovery"
+
+    # Shutdown cluster cleanly after bounce test
+    echo ""
+    echo "Shutting down cluster..."
+    for n in $nodes ; do
+        echo "Stopping node $n..."
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $n "exec procedure sys.cmd.send('exit')" >/dev/null 2>&1 &
+    done
+
+    # Wait for all nodes to exit
+    sleep 5
+    echo "Cluster shutdown complete"
+
+    # Note: Data cleanup not needed since we're exiting the database
+}
+
 function run_test
 {
     echo "Running tests"
-    hide_non_durable_good_insert
-    show_non_durable_good_insert
-    hide_non_durable_constraint_violation
-    show_non_durable_constraint_violation
+
+    # Run blkseq_commitlsn test if this is the blkseq_commitlsn variant
+    if [[ "$DBNAME" == *"blkseqcommitlsn"* ]]; then
+        test_blkseq_commitlsn
+    else
+        hide_non_durable_good_insert
+        show_non_durable_good_insert
+        hide_non_durable_constraint_violation
+        show_non_durable_constraint_violation
+    fi
 }
 
 create_table

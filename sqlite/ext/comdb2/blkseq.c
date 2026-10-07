@@ -39,6 +39,7 @@ typedef struct systable_blkseq {
     int64_t rcode;
     int64_t time;
     int64_t age;
+    char *commitlsn;
 } systable_blkseq_t;
 
 typedef struct getblkseq {
@@ -48,8 +49,9 @@ typedef struct getblkseq {
 } getblkseq_t;
 
 static void collect_blkseq(int stripe, int ix, void *plsn, void *pkey,
-                           void *pdata, void *arg)
+                           void *pdata, void *incommitlsn, void *arg)
 {
+    DB_LSN *commitlsn = incommitlsn;
     DBT *key = pkey;
     DBT *data = pdata;
     int now = comdb2_time_epoch();
@@ -70,6 +72,10 @@ static void collect_blkseq(int stripe, int ix, void *plsn, void *pkey,
 
     b->stripe = stripe;
     b->ix = ix;
+
+    char lsnstr[64];
+    snprintf(lsnstr, sizeof(lsnstr), "%d:%d", commitlsn ? commitlsn->file : -1, commitlsn ? commitlsn->offset : -1);
+    b->commitlsn = strdup(lsnstr);
 
     int *k;
     k = (int *)key->data;
@@ -116,6 +122,8 @@ static void free_blkseq(void *p, int n)
     for (int i = 0; i < n; i++) {
         if (t[i].id)
             free(t[i].id);
+        if (t[i].commitlsn)
+            free(t[i].commitlsn);
     }
     free(p);
 }
@@ -136,5 +144,6 @@ int systblBlkseqInit(sqlite3 *db)
         CDB2_INTEGER, "rcode", -1, offsetof(systable_blkseq_t, rcode),
         CDB2_INTEGER, "time", -1, offsetof(systable_blkseq_t, time),
         CDB2_INTEGER, "age", -1, offsetof(systable_blkseq_t, age),
+        CDB2_CSTRING, "commitlsn", -1, offsetof(systable_blkseq_t, commitlsn),
         SYSTABLE_END_OF_FIELDS);
 }

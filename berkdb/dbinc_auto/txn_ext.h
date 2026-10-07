@@ -145,7 +145,7 @@ int __txn_rep_discard_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_all_recovered __P((DB_ENV *));
 int __rep_commit_dist_prepared __P((DB_ENV *, const char *dist_txnid));
-int __rep_abort_dist_prepared __P((DB_ENV *, const char *dist_txnid));
+int __rep_abort_dist_prepared __P((DB_ENV *, const char *dist_txnid, DB_LSN commitlsn));
 int __txn_prepared_collect_pp __P((DB_ENV *, collect_prepared_f, void *));
 int __txn_lowest_prepared_lsn __P((DB_ENV *, DB_LSN *lsn));
 
