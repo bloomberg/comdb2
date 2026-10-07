@@ -1,0 +1,22 @@
+schema
+{
+    longlong a
+    longlong b
+    int      c
+    int      d
+}
+
+keys
+{
+    /* index 0 - unique on a, upsert conflict target */
+    "ix0" = a
+
+    /* index 1 - unique on b+d */
+    "ix1" = b + <DESCEND>d
+
+    /* index 2 - dup */
+    dup "ix2" = b
+
+    /* index 3 - unique on a+c, the index with the missing key */
+    "ix3" = a + c
+}

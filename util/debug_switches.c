@@ -89,6 +89,7 @@ static struct debug_switches {
     int get_tmp_dir_sleep;
     int ignore_null_auth_func;
     int load_cache_delay;
+    int test_dbreg_deleted_intvl;
 #   ifdef COMDB2_TEST
     int stall_ssl_write;
     int newsql_response_is_row;
@@ -152,6 +153,7 @@ int init_debug_switches(void)
     debug_switches.convert_record_sleep = 0;
     debug_switches.abort_ufid_open = 0;
     debug_switches.bdb_handle_reset_delay = 0;
+    debug_switches.test_dbreg_deleted_intvl = 0;
 
     register_debug_switch("recover_ddlk_sp_delay", &debug_switches.recover_ddlk_sp_delay);
 
@@ -276,6 +278,8 @@ int init_debug_switches(void)
     register_debug_switch("get_tmp_dir_sleep", &debug_switches.get_tmp_dir_sleep);
     register_debug_switch("ignore_null_auth_func", &debug_switches.ignore_null_auth_func);
     register_debug_switch("load_cache_delay", &debug_switches.load_cache_delay);
+    register_int_switch("test_dbreg_deleted_intvl", "Inject DB_DELETED on replication apply at interval",
+                        &debug_switches.test_dbreg_deleted_intvl);
 #   ifdef COMDB2_TEST
     register_debug_switch("stall_ssl_write", &debug_switches.stall_ssl_write);
 #   endif /* COMDB2_TEST */
@@ -556,6 +560,10 @@ int debug_switch_ignore_null_auth_func(void)
 int debug_switch_load_cache_delay(void)
 {
     return debug_switches.load_cache_delay;
+}
+int debug_switch_test_dbreg_deleted_intvl(void)
+{
+    return debug_switches.test_dbreg_deleted_intvl;
 }
 #ifdef COMDB2_TEST
 int debug_switch_stall_ssl_write(void)

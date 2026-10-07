@@ -61,7 +61,7 @@ extern __thread DB_LSN commit_lsn;
 			dbenv->rep_log_trigger_cb(log_trigger, lsnp, &commit_lsn, fname, argp->type, argp); \
 		} \
 		if (ret != 0) { \
-			if (ret	== DB_DELETED || ret == DB_IGNORED) { \
+			if (ret == DB_IGNORED || (ret == DB_DELETED && IS_RECOVERING(dbenv))) { \
 				ret = 0; \
 				goto done; \
 			} \
