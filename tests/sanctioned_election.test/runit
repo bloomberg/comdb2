@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Test that election uses the sanctioned node count rather than filtering out
+# rtcpu'd nodes.  With old code, marking a node as rtcpu'd would reduce
+# get_num_sanctioned (and thus elect_count), risking lost updates.
+# With the fix, get_num_sanctioned returns the sanctioned count regardless of rtcpu.
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+cluster_size=${#nodes[@]}
+
+master=$(getmaster)
+echo "Master is $master"
+
+# Pick a replicant to mark as rtcpu'd
+replicant=""
+for node in ${nodes[@]}; do
+    if [[ "$node" != "$master" ]]; then
+        replicant=$node
+        break
+    fi
+done
+echo "Will mark $replicant as rtcpu'd"
+
+# Verify num_sanctioned equals cluster_size before the test
+num_sanctioned=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master \
+    "exec procedure sys.cmd.send('bdb get_num_sanctioned')" | grep "num_sanctioned" | awk '{print $2}')
+echo "Before rtcpu: num_sanctioned=$num_sanctioned"
+if [[ "$num_sanctioned" -ne "$cluster_size" ]]; then
+    echo "FAILED: num_sanctioned ($num_sanctioned) != cluster_size ($cluster_size) before test"
+    exit 1
+fi
+
+# Mark the replicant as rtcpu'd on all nodes
+for node in ${nodes[@]}; do
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node \
+        "exec procedure sys.cmd.send('debug tcmtest routecpu $replicant')"
+done
+
+sleep 2
+
+# Check num_sanctioned again — it must still equal cluster_size (sanctioned count)
+num_sanctioned=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master \
+    "exec procedure sys.cmd.send('bdb get_num_sanctioned')" | grep "num_sanctioned" | awk '{print $2}')
+echo "After rtcpu: num_sanctioned=$num_sanctioned"
+if [[ "$num_sanctioned" -ne "$cluster_size" ]]; then
+    echo "FAILED: num_sanctioned ($num_sanctioned) != cluster_size ($cluster_size) after marking node rtcpu'd"
+    echo "Election would use wrong cluster size, risking lost updates"
+    exit 1
+fi
+
+# Disable the rtcpu test on all nodes
+for node in ${nodes[@]}; do
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node \
+        "exec procedure sys.cmd.send('debug tcmtest routecpu')" 2>/dev/null
+done
+
+echo "Success"
+exit 0
