@@ -486,6 +486,12 @@ extern int gbl_abort_on_dangling_stringrefs;
 extern int gbl_abort_on_stalled_exit;
 extern int gbl_debug_alter_sequences_sleep;
 extern int gbl_debug_poison_freed_schemas;
+#ifdef COMDB2_TEST
+extern int gbl_debug_sc_seed_set_fail;
+extern int gbl_debug_sc_seed_delete_fail;
+extern char *gbl_debug_sc_resume_fail_table;
+extern int gbl_debug_sc_resume_fail_mode;
+#endif
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_ix_addk_nomaster;

@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Kills the master while a time partition is being altered, and checks the new
+# master either finishes or cleanly aborts the alter on every shard:
+#   - resuming one shard fails, in each of the ways a resume can fail
+#   - the master is killed again while the new master is resuming
+#   - the alter starts while the shard rolled out is still being dropped
+
+dbnm=$1
+VIEW=tv
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "needs a cluster, skipping"
+    echo "Success"
+    exit 0
+fi
+
+function failexit
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+function sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "$1"
+}
+
+function node_sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $1 $dbnm "$2"
+}
+
+function all_nodes
+{
+    for node in $CLUSTER; do
+        node_sql $node "$1" > /dev/null || failexit "'$1' on $node"
+    done
+}
+
+function getmaster
+{
+    local master master2 ok=0
+    while [[ "$ok" != "1" ]]; do
+        ok=1
+        master=$(sql "select host from comdb2_cluster where is_master='Y'")
+        for node in $CLUSTER; do
+            master2=$(node_sql $node "select host from comdb2_cluster where is_master='Y'")
+            if [[ -z "$master" || "$master" != "$master2" ]]; then
+                ok=0
+                sleep 1
+                break
+            fi
+        done
+    done
+    echo $master
+}
+
+function shards
+{
+    sql "select partition_info('${VIEW}', 'tables')"
+}
+
+# wait for the next rollout and for every node to drop the shard it retired,
+# which leaves most of a period before the next shard is created
+function wait_quiet_window
+{
+    local before=$(shards) now
+    while [[ "$(shards)" == "$before" ]]; do
+        sleep 1
+    done
+    now=$(shards)
+    for old in ${before//;/ }; do
+        [[ ";$now;" == *";$old;"* ]] && continue
+        for node in $CLUSTER; do
+            while [[ $(node_sql $node "select count(*) from sqlite_master where type='table' and name='$old'") != "0" ]]; do
+                sleep 1
+            done
+        done
+    done
+    echo "shards now $now"
+}
+
+cols=()
+function schema
+{
+    echo "schema { int a cstring b[10] blob c"
+    for col in "$@"; do echo "int $col null=yes"; done
+    echo "} keys { \"pk\" = a }"
+}
+
+# how many of the current shards have the column
+function shards_with
+{
+    local n=0
+    for shard in $(shards | tr ';' ' '); do
+        sql "select csc2 from sqlite_master where name='$shard'" | grep -q "int *$1 " && let n=n+1
+    done
+    echo $n
+}
+
+function check_cluster
+{
+    for node in $CLUSTER; do
+        [[ $(node_sql $node "select 1") == "1" ]] || failexit "$node is down"
+    done
+    if grep -l -E "\[FATAL\]|pthread_mutex_.*rc:" ${TESTDIR}/logs/${DBNAME}.*.db* 2> /dev/null; then
+        failexit "fatal error in the logs above"
+    fi
+    local markers=$(sql "exec procedure sys.cmd.send('llmeta list')" | grep -c "LLMETA_IN_SCHEMA_CHANGE")
+    echo "llmeta in-schema-change markers: $markers"
+}
+
+# alter the partition to add $1, kill the master 3 seconds in, and wait for the
+# new master to settle
+function alter_and_kill
+{
+    # restarted nodes lost these
+    all_nodes "exec procedure sys.cmd.send('bdb setattr SC_ASYNC 0')"
+    all_nodes "PUT SCHEMACHANGE CONVERTSLEEP 10"
+    local master=$(getmaster)
+    (sql "alter table ${VIEW} { $(schema ${cols[@]} $1) }" &> alter.out) &
+    local alter_pid=$!
+    sleep 3
+    echo "killing master $master"
+    kill_restart_node $master 1 > /dev/null
+    wait $alter_pid
+    sleep 30
+}
+
+# no shard of the partition is left marked as in a schema change
+function expect_no_markers
+{
+    local out=$(sql "exec procedure sys.cmd.send('llmeta list')")
+    for shard in $(shards | tr ';' ' '); do
+        echo "$out" | grep -q "LLMETA_IN_SCHEMA_CHANGE: table=\"$shard\"" && failexit "$shard left in schema change"
+    done
+}
+
+function injected
+{
+    cat ${TESTDIR}/logs/${DBNAME}.*.db* 2> /dev/null | grep -c "injected failure mode $1 for $2"
+}
+
+# every shard has the column, or none has
+function expect_consistent
+{
+    local n=$(shards_with $1) total=$(shards | tr ';' '\n' | wc -l)
+    echo "$1 on $n of $total shards"
+    [[ "$n" == "0" || "$n" == "$total" ]] || failexit "$1 on only $n of $total shards"
+    [[ "$n" == "$total" ]] && cols+=($1)
+}
+
+all_nodes "exec procedure sys.cmd.send('bdb setattr SC_ASYNC 0')"
+all_nodes "PUT SCHEMACHANGE CONVERTSLEEP 10"
+
+sql "CREATE TIME PARTITION ON t as ${VIEW} PERIOD 'test2min' RETENTION 2 START '$(get_timestamp 60)'" ||
+    failexit "create partition"
+for i in $(seq 1 100); do
+    sql "insert into ${VIEW} values ($i, 'row', x'00')" > /dev/null || failexit "insert"
+done
+
+# set on every node, and in its lrl in case it is the master that restarts
+function set_resume_fail
+{
+    all_nodes "put tunable debug_sc_resume_fail_table '$1'"
+    all_nodes "put tunable debug_sc_resume_fail_mode $2"
+    for node in $CLUSTER; do
+        ssh -o StrictHostKeyChecking=no $node "sed -i '/^debug_sc_resume_fail_/d' ${DBDIR}/${DBNAME}.lrl; echo debug_sc_resume_fail_table $1 >> ${DBDIR}/${DBNAME}.lrl; echo debug_sc_resume_fail_mode $2 >> ${DBDIR}/${DBNAME}.lrl" < /dev/null
+    done
+}
+
+# resuming one shard fails: the whole partition alter must abort
+function resume_fails
+{
+    local mode=$1 col=f$1
+    local shard=$(shards | cut -d';' -f1)
+    echo "resuming $shard fails with mode $mode"
+    local before=$(injected $mode $shard)
+    set_resume_fail $shard $mode
+    alter_and_kill $col
+    set_resume_fail $shard 0
+    [[ $(injected $mode $shard) -gt $before ]] || failexit "resume of $shard never failed"
+    check_cluster
+    # a shard that failed because another schema change runs on it is left to
+    # that schema change
+    [[ $mode != 4 ]] && expect_no_markers
+    [[ $(shards_with $col) == "0" ]] || failexit "$col added although resuming $shard failed"
+}
+
+wait_quiet_window
+resume_fails 1
+resume_fails 2
+wait_quiet_window
+resume_fails 3
+resume_fails 4
+
+wait_quiet_window
+echo "a normal alter still works"
+sql "alter table ${VIEW} { $(schema ${cols[@]} n1) }" || failexit "alter after failed resumes"
+expect_consistent n1
+[[ $(shards_with n1) == "0" ]] && failexit "n1 missing"
+
+echo "kill the new master while it resumes"
+all_nodes "exec procedure sys.cmd.send('bdb setattr SC_ASYNC 0')"
+all_nodes "PUT SCHEMACHANGE CONVERTSLEEP 10"
+function resumes
+{
+    cat ${TESTDIR}/logs/${DBNAME}.$1.db 2> /dev/null | grep -c "resume_schema_change: shard: .* for partition: ${VIEW} "
+}
+master=$(getmaster)
+(sql "alter table ${VIEW} { $(schema ${cols[@]} d1) }" &> alter.out) &
+alter_pid=$!
+sleep 3
+# the killed node starts a new log
+declare -A resumed
+for node in $CLUSTER; do
+    resumed[$node]=$(resumes $node)
+done
+resumed[$master]=0
+echo "killing master $master"
+kill_restart_node $master 1 > /dev/null
+master=$(getmaster)
+for i in $(seq 1 30); do
+    [[ $(resumes $master) -gt ${resumed[$master]} ]] && break
+    sleep 1
+done
+[[ $(resumes $master) -gt ${resumed[$master]} ]] || failexit "$master never resumed"
+sleep 2
+echo "killing resuming master $master"
+kill_restart_node $master 1 > /dev/null
+wait $alter_pid
+sleep 40
+check_cluster
+expect_consistent d1
+
+echo "alter while the shard rolled out is still being dropped"
+before=$(shards)
+while [[ "$(shards)" == "$before" ]]; do
+    sleep 1
+done
+alter_and_kill r1
+check_cluster
+expect_consistent r1
+
+echo "Success"

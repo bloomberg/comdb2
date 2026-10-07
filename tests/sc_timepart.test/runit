@@ -207,10 +207,28 @@ getmaster() {
 master=`getmaster`
 
 echo "TEST SC RESUME FOR TIMEPART TABLE"
+# the shard rolled out of the partition (t0) is dropped a few seconds after the
+# rollout; an alter started before every node has the drop also picks it up as
+# the next shard, and killing the master then leaves the drop to be resumed
+# against it
+count=0
+for node in ${CLUSTER:-$master} ; do
+    while [[ $(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from sqlite_master where type='table' and name='t0'") != "0" ]]; do
+        let count=count+1
+        if (( count > 60 )); then
+            echo "FAILURE: shard t0 was not dropped on $node"
+            exit 1
+        fi
+        sleep 1
+    done
+done
 cdb2sql ${CDB2_OPTIONS} --host $master $dbname 'exec procedure sys.cmd.send("bdb setattr SC_ASYNC 0")'
 cdb2sql ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb setattr SC_ASYNC 0")'
-cdb2sql ${CDB2_OPTIONS} --host $master $dbname "PUT SCHEMACHANGE CONVERTSLEEP 10"
-cdb2sql ${CDB2_OPTIONS} $dbname default  "PUT SCHEMACHANGE CONVERTSLEEP 10"
+# the alter takes its convert sleep from whichever node parses it, so set it
+# everywhere; otherwise the alter can finish before the master is killed
+for node in ${CLUSTER:-$master} ; do
+    cdb2sql ${CDB2_OPTIONS} --host $node $dbname "PUT SCHEMACHANGE CONVERTSLEEP 10"
+done
 (cdb2sql ${CDB2_OPTIONS} $dbname default "alter table ${VIEW1} {`cat t_1.csc2`}" &> alter1.out || touch alter1.failed) &
 sleep 3
 kill_restart_node $master 1

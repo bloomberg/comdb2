@@ -353,6 +353,20 @@ REGISTER_TUNABLE(
     "debug_sleep_in_rollout",
     "Sleep after acquiring schema_lk in _view_cron_new_rollout for testing lock inversion (Default: 0 seconds)",
     TUNABLE_INTEGER, &gbl_debug_sleep_in_rollout, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sc_seed_set_fail",
+                 "Fail the next N schema change seed writes with a deadlock, or every one with an error if negative "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sc_seed_set_fail, EXPERIMENTAL | INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sc_seed_delete_fail",
+                 "Fail the next N schema change seed deletes with a deadlock, or every one with an error if negative "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sc_seed_delete_fail, EXPERIMENTAL | INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sc_resume_fail_table", "Fail resuming the schema change of this table (Default: none)",
+                 TUNABLE_STRING, &gbl_debug_sc_resume_fail_table, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sc_resume_fail_mode",
+                 "How debug_sc_resume_fail_table fails: 1 seed fetch error, 2 missing seed, 3 master downgrading, 4 "
+                 "schema change already running (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sc_resume_fail_mode, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif
 REGISTER_TUNABLE("debug_default_string_update",
                  "Test default string update handler. (Default: debug_default_string_update_value)", TUNABLE_STRING,
