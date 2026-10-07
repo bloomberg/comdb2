@@ -364,7 +364,7 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
         struct timeval now, diff;
         gettimeofday(&now, NULL);
         timersub(&now, &clnt->last_sql_recover_time, &diff);
-        int64_t ms = diff.tv_sec * 1000 - diff.tv_usec / 1000;
+        int64_t ms = diff.tv_sec * 1000 + diff.tv_usec / 1000;
         if (ms >= gbl_sql_recover_time) {
             clnt->last_sql_recover_time = now;
             if (recover_deadlock_evbuffer(clnt) != 0) {

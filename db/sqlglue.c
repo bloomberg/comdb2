@@ -6826,6 +6826,17 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
         return SQLITE_DEADLOCK;
     }
 
+    /* We only get here if the record says this field has out-of-line data.
+     * If there is no blob and the cursor lost its locks since it read the
+     * record (recover_deadlock), the row changed under us and its genid is
+     * stale: fail rather than let check_one_blob_consistency() turn the
+     * missing blob into an empty value. */
+    if (blobs.blobptrs[0] == NULL && !skip_cache && pCur->bdbcur->invalidated(pCur->bdbcur)) {
+        logmsg(LOGMSG_ERROR, "%s blob missing after losing locks  genid:%llx blob-index:%d\n", __func__, pCur->genid,
+               f->blob_index);
+        return SQLITE_DEADLOCK;
+    }
+
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
 

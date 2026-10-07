@@ -100,6 +100,11 @@ if [[ $? != 0 ]]; then
 fi
 sleep 5
 
+# The alter and drop selects must release their locks while the DDL runs. At
+# one release per 200 checks, a 1000-row scan never releases (and finishes
+# before the DDL) about 0.7% of the time, so release far more often here.
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 10')"
+
 # Test alter
 echo "Testing alter"
 cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &

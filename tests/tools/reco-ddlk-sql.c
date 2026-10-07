@@ -76,7 +76,15 @@ static void who_master(void)
 static int num_incoherent(void)
 {
     cdb2_hndl_tp *master = hndl(master_node);
-    int rc = cdb2_run_statement(master, "SELECT count(*) FROM comdb2_cluster where coherent_state != 'coherent'");
+    const char *sql = "SELECT count(*) FROM comdb2_cluster where coherent_state != 'coherent'";
+    int rc = cdb2_run_statement(master, sql);
+    /* A busy host can make connecting to the master time out: that isn't
+     * what this test checks, so retry it a few times */
+    for (int tries = 1; rc == CDB2ERR_CONNECT_ERROR && tries < 10; ++tries) {
+        Printf("%s cdb2_run_statement rc:%d %s, retrying\n", __func__, rc, cdb2_errstr(master));
+        sleep(1);
+        rc = cdb2_run_statement(master, sql);
+    }
     if (rc != 0) {
         Printf("%s cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(master));
         exit(1);
@@ -211,8 +219,17 @@ static void *reader(void *data)
         Printf("%s: cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
+    /* The looping readers are there to contend with the writer: once it is
+     * done, stop rather than drain the rest of a 1M row join, which takes
+     * minutes on a busy host. Reader 99 is the final full read. */
+    int stop_when_done = (i != 99);
+    int stopped = 0;
     int counter = 0;
     while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        if (stop_when_done && done) {
+            stopped = 1;
+            break;
+        }
         int do_exit = 0;
         ++counter;
         int col = 0;
@@ -297,7 +314,19 @@ static void *reader(void *data)
             c4l != sizeof(g00df00f) ||
             c4l != c44l
         ){
-            Printf("%s %2d: cdb2_next_record UNEXPECTED lengths  =>  ", __func__, i);
+            Printf("%s %2d: cdb2_next_record UNEXPECTED lengths  =>  "
+                   "a1:%d a2:%d b1:%d b2:%d b5:%d c1:%d c2:%d c5:%d  "
+                   "a3:%d a33:%d ah:%d a4:%d a44:%d  "
+                   "b3:%d b33:%d bh:%d b4:%d b44:%d  "
+                   "c3:%d c33:%d ch:%d c4:%d c44:%d  "
+                   "a3:%s ah:%s b3:%s bh:%s c3:%s ch:%s\n", __func__, i,
+                   a1, a2, b1, b2, b5, c1, c2, c5,
+                   a3l, a33l, ahl, a4l, a44l,
+                   b3l, b33l, bhl, b4l, b44l,
+                   c3l, c33l, chl, c4l, c44l,
+                   a3 ? (char *)a3 : "(null)", ah ? (char *)ah : "(null)",
+                   b3 ? (char *)b3 : "(null)", bh ? (char *)bh : "(null)",
+                   c3 ? (char *)c3 : "(null)", ch ? (char *)ch : "(null)");
             do_exit = 1;
         } else if (memcmp(a3, ah, a3l)) {
             Printf("%s %2d: cdb2_next_record UNEXPECTED a3 payload =>  ", __func__, i);
@@ -352,12 +381,12 @@ static void *reader(void *data)
             exit(1);
         }
     }
-    if (rc != CDB2_OK_DONE) {
+    if (!stopped && rc != CDB2_OK_DONE) {
         Printf("%s: cdb2_next_record rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
     cdb2_close(db);
-    if (counter) Printf("%s %2d: rows:%d\n", __func__, i, counter);
+    if (counter) Printf("%s %2d: rows:%d%s\n", __func__, i, counter, stopped ? " (stopped, writer done)" : "");
     return NULL;
 }
 static void *readers(void *data)
