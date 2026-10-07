@@ -2886,54 +2886,16 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     return 0;
 }
 
-static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
+/* Run once per node, before waiting for its ack: is this node worth waiting
+ * for?  Returns
+ *    1 - no: it is already incoherent
+ *   -2 - no: it has been rtcpu'd, so we just made it incoherent
+ *    0 - yes (a drtest node is made INCOHERENT_WAIT but is still waited for) */
+static int seqnum_wait_node_precheck(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                     struct hostinfo *h, int fakeincoherent)
 {
-    switch (rc) {
-    case 1:
-    case -2:
-    case -10:
-    case -1:
-        return 1;
-        break;
-    default:
-        return 0;
-        break;
-    }
-}
-
-/*
- * Return values:
- *    GOOD RETURN CODE
- *    0 - node has caught up
- *
- *    NORMAL TIMEOUT
- *    -999 - the caller will mark incoherent
- *
- *    SPECIAL CASES: DON'T WAIT ANYMORE
- *    1 - node is not coherent / newly online and catching up
- *   -2 - node is rtcpu'd- marked incoherent inline
- *  -10 - node generation is higher than what we are waiting on
- *   -1 - node has been decommissioned
- *
- *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
- *   we wait for.  This counts against durability.
- */
-static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
-                                             seqnum_type *seqnum,
-                                             struct interned_string *host, int timeoutms, int lineno,
-                                             int fakeincoherent)
-{
-    int rc, reset_ts = 1, remaining = timeoutms;
-    int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
-    struct timespec waittime;
-    int i, coherent_state;
+    int coherent_state;
     int node_is_rtcpu = 0;
-    DB_LSN got_lsn;
-    uint32_t got_gen;
-    struct hostinfo *h = retrieve_hostinfo(host);
-    /* if we were passed a child, find his parent */
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
 
     if (fakeincoherent) {
         node_is_rtcpu = 1;
@@ -2982,13 +2944,23 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
             return -2;
         }
     }
+    return 0;
+}
 
-    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-
-    if (gbl_udp)
-        h->expected_udp_count++;
-
-again:
+/* Run each time we look at what a node has acked: has it acked this commit,
+ * and if not, is it still worth waiting for?  Returns
+ *      0 - acked
+ *      1 - stop waiting: it is catching up, the bdb lock is wanted, or we
+ *          are exiting
+ *    -10 - stop waiting: it is on a newer generation
+ *     -1 - stop waiting: it has been decommissioned
+ *   -999 - not acked yet, keep waiting
+ * Call with seqnum_info->lock held.  It is released on every return except
+ * -999, so the caller can wait on the lock's condvar. */
+static int seqnum_wait_node_check_locked(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string *host,
+                                         struct hostinfo *h, int lineno, uint32_t *got_gen, DB_LSN *got_lsn)
+{
+    int i;
 
     if (h->seqnum.lsn.file == INT_MAX || bdb_lock_desired(bdb_state)) {
         /* add 1 ms of latency if we have someone catching up */
@@ -3034,15 +3006,16 @@ again:
         }
     }
 
-    got_gen = gen;
-    got_lsn = h->seqnum.lsn;
+    *got_gen = gen;
+    *got_lsn = h->seqnum.lsn;
 
     if (bdb_seqnum_compare(bdb_state, &h->seqnum, seqnum) >= 0) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, "%s line %d called from %d %s good rcode mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n", 
-                    __func__, __LINE__, lineno, host->str, got_gen, got_lsn.file, got_lsn.offset,
-                    seqnum->generation, seqnum->lsn.file, seqnum->lsn.offset);
+            logmsg(LOGMSG_USER,
+                   "%s line %d called from %d %s good rcode mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n",
+                   __func__, __LINE__, lineno, host->str, *got_gen, got_lsn->file, got_lsn->offset, seqnum->generation,
+                   seqnum->lsn.file, seqnum->lsn.offset);
         }
         return 0;
     }
@@ -3079,6 +3052,52 @@ again:
             return -1;
         }
     }
+    return -999;
+}
+
+/*
+ * Return values:
+ *    GOOD RETURN CODE
+ *    0 - node has caught up
+ *
+ *    NORMAL TIMEOUT
+ *    -999 - the caller will mark incoherent
+ *
+ *    SPECIAL CASES: DON'T WAIT ANYMORE
+ *    1 - node is not coherent / newly online and catching up
+ *   -2 - node is rtcpu'd- marked incoherent inline
+ *  -10 - node generation is higher than what we are waiting on
+ *   -1 - node has been decommissioned
+ *
+ *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
+ *   we wait for.  This counts against durability.
+ */
+static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state, seqnum_type *seqnum,
+                                             struct interned_string *host, int timeoutms, int lineno,
+                                             int fakeincoherent)
+{
+    int rc, reset_ts = 1, remaining = timeoutms;
+    int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
+    struct timespec waittime;
+    DB_LSN got_lsn = {0};
+    uint32_t got_gen = 0;
+    struct hostinfo *h = retrieve_hostinfo(host);
+    /* if we were passed a child, find his parent */
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    if ((rc = seqnum_wait_node_precheck(bdb_state, seqnum, host, h, fakeincoherent)) != 0)
+        return rc;
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+
+    if (gbl_udp)
+        h->expected_udp_count++;
+
+again:
+
+    if ((rc = seqnum_wait_node_check_locked(bdb_state, seqnum, host, h, lineno, &got_gen, &got_lsn)) != -999)
+        return rc;
 
     /* Set timespec for first run and timeouts */
     if (reset_ts) {
@@ -3116,6 +3135,45 @@ again:
     }
 
     goto again;
+}
+
+/* The first-ack wait's look at every node at once: returns the index of a node
+ * that has acked, else -1 after sleeping up to 'sleepms' for an ack.  Drops the
+ * nodes not worth waiting for (any other return code) from the list. */
+static int seqnum_wait_first_ack(bdb_state_type *bdb_state, seqnum_type *seqnum, struct interned_string **nodes,
+                                 int *numnodes, int fakeincoherent, int sleepms)
+{
+    DB_LSN got_lsn;
+    uint32_t got_gen;
+    struct timespec waittime;
+    int i, rc;
+
+    for (i = 0; i < *numnodes; i++) {
+        if (seqnum_wait_node_precheck(bdb_state, seqnum, nodes[i], retrieve_hostinfo(nodes[i]), fakeincoherent))
+            nodes[i--] = nodes[--(*numnodes)];
+    }
+
+again:
+    if (*numnodes == 0)
+        return -1;
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    for (i = 0; i < *numnodes; i++) {
+        rc = seqnum_wait_node_check_locked(bdb_state, seqnum, nodes[i], retrieve_hostinfo(nodes[i]), __LINE__, &got_gen,
+                                           &got_lsn);
+        if (rc == 0)
+            return i;
+        if (rc != -999) {
+            /* that dropped the lock, so an ack for one we already looked at
+             * could have slipped by: look at the rest again */
+            nodes[i] = nodes[--(*numnodes)];
+            goto again;
+        }
+    }
+    /* sleep under the lock acks are signalled under, so none slips in between */
+    setup_waittime(&waittime, sleepms);
+    pthread_cond_timedwait(&(bdb_state->seqnum_info->cond), &(bdb_state->seqnum_info->lock), &waittime);
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    return -1;
 }
 
 int bdb_wait_for_seqnum_from_node(bdb_state_type *bdb_state,
@@ -3230,6 +3288,7 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     const char *base_node = NULL;
     char str[80];
     int track_once = 1;
+    int udp_counted = 0;
     DB_LSN nodelsn;
     uint32_t nodegen;
     int num_successfully_acked = 0;
@@ -3264,8 +3323,8 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
 
     begin_time = comdb2_time_epochms();
 
-    /* lame, i know.  go into a loop polling once per second to see if
-       anyone is coherent yet.  don't wait forever - this must timeout
+    /* watch every node at once until one acks, so the fastest node sets how
+       long the rest get.  don't wait forever - this must timeout
        eventually or we can end up hung for hours in some pathalogical
        situations. */
     do {
@@ -3327,52 +3386,58 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
             fake_incoherent = 1;
         }
 
-        for (i = 0; i < numnodes; i++) {
-            if (bdb_state->rep_trace)
-                logmsg(LOGMSG_USER, "waiting for initial NEWSEQ from node %s of >= <%s>\n", nodelist[i]->str,
-                       lsn_to_str(str, &(seqnum->lsn)));
-
-            rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
-                    nodelist[i], 1000, __LINE__, fake_incoherent);
-
-            if (bdb_lock_desired(bdb_state)) {
-                logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
-                ATOMIC_ADD64(gbl_distributed_commit_count, 1);
-                ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
-                return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
-            }
-
-            if (wait_for_seqnum_remove_node(bdb_state, rc)) {
-                nodelist[i] = nodelist[numnodes - 1];
-                numnodes--;
-                if (numnodes <= 0)
-                    goto done_wait;
-                i--;
-                assert(rc != 0);
-            }
-
-            if (rc == 0) {
-                base_node = nodelist[i]->str;
-                num_successfully_acked++;
-
-                end_time = comdb2_time_epochms();
-                we_used = end_time - begin_time;
-
-                /* lets make up a number for how many more ms we should wait
-                   based on how long we had to wait for one guy */
-                waitms = (we_used * bdb_state->attr->rep_timeout_lag) / 100;
-
-                if (waitms < bdb_state->attr->rep_timeout_minms)
-                    waitms = bdb_state->attr->rep_timeout_minms;
-
-                if (bdb_state->rep_trace)
-                    logmsg(LOGMSG_USER,
-                           "fastest node to <%s> was %dms, will wait another %dms for remainder\n",
-                            lsn_to_str(str, &(seqnum->lsn)), we_used, waitms);
-
-                goto got_ack;
-            }
+        /* one expected udp ack per node, not one per look */
+        if (gbl_udp && !udp_counted) {
+            udp_counted = 1;
+            Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+            for (i = 0; i < numnodes; i++)
+                retrieve_hostinfo(nodelist[i])->expected_udp_count++;
+            Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         }
+
+        if (bdb_state->rep_trace)
+            logmsg(LOGMSG_USER, "waiting for initial NEWSEQ from %d nodes of >= <%s>\n", numnodes,
+                   lsn_to_str(str, &(seqnum->lsn)));
+
+        /* sleep in short steps, as bdb_wait_for_seqnum_from_node_int() does,
+         * to look at lock-desired and the node list again */
+        int sleepms = bdb_state->attr->rep_timeout_maxms - (comdb2_time_epochms() - begin_time);
+        if (sleepms > bdb_state->attr->seqnum_wait_interval)
+            sleepms = bdb_state->attr->seqnum_wait_interval;
+        if (sleepms < 0)
+            sleepms = 0;
+        i = seqnum_wait_first_ack(bdb_state, seqnum, nodelist, &numnodes, fake_incoherent, sleepms);
+
+        if (bdb_lock_desired(bdb_state)) {
+            logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
+            ATOMIC_ADD64(gbl_distributed_commit_count, 1);
+            ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
+            return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+        }
+
+        if (i >= 0) {
+            base_node = nodelist[i]->str;
+            num_successfully_acked++;
+
+            end_time = comdb2_time_epochms();
+            we_used = end_time - begin_time;
+
+            /* lets make up a number for how many more ms we should wait
+               based on how long we had to wait for one guy */
+            waitms = (we_used * bdb_state->attr->rep_timeout_lag) / 100;
+
+            if (waitms < bdb_state->attr->rep_timeout_minms)
+                waitms = bdb_state->attr->rep_timeout_minms;
+
+            if (bdb_state->rep_trace)
+                logmsg(LOGMSG_USER, "fastest node to <%s> was %dms, will wait another %dms for remainder\n",
+                       lsn_to_str(str, &(seqnum->lsn)), we_used, waitms);
+
+            goto got_ack;
+        }
+
+        if (numnodes == 0)
+            goto done_wait;
     } while (comdb2_time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms && !bdb_state->exiting &&
              !(lock_desired = bdb_lock_desired(bdb_state)));
 
