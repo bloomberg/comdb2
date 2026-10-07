@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a CLUSTER"
+
+function sockpool_set
+{
+    timeout 5 bash -c "echo 'set $1 $2' > /tmp/msgtrap.sockpool"
+}
+
+pgrep cdb2sockpool >/dev/null
+if [[ $? -ne 0 ]]; then
+    ${BUILDDIR}/tools/cdb2sockpool/cdb2sockpool
+    sleep 1
+    pgrep cdb2sockpool >/dev/null || failexit "Couldn't bring up sockpool"
+fi
+
+# Pool enough connections per typestr for every retry to find one
+sockpool_set pool_max_fds_per_db 0 || failexit "Couldn't configure sockpool"
+trap "sockpool_set pool_max_fds_per_db 4" EXIT
+sleep 2
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table failed"
+
+${TESTSBUILDDIR}/cdb2api_retry_pooled $DBNAME || failexit "cdb2api_retry_pooled failed"
+
+# Unsetup needs every node coherent again
+MASTER=$(get_master)
+for i in $(seq 1 60); do
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $MASTER "insert into t1 values(1)" >/dev/null
+    cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $MASTER "select count(*) from comdb2_cluster where coherent_state != 'coherent'")
+    [[ "$cnt" == 0 ]] && break
+    sleep 1
+done
+[[ "$cnt" == 0 ]] || failexit "Cluster did not become coherent again"
+
+echo "Success!"

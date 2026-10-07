@@ -1,0 +1,5 @@
+Verify that a retry after a dropped query doesn't keep reusing pooled
+connections to the node that dropped it.  Sockpool is filled with connections
+to one replicant, the replicant is rtcpu'd so the leader marks it incoherent
+(an incoherent node silently drops queries), and a query must still succeed on
+another node rather than fail with "Maximum number of retries done".
