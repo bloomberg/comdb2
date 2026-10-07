@@ -537,7 +537,9 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
         comdbg_flags = flibc_intflip(comdbg_flags);
     }
 
-    if (!bdb_am_i_coherent(thedb->bdb_env)) {
+    /* We're on the event thread - use the non-blocking check.  dbinfo requests are allowed on
+       incoherent nodes (they're how the proxy discovers the master), everything else is rejected. */
+    if (!bdb_try_am_i_coherent(thedb->bdb_env)) {
         struct req_hdr hdr;
         if (req_hdr_get(&hdr, buf, ((uint8_t *)buf) + sz, comdbg_flags) == NULL) {
             logmsg(LOGMSG_ERROR, "%s:failed to unpack req header\n", __func__);
@@ -770,16 +772,14 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     }
     sql_enable_heartbeat(appdata->writer);
 
-    if (incoherent) {
-        if (clnt->is_tagged) {
-            goto err;
-        } else {
-            wait_for_leader(appdata, incoherent);
-        }
-    } else if (clnt->is_tagged) {
+    /* Tagged requests go to dispatch_tagged even on an incoherent node - it lets dbinfo
+       requests through and rejects everything else. */
+    if (clnt->is_tagged) {
         if (dispatch_tagged(clnt) != 0) {
             goto err;
         }
+    } else if (incoherent) {
+        wait_for_leader(appdata, incoherent);
     } else if (dispatch_client(appdata) != 0) {
 err:    free_newsql_appdata_evbuffer(appdata);
     }
