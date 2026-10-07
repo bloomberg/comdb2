@@ -70,6 +70,7 @@ int gbl_debug_sleep_before_prepare = 0;
 extern int gbl_debug_txn_sleep;
 extern int gbl_debug_disttxn_trace;
 extern int gbl_serializable;
+int gbl_debug_sleep_before_sc_redo_add = 0;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 
 #if 0
@@ -1643,6 +1644,13 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
             if (!isabort && tran->committed_child &&
                 tran->force_logical_commit && tran->dirty_table_hash) {
+                if (gbl_debug_sleep_before_sc_redo_add) {
+                    int ms = gbl_debug_sleep_before_sc_redo_add;
+                    gbl_debug_sleep_before_sc_redo_add = 0;
+                    logmsg(LOGMSG_USER, "%s sleeping %d ms before adding logical commit %u:%u to the sc redo list\n",
+                           __func__, ms, tran->last_logical_lsn.file, tran->last_logical_lsn.offset);
+                    usleep(ms * 1000);
+                }
                 hash_for(tran->dirty_table_hash, update_logical_redo_lsn, tran);
                 hash_clear(tran->dirty_table_hash);
                 hash_free(tran->dirty_table_hash);
