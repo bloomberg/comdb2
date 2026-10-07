@@ -4130,10 +4130,14 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
  */
 void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran)
 {
-    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+    fdb_distributed_tran_t *dtran;
     uuidstr_t us;
 
+    Pthread_mutex_lock(&clnt->dtran_mtx);
+
+    dtran = clnt->dbtran.dtran;
     if (!dtran) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         logmsg(LOGMSG_ERROR, "%s no dtran\n", __func__);
         return;
     }
@@ -4151,6 +4155,8 @@ void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran)
         free(dtran);
         clnt->dbtran.dtran = 0;
     }
+
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 }
 
 extern char gbl_dbname[];
@@ -4163,12 +4169,18 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
         cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
     } else if (clnt->use_db_identity) {
         cdb2_setDbIdentityBlob(hndl);
+    } else {
+        /* No fresh identity for this call (eg. teardown/rollback after the
+         * triggering query's protobuf buffer was already freed). Clear any
+         * blob left over from an earlier statement on this handle instead of
+         * leaving a dangling pointer into freed memory. */
+        cdb2_setIdentityBlob(hndl, NULL);
     }
 }
 
 int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *is_distributed)
 {
-    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+    fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
     int rc = 0;
@@ -4176,8 +4188,13 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
 
     *is_distributed = 0;
 
-    if (!dtran)
+    Pthread_mutex_lock(&clnt->dtran_mtx);
+
+    dtran = clnt->dbtran.dtran;
+    if (!dtran) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         return 0;
+    }
 
     /* nop, this is the remote part that reuses the same dbtran data structure
      */
@@ -4185,16 +4202,16 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
         /* this is on remote side, the structure is different, see
          * fdb_bend_sql.c */
         fdb_svc_trans_destroy(clnt);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         return 0;
     }
 
     msg = (fdb_msg_t *)calloc(1, fdb_msg_size());
     if (!msg) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         logmsg(LOGMSG_ERROR, "%s malloc\n", __func__);
         return FDB_ERR_MALLOC;
     }
-
-    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     if (clnt->use_2pc && listc_size(&dtran->fdb_trans) > 0) {
         clnt->is_coordinator = 1;
@@ -4332,13 +4349,18 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
 
 int fdb_trans_rollback(sqlclntstate *clnt)
 {
-    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+    fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
     int rc = 0;
 
-    if (!dtran)
+    Pthread_mutex_lock(&clnt->dtran_mtx);
+
+    dtran = clnt->dbtran.dtran;
+    if (!dtran) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         return 0;
+    }
 
     /* nop, this is the remote part that reuses the same dbtran data structure
      */
@@ -4346,16 +4368,16 @@ int fdb_trans_rollback(sqlclntstate *clnt)
         /* this is on remote side, the structure is different, see
          * fdb_bend_sql.c */
         fdb_svc_trans_destroy(clnt);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         return 0;
     }
 
     msg = (fdb_msg_t *)calloc(1, fdb_msg_size());
     if (!msg) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         logmsg(LOGMSG_ERROR, "%s malloc\n", __func__);
         return FDB_ERR_MALLOC;
     }
-
-    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
