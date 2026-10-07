@@ -165,6 +165,8 @@ struct comdb2_metrics_store {
     int64_t fastsql_sslconn;
     int64_t fastsql_execute_stop;
     int64_t legacy_requests;
+    int64_t blob_cache_shrinks;
+    int64_t blob_cache_shrunk_bytes;
 };
 
 static struct comdb2_metrics_store stats;
@@ -425,6 +427,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.legacy_requests, NULL},
     {"max_current_connections", "Max current connections for sampled interval", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.max_current_connections, NULL},
+    {"blob_cache_shrinks", "Number of times a cursor's cached blob buffer was shrunk", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.blob_cache_shrinks, NULL},
+    {"blob_cache_shrunk_bytes", "Bytes released by shrinking cursors' cached blob buffers", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.blob_cache_shrunk_bytes, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -471,6 +477,8 @@ extern int64_t gbl_not_durable_commit_count;
 extern int64_t gbl_incoherent_slow_skips;
 extern int64_t gbl_inmem_repdb_memory;
 extern int64_t gbl_physrep_metadb_sql_count;
+extern int64_t gbl_blob_cache_shrinks;
+extern int64_t gbl_blob_cache_shrunk_bytes;
 extern int gbl_physrep_no_viable_source;
 extern int64_t gbl_forwarded_block_reqs;
 extern int64_t gbl_rep_logbytes;
@@ -619,6 +627,8 @@ int refresh_metrics(void)
         return 1;
 
     stats.commits = n_commits;
+    stats.blob_cache_shrinks = gbl_blob_cache_shrinks;
+    stats.blob_cache_shrunk_bytes = gbl_blob_cache_shrunk_bytes;
     stats.fstraps = n_fstrap;
     stats.nonsql = n_fstrap                  /* legacy protocol over socketrequest */
                    + n_qtrap                 /* legacy protocol */
