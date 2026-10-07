@@ -94,6 +94,7 @@ END
 
     df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
     echo "verbose_fills on" >> $DEST_DBDIR/${destdb}.lrl
+    echo "physrep_debug 1" >> $DEST_DBDIR/${destdb}.lrl
 
     if [ -n "$PMUXPORT" ] ; then
         echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
@@ -132,7 +133,15 @@ function cleanup_abort()
 
 function cleanup()
 {
-    kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
+    # SIGTERM so the replicant runs clean_exit and flushes coverage data
+    local pid=$(cat $DEST_DBDIR/${destdb}.pid)
+    kill -TERM $pid
+    local waited=0
+    while kill -0 $pid 2>/dev/null && [ $waited -lt 20 ] ; do
+        sleep 0.5
+        let waited=waited+1
+    done
+    kill -0 $pid 2>/dev/null && kill -9 $pid
     [[ $dgpid != 0 ]] && kill -9 $dgpid
 }
 
@@ -207,12 +216,90 @@ function run_tests()
     done
 }
 
+function set_revconn_interval()
+{
+    ${CDB2SQL_EXE} --tabs $destdb --host localhost \
+        "put tunable physrep_revconn_check_interval $1"
+}
+
+# The revconn check in physrep_worker's record loop used to bail out of an
+# in-flight comdb2_transaction_logs result-set.  Drive it hard and verify the
+# replicant re-checks in place: the mode never flips here, so the source
+# connection has to survive every check.  Tearing it down would cost a
+# re-registration and a source reselection per interval.
+#
+# Note this runs after run_tests, which drops t1 and t2, so use our own table.
+function test_revconn_churn()
+{
+    local interval=1
+    local iterations=15
+    local i=0
+    local logmark=$(wc -l < $replog)
+
+    ${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $dbname default \
+        "create table trc { schema { int id } }" \
+        || failexit "Failed to create trc on $dbname"
+
+    set_revconn_interval $interval || failexit "Failed to set revconn interval on $destdb"
+
+    # Trickle writes so that a record lands after each check has come due: the
+    # check only fires while we are in the middle of consuming records.
+    for ((i=1;i<=iterations;i++)) ; do
+        ${CDB2SQL_EXE} -s --tabs --maxretries=100000 ${CDB2_OPTIONS} $dbname default \
+            "insert into trc(id) values ($i)" \
+            || failexit "Insert failed during revconn churn"
+        sleep $interval
+    done
+
+    set_revconn_interval 60
+    wait_for_catchup
+
+    tail -n +$((logmark+1)) $replog > revconn.log
+
+    local checks=$(grep -c "Checking reverse connection status" revconn.log)
+    local flips=$(grep -c "Revconn changed" revconn.log)
+    local closes=$(grep -c "Handle closed (called from physrep_worker" revconn.log)
+
+    # Guard against a vacuous pass: the path has to have actually run
+    if [ "$checks" -lt 1 ] ; then
+        failexit "revconn check never fired, test did not exercise the path"
+    fi
+
+    # Nothing here changes the revconn mode, so no check should have concluded
+    # that it had.  If one did, the close below is not attributable to the fix.
+    if [ "$flips" -ne 0 ] ; then
+        failexit "revconn mode flipped unexpectedly ($flips times), test is not measuring what it thinks"
+    fi
+
+    # physrep_reconnect_interval is an hour and nothing else here drops the
+    # source, so any close in this window came from the revconn check.
+    if [ "$closes" -ne 0 ] ; then
+        failexit "revconn check tore down the source connection (checks=$checks closes=$closes)"
+    fi
+
+    # The replicant may still be applying the tail of the churn
+    local src="" dest="" waited=0
+    while [ $waited -lt 20 ] ; do
+        src=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $dbname default 'select count(*) from trc')
+        dest=$(${CDB2SQL_EXE} -s --tabs $destdb --host localhost 'select count(*) from trc')
+        [ -n "$src" ] && [ "$src" == "$dest" ] && break
+        sleep 1
+        let waited=waited+1
+    done
+
+    # -z guards against both queries failing and comparing equal-and-empty
+    if [ -z "$src" ] || [ "$src" != "$dest" ] ; then
+        failexit "Replicant out of sync after revconn churn: src=$src dest=$dest"
+    fi
+}
+
 trap - INT EXIT
 
 override_physrep_sp
 setup_replicant
 ./generate_tests.sh
 run_tests
+test_revconn_churn
 cleanup
 
 exit 0
