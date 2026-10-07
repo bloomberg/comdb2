@@ -182,8 +182,8 @@ static inline int cur_cget(bdb_berkdb_t *berkdb, DBT *dbtkey, DBT *dbtdta,
 
     /* Logic for accessing data file */
     if (BDBC_DT == cur->type && !r->use_bulk) {
-        rc = bdb_cget_unpack(bdb_state, r->pagelock_cursor, dbtkey, dbtdta,
-                             &r->ver, flags);
+        rc = bdb_cget_unpack_times(bdb_state, r->pagelock_cursor, dbtkey, dbtdta, &r->ver, flags, 1, &r->insert_secs,
+                                   &r->update_secs);
         if (0 == rc)
             cur->ver = r->ver;
     }
@@ -1021,6 +1021,8 @@ again:
                 /* Size & Version */
                 r->lastdtasize = r->odh.size = odh.length;
                 cur->ver = r->ver = odh.csc2vers;
+                r->insert_secs = odh.insert_secs;
+                r->update_secs = odh.update_secs;
 
                 /* Genptr */
                 fgenid = (unsigned long long *)r->bulkkey;
