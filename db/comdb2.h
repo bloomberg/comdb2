@@ -3514,6 +3514,7 @@ void set_odh_options_tran(dbtable *db, tran_type *tran);
 void transfer_db_settings(dbtable *olddb, dbtable *newdb);
 int reload_after_bulkimport(dbtable *, tran_type *);
 int reload_db_tran(dbtable *, tran_type *);
+int32_t comdb2_reload_schemas_gen(void);
 int debug_this_request(int until);
 
 extern int gbl_disable_stable_for_ipu;

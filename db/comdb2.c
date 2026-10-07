@@ -6408,6 +6408,14 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, uint32_t flags)
 
 int gbl_comdb2_reload_schemas = 0;
 
+/* Bumped by every comdb2_reload_schemas, which frees and reopens all tables */
+static int32_t reload_schemas_gen = 0;
+
+int32_t comdb2_reload_schemas_gen(void)
+{
+    return ATOMIC_LOAD32(reload_schemas_gen);
+}
+
 /* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
 {
@@ -6456,6 +6464,11 @@ retry_tran:
             }
         }
     }
+
+    /* Statements that released their table locks (recover_deadlock) check
+     * this when they get them back: their cursors point at the dbtables and
+     * bdb handles freed below. */
+    ATOMIC_ADD32(reload_schemas_gen, 1);
 
     /* Test this incrementally with all schema-change types */
     if ((rc = close_all_dbs_tran(tran)) != 0) {
