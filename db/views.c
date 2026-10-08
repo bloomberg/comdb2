@@ -2938,6 +2938,24 @@ int timepart_reconfigure_retention(const char *name, int new_retention, int is_m
         nnames = ndrop;
     }
 
+    /* rotate the ring so the old shard 0 (possibly aliased) stays at index 0 */
+    for (i = 0; i < new_retention; i++) {
+        if (strcasecmp(newview->shards[i].tblname, view->shards[0].tblname) == 0)
+            break;
+    }
+    if (i > 0 && i < new_retention) {
+        timepart_shard_t *rotated = malloc(sizeof(timepart_shard_t) * new_retention);
+        if (!rotated) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+            goto done_locked;
+        }
+        for (int j = 0; j < new_retention; j++)
+            rotated[j] = newview->shards[(j + i) % new_retention];
+        memcpy(newview->shards, rotated, sizeof(timepart_shard_t) * new_retention);
+        free(rotated);
+        newview->current_shard = new_retention - 1 - i;
+    }
+
     rc = VIEW_NOERR;
 
 done_locked:
