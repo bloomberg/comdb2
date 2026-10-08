@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# A collapse ("partitioned by none") whose first schema change fails must
+# clear its sc-running state: the master used to assert in toblock, and
+# without asserts the table stayed busy for every later schema change.
+# The failure is provoked by a retention change before the collapse; if
+# the collapse succeeds instead, the checks below still apply.
+
+dbnm=$1
+CDB2="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+
+fail() { echo "FAILURE: $1"; exit 1; }
+
+$CDB2 "create table t1(a int)" || fail "create t1"
+$CDB2 "insert into t1 values(1)" || fail "insert t1"
+$CDB2 "alter table t1 partitioned by manual retention 3" || fail "partition t1"
+$CDB2 "alter table t1 partitioned by manual retention 4" || fail "retention t1"
+$CDB2 "alter table t1 partitioned by none"
+echo "collapse rc $?"
+
+# the db must be up, and t1 must still be usable and alterable
+cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1") || fail "select t1"
+[[ "$cnt" == "1" ]] || fail "t1 count $cnt"
+$CDB2 "insert into t1(a) values(2)" || fail "insert t1 after collapse"
+# a leaked running state would make a retry fail as already running
+out=$($CDB2 "alter table t1 partitioned by none" 2>&1)
+echo "collapse retry: $out"
+echo "$out" | grep -qi "running" && fail "collapse retry: $out"
+$CDB2 "create table t2(a int)" || fail "create t2"
+$CDB2 "alter table t2 add b int" || fail "alter t2"
+
+echo "Success"
+exit 0
