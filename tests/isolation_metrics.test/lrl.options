@@ -1,0 +1,2 @@
+enable_serial_isolation
+enable_snapshot_isolation

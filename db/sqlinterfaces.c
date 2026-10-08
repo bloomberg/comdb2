@@ -189,6 +189,13 @@ int gbl_sql_recover_time = 10;
 int gbl_debug_recover_deadlock_evbuffer = 0;
 int gbl_sql_row_delay_msecs = 0; /* testing delay per sql row, before sending the row */
 
+/* Client sql requests by isolation level, and point-in-time snapshot txns */
+int64_t gbl_sql_socksql_requests = 0;
+int64_t gbl_sql_read_committed_requests = 0;
+int64_t gbl_sql_serializable_requests = 0;
+int64_t gbl_sql_snapshot_requests = 0;
+int64_t gbl_sql_snapshot_asof_requests = 0;
+
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
 void sql_reset_sqlthread(struct sql_thread *thd);
@@ -1538,6 +1545,14 @@ static inline int get_asof_snapshot(struct sqlclntstate *clnt)
     return clnt->is_asof_snapshot;
 }
 
+static const char *internal_api_type(struct sqlclntstate *);
+
+/* Request metrics skip internal clients and verify-retry replays */
+static inline int is_countable_request(struct sqlclntstate *clnt)
+{
+    return !clnt->osql.in_replay_nested && clnt->plugin.api_type != internal_api_type;
+}
+
 static int snapshot_as_of(struct sqlclntstate *clnt)
 {
     int epoch = 0;
@@ -1553,6 +1568,10 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
     } else {
         clnt->snapshot = epoch;
         set_asof_snapshot(clnt, (epoch != 0), __func__, __LINE__);
+        /* Only serializable and snapshot honor AS OF; other levels ignore it */
+        if (epoch != 0 && is_countable_request(clnt) &&
+            (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL))
+            ATOMIC_ADD64(gbl_sql_snapshot_asof_requests, 1);
     }
     return 0;
 }
@@ -4351,6 +4370,30 @@ static int check_done_func(void *obj)
     return -1;
 }
 
+/* Count client requests by isolation level; skip internal clients and replays */
+static void count_isolation_level(struct sqlclntstate *clnt)
+{
+    if (!is_countable_request(clnt))
+        return;
+
+    switch (clnt->dbtran.mode) {
+    case TRANLEVEL_SOSQL:
+        ATOMIC_ADD64(gbl_sql_socksql_requests, 1);
+        break;
+    case TRANLEVEL_RECOM:
+        ATOMIC_ADD64(gbl_sql_read_committed_requests, 1);
+        break;
+    case TRANLEVEL_SERIAL:
+        ATOMIC_ADD64(gbl_sql_serializable_requests, 1);
+        break;
+    case TRANLEVEL_SNAPISOL:
+        ATOMIC_ADD64(gbl_sql_snapshot_requests, 1);
+        break;
+    default:
+        break;
+    }
+}
+
 /**
  * Main driver of SQL processing, for both sqlite and non-sqlite requests
  */
@@ -4370,6 +4413,8 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (gbl_2pc && !clnt->use_2pc && !in_client_trans(clnt))
         clnt->use_2pc = gbl_2pc;
+
+    count_isolation_level(clnt);
 
     /* is this a snapshot? special processing */
     rc = get_high_availability(clnt);

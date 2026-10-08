@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+# comdb2_metrics counts client requests by isolation level, plus point-in-time
+# (BEGIN TRANSACTION AS OF) snapshot transactions.  Metrics are per-node, so
+# every request in this test goes to the same node.
+[[ -z "$CLUSTER" ]] && node=$(hostname) || node=$(echo $CLUSTER | awk '{print $1}')
+
+SQL="$CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $node"
+NREQS=5
+
+# Ordered by name: read_committed serializable snapshot_asof snapshot socksql.
+# The read itself runs at the default (socksql) level, and counts itself before it reads.
+function read_metrics
+{
+    $SQL "select group_concat(value, ' ') from (select value from comdb2_metrics where name in ('sql_read_committed_requests', 'sql_serializable_requests', 'sql_snapshot_asof_requests', 'sql_snapshot_requests', 'sql_socksql_requests') order by name)"
+}
+
+function run_selects
+{
+    local level=$1
+    { echo "set transaction $level"; for ((i = 0; i < NREQS; i++)); do echo "select 1"; done; } | \
+        $SQL - >/dev/null || failexit "selects at $level"
+}
+
+# Assert the change in each metric across a step: rc serial asof snap socksql.
+function check_delta
+{
+    local before=($1) after=($2) expected=($3) what=$4
+    local names=(read_committed serializable snapshot_asof snapshot socksql)
+    for i in 0 1 2 3 4; do
+        assertres "$(( ${after[$i]} - ${before[$i]} ))" "${expected[$i]}" "$what: ${names[$i]} delta"
+    done
+}
+
+$SQL "create table t1 (a int)" >/dev/null || failexit "create t1"
+$SQL "insert into t1 select * from generate_series(1, 100)" >/dev/null || failexit "insert into t1"
+
+# The after-read counts as one socksql request
+b=$(read_metrics); run_selects "blocksql"; a=$(read_metrics)
+check_delta "$b" "$a" "0 0 0 0 $((NREQS + 1))" "socksql"
+
+b=$(read_metrics); run_selects "read committed"; a=$(read_metrics)
+check_delta "$b" "$a" "$NREQS 0 0 0 1" "read committed"
+
+b=$(read_metrics); run_selects "serializable"; a=$(read_metrics)
+check_delta "$b" "$a" "0 $NREQS 0 0 1" "serializable"
+
+b=$(read_metrics); run_selects "snapshot isolation"; a=$(read_metrics)
+check_delta "$b" "$a" "0 0 0 $NREQS 1" "snapshot"
+
+# Point-in-time: begin, select, commit all run at snapshot; the txn counts once
+sleep 2
+asof=$($SQL "select now()" | tr -d '"' | cut -c1-17)
+sleep 1
+b=$(read_metrics)
+$SQL - <<EOF >/dev/null || failexit "point-in-time snapshot transaction"
+set transaction snapshot isolation
+begin transaction as of datetime $asof
+select count(*) from t1
+commit
+EOF
+a=$(read_metrics)
+check_delta "$b" "$a" "0 0 1 3 1" "point-in-time snapshot"
+
+# socksql ignores AS OF, so it is not a point-in-time transaction
+b=$(read_metrics)
+$SQL - <<EOF >/dev/null || failexit "socksql as-of transaction"
+set transaction blocksql
+begin transaction as of datetime $asof
+select count(*) from t1
+commit
+EOF
+a=$(read_metrics)
+check_delta "$b" "$a" "0 0 0 0 4" "socksql as-of"
+
+echo "Success"
+exit 0

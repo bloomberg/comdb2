@@ -122,6 +122,11 @@ struct comdb2_metrics_store {
     int64_t physrep_no_viable_source;
     int64_t forwarded_block_reqs;
     int64_t rep_logbytes_last_minute;
+    int64_t sql_socksql_requests;
+    int64_t sql_read_committed_requests;
+    int64_t sql_serializable_requests;
+    int64_t sql_snapshot_requests;
+    int64_t sql_snapshot_asof_requests;
 
     int64_t page_reads;
     int64_t page_writes;
@@ -345,6 +350,17 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.forwarded_block_reqs, NULL},
     {"rep_logbytes_last_minute", "Log bytes applied by this replicant over the last minute", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.rep_logbytes_last_minute, NULL},
+    {"sql_socksql_requests", "Number of client sql requests run at socksql isolation", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_socksql_requests, NULL},
+    {"sql_read_committed_requests", "Number of client sql requests run at read committed isolation", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_read_committed_requests, NULL},
+    {"sql_serializable_requests", "Number of client sql requests run at serializable isolation", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_serializable_requests, NULL},
+    {"sql_snapshot_requests", "Number of client sql requests run at snapshot isolation", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_snapshot_requests, NULL},
+    {"sql_snapshot_asof_requests",
+     "Number of point-in-time (BEGIN TRANSACTION AS OF) snapshot or serializable transactions", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_snapshot_asof_requests, NULL},
     {"page_reads", "Total page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_reads,
      NULL},
     {"page_writes", "Total page writes", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.page_writes,
@@ -474,6 +490,11 @@ extern int64_t gbl_physrep_metadb_sql_count;
 extern int gbl_physrep_no_viable_source;
 extern int64_t gbl_forwarded_block_reqs;
 extern int64_t gbl_rep_logbytes;
+extern int64_t gbl_sql_socksql_requests;
+extern int64_t gbl_sql_read_committed_requests;
+extern int64_t gbl_sql_serializable_requests;
+extern int64_t gbl_sql_snapshot_requests;
+extern int64_t gbl_sql_snapshot_asof_requests;
 
 static void update_sqllogfill_metrics()
 {
@@ -724,6 +745,11 @@ int refresh_metrics(void)
     stats.physrep_no_viable_source = gbl_physrep_no_viable_source;
     stats.forwarded_block_reqs = gbl_forwarded_block_reqs;
     stats.rep_logbytes_last_minute = rep_logbytes_last_minute;
+    stats.sql_socksql_requests = gbl_sql_socksql_requests;
+    stats.sql_read_committed_requests = gbl_sql_read_committed_requests;
+    stats.sql_serializable_requests = gbl_sql_serializable_requests;
+    stats.sql_snapshot_requests = gbl_sql_snapshot_requests;
+    stats.sql_snapshot_asof_requests = gbl_sql_snapshot_asof_requests;
     struct global_stats gstats = {0};
 
     global_request_stats(&gstats);
