@@ -1,0 +1,3 @@
+Verify that a handle which takes its connection from sockpool in cdb2_open,
+before dbinfo, doesn't treat it as hosts[0]: the API must report the pooled
+connection's own host.

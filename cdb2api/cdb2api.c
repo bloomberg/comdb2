@@ -3898,7 +3898,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int line)
         return 0;
 
     debugprint("disconnecting from %s, line %d\n",
-               hndl->hosts[hndl->connected_host], line);
+               hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host] : "NOT-CONNECTED", line);
     int fd = cdb2buf_fileno(sb);
 
 #ifdef CDB2API_SERVER
@@ -4285,7 +4285,8 @@ retry:
             rc = -1;
             goto after_callback;
         }
-        debugprint("hdr length (0) from mach %s - going to retry\n", hndl->hosts[hndl->connected_host]);
+        debugprint("hdr length (0) from mach %s - going to retry\n",
+                   hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host] : "NOT-CONNECTED");
 
         /* If we have an AT_RECEIVE_HEARTBEAT event, invoke it now. */
         cdb2_event *e = NULL;
@@ -5031,6 +5032,10 @@ retry_next_record:
     }
 
     hndl->lastresponse = cdb2__sqlresponse__unpack(hndl->allocator, len, hndl->last_buf);
+    if (hndl->lastresponse == NULL) {
+        sprintf(hndl->errstr, "%s: Can't unpack response from server", __func__);
+        PRINT_AND_RETURN_OK(-1);
+    }
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
@@ -8332,8 +8337,10 @@ static void hndl_set_comdb2buf(cdb2_hndl_tp *hndl, COMDB2BUF *sb, int idx)
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
     hndl->connected_host = idx;
-    hndl->hosts_connected[idx] = 1;
-    debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
+    if (idx >= 0) {
+        hndl->hosts_connected[idx] = 1;
+        debugprint("connected_host=%s\n", hndl->hosts[idx]);
+    }
 }
 
 static int init_connection(cdb2_hndl_tp *hndl, COMDB2BUF *buf)
@@ -8344,7 +8351,8 @@ static int init_connection(cdb2_hndl_tp *hndl, COMDB2BUF *buf)
         return -1;
     }
     set_cdb2_timeouts(hndl);
-    hndl_set_comdb2buf(hndl, buf, 0);
+    /* Pooled connection taken before dbinfo; its host isn't in hndl->hosts */
+    hndl_set_comdb2buf(hndl, buf, -1);
 #ifdef CDB2API_TEST
     ++num_skip_dbinfo;
 #endif
