@@ -64,6 +64,7 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
                   size_t len);
 void reqlog_set_cost(struct reqlogger *logger, double cost);
 void reqlog_set_rows(struct reqlogger *logger, int rows);
+void reqlog_set_time(struct reqlogger *logger, int64_t timems, int64_t prepms);
 void reqlog_usetable(struct reqlogger *logger, const char *tablename);
 void reqlog_setflag(struct reqlogger *logger, unsigned flag);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);

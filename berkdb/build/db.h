@@ -2339,6 +2339,9 @@ struct __lsn_collection {
 	 * record into clientinfo (opaque bdb handle, freed by lc_free). */
 	int want_clientinfo;
 	void *clientinfo;
+	/* See above for clientinfo. Same for trace. */
+	int want_trace;
+	void *trace;
 };
 
 struct __lc_cache_entry {
@@ -3224,7 +3227,8 @@ void bb_berkdb_fingerprint_rtstats_set_role(int role);
 void bb_berkdb_fingerprint_rtstats_set_client_id(uint32_t client_id);
 int bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role, uint32_t *client_id);
 void bb_berkdb_fingerprint_rtstats_clear(void);
-void bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io);
+void bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io, int is_tmp_tbl);
+void bb_berkdb_thread_pagein_counts(uint64_t *pagein, uint64_t *pagein_io);
 int bb_berkdb_fingerprint_rtstats_get(const unsigned char *fingerprint, size_t fplen,
     uint64_t counts[BB_BERKDB_FP_RTSTATS_NCOUNTS]);
 typedef void (*bb_berkdb_fingerprint_rtstats_enum_fn)(const unsigned char *fingerprint,
@@ -3339,6 +3343,10 @@ struct __recovery_processor {
 	/* Opaque bdb_clientinfo, from the DB_llog_clientinfo record; NULL if the
 	 * txn carried none. Shared by every worker applying this txn. */
 	void *clientinfo;
+	void *trace;
+	/* page-ins of every worker applying this txn, for trace */
+	u_int64_t pagein;
+	u_int64_t pagein_io;
 	void *txninfo;
 	LSN_COLLECTION lc;
 	pool_t *recpool;

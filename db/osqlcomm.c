@@ -58,6 +58,7 @@
 #include "eventlog.h"
 #include <disttxn.h>
 #include "fingerprint.h"
+#include "comdb2_trace.h"
 #include <openssl/rand.h>
 
 #define MAX_CLUSTER REPMAX
@@ -1907,6 +1908,55 @@ static uint8_t *osqlcomm_clientinfo_uuid_rpl_type_put(const osql_clientinfo_rpl_
 
     return p_buf;
 }
+
+/* Opaque comdb2_trace payload. */
+typedef struct osql_trace {
+    int len;
+    char payload[4];
+} osql_trace_t;
+
+enum { OSQLCOMM_TRACE_TYPE_LEN = 4 + 4 };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_trace_type_len, sizeof(osql_trace_t) == OSQLCOMM_TRACE_TYPE_LEN);
+
+static uint8_t *osqlcomm_trace_type_put(const osql_trace_t *p_osql_trace, uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_TRACE_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_put(&(p_osql_trace->len), sizeof(p_osql_trace->len), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_osql_trace->payload), sizeof(p_osql_trace->payload), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *osqlcomm_trace_type_get(osql_trace_t *p_osql_trace, const uint8_t *p_buf,
+                                              const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_TRACE_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    return buf_get(&(p_osql_trace->len), sizeof(p_osql_trace->len), p_buf, p_buf_end);
+}
+
+typedef struct osql_trace_rpl {
+    osql_rpl_t hd;
+    osql_trace_t dt;
+} osql_trace_rpl_t;
+
+enum { OSQLCOMM_TRACE_RPL_TYPE_LEN = OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_TRACE_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_trace_rpl_type_len, sizeof(osql_trace_rpl_t) == OSQLCOMM_TRACE_RPL_TYPE_LEN);
+
+typedef struct osql_trace_rpl_uuid {
+    osql_uuid_rpl_t hd;
+    osql_trace_t dt;
+} osql_trace_rpl_uuid_t;
+
+enum { OSQLCOMM_TRACE_RPL_UUID_TYPE_LEN = OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_TRACE_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_trace_rpl_uuid_type_len,
+                       sizeof(osql_trace_rpl_uuid_t) == OSQLCOMM_TRACE_RPL_UUID_TYPE_LEN);
 
 typedef struct osql_index {
     unsigned long long seq;
@@ -4018,6 +4068,7 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
      * loses the no-constraints fast path in osql_process_packet. */
     case OSQL_FINGERPRINT:
     case OSQL_CLIENTINFO:
+    case OSQL_TRACE:
         break;
     case OSQL_DONE_SNAP:
         osql_extract_snap_info(sess, rpl, rpllen);
@@ -4563,6 +4614,53 @@ int osql_send_clientinfo(const char *host, unsigned long long rqid, uuid_t uuid,
     rc = offload_net_send(host, type, &buf, msglen, 0, (tasknamelen > sent) ? (char *)taskname + sent : NULL,
                           (tasknamelen > sent) ? tasknamelen - sent : 0);
 
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__, rc);
+
+    return rc;
+}
+
+/**
+ * Send OSQL_TRACE op: an opaque comdb2_trace payload for the master.
+ */
+int osql_send_trace(const char *host, unsigned long long rqid, uuid_t uuid, const void *payload, int len, int type)
+{
+    uint8_t buf[(int)OSQLCOMM_TRACE_RPL_UUID_TYPE_LEN > (int)OSQLCOMM_TRACE_RPL_TYPE_LEN
+                    ? OSQLCOMM_TRACE_RPL_UUID_TYPE_LEN
+                    : OSQLCOMM_TRACE_RPL_TYPE_LEN];
+    uint8_t *p_buf = buf;
+    osql_trace_t dt = {0};
+    int msglen;
+    int sent = sizeof(dt.payload);
+    int rc;
+
+    if (check_master(host))
+        return OSQL_SEND_ERROR_WRONGMASTER;
+
+    dt.len = len;
+    memcpy(dt.payload, payload, len < sent ? len : sent);
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t hd = {0};
+        msglen = OSQLCOMM_TRACE_RPL_UUID_TYPE_LEN;
+        hd.type = OSQL_TRACE;
+        comdb2uuidcpy(hd.uuid, uuid);
+        p_buf = osqlcomm_uuid_rpl_type_put(&hd, p_buf, buf + msglen);
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+    } else {
+        osql_rpl_t hd = {0};
+        msglen = OSQLCOMM_TRACE_RPL_TYPE_LEN;
+        hd.type = OSQL_TRACE;
+        hd.sid = rqid;
+        p_buf = osqlcomm_rpl_type_put(&hd, p_buf, buf + msglen);
+    }
+    if (!p_buf || !osqlcomm_trace_type_put(&dt, p_buf, buf + msglen)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to pack\n", __func__);
+        return -1;
+    }
+
+    rc = offload_net_send(host, type, &buf, msglen, 0, (len > sent) ? (char *)payload + sent : NULL,
+                          (len > sent) ? len - sent : 0);
     if (rc)
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__, rc);
 
@@ -8116,6 +8214,21 @@ done_delete:
                 logmsg(LOGMSG_ERROR, "%s: failed to log clientinfo, bdberr %d\n", __func__, clientinfo_bdberr);
             }
         }
+    } break;
+
+    case OSQL_TRACE: {
+        osql_trace_t dt = {0};
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_trace_t);
+        if (p_buf_end > p_msg_end)
+            goto badmsg;
+
+        const uint8_t *payload = osqlcomm_trace_type_get(&dt, p_buf, p_buf_end);
+        if (payload == NULL || dt.len <= 0 || dt.len > COMDB2_TRACE_MAXLEN || dt.len > p_msg_end - payload)
+            goto badmsg;
+
+        /* Retries reprocess the bplog; keep the first one. */
+        if (gbl_trace_hooks && iq->trace == NULL)
+            iq->trace = gbl_trace_hooks->master_start(payload, dt.len, iq->sorese ? iq->sorese->target_host : NULL);
     } break;
 
     case OSQL_UPDREC:

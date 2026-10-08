@@ -212,6 +212,8 @@ struct cdb2_hndl {
     struct cdb2_stmt_types *stmt_types;
     RETRY_CALLBACK retry_clbk;
     int is_tagged;
+    const void *trace;
+    int trace_len;
 };
 
 #ifdef __cplusplus

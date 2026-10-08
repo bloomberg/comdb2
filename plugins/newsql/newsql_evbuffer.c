@@ -41,6 +41,7 @@
 #include <comdb2uuid.h>
 #include <osqlsession.h>
 #include <disttxn.h>
+#include <comdb2_trace.h>
 
 #include <newsql.h>
 
@@ -769,6 +770,10 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         sql_enable_timeout(appdata->writer, clnt->query_timeout);
     }
     sql_enable_heartbeat(appdata->writer);
+
+    clnt_trace_release(clnt);
+    if (gbl_trace_hooks && !clnt->is_tagged && sqlquery->has_trace && sqlquery->trace.len <= COMDB2_TRACE_MAXLEN)
+        clnt->trace = gbl_trace_hooks->sql_start(sqlquery->trace.data, sqlquery->trace.len);
 
     if (incoherent) {
         if (clnt->is_tagged) {

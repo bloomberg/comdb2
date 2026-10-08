@@ -76,6 +76,7 @@
 
 #include <tohex.h>
 #include "string_ref.h"
+#include "comdb2_trace.h"
 
 /* The normal case is for there to be no rules, just a long request threshold
  * which takes some default action on long requests.  If you want anything
@@ -1432,6 +1433,8 @@ static void reqlog_start_request(struct reqlogger *logger)
     int ii;
 
     logger->tracking_tables = master_table_rules;
+    logger->timems = logger->prepms = 0;
+    bdb_thread_pagein_counts(&logger->pagein_start, &logger->pagein_io_start);
 
     if (logger->iq && logger->iq->debug) {
         logger->dump_mask = REQL_TRACE;
@@ -1904,6 +1907,14 @@ inline void reqlog_set_cost(struct reqlogger *logger, double cost)
     if (logger) logger->sqlcost = cost;
 }
 
+void reqlog_set_time(struct reqlogger *logger, int64_t timems, int64_t prepms)
+{
+    if (logger) {
+        logger->timems = timems;
+        logger->prepms = prepms;
+    }
+}
+
 inline void reqlog_set_rows(struct reqlogger *logger, int rows)
 {
     if (logger) logger->sqlrows = rows;
@@ -2188,6 +2199,13 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     logger->durationus =
         (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
+
+    bdb_thread_pagein_counts(&logger->pagein, &logger->pagein_io);
+    logger->pagein -= logger->pagein_start;
+    logger->pagein_io -= logger->pagein_io_start;
+
+    if (logger->clnt && logger->clnt->trace)
+        gbl_trace_hooks->sql_end(logger->clnt->trace, logger);
 
     eventlog_add(logger);
 

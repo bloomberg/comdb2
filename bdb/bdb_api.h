@@ -1387,6 +1387,8 @@ const struct berkdb_thread_stats *bdb_get_process_stats(void);
 #define BDB_FP_ROLE_APPLY 3 /* 'A' -- replicant applying from the log */
 
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+/* this thread's cumulative bufferpool page-ins, any role */
+void bdb_thread_pagein_counts(uint64_t *pagein, uint64_t *pagein_io);
 void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 /* Declare a role with no fingerprint, so work that has none is still
@@ -2531,6 +2533,7 @@ void bdb_set_seqnum(void *in_bdb_state);
 int bdb_trans_track(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
+int bdb_debug_log_trace(bdb_state_type *bdb_state, tran_type *tran, const void *payload, int len);
 
 /* Return 1 if this node is master, 0 otherwise */
 int bdb_iam_master(bdb_state_type *bdb_state);
