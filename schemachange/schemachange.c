@@ -44,6 +44,7 @@ extern int gbl_test_sc_resume_race;
 extern int gbl_retro_tpt_verbose;
 
 /* If this is successful, it increments */
+/* On failure iq->sc is NULL if it was freed; otherwise the caller still owns it */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -53,6 +54,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (!bdb_iam_master(thedb->bdb_env)) {
         sc_errf(s, "I am not master\n");
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_NOT_MASTER;
     }
 
@@ -60,6 +62,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (thedb->master != gbl_myhostname) {
         sc_errf(s, "I am not master; master is %s\n", thedb->master);
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_NOT_MASTER;
     }
 
@@ -71,6 +74,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!alter) {
             errstat_set_strf(&iq->errstat, "Invalid option");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_INVALID_OPTIONS;
         }
         free_schema_change_type(s);
@@ -138,6 +142,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                      */
                     sc_errf(s, "schema change already in progress\n");
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     Pthread_mutex_unlock(&sc_resuming_mtx);
                     return SC_CANT_SET_RUNNING;
                 }
@@ -183,6 +188,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     logmsg(LOGMSG_ERROR, "%s: ran out of memory\n", __func__);
                     free(packed_sc_data);
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     return -1;
                 }
                 if (unpack_schema_change_type(stored_sc, packed_sc_data,
@@ -191,6 +197,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     free(packed_sc_data);
                     free_schema_change_type(stored_sc);
                     free_schema_change_type(s);
+                    iq->sc = NULL;
                     return -1;
                 }
                 free(packed_sc_data);
@@ -226,6 +233,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if ((rc = fetch_sc_seed(s->tablename, thedb, &seed, &host))) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return rc;
         }
         if (seed == 0 && host == 0) {
@@ -247,6 +255,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
             free_schema_change_type(s);
+            iq->sc = NULL;
             return SC_MASTER_DOWNGRADE;
         }
     } else {
@@ -284,6 +293,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             }
         }
         free_schema_change_type(s);
+        iq->sc = NULL;
         return SC_CANT_SET_RUNNING;
     }
 
