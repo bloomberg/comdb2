@@ -1348,18 +1348,19 @@ int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
 
     /* run the asynchronous (do_XX) part of the schema changes */
     LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk) {
+        char tablename[MAXTABLELEN];
         iq->sc = sc;
         iq->sc->iq = iq;
-        rc = osql_process_schemachange(sc, uuid);
-        /* remove this from session, cleanup will be done by bp writer */
+        /* remove this from session, cleanup will be done by bp writer;
+         * do it before processing, which frees sc on failure */
         listc_rfl(scs, sc);
-        if (rc)
+        strncpy0(tablename, sc->tablename, sizeof(tablename));
+        rc = osql_process_schemachange(sc, uuid);
+        if (rc) {
+            logmsg(LOGMSG_DEBUG, "schema change %s returns rc %d\n", tablename, rc);
             break;
+        }
     }
-
-    if (rc)
-        logmsg(LOGMSG_DEBUG, "schema change %s returns rc %d\n",
-               sc->tablename, rc);
 
     return rc;
 }
