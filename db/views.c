@@ -2781,8 +2781,8 @@ int timepart_validate_retention_change(const char *name, int new_retention, int 
  *
  * The shards are walked in rollout order starting right after the current
  * shard (i.e. oldest-next-to-be-recycled first), ending with the current
- * shard itself. The reconfigured ring is built so that the (unchanged)
- * current shard always ends up at the last index:
+ * shard itself. The reconfigured ring is built with the (unchanged) current
+ * shard at the last index, then rotated so the old shard 0 stays at index 0:
  *   - increase: new empty shards are prepended (consumed next, preserving
  *     history), followed by the old shards in rollout order.
  *   - decrease: the oldest shards are dropped from the front of the rollout
@@ -2855,9 +2855,8 @@ int timepart_reconfigure_retention(const char *name, int new_retention, int is_m
         goto done_locked;
     }
 
-    /* NOTE: current_shard is not persisted, it is recomputed on reload by
-     * _view_find_current_shard(); that lookup ignores never-used (INT_MAX)
-     * shards, so the array order below does not affect the ring position. */
+    /* current_shard is recomputed on reload ignoring unused shards, so the
+     * rotation below that keeps the original table at index 0 is safe */
 
     if (is_increase) {
         int nnew = new_retention - old_retention;
@@ -2934,6 +2933,24 @@ int timepart_reconfigure_retention(const char *name, int new_retention, int is_m
         }
         newview->current_shard = new_retention - 1;
         nnames = ndrop;
+    }
+
+    /* rotate the ring so the old shard 0 (possibly aliased) stays at index 0 */
+    for (i = 0; i < new_retention; i++) {
+        if (strcasecmp(newview->shards[i].tblname, view->shards[0].tblname) == 0)
+            break;
+    }
+    if (i > 0 && i < new_retention) {
+        timepart_shard_t *rotated = malloc(sizeof(timepart_shard_t) * new_retention);
+        if (!rotated) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
+            goto done_locked;
+        }
+        for (int j = 0; j < new_retention; j++)
+            rotated[j] = newview->shards[(j + i) % new_retention];
+        memcpy(newview->shards, rotated, sizeof(timepart_shard_t) * new_retention);
+        free(rotated);
+        newview->current_shard = new_retention - 1 - i;
     }
 
     rc = VIEW_NOERR;
