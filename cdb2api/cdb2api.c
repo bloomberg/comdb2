@@ -284,7 +284,7 @@ static int cdb2_get_dbinfo_set_from_env = 0;
 static int get_hostname_from_sockpool_fd = 0;
 static int cdb2_get_hostname_from_sockpool_fd_set_from_env = 0;
 
-#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
+#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 1
 static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
 static int cdb2_allow_pmux_route_set_from_env = 0;
 
