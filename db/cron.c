@@ -687,3 +687,33 @@ void cron_clear_queue_all(void)
     }
     Pthread_rwlock_unlock(&crons.rwlock);
 }
+
+/**
+ * Clear the queues of all schedulers of a given type
+ *
+ */
+void cron_clear_queue_type(enum cron_type type)
+{
+    cron_sched_t *sched = NULL;
+    cron_sched_t **scheds;
+    int n = 0;
+
+    /* clear without crons.rwlock: cron_lock waits on running events, which can
+     * need the schema lock; schedulers are never removed from the list */
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    scheds = malloc(sizeof(cron_sched_t *) * (listc_size(&crons.scheds) + 1));
+    if (scheds) {
+        LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+        {
+            if (sched->impl.type == type)
+                scheds[n++] = sched;
+        }
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed, queues not cleared\n", __func__);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+
+    for (int i = 0; i < n; i++)
+        cron_clear_queue(scheds[i]);
+    free(scheds);
+}
