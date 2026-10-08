@@ -209,6 +209,7 @@ extern int gbl_all_prepare_abort;
 extern int gbl_all_prepare_leak;
 extern int gbl_flush_on_prepare;
 extern int gbl_debug_sleep_before_prepare;
+extern int gbl_debug_sleep_on_new_commit_gen;
 static char *gbl_debug_default_string_update = "debug_default_string_update_value";
 extern int gbl_wait_for_prepare_seqnum;
 extern int gbl_flush_replicant_on_prepare;

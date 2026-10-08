@@ -841,11 +841,21 @@ static inline void set_seqnum_host(void *in_bdb_state, struct interned_string *h
     }
 }
 
+int gbl_debug_sleep_on_new_commit_gen = 0;
+
 static int bdb_push_pglogs_commit_int(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen, unsigned long long ltranid,
                                       int push, int update_seqnum)
 {
+    /* Readers must see the lsn and generation as a pair */
+    Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
     bdb_latest_commit_lsn = commit_lsn;
+    if (gbl_debug_sleep_on_new_commit_gen && gen != bdb_latest_commit_gen) {
+        logmsg(LOGMSG_USER, "%s sleeping %d ms before saving new commit generation %u at %u:%u\n", __func__,
+               gbl_debug_sleep_on_new_commit_gen, gen, commit_lsn.file, commit_lsn.offset);
+        usleep(gbl_debug_sleep_on_new_commit_gen * 1000);
+    }
     bdb_latest_commit_gen = gen;
+    Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     return 0;
 }
 

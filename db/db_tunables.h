@@ -348,6 +348,10 @@ REGISTER_TUNABLE("sleep_after_commitrc_timeout",
                  NULL);
 REGISTER_TUNABLE("debug_sleep_before_prepare", "Sleep for 5 seconds before preparing. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_before_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sleep_on_new_commit_gen",
+                 "Sleep this many ms between saving the latest commit lsn and its generation when the generation "
+                 "changes. Holds the log lock, so all log writes stall for the delay. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_on_new_commit_gen, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #ifdef COMDB2_TEST
 REGISTER_TUNABLE(
     "debug_sleep_in_rollout",

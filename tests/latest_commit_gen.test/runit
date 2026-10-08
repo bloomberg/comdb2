@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A node saves its latest commit's lsn and generation as a pair, which the
+# durable-lsn checks read.  The generation changes at the first commit after
+# an election, and a reader must never see the new lsn with the old
+# generation.  Delay saving the generation, force an election, and poll the
+# pair on every node: the delayed lsn must only ever show its new generation.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+delayms=3000
+stopfile=$TESTDIR/latest_commit_gen.$dbnm.stop
+rm -f $stopfile
+
+failexit()
+{
+    echo "Failed: $1"
+    touch $stopfile
+    exit 1
+}
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "needs a cluster to hold an election, skipping"
+    exit 0
+fi
+
+sql()
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm "$@"
+}
+
+get_master()
+{
+    sql default "select host from comdb2_cluster where is_master='Y'" 2>/dev/null
+}
+
+get_gen()
+{
+    sql --host $1 "exec procedure sys.cmd.send('bdb repstat')" 2>/dev/null | sed -n 's/^st_gen: *//p'
+}
+
+poll_pairs()
+{
+    typeset node=$1
+    while [[ ! -f $stopfile ]]; do
+        sql --host $node "exec procedure sys.cmd.send('bdb repstat')" 2>/dev/null |
+            sed -n "s/^latest commit lsn: \[\([0-9]*\)\]\[\([0-9]*\)\] generation \([0-9]*\)/$node \1 \2 \3/p"
+        sleep 0.1
+    done >$TESTDIR/pairs.$node.out
+}
+
+sql default "create table t(a int)" >/dev/null || failexit "create t"
+
+for node in $CLUSTER; do
+    sql --host $node "put tunable debug_sleep_on_new_commit_gen $delayms" >/dev/null || failexit "set tunable on $node"
+done
+
+pollers=""
+for node in $CLUSTER; do
+    poll_pairs $node &
+    pollers="$pollers $!"
+done
+
+master=$(get_master)
+oldgen=$(get_gen $master)
+echo "master $master generation $oldgen, downgrading it"
+sql --host $master "exec procedure sys.cmd.send('downgrade')" >/dev/null
+
+newmaster=""
+for ((i = 0; i < 120; i++)); do
+    sleep 0.5
+    newmaster=$(get_master)
+    [[ -n "$newmaster" ]] || continue
+    newgen=$(get_gen $newmaster)
+    [[ -n "$newgen" && $newgen -gt $oldgen ]] && break
+done
+echo "new master $newmaster generation $newgen"
+[[ -n "$newgen" && $newgen -gt $oldgen ]] || failexit "no election"
+
+# Make sure the new generation gets a commit, retrying while the cluster settles
+for ((i = 0; i < 60; i++)); do
+    sql default "insert into t values($i)" >/dev/null 2>&1 && break
+    sleep 1
+done
+sleep $((delayms / 1000 + 2))
+touch $stopfile
+for pid in $pollers; do
+    wait $pid
+done
+
+# The delay must have run, or the test proved nothing.  Each delayed node
+# logs the lsn and the generation it is about to save.
+delayed=$(grep -H "before saving new commit generation" $TESTDIR/logs/$dbnm.*.db |
+    sed -n "s/.*\.\([^.]*\)\.db:.*saving new commit generation \([0-9]*\) at \([0-9]*\):\([0-9]*\)/\1 \3 \4 \2/p")
+[[ -n "$delayed" ]] || failexit "the delay never ran"
+echo "delayed (node file offset generation): $delayed"
+echo "$(cat $TESTDIR/pairs.*.out | wc -l) pairs polled"
+
+torn=$(echo "$delayed" | while read node file offset gen; do
+    awk -v f=$file -v o=$offset -v g=$gen '$2 == f && $3 == o && $4 != g { print $1 " " f ":" o " seen with generation " $4 " instead of " g }' \
+        $TESTDIR/pairs.$node.out
+done | sort -u)
+[[ -z "$torn" ]] || failexit "torn latest-commit pair: $torn"
+
+echo "Success"
+exit 0
