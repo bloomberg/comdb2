@@ -95,6 +95,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         s->resume = SC_PREEMPT_RESUME;
         s->nothrevent = 0;
         s->finalize = 0;
+        /* stopping the previous run marked its transaction context as
+         * aborted; the resumed run gets a fresh one */
+        sc_tran_ctx_detach(s);
         Pthread_mutex_unlock(&s->mtx);
     }
     if (s->kind == SC_ALTERTABLE_PENDING) {

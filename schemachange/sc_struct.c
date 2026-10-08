@@ -26,6 +26,7 @@
 #include "importdata.pb-c.h"
 #include "str0.h"
 #include "sc_version.h"
+#include "comdb2_atomic.h"
 
 static void free_genshard_partition(struct schema_change_type *s)
 {
@@ -92,6 +93,99 @@ struct schema_change_type *new_schemachange_type()
     return sc;
 }
 
+struct sc_tran_ctx *sc_tran_ctx_new(void)
+{
+    struct sc_tran_ctx *ctx = calloc(1, sizeof(struct sc_tran_ctx));
+    if (ctx) {
+        ctx->refcnt = 1;
+        Pthread_mutex_init(&ctx->lk, NULL);
+    }
+    return ctx;
+}
+
+void sc_tran_ctx_put(struct sc_tran_ctx *ctx)
+{
+    if (ATOMIC_ADD32(ctx->refcnt, -1) == 0) {
+        Pthread_mutex_destroy(&ctx->lk);
+        free(ctx);
+    }
+}
+
+/* make s share ctx, dropping any previous one */
+void sc_tran_ctx_attach(struct schema_change_type *s, struct sc_tran_ctx *ctx)
+{
+    ATOMIC_ADD32(ctx->refcnt, 1);
+    sc_tran_ctx_detach(s);
+    s->ctx = ctx;
+}
+
+void sc_tran_ctx_detach(struct schema_change_type *s)
+{
+    if (s->ctx) {
+        sc_tran_ctx_put(s->ctx);
+        s->ctx = NULL;
+    }
+}
+
+/* called by the ireq owner, once the schema change threads are done */
+void sc_tran_ctx_publish(struct sc_tran_ctx *ctx, struct ireq *iq)
+{
+    if (!ctx || !iq)
+        return;
+
+    Pthread_mutex_lock(&ctx->lk);
+    /* an error the ddl code set directly in the ireq wins */
+    if (errstat_get_rc(&ctx->errstat) && !errstat_get_rc(&iq->errstat))
+        reqerrstr(iq, errstat_get_rc(&ctx->errstat), "%s", errstat_get_str(&ctx->errstat));
+    /* ddl schema change, update its effects if it converted records */
+    if (ctx->effects.num_inserted && IQ_HAS_SNAPINFO(iq))
+        IQ_SNAPINFO(iq)->effects.num_inserted = ctx->effects.num_inserted;
+    Pthread_mutex_unlock(&ctx->lk);
+
+    if (ctx->aborted)
+        iq->sc_should_abort = 1;
+}
+
+/* first error wins: once a schema change fails, the errors reported by the
+ * others as they stop are consequences, not the cause */
+void sc_set_errstat(struct schema_change_type *s, int rc, const char *fmt, ...)
+{
+    va_list args;
+
+    if (!s->ctx)
+        return;
+
+    va_start(args, fmt);
+    Pthread_mutex_lock(&s->ctx->lk);
+    if (!errstat_get_rc(&s->ctx->errstat)) {
+        errstat_set_rc(&s->ctx->errstat, rc);
+        errstat_set_strfap(&s->ctx->errstat, fmt, args);
+    }
+    Pthread_mutex_unlock(&s->ctx->lk);
+    va_end(args);
+}
+
+void sc_add_effects(struct schema_change_type *s, const struct query_effects *e)
+{
+    if (!s->ctx)
+        return;
+
+    Pthread_mutex_lock(&s->ctx->lk);
+    s->ctx->effects.num_affected += e->num_affected;
+    s->ctx->effects.num_selected += e->num_selected;
+    s->ctx->effects.num_updated += e->num_updated;
+    s->ctx->effects.num_deleted += e->num_deleted;
+    s->ctx->effects.num_inserted += e->num_inserted;
+    Pthread_mutex_unlock(&s->ctx->lk);
+}
+
+/* abort s, and the other schema changes of its transaction */
+void sc_set_should_abort(struct schema_change_type *s)
+{
+    if (s->ctx)
+        s->ctx->aborted = 1;
+}
+
 void cleanup_strptr(char **schemabuf)
 {
     if (*schemabuf) free(*schemabuf);
@@ -146,6 +240,7 @@ void free_schema_change_type(struct schema_change_type *s)
     }
 
     free_dests(s);
+    sc_tran_ctx_detach(s);
     Pthread_mutex_destroy(&s->mtx);
     Pthread_mutex_destroy(&s->livesc_mtx);
 
@@ -2144,6 +2239,9 @@ struct schema_change_type *clone_schemachange_type(struct schema_change_type *sc
     newsc->partition = sc->partition;
     newsc->usedbtablevers = sc->usedbtablevers;
     newsc->resume = sc->resume;
+    /* clones are siblings in the same transaction */
+    if (sc->ctx)
+        sc_tran_ctx_attach(newsc, sc->ctx);
 
     if (!p_buf) {
         free_schema_change_type(newsc);

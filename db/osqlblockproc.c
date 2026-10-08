@@ -1337,7 +1337,7 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int rpllen, int
 /**
  * Apply all schema changes and wait for them to finish
  */
-int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
+int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs, struct sc_tran_ctx *ctx)
 {
     LISTC_T(struct schema_change_type) *scs = pscs;
     struct schema_change_type *sc, *tmp;
@@ -1345,6 +1345,14 @@ int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
 
     /* save this in iq for early sc aborts */
     comdb2uuidcpy(iq->scs_uuid, uuid);
+
+    /* the schema changes of this transaction share ctx */
+    if (ctx) {
+        LISTC_FOR_EACH(scs, sc, scs_lnk)
+        {
+            sc_tran_ctx_attach(sc, ctx);
+        }
+    }
 
     /* run the asynchronous (do_XX) part of the schema changes */
     LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk) {
@@ -1487,9 +1495,19 @@ int bplog_schemachange(struct ireq *iq)
         return ERR_SC;
     }
 
-    rc = bplog_schemachange_run(iq, iq->sorese->uuid, &iq->sorese->scs);
+    struct sc_tran_ctx *ctx = sc_tran_ctx_new();
 
-    return bplog_schemachange_wait(iq, rc);
+    rc = bplog_schemachange_run(iq, iq->sorese->uuid, &iq->sorese->scs, ctx);
+
+    rc = bplog_schemachange_wait(iq, rc);
+
+    /* all the schema change threads are done, publish their results */
+    if (ctx) {
+        sc_tran_ctx_publish(ctx, iq);
+        sc_tran_ctx_put(ctx);
+    }
+
+    return rc;
 }
 
 int get_schema_change_txns(struct ireq *iq, tran_type **logi,
@@ -1694,7 +1712,10 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
      * NOTE: schema changes will be queued in iq->sc_pending
      *
      */
-    rc = bplog_schemachange_run(iq, scl->uuid, &scs);
+    struct sc_tran_ctx *ctx = sc_tran_ctx_new();
+    rc = bplog_schemachange_run(iq, scl->uuid, &scs, ctx);
+    if (ctx)
+        sc_tran_ctx_put(ctx); /* no client to publish to; the schema changes hold it */
     if (rc && !iq->sc_pending) {
         /* nothing got started, there is nothing to unwind */
         logmsg(LOGMSG_ERROR, "%s uuid %s failed to start, rc %d\n", __func__, us, rc);
