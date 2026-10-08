@@ -378,6 +378,18 @@ void cron_clear_queue(cron_sched_t *sched)
  * Clear all events for a specific source_id
  *
  */
+/* Clear the queued events without waiting for a running one, which is left */
+void cron_clear_queue_nowait(cron_sched_t *sched)
+{
+    cron_event_t *event;
+
+    Pthread_mutex_lock(&sched->mtx);
+    cron_event_t *running = sched->running ? sched->events.top : NULL;
+    while ((event = running ? running->lnk.next : sched->events.top))
+        _destroy_event(sched, event);
+    Pthread_mutex_unlock(&sched->mtx);
+}
+
 void cron_clear_queue_for_sourceid(cron_sched_t *sched, uuid_t *source_id)
 {
     cron_event_t *event;
@@ -673,17 +685,35 @@ void cron_signal_all(void)
 }
 
 /**
- * Clear all the queues events
+ * Clear the queues of all schedulers of a given type
  *
  */
-void cron_clear_queue_all(void)
+void cron_clear_queue_type(enum cron_type type, int nowait)
 {
     cron_sched_t *sched = NULL;
+    cron_sched_t **scheds;
+    int n = 0;
 
+    /* clear without crons.rwlock: cron_lock waits on running events, which can
+     * need the schema lock; schedulers are never removed from the list */
     Pthread_rwlock_rdlock(&crons.rwlock);
-    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
-    {
-        cron_clear_queue(sched);
+    scheds = malloc(sizeof(cron_sched_t *) * (listc_size(&crons.scheds) + 1));
+    if (scheds) {
+        LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+        {
+            if (sched->impl.type == type)
+                scheds[n++] = sched;
+        }
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed, queues not cleared\n", __func__);
     }
     Pthread_rwlock_unlock(&crons.rwlock);
+
+    for (int i = 0; i < n; i++) {
+        if (nowait)
+            cron_clear_queue_nowait(scheds[i]);
+        else
+            cron_clear_queue(scheds[i]);
+    }
+    free(scheds);
 }

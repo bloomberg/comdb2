@@ -6525,6 +6525,9 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
 
     gbl_comdb2_reload_schemas = 1;
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
+    /* drop rollouts queued before the reload, but don't wait for a running one:
+     * a truncate holds the bdb write lock it may be waiting for. Requeued after */
+    views_cron_clear_queues(1);
     wrlock_schema_lk();
 retry_tran:
     tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, BDB_TRAN_NOLOG);
@@ -6659,6 +6662,8 @@ retry_tran:
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
     unlock_schema_lk();
+    /* requeue partition rollouts now that the reloaded tables are open */
+    XCHANGE32(gbl_trigger_timepart, 1);
     logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
 
     gbl_comdb2_reload_schemas = 0;
