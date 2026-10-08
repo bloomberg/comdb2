@@ -204,13 +204,15 @@ static int master_downgrading(struct schema_change_type *s)
 
 static void free_sc(struct schema_change_type *s)
 {
+    int views_locked = s->views_locked;
+
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
 
     /* Bail out if we're in a time partition rollout otherwise
        we may deadlock with a regular schema change. The time partition
        rollout will invoke csc2_free_all() without holding views_lk. */
-    if (s->views_locked)
+    if (views_locked)
         return;
 
     csc2_free_all();

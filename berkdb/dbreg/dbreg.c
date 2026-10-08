@@ -230,13 +230,9 @@ __dbreg_new_id(dbp, txn)
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 		return (0);
 	}
-	if ((ret = __dbreg_get_id(dbp, txn, &id)) == 0) {
-		struct __id_to_fname *id_to_fname = (struct __id_to_fname *)calloc(1, sizeof(*id_to_fname));
-		id_to_fname->id = id;
-		id_to_fname->fname = fnp;
-		hash_add(lp->idhash, id_to_fname);
+	/* __dbreg_get_id maps id -> fnp in idhash */
+	if ((ret = __dbreg_get_id(dbp, txn, &id)) == 0)
 		fnp->id = id;
-	}
 	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 	return (ret);
 }
