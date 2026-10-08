@@ -974,6 +974,7 @@ struct sqlclntstate {
     /* api driver information */
     char *api_driver_name;
     char *api_driver_version;
+    const char *internal_api_type; /* api_type reported by internal clnts */
 
     int translevel_changed;
     int admin;

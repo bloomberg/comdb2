@@ -22,7 +22,7 @@ static int latch_response_value(struct sqlclntstate *clnt, int type, void *p, in
 static void simpleAuthInit(void)
 {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt, 1);
+    start_internal_sql_clnt_named(&clnt, 1, "internal_simpleauth_init");
     clnt.admin = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     int rc = run_internal_sql_clnt(
@@ -36,7 +36,7 @@ static void simpleAuthInit(void)
 
     int authcount;
     char *sql = "select count(*) from comdb2_simple_auth";
-    start_internal_sql_clnt(&clnt, 1);
+    start_internal_sql_clnt_named(&clnt, 1, "internal_simpleauth_init");
     clnt.admin = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.plugin.write_response = latch_response_value;
@@ -198,7 +198,7 @@ int simpleAuthCheck(const char *principal, const char *verb_in, const char *reso
     }
     strcat(sql, "))");
 
-    start_internal_sql_clnt(&clnt, 1);
+    start_internal_sql_clnt_named(&clnt, 1, "internal_simpleauth_check");
     clnt.admin = 1;
     clnt.dbtran.mode = TRANLEVEL_RECOM;
     clnt.plugin.write_response = latch_response_value;

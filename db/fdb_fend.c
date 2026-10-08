@@ -6834,7 +6834,7 @@ static int _run_ping(char *query)
 {
     struct sqlclntstate clnt;
     int rc;
-    start_internal_sql_clnt(&clnt, 0);
+    start_internal_sql_clnt_named(&clnt, 0, "internal_fdb_ping");
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.admin = 1;
     clnt.skip_eventlog = 1;
