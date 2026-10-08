@@ -27,6 +27,7 @@
 #include "debug_switches.h"
 
 extern int gbl_osql_verify_retries_max;
+extern int blockproc2sql_error(int rc, const char *func, int line);
 
 typedef struct srs_tran_query {
     int iscommit; /* statement is 'COMMIT' or equivalent */
@@ -261,6 +262,22 @@ int gbl_disttxn_random_retry_poll = 500;
    retries. */
 int gbl_verify_retry_backoff_ms = 50;
 int gbl_verify_retry_count_before_backoff = 3;
+int gbl_debug_fail_requeue = 0;
+
+/* A COMMIT that fails with a retryable error holds its error back so the retry
+   can answer instead.  When the retry can't be queued, nobody else will answer,
+   and the client would hear nothing until its read timeout. */
+static void srs_tran_send_error(struct sqlclntstate *clnt)
+{
+    osqlstate_t *osql = &clnt->osql;
+    int rc = osql->xerr.errval ? blockproc2sql_error(osql->xerr.errval, __func__, __LINE__) : CDB2ERR_VERIFY_ERROR;
+    logmsg(LOGMSG_WARN, "%s: could not re-queue retry %d of transaction from pid %d on origin host %s, failing it\n",
+           __func__, clnt->verify_retries, clnt->last_pid, clnt->origin);
+    Pthread_mutex_lock(&clnt->wait_mutex);
+    clnt->ready_for_heartbeats = 0;
+    Pthread_mutex_unlock(&clnt->wait_mutex);
+    write_response(clnt, RESPONSE_ERROR, osql->xerr.errstr[0] ? osql->xerr.errstr : "verify error", rc);
+}
 
 int srs_tran_replay_prepare(struct sqlclntstate *clnt)
 {
@@ -286,6 +303,7 @@ int srs_tran_replay_prepare(struct sqlclntstate *clnt)
     if (!clnt->query_rc) {
         clnt->query_rc = clnt->osql.xerr.errval ? clnt->osql.xerr.errval : CDB2ERR_VERIFY_ERROR;
     }
+    srs_tran_send_error(clnt);
 
     return rc;
 }
@@ -361,11 +379,20 @@ static int run_sql_query(struct sqlclntstate *clnt)
 
 static void srs_tran_replay_end(struct sqlclntstate *clnt, int rc);
 
+/* Put a retry back in the queue.  debug.fail_verify_requeue makes it fail as a
+   full queue would, so tests don't have to race real load to get there. */
+static int srs_tran_requeue(struct sqlclntstate *clnt)
+{
+    if (gbl_debug_fail_requeue)
+        return -1;
+    return dispatch_sql_query_no_wait(clnt);
+}
+
 /* The parked txn's wait is over: put it back in the queue. */
 static void srs_tran_redispatch_cb(int fd, short what, void *arg)
 {
     struct sqlclntstate *clnt = arg;
-    if (dispatch_sql_query_no_wait(clnt) == 0)
+    if (srs_tran_requeue(clnt) == 0)
         return;
     /* No worker owns the clnt any more, so finish it here as one would. The
        worker it last ran on has moved on; don't let signal_clnt_as_done touch it. */
@@ -384,7 +411,7 @@ static int srs_tran_redispatch(struct sqlclntstate *clnt)
 {
     int max_ms = gbl_verify_retry_backoff_ms;
     if (max_ms <= 0 || clnt->verify_retries < gbl_verify_retry_count_before_backoff)
-        return dispatch_sql_query_no_wait(clnt);
+        return srs_tran_requeue(clnt);
     int ms = rand() % (max_ms + 1);
     struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
     return event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
@@ -436,6 +463,9 @@ static void srs_tran_replay_end(struct sqlclntstate *clnt, int rc)
     if (!replay_succeeded && !clnt->query_rc) {
         clnt->query_rc = osql->xerr.errval ? osql->xerr.errval : CDB2ERR_VERIFY_ERROR;
     }
+    /* Still RETRY_DO means another retry was due but never ran. */
+    if (osql->replay == OSQL_RETRY_DO)
+        srs_tran_send_error(clnt);
 
     osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
 
