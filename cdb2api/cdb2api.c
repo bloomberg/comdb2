@@ -284,7 +284,7 @@ static int cdb2_get_dbinfo_set_from_env = 0;
 static int get_hostname_from_sockpool_fd = 0;
 static int cdb2_get_hostname_from_sockpool_fd_set_from_env = 0;
 
-#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
+#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 1
 static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
 static int cdb2_allow_pmux_route_set_from_env = 0;
 
@@ -3771,21 +3771,15 @@ retry_newsql_connect:
             cdb2_get_dbhosts(hndl);
             host = hndl->hosts[idx];
         }
-        if (port <= 0) {
-            if (!cdb2_allow_pmux_route)
-                port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
-            else {
-                /* cdb2portmux_route() works without the assignment. We do it here to make it clear
-                   that we will be connecting directly to portmux on this host. */
-                port = CDB2_PORTMUXPORT;
-            }
-            hndl->ports[idx] = port;
-        }
-
-        if (!cdb2_allow_pmux_route)
-            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
-        else
+        if (cdb2_allow_pmux_route && !(port > 0 && hndl->explicit_ports[idx])) {
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication", hndl->dbname);
+        } else {
+            if (port <= 0) {
+                port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
+                hndl->ports[idx] = port;
+            }
+            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
+        }
         LOG_CALL("%s(%s@%s): fd=%d\n", __func__, hndl->dbname, host, fd);
         if (fd < 0) {
             rc = -1;
@@ -5446,6 +5440,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         if (dbinfo_response) {
             parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports, &hndl->master, &hndl->num_hosts,
                              &hndl->num_hosts_sameroom, hndl->debug_trace, &hndl->s_sslmode);
+            memset(hndl->explicit_ports, 0, sizeof(hndl->explicit_ports));
             cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
             hndl->node_seq = 0;
             bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
@@ -6458,6 +6453,7 @@ read_record:
             if (dbinfo_response) {
                 parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports, &hndl->master, &hndl->num_hosts,
                                  &hndl->num_hosts_sameroom, hndl->debug_trace, &hndl->s_sslmode);
+                memset(hndl->explicit_ports, 0, sizeof(hndl->explicit_ports));
                 cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
 
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -8093,6 +8089,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     ++num_get_dbhosts;
 #endif
 
+    memset(hndl->explicit_ports, 0, sizeof(hndl->explicit_ports));
+
     int use_bmsd = 0;
     char comdb2db_hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     int comdb2db_ports[MAX_NODES];
@@ -8590,6 +8588,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     for (int i = 0; i < num_hosts; i++) {
         strcpy(hndl->hosts[i], m[i].host);
         hndl->ports[i] = m[i].port;
+        hndl->explicit_ports[i] = m[i].port > 0;
         hndl->num_hosts++;
         if (m[i].ourdc)
             hndl->num_hosts_sameroom++;
@@ -9113,8 +9112,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (p) {
             *p = '\0';
             hndl->ports[0] = atoi(p + 1);
-        } else if (cdb2_allow_pmux_route) {
-            hndl->ports[0] = CDB2_PORTMUXPORT;
+            hndl->explicit_ports[0] = 1;
         }
         debugprint("host %s port %d\n", hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {

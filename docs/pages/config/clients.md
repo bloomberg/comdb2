@@ -92,8 +92,15 @@ configured in [comdb2db](#comdb2db).
 
 #### pmuxport
 
-`cdb2_open` needs to learn what port the database listens on.  To do that, it talks to a service called `pmux` that runs on
-database machines.  This configures what port `pmux` is listening on.  The default is 5105.
+`cdb2_open` connects to databases through a service called `pmux` that runs on database machines.  This configures what
+port `pmux` is listening on.  The default is 5105.
+
+#### allow_pmux_route
+
+Expects `on` or `off`.  When on, `cdb2_open` asks `pmux` to forward the connection to the database, so only the `pmux` port
+needs to be reachable.  When off, `cdb2_open` asks `pmux` for the database's port and connects to it directly.  The default
+is on.  Can also be set with the `COMDB2_CONFIG_ALLOW_PMUX_ROUTE` environment variable.  If a host is given with an explicit
+port (e.g. `host:port` or `@host:port=port`), `cdb2_open` connects to that port directly and does not use `pmux` routing.
 
 #### connect_timeout
 

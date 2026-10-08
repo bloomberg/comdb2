@@ -83,6 +83,7 @@ struct cdb2_hndl {
     char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
+    uint8_t explicit_ports[MAX_NODES]; /* 1 if the user gave the port; such hosts bypass pmux routing */
     int hosts_connected[MAX_NODES];
     char shards[MAX_NODES][DBNAME_LEN];
     char cached_host[CDB2HOSTNAME_LEN]; /* hostname of a sockpool connection */

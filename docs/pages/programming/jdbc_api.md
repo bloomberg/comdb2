@@ -260,7 +260,7 @@ The parameters are as follows:
 
     * _allow_pmux_route_=Boolean
 
-      Allow connection forwarding via `pmux`. The default is `false`.
+      Allow connection forwarding via `pmux`. The default is `true`.
         
     * _verify_retry_=Boolean
 
