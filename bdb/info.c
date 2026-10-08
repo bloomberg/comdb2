@@ -50,6 +50,7 @@ extern void __test_last_checkpoint(DB_ENV *dbenv);
 extern void __pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno);
 extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 extern void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock);
+extern int bdb_latest_commit(bdb_state_type *bdb_state, DB_LSN *latest_lsn, uint32_t *latest_gen);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
@@ -425,6 +426,11 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     logmsgf(LOGMSG_USER, out, "durable lsn: [%d][%d] generation %u\n", 
             stats->durable_lsn.file, stats->durable_lsn.offset, 
             stats->durable_gen);
+    DB_LSN latest_lsn;
+    uint32_t latest_gen;
+    bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
+    logmsgf(LOGMSG_USER, out, "latest commit lsn: [%d][%d] generation %u\n", latest_lsn.file, latest_lsn.offset,
+            latest_gen);
     free(stats);
 }
 
