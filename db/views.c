@@ -93,6 +93,7 @@ pthread_rwlock_t views_lk;
 cron_sched_t *timepart_sched;
 
 static timepart_view_t *_get_view(timepart_views_t *views, const char *name);
+static void timepart_free_views_unlocked(timepart_views_t *views);
 static timepart_view_t *_get_view_index(timepart_views_t *views,
                                         const char *name, int *idx);
 static int _generate_new_shard_name(const char *oldname, char *newname,
@@ -199,24 +200,35 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     struct errstat xerr = {0};
     const char *name = "timepart_cron";
 
-    time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
+    /* a schema reload keeps the lock and scheduler; it requeues the events */
+    if (!timepart_sched) {
+        time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
 
-    Pthread_rwlock_init(&views_lk, NULL);
+        Pthread_rwlock_init(&views_lk, NULL);
 
-    /* create the timepart scheduler */
-    timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
-                                    NULL, NULL, NULL, NULL, NULL, &xerr,
-                                    &tpt_cron);
+        /* create the timepart scheduler */
+        timepart_sched =
+            cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff, NULL, NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
 
-    if (timepart_sched == NULL)
-        return NULL;
+        if (timepart_sched == NULL)
+            return NULL;
+    }
 
     /* read the llmeta views, if any */
-    dbenv->timepart_views = views_create_all_views();
-
-    if (!dbenv->timepart_views) {
+    timepart_views_t *views = views_create_all_views();
+    if (!views)
         return NULL;
+    if (!dbenv->timepart_views) {
+        dbenv->timepart_views = views;
+        return views;
     }
+
+    /* reload: readers may hold the old pointer, so swap contents under views_lk */
+    Pthread_rwlock_wrlock(&views_lk);
+    timepart_free_views_unlocked(dbenv->timepart_views);
+    *dbenv->timepart_views = *views;
+    Pthread_rwlock_unlock(&views_lk);
+    free(views);
 
     return dbenv->timepart_views;
 }
@@ -1969,6 +1981,19 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     return rc;
 }
 
+/* clear all queued rollout events, time and logical; callers requeue them.
+ * nowait leaves a running event, which may be waiting on the caller's locks */
+void views_cron_clear_queues(int nowait)
+{
+    if (timepart_sched) {
+        if (nowait)
+            cron_clear_queue_nowait(timepart_sched);
+        else
+            cron_clear_queue(timepart_sched);
+    }
+    cron_clear_queue_type(CRON_LOGICAL, nowait);
+}
+
 /**
  * Queue up the necessary events to rollout time partitions 
  * Done during restart and master swing 
@@ -1980,11 +2005,12 @@ int views_cron_restart(timepart_views_t *views)
     timepart_view_t *view;
     int i;
     int rc;
+    int first_rc = VIEW_NOERR;
     struct errstat xerr = {0};
 
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
-    cron_clear_queue(timepart_sched);
+    views_cron_clear_queues(0);
 
     /* Acquire BDB replock before views_lk to match the ordering used in
        _view_cron_phase1/3 (BDB_READLOCK -> views_lk).  Consistent ordering
@@ -2028,13 +2054,16 @@ int views_cron_restart(timepart_views_t *views)
             } else {
                 rc = _view_restart(view, &xerr);
             }
-            if(rc!=VIEW_NOERR)
-            {
-                goto done;
+            if (rc != VIEW_NOERR) {
+                /* the queues were cleared: still requeue the other partitions */
+                logmsg(LOGMSG_ERROR, "%s: failed to restart partition %s rc %d \"%s\"\n", __func__, view->name,
+                       xerr.errval, xerr.errstr);
+                if (first_rc == VIEW_NOERR)
+                    first_rc = rc;
             }
         }
     }
-    rc = VIEW_NOERR;
+    rc = first_rc;
 
 done:
     Pthread_rwlock_unlock(&views_lk);

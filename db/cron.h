@@ -114,6 +114,12 @@ void cron_clear_queue(cron_sched_t *sched);
 void cron_clear_queue_for_sourceid(cron_sched_t *sched, uuid_t *source_id);
 
 /**
+ * Clear the queued events without waiting for a running one, which is left
+ *
+ */
+void cron_clear_queue_nowait(cron_sched_t *sched);
+
+/**
  * Lock/unlock scheduler so I can look at events
  *
  * NOTE: locking waits for the running to complete
@@ -152,10 +158,10 @@ sched_if_t *cron_impl(cron_sched_t *sched);
 void cron_signal_all(void);
 
 /**
- * Clear all the queues events
+ * Clear the queues of all schedulers of a given type
  *
  */
-void cron_clear_queue_all(void);
+void cron_clear_queue_type(enum cron_type type, int nowait);
 
 /**
  * Returns a scheduler with name "name", if any
