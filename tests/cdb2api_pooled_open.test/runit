@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+pgrep cdb2sockpool >/dev/null
+if [[ $? -ne 0 ]]; then
+    ${BUILDDIR}/tools/cdb2sockpool/cdb2sockpool
+    sleep 1
+    pgrep cdb2sockpool >/dev/null || failexit "Couldn't bring up sockpool"
+fi
+
+# cdb2_open only takes a pooled connection without an explicit config, so
+# put the config where the API looks for it ($COMDB2_ROOT/etc/cdb2/config.d)
+mkdir -p ${COMDB2_ROOT}/etc/cdb2/config.d
+cp ${CDB2_CONFIG} ${COMDB2_ROOT}/etc/cdb2/config.d/${DBNAME}.cfg || failexit "Couldn't copy config"
+
+${TESTSBUILDDIR}/cdb2api_pooled_open ${DBNAME} || failexit "cdb2api_pooled_open failed"
+
+echo "Success!"
