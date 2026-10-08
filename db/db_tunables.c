@@ -537,6 +537,7 @@ extern int gbl_fdb_io_error_retries_phase_2_poll;
 extern int gbl_fdb_auth_enabled;
 extern int gbl_fdb_auth_error;
 extern int gbl_debug_invalid_genid;
+extern int gbl_debug_fail_requeue;
 
 /* Tranlog */
 extern int gbl_tranlog_incoherent_timeout;
