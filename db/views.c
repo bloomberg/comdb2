@@ -20,6 +20,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <memory_sync.h>
+#include <comdb2_atomic.h>
 
 #include "comdb2.h"
 #include "crc32c.h"
@@ -201,17 +202,21 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     struct errstat xerr = {0};
     const char *name = "timepart_cron";
 
-    time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
+    /* a schema reload keeps the lock and scheduler; events are requeued */
+    if (!timepart_sched) {
+        time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
 
-    Pthread_rwlock_init(&views_lk, NULL);
+        Pthread_rwlock_init(&views_lk, NULL);
 
-    /* create the timepart scheduler */
-    timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
-                                    NULL, NULL, NULL, NULL, NULL, &xerr,
-                                    &tpt_cron);
+        /* create the timepart scheduler */
+        timepart_sched =
+            cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff, NULL, NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
 
-    if (timepart_sched == NULL)
-        return NULL;
+        if (timepart_sched == NULL)
+            return NULL;
+    } else {
+        XCHANGE32(gbl_trigger_timepart, 1);
+    }
 
     /* read the llmeta views, if any */
     dbenv->timepart_views = views_create_all_views();
@@ -1954,6 +1959,8 @@ int views_cron_restart(timepart_views_t *views)
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
     cron_clear_queue(timepart_sched);
+    /* also partitions removed by a schema reload */
+    cron_clear_queue_type(CRON_LOGICAL);
 
     /* Acquire BDB replock before views_lk to match the ordering used in
        _view_cron_phase1/3 (BDB_READLOCK -> views_lk).  Consistent ordering

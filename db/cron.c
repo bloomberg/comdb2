@@ -687,3 +687,20 @@ void cron_clear_queue_all(void)
     }
     Pthread_rwlock_unlock(&crons.rwlock);
 }
+
+/**
+ * Clear the queues of all schedulers of a given type
+ *
+ */
+void cron_clear_queue_type(enum cron_type type)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    {
+        if (sched->impl.type == type)
+            cron_clear_queue(sched);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+}
