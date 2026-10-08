@@ -7297,7 +7297,7 @@ void *exec_trigger(char *spname)
     snprintf(sql, sizeof(sql), "exec procedure %s()", spname);
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt, 0);
+    start_internal_sql_clnt_named(&clnt, 0, "internal_trigger");
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;

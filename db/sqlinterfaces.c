@@ -6661,7 +6661,7 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
 void run_internal_sql(char *sql)
 {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt, 0);
+    start_internal_sql_clnt_named(&clnt, 0, "internal_sql");
     clnt.sql = skipws(sql);
     int rc = dispatch_sql_query(&clnt);
     if (rc || clnt.query_rc || clnt.saved_errstr) {
@@ -7098,23 +7098,31 @@ static int internal_get_x509_attr(struct sqlclntstate *a, int b, void *c, int d)
 }
 static const char * internal_api_type(struct sqlclntstate *clnt)
 {
-    return "internal";
+    return clnt->internal_api_type ? clnt->internal_api_type : "internal";
 }
 void *internal_get_identity(struct sqlclntstate *clnt)
 {
     return NULL;
 }
 
-void start_internal_sql_clnt(struct sqlclntstate *clnt, int bypass_auth)
+/* name is reported as the api_type, so the auth plugin and reqlog can tell internal requests apart.
+   It must be a string literal: reqlog keeps the pointer. */
+void start_internal_sql_clnt_named(struct sqlclntstate *clnt, int bypass_auth, const char *name)
 {
     reset_clnt(clnt, 1);
     plugin_set_callbacks(clnt, internal);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
     clnt->argv0 = strdup("comdb2.tsk");
+    clnt->internal_api_type = name;
     clnt->origin = gbl_myhostname;
     clnt->conninfo.pid = gbl_mypid;
     clnt->current_user.bypass_auth = bypass_auth;
+}
+
+void start_internal_sql_clnt(struct sqlclntstate *clnt, int bypass_auth)
+{
+    start_internal_sql_clnt_named(clnt, bypass_auth, "internal");
 }
 
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
@@ -7136,7 +7144,7 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
 
 static inline void init_internal_sql_clnt(struct sqlclntstate *clnt, struct schema_mem *sm)
 {
-    start_internal_sql_clnt(clnt, 0);
+    start_internal_sql_clnt_named(clnt, 0, "internal_sql_function");
 
     if (sm) {
         clnt->verify_indexes = 1;
