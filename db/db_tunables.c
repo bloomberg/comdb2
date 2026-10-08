@@ -176,6 +176,7 @@ extern int gbl_allow_bplog_restarts;
 extern int gbl_sqlite_stat4_scan;
 extern int gbl_test_blob_race;
 extern int gbl_test_trigger_deadlock;
+extern int gbl_test_file_version_deadlock;
 extern int gbl_llmeta_deadlock_poll;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
