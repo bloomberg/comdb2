@@ -5462,6 +5462,22 @@ int cdb2_in_client_trans() {
     return clnt->in_client_trans;
 }
 
+/* Shard clnts of a parallel query alias the parent's authdata (see
+ * _shard_connect); only the parent connection owns per-connection auth plugin
+ * state such as a cached authn result. */
+int cdb2_is_authdata_owner()
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL)
+        return 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt == NULL)
+        return 0;
+
+    return !DOHSQL_CLIENT;
+}
+
 /* Release one of the genshard partition arrays built by the SET PARTITION
  * DBS/COLS/SHARDS commands. nelems must be the count the array was allocated
  * with; the SET handlers keep remsql_set.numdbs/numcols in sync with the
