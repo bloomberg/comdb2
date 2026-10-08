@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+# With point-in-time snapshots disabled, AS OF is refused and the commit-LSN map
+# is purged back to recent checkpoints rather than kept until log deletion.
+# The map is per-node, so everything here runs against one node.
+[[ -z "$CLUSTER" ]] && node=$(hostname) || node=$(echo $CLUSTER | awk '{print $1}')
+
+SQL="$CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $node"
+NTXNS=2000
+
+function commit_map_count
+{
+    $SQL "select count(*) from comdb2_transaction_commit"
+}
+
+function verify_asof_is_rejected
+{
+    local level=$1 asof=$2
+    out=$($SQL - 2>&1 <<EOF
+set transaction $level
+begin transaction as of datetime $asof
+select count(*) from t1
+commit
+EOF
+)
+    echo "$level as-of output: $out"
+    echo "$out" | grep -q "point-in-time (AS OF) transactions are disabled" || \
+        failexit "$level AS OF transaction should have been rejected"
+}
+
+function verify_plain_levels_work
+{
+    for level in "snapshot isolation" "serializable"; do
+        cnt=$($SQL - <<EOF
+set transaction $level
+begin
+select count(*) from t1
+commit
+EOF
+)
+        [[ "$cnt" =~ "$NTXNS" ]] || failexit "$level transaction failed: $cnt"
+    done
+}
+
+# The purge never touches the newest logfile, so roll past the latest commit
+function push_logs_past_commits
+{
+    local master lastfile
+    master=$(get_master)
+    lastfile=$($SQL "select max(commitlsnfile) from comdb2_transaction_commit")
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master \
+        "exec procedure sys.cmd.send('pushlogs $((lastfile + 1))')" >/dev/null || failexit "pushlogs"
+}
+
+# Logs are kept for an hour, so only the early purge can shrink the map.
+function verify_commit_map_is_purged
+{
+    local cnt
+    push_logs_past_commits
+    for ((i = 0; i < 60; i++)); do
+        cnt=$(commit_map_count)
+        (( cnt < NTXNS / 4 )) && { echo "commit map shrank to $cnt entries"; return; }
+        sleep 1
+    done
+    failexit "commit map still has $cnt entries after $NTXNS commits"
+}
+
+# Read the next snapshot coproc row into $snaprow, skipping "[stmt] rc 0" echoes
+function read_snap
+{
+    while read -t 30 -ru ${SNAP[0]} snaprow; do
+        [[ "$snaprow" == \[* ]] || return 0
+    done
+    return 1
+}
+
+# A snapshot held open across purges must still see its original data.
+function verify_open_snapshot_survives_purge
+{
+    $SQL "insert into t2 values (1, 0)" >/dev/null || failexit "insert into t2"
+
+    coproc SNAP { stdbuf -oL $SQL - 2>&1; }
+    echo "set transaction snapshot isolation" >&${SNAP[1]}
+    echo "begin" >&${SNAP[1]}
+    echo "select a from t2 where id = 1" >&${SNAP[1]}
+    read_snap || failexit "no first read from snapshot"
+    assertres "$snaprow" "0" "first read inside snapshot"
+
+    for ((i = 1; i <= 200; i++)); do
+        echo "update t2 set a = $i where id = 1"
+    done | $SQL - >/dev/null || failexit "updates to t2"
+    # Roll the updates out of the newest logfile so purges really run under the snapshot
+    push_logs_past_commits
+    sleep 10
+
+    echo "select a from t2 where id = 1" >&${SNAP[1]}
+    read_snap || failexit "no second read from snapshot"
+    after=$snaprow
+    echo "commit" >&${SNAP[1]}
+    echo "quit" >&${SNAP[1]}
+    assertres "$after" "0" "second read inside snapshot after purges"
+
+    now=$($SQL "select a from t2 where id = 1")
+    assertres "$now" "200" "read outside snapshot"
+}
+
+$SQL "create table t1 (a int)" >/dev/null || failexit "create t1"
+$SQL "create table t2 (id int, a int)" >/dev/null || failexit "create t2"
+for ((i = 1; i <= NTXNS; i++)); do echo "insert into t1 values ($i)"; done | $SQL - >/dev/null || \
+    failexit "insert into t1"
+
+sleep 2
+asof=$($SQL "select now()" | tr -d '"' | cut -c1-17)
+verify_asof_is_rejected "snapshot isolation" "$asof"
+verify_asof_is_rejected "serializable" "$asof"
+verify_plain_levels_work
+verify_commit_map_is_purged
+verify_open_snapshot_survives_purge
+
+echo "Success"
+exit 0

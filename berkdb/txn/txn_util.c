@@ -395,6 +395,7 @@ int __txn_commit_map_init(dbenv)
 
 	txmap->smallest_logfile = -1;
 	txmap->highest_logfile = -1;
+	txmap->purge_file = -1;
 	Pthread_mutex_init(&txmap->txmap_mutexp, NULL);
 	dbenv->txmap = txmap;
 
@@ -664,6 +665,64 @@ err:
 	return ret;
 }
  
+/*
+ * __txn_commit_map_raise_purge_file --
+ *	Publish the early-purge point.  Caller holds outstanding_modsnap_lock.
+ *
+ * PUBLIC: void __txn_commit_map_raise_purge_file
+ * PUBLIC:	   __P((DB_ENV *, int64_t));
+ */
+void __txn_commit_map_raise_purge_file(dbenv, file)
+	DB_ENV *dbenv;
+	int64_t file;
+{
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+
+	Pthread_mutex_lock(&txmap->txmap_mutexp);
+	if (file > txmap->purge_file) {
+		txmap->purge_file = file;
+	}
+	Pthread_mutex_unlock(&txmap->txmap_mutexp);
+}
+
+/*
+ * __txn_commit_map_purge_below_file --
+ *	Remove transactions that committed in logfiles below 'file' (capped at
+ *	the published purge point), without waiting for those logfiles to be
+ *	deleted.  The highest logfile is kept.
+ *
+ * PUBLIC: void __txn_commit_map_purge_below_file
+ * PUBLIC:	   __P((DB_ENV *, int64_t));
+ */
+void __txn_commit_map_purge_below_file(dbenv, file)
+	DB_ENV *dbenv;
+	int64_t file;
+{
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+
+	Pthread_mutex_lock(&txmap->txmap_mutexp);
+
+	/* A truncation may have pulled the purge point back since it was published */
+	if (txmap->purge_file < file) {
+		file = txmap->purge_file;
+	}
+
+	while (txmap->smallest_logfile != -1 && txmap->smallest_logfile < file &&
+			txmap->smallest_logfile < txmap->highest_logfile) {
+		u_int32_t del_log = txmap->smallest_logfile;
+		LOGFILE_TXN_LIST * const to_delete = hash_find(txmap->logfile_lists, &del_log);
+		if (!to_delete) {
+			logmsg(LOGMSG_ERROR, "%s: no logfile list for smallest logfile %"PRIu32"\n", __func__, del_log);
+			break;
+		}
+		hash_for(to_delete->commit_utxnids,
+				(hashforfunc_t *const) __txn_commit_map_remove_nolock_foreach_wrapper, (void *) dbenv);
+		__txn_commit_map_delete_logfile_list(dbenv, to_delete);
+	}
+
+	Pthread_mutex_unlock(&txmap->txmap_mutexp);
+}
+
 /*
  * __txn_commit_map_get --
  *	Get the commit LSN of a transaction.
@@ -2179,8 +2238,12 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	return 0;
 }
 
+void bdb_checkpoint_list_truncate(DB_LSN lsn);
+
 void invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(DB_ENV *dbenv, DB_LSN cutoff_lsn) {
 	MODSNAP_TXN *txn;
+
+	bdb_checkpoint_list_truncate(cutoff_lsn);
 
 	pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
 	LISTC_FOR_EACH(&dbenv->outstanding_modsnaps, txn, lnk) {
@@ -2188,6 +2251,15 @@ void invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(DB_ENV *dbenv, DB_LS
 			txn->is_allowed_to_open_cursors = 0;
 		}
 	}
+	/* New checkpoints land below the old purge horizon after a truncate; pull it back */
+	if (!IS_ZERO_LSN(dbenv->modsnap_purge_lsn) && log_compare(&cutoff_lsn, &dbenv->modsnap_purge_lsn) < 0) {
+		dbenv->modsnap_purge_lsn = cutoff_lsn;
+	}
+	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+	if (dbenv->txmap->purge_file > cutoff_lsn.file) {
+		dbenv->txmap->purge_file = cutoff_lsn.file;
+	}
+	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 	pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
 }
 

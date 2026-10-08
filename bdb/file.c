@@ -328,6 +328,39 @@ void bdb_checkpoint_list_get_ckplsn_before_lsn(DB_LSN lsn, DB_LSN *lsnout)
     abort();
 }
 
+/* Drop checkpoints at or past a log truncation point; they no longer exist */
+void bdb_checkpoint_list_truncate(DB_LSN lsn)
+{
+    struct checkpoint_list *ckp;
+    if (!ckp_lst_ready)
+        return;
+    Pthread_mutex_lock(&ckp_lst_mtx);
+    while ((ckp = LISTC_BOT(&ckp_lst)) != NULL && log_compare(&ckp->lsn, &lsn) >= 0) {
+        listc_rbl(&ckp_lst);
+        free(ckp);
+    }
+    Pthread_mutex_unlock(&ckp_lst_mtx);
+}
+
+/* ckp_lsn of the newest checkpoint older than timestamp; returns non-zero if none */
+int bdb_checkpoint_list_get_ckplsn_before_timestamp(int timestamp, DB_LSN *lsnout)
+{
+    struct checkpoint_list *ckp = NULL;
+    if (!ckp_lst_ready)
+        return -1;
+    Pthread_mutex_lock(&ckp_lst_mtx);
+    LISTC_FOR_EACH_REVERSE(&ckp_lst, ckp, lnk)
+    {
+        if (ckp->timestamp < timestamp) {
+            *lsnout = ckp->ckp_lsn;
+            Pthread_mutex_unlock(&ckp_lst_mtx);
+            return 0;
+        }
+    }
+    Pthread_mutex_unlock(&ckp_lst_mtx);
+    return -1;
+}
+
 void bdb_checkpoint_list_get_ckp_before_timestamp(int timestamp, DB_LSN *lsnout)
 {
     struct checkpoint_list *ckp = NULL;
@@ -4092,6 +4125,7 @@ void delete_log_files(bdb_state_type *bdb_state)
     logdelete_lock(__func__, __LINE__);
     if (!gbl_truncating_log) {
         delete_log_files_int(bdb_state);
+        bdb_commit_map_purge(bdb_state);
         bdb_calc_min_truncate(bdb_state);
     }
     logdelete_unlock(__func__, __LINE__);

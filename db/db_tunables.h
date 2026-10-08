@@ -527,6 +527,19 @@ REGISTER_TUNABLE("disable_snapshot_isolation",
                  "footprint of nodes which never serve snapshot queries. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_snapshot_isolation, INVERSE_VALUE | NOARG | READONLY | READEARLY, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("enable_asof_snapshot",
+                 "Enable to allow point-in-time (BEGIN TRANSACTION AS OF) transactions. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_asof_snapshot, NOARG | READONLY | READEARLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("disable_asof_snapshot",
+                 "Disable point-in-time (BEGIN TRANSACTION AS OF) transactions.  This lets us purge "
+                 "commit-LSN (utxnid) map entries older than commit_map_retain_secs rather than "
+                 "keeping them until their log file is deleted. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_asof_snapshot, INVERSE_VALUE | NOARG | READONLY | READEARLY, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("commit_map_retain_secs",
+                 "With disable_asof_snapshot, keep commit-LSN map entries back to the checkpoint "
+                 "preceding this many seconds ago. (Default: 300)",
+                 TUNABLE_INTEGER, &gbl_commit_map_retain_secs, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("use_current_lsn_for_non_snapshot",
                  "comdb2_snapshot_lsn provide current LSN if not using snapshot isolation. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_use_current_lsn_for_non_snapshot, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL,

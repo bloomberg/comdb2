@@ -1462,6 +1462,9 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
  */
 int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state);
 
+/* Purge commit-LSN map entries no snapshot can need (only with AS OF disabled) */
+void bdb_commit_map_purge(bdb_state_type *bdb_state);
+
 /*
  * bdb_unregister_modsnap --
  * Unregister a finished modsnap transaction.

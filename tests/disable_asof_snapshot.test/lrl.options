@@ -1,0 +1,9 @@
+disable_asof_snapshot
+enable_serial_isolation
+commit_map_retain_secs 1
+setattr CHECKPOINTTIME 2
+setattr LOGDELETE_RUN_INTERVAL 1
+setattr MIN_KEEP_LOGS_AGE 3600
+# Small logfiles: the map is purged a whole logfile at a time
+setattr LOGMEMSIZE 65536
+setattr LOGFILESIZE 262144
