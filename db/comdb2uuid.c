@@ -16,7 +16,69 @@
 
 #include "comdb2uuid.h"
 
-void comdb2uuid(uuid_t u) { uuid_generate(u); }
+#include <stdint.h>
+#include <time.h>
+#include <openssl/rand.h>
+
+int gbl_uuid_v7 = 1;
+
+static __thread int uuid_rng_seeded;
+static __thread uint64_t uuid_rng_s[4];
+
+static inline uint64_t uuid_rotl(uint64_t x, int k)
+{
+    return (x << k) | (x >> (64 - k));
+}
+
+static uint64_t uuid_rng_next(void)
+{
+    uint64_t *s = uuid_rng_s;
+    const uint64_t r = uuid_rotl(s[1] * 5, 7) * 9;
+    const uint64_t t = s[1] << 17;
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = uuid_rotl(s[3], 45);
+    return r;
+}
+
+void comdb2uuid(uuid_t u)
+{
+    if (!gbl_uuid_v7) {
+        uuid_generate(u);
+        return;
+    }
+
+    if (!uuid_rng_seeded) {
+        RAND_bytes((unsigned char *)uuid_rng_s, sizeof(uuid_rng_s));
+        uuid_rng_seeded = 1;
+    }
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    uint64_t ms = (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    uint64_t ra = uuid_rng_next(); /* rand_a: 12 bits */
+    uint64_t rb = uuid_rng_next(); /* rand_b: 62 bits */
+
+    u[0] = ms >> 40;
+    u[1] = ms >> 32;
+    u[2] = ms >> 24;
+    u[3] = ms >> 16;
+    u[4] = ms >> 8;
+    u[5] = ms;
+    u[6] = 0x70 | ((ra >> 8) & 0x0f);  /* version 7 | rand_a hi */
+    u[7] = ra;                         /* rand_a lo */
+    u[8] = 0x80 | ((rb >> 56) & 0x3f); /* variant | rand_b hi */
+    u[9] = rb >> 48;
+    u[10] = rb >> 40;
+    u[11] = rb >> 32;
+    u[12] = rb >> 24;
+    u[13] = rb >> 16;
+    u[14] = rb >> 8;
+    u[15] = rb;
+}
 
 char *comdb2uuidstr(uuid_t u, char out[37]);
 inline char *comdb2uuidstr(uuid_t u, char out[37])
