@@ -2659,30 +2659,6 @@ done:
     return entry;
 }
 
-static int release_clientstats(unsigned checksum, int node)
-{
-    int rc = 0;
-    nodestats_t key;
-    key.checksum = checksum;
-    key.node = node;
-    
-    acquire_clientstats_lock(0);
-    nodestats_t *entry = hash_find_readonly(clientstats, &key);
-    if (!entry) {
-        rc = -1;
-        goto done;
-    }
-    Pthread_mutex_lock(&entry->mtx);
-    entry->ref--;
-    update_clientstats_cache(entry);
-    Pthread_mutex_unlock(&entry->mtx);
-    rc = 0;
-
-done: 
-    release_clientstats_lock();
-    return rc;
-}
-
 static int free_nodestats_entry(void *elem, void *unused)
 {
     nodestats_t *entry = (nodestats_t *)elem;
@@ -2764,37 +2740,20 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, con
     return nodestats ? &(nodestats->rawtotals) : NULL;
 }
 
-int release_node_stats(const char *task, const char *stack, char *host)
+/* Drop the reference taken by get_raw_node_stats().  Release the entry we
+ * were given rather than looking it up again by task/stack/host: the caller's
+ * names may have changed since (or never matched what get_raw_node_stats()
+ * used), and a lookup would then drop a reference someone else holds. */
+void release_node_stats(struct rawnodestats *stats)
 {
-    unsigned checksum;
-    int namelen;
-    int task_len = 0, stack_len = 0;
-    char *tmp;
-    struct interned_string *host_interned = intern_ptr(host);
-    host = host_interned->str;
-    GET_NAME_AND_LEN(task, task_len);
-    GET_NAME_AND_LEN(stack, stack_len);
+    nodestats_t *entry = (nodestats_t *)((char *)stats - offsetof(nodestats_t, rawtotals));
 
-    namelen = task_len + stack_len;
-    if (namelen < 1024)
-        tmp = alloca(namelen);
-    else
-        tmp = malloc(namelen);
-    if (!tmp)
-        return -1;
-    memcpy(tmp, task, task_len);
-    memcpy(tmp + task_len, stack, stack_len);
-    checksum = crc32c((const uint8_t *)tmp, namelen);
-    if (release_clientstats(checksum, host_interned->ix) != 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s: failed to release host=%s, node=%d, task=%s, stack=%s\n",
-               __func__, host, host_interned->ix, task, stack);
-        cheap_stack_trace();
-    }
-
-    if (tmp && namelen >= 1024)
-        free(tmp);
-    return 0;
+    acquire_clientstats_lock(0);
+    Pthread_mutex_lock(&entry->mtx);
+    entry->ref--;
+    update_clientstats_cache(entry);
+    Pthread_mutex_unlock(&entry->mtx);
+    release_clientstats_lock();
 }
 
 typedef struct {

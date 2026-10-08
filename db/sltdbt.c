@@ -603,7 +603,11 @@ int handle_ireq(struct ireq *iq)
          * evict and free the entry once our ref hits 0, leaving a dangling
          * pointer and a destroyed rawnodestats->lk mutex. */
         reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-        release_node_stats(iq->origin_argv0 ? iq->origin_argv0 : NULL, NULL, iq->frommach);
+        /* No entry if clientstats was full; don't drop someone else's ref. */
+        if (iq->rawnodestats) {
+            release_node_stats(iq->rawnodestats);
+            iq->rawnodestats = NULL;
+        }
     }
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;

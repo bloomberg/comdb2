@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A proxy sends tagged requests on behalf of another program (the origin).
+# Its connection takes a clientstats reference under its own name, and each
+# tagged request takes one under the origin's name.  Releasing either by name
+# dropped the wrong reference: the connection released under the origin's name,
+# and a request that got no entry (clientstats full) released one anyway.  An
+# entry still in use could then be evicted and freed.
+
+dbnm=$1
+
+host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'")
+[[ -z "$host" ]] && host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()")
+if [[ -n "$CLUSTER" ]]; then
+    log=${TESTDIR}/logs/${dbnm}.${host}.db
+else
+    log=${TESTDIR}/logs/${dbnm}.db
+fi
+
+failexit() {
+    echo "Failed: $1"
+    exit 1
+}
+
+# clientstats full: requests get no entry
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "put tunable max_clientstats 1" || failexit "put tunable"
+${TESTSBUILDDIR}/tagged_origin $dbnm $host origin_full.tsk 20 || failexit "tagged requests with clientstats full"
+
+# room for everyone: each connection releases its own entry at close
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "put tunable max_clientstats 10000" || failexit "put tunable"
+${TESTSBUILDDIR}/tagged_origin $dbnm $host origin_close.tsk 20 || failexit "tagged requests"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "select 1" > /dev/null || failexit "$host is down"
+
+if grep -E "failed to release host=|Assertion .*ref >= 0" $log; then
+    failexit "clientstats reference released twice"
+fi
+
+echo "Passed"
+exit 0

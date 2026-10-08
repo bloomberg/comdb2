@@ -3030,7 +3030,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host);
 struct rawnodestats *get_raw_node_stats(const char *task, const char *stack, const char *id, char *host, int fd,
                                         int is_ssl);
-int release_node_stats(const char *task, const char *stack, char *host);
+void release_node_stats(struct rawnodestats *stats);
 struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
 
