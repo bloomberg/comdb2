@@ -7103,12 +7103,10 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if (trigger)
+    if (trigger) {
         clnt->current_user.bypass_auth = 1;
-
-    /* Remote writes fall back to the db's identity when the client has none */
-    if (trigger || consumer)
         clnt->use_db_identity = 1;
+    }
 
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
 
