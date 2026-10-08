@@ -7185,6 +7185,8 @@ static int _process_partition_retention(struct ireq *iq)
     }
 
     sc->timepartition_name = partition_name;
+    /* new shards inherit the partition's table version */
+    sc->timepartition_version = comdb2_table_version(sc->tablename);
     sc->force_rebuild = 0; /* no data movement */
     sc->nothrevent = 1;    /* serialize, mirrors create/rollout paths */
 
