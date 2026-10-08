@@ -3140,7 +3140,7 @@ static void _prepare_error(struct sqlthdstate *thd,
         dohsql_handle_delayed_syntax_error(clnt);
 }
 
-static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
+int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
 {
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;

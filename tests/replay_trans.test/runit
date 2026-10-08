@@ -34,6 +34,7 @@ function init() {
 function set_all_nodes_tunable() {
     local tunable=$1
     local value=$2
+    local node
     if [ -n "$CLUSTER" ]; then
         for node in $CLUSTER; do
             cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE '$tunable' $value"
@@ -41,6 +42,21 @@ function set_all_nodes_tunable() {
     else
         cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "PUT TUNABLE '$tunable' $value"
     fi
+}
+
+#   $1 osql_verify_retry_max, $2 verify_retry_count_before_backoff, $3 verify_retry_backoff_ms
+function set_retry_tunables() {
+    set_all_nodes_tunable osql_verify_retry_max $1
+    set_all_nodes_tunable verify_retry_count_before_backoff $2
+    set_all_nodes_tunable verify_retry_backoff_ms $3
+}
+
+# Give the client 30s to get its answer. Retrying alone would take far longer
+# at 100000 retries, so only the failure under test ends the txn this early.
+function wait_for_answer() {
+    retry_in_loop 300 0.1 "! kill -0 $1 2>/dev/null" && return
+    kill $1
+    failexit "$2: txn never answered"
 }
 
 function cleanup() {
@@ -73,6 +89,17 @@ EOF
     assert_fail $?
 }
 
+function assert_no_state_wrong() {
+    local logs=$logfile node
+    if [ -n "$CLUSTER" ]; then
+        logs=""
+        for node in $CLUSTER; do logs="$logs $TESTDIR/logs/$dbnm.$node.db"; done
+    fi
+    if grep -q "state is wrong" $logs; then
+        failexit "$1: replay state not cleaned up"
+    fi
+}
+
 function run_client_timeout_during_retry() {
     echo "Test: client timeout during retry"
     # Raise retry max on all nodes so retries are still in flight when
@@ -81,11 +108,15 @@ function run_client_timeout_during_retry() {
 
     # Client-side api_call_timeout expires while the server is still retrying.
     # The server should clean up the replay state without "state is wrong" errors.
-    COMDB2_CONFIG_API_CALL_TIMEOUT=1000 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF 2>&1 || true
+    COMDB2_CONFIG_API_CALL_TIMEOUT=1000 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF > timeout.out 2>&1 || true
 BEGIN
 UPDATE t1 SET j = NOW() WHERE i = 1;
 COMMIT
 EOF
+    cat timeout.out
+    # 100000 retries take far longer than 1s, so only a client-side timeout
+    # ends the txn this early.
+    grep -q "Timeout while reading" timeout.out || failexit "client did not time out during retry"
 
     sleep 2
 
@@ -97,23 +128,7 @@ EOF
         failexit "server unhealthy after client timeout during retry, got: $out"
     fi
 
-    # The replay state must be cleaned up without "state is wrong" errors.
-    found_state_wrong=0
-    if [ -n "$CLUSTER" ]; then
-        for node in $CLUSTER; do
-            if grep -q "state is wrong" "$TESTDIR/logs/$dbnm.$node.db"; then
-                found_state_wrong=1
-                break
-            fi
-        done
-    else
-        if grep -q "state is wrong" "$logfile"; then
-            found_state_wrong=1
-        fi
-    fi
-    if [[ $found_state_wrong -eq 1 ]]; then
-        failexit "replay state not cleaned up on client disconnect"
-    fi
+    assert_no_state_wrong "client disconnect"
 
     echo "client timeout during retry: passed"
 }
@@ -151,6 +166,57 @@ EOF
         failexit "server unhealthy after queue-full retry, got: $out"
     fi
     echo "queue full during retry: passed"
+}
+
+# A retry that can't get back into the queue must still answer the client with
+# its verify error, rather than leave it to hit its read timeout. A full queue
+# is too timing-dependent to hit reliably, so debug.fail_verify_requeue stands
+# in for it.
+#   $1 label
+#   $2 verify_retry_count_before_backoff, $3 verify_retry_backoff_ms
+#   $4 "first" to fail the first retry's dispatch instead of a later one
+function run_failed_requeue() {
+    local label=$1
+    echo "Test: failed re-queue $label"
+    set_retry_tunables 100000 $2 $3
+
+    local node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()")
+    local nodelog=$logfile
+    [ -n "$CLUSTER" ] && nodelog=$TESTDIR/logs/$dbnm.$node.db
+    local requeue_fails=$(grep -c "stopping retries of transaction" $nodelog)
+
+    [ "$4" = "first" ] && cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE 'debug.fail_verify_requeue' 1"
+    # invalid_genid is still on, so every replay fails and the txn keeps retrying.
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node - <<EOF > retry.out 2>&1 &
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+    local txpid=$!
+    if [ "$4" != "first" ]; then
+        sleep 0.5
+        cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE 'debug.fail_verify_requeue' 1"
+    fi
+
+    wait_for_answer $txpid "$label"
+    wait $txpid && failexit "$label: txn succeeded, expected a verify error"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE 'debug.fail_verify_requeue' 0"
+    set_retry_tunables 499 3 50
+
+    cat retry.out
+    # The client's read timeout firing means the server never answered.
+    grep -q "Timeout while reading" retry.out && failexit "$label: no answer from server, client timed out"
+    grep -q "failed with rc 2 " retry.out || failexit "$label: expected a verify error (rc 2)"
+    (( $(grep -c "stopping retries of transaction" $nodelog) > requeue_fails )) ||
+        failexit "$label: no failed re-queue logged on $node"
+
+    out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT i FROM t1 WHERE i = 1")
+    if [[ "$out" != "1" ]]; then
+        failexit "$label: server unhealthy after failed re-queue, got: $out"
+    fi
+    assert_no_state_wrong "failed re-queue $label"
+    echo "failed re-queue $label: passed"
 }
 
 function run_healthy_contention() {
@@ -206,11 +272,61 @@ function run_healthy_contention() {
     echo "healthy contention (backoff ${backoff}ms): passed"
 }
 
+# When a ruleset rejects the re-queue, the rejection has already answered the
+# client. A second error would be read as the answer to the client's next
+# statement.
+#   $1 label
+#   $2 verify_retry_count_before_backoff, $3 verify_retry_backoff_ms
+function run_rejected_requeue() {
+    local label=$1
+    echo "Test: rejected re-queue $label"
+    set_retry_tunables 100000 $2 $3
+
+    local node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()")
+    local rules=$TESTDIR/reject_commit.ruleset
+    cat > $rules <<EOF
+version 2
+
+rule 1 action REJECT_ALL
+rule 1 mode {EXACT NOCASE}
+rule 1 sql COMMIT
+EOF
+    [ -n "$CLUSTER" ] && scp -q $rules $node:$rules
+
+    # invalid_genid is on, so the txn keeps retrying until the rule stops it.
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node - <<EOF > rejected.out 2>&1 &
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+SELECT 'ok' AS next
+EOF
+    local txpid=$!
+    sleep 0.5
+    # Only matches the retry's COMMIT; the client sent its own COMMIT already.
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "EXEC PROCEDURE sys.cmd.send('reload_ruleset $rules')"
+    wait_for_answer $txpid "$label"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
+    set_retry_tunables 499 3 50
+
+    cat rejected.out
+    grep -q "Rejected due to rule" rejected.out || failexit "$label: COMMIT was not rejected"
+    grep -q "^(next='ok')$" rejected.out || failexit "$label: next statement got a stale answer"
+    echo "rejected re-queue $label: passed"
+}
+
 init
 run_bad_tx_with_intransres
 run_bad_tx_without_intransres
 run_client_timeout_during_retry
 run_queue_full_during_retry
+# Back-to-back retries: the worker's own re-queue fails.
+run_failed_requeue "on immediate re-queue" 100000 0
+# Parked retries: the re-queue fails when the timer fires.
+run_failed_requeue "when a parked retry wakes up" 0 200
+# The first retry, sent straight from the failed COMMIT.
+run_failed_requeue "on the first retry" 100000 0 first
+run_rejected_requeue "on immediate re-queue" 100000 0
+run_rejected_requeue "when a parked retry wakes up" 0 200
 verify
 cleanup
 # 50 = default backoff; 0 = the old back-to-back retries
