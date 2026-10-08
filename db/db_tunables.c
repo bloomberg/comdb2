@@ -184,6 +184,7 @@ extern int gbl_llmeta_deadlock_poll;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
 extern int gbl_test_sc_delay_after_unset_running;
+extern int gbl_test_fail_partition_merge_sc;
 extern int gbl_test_emit_race_delay;
 extern int gbl_track_weighted_queue_metrics_separately;
 extern int gbl_typessql;
