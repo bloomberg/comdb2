@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ $debug == "1" ]] && set -x
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+NTABLES=128
+ITERS=6
+
+function failexit
+{
+    echo "Failed: $1"
+    touch ${DBNAME}.failexit
+    exit -1
+}
+
+function wait_for_cluster
+{
+    typeset tries=0
+    while :; do
+        typeset up=1
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE $CDB2_OPTIONS --host $node $DBNAME "select 1" >/dev/null 2>&1 || up=0
+        done
+        [[ $up == 1 && -n "$(get_master)" ]] && return
+        let tries=tries+1
+        [[ $tries -gt 60 ]] && failexit "cluster did not recover after downgrade"
+        sleep 1
+    done
+}
+
+function create_tables
+{
+    for ((i=0;i<NTABLES;++i)); do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t$i(a int)" >/dev/null || failexit "create table t$i"
+    done
+}
+
+# Downgrading the master while it commits a multi-table transactional
+# rebuild exercises the schema-change cleanup and replication recovery
+# paths that previously used freed memory and crashed nodes.
+function rebuild_with_downgrade
+{
+    typeset it=$1
+    typeset fl=rebuild.txn
+    echo "begin" > $fl
+    for ((i=0;i<NTABLES;++i)); do
+        echo "rebuild t$i" >> $fl
+    done
+    echo "commit" >> $fl
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - < $fl > rebuild.$it.out 2>&1 &
+    typeset pid=$!
+    sleep $(( 1 + it % 4 ))
+    typeset master=$(get_master)
+    echo "iteration $it: downgrading $master"
+    $CDB2SQL_EXE --admin $CDB2_OPTIONS --host $master $DBNAME "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1
+    wait $pid
+    grep "commit" rebuild.$it.out
+    wait_for_cluster
+}
+
+function verify_tables
+{
+    for node in $CLUSTER; do
+        cnt=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS --host $node $DBNAME "select count(*) from comdb2_tables where tablename like 't%'")
+        [[ "$cnt" == "$NTABLES" ]] || failexit "node $node has $cnt tables, expected $NTABLES"
+        $CDB2SQL_EXE $CDB2_OPTIONS --host $node $DBNAME "select count(*) from t$((NTABLES - 1))" >/dev/null || failexit "read t$((NTABLES - 1)) on $node"
+    done
+}
+
+create_tables
+for ((it=0;it<ITERS;++it)); do
+    rebuild_with_downgrade $it
+done
+verify_tables
+echo "Success"
