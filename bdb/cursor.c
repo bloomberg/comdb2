@@ -182,6 +182,7 @@ static int bdb_cursor_rrn(bdb_cursor_ifn_t *cur);
 static int bdb_cursor_dbnum(bdb_cursor_ifn_t *cur);
 static void *bdb_cursor_datacopy(bdb_cursor_ifn_t *cur);
 static uint8_t bdb_cursor_ver(bdb_cursor_ifn_t *cur);
+static int bdb_cursor_invalidated(bdb_cursor_ifn_t *cur);
 static void bdb_cursor_found_data(struct bdb_cursor_ifn *cur, int *rrn,
                                   unsigned long long *genid, int *datalen,
                                   void **data, uint8_t *ver);
@@ -634,6 +635,7 @@ bdb_cursor_ifn_t *bdb_cursor_open(
     pcur_ifn->dbnum = bdb_cursor_dbnum;
     pcur_ifn->datacopy = bdb_cursor_datacopy;
     pcur_ifn->ver = bdb_cursor_ver;
+    pcur_ifn->invalidated = bdb_cursor_invalidated;
     pcur_ifn->get_found_data = bdb_cursor_found_data;
     pcur_ifn->collattr = bdb_cursor_collattr;
     pcur_ifn->collattrlen = bdb_cursor_collattrlen;
@@ -3680,6 +3682,11 @@ static void bdb_cursor_found_data(struct bdb_cursor_ifn *cur, int *rrn,
 }
 
 static uint8_t bdb_cursor_ver(bdb_cursor_ifn_t *cur) { return cur->impl->ver; }
+
+static int bdb_cursor_invalidated(bdb_cursor_ifn_t *cur)
+{
+    return cur->impl->invalidated;
+}
 
 static int bdb_cursor_datalen(bdb_cursor_ifn_t *cur)
 {

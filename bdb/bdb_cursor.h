@@ -83,6 +83,8 @@ typedef struct bdb_cursor_ifn {
     int (*dbnum)(struct bdb_cursor_ifn *cur);
     void *(*datacopy)(struct bdb_cursor_ifn *cur);
     uint8_t (*ver)(struct bdb_cursor_ifn *cur);
+    /* set if the cursor lost its locks since it was positioned */
+    int (*invalidated)(struct bdb_cursor_ifn *cur);
     void (*get_found_data)(struct bdb_cursor_ifn *, int *rrn,
                            unsigned long long *genid, int *datalen, void **data,
                            uint8_t *ver);
