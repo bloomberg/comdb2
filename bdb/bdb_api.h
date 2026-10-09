@@ -2511,6 +2511,7 @@ int bdb_rep_deadlocks(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
 int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file);
+int commit_lsn_map_selftest(void);
 
 int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock);
 int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock);

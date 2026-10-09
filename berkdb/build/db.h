@@ -2982,12 +2982,13 @@ struct __utxnid {
 
 struct __logfile_txn_list {
 	u_int32_t file_num;
-	hash_t *commit_utxnids;
+	LISTC_T(UTXNID_TRACK) commit_utxnids;
 };
 
 struct __utxnid_track {
 	u_int64_t utxnid;
 	DB_LSN commit_lsn;
+	LINKC_T(struct __utxnid_track) lnk;
 };
 
 struct __txn_commit_map {

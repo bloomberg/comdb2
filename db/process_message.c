@@ -5153,6 +5153,9 @@ clipper_usage:
         } else {
             logmsg(LOGMSG_USER, "Commit LSN map is not active\n");
         }
+    } else if (tokcmp(tok, ltok, "clm_selftest") == 0) {
+        int rc = commit_lsn_map_selftest();
+        logmsg(LOGMSG_USER, "Commit LSN map selftest %s\n", rc ? "FAILED" : "passed");
     } else if (tokcmp(tok, ltok, "del_llmeta_comdb2_seqno") == 0) {
         bdb_del_seqno(NULL);
     } else if (tokcmp(tok, ltok, "clear_sc_history") == 0) {
