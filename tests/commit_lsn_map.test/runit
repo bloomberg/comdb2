@@ -202,6 +202,18 @@ function test_add_replicant
         cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table data"
 }
 
+function test_selftest
+{
+	# Exercise the map's internal structures on a private map: purging
+	# logfiles, and removing the head, middle, tail and only transaction of one
+	local out
+	out=$(cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('clm_selftest')")
+	if [[ "$out" != *"selftest passed"* ]]; then
+		echo "FAIL: commit LSN map selftest: $out"
+		exit 1
+	fi
+}
+
 function test_add
 {
 	# Test adding to the commit LSN map
@@ -209,7 +221,7 @@ function test_add
 	# A mirror of the transaction log systable is needed to use it for joins.
 	cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table tranlog_copy(utxnid int, childutxnid int, lsnfile int, lsnoffset int)'
 
-	local -r add_tests="test_add_basic test_add_children test_add_recovery test_add_replicant"
+	local -r add_tests="test_selftest test_add_basic test_add_children test_add_recovery test_add_replicant"
 	for t in $add_tests;
 	do
 		$t
