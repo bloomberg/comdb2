@@ -3752,8 +3752,11 @@ retry_newsql_connect:
     max_retries--;
     if (!hndl->is_admin && !(hndl->flags & CDB2_MASTER)) {
         if (hndl->num_hosts && hndl->is_rejected && connect_host_on_reject) {
+            /* Ask sockpool for a direct connection to this host. Use the "dc" policy rather than hndl->policy:
+             * the policy doesn't matter for a single host, sockpool treats "dc" as a direct-machine request,
+             * and the shorter typestr is more likely to fit in the sockpool message. */
             char host_typestr[TYPESTR_LEN - TYPE_LEN + CDB2HOSTNAME_LEN];
-            snprintf(host_typestr, sizeof(host_typestr), "comdb2/%s/%s/newsql/%s", hndl->dbname, host, hndl->policy);
+            snprintf(host_typestr, sizeof(host_typestr), "comdb2/%s/%s/newsql/dc", hndl->dbname, host);
             sb = cdb2_socket_pool_get(hndl, host_typestr, hndl->dbnum, NULL, &use_local_cache);
         } else {
             sb = cdb2_socket_pool_get(hndl, hndl->newsql_typestr, hndl->dbnum, NULL, &use_local_cache);
