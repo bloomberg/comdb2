@@ -286,6 +286,14 @@ REGISTER_TUNABLE("coordinator_block_until_durable", "Coordinator blocks until it
                  TUNABLE_BOOLEAN, &gbl_coordinator_block_until_durable, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_random_retry_poll", "Poll up to this many ms on dist-retry.  (Default: 500)", TUNABLE_INTEGER,
                  &gbl_disttxn_random_retry_poll, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verify_retry_backoff_ms",
+                 "Wait up to this many ms, off the SQL thread, before re-queueing a verify-failed txn.  0 "
+                 "disables.  (Default: 50)",
+                 TUNABLE_INTEGER, &gbl_verify_retry_backoff_ms, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verify_retry_count_before_backoff",
+                 "Re-queue a verify-failed txn straight away for this many replays before verify_retry_backoff_ms "
+                 "applies.  (Default: 3)",
+                 TUNABLE_INTEGER, &gbl_verify_retry_count_before_backoff, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_handle_cache", "Enable the disttxn handle-cache.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_disttxn_handle_cache, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_handle_linger_time", "Time that unused handles persist.  (Default: 60s)", TUNABLE_INTEGER,
@@ -1431,6 +1439,9 @@ REGISTER_TUNABLE("debug.invalid_genid",
                  "Deliberately introduce an invalid genid, FOR TESTING PURPOSE (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_invalid_genid,
                  NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.fail_verify_requeue",
+                 "Fail every verify-retry re-queue as if the queue were full, FOR TESTING PURPOSE (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_fail_requeue, NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "query_plan_percentage",
     "Alarm if the average cost per row of current query plan is n percent above the cost for different query plan."

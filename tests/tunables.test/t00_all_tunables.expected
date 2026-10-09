@@ -1165,6 +1165,8 @@
 (name='verify_directio', description='Run expensive checks on directio calls', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_master_lease_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_pool_maxt', description='Max Number of verify threads in the thrd pool.', type='INTEGER', value='8', read_only='N')
+(name='verify_retry_backoff_ms', description='Wait up to this many ms, off the SQL thread, before re-queueing a verify-failed txn.  0 disables.  (Default: 50)', type='INTEGER', value='50', read_only='N')
+(name='verify_retry_count_before_backoff', description='Re-queue a verify-failed txn straight away for this many replays before verify_retry_backoff_ms applies.  (Default: 3)', type='INTEGER', value='3', read_only='N')
 (name='verify_thread_stacksz', description='Size of the verify thread stack.', type='INTEGER', value='2097152', read_only='N')
 (name='verifycheckpoints', description='Highly paranoid checkpoint validity checks', type='BOOLEAN', value='OFF', read_only='N')
 (name='verifylsn', description='Verify if LSN written before writing page', type='BOOLEAN', value='OFF', read_only='N')

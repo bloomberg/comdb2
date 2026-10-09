@@ -90,6 +90,8 @@ extern int gbl_coordinator_sync_on_commit;
 extern int gbl_coordinator_wait_propagate;
 extern int gbl_coordinator_block_until_durable;
 extern int gbl_disttxn_random_retry_poll;
+extern int gbl_verify_retry_backoff_ms;
+extern int gbl_verify_retry_count_before_backoff;
 extern int gbl_disttxn_handle_cache;
 extern int gbl_disttxn_handle_linger_time;
 extern int gbl_disttxn_async_messages;
@@ -535,6 +537,7 @@ extern int gbl_fdb_io_error_retries_phase_2_poll;
 extern int gbl_fdb_auth_enabled;
 extern int gbl_fdb_auth_error;
 extern int gbl_debug_invalid_genid;
+extern int gbl_debug_fail_requeue;
 
 /* Tranlog */
 extern int gbl_tranlog_incoherent_timeout;
