@@ -100,6 +100,9 @@ if [[ $? != 0 ]]; then
 fi
 sleep 5
 
+# release on every check so the select is parked in recover_deadlock when the schema changes
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 1')"
+
 # Test alter
 echo "Testing alter"
 cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &
@@ -124,6 +127,7 @@ if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1
 fi
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 0')"
 
 # Test master downgrade while running 'select sleep(120)' on master
 set -e
