@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Smoke test, then compare insert throughput into a table with 1 meta page
+# and a table with 8 meta pages.  Each table has two indexes on random keys,
+# where every split takes the meta page lock.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+[[ "$debug" == 1 ]] && set -x
+
+dbnm=$1
+writers=${BENCH_WRITERS:-16}
+txns=${BENCH_TXNS:-20}
+rows=${BENCH_ROWS:-200}
+rounds=1
+
+sql() {
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "$@"
+}
+
+# Smoke test: write rows, read them back.
+sql "put tunable 'freelist_meta_pages' 8" > /dev/null || failexit "tunable"
+sql 'create table smoke { schema { int a cstring s[32] } keys { "A" = a } }' || failexit "create smoke"
+for ((i = 1; i <= 1000; i++)); do
+    echo "insert into smoke values ($i, 'row $i')"
+done | $CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default - > /dev/null || failexit "insert smoke"
+assertres "$(sql "select count(*), sum(a) from smoke")" "1000	500500" "smoke count"
+assertres "$(sql "select s from smoke where a = 777")" "row 777" "smoke read"
+echo "smoke test passed"
+
+for n in 1 8; do
+    sql "put tunable 'freelist_meta_pages' $n" > /dev/null || failexit "tunable $n"
+    sql "create table t$n { schema { int a int r1 int r2 } keys { dup \"R1\" = r1 dup \"R2\" = r2 } }" ||
+        failexit "create t$n"
+done
+
+writer() {
+    local tbl=$1 i j
+    for ((i = 0; i < txns; i++)); do
+        {
+            echo "begin"
+            for ((j = 0; j < rows; j++)); do
+                echo "insert into $tbl values ($i, abs(random() % 1000000000), abs(random() % 1000000000))"
+            done
+            echo "commit"
+        } | CDB2_DEBUG=1 $CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default - > /dev/null 2>> ${TESTDIR}/werr.$tbl.$BASHPID || return 1
+    done
+}
+
+# Prints the time in seconds for one load into table $1.
+load() {
+    local tbl=$1 pids=() w start end
+    start=$(python3 -c 'import time; print(time.time())')
+    for ((w = 0; w < writers; w++)); do
+        writer $tbl &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do
+        wait $pid || failexit "writer failed on $tbl"
+    done
+    end=$(python3 -c 'import time; print(time.time())')
+    python3 -c "print('%.2f' % ($end - $start))"
+}
+
+total=$((writers * txns * rows))
+echo "writers=$writers txns/writer=$txns rows/txn=$rows rows/round=$total"
+# Sample the lock waits during a load, to see which pages the writers wait on.
+sample_waits() {
+    while :; do
+        sql "select locktype, page from comdb2_locks where status = 'WAIT'" 2> /dev/null
+        sleep 0.1
+    done
+}
+
+for ((r = 1; r <= rounds; r++)); do
+    for n in 1 8; do
+        sample_waits > waits.$n.$r &
+        spid=$!
+        s=$(load t$n)
+        kill $spid; wait $spid 2> /dev/null
+        meta=$(awk '$1 == "PAGE" && $2 <= 8' waits.$n.$r | wc -l)
+        other=$(awk '!($1 == "PAGE" && $2 <= 8)' waits.$n.$r | wc -l)
+        echo "round $r meta_pages=$n seconds=$s rows/sec=$(python3 -c "print(int($total / $s))") waits: meta=$meta other=$other"
+    done
+done
+for n in 1 8; do
+    assertcnt t$n $((rounds * total))
+    do_verify t$n
+done
+
+echo "Success"
+exit 0
