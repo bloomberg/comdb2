@@ -339,6 +339,9 @@ REGISTER_TUNABLE("debug_all_prepare_leak", "Prepare and leak all transactions. (
                  &gbl_all_prepare_leak, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sleep_before_dispatch", "Sleep before dispatching on master. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_debug_sleep_before_dispatch, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("snapcur_ovfl_copy_sleep_ms",
+                 "Test only: stall a snapshot read this long while it copies an overflow page. (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_snapcur_ovfl_copy_sleep_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sleep_in_sqlsession_rc",
                  "Sleep this long holding the checkboard entry lock in osql_chkboard_sqlsession_rc. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_debug_sleep_in_sqlsession_rc, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -2263,6 +2266,10 @@ REGISTER_TUNABLE("memp_dump_cache_threshold",
                  TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("snapcur_early_lock_release",
+                 "Snapshot cursors release each page lock as soon as the page is copied. Off is for debugging only: "
+                 "long-running snapshot readers can then stall page allocation. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapcur_early_lock_release, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
                  "read results.  (Default: on)",
