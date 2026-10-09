@@ -184,7 +184,7 @@ function insert_record
     [[ $debug == "1" ]] && set -x
     typeset func="insert_records"
     typeset tbl=$1
-    repeat_command "insert into $tbl values(1)" "insert_record" "tabs" >/dev/null
+    repeat_command "insert into $tbl(a) values(1)" "insert_record" "tabs" >/dev/null
 }
 
 function bulk_insert_records
@@ -389,27 +389,48 @@ function verify_rowlocks
     fi
 }
 
-function get_partition_start_time
-{
-    [[ $debug == "1" ]] && set -x
-    typeset func="get_partition_start_time"
-    get_timestamp 60
-}
+TP_QUERY="select name, period, retention, nshards, version, shard0name, starttime, sourceid from comdb2_timepartitions order by name; \
+select name, shardname, low, high from comdb2_timepartshards order by name, shardname; \
+select tablename from comdb2_tables order by tablename"
 
 function get_time_partitions_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_time_partitions_rep"
-    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "exec procedure sys.cmd.send('partitions')")
-    echo "$r"
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "$TP_QUERY" 2>&1
 }
+
+# Rollout events are only queued on the master
+TP_EVENTS="select name, type, epoch, arg1 from comdb2_cron_events where type not in ('Global Job Scheduler', 'QueueDB Job Scheduler') order by type, epoch, name, arg1"
 
 function get_time_partitions
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_time_partitions"
-    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('partitions')")
-    echo "$r"
+    repeat_command "$TP_QUERY" "get_time_partitions" "tabs"
+}
+
+function get_time_partition_events
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="get_time_partition_events"
+    repeat_command_master "$TP_EVENTS" "get_time_partition_events" "tabs"
+}
+
+function assert_time_partition_events
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="assert_time_partition_events"
+    typeset prev_ev="$1"
+    write_prompt $func "Assert rollout events are the same"
+    typeset curr_ev=$(get_time_partition_events)
+    typeset tries=$total_tries
+    while [[ "$prev_ev" != "$curr_ev" ]] ; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "rollout events have changed: $curr_ev"
+        sleep 1
+        curr_ev=$(get_time_partition_events)
+    done
 }
 
 function assert_time_partitions
@@ -417,12 +438,12 @@ function assert_time_partitions
     [[ $debug == "1" ]] && set -x
     typeset func="assert_time_partitions"
     typeset prev_tp="$1"
-    write_prompt $func "Assert 'partitions' is the same"
+    write_prompt $func "Assert time-partitions are the same"
     typeset curr_tp=$(get_time_partitions)
     typeset tries=$total_tries
     while [[ "$prev_tp" != "$curr_tp" ]] ; do
         let tries=tries-1
-        [[ "$tries" == 0 ]] && failexit $func "time-partitions have changed"
+        [[ "$tries" == 0 ]] && failexit $func "time-partitions have changed: $curr_tp"
         sleep 1
         curr_tp=$(get_time_partitions)
     done
@@ -432,11 +453,25 @@ function assert_time_partitions
         typeset rep=$(get_time_partitions_rep)
         while [[ "$prev_tp" != "$rep" ]] ; do
             let tries=tries-1
-            [[ "$tries" == "0" ]] && failexit $func "time-partitions changed in rep"
+            [[ "$tries" == "0" ]] && failexit $func "time-partitions changed in rep: $rep"
             sleep 1
             rep=$(get_time_partitions_rep)
         done
     fi
+}
+
+function wait_for_sc
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="wait_for_sc"
+    typeset tries=$total_tries
+    typeset n=$(repeat_command "select count(*) from comdb2_sc_status where status in ('RUNNING','PAUSED','COMMIT PENDING')" "wait_for_sc" "tabs")
+    while [[ "$n" != "0" ]]; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "schema-change did not finish"
+        sleep 1
+        n=$(repeat_command "select count(*) from comdb2_sc_status where status in ('RUNNING','PAUSED','COMMIT PENDING')" "wait_for_sc" "tabs")
+    done
 }
 
 function get_genid_format_rep
@@ -1599,105 +1634,84 @@ function rowlocks
     assert_notable t3
 }
 
-function time_partitions_nosc
+function tp_checkpoint
 {
     [[ $debug == "1" ]] && set -x
-    typeset func="time_partitions"
-    write_prompt $func "Creating t1"
-    create_table t1
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)" >/dev/null
-    time_partitions_lsn_1=$(get_current_lsn)
-    time_partitions_all_1=$(select_all)
-    time_partitions_par_1=$(get_time_partitions)
-
-    write_prompt $func "Make t1 a time-partitioned table"
-    starttime=$(get_partition_start_time)
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create time partition on t1 as testpartition period 'test2min' retention 2 start '$starttime'"
-    time_partitions_lsn_2=$(get_current_lsn)
-    time_partitions_all_2=$(select_all)
-    time_partitions_par_2=$(get_time_partitions)
-
-    write_prompt $func "Insert 1000 records"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into testpartition select * from generate_series(1, 1000)"
-    time_partitions_lsn_3=$(get_current_lsn)
-    time_partitions_all_3=$(select_all)
-    time_partitions_par_3=$(get_time_partitions)
-
-    write_prompt $func "Truncating to before insert"
-    truncate_log "$time_partitions_lsn_2"
-    assert_select_all "$time_partitions_all_2"
-    assert_time_partitions "$time_partitions_par_2"
-
-    write_prompt $func "Truncating to before partition"
-    truncate_log "$time_partitions_lsn_1"
-    assert_select_all "$time_partitions_all_1"
-    assert_time_partitions "$time_partitions_par_1"
-
-    write_prompt $func "Truncating to before table create"
-    truncate_log "$begin_lsn"
-    assert_notable t1
-    assert_notable t2
-    assert_notable t3
+    typeset n=$1
+    wait_for_sc
+    eval "tp_lsn_$n=\$(get_current_lsn)"
+    eval "tp_all_$n=\$(select_all)"
+    eval "tp_par_$n=\$(get_time_partitions)"
+    eval "tp_col_$n=\$(get_comdb2_columns)"
+    eval "tp_evt_$n=\$(get_time_partition_events)"
 }
 
+function tp_truncate
+{
+    [[ $debug == "1" ]] && set -x
+    typeset n=$1
+    eval "truncate_log \"\$tp_lsn_$n\""
+    eval "assert_select_all \"\$tp_all_$n\""
+    eval "assert_time_partitions \"\$tp_par_$n\""
+    eval "assert_comdb2_columns \"\$tp_col_$n\""
+    eval "assert_time_partition_events \"\$tp_evt_$n\""
+}
+
+# Partition, roll out, alter, resize, add a time partition, collapse and drop;
+# then truncate back through each step, checking data, partition metadata
+# (master and phys-rep) and the master's rollout events.
 function time_partitions
 {
     [[ $debug == "1" ]] && set -x
     typeset func="time_partitions"
     write_prompt $func "Creating t1"
     create_table t1
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)" >/dev/null
-    time_partitions_lsn_1=$(get_current_lsn)
-    time_partitions_all_1=$(select_all)
-    time_partitions_par_1=$(get_time_partitions)
+    insert_record t1
+    tp_checkpoint 1
 
-    write_prompt $func "Make t1 a time-partitioned table"
-    starttime=$(get_partition_start_time)
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create time partition on t1 as testpartition period 'test2min' retention 2 start '$starttime'"
-    time_partitions_lsn_2=$(get_current_lsn)
-    time_partitions_all_2=$(select_all)
-    time_partitions_par_2=$(get_time_partitions)
+    write_prompt $func "Partitioning t1 by manual retention 3"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 partitioned by manual retention 3" || failexit $func "partition t1"
+    insert_record t1
+    tp_checkpoint 2
 
-    write_prompt $func "Insert 1000 records"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into testpartition select * from generate_series(1, 1000)"
-    time_partitions_lsn_3=$(get_current_lsn)
-    time_partitions_all_3=$(select_all)
-    time_partitions_par_3=$(get_time_partitions)
+    write_prompt $func "Rolling out t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put counter t1 increment" || failexit $func "rollout t1"
+    wait_for_sc
+    insert_record t1
+    tp_checkpoint 3
 
-    write_prompt $func "Schema-change testpartition"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table testpartition add b blob"
-    time_partitions_lsn_4=$(get_current_lsn)
-    time_partitions_all_4=$(select_all)
-    time_partitions_par_4=$(get_time_partitions)
+    write_prompt $func "Schema-change t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add b int" || failexit $func "alter t1"
+    insert_record t1
+    tp_checkpoint 4
 
-    write_prompt $func "Inserting into new schema"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into testpartition select * from generate_series(1, 1000)" >/dev/null
+    write_prompt $func "Changing t1 retention to 4"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 partitioned by manual retention 4" || failexit $func "retention t1"
+    insert_record t1
+    tp_checkpoint 5
 
-    write_prompt $func "Truncating to after schema-change"
-    truncate_log "$time_partitions_lsn_4"
-    assert_select_all "$time_partitions_all_4"
-    assert_time_partitions "$time_partitions_par_4"
+    write_prompt $func "Creating time partition t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int) partitioned by time period 'daily' retention 2 start '20300101T'" || failexit $func "create t2"
+    insert_record t2
+    tp_checkpoint 6
 
-    write_prompt $func "Truncating to before schema-change"
-    truncate_log "$time_partitions_lsn_3"
-    assert_select_all "$time_partitions_all_3"
-    assert_time_partitions "$time_partitions_par_3"
+    write_prompt $func "Collapsing t1, dropping t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 partitioned by none" || failexit $func "collapse t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t2" || failexit $func "drop t2"
+    insert_record t1
+    tp_checkpoint 7
 
-    write_prompt $func "Truncating to before insert"
-    truncate_log "$time_partitions_lsn_2"
-    assert_select_all "$time_partitions_all_2"
-    assert_time_partitions "$time_partitions_par_2"
-
-    write_prompt $func "Truncating to before partition"
-    truncate_log "$time_partitions_lsn_1"
-    assert_select_all "$time_partitions_all_1"
-    assert_time_partitions "$time_partitions_par_1"
+    for n in 6 5 4 3 2 1 ; do
+        write_prompt $func "Truncating to checkpoint $n"
+        tp_truncate $n
+    done
 
     write_prompt $func "Truncating to before table create"
     truncate_log "$begin_lsn"
     assert_notable t1
     assert_notable t2
     assert_notable t3
+    assert_time_partition_events ""
 }
 
 function override_physrep_sp()
@@ -1754,6 +1768,7 @@ function run_tests
     morestripe
     genid48
     rowlocks
+    time_partitions
 }
 
 setup
@@ -1763,8 +1778,5 @@ tear_down
 # Not tested or supported:
 # queues
 # bulkimport
-# I think there's a general problem with schema-changes in time-partitions.
-# I will come back to this.
-# time_partitions_nosc
 
 

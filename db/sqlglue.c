@@ -13209,14 +13209,14 @@ long long run_sql_return_ll(const char *sql, struct errstat *err)
     int rc;
 
     thd = start_sql_thread();
-    rc = run_sql_thd_return_ll(sql, thd, err);
+    rc = run_sql_thd_return_ll(sql, thd, NULL, err);
     done_sql_thread();
 
     return rc;
 }
 
-long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
-                                struct errstat *err)
+/* if locktbl is set, read it under the schema lock with fresh rootpages */
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd, const char *locktbl, struct errstat *err)
 {
     sqlite3 *sqldb;
     int rc;
@@ -13240,6 +13240,12 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
         goto done;
     }
 
+    if (locktbl) {
+        clnt.in_sqlite_init = 1;
+        rdlock_schema_lk();
+        get_copy_rootpages_selectfire(thd, 1, &locktbl, NULL, NULL, 0);
+    }
+
     if ((rc = sqlite3_open_serial("db", &sqldb, NULL)) != 0) {
         errstat_set_rcstrf(err, -1, "%s:sqlite3_open_serial rc %d", __func__,
                            rc);
@@ -13256,6 +13262,10 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:
+    if (locktbl) {
+        unlock_schema_lk();
+        clnt.in_sqlite_init = 0;
+    }
     crc = put_curtran(thedb->bdb_env, &clnt);
     if (crc && !rc)
         errstat_set_rcstrf(err, -1, "%s: failed to close curtran", __func__);
