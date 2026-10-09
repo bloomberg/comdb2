@@ -301,15 +301,12 @@ echo "testing fdb watchdog" >> $output
 C="cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname"
 #fdb_watchdog is lrl configured to run every 20 seconds, and alerts on 20 seconds
 #we need to pause for 20+20 minimum to check for alert spew
+#the delay only triggers when a sql engine adds the remote table to its schema;
+#every engine that ran an earlier query on a remote table already has it cached,
+#so query a fresh table
+cdb2sql ${REM_CDB2_OPTIONS} $a_remdbname default "create table watchdog_t(i int)"
 $C "exec procedure sys.cmd.send('fdb_watchdog_debug 41')"
-#get the current thread busy
-$C "select sleep(10)" &
-sleep 2
-#run the blocking select"
-$C "select * from LOCAL_${a_remdbname}.t order by id"
-
-#wait for async thread
-wait
+$C "select * from LOCAL_${a_remdbname}.watchdog_t"
 
 #we need to reset debug tunable and give it a sec or two to clear before test tries to exit
 $C "exec procedure sys.cmd.send('fdb_watchdog_debug 0')"
@@ -325,7 +322,9 @@ if [[ $rc -ne 0 ]] ; then
     exit 1
 fi
 
-if [[ $alerts != "1" ]] ; then
+#the select enters the delay more than once, and the watchdog's own ping can stall
+#behind it, so expect at least one alert rather than exactly one
+if [[ -z "$alerts" || $alerts -lt 1 ]] ; then
     echo "Failed to detect long mutex lock"
     exit 1
 fi
