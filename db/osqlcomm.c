@@ -6810,6 +6810,9 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
+            /* not linked in sc_pending, clear its running state here */
+            if (sc->set_running)
+                sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__, __LINE__);
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
@@ -6831,6 +6834,9 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
+            /* not linked in sc_pending, clear its running state here */
+            if (sc->set_running)
+                sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__, __LINE__);
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
