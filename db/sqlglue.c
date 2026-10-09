@@ -14372,14 +14372,14 @@ long long run_sql_return_ll(const char *sql, struct errstat *err)
     int rc;
 
     thd = start_sql_thread();
-    rc = run_sql_thd_return_ll(sql, thd, err);
+    rc = run_sql_thd_return_ll(sql, thd, NULL, err);
     done_sql_thread();
 
     return rc;
 }
 
-long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
-                                struct errstat *err)
+/* if locktbl is set, read it under the schema lock with fresh rootpages */
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd, const char *locktbl, struct errstat *err)
 {
     sqlite3 *sqldb;
     int rc;
@@ -14403,6 +14403,24 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
         goto done;
     }
 
+    if (locktbl) {
+        /* bdb lock, then try-lock the schema lock like other sql: the deadlock
+         * detector can't see it */
+        for (int tries = 0; tryrdlock_schema_lk() != 0; tries++) {
+            if (tries >= 100 || db_is_exiting()) {
+                errstat_set_rcstrf(err, -1, "%s: schema lock busy", __func__);
+                goto cleanup;
+            }
+            poll(NULL, 0, 10);
+        }
+        /* Under the schema lock: sql_tick must not recover_deadlock */
+        clnt.in_sqlite_init = 1;
+        if ((rc = get_copy_rootpages_selectfire(thd, 1, &locktbl, NULL, NULL, 0)) != 0) {
+            errstat_set_rcstrf(err, -1, "%s: failed to get rootpages rc %d", __func__, rc);
+            goto cleanup;
+        }
+    }
+
     if ((rc = sqlite3_open_serial("db", &sqldb, NULL)) != 0) {
         errstat_set_rcstrf(err, -1, "%s:sqlite3_open_serial rc %d", __func__,
                            rc);
@@ -14419,6 +14437,10 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:
+    if (clnt.in_sqlite_init) {
+        clnt.in_sqlite_init = 0;
+        unlock_schema_lk();
+    }
     crc = put_curtran(thedb->bdb_env, &clnt);
     if (crc && !rc)
         errstat_set_rcstrf(err, -1, "%s: failed to close curtran", __func__);
