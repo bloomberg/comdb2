@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# During a logical live schema change the redo thread saves a restart lsn,
+# promising every write to the table below it has been redone.  A write to the
+# table is redone only after it joins the redo list, which happens after its
+# logical commit record is written.  Hold write A in that gap, commit plain
+# write B on another table in a newer log file, and check the saved restart lsn
+# does not move past A while A is still waiting to join the list.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+holdms=60000
+
+failexit()
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+if [[ -n "$CLUSTER" ]]; then
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'")
+else
+    master=$(hostname)
+fi
+
+msql()
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "$@"
+}
+
+# Prints "file offset" of the saved redo restart lsn for table t
+sc_start_lsn()
+{
+    msql "exec procedure sys.cmd.send('llmeta list')" |
+        sed -n 's/.*LLMETA_SC_START_LSN: table="t" \[\([0-9]*\):\([0-9]*\)\].*/\1 \2/p'
+}
+
+# Prints the log file of the master's latest commit
+commit_file()
+{
+    msql "exec procedure sys.cmd.send('bdb repstat')" | sed -n 's/^committed lsn: \[\([0-9]*\)\].*/\1/p'
+}
+
+msql "create table t(a int)" >/dev/null || failexit "create t"
+msql "create table t2(a int)" >/dev/null || failexit "create t2"
+msql "insert into t select value from generate_series(1, 300)" >/dev/null || failexit "seed t"
+
+# Keep the convert threads busy for the whole test
+msql "exec procedure sys.cmd.send('scdelay 300')" >/dev/null
+msql "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" >/dev/null
+
+msql "rebuild t" > rebuild.out 2>&1 &
+scpid=$!
+sleep 5
+before=$(sc_start_lsn)
+echo "restart lsn once the schema change is running: [$before]"
+[[ -n "$before" ]] || failexit "no saved restart lsn for t"
+
+msql "put tunable debug_sleep_before_sc_redo_add $holdms" >/dev/null || failexit "set tunable"
+start=$(date +%s)
+msql "insert into t values(-1)" >/dev/null &
+apid=$!
+sleep 2
+afile=$(commit_file)
+msql "exec procedure sys.cmd.send('pushnext')" >/dev/null
+# pushnext fills the log in the background; commit B until it lands in a newer file
+for ((i = 1; i <= 40; i++)); do
+    msql "insert into t2 values($i)" >/dev/null || failexit "insert t2"
+    bfile=$(commit_file)
+    [[ $bfile -gt $afile ]] && break
+    sleep 0.5
+done
+echo "A held in log file <= $afile, B committed in log file $bfile"
+[[ $bfile -gt $afile ]] || failexit "B did not land in a newer log file"
+
+if ! kill -0 $apid 2>/dev/null; then
+    # B could not commit until A was queued, so the redo thread never saw it
+    echo "B waited for A"
+else
+    # Give the redo thread a few of its 10s empty passes
+    sleep 25
+    held=$(sc_start_lsn)
+    echo "restart lsn while A is held: [$held]"
+    [[ $(($(date +%s) - start)) -lt $((holdms / 1000)) ]] || failexit "A was released before the check"
+    if [[ ${held%% *} -ge $bfile ]]; then
+        failexit "restart lsn [$held] moved into log file $bfile while A (log file <= $afile) was not redone"
+    fi
+fi
+
+wait $apid || failexit "insert into t"
+[[ $(($(date +%s) - start)) -ge $((holdms / 1000 - 1)) ]] || failexit "A was not held"
+
+msql "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')" >/dev/null
+msql "exec procedure sys.cmd.send('scdelay 0')" >/dev/null
+wait $scpid || { cat rebuild.out; failexit "rebuild failed"; }
+
+cnt=$(msql "select count(*) from t")
+[[ $cnt -eq 301 ]] || failexit "expected 301 rows in t, got $cnt"
+
+echo "Success"
+exit 0

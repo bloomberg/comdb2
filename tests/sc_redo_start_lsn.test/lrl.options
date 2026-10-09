@@ -1,0 +1,5 @@
+on logical_live_sc
+# Log files small enough for pushnext to reach the next one quickly, but big
+# enough that the held write lands near the start of its file
+setattr LOGMEMSIZE 1048576
+setattr LOGFILESIZE 4194304

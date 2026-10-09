@@ -69,6 +69,8 @@ int gbl_wait_for_prepare_seqnum = 1;
 int gbl_debug_sleep_before_prepare = 0;
 extern int gbl_debug_txn_sleep;
 extern int gbl_debug_disttxn_trace;
+extern int gbl_serializable;
+int gbl_debug_sleep_before_sc_redo_add = 0;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 
 #if 0
@@ -1516,6 +1518,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     tran_type *physical_tran = NULL;
     DB_LSN lsn;
     DB_LSN old_lsn;
+    int logical_commit = 0;
+    int repo_locked = 0;
 
     bzero(&lsn, sizeof(DB_LSN));
     bzero(&old_lsn, sizeof(DB_LSN));
@@ -1582,13 +1586,19 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         if (!bdb_state->attr->synctransactions)
             flags |= DB_TXN_NOSYNC;
 
-        bdb_osql_trn_repo_lock();
-
         /* only generate a log for PARENT transactions */
-        if (tran->parent == NULL &&
-            (add_snapisol_logging(bdb_state, tran) ||
-             tran->force_logical_commit) &&
-            !(tran->flags & BDB_TRAN_NOLOG)) {
+        logical_commit = tran->parent == NULL &&
+                         (add_snapisol_logging(bdb_state, tran) || tran->force_logical_commit) &&
+                         !(tran->flags & BDB_TRAN_NOLOG);
+
+        /* The repo lock keeps logical commits in log order for the live
+           schema change redo list and serializable shadows.  A plain
+           commit touches neither, so it need not wait for the lock. */
+        repo_locked = logical_commit || gbl_serializable;
+        if (repo_locked)
+            bdb_osql_trn_repo_lock();
+
+        if (logical_commit) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
             int iirc = 0;
             int isabort;
@@ -1605,7 +1615,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
             if (iirc) {
                 tran->tid->abort(tran->tid);
-                bdb_osql_trn_repo_unlock();
+                if (repo_locked)
+                    bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR, "%s:%d td %p failed to log logical commit, rc %d\n", __func__, __LINE__,
                        (void *)pthread_self(), iirc);
                 *bdberr = BDBERR_MISC;
@@ -1621,7 +1632,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
             if (iirc) {
                 tran->tid->abort(tran->tid);
-                bdb_osql_trn_repo_unlock();
+                if (repo_locked)
+                    bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR, 
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
@@ -1632,6 +1644,13 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
             if (!isabort && tran->committed_child &&
                 tran->force_logical_commit && tran->dirty_table_hash) {
+                if (gbl_debug_sleep_before_sc_redo_add) {
+                    int ms = gbl_debug_sleep_before_sc_redo_add;
+                    gbl_debug_sleep_before_sc_redo_add = 0;
+                    logmsg(LOGMSG_USER, "%s sleeping %d ms before adding logical commit %u:%u to the sc redo list\n",
+                           __func__, ms, tran->last_logical_lsn.file, tran->last_logical_lsn.offset);
+                    usleep(ms * 1000);
+                }
                 hash_for(tran->dirty_table_hash, update_logical_redo_lsn, tran);
                 hash_clear(tran->dirty_table_hash);
                 hash_free(tran->dirty_table_hash);
@@ -1643,7 +1662,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
         rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, &commit_gen, tran);
-        bdb_osql_trn_repo_unlock();
+        if (repo_locked)
+            bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                    "%s:%d failed commit_getlsn, rc %d\n", __func__,

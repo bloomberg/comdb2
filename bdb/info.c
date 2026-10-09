@@ -429,8 +429,10 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     DB_LSN latest_lsn;
     uint32_t latest_gen;
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
-    logmsgf(LOGMSG_USER, out, "latest commit lsn: [%d][%d] generation %u\n", latest_lsn.file, latest_lsn.offset,
-            latest_gen);
+    logmsgf(LOGMSG_USER, out, "last commit written as master: [%d][%d] generation %u\n", latest_lsn.file,
+            latest_lsn.offset, latest_gen);
+    logmsgf(LOGMSG_USER, out, "committed lsn: [%d][%d] generation %u\n", stats->committed_lsn.file,
+            stats->committed_lsn.offset, stats->committed_gen);
     free(stats);
 }
 

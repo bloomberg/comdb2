@@ -2037,6 +2037,8 @@ __rep_stat(dbenv, statp, flags)
 	stats->st_nsites = rep->nsites;
 	stats->st_master = rep->master_id;
 	stats->st_gen = rep->gen;
+	stats->committed_gen = rep->committed_gen;
+	stats->committed_lsn = rep->committed_lsn;
 
 	if (F_ISSET(rep, REP_F_MASTER))
 		stats->st_status = DB_REP_MASTER;

@@ -29,6 +29,7 @@
 #include "llog_ext.h"
 #include "bdb_osqllog.h"
 #include "bdb_osql_log_rec.h"
+#include "bdb_osqltrn.h"
 
 #include "comdb2_atomic.h"
 #include "epochlib.h"
@@ -3656,8 +3657,14 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 #endif
                 break;
             }
-            /* Update eofLsn to current end of log file */
+            /* Update eofLsn to current end of log file.  A logical commit
+               holds the repo lock until it is on the redo list, so reading
+               under the lock means every logical commit below eofLsn is
+               already there; plain commits don't take it and can land past a
+               logical commit that has not been queued yet. */
+            bdb_osql_trn_repo_lock();
             bdb_get_commit_genid(thedb->bdb_env, &eofLsn);
+            bdb_osql_trn_repo_unlock();
         } else {
 #ifdef LOGICAL_LIVESC_DEBUG
             if (serial)

@@ -46,7 +46,7 @@ poll_pairs()
     typeset node=$1
     while [[ ! -f $stopfile ]]; do
         sql --host $node "exec procedure sys.cmd.send('bdb repstat')" 2>/dev/null |
-            sed -n "s/^latest commit lsn: \[\([0-9]*\)\]\[\([0-9]*\)\] generation \([0-9]*\)/$node \1 \2 \3/p"
+            sed -n "s/^last commit written as master: \[\([0-9]*\)\]\[\([0-9]*\)\] generation \([0-9]*\)/$node \1 \2 \3/p"
         sleep 0.1
     done >$TESTDIR/pairs.$node.out
 }

@@ -53,7 +53,7 @@ extern int request_durable_lsn_from_master(bdb_state_type *bdb_state,
                                            uint32_t *durable_gen);
 
 /**
- * Each snapshot/serializable transaction registers one bdb_osql_trn
+ * Each serializable transaction registers one bdb_osql_trn
  *
  */
 struct bdb_osql_trn {
@@ -68,7 +68,7 @@ struct bdb_osql_trn {
 };
 
 /**
- * Snapshot/Serializable transaction repository
+ * Serializable transaction repository
  *
  */
 typedef struct bdb_osql_trn_repo {
@@ -76,9 +76,10 @@ typedef struct bdb_osql_trn_repo {
     int trak;                     /* global debug */
 } bdb_osql_trn_repo_t;
 
-/* snapshot/serializable session repository */
+/* serializable session repository */
 bdb_osql_trn_repo_t *trn_repo;
-/* for creatn/deltn of trns */
+/* for creatn/deltn of trns; logical commits also hold it so the sc redo list
+   and the shadows are updated in log order */
 pthread_mutex_t trn_repo_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static int bdb_osql_trn_create_backfill(bdb_state_type *bdb_state,
@@ -91,7 +92,7 @@ bdb_osql_trn_create_backfill_active_trans(bdb_state_type *bdb_state,
                                           struct bfillhndl **ret_bkfill_hndl);
 
 /**
- * Create the snapshot/serializable transaction repository
+ * Create the serializable transaction repository
  *
  */
 int bdb_osql_trn_repo_init(int *bdberr)
@@ -147,7 +148,7 @@ void verify_pthread_mutex(pthread_mutex_t *lock) { return; }
 void bdb_verify_repo_lock() { verify_pthread_mutex(&trn_repo_mtx); }
 
 /**
- * lock the snapshot/serializable transaction repository
+ * lock the serializable transaction repository
  *
  */
 inline void bdb_osql_trn_repo_lock()
@@ -156,7 +157,7 @@ inline void bdb_osql_trn_repo_lock()
 }
 
 /**
- * unlock the snapshot/serializable transaction repository
+ * unlock the serializable transaction repository
  *
  */
 inline void bdb_osql_trn_repo_unlock()
@@ -165,7 +166,7 @@ inline void bdb_osql_trn_repo_unlock()
 }
 
 /**
- * Destroy the snapshot/serializable transaction repository
+ * Destroy the serializable transaction repository
  *
  */
 
