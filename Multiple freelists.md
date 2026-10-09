@@ -106,3 +106,26 @@ Findings on `main` while testing (not caused by this work):
 - Deploy: deploy the binary everywhere before the feature is enabled. Downgrade: turn off, then truncate logs (see turn-off order).
 - `__db_new` always calls `__db_new_original`; the system-transaction growth path is dead code.
 - Abort of a file growth needs nothing new: undo does not lower `last_pgno` or shrink the file; the new page goes to limbo, and `__db_limbo_fix` frees it with `__db_free` under `ctxn`, which uses the aborted transaction's meta page.
+
+## Outcome (2026-10-09): stopped, not going ahead for now
+
+The benchmarks show no measurable gain, so the work stops here. Details of each run are under "Is there a gain at all?" in Open points.
+
+Benchmark results (single node on the Mac, first version, table with 1 meta page against table with 8):
+
+| Load | 1 meta page | 8 meta pages |
+|---|---|---|
+| 2 random-key indexes, 16 writers, 1000 rows/txn | 94k–122k rows/s | 96k–109k rows/s |
+| 2 random-key indexes, 16 writers, 50 rows/txn | 35k–38k rows/s | 37k–38k rows/s |
+| 3 indexes, 16 writers, 200 rows/txn + 2 purge jobs | 55k / 25k / 16k rows/s | 55k / 25k / 16k rows/s |
+| 10 random-key indexes, 48 writers, 1 row/txn | 18k–20k txns/s | 17k–20k txns/s |
+
+- The differences are inside the noise between rounds.
+- Lock dumps (`bdb lockinfo lockers`, 60 dumps during the 10-index load): no wait on any meta page. Each index page 0 is write-held about 6% of the time.
+- Stack samples: the meta page lock wait is 18 samples, against about 4500 on the log region mutex (`__log_put`) and `bdb_osql_trn_repo_lock` at commit. The log mutex limits the commit rate before the meta page lock does.
+
+Why stop: the meta page lock is about 1% of the wait time or less, and the remaining work is large (file growth without `last_pgno` on page 0, grow record, rebalance, 2PC, turn-off order), with format and recovery changes.
+
+What could change the decision: `comdb2_locks` or `bdb lockinfo lockers` samples on a busy production master that show frequent waits on page 0, or a cluster where a commit holds page locks while it waits for the replicants (not checked in the code).
+
+Code: branch `multi-metapage` on github.com/mponomar/comdb2 (`1f4117d96`, `f753eaa69`). It has the first version, a copy of these notes, the benchmark scripts in `freelist-bench/`, and the tests `freelist_meta.test` and `freelist_meta_bench.test`. Not for merge.
