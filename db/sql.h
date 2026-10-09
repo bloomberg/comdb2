@@ -1014,6 +1014,7 @@ struct sqlclntstate {
     char* origin_host;
     int8_t sent_data_to_client;
     int8_t is_asof_snapshot;          /* whether client started a point-in-time transaction */
+    const char *wrong_state_err;      /* reason sent with SQLENG_WRONG_STATE, if not the default */
     LINKC_T(struct sqlclntstate) lnk; /* appsock + sbuf */
     TAILQ_ENTRY(sqlclntstate) lru_entry; /* libevent connections which can be closed */
     TAILQ_ENTRY(sqlclntstate) sql_entry; /* all libevent connections */

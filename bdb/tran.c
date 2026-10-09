@@ -68,6 +68,12 @@ int gbl_flush_on_prepare = 1;
 int gbl_wait_for_prepare_seqnum = 1;
 int gbl_debug_sleep_before_prepare = 0;
 extern int gbl_debug_txn_sleep;
+extern int gbl_asof_snapshot;
+extern int gbl_commit_map_retain_secs;
+extern int __txn_commit_map_enabled(void);
+extern void __txn_commit_map_purge_below_file(DB_ENV *, int64_t);
+extern void __txn_commit_map_raise_purge_file(DB_ENV *, int64_t);
+extern int bdb_checkpoint_list_get_ckplsn_before_timestamp(int timestamp, DB_LSN *lsnout);
 extern int gbl_debug_disttxn_trace;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 
@@ -2675,6 +2681,40 @@ int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state)
     return min_file;
 }
 
+/* Without point-in-time snapshots, no reader needs commits older than the
+ * oldest prior-checkpoint LSN of a running or future snapshot */
+void bdb_commit_map_purge(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    MODSNAP_TXN *txn;
+    DB_LSN horizon;
+
+    if (gbl_asof_snapshot || !__txn_commit_map_enabled())
+        return;
+
+    int retain = gbl_commit_map_retain_secs > 0 ? gbl_commit_map_retain_secs : 0;
+    if (bdb_checkpoint_list_get_ckplsn_before_timestamp(comdb2_time_epoch() - retain, &horizon))
+        return;
+
+    /* Registration checks modsnap_purge_lsn under this lock, so no snapshot slips below it */
+    pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
+    LISTC_FOR_EACH(&dbenv->outstanding_modsnaps, txn, lnk)
+    {
+        if (log_compare(&txn->prior_checkpoint_lsn, &horizon) < 0)
+            horizon = txn->prior_checkpoint_lsn;
+    }
+    if (log_compare(&horizon, &dbenv->modsnap_purge_lsn) > 0)
+        dbenv->modsnap_purge_lsn = horizon;
+    horizon = dbenv->modsnap_purge_lsn;
+    /* Publish under the modsnap lock so a truncation's clamp is never overwritten */
+    if (horizon.file != 0)
+        __txn_commit_map_raise_purge_file(dbenv, horizon.file);
+    pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
+
+    if (horizon.file != 0)
+        __txn_commit_map_purge_below_file(dbenv, horizon.file);
+}
+
 int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration)
 {
     return ((MODSNAP_TXN *) registration)->is_allowed_to_open_cursors;
@@ -2719,6 +2759,16 @@ int bdb_register_modsnap(bdb_state_type *bdb_state,
     outstanding_modsnap->prior_checkpoint_lsn.offset = last_checkpoint_lsn_offset;
 
     pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
+    /* Commits older than the purge horizon are gone from the commit-LSN map */
+    if (dbenv->modsnap_purge_lsn.file != 0 &&
+        log_compare(&outstanding_modsnap->prior_checkpoint_lsn, &dbenv->modsnap_purge_lsn) < 0) {
+        const DB_LSN purge_lsn = dbenv->modsnap_purge_lsn;
+        pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
+        logmsg(LOGMSG_ERROR, "%s: snapshot checkpoint %u:%u is older than purge horizon %u:%u\n", __func__,
+               last_checkpoint_lsn_file, last_checkpoint_lsn_offset, purge_lsn.file, purge_lsn.offset);
+        free(outstanding_modsnap);
+        return BDBERR_NO_LOG;
+    }
     listc_atl(&dbenv->outstanding_modsnaps, outstanding_modsnap);
     pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
 

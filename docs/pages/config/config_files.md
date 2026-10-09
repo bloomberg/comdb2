@@ -790,6 +790,7 @@ These options are toggle-able at runtime.
 |clrpol | | See [permissioning commands](#allowdisallow-commands)
 |commit_delay_on_copy_ms          |0           | Amount of time each commit will be delayed if a copy is ongoing
 |commit_delay_timeout_seconds     |10          | Period of time a master will delay-commits if a copy is ongoing
+|commit_map_retain_secs           |300         | With `disable_asof_snapshot`, keep commit-LSN map entries back to the checkpoint preceding this many seconds ago.  Older entries are purged by the log deletion thread.
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
 |crc32c | set | Use crc32c (alternate faster implementation of CRC32, different checksums) for page checksums
 |crypto | | See [Authentication and Encryption](auth.html)
@@ -801,6 +802,7 @@ These options are toggle-able at runtime.
 |decimal_rounding | DEC_ROUND_HALF_EVEN | See [decimal rounding options](#decimal-rounding-options)
 |default_sql_mspace_kbsz          | 1024            | Default size of memory regions owned by SQL threads, in KB 
 |delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
+|disable_asof_snapshot | not set | Disables point-in-time (`BEGIN TRANSACTION AS OF`) transactions.  Lets the database purge commit-LSN (utxnid) map entries older than `commit_map_retain_secs` instead of keeping them until the log file containing the commit is deleted.  An HA retry of a snapshot transaction that began more than about `commit_map_retain_secs` earlier is refused.
 |disable_cache_internal_nodes | | Disable enable_cache_internal_nodes
 |disable_inplace_blob_optimization | | Disables enable_inplace_blob_optimization
 |disable_inplace_blobs | | Disables enable_inplace_blobs (needs enable_inplace_blob_optimization, and enable_osql_blob_optimization also enabled - which they are by default)
@@ -821,6 +823,7 @@ These options are toggle-able at runtime.
 |dump_cache_max_pages | 0 | Maximum number of pages that will be written into the default pagelist
 |dumpthreadonexit | off | If set to 'on' dump resources held by a thread on exit
 |early | set | When set, replicants will ack a transaction as soon as they acquire locks - not that replication must succeed at that point, and reads on that node will either see the records or block.
+|enable_asof_snapshot | set | Enable to allow point-in-time (`BEGIN TRANSACTION AS OF`) transactions.  On by default; see `disable_asof_snapshot`.
 |enable_bulk_import | 0 | Enable API to quickly bring in tables from another database
 |enable_bulk_import_different_tables | 0 | Enable API to bring in tables from another databases that are not present in the current database  
 |enable_cache_internal_nodes | set | Btree internal nodes have a higher cache priority.

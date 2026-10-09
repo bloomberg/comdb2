@@ -3341,6 +3341,8 @@ extern int gbl_rowlocks;
 extern int gbl_disable_tagged_api;
 extern int gbl_disable_tagged_api_writes;
 extern int gbl_snapshot_isolation;
+extern int gbl_asof_snapshot;
+extern int gbl_commit_map_retain_secs;
 extern int gbl_update_shadows_interval;
 extern int gbl_lowpri_snapisol_sessions;
 extern int gbl_disable_legacy_queues;

@@ -1545,6 +1545,12 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
     if (strlen(clnt->sql) > 6)
         epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
 
+    if (epoch > 0 && !gbl_asof_snapshot) {
+        logmsg(LOGMSG_ERROR, "%s: point-in-time snapshots are disabled\n", __func__);
+        clnt->wrong_state_err = "point-in-time (AS OF) transactions are disabled\n";
+        epoch = -1;
+    }
+
     if (epoch < 0) {
         /* overload this for now */
         clnt->had_errors = 1;
@@ -1767,7 +1773,7 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
 done:
     unlock_schema_lk();
     BDB_RELLOCK();
-    return 0;
+    return rc;
 }
 
 void clear_modsnap_state(struct sqlclntstate *clnt)
@@ -1809,9 +1815,9 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
-    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && (populate_modsnap_state(clnt) != 0)) {
-        rc = SQLITE_INTERNAL;
-        goto done;
+    /* On failure, the first statement retries and reports the error (see get_prepared_stmt) */
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && populate_modsnap_state(clnt) != 0) {
+        logmsg(LOGMSG_WARN, "%s: deferring modsnap setup to the first statement\n", __func__);
     }
 
     if (clnt->osql.replay)
@@ -1847,8 +1853,9 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
                 "\"%s\" wrong transaction command receive\n",
                 (clnt->sql) ? clnt->sql : "(???.)");
 
-    write_response(clnt, RESPONSE_ERROR_BAD_STATE,
-                   "sqlinterfaces: wrong sql handle state\n", 0);
+    const char *err = clnt->wrong_state_err ? clnt->wrong_state_err : "sqlinterfaces: wrong sql handle state\n";
+    clnt->wrong_state_err = NULL;
+    write_response(clnt, RESPONSE_ERROR_BAD_STATE, (void *)err, 0);
 
     clnt->intrans = 0;
     reset_clnt_flags(clnt);
@@ -3419,6 +3426,7 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     curtran_assert_nolocks();
     assert(!clnt->modsnap_in_progress || clnt->in_client_trans);
     if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
+        errstat_set_rcstrf(err, ERR_PREPARE, "failed to start snapshot transaction");
         return SQLITE_INTERNAL;
     }
     if (gbl_sleep_5s_after_caching_table_versions) {
@@ -5650,6 +5658,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->wrong_db = 0;
     set_sent_data_to_client(clnt, 0, __func__, __LINE__);
     set_asof_snapshot(clnt, 0, __func__, __LINE__);
+    clnt->wrong_state_err = NULL;
     clnt->sqltick = 0;
     clnt->rowbuffer = 1;
     clnt->flat_col_vals = 0;
