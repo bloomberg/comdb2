@@ -1635,8 +1635,7 @@ void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, struct string_ref *,
                      int64_t, int64_t, struct reqlogger *, unsigned char *, int);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
-long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
-                                struct errstat *err);
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd, const char *locktbl, struct errstat *err);
 
 struct query_plan_item {
     unsigned char plan_fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
