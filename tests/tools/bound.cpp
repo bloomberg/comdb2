@@ -54,6 +54,7 @@ void add_param(string &sp, string &sql, vector<int> &types, string name,
 int main(int argc, char *argv[])
 {
     cdb2_hndl_tp *db1, *db2;
+    setvbuf(stdout, NULL, _IOLBF, 0);
     if(argc < 3) {
         fprintf(stderr, "not enough parameters\n");
         return 1;
@@ -149,7 +150,22 @@ int main(int argc, char *argv[])
     printf("SP: %s\n", sp.c_str());
     rc |= runtag(db2, sp, types);
 
+    /* the server can't decode a 3-byte integer; SQL and SP must report it the same way */
+    cdb2_hndl_tp *db3;
+    cdb2_open(&db3, argv[2], "default", 0);
+    int ok = 1, bad = 0;
+    cdb2_bind_param(db3, "ok", CDB2_INTEGER, &ok, sizeof(ok));
+    cdb2_bind_param(db3, "bad", CDB2_INTEGER, &bad, 3);
+    vector<int> badtypes(2, CDB2_CSTRING);
+    string badsql("select @ok, @bad");
+    string badsp("exec procedure bound(@ok, @bad)");
+    printf("SQL: %s\n", badsql.c_str());
+    runtag(db3, badsql, badtypes);
+    printf("SP: %s\n", badsp.c_str());
+    runtag(db3, badsp, badtypes);
+
     cdb2_close(db1);
     cdb2_close(db2);
+    cdb2_close(db3);
     return rc;
 }

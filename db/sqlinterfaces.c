@@ -3612,7 +3612,9 @@ carray_err:     *err = sqlite3_mprintf("carray_bind: invalid param:%s count:%d t
         }
     }
 out:if (rc) {
-        *err = sqlite3_mprintf("bad parameter name:%s type:%d\n", p.name, p.type);
+        /* same msg as the SP path (lua/sp.c) */
+        int pos = p.pos ? p.pos : sqlite3_bind_parameter_index(stmt, p.name);
+        *err = sqlite3_mprintf("bad parameter name:%s pos:%d type:%d", p.name, pos, p.type);
     }
     return rc;
 }
@@ -4175,7 +4177,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         clear_modsnap_state(clnt);
     }
 
-    if ((rec->status & CACHE_HAS_HINT) && rec->sql != clnt->sql && gbl_eventlog_fullhintsql) { 
+    if ((rec->status & CACHE_HAS_HINT) && rec->sql != clnt->sql && gbl_eventlog_fullhintsql) {
         clnt->hint_sql_ref = create_string_ref(rec->sql);
         reqlog_set_sql(thd->logger, clnt->hint_sql_ref);
     }
@@ -4920,7 +4922,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (clnt->discard_this) {
         thd->sqlthd->stop_this_statement = 1;
         clnt->discard_this = 0;
-    } else 
+    } else
         thd->sqlthd->stop_this_statement = 0;
 
     thr_set_user("appsock", (intptr_t)clnt->appsock_id);
@@ -7190,11 +7192,10 @@ static inline void init_internal_sql_clnt(struct sqlclntstate *clnt, struct sche
 }
 
 static inline void init_mem_info(struct mem_info *info, struct sqlclntstate *clnt, struct schema *sc,
-                                 blob_buffer_t *outblob, const char *tzname,
-                                 struct convert_failure *fail_reason) 
+                                 blob_buffer_t *outblob, const char *tzname, struct convert_failure *fail_reason)
 {
     if (!tzname || !tzname[0]) tzname = "America/New_York";
-    
+
     info->s = sc;
     info->m = ((struct schema_mem *)clnt->schema_mems)->mout;
     info->tzname = tzname;
@@ -7207,7 +7208,7 @@ static inline void init_mem_info(struct mem_info *info, struct sqlclntstate *cln
 int run_internal_sql_function(void *outbuf, struct field *dest, const char *sqlfn,
                               struct schema *sc, blob_buffer_t *outblob, const char *tzname,
                               struct convert_failure *fail_reason)
-{   
+{
     if (strlen(sqlfn) < 1) return -1;
 
     int rc = 0;
@@ -7215,10 +7216,10 @@ int run_internal_sql_function(void *outbuf, struct field *dest, const char *sqlf
     struct schema_mem sm = {0};
     Mem mout = {0};
     sm.mout = &mout;
-    
+
     init_internal_sql_clnt(&clnt, &sm);
     char *stmt = sqlite3_mprintf("select %s", sqlfn);
-    
+
     if (run_internal_sql_clnt(&clnt, stmt)) {
         rc = -1;
         goto done;
@@ -7226,10 +7227,10 @@ int run_internal_sql_function(void *outbuf, struct field *dest, const char *sqlf
 
     struct mem_info info = {0};
     struct field_conv_opts_tz convopts = {.flags = 0};
-    
-    init_mem_info(&info, &clnt, sc, outblob, tzname, fail_reason); 
+
+    init_mem_info(&info, &clnt, sc, outblob, tzname, fail_reason);
     info.convopts = &convopts;
-    
+
     if (mem_to_ondisk(outbuf, dest, &info, NULL)) {
         rc = -1;
         goto done;
@@ -7240,10 +7241,10 @@ done:
         Mem *mout = ((struct schema_mem *)clnt.schema_mems)->mout;
         if (mout && mout->zMalloc) free(mout->zMalloc);
     }
-    
+
     end_internal_sql_clnt(&clnt);
     sqlite3_free(stmt);
-    
+
     return rc;
 }
 
