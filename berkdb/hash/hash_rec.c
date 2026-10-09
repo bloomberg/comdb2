@@ -934,8 +934,8 @@ __ham_groupalloc_recover(dbenv, dbtp, lsnp, op, info)
 		/*
 		 * Always put the pages into the limbo list and free them later.
 		 */
-		if ((ret = __db_add_limbo(dbenv,
-		    info, argp->fileid, argp->start_pgno, argp->num)) != 0)
+		if ((ret = __db_add_limbo(dbenv, info, argp->fileid,
+		    argp->start_pgno, argp->num, PGNO_BASE_MD)) != 0)
 			goto out;
 		if (cmp_n == 0) {
 			LSN(mmeta) = argp->meta_lsn;

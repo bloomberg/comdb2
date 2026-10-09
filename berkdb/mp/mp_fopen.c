@@ -897,6 +897,7 @@ alloc:	/* Allocate and initialize a new MPOOLFILE. */
 	    dbmp, dbmp->reginfo, NULL, sizeof(MPOOLFILE), NULL, &mfp)) != 0)
 		goto err;
 	memset(mfp, 0, sizeof(MPOOLFILE));
+	Pthread_mutex_init(&mfp->grow_lk, NULL);
 	mfp->mpf_cnt = 1;
 	mfp->ftype = dbmfp->ftype;
 	mfp->stat.st_pagesize = pagesize;
@@ -1358,7 +1359,7 @@ __memp_fclose(dbmfp, flags)
 				__os_free(dbenv, rpath);
 			}
 		}
-		if (mfp->block_cnt == 0) {
+		if (mfp->block_cnt == 0 && mfp->slot_refs == 0) {
 			if ((t_ret =
 				__memp_mf_discard(dbmp, mfp)) != 0 && ret == 0)
 				ret = t_ret;
@@ -1416,6 +1417,42 @@ __memp_mf_sync(dbmp, mfp)
 	}
 
 	return (ret);
+}
+
+/*
+ * __memp_mf_slot_ref --
+ *	A transaction took a free list slot in this file: keep the MPOOLFILE
+ * until it releases the slot, even if all the handles close.
+ *
+ * PUBLIC: void __memp_mf_slot_ref __P((DB_ENV *, MPOOLFILE *));
+ */
+void
+__memp_mf_slot_ref(dbenv, mfp)
+	DB_ENV *dbenv;
+	MPOOLFILE *mfp;
+{
+	MUTEX_LOCK(dbenv, &mfp->mutex);
+	++mfp->slot_refs;
+	MUTEX_UNLOCK(dbenv, &mfp->mutex);
+}
+
+/*
+ * __memp_mf_slot_unref --
+ *	Release a reference from __memp_mf_slot_ref, and discard the
+ * MPOOLFILE if nothing else uses it.
+ *
+ * PUBLIC: void __memp_mf_slot_unref __P((DB_ENV *, MPOOLFILE *));
+ */
+void
+__memp_mf_slot_unref(dbenv, mfp)
+	DB_ENV *dbenv;
+	MPOOLFILE *mfp;
+{
+	MUTEX_LOCK(dbenv, &mfp->mutex);
+	if (--mfp->slot_refs == 0 && mfp->mpf_cnt == 0 && mfp->block_cnt == 0)
+		(void)__memp_mf_discard(dbenv->mp_handle, mfp);
+	else
+		MUTEX_UNLOCK(dbenv, &mfp->mutex);
 }
 
 /*
@@ -1503,6 +1540,7 @@ __memp_mf_discard(dbmp, mfp)
 	if (mfp->pgcookie_off != 0)
 		__db_shalloc_free(dbmp->reginfo[0].addr,
 		    R_ADDR(dbmp->reginfo, mfp->pgcookie_off));
+	Pthread_mutex_destroy(&mfp->grow_lk);
 	__db_shalloc_free(dbmp->reginfo[0].addr, mfp);
 
 	R_UNLOCK(dbenv, dbmp->reginfo);

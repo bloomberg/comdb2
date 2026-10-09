@@ -64,6 +64,7 @@ static const char revid[] = "$Id: bt_open.c,v 11.87 2003/07/17 01:39:09 margo Ex
 #include "dbinc/fop.h"
 
 static void __bam_init_meta __P((DB *, BTMETA *, db_pgno_t, DB_LSN *));
+static void __bam_load_meta_list __P((DB *, BTMETA *));
 
 static int
 __bam_open_int(dbp, txn, name, base_pgno, flags)
@@ -367,6 +368,9 @@ __bam_read_root(dbp, txn, base_pgno, flags)
 
 		t->bt_meta = base_pgno;
 		t->bt_root = meta->root;
+
+		if (base_pgno == PGNO_BASE_MD)
+			__bam_load_meta_list(dbp, meta);
 	} else {
 		DB_ASSERT(IS_RECOVERING(dbp->dbenv) ||
 		    F_ISSET(dbp, DB_AM_RECOVER));
@@ -406,6 +410,48 @@ err:	/* Put the metadata page back. */
 	if ((t_ret = __db_c_close(dbc)) != 0 && ret == 0)
 		ret = t_ret;
 	return (ret);
+}
+
+/*
+ * __bam_load_meta_list --
+ *	Copy the list of free list meta pages from page 0 to the MPOOLFILE.
+ */
+static void
+__bam_load_meta_list(dbp, meta)
+	DB *dbp;
+	BTMETA *meta;
+{
+	MPOOLFILE *mfp;
+	db_pgno_t last_pgno;
+	u_int32_t i, nmeta;
+
+	mfp = dbp->mpf->mfp;
+	nmeta = meta->nmeta;
+	if (nmeta <= 1 || mfp->nmeta == nmeta)
+		return;
+
+	__memp_last_pgno(dbp->mpf, &last_pgno);
+	if (nmeta > BTM_MAX_META) {
+		__db_err(dbp->dbenv, "%s: bad meta page count %u, using 1",
+		    dbp->fname ? dbp->fname : "???", nmeta);
+		return;
+	}
+	for (i = 0; i < nmeta - 1; i++) {
+		if (meta->metapgno[i] == PGNO_BASE_MD ||
+		    meta->metapgno[i] > last_pgno) {
+			__db_err(dbp->dbenv,
+			    "%s: bad meta page %u in slot %u, using 1",
+			    dbp->fname ? dbp->fname : "???",
+			    meta->metapgno[i], i + 1);
+			return;
+		}
+	}
+
+	mfp->metapgno[0] = PGNO_BASE_MD;
+	for (i = 1; i < nmeta; i++)
+		mfp->metapgno[i] = meta->metapgno[i - 1];
+	/* Readers check nmeta first, so set it last. */
+	__atomic_store_n(&mfp->nmeta, nmeta, __ATOMIC_RELEASE);
 }
 
 /*
@@ -463,6 +509,9 @@ __bam_init_meta(dbp, meta, pgno, lsnp)
 	meta->re_pad = (u_int32_t)t->re_pad;
 }
 
+/* Number of meta pages, each with its own free list, in a new btree file. */
+int gbl_freelist_meta_pages = 8;
+
 /*
  * __bam_new_file --
  * Create the necessary pages to begin a new database file.
@@ -490,6 +539,7 @@ __bam_new_file(dbp, txn, fhp, name)
 	DBT pdbt;
 	PAGE *root;
 	db_pgno_t pgno;
+	u_int32_t i, nmeta;
 	int ret;
 	void *buf;
 
@@ -499,6 +549,17 @@ __bam_new_file(dbp, txn, fhp, name)
 	meta = NULL;
 	memset(&pdbt, 0, sizeof(pdbt));
 	buf = NULL;
+
+	/*
+	 * Extra meta pages only make sense for named, logged, transactional
+	 * btrees.  They follow the root page: pages 2 .. nmeta.
+	 */
+	nmeta = 1;
+	if (name != NULL && dbp->type == DB_BTREE && TXN_ON(dbenv) &&
+	    LOGGING_ON(dbenv) && !F_ISSET(dbp, DB_AM_NOT_DURABLE) &&
+	    gbl_freelist_meta_pages > 1)
+		nmeta = gbl_freelist_meta_pages > BTM_MAX_META ?
+		    BTM_MAX_META : gbl_freelist_meta_pages;
 
 	/* Build meta-data page. */
 
@@ -522,6 +583,12 @@ __bam_new_file(dbp, txn, fhp, name)
 	__bam_init_meta(dbp, meta, PGNO_BASE_MD, &lsn);
 	meta->root = 1;
 	meta->dbmeta.last_pgno = 1;
+	if (nmeta > 1) {
+		meta->nmeta = nmeta;
+		for (i = 1; i < nmeta; i++)
+			meta->metapgno[i - 1] = 1 + i;
+		meta->dbmeta.last_pgno = nmeta;
+	}
 
 	if (name == NULL)
 		ret = __memp_fput(mpf, meta, DB_MPOOL_DIRTY);
@@ -565,6 +632,22 @@ __bam_new_file(dbp, txn, fhp, name)
 	if (ret != 0)
 		goto err;
 	root = NULL;
+
+	/* Now build the extra meta pages, each with an empty free list. */
+	for (i = 1; i < nmeta; i++) {
+		pgno = 1 + i;
+		memset(buf, 0, dbp->pgsize);
+		meta = (BTMETA *)buf;
+		__bam_init_meta(dbp, meta, pgno, &lsn);
+		meta->root = PGNO_INVALID;
+		if ((ret = __db_pgout(dbenv, pgno, meta, &pdbt)) != 0)
+			goto err;
+		if ((ret = __fop_write(dbenv, txn, name,
+		    DB_APP_DATA, fhp, dbp->pgsize, pgno, 0, buf, dbp->pgsize, 1,
+		    F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0)) != 0)
+			goto err;
+	}
+	meta = NULL;
 
 err:	if (buf != NULL)
 		__os_free(dbenv, buf);

@@ -88,6 +88,7 @@ union __txnlist_union {
         char *fname;
         int32_t fileid;
         db_pgno_t *pgno_array;
+        db_pgno_t *meta_array;	/* Meta page each page came from. */
         u_int8_t uid[DB_FILE_ID_LEN];
     } p;
 };

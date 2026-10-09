@@ -1209,7 +1209,7 @@ __memp_bhfree(dbmp, hp, bhp, free_mem)
 	 */
 	mfp = bhp->mpf;
 	MUTEX_LOCK(dbenv, &mfp->mutex);
-	if (--mfp->block_cnt == 0 && mfp->mpf_cnt == 0)
+	if (--mfp->block_cnt == 0 && mfp->mpf_cnt == 0 && mfp->slot_refs == 0)
 		(void)__memp_mf_discard(dbmp, mfp);
 	else
 		MUTEX_UNLOCK(dbenv, &mfp->mutex);

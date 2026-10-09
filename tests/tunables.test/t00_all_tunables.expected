@@ -411,6 +411,7 @@
 (name='foreign_metadb', description='Forces metadb for fdb queries to the one specified (Default:NULL)', type='STRING', value=NULL, read_only='N')
 (name='foreign_metadb_class', description='Forces metadb for fdb queries to class specified (Default:NULL)', type='STRING', value=NULL, read_only='N')
 (name='foreign_metadb_config', description='Cdb2api config file for fdb metadb; superceded by foreign_metadb (Default:NULL)', type='RAW', value=NULL, read_only='N')
+(name='freelist_meta_pages', description='Number of meta pages, each with its own free list, in a new btree file (default: 8)', type='INTEGER', value='8', read_only='N')
 (name='fstblk_minq', description='', type='INTEGER', value='262144', read_only='N')
 (name='fstdump_buffer_length', description='Size of the per-thread fstdump buffer.', type='INTEGER', value='262144', read_only='N')
 (name='fstdump_longreq', description='Long request threshold for fstdump reads.', type='INTEGER', value='5000', read_only='N')

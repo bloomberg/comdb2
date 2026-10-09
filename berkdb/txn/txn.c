@@ -2318,6 +2318,13 @@ __txn_end(txnp, is_commit)
 			return (__db_panic(dbenv, ret));
 	}
 
+	/*
+	 * Release the free list slots after the locks, so that a transaction
+	 * that picks a free slot does not wait on our meta page lock.
+	 */
+	if (txnp->metaslots != NULL)
+		__db_release_metaslots(dbenv, txnp);
+
 	/* End the transaction. */
 	R_LOCK(dbenv, &mgr->reginfo);
 

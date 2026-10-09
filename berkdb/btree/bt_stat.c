@@ -47,6 +47,7 @@ __bam_stat(dbc, spp, flags)
 	PAGE *h;
 	db_pgno_t pgno;
 	int ret, t_ret, write_meta;
+	u_int32_t i;
 
 	dbp = dbc->dbp;
 	dbenv = dbp->dbenv;
@@ -90,6 +91,29 @@ __bam_stat(dbc, spp, flags)
 		if ((ret = PAGEPUT(dbc, mpf, h, 0)) != 0)
 			goto err;
 		h = NULL;
+	}
+
+	/* Walk the free lists of the other meta pages. */
+	for (i = 1; i < mpf->mfp->nmeta; i++) {
+		pgno = mpf->mfp->metapgno[i];
+		if ((ret = __db_lget(dbc, 0, pgno, DB_LOCK_READ, 0, &lock)) != 0)
+			goto err;
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
+			goto err;
+		pgno = ((DBMETA *)h)->free;
+		if ((ret = PAGEPUT(dbc, mpf, h, 0)) != 0)
+			goto err;
+		h = NULL;
+		while (pgno != PGNO_INVALID) {
+			++sp->bt_free;
+			if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
+				goto err;
+			pgno = h->next_pgno;
+			if ((ret = PAGEPUT(dbc, mpf, h, 0)) != 0)
+				goto err;
+			h = NULL;
+		}
+		__LPUT(dbc, lock);
 	}
 
 	/* Get the root page. */

@@ -950,6 +950,18 @@ __db_vrfy_structure(dbp, vdp, dbname, meta_pgno, flags)
 	    __db_vrfy_freelist(dbp, vdp, meta_pgno, flags)) == DB_VERIFY_BAD)
 		isbad = 1;
 
+	/* Walk the free lists of the extra meta pages, and mark them seen. */
+	if (meta_pgno == PGNO_BASE_MD) {
+		for (i = 0; ret == 0 && i < vdp->nxmeta; i++) {
+			if ((ret = __db_vrfy_pgset_inc(pgset,
+			    vdp->xmetapgno[i])) != 0)
+				break;
+			if ((ret = __db_vrfy_freelist(dbp, vdp,
+			    vdp->xmetapgno[i], flags)) == DB_VERIFY_BAD)
+				isbad = 1;
+		}
+	}
+
 	/*
 	 * If structure checks up until now have failed, it's likely that
 	 * checking what pages have been missed will result in oodles of
@@ -1369,7 +1381,8 @@ __db_vrfy_meta(dbp, vdp, meta, pgno, flags)
 	 * If this is not the main, master-database meta page, it
 	 * should not have a free list.
 	 */
-	if (pgno != PGNO_BASE_MD && meta->free != PGNO_INVALID) {
+	if (pgno != PGNO_BASE_MD && meta->free != PGNO_INVALID &&
+	    !__db_vrfy_is_xmeta(vdp, pgno)) {
 		isbad = 1;
 		EPRINT((dbenv,
 		    "Page %lu: nonempty free list on subdatabase metadata page",

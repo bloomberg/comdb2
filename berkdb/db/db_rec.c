@@ -1093,7 +1093,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	 * If we're undoing the operation and the page was ever created, we put
 	 * it on the freelist.
 	 */
-	pgno = PGNO_BASE_MD;
+	pgno = argp->meta_pgno;
 	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0) {
 		/* The metadata page must always exist on redo. */
 		if (DB_REDO(op)) {
@@ -1183,10 +1183,10 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
                 argp->txnid->txnid);
 		} else if (DB_RECTYPE_HAS_UFID(argp->type)) {
 			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
-					argp->pgno, 1);
+					argp->pgno, 1, argp->meta_pgno);
 		} else {
-			ret = __db_add_limbo(dbenv,
-					info, argp->fileid, argp->pgno, 1);
+			ret = __db_add_limbo(dbenv, info, argp->fileid,
+					argp->pgno, 1, argp->meta_pgno);
 		}
 
 		if (ret != 0)
@@ -1371,7 +1371,7 @@ __db_pg_free_recover_int(dbenv, argp, file_dbp, lsnp, mpf, op, data)
 	 * Fix up the metadata page.  If we're redoing or undoing the operation
 	 * we get the page and update its LSN and free pointer.
 	 */
-	pgno = PGNO_BASE_MD;
+	pgno = argp->meta_pgno;
 	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0) {
 		/* The metadata page must always exist. */
 		ret = __db_pgerr(file_dbp, pgno, ret);
@@ -1468,11 +1468,11 @@ __db_pg_new_recover(dbenv, dbtp, lsnp, op, info)
 
 	if (DB_RECTYPE_HAS_UFID(argp->type)) {
 		if ((ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
-						argp->pgno, 1)) == 0)
+						argp->pgno, 1, argp->meta_pgno)) == 0)
 			*lsnp = argp->prev_lsn;
 	} else {
 		if ((ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno,
-						1)) == 0)
+						1, argp->meta_pgno)) == 0)
 			*lsnp = argp->prev_lsn;
 	}
 
@@ -1577,10 +1577,17 @@ int __db_pg_prepare_undo(DB_ENV *dbenv, DB *file_dbp, PAGE *pagep, __db_pg_prepa
 	ZERO_LSN(pagep->lsn);
 
 	if (update_limbo) {
+		/*
+		 * pg_prepare has no meta page.  Use page 0, so every node
+		 * puts the page in the same place.  If the pg_alloc undo
+		 * also adds this page, limbo frees it only once.
+		 */
 		if (DB_RECTYPE_HAS_UFID(argp->type)) {
-			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid, argp->pgno, 1);
+			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
+			    argp->pgno, 1, PGNO_BASE_MD);
 		} else {
-			ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);
+			ret = __db_add_limbo(dbenv, info, argp->fileid,
+			    argp->pgno, 1, PGNO_BASE_MD);
 		}
 	}
 	return ret;
@@ -1649,17 +1656,11 @@ long long
 __db_filesz(dbp)
 	DB *dbp;
 {
-	db_pgno_t pgno = PGNO_BASE_MD;
-	int rc;
-	DBMETA *meta;
-	off_t sz;
+	db_pgno_t last_pgno;
 
-	rc = __memp_fget(dbp->mpf, &pgno, 0, &meta);
-	if (rc)
-		return rc;
-	sz = meta->last_pgno * meta->pagesize;
-	__memp_fput(dbp->mpf, meta, 0);
-	return sz;
+	/* With more than one meta page, only mpool has the last page. */
+	__memp_last_pgno(dbp->mpf, &last_pgno);
+	return ((long long)last_pgno * dbp->pgsize);
 }
 
 /*

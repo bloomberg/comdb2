@@ -60,6 +60,23 @@ __bam_vrfy_meta(dbp, vdp, meta, pgno, flags)
 	dbenv = dbp->dbenv;
 	isbad = 0;
 
+	/*
+	 * Page 0 lists the extra free list meta pages.  Page 0 is checked
+	 * first, so the list is known before we reach them.
+	 */
+	if (pgno == PGNO_BASE_MD) {
+		vdp->nxmeta = 0;
+		if (meta->nmeta > BTM_MAX_META) {
+			isbad = 1;
+			EPRINT((dbenv, "Page %lu: bad meta page count %lu",
+			    (u_long)pgno, (u_long)meta->nmeta));
+		} else if (meta->nmeta > 1) {
+			vdp->nxmeta = meta->nmeta - 1;
+			memcpy(vdp->xmetapgno, meta->metapgno,
+			    vdp->nxmeta * sizeof(db_pgno_t));
+		}
+	}
+
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);
 
@@ -108,7 +125,15 @@ __bam_vrfy_meta(dbp, vdp, meta, pgno, flags)
 	 * of the file, then the root page had better be page 1.
 	 */
 	pip->root = 0;
-	if (meta->root == PGNO_INVALID ||
+	if (__db_vrfy_is_xmeta(vdp, pgno)) {
+		/* An extra free list meta page has no tree. */
+		if (meta->root != PGNO_INVALID) {
+			isbad = 1;
+			EPRINT((dbenv,
+			    "Page %lu: root page %lu on free list meta page",
+			    (u_long)pgno, (u_long)meta->root));
+		}
+	} else if (meta->root == PGNO_INVALID ||
 	    meta->root == pgno || !IS_VALID_PGNO(meta->root) ||
 	    (pgno == PGNO_BASE_MD && meta->root != 1)) {
 		isbad = 1;

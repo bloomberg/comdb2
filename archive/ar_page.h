@@ -125,7 +125,8 @@ typedef struct _btmeta33 {
 	uint32_t re_len;	/* 80-83: Recno: fixed-length record length. */
 	uint32_t re_pad;	/* 84-87: Recno: fixed-length record pad. */
 	uint32_t root;		/* 88-91: Root page. */
-	uint32_t unused[92];	/* 92-459: Unused space */
+	uint32_t nmeta;		/* 92-95: Free list meta pages, 0 means 1. */
+	uint32_t metapgno[91];	/* 96-459: Extra meta pages */
 	uint32_t crypto_magic;		/* 460-463: Crypto magic number */
 	uint32_t trash[3];		/* 464-475: Trash space - Do not use */
 	uint8_t iv[DB_IV_BYTES];	/* 476-495: Crypto IV */

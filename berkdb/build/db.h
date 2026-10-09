@@ -1187,6 +1187,14 @@ struct __db_txn {
 	u_int32_t coordinator_gen;
 	DBT blkseq_key;
 	int wrote_regop_gen;
+
+	/*
+	 * Free list meta page slots this transaction uses, one per file.
+	 * Only kept on the top-level transaction.  See __db_meta_pgno.
+	 */
+	void *metaslots;
+	u_int32_t nmetaslots;
+	u_int32_t maxmetaslots;
 };
 
 typedef enum {
@@ -2173,6 +2181,13 @@ struct __dbc {
 
 	DB_LSN modsnap_start_lsn; /* Modsnap start point */
 	DB_LSN last_checkpoint_lsn; /* Checkpoint LSN prior to modsnap start point */
+
+	/*
+	 * Limbo processing frees a page to the meta page it was allocated
+	 * from, not to the slot of the cursor's transaction.
+	 */
+	int use_free_meta_pgno;
+	db_pgno_t free_meta_pgno;
 };
 extern pthread_key_t DBG_FREE_CURSOR;
 

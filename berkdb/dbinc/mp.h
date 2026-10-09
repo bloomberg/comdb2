@@ -220,6 +220,23 @@ struct __mpoolfile {
 	db_pgno_t maxpgno;		/* Maximum page number. */
 
 	/*
+	 * Free list meta pages of a btree, read from page 0 at open.
+	 * metapgno[0] is always page 0.  metaslot_cnt[i] is the number of
+	 * transactions that use meta page i.  The counts are only a hint:
+	 * the meta page lock keeps the free lists correct.
+	 */
+#define	MP_MAX_META	92		/* BTM_MAX_META */
+	u_int32_t nmeta;
+	db_pgno_t metapgno[MP_MAX_META];
+	u_int32_t metaslot_cnt[MP_MAX_META];
+	u_int32_t metaslot_next;	/* Where the next scan starts. */
+	u_int32_t slot_refs;		/* Transactions with a slot in this
+					   file: delay the discard.
+					   Protected by MPOOLFILE mutex. */
+	pthread_mutex_t grow_lk;	/* Serializes file growth when
+					   nmeta > 1. */
+
+	/*
 	 * None of the following fields are thread protected.
 	 *
 	 * There are potential races with the ftype field because it's read

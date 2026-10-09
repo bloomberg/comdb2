@@ -85,6 +85,7 @@ __bam_mswap(pg)
 	PAGE *pg;
 {
 	u_int8_t *p;
+	int i;
 
 	__db_metaswap(pg);
 
@@ -95,7 +96,9 @@ __bam_mswap(pg)
 	SWAP32(p);		/* re_len */
 	SWAP32(p);		/* re_pad */
 	SWAP32(p);		/* root */
-	p += 92 * sizeof(u_int32_t); /* unused */
+	SWAP32(p);		/* nmeta */
+	for (i = 0; i < BTM_MAX_META - 1; i++)
+		SWAP32(p);	/* metapgno */
 	SWAP32(p);		/* crypto_magic */
 
 	return (0);

@@ -43,6 +43,7 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_sleep_5s_after_caching_table_versions;
+extern int gbl_freelist_meta_pages;
 extern int gbl_transactional_drop_plus_rename;
 extern int gbl_bulk_import_validation_werror;
 extern int gbl_debug_sleep_during_bulk_import;
@@ -963,6 +964,15 @@ int dtastripe_verify(void *context, void *stripes)
 static int maxretries_verify(void *context, void *value)
 {
     if (*(int *)value < 2) {
+        return 1;
+    }
+    return 0;
+}
+
+static int freelist_meta_pages_verify(void *context, void *value)
+{
+    /* BTM_MAX_META in berkdb/dbinc/db_page.h */
+    if (*(int *)value < 1 || *(int *)value > 92) {
         return 1;
     }
     return 0;

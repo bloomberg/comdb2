@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Many writers allocate and free pages in one index file at the same time.
+# With freelist_meta_pages, each transaction uses its own meta page, so the
+# free pages end up on more than one list.  Check that the data is correct
+# and that more than one list is in use.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+[[ "$debug" == 1 ]] && set -x
+
+dbnm=$1
+writers=8
+txns=20
+rows=200
+
+sql() {
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "$@"
+}
+
+master=$(getmaster)
+if [[ -z "${CLUSTER}" ]]; then
+    msql() { sql "$@"; }
+else
+    msql() { $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $master $dbnm "$@"; }
+fi
+
+# Make the index with the table: writes that start right after a separate
+# "create index" can hang on sc_live_lk (seen on main, not related to this).
+sql 'create table t { schema { int a int r blob b } keys { dup "R" = r } }' ||
+    failexit "create t"
+sql "create table u (a int unique)" || failexit "create u"
+sql "insert into u values (1)" || failexit "insert u"
+
+# Insert $rows rows with random keys in each of $txns transactions.
+writer() {
+    local w=$1 i j
+    for ((i = 0; i < txns; i++)); do
+        {
+            echo "begin"
+            for ((j = 0; j < rows; j++)); do
+                echo "insert into t values ($w, abs(random() % 100000000), randomblob(300))"
+            done
+            echo "commit"
+        } | $CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default - > /dev/null || return 1
+    done
+}
+
+# Allocate pages, then fail on a duplicate key.  The new pages go to limbo.
+aborter() {
+    local i j
+    for ((i = 0; i < 10; i++)); do
+        {
+            echo "begin"
+            for ((j = 0; j < rows; j++)); do
+                echo "insert into t values (-1, abs(random() % 100000000), randomblob(300))"
+            done
+            echo "insert into u values (1)"
+            echo "commit"
+        } | $CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default - > /dev/null 2>&1
+    done
+}
+
+# With an argument, writers may fail (the database crashes under them).
+run_load() {
+    local tolerant=$1 pids=() w
+    for ((w = 0; w < writers; w++)); do
+        writer $w &
+        pids+=($!)
+    done
+    aborter &
+    local apid=$!
+    for pid in "${pids[@]}"; do
+        wait $pid || [[ -n "$tolerant" ]] || failexit "writer failed"
+    done
+    wait $apid
+}
+
+run_load
+expected=$((writers * txns * rows))
+assertcnt t $expected "after first load"
+assertres "$(sql "select count(*) from t where a = -1")" 0 "aborted rows"
+
+# Free pages from many transactions, then load again to reuse them.
+sql "delete from t where a % 2 = 0" > /dev/null || failexit "delete"
+run_load
+expected=$((expected / 2 + writers * txns * rows))
+assertcnt t $expected "after second load"
+do_verify t
+
+# Empty the table in 8 transactions, each over one range of the index, so
+# that each frees its pages to its own list.  Then dump the free lists of
+# the index to the master log.
+for ((i = 0; i < 8; i++)); do
+    sql "delete from t where r >= $((i * 12500000)) and r < $(((i + 1) * 12500000))" > /dev/null ||
+        failexit "delete range $i"
+done
+msql "exec procedure sys.cmd.send('freelist t index 0')" > /dev/null
+do_verify t
+assertcnt t 0
+
+# The dump shows "meta page N (...): freelist {" for each meta page with
+# free pages.
+if [[ -z "${CLUSTER}" ]]; then
+    log=${TESTDIR}/logs/${dbnm}.db
+else
+    log=${TESTDIR}/logs/${dbnm}.${master}.db
+fi
+sleep 1
+nlists=$(grep -c "^meta page [0-9]* (.*): freelist {" $log)
+echo "meta pages with free pages: $nlists"
+if [[ $nlists -lt 2 ]]; then
+    grep "^meta page" $log
+    failexit "expected free pages on more than one meta page, found $nlists"
+fi
+
+# The rest stops and starts the database, which only works on one node.
+if [[ -n "${CLUSTER}" ]]; then
+    echo "Success"
+    exit 0
+fi
+
+wait_until_up() {
+    local out
+    out=$(sql 'select 1' 2> /dev/null)
+    while [[ "$out" != "1" ]]; do
+        sleep 1
+        out=$(sql 'select 1' 2> /dev/null)
+    done
+}
+
+start_db() {
+    ${COMDB2_EXE} $dbnm --lrl ${DBDIR}/${dbnm}.lrl --no-global-lrl \
+        --pidfile ${TMPDIR}/${dbnm}.pid >> $log 2>&1 &
+    sleep 2
+    wait_until_up
+}
+
+# Check every btree file with the berkdb verify, which walks all the free
+# lists and must accept the extra meta pages.
+offline_verify() {
+    local f
+    [[ -x ./cdb2_verify ]] || cp ${COMDB2_EXE} cdb2_verify
+    for f in ${DBDIR}/*.datas* ${DBDIR}/*.index ${DBDIR}/*.blobs*; do
+        [[ -f $f ]] || continue
+        ./cdb2_verify $f > cdb2_verify.out 2>&1 || {
+            cat cdb2_verify.out
+            failexit "cdb2_verify $f"
+        }
+    done
+}
+
+stop_db() {
+    sql "exec procedure sys.cmd.send('exit')" > /dev/null 2>&1
+    local i
+    for ((i = 0; i < 60; i++)); do
+        pgrep -f "comdb2 $dbnm " > /dev/null || return 0
+        sleep 1
+    done
+    failexit "database did not stop"
+}
+
+stop_db
+offline_verify
+start_db
+
+# Crash during a load with aborts, so that recovery runs limbo for
+# transactions that allocated pages from different meta pages.
+run_load tolerant &
+loadpid=$!
+sleep 3
+kill -9 $(cat ${TMPDIR}/${dbnm}.pid)
+start_db
+wait $loadpid 2> /dev/null
+assertres "$(sql "select count(*) from t where a = -1")" 0 "aborted rows after recovery"
+do_verify t
+
+# Load again on the recovered free lists, then check offline once more.
+run_load
+do_verify t
+stop_db
+offline_verify
+start_db
+
+echo "Success"
+exit 0

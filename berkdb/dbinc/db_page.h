@@ -110,6 +110,12 @@ typedef struct _dbmeta33 {
 /************************************************************************
  BTREE METADATA PAGE LAYOUT
  ************************************************************************/
+/*
+ * Page 0 of a btree can list extra meta pages, each with its own free list.
+ * Page 0 is always the first one.  The list uses the space that was unused.
+ */
+#define	BTM_MAX_META	92
+
 typedef struct _btmeta33 {
 #define	BTM_DUP		0x001	/*	  Duplicates. */
 #define	BTM_RECNO	0x002	/*	  Recno tree. */
@@ -126,7 +132,8 @@ typedef struct _btmeta33 {
 	u_int32_t re_len;	/* 80-83: Recno: fixed-length record length. */
 	u_int32_t re_pad;	/* 84-87: Recno: fixed-length record pad. */
 	u_int32_t root;		/* 88-91: Root page. */
-	u_int32_t unused[92];	/* 92-459: Unused space */
+	u_int32_t nmeta;	/* 92-95: Free list meta pages, 0 means 1. */
+	db_pgno_t metapgno[BTM_MAX_META - 1]; /* 96-459: Extra meta pages */
 	u_int32_t crypto_magic;		/* 460-463: Crypto magic number */
 	u_int32_t trash[3];		/* 464-475: Trash space - Do not use */
 	u_int8_t iv[DB_IV_BYTES];	/* 476-495: Crypto IV */

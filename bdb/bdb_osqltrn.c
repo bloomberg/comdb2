@@ -205,7 +205,7 @@ pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
 DB_LSN bdb_asof_current_lsn = {0};
 DB_LSN bdb_latest_commit_lsn = {0};
 uint32_t bdb_latest_commit_gen = 0;
-pthread_mutex_t bdb_asof_current_lsn_mutex;
+pthread_mutex_t bdb_asof_current_lsn_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t bdb_asof_current_lsn_cond;
 
 void bdb_get_gbl_recoverable_lsn(void *lsn)

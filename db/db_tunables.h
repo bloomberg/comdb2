@@ -2768,6 +2768,9 @@ REGISTER_TUNABLE("iam_metrics_namespace", "metrics namespace for IAM user metric
                  iam_metrics_namespace_update, NULL);
 REGISTER_TUNABLE("queue_nonodh_scan_limit", "For comdb2_queues, stop queue scan at this depth (Default: 10000)", TUNABLE_INTEGER, &gbl_nonodh_queue_scan_limit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_request_log_req", "Always request the next log record on replicant if there is a gap (default: off)", TUNABLE_BOOLEAN, &gbl_always_request_log_req, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("freelist_meta_pages",
+                 "Number of meta pages, each with its own free list, in a new btree file (default: 8)",
+                 TUNABLE_INTEGER, &gbl_freelist_meta_pages, 0, NULL, freelist_meta_pages_verify, NULL, NULL);
 REGISTER_TUNABLE("nudge_replication_when_idle",
                  "If we haven't seen any replication events in a while, request some (default: 100)", TUNABLE_INTEGER,
                  &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);

@@ -65,6 +65,7 @@ static const char revid[] = "$Id: db_meta.c,v 11.77 2003/09/09 16:42:06 ubell Ex
 #include <unistd.h>
 #include <stdlib.h>
 #include <logmsg.h>
+#include "comdb2_atomic.h"
 
 #if defined (UFID_HASH_DEBUG)
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -104,6 +105,111 @@ __db_init_meta(dbp, p, pgno, pgtype)
 
 int gbl_core_on_sparse_file = 0;
 int gbl_check_sparse_files = 0;
+
+typedef char __mp_max_meta_check[MP_MAX_META == BTM_MAX_META ? 1 : -1];
+
+struct __txn_metaslot {
+	MPOOLFILE *mfp;
+	u_int32_t slot;
+};
+
+/*
+ * __db_meta_pgno --
+ *	Return the meta page whose free list this cursor allocates from and
+ * frees to.  A transaction uses one meta page per file until it ends.  On
+ * its first use of a file, it picks the meta page that the fewest
+ * transactions use.  The scan starts at a different slot each time, so that
+ * without contention the free pages still spread over all the lists.
+ *
+ * PUBLIC: int __db_meta_pgno __P((DBC *, db_pgno_t *));
+ */
+int
+__db_meta_pgno(dbc, pgnop)
+	DBC *dbc;
+	db_pgno_t *pgnop;
+{
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	MPOOLFILE *mfp;
+	struct __txn_metaslot *slots;
+	u_int32_t i, best, cnt, bestcnt, nmeta, slot, start;
+	int ret;
+
+	if (dbc->use_free_meta_pgno) {
+		*pgnop = dbc->free_meta_pgno;
+		return (0);
+	}
+
+	*pgnop = PGNO_BASE_MD;
+	mfp = dbc->dbp->mpf->mfp;
+	nmeta = mfp->nmeta;
+	if (nmeta <= 1 || dbc->txn == NULL)
+		return (0);
+
+	for (txn = dbc->txn; txn->parent != NULL; txn = txn->parent)
+		;
+	slots = txn->metaslots;
+	for (i = 0; i < txn->nmetaslots; i++) {
+		if (slots[i].mfp == mfp) {
+			*pgnop = mfp->metapgno[slots[i].slot];
+			return (0);
+		}
+	}
+
+	start = ATOMIC_ADD32(mfp->metaslot_next, 1) % nmeta;
+	best = start;
+	bestcnt = ATOMIC_LOAD32(mfp->metaslot_cnt[start]);
+	for (i = 1; i < nmeta && bestcnt != 0; i++) {
+		slot = (start + i) % nmeta;
+		cnt = ATOMIC_LOAD32(mfp->metaslot_cnt[slot]);
+		if (cnt < bestcnt) {
+			best = slot;
+			bestcnt = cnt;
+		}
+	}
+
+	dbenv = dbc->dbp->dbenv;
+	if (txn->nmetaslots == txn->maxmetaslots) {
+		txn->maxmetaslots = txn->maxmetaslots ? 2 * txn->maxmetaslots : 4;
+		if ((ret = __os_realloc(dbenv, txn->maxmetaslots *
+		    sizeof(struct __txn_metaslot), &txn->metaslots)) != 0)
+			return (ret);
+		slots = txn->metaslots;
+	}
+	ATOMIC_ADD32(mfp->metaslot_cnt[best], 1);
+	__memp_mf_slot_ref(dbenv, mfp);
+	slots[txn->nmetaslots].mfp = mfp;
+	slots[txn->nmetaslots].slot = best;
+	txn->nmetaslots++;
+
+	*pgnop = mfp->metapgno[best];
+	return (0);
+}
+
+/*
+ * __db_release_metaslots --
+ *	Release the free list slots of a transaction that ended.
+ *
+ * PUBLIC: void __db_release_metaslots __P((DB_ENV *, DB_TXN *));
+ */
+void
+__db_release_metaslots(dbenv, txn)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+{
+	struct __txn_metaslot *slots;
+	u_int32_t i;
+
+	slots = txn->metaslots;
+	for (i = 0; i < txn->nmetaslots; i++) {
+		ATOMIC_ADD32(slots[i].mfp->metaslot_cnt[slots[i].slot], -1);
+		__memp_mf_slot_unref(dbenv, slots[i].mfp);
+	}
+	if (slots != NULL)
+		__os_free(dbenv, slots);
+	txn->metaslots = NULL;
+	txn->nmetaslots = txn->maxmetaslots = 0;
+}
 
 #if defined (UFID_HASH_DEBUG)
 #define CHECK_ALLOC_PAGE_LSN(x) do { \
@@ -250,10 +356,35 @@ __db_dump_freelist(DB *dbp, db_pgno_t first)
 	return rc;
 }
 
+static int __db_dump_freepages_meta(DB *dbp, db_pgno_t meta_pgno, FILE *out);
+
 int
 __db_dump_freepages(DB *dbp, FILE *out)
 {
-    db_pgno_t pg = 0;
+    MPOOLFILE *mfp = dbp->mpf->mfp;
+    u_int32_t m;
+    int rc;
+
+    if (mfp->nmeta <= 1)
+        return __db_dump_freepages_meta(dbp, PGNO_BASE_MD, out);
+    for (m = 0; m < mfp->nmeta; m++) {
+        db_pgno_t pg = mfp->metapgno[m];
+        DBMETA *meta;
+        if ((rc = __memp_fget(dbp->mpf, &pg, 0, &meta)) != 0)
+            return rc;
+        fprintf(out, "meta page %u (last_pgno %u, %u txns): ", mfp->metapgno[m],
+                meta->last_pgno, mfp->metaslot_cnt[m]);
+        __memp_fput(dbp->mpf, meta, 0);
+        if ((rc = __db_dump_freepages_meta(dbp, mfp->metapgno[m], out)) != 0)
+            return rc;
+    }
+    return 0;
+}
+
+static int
+__db_dump_freepages_meta(DB *dbp, db_pgno_t meta_pgno, FILE *out)
+{
+    db_pgno_t pg = meta_pgno;
     DBMETA *meta = NULL;
     DB_MPOOLFILE *mpf;
     int rc = 0;
@@ -348,7 +479,7 @@ __db_new(dbc, type, pagepp)
 	h = NULL;
 
 	page_extent_size = dbc->dbp->dbenv->page_extent_size;
-	if (page_extent_size == 0 ||
+	if (page_extent_size == 0 || mpf->mfp->nmeta > 1 ||
 	    dbc->dbp == ((DB_REP *)dbc->dbp->dbenv->rep_handle)->rep_db)
 		return __db_new_original(dbc, type, pagepp);
 
@@ -558,10 +689,11 @@ __db_new_original(dbc, type, pagepp)
 	DB_LOCK metalock;
 	DB_LSN lsn;
 	DB_MPOOLFILE *mpf;
+	MPOOLFILE *mfp;
 	PAGE *h;
-	db_pgno_t last, pgno, newnext;
+	db_pgno_t last, pgno, newnext, meta_pgno;
 	u_int32_t meta_flags;
-	int extend, ret;
+	int extend, growing, ret;
 
 	u_int32_t mbytes, bytes, iosize;
 	off_t sz;
@@ -571,11 +703,16 @@ __db_new_original(dbc, type, pagepp)
 	meta_flags = 0;
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
+	mfp = mpf->mfp;
 	h = NULL;
+	growing = 0;
+	LOCK_INIT(metalock);
 
 	newnext = PGNO_INVALID;
 
-	pgno = PGNO_BASE_MD;
+	if ((ret = __db_meta_pgno(dbc, &meta_pgno)) != 0)
+		goto err;
+	pgno = meta_pgno;
 	if ((ret = __db_lget(dbc,
 		    LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &metalock)) != 0)
 		goto err;
@@ -583,7 +720,20 @@ __db_new_original(dbc, type, pagepp)
 		goto err;
 	last = meta->last_pgno;
 	if (meta->free == PGNO_INVALID) {
-		last = pgno = meta->last_pgno + 1;
+		if (mfp->nmeta > 1) {
+			/*
+			 * Each meta page has only the last page that its own
+			 * slot allocated.  mpool has the last page of the
+			 * file.  Hold grow_lk from here to DB_MPOOL_NEW, so
+			 * that the page number in the log record is the page
+			 * that mpool creates.
+			 */
+			Pthread_mutex_lock(&mfp->grow_lk);
+			growing = 1;
+			__memp_last_pgno(mpf, &last);
+			last = pgno = last + 1;
+		} else
+			last = pgno = meta->last_pgno + 1;
 		ZERO_LSN(lsn);
 		extend = 1;
 	} else {
@@ -654,7 +804,7 @@ __db_new_original(dbc, type, pagepp)
 	if (DBC_LOGGING(dbc)) {
 		CHECK_ALLOC_PAGE_LSN(lsn);
 		if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
-			    &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
+			    &LSN(meta), meta_pgno, &lsn, pgno,
 			    (u_int32_t)type, newnext)) != 0)
 			goto err;
 	} else
@@ -667,9 +817,21 @@ __db_new_original(dbc, type, pagepp)
 	if (extend == 1) {
 		if ((ret = PAGEGET(dbc, mpf, &pgno, DB_MPOOL_NEW, &h)) != 0)
 			goto err;
+		if (growing) {
+			Pthread_mutex_unlock(&mfp->grow_lk);
+			growing = 0;
+			if (last != pgno) {
+				__db_err(dbp->dbenv,
+				    "%s: logged new page %u, mpool created %u",
+				    dbp->fname ? dbp->fname : "???", last, pgno);
+				ret = __db_panic(dbp->dbenv, EINVAL);
+				goto err;
+			}
+		}
 		DB_ASSERT(last == pgno);
 		(void)last;
-		meta->last_pgno = pgno;
+		if (meta->last_pgno < pgno)
+			meta->last_pgno = pgno;
 		ZERO_LSN(h->lsn);
 		h->pgno = pgno;
 	}
@@ -712,7 +874,9 @@ __db_new_original(dbc, type, pagepp)
 	*pagepp = h;
 	return (0);
 
-err:	if (h != NULL)
+err:	if (growing)
+		Pthread_mutex_unlock(&mfp->grow_lk);
+	if (h != NULL)
 		PAGEPUT(dbc, mpf, h, 0);
 	if (meta != NULL)
 		PAGEPUT(dbc, mpf, meta, meta_flags);
@@ -735,7 +899,7 @@ __db_free(dbc, h)
 	DBT ddbt, ldbt;
 	DB_LOCK metalock;
 	DB_MPOOLFILE *mpf;
-	db_pgno_t pgno;
+	db_pgno_t pgno, meta_pgno;
 	u_int32_t dirty_flag;
 	int ret, t_ret;
 
@@ -749,7 +913,9 @@ __db_free(dbc, h)
 	 * back because our caller assumes we take care of it.
 	 */
 	dirty_flag = 0;
-	pgno = PGNO_BASE_MD;
+	if ((ret = __db_meta_pgno(dbc, &meta_pgno)) != 0)
+		goto err;
+	pgno = meta_pgno;
 	if ((ret = __db_lget(dbc,
 	    LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &metalock)) != 0)
 		goto err;
@@ -780,7 +946,7 @@ __db_free(dbc, h)
 				ddbt.size = dbp->pgsize - h->hf_offset;
 				ret = __db_pg_freedata_log(dbp, dbc->txn,
 				     &LSN(meta), 0, h->pgno, &LSN(meta),
-				     PGNO_BASE_MD, &ldbt, meta->free, &ddbt);
+				     meta_pgno, &ldbt, meta->free, &ddbt);
 				break;
 			}
 			goto log;
@@ -805,7 +971,7 @@ log:
 #endif
 				ret = __db_pg_free_log(dbp,
 				dbc->txn, &LSN(meta), 0, h->pgno,
-				&LSN(meta), PGNO_BASE_MD, &ldbt, meta->free);
+				&LSN(meta), meta_pgno, &ldbt, meta->free);
 		}
 		if (ret != 0) {
 			PAGEPUT(dbc, mpf, (PAGE *)meta, 0);

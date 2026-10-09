@@ -131,6 +131,10 @@ struct __vrfy_dbinfo {
 	int		nextents;
 	db_pgno_t	*extents;
 
+	/* Extra free list meta pages that page 0 of a btree lists. */
+	u_int32_t	nxmeta;
+	db_pgno_t	xmetapgno[BTM_MAX_META - 1];
+
 #define	SALVAGE_PRINTABLE	0x01	/* Output printable chars literally. */
 #define	SALVAGE_PRINTHEADER	0x02	/* Print the unknown-key header. */
 #define	SALVAGE_PRINTFOOTER	0x04	/* Print the unknown-key footer. */
@@ -211,5 +215,17 @@ struct __vrfy_childinfo {
 
 	LIST_ENTRY(__vrfy_childinfo) links;
 }; /* VRFY_CHILDINFO */
+
+/* Is pgno one of the extra free list meta pages of this btree? */
+static inline int
+__db_vrfy_is_xmeta(VRFY_DBINFO *vdp, db_pgno_t pgno)
+{
+	u_int32_t i;
+
+	for (i = 0; i < vdp->nxmeta; i++)
+		if (vdp->xmetapgno[i] == pgno)
+			return (1);
+	return (0);
+}
 
 #endif /* !_DB_VERIFY_H_ */

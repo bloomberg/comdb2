@@ -219,7 +219,7 @@ __db_pg_freedata_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 
 	if (argp->pgno == pgno_in) {
 		__db_pg_free_undo(pagep, argp, 1);
-	} else if (PGNO_BASE_MD == pgno_in) {
+	} else if (argp->meta_pgno == pgno_in) {
 		__db_pg_free_meta_undo((DBMETA *) pagep, argp);
 	} else {
 		logmsg(LOGMSG_ERROR, "%s:[%d:%d] Page %d is not a valid recovery target\n", __func__, lsnp->file, lsnp->offset, pgno_in);
@@ -256,7 +256,7 @@ __db_pg_free_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 
 	if (argp->pgno == pgno_in) {
 		__db_pg_free_undo(pagep, (__db_pg_freedata_args *) argp, 0);
-	} else if (PGNO_BASE_MD == pgno_in) {
+	} else if (argp->meta_pgno == pgno_in) {
 		__db_pg_free_meta_undo((DBMETA *) pagep, (__db_pg_freedata_args *) argp);
 	} else {
 		logmsg(LOGMSG_ERROR, "%s:[%d:%d] Page %d is not a valid recovery target\n", __func__, lsnp->file, lsnp->offset, pgno_in);
@@ -293,7 +293,7 @@ __db_pg_alloc_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 
 	if (argp->pgno == pgno_in) {
 		__db_pg_alloc_target_undo(file_dbp, pagep, (__db_pg_alloc_args *) argp);
-	} else if (PGNO_BASE_MD == pgno_in) {
+	} else if (argp->meta_pgno == pgno_in) {
 		__db_pg_free_meta_undo((DBMETA *) pagep, (__db_pg_freedata_args *) argp);
 		if (argp->pgno > ((DBMETA *) pagep)->last_pgno) {
 			((DBMETA *) pagep)->last_pgno = argp->pgno;

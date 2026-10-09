@@ -67,8 +67,9 @@ static const char revid[] = "$Id: db_dispatch.c,v 11.145 2003/09/10 20:31:18 ube
 
 #include <logmsg.h>
 
-static int __db_limbo_fix __P((DB *, DB_TXN *,
-	DB_TXN *, DB_TXNLIST *, db_pgno_t *, DBMETA *, db_limbo_state));
+static int __db_limbo_fix __P((DB *, DB_TXN *, DB_TXN *,
+	DB_TXNLIST *, db_pgno_t *, DBMETA *, int, db_pgno_t, db_limbo_state));
+static int __db_limbo_next_meta __P((DB_TXNLIST *, int, db_pgno_t *));
 static int __db_limbo_bucket __P((DB_ENV *,
 	DB_TXN *, DB_TXNLIST *, db_limbo_state));
 static int __db_limbo_move __P((DB_ENV *, DB_TXN *, DB_TXN *, DB_TXNLIST *));
@@ -78,7 +79,7 @@ static int __db_lock_move __P((DB_ENV *,
 static int __db_txnlist_find_internal __P((DB_ENV *, void *, db_txnlist_type,
 	u_int32_t, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
 static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
-	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t));
+	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t, db_pgno_t));
 
 
 /* TODO: dispatch table for these? */
@@ -1463,15 +1464,16 @@ err:	__db_txnlist_end(dbenv, hp);
  *	Get the file information and call pgnoadd for each page.
  *
  * PUBLIC: int __db_add_limbo_fid __P((DB_ENV *,
- * PUBLIC:      void *, u_int8_t *, db_pgno_t, int32_t));
+ * PUBLIC:      void *, u_int8_t *, db_pgno_t, int32_t, db_pgno_t));
  */
 int
-__db_add_limbo_fid(dbenv, info, ufid, pgno, count)
+__db_add_limbo_fid(dbenv, info, ufid, pgno, count, meta_pgno)
 	DB_ENV *dbenv;
 	void *info;
 	u_int8_t *ufid;
 	db_pgno_t pgno;
 	int32_t count;
+	db_pgno_t meta_pgno;
 {
 	char *fname;
 	int ret;
@@ -1483,7 +1485,8 @@ __db_add_limbo_fid(dbenv, info, ufid, pgno, count)
 
 	do {
 		if ((ret =
-			__db_txnlist_pgnoadd(dbenv, info, -1, ufid, fname, pgno)) != 0)
+			__db_txnlist_pgnoadd(dbenv, info, -1, ufid, fname, pgno,
+			meta_pgno)) != 0)
 			return (ret);
 		pgno++;
 	} while (--count != 0);
@@ -1496,15 +1499,16 @@ __db_add_limbo_fid(dbenv, info, ufid, pgno, count)
  *	Get the file information and call pgnoadd for each page.
  *
  * PUBLIC: int __db_add_limbo __P((DB_ENV *,
- * PUBLIC:      void *, int32_t, db_pgno_t, int32_t));
+ * PUBLIC:      void *, int32_t, db_pgno_t, int32_t, db_pgno_t));
  */
 int
-__db_add_limbo(dbenv, info, fileid, pgno, count)
+__db_add_limbo(dbenv, info, fileid, pgno, count, meta_pgno)
 	DB_ENV *dbenv;
 	void *info;
 	int32_t fileid;
 	db_pgno_t pgno;
 	int32_t count;
+	db_pgno_t meta_pgno;
 {
 	DB_LOG *dblp;
 	FNAME *fnp;
@@ -1519,7 +1523,8 @@ __db_add_limbo(dbenv, info, fileid, pgno, count)
 	do {
 		if ((ret =
 		    __db_txnlist_pgnoadd(dbenv, info, fileid, fnp->ufid,
-		    R_ADDR(&dblp->reginfo, fnp->name_off), pgno)) != 0)
+		    R_ADDR(&dblp->reginfo, fnp->name_off), pgno,
+		    meta_pgno)) != 0)
 			return (ret);
 		pgno++;
 	} while (--count != 0);
@@ -1653,6 +1658,41 @@ __db_lock_move(dbenv, fileid, pgno, mode, ptxn, txn)
 }
 
 /*
+ * __db_limbo_next_meta --
+ *	Find the meta pages of the entries in a limbo element, in page number
+ * order.  With first set, return the lowest one.  Otherwise return the
+ * lowest one above *meta_pgnop.  Returns DB_NOTFOUND at the end.
+ */
+static int
+__db_limbo_next_meta(elp, first, meta_pgnop)
+	DB_TXNLIST *elp;
+	int first;
+	db_pgno_t *meta_pgnop;
+{
+	db_pgno_t m, best;
+	u_int32_t i;
+	int found;
+
+	found = 0;
+	best = 0;
+	for (i = 0; i < elp->u.p.nentries; i++) {
+		if (elp->u.p.pgno_array[i] == PGNO_INVALID)
+			continue;
+		m = elp->u.p.meta_array[i];
+		if (!first && m <= *meta_pgnop)
+			continue;
+		if (!found || m < best) {
+			best = m;
+			found = 1;
+		}
+	}
+	if (!found)
+		return (DB_NOTFOUND);
+	*meta_pgnop = best;
+	return (0);
+}
+
+/*
  * __db_limbo_move
  *	Move all of the locks to the parent.
  *	These locks need to be in the child's commit
@@ -1665,8 +1705,8 @@ __db_limbo_move(dbenv, ptxn, txn, elp)
 	DB_TXN *ptxn, *txn;
 	DB_TXNLIST *elp;
 {
-	int ret, i;
-	db_pgno_t pgno;
+	int first, ret, i;
+	db_pgno_t pgno, meta_pgno;
 
 
 
@@ -1674,9 +1714,13 @@ __db_limbo_move(dbenv, ptxn, txn, elp)
 		if (elp->type != TXNLIST_PGNO || elp->u.p.locked == 1)
 			continue;
 
-		if ((ret = __db_lock_move(dbenv, elp->u.p.uid,
-			PGNO_BASE_MD, DB_LOCK_WRITE, ptxn, txn)) != 0)
-			return (ret);
+		for (first = 1;
+		    __db_limbo_next_meta(elp, first, &meta_pgno) == 0;
+		    first = 0) {
+			if ((ret = __db_lock_move(dbenv, elp->u.p.uid,
+				meta_pgno, DB_LOCK_WRITE, ptxn, txn)) != 0)
+				return (ret);
+		}
 
 		for (i = 0; i < elp->u.p.nentries; i++) {
 			pgno = elp->u.p.pgno_array[i];
@@ -1713,8 +1757,8 @@ __db_limbo_bucket(dbenv, txn, elp, state)
 	DB_MPOOLFILE *mpf;
 	DBMETA *meta;
 	DB_TXN *ctxn, *t;
-	db_pgno_t last_pgno, pgno;
-	int dbp_created, in_retry, ret, t_ret;
+	db_pgno_t last_pgno, meta_pgno, pgno;
+	int build, dbp_created, in_retry, ret, t_ret;
 
 	ctxn = NULL;
 	in_retry = 0;
@@ -1803,10 +1847,24 @@ retry:		dbp_created = 0;
 			goto next;
 
 		mpf = dbp->mpf;
+
+		/*
+		 * A page goes back on the free list of the meta page it was
+		 * allocated from.  An abort frees the pages with __db_free in
+		 * one pass.  Recovery and compensation build the free list of
+		 * each meta page in turn, in page number order, so that every
+		 * node that runs the same recovery gets the same result.
+		 */
+		build = state != LIMBO_PREPARE &&
+		    (ctxn == NULL || state == LIMBO_COMPENSATE);
+		meta_pgno = PGNO_BASE_MD;
+		if (build && __db_limbo_next_meta(elp, 1, &meta_pgno) != 0)
+			build = 0;
+next_meta:
 		last_pgno = PGNO_INVALID;
 
-		if (ctxn == NULL || state == LIMBO_COMPENSATE) {
-			pgno = PGNO_BASE_MD;
+		if (build) {
+			pgno = meta_pgno;
 			if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0)
 				goto err;
 			last_pgno = meta->free;
@@ -1815,9 +1873,9 @@ retry:		dbp_created = 0;
 		if (state == LIMBO_PREPARE) {
 			if ((ret = __db_limbo_prepare(dbp, ctxn, elp)) != 0)
 				goto err;
-		} else
-			ret = __db_limbo_fix(dbp,
-			     txn, ctxn, elp, &last_pgno, meta, state);
+		} else if (build || ctxn != NULL)
+			ret = __db_limbo_fix(dbp, txn, ctxn, elp, &last_pgno,
+			     meta, build, meta_pgno, state);
 		/*
 		 * If we were doing compensating transactions, then we are
 		 * going to hope this error was due to running out of space.
@@ -1828,6 +1886,10 @@ retry:		dbp_created = 0;
 		if (ret != 0) {
 			if (ret == DB_RUNRECOVERY || ctxn == NULL)
 				goto err;
+			if (meta != NULL) {
+				(void)__memp_fput(mpf, meta, 0);
+				meta = NULL;
+			}
 			in_retry = 1;
 			goto retry;
 		}
@@ -1836,6 +1898,14 @@ retry:		dbp_created = 0;
 			ctxn = NULL;
 
 		else if (ctxn != NULL) {
+			if (meta != NULL) {
+				if ((ret = __memp_fput(mpf, meta, 0)) != 0)
+					goto err;
+				meta = NULL;
+			}
+			if (build &&
+			    __db_limbo_next_meta(elp, 0, &meta_pgno) == 0)
+				goto next_meta;
 			/*
 			 * We only force compensation at the end of recovery.
 			 * We want the txn_commit to be logged so turn
@@ -1859,6 +1929,8 @@ retry:		dbp_created = 0;
 		 * we have to write the meta-data page, and if we do, then
 		 * we need to sync it as well.
 		 */
+		else if (!build)
+			;
 		else if (last_pgno == meta->free) {
 			/* No change to page; just put the page back. */
 			if ((ret = __memp_fput(mpf, meta, 0)) != 0)
@@ -1879,7 +1951,7 @@ retry:		dbp_created = 0;
 			meta = NULL;
 			if ((ret = __db_sync(dbp)) != 0)
 				goto err;
-			pgno = PGNO_BASE_MD;
+			pgno = meta_pgno;
 			if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0)
 				goto err;
 			meta->free = last_pgno;
@@ -1887,6 +1959,11 @@ retry:		dbp_created = 0;
 				goto err;
 			meta = NULL;
 		}
+
+		/* Build the free list of the next meta page. */
+		if (build && ctxn == NULL && state != LIMBO_PREPARE &&
+		    __db_limbo_next_meta(elp, 0, &meta_pgno) == 0)
+			goto next_meta;
 
 next:
 		/*
@@ -1904,6 +1981,7 @@ next:
 		if (state != LIMBO_PREPARE && state != LIMBO_TIMESTAMP) {
 			__os_free(dbenv, elp->u.p.fname);
 			__os_free(dbenv, elp->u.p.pgno_array);
+			__os_free(dbenv, elp->u.p.meta_array);
 		}
 		if (ret == ENOENT)
 			ret = 0;
@@ -1922,13 +2000,15 @@ err:	if (meta != NULL)
  * for a single file.
  */
 static int
-__db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
+__db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, build, meta_pgno, state)
 	DB *dbp;
 	DB_TXN *txn;
 	DB_TXN *ctxn;
 	DB_TXNLIST *elp;
 	db_pgno_t *lastp;
 	DBMETA *meta;
+	int build;		/* Only the pages of meta_pgno, onto meta. */
+	db_pgno_t meta_pgno;
 	db_limbo_state state;
 {
 	DBC *dbc;
@@ -1952,15 +2032,26 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 	dbenv = dbp->dbenv;
 	put_page = ret = 0;
 
-	if (inherit && (ret = __db_lock_move(dbenv, elp->u.p.uid, 0, 
-			DB_LOCK_WRITE, ctxn, txn)) != 0) {
-		goto err;
+	if (inherit) {
+		db_pgno_t m;
+		int first;
+
+		for (first = 1; __db_limbo_next_meta(elp, first, &m) == 0;
+		    first = 0) {
+			if (build && m != meta_pgno)
+				continue;
+			if ((ret = __db_lock_move(dbenv, elp->u.p.uid, m,
+			    DB_LOCK_WRITE, ctxn, txn)) != 0)
+				goto err;
+		}
 	}
 
 	for (i = 0; i < elp->u.p.nentries; i++) {
 		pgno = elp->u.p.pgno_array[i];
 
 		if (pgno == PGNO_INVALID)
+			continue;
+		if (build && elp->u.p.meta_array[i] != meta_pgno)
 			continue;
 
 		if ((ret =
@@ -2009,7 +2100,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				ldbt.size = P_OVERHEAD(dbp);
 				if ((ret = __db_pg_new_log(dbp, ctxn,
 				     &LSN(meta), 0, pagep->pgno,
-				     &LSN(meta), PGNO_BASE_MD,
+				     &LSN(meta), meta_pgno,
 				     &ldbt, pagep->next_pgno)) != 0)
 					goto err;
 			} else {
@@ -2045,7 +2136,10 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				comdb2_cheapstack_sym(stderr, "%s calling __db_free for pg %d",
 						__func__, pagep->pgno);
 #endif
+				dbc->use_free_meta_pgno = 1;
+				dbc->free_meta_pgno = elp->u.p.meta_array[i];
 				ret = __db_free(dbc, pagep);
+				dbc->use_free_meta_pgno = 0;
 				put_page = 0;
 				/*
 				 * On any error, we hope that the error was
@@ -2135,13 +2229,14 @@ __db_limbo_prepare(dbp, txn, elp)
  *	entry for the file and then add the pgno.
  */
 static int
-__db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
+__db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno, meta_pgno)
 	DB_ENV *dbenv;
 	DB_TXNHEAD *hp;
 	int32_t fileid;
 	u_int8_t uid[DB_FILE_ID_LEN];
 	char *fname;
 	db_pgno_t pgno;
+	db_pgno_t meta_pgno;
 {
 	DB_TXNLIST *elp;
 	size_t len;
@@ -2169,8 +2264,12 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
 		elp->u.p.maxentry = 0;
 		elp->u.p.locked = 0;
 		elp->type = TXNLIST_PGNO;
+		elp->u.p.meta_array = NULL;
 		if ((ret = __os_malloc(dbenv,
 		    8 * sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
+			goto err;
+		if ((ret = __os_malloc(dbenv,
+		    8 * sizeof(db_pgno_t), &elp->u.p.meta_array)) != 0)
 			goto err;
 		elp->u.p.maxentry = DB_TXNLIST_MAX_PGNO;
 		elp->u.p.nentries = 0;
@@ -2179,8 +2278,12 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
 		if ((ret = __os_realloc(dbenv, elp->u.p.maxentry *
 		    sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
 			goto err;
+		if ((ret = __os_realloc(dbenv, elp->u.p.maxentry *
+		    sizeof(db_pgno_t), &elp->u.p.meta_array)) != 0)
+			goto err;
 	}
 
+	elp->u.p.meta_array[elp->u.p.nentries] = meta_pgno;
 	elp->u.p.pgno_array[elp->u.p.nentries++] = pgno;
 
 	return (0);

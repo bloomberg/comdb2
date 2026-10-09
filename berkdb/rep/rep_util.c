@@ -1279,8 +1279,9 @@ __rep_send_file(dbenv, rec, eid)
 		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &pagep)) != 0)
 			goto err;
 
+		/* Page 0 may not have the last page if there are more meta pages. */
 		if (pgno == 0)
-			last_pgno = ((DBMETA *)pagep)->last_pgno;
+			__memp_last_pgno(dbp->mpf, &last_pgno);
 
 		rec_dbt.data = pagep;
 		rec_dbt.size = dbp->pgsize;
