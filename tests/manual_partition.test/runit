@@ -49,6 +49,19 @@ function timepart_stats
     gorun "select * from comdb2_logical_cron"
 }
 
+# wait until the master has queued the rollout event for epoch $2
+function wait_for_rollout
+{
+    local i epoch
+    for (( i = 0; i < 60; i++ )); do
+        epoch=$(cdb2sql -tabs ${CDB2_OPTIONS} --host ${master} $dbnm default "select epoch from comdb2_cron_events where name='Truncate' and type='$1'")
+        [[ "$epoch" == "$2" ]] && return 0
+        sleep 1
+    done
+    echo "FAILURE: $1 did not roll out to epoch $2, epoch is '$epoch'"
+    exit 1
+}
+
 test_max_retention() {
     local -r MAX_RETENTION=1204
     local errstr
@@ -81,11 +94,13 @@ echo "XXXXX we should see to empty partitions with no counters" >> $output
 gorun "select * from testpart1 order by a"
 timepart_stats
 
-gorun "put counter testpart1 increment"
+# insert before the rollout so these rows land in shard 0
 gorun "insert into testpart1 values (1, 'hi')"
 gorun "insert into testpart1 values (2, 'ho')"
+gorun "put counter testpart1 increment"
+wait_for_rollout testpart1 2
 
-echo "XXXXX we should see the data in part1, and the counter, no rollout yet" >> $output
+echo "XXXXX we should see the data in part1, and the counter, and the first rollout" >> $output
 gorun "select * from testpart1 order by a"
 timepart_stats
 
