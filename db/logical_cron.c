@@ -109,7 +109,6 @@ static void *logical_cron_kickoff(struct cron_event *event, struct errstat *err)
     sched_if_t *schedif = event->schedif;
     logical_state_t *state = schedif->state;
     struct sql_thread *thd;
-    const char *tablename = LOGICAL_CRON_SYSTABLE;
 
     logmsg(LOGMSG_INFO, "Starting logical cron %s\n", (char *)event->arg1);
 
@@ -120,9 +119,6 @@ static void *logical_cron_kickoff(struct cron_event *event, struct errstat *err)
     if (!thd) {
         return NULL;
     }
-
-    /* construct rootpage cache that includes only logical_cron_systable */
-    get_copy_rootpages_selectfire(thd, 1, &tablename, NULL, NULL, 1);
 
     /* check to see if there is a persistent value for this scheduler */
     state->clock = logical_cron_read_persistent(schedif->name, err);
@@ -212,7 +208,7 @@ unsigned long long logical_cron_read_persistent(const char *name,
     }
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
-    counter = run_sql_thd_return_ll(query, thd, err);
+    counter = run_sql_thd_return_ll(query, thd, LOGICAL_CRON_SYSTABLE, err);
     if (counter == LLONG_MIN)
         counter = 0;
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
