@@ -228,5 +228,11 @@ typedef struct _linfo {
 	DBT		*objs;
 } linfo_t;
 
+/* Points in __rep_elect reported to the election test (rep_elect_test.c). */
+#define	REP_ELECT_TEST_PHASE1_SET	1	/* Set PHASE1; rep_mutexp held. */
+#define	REP_ELECT_TEST_VOTE1_SENT	2	/* Broadcast our vote1. */
+#define	REP_ELECT_TEST_JOIN_PHASE2	3	/* Joined a newer egen's phase 2. */
+extern int gbl_rep_elect_test_hooks;
+
 #include "dbinc_auto/rep_ext.h"
 #endif	/* !_REP_H_ */

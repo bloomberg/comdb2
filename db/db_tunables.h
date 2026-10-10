@@ -1483,6 +1483,10 @@ REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.", TUNA
                  &gbl_poll_in_pg_free_recover, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_badgen_trace", "Trace on rep mismatched generations.", TUNABLE_BOOLEAN, &gbl_rep_badgen_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_rep_elect_test",
+                 "Election test scenario (tally_full or stale_egen) to run while waiting for a master at "
+                 "startup. Forges election votes. Test only.",
+                 TUNABLE_STRING, &gbl_rep_elect_test, READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_zero_coherency_ts", "Enable zero-coherency-ts trace.", TUNABLE_BOOLEAN,
                  &gbl_dump_zero_coherency_timestamp, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_incoherent_sql", "Enable sql against incoherent nodes.", TUNABLE_BOOLEAN,

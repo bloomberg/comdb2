@@ -161,6 +161,7 @@ set(BERK_C
   qam/qam_upgrade.c
   qam/qam_verify.c
 
+  rep/rep_elect_test.c
   rep/rep_lc_cache.c
   rep/rep_method.c
   rep/rep_record.c

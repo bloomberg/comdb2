@@ -223,6 +223,7 @@ extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
 extern int gbl_print_deadlock_cycles;
 extern int gbl_rep_badgen_trace;
+extern char *gbl_rep_elect_test;
 extern int gbl_dump_zero_coherency_timestamp;
 extern int gbl_allow_incoherent_sql;
 extern int gbl_rep_process_msg_print_rc;

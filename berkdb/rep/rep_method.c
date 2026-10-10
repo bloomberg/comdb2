@@ -1377,11 +1377,32 @@ restart:
 	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
+	/*
+	 * If our egen changed while we waited, the message thread may have
+	 * already finished phase 1 of the new egen with the shared tally
+	 * (which still holds our vote1) and cast our vote2.  Starting phase 1
+	 * again would set PHASE1 under PHASE2 and tally us into a full tally.
+	 * Wait for that election's vote2s instead.
+	 */
+	if (F_ISSET(rep, REP_F_EPHASE2)) {
+		logmsg(LOGMSG_USER,
+				"%s line %d egen %d is already in phase 2, joining it\n",
+				__func__, __LINE__, rep->egen);
+		send_vote = rep->winner;
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+		Pthread_mutex_unlock(&rep_candidate_lock);
+		if (gbl_rep_elect_test_hooks)
+			__rep_elect_test_point(dbenv, REP_ELECT_TEST_JOIN_PHASE2);
+		goto phase2;
+	}
+
 	/* WAITSTART pushes us past point of no-return */
 	logmsg(LOGMSG_USER,
 			"%s line %d setting PHASE1 clearing TALLY\n", __func__, __LINE__);
 	F_SET(rep, REP_F_EPHASE1 | REP_F_WAITSTART | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
+	if (gbl_rep_elect_test_hooks)
+		__rep_elect_test_point(dbenv, REP_ELECT_TEST_PHASE1_SET);
 
 	/* Grab lsn again now that we are a candidate.  The candidate-lock prevents
 	 * Our log from being applied until we have resolved this election.  Just
@@ -1448,6 +1469,9 @@ restart:
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
 			db_eid_broadcast, REP_VOTE1);
 	}
+
+	if (gbl_rep_elect_test_hooks)
+		__rep_elect_test_point(dbenv, REP_ELECT_TEST_VOTE1_SENT);
 
 	ret = __rep_wait(dbenv, timeout, eidp, newgen, egen, REP_F_EPHASE1);
 	switch (ret) {

@@ -3136,6 +3136,10 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 /* do not proceed until we find a master */
 waitformaster:
     while (bdb_state->repinfo->master_host == db_eid_invalid) {
+        if (gbl_rep_elect_test) {
+            bdb_rep_elect_test(bdb_state, gbl_rep_elect_test);
+            gbl_rep_elect_test = NULL;
+        }
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
         sleep(3);
     }

@@ -1445,6 +1445,36 @@ void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func, int
     call_for_election_int(bdb_state, LOSE);
 }
 
+/* Election test scenario to run while waiting for a master at startup */
+char *gbl_rep_elect_test;
+
+/* Run an election regression test (berkdb/rep/rep_elect_test.c), keeping
+ * elect_thread out of the way while it runs. */
+int bdb_rep_elect_test(bdb_state_type *bdb_state, const char *scenario)
+{
+    int rc, waitms = 0;
+
+    Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+    while (bdb_state->repinfo->in_election) {
+        Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+        if ((waitms += 100) > 60000) {
+            logmsg(LOGMSG_USER, "rep_elect_test: election in progress\n");
+            return -1;
+        }
+        poll(NULL, 0, 100);
+        Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+    }
+    bdb_state->repinfo->in_election = 1;
+    Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+
+    rc = __rep_elect_test(bdb_state->dbenv, scenario);
+
+    Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+    bdb_state->repinfo->in_election = 0;
+    Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+    return rc;
+}
+
 /*
   i dont expect this to be called outside of here.  we call it in the
    watcher thread when we see the env has been invalidated from a
