@@ -4642,16 +4642,6 @@ static uint8_t *metahdr_type_put(const struct metahdr *p_metahdr,
     return p_buf;
 }
 
-int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff)
-{
-
-    struct metahdr hdr;
-
-    hdr.rrn = META_STUFF_RRN;
-    hdr.attr = 0;
-    return meta_put(db, trans, &hdr, stuff, lenstuff);
-}
-
 int put_csc2_file(const char *table, void *tran, int version, const char *text)
 {
     int bdberr;

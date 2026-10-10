@@ -2532,6 +2532,10 @@ int bdb_trans_track(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 
+/* Log a debug record carrying data in tran.  Recovery and replication ignore
+ * it, so it advances the log without modifying any file. */
+int bdb_debug_log_data(bdb_state_type *bdb_state, tran_type *tran, int op, void *data, int len);
+
 /* Return 1 if this node is master, 0 otherwise */
 int bdb_iam_master(bdb_state_type *bdb_state);
 
