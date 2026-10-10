@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-10000}
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$1"; }
+fail() { echo "FAIL: $*"; exit 1; }
+
+run "create table t(i int)" >/dev/null
+run "insert into t select value from generate_series(1, $N)" >/dev/null
+run "create table blocker(i int)" >/dev/null
+run "create table probe(i int)" >/dev/null
+
+cdb2sql ${CDB2_OPTIONS} --host "$master" "$dbnm" - >/dev/null 2>&1 <<'EOF' &
+begin
+insert into blocker values(1)
+select sleep(8)
+commit
+EOF
+blocker_pid=$!
+sleep 1
+start=$SECONDS
+run "rebuild t" >/dev/null &
+rebuild_pid=$!
+probe_start=$SECONDS
+[[ "$(run 'select count(*) from probe')" == "0" ]] || fail "unrelated read failed"
+run "insert into probe values(1)" >/dev/null || fail "unrelated write failed"
+probe_elapsed=$((SECONDS - probe_start))
+(( probe_elapsed < 3 )) ||
+	fail "checkpoint polling blocked unrelated work ($probe_elapsed seconds)"
+
+wait "$rebuild_pid" || fail "rebuild failed"
+elapsed=$((SECONDS - start))
+kill -0 "$blocker_pid" 2>/dev/null ||
+	fail "rebuild waited for a transaction that did not pin the checkpoint floor"
+wait "$blocker_pid" || fail "old transaction failed"
+
+grep -q "checkpoint floor .* covers conversion" "$TESTDIR/logs/$dbnm.db" ||
+	fail "rebuild did not establish a verified checkpoint"
+[[ "$(run 'select count(*) from t')" == "$N" ]] ||
+	fail "rebuild changed table contents"
+[[ "$(run 'select count(*) from probe')" == "1" ]] ||
+	fail "unrelated write was not durable"
+
+echo "SC_COMMIT_MAP_CHECKPOINT_BARRIER: rows=$N rebuild_seconds=$elapsed probe_seconds=$probe_elapsed"
+echo "Passed test"

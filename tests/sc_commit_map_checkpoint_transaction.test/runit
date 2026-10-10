@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-1000}
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$1"; }
+fail() { echo "FAIL: $*"; exit 1; }
+map_count() { run "select count(*) from comdb2_transaction_commit"; }
+
+run "create table t(i int, j int)" >/dev/null
+run "insert into t select value, value from generate_series(1, $N)" >/dev/null
+before=$(map_count)
+
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" - >/dev/null <<'EOF'
+begin
+alter table t {schema{int i int j int k null=yes}}$$
+commit
+EOF
+
+delta=$(( $(map_count) - before ))
+(( delta < N )) ||
+	fail "transactional rebuild retained $delta map entries for $N rows"
+grep -q "checkpoint floor .* covers conversion" "$TESTDIR/logs/$dbnm.db" ||
+	fail "transactional rebuild did not establish a verified checkpoint"
+[[ "$(run 'select count(*) from t')" == "$N" ]] ||
+	fail "transactional rebuild changed table contents"
+
+do_verify t
+echo "SC_COMMIT_MAP_CHECKPOINT_TRANSACTION: rows=$N map_delta=$delta"
+echo "Passed test"

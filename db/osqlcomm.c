@@ -102,7 +102,7 @@ static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen);
 
 
 const char *osql_reqtype_str(int type)
-{   
+{
     assert(0 <= type && type < MAX_OSQL_TYPES);
     return OSQL_RPL_TYPE_TO_STR(type);
 }
@@ -3708,9 +3708,7 @@ int osql_comm_init(struct dbenv *dbenv)
     /* kick the guy */
     rc = net_init(tmp->handle_sibling);
     if (rc) {
-        logmsg(LOGMSG_ERROR, 
-            "You're on your own buddy, no peers (net_init failed w/ rc = %d)\n",
-            rc);
+        logmsg(LOGMSG_ERROR, "You're on your own buddy, no peers (net_init failed w/ rc = %d)\n", rc);
         tmp->handle_sibling = NULL;
         free(tmp);
         return -1;
@@ -5309,8 +5307,7 @@ int osql_send_serial(const char *host, unsigned long long rqid,
         osql_serial_uuid_rpl_t serial_rpl = {{0}};
 
         serial_rpl.hd.type =
-            (type == NET_OSQL_SERIAL_RPL || 
-             type == NET_OSQL_SERIAL_RPL_UUID) ? OSQL_SERIAL : OSQL_SELECTV;
+            (type == NET_OSQL_SERIAL_RPL || type == NET_OSQL_SERIAL_RPL_UUID) ? OSQL_SERIAL : OSQL_SELECTV;
         comdb2uuidcpy(serial_rpl.hd.uuid, uuid);
         serial_rpl.dt.buf_size = cr_sz;
         serial_rpl.dt.arr_size = (arr) ? arr->size : 0;
@@ -5573,9 +5570,7 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         ret = r_uuid_ptr;
 
         if (!r_uuid_ptr) {
-            logmsg(LOGMSG_ERROR, 
-                    "create_sql: error malloc-ing for sql request, size %d\n",
-                    rqlen);
+            logmsg(LOGMSG_ERROR, "create_sql: error malloc-ing for sql request, size %d\n", rqlen);
             return NULL;
         }
 
@@ -5601,9 +5596,7 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         ret = r_ptr;
 
         if (!r_ptr) {
-            logmsg(LOGMSG_ERROR, 
-                    "create_sql: error malloc-ing for sql request, size %d\n",
-                    rqlen);
+            logmsg(LOGMSG_ERROR, "create_sql: error malloc-ing for sql request, size %d\n", rqlen);
             return NULL;
         }
 
@@ -6302,8 +6295,7 @@ static void net_sosql_req(void *hndl, void *uptr, char *fromhost, struct interne
     }
 }
 
-static void net_recom_req(void *hndl, void *uptr, char *fromhost, 
-                          struct interned_string *frominterned, int usertype,
+static void net_recom_req(void *hndl, void *uptr, char *fromhost, struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
 
@@ -6666,7 +6658,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 
     struct schema_change_type *alter_sc = clone_schemachange_type(sc);
 
-    alter_sc->newdb_borrowed = 1; 
+    alter_sc->newdb_borrowed = 1;
     /* new target */
     strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
     /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
@@ -6780,7 +6772,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     /* if this was a CREATE & ALTER, first shart is an aliased
      * table with the same name as the partition
      * use that as the destination for merging
-     * OTHERWISE, create a new table with the same name as 
+     * OTHERWISE, create a new table with the same name as
      * the partition
      */
     char *first_shard_name = timepart_shard_name(sc->tablename, 0, 0, NULL);
@@ -6792,12 +6784,12 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
     sc->newdb_borrowed = 0;
 
-    /* 
-    * The first shard sc always needs to run synchronously.
-    * The later shard scs can theoretically run asynchronously but
-    * it doesn't work right now.
-    */
-    sc->nothrevent = 1; 
+    /*
+     * The first shard sc always needs to run synchronously.
+     * The later shard scs can theoretically run asynchronously but
+     * it doesn't work right now.
+     */
+    sc->nothrevent = 1;
 
     if (!first_shard->sqlaliasname) {
         /*
@@ -6855,7 +6847,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
     if (!arg.part_name)
         return VIEW_ERR_MALLOC;
-    arg.lockless = 1;   
+    arg.lockless = 1;
 
     rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
     free(arg.part_name);
@@ -6986,7 +6978,7 @@ err:
 
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
 
-static int _process_single_table_sc_partitioning(struct ireq *iq) 
+static int _process_single_table_sc_partitioning(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
@@ -8492,9 +8484,7 @@ done_delete:
         if (blobs[dt.id].exists) {
             if (iq->debug)
                 reqprintf(iq, "QBLOB DUPLICATE ID %d (ignored)", dt.id);
-            logmsg(LOGMSG_ERROR, 
-                    "%s received a duplicated blob id %d! (ignoring duplicates)\n",
-                    __func__, dt.id);
+            logmsg(LOGMSG_ERROR, "%s received a duplicated blob id %d! (ignoring duplicates)\n", __func__, dt.id);
         }
         /* Blob isn't used so we sent a short token rather than the entire blob.
            */
@@ -8933,7 +8923,7 @@ static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
     osql_echo_t msg;
     int rc = 0;
 
-#if 0 
+#if 0
    printf("%s\n", __func__);
 #endif
     if (dtalen != sizeof(osql_echo_t)) {
@@ -9645,7 +9635,7 @@ int osql_scl_print(uint8_t *p_buf_key, const uint8_t *p_buf_key_end,
     return 0;
 }
 
-int osqlcomm_host_known(const char *tohost) 
+int osqlcomm_host_known(const char *tohost)
 {
     osql_comm_t *comm = get_thecomm();
     if (!comm) {

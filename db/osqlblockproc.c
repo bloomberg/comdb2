@@ -1364,6 +1364,63 @@ int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
     return rc;
 }
 
+/* Stop live schema change for the pending schema changes after a failure.
+ * IFF the schema changes are NOT aborted (downgrade), clean in-mem structures
+ * but leave persistent and replicated changes (llmeta, new btree-s) so that a
+ * new master/resume will pick it up later
+ * NOTE: this clears iq->sc_pending, obviously (sc-s are freed), so the rest of
+ * schema change code -finalize, callback hooks- do NOT trigger anymore (they
+ * should not, they will do it when future resume finishes)
+ * NOTE2: if sc_should_abort is set, the bplog writer will call
+ * backout_schema_change and sc_abort callback, which they will clear any
+ * persistent and in-mem structures
+ */
+static void sc_pending_cleanup(struct ireq *iq, int downgrade)
+{
+    struct schema_change_type *sc, *next;
+
+    sc = iq->sc_pending;
+    while (sc != NULL) {
+        next = sc->sc_next;
+        /* this can happen for multiddl, if one table finished do_ddl
+         * while the second table was caught by downgrade
+         */
+        if (sc->newdb && sc->newdb->handle) {
+            int bdberr = 0;
+            live_sc_off(sc->db);
+            while (sc->logical_livesc) {
+                usleep(200);
+            }
+            if (sc->db->sc_live_logical) {
+                bdb_clear_logical_live_sc(sc->db->handle, 1);
+                sc->db->sc_live_logical = 0;
+            }
+            if (downgrade) {
+                sc_set_downgrading(sc);
+                if (!sc->newdb_borrowed) {
+                    bdb_close_only(sc->newdb->handle, &bdberr);
+                    freedb(sc->newdb);
+                }
+                sc->newdb = NULL;
+            }
+        }
+        if (downgrade) {
+            /*
+             * This can happen if
+             * 1. a table is caught by downgrade during do_ddl
+             *      (in which case newdb will have been cleaned in do_schema_change_tran_int())
+             * 2. a table finished do_ddl and another got caught by a downgrade
+             *      (in which case newdb was freed in the block above)
+             */
+            sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname, time(NULL), __func__, __LINE__);
+            free_schema_change_type(sc);
+        }
+        sc = next;
+    }
+    if (downgrade)
+        iq->sc_pending = NULL;
+}
+
 /* wait for all schema changes to finish */
 int bplog_schemachange_wait(struct ireq *iq, int rc)
 {
@@ -1399,61 +1456,19 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         sc = iq->sc;
     }
 
+    /* Before the schema lock: the checkpoint waits for transactions that may
+     * need the schema lock themselves. */
+    for (sc = iq->sc_pending; rc == 0 && sc != NULL; sc = sc->sc_next) {
+        int crc = establish_sc_commit_map_checkpoint(sc);
+        if (crc == SC_MASTER_DOWNGRADE)
+            rc = ERR_NOMASTER;
+        else if (crc != 0)
+            rc = ERR_SC;
+    }
+
     if (rc) {
-        /* IFF the schema changes are NOT aborted, clean in-mem structures but
-         * leave persistent and replicated changes (llmeta, new btree-s) so
-         * that a new master/resume will pick it up later
-         * NOTE: this clears iq->sc_pending, obviously (sc-s are freed), so
-         * the rest of schema change code -finalize, callback hooks- do NOT
-         * trigger anymore (they should not, they will do it when future resume
-         * finishes)
-         * NOTE2: if sc_should_abort is set, the bplog writer will call
-         * backout_schema_change and sc_abort callback, which they will
-         * clear any persistent and in-mem structures
-         */
         csc2_free_all();
-        struct schema_change_type *next;
-        sc = iq->sc_pending;
-        while (sc != NULL) {
-            next = sc->sc_next;
-            /* this can happen for multiddl, if one table finished do_ddl
-             * while the second table was caught by downgrade
-             */
-            if (sc->newdb && sc->newdb->handle) {
-                int bdberr = 0;
-                live_sc_off(sc->db);
-                while (sc->logical_livesc) {
-                    usleep(200);
-                }
-                if (sc->db->sc_live_logical) {
-                    bdb_clear_logical_live_sc(sc->db->handle, 1);
-                    sc->db->sc_live_logical = 0;
-                }
-                if (rc == ERR_NOMASTER) {
-                        sc_set_downgrading(sc);
-                        if (!sc->newdb_borrowed) {
-                            bdb_close_only(sc->newdb->handle, &bdberr);
-                            freedb(sc->newdb);
-                        }
-                        sc->newdb = NULL;
-                }
-            }
-            if (rc == ERR_NOMASTER) {
-                /*
-                 * This can happen if
-                 * 1. a table is caught by downgrade during do_ddl
-                 *      (in which case newdb will have been cleaned in do_schema_change_tran_int())
-                 * 2. a table finished do_ddl and another got caught by a downgrade
-                 *      (in which case newdb was freed in the block above)
-                 */
-                sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
-                               time(NULL), __func__, __LINE__);
-                free_schema_change_type(sc);
-            }
-            sc = next;
-        }
-        if (rc == ERR_NOMASTER)
-            iq->sc_pending = NULL;
+        sc_pending_cleanup(iq, rc == ERR_NOMASTER);
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
 
@@ -1562,6 +1577,14 @@ void *resume_sc_multiddl_txn_finalize(void *p)
         goto abort_sc;
     }
 
+    for (sc = iq->sc_pending; sc != NULL; sc = sc->sc_next) {
+        int crc = establish_sc_commit_map_checkpoint(sc);
+        if (crc == SC_MASTER_DOWNGRADE)
+            goto downgraded;
+        if (crc != 0)
+            goto abort_sc;
+    }
+
     int rc;
     if ((rc = get_schema_change_txns(iq, &iq->sc_logical_tran, &parent_trans,
                                      &iq->sc_tran))) {
@@ -1634,6 +1657,17 @@ abort_sc:
     /* same as the commit path: the abort callback freed the schema changes,
      * this fake ireq is ours to release
      */
+    free(iq);
+
+    return NULL;
+
+downgraded:
+    /* no transaction started yet; leave the persistent sc list for the new
+     * master to resume */
+    logmsg(LOGMSG_WARN, "%s: master downgrading, new master will resume the schema change\n", __func__);
+    csc2_free_all();
+    sc_pending_cleanup(iq, 1);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     free(iq);
 
     return NULL;

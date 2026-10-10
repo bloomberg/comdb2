@@ -295,6 +295,38 @@ static void backout(struct dbtable *db)
     live_sc_off(db);
 }
 
+/* Undo a conversion: stop live writes into newdb, then drop newdb unless it is
+ * an existing table (a partition merge target). */
+static void backout_conversion(struct ireq *iq, struct schema_change_type *s, struct dbtable *db, struct dbtable *newdb,
+                               int drop_newdb)
+{
+    /* For live schema change, MUST do this before trying to remove
+     * the .new tables or you get crashes */
+    live_sc_off(db);
+
+    while (s->logical_livesc) {
+        usleep(200);
+    }
+
+    if (db->sc_live_logical) {
+        bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
+        db->sc_live_logical = 0;
+    }
+
+    if (drop_newdb) {
+        backout_constraint_pointers(newdb, db);
+        delete_temp_table(iq, newdb);
+        change_schemas_recover(s->tablename);
+    }
+}
+
+/* Back out a schema change whose conversion finished but which cannot finalize. */
+void backout_converted_sc(struct ireq *iq, struct schema_change_type *s)
+{
+    int merge = s->partition.type == PARTITION_MERGE && !s->db->sqlaliasname;
+    backout_conversion(iq, s, s->db, s->newdb, !merge);
+}
+
 static inline int wait_to_resume(struct schema_change_type *s)
 {
     if (s->resume) {
@@ -724,8 +756,6 @@ convert_records:
 
 errout:
     if (rc && rc != SC_MASTER_DOWNGRADE) {
-        /* For live schema change, MUST do this before trying to remove
-         * the .new tables or you get crashes */
         if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
             rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
@@ -733,24 +763,11 @@ errout:
             sc_errf(s, "convert_all_records failed\n");
         }
 
-        live_sc_off(db);
-
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
-        while (s->logical_livesc) {
-            usleep(200);
-        }
-
-        if (db->sc_live_logical) {
-            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
-            db->sc_live_logical = 0;
-        }
-
-        backout_constraint_pointers(newdb, db);
-        delete_temp_table(iq, newdb);
-        change_schemas_recover(s->tablename);
+        backout_conversion(iq, s, db, newdb, 1);
         return rc;
     }
     newdb->iq = NULL;
@@ -890,8 +907,6 @@ convert_records:
     }
 
     if (rc && rc != SC_MASTER_DOWNGRADE) {
-        /* For live schema change, MUST do this before trying to remove
-         * the .new tables or you get crashes */
         if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
             rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
@@ -899,20 +914,11 @@ convert_records:
             sc_errf(s, "convert_all_records failed\n");
         }
 
-        live_sc_off(db);
-
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
-        while (s->logical_livesc) {
-            usleep(200);
-        }
-
-        if (db->sc_live_logical) {
-            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
-            db->sc_live_logical = 0;
-        }
+        backout_conversion(iq, s, db, newdb, 0);
         return rc;
     }
     newdb->iq = NULL;
