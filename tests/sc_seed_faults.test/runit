@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Injects failures into saving and deleting schema change seeds, and checks a
+# schema change never runs, or is left behind, without its seed
+
+dbnm=$1
+
+function failexit
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+function sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "$1"
+}
+
+master=$(sql "select host from comdb2_cluster where is_master='Y'")
+[[ -z "$master" ]] && failexit "no master"
+if [[ -n "$CLUSTER" ]]; then
+    masterlog=${TESTDIR}/logs/${dbnm}.${master}.db
+else
+    masterlog=${TESTDIR}/logs/${dbnm}.db
+fi
+
+function master_sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "$1"
+}
+
+function injected
+{
+    grep -c "$1: injected failure for $2 bdberr $3" $masterlog
+}
+
+# no seed, and no "in schema change" marker, left for these tables
+function check_llmeta_clean
+{
+    local out=$(master_sql "exec procedure sys.cmd.send('llmeta list')")
+    for t in "$@"; do
+        echo "$out" | grep -q "LLMETA_SC_SEEDS: table=\"$t\"" && failexit "stale seed for $t"
+        echo "$out" | grep -q "LLMETA_IN_SCHEMA_CHANGE: table=\"$t\"" && failexit "$t left in schema change"
+    done
+}
+
+function has_column
+{
+    [[ $(sql "select count(*) from comdb2_columns where tablename='$1' and columnname='$2'") == "1" ]]
+}
+
+sql "create table t1 (a int, b int)" || failexit "create t1"
+sql "insert into t1 select value, value % 10 from generate_series(1, 100)" || failexit "insert t1"
+
+echo "seed write deadlocks twice, then succeeds"
+master_sql "put tunable debug_sc_seed_set_fail 2" || failexit "put tunable"
+sql "alter table t1 add column c int" || failexit "alter with deadlocking seed write"
+has_column t1 c || failexit "column c missing"
+[[ $(injected bdb_set_sc_seed t1 7) == "2" ]] || failexit "expected 2 injected seed write deadlocks"
+check_llmeta_clean t1
+
+echo "seed write fails for good: the alter fails and leaves nothing behind"
+master_sql "put tunable debug_sc_seed_set_fail -1" || failexit "put tunable"
+sql "alter table t1 add column d int" && failexit "alter succeeded without its seed"
+has_column t1 d && failexit "column d added without its seed"
+check_llmeta_clean t1
+master_sql "put tunable debug_sc_seed_set_fail 0"
+sql "alter table t1 add column d int" || failexit "alter after seed writes recover"
+has_column t1 d || failexit "column d missing"
+check_llmeta_clean t1
+
+echo "seed write fails for good in a multi-table schema change"
+for i in 0 1 2 3 4; do
+    sql "create table s$i (a int)" || failexit "create s$i"
+done
+function alter_all
+{
+    {
+        echo "begin"
+        for i in 0 1 2 3 4; do echo "alter table s$i add column $1 int"'$$'; done
+        echo "commit"
+    } | cdb2sql ${CDB2_OPTIONS} $dbnm default - > multi.out 2>&1
+    ! grep -q "rc [1-9-]" multi.out
+}
+master_sql "put tunable debug_sc_seed_set_fail -1"
+alter_all b && failexit "multi-table alter succeeded without its seeds"
+for i in 0 1 2 3 4; do
+    has_column s$i b && failexit "s$i altered without its seed"
+done
+check_llmeta_clean s0 s1 s2 s3 s4
+master_sql "put tunable debug_sc_seed_set_fail 0"
+alter_all b || failexit "multi-table alter after seed writes recover: $(cat multi.out)"
+for i in 0 1 2 3 4; do
+    has_column s$i b || failexit "s$i not altered"
+done
+check_llmeta_clean s0 s1 s2 s3 s4
+
+echo "seed delete of a failed schema change deadlocks twice, then succeeds"
+master_sql "put tunable debug_sc_seed_delete_fail 2" || failexit "put tunable"
+sql "create unique index t1_b on t1(b)" && failexit "unique index on duplicates succeeded"
+[[ $(injected bdb_delete_sc_seed t1 7) == "2" ]] || failexit "expected 2 injected seed delete deadlocks"
+check_llmeta_clean t1
+
+echo "Success"

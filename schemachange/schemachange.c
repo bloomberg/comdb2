@@ -43,6 +43,25 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 extern int gbl_test_sc_resume_race;
 extern int gbl_retro_tpt_verbose;
 
+#ifdef COMDB2_TEST
+/* test only: fail (re)starting a resumed schema change of this table, in the
+ * way picked by debug_sc_resume_fail_mode: 1 seed fetch error, 2 missing
+ * seed, 3 master downgrading, 4 schema change already running */
+char *gbl_debug_sc_resume_fail_table = NULL;
+int gbl_debug_sc_resume_fail_mode = 0;
+
+static int debug_sc_resume_fail(struct schema_change_type *s, int mode)
+{
+    if (gbl_debug_sc_resume_fail_mode != mode || !gbl_debug_sc_resume_fail_table ||
+        strcasecmp(gbl_debug_sc_resume_fail_table, s->tablename) != 0 || (!s->resume && !s->must_resume))
+        return 0;
+    logmsg(LOGMSG_USER, "%s: injected failure mode %d for %s\n", __func__, mode, s->tablename);
+    return 1;
+}
+#else
+#define debug_sc_resume_fail(s, mode) 0
+#endif
+
 /* If this is successful, it increments */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
@@ -223,11 +242,17 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     } else if (s->resume) {
         unsigned int host = 0;
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
-        if ((rc = fetch_sc_seed(s->tablename, thedb, &seed, &host))) {
+        if (debug_sc_resume_fail(s, 1))
+            rc = SC_INTERNAL_ERROR;
+        else
+            rc = fetch_sc_seed(s->tablename, thedb, &seed, &host);
+        if (rc) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
             return rc;
         }
+        if (debug_sc_resume_fail(s, 2))
+            seed = host = 0;
         if (seed == 0 && host == 0) {
             logmsg(LOGMSG_ERROR, "Failed to determine host and seed!\n");
             return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
@@ -243,7 +268,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             LOGMSG_INFO,
             "Resuming schema change: fetched seed 0x%llx, original node %s\n",
             seed, node ? node : "(unknown)");
-        if (get_stopsc(__func__, __LINE__)) {
+        if (get_stopsc(__func__, __LINE__) || debug_sc_resume_fail(s, 3)) {
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
             free_schema_change_type(s);
@@ -258,8 +283,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     s->seed = seed;
-    rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
-                        time(NULL), __func__, __LINE__);
+    if (debug_sc_resume_fail(s, 4))
+        rc = -1;
+    else
+        rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
+                            time(NULL), __func__, __LINE__);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running %s rc %d\n", us, rc);
         if (IS_UPRECS(s) || !s->db || !s->db->doing_upgrade) {
@@ -304,7 +332,14 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,
                                  iq->sc_host, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
+            logmsg(LOGMSG_ERROR, "Couldn't save schema change seed 0x%llx for %s rc %d bdberr %d\n", seed,
+                   s->tablename, rc, bdberr);
+            /* without its seed a new master cannot resume this schema change,
+             * so do not start it; nothing recoverable has been published yet.
+             * s is left to the caller, as callers link it for backout */
+            sc_set_running(iq, s, s->tablename, 0, NULL, 0, __func__, __LINE__);
+            errstat_set_strf(&iq->errstat, "Failed to save schema change seed");
+            return SC_LLMETA_ERR;
         }
     }
     iq->sc_seed = seed;
