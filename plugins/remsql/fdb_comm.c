@@ -3676,12 +3676,13 @@ int fdb_send_rc(fdb_msg_t *msg, char *tid, int retrc, int errstrlen,
         logmsg(LOGMSG_ERROR,
                "%s: failed sending commit transaction message rc=%d\n",
                __func__, rc);
-        return rc;
-    }
-
-    if (gbl_fdb_track) {
+    } else if (gbl_fdb_track) {
         fdb_msg_print_message(sb, msg, "sending msg");
     }
+
+    /* errstr is borrowed (clnt->osql.xerr.errstr); msg is cleaned by the caller */
+    msg->rc.errstr = NULL;
+    msg->rc.errstrlen = 0;
 
     return rc;
 }

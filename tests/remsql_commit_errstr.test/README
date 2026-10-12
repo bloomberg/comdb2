@@ -1,0 +1,2 @@
+A remote write whose commit fails with an error (here a duplicate key) must
+return the error to the source db without crashing the remote db.

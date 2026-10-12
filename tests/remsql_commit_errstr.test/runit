@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+rem=$DBNAME
+src=$SECONDARY_DBNAME
+REM="cdb2sql ${CDB2_OPTIONS} --tabs $rem default"
+SRC="cdb2sql ${SECONDARY_CDB2_OPTIONS} --tabs $src default"
+
+$SRC "insert into LOCAL_${rem}.t values (1, x'11')" || { echo "remote insert failed"; exit 1; }
+
+# The duplicate fails the remote commit, which replies with an error string
+$SRC "insert into LOCAL_${rem}.t values (1, x'22')"
+
+for node in ${CLUSTER:-localhost}; do
+    $REM --host $node "select 1" > /dev/null || { echo "remote db died on $node"; exit 1; }
+done
+
+rows=$($REM "select id, hex(b1) from t")
+if [[ "$rows" != $'1\t11' ]]; then
+    echo "expected only the first row, got '$rows'"
+    exit 1
+fi
+
+echo "Testcase passed."
