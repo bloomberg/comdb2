@@ -1,7 +1,7 @@
 ARG REVISION=HEAD
 FROM comdb2test:${REVISION}
 
-RUN mkdir /var/run/sshd && \
+RUN mkdir -p /var/run/sshd && \
     echo 'root:bigsecret' | chpasswd && \
     sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     echo "StrictHostKeyChecking no" > /etc/ssh/ssh_config && \
