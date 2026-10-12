@@ -1499,6 +1499,11 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
 
 static int newsql_has_parallel_sql(struct sqlclntstate *clnt)
 {
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT) {
+        /* Match fastsql for COMPAT requests which only checks gbl_surprise */
+        return !gbl_surprise;
+    }
     return !gbl_dohsql_disable;
 }
 
