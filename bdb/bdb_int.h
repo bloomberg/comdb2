@@ -1168,6 +1168,8 @@ int bdb_rowlock_int(DB_ENV *dbenv, DB_TXN *txn, unsigned long long genid,
 int rep_caught_up(bdb_state_type *bdb_state);
 
 void call_for_election(bdb_state_type *bdb_state, const char *func, int line);
+extern char *gbl_rep_elect_test;
+int bdb_rep_elect_test(bdb_state_type *bdb_state, const char *scenario);
 
 int bdb_next_dtafile(bdb_state_type *bdb_state);
 

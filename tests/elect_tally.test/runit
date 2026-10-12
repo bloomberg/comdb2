@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+bash -n "${0}" || exit 1
+
+# Election tally regression tests.
+#
+# Each scenario starts a node configured in a cluster whose other nodes never
+# come up, so it waits for a master.  While waiting, the debug_rep_elect_test
+# tunable makes it play its peers (forged VOTE1s) against a real election and
+# check the vote tally invariants.  See berkdb/rep/rep_elect_test.c.
+
+source "${TESTSROOTDIR}/tools/runit_common.sh"
+
+DBNAME="${1}"
+PIDFILE="${TMPDIR}/${DBNAME}.pid"
+LRL="${DBDIR}/${DBNAME}.lrl"
+
+function run_scenario()
+{
+    local -r scenario="${1}"
+    local -r log="${TESTDIR}/logs/${DBNAME}.${scenario}.db"
+    local pid result i
+
+    rm -rf "${DBDIR}"
+    mkdir -p "${DBDIR}" "${TMPDIR}"
+    # 192.0.2.0/24 is reserved for documentation: these peers never answer.
+    # mallocregions: the allocator in the production crash stacks.
+    cat > "${LRL}" <<EOT
+name ${DBNAME}
+dir ${DBDIR}
+cluster nodes $(hostname) 192.0.2.1 192.0.2.2 192.0.2.3
+mallocregions
+debug_rep_elect_test ${scenario}
+EOT
+    "${COMDB2_EXE}" "${DBNAME}" --create --lrl "${LRL}" --no-global-lrl > "${log}.create" 2>&1 ||
+        failexit "failed to create database for ${scenario}"
+
+    "${COMDB2_EXE}" "${DBNAME}" --lrl "${LRL}" --no-global-lrl --pidfile "${PIDFILE}" > "${log}" 2>&1 &
+    pid=$!
+
+    result=""
+    for (( i = 0; i < 120; i++ )); do
+        result=$(grep -o "rep_elect_test: ${scenario} \(PASSED\|FAILED\)" "${log}")
+        [[ -n "${result}" ]] && break
+        kill -0 ${pid} 2>/dev/null || break
+        sleep 1
+    done
+
+    kill -9 ${pid} >/dev/null 2>&1
+    wait ${pid} 2>/dev/null
+    "${TESTSROOTDIR}/tools/send_msg_port.sh" "del comdb2/replication/${DBNAME}" "${pmux_port}" >/dev/null
+
+    grep "rep_elect_test" "${log}"
+    if [[ "${result}" != "rep_elect_test: ${scenario} PASSED" ]]; then
+        tail -50 "${log}"
+        failexit "scenario ${scenario}: ${result:-no result}"
+    fi
+}
+
+run_scenario tally_full
+run_scenario stale_egen
+echo "Success"

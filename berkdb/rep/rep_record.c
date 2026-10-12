@@ -7164,8 +7164,9 @@ __rep_tally(dbenv, rep, eid, countp, egen, vtoff, func, line)
 	int line;
 {
 	REP_VTALLY *tally, *vtp;
-	int i;
+	int i, vote1;
 
+	vote1 = (vtoff == rep->tally_off);
 	tally = R_ADDR((REGINFO *)dbenv->reginfo, vtoff);
 	i = 0;
 	vtp = &tally[i];
@@ -7200,11 +7201,25 @@ __rep_tally(dbenv, rep, eid, countp, egen, vtoff, func, line)
 	}
 	/*
 	 * If we get here, we have a new voter we haven't
-	 * seen before.  Tally this vote.
+	 * seen before.  Make room for it: callers don't all check, and
+	 * writing past the tally corrupts the region.
+	 * Growing moves both tallies, so find ours again.
 	 */
+	if (*countp >= rep->asites) {
+		logmsg(LOGMSG_USER, "%s: growing %s tally for %s, count %d "
+		    "asites %d nsites %d, from %s line %d\n", __func__,
+		    vote1 ? "vote1" : "vote2", eid, *countp, rep->asites,
+		    rep->nsites, func, line);
+		if (__rep_grow_sites(dbenv, *countp + 1 > rep->nsites ?
+		    *countp + 1 : rep->nsites) != 0)
+			return (1);
+		tally = R_ADDR((REGINFO *)dbenv->reginfo,
+		    (vote1 ? rep->tally_off : rep->v2tally_off));
+		vtp = &tally[i];
+	}
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {
-		if (vtoff == rep->tally_off)
+		if (vote1)
 			__db_err(dbenv, "Tallying VOTE1[%d] (%s, %lu)",
 				i, eid, (u_long)egen);
 		else
@@ -7216,7 +7231,7 @@ __rep_tally(dbenv, rep, eid, countp, egen, vtoff, func, line)
 	vtp->egen = egen;
 	(*countp)++;
 	logmsg(LOGMSG_DEBUG, "%s set countp to %d for %s from eid %s %s line %d\n",
-			 __func__, *countp, (vtoff == rep->tally_off)?"vote1":"vote2", eid,
+			 __func__, *countp, vote1 ? "vote1" : "vote2", eid,
 			 func, line);
 	return (0);
 }
