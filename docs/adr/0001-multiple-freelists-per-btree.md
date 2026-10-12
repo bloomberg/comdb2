@@ -83,8 +83,7 @@ The decision should be revisited if new measurements show either:
 
 ## References
 
-- Prototype branch: `experiment-multi-metapage`
-- Prototype commits: `1f4117d96`, `f753eaa69`, `40ff1e4cf`
+- Prototype PR: https://github.com/bloomberg/comdb2/pull/6332
 - Benchmark scripts: `freelist-bench/`
 - Tests: `freelist_meta.test`, `freelist_meta_bench.test`
 - Investigation notes and raw benchmark results: `Multiple freelists.md`
