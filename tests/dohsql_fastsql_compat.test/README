@@ -1,0 +1,4 @@
+This test verifies that union all queries are not distributed by dohsql for
+cdb2api clients opened with CDB2_REQUIRE_FASTSQL (as legacy fastsql clients
+are not) while 'surprise' is on. The nosurprise variant verifies that they
+are distributed once it is off.

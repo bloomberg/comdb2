@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -e
+
+dbnm=$1
+r="cdb2sql -s ${CDB2_OPTIONS} $dbnm default"
+run="${TESTSBUILDDIR}/cdb2api_flags_sql $dbnm default"
+
+CDB2_REQUIRE_FASTSQL=512
+
+stat="exec procedure sys.cmd.send('stat dohsql')"
+union="select id from t1 union all select id from t2 order by id"
+
+$r "create table t1 (id int)"
+$r "create table t2 (id longlong)"
+$r "insert into t1 values (1), (2), (4)"
+$r "insert into t2 values (4), (5)"
+
+# Sets n to the number of queries dohsql distributed while running the given
+# statements. The bracketed counter is bumped at distribution time, so it is
+# already current when the next statement on the same handle reads it.
+function ndistributed
+{
+    local flags=$1
+    shift
+    local out
+    out=$($run $flags "$stat" "$@" "$stat")
+    echo "$out"
+    local counts=($(echo "$out" | grep 'Num requests' | sed 's/.*\[\([0-9]*\)\].*/\1/'))
+    if (( ${#counts[@]} != 2 )); then
+        echo "FAILED: could not read dohsql stats"
+        exit 1
+    fi
+    n=$(( counts[1] - counts[0] ))
+}
+
+ndistributed 0 "$union"
+if (( n != 1 )); then
+    echo "FAILED: expected newsql union all to be distributed, got $n"
+    exit 1
+fi
+
+# fastsql clients only get parallel sql with nosurprise
+surprise=$($r --tabs "select value from comdb2_tunables where name = 'surprise'")
+if [[ "$surprise" == "ON" ]]; then
+    expected=0
+else
+    expected=1
+fi
+
+ndistributed $CDB2_REQUIRE_FASTSQL "$union"
+if (( n != expected )); then
+    echo "FAILED: expected CDB2_REQUIRE_FASTSQL union all to be distributed $expected times with surprise $surprise, got $n"
+    exit 1
+fi
+
+echo "Testcase passed."
