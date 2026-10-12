@@ -6133,6 +6133,32 @@ done:
     return rc;
 }
 
+#ifdef COMDB2_TEST
+/* test only: > 0 fails the next N seed writes (or deletes) done in their own
+ * transaction with a deadlock, < 0 fails every one of them with an error */
+int gbl_debug_sc_seed_set_fail = 0;
+int gbl_debug_sc_seed_delete_fail = 0;
+static pthread_mutex_t debug_sc_seed_fail_lk = PTHREAD_MUTEX_INITIALIZER;
+
+static int debug_sc_seed_fail(int *knob, const char *func, const char *tablename, int *bdberr)
+{
+    int fail = 1;
+    Pthread_mutex_lock(&debug_sc_seed_fail_lk);
+    if (*knob > 0) {
+        (*knob)--;
+        *bdberr = BDBERR_DEADLOCK;
+    } else if (*knob < 0) {
+        *bdberr = BDBERR_MISC;
+    } else {
+        fail = 0;
+    }
+    Pthread_mutex_unlock(&debug_sc_seed_fail_lk);
+    if (fail)
+        logmsg(LOGMSG_USER, "%s: injected failure for %s bdberr %d\n", func, tablename, *bdberr);
+    return fail;
+}
+#endif
+
 int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *tablename, unsigned long long *genid,
                     unsigned int *host, int *bdberr)
@@ -6170,12 +6196,13 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *input_tran,
                     const char *tablename, unsigned long long genid,
                     unsigned int host, int *bdberr)
 {
     int rc;
-    int started_our_own_transaction = 0;
+    int retries = 0;
+    tran_type *tran;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
@@ -6186,15 +6213,6 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
     *(unsigned int *)(data_buf + sizeof(unsigned long long)) = htonl(host);
 
     *bdberr = BDBERR_NOERROR;
-
-    if (tran == NULL) {
-        started_our_own_transaction = 1;
-        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
-        if (tran == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin returns NULL\n", __func__);
-            return -1;
-        }
-    }
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
@@ -6207,9 +6225,34 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
         logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
                tablename);
         *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
+        return -1;
+    }
+
+    /* other schema changes in the same transaction write llmeta from their
+     * own threads, so our own transaction can lose a deadlock to them */
+    if (!input_tran) {
+        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
+        if (tran == NULL) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto deadlock;
+            logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin returns NULL\n", __func__);
+            return -1;
+        }
+    } else
+        tran = input_tran;
+
+#ifdef COMDB2_TEST
+    if (!input_tran && debug_sc_seed_fail(&gbl_debug_sc_seed_set_fail, __func__, tablename, bdberr)) {
         rc = -1;
         goto done;
     }
+#endif
 
     rc = bdb_get_sc_seed(bdb_state, tran, tablename, &genid, &host, bdberr);
     if (rc) { //not found, just add -- should refactor
@@ -6227,36 +6270,38 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
     rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key, bdberr);
 
 done:
-    if (started_our_own_transaction) {
-        if (rc == 0)
-            rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
-        else {
-            int arc;
-            arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
-            if (arc)
-                rc = arc;
-        }
-    }
+    if (input_tran)
+        return rc;
+
+    if (rc == 0)
+        return bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
+
+    int prev_bdberr = *bdberr;
+    int arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
+    if (arc)
+        return arc;
+    *bdberr = prev_bdberr;
+    if (*bdberr == BDBERR_DEADLOCK)
+        goto deadlock;
     return rc;
+
+deadlock:
+    if (gbl_llmeta_deadlock_poll > 1)
+        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+    goto retry;
 }
 
-int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *input_tran,
                        const char *tablename, int *bdberr)
 {
     int rc;
-    int started_our_own_transaction = 0;
+    int retries = 0;
+    tran_type *tran;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
 
     *bdberr = BDBERR_NOERROR;
-
-    if (tran == NULL) {
-        started_our_own_transaction = 1;
-        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
-        if (tran == NULL)
-            return -1;
-    }
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
@@ -6269,28 +6314,58 @@ int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
         logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
                tablename);
         *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
+        return -1;
+    }
+
+    /* like bdb_set_sc_seed, our own transaction can lose a deadlock */
+    if (!input_tran) {
+        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
+        if (tran == NULL) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto deadlock;
+            return -1;
+        }
+    } else
+        tran = input_tran;
+
+    rc = 0;
+#ifdef COMDB2_TEST
+    if (!input_tran && debug_sc_seed_fail(&gbl_debug_sc_seed_delete_fail, __func__, tablename, bdberr))
         rc = -1;
-        goto done;
-    }
-
-    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
-    if (*bdberr == BDBERR_DEL_DTA) {
-        rc = 0;
-        *bdberr = BDBERR_NOERROR;
-    }
-
-done:
-    if (started_our_own_transaction) {
-        if (rc == 0)
-            rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
-        else {
-            int arc;
-            arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
-            if (arc)
-                rc = arc;
+#endif
+    if (rc == 0) {
+        rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+        if (*bdberr == BDBERR_DEL_DTA) {
+            rc = 0;
+            *bdberr = BDBERR_NOERROR;
         }
     }
+
+    if (input_tran)
+        return rc;
+
+    if (rc == 0)
+        return bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
+
+    int prev_bdberr = *bdberr;
+    int arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
+    if (arc)
+        return arc;
+    *bdberr = prev_bdberr;
+    if (*bdberr == BDBERR_DEADLOCK)
+        goto deadlock;
     return rc;
+
+deadlock:
+    if (gbl_llmeta_deadlock_poll > 1)
+        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+    goto retry;
 }
 
 int bdb_set_file_lwm(bdb_state_type *bdb_state, tran_type *tran, DB_LSN *lsn,
@@ -7467,8 +7542,8 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                        p_buf_end_key);
 
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%s\"\n",
-               tblname, (char *)data);
+               "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%.*s\"\n",
+               tblname, datalen, (char *)data);
         } break;
     case LLMETA_TABLE_USER_OP: {
         logmsg(LOGMSG_USER, "LLMETA_TABLE_USER_OP\n");

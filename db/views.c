@@ -665,6 +665,12 @@ alter_struct:
                 _view_unregister_shards_lkless(_views, _views->views[i],
                                                &bump_dbopen);
             }
+            /* tables that left the view, like a shard rolled out and not
+             * dropped yet, still point at the name we are about to free */
+            for (int j = 0; j < thedb->num_dbs; j++) {
+                if (thedb->dbs[j]->timepartition_name == _views->views[i]->name)
+                    thedb->dbs[j]->timepartition_name = NULL;
+            }
             timepart_free_view(_views->views[i]);
 
             if (view) {

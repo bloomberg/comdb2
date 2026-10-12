@@ -53,6 +53,7 @@
 #include "intern_strings.h"
 #include "sc_global.h"
 #include "sc_logic.h"
+#include "sc_schema.h"
 #include "gettimeofday_ms.h"
 #include "eventlog.h"
 #include <disttxn.h>
@@ -1546,6 +1547,12 @@ void *resume_sc_multiddl_txn_finalize(void *p)
             if (sc->set_running)
                 sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__,
                                __LINE__);
+            /* a shard that never started has not cleaned up after itself; the
+             * abort cleanup only covers the shards left pending, so without
+             * this a new master would later resume this shard on its own.
+             * Leave it if another schema change owns the table */
+            if (!sc->started && sc->sc_rc != SC_CANT_SET_RUNNING)
+                mark_schemachange_over(sc->tablename);
             free_schema_change_type(sc);
             error = 1;
         }

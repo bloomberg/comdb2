@@ -204,13 +204,14 @@ static int master_downgrading(struct schema_change_type *s)
 
 static void free_sc(struct schema_change_type *s)
 {
+    int views_locked = s->views_locked;
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
 
     /* Bail out if we're in a time partition rollout otherwise
        we may deadlock with a regular schema change. The time partition
        rollout will invoke csc2_free_all() without holding views_lk. */
-    if (s->views_locked)
+    if (views_locked)
         return;
 
     csc2_free_all();
@@ -947,6 +948,23 @@ static int process_tpt_sc_hash(void *obj, void *arg)
     return 0;
 }
 
+/* Stands in on the resume list for a shard whose schema change failed to
+ * start.  start_schema_change may free the schema change it fails to start,
+ * so the original must not be touched again; this was never started, and only
+ * carries the rc for resume_sc_multiddl_txn_finalize to abort on */
+static struct schema_change_type *new_failed_resume_sc(const char *tablename, uuid_t uuid, int rc)
+{
+    struct schema_change_type *sc = new_schemachange_type();
+    if (!sc) {
+        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
+        abort();
+    }
+    strncpy0(sc->tablename, tablename, sizeof(sc->tablename));
+    comdb2uuidcpy(sc->uuid, uuid);
+    sc->sc_rc = rc;
+    return sc;
+}
+
 static int verify_sc_resumed_for_shard(const char *shardname,
                                        timepart_view_t **pview,
                                        timepart_sc_arg_t *arg)
@@ -976,19 +994,18 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     new_sc->nothrevent = 0;
     new_sc->finalize = 0;
 
-    /* put new_sc to linked list */
-    new_sc->sc_next = arg->s;
-    arg->s = new_sc;
-
     logmsg(LOGMSG_USER, "Restarting schema change for view '%s' shard '%s'\n",
            arg->part_name, new_sc->tablename);
     rc = start_schema_change(new_sc);
     if (rc != SC_OK) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
                __func__, shardname, rc);
-        /* resume_sc_multiddl_txn_finalize will check rc */
-        new_sc->sc_rc = rc;
+        new_sc = new_failed_resume_sc(shardname, arg->s->uuid, rc);
     }
+
+    /* put new_sc to linked list */
+    new_sc->sc_next = arg->s;
+    arg->s = new_sc;
     return 0;
 }
 
@@ -1027,17 +1044,25 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
     }
 
     /* we need to start all the shards already in progress */
-    sc = tpt_sc->s;
-    while (sc) {
+    struct schema_change_type **psc = &tpt_sc->s;
+    while ((sc = *psc) != NULL) {
+        struct schema_change_type *next = sc->sc_next;
+        char tablename[sizeof(sc->tablename)];
+        uuid_t uuid;
+        strncpy0(tablename, sc->tablename, sizeof(tablename));
+        comdb2uuidcpy(uuid, sc->uuid);
+
         rc = start_schema_change(sc);
         if (rc != SC_OK && rc != SC_ASYNC) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to resume schema change for table '%s' rc %d\n",
-                   __func__, sc->tablename, rc);
-            sc->sc_rc = SC_ABORTED;
+                   __func__, tablename, rc);
+            sc = new_failed_resume_sc(tablename, uuid, rc);
+            sc->sc_next = next;
+            *psc = sc;
             return -1;
         }
-        sc = sc->sc_next;
+        psc = &sc->sc_next;
     }
 
     /* are all shards resumed, including the next shard if any */
