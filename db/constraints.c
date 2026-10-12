@@ -1162,10 +1162,10 @@ int upsert_collision_should_force_verify_error(int flags, int ixnum)
         - If the client did 'insert ... on conflict ...', then upsert_idx will
         specify the index passed in the on conflict clause
         - If the client did 'replace into ...', then upsert_idx will be
-        MAXINDEX + 1
+        MAXINDEX + 1 (UPSERT_CONFLICT_ALL_INDEXES)
     */
     const int upsert_idx = flags >> 8;
-    return upsert_idx == ixnum || upsert_idx == MAXINDEX + 1;
+    return upsert_idx == ixnum || upsert_idx == UPSERT_CONFLICT_ALL_INDEXES;
 }
 
 int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,

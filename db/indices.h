@@ -17,6 +17,9 @@
 #ifndef INCLUDED_INDICES_H
 #define INCLUDED_INDICES_H
 
+#include <cdb2_constants.h>
+#define UPSERT_CONFLICT_ALL_INDEXES (MAXINDEX + 1)
+
 int track_record_index(struct ireq *iq, int ixnum, void *key, int ixkeylen);
 
 int check_for_upsert(struct ireq *iq, void *trans, blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,

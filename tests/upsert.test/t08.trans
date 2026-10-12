@@ -1,0 +1,19 @@
+1 SELECT 'serializable read-set is still validated for ignored upserts' AS TEST
+1 DROP TABLE IF EXISTS t
+1 CREATE TABLE t(a int unique, b int)
+1 INSERT INTO t VALUES(1, 1)
+1 INSERT INTO t VALUES(2, 2)
+1 SET TRANSACTION SERIALIZABLE
+1 BEGIN
+1 SELECT a, b FROM t WHERE a = 2
+1 INSERT INTO t VALUES(1, 10) ON CONFLICT DO NOTHING
+2 UPDATE t SET b = 20 WHERE a = 2
+1 COMMIT
+1 SELECT a, b FROM t ORDER BY a
+
+1 SELECT 'serializable ignored upsert without conflicting writes commits' AS TEST
+1 BEGIN
+1 SELECT a, b FROM t WHERE a = 2
+1 INSERT INTO t VALUES(1, 10) ON CONFLICT DO NOTHING
+1 COMMIT
+1 SELECT a, b FROM t ORDER BY a
