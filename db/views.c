@@ -574,14 +574,31 @@ static timepart_view_t *_get_view(timepart_views_t *views, const char *name)
     return _get_view_index(views, name, NULL);
 }
 
-static struct dbtable *_table_alias_fallback(timepart_view_t *view)
+static void _alias_table(timepart_view_t *view, struct dbtable *db, const char *alias)
+{
+    assert(!db->sqlaliasname);
+    db->sqlaliasname = strdup(alias);
+    hash_sqlalias_db(db, db->sqlaliasname);
+    db->timepartition_name = view->name;
+}
+
+/**
+ * A truncate partition created from an existing table keeps that table under
+ * the partition name; alias it as the shard that has no table of its own.
+ * Do not use shards[0]: a retention change reorders the shards, and shards[0]
+ * can be a real table, which would register two tables under the same name.
+ */
+static struct dbtable *_table_alias_fallback(timepart_view_t *view, const char *missing_shard)
 {
     struct dbtable *db = NULL;
     if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
         db = get_dbtable_by_name(view->name);
         if (db) {
-            /* create alias alias */
-            timepart_alias_table(view, db);
+            if (db->sqlaliasname) {
+                /* already aliased to another shard; this one is really missing */
+                return NULL;
+            }
+            _alias_table(view, db, missing_shard);
         }
     }
     return db;
@@ -631,7 +648,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
     for (i = 0; i < view->nshards; i++) {
         db = get_dbtable_by_name(view->shards[i].tblname);
         if (!db) {
-            struct dbtable *db2 = _table_alias_fallback(view);
+            struct dbtable *db2 = _table_alias_fallback(view, view->shards[i].tblname);
             if (!db2) {
                 logmsg(LOGMSG_ERROR,
                        "%s: unable to locate shard %s for view %s\n", __func__,
@@ -2375,7 +2392,7 @@ static int _view_register_shards(timepart_views_t *views,
              * was created based on an existing table; check if there is
              * a table having the partition name, and if it is, alias it
              */
-            struct dbtable *db2 = _table_alias_fallback(view);
+            struct dbtable *db2 = _table_alias_fallback(view, view->shards[i].tblname);
             if (!db2) {
                 errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
                                    "Partition %s shard %s doesn't exist!",
@@ -3625,10 +3642,7 @@ const char *timepart_name(int i)
 
 void timepart_alias_table(timepart_view_t *view, struct dbtable *db)
 {
-    assert(!db->sqlaliasname);
-    db->sqlaliasname = strdup(view->shards[0].tblname);
-    hash_sqlalias_db(db, db->sqlaliasname);
-    db->timepartition_name = view->name;
+    _alias_table(view, db, view->shards[0].tblname);
 }
 
 int timepart_is_partition(const char *name)
